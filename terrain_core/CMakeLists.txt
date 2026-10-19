@@ -25,9 +25,33 @@ target_include_directories(terrain_core PUBLIC include)
 target_compile_features(terrain_core PUBLIC cxx_std_20)
 target_link_libraries(terrain_core PRIVATE terrain_warnings)
 
-# Heightmap PNG export for visual checks: terrain_export_heightmap <output-dir> [seed] [m/px]
+# Heightmap PNG export for visual checks:
+# terrain_export_heightmap <output-dir> [seed] [m/px] [size] [center-x] [center-z]
 add_executable(terrain_export_heightmap tools/export_heightmap.cpp)
 target_link_libraries(terrain_export_heightmap PRIVATE terrain_core terrain_warnings)
+
+# Large heightmaps to judge the layout of continents, oceans and mountains: 4096 x 4096 px
+# around the origin, 409.6 km wide at 100 m/px and 1024 km wide at 250 m/px. Not part of the
+# tests (about half a minute per map in an unoptimized build):
+#   cmake --build <build-dir> --target export_large_heightmaps
+# writes heightmap_409km.png, heightmap_preview_409km.png, heightmap_1024km.png and
+# heightmap_preview_1024km.png into <build-dir>/heightmap_large.
+set(large_heightmaps ${CMAKE_BINARY_DIR}/heightmap_large)
+add_custom_target(export_large_heightmaps
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${large_heightmaps}
+    COMMAND terrain_export_heightmap ${large_heightmaps}/409km 20261019 100 4096 0 0
+    COMMAND terrain_export_heightmap ${large_heightmaps}/1024km 20261019 250 4096 0 0
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${large_heightmaps}/409km/heightmap.png
+            ${large_heightmaps}/heightmap_409km.png
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${large_heightmaps}/409km/heightmap_preview.png
+            ${large_heightmaps}/heightmap_preview_409km.png
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${large_heightmaps}/1024km/heightmap.png
+            ${large_heightmaps}/heightmap_1024km.png
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${large_heightmaps}/1024km/heightmap_preview.png
+            ${large_heightmaps}/heightmap_preview_1024km.png
+    VERBATIM
+    USES_TERMINAL
+)
 
 # Eroded region PNG export: terrain_export_eroded <output-dir> [seed] [m/px] [size]
 add_executable(terrain_export_eroded tools/export_eroded.cpp)
