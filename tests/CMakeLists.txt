@@ -23,9 +23,19 @@ terrain_add_test(heightfield_test terrain_core)
 terrain_add_test(heightfield_density_test terrain_core)
 terrain_add_test(png_test terrain_core)
 terrain_add_test(heightmap_png_test terrain_core)
+terrain_add_test(erosion_test terrain_core)
+terrain_add_test(rivers_test terrain_core)
+terrain_add_test(eroded_region_test terrain_core)
+terrain_add_test(eroded_png_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
 add_test(NAME export_heightmap_smoke
     COMMAND terrain_export_heightmap ${CMAKE_BINARY_DIR}/heightmap)
 add_dependencies(check terrain_export_heightmap)
+
+# Smoke test: writes heightmap_eroded.png, heightmap_eroded_preview.png and rivers.png
+# (512 x 512, 100 m/px) into <build-dir>/eroded for a visual check.
+add_test(NAME export_eroded_smoke
+    COMMAND terrain_export_eroded ${CMAKE_BINARY_DIR}/eroded)
+add_dependencies(check terrain_export_eroded)
