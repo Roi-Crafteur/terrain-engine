@@ -1,8 +1,9 @@
 // Writes heightmap.png and heightmap_preview.png for visual checks of the Heightfield: a square
 // of size x size pixels, meters-per-pixel apart, centered on (center-x, center-z). Without the
-// optional arguments: seed 20261019, 100 m/px, 1024 px, centered on the origin.
+// optional arguments: seed 20261019, 100 m/px, 1024 px, centered on the origin, the default
+// macro continent amplitude (0 disables the planetary layer of large oceans and continents).
 // Usage: terrain_export_heightmap <output-dir> [seed] [meters-per-pixel] [size] [center-x]
-//        [center-z]
+//        [center-z] [macro-continent]
 
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/io/heightmap_png.hpp"
@@ -37,16 +38,26 @@ bool parseCoordinate(const char* text, double& value, const char* name) {
     return false;
 }
 
+// A finite amplitude of at least 0.
+bool parseMacroContinent(const char* text, float& value) {
+    if (parse(text, value) && std::isfinite(value) && value >= 0.0f) {
+        return true;
+    }
+    std::fprintf(stderr, "Invalid macro continent '%s': expected a number of at least 0\n", text);
+    return false;
+}
+
 struct Options {
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     terrain::HeightmapRegion region; // 1024 px at 100 m/px around the origin by default
+    terrain::HeightfieldParams params;
 };
 
 // Reads the optional arguments into options. On the first invalid one, prints what is wrong
 // and returns false; nothing has been generated or written then.
 bool parseArguments(int argc, char** argv, Options& options) {
-    if (argc < 2 || argc > 7) {
-        std::fprintf(stderr, "Expected 1 to 6 arguments, got %d\n", argc - 1);
+    if (argc < 2 || argc > 8) {
+        std::fprintf(stderr, "Expected 1 to 7 arguments, got %d\n", argc - 1);
         return false;
     }
     terrain::HeightmapRegion& region = options.region;
@@ -67,7 +78,8 @@ bool parseArguments(int argc, char** argv, Options& options) {
         return false;
     }
     return (argc <= 5 || parseCoordinate(argv[5], region.centerX, "center x")) &&
-           (argc <= 6 || parseCoordinate(argv[6], region.centerZ, "center z"));
+           (argc <= 6 || parseCoordinate(argv[6], region.centerZ, "center z")) &&
+           (argc <= 7 || parseMacroContinent(argv[7], options.params.macroContinent));
 }
 
 } // namespace
@@ -77,22 +89,23 @@ int main(int argc, char** argv) {
     if (!parseArguments(argc, argv, options)) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [seed] [meters-per-pixel] [size] [center-x] "
-                     "[center-z]\n",
+                     "[center-z] [macro-continent]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
 
     const std::filesystem::path directory = argv[1];
     const terrain::HeightmapRegion& region = options.region;
-    const terrain::Heightfield field(options.seed);
+    const terrain::Heightfield field(options.seed, options.params);
     if (!terrain::exportHeightmapPngs(field, region, directory)) {
         std::fprintf(stderr, "Failed to write the heightmaps into %s\n", argv[1]);
         return EXIT_FAILURE;
     }
     const double extentKm = region.size * region.metersPerPixel / 1000.0;
-    std::printf("seed %llu, %d x %d px, %.1f km wide, center (%.0f, %.0f): %s/heightmap.png, "
-                "%s/heightmap_preview.png\n",
+    std::printf("seed %llu, %d x %d px, %.1f km wide, center (%.0f, %.0f), macro continent %.2f: "
+                "%s/heightmap.png, %s/heightmap_preview.png\n",
                 static_cast<unsigned long long>(options.seed), region.size, region.size,
-                extentKm, region.centerX, region.centerZ, argv[1], argv[1]);
+                extentKm, region.centerX, region.centerZ,
+                static_cast<double>(options.params.macroContinent), argv[1], argv[1]);
     return EXIT_SUCCESS;
 }

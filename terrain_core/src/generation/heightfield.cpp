@@ -2,6 +2,7 @@
 
 #include "terrain/generation/noise.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -84,7 +85,8 @@ constexpr float kMountainCoastFull = 0.15f;
 // continentalness is below the coast.
 constexpr float kDetailCoastFade = 4.0f;
 
-enum Layer : std::uint64_t { kContinent, kMask, kWarpX, kWarpZ, kRidge, kDetail };
+// New layers go at the end so that the seeds of the existing ones never change.
+enum Layer : std::uint64_t { kContinent, kMask, kWarpX, kWarpZ, kRidge, kDetail, kMacroContinent };
 
 } // namespace
 
@@ -92,7 +94,8 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params)
     : params_(params), continentSeed_(noise::deriveSeed(seed, kContinent)),
       maskSeed_(noise::deriveSeed(seed, kMask)), warpXSeed_(noise::deriveSeed(seed, kWarpX)),
       warpZSeed_(noise::deriveSeed(seed, kWarpZ)), ridgeSeed_(noise::deriveSeed(seed, kRidge)),
-      detailSeed_(noise::deriveSeed(seed, kDetail)) {}
+      detailSeed_(noise::deriveSeed(seed, kDetail)),
+      macroContinentSeed_(noise::deriveSeed(seed, kMacroContinent)) {}
 
 float Heightfield::heightAt(double x, double z) const {
     return sampleAt(x, z).height;
@@ -100,8 +103,7 @@ float Heightfield::heightAt(double x, double z) const {
 
 HeightSample Heightfield::sampleAt(double x, double z) const {
     HeightSample s;
-    const noise::FbmParams continent{.octaves = 4, .frequency = 1.0 / params_.continentWavelength};
-    s.continentalness = noise::fbm2D(x, z, continentSeed_, continent);
+    continentalnessAt(x, z, s);
     const float coastOffset = s.continentalness - params_.coastContinentalness;
     s.base = continentalBase(coastOffset);
 
@@ -120,6 +122,23 @@ HeightSample Heightfield::sampleAt(double x, double z) const {
     }
     s.height = s.base + s.mountain + s.detail;
     return s;
+}
+
+// Local continentalness, plus the saturated macro term when the layer is enabled:
+// clamp(local + macroContinent * tanh(macro / macroContinentWidth), -1, 1). Without it, the
+// result is exactly the local value.
+void Heightfield::continentalnessAt(double x, double z, HeightSample& s) const {
+    const noise::FbmParams continent{.octaves = 4, .frequency = 1.0 / params_.continentWavelength};
+    const float local = noise::fbm2D(x, z, continentSeed_, continent);
+    s.continentalness = local;
+    if (params_.macroContinent > 0.0f) {
+        const noise::FbmParams macro{.octaves = 2,
+                                     .frequency = 1.0 / params_.macroContinentWavelength};
+        s.macroContinentalness = noise::fbm2D(x, z, macroContinentSeed_, macro);
+        const float term = params_.macroContinent *
+                           std::tanh(s.macroContinentalness / params_.macroContinentWidth);
+        s.continentalness = std::clamp(local + term, -1.0f, 1.0f);
+    }
 }
 
 // The ridged noise is only evaluated inside the mountain mask, and is scaled by it.

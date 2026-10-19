@@ -22,6 +22,18 @@ struct HeightfieldParams {
     double continentWavelength = 60000.0;
     float coastContinentalness = 0.0f;
 
+    // Macro continentalness: fbm with 2 octaves at a planetary wavelength, added to the local
+    // continentalness as macroContinent * tanh(macro / macroContinentWidth). Away from the
+    // zero lines of the fbm the term saturates at +-macroContinent: very large oceans, very
+    // large continents, occasional supercontinents and inland seas, separated by macro coasts
+    // whose width grows with macroContinentWidth (> 0). The local layer above keeps the
+    // coasts, islands and regional variations. 0.5 gives planetary oceans and continents; 0
+    // (the default) disables the layer: it is not even evaluated, so the world is
+    // bit-identical to one without it.
+    float macroContinent = 0.0f;
+    double macroContinentWavelength = 10'000'000.0; // 10,000 km
+    float macroContinentWidth = 0.1f;
+
     // Mountain mask: smoothstep(maskLow, maskHigh, fbm) at a medium frequency, faded in
     // from the coast so that no mountain rises from the ocean.
     double maskWavelength = 40000.0;
@@ -47,16 +59,19 @@ struct HeightfieldParams {
 
 // Layers of the height at one point: height = base + mountain + detail.
 struct HeightSample {
-    float continentalness = 0.0f; // [-1, 1]
-    float mountainMask = 0.0f;    // [0, 1]
-    float base = 0.0f;            // continental curve, [kMinBaseHeight, kMaxBaseHeight]
-    float mountain = 0.0f;        // [0, mountainMask * mountainHeight]
-    float detail = 0.0f;          // [-detailAmplitude, detailAmplitude]
+    float continentalness = 0.0f;      // [-1, 1], local plus the macro term, clamped
+    float macroContinentalness = 0.0f; // [-1, 1], raw macro fbm, 0 when disabled
+    float mountainMask = 0.0f;         // [0, 1]
+    float base = 0.0f;                 // continental curve, [kMinBaseHeight, kMaxBaseHeight]
+    float mountain = 0.0f;             // [0, mountainMask * mountainHeight]
+    float detail = 0.0f;               // [-detailAmplitude, detailAmplitude]
     float height = 0.0f;
 };
 
 // Multi-scale terrain height y = heightAt(x, z), in meters.
 // Deterministic: the same seed, parameters and coordinates always give the same height.
+// Like every fbm layer, the macro continentalness is exactly 0 at the origin, so the origin
+// always lies on a macro coast: the local layer alone decides whether it is land or sea.
 class Heightfield {
 public:
     explicit Heightfield(std::uint64_t seed, const HeightfieldParams& params = {});
@@ -67,6 +82,7 @@ public:
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
 
 private:
+    void continentalnessAt(double x, double z, HeightSample& s) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask) const;
 
     HeightfieldParams params_;
@@ -76,6 +92,7 @@ private:
     std::uint64_t warpZSeed_;
     std::uint64_t ridgeSeed_;
     std::uint64_t detailSeed_;
+    std::uint64_t macroContinentSeed_;
 };
 
 } // namespace terrain
