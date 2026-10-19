@@ -3,6 +3,7 @@
 
 #include "camera.hpp"
 #include "chunk_mesh.hpp"
+#include "cliff_region_view.hpp"
 #include "colored_mesh.hpp"
 #include "cube_mesh.hpp"
 #include "demo_chunks.hpp"
@@ -76,8 +77,8 @@ void main() {
 }
 )";
 
-// Keys 1 to 5 select what is displayed.
-enum class ViewMode { Cube, Sphere, Heightmap, Heightfield, Eroded };
+// Keys 1 to 6 select what is displayed.
+enum class ViewMode { Cube, Sphere, Heightmap, Heightfield, Eroded, Cliffs };
 
 const char* modeName(ViewMode mode) {
     switch (mode) {
@@ -91,12 +92,14 @@ const char* modeName(ViewMode mode) {
         return "heightfield";
     case ViewMode::Eroded:
         return "eroded region with rivers (1 unit = 50 m)";
+    case ViewMode::Cliffs:
+        return "cliffs region with rivers (1 unit = 12.5 m)";
     }
     return "";
 }
 
 // Modes sharing a place of the world keep the camera when switching between them.
-enum class Place { ChunkOrigin, Summit, ErodedModel };
+enum class Place { ChunkOrigin, Summit, ErodedModel, CliffModel };
 
 Place placeOf(ViewMode mode) {
     switch (mode) {
@@ -104,6 +107,8 @@ Place placeOf(ViewMode mode) {
         return Place::Summit;
     case ViewMode::Eroded:
         return Place::ErodedModel;
+    case ViewMode::Cliffs:
+        return Place::CliffModel;
     default:
         return Place::ChunkOrigin;
     }
@@ -180,10 +185,37 @@ const ErodedView& erodedView(std::optional<ErodedView>& view) {
     return *view;
 }
 
-// Regions generated on demand by modes 4 and 5.
+// Cliff region (cliffs, plateaus and gorges over an eroded region with rivers), as a scale
+// model, generated on first use.
+struct CliffView {
+    explicit CliffView(const viewer::CliffRegionView& region)
+        : terrain(region.terrain), water(region.water),
+          altitudes{region.minHeight, region.maxHeight}, viewpoint(region.viewpoint) {}
+
+    viewer::ChunkMesh terrain;
+    viewer::ColoredMesh water;
+    AltitudeRange altitudes;
+    viewer::Vec3 viewpoint;
+};
+
+const CliffView& cliffView(std::optional<CliffView>& view) {
+    if (!view) {
+        std::fprintf(stderr, "Carving cliffs, plateaus and gorges (seed %llu)...\n",
+                     static_cast<unsigned long long>(terrain::kDefaultWorldSeed));
+        const viewer::CliffRegionView region =
+            viewer::buildCliffRegionView(terrain::kDefaultWorldSeed);
+        std::fprintf(stderr, "%zu river cells, %zu cascades, %zu cirques\n", region.riverCells,
+                     region.cascades, region.cirques);
+        view.emplace(region);
+    }
+    return *view;
+}
+
+// Regions generated on demand by modes 4, 5 and 6.
 struct LazyViews {
     std::optional<HeightfieldView> heightfield;
     std::optional<ErodedView> eroded;
+    std::optional<CliffView> cliffs;
 };
 
 // Starting camera of a place; generates its region if needed.
@@ -193,6 +225,8 @@ viewer::Camera placeCamera(Place place, LazyViews& views) {
         return heightfieldCamera(heightfieldView(views.heightfield).viewpoint);
     case Place::ErodedModel:
         return heightfieldCamera(erodedView(views.eroded).viewpoint);
+    case Place::CliffModel:
+        return heightfieldCamera(cliffView(views.cliffs).viewpoint);
     case Place::ChunkOrigin:
         break;
     }
@@ -265,6 +299,9 @@ ViewMode readViewMode(GLFWwindow* window, ViewMode current) {
     if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) {
         return ViewMode::Eroded;
     }
+    if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) {
+        return ViewMode::Cliffs;
+    }
     return current;
 }
 
@@ -319,6 +356,13 @@ void renderFrame(GLFWwindow* window, const Scene& scene, const LazyViews& views,
         scene.colorShader.use();
         scene.colorShader.setMat4("uViewProjection", viewProjection);
         views.eroded->water.draw();
+        return;
+    }
+    if (mode == ViewMode::Cliffs && views.cliffs) {
+        drawTerrain(scene.terrainShader, views.cliffs->terrain, views.cliffs->altitudes);
+        scene.colorShader.use();
+        scene.colorShader.setMat4("uViewProjection", viewProjection);
+        views.cliffs->water.draw();
         return;
     }
     drawTerrain(scene.terrainShader,

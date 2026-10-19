@@ -39,6 +39,7 @@ add_executable(terrain_viewer
     src/shader.cpp
     src/cube_mesh.cpp
     src/chunk_mesh.cpp
+    src/cliff_region_view.cpp
     src/colored_mesh.cpp
     src/demo_chunks.cpp
     src/eroded_region_view.cpp

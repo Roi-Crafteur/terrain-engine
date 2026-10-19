@@ -1,6 +1,8 @@
 # Pure generation library: must never depend on OpenGL, GLFW, glad or a window.
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
+    src/generation/cliff_region.cpp
+    src/generation/cliffs.cpp
     src/generation/eroded_region.cpp
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
@@ -8,6 +10,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield_density.cpp
     src/generation/noise.cpp
     src/generation/rivers.cpp
+    src/io/cliffs_png.cpp
     src/io/eroded_png.cpp
     src/io/heightmap_png.cpp
     src/io/png.cpp
@@ -25,3 +28,7 @@ target_link_libraries(terrain_export_heightmap PRIVATE terrain_core terrain_warn
 # Eroded region PNG export: terrain_export_eroded <output-dir> [seed] [m/px] [size]
 add_executable(terrain_export_eroded tools/export_eroded.cpp)
 target_link_libraries(terrain_export_eroded PRIVATE terrain_core terrain_warnings)
+
+# Cliff PNG export: terrain_export_cliffs <output-dir> [seed] [m/px] [size]
+add_executable(terrain_export_cliffs tools/export_cliffs.cpp)
+target_link_libraries(terrain_export_cliffs PRIVATE terrain_core terrain_warnings)
