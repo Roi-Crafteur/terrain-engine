@@ -18,3 +18,14 @@ endfunction()
 terrain_add_test(test_chunk_coord terrain_core)
 terrain_add_test(test_camera_math terrain_viewer_camera)
 terrain_add_test(marching_cubes_test terrain_core)
+terrain_add_test(noise_test terrain_core)
+terrain_add_test(heightfield_test terrain_core)
+terrain_add_test(heightfield_density_test terrain_core)
+terrain_add_test(png_test terrain_core)
+terrain_add_test(heightmap_png_test terrain_core)
+
+# Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
+# <build-dir>/heightmap for a visual check.
+add_test(NAME export_heightmap_smoke
+    COMMAND terrain_export_heightmap ${CMAKE_BINARY_DIR}/heightmap)
+add_dependencies(check terrain_export_heightmap)

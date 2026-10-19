@@ -5,8 +5,10 @@
 #include "chunk_mesh.hpp"
 #include "cube_mesh.hpp"
 #include "demo_chunks.hpp"
+#include "heightfield_region.hpp"
 #include "shader.hpp"
 #include "terrain/chunk_coord.hpp"
+#include "terrain/generation/heightfield.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -42,7 +44,8 @@ void main() {
 }
 )";
 
-// Terrain chunks: Lambert lighting from a fixed sun, tinted by height.
+// Terrain chunks: Lambert lighting from a fixed sun, tinted from green to gray between the
+// two altitudes of uAltitudeRange.
 constexpr const char* kTerrainVertexShader = R"(#version 330 core
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
@@ -59,18 +62,20 @@ void main() {
 constexpr const char* kTerrainFragmentShader = R"(#version 330 core
 in vec3 vNormal;
 in float vHeight;
+uniform vec2 uAltitudeRange;
 out vec4 fragColor;
 void main() {
     vec3 lightDirection = normalize(vec3(0.4, 1.0, 0.3));
     float diffuse = max(dot(normalize(vNormal), lightDirection), 0.0);
-    float altitude = clamp(vHeight / 16.0, 0.0, 1.0);
+    float altitude = clamp((vHeight - uAltitudeRange.x) / (uAltitudeRange.y - uAltitudeRange.x),
+                           0.0, 1.0);
     vec3 albedo = mix(vec3(0.30, 0.55, 0.25), vec3(0.65, 0.60, 0.55), altitude);
     fragColor = vec4(albedo * (0.25 + 0.75 * diffuse), 1.0);
 }
 )";
 
-// Keys 1, 2 and 3 select what is displayed.
-enum class ViewMode { Cube, Sphere, Heightmap };
+// Keys 1, 2, 3 and 4 select what is displayed.
+enum class ViewMode { Cube, Sphere, Heightmap, Heightfield };
 
 const char* modeName(ViewMode mode) {
     switch (mode) {
@@ -80,6 +85,8 @@ const char* modeName(ViewMode mode) {
         return "sphere chunk";
     case ViewMode::Heightmap:
         return "heightmap chunk";
+    case ViewMode::Heightfield:
+        return "heightfield";
     }
     return "";
 }
@@ -91,6 +98,44 @@ struct Scene {
     viewer::ChunkMesh sphereChunk;
     viewer::ChunkMesh heightmapChunk;
 };
+
+struct AltitudeRange {
+    float low;
+    float high;
+};
+
+// Chunk (0, 0) spans [0, 16] m on each axis: start in front of it, looking toward -Z.
+constexpr viewer::Vec3 kChunkViewpoint{8.0f, 10.0f, 32.0f};
+constexpr AltitudeRange kChunkAltitudes{0.0f, 16.0f};
+
+// Region of the multi-scale heightfield, generated on first use: meshing it takes a moment.
+struct HeightfieldView {
+    explicit HeightfieldView(const viewer::HeightfieldRegion& region)
+        : mesh(region.mesh), altitudes{region.minHeight, region.maxHeight},
+          viewpoint(region.viewpoint) {}
+
+    viewer::ChunkMesh mesh;
+    AltitudeRange altitudes;
+    viewer::Vec3 viewpoint;
+};
+
+// Looks down on the heightfield region from its viewpoint.
+viewer::Camera heightfieldCamera(viewer::Vec3 viewpoint) {
+    constexpr float kPitchDownDegrees = 25.0f;
+    viewer::Camera camera(viewpoint);
+    camera.rotate(0.0f, kPitchDownDegrees / viewer::Camera::kMouseSensitivity);
+    return camera;
+}
+
+const HeightfieldView& heightfieldView(std::optional<HeightfieldView>& view) {
+    if (!view) {
+        std::fprintf(stderr, "Generating the heightfield region (seed %llu)...\n",
+                     static_cast<unsigned long long>(terrain::kDefaultWorldSeed));
+        const terrain::Heightfield field(terrain::kDefaultWorldSeed);
+        view.emplace(viewer::buildHeightfieldRegion(field));
+    }
+    return *view;
+}
 
 struct TitleInfo {
     ViewMode mode = ViewMode::Heightmap;
@@ -152,6 +197,9 @@ ViewMode readViewMode(GLFWwindow* window, ViewMode current) {
     if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS) {
         return ViewMode::Heightmap;
     }
+    if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) {
+        return ViewMode::Heightfield;
+    }
     return current;
 }
 
@@ -167,7 +215,14 @@ void updateTitle(GLFWwindow* window, ViewMode mode, viewer::Vec3 position,
     glfwSetWindowTitle(window, title.c_str());
 }
 
-void renderFrame(GLFWwindow* window, const Scene& scene, ViewMode mode,
+void drawTerrain(const viewer::ShaderProgram& shader, const viewer::ChunkMesh& mesh,
+                 AltitudeRange altitudes) {
+    shader.setVec2("uAltitudeRange", altitudes.low, altitudes.high);
+    mesh.draw();
+}
+
+void renderFrame(GLFWwindow* window, const Scene& scene,
+                 const std::optional<HeightfieldView>& heightfield, ViewMode mode,
                  const viewer::Camera& camera) {
     int width = 0;
     int height = 0;
@@ -191,7 +246,13 @@ void renderFrame(GLFWwindow* window, const Scene& scene, ViewMode mode,
     }
     scene.terrainShader.use();
     scene.terrainShader.setMat4("uViewProjection", viewProjection);
-    (mode == ViewMode::Sphere ? scene.sphereChunk : scene.heightmapChunk).draw();
+    if (mode == ViewMode::Heightfield && heightfield) {
+        drawTerrain(scene.terrainShader, heightfield->mesh, heightfield->altitudes);
+        return;
+    }
+    drawTerrain(scene.terrainShader,
+                mode == ViewMode::Sphere ? scene.sphereChunk : scene.heightmapChunk,
+                kChunkAltitudes);
 }
 
 void runLoop(GLFWwindow* window) {
@@ -202,9 +263,9 @@ void runLoop(GLFWwindow* window) {
         viewer::ChunkMesh(viewer::buildSphereChunk()),
         viewer::ChunkMesh(viewer::buildHeightmapChunk()),
     };
+    std::optional<HeightfieldView> heightfield;
     ViewMode mode = ViewMode::Heightmap;
-    // Chunk (0, 0) spans [0, 16] m on each axis: start in front of it, looking toward -Z.
-    viewer::Camera camera({8.0f, 10.0f, 32.0f});
+    viewer::Camera camera(kChunkViewpoint);
     std::optional<TitleInfo> shownTitle;
 
     double lastX = 0.0;
@@ -227,10 +288,19 @@ void runLoop(GLFWwindow* window) {
         lastX = x;
         lastY = y;
         lastTime = now;
-        mode = readViewMode(window, mode);
+
+        // The heightfield region is far from chunk (0, 0): the camera jumps between them.
+        const ViewMode next = readViewMode(window, mode);
+        if (next == ViewMode::Heightfield && mode != ViewMode::Heightfield) {
+            camera = heightfieldCamera(heightfieldView(heightfield).viewpoint);
+            lastTime = glfwGetTime(); // generation time is not camera movement
+        } else if (next != ViewMode::Heightfield && mode == ViewMode::Heightfield) {
+            camera = viewer::Camera(kChunkViewpoint);
+        }
+        mode = next;
 
         updateTitle(window, mode, camera.position(), shownTitle);
-        renderFrame(window, scene, mode, camera);
+        renderFrame(window, scene, heightfield, mode, camera);
         glfwSwapBuffers(window);
     }
 }
