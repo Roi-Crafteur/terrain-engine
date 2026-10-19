@@ -125,6 +125,32 @@ void testSlotFlatFloor() {
     TEST_CHECK(sdf::slotAbove(0.0f, 1000.0f, kFloor, kFloor) == 0.0f);
 }
 
+// Inside the radius and between the two heights the cylinder is rock; its side is vertical.
+void testCylinder() {
+    constexpr double kBottom = 100.0;
+    constexpr double kTop = 112.0;
+    TEST_CHECK(sdf::verticalCylinder(2.0f, 6.0f, 106.0, kBottom, kTop) < 0.0f);
+    TEST_CHECK(sdf::verticalCylinder(2.0f, 6.0f, 113.0, kBottom, kTop) > 0.0f); // above the top
+    TEST_CHECK(sdf::verticalCylinder(2.0f, 6.0f, 99.0, kBottom, kTop) > 0.0f);  // below the base
+    TEST_CHECK(sdf::verticalCylinder(7.0f, 6.0f, 106.0, kBottom, kTop) > 0.0f); // beside it
+    TEST_CHECK(sdf::verticalCylinder(6.0f, 6.0f, 106.0, kBottom, kTop) == 0.0f);
+    for (const double y : {101.0, 104.0, 108.5, 111.0}) {
+        TEST_CHECK(sdf::verticalCylinder(9.0f, 6.0f, y, kBottom, kTop) == 3.0f);
+    }
+    TEST_CHECK(sdf::verticalCylinder(0.0f, 6.0f, kTop, kBottom, kTop) == 0.0f); // flat top
+}
+
+// The torus is the set of points within the tube radius of its central circle.
+void testTorus() {
+    TEST_CHECK(sdf::torus(20.0f, 0.0f, 20.0f, 5.0f) == -5.0f); // on the central circle
+    TEST_CHECK(sdf::torus(25.0f, 0.0f, 20.0f, 5.0f) == 0.0f);  // outer equator
+    TEST_CHECK(sdf::torus(15.0f, 0.0f, 20.0f, 5.0f) == 0.0f);  // inner equator
+    TEST_CHECK(sdf::torus(20.0f, 5.0f, 20.0f, 5.0f) == 0.0f);  // top of the tube
+    TEST_CHECK(sdf::torus(0.0f, 0.0f, 20.0f, 5.0f) == 15.0f);  // the hole
+    TEST_CHECK(sdf::torus(23.0f, 4.0f, 20.0f, 5.0f) == 0.0f);  // 3-4-5 triangle
+    TEST_CHECK(sdf::torus(20.0f, -12.0f, 20.0f, 5.0f) == 7.0f); // symmetric along the axis
+}
+
 } // namespace
 
 int main() {
@@ -136,5 +162,7 @@ int main() {
     testSlotSigns();
     testSlotVerticalWalls();
     testSlotFlatFloor();
+    testCylinder();
+    testTorus();
     return test::result();
 }

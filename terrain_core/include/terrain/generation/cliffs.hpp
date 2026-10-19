@@ -33,6 +33,11 @@ struct CliffParams {
     float maxSlope = 2.0f;
     // The strata density is bounded to +-densityClamp, which keeps it continuous.
     float densityClamp = 24.0f;
+    // Overhangs (only where a column asks for them, see CliffColumn): the top capShare of
+    // each stratum is a hard bank, which may jut out over the softer rock below it, which may
+    // recede. The profile switches from one to the other over capRampShare of the stratum.
+    float capShare = 0.3f;
+    float capRampShare = 0.1f;
 
     // Rivers: within riverReach of a river, the strata never cut below its water.
     float riverReach = 120.0f;
@@ -72,6 +77,11 @@ struct CliffColumn {
     float gorgeHalfWidth = 0.0f; // 0 away from gorges
     std::array<CirqueCut, kMaxColumnCirques> cirques{};
     int cirqueCount = 0;
+    // Overhangs of the strata, in meters (0: none, and always 0 in CliffRegion): the hard
+    // bank of each stratum juts out by capOverhang, the rock under it recedes by undercut.
+    // Bounded by maxCapOverhang() and maxUndercut().
+    float capOverhang = 0.0f;
+    float undercut = 0.0f;
 };
 
 // Deterministic noise layers and density of the cliffs: the same seed, parameters and
@@ -91,24 +101,38 @@ public:
     [[nodiscard]] float stratumTop(int k) const;
     [[nodiscard]] int stratumBelow(float height) const;
 
+    // Footprint f_k of stratum k at a column, overhangs aside: the signed horizontal distance
+    // to the outline of the stratum (negative inside), clamp((T_k - H) / slope, -F, F) + rim.
+    [[nodiscard]] float footprint(const CliffColumn& column, int k) const;
+
     // Density at height y of a column:
     //   D = max((1 - M) * (y - H) + M * max(min(strata, riverFloor), -gorge), -cirques)
-    //   strata     = clamp(min_k max(f_k, y - T_k), -densityClamp, densityClamp)
+    //   strata     = clamp(min_k max(f_k + P_k(y), y - T_k), -densityClamp, densityClamp)
     //   f_k        = clamp((T_k - H) / slope, -F, F) + rimRecession  (F: internal bound)
+    //   P_k(y)     = -capOverhang + (capOverhang + undercut) * smoothstep(capShare,
+    //                capShare + capRampShare, (T_k - y) / stratumHeight): 0 without overhangs
     //   riverFloor = max(y - min(riverLevel, H), riverDistance - riverReach)
     //   gorge      = sdf::slotAbove(riverDistance, gorgeHalfWidth, y, riverLevel)
     //   cirques    = min of the cirque slots: carved at full strength, so their walls stay
     //                vertical where M < 1
-    // With M = 0 it returns exactly y - ground. It never decreases with y, so a column has
-    // a single surface.
+    // With M = 0 it returns exactly y - ground. Without overhangs it never decreases with y,
+    // so a column has a single surface; with overhangs, rock may lie above air.
     [[nodiscard]] float density(const CliffColumn& column, double y) const;
 
-    // Height of the surface of a column (the top of the rock), found by bisection.
+    // Height of the surface of a column (the top of the rock), found by bisection. Only valid
+    // for a column without overhangs (a single surface).
     [[nodiscard]] float topSurface(const CliffColumn& column) const;
 
     // Largest drop of the strata below the eroded height:
     // stratumHeight + rimRecession * maxSlope.
     [[nodiscard]] float maxTerraceDrop() const;
+
+    // Largest overhangs the fixed window of strata of a column supports: beyond them a stratum
+    // outside the window could show. capOverhang < 2 * stratumHeight / maxSlope - densityClamp
+    // and undercut < (maxTerraceDrop + 2 * stratumHeight) / maxSlope - rimRecession -
+    // densityClamp (16 m and 36 m with the default parameters).
+    [[nodiscard]] float maxCapOverhang() const;
+    [[nodiscard]] float maxUndercut() const;
 
     [[nodiscard]] const CliffParams& params() const { return params_; }
 
