@@ -1,6 +1,7 @@
 # Pure generation library: must never depend on OpenGL, GLFW, glad or a window.
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
+    src/generation/arches.cpp
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
     src/generation/eroded_region.cpp
@@ -9,7 +10,10 @@ add_library(terrain_core STATIC
     src/generation/heightfield.cpp
     src/generation/heightfield_density.cpp
     src/generation/noise.cpp
+    src/generation/overhangs.cpp
     src/generation/rivers.cpp
+    src/generation/sculpted_region.cpp
+    src/io/arches_png.cpp
     src/io/cliffs_png.cpp
     src/io/eroded_png.cpp
     src/io/heightmap_png.cpp
@@ -32,3 +36,7 @@ target_link_libraries(terrain_export_eroded PRIVATE terrain_core terrain_warning
 # Cliff PNG export: terrain_export_cliffs <output-dir> [seed] [m/px] [size]
 add_executable(terrain_export_cliffs tools/export_cliffs.cpp)
 target_link_libraries(terrain_export_cliffs PRIVATE terrain_core terrain_warnings)
+
+# Overhang and arch PNG export: terrain_export_arches <output-dir> [seed] [m/px] [size]
+add_executable(terrain_export_arches tools/export_arches.cpp)
+target_link_libraries(terrain_export_arches PRIVATE terrain_core terrain_warnings)

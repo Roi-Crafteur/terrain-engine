@@ -44,6 +44,8 @@ add_executable(terrain_viewer
     src/demo_chunks.cpp
     src/eroded_region_view.cpp
     src/heightfield_region.cpp
+    src/model_views.cpp
+    src/sculpted_region_view.cpp
 )
 target_compile_definitions(terrain_viewer PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(terrain_viewer PRIVATE

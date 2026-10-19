@@ -32,6 +32,11 @@ terrain_add_test(cliffs_test terrain_core)
 terrain_add_test(cliff_region_test terrain_core)
 terrain_add_test(cliff_rivers_test terrain_core)
 terrain_add_test(cliffs_png_test terrain_core)
+terrain_add_test(overhangs_test terrain_core)
+terrain_add_test(arches_test terrain_core)
+terrain_add_test(sculpted_region_test terrain_core)
+terrain_add_test(sculpted_water_test terrain_core)
+terrain_add_test(arches_png_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
@@ -50,3 +55,9 @@ add_dependencies(check terrain_export_eroded)
 add_test(NAME export_cliffs_smoke
     COMMAND terrain_export_cliffs ${CMAKE_BINARY_DIR}/cliffs)
 add_dependencies(check terrain_export_cliffs)
+
+# Smoke test: writes overhangs_mask.png and arches_preview.png (512 x 512, 12.5 m/px, the
+# region of the cliff export) into <build-dir>/arches for a visual check.
+add_test(NAME export_arches_smoke
+    COMMAND terrain_export_arches ${CMAKE_BINARY_DIR}/arches)
+add_dependencies(check terrain_export_arches)

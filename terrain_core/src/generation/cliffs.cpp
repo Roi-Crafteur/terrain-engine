@@ -6,6 +6,7 @@
 #include "terrain/generation/sdf.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <limits>
 
@@ -51,22 +52,41 @@ float drawStratumOffset(std::uint64_t seed, float stratumHeight) {
     return static_cast<float>(static_cast<double>(stratumHeight) * unit);
 }
 
+bool hasOverhang(const CliffColumn& column) {
+    return column.capOverhang > 0.0f || column.undercut > 0.0f;
+}
+
+// Offset P_k(y) of the footprint of the stratum whose top is top: the hard bank (the top
+// capShare of the stratum) juts out by capOverhang, the softer rock under it recedes by
+// undercut, with a smooth ramp in between. Continuous in y; above the top it keeps the value
+// of the bank, where the prism is air anyway.
+float overhangOffset(const CliffParams& p, const CliffColumn& column, float top, double y) {
+    const auto depth = static_cast<float>((static_cast<double>(top) - y) /
+                                          static_cast<double>(p.stratumHeight));
+    const float recede = noise::smoothstep(p.capShare, p.capShare + p.capRampShare, depth);
+    return -column.capOverhang + (column.capOverhang + column.undercut) * recede;
+}
+
 // Strata of a column at height y: vertical prisms stacked every stratumHeight, whose flat
 // tops are the terraces. A stratum covers the part of the column where the relief is above
 // its top by more than the rim recession. The window of strata depends on the column only,
-// not on y, so the density stays continuous in y.
+// not on y, so the density stays continuous in y. Overhangs bend the walls of the prisms;
+// without them the footprints are left exactly as they are.
 float strataDensity(const CliffField& field, const CliffColumn& column, double y) {
     const CliffParams& p = field.params();
-    const float slope = std::clamp(column.slope, p.minSlope, p.maxSlope);
-    const float bound = kFootprintBound * p.densityClamp;
+    const bool overhang = hasOverhang(column);
+    assert(!overhang || (column.capOverhang >= 0.0f && column.undercut >= 0.0f &&
+                         column.capOverhang <= field.maxCapOverhang() &&
+                         column.undercut <= field.maxUndercut()));
     const int first = field.stratumBelow(column.ground - field.maxTerraceDrop()) - kStrataMargin;
     const int last = field.stratumBelow(column.ground) + kStrataMargin;
     float strata = std::numeric_limits<float>::max();
     for (int k = first; k <= last; ++k) {
         const float top = field.stratumTop(k);
-        // Height difference to horizontal distance through the local slope.
-        const float footprint =
-            std::clamp((top - column.ground) / slope, -bound, bound) + column.rimRecession;
+        float footprint = field.footprint(column, k);
+        if (overhang) {
+            footprint += overhangOffset(p, column, top, y);
+        }
         strata = std::min(strata, sdf::prismBelow(footprint, y, top));
     }
     return std::clamp(strata, -p.densityClamp, p.densityClamp);
@@ -193,8 +213,33 @@ int CliffField::stratumBelow(float height) const {
     return k;
 }
 
+float CliffField::footprint(const CliffColumn& column, int k) const {
+    // Height difference to horizontal distance through the local slope.
+    const float slope = std::clamp(column.slope, params_.minSlope, params_.maxSlope);
+    const float bound = kFootprintBound * params_.densityClamp;
+    return std::clamp((stratumTop(k) - column.ground) / slope, -bound, bound) +
+           column.rimRecession;
+}
+
 float CliffField::maxTerraceDrop() const {
     return params_.stratumHeight + params_.rimRecession * params_.maxSlope;
+}
+
+float CliffField::maxCapOverhang() const {
+    // The lowest footprint of a stratum above the window, minus the bank, must stay above the
+    // clamp of the density.
+    const float bound = kFootprintBound * params_.densityClamp;
+    const float above = kStrataMargin * params_.stratumHeight / params_.maxSlope;
+    return std::min(above, bound) - params_.densityClamp;
+}
+
+float CliffField::maxUndercut() const {
+    // The highest footprint of the lowest stratum of the window, plus the undercut, must stay
+    // below the clamp of the density.
+    const float bound = kFootprintBound * params_.densityClamp;
+    const float below =
+        (maxTerraceDrop() + kStrataMargin * params_.stratumHeight) / params_.maxSlope;
+    return std::min(below, bound) - params_.rimRecession - params_.densityClamp;
 }
 
 float CliffField::density(const CliffColumn& column, double y) const {

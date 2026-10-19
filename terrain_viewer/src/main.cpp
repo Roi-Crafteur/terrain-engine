@@ -3,15 +3,11 @@
 
 #include "camera.hpp"
 #include "chunk_mesh.hpp"
-#include "cliff_region_view.hpp"
-#include "colored_mesh.hpp"
 #include "cube_mesh.hpp"
 #include "demo_chunks.hpp"
-#include "eroded_region_view.hpp"
-#include "heightfield_region.hpp"
+#include "model_views.hpp"
 #include "shader.hpp"
 #include "terrain/chunk_coord.hpp"
-#include "terrain/generation/heightfield.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -77,8 +73,8 @@ void main() {
 }
 )";
 
-// Keys 1 to 6 select what is displayed.
-enum class ViewMode { Cube, Sphere, Heightmap, Heightfield, Eroded, Cliffs };
+// Keys 1 to 7 select what is displayed.
+enum class ViewMode { Cube, Sphere, Heightmap, Heightfield, Eroded, Cliffs, Sculpted };
 
 const char* modeName(ViewMode mode) {
     switch (mode) {
@@ -94,12 +90,14 @@ const char* modeName(ViewMode mode) {
         return "eroded region with rivers (1 unit = 50 m)";
     case ViewMode::Cliffs:
         return "cliffs region with rivers (1 unit = 12.5 m)";
+    case ViewMode::Sculpted:
+        return "cliffs with overhangs and arches (1 unit = 2.5 m)";
     }
     return "";
 }
 
 // Modes sharing a place of the world keep the camera when switching between them.
-enum class Place { ChunkOrigin, Summit, ErodedModel, CliffModel };
+enum class Place { ChunkOrigin, Summit, ErodedModel, CliffModel, SculptedModel };
 
 Place placeOf(ViewMode mode) {
     switch (mode) {
@@ -109,6 +107,8 @@ Place placeOf(ViewMode mode) {
         return Place::ErodedModel;
     case ViewMode::Cliffs:
         return Place::CliffModel;
+    case ViewMode::Sculpted:
+        return Place::SculptedModel;
     default:
         return Place::ChunkOrigin;
     }
@@ -122,27 +122,14 @@ struct Scene {
     viewer::ChunkMesh heightmapChunk;
 };
 
-struct AltitudeRange {
-    float low;
-    float high;
-};
+using viewer::AltitudeRange;
+using viewer::LazyViews;
 
 // Chunk (0, 0) spans [0, 16] m on each axis: start in front of it, looking toward -Z.
 constexpr viewer::Vec3 kChunkViewpoint{8.0f, 10.0f, 32.0f};
 constexpr AltitudeRange kChunkAltitudes{0.0f, 16.0f};
 
-// Region of the multi-scale heightfield, generated on first use: meshing it takes a moment.
-struct HeightfieldView {
-    explicit HeightfieldView(const viewer::HeightfieldRegion& region)
-        : mesh(region.mesh), altitudes{region.minHeight, region.maxHeight},
-          viewpoint(region.viewpoint) {}
-
-    viewer::ChunkMesh mesh;
-    AltitudeRange altitudes;
-    viewer::Vec3 viewpoint;
-};
-
-// Looks down on the heightfield region from its viewpoint.
+// Looks down on a region from its viewpoint.
 viewer::Camera heightfieldCamera(viewer::Vec3 viewpoint) {
     constexpr float kPitchDownDegrees = 25.0f;
     viewer::Camera camera(viewpoint);
@@ -150,83 +137,17 @@ viewer::Camera heightfieldCamera(viewer::Vec3 viewpoint) {
     return camera;
 }
 
-const HeightfieldView& heightfieldView(std::optional<HeightfieldView>& view) {
-    if (!view) {
-        std::fprintf(stderr, "Generating the heightfield region (seed %llu)...\n",
-                     static_cast<unsigned long long>(terrain::kDefaultWorldSeed));
-        const terrain::Heightfield field(terrain::kDefaultWorldSeed);
-        view.emplace(viewer::buildHeightfieldRegion(field));
-    }
-    return *view;
-}
-
-// Eroded region with its rivers, as a scale model, generated on first use.
-struct ErodedView {
-    explicit ErodedView(const viewer::ErodedRegionView& region)
-        : terrain(region.terrain), water(region.water),
-          altitudes{region.minHeight, region.maxHeight}, viewpoint(region.viewpoint) {}
-
-    viewer::ChunkMesh terrain;
-    viewer::ColoredMesh water;
-    AltitudeRange altitudes;
-    viewer::Vec3 viewpoint;
-};
-
-const ErodedView& erodedView(std::optional<ErodedView>& view) {
-    if (!view) {
-        std::fprintf(stderr, "Eroding a region and tracing its rivers (seed %llu)...\n",
-                     static_cast<unsigned long long>(terrain::kDefaultWorldSeed));
-        const viewer::ErodedRegionView region =
-            viewer::buildErodedRegionView(terrain::kDefaultWorldSeed);
-        std::fprintf(stderr, "%zu river cells, %zu cascades\n", region.riverCells,
-                     region.cascades);
-        view.emplace(region);
-    }
-    return *view;
-}
-
-// Cliff region (cliffs, plateaus and gorges over an eroded region with rivers), as a scale
-// model, generated on first use.
-struct CliffView {
-    explicit CliffView(const viewer::CliffRegionView& region)
-        : terrain(region.terrain), water(region.water),
-          altitudes{region.minHeight, region.maxHeight}, viewpoint(region.viewpoint) {}
-
-    viewer::ChunkMesh terrain;
-    viewer::ColoredMesh water;
-    AltitudeRange altitudes;
-    viewer::Vec3 viewpoint;
-};
-
-const CliffView& cliffView(std::optional<CliffView>& view) {
-    if (!view) {
-        std::fprintf(stderr, "Carving cliffs, plateaus and gorges (seed %llu)...\n",
-                     static_cast<unsigned long long>(terrain::kDefaultWorldSeed));
-        const viewer::CliffRegionView region =
-            viewer::buildCliffRegionView(terrain::kDefaultWorldSeed);
-        std::fprintf(stderr, "%zu river cells, %zu cascades, %zu cirques\n", region.riverCells,
-                     region.cascades, region.cirques);
-        view.emplace(region);
-    }
-    return *view;
-}
-
-// Regions generated on demand by modes 4, 5 and 6.
-struct LazyViews {
-    std::optional<HeightfieldView> heightfield;
-    std::optional<ErodedView> eroded;
-    std::optional<CliffView> cliffs;
-};
-
 // Starting camera of a place; generates its region if needed.
 viewer::Camera placeCamera(Place place, LazyViews& views) {
     switch (place) {
     case Place::Summit:
-        return heightfieldCamera(heightfieldView(views.heightfield).viewpoint);
+        return heightfieldCamera(viewer::heightfieldView(views.heightfield).viewpoint);
     case Place::ErodedModel:
-        return heightfieldCamera(erodedView(views.eroded).viewpoint);
+        return heightfieldCamera(viewer::erodedView(views.eroded).viewpoint);
     case Place::CliffModel:
-        return heightfieldCamera(cliffView(views.cliffs).viewpoint);
+        return heightfieldCamera(viewer::cliffView(views.cliffs).viewpoint);
+    case Place::SculptedModel:
+        return heightfieldCamera(viewer::sculptedView(views.sculpted).viewpoint);
     case Place::ChunkOrigin:
         break;
     }
@@ -302,6 +223,9 @@ ViewMode readViewMode(GLFWwindow* window, ViewMode current) {
     if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) {
         return ViewMode::Cliffs;
     }
+    if (glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS) {
+        return ViewMode::Sculpted;
+    }
     return current;
 }
 
@@ -321,6 +245,25 @@ void drawTerrain(const viewer::ShaderProgram& shader, const viewer::ChunkMesh& m
                  AltitudeRange altitudes) {
     shader.setVec2("uAltitudeRange", altitudes.low, altitudes.high);
     mesh.draw();
+}
+
+// Scale model shown by a mode, if it has one and it was generated.
+const viewer::ModelView* modelOf(const LazyViews& views, ViewMode mode) {
+    const std::optional<viewer::ModelView>* model = nullptr;
+    switch (mode) {
+    case ViewMode::Eroded:
+        model = &views.eroded;
+        break;
+    case ViewMode::Cliffs:
+        model = &views.cliffs;
+        break;
+    case ViewMode::Sculpted:
+        model = &views.sculpted;
+        break;
+    default:
+        return nullptr;
+    }
+    return *model ? &**model : nullptr;
 }
 
 void renderFrame(GLFWwindow* window, const Scene& scene, const LazyViews& views,
@@ -351,18 +294,11 @@ void renderFrame(GLFWwindow* window, const Scene& scene, const LazyViews& views,
         drawTerrain(scene.terrainShader, views.heightfield->mesh, views.heightfield->altitudes);
         return;
     }
-    if (mode == ViewMode::Eroded && views.eroded) {
-        drawTerrain(scene.terrainShader, views.eroded->terrain, views.eroded->altitudes);
+    if (const viewer::ModelView* model = modelOf(views, mode)) {
+        drawTerrain(scene.terrainShader, model->terrain, model->altitudes);
         scene.colorShader.use();
         scene.colorShader.setMat4("uViewProjection", viewProjection);
-        views.eroded->water.draw();
-        return;
-    }
-    if (mode == ViewMode::Cliffs && views.cliffs) {
-        drawTerrain(scene.terrainShader, views.cliffs->terrain, views.cliffs->altitudes);
-        scene.colorShader.use();
-        scene.colorShader.setMat4("uViewProjection", viewProjection);
-        views.cliffs->water.draw();
+        model->water.draw();
         return;
     }
     drawTerrain(scene.terrainShader,
