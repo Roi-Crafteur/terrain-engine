@@ -27,6 +27,11 @@ terrain_add_test(erosion_test terrain_core)
 terrain_add_test(rivers_test terrain_core)
 terrain_add_test(eroded_region_test terrain_core)
 terrain_add_test(eroded_png_test terrain_core)
+terrain_add_test(sdf_test terrain_core)
+terrain_add_test(cliffs_test terrain_core)
+terrain_add_test(cliff_region_test terrain_core)
+terrain_add_test(cliff_rivers_test terrain_core)
+terrain_add_test(cliffs_png_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
@@ -39,3 +44,9 @@ add_dependencies(check terrain_export_heightmap)
 add_test(NAME export_eroded_smoke
     COMMAND terrain_export_eroded ${CMAKE_BINARY_DIR}/eroded)
 add_dependencies(check terrain_export_eroded)
+
+# Smoke test: writes cliffs_mask.png and cliffs_preview.png (512 x 512, 12.5 m/px, around the
+# cliff site of the default world) into <build-dir>/cliffs for a visual check.
+add_test(NAME export_cliffs_smoke
+    COMMAND terrain_export_cliffs ${CMAKE_BINARY_DIR}/cliffs)
+add_dependencies(check terrain_export_cliffs)
