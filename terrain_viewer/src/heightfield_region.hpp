@@ -2,6 +2,7 @@
 
 #include "math.hpp"
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/heightfield_density.hpp"
 #include "terrain/meshing/mesh.hpp"
 
 namespace viewer {
@@ -18,8 +19,22 @@ struct HeightfieldRegion {
     Vec3 viewpoint; // south of the region, above it, looking north (-Z) toward the center
 };
 
-// The region is centered on a summit: the highest point of a coarse, deterministic search
-// around the origin, refined locally. Only the chunks crossed by the ground are meshed.
+// The region is centered on a summit (see findSummit). Only the chunks crossed by the ground
+// are meshed.
 [[nodiscard]] HeightfieldRegion buildHeightfieldRegion(const terrain::Heightfield& field);
+
+struct GroundPoint {
+    double x;
+    double z;
+};
+
+// Summit near the origin: the highest point of a coarse, deterministic search, refined
+// locally and snapped to the chunk grid.
+[[nodiscard]] GroundPoint findSummit(const terrain::Heightfield& field);
+
+// Meshes with Marching Cubes the chunks of one column, whose lowest samples are at
+// (originX, originZ), between its lowest and highest ground, and appends them to mesh.
+void meshChunkColumn(const terrain::ChunkColumns& columns, double originX, double originZ,
+                     terrain::Mesh& mesh);
 
 } // namespace viewer

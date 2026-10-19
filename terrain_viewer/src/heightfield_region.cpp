@@ -24,18 +24,14 @@ constexpr double kRefineSpacing = 125.0;
 constexpr float kViewpointClearance = 30.0f;
 constexpr double kViewpointSetback = 64.0;
 
-struct Point {
-    double x;
-    double z;
-};
-
 // Highest sample of a (2 steps + 1)^2 grid around center.
-Point highestSample(const terrain::Heightfield& field, Point center, int steps, double spacing) {
-    Point best = center;
+GroundPoint highestSample(const terrain::Heightfield& field, GroundPoint center, int steps,
+                          double spacing) {
+    GroundPoint best = center;
     float highest = std::numeric_limits<float>::lowest();
     for (int j = -steps; j <= steps; ++j) {
         for (int i = -steps; i <= steps; ++i) {
-            const Point p{center.x + i * spacing, center.z + j * spacing};
+            const GroundPoint p{center.x + i * spacing, center.z + j * spacing};
             const float height = field.heightAt(p.x, p.z);
             if (height > highest) {
                 highest = height;
@@ -44,14 +40,6 @@ Point highestSample(const terrain::Heightfield& field, Point center, int steps, 
         }
     }
     return best;
-}
-
-// A summit near the origin, snapped to the chunk grid.
-Point findSummit(const terrain::Heightfield& field) {
-    const Point coarse = highestSample(field, {0.0, 0.0}, kSearchSteps, kSearchSpacing);
-    const Point fine = highestSample(field, coarse, kRefineSteps, kRefineSpacing);
-    const double chunk = terrain::kChunkSizeMeters;
-    return {std::round(fine.x / chunk) * chunk, std::round(fine.z / chunk) * chunk};
 }
 
 void appendMesh(terrain::Mesh& target, const terrain::Mesh& part, double originX, double originY,
@@ -68,27 +56,38 @@ void appendMesh(terrain::Mesh& target, const terrain::Mesh& part, double originX
     }
 }
 
-// Meshes the chunks of one column that lie between its lowest and highest ground.
 void meshColumn(const terrain::Heightfield& field, double originX, double originZ,
                 HeightfieldRegion& region) {
     const terrain::ChunkColumns columns = terrain::sampleChunkColumns(field, originX, originZ);
-    const double chunk = terrain::kChunkSizeMeters;
-    const auto lowest = static_cast<int>(std::floor(columns.minHeight / chunk));
-    const auto highest = static_cast<int>(std::floor(columns.maxHeight / chunk));
-    for (int level = lowest; level <= highest; ++level) {
-        const double originY = level * chunk;
-        const terrain::Mesh mesh =
-            terrain::marchingCubes(terrain::densityFromColumns(columns, originY));
-        appendMesh(region.mesh, mesh, originX, originY, originZ);
-    }
+    meshChunkColumn(columns, originX, originZ, region.mesh);
     region.minHeight = std::min(region.minHeight, columns.minHeight);
     region.maxHeight = std::max(region.maxHeight, columns.maxHeight);
 }
 
 } // namespace
 
+GroundPoint findSummit(const terrain::Heightfield& field) {
+    const GroundPoint coarse = highestSample(field, {0.0, 0.0}, kSearchSteps, kSearchSpacing);
+    const GroundPoint fine = highestSample(field, coarse, kRefineSteps, kRefineSpacing);
+    const double chunk = terrain::kChunkSizeMeters;
+    return {std::round(fine.x / chunk) * chunk, std::round(fine.z / chunk) * chunk};
+}
+
+void meshChunkColumn(const terrain::ChunkColumns& columns, double originX, double originZ,
+                     terrain::Mesh& mesh) {
+    const double chunk = terrain::kChunkSizeMeters;
+    const auto lowest = static_cast<int>(std::floor(columns.minHeight / chunk));
+    const auto highest = static_cast<int>(std::floor(columns.maxHeight / chunk));
+    for (int level = lowest; level <= highest; ++level) {
+        const double originY = level * chunk;
+        const terrain::Mesh part =
+            terrain::marchingCubes(terrain::densityFromColumns(columns, originY));
+        appendMesh(mesh, part, originX, originY, originZ);
+    }
+}
+
 HeightfieldRegion buildHeightfieldRegion(const terrain::Heightfield& field) {
-    const Point center = findSummit(field);
+    const GroundPoint center = findSummit(field);
     const double half = kRegionChunks / 2 * terrain::kChunkSizeMeters;
     HeightfieldRegion region;
     region.minHeight = std::numeric_limits<float>::max();

@@ -81,21 +81,6 @@ std::uint8_t toByte(float value) {
 
 } // namespace
 
-HeightGrid sampleHeightGrid(const Heightfield& field, const HeightmapRegion& region) {
-    HeightGrid grid{region.size, region.metersPerPixel, {}};
-    grid.heights.reserve(static_cast<std::size_t>(region.size) *
-                         static_cast<std::size_t>(region.size));
-    const double half = region.size / 2.0;
-    for (int row = 0; row < region.size; ++row) {
-        const double z = region.centerZ + (row + 0.5 - half) * region.metersPerPixel;
-        for (int column = 0; column < region.size; ++column) {
-            const double x = region.centerX + (column + 0.5 - half) * region.metersPerPixel;
-            grid.heights.push_back(field.heightAt(x, z));
-        }
-    }
-    return grid;
-}
-
 std::uint8_t grayLevel(float height) {
     const float t = (height - kHeightmapMinHeight) / (kHeightmapMaxHeight - kHeightmapMinHeight);
     return toByte(255.0f * t);

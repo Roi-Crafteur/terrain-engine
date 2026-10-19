@@ -3,8 +3,10 @@
 
 #include "camera.hpp"
 #include "chunk_mesh.hpp"
+#include "colored_mesh.hpp"
 #include "cube_mesh.hpp"
 #include "demo_chunks.hpp"
+#include "eroded_region_view.hpp"
 #include "heightfield_region.hpp"
 #include "shader.hpp"
 #include "terrain/chunk_coord.hpp"
@@ -74,8 +76,8 @@ void main() {
 }
 )";
 
-// Keys 1, 2, 3 and 4 select what is displayed.
-enum class ViewMode { Cube, Sphere, Heightmap, Heightfield };
+// Keys 1 to 5 select what is displayed.
+enum class ViewMode { Cube, Sphere, Heightmap, Heightfield, Eroded };
 
 const char* modeName(ViewMode mode) {
     switch (mode) {
@@ -87,8 +89,24 @@ const char* modeName(ViewMode mode) {
         return "heightmap chunk";
     case ViewMode::Heightfield:
         return "heightfield";
+    case ViewMode::Eroded:
+        return "eroded region with rivers (1 unit = 50 m)";
     }
     return "";
+}
+
+// Modes sharing a place of the world keep the camera when switching between them.
+enum class Place { ChunkOrigin, Summit, ErodedModel };
+
+Place placeOf(ViewMode mode) {
+    switch (mode) {
+    case ViewMode::Heightfield:
+        return Place::Summit;
+    case ViewMode::Eroded:
+        return Place::ErodedModel;
+    default:
+        return Place::ChunkOrigin;
+    }
 }
 
 struct Scene {
@@ -135,6 +153,50 @@ const HeightfieldView& heightfieldView(std::optional<HeightfieldView>& view) {
         view.emplace(viewer::buildHeightfieldRegion(field));
     }
     return *view;
+}
+
+// Eroded region with its rivers, as a scale model, generated on first use.
+struct ErodedView {
+    explicit ErodedView(const viewer::ErodedRegionView& region)
+        : terrain(region.terrain), water(region.water),
+          altitudes{region.minHeight, region.maxHeight}, viewpoint(region.viewpoint) {}
+
+    viewer::ChunkMesh terrain;
+    viewer::ColoredMesh water;
+    AltitudeRange altitudes;
+    viewer::Vec3 viewpoint;
+};
+
+const ErodedView& erodedView(std::optional<ErodedView>& view) {
+    if (!view) {
+        std::fprintf(stderr, "Eroding a region and tracing its rivers (seed %llu)...\n",
+                     static_cast<unsigned long long>(terrain::kDefaultWorldSeed));
+        const viewer::ErodedRegionView region =
+            viewer::buildErodedRegionView(terrain::kDefaultWorldSeed);
+        std::fprintf(stderr, "%zu river cells, %zu cascades\n", region.riverCells,
+                     region.cascades);
+        view.emplace(region);
+    }
+    return *view;
+}
+
+// Regions generated on demand by modes 4 and 5.
+struct LazyViews {
+    std::optional<HeightfieldView> heightfield;
+    std::optional<ErodedView> eroded;
+};
+
+// Starting camera of a place; generates its region if needed.
+viewer::Camera placeCamera(Place place, LazyViews& views) {
+    switch (place) {
+    case Place::Summit:
+        return heightfieldCamera(heightfieldView(views.heightfield).viewpoint);
+    case Place::ErodedModel:
+        return heightfieldCamera(erodedView(views.eroded).viewpoint);
+    case Place::ChunkOrigin:
+        break;
+    }
+    return viewer::Camera(kChunkViewpoint);
 }
 
 struct TitleInfo {
@@ -200,6 +262,9 @@ ViewMode readViewMode(GLFWwindow* window, ViewMode current) {
     if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) {
         return ViewMode::Heightfield;
     }
+    if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) {
+        return ViewMode::Eroded;
+    }
     return current;
 }
 
@@ -221,9 +286,8 @@ void drawTerrain(const viewer::ShaderProgram& shader, const viewer::ChunkMesh& m
     mesh.draw();
 }
 
-void renderFrame(GLFWwindow* window, const Scene& scene,
-                 const std::optional<HeightfieldView>& heightfield, ViewMode mode,
-                 const viewer::Camera& camera) {
+void renderFrame(GLFWwindow* window, const Scene& scene, const LazyViews& views,
+                 ViewMode mode, const viewer::Camera& camera) {
     int width = 0;
     int height = 0;
     glfwGetFramebufferSize(window, &width, &height);
@@ -246,8 +310,15 @@ void renderFrame(GLFWwindow* window, const Scene& scene,
     }
     scene.terrainShader.use();
     scene.terrainShader.setMat4("uViewProjection", viewProjection);
-    if (mode == ViewMode::Heightfield && heightfield) {
-        drawTerrain(scene.terrainShader, heightfield->mesh, heightfield->altitudes);
+    if (mode == ViewMode::Heightfield && views.heightfield) {
+        drawTerrain(scene.terrainShader, views.heightfield->mesh, views.heightfield->altitudes);
+        return;
+    }
+    if (mode == ViewMode::Eroded && views.eroded) {
+        drawTerrain(scene.terrainShader, views.eroded->terrain, views.eroded->altitudes);
+        scene.colorShader.use();
+        scene.colorShader.setMat4("uViewProjection", viewProjection);
+        views.eroded->water.draw();
         return;
     }
     drawTerrain(scene.terrainShader,
@@ -263,7 +334,7 @@ void runLoop(GLFWwindow* window) {
         viewer::ChunkMesh(viewer::buildSphereChunk()),
         viewer::ChunkMesh(viewer::buildHeightmapChunk()),
     };
-    std::optional<HeightfieldView> heightfield;
+    LazyViews views;
     ViewMode mode = ViewMode::Heightmap;
     viewer::Camera camera(kChunkViewpoint);
     std::optional<TitleInfo> shownTitle;
@@ -289,18 +360,16 @@ void runLoop(GLFWwindow* window) {
         lastY = y;
         lastTime = now;
 
-        // The heightfield region is far from chunk (0, 0): the camera jumps between them.
+        // The regions are far from chunk (0, 0): the camera jumps between places.
         const ViewMode next = readViewMode(window, mode);
-        if (next == ViewMode::Heightfield && mode != ViewMode::Heightfield) {
-            camera = heightfieldCamera(heightfieldView(heightfield).viewpoint);
+        if (placeOf(next) != placeOf(mode)) {
+            camera = placeCamera(placeOf(next), views);
             lastTime = glfwGetTime(); // generation time is not camera movement
-        } else if (next != ViewMode::Heightfield && mode == ViewMode::Heightfield) {
-            camera = viewer::Camera(kChunkViewpoint);
         }
         mode = next;
 
         updateTitle(window, mode, camera.position(), shownTitle);
-        renderFrame(window, scene, heightfield, mode, camera);
+        renderFrame(window, scene, views, mode, camera);
         glfwSwapBuffers(window);
     }
 }
