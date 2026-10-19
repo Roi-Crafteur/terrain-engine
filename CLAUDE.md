@@ -25,3 +25,24 @@ mais sans blocs : terrain lisse généré par SDF et meshing.
 - Aucune fonction ne dépasse 80 lignes.
 - Aucune dépendance graphique dans terrain_core.
 - Chaque tâche doit compiler et passer les tests.
+
+# Workflow obligatoire
+
+Pour chaque tâche :
+
+1. Lire CLAUDE.md, docs/ARCHITECTURE.md, docs/ROADMAP.md et docs/AI_RULES.md.
+2. Proposer un plan court avant toute modification.
+3. Lister les fichiers à créer ou modifier.
+4. Lister les tests à ajouter ou mettre à jour.
+5. Attendre une validation explicite de l’utilisateur.
+6. Implémenter uniquement le plan validé.
+7. Lancer cmake configure, cmake build et ctest.
+8. Ne jamais modifier un module non concerné.
+9. Ne jamais introduire de dépendance graphique dans terrain_core.
+10. Si un test échoue, corriger avant de proposer un commit.
+
+# Modèle et responsabilités
+
+- Opus : architecture, plans, décisions complexes, débogage difficile.
+- Sonnet : implémentation, tests, refactors simples, fonctionnalités définies.
+- Haiku : formatage, commentaires, petites corrections, tâches répétitives.
