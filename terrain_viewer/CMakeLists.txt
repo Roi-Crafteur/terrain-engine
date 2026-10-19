@@ -40,6 +40,7 @@ add_executable(terrain_viewer
     src/cube_mesh.cpp
     src/chunk_mesh.cpp
     src/demo_chunks.cpp
+    src/heightfield_region.cpp
 )
 target_compile_definitions(terrain_viewer PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(terrain_viewer PRIVATE

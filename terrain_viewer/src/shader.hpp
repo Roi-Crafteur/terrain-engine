@@ -18,6 +18,7 @@ public:
 
     void use() const;
     void setMat4(const char* name, const Mat4& value) const;
+    void setVec2(const char* name, float x, float y) const;
 
 private:
     GLuint program_ = 0;
