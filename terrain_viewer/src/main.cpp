@@ -2,7 +2,9 @@
 #include <GLFW/glfw3.h>
 
 #include "camera.hpp"
+#include "chunk_mesh.hpp"
 #include "cube_mesh.hpp"
+#include "demo_chunks.hpp"
 #include "shader.hpp"
 #include "terrain/chunk_coord.hpp"
 
@@ -11,6 +13,7 @@
 #include <exception>
 #include <format>
 #include <optional>
+#include <string>
 
 namespace {
 
@@ -38,6 +41,63 @@ void main() {
     fragColor = vec4(vColor, 1.0);
 }
 )";
+
+// Terrain chunks: Lambert lighting from a fixed sun, tinted by height.
+constexpr const char* kTerrainVertexShader = R"(#version 330 core
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec3 aNormal;
+uniform mat4 uViewProjection;
+out vec3 vNormal;
+out float vHeight;
+void main() {
+    vNormal = aNormal;
+    vHeight = aPosition.y;
+    gl_Position = uViewProjection * vec4(aPosition, 1.0);
+}
+)";
+
+constexpr const char* kTerrainFragmentShader = R"(#version 330 core
+in vec3 vNormal;
+in float vHeight;
+out vec4 fragColor;
+void main() {
+    vec3 lightDirection = normalize(vec3(0.4, 1.0, 0.3));
+    float diffuse = max(dot(normalize(vNormal), lightDirection), 0.0);
+    float altitude = clamp(vHeight / 16.0, 0.0, 1.0);
+    vec3 albedo = mix(vec3(0.30, 0.55, 0.25), vec3(0.65, 0.60, 0.55), altitude);
+    fragColor = vec4(albedo * (0.25 + 0.75 * diffuse), 1.0);
+}
+)";
+
+// Keys 1, 2 and 3 select what is displayed.
+enum class ViewMode { Cube, Sphere, Heightmap };
+
+const char* modeName(ViewMode mode) {
+    switch (mode) {
+    case ViewMode::Cube:
+        return "cube";
+    case ViewMode::Sphere:
+        return "sphere chunk";
+    case ViewMode::Heightmap:
+        return "heightmap chunk";
+    }
+    return "";
+}
+
+struct Scene {
+    viewer::ShaderProgram colorShader;
+    viewer::ShaderProgram terrainShader;
+    viewer::CubeMesh cube;
+    viewer::ChunkMesh sphereChunk;
+    viewer::ChunkMesh heightmapChunk;
+};
+
+struct TitleInfo {
+    ViewMode mode = ViewMode::Heightmap;
+    terrain::ChunkCoord chunk;
+
+    friend bool operator==(const TitleInfo&, const TitleInfo&) = default;
+};
 
 void onGlfwError(int code, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", code, description);
@@ -82,19 +142,33 @@ viewer::MoveInput readMoveInput(GLFWwindow* window) {
     };
 }
 
-void updateTitle(GLFWwindow* window, viewer::Vec3 position,
-                 std::optional<terrain::ChunkCoord>& shownChunk) {
-    const terrain::ChunkCoord chunk = terrain::worldToChunk(position.x, position.z);
-    if (shownChunk == chunk) {
+ViewMode readViewMode(GLFWwindow* window, ViewMode current) {
+    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS) {
+        return ViewMode::Cube;
+    }
+    if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS) {
+        return ViewMode::Sphere;
+    }
+    if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS) {
+        return ViewMode::Heightmap;
+    }
+    return current;
+}
+
+void updateTitle(GLFWwindow* window, ViewMode mode, viewer::Vec3 position,
+                 std::optional<TitleInfo>& shown) {
+    const TitleInfo info{mode, terrain::worldToChunk(position.x, position.z)};
+    if (shown == info) {
         return;
     }
-    shownChunk = chunk;
-    const std::string title = std::format("Terrain Engine - chunk ({}, {})", chunk.x, chunk.z);
+    shown = info;
+    const std::string title = std::format("Terrain Engine - {} - chunk ({}, {})", modeName(mode),
+                                          info.chunk.x, info.chunk.z);
     glfwSetWindowTitle(window, title.c_str());
 }
 
-void renderFrame(GLFWwindow* window, const viewer::ShaderProgram& shader,
-                 const viewer::CubeMesh& cube, const viewer::Camera& camera) {
+void renderFrame(GLFWwindow* window, const Scene& scene, ViewMode mode,
+                 const viewer::Camera& camera) {
     int width = 0;
     int height = 0;
     glfwGetFramebufferSize(window, &width, &height);
@@ -108,16 +182,30 @@ void renderFrame(GLFWwindow* window, const viewer::ShaderProgram& shader,
     const float aspect = static_cast<float>(width) / static_cast<float>(height);
     const viewer::Mat4 projection =
         viewer::perspective(viewer::radians(kFovYDegrees), aspect, kNearPlane, kFarPlane);
-    shader.use();
-    shader.setMat4("uViewProjection", projection * camera.viewMatrix());
-    cube.draw();
+    const viewer::Mat4 viewProjection = projection * camera.viewMatrix();
+    if (mode == ViewMode::Cube) {
+        scene.colorShader.use();
+        scene.colorShader.setMat4("uViewProjection", viewProjection);
+        scene.cube.draw();
+        return;
+    }
+    scene.terrainShader.use();
+    scene.terrainShader.setMat4("uViewProjection", viewProjection);
+    (mode == ViewMode::Sphere ? scene.sphereChunk : scene.heightmapChunk).draw();
 }
 
 void runLoop(GLFWwindow* window) {
-    const viewer::ShaderProgram shader(kVertexShader, kFragmentShader);
-    const viewer::CubeMesh cube;
-    viewer::Camera camera({0.0f, 0.0f, 3.0f});
-    std::optional<terrain::ChunkCoord> shownChunk;
+    const Scene scene{
+        {kVertexShader, kFragmentShader},
+        {kTerrainVertexShader, kTerrainFragmentShader},
+        {},
+        viewer::ChunkMesh(viewer::buildSphereChunk()),
+        viewer::ChunkMesh(viewer::buildHeightmapChunk()),
+    };
+    ViewMode mode = ViewMode::Heightmap;
+    // Chunk (0, 0) spans [0, 16] m on each axis: start in front of it, looking toward -Z.
+    viewer::Camera camera({8.0f, 10.0f, 32.0f});
+    std::optional<TitleInfo> shownTitle;
 
     double lastX = 0.0;
     double lastY = 0.0;
@@ -139,9 +227,10 @@ void runLoop(GLFWwindow* window) {
         lastX = x;
         lastY = y;
         lastTime = now;
+        mode = readViewMode(window, mode);
 
-        updateTitle(window, camera.position(), shownChunk);
-        renderFrame(window, shader, cube, camera);
+        updateTitle(window, mode, camera.position(), shownTitle);
+        renderFrame(window, scene, mode, camera);
         glfwSwapBuffers(window);
     }
 }

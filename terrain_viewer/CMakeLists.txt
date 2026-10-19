@@ -38,6 +38,8 @@ add_executable(terrain_viewer
     src/main.cpp
     src/shader.cpp
     src/cube_mesh.cpp
+    src/chunk_mesh.cpp
+    src/demo_chunks.cpp
 )
 target_compile_definitions(terrain_viewer PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(terrain_viewer PRIVATE

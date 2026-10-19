@@ -1,6 +1,7 @@
 # Pure generation library: must never depend on OpenGL, GLFW, glad or a window.
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
+    src/meshing/marching_cubes.cpp
 )
 
 target_include_directories(terrain_core PUBLIC include)

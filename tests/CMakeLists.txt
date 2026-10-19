@@ -17,3 +17,4 @@ endfunction()
 
 terrain_add_test(test_chunk_coord terrain_core)
 terrain_add_test(test_camera_math terrain_viewer_camera)
+terrain_add_test(marching_cubes_test terrain_core)
