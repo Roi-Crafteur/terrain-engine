@@ -44,6 +44,21 @@ add_test(NAME export_heightmap_smoke
     COMMAND terrain_export_heightmap ${CMAKE_BINARY_DIR}/heightmap)
 add_dependencies(check terrain_export_heightmap)
 
+# Smoke test of the region arguments: 64 x 64 px at 250 m/px around (5000, -3000), written
+# into <build-dir>/heightmap_args. The summary is printed only once the images are written.
+add_test(NAME export_heightmap_args_smoke
+    COMMAND terrain_export_heightmap ${CMAKE_BINARY_DIR}/heightmap_args 20261019 250 64 5000
+            -3000)
+set_tests_properties(export_heightmap_args_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "64 x 64 px, 16\\.0 km wide, center \\(5000, -3000\\)")
+
+# Invalid arguments (size 1, non-numeric center, ...) are rejected with an error message,
+# before anything is written.
+add_test(NAME export_heightmap_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_heightmap>
+            -DOUT=${CMAKE_BINARY_DIR}/heightmap_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_heightmap_bad_args.cmake)
+
 # Smoke test: writes heightmap_eroded.png, heightmap_eroded_preview.png and rivers.png
 # (512 x 512, 100 m/px) into <build-dir>/eroded for a visual check.
 add_test(NAME export_eroded_smoke
