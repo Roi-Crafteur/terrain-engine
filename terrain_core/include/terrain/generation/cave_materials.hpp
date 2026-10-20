@@ -95,6 +95,9 @@ public:
     [[nodiscard]] CaveEnvironment node(std::int64_t i, std::int64_t k) const;
     [[nodiscard]] CaveEnvironment at(double x, double z) const;
 
+    [[nodiscard]] const PeriodicCells& nodesX() const { return nodesX_; }
+    [[nodiscard]] const PeriodicCells& nodesZ() const { return nodesZ_; }
+
 private:
     const Heightfield* field_;
     const ClimateField* climate_;

@@ -55,6 +55,8 @@ public:
                                   std::int64_t k) const;
 
     [[nodiscard]] const CaveNoiseLayer& layer(CaveNoise noise) const { return layers_[noise]; }
+    [[nodiscard]] const PeriodicCells& nodesX() const { return nodesX_; }
+    [[nodiscard]] const PeriodicCells& nodesZ() const { return nodesZ_; }
 
 private:
     std::array<CaveNoiseLayer, kCaveNoiseCount> layers_;

@@ -44,6 +44,8 @@ public:
                                                 double maxX, double maxZ) const;
 
     [[nodiscard]] const SpeleothemParams& params() const { return params_; }
+    [[nodiscard]] const PeriodicCells& cellsX() const { return cellsX_; }
+    [[nodiscard]] const PeriodicCells& cellsZ() const { return cellsZ_; }
 
 private:
     void placeCandidate(CaveSampler& sampler, int cellX, int cellZ,
