@@ -16,6 +16,7 @@ function(terrain_add_test name)
 endfunction()
 
 terrain_add_test(test_chunk_coord terrain_core)
+terrain_add_test(det_math_test terrain_core)
 terrain_add_test(test_camera_math terrain_viewer_camera)
 terrain_add_test(test_cave_look terrain_viewer_cave_look)
 terrain_add_test(test_lava_look terrain_viewer_cave_look)

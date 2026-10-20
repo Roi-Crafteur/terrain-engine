@@ -30,6 +30,7 @@ endif()
 # Pure generation library: must never depend on OpenGL, GLFW, glad or a window.
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
+    src/det_math.cpp
     src/generation/aquifers.cpp
     src/generation/arches.cpp
     src/generation/biome.cpp

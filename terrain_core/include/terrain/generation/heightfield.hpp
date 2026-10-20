@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/det_math.hpp" // also refuses fast math in every unit including it
 #include "terrain/generation/voronoi.hpp"
 
 #include <cstdint>
