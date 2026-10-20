@@ -142,6 +142,12 @@ terrain_add_test(unreal_tile_streamer_test terrain_unreal_bridge)
 terrain_add_test(unreal_terrain_session_test terrain_unreal_bridge)
 terrain_add_test(unreal_determinism_check_test terrain_unreal_bridge)
 
+# Every source of terrain_core outside io/ has its wrapper in the Unreal plugin, which compiles
+# it: a source added to the core without its wrapper fails here.
+add_test(NAME unreal_core_sources
+    COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/unreal_core_sources.cmake)
+
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
 add_test(NAME export_heightmap_smoke
