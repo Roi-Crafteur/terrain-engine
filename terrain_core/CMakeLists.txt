@@ -1,3 +1,32 @@
+# Floating-point rules of the generation. Every client generates the world from the seed, so
+# every result must be the same bit for bit with MSVC, GCC, Clang and AppleClang, on x86-64 and
+# ARM64: no contraction of a * b + c into a fused multiply-add (ARM64 always has one, and GCC and
+# Clang fuse by default) and no fast math. Public, so that the tests, the tools and the viewer
+# compile the inline functions of the headers with the same rules.
+add_library(terrain_fp_strict INTERFACE)
+foreach(flags_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_MINSIZEREL)
+    set(fast "-ffast-math|-Ofast|-funsafe-math-optimizations")
+    if("${${flags_var}}" MATCHES "${fast}|-ffp-contract=(fast|on)|[/-]fp:(fast|contract)")
+        message(FATAL_ERROR "${flags_var} holds a floating-point option that breaks the "
+                            "determinism of terrain_core: ${${flags_var}}")
+    endif()
+endforeach()
+if(MSVC)
+    # Visual Studio 2022 is the first version whose /fp:precise never contracts.
+    if(MSVC_VERSION LESS 1930)
+        message(FATAL_ERROR "terrain_core needs MSVC 19.30 (Visual Studio 2022) or later: "
+                            "before it, /fp:precise allows floating-point contractions")
+    endif()
+    target_compile_options(terrain_fp_strict INTERFACE /fp:precise)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        # clang-cl maps /fp:precise to contractions within a statement.
+        target_compile_options(terrain_fp_strict INTERFACE /clang:-ffp-contract=off)
+    endif()
+else()
+    target_compile_options(terrain_fp_strict INTERFACE -ffp-contract=off -fno-fast-math)
+endif()
+
 # Pure generation library: must never depend on OpenGL, GLFW, glad or a window.
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
@@ -62,7 +91,9 @@ target_include_directories(terrain_core PUBLIC include)
 target_compile_features(terrain_core PUBLIC cxx_std_20)
 # The streaming generates tiles on worker threads (std::jthread): threads only, nothing graphic.
 find_package(Threads REQUIRED)
-target_link_libraries(terrain_core PUBLIC Threads::Threads PRIVATE terrain_warnings)
+target_link_libraries(terrain_core
+    PUBLIC Threads::Threads terrain_fp_strict
+    PRIVATE terrain_warnings)
 
 # Heightmap PNG export for visual checks:
 # terrain_export_heightmap <output-dir> [seed] [m/px] [size] [center-x] [center-z]
