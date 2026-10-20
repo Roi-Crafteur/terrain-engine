@@ -23,8 +23,9 @@ enum class CaveMaterial : std::uint8_t {
     Gravel,    // dry floors
     Water,     // the surface of a lake
     Basalt,    // volcanic cave regions
+    Magma,     // next to a lava lake
 };
-inline constexpr int kCaveMaterialCount = 11;
+inline constexpr int kCaveMaterialCount = 12;
 
 // Lowercase English name of a material, such as "deepstone".
 [[nodiscard]] const char* caveMaterialName(CaveMaterial material);
@@ -51,6 +52,7 @@ struct CaveMaterialParams {
     float deepDepth = 70.0f;
     float limestoneHumidity = 0.45f;
     float lushDepth = 40.0f; // moss down to this depth in lush cave regions
+    float magmaHeight = 3.0f; // walls up to this height above a lava lake glow
 };
 
 // A point of a cave wall.
@@ -60,14 +62,16 @@ struct CaveWallSite {
     float normalY = 0.0f;        // of the wall, toward the air: positive on floors
     float aboveWater = 1.0e9f;   // height above the level of the lake of its aquifer, if wet
     bool frozenWater = false;    // that lake is frozen
+    float aboveLava = 1.0e9f;    // height above the level of the lava of its aquifer, if any
     // The cave region of the wall (CaveProfile::icy, lush, volcanic; all false without regions).
     bool icyRegion = false;
     bool lushRegion = false;
     bool volcanicRegion = false;
 };
 
-// Material of a wall, by priority: the outer surface, ice (frozen lake shores, cold shallow
-// caves, glacier regions), mud next to a lake, basalt in volcanic regions, moss in lush regions
+// Material of a wall, by priority: the outer surface, magma next to a lava lake, ice (frozen lake
+// shores, cold shallow caves, glacier regions), mud next to a lake, basalt in volcanic regions,
+// moss in lush regions
 // (down to lushDepth), sandstone under dry biomes, moss near the surface under humid forests and
 // marshes, gravel on floors, deepstone deep down, limestone in humid climates, stone otherwise.
 [[nodiscard]] CaveMaterial caveMaterial(const CaveWallSite& site,

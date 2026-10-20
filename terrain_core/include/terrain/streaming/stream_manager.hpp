@@ -39,12 +39,14 @@ struct TileData {
     // With caves only, empty otherwise: the material of each vertex of mesh, the lakes of the
     // caves (relative to the same origin) with the material of each of their vertices (water or
     // ice), and the speleothems (world positions, LOD 0 tiles only); with cave regions only, the
-    // cave flora of their lush regions (world positions, LOD 0 tiles only).
+    // cave flora of their lush regions (world positions, LOD 0 tiles only) and the lava of their
+    // volcanic regions (relative to the origin, LOD 0 and 1 tiles).
     std::vector<CaveMaterial> materials;
     Mesh water;
     std::vector<CaveMaterial> waterMaterials;
     std::vector<Speleothem> speleothems;
     std::vector<CaveFlora> caveFlora;
+    Mesh lava;
 
     friend bool operator==(const TileData&, const TileData&) = default;
 };

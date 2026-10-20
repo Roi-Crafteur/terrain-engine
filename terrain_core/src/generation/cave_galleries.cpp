@@ -9,6 +9,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <optional>
 
 namespace terrain {
 
@@ -166,6 +167,35 @@ double AquiferCache::galleryFlatness(double x, double z) {
     const double low = (1.0 - wu) * flatnessNode(i, k) + wu * flatnessNode(i + 1, k);
     const double high = (1.0 - wu) * flatnessNode(i, k + 1) + wu * flatnessNode(i + 1, k + 1);
     return (1.0 - wv) * low + wv * high;
+}
+
+// The columns of the cell lie in the 3 x 3 cells around it, where the level of the galleries is a
+// convex combination of the nodes around: at least the lowest of them.
+double CaveField::lavaCeiling(int cellX, int cellZ, const CaveGround& ground,
+                              AquiferCache* cells) const {
+    std::optional<AquiferCache> alone;
+    if (cells == nullptr) {
+        alone.emplace(*this, ground);
+    }
+    AquiferCache& cache = cells != nullptr ? *cells : *alone;
+    const double size = params_.aquifers.cellSize;
+    const double spacing = params_.galleries.levelSpacing;
+    const auto first = [&](int cell) {
+        return static_cast<int>(std::floor((cell - 1) * size / spacing));
+    };
+    const auto last = [&](int cell) {
+        return static_cast<int>(std::floor((cell + 2) * size / spacing)) + 1;
+    };
+    double lowest = std::numeric_limits<double>::max();
+    for (int k = first(cellZ); k <= last(cellZ); ++k) {
+        for (int i = first(cellX); i <= last(cellX); ++i) {
+            lowest = std::min(lowest, cache.galleryNode(i, k));
+        }
+    }
+    // A centimeter of margin over the rounding of the interpolation.
+    return lowest - static_cast<double>(params_.galleries.floorDepth + params_.rivers.shell +
+                                        params_.aquifers.lavaClearance) -
+           0.01;
 }
 
 void CaveField::addGallery(CaveColumn& column, AquiferCache& cells) const {

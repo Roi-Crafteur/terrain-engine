@@ -35,6 +35,14 @@ struct AquiferParams {
     float maxLevelDepth = 52.0f;
     // Depth of the level under the roof in a flooded cave region (CaveProfile::kFlooded).
     float floodedDepth = 1.0f;
+    // Lava caverns (CaveProfile::kLava): a cell that is not wet holds lava with probability
+    // lavaChance times the field, up to a level drawn as the water one in [minLavaDepth,
+    // maxLavaDepth]: the bottom of the deep caverns. It stays lavaClearance under the rock of
+    // the bands of the rivers under every gallery of the cell: lava never meets a river.
+    float lavaChance = 0.6f;
+    float minLavaDepth = 36.0f;
+    float maxLavaDepth = 60.0f;
+    float lavaClearance = 2.0f;
     // Water freezes where the surface temperature is at most freezeTemperature.
     float freezeTemperature = 0.0f;
     // Barriers: rock within barrierHalfWidth of a bisector.
@@ -51,7 +59,8 @@ struct AquiferParams {
 inline constexpr float kDryLevel = -1.0e9f;
 
 // An aquifer cell: its site, whether its caves hold water, at which level, and whether it is
-// frozen; cold whether any water of the cell freezes (the lake, a river), wet or not.
+// frozen; cold whether any water of the cell freezes (the lake, a river), wet or not; whether
+// its caves hold lava instead (never with water), at which level.
 struct AquiferCell {
     int cellX = 0;
     int cellZ = 0;
@@ -61,9 +70,17 @@ struct AquiferCell {
     bool frozen = false;
     float level = kDryLevel;
     bool cold = false;
+    bool lava = false;
+    float lavaLevel = kDryLevel;
 
     friend bool operator==(const AquiferCell&, const AquiferCell&) = default;
 };
+
+// Level of the water or the lava of a cell (kDryLevel if it holds neither): barriers stand
+// between the cells holding something, up to the higher level of the two.
+[[nodiscard]] inline float heldLevel(const AquiferCell& cell) {
+    return cell.wet ? cell.level : (cell.lava ? cell.lavaLevel : kDryLevel);
+}
 
 // A barrier reaching a column: rock below top where the bisector is less than width away from
 // the edge of the barrier (width = barrierHalfWidth - distance to the bisector).

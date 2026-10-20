@@ -12,7 +12,14 @@ namespace terrain {
 namespace {
 
 // Draws of a cell, one stream index each.
-enum Draw : std::uint64_t { kOffsetXDraw, kOffsetZDraw, kWetDraw, kDepthDraw };
+enum Draw : std::uint64_t {
+    kOffsetXDraw,
+    kOffsetZDraw,
+    kWetDraw,
+    kDepthDraw,
+    kLavaDraw,
+    kLavaDepthDraw,
+};
 
 std::uint64_t cellSeed(std::uint64_t seed, int cellX, int cellZ) {
     const auto x = static_cast<std::uint64_t>(static_cast<std::int64_t>(cellX));
@@ -77,6 +84,16 @@ AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground,
             std::floor(static_cast<double>(lowest) - params_.minRoof - depth - 0.5) + 0.5);
         result.frozen = result.cold;
     }
+    const float lavaChance = p.lavaChance * profile[CaveProfile::kLava];
+    if (!result.wet && lavaChance > 0.0f &&
+        unitDraw(cell, kLavaDraw) < static_cast<double>(lavaChance)) {
+        const double depth = p.minLavaDepth +
+                             unitDraw(cell, kLavaDepthDraw) * (p.maxLavaDepth - p.minLavaDepth);
+        double level = static_cast<double>(lowest) - params_.minRoof - depth;
+        level = std::min(level, lavaCeiling(cellX, cellZ, ground, cells));
+        result.lava = true;
+        result.lavaLevel = static_cast<float>(std::floor(level - 0.5) + 0.5);
+    }
     return result;
 }
 
@@ -101,9 +118,10 @@ void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
     column.waterLevel = home.wet ? home.level : kDryLevel;
     column.frozen = home.wet && home.frozen;
     column.cold = home.cold;
+    column.lavaLevel = home.lava ? home.lavaLevel : kDryLevel;
     for (std::size_t n = 0; n < cells.size(); ++n) {
         const AquiferCell& other = *cells[n];
-        if (n == own || (!home.wet && !other.wet)) {
+        if (n == own || (heldLevel(home) <= kDryLevel && heldLevel(other) <= kDryLevel)) {
             continue;
         }
         // Distance to the bisector of the two sites, on the side of the own site.
@@ -113,7 +131,7 @@ void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
         const auto distance = static_cast<float>((far - nearest) / (2.0 * span));
         if (distance < p.barrierHalfWidth && column.barrierCount < kMaxColumnBarriers) {
             column.barriers[static_cast<std::size_t>(column.barrierCount)] = {
-                p.barrierHalfWidth - distance, std::max(home.level, other.level)};
+                p.barrierHalfWidth - distance, std::max(heldLevel(home), heldLevel(other))};
             ++column.barrierCount;
         }
     }
@@ -190,16 +208,16 @@ float AquiferCache::highestLevelNear(double x, double z, double reach) {
         }
     }
     const AquiferCell& home = *cells[own];
-    float highest = home.wet ? home.level : kDryLevel;
+    float highest = heldLevel(home);
     for (std::size_t n = 0; n < cells.size(); ++n) {
         const AquiferCell& other = *cells[n];
-        if (n == own || !other.wet) {
+        if (n == own || heldLevel(other) <= kDryLevel) {
             continue;
         }
         const double far = std::pow(x - other.siteX, 2) + std::pow(z - other.siteZ, 2);
         const double span = std::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
         if ((far - nearest) / (2.0 * span) < reach + p.barrierHalfWidth) {
-            highest = std::max(highest, other.level);
+            highest = std::max(highest, heldLevel(other));
         }
     }
     return std::max(highest, riverBandTopNear(x, z, reach));

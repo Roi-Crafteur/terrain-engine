@@ -113,6 +113,8 @@ Vec3 caveMaterialColor(terrain::CaveMaterial material) {
         return {0.10f, 0.36f, 0.62f}; // blue
     case terrain::CaveMaterial::Basalt:
         return {0.17f, 0.15f, 0.18f}; // near black
+    case terrain::CaveMaterial::Magma:
+        return {0.62f, 0.15f, 0.05f}; // dark glowing red
     }
     return {1.0f, 0.0f, 1.0f};
 }

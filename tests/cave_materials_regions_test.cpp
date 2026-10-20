@@ -289,11 +289,13 @@ void testRegionsOffAndOn() {
     TEST_CHECK(consistent == walls);
 }
 
-// The name of basalt, and a material more than before.
+// The names of basalt and magma, the materials added after the ones of 8B, in that order.
 void testBasaltName() {
     TEST_CHECK(std::string(terrain::caveMaterialName(CaveMaterial::Basalt)) == "basalt");
-    TEST_CHECK(terrain::kCaveMaterialCount == 11);
-    TEST_CHECK(static_cast<int>(CaveMaterial::Basalt) == terrain::kCaveMaterialCount - 1);
+    TEST_CHECK(std::string(terrain::caveMaterialName(CaveMaterial::Magma)) == "magma");
+    TEST_CHECK(terrain::kCaveMaterialCount == 12);
+    TEST_CHECK(static_cast<int>(CaveMaterial::Basalt) == terrain::kCaveMaterialCount - 2);
+    TEST_CHECK(static_cast<int>(CaveMaterial::Magma) == terrain::kCaveMaterialCount - 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -346,18 +348,20 @@ WallCounts paintedWalls(const terrain::TerrainTiles& tiles, double x, double z) 
 }
 
 // The walls of the tiles take the material of the region they lie in (districts of the default
-// world with seed 1337, in a single district): basalt in a volcanic one, ice in a glacier, moss
-// down to lushDepth in a lush one (with mud next to its lakes), and nothing of the other regions.
+// world with seed 1337, in a single district): basalt in a volcanic one (magma next to its lava),
+// ice in a glacier, moss down to lushDepth in a lush one (with mud next to its lakes), and nothing
+// of the other regions.
 void testRegionsPaintTheWalls() {
     terrain::CaveParams caves;
     caves.districts = terrain::CaveDistrictParams{};
     const terrain::TerrainTiles tiles(1337, {}, {}, caves);
 
     const WallCounts volcanic = paintedWalls(tiles, 13568.0, 7012.0);
-    std::printf("volcanic: %zu wall vertices, %zu basalt\n", volcanic.deep,
-                volcanic.of(CaveMaterial::Basalt));
+    std::printf("volcanic: %zu wall vertices, %zu basalt, %zu magma\n", volcanic.deep,
+                volcanic.of(CaveMaterial::Basalt), volcanic.of(CaveMaterial::Magma));
     TEST_CHECK(volcanic.deep > 5000);
-    TEST_CHECK(volcanic.of(CaveMaterial::Basalt) * 100 >= volcanic.deep * 99);
+    TEST_CHECK((volcanic.of(CaveMaterial::Basalt) + volcanic.of(CaveMaterial::Magma)) * 100 >=
+               volcanic.deep * 99);
     TEST_CHECK(volcanic.of(CaveMaterial::Moss) == 0 && volcanic.of(CaveMaterial::Ice) == 0);
 
     const WallCounts glacier = paintedWalls(tiles, 17023.0, 22087.0);

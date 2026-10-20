@@ -17,6 +17,8 @@
 
 namespace terrain::tile {
 
+enum class CaveFluid { Water, Lava };
+
 // Depth below the lowest ground of a tile down to which its levels are meshed with caves: the
 // deepest cave surface lies at most maxDepth plus the blend below the ground of its column.
 [[nodiscard]] double caveDepthReach(const CaveField& field, const TileLattice& lattice);
@@ -41,10 +43,12 @@ public:
 
     // True if the detail of the tile carves the aquifers: its lakes are meshed.
     [[nodiscard]] bool holdsWater() const;
-    // Water density of the level (CaveField::waterDensity) over its final carved density, with
-    // the edits and the stitching; on the sides stitched to a coarser tile without lakes, no
-    // water, so that the lakes close there.
-    [[nodiscard]] DensityGrid waterDensity(const DensityGrid& carved, int originY);
+    // Density of the water (CaveField::waterDensity: lakes and rivers) or of the lava
+    // (CaveField::lavaDensity) of the level over its final carved density, with
+    // the edits and the stitching; on the sides stitched to a coarser tile without aquifers, no
+    // fluid, so that the lakes, rivers and lava close there.
+    [[nodiscard]] DensityGrid fluidDensity(CaveFluid fluid, const DensityGrid& carved,
+                                           int originY);
 
     // Decorates the meshed tile, never changing its geometry: the materials of the vertices of
     // its terrain and lakes (origin of data), then the speleothems and the cave flora whose

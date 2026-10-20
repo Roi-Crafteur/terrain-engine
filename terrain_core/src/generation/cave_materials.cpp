@@ -84,6 +84,8 @@ const char* caveMaterialName(CaveMaterial material) {
         return "water";
     case CaveMaterial::Basalt:
         return "basalt";
+    case CaveMaterial::Magma:
+        return "magma";
     }
     return "";
 }
@@ -93,6 +95,9 @@ CaveMaterial caveMaterial(const CaveWallSite& site, const CaveMaterialParams& pa
     const bool wet = site.aboveWater <= params.wetHeight;
     if (site.depth < params.surfaceDepth) {
         return CaveMaterial::Surface;
+    }
+    if (site.aboveLava <= params.magmaHeight) {
+        return CaveMaterial::Magma;
     }
     if ((wet && site.frozenWater) || site.icyRegion ||
         (environment.temperature <= params.iceTemperature && site.depth <= params.iceDepth)) {
