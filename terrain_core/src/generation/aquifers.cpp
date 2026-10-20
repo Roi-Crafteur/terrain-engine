@@ -200,7 +200,7 @@ float AquiferCache::highestLevelNear(double x, double z, double reach) {
             highest = std::max(highest, other.level);
         }
     }
-    return highest;
+    return std::max(highest, riverBandTopNear(x, z, reach));
 }
 
 } // namespace terrain

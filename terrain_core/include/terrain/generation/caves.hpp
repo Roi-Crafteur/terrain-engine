@@ -322,6 +322,14 @@ public:
     // scaled by the field of the profile around their axis, its floor at galleryFloor, fading
     // into the rock under presenceOn; voidClamp without galleries.
     [[nodiscard]] float galleryVoid(const CaveColumn& column, double y) const;
+    // Rock of the band around a river (CaveRiverParams): positive within shell of the gallery
+    // horizontally, from shell under its floor to freeboard over the deepest water, where the
+    // river field closes it (bankLow to bankHigh); -voidClamp elsewhere. The sill is the same
+    // band where the field is within sillWidth of the threshold of the water.
+    [[nodiscard]] float bankVoid(const CaveColumn& column, double y) const;
+    [[nodiscard]] float sillVoid(const CaveColumn& column, double y) const;
+    // Top of the band of the rivers of a column (kDryLevel where the field has no band).
+    [[nodiscard]] float riverBandTop(const CaveColumn& column) const;
     // Horizontal distances from (x, z) to the axes of the two networks of galleries (A, B):
     // galleryDistance of a column is the smaller one.
     [[nodiscard]] std::array<double, 2> galleryDistances(double x, double z) const;

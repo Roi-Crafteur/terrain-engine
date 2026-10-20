@@ -93,6 +93,9 @@ public:
     // of the cell across it. kDryLevel if all of them are dry. reach is at most a few tens of
     // meters (the 3 x 3 cells around (x, z) are searched).
     [[nodiscard]] float highestLevelNear(double x, double z, double reach);
+    // Highest top of the band of a river (CaveField::riverBandTop) that a column within reach
+    // of (x, z) can hold; kDryLevel without rivers there, and always without cave regions.
+    [[nodiscard]] float riverBandTopNear(double x, double z, double reach);
 
     // Lowest ground around the node (i, k) of the world lattice of the level of the galleries
     // (GalleryParams::levelSpacing): the lowest of 3 x 3 probes half a spacing apart around it.

@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace terrain {
 
@@ -121,6 +122,105 @@ float CaveField::galleryVoid(const CaveColumn& column, double y) const {
     // the void is continuous with the one of no gallery.
     const float fade = (1.0f - presence / p.presenceOn) * clamp;
     return std::clamp(std::max(ellipse, fade), -clamp, clamp);
+}
+
+namespace {
+
+// Rock of the band of a river, meters, positive inside: within shell of the half width of the
+// gallery horizontally, from shell under its floor up to freeboard over the deepest water.
+double bandGeometry(const CaveColumn& column, double y, const CaveParams& params) {
+    const CaveRiverParams& r = params.rivers;
+    const double halfWidth = static_cast<double>(params.galleries.halfWidth *
+                                                 column.profile[CaveProfile::kGalleries]);
+    const double floor = static_cast<double>(column.galleryFloor);
+    const double across = halfWidth + r.shell - static_cast<double>(column.galleryDistance);
+    const double above = y - (floor - r.shell);
+    const double below = floor + r.maxDepth + r.freeboard - y;
+    return std::min({across, above, below});
+}
+
+// The rock of a band where the river field closes it (strength in [0, 1]): from -voidClamp at
+// strength 0 up to the rock itself at 1, continuously.
+float closedBy(double rock, float strength, float clamp) {
+    const auto bounded = static_cast<float>(std::clamp(rock, -static_cast<double>(clamp),
+                                                       static_cast<double>(clamp)));
+    return -clamp + strength * (bounded + clamp);
+}
+
+float bankStrength(const CaveColumn& column, const CaveRiverParams& r) {
+    return noise::smoothstep(r.bankLow, r.bankHigh, column.profile[CaveProfile::kRiver]);
+}
+
+} // namespace
+
+float CaveField::bankVoid(const CaveColumn& column, double y) const {
+    const float strength = bankStrength(column, params_.rivers);
+    if (strength <= 0.0f) {
+        return -params_.voidClamp;
+    }
+    return closedBy(bandGeometry(column, y, params_), strength, params_.voidClamp);
+}
+
+// Where the field crosses the threshold, the water begins: the sill closes the bottom of the
+// gallery around it, sillWidth of the field on each side, so that the water ends against rock.
+float CaveField::sillVoid(const CaveColumn& column, double y) const {
+    const CaveRiverParams& r = params_.rivers;
+    const float strength = bankStrength(column, r);
+    if (strength <= 0.0f) {
+        return -params_.voidClamp;
+    }
+    const float offset = std::abs(column.profile[CaveProfile::kRiver] - r.threshold);
+    const double across = static_cast<double>((r.sillWidth - offset) / r.sillWidth) *
+                          static_cast<double>(params_.voidClamp);
+    return closedBy(std::min(bandGeometry(column, y, params_), across), strength,
+                    params_.voidClamp);
+}
+
+float CaveField::riverBandTop(const CaveColumn& column) const {
+    const CaveRiverParams& r = params_.rivers;
+    if (bankStrength(column, r) <= 0.0f) {
+        return kDryLevel;
+    }
+    return column.galleryFloor + r.maxDepth + r.freeboard;
+}
+
+// The band top of the columns at (x, z) and at 8 points reach away around it, where the axis of
+// a gallery may lie within the band: its distance grows by 1.5 m per meter at most.
+float AquiferCache::riverBandTopNear(double x, double z, double reach) {
+    const CaveDistricts* districts = field_->districts();
+    if (districts == nullptr) {
+        return kDryLevel;
+    }
+    const CaveParams& params = field_->params();
+    // The districts weighing within reach of (x, z) are among the 5 x 5 cells around it: no
+    // band where none of them has rivers.
+    const CaveDistrictParams& d = districts->params();
+    const int baseX = static_cast<int>(std::floor(x / d.cellSize));
+    const int baseZ = static_cast<int>(std::floor(z / d.cellSize));
+    bool rivers = false;
+    for (int n = 0; n < 25 && !rivers; ++n) {
+        const CaveDistrict& around = district(baseX + n % 5 - 2, baseZ + n / 5 - 2);
+        rivers = d.profiles[static_cast<std::size_t>(around.type)][CaveProfile::kRiver] > 0.0f;
+    }
+    if (!rivers) {
+        return kDryLevel;
+    }
+    float highest = kDryLevel;
+    for (int n = 0; n < 9; ++n) {
+        const double angle = static_cast<double>(n) * std::numbers::pi / 4.0;
+        const double px = n == 8 ? x : x + reach * std::cos(angle);
+        const double pz = n == 8 ? z : z + reach * std::sin(angle);
+        const CaveColumn column = field_->column(px, pz, ground_->height(px, pz), *ground_, {},
+                                                 this, false);
+        const float top = field_->riverBandTop(column);
+        const double halfWidth = static_cast<double>(params.galleries.halfWidth *
+                                                     column.profile[CaveProfile::kGalleries]);
+        const double band = halfWidth + params.rivers.shell + 1.5 * reach;
+        if (top > kDryLevel && static_cast<double>(column.galleryDistance) < band) {
+            highest = std::max(highest, top);
+        }
+    }
+    return highest;
 }
 
 } // namespace terrain

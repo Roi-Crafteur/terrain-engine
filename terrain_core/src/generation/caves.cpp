@@ -272,9 +272,10 @@ CaveVoids CaveField::voids(const CaveColumn& column, double y, const CaveNoiseVa
     result.limit = limit(column, y);
     result.entranceLimit = std::max(depth - params_.maxDepth, column.exclusion);
     result.barrier = detail.has(kCaveAquifers) ? barrierVoid(column, y) : -clamp;
-    result.galleries = detail.has(kCaveGalleries) ? galleryVoid(column, y) : clamp;
-    result.bank = -clamp;
-    result.sill = -clamp;
+    const bool galleries = detail.has(kCaveGalleries);
+    result.galleries = galleries ? galleryVoid(column, y) : clamp;
+    result.bank = galleries ? bankVoid(column, y) : -clamp;
+    result.sill = galleries ? sillVoid(column, y) : -clamp;
     return result;
 }
 
