@@ -202,10 +202,12 @@ void testNames() {
                         return c >= 'a' && c <= 'z';
                     });
     }
+    TEST_CHECK(terrain::kCaveMaterialCount == 11);
     TEST_CHECK(names.size() == static_cast<std::size_t>(terrain::kCaveMaterialCount));
     TEST_CHECK(lowercase);
     TEST_CHECK(std::string(terrain::caveMaterialName(CaveMaterial::Surface)) == "surface");
     TEST_CHECK(std::string(terrain::caveMaterialName(CaveMaterial::Water)) == "water");
+    TEST_CHECK(std::string(terrain::caveMaterialName(CaveMaterial::Basalt)) == "basalt");
 }
 
 // ---------------------------------------------------------------------------

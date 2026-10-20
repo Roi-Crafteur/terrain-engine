@@ -70,7 +70,12 @@ terrain_add_test(cave_regions_png_test terrain_core)
 terrain_add_test(aquifers_test terrain_core)
 terrain_add_test(speleothems_test terrain_core)
 terrain_add_test(cave_materials_test terrain_core)
+terrain_add_test(cave_materials_regions_test terrain_core)
 terrain_add_test(cave_golden_test terrain_core)
+terrain_add_test(cave_districts_test terrain_core)
+terrain_add_test(cave_district_weights_test terrain_core)
+terrain_add_test(cave_districts_neutral_test terrain_core)
+terrain_add_test(cave_flora_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
