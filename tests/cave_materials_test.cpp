@@ -332,7 +332,6 @@ void testTileMaterials(const TerrainTiles& tiles, const std::vector<ChunkCoord>&
     bool surface = true;
     bool waterKinds = true;
     bool farLods = true;
-    std::size_t tilesWithSpeleothems = 0;
     for (const ChunkCoord chunk : chunks) {
         for (int lod = 0; lod < 3; ++lod) {
             const TileData data = tiles.generate(requestOf(chunk, lod));
@@ -344,7 +343,6 @@ void testTileMaterials(const TerrainTiles& tiles, const std::vector<ChunkCoord>&
             waterKinds = waterKinds && onlyWaterOrIce(data);
             farLods = farLods && (lod == 0 || data.speleothems.empty()) &&
                       (lod < 2 || (data.water.vertices.empty() && data.waterMaterials.empty()));
-            tilesWithSpeleothems += data.speleothems.empty() ? 0 : 1;
             std::set<CaveMaterial> here(data.materials.begin(), data.materials.end());
             std::printf("LOD %d tile at (%d, %d): %zu vertices, %zu outer (%zu painted), %zu deep "
                         "(%zu painted as surface), %zu kinds, %zu lake vertices, %zu "
