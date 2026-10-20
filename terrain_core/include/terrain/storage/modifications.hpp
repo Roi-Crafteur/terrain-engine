@@ -2,6 +2,7 @@
 
 #include "terrain/chunk_coord.hpp"
 #include "terrain/generation/vegetation.hpp"
+#include "terrain/storage/storage_error.hpp"
 
 #include <compare>
 #include <cstddef>
@@ -107,6 +108,10 @@ public:
     // generated ones, then the plants added in the chunk are appended.
     void applyPlantEdits(ChunkCoord chunk, std::vector<Plant>& plants) const;
 
+    // Moves the chunks of other into this store, other left empty: to gather regions loaded
+    // apart. Throws std::invalid_argument, changing neither store, if a chunk is in both.
+    void merge(ModificationStore&& other);
+
     [[nodiscard]] const ChunkModifications* chunk(ChunkCoord coord) const;
     [[nodiscard]] const std::map<ChunkCoord, ChunkModifications, ChunkOrder>& byChunk() const {
         return chunks_;
@@ -132,7 +137,9 @@ private:
 //   u32 removed plants, per plant: f64 x, f64 z,
 //   u32 added plants, per plant: u8 type, f64 x, f64 z, f32 y, f32 scale, f32 rotation,
 //   and last u32 FNV-1a of every byte before it.
-// The same modifications always give the same bytes.
+// The blocks and the removed plants of a chunk are in increasing order, the added plants in
+// order of addition. The same modifications always give the same bytes. The world format
+// (world_save.hpp) replaces this file; migrateModificationFile converts it.
 inline constexpr std::uint32_t kModificationFileVersion = 1;
 
 struct SavedModifications {
@@ -146,17 +153,19 @@ struct SavedModifications {
 [[nodiscard]] std::vector<std::uint8_t> serializeModifications(const ModificationStore& store,
                                                                std::uint64_t seed);
 
-// Throws std::runtime_error unless bytes are a whole modification file: magic, version and
-// checksum, no truncated or trailing bytes, valid edits, plant types and finite values, chunks
-// in order, none empty, and every modification stored in its own chunk.
+// Throws a StorageError (a std::runtime_error) unless bytes are a whole modification file:
+// magic, version and checksum, no truncated or trailing bytes, valid edits, plant types and
+// finite values, chunks, blocks and removed plants in order, no empty chunk, and every
+// modification stored in its own chunk.
 [[nodiscard]] SavedModifications deserializeModifications(std::span<const std::uint8_t> bytes);
 
-// Atomic save: writes path + ".tmp", then renames it over path, so a failed save never leaves a
-// partial file at path. Throws std::runtime_error on failure.
+// Atomic and durable save: writes path + ".tmp" and flushes it to the disk, then renames it over
+// path, so neither a failed save nor a power cut leaves a partial file at path. Throws a
+// StorageError on failure.
 void saveModifications(const std::filesystem::path& path, const ModificationStore& store,
                        std::uint64_t seed);
 
-// Throws std::runtime_error if the file cannot be read or is invalid (see
+// Throws a StorageError if the file cannot be read or is invalid (see
 // deserializeModifications).
 [[nodiscard]] SavedModifications loadModifications(const std::filesystem::path& path);
 

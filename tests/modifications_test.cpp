@@ -1,18 +1,25 @@
 // Modifications: blocks stored per chunk, the chunks a block reaches, local and order-free
 // density edits, plant edits identified by position, and the modification file (round trip,
-// deterministic bytes, FNV-1a checksum, rejected corrupt files, atomic save).
+// deterministic bytes pinned on a reference file, FNV-1a checksum, rejected corrupt files and
+// huge coordinates, error kinds, atomic save, save while another reader holds the file), and the
+// merge of two stores.
 #include "terrain/storage/modifications.hpp"
 
+#include "storage_test_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
+#include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
+#include <optional>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -192,6 +199,44 @@ void testRoundTrip() {
     TEST_CHECK(empty.seed == 7 && empty.store.empty());
 }
 
+// The file of sampleStore() for kSeed, byte for byte: the format of every saved TMOD file. Any
+// change of the code that changes these bytes breaks the existing saves.
+const std::vector<std::uint8_t> kReferenceFile = {
+    // header: magic, version 1, seed, 4 chunks
+    0x54, 0x4D, 0x4F, 0x44, 0x01, 0x00, 0x00, 0x00, 0x9B, 0x28, 0x35, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
+    // chunk (0, -1): block (3, 40, -2) added
+    0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x00, 0x00, 0x00,
+    0x03, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0xFE, 0xFF, 0xFF, 0xFF,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // chunk (1, -1): a removed plant, a cactus and a boulder
+    0x01, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x31, 0x40,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xBF, 0x02, 0x00, 0x00, 0x00,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x40, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xF0, 0xBF, 0x00, 0x00, 0x00, 0x40, 0x66, 0x66, 0x66,
+    0x3F, 0x00, 0x00, 0x80, 0x40, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x32, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xBF, 0x00, 0x00,
+    0x00, 0x40, 0x66, 0x66, 0x66, 0x3F, 0x00, 0x00, 0x80, 0x40,
+    // chunk (-7, 0): a removed plant
+    0xF9, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x59, 0xC0,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x40, 0x00, 0x00, 0x00, 0x00,
+    // chunk (-2, 6): blocks (-21, -7, 100) and (-20, -7, 100) removed
+    0xFE, 0xFF, 0xFF, 0xFF, 0x06, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+    0xEB, 0xFF, 0xFF, 0xFF, 0xF9, 0xFF, 0xFF, 0xFF, 0x64, 0x00, 0x00, 0x00,
+    0x01, 0xEC, 0xFF, 0xFF, 0xFF, 0xF9, 0xFF, 0xFF, 0xFF, 0x64, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // FNV-1a
+    0x7B, 0x2B, 0xEB, 0x4E,
+};
+
+void testReferenceBytes() {
+    TEST_CHECK(terrain::serializeModifications(sampleStore(), kSeed) == kReferenceFile);
+    const terrain::SavedModifications saved = terrain::deserializeModifications(kReferenceFile);
+    TEST_CHECK(saved.seed == kSeed && saved.store == sampleStore());
+}
+
 bool rejected(const std::vector<std::uint8_t>& bytes) {
     try {
         static_cast<void>(terrain::deserializeModifications(bytes));
@@ -238,6 +283,71 @@ void testCorruptFilesRejected() {
     TEST_CHECK(rejected(resealed(badEdit)));
 }
 
+std::vector<std::uint8_t> withDouble(std::vector<std::uint8_t> bytes, std::size_t offset,
+                                     double value) {
+    const auto bits = std::bit_cast<std::uint64_t>(value);
+    for (std::size_t i = 0; i < 8; ++i) {
+        bytes[offset + i] = static_cast<std::uint8_t>((bits >> (8 * i)) & 0xFFU);
+    }
+    return resealed(bytes);
+}
+
+// The kind of error reading bytes gives; empty if the file is accepted.
+std::optional<terrain::StorageErrorKind> errorKind(const std::vector<std::uint8_t>& bytes) {
+    try {
+        static_cast<void>(terrain::deserializeModifications(bytes));
+    } catch (const terrain::StorageError& error) {
+        return error.kind();
+    }
+    return std::nullopt;
+}
+
+// A plant far outside its chunk, even beyond the 32-bit chunk indices, is rejected without any
+// overflow; the errors tell a damaged file from a newer one.
+void testHugeCoordinatesAndErrorKinds() {
+    // Chunk (1, -1) of the reference file: its removed plant x at byte 69, its first added plant
+    // x at byte 90 (after the removed plant, the count of added plants and the type).
+    TEST_CHECK(withDouble(kReferenceFile, 69, 17.5) == kReferenceFile);
+    // The chunk holds x in [16, 32).
+    TEST_CHECK(!errorKind(withDouble(kReferenceFile, 69, 16.0)));
+    for (const double far : {1e300, -1e300, 15.75, 32.0}) {
+        TEST_CHECK(errorKind(withDouble(kReferenceFile, 69, far)) ==
+                   terrain::StorageErrorKind::Invalid);
+        TEST_CHECK(errorKind(withDouble(kReferenceFile, 90, far)) ==
+                   terrain::StorageErrorKind::Invalid);
+    }
+    std::vector<std::uint8_t> damaged = kReferenceFile;
+    damaged[30] ^= 0x01U;
+    TEST_CHECK(errorKind(damaged) == terrain::StorageErrorKind::Corrupt);
+    std::vector<std::uint8_t> newer = kReferenceFile;
+    newer[4] = 2;
+    TEST_CHECK(errorKind(resealed(newer)) == terrain::StorageErrorKind::NewerVersion);
+}
+
+void testMerge() {
+    ModificationStore merged = sampleStore();
+    ModificationStore other;
+    other.setBlock({500, 1, 500}, BlockEdit::Added);
+    other.addPlant(tree(-500.5, 7.0));
+    ModificationStore expected = sampleStore();
+    expected.setBlock({500, 1, 500}, BlockEdit::Added);
+    expected.addPlant(tree(-500.5, 7.0));
+    merged.merge(std::move(other));
+    TEST_CHECK(merged == expected && other.empty());
+
+    ModificationStore overlap;
+    overlap.setBlock({3, 41, -2}, BlockEdit::Removed); // the chunk (0, -1) of sampleStore()
+    overlap.setBlock({900, 0, 900}, BlockEdit::Removed);
+    const ModificationStore before = overlap;
+    bool threw = false;
+    try {
+        merged.merge(std::move(overlap));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    TEST_CHECK(threw && merged == expected && overlap == before);
+}
+
 std::filesystem::path testDirectory() {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "terrain_engine_modifications_test";
@@ -256,10 +366,8 @@ void testSaveAndLoad() {
     const terrain::SavedModifications loaded = terrain::loadModifications(file);
     TEST_CHECK(loaded.seed == kSeed && loaded.store == store);
 
-    std::ifstream in(file, std::ios::binary);
-    const std::vector<std::uint8_t> onDisk((std::istreambuf_iterator<char>(in)),
-                                           std::istreambuf_iterator<char>());
-    TEST_CHECK(onDisk == terrain::serializeModifications(store, kSeed));
+    // Read through a stream closed at once: on Windows an open file cannot be replaced.
+    TEST_CHECK(storage_test::fileBytes(file) == terrain::serializeModifications(store, kSeed));
 
     // Saving again replaces the file.
     ModificationStore more = store;
@@ -285,6 +393,52 @@ void testSaveAndLoad() {
     std::filesystem::remove_all(dir);
 }
 
+// Another program reading the file while it is saved again. On Windows the file cannot be
+// replaced while it is open: a reader closing it within a second only delays the save (the
+// renames are tried again); one holding it longer makes the save throw a StorageError (Io),
+// leaving the file whole and no temporary file. Elsewhere the save replaces the file, the
+// reader keeping the old bytes. Never a crash.
+void testSaveWhileOpen() {
+    const std::filesystem::path dir = testDirectory();
+    const std::filesystem::path file = dir / "terrain_modifications.bin";
+    terrain::saveModifications(file, sampleStore(), kSeed);
+    const std::vector<std::uint8_t> before = storage_test::fileBytes(file);
+    ModificationStore more = sampleStore();
+    more.setBlock({0, 0, 0}, BlockEdit::Added);
+    {
+        std::ifstream reader(file, std::ios::binary);
+        bool replaced = false;
+        const auto failure = storage_test::errorOf([&] {
+            terrain::saveModifications(file, more, kSeed);
+            replaced = true;
+        });
+        TEST_CHECK(replaced != failure.has_value());
+        TEST_CHECK(replaced || failure == terrain::StorageErrorKind::Io);
+        TEST_CHECK(storage_test::readAll(reader) == before);
+        TEST_CHECK(storage_test::fileBytes(file) ==
+                   (replaced ? terrain::serializeModifications(more, kSeed) : before));
+        TEST_CHECK(!std::filesystem::exists(dir / "terrain_modifications.bin.tmp"));
+    }
+    more.setBlock({1, 0, 0}, BlockEdit::Removed);
+    {
+        const storage_test::BriefReader reader(file, std::chrono::milliseconds(60));
+        TEST_CHECK(!storage_test::errorOf([&] { terrain::saveModifications(file, more, kSeed); }));
+    }
+    TEST_CHECK(terrain::loadModifications(file).store == more);
+
+    // A target no rename can replace on any platform (a directory holding a file): the renames
+    // are tried again, then the save throws a clear StorageError and leaves no temporary file.
+    const std::filesystem::path blocked = dir / "blocked.bin";
+    std::filesystem::create_directories(blocked / "inside");
+    std::string message;
+    TEST_CHECK(storage_test::errorOf([&] { terrain::saveModifications(blocked, more, kSeed); },
+                                     &message) == terrain::StorageErrorKind::Io);
+    TEST_CHECK(message.find("blocked.bin") != std::string::npos);
+    TEST_CHECK(!std::filesystem::exists(dir / "blocked.bin.tmp"));
+    TEST_CHECK(std::filesystem::exists(blocked / "inside"));
+    std::filesystem::remove_all(dir);
+}
+
 } // namespace
 
 int main() {
@@ -295,7 +449,11 @@ int main() {
     testPlants();
     testFnv1a();
     testRoundTrip();
+    testReferenceBytes();
     testCorruptFilesRejected();
+    testHugeCoordinatesAndErrorKinds();
+    testMerge();
     testSaveAndLoad();
+    testSaveWhileOpen();
     return test::result();
 }
