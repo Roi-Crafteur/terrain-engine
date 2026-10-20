@@ -3,6 +3,11 @@ add_library(terrain_core STATIC
     src/chunk_coord.cpp
     src/generation/arches.cpp
     src/generation/biome.cpp
+    src/generation/cave_entrances.cpp
+    src/generation/cave_noise.cpp
+    src/generation/cave_region.cpp
+    src/generation/cave_sampler.cpp
+    src/generation/caves.cpp
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
     src/generation/climate.cpp
@@ -22,6 +27,7 @@ add_library(terrain_core STATIC
     src/generation/voronoi.cpp
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
+    src/io/caves_png.cpp
     src/io/cliffs_png.cpp
     src/io/ecology_png.cpp
     src/io/eroded_png.cpp
@@ -30,6 +36,7 @@ add_library(terrain_core STATIC
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
     src/storage/modifications.cpp
+    src/streaming/cave_tiles.cpp
     src/streaming/lod.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
@@ -157,3 +164,9 @@ target_link_libraries(terrain_export_arches PRIVATE terrain_core terrain_warning
 # terrain_export_biomes <output-dir> [seed] [m/px] [size] [center-x] [center-z]
 add_executable(terrain_export_biomes tools/export_biomes.cpp)
 target_link_libraries(terrain_export_biomes PRIVATE terrain_core terrain_warnings)
+
+# Cave PNG export, on an eroded region with its rivers around the cliff site (224 px at 20 m/px
+# by default): cave_slice.png (vertical section through an entrance) and cave_preview.png (map
+# of the caves, entrances and rivers): terrain_export_caves <output-dir> [seed] [m/px] [size]
+add_executable(terrain_export_caves tools/export_caves.cpp)
+target_link_libraries(terrain_export_caves PRIVATE terrain_core terrain_warnings)

@@ -38,7 +38,7 @@ struct ModelView {
     Vec3 viewpoint;
 };
 
-// Regions generated on demand by modes 4 to 7.
+// Regions generated on demand by modes 5 to 7 and 0.
 struct LazyViews {
     std::optional<HeightfieldView> heightfield;
     std::optional<ModelView> eroded;

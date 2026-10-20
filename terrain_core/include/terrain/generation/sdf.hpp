@@ -22,6 +22,38 @@ namespace terrain::sdf {
     return std::max(a, -b);
 }
 
+// Smooth maximum: max(a, b) + h^2 / (4 k) with h = max(k - |a - b|, 0). Exactly max(a, b) when
+// |a - b| >= k, never below it and at most k / 4 above it; continuous with slope at most 1 in
+// each argument. k <= 0 gives max(a, b).
+[[nodiscard]] inline float smoothMax(float a, float b, float k) {
+    const float difference = std::abs(a - b);
+    if (k <= 0.0f || difference >= k) {
+        return std::max(a, b);
+    }
+    const float h = k - difference;
+    return std::max(a, b) + h * h / (4.0f * k);
+}
+
+// Smooth minimum, the mirror: min(a, b) - h^2 / (4 k).
+[[nodiscard]] inline float smoothMin(float a, float b, float k) {
+    const float difference = std::abs(a - b);
+    if (k <= 0.0f || difference >= k) {
+        return std::min(a, b);
+    }
+    const float h = k - difference;
+    return std::min(a, b) - h * h / (4.0f * k);
+}
+
+// b carved out of a with a rounded seam: smoothMax(a, -b, k). Never more solid than a.
+[[nodiscard]] inline float smoothSubtract(float a, float b, float k) {
+    return smoothMax(a, -b, k);
+}
+
+// Union with a rounded seam: smoothMin(a, b, k). Never less solid than either shape.
+[[nodiscard]] inline float smoothUnite(float a, float b, float k) {
+    return smoothMin(a, b, k);
+}
+
 // Vertical prism of a horizontal footprint, below height top. footprint is the signed
 // horizontal distance to the outline of the footprint (negative inside). The sides of the
 // prism are exactly vertical and its top exactly flat.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/chunk_coord.hpp"
+#include "terrain/generation/caves.hpp"
 #include "terrain/generation/ecology.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/storage/modifications.hpp"
@@ -19,10 +20,16 @@ inline constexpr int kPlantLod = 0;
 // The streamed world: the infinite Heightfield, density y - heightAt(x, z), with the block edits
 // of its modifications, meshed tile by tile for a StreamManager. Its relief, rivers and biomes
 // are never changed: the modifications only edit blocks and plants.
+//
+// Caves are optional (none by default, and then every tile is the one of the world without
+// caves): with CaveParams, the caves of a CaveField under the heightfield (no river) are carved
+// out of the density before the block edits, with the detail of the LOD of each tile
+// (caveDetailForLod).
 class TerrainTiles {
 public:
     explicit TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield = {},
-                          const EcologyParams& ecology = {});
+                          const EcologyParams& ecology = {},
+                          const std::optional<CaveParams>& caves = std::nullopt);
 
     // Mesh of the vertical levels of the tile holding its ground or a lattice point an edited
     // block reaches: the density is sampled every tileCellMeters(lod) meters on the lattice of
@@ -30,10 +37,16 @@ public:
     // is meshed with Marching Cubes. On LOD 0, the plants of the chunk (Ecology::placePlants on
     // the exact heightfield) after the plant edits. Deterministic, and thread-safe: it may run
     // concurrently with the edits.
+    //
+    // With caves, the levels go down to the deepest caves (maxDepth below the lowest ground,
+    // plus the blend and a cell) and the levels without any surface are skipped; on the sides stitched to a coarser tile, the samples
+    // that tile holds are carved with its detail; the plants standing over an entrance are
+    // dropped.
     [[nodiscard]] TileData generate(const TileRequest& request) const;
 
     // Density at the lattice point (x, y, z), meters: the generated density with the block
-    // edits, the value every tile sampling this point holds before stitching. Thread-safe.
+    // edits, the value every tile sampling this point holds before stitching (with caves, every
+    // LOD 0 tile). Thread-safe.
     [[nodiscard]] float densityAt(int x, int y, int z) const;
 
     // Edits, thread-safe with generate. Each returns the chunks whose tiles must be generated
@@ -50,11 +63,16 @@ public:
     [[nodiscard]] std::uint64_t seed() const { return seed_; }
     [[nodiscard]] const Heightfield& heightfield() const { return field_; }
     [[nodiscard]] const Ecology& ecology() const { return ecology_; }
+    // The caves, or nullptr without caves, and the ground they are carved under.
+    [[nodiscard]] const CaveField* caves() const { return caves_ ? &*caves_ : nullptr; }
+    [[nodiscard]] const CaveGround& caveGround() const { return caveGround_; }
 
 private:
     std::uint64_t seed_;
     Heightfield field_;
     Ecology ecology_;
+    std::optional<CaveField> caves_;
+    CaveGround caveGround_; // reads field_
     mutable std::shared_mutex mutex_; // guards modifications_
     ModificationStore modifications_;
 };

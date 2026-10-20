@@ -5,13 +5,13 @@
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include "seam_test_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <utility>
 #include <vector>
 
@@ -27,86 +27,10 @@ using terrain::TileRequest;
 // 1e-7 m measured), while the cracks of unstitched sides measure millimeters.
 constexpr double kSeamTolerance = 1e-5;
 
-// A point of a vertical plane: u along the plane, y up.
-struct FacePoint {
-    double u = 0.0;
-    double y = 0.0;
-};
-
-// The vertical plane where the world coordinate along x (alongX) or z is plane.
-struct Plane {
-    bool alongX = true;
-    double at = 0.0;
-};
-
-bool onPlane(const streaming_test::WorldPoint& p, Plane plane) {
-    return (plane.alongX ? p.x : p.z) == plane.at;
-}
-
-FacePoint project(const streaming_test::WorldPoint& p, Plane plane) {
-    return {plane.alongX ? p.z : p.x, p.y};
-}
-
-std::vector<FacePoint> facePoints(const TileData& data, Plane plane) {
-    std::vector<FacePoint> points;
-    for (std::size_t i = 0; i < data.mesh.vertices.size(); ++i) {
-        const streaming_test::WorldPoint p = streaming_test::worldVertex(data, i);
-        if (onPlane(p, plane)) {
-            points.push_back(project(p, plane));
-        }
-    }
-    return points;
-}
-
-using Segment = std::pair<FacePoint, FacePoint>;
-
-// Edges of the triangles lying in the plane: the outline of the mesh on it.
-std::vector<Segment> faceSegments(const TileData& data, Plane plane) {
-    std::vector<Segment> segments;
-    const std::vector<std::uint32_t>& indices = data.mesh.indices;
-    for (std::size_t t = 0; t + 2 < indices.size(); t += 3) {
-        for (std::size_t e = 0; e < 3; ++e) {
-            const auto a = streaming_test::worldVertex(data, indices[t + e]);
-            const auto b = streaming_test::worldVertex(data, indices[t + (e + 1) % 3]);
-            if (onPlane(a, plane) && onPlane(b, plane)) {
-                segments.emplace_back(project(a, plane), project(b, plane));
-            }
-        }
-    }
-    return segments;
-}
-
-double distanceToSegment(FacePoint p, const Segment& s) {
-    const double du = s.second.u - s.first.u;
-    const double dy = s.second.y - s.first.y;
-    const double length2 = du * du + dy * dy;
-    double t = 0.0;
-    if (length2 > 0.0) {
-        t = std::clamp(((p.u - s.first.u) * du + (p.y - s.first.y) * dy) / length2, 0.0, 1.0);
-    }
-    return std::hypot(p.u - (s.first.u + t * du), p.y - (s.first.y + t * dy));
-}
-
-// Largest distance from a point of `from` on the plane, with u in [uMin, uMax], to the outline
-// of `to` on it. Also counts the points measured.
-double largestGap(const TileData& from, const TileData& to, Plane plane, double uMin, double uMax,
-                  std::size_t& points) {
-    const std::vector<Segment> outline = faceSegments(to, plane);
-    double largest = 0.0;
-    points = 0;
-    for (const FacePoint p : facePoints(from, plane)) {
-        if (p.u < uMin || p.u > uMax) {
-            continue;
-        }
-        double nearest = std::numeric_limits<double>::infinity();
-        for (const Segment& s : outline) {
-            nearest = std::min(nearest, distanceToSegment(p, s));
-        }
-        largest = std::max(largest, nearest);
-        ++points;
-    }
-    return largest;
-}
+using seam_test::FacePoint;
+using seam_test::facePoints;
+using seam_test::largestGap;
+using seam_test::Plane;
 
 // A fine tile with a coarser neighbor across the side `seam`, which lies on plane.
 struct SeamCase {

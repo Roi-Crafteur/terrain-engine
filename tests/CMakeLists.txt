@@ -57,6 +57,12 @@ terrain_add_test(stream_manager_test terrain_core)
 terrain_add_test(modifications_test terrain_core)
 terrain_add_test(terrain_tiles_test terrain_core)
 terrain_add_test(persistence_test terrain_core)
+terrain_add_test(caves_test terrain_core)
+terrain_add_test(cave_entrances_test terrain_core)
+terrain_add_test(cave_region_test terrain_core)
+terrain_add_test(cave_tiles_test terrain_core)
+terrain_add_test(cave_seams_test terrain_core)
+terrain_add_test(caves_png_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
@@ -133,3 +139,13 @@ add_test(NAME export_voronoi_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_voronoi>
             -DOUT=${CMAKE_BINARY_DIR}/voronoi_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_voronoi_bad_args.cmake)
+
+# Smoke test: writes cave_slice.png (1024 px wide vertical section through an entrance) and
+# cave_preview.png (224 x 224 px, 20 m/px, around the cliff site of the default world) into
+# <build-dir>/caves for a visual check. The summary is printed only once the images are written.
+add_test(NAME export_caves_smoke
+    COMMAND terrain_export_caves ${CMAKE_BINARY_DIR}/caves)
+set_tests_properties(export_caves_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "224 x 224 px, 4\\.5 km wide, [0-9]+ entrances, caves under [0-9.]+%.*slice 1024 x [0-9]+ px")
+add_dependencies(check terrain_export_caves)

@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 struct GLFWwindow;
 
@@ -19,6 +20,16 @@ namespace viewer {
 
 // Modification file of mode 9, in the working directory.
 inline constexpr const char* kModificationFile = "terrain_modifications.bin";
+
+// Green at sea level, gray from kStreamedHighAltitude.
+inline constexpr float kStreamedLowAltitude = 0.0f;
+inline constexpr float kStreamedHighAltitude = 2500.0f;
+
+// The camera of the streamed world looks down steeply enough to see the LOD 0 ring below it.
+inline constexpr float kStreamedPitchDegrees = 40.0f;
+
+// The sea is centered on the camera again once it moved kSeaRecenter meters away.
+inline constexpr float kSeaRecenter = 1000.0f;
 
 // GPU copy of a loaded tile: its terrain in world meters, and a marker per plant.
 struct TileView {
@@ -28,6 +39,23 @@ struct TileView {
     std::optional<ColoredMesh> plants;
     int lod = 0;
 };
+
+using TileViews =
+    std::unordered_map<terrain::TileKey, std::unique_ptr<TileView>, terrain::TileKeyHash>;
+
+// Keeps the GPU copies in step with the changes of a StreamManager update: unloaded tiles are
+// dropped, loaded ones copied (or replaced).
+void applyChanges(TileViews& views, const terrain::StreamManager& manager,
+                  const terrain::StreamChanges& changes);
+
+// "tiles LOD0 n LOD1 n LOD2 n LOD3 n, n pending": the copies per LOD and the queue.
+[[nodiscard]] std::string tileStatus(const TileViews& views, const terrain::StreamManager& manager);
+
+// The sea: a square just below sea level centered on `center`, in the color of the water.
+[[nodiscard]] std::vector<ColoredVertex> seaQuad(Vec3 center);
+
+// South of a summit of the world, above the ground around it: where the streamed world starts.
+[[nodiscard]] Vec3 streamedSpawn(const terrain::Heightfield& field);
 
 // The streamed world of modes 8 and 9: terrain::TerrainTiles of the default world, streamed
 // around the camera by a terrain::StreamManager with worker threads, and the GPU copies of the
@@ -76,7 +104,7 @@ private:
     terrain::TerrainTiles tiles_;
     terrain::StreamManager manager_;
     ShaderProgram terrainShader_;
-    std::unordered_map<terrain::TileKey, std::unique_ptr<TileView>, terrain::TileKeyHash> views_;
+    TileViews views_;
     std::unique_ptr<ColoredMesh> sea_;
     Vec3 seaCenter_;
     std::unique_ptr<ColoredMesh> crosshair_;

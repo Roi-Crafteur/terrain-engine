@@ -4,12 +4,19 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace {
 
 namespace sdf = terrain::sdf;
 
 constexpr std::array<float, 6> kValues = {-30.0f, -2.5f, -0.25f, 0.0f, 0.5f, 7.0f};
+
+// Grid of distances in [-5, 5] with a step of 0.25, exact in a float.
+constexpr int kGridHalf = 20;
+constexpr float gridValue(int i) {
+    return static_cast<float>(i) * 0.25f;
+}
 
 // Union, intersection and difference: sign logic on a few shapes.
 void testBooleanSigns() {
@@ -151,6 +158,121 @@ void testTorus() {
     TEST_CHECK(sdf::torus(20.0f, -12.0f, 20.0f, 5.0f) == 7.0f); // symmetric along the axis
 }
 
+// Outside the blend band, and for a radius of zero or less, the smooth operators are the hard ones.
+void testSmoothExact() {
+    constexpr float kRadius = 2.0f;
+    for (const float a : kValues) {
+        for (const float b : kValues) {
+            for (const float k : {0.0f, -1.0f}) {
+                TEST_CHECK(sdf::smoothMax(a, b, k) == std::max(a, b));
+                TEST_CHECK(sdf::smoothMin(a, b, k) == std::min(a, b));
+            }
+            if (std::abs(a - b) >= kRadius) {
+                TEST_CHECK(sdf::smoothMax(a, b, kRadius) == std::max(a, b));
+                TEST_CHECK(sdf::smoothMin(a, b, kRadius) == std::min(a, b));
+            }
+        }
+    }
+    // The band is closed on the outside: a gap of exactly k is already the hard operator.
+    TEST_CHECK(sdf::smoothMax(0.0f, 2.0f, 2.0f) == 2.0f);
+    TEST_CHECK(sdf::smoothMax(2.0f, 0.0f, 2.0f) == 2.0f);
+    TEST_CHECK(sdf::smoothMin(0.0f, 2.0f, 2.0f) == 0.0f);
+    TEST_CHECK(sdf::smoothMin(2.0f, 0.0f, 2.0f) == 0.0f);
+    // Two equal values are the worst case: the blend adds the full k / 4.
+    TEST_CHECK(sdf::smoothMax(1.0f, 1.0f, 2.0f) == 1.5f);
+    TEST_CHECK(sdf::smoothMin(1.0f, 1.0f, 2.0f) == 0.5f);
+    TEST_CHECK(sdf::smoothMax(-3.0f, -3.0f, 8.0f) == -1.0f);
+}
+
+// The blend stays within k / 4 of the hard operator, on the soft side of it.
+void testSmoothBounds() {
+    constexpr float kRadius = 2.0f;
+    for (int i = -kGridHalf; i <= kGridHalf; ++i) {
+        for (int j = -kGridHalf; j <= kGridHalf; ++j) {
+            const float a = gridValue(i);
+            const float b = gridValue(j);
+            const float hardMax = std::max(a, b);
+            const float hardMin = std::min(a, b);
+            TEST_CHECK(sdf::smoothMax(a, b, kRadius) >= hardMax);
+            TEST_CHECK(sdf::smoothMax(a, b, kRadius) <= hardMax + kRadius / 4.0f);
+            TEST_CHECK(sdf::smoothMin(a, b, kRadius) <= hardMin);
+            TEST_CHECK(sdf::smoothMin(a, b, kRadius) >= hardMin - kRadius / 4.0f);
+            // The minimum is the maximum seen in a mirror.
+            TEST_CHECK(sdf::smoothMin(a, b, kRadius) == -sdf::smoothMax(-a, -b, kRadius));
+        }
+    }
+}
+
+// A small step of one argument moves the result by at most that step (slope <= 1).
+void testSmoothSlope() {
+    constexpr float kRadius = 2.0f;
+    constexpr float kStep = 0.03125f; // 1/32: grid values plus a step stay exact
+    // Slack for the float rounding of the two results, a few ulps for values below 8.
+    constexpr float kSlack = 2.0e-6f;
+    constexpr float kLimit = kStep * (1.0f + 1.0e-4f) + kSlack;
+    bool bounded = true;
+    for (int i = -kGridHalf; i <= kGridHalf; ++i) {
+        for (int j = -kGridHalf; j <= kGridHalf; ++j) {
+            const float a = gridValue(i);
+            const float b = gridValue(j);
+            const float max0 = sdf::smoothMax(a, b, kRadius);
+            const float min0 = sdf::smoothMin(a, b, kRadius);
+            bounded = bounded && std::abs(sdf::smoothMax(a + kStep, b, kRadius) - max0) <= kLimit &&
+                      std::abs(sdf::smoothMax(a, b + kStep, kRadius) - max0) <= kLimit &&
+                      std::abs(sdf::smoothMin(a + kStep, b, kRadius) - min0) <= kLimit &&
+                      std::abs(sdf::smoothMin(a, b + kStep, kRadius) - min0) <= kLimit;
+        }
+    }
+    TEST_CHECK(bounded);
+}
+
+// A smooth subtraction is the smooth maximum with the complement, and never adds rock to a.
+void testSmoothSubtract() {
+    for (const float k : {0.0f, 0.5f, 2.0f, 10.0f}) {
+        for (const float a : kValues) {
+            for (const float b : kValues) {
+                TEST_CHECK(sdf::smoothSubtract(a, b, k) == sdf::smoothMax(a, -b, k));
+                TEST_CHECK(sdf::smoothSubtract(a, b, k) >= a);
+                TEST_CHECK(sdf::smoothSubtract(a, b, k) >= sdf::subtract(a, b));
+            }
+        }
+    }
+    for (const float a : kValues) {
+        for (const float b : kValues) {
+            TEST_CHECK(sdf::smoothSubtract(a, b, 0.0f) == sdf::subtract(a, b));
+        }
+    }
+    // Where the two surfaces cross, the seam is rounded off into the air.
+    TEST_CHECK(sdf::smoothSubtract(0.0f, 0.0f, 2.0f) == 0.5f);
+    // Far from the carved shape the rock is untouched, deep inside it the rock is gone.
+    TEST_CHECK(sdf::smoothSubtract(-4.0f, 9.0f, 2.0f) == -4.0f);
+    TEST_CHECK(sdf::smoothSubtract(-4.0f, -9.0f, 2.0f) == 9.0f);
+}
+
+// A smooth union is the smooth minimum: never less solid than either shape, and symmetric.
+void testSmoothUnite() {
+    for (const float k : {0.0f, 0.5f, 2.0f, 10.0f}) {
+        for (const float a : kValues) {
+            for (const float b : kValues) {
+                const float united = sdf::smoothUnite(a, b, k);
+                TEST_CHECK(united == sdf::smoothMin(a, b, k));
+                TEST_CHECK(united <= std::min(a, b));
+                TEST_CHECK(united >= std::min(a, b) - k / 4.0f);
+                TEST_CHECK(united == sdf::smoothUnite(b, a, k));
+                TEST_CHECK(sdf::smoothMax(a, b, k) == sdf::smoothMax(b, a, k));
+            }
+        }
+    }
+    for (const float a : kValues) {
+        for (const float b : kValues) {
+            TEST_CHECK(sdf::smoothUnite(a, b, 0.0f) == sdf::unite(a, b));
+        }
+    }
+    // Two shapes touching at their surfaces are joined by a fillet filled with rock.
+    TEST_CHECK(sdf::smoothUnite(0.0f, 0.0f, 2.0f) == -0.5f);
+    TEST_CHECK(sdf::smoothUnite(-4.0f, 9.0f, 2.0f) == -4.0f);
+}
+
 } // namespace
 
 int main() {
@@ -164,5 +286,10 @@ int main() {
     testSlotFlatFloor();
     testCylinder();
     testTorus();
+    testSmoothExact();
+    testSmoothBounds();
+    testSmoothSlope();
+    testSmoothSubtract();
+    testSmoothUnite();
     return test::result();
 }

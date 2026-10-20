@@ -37,6 +37,7 @@ target_link_libraries(terrain_viewer_camera PRIVATE terrain_warnings)
 add_executable(terrain_viewer
     src/main.cpp
     src/shader.cpp
+    src/cave_world_view.cpp
     src/cube_mesh.cpp
     src/chunk_mesh.cpp
     src/cliff_region_view.cpp
@@ -47,6 +48,7 @@ add_executable(terrain_viewer
     src/model_views.cpp
     src/sculpted_region_view.cpp
     src/streamed_world_view.cpp
+    src/view_modes.cpp
 )
 target_compile_definitions(terrain_viewer PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(terrain_viewer PRIVATE

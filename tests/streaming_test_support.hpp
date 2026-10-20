@@ -3,6 +3,7 @@
 // Helpers shared by the tests of the LOD, the streaming and the modifications.
 
 #include "terrain/chunk_coord.hpp"
+#include "terrain/generation/caves.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/stream_manager.hpp"
@@ -10,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace streaming_test {
 
@@ -50,6 +52,17 @@ inline terrain::ChunkCoord plantChunk(const terrain::TerrainTiles& tiles, std::s
         }
     }
     return {};
+}
+
+// Cave entrances of the world with caves around the origin, within reach of [-4096, 4096] on
+// both axes, in cell order: found from the entrance lattice, never by generating tiles.
+inline std::vector<terrain::CaveEntrance> entrancesNearOrigin(const terrain::TerrainTiles& tiles) {
+    return tiles.caves()->entrancesNear(-4096.0, -4096.0, 4096.0, 4096.0, tiles.caveGround());
+}
+
+// Chunk of the opening of an entrance.
+inline terrain::ChunkCoord entranceChunk(const terrain::CaveEntrance& entrance) {
+    return terrain::worldToChunk(entrance.topX, entrance.topZ);
 }
 
 struct WorldPoint {
