@@ -2,8 +2,11 @@
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
     src/generation/arches.cpp
+    src/generation/biome.cpp
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
+    src/generation/climate.cpp
+    src/generation/ecology.cpp
     src/generation/eroded_region.cpp
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
@@ -13,8 +16,12 @@ add_library(terrain_core STATIC
     src/generation/overhangs.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
+    src/generation/surface_material.cpp
+    src/generation/terrain_surface.cpp
+    src/generation/vegetation.cpp
     src/io/arches_png.cpp
     src/io/cliffs_png.cpp
+    src/io/ecology_png.cpp
     src/io/eroded_png.cpp
     src/io/heightmap_png.cpp
     src/io/png.cpp
@@ -107,3 +114,8 @@ target_link_libraries(terrain_export_cliffs PRIVATE terrain_core terrain_warning
 # Overhang and arch PNG export: terrain_export_arches <output-dir> [seed] [m/px] [size]
 add_executable(terrain_export_arches tools/export_arches.cpp)
 target_link_libraries(terrain_export_arches PRIVATE terrain_core terrain_warnings)
+
+# Biome, surface material and vegetation density PNG export, on an eroded region:
+# terrain_export_biomes <output-dir> [seed] [m/px] [size] [center-x] [center-z]
+add_executable(terrain_export_biomes tools/export_biomes.cpp)
+target_link_libraries(terrain_export_biomes PRIVATE terrain_core terrain_warnings)
