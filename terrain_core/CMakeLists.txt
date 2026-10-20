@@ -29,11 +29,17 @@ add_library(terrain_core STATIC
     src/io/png.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
+    src/storage/modifications.cpp
+    src/streaming/lod.cpp
+    src/streaming/stream_manager.cpp
+    src/streaming/terrain_tiles.cpp
 )
 
 target_include_directories(terrain_core PUBLIC include)
 target_compile_features(terrain_core PUBLIC cxx_std_20)
-target_link_libraries(terrain_core PRIVATE terrain_warnings)
+# The streaming generates tiles on worker threads (std::jthread): threads only, nothing graphic.
+find_package(Threads REQUIRED)
+target_link_libraries(terrain_core PUBLIC Threads::Threads PRIVATE terrain_warnings)
 
 # Heightmap PNG export for visual checks:
 # terrain_export_heightmap <output-dir> [seed] [m/px] [size] [center-x] [center-z]

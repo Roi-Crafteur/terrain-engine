@@ -51,6 +51,12 @@ terrain_add_test(voronoi_layout_test terrain_core)
 terrain_add_test(voronoi_test terrain_core)
 terrain_add_test(voronoi_boundaries_test terrain_core)
 terrain_add_test(voronoi_png_test terrain_core)
+terrain_add_test(lod_test terrain_core)
+terrain_add_test(lod_seams_test terrain_core)
+terrain_add_test(stream_manager_test terrain_core)
+terrain_add_test(modifications_test terrain_core)
+terrain_add_test(terrain_tiles_test terrain_core)
+terrain_add_test(persistence_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.

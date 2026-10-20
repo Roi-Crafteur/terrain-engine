@@ -1,0 +1,65 @@
+#pragma once
+
+#include "terrain/chunk_coord.hpp"
+#include "terrain/generation/ecology.hpp"
+#include "terrain/generation/heightfield.hpp"
+#include "terrain/storage/modifications.hpp"
+#include "terrain/streaming/stream_manager.hpp"
+
+#include <cstdint>
+#include <optional>
+#include <shared_mutex>
+#include <vector>
+
+namespace terrain {
+
+// Plants are only placed on the tiles of this LOD, which cover a single chunk.
+inline constexpr int kPlantLod = 0;
+
+// The streamed world: the infinite Heightfield, density y - heightAt(x, z), with the block edits
+// of its modifications, meshed tile by tile for a StreamManager. Its relief, rivers and biomes
+// are never changed: the modifications only edit blocks and plants.
+class TerrainTiles {
+public:
+    explicit TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield = {},
+                          const EcologyParams& ecology = {});
+
+    // Mesh of the vertical levels of the tile holding its ground or a lattice point an edited
+    // block reaches: the density is sampled every tileCellMeters(lod) meters on the lattice of
+    // the tile, the block edits are applied, the seams are stitched (stitchSeams), and each level
+    // is meshed with Marching Cubes. On LOD 0, the plants of the chunk (Ecology::placePlants on
+    // the exact heightfield) after the plant edits. Deterministic, and thread-safe: it may run
+    // concurrently with the edits.
+    [[nodiscard]] TileData generate(const TileRequest& request) const;
+
+    // Density at the lattice point (x, y, z), meters: the generated density with the block
+    // edits, the value every tile sampling this point holds before stitching. Thread-safe.
+    [[nodiscard]] float densityAt(int x, int y, int z) const;
+
+    // Edits, thread-safe with generate. Each returns the chunks whose tiles must be generated
+    // again (StreamManager::invalidate).
+    std::vector<ChunkCoord> setBlock(BlockCoord block, BlockEdit edit);
+    std::vector<ChunkCoord> clearBlock(BlockCoord block);
+    std::vector<ChunkCoord> addPlant(const Plant& plant);
+    std::vector<ChunkCoord> removePlant(const Plant& plant);
+    // Replaces every modification, to load a save: returns the chunks of the old and new ones.
+    std::vector<ChunkCoord> replaceModifications(ModificationStore store);
+
+    [[nodiscard]] std::optional<BlockEdit> blockAt(BlockCoord block) const;
+    [[nodiscard]] ModificationStore modifications() const; // a copy
+    [[nodiscard]] std::uint64_t seed() const { return seed_; }
+    [[nodiscard]] const Heightfield& heightfield() const { return field_; }
+    [[nodiscard]] const Ecology& ecology() const { return ecology_; }
+
+private:
+    std::uint64_t seed_;
+    Heightfield field_;
+    Ecology ecology_;
+    mutable std::shared_mutex mutex_; // guards modifications_
+    ModificationStore modifications_;
+};
+
+// Generator of a StreamManager over the tiles, which must outlive it.
+[[nodiscard]] TileGenerator tileGenerator(const TerrainTiles& tiles);
+
+} // namespace terrain
