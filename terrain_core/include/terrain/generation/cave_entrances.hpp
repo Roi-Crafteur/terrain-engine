@@ -7,8 +7,9 @@ namespace terrain {
 // Geometry of the surface entrances (CaveField::entrance places them).
 
 // Columns farther than the largest radius of an entrance plus this margin from its axis
-// ignore it: there its void is at least the margin, beyond the guard and fade of every
-// detail, so it would not change the density.
+// ignore it: there its void is at least the margin, beyond the guard and fade of every detail
+// carving entrances (at most 15 m, on the 4 m cells of LOD 2), so it would not change the
+// density.
 inline constexpr double kEntranceReachMargin = 16.0;
 
 // Horizontal distance from (x, z) to the axis of the entrance: the segment from its top to

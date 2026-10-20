@@ -39,9 +39,9 @@ public:
     // concurrently with the edits.
     //
     // With caves, the levels go down to the deepest caves (maxDepth below the lowest ground,
-    // plus the blend and a cell) and the levels without any surface are skipped; on the sides stitched to a coarser tile, the samples
-    // that tile holds are carved with its detail; the plants standing over an entrance are
-    // dropped.
+    // plus the blend and a cell) and the levels without any surface are skipped; on the sides
+    // stitched to a coarser tile, the samples that tile holds are carved with its detail; the
+    // plants standing over an entrance are dropped.
     [[nodiscard]] TileData generate(const TileRequest& request) const;
 
     // Density at the lattice point (x, y, z), meters: the generated density with the block

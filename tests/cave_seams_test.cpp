@@ -152,7 +152,8 @@ void checkStitched(const TerrainTiles& tiles, const Crossing& c, int lod) {
     }
     double latticeGap = 0.0;
     double otherGap = 0.0;
-    const std::vector<FacePoint> fine = inRange(seam_test::facePoints(stitched, c.plane), uMin, uMax);
+    const std::vector<FacePoint> fine =
+        inRange(seam_test::facePoints(stitched, c.plane), uMin, uMax);
     for (const FacePoint p : fine) {
         double& worst = onCoarseLattice(p, coarseCell) ? latticeGap : otherGap;
         worst = std::max(worst, seam_test::distanceToOutline(p, coarseOutline));
