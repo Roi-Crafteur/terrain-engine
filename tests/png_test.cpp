@@ -73,8 +73,8 @@ std::optional<Bytes> inflateStored(const Bytes& stream, int& blocks) {
             return std::nullopt;
         }
         final = (stream[at] & 1U) != 0;
-        const std::size_t length = stream[at + 1] | (stream[at + 2] << 8);
-        const std::size_t complement = stream[at + 3] | (stream[at + 4] << 8);
+        const auto length = static_cast<std::size_t>(stream[at + 1] | (stream[at + 2] << 8));
+        const auto complement = static_cast<std::size_t>(stream[at + 3] | (stream[at + 4] << 8));
         if ((length ^ 0xFFFFU) != complement || at + 5 + length > stream.size()) {
             return std::nullopt;
         }
