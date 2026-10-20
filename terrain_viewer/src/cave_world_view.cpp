@@ -24,7 +24,9 @@ namespace {
 // uViewDirection: a wide soft cone, fading with the distance, so that the ceilings and walls of
 // the caves are lit. The albedo is the color of the vertex, its alpha the opacity of the mesh.
 // The faces seen from behind (lakes and speleothems are drawn without culling) are lit by their
-// other side.
+// other side. uEmissive (0 for everything but the lava, 1 for the lava) is the share of the
+// albedo shown unlit: the lava glows, in the dark as under the headlight (glowColor, cave_look,
+// mirrors this mix).
 constexpr const char* kVertexShader = R"(#version 330 core
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
@@ -47,6 +49,7 @@ in vec3 vPosition;
 in vec4 vColor;
 uniform vec3 uEye;
 uniform vec3 uViewDirection;
+uniform float uEmissive;
 out vec4 fragColor;
 const float kHeadlightRange = 40.0;
 const float kHeadlightStrength = 0.9;
@@ -64,7 +67,8 @@ void main() {
     float cone = smoothstep(0.2, 0.9, dot(-toEye / distance, normalize(uViewDirection)));
     float range = distance / kHeadlightRange;
     float headlight = kHeadlightStrength * facing * cone / (1.0 + range * range);
-    fragColor = vec4(vColor.rgb * (0.25 + 0.75 * diffuse + headlight), vColor.a);
+    vec3 lit = vColor.rgb * (0.25 + 0.75 * diffuse + headlight);
+    fragColor = vec4(mix(lit, vColor.rgb, uEmissive), vColor.a);
 }
 )";
 
@@ -195,6 +199,19 @@ void applyCaveChanges(CaveTileViews& views, const terrain::StreamManager& manage
     }
 }
 
+// Draws the lava, opaque and unlit (emissive), without culling, then restores the lit look for
+// the meshes drawn after it: the terrain shader must be in use. The uniform keeps its value
+// between draws, so it is set back to 0 here and set to 0 again at the start of each frame.
+void drawLava(const CaveTileViews& views, const ShaderProgram& terrainShader) {
+    terrainShader.setFloat("uEmissive", kLavaEmissive);
+    for (const auto& [key, view] : views) {
+        if (view->lava) {
+            view->lava->draw();
+        }
+    }
+    terrainShader.setFloat("uEmissive", 0.0f);
+}
+
 // Blends the lakes over what is drawn: no culling (seen from above and from below), no depth
 // writes (the lakes do not hide each other nor what is behind them). The depth test stays.
 void drawLakes(const CaveTileViews& views) {
@@ -217,6 +234,9 @@ CaveTileView::CaveTileView(const terrain::TileData& data, const DistrictColorAt&
       lod(data.request.key.lod) {
     if (!data.water.indices.empty()) {
         lakes.emplace(data.water, lakeColors(data), originOf(data), kLakeOpacity);
+    }
+    if (!data.lava.indices.empty()) {
+        lava.emplace(data.lava, lavaColors(data), originOf(data));
     }
     if (!data.speleothems.empty()) {
         const SpeleothemMesh cones = speleothemMesh(data.speleothems);
@@ -273,6 +293,7 @@ void CaveWorldView::draw(const Mat4& viewProjection, const ShaderProgram& colorS
     terrainShader_.setMat4("uViewProjection", viewProjection);
     terrainShader_.setVec3("uEye", eye);
     terrainShader_.setVec3("uViewDirection", normalize(direction));
+    terrainShader_.setFloat("uEmissive", 0.0f); // lit: only the lava glows
     // Triangles are counter-clockwise seen from the air: culling the back faces of the rock
     // only, the near faces seen from inside the rock disappear.
     glFrontFace(GL_CCW);
@@ -290,6 +311,7 @@ void CaveWorldView::draw(const Mat4& viewProjection, const ShaderProgram& colorS
             view->flora->draw();
         }
     }
+    drawLava(views_, terrainShader_);
     colorShader.use();
     colorShader.setMat4("uViewProjection", viewProjection);
     for (const auto& [key, view] : views_) {
@@ -306,11 +328,16 @@ void CaveWorldView::draw(const Mat4& viewProjection, const ShaderProgram& colorS
 
 std::string CaveWorldView::status() const {
     std::array<int, terrain::kLodCount> counts{};
+    int lavaTiles = 0;
     for (const auto& [key, view] : views_) {
         ++counts[static_cast<std::size_t>(view->lod)];
+        lavaTiles += view->lava ? 1 : 0;
     }
-    const std::string tilesText = tileCountStatus(counts, manager_.pendingCount());
-    return districtLabel_.empty() ? tilesText : districtLabel_ + " - " + tilesText;
+    std::string text = tileCountStatus(counts, manager_.pendingCount());
+    if (lavaTiles > 0) {
+        text += ", lava in " + std::to_string(lavaTiles);
+    }
+    return districtLabel_.empty() ? text : districtLabel_ + " - " + text;
 }
 
 } // namespace viewer
