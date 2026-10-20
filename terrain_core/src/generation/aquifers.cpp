@@ -61,7 +61,7 @@ AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground) c
         const double depth = p.minLevelDepth +
                              unitDraw(cell, kDepthDraw) * (p.maxLevelDepth - p.minLevelDepth);
         result.level = static_cast<float>(
-            std::floor(static_cast<double>(lowest) - params_.minRoof - depth) + 0.5);
+            std::floor(static_cast<double>(lowest) - params_.minRoof - depth - 0.5) + 0.5);
         result.frozen = environment.temperature <= p.freezeTemperature;
     }
     return result;

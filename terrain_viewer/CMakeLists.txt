@@ -34,10 +34,17 @@ target_include_directories(terrain_viewer_camera PUBLIC src)
 target_compile_features(terrain_viewer_camera PUBLIC cxx_std_20)
 target_link_libraries(terrain_viewer_camera PRIVATE terrain_warnings)
 
+# How the caves look (colors, speleothem cones), computed on the CPU without OpenGL: tested.
+add_library(terrain_viewer_cave_look STATIC
+    src/cave_look.cpp
+)
+target_include_directories(terrain_viewer_cave_look PUBLIC src)
+target_compile_features(terrain_viewer_cave_look PUBLIC cxx_std_20)
+target_link_libraries(terrain_viewer_cave_look PUBLIC terrain_core PRIVATE terrain_warnings)
+
 add_executable(terrain_viewer
     src/main.cpp
     src/shader.cpp
-    src/cave_look.cpp
     src/cave_world_view.cpp
     src/cube_mesh.cpp
     src/chunk_mesh.cpp
@@ -56,6 +63,7 @@ target_compile_definitions(terrain_viewer PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(terrain_viewer PRIVATE
     terrain_core
     terrain_viewer_camera
+    terrain_viewer_cave_look
     glad_gl_core_33
     glfw
     terrain_warnings

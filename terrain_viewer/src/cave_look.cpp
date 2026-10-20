@@ -1,6 +1,6 @@
 #include "cave_look.hpp"
 
-#include "streamed_world_view.hpp"
+#include "altitude_tint.hpp"
 
 #include <algorithm>
 #include <array>

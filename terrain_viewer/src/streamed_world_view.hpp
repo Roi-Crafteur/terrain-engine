@@ -1,5 +1,6 @@
 #pragma once
 
+#include "altitude_tint.hpp"
 #include "chunk_mesh.hpp"
 #include "colored_mesh.hpp"
 #include "math.hpp"
@@ -20,10 +21,6 @@ namespace viewer {
 
 // Modification file of mode 9, in the working directory.
 inline constexpr const char* kModificationFile = "terrain_modifications.bin";
-
-// Green at sea level, gray from kStreamedHighAltitude.
-inline constexpr float kStreamedLowAltitude = 0.0f;
-inline constexpr float kStreamedHighAltitude = 2500.0f;
 
 // The camera of the streamed world looks down steeply enough to see the LOD 0 ring below it.
 inline constexpr float kStreamedPitchDegrees = 40.0f;

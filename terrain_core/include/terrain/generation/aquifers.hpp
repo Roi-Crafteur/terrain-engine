@@ -27,7 +27,7 @@ struct AquiferParams {
     float wetHumidity = 0.8f;
     // Level: the lowest ground of the cell (the site and a 3 x 3 grid of probes over its grid
     // square), minus the minimum roof, minus a depth drawn in [minLevelDepth, maxLevelDepth];
-    // rounded to a half meter so that no lattice sample lies on it. Under the higher ground of
+    // rounded down to n + 0.5 so that no lattice sample lies on it. Under the higher ground of
     // the cell, the caves stand above the water.
     float minLevelDepth = 12.0f;
     float maxLevelDepth = 52.0f;
