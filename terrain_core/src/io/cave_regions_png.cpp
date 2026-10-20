@@ -2,6 +2,7 @@
 
 #include "caves_png_layers.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include <algorithm>
@@ -392,7 +393,7 @@ CaveRegionsMeeting findCaveRegionsMeeting(const CaveField& field, const CaveGrou
                 if (!isMeeting(cache, ground, a, b, midpoint)) {
                     continue;
                 }
-                const double distance = std::hypot(midpoint.x - nearX, midpoint.z - nearZ);
+                const double distance = dmath::hypot(midpoint.x - nearX, midpoint.z - nearZ);
                 any.offer(midpoint, distance);
                 if (holdsPreferred(preferred, a, b)) {
                     wanted.offer(midpoint, distance);

@@ -1,5 +1,6 @@
 #include "terrain/generation/climate.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -15,7 +16,7 @@ enum Layer : std::uint64_t { kTemperature, kHumidity };
 } // namespace
 
 float slopeOf(float gradX, float gradZ) {
-    return std::hypot(gradX, gradZ);
+    return static_cast<float>(dmath::hypot(gradX, gradZ));
 }
 
 float exposureOf(float gradX, float gradZ) {

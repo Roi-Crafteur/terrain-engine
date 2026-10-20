@@ -1,5 +1,6 @@
 #include "terrain/generation/cave_entrances.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/aquifers.hpp"
 #include "terrain/generation/cliffs.hpp"
 #include "terrain/generation/heightfield.hpp"
@@ -7,7 +8,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 
 namespace terrain {
 
@@ -98,8 +98,8 @@ constexpr double kAxisStep = 2.0;
 bool aboveAquifers(const CaveEntrance& entrance, AquiferCache& aquifers,
                    const CaveParams& params) {
     const double length =
-        std::hypot(entrance.bottomX - entrance.topX, entrance.bottomY - entrance.topY,
-                   entrance.bottomZ - entrance.topZ);
+        dmath::hypot(entrance.bottomX - entrance.topX, entrance.bottomY - entrance.topY,
+                     entrance.bottomZ - entrance.topZ);
     const int steps = std::max(1, static_cast<int>(std::ceil(length / kAxisStep)));
     for (int step = 0; step <= steps; ++step) {
         const double t = static_cast<double>(step) / steps;
@@ -122,11 +122,11 @@ double entranceAxisDistance(const CaveEntrance& entrance, double x, double z) {
                                       entrance.bottomZ, x, z);
     const double px = entrance.topX + t * (entrance.bottomX - entrance.topX);
     const double pz = entrance.topZ + t * (entrance.bottomZ - entrance.topZ);
-    return std::hypot(x - px, z - pz);
+    return dmath::hypot(x - px, z - pz);
 }
 
 bool entranceColumn(const CaveEntrance& entrance, double x, double z, double margin) {
-    const double chamber = std::hypot(x - entrance.bottomX, z - entrance.bottomZ);
+    const double chamber = dmath::hypot(x - entrance.bottomX, z - entrance.bottomZ);
     return entranceAxisDistance(entrance, x, z) <= entrance.tubeRadius + margin ||
            chamber <= entrance.chamberRadius + margin;
 }
@@ -140,11 +140,11 @@ float entranceVoidAt(const CaveEntrance& entrance, double x, double y, double z)
         ((x - entrance.topX) * dx + (y - entrance.topY) * dy + (z - entrance.topZ) * dz) /
             length2,
         0.0, 1.0);
-    const double tube = std::hypot(x - (entrance.topX + t * dx), y - (entrance.topY + t * dy),
-                                   z - (entrance.topZ + t * dz)) -
+    const double tube = dmath::hypot(x - (entrance.topX + t * dx), y - (entrance.topY + t * dy),
+                                     z - (entrance.topZ + t * dz)) -
                         entrance.tubeRadius;
     const double chamber =
-        std::hypot(x - entrance.bottomX, y - entrance.bottomY, z - entrance.bottomZ) -
+        dmath::hypot(x - entrance.bottomX, y - entrance.bottomY, z - entrance.bottomZ) -
         entrance.chamberRadius;
     return static_cast<float>(std::min(tube, chamber));
 }
@@ -160,7 +160,7 @@ bool CaveField::entrance(int cellX, int cellZ, const CaveGround& ground, Aquifer
     const double offsetZ = (unitDraw(cell, kOffsetZDraw) - 0.5) * p.jitter;
     const double siteX = (cellX + 0.5 + offsetX) * p.spacing;
     const double siteZ = (cellZ + 0.5 + offsetZ) * p.spacing;
-    const double angle = 2.0 * std::numbers::pi * unitDraw(cell, kAngleDraw);
+    const double turns = unitDraw(cell, kAngleDraw);
     const double run = drawBetween(cell, kRunDraw, p.minRun, p.maxRun);
     const float site = ground.height(siteX, siteZ);
 
@@ -168,10 +168,10 @@ bool CaveField::entrance(int cellX, int cellZ, const CaveGround& ground, Aquifer
     entrance.topX = siteX;
     entrance.topY = static_cast<double>(site) + p.aboveGround;
     entrance.topZ = siteZ;
-    entrance.bottomX = siteX + run * std::cos(angle);
+    entrance.bottomX = siteX + run * dmath::cosTurns(turns);
     entrance.bottomY = static_cast<double>(site) - drawBetween(cell, kDepthDraw, p.minDepth,
                                                                p.maxDepth);
-    entrance.bottomZ = siteZ + run * std::sin(angle);
+    entrance.bottomZ = siteZ + run * dmath::sinTurns(turns);
     entrance.tubeRadius = drawBetween(cell, kTubeDraw, p.minTubeRadius, p.maxTubeRadius);
     entrance.chamberRadius =
         drawBetween(cell, kChamberDraw, p.minChamberRadius, p.maxChamberRadius);

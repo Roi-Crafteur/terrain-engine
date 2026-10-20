@@ -1,5 +1,7 @@
 #include "terrain/generation/noise.hpp"
 
+#include "terrain/det_math.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -138,7 +140,7 @@ float ridged2D(double x, double z, std::uint64_t seed, const FbmParams& params,
     for (int octave = 0; octave < params.octaves; ++octave) {
         const auto octaveSeed = deriveSeed(seed, static_cast<std::uint64_t>(octave));
         const double ridge = 1.0 - std::abs(static_cast<double>(gradient2D(px, pz, octaveSeed)));
-        const double signal = std::pow(ridge, sharpness) * weight;
+        const double signal = dmath::pow(ridge, sharpness) * weight;
         weight = std::clamp(2.0 * signal, 0.0, 1.0);
         sum += amplitude * signal;
         total += amplitude;

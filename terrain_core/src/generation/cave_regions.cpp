@@ -1,5 +1,6 @@
 #include "terrain/generation/cave_regions.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -188,7 +189,7 @@ DistrictWeights CaveDistricts::weights(
     for (std::size_t n = 0; n < around.size(); ++n) {
         around[n] = &districtAt(baseX + static_cast<int>(n % 3) - 1,
                                 baseZ + static_cast<int>(n / 3) - 1);
-        distance[n] = std::hypot(x - around[n]->siteX, z - around[n]->siteZ);
+        distance[n] = dmath::hypot(x - around[n]->siteX, z - around[n]->siteZ);
         nearest = distance[n] < distance[nearest] ? n : nearest;
     }
     DistrictWeights result;

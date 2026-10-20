@@ -1,5 +1,6 @@
 #include "terrain/generation/voronoi.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "voronoi_layout.hpp"
 
@@ -127,7 +128,7 @@ Neighborhood neighborhood(const TectonicPlates& plates, TectonicPlates::Point q,
 
 // Distance from the warped point to the bisector of two sites (exact for their images).
 double bisectorDistance(const Near& a, const Near& b) {
-    const double spacing = std::hypot(a.dx - b.dx, a.dz - b.dz);
+    const double spacing = dmath::hypot(a.dx - b.dx, a.dz - b.dz);
     return std::abs(a.distance2 - b.distance2) / (2.0 * spacing);
 }
 
@@ -244,9 +245,9 @@ TectonicPlates::TectonicPlates(std::uint64_t seed, const VoronoiParams& params) 
         const auto b = static_cast<std::size_t>(boundaries_[k].b);
         boundaryIndex_[a * count + b] = static_cast<int>(k);
         boundaryIndex_[b * count + a] = static_cast<int>(k);
-        maxSpacing =
-            std::max(maxSpacing, std::hypot(wrapOffset(plates_[b].x - plates_[a].x, planetSize_),
-                                            wrapOffset(plates_[b].z - plates_[a].z, planetSize_)));
+        maxSpacing = std::max(maxSpacing,
+                              dmath::hypot(wrapOffset(plates_[b].x - plates_[a].x, planetSize_),
+                                           wrapOffset(plates_[b].z - plates_[a].z, planetSize_)));
     }
     gateWidth_ = gateWidth(params_, maxSpacing);
     warpSeeds_ = {noise::deriveSeed(seed, kWarpX), noise::deriveSeed(seed, kWarpZ),

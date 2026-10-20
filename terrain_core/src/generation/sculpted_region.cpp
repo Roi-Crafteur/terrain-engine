@@ -1,5 +1,6 @@
 #include "terrain/generation/sculpted_region.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -38,7 +39,7 @@ float SculptedRegion::controlAt(double x, double z, const CliffColumn& column) c
             break;
         }
         const double reach = archField_.reach(arch);
-        const double distance = std::hypot(x - arch.x, z - arch.z);
+        const double distance = dmath::hypot(x - arch.x, z - arch.z);
         control *= noise::smoothstep(static_cast<float>(reach),
                                      static_cast<float>(reach + archFade_),
                                      static_cast<float>(distance));
@@ -50,7 +51,7 @@ SculptedColumn SculptedRegion::columnAt(double x, double z) const {
     SculptedColumn column{x, z, cliffs_.columnAt(x, z)};
     for (std::size_t i = 0; i < arches_.size(); ++i) {
         const Arch& arch = arches_[i];
-        if (std::hypot(x - arch.x, z - arch.z) < archField_.reach(arch)) {
+        if (dmath::hypot(x - arch.x, z - arch.z) < archField_.reach(arch)) {
             column.arch = static_cast<int>(i); // arches are kept out of each other's reach
         }
     }

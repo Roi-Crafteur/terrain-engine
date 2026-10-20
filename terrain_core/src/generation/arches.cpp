@@ -1,5 +1,6 @@
 #include "terrain/generation/arches.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/sdf.hpp"
 
@@ -7,7 +8,6 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
-#include <numbers>
 
 namespace terrain {
 
@@ -87,7 +87,7 @@ bool clearOfWater(const CliffRegion& cliffs, const Arch& arch, double reach) {
         for (int column = firstColumn; column <= lastColumn; ++column) {
             const int index = row * grid.size + column;
             const double distance =
-                std::hypot(eroded.sampleX(column) - arch.x, eroded.sampleZ(row) - arch.z);
+                dmath::hypot(eroded.sampleX(column) - arch.x, eroded.sampleZ(row) - arch.z);
             if (distance <= radius && (eroded.rivers().isRiver(index) ||
                                        grid.heights[static_cast<std::size_t>(index)] < kSeaLevel)) {
                 return false;
@@ -97,7 +97,7 @@ bool clearOfWater(const CliffRegion& cliffs, const Arch& arch, double reach) {
     const CliffParams& params = cliffs.field().params();
     const double cirqueReach = params.cirqueRadius + 2.0 * params.densityClamp;
     return std::none_of(cliffs.cirques().begin(), cliffs.cirques().end(), [&](const Cirque& c) {
-        return std::hypot(c.x - arch.x, c.z - arch.z) < reach + cirqueReach;
+        return dmath::hypot(c.x - arch.x, c.z - arch.z) < reach + cirqueReach;
     });
 }
 
@@ -144,7 +144,7 @@ bool fits(const CliffRegion& cliffs, const ArchField& field, const Bounds& bound
         return false;
     }
     for (const Arch& other : kept) {
-        if (std::hypot(other.x - arch.x, other.z - arch.z) < reach + field.reach(other)) {
+        if (dmath::hypot(other.x - arch.x, other.z - arch.z) < reach + field.reach(other)) {
             return false;
         }
     }
@@ -169,13 +169,13 @@ bool ArchField::candidate(int cellX, int cellZ, Arch& arch) const {
     }
     const double offsetX = 0.5 + params_.jitter * (unitDraw(cell, kOffsetXDraw) - 0.5);
     const double offsetZ = 0.5 + params_.jitter * (unitDraw(cell, kOffsetZDraw) - 0.5);
-    const double angle = std::numbers::pi * unitDraw(cell, kAngleDraw); // a span has no side
+    const double turns = 0.5 * unitDraw(cell, kAngleDraw); // a span has no side
     const double span = params_.minHalfSpan +
                         (params_.maxHalfSpan - params_.minHalfSpan) * unitDraw(cell, kSpanDraw);
     arch = {(cellX + offsetX) * params_.spacing,
             (cellZ + offsetZ) * params_.spacing,
-            std::cos(angle),
-            std::sin(angle),
+            dmath::cosTurns(turns),
+            dmath::sinTurns(turns),
             static_cast<float>(span),
             0.0f,
             cellX,
@@ -197,8 +197,8 @@ float ArchField::openingTop(const Arch& arch) const {
 
 double ArchField::boundingRadius(const Arch& arch) const {
     const double pillars = static_cast<double>(arch.halfSpan) + params_.pillarRadius;
-    const double ring = std::hypot(static_cast<double>(arch.halfSpan) + params_.tubeRadius,
-                                   std::max(params_.tubeRadius, params_.openingHalfDepth));
+    const double ring = dmath::hypot(static_cast<double>(arch.halfSpan) + params_.tubeRadius,
+                                     std::max(params_.tubeRadius, params_.openingHalfDepth));
     return std::max(pillars, ring);
 }
 
@@ -211,14 +211,14 @@ float ArchField::rock(const Arch& arch, double x, double y, double z) const {
     const double top = springline(arch);
     const double rise = y - top;
     // Half-torus in the vertical plane of the span, cut at the springline.
-    const auto radial = static_cast<float>(std::hypot(local.along, rise));
+    const auto radial = static_cast<float>(dmath::hypot(local.along, rise));
     const float ring = sdf::intersect(
         sdf::torus(radial, static_cast<float>(local.across), arch.halfSpan, params_.tubeRadius),
         static_cast<float>(-rise - kJointOverlap));
     const double bottom = static_cast<double>(arch.base) - params_.anchorDepth;
     const auto pillar = [&](double side) {
         const auto distance = static_cast<float>(
-            std::hypot(local.along - side * static_cast<double>(arch.halfSpan), local.across));
+            dmath::hypot(local.along - side * static_cast<double>(arch.halfSpan), local.across));
         return sdf::verticalCylinder(distance, params_.pillarRadius, y, bottom, top);
     };
     return sdf::unite(ring, sdf::unite(pillar(-1.0), pillar(1.0)));
@@ -229,11 +229,11 @@ float ArchField::opening(const Arch& arch, double x, double y, double z) const {
     const double rise = y - springline(arch);
     const auto across = static_cast<float>(std::abs(local.across)) - params_.openingHalfDepth;
     // Half-disk inside the half-torus.
-    const float vault = sdf::intersect(
-        sdf::intersect(static_cast<float>(std::hypot(local.along, rise)) -
-                           (arch.halfSpan - params_.tubeRadius),
-                       across),
-        static_cast<float>(-rise));
+    const float vault =
+        sdf::intersect(sdf::intersect(static_cast<float>(dmath::hypot(local.along, rise)) -
+                                          (arch.halfSpan - params_.tubeRadius),
+                                      across),
+                       static_cast<float>(-rise));
     // Between the pillars, from the base up to the springline.
     const float door = sdf::intersect(
         sdf::intersect(static_cast<float>(std::abs(local.along)) -

@@ -1,5 +1,6 @@
 #include "terrain/generation/cave_galleries.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/aquifers.hpp"
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/noise.hpp"
@@ -8,7 +9,6 @@
 #include <array>
 #include <cmath>
 #include <limits>
-#include <numbers>
 #include <optional>
 
 namespace terrain {
@@ -46,7 +46,7 @@ double lineDistance(const GalleryLine& line, double x, double z, const GalleryPa
     const double h = p.gradientStep;
     const double dx = (lineNoise(line, x + h, z) - lineNoise(line, x - h, z)) / (2.0 * h);
     const double dz = (lineNoise(line, x, z + h) - lineNoise(line, x, z - h)) / (2.0 * h);
-    const double slope = std::max(std::hypot(dx, dz), p.gradientFloor / line.wavelength);
+    const double slope = std::max(dmath::hypot(dx, dz), p.gradientFloor / line.wavelength);
     return std::abs(lineNoise(line, x, z)) / slope;
 }
 
@@ -316,9 +316,9 @@ float AquiferCache::riverBandTopNear(double x, double z, double reach) {
     }
     float highest = kDryLevel;
     for (int n = 0; n < 9; ++n) {
-        const double angle = static_cast<double>(n) * std::numbers::pi / 4.0;
-        const double px = n == 8 ? x : x + reach * std::cos(angle);
-        const double pz = n == 8 ? z : z + reach * std::sin(angle);
+        const double turns = static_cast<double>(n) / 8.0;
+        const double px = n == 8 ? x : x + reach * dmath::cosTurns(turns);
+        const double pz = n == 8 ? z : z + reach * dmath::sinTurns(turns);
         const CaveColumn column = field_->column(px, pz, ground_->height(px, pz), *ground_, {},
                                                  this, false);
         const float top = field_->riverBandTop(column);

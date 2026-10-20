@@ -1,6 +1,7 @@
 #include "terrain/generation/rivers.hpp"
 
 #include "grid_neighbors.hpp"
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -187,7 +188,7 @@ RiverNetwork computeDrainage(const HeightGrid& grid, std::uint64_t seed,
 }
 
 float bedDepth(double catchment, const RiverParams& params) {
-    const double doublings = std::log2(std::max(catchment / params.minCatchmentArea, 1.0));
+    const double doublings = dmath::log2(std::max(catchment / params.minCatchmentArea, 1.0));
     const double depth = params.bedDepth + params.bedDepthPerDoubling * doublings;
     return static_cast<float>(std::min(depth, static_cast<double>(params.maxBedDepth)));
 }

@@ -1,5 +1,6 @@
 #include "terrain/generation/aquifers.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
@@ -30,6 +31,10 @@ std::uint64_t cellSeed(std::uint64_t seed, int cellX, int cellZ) {
 // Uniform number in [0, 1), 2^24 steps.
 double unitDraw(std::uint64_t cell, Draw draw) {
     return static_cast<double>(noise::deriveSeed(cell, draw) >> 40) / 16777216.0;
+}
+
+double squared(double v) {
+    return v * v;
 }
 
 std::uint64_t cellKey(int cellX, int cellZ) {
@@ -108,7 +113,7 @@ void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
         const AquiferCell& cell = aquifers.at(baseX + static_cast<int>(n % 3) - 1,
                                               baseZ + static_cast<int>(n / 3) - 1);
         cells[n] = &cell;
-        const double d2 = std::pow(column.x - cell.siteX, 2) + std::pow(column.z - cell.siteZ, 2);
+        const double d2 = squared(column.x - cell.siteX) + squared(column.z - cell.siteZ);
         if (n == 0 || d2 < nearest) {
             nearest = d2;
             own = n;
@@ -125,9 +130,8 @@ void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
             continue;
         }
         // Distance to the bisector of the two sites, on the side of the own site.
-        const double far =
-            std::pow(column.x - other.siteX, 2) + std::pow(column.z - other.siteZ, 2);
-        const double span = std::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
+        const double far = squared(column.x - other.siteX) + squared(column.z - other.siteZ);
+        const double span = dmath::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
         const auto distance = static_cast<float>((far - nearest) / (2.0 * span));
         if (distance < p.barrierHalfWidth && column.barrierCount < kMaxColumnBarriers) {
             column.barriers[static_cast<std::size_t>(column.barrierCount)] = {
@@ -183,7 +187,7 @@ const AquiferCell& AquiferCache::nearest(double x, double z) {
     double nearest = 0.0;
     for (int n = 0; n < 9; ++n) {
         const AquiferCell& cell = at(baseX + n % 3 - 1, baseZ + n / 3 - 1);
-        const double d2 = std::pow(x - cell.siteX, 2) + std::pow(z - cell.siteZ, 2);
+        const double d2 = squared(x - cell.siteX) + squared(z - cell.siteZ);
         if (best == nullptr || d2 < nearest) {
             nearest = d2;
             best = &cell;
@@ -201,7 +205,7 @@ float AquiferCache::highestLevelNear(double x, double z, double reach) {
     double nearest = 0.0;
     for (std::size_t n = 0; n < cells.size(); ++n) {
         cells[n] = &at(baseX + static_cast<int>(n % 3) - 1, baseZ + static_cast<int>(n / 3) - 1);
-        const double d2 = std::pow(x - cells[n]->siteX, 2) + std::pow(z - cells[n]->siteZ, 2);
+        const double d2 = squared(x - cells[n]->siteX) + squared(z - cells[n]->siteZ);
         if (n == 0 || d2 < nearest) {
             nearest = d2;
             own = n;
@@ -214,8 +218,8 @@ float AquiferCache::highestLevelNear(double x, double z, double reach) {
         if (n == own || heldLevel(other) <= kDryLevel) {
             continue;
         }
-        const double far = std::pow(x - other.siteX, 2) + std::pow(z - other.siteZ, 2);
-        const double span = std::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
+        const double far = squared(x - other.siteX) + squared(z - other.siteZ);
+        const double span = dmath::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
         if ((far - nearest) / (2.0 * span) < reach + p.barrierHalfWidth) {
             highest = std::max(highest, heldLevel(other));
         }

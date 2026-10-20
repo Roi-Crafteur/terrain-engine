@@ -1,5 +1,6 @@
 #include "voronoi_layout.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -138,7 +139,7 @@ std::vector<Offset> imageOffsets(const std::vector<Plate>& plates, std::size_t i
 // site: the part of their bisector closer to both than to any other image. Each image o
 // keeps the half-plane |p|^2 <= |p - o|^2, i.e. 2 p.o <= |o|^2, which clips the bisector.
 double edgeLength(const std::vector<Offset>& images, Offset other) {
-    const double norm = std::hypot(other.x, other.z);
+    const double norm = dmath::hypot(other.x, other.z);
     const Offset mid{other.x / 2.0, other.z / 2.0};
     const Offset along{-other.z / norm, other.x / norm};
     double low = -std::numeric_limits<double>::infinity();
@@ -182,7 +183,7 @@ std::vector<PlateBoundary> findBoundaries(const std::vector<Plate>& plates, doub
                     const double edge = edgeLength(images, image);
                     if (edge > length) {
                         length = edge;
-                        const double norm = std::hypot(image.x, image.z);
+                        const double norm = dmath::hypot(image.x, image.z);
                         normal = {image.x / norm, image.z / norm};
                     }
                 }
@@ -206,10 +207,10 @@ void moveAndClassify(std::vector<Plate>& plates, std::vector<PlateBoundary>& bou
                      const std::vector<Offset>& normals, std::uint64_t seed) {
     Random random(seed);
     for (Plate& plate : plates) {
-        const double angle = 2.0 * std::numbers::pi * random.unit();
+        const double turns = random.unit();
         const double speed = 0.5 + 0.5 * random.unit();
-        plate.velocityX = speed * std::cos(angle);
-        plate.velocityZ = speed * std::sin(angle);
+        plate.velocityX = speed * dmath::cosTurns(turns);
+        plate.velocityZ = speed * dmath::sinTurns(turns);
     }
     for (std::size_t k = 0; k < boundaries.size(); ++k) {
         PlateBoundary& boundary = boundaries[k];
@@ -217,7 +218,7 @@ void moveAndClassify(std::vector<Plate>& plates, std::vector<PlateBoundary>& bou
         const Plate& b = plates[static_cast<std::size_t>(boundary.b)];
         const double rx = a.velocityX - b.velocityX;
         const double rz = a.velocityZ - b.velocityZ;
-        const double relative = std::hypot(rx, rz);
+        const double relative = dmath::hypot(rx, rz);
         const double toward = rx * normals[k].x + rz * normals[k].z;
         boundary.convergence = relative > 0.0 ? static_cast<float>(toward / relative) : 0.0f;
         if (boundary.convergence >= kCollisionThreshold) {

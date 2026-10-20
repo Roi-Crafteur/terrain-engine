@@ -89,6 +89,9 @@ terrain_add_test(speleothems_test terrain_core)
 terrain_add_test(cave_materials_test terrain_core)
 terrain_add_test(cave_materials_regions_test terrain_core)
 terrain_add_test(cave_golden_test terrain_core)
+terrain_add_test(heightfield_golden_test terrain_core)
+terrain_add_test(world_golden_test terrain_core)
+terrain_add_test(golden_ftz_test terrain_core)
 terrain_add_test(cave_districts_test terrain_core)
 terrain_add_test(cave_district_weights_test terrain_core)
 terrain_add_test(cave_districts_neutral_test terrain_core)
@@ -101,6 +104,13 @@ terrain_add_test(cave_rivers_tiles_test terrain_core)
 terrain_add_test(cave_lava_test terrain_core)
 terrain_add_test(cave_lava_tiles_test terrain_core)
 terrain_add_test(cave_fluid_objects_test terrain_core)
+
+# No platform-dependent floating-point function in the sources of terrain_core (std::sin,
+# std::pow, std::fma, long double...): terrain::dmath replaces them.
+add_test(NAME forbidden_math_test
+    COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${PROJECT_SOURCE_DIR}/terrain_core
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/forbidden_math_test.cmake)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.

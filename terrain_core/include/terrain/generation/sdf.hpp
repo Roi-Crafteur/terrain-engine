@@ -1,5 +1,7 @@
 #pragma once
 
+#include "terrain/det_math.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -79,7 +81,7 @@ namespace terrain::sdf {
 // distance from the axis of the torus, axial the signed coordinate along it.
 [[nodiscard]] inline float torus(float radial, float axial, float majorRadius,
                                  float minorRadius) {
-    return std::hypot(radial - majorRadius, axial) - minorRadius;
+    return static_cast<float>(dmath::hypot(radial - majorRadius, axial)) - minorRadius;
 }
 
 } // namespace terrain::sdf

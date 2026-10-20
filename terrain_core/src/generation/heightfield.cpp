@@ -1,5 +1,6 @@
 #include "terrain/generation/heightfield.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -158,8 +159,9 @@ void Heightfield::continentalnessAt(double x, double z, HeightSample& s) const {
         const noise::FbmParams macro{.octaves = 2,
                                      .frequency = 1.0 / params_.macroContinentWavelength};
         s.macroContinentalness = noise::fbm2D(x, z, macroContinentSeed_, macro);
-        term = params_.macroContinent *
-               std::tanh(s.macroContinentalness / params_.macroContinentWidth);
+        term =
+            params_.macroContinent *
+            static_cast<float>(dmath::tanh(s.macroContinentalness / params_.macroContinentWidth));
     }
     if (plates_) {
         const PlateSample plate = plates_->sampleAt(x, z);

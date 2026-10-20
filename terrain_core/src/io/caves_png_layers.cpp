@@ -1,5 +1,7 @@
 #include "caves_png_layers.hpp"
 
+#include "terrain/det_math.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
@@ -207,7 +209,7 @@ CaveWallSite wallSite(const SliceColumn& column, double y, const AirAround& arou
     CaveWallSite site;
     site.environment = column.environment;
     site.depth = static_cast<float>(static_cast<double>(column.caves.ground) - y);
-    const double length = std::hypot(around.x, around.y);
+    const double length = dmath::hypot(around.x, around.y);
     site.normalY = length > 0.0 ? static_cast<float>(around.y / length) : 0.0f;
     if (column.caves.waterLevel > kDryLevel) {
         site.aboveWater = static_cast<float>(y - static_cast<double>(column.caves.waterLevel));
