@@ -80,7 +80,19 @@ struct Invariants {
     std::int64_t t;
 };
 
+// v mod m in [0, m). The invariants of the points of the canonical range mostly lie within a
+// period of [0, m): corrected without a division.
 std::int64_t modulo(std::int64_t v, std::int64_t m) {
+    if (v >= 0) {
+        if (v < m) {
+            return v;
+        }
+        if (v - m < m) {
+            return v - m;
+        }
+    } else if (v >= -m) {
+        return v + m;
+    }
     const std::int64_t r = v % m;
     return r < 0 ? r + m : r;
 }
@@ -103,6 +115,11 @@ struct LatticePoint {
 LatticePoint toLattice(double x, double z, const Lattice2D& l) {
     const double px = x * l.scaleX;
     const double pz = z * l.scaleZ;
+    if (l.c == 1) {
+        // Without rotation (1 px - 0 pz) / 1 is px: the same bits without the divisions, the
+        // sign of a zero aside, which the offset (+0 at least) clears.
+        return {px + l.offsetU, pz + l.offsetV};
+    }
     const auto a = static_cast<double>(l.a);
     const auto b = static_cast<double>(l.b);
     const auto c = static_cast<double>(l.c);
