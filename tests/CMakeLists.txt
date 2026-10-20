@@ -21,6 +21,7 @@ terrain_add_test(marching_cubes_test terrain_core)
 terrain_add_test(noise_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
 terrain_add_test(heightfield_macro_test terrain_core)
+terrain_add_test(heightfield_voronoi_test terrain_core)
 terrain_add_test(heightfield_density_test terrain_core)
 terrain_add_test(png_test terrain_core)
 terrain_add_test(heightmap_png_test terrain_core)
@@ -46,6 +47,10 @@ terrain_add_test(vegetation_test terrain_core)
 terrain_add_test(ecology_test terrain_core)
 terrain_add_test(ecology_cliffs_test terrain_core)
 terrain_add_test(ecology_png_test terrain_core)
+terrain_add_test(voronoi_layout_test terrain_core)
+terrain_add_test(voronoi_test terrain_core)
+terrain_add_test(voronoi_boundaries_test terrain_core)
+terrain_add_test(voronoi_png_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
@@ -103,3 +108,22 @@ add_test(NAME export_biomes_smoke
 set_tests_properties(export_biomes_smoke PROPERTIES
     PASS_REGULAR_EXPRESSION "512 x 512 px, 102\\.4 km wide.*[0-9]+ biomes: ocean")
 add_dependencies(check terrain_export_biomes)
+
+# Smoke test: writes voronoi_plates.png, voronoi_heightmap.png and voronoi_preview.png
+# (128 x 128 px at 256 km/px: 32,768 km around the origin) and voronoi_world.png (128 px, the
+# whole planet) into <build-dir>/voronoi for a visual check. The summary is printed only once
+# the images are written.
+add_test(NAME export_voronoi_smoke
+    COMMAND terrain_export_voronoi ${CMAKE_BINARY_DIR}/voronoi 20261019 256000 128 0 0 0.5 0.25
+            128)
+set_tests_properties(export_voronoi_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "planet [0-9]+ km, 128 x 128 px, 32768\\.0 km wide.*plates 0\\.50, macro continent 0\\.25")
+add_dependencies(check terrain_export_voronoi)
+
+# Invalid arguments of terrain_export_voronoi (plates 0, world size 1, ...) are rejected with
+# an error message, before anything is written.
+add_test(NAME export_voronoi_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_voronoi>
+            -DOUT=${CMAKE_BINARY_DIR}/voronoi_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_voronoi_bad_args.cmake)
