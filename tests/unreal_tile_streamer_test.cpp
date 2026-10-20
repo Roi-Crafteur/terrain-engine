@@ -179,13 +179,13 @@ void testWarmUpWithBusyWorkers() {
     const terrain::unreal::WarmUpResult warm =
         streamer.warmUp(centerOf(player), kFrame, 1, std::chrono::seconds(10));
     TEST_CHECK(warm.complete);
-    bool near = true;
+    bool nearShown = true;
     for (int dz = -1; dz <= 1; ++dz) {
         for (int dx = -1; dx <= 1; ++dx) {
-            near = near && streamer.shown(TileKey{{player.x + dx, player.z + dz}, 0});
+            nearShown = nearShown && streamer.shown(TileKey{{player.x + dx, player.z + dz}, 0});
         }
     }
-    TEST_CHECK(near);
+    TEST_CHECK(nearShown);
     Shown shown;
     std::size_t replaced = 0;
     bool known = true;

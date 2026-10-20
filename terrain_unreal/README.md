@@ -91,7 +91,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 ### Check-list du premier essai (à me renvoyer)
 
 - [ ] compilation sans erreur (sinon le log) ;
-- [ ] log `the heights of the default world match terrain_core bit for bit` ;
+- [ ] log `the heights and tiles of the default world match terrain_core bit for bit` ;
 - [ ] terrain visible **d'en haut**, éclairé du côté du soleil (enroulement et normales) ;
 - [ ] couleurs selon l'altitude ;
 - [ ] le Character marche et saute sans traverser le sol, y compris loin de son départ ;
@@ -106,7 +106,8 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
   est inversé ; une seule ligne à changer dans `Bridge/tile_mesh_conversion.cpp`, dis-le-moi.
 - **Éclairage à l'envers** (côté soleil sombre) : les normales ; envoie une capture.
 - **`this build does not generate the same world`** : cette compilation ne calcule pas les mêmes
-  hauteurs que `terrain_core` (options flottantes) ; rien n'est streamé ; envoie le log.
+  hauteurs ou les mêmes sommets que `terrain_core` (options flottantes) ; rien n'est streamé ;
+  envoie le log.
 - **`streaming stopped: …`** : une erreur du core ; le streaming s'arrête, envoie le message.
 - **Le Character tombe à travers le sol** : vérifie `bAsyncCollisionCooking` (désactivé par
   défaut) et la ligne `ground ready under …` du log.
@@ -168,11 +169,14 @@ terrain_unreal/
   (`maxLoadsPerUpdate`) ; une tuile n'est retirée qu'une fois ses remplaçantes affichées, dans la
   même frame : pas de trou. Collisions sur toutes les tuiles LOD 0.
 - **Autocontrôle du déterminisme** (`Bridge/determinism_check.cpp`) : au `BeginPlay`, les
-  hauteurs de quelques points du monde par défaut sont comparées bit à bit à une table produite
-  par le core compilé par CMake ; en cas de différence, erreur et pas de streaming. Limite
-  constatée : sur 2000 points, une compilation `-ffast-math` ou avec FMA donne encore les mêmes
-  hauteurs (le résultat est arrondi en float), alors que les sommets d'une tuile changent ; le
-  contrôle attrape un monde différent, pas encore toute option flottante différente.
+  hauteurs de 8 points du monde par défaut, puis l'empreinte (FNV-1a des bits de l'origine, des
+  sommets, des normales et des indices) de 3 tuiles LOD 0, sont comparées à des tables produites
+  par le core compilé par CMake ; en cas de différence, erreur et pas de streaming. Les hauteurs
+  seules, arrondies en float, ne suffisent pas : sur 2000 points, une compilation `-ffast-math` ou
+  avec FMA donne les mêmes. Les empreintes, elles, les refusent (vérifié avec clang
+  `-ffast-math` et avec GCC et clang `-march=native -ffp-contract=fast`), et acceptent GCC `-O3`
+  et clang `-O2`. Sur Mac, AppleClang contracte en FMA par défaut : le contrôle y refusera
+  probablement le streaming jusqu'à la phase 9.
 
 Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_frame_test`,
 `unreal_tile_mesh_test`, `unreal_altitude_color_test`, `unreal_tile_timings_test`,
@@ -198,10 +202,10 @@ La phase 9 rend le monde bouclé (est ↔ ouest, nord ↔ sud) et fige les calcu
   affichées avec lui). Points prévus : `tileOrigin` (`Bridge/tile_mesh_conversion.hpp`),
   `UnrealFrame` (`Bridge/unreal_frame.hpp`), `FTerrainWorldState::Frame` (`TerrainWorld.cpp`),
   marqués `TODO(phase 9)`.
-- **Table de l'autocontrôle** : quand les valeurs du terrain changent, mettre à jour
-  `kHeightProbes` (`Bridge/determinism_check.cpp`) dans le même commit que le core ;
-  `unreal_determinism_check_test` échoue d'ici là et affiche les nouvelles valeurs
-  (`probe (x, z): 0x… expected, 0x… computed`).
+- **Tables de l'autocontrôle** : quand les valeurs du terrain changent, mettre à jour
+  `kHeightProbes` et `kTileProbes` (`Bridge/determinism_check.cpp`) dans le même commit que le
+  core ; `unreal_determinism_check_test` échoue d'ici là et affiche les nouvelles valeurs
+  (`probe (x, z): 0x… expected, 0x… computed`, `tile (x, z): 0x… expected, 0x… computed`).
 - **`#error` sur `__FAST_MATH__` / `_M_FP_FAST`** ajouté au core : le plugin doit compiler sans
   erreur grâce à `FPSemantics = Precise` ; sinon, c'est cette erreur qui le dira.
 

@@ -18,7 +18,7 @@ using terrain::unreal::UnrealPoint;
 using terrain::unreal::UnrealVector3f;
 
 // Within a few rounding errors of a double at the magnitude scale (at least 1).
-bool near(double a, double b, double scale) {
+bool closeTo(double a, double b, double scale) {
     return std::abs(a - b) <= 1e-14 * std::max(1.0, scale);
 }
 
@@ -35,12 +35,12 @@ double scaleOf(const UnrealFrame& frame, const CorePoint& point) {
     return std::max(magnitude(frame.origin), magnitude(point));
 }
 
-bool near(const CorePoint& a, const CorePoint& b, double scale) {
-    return near(a.x, b.x, scale) && near(a.y, b.y, scale) && near(a.z, b.z, scale);
+bool closeTo(const CorePoint& a, const CorePoint& b, double scale) {
+    return closeTo(a.x, b.x, scale) && closeTo(a.y, b.y, scale) && closeTo(a.z, b.z, scale);
 }
 
-bool near(const UnrealPoint& a, const UnrealPoint& b, double scale) {
-    return near(a.x, b.x, scale) && near(a.y, b.y, scale) && near(a.z, b.z, scale);
+bool closeTo(const UnrealPoint& a, const UnrealPoint& b, double scale) {
+    return closeTo(a.x, b.x, scale) && closeTo(a.y, b.y, scale) && closeTo(a.z, b.z, scale);
 }
 
 Vec3f cross(const Vec3f& a, const Vec3f& b) {
@@ -102,11 +102,11 @@ void testRoundTrips() {
         for (const CorePoint& point : kPoints) {
             const double scale = scaleOf(frame, point);
             const UnrealPoint unreal = terrain::unreal::toUnreal(frame, point);
-            coreTrip = coreTrip && near(terrain::unreal::toCore(frame, unreal), point, scale);
+            coreTrip = coreTrip && closeTo(terrain::unreal::toCore(frame, unreal), point, scale);
             const UnrealPoint asUnreal{point.x * 100.0, point.y * 100.0, point.z * 100.0};
             const CorePoint core = terrain::unreal::toCore(frame, asUnreal);
             unrealTrip = unrealTrip &&
-                         near(terrain::unreal::toUnreal(frame, core), asUnreal, 100.0 * scale);
+                         closeTo(terrain::unreal::toUnreal(frame, core), asUnreal, 100.0 * scale);
         }
     }
     TEST_CHECK(coreTrip);
@@ -132,12 +132,12 @@ void testShift() {
                                            before.z + offset.z};
                 const double scale = std::max(100.0 * scaleOf(frame, point), magnitude(offset));
                 follows = follows &&
-                          near(terrain::unreal::toUnreal(moved, point), expected, 4.0 * scale);
+                          closeTo(terrain::unreal::toUnreal(moved, point), expected, 4.0 * scale);
             }
             const UnrealFrame back =
                 terrain::unreal::shifted(moved, {-offset.x, -offset.y, -offset.z});
             const double scale = std::max(magnitude(frame.origin), magnitude(offset) / 100.0);
-            reversible = reversible && near(back.origin, frame.origin, 4.0 * scale);
+            reversible = reversible && closeTo(back.origin, frame.origin, 4.0 * scale);
         }
     }
     TEST_CHECK(follows);
@@ -170,8 +170,9 @@ void testChunkAt() {
     TEST_CHECK(terrain::unreal::chunkAt(frame, {3250.0, -1601.0, 0.0}) ==
                (terrain::ChunkCoord{2, -2}));
     TEST_CHECK(terrain::unreal::chunkAt(frame, {0.0, 0.0, -1.0e6}) == (terrain::ChunkCoord{0, 0}));
-    const UnrealFrame far{{1600.0, 0.0, -1600.0}};
-    TEST_CHECK(terrain::unreal::chunkAt(far, {-1.0, 1.0, 0.0}) == (terrain::ChunkCoord{99, -100}));
+    const UnrealFrame distant{{1600.0, 0.0, -1600.0}};
+    TEST_CHECK(terrain::unreal::chunkAt(distant, {-1.0, 1.0, 0.0}) ==
+               (terrain::ChunkCoord{99, -100}));
 }
 
 } // namespace

@@ -21,7 +21,7 @@ using terrain::unreal::VertexColor;
 using terrain::unreal::altitudeColor;
 
 // Within one byte of round(255 * (r, g, b)), opaque.
-bool near(VertexColor color, double r, double g, double b) {
+bool closeTo(VertexColor color, double r, double g, double b) {
     const auto close = [](std::uint8_t byte, double value) {
         return std::abs(static_cast<double>(byte) - value * 255.0) <= 1.0;
     };
@@ -34,15 +34,15 @@ int channelGap(VertexColor a, VertexColor b) {
 }
 
 void testBands() {
-    TEST_CHECK(near(altitudeColor(terrain::unreal::kSeabedDepth), 0.20, 0.25, 0.32));
-    TEST_CHECK(near(altitudeColor(0.0), 0.76, 0.70, 0.50)); // sand at sea level
-    TEST_CHECK(near(altitudeColor(terrain::unreal::kBeachTop), 0.30, 0.55, 0.25));
-    TEST_CHECK(near(altitudeColor(terrain::unreal::kRockAltitude), 0.65, 0.60, 0.55));
-    TEST_CHECK(near(altitudeColor(2800.0), 0.65, 0.60, 0.55));
-    TEST_CHECK(near(altitudeColor(terrain::unreal::kSnowFull), 0.95, 0.95, 0.97));
+    TEST_CHECK(closeTo(altitudeColor(terrain::unreal::kSeabedDepth), 0.20, 0.25, 0.32));
+    TEST_CHECK(closeTo(altitudeColor(0.0), 0.76, 0.70, 0.50)); // sand at sea level
+    TEST_CHECK(closeTo(altitudeColor(terrain::unreal::kBeachTop), 0.30, 0.55, 0.25));
+    TEST_CHECK(closeTo(altitudeColor(terrain::unreal::kRockAltitude), 0.65, 0.60, 0.55));
+    TEST_CHECK(closeTo(altitudeColor(2800.0), 0.65, 0.60, 0.55));
+    TEST_CHECK(closeTo(altitudeColor(terrain::unreal::kSnowFull), 0.95, 0.95, 0.97));
     // Halfway between the green of the beach top and the gray of the rock.
     const double middle = (terrain::unreal::kBeachTop + terrain::unreal::kRockAltitude) / 2.0;
-    TEST_CHECK(near(altitudeColor(middle), 0.475, 0.575, 0.40));
+    TEST_CHECK(closeTo(altitudeColor(middle), 0.475, 0.575, 0.40));
 }
 
 void testClamped() {

@@ -21,40 +21,134 @@ constexpr std::array<HeightProbe, 8> kHeightProbes{{
     {-29999999.5, -17499999.25, 0x44CD8C34U},   // 1644.38 m
 }};
 
+// Produced and checked the same way.
+constexpr std::array<TileProbe, 3> kTileProbes{{
+    {{{{0, 0}, 0}, 0}, 0x76E2C71D9DD1844EULL},                        // the origin, a coast
+    {{{{64, -2112}, 0}, 0}, 0xD9BE92101C85A6B8ULL},                   // a mountain
+    {{{{77, -424}, 0}, kSeamNegX | kSeamPosZ}, 0x977E69E4E2D02A81ULL}, // with seams
+}};
+
+class Fnv1a {
+public:
+    void add(std::uint64_t value, int bytes) {
+        for (int i = 0; i < bytes; ++i) {
+            hash_ ^= (value >> (8 * i)) & 0xFFU;
+            hash_ *= 1099511628211ULL;
+        }
+    }
+    void add(float value) { add(std::bit_cast<std::uint32_t>(value), 4); }
+    void add(double value) { add(std::bit_cast<std::uint64_t>(value), 8); }
+    void add(const Vec3f& v) {
+        add(v.x);
+        add(v.y);
+        add(v.z);
+    }
+    [[nodiscard]] std::uint64_t value() const { return hash_; }
+
+private:
+    std::uint64_t hash_ = 14695981039346656037ULL;
+};
+
+DeterminismReport heightMismatch(const HeightProbe& probe, std::uint32_t bits) {
+    DeterminismReport report;
+    report.same = false;
+    report.height = probe;
+    report.actualBits = bits;
+    return report;
+}
+
+DeterminismReport tileMismatch(const TileProbe& probe, std::uint64_t fingerprint) {
+    DeterminismReport report;
+    report.same = false;
+    report.tile = true;
+    report.tileProbe = probe;
+    report.actualFingerprint = fingerprint;
+    return report;
+}
+
+std::string describeMismatch(const DeterminismReport& report) {
+    char text[320];
+    if (report.tile) {
+        const TileKey& key = report.tileProbe.request.key;
+        std::snprintf(text, sizeof(text),
+                      "this build does not generate the same world: the mesh of the tile (%d, %d) "
+                      "LOD %d has the fingerprint 0x%016llX instead of 0x%016llX",
+                      key.origin.x, key.origin.z, key.lod,
+                      static_cast<unsigned long long>(report.actualFingerprint),
+                      static_cast<unsigned long long>(report.tileProbe.fingerprint));
+    } else {
+        std::snprintf(text, sizeof(text),
+                      "this build does not generate the same world: heightAt(%.4f, %.4f) = %.9g m "
+                      "(0x%08X) instead of %.9g m (0x%08X)",
+                      report.height.x, report.height.z,
+                      static_cast<double>(std::bit_cast<float>(report.actualBits)),
+                      static_cast<unsigned>(report.actualBits),
+                      static_cast<double>(std::bit_cast<float>(report.height.bits)),
+                      static_cast<unsigned>(report.height.bits));
+    }
+    return text;
+}
+
 } // namespace
 
 std::span<const HeightProbe> heightProbes() {
     return kHeightProbes;
 }
 
+std::span<const TileProbe> tileProbes() {
+    return kTileProbes;
+}
+
+std::uint64_t tileFingerprint(const TileData& data) {
+    Fnv1a hash;
+    hash.add(data.originX);
+    hash.add(data.originY);
+    hash.add(data.originZ);
+    hash.add(data.mesh.vertices.size(), 8);
+    for (const Vec3f& vertex : data.mesh.vertices) {
+        hash.add(vertex);
+    }
+    for (const Vec3f& normal : data.mesh.normals) {
+        hash.add(normal);
+    }
+    hash.add(data.mesh.indices.size(), 8);
+    for (const std::uint32_t index : data.mesh.indices) {
+        hash.add(index, 4);
+    }
+    return hash.value();
+}
+
 DeterminismReport checkHeights(const Heightfield& field) {
     for (const HeightProbe& probe : kHeightProbes) {
         const auto bits = std::bit_cast<std::uint32_t>(field.heightAt(probe.x, probe.z));
         if (bits != probe.bits) {
-            return {false, probe, bits};
+            return heightMismatch(probe, bits);
+        }
+    }
+    return {};
+}
+
+DeterminismReport checkTiles(const TerrainTiles& tiles) {
+    for (const TileProbe& probe : kTileProbes) {
+        const std::uint64_t fingerprint = tileFingerprint(tiles.generate(probe.request));
+        if (fingerprint != probe.fingerprint) {
+            return tileMismatch(probe, fingerprint);
         }
     }
     return {};
 }
 
 DeterminismReport checkDefaultWorld() {
-    return checkHeights(Heightfield(kDefaultWorldSeed));
+    const TerrainTiles tiles(kDefaultWorldSeed);
+    const DeterminismReport heights = checkHeights(tiles.heightfield());
+    return heights.same ? checkTiles(tiles) : heights;
 }
 
 std::string describe(const DeterminismReport& report) {
     if (report.same) {
-        return "the heights of the default world match terrain_core bit for bit";
+        return "the heights and tiles of the default world match terrain_core bit for bit";
     }
-    char text[256];
-    std::snprintf(text, sizeof(text),
-                  "this build does not generate the same world: heightAt(%.4f, %.4f) = %.9g m "
-                  "(0x%08X) instead of %.9g m (0x%08X)",
-                  report.probe.x, report.probe.z,
-                  static_cast<double>(std::bit_cast<float>(report.actualBits)),
-                  static_cast<unsigned>(report.actualBits),
-                  static_cast<double>(std::bit_cast<float>(report.probe.bits)),
-                  static_cast<unsigned>(report.probe.bits));
-    return text;
+    return describeMismatch(report);
 }
 
 } // namespace terrain::unreal
