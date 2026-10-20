@@ -64,9 +64,14 @@ float tunnelRadius(float radiusNoise, float minRadius, float maxRadius) {
     return minRadius + t * (maxRadius - minRadius);
 }
 
-// Void of a tunnel along the zero lines shared by a and b.
+// Distance to the zero lines shared by a and b, in meters (scale per unit), and the void of a
+// tunnel of the given radius along them.
+float tunnelDistance(float a, float b, float scale) {
+    return std::sqrt(a * a + b * b) * scale;
+}
+
 float tunnelVoid(float a, float b, float scale, float radius) {
-    return std::sqrt(a * a + b * b) * scale - radius;
+    return tunnelDistance(a, b, scale) - radius;
 }
 
 // Smallest |value| over [low, high].
@@ -86,15 +91,32 @@ CaveField::CaveField(std::uint64_t seed, const CaveParams& params)
       ravinePresenceSeed_(
           noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kRavinePresenceStream)),
       aquiferSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kAquiferStream)),
-      lattice_(noiseLayers(noise::deriveSeed(seed, kCaveStream), params)) {}
+      lattice_(noiseLayers(noise::deriveSeed(seed, kCaveStream), params)) {
+    if (params.districts) {
+        districts_.emplace(seed, *params.districts);
+    }
+}
+
+CaveDistrict CaveField::district(int cellX, int cellZ, const CaveGround& ground) const {
+    const DistrictSite site = [&ground](double x, double z, float& height,
+                                        CaveEnvironment& environment) {
+        height = ground.height(x, z);
+        environment = ground.environment ? ground.environment(x, z) : CaveEnvironment{};
+    };
+    return districts_->district(cellX, cellZ, site);
+}
 
 CaveColumn CaveField::column(double x, double z, float ground, const CaveGround& relief,
-                             std::span<const CaveEntrance> entrances,
-                             AquiferCache* aquifers) const {
+                             std::span<const CaveEntrance> entrances, AquiferCache* cells,
+                             bool aquifer) const {
     CaveColumn column;
     column.x = x;
     column.z = z;
     column.ground = ground;
+    if (districts_) {
+        AquiferCache alone(*this, relief);
+        column.profile = (cells != nullptr ? cells : &alone)->profileAt(x, z);
+    }
     const float river = relief.riverDistance ? relief.riverDistance(x, z) : kNoRiverDistance;
     const float seaDepth = kSeaLevel - ground;
     column.exclusion = std::max(params_.riverClearance - river, seaDepth - params_.deepOceanDepth);
@@ -107,6 +129,8 @@ CaveColumn CaveField::column(double x, double z, float ground, const CaveGround&
     column.ravineStrength = noise::smoothstep(
         ravines.presenceLow, ravines.presenceHigh,
         noise::fbm2D(x, z, ravinePresenceSeed_, presence));
+    column.ravineStrength =
+        std::min(1.0f, column.ravineStrength + column.profile[CaveProfile::kRavineBoost]);
 
     for (std::size_t i = 0; i < entrances.size(); ++i) {
         if (column.entranceCount == kMaxColumnEntrances) {
@@ -117,8 +141,8 @@ CaveColumn CaveField::column(double x, double z, float ground, const CaveGround&
             ++column.entranceCount;
         }
     }
-    if (aquifers != nullptr) {
-        addAquifer(column, *aquifers);
+    if (cells != nullptr && aquifer) {
+        addAquifer(column, *cells);
     }
     return column;
 }
@@ -144,31 +168,57 @@ unsigned CaveField::noisesOf(const CaveDetail& detail) const {
     return noises;
 }
 
-float CaveField::noiseLowerBound(const CaveNoiseValues& low, const CaveNoiseValues& high,
-                                 const CaveDetail& detail) const {
-    float bound = params_.voidClamp;
+CaveCellBound CaveField::cellBound(const CaveNoiseValues& low, const CaveNoiseValues& high,
+                                   const CaveDetail& detail) const {
+    CaveCellBound bound;
     if (detail.has(kCaveSpaghetti)) {
         const SpaghettiParams& s = params_.spaghetti;
         const float a = smallestMagnitude(low[kSpaghettiA], high[kSpaghettiA]);
         const float b = smallestMagnitude(low[kSpaghettiB], high[kSpaghettiB]);
-        const float radius = tunnelRadius(high[kTunnelRadius], s.minRadius, s.maxRadius);
-        bound = std::min(bound, tunnelVoid(a, b, metersPerUnit(s.wavelength), radius));
+        bound.spaghettiDistance = tunnelDistance(a, b, metersPerUnit(s.wavelength));
+        bound.spaghettiRadius = tunnelRadius(high[kTunnelRadius], s.minRadius, s.maxRadius);
     }
     if (detail.has(kCaveNoodles)) {
         const NoodleParams& n = params_.noodles;
         const float a = smallestMagnitude(low[kNoodleA], high[kNoodleA]);
         const float b = smallestMagnitude(low[kNoodleB], high[kNoodleB]);
-        const float radius = tunnelRadius(high[kTunnelRadius], n.minRadius, n.maxRadius);
-        const float tube = tunnelVoid(a, b, metersPerUnit(n.wavelength), radius);
-        const float absent = (n.presenceThreshold - high[kNoodlePresence]) *
-                             metersPerUnit(n.presenceWavelength);
+        bound.noodleDistance = tunnelDistance(a, b, metersPerUnit(n.wavelength));
+        bound.noodleRadius = tunnelRadius(high[kTunnelRadius], n.minRadius, n.maxRadius);
+        bound.presenceHigh = high[kNoodlePresence];
+    }
+    if (detail.has(kCaveCheese)) {
+        bound.cheeseHigh = high[kCheese];
+    }
+    return bound;
+}
+
+// The same expressions as voids, on the extremes of the cell: every term only grows with the
+// distances and shrinks with the radius, the presence and the cheese noise.
+float CaveField::noiseLowerBound(const CaveCellBound& cell, const CaveProfile& profile,
+                                 const CaveDetail& detail) const {
+    float bound = params_.voidClamp;
+    if (detail.has(kCaveSpaghetti)) {
+        const float radius = cell.spaghettiRadius * profile[CaveProfile::kSpaghettiScale];
+        bound = std::min(bound, cell.spaghettiDistance - radius);
+    }
+    if (detail.has(kCaveNoodles)) {
+        const NoodleParams& n = params_.noodles;
+        const float tube = cell.noodleDistance - cell.noodleRadius;
+        const float presence = n.presenceThreshold + profile[CaveProfile::kNoodleOffset];
+        const float absent = (presence - cell.presenceHigh) * metersPerUnit(n.presenceWavelength);
         bound = std::min(bound, std::max(tube, absent));
     }
     if (detail.has(kCaveCheese)) {
         const CheeseParams& c = params_.cheese;
-        bound = std::min(bound, (c.threshold - high[kCheese]) * metersPerUnit(c.wavelength));
+        const float threshold = c.threshold + profile[CaveProfile::kCheeseOffset];
+        bound = std::min(bound, (threshold - cell.cheeseHigh) * metersPerUnit(c.wavelength));
     }
     return bound;
+}
+
+float CaveField::noiseLowerBound(const CaveNoiseValues& low, const CaveNoiseValues& high,
+                                 const CaveDetail& detail) const {
+    return noiseLowerBound(cellBound(low, high, detail), CaveProfile{}, detail);
 }
 
 CaveVoids CaveField::voids(const CaveColumn& column, double y, const CaveNoiseValues& noise,
@@ -180,7 +230,8 @@ CaveVoids CaveField::voids(const CaveColumn& column, double y, const CaveNoiseVa
     CaveVoids result{clamp, clamp, clamp, clamp, clamp, 0.0f, 0.0f};
     if (detail.has(kCaveSpaghetti)) {
         const SpaghettiParams& s = params_.spaghetti;
-        const float radius = tunnelRadius(noise[kTunnelRadius], s.minRadius, s.maxRadius);
+        const float radius = tunnelRadius(noise[kTunnelRadius], s.minRadius, s.maxRadius) *
+                             column.profile[CaveProfile::kSpaghettiScale];
         result.spaghetti = bounded(tunnelVoid(noise[kSpaghettiA], noise[kSpaghettiB],
                                               metersPerUnit(s.wavelength), radius));
     }
@@ -189,13 +240,15 @@ CaveVoids CaveField::voids(const CaveColumn& column, double y, const CaveNoiseVa
         const float radius = tunnelRadius(noise[kTunnelRadius], n.minRadius, n.maxRadius);
         const float tube =
             tunnelVoid(noise[kNoodleA], noise[kNoodleB], metersPerUnit(n.wavelength), radius);
-        const float absent = (n.presenceThreshold - noise[kNoodlePresence]) *
+        const float presence = n.presenceThreshold + column.profile[CaveProfile::kNoodleOffset];
+        const float absent = (presence - noise[kNoodlePresence]) *
                              metersPerUnit(n.presenceWavelength);
         result.noodles = bounded(std::max(tube, absent));
     }
     if (detail.has(kCaveCheese)) {
         const CheeseParams& c = params_.cheese;
-        const float cavern = (c.threshold - noise[kCheese]) * metersPerUnit(c.wavelength);
+        const float threshold = c.threshold + column.profile[CaveProfile::kCheeseOffset];
+        const float cavern = (threshold - noise[kCheese]) * metersPerUnit(c.wavelength);
         result.cheese = bounded(std::max(cavern, c.minDepth - depth));
     }
     if (detail.has(kCaveRavines)) {

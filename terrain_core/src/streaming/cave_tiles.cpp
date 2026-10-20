@@ -195,6 +195,10 @@ void CaveTile::paint(TileData& data, const CaveEnvironmentField& environment,
             const AquiferCell& aquifer = fine_.sampler.aquiferAt(x, z);
             site.environment = environments.at(x, z);
             site.normalY = data.mesh.normals[n].y;
+            const CaveProfile profile = fine_.sampler.profileAt(x, z);
+            site.icyRegion = profile.icy();
+            site.lushRegion = profile.lush();
+            site.volcanicRegion = profile.volcanic();
             if (aquifer.wet && holdsWater()) {
                 site.aboveWater = static_cast<float>(y - static_cast<double>(aquifer.level));
                 site.frozenWater = aquifer.frozen;
@@ -209,10 +213,18 @@ void CaveTile::paint(TileData& data, const CaveEnvironmentField& environment,
     }
 }
 
-std::vector<Speleothem> CaveTile::speleothems(const SpeleothemField& field) {
-    const double side = lattice_.levelHeight;
-    return field.place(fine_.sampler, lattice_.x0, lattice_.z0, lattice_.x0 + side,
-                       lattice_.z0 + side);
+void CaveTile::decorate(TileData& data, const CaveEnvironmentField& environment,
+                        const CaveMaterialParams& params, const SpeleothemField* speleothems,
+                        const CaveFloraField* flora) {
+    paint(data, environment, params);
+    const double x1 = lattice_.x0 + lattice_.levelHeight;
+    const double z1 = lattice_.z0 + lattice_.levelHeight;
+    if (speleothems != nullptr) {
+        data.speleothems = speleothems->place(fine_.sampler, lattice_.x0, lattice_.z0, x1, z1);
+    }
+    if (flora != nullptr) {
+        data.caveFlora = flora->place(fine_.sampler, lattice_.x0, lattice_.z0, x1, z1);
+    }
 }
 
 } // namespace tile

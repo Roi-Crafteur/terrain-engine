@@ -82,6 +82,8 @@ const char* caveMaterialName(CaveMaterial material) {
         return "gravel";
     case CaveMaterial::Water:
         return "water";
+    case CaveMaterial::Basalt:
+        return "basalt";
     }
     return "";
 }
@@ -92,12 +94,18 @@ CaveMaterial caveMaterial(const CaveWallSite& site, const CaveMaterialParams& pa
     if (site.depth < params.surfaceDepth) {
         return CaveMaterial::Surface;
     }
-    if ((wet && site.frozenWater) ||
+    if ((wet && site.frozenWater) || site.icyRegion ||
         (environment.temperature <= params.iceTemperature && site.depth <= params.iceDepth)) {
         return CaveMaterial::Ice;
     }
     if (wet) {
         return CaveMaterial::Mud;
+    }
+    if (site.volcanicRegion) {
+        return CaveMaterial::Basalt;
+    }
+    if (site.lushRegion && site.depth <= params.lushDepth) {
+        return CaveMaterial::Moss;
     }
     if (dryBiome(environment.biome)) {
         return CaveMaterial::Sandstone;

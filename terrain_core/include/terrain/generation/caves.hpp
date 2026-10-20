@@ -3,11 +3,13 @@
 #include "terrain/generation/aquifers.hpp"
 #include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/cave_noise.hpp"
+#include "terrain/generation/cave_regions.hpp"
 #include "terrain/generation/overhangs.hpp"
 
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -115,6 +117,9 @@ struct CaveParams {
     AquiferParams aquifers;
     SpeleothemParams speleothems;
     CaveMaterialParams materials;
+    // Cave regions (cave_regions.hpp): none by default, and then every cave is the one of the
+    // neutral profile.
+    std::optional<CaveDistrictParams> districts;
 
     // Limits. Caves stay at least minRoof below the ground of their column (a vertical roof,
     // entrances aside) and at most maxDepth below it; none within riverClearance of a river
@@ -204,6 +209,20 @@ struct CaveColumn {
     bool frozen = false;
     std::array<AquiferBarrier, kMaxColumnBarriers> barriers{};
     int barrierCount = 0;
+    // Parameters of the caves of the cave regions blended at the column (neutral without them).
+    CaveProfile profile;
+};
+
+// What a 4 m noise cell bounds, whatever the profile of a column in it: the smallest distances
+// to the tunnel lines (meters), the largest radii before the profile scale, the largest
+// presence of the noodles and the largest cheese noise.
+struct CaveCellBound {
+    float spaghettiDistance = 0.0f;
+    float spaghettiRadius = 0.0f;
+    float noodleDistance = 0.0f;
+    float noodleRadius = 0.0f;
+    float presenceHigh = 0.0f;
+    float cheeseHigh = 0.0f;
 };
 
 // Voids of the components at a point, meters, negative inside, clamped; voidClamp for a
@@ -243,8 +262,17 @@ public:
                                                           double maxZ,
                                                           const CaveGround& ground) const;
 
-    // Aquifer of the cell (cellX, cellZ) of the aquifer grid.
-    [[nodiscard]] AquiferCell aquifer(int cellX, int cellZ, const CaveGround& ground) const;
+    // Aquifer of the cell (cellX, cellZ) of the aquifer grid, the profile of the cave regions at
+    // its site read from cells (or computed alone when null).
+    [[nodiscard]] AquiferCell aquifer(int cellX, int cellZ, const CaveGround& ground,
+                                      AquiferCache* cells = nullptr) const;
+
+    // The cave regions, or nullptr without them.
+    [[nodiscard]] const CaveDistricts* districts() const {
+        return districts_ ? &*districts_ : nullptr;
+    }
+    // District of the cell (cellX, cellZ) of the grid of the cave regions (which must exist).
+    [[nodiscard]] CaveDistrict district(int cellX, int cellZ, const CaveGround& ground) const;
     // Horizontal reach of an entrance: columns farther from its axis ignore it.
     [[nodiscard]] double entranceReach(const CaveEntrance& entrance) const;
     // True if (x, z) lies within margin of the tube or the chamber of one of the entrances,
@@ -253,18 +281,24 @@ public:
                                            std::span<const CaveEntrance> entrances,
                                            double margin);
 
-    // Column at (x, z) whose ground is ground, reached by entrances of the list, with its
-    // aquifer when aquifers is not null.
+    // Column at (x, z) whose ground is ground, reached by entrances of the list; its profile and,
+    // when aquifer, its aquifer read from cells. Without cells: no aquifer, and the profile
+    // computed alone.
     [[nodiscard]] CaveColumn column(double x, double z, float ground, const CaveGround& relief,
                                     std::span<const CaveEntrance> entrances,
-                                    AquiferCache* aquifers = nullptr) const;
+                                    AquiferCache* cells = nullptr, bool aquifer = true) const;
 
     // Void of the limits at height y: max(minRoof - depth, depth - maxDepth, exclusion).
     [[nodiscard]] float limit(const CaveColumn& column, double y) const;
     // Noises read by the components of the detail.
     [[nodiscard]] unsigned noisesOf(const CaveDetail& detail) const;
+    // What the noise values within [low, high] bound, whatever the profile.
+    [[nodiscard]] CaveCellBound cellBound(const CaveNoiseValues& low, const CaveNoiseValues& high,
+                                          const CaveDetail& detail) const;
     // Lower bound of the smallest void of the noise components of the detail (spaghetti,
-    // noodles, cheese) for any noise values within [low, high].
+    // noodles, cheese) in a cell of these bounds, for a column of this profile.
+    [[nodiscard]] float noiseLowerBound(const CaveCellBound& bound, const CaveProfile& profile,
+                                        const CaveDetail& detail) const;
     [[nodiscard]] float noiseLowerBound(const CaveNoiseValues& low, const CaveNoiseValues& high,
                                         const CaveDetail& detail) const;
     // Void of the ravines at height y of the column.
@@ -304,6 +338,7 @@ private:
     std::uint64_t ravinePresenceSeed_;
     std::uint64_t aquiferSeed_;
     CaveNoiseLattice lattice_;
+    std::optional<CaveDistricts> districts_;
 };
 
 } // namespace terrain

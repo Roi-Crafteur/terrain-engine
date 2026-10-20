@@ -2,6 +2,7 @@
 
 // Caves of a streamed tile (internal to terrain_tiles.cpp and cave_tiles.cpp).
 
+#include "terrain/generation/cave_flora.hpp"
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/speleothems.hpp"
@@ -45,11 +46,13 @@ public:
     // water, so that the lakes close there.
     [[nodiscard]] DensityGrid waterDensity(const DensityGrid& carved, int originY);
 
-    // Materials of the vertices of the terrain and of the lakes of the tile (origin of data).
-    void paint(TileData& data, const CaveEnvironmentField& environment,
-               const CaveMaterialParams& params);
-    // Speleothems whose candidates lie on the tile (LOD 0 tiles: the detail carves everything).
-    [[nodiscard]] std::vector<Speleothem> speleothems(const SpeleothemField& field);
+    // Decorates the meshed tile, never changing its geometry: the materials of the vertices of
+    // its terrain and lakes (origin of data), then the speleothems and the cave flora whose
+    // candidates lie on the tile, from the fields given (LOD 0 tiles: the detail carves
+    // everything; null for none).
+    void decorate(TileData& data, const CaveEnvironmentField& environment,
+                  const CaveMaterialParams& params, const SpeleothemField* speleothems,
+                  const CaveFloraField* flora);
 
 private:
     struct Carving {
@@ -64,6 +67,8 @@ private:
     [[nodiscard]] bool onStitchedSide(int i, int k) const;
     // Ground of the tile at (x, z), bilinear between its columns.
     [[nodiscard]] float groundAt(double x, double z) const;
+    void paint(TileData& data, const CaveEnvironmentField& environment,
+               const CaveMaterialParams& params);
 
     TileLattice lattice_;
     const TileColumns* columns_;

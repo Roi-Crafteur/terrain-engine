@@ -142,6 +142,9 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
         caves_.emplace(seed, *caves);
         caveEnvironment_.emplace(field_, ecology_.climate(), ecology_.params().biomes);
         speleothems_.emplace(seed, caves->speleothems);
+        if (caves->districts) {
+            flora_.emplace(seed, caves->districts->flora);
+        }
         caveGround_.height = [this](double x, double z) { return field_.heightAt(x, z); };
         caveGround_.environment = [this](double x, double z) {
             return caveEnvironment_->at(x, z);
@@ -209,10 +212,10 @@ TileData TerrainTiles::generate(const TileRequest& request) const {
         appendLevel(data.mesh, marchingCubes(grid), scale, offsetY);
     }
     if (caveTile) {
-        caveTile->paint(data, *caveEnvironment_, caves_->params().materials);
-        if (request.key.lod == kPlantLod) {
-            data.speleothems = caveTile->speleothems(*speleothems_);
-        }
+        const bool objects = request.key.lod == kPlantLod;
+        caveTile->decorate(data, *caveEnvironment_, caves_->params().materials,
+                           objects ? &*speleothems_ : nullptr,
+                           objects && flora_ ? &*flora_ : nullptr);
     }
     return data;
 }

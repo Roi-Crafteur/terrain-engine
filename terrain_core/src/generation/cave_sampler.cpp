@@ -1,16 +1,14 @@
 #include "terrain/generation/cave_sampler.hpp"
 
 #include <algorithm>
-#include <cmath>
-#include <limits>
 
 namespace terrain {
 
 CaveSampler::CaveSampler(const CaveField& field, const CaveGround& ground,
                          const CaveDetail& detail, const CaveBox& box)
     : field_(&field), ground_(&ground), detail_(detail), noises_(field.noisesOf(detail)),
-      aquifers_(field, ground), cache_(field.lattice(), box),
-      cellBounds_(cache_.cellCount(), std::numeric_limits<float>::quiet_NaN()) {
+      aquifers_(field, ground), cache_(field.lattice(), box), cellBounds_(cache_.cellCount()),
+      boundKnown_(cache_.cellCount(), 0) {
     if (detail.has(kCaveEntrances)) {
         entrances_ =
             field.entrancesNear(box.minX, box.minZ, box.maxX, box.maxZ, ground, aquifers_);
@@ -18,8 +16,8 @@ CaveSampler::CaveSampler(const CaveField& field, const CaveGround& ground,
 }
 
 CaveColumn CaveSampler::column(double x, double z, float ground) const {
-    AquiferCache* aquifers = detail_.has(kCaveAquifers) ? &aquifers_ : nullptr;
-    return field_->column(x, z, ground, *ground_, entrances_, aquifers);
+    return field_->column(x, z, ground, *ground_, entrances_, &aquifers_,
+                          detail_.has(kCaveAquifers));
 }
 
 float CaveSampler::waterDensity(const CaveColumn& column, double y, float terrain,
@@ -44,7 +42,8 @@ float CaveSampler::density(const CaveColumn& column, double y, float terrain) {
             bound = std::min(bound, field_->ravineVoid(column, y));
         }
         if (noises_ != 0 && bound >= threshold) {
-            bound = std::min(bound, cellBound(column.x, y, column.z));
+            const CaveCellBound& cell = cellBound(column.x, y, column.z);
+            bound = std::min(bound, field_->noiseLowerBound(cell, column.profile, detail_));
         }
         inner = bound < threshold;
     }
@@ -54,15 +53,16 @@ float CaveSampler::density(const CaveColumn& column, double y, float terrain) {
     return field_->carve(terrain, voidAt(column, y), detail_);
 }
 
-float CaveSampler::cellBound(double x, double y, double z) {
-    float& bound = cellBounds_[cache_.cellIndex(x, y, z)];
-    if (std::isnan(bound)) {
+const CaveCellBound& CaveSampler::cellBound(double x, double y, double z) {
+    const std::size_t index = cache_.cellIndex(x, y, z);
+    if (boundKnown_[index] == 0) {
         CaveNoiseValues low{};
         CaveNoiseValues high{};
         cache_.cellBounds(x, y, z, noises_, low, high);
-        bound = field_->noiseLowerBound(low, high, detail_);
+        cellBounds_[index] = field_->cellBound(low, high, detail_);
+        boundKnown_[index] = 1;
     }
-    return bound;
+    return cellBounds_[index];
 }
 
 CaveVoids CaveSampler::voids(const CaveColumn& column, double y) {

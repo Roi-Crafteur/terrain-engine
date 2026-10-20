@@ -36,7 +36,8 @@ int cellOf(double meters, double cellSize) {
 
 } // namespace
 
-AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground) const {
+AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground,
+                               AquiferCache* cells) const {
     const AquiferParams& p = params_.aquifers;
     const std::uint64_t cell = cellSeed(aquiferSeed_, cellX, cellZ);
     AquiferCell result;
@@ -53,16 +54,27 @@ AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground) c
     }
     const CaveEnvironment environment =
         ground.environment ? ground.environment(result.siteX, result.siteZ) : CaveEnvironment{};
+    // The cave regions at the site: wetter (lakes, lush), always wet up to just under the roof
+    // (flooded), frozen (glacier). The neutral profile changes nothing, bit for bit.
+    CaveProfile profile;
+    if (districts_) {
+        AquiferCache alone(*this, ground);
+        profile = (cells != nullptr ? cells : &alone)->profileAt(result.siteX, result.siteZ);
+    }
+    const float flooded = profile[CaveProfile::kFlooded];
     const float humid = noise::smoothstep(p.dryHumidity, p.wetHumidity, environment.humidity);
-    const float chance =
-        site < kSeaLevel ? 1.0f : p.dryChance + humid * (p.wetChance - p.dryChance);
+    float chance = site < kSeaLevel ? 1.0f : p.dryChance + humid * (p.wetChance - p.dryChance);
+    chance = std::clamp(chance + profile[CaveProfile::kWetOffset], 0.0f, 1.0f);
+    chance = chance + flooded * (1.0f - chance);
     result.wet = unitDraw(cell, kWetDraw) < static_cast<double>(chance);
     if (result.wet) {
-        const double depth = p.minLevelDepth +
-                             unitDraw(cell, kDepthDraw) * (p.maxLevelDepth - p.minLevelDepth);
+        double depth = p.minLevelDepth +
+                       unitDraw(cell, kDepthDraw) * (p.maxLevelDepth - p.minLevelDepth);
+        depth -= profile[CaveProfile::kLevelRise];
+        depth += flooded * (p.floodedDepth - depth);
         result.level = static_cast<float>(
             std::floor(static_cast<double>(lowest) - params_.minRoof - depth - 0.5) + 0.5);
-        result.frozen = environment.temperature <= p.freezeTemperature;
+        result.frozen = environment.temperature <= p.freezeTemperature || profile.icy();
     }
     return result;
 }
@@ -118,9 +130,27 @@ float CaveField::barrierVoid(const CaveColumn& column, double y) const {
 const AquiferCell& AquiferCache::at(int cellX, int cellZ) {
     const auto [it, inserted] = cells_.try_emplace(cellKey(cellX, cellZ));
     if (inserted) {
-        it->second = field_->aquifer(cellX, cellZ, *ground_);
+        it->second = field_->aquifer(cellX, cellZ, *ground_, this);
     }
     return it->second;
+}
+
+const CaveDistrict& AquiferCache::district(int cellX, int cellZ) {
+    const auto [it, inserted] = districts_.try_emplace(cellKey(cellX, cellZ));
+    if (inserted) {
+        it->second = field_->district(cellX, cellZ, *ground_);
+    }
+    return it->second;
+}
+
+DistrictWeights AquiferCache::districtWeights(double x, double z) {
+    return field_->districts()->weights(
+        x, z, [this](int cellX, int cellZ) -> const CaveDistrict& { return district(cellX, cellZ); });
+}
+
+CaveProfile AquiferCache::profileAt(double x, double z) {
+    const CaveDistricts* districts = field_->districts();
+    return districts != nullptr ? districts->profile(districtWeights(x, z)) : CaveProfile{};
 }
 
 const AquiferCell& AquiferCache::nearest(double x, double z) {

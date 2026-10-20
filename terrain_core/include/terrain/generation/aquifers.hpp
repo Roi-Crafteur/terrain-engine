@@ -1,5 +1,7 @@
 #pragma once
 
+#include "terrain/generation/cave_regions.hpp"
+
 #include <array>
 #include <cstdint>
 #include <unordered_map>
@@ -31,6 +33,8 @@ struct AquiferParams {
     // the cell, the caves stand above the water.
     float minLevelDepth = 12.0f;
     float maxLevelDepth = 52.0f;
+    // Depth of the level under the roof in a flooded cave region (CaveProfile::kFlooded).
+    float floodedDepth = 1.0f;
     // Water freezes where the surface temperature is at most freezeTemperature.
     float freezeTemperature = 0.0f;
     // Barriers: rock within barrierHalfWidth of a bisector.
@@ -68,8 +72,8 @@ struct AquiferBarrier {
 };
 inline constexpr int kMaxColumnBarriers = 8;
 
-// Aquifer cells read so far, kept: the same cells as CaveField::aquifer, computed once. The
-// field and the ground must outlive the cache.
+// Aquifer cells and cave regions read so far, kept: the same cells as CaveField::aquifer and
+// CaveField::district, computed once. The field and the ground must outlive the cache.
 class AquiferCache {
 public:
     AquiferCache(const CaveField& field, const CaveGround& ground)
@@ -78,6 +82,12 @@ public:
     [[nodiscard]] const AquiferCell& at(int cellX, int cellZ);
     // Cell whose site is the nearest to (x, z): the aquifer of the column there.
     [[nodiscard]] const AquiferCell& nearest(double x, double z);
+
+    // District of the cell (cellX, cellZ) of the cave regions, which must exist.
+    [[nodiscard]] const CaveDistrict& district(int cellX, int cellZ);
+    // Weights of the cave regions at (x, z) and their profile there (neutral without regions).
+    [[nodiscard]] DistrictWeights districtWeights(double x, double z);
+    [[nodiscard]] CaveProfile profileAt(double x, double z);
     // Highest water or barrier top that a column within reach of (x, z) can hold: the level of
     // the cell of (x, z) and, where a bisector lies within reach + barrierHalfWidth, the level
     // of the cell across it. kDryLevel if all of them are dry. reach is at most a few tens of
@@ -88,6 +98,7 @@ private:
     const CaveField* field_;
     const CaveGround* ground_;
     std::unordered_map<std::uint64_t, AquiferCell> cells_;
+    std::unordered_map<std::uint64_t, CaveDistrict> districts_;
 };
 
 } // namespace terrain

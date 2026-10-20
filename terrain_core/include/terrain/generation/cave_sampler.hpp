@@ -3,6 +3,7 @@
 #include "terrain/generation/cave_noise.hpp"
 #include "terrain/generation/caves.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace terrain {
@@ -43,20 +44,29 @@ public:
     [[nodiscard]] const AquiferCell& aquiferAt(double x, double z) const {
         return aquifers_.nearest(x, z);
     }
+    // Profile of the cave regions at (x, z) (neutral without them) and their weights there.
+    [[nodiscard]] CaveProfile profileAt(double x, double z) const {
+        return aquifers_.profileAt(x, z);
+    }
+    [[nodiscard]] DistrictWeights districtWeights(double x, double z) const {
+        return aquifers_.districtWeights(x, z);
+    }
 
 private:
-    // noiseLowerBound over the noise cell holding (x, y, z), computed once per cell.
-    [[nodiscard]] float cellBound(double x, double y, double z);
+    // What the noise cell holding (x, y, z) bounds, computed once per cell.
+    [[nodiscard]] const CaveCellBound& cellBound(double x, double y, double z);
 
     const CaveField* field_;
     const CaveGround* ground_;
     CaveDetail detail_;
     unsigned noises_;
-    // Filled by column(), which is const for its callers: the cells never change a result.
+    // Aquifer cells and cave regions, filled by column(), which is const for its callers: the
+    // cells never change a result.
     mutable AquiferCache aquifers_;
     std::vector<CaveEntrance> entrances_;
     CaveNoiseCache cache_;
-    std::vector<float> cellBounds_; // NaN until computed
+    std::vector<CaveCellBound> cellBounds_;
+    std::vector<std::uint8_t> boundKnown_;
 };
 
 // Density at (x, y, z) of the relief of ground (y - height, as a float) with the caves of the

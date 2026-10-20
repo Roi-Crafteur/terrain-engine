@@ -111,6 +111,8 @@ Vec3 caveMaterialColor(terrain::CaveMaterial material) {
         return {0.72f, 0.71f, 0.68f}; // light gray
     case terrain::CaveMaterial::Water:
         return {0.10f, 0.36f, 0.62f}; // blue
+    case terrain::CaveMaterial::Basalt:
+        return {0.17f, 0.15f, 0.18f}; // near black
     }
     return {1.0f, 0.0f, 1.0f};
 }
