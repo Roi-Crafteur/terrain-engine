@@ -26,6 +26,11 @@ public:
     // interpolation of the noises.
     [[nodiscard]] float density(const CaveColumn& column, double y, float terrain);
 
+    // Density of the water of the aquifer of the column (CaveField::waterDensity), negative in
+    // the water; voidClamp without aquifers in the detail.
+    [[nodiscard]] float waterDensity(const CaveColumn& column, double y, float terrain,
+                                     float carved) const;
+
     // Voids of the components and their combination at height y of the column.
     [[nodiscard]] CaveVoids voids(const CaveColumn& column, double y);
     [[nodiscard]] float voidAt(const CaveColumn& column, double y);
@@ -33,6 +38,11 @@ public:
     [[nodiscard]] const std::vector<CaveEntrance>& entrances() const { return entrances_; }
     [[nodiscard]] const CaveDetail& detail() const { return detail_; }
     [[nodiscard]] const CaveField& field() const { return *field_; }
+    [[nodiscard]] const CaveGround& ground() const { return *ground_; }
+    // Aquifer cell of the nearest site to (x, z) (the cell of the column there).
+    [[nodiscard]] const AquiferCell& aquiferAt(double x, double z) const {
+        return aquifers_.nearest(x, z);
+    }
 
 private:
     // noiseLowerBound over the noise cell holding (x, y, z), computed once per cell.
@@ -42,6 +52,8 @@ private:
     const CaveGround* ground_;
     CaveDetail detail_;
     unsigned noises_;
+    // Filled by column(), which is const for its callers: the cells never change a result.
+    mutable AquiferCache aquifers_;
     std::vector<CaveEntrance> entrances_;
     CaveNoiseCache cache_;
     std::vector<float> cellBounds_; // NaN until computed

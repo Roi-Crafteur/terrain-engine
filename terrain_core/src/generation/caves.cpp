@@ -21,6 +21,7 @@ enum Stream : std::uint64_t {
     kEntranceStream = kCaveNoiseCount,
     kRavineStream,
     kRavinePresenceStream,
+    kAquiferStream,
 };
 
 // Meters per unit of a gradient noise near its zero lines: the noise of wavelength L rises
@@ -84,10 +85,12 @@ CaveField::CaveField(std::uint64_t seed, const CaveParams& params)
       ravineSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kRavineStream)),
       ravinePresenceSeed_(
           noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kRavinePresenceStream)),
+      aquiferSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kAquiferStream)),
       lattice_(noiseLayers(noise::deriveSeed(seed, kCaveStream), params)) {}
 
 CaveColumn CaveField::column(double x, double z, float ground, const CaveGround& relief,
-                             std::span<const CaveEntrance> entrances) const {
+                             std::span<const CaveEntrance> entrances,
+                             AquiferCache* aquifers) const {
     CaveColumn column;
     column.x = x;
     column.z = z;
@@ -113,6 +116,9 @@ CaveColumn CaveField::column(double x, double z, float ground, const CaveGround&
             column.entrances[static_cast<std::size_t>(column.entranceCount)] = static_cast<int>(i);
             ++column.entranceCount;
         }
+    }
+    if (aquifers != nullptr) {
+        addAquifer(column, *aquifers);
     }
     return column;
 }
@@ -200,6 +206,7 @@ CaveVoids CaveField::voids(const CaveColumn& column, double y, const CaveNoiseVa
     }
     result.limit = limit(column, y);
     result.entranceLimit = std::max(depth - params_.maxDepth, column.exclusion);
+    result.barrier = detail.has(kCaveAquifers) ? barrierVoid(column, y) : -clamp;
     return result;
 }
 
@@ -214,9 +221,20 @@ float CaveField::limitedEntranceVoid(const CaveColumn& column, double y,
 
 float CaveField::combine(const CaveVoids& voids) const {
     const float inner = std::min({voids.spaghetti, voids.noodles, voids.cheese, voids.ravines});
-    const float limited = std::max(inner, voids.limit);
-    const float entrance = std::max(voids.entrances, voids.entranceLimit);
+    const float limited = std::max({inner, voids.limit, voids.barrier});
+    const float entrance = std::max({voids.entrances, voids.entranceLimit, voids.barrier});
     return std::clamp(std::min(limited, entrance), -params_.voidClamp, params_.voidClamp);
+}
+
+float CaveField::waterDensity(const CaveColumn& column, double y, float terrain,
+                              float carved) const {
+    const AquiferParams& a = params_.aquifers;
+    if (column.waterLevel <= kDryLevel) {
+        return params_.voidClamp;
+    }
+    const auto belowLevel = static_cast<float>(y - static_cast<double>(column.waterLevel));
+    return std::min(std::max({belowLevel, -carved - a.skin, terrain + a.groundMargin}),
+                    params_.voidClamp);
 }
 
 float CaveField::carve(float terrain, float caveVoid, const CaveDetail& detail) const {

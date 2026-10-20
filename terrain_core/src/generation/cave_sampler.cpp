@@ -9,15 +9,25 @@ namespace terrain {
 CaveSampler::CaveSampler(const CaveField& field, const CaveGround& ground,
                          const CaveDetail& detail, const CaveBox& box)
     : field_(&field), ground_(&ground), detail_(detail), noises_(field.noisesOf(detail)),
-      cache_(field.lattice(), box),
+      aquifers_(field, ground), cache_(field.lattice(), box),
       cellBounds_(cache_.cellCount(), std::numeric_limits<float>::quiet_NaN()) {
     if (detail.has(kCaveEntrances)) {
-        entrances_ = field.entrancesNear(box.minX, box.minZ, box.maxX, box.maxZ, ground);
+        entrances_ =
+            field.entrancesNear(box.minX, box.minZ, box.maxX, box.maxZ, ground, aquifers_);
     }
 }
 
 CaveColumn CaveSampler::column(double x, double z, float ground) const {
-    return field_->column(x, z, ground, *ground_, entrances_);
+    AquiferCache* aquifers = detail_.has(kCaveAquifers) ? &aquifers_ : nullptr;
+    return field_->column(x, z, ground, *ground_, entrances_, aquifers);
+}
+
+float CaveSampler::waterDensity(const CaveColumn& column, double y, float terrain,
+                                float carved) const {
+    if (!detail_.has(kCaveAquifers)) {
+        return field_->params().voidClamp;
+    }
+    return field_->waterDensity(column, y, terrain, carved);
 }
 
 float CaveSampler::density(const CaveColumn& column, double y, float terrain) {

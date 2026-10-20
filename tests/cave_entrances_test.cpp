@@ -397,9 +397,13 @@ void testEntranceLimits() {
     TEST_CHECK(nearRiver == 0 && untouched);
 }
 
-// On flat ground one cell in `chance` has an entrance.
+// On flat ground without water one cell in `chance` has an entrance (the wet aquifers drop
+// the entrances that would reach their water: aquifers_test.cpp).
 void testChance() {
-    const CaveField field(kSeed);
+    terrain::CaveParams params;
+    params.aquifers.dryChance = 0.0f;
+    params.aquifers.wetChance = 0.0f;
+    const CaveField field(kSeed, params);
     const CaveGround ground = flatGround(100.0f);
     int found = 0;
     constexpr int kCells = 60;

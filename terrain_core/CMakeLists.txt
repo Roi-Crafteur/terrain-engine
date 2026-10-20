@@ -1,9 +1,11 @@
 # Pure generation library: must never depend on OpenGL, GLFW, glad or a window.
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
+    src/generation/aquifers.cpp
     src/generation/arches.cpp
     src/generation/biome.cpp
     src/generation/cave_entrances.cpp
+    src/generation/cave_materials.cpp
     src/generation/cave_noise.cpp
     src/generation/cave_region.cpp
     src/generation/cave_sampler.cpp
@@ -21,6 +23,7 @@ add_library(terrain_core STATIC
     src/generation/overhangs.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
+    src/generation/speleothems.cpp
     src/generation/surface_material.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp

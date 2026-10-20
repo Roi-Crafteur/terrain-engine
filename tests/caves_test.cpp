@@ -21,6 +21,7 @@
 namespace {
 
 using caves_test::Area;
+using caves_test::areaAroundEntrance;
 using caves_test::boxOf;
 using caves_test::carvedAir;
 using caves_test::carvedAt;
@@ -142,7 +143,7 @@ void checkSurface(const CaveField& field, const CaveGround& ground, std::uint64_
     const CaveParams& params = field.params();
     const double limitDepth = static_cast<double>(params.minRoof - params.blend) / 2.0;
     Rng rng(stream);
-    const Area area{1000.0, -2000.0, 256.0};
+    const Area area = areaAroundEntrance(field, ground, 1000.0, -2000.0, 256.0);
     std::vector<Point> points = randomPoints(ground, rng, 1500, area, -20.0, limitDepth);
     for (const Point& p : randomPoints(ground, rng, 500, area, -20.0, 110.0)) {
         points.push_back(p);
@@ -342,7 +343,7 @@ void checkContinuity(const CaveField& field, const CaveGround& ground, std::uint
     constexpr double kMaxSlope = 100.0;
     constexpr double kSlack = 2.0e-3;
     Rng rng(stream);
-    const Area area{1000.0, -2000.0, 256.0};
+    const Area area = areaAroundEntrance(field, ground, 1000.0, -2000.0, 256.0);
     std::vector<Point> candidates = randomPoints(ground, rng, 6000, area, 10.0, 96.0);
     const std::vector<CaveEntrance> entrances = field.entrancesNear(
         area.x - area.half, area.z - area.half, area.x + area.half, area.z + area.half, ground);

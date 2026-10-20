@@ -1,8 +1,10 @@
 #pragma once
 
 #include "terrain/chunk_coord.hpp"
+#include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/ecology.hpp"
+#include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/storage/modifications.hpp"
 #include "terrain/streaming/stream_manager.hpp"
@@ -41,7 +43,10 @@ public:
     // With caves, the levels go down to the deepest caves (maxDepth below the lowest ground,
     // plus the blend and a cell) and the levels without any surface are skipped; on the sides
     // stitched to a coarser tile, the samples that tile holds are carved with its detail; the
-    // plants standing over an entrance are dropped.
+    // plants standing over an entrance are dropped. The lakes of the aquifers are meshed into
+    // water where the detail carves them (LOD 0 and 1), every vertex gets its material
+    // (biome and climate above, depth, nearby lake) and LOD 0 tiles get their speleothems:
+    // none of them changes the density.
     [[nodiscard]] TileData generate(const TileRequest& request) const;
 
     // Density at the lattice point (x, y, z), meters: the generated density with the block
@@ -72,7 +77,9 @@ private:
     Heightfield field_;
     Ecology ecology_;
     std::optional<CaveField> caves_;
-    CaveGround caveGround_; // reads field_
+    std::optional<CaveEnvironmentField> caveEnvironment_; // reads field_ and ecology_
+    std::optional<SpeleothemField> speleothems_;
+    CaveGround caveGround_; // reads field_ and caveEnvironment_
     mutable std::shared_mutex mutex_; // guards modifications_
     ModificationStore modifications_;
 };

@@ -1,8 +1,11 @@
 #pragma once
 
+#include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/caves.hpp"
+#include "terrain/generation/ecology.hpp"
 #include "terrain/generation/eroded_region.hpp"
+#include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/terrain_surface.hpp"
 
 #include <cstdint>
@@ -12,11 +15,14 @@ namespace terrain {
 struct CaveRegionParams {
     ErodedRegionParams eroded;
     CaveParams caves;
+    EcologyParams ecology; // its climate and biomes, as in the streamed world
 };
 
 // Caves under an eroded region: their ground is the eroded relief (ErodedRegion::heightAt,
-// the heightfield outside the region) and its rivers keep them away. The streamed world carves
-// the same caves under the heightfield, which has no river. Deterministic.
+// the heightfield outside the region) and its rivers keep them away; their environment (biome
+// and climate above, for the aquifers, the speleothems and the materials) is the one of the
+// heightfield (CaveEnvironmentField). The streamed world carves the same caves under the
+// heightfield, which has no river. Deterministic.
 class CaveRegion {
 public:
     CaveRegion(std::uint64_t seed, const HeightmapRegion& region,
@@ -41,11 +47,16 @@ public:
     [[nodiscard]] const TerrainSurface& surface() const { return surface_; }
     [[nodiscard]] const CaveField& field() const { return field_; }
     [[nodiscard]] const CaveGround& ground() const { return ground_; }
+    [[nodiscard]] const CaveEnvironmentField& environment() const { return environment_; }
+    [[nodiscard]] const SpeleothemField& speleothems() const { return speleothems_; }
 
 private:
     ErodedRegion eroded_;
     TerrainSurface surface_;
     CaveField field_;
+    Ecology ecology_;
+    CaveEnvironmentField environment_;
+    SpeleothemField speleothems_;
     CaveGround ground_;
 };
 

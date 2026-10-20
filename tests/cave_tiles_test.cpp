@@ -118,17 +118,48 @@ bool signChange(const Along& along, double reach) {
     return solid && air;
 }
 
+// Carved density of the world around a tile, with the detail of its LOD: the same values as
+// carvedAt, from one sampler over the tile and its surroundings.
+class TileProbe {
+public:
+    TileProbe(const TerrainTiles& tiles, const TileData& data)
+        : tiles_(&tiles), sampler_(*tiles.caves(), tiles.caveGround(),
+                                   terrain::caveDetailForLod(data.request.key.lod), boxOf(data)) {}
+
+    [[nodiscard]] float operator()(double x, double y, double z) {
+        const float ground = tiles_->heightfield().heightAt(x, z);
+        const terrain::CaveColumn column = sampler_.column(x, z, ground);
+        return sampler_.density(column, y, static_cast<float>(y - static_cast<double>(ground)));
+    }
+
+private:
+    // The tile and its vertices, with a margin of two cells for the probes along the normals.
+    static terrain::CaveBox boxOf(const TileData& data) {
+        const double margin = 2.0 * terrain::tileCellMeters(data.request.key.lod);
+        const double side = terrain::tileSizeMeters(data.request.key.lod);
+        double top = data.originY;
+        for (const terrain::Vec3f& v : data.mesh.vertices) {
+            top = std::max(top, data.originY + v.y);
+        }
+        return {data.originX - margin, data.originY - margin, data.originZ - margin,
+                data.originX + side + margin, top + margin, data.originZ + side + margin};
+    }
+
+    const TerrainTiles* tiles_;
+    terrain::CaveSampler sampler_;
+};
+
 MeshChecks checkMesh(const TerrainTiles& tiles, const TileData& data,
                      const std::vector<CaveEntrance>& entrances) {
     const terrain::CaveParams& params = tiles.caves()->params();
     const double cell = terrain::tileCellMeters(data.request.key.lod);
+    TileProbe probe(tiles, data);
     MeshChecks checks;
     for (std::size_t i = 0; i < data.mesh.vertices.size(); ++i) {
         const streaming_test::WorldPoint p = streaming_test::worldVertex(data, i);
         const terrain::Vec3f n = data.mesh.normals[i];
         const auto along = [&](double t) {
-            return carvedAt(tiles, p.x + t * n.x, p.y + t * n.y, p.z + t * n.z,
-                            data.request.key.lod);
+            return probe(p.x + t * n.x, p.y + t * n.y, p.z + t * n.z);
         };
         ++checks.vertices;
         checks.withinCell += signChange(along, cell) ? 1U : 0U;

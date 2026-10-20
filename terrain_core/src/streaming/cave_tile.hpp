@@ -4,8 +4,10 @@
 
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/caves.hpp"
+#include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/vegetation.hpp"
 #include "terrain/streaming/lod.hpp"
+#include "terrain/streaming/stream_manager.hpp"
 
 #include "tile_lattice.hpp"
 
@@ -36,6 +38,19 @@ public:
     // and the stitching.
     [[nodiscard]] DensityGrid levelDensity(int originY);
 
+    // True if the detail of the tile carves the aquifers: its lakes are meshed.
+    [[nodiscard]] bool holdsWater() const;
+    // Water density of the level (CaveField::waterDensity) over its final carved density, with
+    // the edits and the stitching; on the sides stitched to a coarser tile without lakes, no
+    // water, so that the lakes close there.
+    [[nodiscard]] DensityGrid waterDensity(const DensityGrid& carved, int originY);
+
+    // Materials of the vertices of the terrain and of the lakes of the tile (origin of data).
+    void paint(TileData& data, const CaveEnvironmentField& environment,
+               const CaveMaterialParams& params);
+    // Speleothems whose candidates lie on the tile (LOD 0 tiles: the detail carves everything).
+    [[nodiscard]] std::vector<Speleothem> speleothems(const SpeleothemField& field);
+
 private:
     struct Carving {
         CaveSampler sampler;
@@ -45,6 +60,10 @@ private:
                                   const CaveDetail& detail, const CaveBox& box) const;
     void resampleSeams(DensityGrid& grid, int originY);
     [[nodiscard]] float sample(Carving& carving, int i, int j, int k, int originY) const;
+    // True if the sample (i, k) of a level lies on a side stitched to a coarser tile.
+    [[nodiscard]] bool onStitchedSide(int i, int k) const;
+    // Ground of the tile at (x, z), bilinear between its columns.
+    [[nodiscard]] float groundAt(double x, double z) const;
 
     TileLattice lattice_;
     const TileColumns* columns_;

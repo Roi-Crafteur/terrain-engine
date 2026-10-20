@@ -1,10 +1,13 @@
 #pragma once
 
+#include "terrain/generation/aquifers.hpp"
+#include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/cave_noise.hpp"
 #include "terrain/generation/overhangs.hpp"
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -61,7 +64,7 @@ struct RavineParams {
 struct EntranceParams {
     double spacing = 256.0;
     double jitter = 0.8;
-    float chance = 0.35f;
+    float chance = 0.5f;
     float minRun = 28.0f;
     float maxRun = 44.0f;
     float minDepth = 24.0f;
@@ -76,12 +79,40 @@ struct EntranceParams {
     float minShoreHeight = 4.0f;
 };
 
+// Speleothems: stalactites hanging from the ceilings and stalagmites rising from the floors,
+// placed as objects (see speleothems.hpp): they never change the density. At most one candidate
+// per cell of a world grid of spacing meters, moved by up to jitter / 2 of the cell, kept with
+// probability chance scaled by the climate and the biome above (dryFactor under deserts,
+// savannas and beaches, from dryFactor to 1 with the humidity between dryHumidity and
+// wetHumidity). Each hangs from the ceiling of the highest void at least minSpan high under its
+// candidate that is not open to the sky; a stalagmite stands under it with probability
+// stalagmiteChance. Lengths are drawn up to maxLength, at most maxShare of the free height
+// (down to the water of a lake), and the two never touch.
+struct SpeleothemParams {
+    double spacing = 4.0;
+    double jitter = 0.8;
+    float chance = 0.35f;
+    float dryFactor = 0.25f;
+    float dryHumidity = 0.2f;
+    float wetHumidity = 0.8f;
+    float minSpan = 3.0f;
+    float stalagmiteChance = 0.7f;
+    float minLength = 0.4f;
+    float maxLength = 4.0f;
+    float maxShare = 0.4f;
+    float radiusPerLength = 0.22f; // radius at the base, per meter of length
+    float iceTemperature = -2.0f;  // colder at the surface: ice
+};
+
 struct CaveParams {
     SpaghettiParams spaghetti;
     NoodleParams noodles;
     CheeseParams cheese;
     RavineParams ravines;
     EntranceParams entrances;
+    AquiferParams aquifers;
+    SpeleothemParams speleothems;
+    CaveMaterialParams materials;
 
     // Limits. Caves stay at least minRoof below the ground of their column (a vertical roof,
     // entrances aside) and at most maxDepth below it; none within riverClearance of a river
@@ -106,9 +137,10 @@ enum CaveComponent : unsigned {
     kCaveCheese = 1U << 2,
     kCaveRavines = 1U << 3,
     kCaveEntrances = 1U << 4,
+    kCaveAquifers = 1U << 5, // barriers and water
 };
-inline constexpr unsigned kAllCaveComponents =
-    kCaveSpaghetti | kCaveNoodles | kCaveCheese | kCaveRavines | kCaveEntrances;
+inline constexpr unsigned kAllCaveComponents = kCaveSpaghetti | kCaveNoodles | kCaveCheese |
+                                               kCaveRavines | kCaveEntrances | kCaveAquifers;
 
 // Which components are carved, and the void distance from which the carved density fades back
 // to the terrain density: a few cells of the lattice that is meshed, so that the walls and
@@ -122,11 +154,13 @@ struct CaveDetail {
     friend bool operator==(const CaveDetail&, const CaveDetail&) = default;
 };
 
-// What the caves read from the relief: the ground height of a column and, if there are
-// rivers, the horizontal distance to the nearest one (empty: no river anywhere).
+// What the caves read from the relief: the ground height of a column, if there are rivers the
+// horizontal distance to the nearest one (empty: no river anywhere), and the environment of the
+// surface above (empty: the default CaveEnvironment).
 struct CaveGround {
     ReliefHeight height;
     ReliefHeight riverDistance;
+    std::function<CaveEnvironment(double x, double z)> environment;
 };
 
 // A surface entrance: a tube of radius tubeRadius from top (over the ground of the site) to
@@ -162,11 +196,18 @@ struct CaveColumn {
     // Entrances whose reach holds the column, as indices into the list it was built from.
     std::array<int, kMaxColumnEntrances> entrances{};
     int entranceCount = 0;
+    // Aquifer of the column (the cell of the nearest site): its water level (kDryLevel if dry)
+    // and whether it is frozen, and the barriers along the bisectors near the column.
+    float waterLevel = kDryLevel;
+    bool frozen = false;
+    std::array<AquiferBarrier, kMaxColumnBarriers> barriers{};
+    int barrierCount = 0;
 };
 
 // Voids of the components at a point, meters, negative inside, clamped; voidClamp for a
 // component that is not carved. limit is the void of the limits (positive where the caves are
-// forbidden) and entranceLimit the one of the entrances (no roof).
+// forbidden), entranceLimit the one of the entrances (no roof) and barrier the one of the
+// aquifer barriers (positive in their rock), which closes every void.
 struct CaveVoids {
     float spaghetti = 0.0f;
     float noodles = 0.0f;
@@ -175,6 +216,7 @@ struct CaveVoids {
     float entrances = 0.0f;
     float limit = 0.0f;
     float entranceLimit = 0.0f;
+    float barrier = 0.0f;
 };
 
 // Deterministic caves: the same seed, parameters, ground and position always give the same
@@ -184,14 +226,23 @@ public:
     explicit CaveField(std::uint64_t seed, const CaveParams& params = {});
 
     // Candidate entrance of the grid cell (cellX, cellZ); false if the cell has none: chance,
-    // or its ground is under the sea or on the shore, a river is within its reach, or its
-    // chamber would lie deeper than maxDepth or too close to the ground.
+    // or its ground is under the sea or on the shore, a river is within its reach, its chamber
+    // would lie deeper than maxDepth or too close to the ground, or it would reach down to the
+    // water of an aquifer around it (entranceMargin).
+    [[nodiscard]] bool entrance(int cellX, int cellZ, const CaveGround& ground,
+                                AquiferCache& aquifers, CaveEntrance& result) const;
     [[nodiscard]] bool entrance(int cellX, int cellZ, const CaveGround& ground,
                                 CaveEntrance& result) const;
     // Entrances whose reach meets the rectangle [minX, maxX] x [minZ, maxZ], in cell order.
     [[nodiscard]] std::vector<CaveEntrance> entrancesNear(double minX, double minZ, double maxX,
+                                                          double maxZ, const CaveGround& ground,
+                                                          AquiferCache& aquifers) const;
+    [[nodiscard]] std::vector<CaveEntrance> entrancesNear(double minX, double minZ, double maxX,
                                                           double maxZ,
                                                           const CaveGround& ground) const;
+
+    // Aquifer of the cell (cellX, cellZ) of the aquifer grid.
+    [[nodiscard]] AquiferCell aquifer(int cellX, int cellZ, const CaveGround& ground) const;
     // Horizontal reach of an entrance: columns farther from its axis ignore it.
     [[nodiscard]] double entranceReach(const CaveEntrance& entrance) const;
     // True if (x, z) lies within margin of the tube or the chamber of one of the entrances,
@@ -200,9 +251,11 @@ public:
                                            std::span<const CaveEntrance> entrances,
                                            double margin);
 
-    // Column at (x, z) whose ground is ground, reached by entrances of the list.
+    // Column at (x, z) whose ground is ground, reached by entrances of the list, with its
+    // aquifer when aquifers is not null.
     [[nodiscard]] CaveColumn column(double x, double z, float ground, const CaveGround& relief,
-                                    std::span<const CaveEntrance> entrances) const;
+                                    std::span<const CaveEntrance> entrances,
+                                    AquiferCache* aquifers = nullptr) const;
 
     // Void of the limits at height y: max(minRoof - depth, depth - maxDepth, exclusion).
     [[nodiscard]] float limit(const CaveColumn& column, double y) const;
@@ -224,6 +277,11 @@ public:
                                             std::span<const CaveEntrance> entrances) const;
     // Void of the caves: the components within their limits, clamped to +-voidClamp.
     [[nodiscard]] float combine(const CaveVoids& voids) const;
+    // Density of the water of the aquifer of the column at height y, negative in the water:
+    // the carved air (carved >= 0) below the level and groundMargin below the ground (terrain),
+    // extended skin into the rock. voidClamp where the column is dry.
+    [[nodiscard]] float waterDensity(const CaveColumn& column, double y, float terrain,
+                                     float carved) const;
     // Terrain density with the void carved out: smoothSubtract(terrain, void, blend), faded
     // back to terrain between guard and guard + fade. Exactly terrain from guard + fade on;
     // never below terrain: the caves never add rock.
@@ -233,6 +291,8 @@ public:
     [[nodiscard]] const CaveNoiseLattice& lattice() const { return lattice_; }
 
 private:
+    void addAquifer(CaveColumn& column, AquiferCache& aquifers) const;
+    [[nodiscard]] float barrierVoid(const CaveColumn& column, double y) const;
     [[nodiscard]] float entranceVoid(const CaveColumn& column, double y,
                                      std::span<const CaveEntrance> entrances) const;
 
@@ -240,6 +300,7 @@ private:
     std::uint64_t entranceSeed_;
     std::uint64_t ravineSeed_;
     std::uint64_t ravinePresenceSeed_;
+    std::uint64_t aquiferSeed_;
     CaveNoiseLattice lattice_;
 };
 

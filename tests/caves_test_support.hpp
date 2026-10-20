@@ -108,6 +108,19 @@ struct Area {
     double half;
 };
 
+// Area of the given half-side centered on the opening of the first entrance found within 2 km
+// of (x, z), or on (x, z) if there is none.
+inline Area areaAroundEntrance(const terrain::CaveField& field, const terrain::CaveGround& ground,
+                               double x, double z, double half) {
+    constexpr double kSearch = 2048.0;
+    const std::vector<terrain::CaveEntrance> entrances =
+        field.entrancesNear(x - kSearch, z - kSearch, x + kSearch, z + kSearch, ground);
+    if (entrances.empty()) {
+        return {x, z, half};
+    }
+    return {entrances.front().topX, entrances.front().topZ, half};
+}
+
 // Random points of the area, at a depth in [minDepth, maxDepth] below the ground.
 inline std::vector<Point> randomPoints(const terrain::CaveGround& ground, Rng& rng, int count,
                                        const Area& area, double minDepth, double maxDepth) {

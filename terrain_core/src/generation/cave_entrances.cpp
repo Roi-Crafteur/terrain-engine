@@ -1,5 +1,6 @@
 #include "terrain/generation/cave_entrances.hpp"
 
+#include "terrain/generation/aquifers.hpp"
 #include "terrain/generation/cliffs.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
@@ -89,6 +90,31 @@ bool chamberCovered(const CaveEntrance& entrance, const CaveGround& ground,
            depth - entrance.chamberRadius >= params.minRoof / 2.0f;
 }
 
+// Every part of the tube and the chamber stands above the water and the barrier tops of the
+// aquifers under it, by entranceMargin: the entrance stays dry and is never cut. The axis is
+// probed every kAxisStep meters.
+constexpr double kAxisStep = 2.0;
+
+bool aboveAquifers(const CaveEntrance& entrance, AquiferCache& aquifers,
+                   const CaveParams& params) {
+    const double length =
+        std::hypot(entrance.bottomX - entrance.topX, entrance.bottomY - entrance.topY,
+                   entrance.bottomZ - entrance.topZ);
+    const int steps = std::max(1, static_cast<int>(std::ceil(length / kAxisStep)));
+    for (int step = 0; step <= steps; ++step) {
+        const double t = static_cast<double>(step) / steps;
+        const double radius = step == steps ? entrance.chamberRadius : entrance.tubeRadius;
+        const double x = entrance.topX + t * (entrance.bottomX - entrance.topX);
+        const double y = entrance.topY + t * (entrance.bottomY - entrance.topY);
+        const double z = entrance.topZ + t * (entrance.bottomZ - entrance.topZ);
+        const double level = aquifers.highestLevelNear(x, z, radius);
+        if (y - radius < level + params.aquifers.entranceMargin) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 double entranceAxisDistance(const CaveEntrance& entrance, double x, double z) {
@@ -117,7 +143,7 @@ float entranceVoidAt(const CaveEntrance& entrance, double x, double y, double z)
     return static_cast<float>(std::min(tube, chamber));
 }
 
-bool CaveField::entrance(int cellX, int cellZ, const CaveGround& ground,
+bool CaveField::entrance(int cellX, int cellZ, const CaveGround& ground, AquiferCache& aquifers,
                          CaveEntrance& result) const {
     const EntranceParams& p = params_.entrances;
     const std::uint64_t cell = cellSeed(entranceSeed_, cellX, cellZ);
@@ -148,12 +174,28 @@ bool CaveField::entrance(int cellX, int cellZ, const CaveGround& ground,
     if (!clearAlong(entrance, ground, params_) || !chamberCovered(entrance, ground, params_)) {
         return false;
     }
+    if (!aboveAquifers(entrance, aquifers, params_)) {
+        return false;
+    }
     result = entrance;
     return true;
 }
 
+bool CaveField::entrance(int cellX, int cellZ, const CaveGround& ground,
+                         CaveEntrance& result) const {
+    AquiferCache aquifers(*this, ground);
+    return entrance(cellX, cellZ, ground, aquifers, result);
+}
+
 std::vector<CaveEntrance> CaveField::entrancesNear(double minX, double minZ, double maxX,
                                                    double maxZ, const CaveGround& ground) const {
+    AquiferCache aquifers(*this, ground);
+    return entrancesNear(minX, minZ, maxX, maxZ, ground, aquifers);
+}
+
+std::vector<CaveEntrance> CaveField::entrancesNear(double minX, double minZ, double maxX,
+                                                   double maxZ, const CaveGround& ground,
+                                                   AquiferCache& aquifers) const {
     const EntranceParams& p = params_.entrances;
     const double margin = p.maxRun + std::max(p.maxTubeRadius, p.maxChamberRadius) +
                           kEntranceReachMargin;
@@ -167,7 +209,7 @@ std::vector<CaveEntrance> CaveField::entrancesNear(double minX, double minZ, dou
     for (int cellZ = first(minZ); cellZ <= last(maxZ); ++cellZ) {
         for (int cellX = first(minX); cellX <= last(maxX); ++cellX) {
             CaveEntrance entrance;
-            if (!this->entrance(cellX, cellZ, ground, entrance)) {
+            if (!this->entrance(cellX, cellZ, ground, aquifers, entrance)) {
                 continue;
             }
             const double reach = entranceReach(entrance);

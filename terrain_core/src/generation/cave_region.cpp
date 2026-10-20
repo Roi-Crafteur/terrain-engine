@@ -8,9 +8,12 @@ namespace terrain {
 CaveRegion::CaveRegion(std::uint64_t seed, const HeightmapRegion& region,
                        const CaveRegionParams& params)
     : eroded_(seed, region, params.eroded), surface_(surfaceFromEroded(eroded_)),
-      field_(seed, params.caves) {
+      field_(seed, params.caves), ecology_(seed, params.ecology),
+      environment_(eroded_.field(), ecology_.climate(), params.ecology.biomes),
+      speleothems_(seed, params.caves.speleothems) {
     ground_.height = [this](double x, double z) { return groundAt(x, z); };
     ground_.riverDistance = [this](double x, double z) { return riverDistanceAt(x, z); };
+    ground_.environment = [this](double x, double z) { return environment_.at(x, z); };
 }
 
 float CaveRegion::riverDistanceAt(double x, double z) const {

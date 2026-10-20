@@ -140,7 +140,12 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
     : seed_(seed), field_(seed, heightfield), ecology_(seed, ecology) {
     if (caves) {
         caves_.emplace(seed, *caves);
+        caveEnvironment_.emplace(field_, ecology_.climate(), ecology_.params().biomes);
+        speleothems_.emplace(seed, caves->speleothems);
         caveGround_.height = [this](double x, double z) { return field_.heightAt(x, z); };
+        caveGround_.environment = [this](double x, double z) {
+            return caveEnvironment_->at(x, z);
+        };
     }
 }
 
@@ -184,17 +189,30 @@ TileData TerrainTiles::generate(const TileRequest& request) const {
     if (carved) {
         caveTile.emplace(*caves_, caveGround_, request, lattice, columns, levels);
     }
+    const auto scale = static_cast<float>(lattice.spacing);
     for (const int level : levels) {
         const int originY = level * lattice.levelHeight;
         DensityGrid grid = caveTile ? caveTile->levelDensity(originY)
                                     : tile::levelDensity(columns, lattice, originY);
         applyBlocks(grid, lattice, originY, edits);
         stitchSeams(grid, request.seams);
+        const auto offsetY = static_cast<float>(originY - bottom);
+        if (caveTile && caveTile->holdsWater()) {
+            const DensityGrid water = caveTile->waterDensity(grid, originY);
+            if (crossesSurface(water)) {
+                appendLevel(data.water, marchingCubes(water), scale, offsetY);
+            }
+        }
         if (caveTile && !crossesSurface(grid)) {
             continue; // a level of rock under the ground, between the caves
         }
-        appendLevel(data.mesh, marchingCubes(grid), static_cast<float>(lattice.spacing),
-                    static_cast<float>(originY - bottom));
+        appendLevel(data.mesh, marchingCubes(grid), scale, offsetY);
+    }
+    if (caveTile) {
+        caveTile->paint(data, *caveEnvironment_, caves_->params().materials);
+        if (request.key.lod == kPlantLod) {
+            data.speleothems = caveTile->speleothems(*speleothems_);
+        }
     }
     return data;
 }
