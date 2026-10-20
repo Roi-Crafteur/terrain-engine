@@ -6,6 +6,7 @@
 #include "terrain/io/caves_png.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <span>
 
 namespace terrain::cave_png {
@@ -28,5 +29,12 @@ struct LinePoint {
 
 // Sets a pixel, if it lies inside the image.
 void setPixel(Image& image, int column, int row, Rgb rgb);
+
+// The map of cave_preview.png (renderCavePreview): the relief of the region with its rivers,
+// then beforeCaves (if set) called on that image, then the caves, the lakes and the entrances
+// and, if withSliceLine, the line of the default section.
+[[nodiscard]] Image renderCaveMap(const CaveRegion& region,
+                                  const std::function<void(Image&)>& beforeCaves,
+                                  bool withSliceLine, CavePreviewStats* stats);
 
 } // namespace terrain::cave_png

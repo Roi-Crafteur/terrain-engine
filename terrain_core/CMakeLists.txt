@@ -32,6 +32,7 @@ add_library(terrain_core STATIC
     src/generation/voronoi.cpp
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
+    src/io/cave_regions_png.cpp
     src/io/caves_png.cpp
     src/io/caves_png_layers.cpp
     src/io/cliffs_png.cpp
@@ -176,3 +177,9 @@ target_link_libraries(terrain_export_biomes PRIVATE terrain_core terrain_warning
 # of the caves, entrances and rivers): terrain_export_caves <output-dir> [seed] [m/px] [size]
 add_executable(terrain_export_caves tools/export_caves.cpp)
 target_link_libraries(terrain_export_caves PRIVATE terrain_core terrain_warnings)
+
+# Cave regions PNG export: cave_regions.png (map of the district types of the streamed world,
+# 512 px at 100 m/px) and cave_regions_preview.png (a CaveRegion with its districts around a
+# meeting of two types): terrain_export_cave_regions <output-dir> [seed] [m/px] [size] [cx] [cz]
+add_executable(terrain_export_cave_regions tools/export_cave_regions.cpp)
+target_link_libraries(terrain_export_cave_regions PRIVATE terrain_core terrain_warnings)

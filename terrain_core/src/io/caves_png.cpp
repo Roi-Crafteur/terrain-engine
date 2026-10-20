@@ -303,10 +303,16 @@ CaveSlice defaultCaveSlice(const CaveRegion& region) {
     return defaultSlice(region, regionEntrances(region));
 }
 
-Image renderCavePreview(const CaveRegion& region, CavePreviewStats* stats) {
+namespace cave_png {
+
+Image renderCaveMap(const CaveRegion& region, const std::function<void(Image&)>& beforeCaves,
+                    bool withSliceLine, CavePreviewStats* stats) {
     const ErodedRegion& eroded = region.eroded();
     Image image = renderHeightmapPreview(eroded.grid());
     drawRivers(image, eroded.rivers());
+    if (beforeCaves) {
+        beforeCaves(image);
+    }
     const std::vector<Scan> scans = scanCaves(region);
     tintCaves(image, scans, region.field().params());
 
@@ -314,7 +320,9 @@ Image renderCavePreview(const CaveRegion& region, CavePreviewStats* stats) {
     for (const CaveEntrance& entrance : entrances) {
         drawEntrance(image, eroded, entrance);
     }
-    drawSliceLine(image, eroded, defaultSlice(region, entrances));
+    if (withSliceLine) {
+        drawSliceLine(image, eroded, defaultSlice(region, entrances));
+    }
     if (stats != nullptr) {
         const auto inside =
             std::count_if(entrances.begin(), entrances.end(), [&](const CaveEntrance& e) {
@@ -329,6 +337,12 @@ Image renderCavePreview(const CaveRegion& region, CavePreviewStats* stats) {
         stats->lakeFraction = static_cast<double>(lakes) / static_cast<double>(scans.size());
     }
     return image;
+}
+
+} // namespace cave_png
+
+Image renderCavePreview(const CaveRegion& region, CavePreviewStats* stats) {
+    return cave_png::renderCaveMap(region, {}, true, stats);
 }
 
 bool exportCavePngs(const CaveRegion& region, const std::filesystem::path& directory,
