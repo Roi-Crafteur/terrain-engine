@@ -32,7 +32,7 @@ CaveDetail caveDetailForLod(int lod) {
     case 1:
         return {kAllCaveComponents & ~static_cast<unsigned>(kCaveNoodles), guard};
     case 2:
-        return {kCaveCheese | kCaveEntrances, guard};
+        return {kCaveCheese | kCaveEntrances | kCaveGalleries, guard};
     default:
         return {0, guard};
     }

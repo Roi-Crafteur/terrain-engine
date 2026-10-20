@@ -260,6 +260,9 @@ CaveVoids CaveField::voids(const CaveColumn& column, double y, const CaveNoiseVa
     result.limit = limit(column, y);
     result.entranceLimit = std::max(depth - params_.maxDepth, column.exclusion);
     result.barrier = detail.has(kCaveAquifers) ? barrierVoid(column, y) : -clamp;
+    result.galleries = clamp;
+    result.bank = -clamp;
+    result.sill = -clamp;
     return result;
 }
 
@@ -272,10 +275,16 @@ float CaveField::limitedEntranceVoid(const CaveColumn& column, double y,
     return std::max(entrance, limit);
 }
 
+// Without galleries, banks and sills (+voidClamp, -voidClamp, -voidClamp) every min and max
+// below leaves the clamped voids exactly as they are.
 float CaveField::combine(const CaveVoids& voids) const {
-    const float inner = std::min({voids.spaghetti, voids.noodles, voids.cheese, voids.ravines});
+    const float others =
+        std::max(std::min({voids.spaghetti, voids.noodles, voids.cheese, voids.ravines}),
+                 voids.bank);
+    const float inner = std::max(std::min(others, voids.galleries), voids.sill);
     const float limited = std::max({inner, voids.limit, voids.barrier});
-    const float entrance = std::max({voids.entrances, voids.entranceLimit, voids.barrier});
+    const float entrance =
+        std::max({voids.entrances, voids.entranceLimit, voids.barrier, voids.bank});
     return std::clamp(std::min(limited, entrance), -params_.voidClamp, params_.voidClamp);
 }
 

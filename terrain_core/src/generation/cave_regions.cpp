@@ -123,9 +123,11 @@ std::array<CaveProfile, kCaveDistrictTypeCount> defaultDistrictProfiles() {
     at(CaveDistrictType::Tunnels)[F::kSpaghettiScale] = 1.35f;
     at(CaveDistrictType::Tunnels)[F::kNoodleOffset] = -0.12f;
     at(CaveDistrictType::Tunnels)[F::kCheeseOffset] = 0.08f;
+    at(CaveDistrictType::Tunnels)[F::kGalleries] = 1.0f;
     at(CaveDistrictType::Halls)[F::kSpaghettiScale] = 0.8f;
     at(CaveDistrictType::Halls)[F::kNoodleOffset] = 0.1f;
     at(CaveDistrictType::Halls)[F::kCheeseOffset] = -0.12f;
+    at(CaveDistrictType::Halls)[F::kGalleries] = 0.5f;
     at(CaveDistrictType::Crevasses)[F::kRavineBoost] = 1.0f;
     at(CaveDistrictType::Crevasses)[F::kSpaghettiScale] = 0.9f;
     at(CaveDistrictType::Lakes)[F::kWetOffset] = 0.4f;
@@ -133,11 +135,15 @@ std::array<CaveProfile, kCaveDistrictTypeCount> defaultDistrictProfiles() {
     at(CaveDistrictType::Lakes)[F::kCheeseOffset] = -0.05f;
     at(CaveDistrictType::Rivers)[F::kSpaghettiScale] = 1.15f;
     at(CaveDistrictType::Rivers)[F::kWetOffset] = 0.2f;
+    at(CaveDistrictType::Rivers)[F::kGalleries] = 1.0f;
+    at(CaveDistrictType::Rivers)[F::kRiver] = 1.0f;
     at(CaveDistrictType::Flooded)[F::kFlooded] = 1.0f;
     at(CaveDistrictType::Flooded)[F::kCheeseOffset] = -0.08f;
     at(CaveDistrictType::Volcanic)[F::kVolcanic] = 1.0f;
     at(CaveDistrictType::Volcanic)[F::kWetOffset] = -0.5f;
     at(CaveDistrictType::Volcanic)[F::kCheeseOffset] = -0.04f;
+    at(CaveDistrictType::Volcanic)[F::kGalleries] = 0.5f;
+    at(CaveDistrictType::Volcanic)[F::kLava] = 1.0f;
     at(CaveDistrictType::Glacier)[F::kIce] = 1.0f;
     at(CaveDistrictType::Lush)[F::kLush] = 1.0f;
     at(CaveDistrictType::Lush)[F::kWetOffset] = 0.25f;

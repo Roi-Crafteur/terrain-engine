@@ -16,13 +16,13 @@ namespace terrain {
 // blended smoothly across its borders: never the limits of the caves (roof, depth, rivers,
 // oceans), so the surface stays closed wherever it was.
 enum class CaveDistrictType : std::uint8_t {
-    Tunnels,   // wide spaghetti tunnels and many noodles
+    Tunnels,   // wide spaghetti tunnels, many noodles and the galleries of the network
     Halls,     // large cheese caverns
     Crevasses, // ravines everywhere along their lines
     Lakes,     // wetter aquifers with higher levels: large lakes
-    Rivers,    // wet tunnels (the underground rivers come with Phase 8C-2)
+    Rivers,    // wet tunnels and underground rivers in the galleries
     Flooded,   // aquifers always full, up to just under the roof
-    Volcanic,  // dry basalt caves (the lava comes with Phase 8C-2)
+    Volcanic,  // dry basalt caves and lava caverns
     Glacier,   // ice walls, frozen lakes, ice speleothems
     Lush,      // moss, cave flora, wet caves
     Dripstone, // many long speleothems
@@ -49,11 +49,14 @@ struct CaveProfile {
         kVolcanic,         // [0, 1]: basalt from 0.5 (0)
         kSpeleothemChance, // multiplies the chance of the speleothems (1)
         kSpeleothemLength, // multiplies their largest length (1)
+        kGalleries,        // [0, 1]: size of the galleries, the large connected network (0)
+        kRiver,            // [0, 1]: underground rivers in the galleries from a threshold (0)
+        kLava,             // [0, 1]: chance of the lava caverns, in proportion (0)
         kFieldCount,
     };
 
-    std::array<float, kFieldCount> values{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                          0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f};
+    std::array<float, kFieldCount> values{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                          0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f};
 
     [[nodiscard]] float operator[](Field field) const { return values[field]; }
     float& operator[](Field field) { return values[field]; }

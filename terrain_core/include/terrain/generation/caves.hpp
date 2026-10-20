@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/aquifers.hpp"
+#include "terrain/generation/cave_galleries.hpp"
 #include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/cave_noise.hpp"
 #include "terrain/generation/cave_regions.hpp"
@@ -117,6 +118,8 @@ struct CaveParams {
     AquiferParams aquifers;
     SpeleothemParams speleothems;
     CaveMaterialParams materials;
+    GalleryParams galleries; // carved where the profile of the cave regions has galleries
+    CaveRiverParams rivers;  // where it has rivers
     // Cave regions (cave_regions.hpp): none by default, and then every cave is the one of the
     // neutral profile.
     std::optional<CaveDistrictParams> districts;
@@ -144,10 +147,12 @@ enum CaveComponent : unsigned {
     kCaveCheese = 1U << 2,
     kCaveRavines = 1U << 3,
     kCaveEntrances = 1U << 4,
-    kCaveAquifers = 1U << 5, // barriers and water
+    kCaveAquifers = 1U << 5,  // barriers and water
+    kCaveGalleries = 1U << 6, // the galleries, with the banks and sills of their rivers
 };
 inline constexpr unsigned kAllCaveComponents = kCaveSpaghetti | kCaveNoodles | kCaveCheese |
-                                               kCaveRavines | kCaveEntrances | kCaveAquifers;
+                                               kCaveRavines | kCaveEntrances | kCaveAquifers |
+                                               kCaveGalleries;
 
 // Which components are carved, and the void distance from which the carved density fades back
 // to the terrain density: a few cells of the lattice that is meshed, so that the walls and
@@ -228,7 +233,10 @@ struct CaveCellBound {
 // Voids of the components at a point, meters, negative inside, clamped; voidClamp for a
 // component that is not carved. limit is the void of the limits (positive where the caves are
 // forbidden), entranceLimit the one of the entrances (no roof) and barrier the one of the
-// aquifer barriers (positive in their rock), which closes every void.
+// aquifer barriers (positive in their rock), which closes every void. bank is positive in the
+// band of rock around a river, which closes the other components and the entrances, and sill
+// positive where it closes the bottom of the gallery too (combine); the defaults leave every
+// void as it is: no gallery, no bank, no sill.
 struct CaveVoids {
     float spaghetti = 0.0f;
     float noodles = 0.0f;
@@ -238,6 +246,9 @@ struct CaveVoids {
     float limit = 0.0f;
     float entranceLimit = 0.0f;
     float barrier = 0.0f;
+    float galleries = 1.0e9f;
+    float bank = -1.0e9f;
+    float sill = -1.0e9f;
 };
 
 // Deterministic caves: the same seed, parameters, ground and position always give the same
@@ -311,7 +322,9 @@ public:
     // max(entrances, entranceLimit) of voids.
     [[nodiscard]] float limitedEntranceVoid(const CaveColumn& column, double y,
                                             std::span<const CaveEntrance> entrances) const;
-    // Void of the caves: the components within their limits, clamped to +-voidClamp.
+    // Void of the caves: the components within their limits, clamped to +-voidClamp. The bank
+    // closes the components but the galleries and the entrances, the sill closes the galleries
+    // too.
     [[nodiscard]] float combine(const CaveVoids& voids) const;
     // Density of the water of the aquifer of the column at height y, negative in the water:
     // the carved air (carved >= 0) below the level and groundMargin below the ground (terrain),
