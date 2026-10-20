@@ -28,6 +28,14 @@ float CaveSampler::waterDensity(const CaveColumn& column, double y, float terrai
     return field_->waterDensity(column, y, terrain, carved);
 }
 
+float CaveSampler::lavaDensity(const CaveColumn& column, double y, float terrain,
+                               float carved) const {
+    if (!detail_.has(kCaveAquifers)) {
+        return field_->params().voidClamp;
+    }
+    return field_->lavaDensity(column, y, terrain, carved);
+}
+
 float CaveSampler::density(const CaveColumn& column, double y, float terrain) {
     const float threshold = detail_.guard + field_->params().fade;
     float entrance = field_->params().voidClamp;

@@ -336,6 +336,8 @@ std::array<std::uint8_t, 3> caveMaterialRgb(CaveMaterial material) {
         return toArray(kCaveWaterRgb);
     case CaveMaterial::Basalt:
         return {45, 40, 48};
+    case CaveMaterial::Magma:
+        return {150, 35, 15};
     }
     return toArray(kCaveRockRgb);
 }

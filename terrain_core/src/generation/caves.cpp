@@ -320,6 +320,17 @@ float CaveField::waterDensity(const CaveColumn& column, double y, float terrain,
     return std::min(lake, std::min(river, params_.voidClamp));
 }
 
+float CaveField::lavaDensity(const CaveColumn& column, double y, float terrain,
+                             float carved) const {
+    const AquiferParams& a = params_.aquifers;
+    if (column.lavaLevel <= kDryLevel) {
+        return params_.voidClamp;
+    }
+    const auto belowLevel = static_cast<float>(y - static_cast<double>(column.lavaLevel));
+    return std::min(std::max({belowLevel, -carved - a.skin, terrain + a.groundMargin}),
+                    params_.voidClamp);
+}
+
 float CaveField::waterLevelAt(const CaveColumn& column, double y) const {
     const bool inGallery = column.riverLevel > kDryLevel &&
                            galleryVoid(column, y) < params_.aquifers.skin;

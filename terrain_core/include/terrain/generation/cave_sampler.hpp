@@ -31,6 +31,9 @@ public:
     // the water; voidClamp without aquifers in the detail.
     [[nodiscard]] float waterDensity(const CaveColumn& column, double y, float terrain,
                                      float carved) const;
+    // Density of the lava of the column (CaveField::lavaDensity); voidClamp without aquifers.
+    [[nodiscard]] float lavaDensity(const CaveColumn& column, double y, float terrain,
+                                    float carved) const;
 
     // Voids of the components and their combination at height y of the column.
     [[nodiscard]] CaveVoids voids(const CaveColumn& column, double y);

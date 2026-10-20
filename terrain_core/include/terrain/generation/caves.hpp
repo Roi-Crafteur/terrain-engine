@@ -225,6 +225,8 @@ struct CaveColumn {
     float riverLevel = kDryLevel;
     // Whether the water of the aquifer cell of the column freezes, its lake or a river.
     bool cold = false;
+    // Level of the lava of the aquifer cell of the column (kDryLevel without lava).
+    float lavaLevel = kDryLevel;
 };
 
 // What a 4 m noise cell bounds, whatever the profile of a column in it: the smallest distances
@@ -359,6 +361,10 @@ public:
     // Level of the water that may stand at height y of the column: the level of its aquifer
     // and, in a gallery, the level of its river; kDryLevel without water.
     [[nodiscard]] float waterLevelAt(const CaveColumn& column, double y) const;
+    // Density of the lava of the column, as the water of a lake: negative in the carved air
+    // under its level; voidClamp without lava.
+    [[nodiscard]] float lavaDensity(const CaveColumn& column, double y, float terrain,
+                                    float carved) const;
     // Terrain density with the void carved out: smoothSubtract(terrain, void, blend), faded
     // back to terrain between guard and guard + fade. Exactly terrain from guard + fade on;
     // never below terrain: the caves never add rock.
@@ -370,6 +376,10 @@ public:
 private:
     void addAquifer(CaveColumn& column, AquiferCache& aquifers) const;
     void addGallery(CaveColumn& column, AquiferCache& cells) const;
+    // Highest level of the lava of the cell (cellX, cellZ): under the band of the rivers of
+    // every gallery its columns may hold.
+    [[nodiscard]] double lavaCeiling(int cellX, int cellZ, const CaveGround& ground,
+                                     AquiferCache* cells) const;
     [[nodiscard]] float barrierVoid(const CaveColumn& column, double y) const;
     [[nodiscard]] float entranceVoid(const CaveColumn& column, double y,
                                      std::span<const CaveEntrance> entrances) const;

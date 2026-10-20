@@ -117,6 +117,28 @@ std::vector<Plant> placeChunkPlants(const Heightfield& field, const Ecology& eco
                                {x0, z0, x0 + kChunkSizeMeters, z0 + kChunkSizeMeters});
 }
 
+// Where a level is meshed: its scale to meters, its height over the mesh origin, its lowest
+// samples.
+struct LevelPlace {
+    float scale;
+    float offsetY;
+    int originY;
+};
+
+// The water (lakes and rivers) and the lava of a level of a tile with caves, each meshed over the
+// carved density of the level.
+void appendFluids(TileData& data, tile::CaveTile& caveTile, const DensityGrid& carved,
+                  const LevelPlace& place) {
+    const DensityGrid water = caveTile.fluidDensity(tile::CaveFluid::Water, carved, place.originY);
+    if (crossesSurface(water)) {
+        appendLevel(data.water, marchingCubes(water), place.scale, place.offsetY);
+    }
+    const DensityGrid lava = caveTile.fluidDensity(tile::CaveFluid::Lava, carved, place.originY);
+    if (crossesSurface(lava)) {
+        appendLevel(data.lava, marchingCubes(lava), place.scale, place.offsetY);
+    }
+}
+
 void sortUnique(std::vector<ChunkCoord>& chunks) {
     std::sort(chunks.begin(), chunks.end(), ChunkOrder{});
     chunks.erase(std::unique(chunks.begin(), chunks.end()), chunks.end());
@@ -201,10 +223,7 @@ TileData TerrainTiles::generate(const TileRequest& request) const {
         stitchSeams(grid, request.seams);
         const auto offsetY = static_cast<float>(originY - bottom);
         if (caveTile && caveTile->holdsWater()) {
-            const DensityGrid water = caveTile->waterDensity(grid, originY);
-            if (crossesSurface(water)) {
-                appendLevel(data.water, marchingCubes(water), scale, offsetY);
-            }
+            appendFluids(data, *caveTile, grid, {scale, offsetY, originY});
         }
         if (caveTile && !crossesSurface(grid)) {
             continue; // a level of rock under the ground, between the caves

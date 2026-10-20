@@ -142,7 +142,7 @@ bool CaveTile::holdsWater() const {
     return fine_.sampler.detail().has(kCaveAquifers);
 }
 
-DensityGrid CaveTile::waterDensity(const DensityGrid& carved, int originY) {
+DensityGrid CaveTile::fluidDensity(CaveFluid fluid, const DensityGrid& carved, int originY) {
     const float none = fine_.sampler.field().params().voidClamp;
     const bool coarseWater = !coarse_ || coarse_->sampler.detail().has(kCaveAquifers);
     DensityGrid grid(none);
@@ -156,8 +156,11 @@ DensityGrid CaveTile::waterDensity(const DensityGrid& carved, int originY) {
             for (int j = 0; j < kGridSamples; ++j) {
                 const double sampleY = originY + j * lattice_.spacing;
                 const auto terrain = static_cast<float>(sampleY - columns_->at(i, k));
+                const float air = carved.at(i, j, k);
                 grid.set(i, j, k,
-                         fine_.sampler.waterDensity(column, sampleY, terrain, carved.at(i, j, k)));
+                         fluid == CaveFluid::Water
+                             ? fine_.sampler.waterDensity(column, sampleY, terrain, air)
+                             : fine_.sampler.lavaDensity(column, sampleY, terrain, air));
             }
         }
     }
@@ -202,6 +205,9 @@ void CaveTile::paint(TileData& data, const CaveEnvironmentField& environment,
             if (aquifer.wet && holdsWater()) {
                 site.aboveWater = static_cast<float>(y - static_cast<double>(aquifer.level));
                 site.frozenWater = aquifer.frozen;
+            }
+            if (aquifer.lava && holdsWater()) {
+                site.aboveLava = static_cast<float>(y - static_cast<double>(aquifer.lavaLevel));
             }
         }
         data.materials.push_back(caveMaterial(site, params));
