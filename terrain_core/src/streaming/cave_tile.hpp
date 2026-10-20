@@ -73,6 +73,10 @@ private:
     [[nodiscard]] float groundAt(double x, double z) const;
     void paint(TileData& data, const CaveEnvironmentField& environment,
                const CaveMaterialParams& params);
+    // True if the river field of the profile reaches the threshold of the water.
+    [[nodiscard]] bool riverAt(const CaveProfile& profile) const;
+    // The wall at (x, y, z) next to the water of a river: its height above it.
+    void markRiver(CaveWallSite& site, double x, double y, double z) const;
 
     TileLattice lattice_;
     const TileColumns* columns_;

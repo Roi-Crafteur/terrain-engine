@@ -106,13 +106,18 @@ void SpeleothemField::placeCandidate(CaveSampler& sampler, int cellX, int cellZ,
         return;
     }
     const CaveColumn column = sampler.column(x, z, ground.height(x, z));
+    if (column.lavaLevel > kDryLevel) {
+        return; // no speleothem in the lava caverns
+    }
     const std::optional<Span> span = cave_scan::highestSpan(sampler, column, p.minSpan);
     if (!span) {
         return;
     }
-    // The tips stay above the water of a lake: a floor under the water holds no stalagmite.
-    const bool flooded = column.waterLevel > span->floor;
-    const float free = span->ceiling - std::max(span->floor, column.waterLevel);
+    // The tips stay above the water of a lake or a river: a floor under the water holds no
+    // stalagmite.
+    const float water = sampler.field().waterLevelAt(column, static_cast<double>(span->floor));
+    const bool flooded = water > span->floor;
+    const float free = span->ceiling - std::max(span->floor, water);
     const bool ice =
         column.frozen || environment.temperature <= p.iceTemperature || profile.icy();
     const float maxLength = p.maxLength * profile[CaveProfile::kSpeleothemLength];

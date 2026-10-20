@@ -209,13 +209,40 @@ void CaveTile::paint(TileData& data, const CaveEnvironmentField& environment,
             if (aquifer.lava && holdsWater()) {
                 site.aboveLava = static_cast<float>(y - static_cast<double>(aquifer.lavaLevel));
             }
+            if (holdsWater() && riverAt(profile)) {
+                markRiver(site, x, y, z);
+            }
         }
         data.materials.push_back(caveMaterial(site, params));
     }
     data.waterMaterials.reserve(data.water.vertices.size());
     for (const Vec3f& v : data.water.vertices) {
-        const bool frozen = fine_.sampler.aquiferAt(data.originX + v.x, data.originZ + v.z).frozen;
+        const double x = data.originX + v.x;
+        const double z = data.originZ + v.z;
+        const AquiferCell& aquifer = fine_.sampler.aquiferAt(x, z);
+        // A river freezes where its cell is cold, wet or not.
+        const bool frozen =
+            aquifer.frozen || (aquifer.cold && riverAt(fine_.sampler.profileAt(x, z)));
         data.waterMaterials.push_back(frozen ? CaveMaterial::Ice : CaveMaterial::Water);
+    }
+}
+
+bool CaveTile::riverAt(const CaveProfile& profile) const {
+    return profile[CaveProfile::kRiver] >= fine_.sampler.field().params().rivers.threshold;
+}
+
+void CaveTile::markRiver(CaveWallSite& site, double x, double y, double z) const {
+    // The walls of a gallery: its void within this distance of 0.
+    constexpr float kGalleryWall = 0.5f;
+    const CaveColumn column = fine_.sampler.column(x, z, groundAt(x, z));
+    const CaveField& field = fine_.sampler.field();
+    if (column.riverLevel <= kDryLevel || field.galleryVoid(column, y) >= kGalleryWall) {
+        return;
+    }
+    const auto above = static_cast<float>(y - static_cast<double>(column.riverLevel));
+    if (above < site.aboveWater) {
+        site.aboveWater = above;
+        site.frozenWater = column.cold;
     }
 }
 

@@ -90,6 +90,7 @@ terrain_add_test(cave_rivers_water_test terrain_core)
 terrain_add_test(cave_rivers_tiles_test terrain_core)
 terrain_add_test(cave_lava_test terrain_core)
 terrain_add_test(cave_lava_tiles_test terrain_core)
+terrain_add_test(cave_fluid_objects_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
