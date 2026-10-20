@@ -7,14 +7,17 @@
 #include "demo_chunks.hpp"
 #include "model_views.hpp"
 #include "shader.hpp"
+#include "streamed_world_view.hpp"
 #include "terrain/chunk_coord.hpp"
 
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <format>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -23,6 +26,10 @@ constexpr int kWindowHeight = 720;
 constexpr float kFovYDegrees = 70.0f;
 constexpr float kNearPlane = 0.1f;
 constexpr float kFarPlane = 1000.0f;
+// Left Shift multiplies the camera speed in the streamed modes, to cross the LOD rings. Their
+// camera looks down steeply enough to see the LOD 0 ring below it.
+constexpr float kFastMove = 8.0f;
+constexpr float kStreamedPitchDegrees = 40.0f;
 
 constexpr const char* kVertexShader = R"(#version 330 core
 layout(location = 0) in vec3 aPosition;
@@ -73,8 +80,23 @@ void main() {
 }
 )";
 
-// Keys 1 to 7 select what is displayed.
-enum class ViewMode { Cube, Sphere, Heightmap, Heightfield, Eroded, Cliffs, Sculpted };
+// Keys 1 to 9 select what is displayed.
+enum class ViewMode {
+    Cube,
+    Sphere,
+    Heightmap,
+    Heightfield,
+    Eroded,
+    Cliffs,
+    Sculpted,
+    Streaming,
+    Persistent,
+};
+
+// Modes 8 and 9 show the same streamed world.
+bool streamed(ViewMode mode) {
+    return mode == ViewMode::Streaming || mode == ViewMode::Persistent;
+}
 
 const char* modeName(ViewMode mode) {
     switch (mode) {
@@ -92,12 +114,16 @@ const char* modeName(ViewMode mode) {
         return "cliffs region with rivers (1 unit = 12.5 m)";
     case ViewMode::Sculpted:
         return "cliffs with overhangs and arches (1 unit = 2.5 m)";
+    case ViewMode::Streaming:
+        return "streaming + LOD (tint: LOD 0 green, 1 yellow, 2 orange, 3 purple; Shift: fast)";
+    case ViewMode::Persistent:
+        return "save and reload (LMB dig, RMB build, P tree, O uproot, F5 save, F9 reload)";
     }
     return "";
 }
 
 // Modes sharing a place of the world keep the camera when switching between them.
-enum class Place { ChunkOrigin, Summit, ErodedModel, CliffModel, SculptedModel };
+enum class Place { ChunkOrigin, Summit, ErodedModel, CliffModel, SculptedModel, StreamedWorld };
 
 Place placeOf(ViewMode mode) {
     switch (mode) {
@@ -109,6 +135,9 @@ Place placeOf(ViewMode mode) {
         return Place::CliffModel;
     case ViewMode::Sculpted:
         return Place::SculptedModel;
+    case ViewMode::Streaming:
+    case ViewMode::Persistent:
+        return Place::StreamedWorld;
     default:
         return Place::ChunkOrigin;
     }
@@ -130,15 +159,23 @@ constexpr viewer::Vec3 kChunkViewpoint{8.0f, 10.0f, 32.0f};
 constexpr AltitudeRange kChunkAltitudes{0.0f, 16.0f};
 
 // Looks down on a region from its viewpoint.
-viewer::Camera heightfieldCamera(viewer::Vec3 viewpoint) {
-    constexpr float kPitchDownDegrees = 25.0f;
+viewer::Camera heightfieldCamera(viewer::Vec3 viewpoint, float pitchDownDegrees = 25.0f) {
     viewer::Camera camera(viewpoint);
-    camera.rotate(0.0f, kPitchDownDegrees / viewer::Camera::kMouseSensitivity);
+    camera.rotate(0.0f, pitchDownDegrees / viewer::Camera::kMouseSensitivity);
     return camera;
 }
 
+// The streamed world, created on first use: its worker threads start then.
+viewer::StreamedWorldView& streamedWorld(std::unique_ptr<viewer::StreamedWorldView>& world) {
+    if (!world) {
+        world = std::make_unique<viewer::StreamedWorldView>();
+    }
+    return *world;
+}
+
 // Starting camera of a place; generates its region if needed.
-viewer::Camera placeCamera(Place place, LazyViews& views) {
+viewer::Camera placeCamera(Place place, LazyViews& views,
+                           std::unique_ptr<viewer::StreamedWorldView>& world) {
     switch (place) {
     case Place::Summit:
         return heightfieldCamera(viewer::heightfieldView(views.heightfield).viewpoint);
@@ -148,6 +185,8 @@ viewer::Camera placeCamera(Place place, LazyViews& views) {
         return heightfieldCamera(viewer::cliffView(views.cliffs).viewpoint);
     case Place::SculptedModel:
         return heightfieldCamera(viewer::sculptedView(views.sculpted).viewpoint);
+    case Place::StreamedWorld:
+        return heightfieldCamera(streamedWorld(world).spawn(), kStreamedPitchDegrees);
     case Place::ChunkOrigin:
         break;
     }
@@ -157,6 +196,7 @@ viewer::Camera placeCamera(Place place, LazyViews& views) {
 struct TitleInfo {
     ViewMode mode = ViewMode::Heightmap;
     terrain::ChunkCoord chunk;
+    std::string detail;
 
     friend bool operator==(const TitleInfo&, const TitleInfo&) = default;
 };
@@ -226,18 +266,27 @@ ViewMode readViewMode(GLFWwindow* window, ViewMode current) {
     if (glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS) {
         return ViewMode::Sculpted;
     }
+    if (glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS) {
+        return ViewMode::Streaming;
+    }
+    if (glfwGetKey(window, GLFW_KEY_9) == GLFW_PRESS) {
+        return ViewMode::Persistent;
+    }
     return current;
 }
 
-void updateTitle(GLFWwindow* window, ViewMode mode, viewer::Vec3 position,
+void updateTitle(GLFWwindow* window, ViewMode mode, viewer::Vec3 position, std::string detail,
                  std::optional<TitleInfo>& shown) {
-    const TitleInfo info{mode, terrain::worldToChunk(position.x, position.z)};
+    TitleInfo info{mode, terrain::worldToChunk(position.x, position.z), std::move(detail)};
     if (shown == info) {
         return;
     }
     shown = info;
-    const std::string title = std::format("Terrain Engine - {} - chunk ({}, {})", modeName(mode),
-                                          info.chunk.x, info.chunk.z);
+    std::string title = std::format("Terrain Engine - {} - chunk ({}, {})", modeName(mode),
+                                    info.chunk.x, info.chunk.z);
+    if (!info.detail.empty()) {
+        title += " - " + info.detail;
+    }
     glfwSetWindowTitle(window, title.c_str());
 }
 
@@ -267,7 +316,8 @@ const viewer::ModelView* modelOf(const LazyViews& views, ViewMode mode) {
 }
 
 void renderFrame(GLFWwindow* window, const Scene& scene, const LazyViews& views,
-                 ViewMode mode, const viewer::Camera& camera) {
+                 const viewer::StreamedWorldView* world, ViewMode mode,
+                 const viewer::Camera& camera) {
     int width = 0;
     int height = 0;
     glfwGetFramebufferSize(window, &width, &height);
@@ -286,6 +336,11 @@ void renderFrame(GLFWwindow* window, const Scene& scene, const LazyViews& views,
         scene.colorShader.use();
         scene.colorShader.setMat4("uViewProjection", viewProjection);
         scene.cube.draw();
+        return;
+    }
+    if (streamed(mode) && world != nullptr) {
+        world->draw(viewProjection, scene.colorShader, mode == ViewMode::Streaming,
+                    mode == ViewMode::Persistent);
         return;
     }
     scene.terrainShader.use();
@@ -315,6 +370,7 @@ void runLoop(GLFWwindow* window) {
         viewer::ChunkMesh(viewer::buildHeightmapChunk()),
     };
     LazyViews views;
+    std::unique_ptr<viewer::StreamedWorldView> world;
     ViewMode mode = ViewMode::Heightmap;
     viewer::Camera camera(kChunkViewpoint);
     std::optional<TitleInfo> shownTitle;
@@ -335,7 +391,9 @@ void runLoop(GLFWwindow* window) {
         double y = 0.0;
         glfwGetCursorPos(window, &x, &y);
         camera.rotate(static_cast<float>(x - lastX), static_cast<float>(y - lastY));
-        camera.move(readMoveInput(window), static_cast<float>(now - lastTime));
+        const bool fast = streamed(mode) && glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+        camera.move(readMoveInput(window),
+                    static_cast<float>(now - lastTime) * (fast ? kFastMove : 1.0f));
         lastX = x;
         lastY = y;
         lastTime = now;
@@ -343,13 +401,24 @@ void runLoop(GLFWwindow* window) {
         // The regions are far from chunk (0, 0): the camera jumps between places.
         const ViewMode next = readViewMode(window, mode);
         if (placeOf(next) != placeOf(mode)) {
-            camera = placeCamera(placeOf(next), views);
+            camera = placeCamera(placeOf(next), views, world);
             lastTime = glfwGetTime(); // generation time is not camera movement
+        }
+        if (next == ViewMode::Persistent && mode != ViewMode::Persistent) {
+            world->reloadIfSaved();
         }
         mode = next;
 
-        updateTitle(window, mode, camera.position(), shownTitle);
-        renderFrame(window, scene, views, mode, camera);
+        std::string detail;
+        if (streamed(mode)) {
+            if (mode == ViewMode::Persistent) {
+                world->handleEditInput(window, camera.position(), camera.forward());
+            }
+            world->update(camera.position());
+            detail = world->status(mode == ViewMode::Persistent);
+        }
+        updateTitle(window, mode, camera.position(), std::move(detail), shownTitle);
+        renderFrame(window, scene, views, world.get(), mode, camera);
         glfwSwapBuffers(window);
     }
 }
