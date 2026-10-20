@@ -1,7 +1,11 @@
 // Self-check of the Unreal plugin: the tables of heights and tile fingerprints hold what the core
 // built by CMake computes (when the values of the terrain change, the tables must follow in the
 // same commit), a fingerprint changes with any bit of a mesh, and the check passes on the default
-// world and names the first probe that differs on another world.
+// world and names the first probe that differs on another world. As for cave_golden_test, the
+// tables are only asserted on the platforms whose floats are those they were captured on (x86-64
+// without FMA, Windows included: the first target of the plugin) and printed elsewhere, where the
+// plugin refuses to stream.
+// TODO(phase 9): assert them everywhere once the floats of the core are the same on every platform.
 #include "determinism_check.hpp"
 
 #include "test_assert.hpp"
@@ -14,7 +18,15 @@
 #include <string>
 #include <utility>
 
+#if (defined(__x86_64__) && !defined(__FMA__)) || (defined(_M_X64) && !defined(__AVX2__))
+#define TERRAIN_PROBES_PLATFORM 1
+#else
+#define TERRAIN_PROBES_PLATFORM 0
+#endif
+
 namespace {
+
+constexpr bool kProbesAsserted = TERRAIN_PROBES_PLATFORM == 1;
 
 using terrain::Heightfield;
 using terrain::TerrainTiles;
@@ -40,7 +52,7 @@ void testHeightTableMatchesCore() {
                          static_cast<unsigned>(bits));
         }
     }
-    TEST_CHECK(matching);
+    TEST_CHECK(matching || !kProbesAsserted);
 }
 
 // Prints the fingerprint computed for each tile probe that differs, to update the table.
@@ -59,7 +71,7 @@ void testTileTableMatchesCore() {
                          static_cast<unsigned long long>(fingerprint));
         }
     }
-    TEST_CHECK(matching);
+    TEST_CHECK(matching || !kProbesAsserted);
 }
 
 // The probes cover the planet, negative and fractional coordinates, land, sea and mountains; the
@@ -106,8 +118,13 @@ void testFingerprintSensitive() {
 
 void testDefaultWorldPasses() {
     const DeterminismReport report = terrain::unreal::checkDefaultWorld();
-    TEST_CHECK(report.same);
-    TEST_CHECK(contains(terrain::unreal::describe(report), "match"));
+    std::printf("self-check of the default world%s: %s\n",
+                kProbesAsserted ? "" : ", not asserted on this platform",
+                terrain::unreal::describe(report).c_str());
+    if constexpr (kProbesAsserted) {
+        TEST_CHECK(report.same);
+        TEST_CHECK(contains(terrain::unreal::describe(report), "match"));
+    }
 }
 
 // Another world differs: the reports name the first probe that differs, with both values.
