@@ -16,7 +16,9 @@ CaveRegion::CaveRegion(std::uint64_t seed, const HeightmapRegion& region,
     ground_.environment = [this](double x, double z) { return environment_.at(x, z); };
 }
 
-float CaveRegion::riverDistanceAt(double x, double z) const {
+float CaveRegion::riverDistanceAt(double worldX, double worldZ) const {
+    const double x = eroded_.imageX(worldX);
+    const double z = eroded_.imageZ(worldZ);
     const int size = surface_.size();
     const double metersPerPixel = surface_.region.metersPerPixel;
     const double u = std::clamp((x - surface_.sampleX(0)) / metersPerPixel, 0.0, size - 1.0);

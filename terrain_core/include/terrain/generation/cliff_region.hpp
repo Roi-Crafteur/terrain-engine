@@ -30,7 +30,8 @@ struct Cirque {
 // water height, which is exactly the surface of the volume there, and its cascades stay
 // the only cascades. Deterministic: the same seed, region and parameters always give the
 // same result. Outside the region, or where the cliff mask is 0, the density is exactly
-// y - eroded().heightAt(x, z).
+// y - eroded().heightAt(x, z). Every query is answered at the image of (x, z) nearest to the
+// center of the region, in whose frame the cirques lie (ErodedRegion).
 class CliffRegion {
 public:
     CliffRegion(std::uint64_t seed, const HeightmapRegion& region,

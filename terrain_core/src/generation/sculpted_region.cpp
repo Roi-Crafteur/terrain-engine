@@ -32,7 +32,9 @@ SculptedRegion::SculptedRegion(std::uint64_t seed, const HeightmapRegion& region
     computeGrids();
 }
 
-float SculptedRegion::controlAt(double x, double z, const CliffColumn& column) const {
+float SculptedRegion::controlAt(double worldX, double worldZ, const CliffColumn& column) const {
+    const double x = cliffs_.eroded().imageX(worldX);
+    const double z = cliffs_.eroded().imageZ(worldZ);
     float control = overhangs_.controlAt(x, z, column, cliffs_.field().params());
     for (const Arch& arch : arches_) {
         if (control <= 0.0f) {
@@ -47,7 +49,9 @@ float SculptedRegion::controlAt(double x, double z, const CliffColumn& column) c
     return control;
 }
 
-SculptedColumn SculptedRegion::columnAt(double x, double z) const {
+SculptedColumn SculptedRegion::columnAt(double worldX, double worldZ) const {
+    const double x = cliffs_.eroded().imageX(worldX);
+    const double z = cliffs_.eroded().imageZ(worldZ);
     SculptedColumn column{x, z, cliffs_.columnAt(x, z)};
     for (std::size_t i = 0; i < arches_.size(); ++i) {
         const Arch& arch = arches_[i];

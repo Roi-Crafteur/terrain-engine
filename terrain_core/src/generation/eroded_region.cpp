@@ -18,7 +18,7 @@ constexpr std::uint64_t kRiverStream = 0x52495652;   // "RIVR"
 
 ErodedRegion::ErodedRegion(std::uint64_t seed, const HeightmapRegion& region,
                            const ErodedRegionParams& params, const WorldSize& world)
-    : field_(seed, params.heightfield, world), region_(region),
+    : field_(seed, params.heightfield, world), region_(validatedRegion(region, world)),
       raw_(sampleHeightGrid(field_, region)), grid_(raw_) {
     erodeHeightGrid(grid_, noise::deriveSeed(seed, kErosionStream), params.erosion);
     rivers_ = generateRivers(grid_, noise::deriveSeed(seed, kRiverStream), params.rivers);
@@ -32,7 +32,17 @@ double ErodedRegion::sampleZ(int row) const {
     return region_.centerZ + (row + 0.5 - region_.size / 2.0) * region_.metersPerPixel;
 }
 
-float ErodedRegion::heightAt(double x, double z) const {
+double ErodedRegion::imageX(double x) const {
+    return nearestImage(x, region_.centerX, field_.world().x);
+}
+
+double ErodedRegion::imageZ(double z) const {
+    return nearestImage(z, region_.centerZ, field_.world().z);
+}
+
+float ErodedRegion::heightAt(double worldX, double worldZ) const {
+    const double x = imageX(worldX);
+    const double z = imageZ(worldZ);
     const float base = field_.heightAt(x, z);
     const double gx = (x - region_.centerX) / region_.metersPerPixel + region_.size / 2.0 - 0.5;
     const double gz = (z - region_.centerZ) / region_.metersPerPixel + region_.size / 2.0 - 0.5;

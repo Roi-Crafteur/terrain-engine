@@ -36,7 +36,9 @@ struct SculptedColumn {
 // region is unchanged, and so are its rivers, cascades, cirques, coasts and oceans: neither
 // overhangs (0 within half the river reach, below the cliff mask threshold) nor arches
 // (placed away from all water) reach them. Where the overhang weight is 0 and no arch is
-// within reach, the density is exactly CliffRegion::densityAt. Deterministic.
+// within reach, the density is exactly CliffRegion::densityAt. Deterministic. Every query is
+// answered at the image of (x, z) nearest to the center of the region, in whose frame the arches
+// lie (ErodedRegion): SculptedColumn::x and z are in that frame.
 class SculptedRegion {
 public:
     SculptedRegion(std::uint64_t seed, const HeightmapRegion& region,

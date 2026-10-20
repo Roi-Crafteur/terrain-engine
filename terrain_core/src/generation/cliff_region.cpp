@@ -282,7 +282,7 @@ CliffRegion::CliffRegion(std::uint64_t seed, const HeightmapRegion& region,
 
 float CliffRegion::borderWeightAt(double x, double z) const {
     const HeightmapRegion& region = eroded_.region();
-    const CellPoint point = cellPoint(region, x, z);
+    const CellPoint point = cellPoint(region, eroded_.imageX(x), eroded_.imageZ(z));
     const double last = region.size - 1;
     const double distance = std::min({point.column, point.row, last - point.column,
                                       last - point.row});
@@ -293,7 +293,9 @@ float CliffRegion::borderWeightAt(double x, double z) const {
     return margin > 0.0f ? noise::smoothstep(0.0f, margin, static_cast<float>(distance)) : 1.0f;
 }
 
-CliffColumn CliffRegion::columnAt(double x, double z) const {
+CliffColumn CliffRegion::columnAt(double worldX, double worldZ) const {
+    const double x = eroded_.imageX(worldX);
+    const double z = eroded_.imageZ(worldZ);
     CliffColumn column;
     column.ground = eroded_.heightAt(x, z);
     const float weight = borderWeightAt(x, z);

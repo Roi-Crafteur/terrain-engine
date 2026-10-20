@@ -22,7 +22,9 @@ struct CaveRegionParams {
 // the heightfield outside the region) and its rivers keep them away; their environment (biome
 // and climate above, for the aquifers, the speleothems and the materials) is the one of the
 // heightfield (CaveEnvironmentField). The streamed world carves the same caves under the
-// heightfield, which has no river. Deterministic.
+// heightfield, which has no river. Deterministic. The ground of the region answers at the image
+// of (x, z) nearest to its center (ErodedRegion), so the samplers, which read it in the canonical
+// frame of their box, see the region across an edge of the world as well.
 class CaveRegion {
 public:
     CaveRegion(std::uint64_t seed, const HeightmapRegion& region,
