@@ -75,6 +75,8 @@ terrain_add_test(cave_districts_seams_test terrain_core)
 terrain_add_test(caves_png_test terrain_core)
 terrain_add_test(caves_png_lakes_test terrain_core)
 terrain_add_test(cave_regions_png_test terrain_core)
+terrain_add_test(cave_features_png_test terrain_core)
+terrain_add_test(cave_features_meeting_test terrain_core)
 terrain_add_test(aquifers_test terrain_core)
 terrain_add_test(speleothems_test terrain_core)
 terrain_add_test(cave_materials_test terrain_core)
@@ -184,13 +186,14 @@ add_dependencies(check terrain_export_caves)
 # Smoke test: writes cave_regions.png (512 x 512 px, 100 m/px: 51.2 km of the streamed world
 # around the origin, the blended district types with their borders and sites) and
 # cave_regions_preview.png (224 x 224 px, 20 m/px, a region with districts around the nearest
-# meeting of two types, with its caves, lakes and entrances) into <build-dir>/cave_regions for a
-# visual check. The summary is printed only once the images are written.
+# meeting of two types, one of them a Rivers or Volcanic district if possible, with its caves,
+# lakes, galleries, rivers, lava and entrances) into <build-dir>/cave_regions for a visual check.
+# The summary is printed only once the images are written.
 string(CONCAT cave_regions_summary
     "cave regions 512 x 512 px, 51\\.2 km wide, [0-9]+ types over the ground where caves can "
     "exist: tunnels [0-9.]+%.*; preview 224 x 224 px, 4\\.5 km wide at \\(-?[0-9]+, -?[0-9]+\\), "
     "types [a-z]+ [0-9]+%.*, caves under [0-9.]+% of the map, lakes under [0-9.]+%, "
-    "[0-9]+ entrances")
+    "galleries over [0-9.]+%, rivers over [0-9.]+%, lava under [0-9.]+%, [0-9]+ entrances")
 add_test(NAME export_cave_regions_smoke
     COMMAND terrain_export_cave_regions ${CMAKE_BINARY_DIR}/cave_regions)
 set_tests_properties(export_cave_regions_smoke PROPERTIES

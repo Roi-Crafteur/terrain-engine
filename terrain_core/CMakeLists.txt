@@ -36,6 +36,7 @@ add_library(terrain_core STATIC
     src/io/cave_regions_png.cpp
     src/io/caves_png.cpp
     src/io/caves_png_layers.cpp
+    src/io/caves_png_network.cpp
     src/io/cliffs_png.cpp
     src/io/ecology_png.cpp
     src/io/eroded_png.cpp

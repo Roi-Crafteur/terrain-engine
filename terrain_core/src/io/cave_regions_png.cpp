@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <span>
 #include <stdexcept>
 #include <system_error>
 #include <vector>
@@ -256,6 +257,28 @@ struct Step {
 };
 constexpr std::array<Step, 4> kNeighborSteps = {{{1, 0}, {0, 1}, {1, 1}, {-1, 1}}};
 
+// Whether either type of a pair of districts is among the preferred ones.
+bool holdsPreferred(std::span<const CaveDistrictType> preferred, const CaveDistrict& a,
+                    const CaveDistrict& b) {
+    const auto has = [&](CaveDistrictType type) {
+        return std::find(preferred.begin(), preferred.end(), type) != preferred.end();
+    };
+    return has(a.type) || has(b.type);
+}
+
+// The nearest meeting offered so far: the first on a tie.
+struct NearestMeeting {
+    CaveRegionsMeeting meeting;
+    double distance = 0.0;
+
+    void offer(const Point& at, double away) {
+        if (!meeting.found || away < distance) {
+            meeting = {at.x, at.z, true};
+            distance = away;
+        }
+    }
+};
+
 // Tints each sample of the preview with the district mix of its point, kept in mixes, and adds
 // the weights of the districts there to sums.
 void tintDistricts(Image& image, const ErodedRegion& eroded, AquiferCache& cache,
@@ -353,29 +376,31 @@ Image renderCaveRegionsPreview(const CaveRegion& region, CaveRegionsPreviewStats
 }
 
 CaveRegionsMeeting findCaveRegionsMeeting(const CaveField& field, const CaveGround& ground,
-                                          double nearX, double nearZ) {
+                                          double nearX, double nearZ,
+                                          std::span<const CaveDistrictType> preferred) {
     requireDistricts(field);
     AquiferCache cache(field, ground);
     const CellId home = cellAt(*field.districts(), nearX, nearZ);
-    CaveRegionsMeeting best{nearX, nearZ, false};
-    double bestDistance = 0.0;
+    NearestMeeting any{{nearX, nearZ, false}};
+    NearestMeeting wanted{{nearX, nearZ, false}};
     for (int cellZ = home.z - kMeetingReach; cellZ <= home.z + kMeetingReach; ++cellZ) {
         for (int cellX = home.x - kMeetingReach; cellX <= home.x + kMeetingReach; ++cellX) {
             for (const Step step : kNeighborSteps) {
+                const CaveDistrict a = cache.district(cellX, cellZ);
+                const CaveDistrict b = cache.district(cellX + step.x, cellZ + step.z);
                 Point midpoint{};
-                if (!isMeeting(cache, ground, cache.district(cellX, cellZ),
-                               cache.district(cellX + step.x, cellZ + step.z), midpoint)) {
+                if (!isMeeting(cache, ground, a, b, midpoint)) {
                     continue;
                 }
                 const double distance = std::hypot(midpoint.x - nearX, midpoint.z - nearZ);
-                if (!best.found || distance < bestDistance) {
-                    best = {midpoint.x, midpoint.z, true};
-                    bestDistance = distance;
+                any.offer(midpoint, distance);
+                if (holdsPreferred(preferred, a, b)) {
+                    wanted.offer(midpoint, distance);
                 }
             }
         }
     }
-    return best;
+    return wanted.meeting.found ? wanted.meeting : any.meeting;
 }
 
 bool exportCaveRegionsPngs(const CaveRegionsExport& request,
@@ -396,8 +421,9 @@ bool exportCaveRegionsPngs(const CaveRegionsExport& request,
     const Image map = renderCaveRegionsMap(*world.caves(), world.caveGround(), request.map,
                                            &local.map);
 
-    const CaveRegionsMeeting meeting = findCaveRegionsMeeting(
-        *world.caves(), world.caveGround(), request.map.centerX, request.map.centerZ);
+    const CaveRegionsMeeting meeting =
+        findCaveRegionsMeeting(*world.caves(), world.caveGround(), request.map.centerX,
+                               request.map.centerZ, request.preferredTypes);
     local.meetingFound = meeting.found;
     local.previewArea = {meeting.x, meeting.z, request.previewMetersPerPixel, request.previewSize};
     CaveRegionParams params;
