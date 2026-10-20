@@ -20,6 +20,7 @@ terrain_add_test(test_camera_math terrain_viewer_camera)
 terrain_add_test(marching_cubes_test terrain_core)
 terrain_add_test(noise_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
+terrain_add_test(heightfield_macro_test terrain_core)
 terrain_add_test(heightfield_density_test terrain_core)
 terrain_add_test(png_test terrain_core)
 terrain_add_test(heightmap_png_test terrain_core)
@@ -52,8 +53,17 @@ add_test(NAME export_heightmap_args_smoke
 set_tests_properties(export_heightmap_args_smoke PROPERTIES
     PASS_REGULAR_EXPRESSION "64 x 64 px, 16\\.0 km wide, center \\(5000, -3000\\)")
 
-# Invalid arguments (size 1, non-numeric center, ...) are rejected with an error message,
-# before anything is written.
+# Smoke test of the macro continent argument: the same region with an amplitude of 0.5, shown
+# in the summary. Written into <build-dir>/heightmap_macro_args.
+add_test(NAME export_heightmap_macro_smoke
+    COMMAND terrain_export_heightmap ${CMAKE_BINARY_DIR}/heightmap_macro_args 20261019 250 64
+            5000 -3000 0.5)
+set_tests_properties(export_heightmap_macro_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "64 x 64 px, 16\\.0 km wide, center \\(5000, -3000\\), macro continent 0\\.50")
+
+# Invalid arguments (size 1, non-numeric center, negative macro continent, ...) are rejected
+# with an error message, before anything is written.
 add_test(NAME export_heightmap_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_heightmap>
             -DOUT=${CMAKE_BINARY_DIR}/heightmap_bad_args
