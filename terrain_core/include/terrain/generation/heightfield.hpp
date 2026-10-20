@@ -1,6 +1,9 @@
 #pragma once
 
+#include "terrain/generation/voronoi.hpp"
+
 #include <cstdint>
+#include <memory>
 
 namespace terrain {
 
@@ -34,6 +37,15 @@ struct HeightfieldParams {
     double macroContinentWavelength = 10'000'000.0; // 10,000 km
     float macroContinentWidth = 0.1f;
 
+    // Tectonic plates (Voronoi layer): plates.amplitude * PlateSample::continentalness is
+    // added to the continentalness too, on top of the local and macro layers, and the
+    // collision belts lift the mountain mask so that the ridged noise draws mountain ranges
+    // along them, plates.collisionMountainBoost higher than elsewhere. Plates 0.5 with
+    // macro 0.25 gives planetary continents and oceans shaped by the plates and modulated by
+    // the macro layer. plates.amplitude = 0 (the default) disables the layer: it is not even
+    // built, so the world is bit-identical to one without it.
+    VoronoiParams plates;
+
     // Mountain mask: smoothstep(maskLow, maskHigh, fbm) at a medium frequency, faded in
     // from the coast so that no mountain rises from the ocean.
     double maskWavelength = 40000.0;
@@ -57,21 +69,25 @@ struct HeightfieldParams {
     float detailAmplitude = 3.0f;
 };
 
-// Layers of the height at one point: height = base + mountain + detail.
+// Layers of the height at one point: height = base + mountain + detail. In the collision
+// belts of the plates, mountains are boosted by plates.collisionMountainBoost * plateCollision.
 struct HeightSample {
-    float continentalness = 0.0f;      // [-1, 1], local plus the macro term, clamped
+    float continentalness = 0.0f;      // [-1, 1], local plus the macro and plate terms, clamped
     float macroContinentalness = 0.0f; // [-1, 1], raw macro fbm, 0 when disabled
+    float plateContinentalness = 0.0f; // PlateSample::continentalness, 0 when disabled
+    float plateCollision = 0.0f;       // [0, 1], PlateSample::collision, 0 when disabled
     float mountainMask = 0.0f;         // [0, 1]
     float base = 0.0f;                 // continental curve, [kMinBaseHeight, kMaxBaseHeight]
-    float mountain = 0.0f;             // [0, mountainMask * mountainHeight]
+    float mountain = 0.0f;             // [0, mountainMask * mountainHeight * (1 + boost)]
     float detail = 0.0f;               // [-detailAmplitude, detailAmplitude]
     float height = 0.0f;
 };
 
 // Multi-scale terrain height y = heightAt(x, z), in meters.
 // Deterministic: the same seed, parameters and coordinates always give the same height.
-// Like every fbm layer, the macro continentalness is exactly 0 at the origin, so the origin
-// always lies on a macro coast: the local layer alone decides whether it is land or sea.
+// Like every fbm layer, the macro continentalness is exactly 0 at the origin, so without the
+// plates the origin always lies on a macro coast: the local layer alone decides whether it
+// is land or sea.
 class Heightfield {
 public:
     explicit Heightfield(std::uint64_t seed, const HeightfieldParams& params = {});
@@ -80,6 +96,9 @@ public:
     [[nodiscard]] HeightSample sampleAt(double x, double z) const;
 
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
+
+    // The tectonic plates, or nullptr when the layer is disabled (plates.amplitude <= 0).
+    [[nodiscard]] const TectonicPlates* plates() const { return plates_.get(); }
 
 private:
     void continentalnessAt(double x, double z, HeightSample& s) const;
@@ -93,6 +112,7 @@ private:
     std::uint64_t ridgeSeed_;
     std::uint64_t detailSeed_;
     std::uint64_t macroContinentSeed_;
+    std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
 };
 
 } // namespace terrain

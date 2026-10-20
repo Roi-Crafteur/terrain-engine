@@ -19,12 +19,15 @@ add_library(terrain_core STATIC
     src/generation/surface_material.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
+    src/generation/voronoi.cpp
+    src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
     src/io/cliffs_png.cpp
     src/io/ecology_png.cpp
     src/io/eroded_png.cpp
     src/io/heightmap_png.cpp
     src/io/png.cpp
+    src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
 )
 
@@ -99,6 +102,35 @@ add_custom_target(export_macro_heightmaps
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${macro_heightmaps}/macro_32768km/heightmap_preview.png
             ${macro_heightmaps}/heightmap_macro_preview_32768km.png
+    VERBATIM
+    USES_TERMINAL
+)
+
+# Tectonic plate (Voronoi) PNG export: voronoi_plates.png, voronoi_heightmap.png,
+# voronoi_preview.png of a region and voronoi_world.png of the whole planet:
+# terrain_export_voronoi <output-dir> [seed] [m/px] [size] [center-x] [center-z] [plates]
+#                        [macro-continent] [world-size]
+add_executable(terrain_export_voronoi tools/export_voronoi.cpp)
+target_link_libraries(terrain_export_voronoi PRIVATE terrain_core terrain_warnings)
+
+# Planet maps before and after the plate layer. Not part of the tests (about a minute in an
+# unoptimized build):
+#   cmake --build <build-dir> --target export_voronoi_maps
+# writes into <build-dir>/voronoi_maps, 4096 px at 8 km/px (32,768 km) around the origin:
+# - before_heightmap_32768km.png and before_preview_32768km.png: the macro layer alone (0.5),
+#   the planetary option before the plates;
+# - voronoi_plates.png, voronoi_heightmap.png and voronoi_preview.png: plates 0.5 with
+#   macro 0.25. The planet is 45,000 to 65,000 km wide, so this is a local zoom;
+# - voronoi_world.png: the whole planet (one period of the plate layout) in 2048 px.
+set(voronoi_maps ${CMAKE_BINARY_DIR}/voronoi_maps)
+add_custom_target(export_voronoi_maps
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${voronoi_maps}
+    COMMAND terrain_export_heightmap ${voronoi_maps}/before 20261019 8000 4096 0 0 0.5
+    COMMAND terrain_export_voronoi ${voronoi_maps} 20261019 8000 4096 0 0 0.5 0.25 2048
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${voronoi_maps}/before/heightmap.png
+            ${voronoi_maps}/before_heightmap_32768km.png
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${voronoi_maps}/before/heightmap_preview.png
+            ${voronoi_maps}/before_preview_32768km.png
     VERBATIM
     USES_TERMINAL
 )

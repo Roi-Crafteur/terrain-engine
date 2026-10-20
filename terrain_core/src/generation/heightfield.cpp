@@ -86,7 +86,16 @@ constexpr float kMountainCoastFull = 0.15f;
 constexpr float kDetailCoastFade = 4.0f;
 
 // New layers go at the end so that the seeds of the existing ones never change.
-enum Layer : std::uint64_t { kContinent, kMask, kWarpX, kWarpZ, kRidge, kDetail, kMacroContinent };
+enum Layer : std::uint64_t {
+    kContinent,
+    kMask,
+    kWarpX,
+    kWarpZ,
+    kRidge,
+    kDetail,
+    kMacroContinent,
+    kPlates,
+};
 
 } // namespace
 
@@ -95,7 +104,12 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params)
       maskSeed_(noise::deriveSeed(seed, kMask)), warpXSeed_(noise::deriveSeed(seed, kWarpX)),
       warpZSeed_(noise::deriveSeed(seed, kWarpZ)), ridgeSeed_(noise::deriveSeed(seed, kRidge)),
       detailSeed_(noise::deriveSeed(seed, kDetail)),
-      macroContinentSeed_(noise::deriveSeed(seed, kMacroContinent)) {}
+      macroContinentSeed_(noise::deriveSeed(seed, kMacroContinent)) {
+    if (params_.plates.amplitude > 0.0f) {
+        plates_ = std::make_shared<const TectonicPlates>(noise::deriveSeed(seed, kPlates),
+                                                         params_.plates);
+    }
+}
 
 float Heightfield::heightAt(double x, double z) const {
     return sampleAt(x, z).height;
@@ -111,8 +125,13 @@ HeightSample Heightfield::sampleAt(double x, double z) const {
     const float land = noise::smoothstep(kMountainCoastStart, kMountainCoastFull, coastOffset);
     const float massif = noise::smoothstep(params_.maskLow, params_.maskHigh,
                                            noise::fbm2D(x, z, maskSeed_, mask));
-    s.mountainMask = land * massif;
+    // Collision belts are massifs too: the ridged noise draws mountain ranges along them.
+    // Without plates the collision is 0 and the mask is unchanged.
+    s.mountainMask = land * std::max(massif, s.plateCollision);
     s.mountain = mountainAt(x, z, s.mountainMask);
+    if (s.plateCollision > 0.0f) {
+        s.mountain *= 1.0f + params_.plates.collisionMountainBoost * s.plateCollision;
+    }
 
     if (params_.detailAmplitude > 0.0f) {
         const noise::FbmParams detail{.octaves = 3, .frequency = 1.0 / params_.detailWavelength};
@@ -124,21 +143,31 @@ HeightSample Heightfield::sampleAt(double x, double z) const {
     return s;
 }
 
-// Local continentalness, plus the saturated macro term when the layer is enabled:
-// clamp(local + macroContinent * tanh(macro / macroContinentWidth), -1, 1). Without it, the
-// result is exactly the local value.
+// Local continentalness, plus the saturated macro term and the plate term when these layers
+// are enabled: clamp(local + macroContinent * tanh(macro / macroContinentWidth) +
+// plates.amplitude * plate, -1, 1). Without them, the result is exactly the local value.
 void Heightfield::continentalnessAt(double x, double z, HeightSample& s) const {
     const noise::FbmParams continent{.octaves = 4, .frequency = 1.0 / params_.continentWavelength};
     const float local = noise::fbm2D(x, z, continentSeed_, continent);
     s.continentalness = local;
+    if (params_.macroContinent <= 0.0f && !plates_) {
+        return;
+    }
+    float term = 0.0f;
     if (params_.macroContinent > 0.0f) {
         const noise::FbmParams macro{.octaves = 2,
                                      .frequency = 1.0 / params_.macroContinentWavelength};
         s.macroContinentalness = noise::fbm2D(x, z, macroContinentSeed_, macro);
-        const float term = params_.macroContinent *
-                           std::tanh(s.macroContinentalness / params_.macroContinentWidth);
-        s.continentalness = std::clamp(local + term, -1.0f, 1.0f);
+        term = params_.macroContinent *
+               std::tanh(s.macroContinentalness / params_.macroContinentWidth);
     }
+    if (plates_) {
+        const PlateSample plate = plates_->sampleAt(x, z);
+        s.plateContinentalness = plate.continentalness;
+        s.plateCollision = plate.collision;
+        term += params_.plates.amplitude * plate.continentalness;
+    }
+    s.continentalness = std::clamp(local + term, -1.0f, 1.0f);
 }
 
 // The ridged noise is only evaluated inside the mountain mask, and is scaled by it.
