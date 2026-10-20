@@ -1,19 +1,22 @@
 // Modifications: blocks stored per chunk, the chunks a block reaches, local and order-free
 // density edits, plant edits identified by position, and the modification file (round trip,
 // deterministic bytes pinned on a reference file, FNV-1a checksum, rejected corrupt files and
-// huge coordinates, error kinds, atomic save), and the merge of two stores.
+// huge coordinates, error kinds, atomic save, save while another reader holds the file), and the
+// merge of two stores.
 #include "terrain/storage/modifications.hpp"
 
+#include "storage_test_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -361,10 +364,8 @@ void testSaveAndLoad() {
     const terrain::SavedModifications loaded = terrain::loadModifications(file);
     TEST_CHECK(loaded.seed == kSeed && loaded.store == store);
 
-    std::ifstream in(file, std::ios::binary);
-    const std::vector<std::uint8_t> onDisk((std::istreambuf_iterator<char>(in)),
-                                           std::istreambuf_iterator<char>());
-    TEST_CHECK(onDisk == terrain::serializeModifications(store, kSeed));
+    // Read through a stream closed at once: on Windows an open file cannot be replaced.
+    TEST_CHECK(storage_test::fileBytes(file) == terrain::serializeModifications(store, kSeed));
 
     // Saving again replaces the file.
     ModificationStore more = store;
@@ -390,6 +391,52 @@ void testSaveAndLoad() {
     std::filesystem::remove_all(dir);
 }
 
+// Another program reading the file while it is saved again. On Windows the file cannot be
+// replaced while it is open: a reader closing it within a second only delays the save (the
+// renames are tried again); one holding it longer makes the save throw a StorageError (Io),
+// leaving the file whole and no temporary file. Elsewhere the save replaces the file, the
+// reader keeping the old bytes. Never a crash.
+void testSaveWhileOpen() {
+    const std::filesystem::path dir = testDirectory();
+    const std::filesystem::path file = dir / "terrain_modifications.bin";
+    terrain::saveModifications(file, sampleStore(), kSeed);
+    const std::vector<std::uint8_t> before = storage_test::fileBytes(file);
+    ModificationStore more = sampleStore();
+    more.setBlock({0, 0, 0}, BlockEdit::Added);
+    {
+        std::ifstream reader(file, std::ios::binary);
+        bool replaced = false;
+        const auto failure = storage_test::errorOf([&] {
+            terrain::saveModifications(file, more, kSeed);
+            replaced = true;
+        });
+        TEST_CHECK(replaced != failure.has_value());
+        TEST_CHECK(replaced || failure == terrain::StorageErrorKind::Io);
+        TEST_CHECK(storage_test::readAll(reader) == before);
+        TEST_CHECK(storage_test::fileBytes(file) ==
+                   (replaced ? terrain::serializeModifications(more, kSeed) : before));
+        TEST_CHECK(!std::filesystem::exists(dir / "terrain_modifications.bin.tmp"));
+    }
+    more.setBlock({1, 0, 0}, BlockEdit::Removed);
+    {
+        const storage_test::BriefReader reader(file, std::chrono::milliseconds(60));
+        TEST_CHECK(!storage_test::errorOf([&] { terrain::saveModifications(file, more, kSeed); }));
+    }
+    TEST_CHECK(terrain::loadModifications(file).store == more);
+
+    // A target no rename can replace on any platform (a directory holding a file): the renames
+    // are tried again, then the save throws a clear StorageError and leaves no temporary file.
+    const std::filesystem::path blocked = dir / "blocked.bin";
+    std::filesystem::create_directories(blocked / "inside");
+    std::string message;
+    TEST_CHECK(storage_test::errorOf([&] { terrain::saveModifications(blocked, more, kSeed); },
+                                     &message) == terrain::StorageErrorKind::Io);
+    TEST_CHECK(message.find("blocked.bin") != std::string::npos);
+    TEST_CHECK(!std::filesystem::exists(dir / "blocked.bin.tmp"));
+    TEST_CHECK(std::filesystem::exists(blocked / "inside"));
+    std::filesystem::remove_all(dir);
+}
+
 } // namespace
 
 int main() {
@@ -405,5 +452,6 @@ int main() {
     testHugeCoordinatesAndErrorKinds();
     testMerge();
     testSaveAndLoad();
+    testSaveWhileOpen();
     return test::result();
 }
