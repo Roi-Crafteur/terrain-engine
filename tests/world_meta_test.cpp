@@ -97,7 +97,8 @@ void testPinnedBytes() {
         meta.name.size(), 8, 16, 4, 4 + (1 + 27 + 8) + (1 + 16 + 8), 8, 8, 24, 8};
     TEST_CHECK(fields.size() == sizes.size());
     for (std::size_t i = 0; i < fields.size() && i < sizes.size(); ++i) {
-        TEST_CHECK(fields[i].tag == i + 1 && fields[i].payload.size() == sizes[i]);
+        TEST_CHECK(static_cast<std::size_t>(fields[i].tag) == i + 1 &&
+                   fields[i].payload.size() == sizes[i]);
     }
     TEST_CHECK(fields[1].payload ==
                (std::vector<std::uint8_t>{0x9B, 0x28, 0x35, 0x01, 0, 0, 0, 0})); // the seed

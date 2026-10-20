@@ -111,12 +111,12 @@ inline bool isDamage(std::optional<terrain::StorageErrorKind> kind) {
 // is closed again.
 class BriefReader {
 public:
-    BriefReader(std::filesystem::path file, std::chrono::milliseconds duration)
-        : thread_([this, file = std::move(file), duration] {
-              std::ifstream in(file, std::ios::binary);
-              opened_.set_value();
-              std::this_thread::sleep_for(duration);
-          }) {
+    BriefReader(std::filesystem::path file, std::chrono::milliseconds duration) {
+        thread_ = std::thread([this, file = std::move(file), duration] {
+            std::ifstream in(file, std::ios::binary);
+            opened_.set_value();
+            std::this_thread::sleep_for(duration);
+        });
         openedFuture_.wait();
     }
     BriefReader(const BriefReader&) = delete;
@@ -158,7 +158,7 @@ inline terrain::ModificationStore sampleStore() {
 inline terrain::WorldMeta sampleMeta() {
     terrain::WorldMeta meta;
     meta.name = "Vall\xC3\xA9"
-                "e des Brumes"; // "Vallée des Brumes", in UTF-8 on every compiler
+                "e des Brumes"; // with an e acute, in UTF-8 on every compiler
     meta.seed = kSeed;
     meta.generation = {{"heightfield.macro_continent", 0.25}, {"plates.amplitude", 0.5}};
     meta.createdAt = 1'790'000'000;

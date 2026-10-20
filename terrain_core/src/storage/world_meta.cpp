@@ -32,7 +32,8 @@ enum Field : std::uint16_t {
     kSpawn,
     kPlayTime,
 };
-constexpr std::array<const char*, kPlayTime + 1> kFieldNames = {
+constexpr std::size_t kLastField = kPlayTime;
+constexpr std::array<const char*, kLastField + 1> kFieldNames = {
     "", "name", "seed", "size", "generator version", "generation", "created", "saved", "spawn",
     "play time"};
 // A generation parameter: its name length, at least one character, and its value.
@@ -261,7 +262,7 @@ WorldMeta deserializeWorldMeta(std::span<const std::uint8_t> bytes) {
         storage::openFrame(bytes, kMagic, kWorldFormatVersion, "world.meta");
     ByteReader in(frame.body, "invalid world.meta: ");
     WorldMeta meta;
-    std::uint32_t previous = 0;
+    std::uint16_t previous = 0;
     std::uint32_t seen = 0; // bit t: the required field t was read
     while (in.remaining() > 0) {
         const std::uint16_t tag = in.u16();
@@ -283,7 +284,7 @@ WorldMeta deserializeWorldMeta(std::span<const std::uint8_t> bytes) {
         payload.expectEnd("too long");
         seen |= 1U << tag;
     }
-    for (std::size_t tag = kName; tag <= kPlayTime; ++tag) {
+    for (std::size_t tag = kName; tag <= kLastField; ++tag) {
         if ((seen & (1U << tag)) == 0) {
             in.fail(std::string("missing field ") + kFieldNames[tag]);
         }

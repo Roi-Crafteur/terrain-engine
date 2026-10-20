@@ -70,7 +70,7 @@ void createMissing(const fs::path& directory, std::set<fs::path>& touched) {
         return;
     }
     createMissing(directory.parent_path(), touched);
-    fs::create_directory(directory, error);
+    static_cast<void>(fs::create_directory(directory, error));
     if (error) {
         fail("create the directory", directory, error);
     }

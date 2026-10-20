@@ -34,10 +34,11 @@ WorldMeta world(const std::string& name, std::uint64_t seed, std::int64_t create
 void testFolderNames() {
     TEST_CHECK(terrain::worldFolderName("Mon Monde") == "mon_monde");
     TEST_CHECK(terrain::worldFolderName(storage_test::sampleMeta().name) == "vall_e_des_brumes");
-    TEST_CHECK(terrain::worldFolderName("  Les -- 3 (îles)!  ") == "les_--_3_les");
+    TEST_CHECK(terrain::worldFolderName("  Les -- 3 (\xC3\xAE"
+                                        "les)!  ") == "les_--_3_les"); // i circumflex
     TEST_CHECK(terrain::worldFolderName("a/b\\c:..d") == "a_b_c_d");
     TEST_CHECK(terrain::worldFolderName("!!!") == "world");
-    TEST_CHECK(terrain::worldFolderName("\xC3\x89t\xC3\xA9") == "t"); // "Été"
+    TEST_CHECK(terrain::worldFolderName("\xC3\x89t\xC3\xA9") == "t"); // E acute, t, e acute
     TEST_CHECK(terrain::worldFolderName("CON") == "con_");
     TEST_CHECK(terrain::worldFolderName("Com1") == "com1_");
     TEST_CHECK(terrain::worldFolderName("com10") == "com10");
@@ -110,7 +111,7 @@ void testDelete(const fs::path& root) {
     if (!error) { // symbolic links may be unavailable (Windows without privileges)
         TEST_CHECK(errorOf([&] { terrain::deleteWorld(root, "link"); }) ==
                    StorageErrorKind::Invalid);
-        fs::remove(root / "link");
+        fs::remove(root / "link", error);
     }
     TEST_CHECK(fs::exists(root / "notes") && fs::exists(root / "broken"));
     TEST_CHECK(fs::exists(root / "con_" / "world.meta"));
