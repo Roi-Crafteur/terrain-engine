@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -291,13 +292,14 @@ std::vector<std::uint8_t> withDouble(std::vector<std::uint8_t> bytes, std::size_
     return resealed(bytes);
 }
 
-terrain::StorageErrorKind errorKind(const std::vector<std::uint8_t>& bytes) {
+// The kind of error reading bytes gives; empty if the file is accepted.
+std::optional<terrain::StorageErrorKind> errorKind(const std::vector<std::uint8_t>& bytes) {
     try {
         static_cast<void>(terrain::deserializeModifications(bytes));
     } catch (const terrain::StorageError& error) {
         return error.kind();
     }
-    return terrain::StorageErrorKind::Io; // accepted
+    return std::nullopt;
 }
 
 // A plant far outside its chunk, even beyond the 32-bit chunk indices, is rejected without any
@@ -307,7 +309,7 @@ void testHugeCoordinatesAndErrorKinds() {
     // x at byte 90 (after the removed plant, the count of added plants and the type).
     TEST_CHECK(withDouble(kReferenceFile, 69, 17.5) == kReferenceFile);
     // The chunk holds x in [16, 32).
-    TEST_CHECK(errorKind(withDouble(kReferenceFile, 69, 16.0)) == terrain::StorageErrorKind::Io);
+    TEST_CHECK(!errorKind(withDouble(kReferenceFile, 69, 16.0)));
     for (const double far : {1e300, -1e300, 15.75, 32.0}) {
         TEST_CHECK(errorKind(withDouble(kReferenceFile, 69, far)) ==
                    terrain::StorageErrorKind::Invalid);
