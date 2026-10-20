@@ -217,9 +217,14 @@ struct CaveColumn {
     // Parameters of the caves of the cave regions blended at the column (neutral without them).
     CaveProfile profile;
     // Galleries, where the profile has galleries or rivers (else left as is): the horizontal
-    // distance to the axis of the nearest one and the height of their floor at the column.
+    // distance to the axis of the nearest one and the height of their floor at the column, and
+    // where the river field reaches its threshold, the level of the river in a gallery (its
+    // floor where the level is too steep for water); kDryLevel elsewhere.
     float galleryDistance = 1.0e9f;
     float galleryFloor = kDryLevel;
+    float riverLevel = kDryLevel;
+    // Whether the water of the aquifer cell of the column freezes, its lake or a river.
+    bool cold = false;
 };
 
 // What a 4 m noise cell bounds, whatever the profile of a column in it: the smallest distances
@@ -345,11 +350,15 @@ public:
     // closes the components but the galleries and the entrances, the sill closes the galleries
     // too.
     [[nodiscard]] float combine(const CaveVoids& voids) const;
-    // Density of the water of the aquifer of the column at height y, negative in the water:
-    // the carved air (carved >= 0) below the level and groundMargin below the ground (terrain),
-    // extended skin into the rock. voidClamp where the column is dry.
+    // Density of the water of the column at height y, negative in the water: the carved air
+    // (carved >= 0) below the level of its aquifer and groundMargin below the ground (terrain),
+    // extended skin into the rock; with a river, also the air of the gallery (galleryVoid) below
+    // the river level. voidClamp where the column holds no water.
     [[nodiscard]] float waterDensity(const CaveColumn& column, double y, float terrain,
                                      float carved) const;
+    // Level of the water that may stand at height y of the column: the level of its aquifer
+    // and, in a gallery, the level of its river; kDryLevel without water.
+    [[nodiscard]] float waterLevelAt(const CaveColumn& column, double y) const;
     // Terrain density with the void carved out: smoothSubtract(terrain, void, blend), faded
     // back to terrain between guard and guard + fade. Exactly terrain from guard + fade on;
     // never below terrain: the caves never add rock.

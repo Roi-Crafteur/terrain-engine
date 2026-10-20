@@ -304,12 +304,26 @@ float CaveField::combine(const CaveVoids& voids) const {
 float CaveField::waterDensity(const CaveColumn& column, double y, float terrain,
                               float carved) const {
     const AquiferParams& a = params_.aquifers;
-    if (column.waterLevel <= kDryLevel) {
-        return params_.voidClamp;
+    float lake = params_.voidClamp;
+    if (column.waterLevel > kDryLevel) {
+        const auto belowLevel = static_cast<float>(y - static_cast<double>(column.waterLevel));
+        lake = std::min(std::max({belowLevel, -carved - a.skin, terrain + a.groundMargin}),
+                        params_.voidClamp);
     }
-    const auto belowLevel = static_cast<float>(y - static_cast<double>(column.waterLevel));
-    return std::min(std::max({belowLevel, -carved - a.skin, terrain + a.groundMargin}),
-                    params_.voidClamp);
+    if (column.riverLevel <= kDryLevel) {
+        return lake;
+    }
+    // Only the gallery holds the river: the band closes every other cave around it.
+    const auto belowRiver = static_cast<float>(y - static_cast<double>(column.riverLevel));
+    const float river = std::max({belowRiver, galleryVoid(column, y) - a.skin, -carved - a.skin,
+                                  terrain + a.groundMargin});
+    return std::min(lake, std::min(river, params_.voidClamp));
+}
+
+float CaveField::waterLevelAt(const CaveColumn& column, double y) const {
+    const bool inGallery = column.riverLevel > kDryLevel &&
+                           galleryVoid(column, y) < params_.aquifers.skin;
+    return inGallery ? std::max(column.waterLevel, column.riverLevel) : column.waterLevel;
 }
 
 float CaveField::carve(float terrain, float caveVoid, const CaveDetail& detail) const {
