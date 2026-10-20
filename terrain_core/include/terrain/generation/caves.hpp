@@ -85,7 +85,8 @@ struct EntranceParams {
 // probability chance scaled by the climate and the biome above (dryFactor under deserts,
 // savannas and beaches, from dryFactor to 1 with the humidity between dryHumidity and
 // wetHumidity). Each hangs from the ceiling of the highest void at least minSpan high under its
-// candidate that is not open to the sky; a stalagmite stands under it with probability
+// candidate that is not open to the sky, and none stands in a column crossing the tube or the
+// chamber of an entrance (within entranceMargin): a stalagmite stands under it with probability
 // stalagmiteChance. Lengths are drawn up to maxLength, at most maxShare of the free height
 // (down to the water of a lake), and the two never touch.
 struct SpeleothemParams {
@@ -102,6 +103,7 @@ struct SpeleothemParams {
     float maxShare = 0.4f;
     float radiusPerLength = 0.22f; // radius at the base, per meter of length
     float iceTemperature = -2.0f;  // colder at the surface: ice
+    float entranceMargin = 1.0f;
 };
 
 struct CaveParams {

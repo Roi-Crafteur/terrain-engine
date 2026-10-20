@@ -196,10 +196,10 @@ void testAnchoring() {
 
 // ---------------------------------------------------------------------------
 
-// A void that a column opens to the sky (air 1 m under the ground) holds no speleothem: with a
+// A void that a column opens to the sky (air 1 m under the ground) holds no speleothem, and no
+// column crossing the tube or the chamber of an entrance holds any, at any depth: with a
 // candidate in every square meter around the tops of entrances, the columns that open to the
-// sky have speleothems only in the voids below their rock, and far fewer than the others. (The
-// rule is per column: the roof of the tube of an entrance, once underground, may hold some.)
+// sky hold far fewer speleothems than the others, never in their sky void.
 void testOpenToSky() {
     CaveParams params = aquiferParams(false);
     params.speleothems.spacing = 1.0;
@@ -220,13 +220,15 @@ void testOpenToSky() {
     const double closedShare =
         static_cast<double>(counts.inClosed) / static_cast<double>(counts.closed);
     std::printf("open to the sky: %zu entrances, %zu open columns holding %zu speleothems (%zu in "
-                "their sky void), %zu other columns holding %zu\n",
+                "their sky void), %zu other columns holding %zu, %zu in entrance columns\n",
                 used, counts.columns, counts.inOpen, counts.sharing, counts.closed,
-                counts.inClosed);
+                counts.inClosed, counts.inEntranceColumn);
     TEST_CHECK(used == 3);
     TEST_CHECK(counts.columns >= 100);
     TEST_CHECK(counts.inClosed >= 100);
     TEST_CHECK(counts.sharing == 0);
+    // No speleothem anywhere in the column of a tube or a chamber, at any depth.
+    TEST_CHECK(counts.inEntranceColumn == 0);
     TEST_CHECK(openShare * 4.0 < closedShare);
 }
 

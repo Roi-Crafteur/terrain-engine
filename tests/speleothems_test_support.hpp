@@ -4,6 +4,7 @@
 // of the anchoring of each speleothem in the rock and the air around it, and the columns that
 // open to the sky.
 
+#include "terrain/generation/cave_entrances.hpp"
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/speleothems.hpp"
 
@@ -215,6 +216,7 @@ struct SkyCounts {
     std::size_t inOpen = 0;  // speleothems in an open column (in a lower void)
     std::size_t inClosed = 0;
     std::size_t sharing = 0; // speleothems in the void a column opens to the sky
+    std::size_t inEntranceColumn = 0; // speleothems in a column crossing an entrance
 };
 
 // Counts the dense speleothems around the top of an entrance by whether the void they stand in
@@ -235,6 +237,11 @@ inline void countAroundEntrance(const CaveField& field, const SpeleothemField& s
         const float opening = skyFloor(sampler, column);
         (opening > kDryLevel ? counts.inOpen : counts.inClosed) += 1;
         counts.sharing += opening > kDryLevel && s.y >= opening - 0.01f ? 1 : 0;
+        const std::vector<CaveEntrance>& near = sampler.entrances();
+        const bool crossed = std::any_of(near.begin(), near.end(), [&s](const CaveEntrance& n) {
+            return terrain::entranceColumn(n, s.x, s.z, 0.0);
+        });
+        counts.inEntranceColumn += crossed ? 1 : 0;
     }
 }
 

@@ -1,5 +1,6 @@
 #include "terrain/generation/speleothems.hpp"
 
+#include "terrain/generation/cave_entrances.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -123,6 +124,13 @@ void SpeleothemField::placeCandidate(CaveSampler& sampler, int cellX, int cellZ,
     const SpeleothemParams& p = params_;
     const std::uint64_t cell = cellSeed(seed_, cellX, cellZ);
     const auto [x, z] = candidateOf(cell, cellX, cellZ, p);
+    // No speleothem in the whole column of an entrance: neither in its tube nor under it.
+    const std::vector<CaveEntrance>& entrances = sampler.entrances();
+    if (std::any_of(entrances.begin(), entrances.end(), [&](const CaveEntrance& entrance) {
+            return entranceColumn(entrance, x, z, p.entranceMargin);
+        })) {
+        return;
+    }
     const CaveGround& ground = sampler.ground();
     const CaveEnvironment environment =
         ground.environment ? ground.environment(x, z) : CaveEnvironment{};

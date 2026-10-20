@@ -125,6 +125,12 @@ double entranceAxisDistance(const CaveEntrance& entrance, double x, double z) {
     return std::hypot(x - px, z - pz);
 }
 
+bool entranceColumn(const CaveEntrance& entrance, double x, double z, double margin) {
+    const double chamber = std::hypot(x - entrance.bottomX, z - entrance.bottomZ);
+    return entranceAxisDistance(entrance, x, z) <= entrance.tubeRadius + margin ||
+           chamber <= entrance.chamberRadius + margin;
+}
+
 float entranceVoidAt(const CaveEntrance& entrance, double x, double y, double z) {
     const double dx = entrance.bottomX - entrance.topX;
     const double dy = entrance.bottomY - entrance.topY;

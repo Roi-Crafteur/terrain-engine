@@ -16,6 +16,12 @@ inline constexpr double kEntranceReachMargin = 16.0;
 // its bottom, seen from above.
 [[nodiscard]] double entranceAxisDistance(const CaveEntrance& entrance, double x, double z);
 
+// True if the column at (x, z) crosses the tube or the chamber of the entrance, widened by
+// margin: within tubeRadius + margin of its axis or chamberRadius + margin of its chamber,
+// horizontally.
+[[nodiscard]] bool entranceColumn(const CaveEntrance& entrance, double x, double z,
+                                  double margin);
+
 // Signed distance to the void of the entrance, the union of its tube (a capsule from top to
 // bottom) and of its chamber (a ball around bottom). Negative inside.
 [[nodiscard]] float entranceVoidAt(const CaveEntrance& entrance, double x, double y, double z);
