@@ -25,6 +25,9 @@ inline constexpr const char* kBackupSuffix = ".bak";
 [[nodiscard]] std::filesystem::path withSuffix(const std::filesystem::path& file,
                                                const char* suffix);
 
+// file or its .bak copy exists.
+[[nodiscard]] bool hasFileOrBackup(const std::filesystem::path& file);
+
 // Whole content of a file. Throws StorageError (Io) if it cannot be read.
 [[nodiscard]] std::vector<std::uint8_t> readFileBytes(const std::filesystem::path& file);
 

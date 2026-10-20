@@ -3,6 +3,7 @@
 #include "durable_file.hpp"
 #include "terrain/storage/storage_error.hpp"
 
+#include <array>
 #include <chrono>
 #include <fstream>
 #include <set>
@@ -15,9 +16,10 @@ namespace {
 
 namespace fs = std::filesystem;
 
-// On Windows an antivirus or an indexer may hold a file for a moment: a rename is tried again.
-constexpr int kRenameAttempts = 5;
-constexpr auto kRenamePause = std::chrono::milliseconds(20);
+// On Windows a file another program holds open (a reader, an antivirus, an indexer, a backup)
+// can be neither renamed nor replaced: a rename is tried again after these pauses, about 1.3 s
+// in all, before the save fails.
+constexpr std::array<int, 7> kRenamePausesMs = {10, 20, 40, 80, 160, 320, 640};
 
 [[noreturn]] void fail(const std::string& action, const fs::path& path,
                        const std::error_code& error) {
@@ -38,16 +40,19 @@ fs::path directoryOf(const fs::path& file) {
 
 void renameRetrying(const fs::path& from, const fs::path& to) {
     std::error_code error;
-    for (int attempt = 0; attempt < kRenameAttempts; ++attempt) {
-        if (attempt > 0) {
-            std::this_thread::sleep_for(kRenamePause);
-        }
-        fs::rename(from, to, error);
+    fs::rename(from, to, error);
+    for (const int pause : kRenamePausesMs) {
         if (!error) {
             return;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(pause));
+        fs::rename(from, to, error);
     }
-    fail("rename", from, error);
+    if (error) {
+        throw StorageError(StorageErrorKind::Io,
+                           "cannot replace " + pathText(to) + " by " + pathText(from) +
+                               " (is it open in another program?): " + error.message());
+    }
 }
 
 void removeFile(const fs::path& file) {
@@ -123,13 +128,17 @@ bool isDamage(StorageErrorKind kind) {
 
 std::string pathText(const fs::path& path) {
     const std::u8string text = path.u8string();
-    return {text.begin(), text.end()};
+    return {reinterpret_cast<const char*>(text.data()), text.size()};
 }
 
 fs::path withSuffix(const fs::path& file, const char* suffix) {
     fs::path result = file;
     result += suffix;
     return result;
+}
+
+bool hasFileOrBackup(const fs::path& file) {
+    return isRegularFile(file) || isRegularFile(withSuffix(file, kBackupSuffix));
 }
 
 std::vector<std::uint8_t> readFileBytes(const fs::path& file) {
