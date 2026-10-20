@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <span>
+#include <vector>
 
 namespace terrain {
 
@@ -83,7 +85,8 @@ struct CaveRegionsPreviewStats {
 // section): the shaded hypsometric relief with the rivers, tinted with the district mix
 // at each sample (kCaveRegionsPreviewTintShare of the district colors of the map), then
 // the samples over a cave tinted toward that mix, darker with the depth of the shallowest one
-// (kCaveRegionsPreviewDeepShade), the lakes and the entrances as in renderCavePreview.
+// (kCaveRegionsPreviewDeepShade), the lakes, the galleries, the underground rivers, the lava and
+// the entrances as in renderCavePreview (the stats of its caves hold their shares).
 // Deterministic. Throws std::invalid_argument if the field of the region has no cave regions.
 [[nodiscard]] Image renderCaveRegionsPreview(const CaveRegion& region,
                                              CaveRegionsPreviewStats* stats = nullptr);
@@ -99,20 +102,23 @@ struct CaveRegionsMeeting {
 // of the 11 x 11 cells around it: the midpoint of the pair, on land (the ground at the two sites
 // and at the midpoint stands at least 10 m over the sea), where the two nearest types weigh
 // at least 0.3 each, so that the caves of the two types meet there. The pair whose midpoint is
-// the nearest wins, the first in cell order on a tie. Deterministic. Throws
-// std::invalid_argument if the field has no cave regions.
-[[nodiscard]] CaveRegionsMeeting findCaveRegionsMeeting(const CaveField& field,
-                                                        const CaveGround& ground, double nearX,
-                                                        double nearZ);
+// the nearest wins, the first in cell order on a tie. If preferred is not empty, the nearest
+// among the pairs that hold at least one of its types wins over the others, which only count
+// when none does. Deterministic. Throws std::invalid_argument if the field has no cave regions.
+[[nodiscard]] CaveRegionsMeeting findCaveRegionsMeeting(
+    const CaveField& field, const CaveGround& ground, double nearX, double nearZ,
+    std::span<const CaveDistrictType> preferred = {});
 
 // What exportCaveRegionsPngs renders: the map of the streamed world (the heightfield under
 // CaveParams with the default cave regions), and the preview, a CaveRegion with the same
-// seed and cave regions, around the nearest meeting of two types to the center of the map.
+// seed and cave regions, around the nearest meeting of two types to the center of the map (of
+// a preferred type, if any: findCaveRegionsMeeting).
 struct CaveRegionsExport {
     std::uint64_t seed = kDefaultWorldSeed;
     HeightmapRegion map{0.0, 0.0, 100.0, 512}; // 51.2 km
     double previewMetersPerPixel = 20.0;
     int previewSize = 224; // 4.5 km, about fifteen seconds in an unoptimized build
+    std::vector<CaveDistrictType> preferredTypes; // empty: the nearest meeting of any two
 };
 
 struct CaveRegionsStats {

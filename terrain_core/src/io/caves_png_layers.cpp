@@ -20,6 +20,10 @@ LinePoint slicePoint(const CaveSlice& slice, double u) {
     return slice.alongX ? LinePoint{u, slice.centerZ} : LinePoint{slice.centerX, u};
 }
 
+std::uint8_t mix(std::uint8_t a, std::uint8_t b, float t) {
+    return static_cast<std::uint8_t>(std::lround(a + (b - a) * t));
+}
+
 void setPixel(Image& image, int column, int row, Rgb rgb) {
     if (column < 0 || row < 0 || column >= image.width || row >= image.height) {
         return;
@@ -54,7 +58,8 @@ enum class Cell : std::uint8_t {
     Open,  // sky, sea or the line of the ground
     Rock,  // under the line of the ground, walls included
     Air,   // carved, dry
-    Water, // carved, under the water of a lake (or its ice)
+    Water, // carved, under the water of a lake or a river (or its ice)
+    Lava,  // carved, under the lava of its aquifer
 };
 
 // A column of a section: the state of the caves in it, its environment and what its ground is.
@@ -99,6 +104,7 @@ struct Section {
     std::vector<Cell> cells;
     std::vector<SliceColumn> columns;
     std::size_t waterPixels = 0;
+    std::size_t lavaPixels = 0;
 };
 
 // Color of the air of the component whose void is the smallest, limits included.
@@ -132,13 +138,18 @@ std::array<std::uint8_t, 3> rockRgb(double depth, const CaveParams& params) {
 }
 
 // Sky, sea, line of the ground, rock, and the carved air of a column: the water (or the ice) of
-// the lake of its aquifer where its density says so, else the color of its component.
+// the lake of its aquifer or of the river of its gallery, then the lava of its aquifer, where
+// their density says so, else the color of its component.
 void paintColumn(Section& section, CaveSampler& sampler, int pixelColumn) {
     const CaveSlice& slice = section.slice;
     const SliceColumn& column = section.columns[static_cast<std::size_t>(pixelColumn)];
     const CaveParams& params = sampler.field().params();
     const double ground = column.caves.ground;
-    const bool wet = column.caves.waterLevel > kDryLevel;
+    const bool lake = column.caves.waterLevel > kDryLevel;
+    const bool wet = lake || column.caves.riverLevel > kDryLevel;
+    const bool hot = column.caves.lavaLevel > kDryLevel;
+    // A river freezes where its cell is cold, wet or not; a lake where its cell is frozen.
+    const bool frozen = lake ? column.caves.frozen : column.caves.cold;
     for (int row = 0; row < slice.height; ++row) {
         const double y = section.rowY(row);
         if (y >= ground) {
@@ -153,17 +164,19 @@ void paintColumn(Section& section, CaveSampler& sampler, int pixelColumn) {
         } else if (density < 0.0f) {
             section.put(pixelColumn, row, Cell::Rock, rockRgb(ground - y, params));
         } else if (wet && sampler.waterDensity(column.caves, y, terrain, density) < 0.0f) {
-            section.put(pixelColumn, row, Cell::Water,
-                        column.caves.frozen ? kCaveIceRgb : kCaveWaterRgb);
+            section.put(pixelColumn, row, Cell::Water, frozen ? kCaveIceRgb : kCaveWaterRgb);
             ++section.waterPixels;
+        } else if (hot && sampler.lavaDensity(column.caves, y, terrain, density) < 0.0f) {
+            section.put(pixelColumn, row, Cell::Lava, kCaveLavaRgb);
+            ++section.lavaPixels;
         } else {
             section.put(pixelColumn, row, Cell::Air, airColor(sampler.voids(column.caves, y)));
         }
     }
 }
 
-// Air (dry or under water) around a rock pixel, within the reach of the walls: how many pixels,
-// and the sum of their offsets (x to the right, y up), which points toward the air.
+// Air (dry, under water or under lava) around a rock pixel, within the reach of the walls: how
+// many pixels, and the sum of their offsets (x to the right, y up), which points toward the air.
 struct AirAround {
     int count = 0;
     int x = 0;
@@ -179,7 +192,7 @@ AirAround airAround(const Section& section, int column, int row) {
                 continue;
             }
             const Cell cell = section.cell(column + dx, row + dy);
-            if (cell == Cell::Air || cell == Cell::Water) {
+            if (cell == Cell::Air || cell == Cell::Water || cell == Cell::Lava) {
                 ++around.count;
                 around.x += dx;
                 around.y -= dy;
@@ -199,6 +212,9 @@ CaveWallSite wallSite(const SliceColumn& column, double y, const AirAround& arou
     if (column.caves.waterLevel > kDryLevel) {
         site.aboveWater = static_cast<float>(y - static_cast<double>(column.caves.waterLevel));
         site.frozenWater = column.caves.frozen;
+    }
+    if (column.caves.lavaLevel > kDryLevel) {
+        site.aboveLava = static_cast<float>(y - static_cast<double>(column.caves.lavaLevel));
     }
     return site;
 }
@@ -361,8 +377,9 @@ Image renderCaveSlice(const CaveRegion& region, const CaveSlice& slice, CaveSlic
     const std::size_t speleothems = drawSpeleothems(section, region, sampler);
     if (stats != nullptr) {
         stats->speleothems = speleothems;
-        stats->waterFraction =
-            static_cast<double>(section.waterPixels) / static_cast<double>(section.pixelCount());
+        const auto pixels = static_cast<double>(section.pixelCount());
+        stats->waterFraction = static_cast<double>(section.waterPixels) / pixels;
+        stats->lavaFraction = static_cast<double>(section.lavaPixels) / pixels;
     }
     return std::move(section.image);
 }

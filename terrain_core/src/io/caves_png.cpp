@@ -17,6 +17,8 @@ namespace {
 
 using cave_png::kSliceMargin;
 using cave_png::LinePoint;
+using cave_png::mix;
+using cave_png::Scan;
 using cave_png::setPixel;
 using cave_png::sliceU;
 using cave_png::slicePoint;
@@ -37,10 +39,6 @@ constexpr float kLakeShare = 0.7f;
 // Smallest radius, in pixels, of the tube and of the chamber of an entrance on the map: more
 // than half a diagonal of a pixel, so that an entrance always covers a sample.
 constexpr double kMinMarkRadius = 0.75;
-
-std::uint8_t mix(std::uint8_t a, std::uint8_t b, float t) {
-    return static_cast<std::uint8_t>(std::lround(a + (b - a) * t));
-}
 
 // Entrances whose reach meets the region.
 std::vector<CaveEntrance> regionEntrances(const CaveRegion& region) {
@@ -133,13 +131,6 @@ void drawRivers(Image& image, const RiverNetwork& rivers) {
     }
 }
 
-// What the scan of a sample of the map finds under it.
-struct Scan {
-    double depth = -1.0;  // of the shallowest carved air, -1 if the scan finds none
-    bool water = false;   // some carved air of the scan lies under the water of a lake
-    bool frozen = false;  // the lake is frozen
-};
-
 // Depth of the first sample of the scan (the samples are first + n * kScanStep) at or under depth.
 double scanDepthFrom(double first, double depth) {
     return first + std::ceil((depth - first) / kScanStep) * kScanStep;
@@ -147,8 +138,9 @@ double scanDepthFrom(double first, double depth) {
 
 // Scans the column from just under the minimum roof to just under the maximum depth: the
 // shallowest carved air, and in a wet aquifer (the only one with a lake) whether the carved air
-// of the samples under its level holds water. A dry column stops at its first cave.
-Scan scanColumn(CaveSampler& sampler, double x, double z, float ground) {
+// of the samples under its level holds water. A dry column stops at its first cave. The
+// galleries, rivers and lava are then looked for apart (scanNetwork).
+Scan scanColumn(CaveSampler& sampler, double x, double z, float ground, double metersPerPixel) {
     const CaveParams& params = sampler.field().params();
     const CaveColumn column = sampler.column(x, z, ground);
     const bool wet = column.waterLevel > kDryLevel;
@@ -176,6 +168,7 @@ Scan scanColumn(CaveSampler& sampler, double x, double z, float ground) {
         const double level = static_cast<double>(ground) - column.waterLevel;
         depth = std::max(depth, scanDepthFrom(first, level) - kScanStep);
     }
+    cave_png::scanNetwork(sampler, column, metersPerPixel, scan);
     return scan;
 }
 
@@ -200,7 +193,8 @@ void scanChunk(const CaveRegion& region, int row, int first, int last, std::vect
     for (int column = first; column <= last; ++column) {
         const float ground = grounds[static_cast<std::size_t>(column - first)];
         scans[static_cast<std::size_t>(row * size + column)] =
-            scanColumn(sampler, eroded.sampleX(column), z, ground);
+            scanColumn(sampler, eroded.sampleX(column), z, ground,
+                       eroded.region().metersPerPixel);
     }
 }
 
@@ -242,6 +236,19 @@ void tintCaves(Image& image, const std::vector<Scan>& scans, const CaveParams& p
             }
         }
     }
+}
+
+// Shares of the samples of the map with a cave, a lake, a gallery, a river and lava.
+void fillScanStats(CavePreviewStats& stats, const std::vector<Scan>& scans) {
+    const auto share = [&scans](auto has) {
+        return static_cast<double>(std::count_if(scans.begin(), scans.end(), has)) /
+               static_cast<double>(scans.size());
+    };
+    stats.cavedFraction = share([](const Scan& scan) { return scan.depth >= 0.0; });
+    stats.lakeFraction = share([](const Scan& scan) { return scan.water; });
+    stats.galleryFraction = share([](const Scan& scan) { return scan.gallery; });
+    stats.riverFraction = share([](const Scan& scan) { return scan.river; });
+    stats.lavaFraction = share([](const Scan& scan) { return scan.lava; });
 }
 
 // Pixel of the map nearest to a point of the world.
@@ -323,6 +330,7 @@ Image renderCaveMap(const CaveRegion& region, const std::function<void(Image&)>&
     }
     const std::vector<Scan> scans = scanCaves(region);
     tintCaves(image, scans, region.field().params(), caveTint);
+    cave_png::drawNetwork(image, scans);
 
     const std::vector<CaveEntrance> entrances = regionEntrances(region);
     for (const CaveEntrance& entrance : entrances) {
@@ -336,13 +344,8 @@ Image renderCaveMap(const CaveRegion& region, const std::function<void(Image&)>&
             std::count_if(entrances.begin(), entrances.end(), [&](const CaveEntrance& e) {
                 return siteInside(eroded.region(), e);
             });
-        const auto caved = std::count_if(scans.begin(), scans.end(),
-                                         [](const Scan& scan) { return scan.depth >= 0.0; });
-        const auto lakes = std::count_if(scans.begin(), scans.end(),
-                                         [](const Scan& scan) { return scan.water; });
         stats->entrances = static_cast<std::size_t>(inside);
-        stats->cavedFraction = static_cast<double>(caved) / static_cast<double>(scans.size());
-        stats->lakeFraction = static_cast<double>(lakes) / static_cast<double>(scans.size());
+        fillScanStats(*stats, scans);
     }
     return image;
 }

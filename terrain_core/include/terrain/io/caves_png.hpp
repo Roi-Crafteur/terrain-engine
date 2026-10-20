@@ -25,6 +25,8 @@ inline constexpr std::uint8_t kEntranceAirRgb[3] = {255, 140, 20};
 // Lakes: carved air under the water level of its aquifer (ice if the lake is frozen).
 inline constexpr std::uint8_t kCaveWaterRgb[3] = {40, 110, 255};
 inline constexpr std::uint8_t kCaveIceRgb[3] = {205, 240, 255};
+// Lava: carved air under the lava level of its aquifer (sections and maps).
+inline constexpr std::uint8_t kCaveLavaRgb[3] = {255, 70, 0};
 // Speleothems (stalactites and stalagmites), in limestone or, in the cold, ice.
 inline constexpr std::uint8_t kCaveSpeleothemRgb[3] = {250, 245, 225};
 inline constexpr std::uint8_t kCaveSpeleothemIceRgb[3] = {170, 225, 255};
@@ -44,6 +46,14 @@ inline constexpr double kCaveSpeleothemReach = 2.0;
 // depth of the shallowest cave of their column. Rivers use kCaveRiverRgb.
 inline constexpr std::uint8_t kCaveShallowRgb[3] = {255, 90, 255};
 inline constexpr std::uint8_t kCaveDeepRgb[3] = {60, 0, 110};
+// The network of galleries, mixed over the samples it crosses (a warm cream, light over the
+// dark tints of the caves), and the water of its underground rivers (a bright aqua, apart from
+// the blues of the lakes kCaveWaterRgb and of the rivers of the surface kCaveRiverRgb; kCaveIceRgb
+// if frozen). Lava uses kCaveLavaRgb. A sample crossed by a gallery goes kCaveGalleryShare of the
+// way to its color; the rivers and the lava are drawn as they are.
+inline constexpr std::uint8_t kCaveGalleryRgb[3] = {255, 240, 190};
+inline constexpr std::uint8_t kCaveRiverWaterRgb[3] = {0, 255, 210};
+inline constexpr float kCaveGalleryShare = 0.6f;
 inline constexpr std::uint8_t kCaveEntranceMarkRgb[3] = {255, 255, 0};
 inline constexpr std::uint8_t kCaveSliceLineRgb[3] = {255, 255, 255};
 
@@ -66,6 +76,11 @@ struct CavePreviewStats {
     std::size_t entrances = 0;   // entrances whose site lies inside the region
     double cavedFraction = 0.0;  // [0, 1] share of the samples with a cave under them
     double lakeFraction = 0.0;   // [0, 1] share of the samples with a lake in a cave under them
+    // Share of the samples crossed by a gallery, by the water of an underground river in one,
+    // and with lava under them (cave regions only: 0 without them).
+    double galleryFraction = 0.0;
+    double riverFraction = 0.0;
+    double lavaFraction = 0.0;
     // Speleothems drawn on the default slice: set by exportCavePngs only (renderCavePreview does
     // not render the slice).
     std::size_t speleothems = 0;
@@ -74,7 +89,9 @@ struct CavePreviewStats {
 // Numbers of the section, filled by renderCaveSlice when given.
 struct CaveSliceStats {
     std::size_t speleothems = 0; // drawn: within kCaveSpeleothemReach of the plane, along the line
-    double waterFraction = 0.0;  // [0, 1] share of the pixels with the water or the ice of a lake
+    // [0, 1] share of the pixels with the water or the ice of a lake or of an underground river
+    double waterFraction = 0.0;
+    double lavaFraction = 0.0;   // [0, 1] share of the pixels with lava
 };
 
 // Section through the middle of the tube of an entrance of the region, along the horizontal
@@ -89,9 +106,11 @@ struct CaveSliceStats {
 // darker with the depth below the ground, with the line of the ground one pixel thick (blue
 // in the columns of rivers). Where the density is carved by the caves, the air has the color of
 // the component whose void is the smallest there, or kCaveWaterRgb (kCaveIceRgb if frozen) under
-// the water level of its aquifer. The rock within kCaveWallReach pixels of cave air has the color
-// of its material (caveMaterialRgb of caveMaterial: depth below the ground, environment above,
-// normal estimated from the pixels of air around it, height above the lake), and the
+// the water level of its aquifer or of the river of its gallery (CaveField::waterDensity), or
+// kCaveLavaRgb under the lava level of its aquifer (CaveField::lavaDensity). The rock within
+// kCaveWallReach pixels of cave air has the color of its material (caveMaterialRgb of
+// caveMaterial: depth below the ground, environment above, normal estimated from the pixels of
+// air around it, height above the lake or the lava: magma next to a lava lake), and the
 // speleothems within kCaveSpeleothemReach of the plane are drawn as triangles, base 2 * radius,
 // from base to tip along y, over the air (limestone, or ice if the speleothem is of ice).
 // Deterministic. The size of the slice must be at least 1 x 1 pixel.
@@ -103,9 +122,15 @@ struct CaveSliceStats {
 // from just under the minimum roof to just under the maximum depth every 4 m, is tinted by
 // the depth of the shallowest one: bright for shallow, dark for deep. A sample whose scan also
 // finds the water of a lake in the carved air (the same samples, CaveSampler::waterDensity) is
-// tinted over that with kCaveWaterRgb, or kCaveIceRgb if the lake is frozen. The entrances are
-// drawn in yellow (the samples within the radius of their tube of their axis or of their chamber
-// of their bottom, at least 0.75 pixel) and the line of defaultCaveSlice in white.
+// tinted over that with kCaveWaterRgb, or kCaveIceRgb if the lake is frozen. With cave regions,
+// the samples crossed by a gallery (its axis within max(its half width, 0.75 pixel) of the
+// sample, caves allowed at the middle of its height there) are mixed with kCaveGalleryRgb, and
+// those whose gallery carries the water of a river (deeper than the film of its minimum depth,
+// water found on its axis at mid-depth) have kCaveRiverWaterRgb (kCaveIceRgb if frozen): a 4 m
+// scan misses a river 1 m deep. Those with lava in the carved air within about 10 m under the
+// lava level of their aquifer have kCaveLavaRgb, over the lakes. The entrances are drawn in
+// yellow (the samples within the radius of their tube of their axis or of their chamber of
+// their bottom, at least 0.75 pixel) and the line of defaultCaveSlice in white.
 [[nodiscard]] Image renderCavePreview(const CaveRegion& region,
                                       CavePreviewStats* stats = nullptr);
 

@@ -1,8 +1,9 @@
 // Writes cave_regions.png and cave_regions_preview.png for visual checks of the cave districts
 // (Phase 8C-1): the map of the blended district types of the streamed world, square and
 // centered on (cx, cz), and the map of the caves of a region with districts around the nearest
-// point to that center where two types meet (224 px at 20 m/px, about fifteen seconds in an
-// unoptimized build: its size is fixed).
+// point to that center where two types meet, one of them if possible the Rivers or the Volcanic
+// type, which hold the underground rivers and the lava (224 px at 20 m/px, about fifteen seconds
+// in an unoptimized build: its size is fixed).
 // Usage: terrain_export_cave_regions <output-dir> [seed] [meters-per-pixel] [size] [cx] [cz]
 // The map is 512 px at 100 m/px (51.2 km) around the origin by default; a district is 2 to 4 km
 // across, so keep meters-per-pixel below 400 to see the borders.
@@ -92,6 +93,8 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
+    request.preferredTypes = {terrain::CaveDistrictType::Rivers,
+                              terrain::CaveDistrictType::Volcanic};
     terrain::CaveRegionsStats stats;
     if (!terrain::exportCaveRegionsPngs(request, argv[1], &stats)) {
         std::fprintf(stderr, "Failed to write the cave region images into %s\n", argv[1]);
@@ -107,10 +110,13 @@ int main(int argc, char** argv) {
     std::printf("; preview %d x %d px, %.1f km wide at (%.0f, %.0f), types ", area.size,
                 area.size, area.size * area.metersPerPixel / 1000.0, area.centerX, area.centerZ);
     printShares(stats.preview.typeShares, true);
-    std::printf(", caves under %.1f%% of the map, lakes under %.1f%%, %zu entrances; seed %llu: "
+    const terrain::CavePreviewStats& caves = stats.preview.caves;
+    std::printf(", caves under %.1f%% of the map, lakes under %.1f%%, galleries over %.1f%%, "
+                "rivers over %.1f%%, lava under %.1f%%, %zu entrances; seed %llu: "
                 "%s/cave_regions.png, %s/cave_regions_preview.png\n",
-                100.0 * stats.preview.caves.cavedFraction, 100.0 * stats.preview.caves.lakeFraction,
-                stats.preview.caves.entrances, static_cast<unsigned long long>(request.seed),
-                argv[1], argv[1]);
+                100.0 * caves.cavedFraction, 100.0 * caves.lakeFraction,
+                100.0 * caves.galleryFraction, 100.0 * caves.riverFraction,
+                100.0 * caves.lavaFraction, caves.entrances,
+                static_cast<unsigned long long>(request.seed), argv[1], argv[1]);
     return EXIT_SUCCESS;
 }
