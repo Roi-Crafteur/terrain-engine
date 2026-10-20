@@ -1,5 +1,7 @@
 # Terrain Engine
 
+[![CI](https://github.com/Roi-Crafteur/terrain-engine/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Roi-Crafteur/terrain-engine/actions/workflows/ci.yml)
+
 Moteur de terrain procédural 3D continu conçu pour générer des mondes immenses :
 continents, océans, chaînes de montagnes, vallées, rivières, cascades, falaises,
 plateaux, grottes et biomes cohérents.

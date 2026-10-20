@@ -1,0 +1,122 @@
+# Builds the project and runs all the tests on Windows, Linux and macOS (Apple Silicon), with the
+# warnings of the project targets treated as errors. The golden checksums of each platform are
+# printed in the job summary and kept in the ctest-<config> artifact, to compare the platforms.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  rules:
+    name: project rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the file sizes and the terrain_core includes
+        run: python3 scripts/check_project_rules.py
+
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      # One failing platform must not cancel the others: each one tells something.
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-msvc, os: windows-latest }
+          - { name: linux-gcc, os: ubuntu-latest, cc: gcc, cxx: g++ }
+          - { name: linux-clang, os: ubuntu-latest, cc: clang, cxx: clang++ }
+          - { name: macos-appleclang, os: macos-latest }
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+    steps:
+      - uses: actions/checkout@v5
+
+      # glad 2 generates the OpenGL loader of the viewer with Python and Jinja2.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: Install Jinja2
+        run: python -m pip install jinja2
+
+      - name: Install the X11 headers needed by GLFW
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libxi-dev
+
+      # Sources of GLFW and glad, kept out of the build directory. The sub-builds that fetched
+      # them are cached too and depend on the CMake generator, hence the runner image in the key.
+      - name: Identify the runner image
+        id: image
+        run: echo "version=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache the FetchContent dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            build-deps/*-src
+            build-deps/*-subbuild
+          key: fetchcontent-${{ matrix.name }}-${{ steps.image.outputs.version }}-${{ hashFiles('terrain_viewer/CMakeLists.txt') }}
+
+      - name: Configure
+        run: |
+          if [ -n "${{ matrix.cxx }}" ]; then
+            export CC="${{ matrix.cc }}" CXX="${{ matrix.cxx }}"
+          fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTERRAIN_WARNINGS_AS_ERRORS=ON \
+            -DFETCHCONTENT_BASE_DIR=build-deps -DFETCHCONTENT_UPDATES_DISCONNECTED=ON
+
+      - name: Build (warnings as errors)
+        id: build
+        run: cmake --build build --config Release
+
+      # Only when the build above fails: the job stays red, but the tests and the golden
+      # checksums of the platform are still obtained.
+      - name: Diagnostic rebuild without warnings as errors
+        id: rebuild
+        if: failure() && steps.build.outcome == 'failure'
+        run: |
+          echo "::error::Build failed with warnings as errors; rebuilt without them for the tests."
+          cmake -B build -DTERRAIN_WARNINGS_AS_ERRORS=OFF
+          cmake --build build --config Release
+
+      # Serial, so that the duration of each test is meaningful.
+      - name: Test
+        id: test
+        if: ${{ !cancelled() && (steps.build.outcome == 'success' || steps.rebuild.outcome == 'success') }}
+        run: |
+          ctest --test-dir build -C Release --output-on-failure --timeout 300 \
+            --output-junit ctest-junit.xml
+
+      - name: Report the golden checksums and the test durations
+        if: ${{ !cancelled() && (steps.test.outcome == 'success' || steps.test.outcome == 'failure') }}
+        run: python scripts/ci_test_report.py build/ctest-junit.xml ${{ matrix.name }} build/ci-report
+
+      - name: Upload the test results
+        if: ${{ !cancelled() && (steps.test.outcome == 'success' || steps.test.outcome == 'failure') }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ctest-${{ matrix.name }}
+          path: |
+            build/ctest-junit.xml
+            build/ci-report/
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
