@@ -29,8 +29,14 @@ bool keyOrder(const TileKey& a, const TileKey& b) {
 StreamManager::StreamManager(TileGenerator generator, const StreamParams& params)
     : generator_(std::move(generator)), params_(params) {
     validate(params_.lod);
+    validate(params_.world);
     if (params_.workerThreads < 0 || params_.maxLoadsPerUpdate == 0) {
         throw std::invalid_argument("StreamParams: invalid thread count or loads per update");
+    }
+    const ChunkCoord count = worldChunks(params_.world);
+    const int span = 2 * (params_.lod.viewDistance + tileChunks(kMaxLod)) + tileChunks(kMaxLod);
+    if (count.x < span || count.z < span) {
+        throw std::invalid_argument("StreamParams: the world is too small for the view distance");
     }
     for (int i = 0; i < params_.workerThreads; ++i) {
         workers_.emplace_back([this] { workerLoop(); });
@@ -48,7 +54,7 @@ StreamManager::~StreamManager() {
 
 StreamChanges StreamManager::update(double playerX, double playerZ) {
     rethrowError();
-    const ChunkCoord player = worldToChunk(playerX, playerZ);
+    const ChunkCoord player = wrapChunk(worldToChunk(playerX, playerZ), params_.world);
     if (!player_ || *player_ != player) {
         reselect(player);
     }
@@ -92,13 +98,18 @@ void StreamManager::waitIdle() {
 }
 
 void StreamManager::invalidate(std::span<const ChunkCoord> chunks) {
+    std::vector<ChunkCoord> canonical;
+    canonical.reserve(chunks.size());
+    for (const ChunkCoord chunk : chunks) {
+        canonical.push_back(wrapChunk(chunk, params_.world));
+    }
     for (auto& [key, wanted] : wanted_) {
-        if (overlapsAny(key, chunks)) {
+        if (overlapsAny(key, canonical)) {
             wanted.ticket = nextTicket_++;
         }
     }
     for (auto& [key, loaded] : loaded_) {
-        if (overlapsAny(key, chunks)) {
+        if (overlapsAny(key, canonical)) {
             loaded.ticket = kStale;
         }
     }
@@ -106,7 +117,7 @@ void StreamManager::invalidate(std::span<const ChunkCoord> chunks) {
 }
 
 const TileData* StreamManager::find(const TileKey& key) const {
-    const auto it = loaded_.find(key);
+    const auto it = loaded_.find(wrapTile(key, params_.world));
     return it == loaded_.end() ? nullptr : it->second.data.get();
 }
 
@@ -118,7 +129,7 @@ std::vector<TileKey> StreamManager::loadedTiles() const {
     }
     const ChunkCoord player = player_.value_or(ChunkCoord{});
     std::sort(keys.begin(), keys.end(),
-              [player](const TileKey& a, const TileKey& b) { return loadsBefore(a, b, player); });
+              [this, player](const TileKey& a, const TileKey& b) { return nearer(a, b, player); });
     return keys;
 }
 
@@ -136,11 +147,21 @@ bool StreamManager::current(const TileKey& key, std::uint64_t ticket) const {
     return it != loaded_.end() && it->second.ticket == ticket;
 }
 
+bool StreamManager::nearer(const TileKey& a, const TileKey& b, ChunkCoord player) const {
+    return loadsBefore(nearestTile(a, player, params_.world), nearestTile(b, player, params_.world),
+                       player);
+}
+
 // A tile keeps its ticket while its request is unchanged, so it is not generated again; a tile
-// coming back into the selection reuses its loaded data when it is still valid.
+// coming back into the selection reuses its loaded data when it is still valid. The selection
+// and its seams are computed around the canonical player in unwrapped coordinates, then the keys
+// are made canonical: the world is wide enough for them to stay distinct.
 void StreamManager::reselect(ChunkCoord player) {
     player_ = player;
     selection_ = tileRequests(selectTiles(player, params_.lod));
+    for (TileRequest& request : selection_) {
+        request.key = wrapTile(request.key, params_.world);
+    }
     std::unordered_map<TileKey, Wanted, TileKeyHash> wanted;
     wanted.reserve(selection_.size());
     for (const TileRequest& request : selection_) {
@@ -196,9 +217,8 @@ void StreamManager::rebuildQueue() {
 // Loads up to maxLoadsPerUpdate generated tiles, nearest first; stale ones are dropped.
 void StreamManager::integrate(StreamChanges& changes) {
     const ChunkCoord player = player_.value_or(ChunkCoord{});
-    std::sort(ready_.begin(), ready_.end(), [player](const Result& a, const Result& b) {
-        return loadsBefore(a.key, b.key, player) ||
-               (a.key == b.key && a.ticket < b.ticket);
+    std::sort(ready_.begin(), ready_.end(), [this, player](const Result& a, const Result& b) {
+        return nearer(a.key, b.key, player) || (a.key == b.key && a.ticket < b.ticket);
     });
     std::vector<Result> waiting;
     for (Result& result : ready_) {

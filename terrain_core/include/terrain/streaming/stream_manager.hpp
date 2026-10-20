@@ -24,7 +24,10 @@
 
 namespace terrain {
 
-// Generated content of a tile.
+// Generated content of a tile. The world wraps around (WorldSize): the tiles of a StreamManager
+// have canonical keys (wrapTile), and their data lie in the canonical range of the world; a
+// client shows a tile at its image nearest to the player (nearestTile), moving its positions by
+// whole worlds.
 struct TileData {
     TileRequest request;
     // World position of the mesh origin: the lowest corner of the tile, at the bottom of its
@@ -63,6 +66,8 @@ struct StreamParams {
     // Generated tiles moved into the loaded set by one update, nearest first: tiles appear
     // progressively, and a viewer uploads a bounded number of meshes per frame.
     std::size_t maxLoadsPerUpdate = 16;
+    // The wrapped world the player walks around.
+    WorldSize world;
 };
 
 // What an update changed in the loaded set.
@@ -77,6 +82,13 @@ struct StreamChanges {
 // (selectTiles, with their seams), queues those whose current version is not loaded yet, and
 // moves generated tiles into the loaded set; the workers always take the nearest queued tile.
 //
+// The world wraps around (StreamParams::world): the player is brought back into the canonical
+// range, the tiles and their seams are selected around it in unwrapped coordinates, then every
+// key is made canonical (wrapTile). A tile keeps its key from one turn of the world to the next,
+// so walking across an edge of the world reloads nothing, and the distances to the player are
+// those of the nearest images of the tiles (nearestTile). Keys and chunks given to the manager
+// may be any image: they are made canonical first.
+//
 // Each selected tile has a ticket, renewed when its seams change or when it is invalidated. A
 // generated tile whose ticket is no longer current is stale and dropped. A loaded tile keeps its
 // old data until the new data is loaded; a tile leaving the selection stays loaded until every
@@ -88,8 +100,9 @@ struct StreamChanges {
 // the workers. An exception thrown by the generator is rethrown by the next update or waitIdle.
 class StreamManager {
 public:
-    // Throws std::invalid_argument for invalid LOD parameters, a negative thread count or
-    // maxLoadsPerUpdate 0.
+    // Throws std::invalid_argument for invalid LOD parameters, a negative thread count,
+    // maxLoadsPerUpdate 0, an invalid world (validate) or a world so small that the selection
+    // would meet itself around it (fewer than 2 (viewDistance + 8) + 8 chunks along a side).
     explicit StreamManager(TileGenerator generator, const StreamParams& params = {});
     ~StreamManager(); // stops the workers once their current tile is generated
 
@@ -142,6 +155,8 @@ private:
     };
 
     void reselect(ChunkCoord player);
+    // Order of the tiles for the player: loadsBefore of their nearest images.
+    [[nodiscard]] bool nearer(const TileKey& a, const TileKey& b, ChunkCoord player) const;
     void takeResults();
     void takeResultsLocked(); // mutex_ held
     void rebuildQueue();

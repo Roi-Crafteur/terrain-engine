@@ -146,6 +146,16 @@ TileKey wrapTile(const TileKey& tile, const WorldSize& world) {
     return {wrapChunk(tile.origin, world), tile.lod};
 }
 
+TileKey nearestTile(const TileKey& tile, ChunkCoord chunk, const WorldSize& world) {
+    const ChunkCoord count = worldChunks(world);
+    const auto nearest = [](std::int64_t origin, std::int64_t center, std::int64_t period) {
+        const std::int64_t offset = wrapIndex(origin - center, period);
+        return static_cast<int>(center + offset);
+    };
+    return {{nearest(tile.origin.x, chunk.x, count.x), nearest(tile.origin.z, chunk.z, count.z)},
+            tile.lod};
+}
+
 bool tileContains(const TileKey& tile, ChunkCoord chunk) {
     return tileDistance(tile, chunk) == 0;
 }

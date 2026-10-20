@@ -52,6 +52,10 @@ static_assert(static_cast<long long>(kWorldAlignmentMeters) %
                   0,
               "the world alignment must be a multiple of two tiles of the coarsest LOD");
 
+// The image of the tile nearest to the chunk, its origin moved by whole worlds to lie within
+// half a world of the chunk along each axis: the tile as a player in that chunk sees it.
+[[nodiscard]] TileKey nearestTile(const TileKey& tile, ChunkCoord chunk, const WorldSize& world);
+
 // Chebyshev distance between two chunks, in chunks.
 [[nodiscard]] int chunkDistance(ChunkCoord a, ChunkCoord b);
 
