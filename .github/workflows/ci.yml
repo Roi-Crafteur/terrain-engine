@@ -49,7 +49,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # glad 2 generates the OpenGL loader of the viewer with Python and Jinja2.
+      # glad 2 generates the OpenGL loader of the viewer with Python and Jinja2. CMake is given
+      # this interpreter: on macOS it would otherwise find another one, without Jinja2.
       - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
@@ -68,8 +69,9 @@ jobs:
       - name: Identify the runner image
         id: image
         run: echo "version=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-      - name: Cache the FetchContent dependencies
-        uses: actions/cache@v5
+      - name: Restore the FetchContent dependencies
+        id: deps
+        uses: actions/cache/restore@v5
         with:
           path: |
             build-deps/*-src
@@ -81,8 +83,20 @@ jobs:
           if [ -n "${{ matrix.cxx }}" ]; then
             export CC="${{ matrix.cc }}" CXX="${{ matrix.cxx }}"
           fi
+          python_exe="$(python -c 'import pathlib, sys; print(pathlib.Path(sys.executable).as_posix())')"
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTERRAIN_WARNINGS_AS_ERRORS=ON \
-            -DFETCHCONTENT_BASE_DIR=build-deps -DFETCHCONTENT_UPDATES_DISCONNECTED=ON
+            -DFETCHCONTENT_BASE_DIR=build-deps -DFETCHCONTENT_UPDATES_DISCONNECTED=ON \
+            -DPython_EXECUTABLE="$python_exe"
+
+      # Saved as soon as the dependencies are fetched, so that a red build or test still keeps them.
+      - name: Save the FetchContent dependencies
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            build-deps/*-src
+            build-deps/*-subbuild
+          key: ${{ steps.deps.outputs.cache-primary-key }}
 
       - name: Build (warnings as errors)
         id: build
