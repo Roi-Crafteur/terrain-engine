@@ -142,6 +142,10 @@ TileKey tileContaining(ChunkCoord chunk, int lod) {
     return {{floorDiv(chunk.x, size) * size, floorDiv(chunk.z, size) * size}, lod};
 }
 
+TileKey wrapTile(const TileKey& tile, const WorldSize& world) {
+    return {wrapChunk(tile.origin, world), tile.lod};
+}
+
 bool tileContains(const TileKey& tile, ChunkCoord chunk) {
     return tileDistance(tile, chunk) == 0;
 }

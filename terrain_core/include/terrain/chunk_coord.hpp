@@ -1,6 +1,6 @@
 #pragma once
 
-#include "terrain/det_math.hpp" // also refuses fast math in every unit including it
+#include "terrain/world_size.hpp"
 
 #include <cstdint>
 
@@ -20,5 +20,12 @@ struct ChunkCoord {
 // Returns the chunk containing the world position (x, z), in meters.
 // Uses floor division: chunk n covers [n * 16, (n + 1) * 16), negatives included.
 [[nodiscard]] ChunkCoord worldToChunk(double x, double z);
+
+// Chunks along each side of the world: its sides divided by kChunkSizeMeters.
+[[nodiscard]] ChunkCoord worldChunks(const WorldSize& world);
+
+// The chunk brought back into the canonical range of the world (WorldSize), on each axis
+// [-n / 2, n / 2) for n chunks along it: the same chunk for every image.
+[[nodiscard]] ChunkCoord wrapChunk(ChunkCoord chunk, const WorldSize& world);
 
 } // namespace terrain

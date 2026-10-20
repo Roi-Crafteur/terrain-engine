@@ -86,6 +86,7 @@ add_library(terrain_core STATIC
     src/streaming/lod.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
+    src/world_size.cpp
 )
 
 target_include_directories(terrain_core PUBLIC include)
