@@ -38,6 +38,14 @@ terrain_add_test(arches_test terrain_core)
 terrain_add_test(sculpted_region_test terrain_core)
 terrain_add_test(sculpted_water_test terrain_core)
 terrain_add_test(arches_png_test terrain_core)
+terrain_add_test(terrain_surface_test terrain_core)
+terrain_add_test(climate_test terrain_core)
+terrain_add_test(biome_test terrain_core)
+terrain_add_test(surface_material_test terrain_core)
+terrain_add_test(vegetation_test terrain_core)
+terrain_add_test(ecology_test terrain_core)
+terrain_add_test(ecology_cliffs_test terrain_core)
+terrain_add_test(ecology_png_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
@@ -86,3 +94,12 @@ add_dependencies(check terrain_export_cliffs)
 add_test(NAME export_arches_smoke
     COMMAND terrain_export_arches ${CMAKE_BINARY_DIR}/arches)
 add_dependencies(check terrain_export_arches)
+
+# Smoke test: writes biome_map.png, surface_material_map.png and vegetation_density_map.png
+# (512 x 512, 200 m/px, an eroded region around the origin) into <build-dir>/biomes for a visual
+# check. The summary lists the biomes present, printed once the images are written.
+add_test(NAME export_biomes_smoke
+    COMMAND terrain_export_biomes ${CMAKE_BINARY_DIR}/biomes)
+set_tests_properties(export_biomes_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "512 x 512 px, 102\\.4 km wide.*[0-9]+ biomes: ocean")
+add_dependencies(check terrain_export_biomes)
