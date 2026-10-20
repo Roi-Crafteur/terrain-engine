@@ -226,11 +226,13 @@ void testLakes() {
 
 // ---------------------------------------------------------------------------
 
-// True if a sample of water is where the aquifers put it: the margin under the ground, in the
-// cave air (within the skin of the rock), under the level of its column.
-bool wellPlaced(const terrain::AquiferParams& a, const terrain::CaveColumn& column, double y,
-                float rock, float carved) {
-    return rock < -a.groundMargin && carved > -a.skin && y < column.waterLevel;
+// True if a sample of water is where the aquifers and the rivers put it: the margin under the
+// ground, in the cave air (within the skin of the rock), under the level of its column there.
+bool wellPlaced(const CaveField& field, const terrain::CaveColumn& column, double y, float rock,
+                float carved) {
+    const terrain::AquiferParams& a = field.params().aquifers;
+    return rock < -a.groundMargin && carved > -a.skin &&
+           y < static_cast<double>(field.waterLevelAt(column, y));
 }
 
 // Around the sites of two districts of each wet type of the default world, on land, random points
@@ -240,7 +242,6 @@ void testNoWaterOverTheGround() {
     const TerrainTiles tiles(kSeed, {}, {}, defaultCaves());
     const CaveField& field = *tiles.caves();
     const CaveGround& ground = tiles.caveGround();
-    const terrain::AquiferParams& a = field.params().aquifers;
     std::size_t points = 0;
     std::size_t water = 0;
     std::size_t misplaced = 0;
@@ -260,7 +261,7 @@ void testNoWaterOverTheGround() {
                 const float carved = sampler.density(column, p.y, rock);
                 if (sampler.waterDensity(column, p.y, rock, carved) < 0.0f) {
                     ++water;
-                    misplaced += wellPlaced(a, column, p.y, rock, carved) ? 0 : 1;
+                    misplaced += wellPlaced(field, column, p.y, rock, carved) ? 0 : 1;
                 }
                 ++points;
             }

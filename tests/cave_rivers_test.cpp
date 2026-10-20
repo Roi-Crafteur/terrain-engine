@@ -10,6 +10,7 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "cave_galleries_test_support.hpp"
+#include "cave_environment_test_support.hpp"
 #include "caves_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -243,6 +244,33 @@ void testInactive() {
     TEST_CHECK(same);
 }
 
+// The columns of a cold climate are cold, wet or dry: their rivers freeze, as their lakes; the
+// columns of a humid climate are not.
+void testCold() {
+    const CaveField field(kSeed, galleries_test::uniformParams(CaveDistrictType::Rivers));
+    const terrain::CaveGround flat = caves_test::flatGround(kFlatHeight);
+    const terrain::CaveGround cold =
+        caves_test::withEnvironment(flat, caves_test::coldEnvironment());
+    const terrain::CaveGround humid =
+        caves_test::withEnvironment(flat, caves_test::humidEnvironment());
+    AquiferCache coldCells(field, cold);
+    AquiferCache humidCells(field, humid);
+    Rng rng(29);
+    int coldColumns = 0;
+    int humidColumns = 0;
+    int rivers = 0;
+    for (int n = 0; n < 400; ++n) {
+        const double x = rng.range(-3000.0, 3000.0);
+        const double z = rng.range(-3000.0, 3000.0);
+        const CaveColumn a = field.column(x, z, kFlatHeight, cold, {}, &coldCells);
+        const CaveColumn b = field.column(x, z, kFlatHeight, humid, {}, &humidCells);
+        coldColumns += a.cold ? 1 : 0;
+        humidColumns += b.cold ? 1 : 0;
+        rivers += a.riverLevel > terrain::kDryLevel ? 1 : 0;
+    }
+    TEST_CHECK(coldColumns == 400 && humidColumns == 0 && rivers == 400);
+}
+
 } // namespace
 
 int main() {
@@ -250,5 +278,6 @@ int main() {
     testSill();
     testEntrancesClear();
     testInactive();
+    testCold();
     return test::result();
 }

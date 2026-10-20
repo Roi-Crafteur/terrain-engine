@@ -166,7 +166,8 @@ Water measureWater(const CaveField& field, const CaveGround& ground,
                               sampler.waterDensity(column, y, rock, carved) < 0.0f ? 1 : 0;
                           const bool air = caves_test::carvedAir(rock, carved);
                           result.air += air ? 1 : 0;
-                          result.underWater += air && y < column.waterLevel ? 1 : 0;
+                          result.underWater +=
+                              air && y < field.waterLevelAt(column, y) ? 1 : 0;
                       });
     }
     return result;

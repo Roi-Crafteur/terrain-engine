@@ -157,11 +157,16 @@ struct LakeCounts {
     std::size_t water = 0;
     std::size_t inRock = 0;      // water within the skin of the rock (carved < 0)
     std::size_t outsideAir = 0;  // water with carved <= -skin
-    std::size_t aboveLevel = 0;  // water at or over the level of its column
+    std::size_t aboveLevel = 0;  // water at or over the level of its column (lake or river)
     std::size_t aboveGround = 0; // water within groundMargin of the ground, or over it
     std::size_t dryAir = 0;      // cave air under the level and the ground that is not water
-    std::size_t walls = 0;       // water with a horizontal neighbor of dry cave air
-    std::size_t dryColumns = 0;  // samples of dry columns holding water
+    // Water with a horizontal neighbor of dry cave air, deeper under its level than the
+    // largest slope of a river over a sample (CaveRiverParams::maxSlope per meter): the flat
+    // lakes have none, their samples lying 0.5 m under the level at least; a river surface may
+    // step down by its slope from a sample to the next.
+    std::size_t walls = 0;
+    std::size_t steps = 0;       // water against dry air within that step: a sloped surface
+    std::size_t dryColumns = 0;  // samples of columns without lake nor river holding water
 
     void add(const LakeCounts& o) {
         water += o.water;
@@ -171,6 +176,7 @@ struct LakeCounts {
         aboveGround += o.aboveGround;
         dryAir += o.dryAir;
         walls += o.walls;
+        steps += o.steps;
         dryColumns += o.dryColumns;
     }
 };
@@ -192,6 +198,7 @@ inline bool againstAir(const caves_test::Lattice& l, const std::vector<float>& w
 inline LakeCounts countLakes(const terrain::CaveField& field, const Scan& scan,
                              const std::vector<float>& carved, const std::vector<float>& water) {
     const terrain::AquiferParams& a = field.params().aquifers;
+    const float maxStep = field.params().rivers.maxSlope; // over the 1 m between two samples
     const caves_test::Lattice& l = scan.lattice();
     LakeCounts counts;
     for (int k = 0; k < l.nz; ++k) {
@@ -199,8 +206,9 @@ inline LakeCounts countLakes(const terrain::CaveField& field, const Scan& scan,
             for (int i = 0; i < l.nx; ++i) {
                 const std::size_t n = l.index(i, j, k);
                 const terrain::CaveColumn& column = scan.column(i, k);
-                const bool underLevel = column.waterLevel > terrain::kDryLevel &&
-                                        scan.y(j) < static_cast<double>(column.waterLevel);
+                const double level = static_cast<double>(field.waterLevelAt(column, scan.y(j)));
+                const bool underLevel =
+                    level > static_cast<double>(terrain::kDryLevel) && scan.y(j) < level;
                 const bool underGround = scan.rock()[n] < -a.groundMargin;
                 if (water[n] >= 0.0f) {
                     counts.dryAir += underLevel && underGround && carved[n] >= 0.0f ? 1 : 0;
@@ -211,9 +219,15 @@ inline LakeCounts countLakes(const terrain::CaveField& field, const Scan& scan,
                 counts.outsideAir += carved[n] > -a.skin ? 0 : 1;
                 counts.aboveLevel += underLevel ? 0 : 1;
                 counts.aboveGround += underGround ? 0 : 1;
-                counts.dryColumns += column.waterLevel <= terrain::kDryLevel ? 1 : 0;
+                const bool dry = column.waterLevel <= terrain::kDryLevel &&
+                                 column.riverLevel <= terrain::kDryLevel;
+                counts.dryColumns += dry ? 1 : 0;
                 const bool inside = i > 0 && i < l.nx - 1 && k > 0 && k < l.nz - 1;
-                counts.walls += inside && againstAir(l, water, carved, i, j, k) ? 1 : 0;
+                if (inside && againstAir(l, water, carved, i, j, k)) {
+                    const bool step = level - scan.y(j) <= static_cast<double>(maxStep);
+                    counts.steps += step ? 1 : 0;
+                    counts.walls += step ? 0 : 1;
+                }
             }
         }
     }

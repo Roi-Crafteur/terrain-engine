@@ -36,8 +36,13 @@ struct GalleryParams {
 // its floor to freeboard over the deepest water), and a sill closes the bottom of the gallery
 // where the field crosses the threshold: the water only lies in the gallery, enclosed by rock.
 struct CaveRiverParams {
-    float maxSlope = 0.05f;
+    // 10 %: steeper, the relief of the world would leave no river at all (none at 5 %, a third
+    // of the galleries of the Rivers regions holding water at 10 %).
+    float maxSlope = 0.10f;
     float maxDepth = 1.0f;
+    // The level lies minDepth under floor + depth: where the depth is smaller than minDepth
+    // minus the skin of the water, no water at all, not even a film over the floor.
+    float minDepth = 0.1f;
     float threshold = 0.65f;
     float sillWidth = 0.05f; // of the river field around the threshold
     float shell = 3.0f;

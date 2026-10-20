@@ -51,7 +51,7 @@ struct AquiferParams {
 inline constexpr float kDryLevel = -1.0e9f;
 
 // An aquifer cell: its site, whether its caves hold water, at which level, and whether it is
-// frozen.
+// frozen; cold whether any water of the cell freezes (the lake, a river), wet or not.
 struct AquiferCell {
     int cellX = 0;
     int cellZ = 0;
@@ -60,6 +60,7 @@ struct AquiferCell {
     bool wet = false;
     bool frozen = false;
     float level = kDryLevel;
+    bool cold = false;
 
     friend bool operator==(const AquiferCell&, const AquiferCell&) = default;
 };
@@ -103,13 +104,21 @@ public:
     // The nodes interpolated at (x, z) with cubic Hermite weights of zero tangents: C1, and a
     // convex combination of the 4 nodes around (x, z), never outside their range.
     [[nodiscard]] double galleryLevel(double x, double z);
+    // Flatness of the level at (x, z), in [0, 1]: 1 where the nodes around are flat enough for
+    // a river (CaveRiverFlatness), 0 where they are too steep; interpolated as the level.
+    [[nodiscard]] double galleryFlatness(double x, double z);
 
 private:
     const CaveField* field_;
     const CaveGround* ground_;
     std::unordered_map<std::uint64_t, AquiferCell> cells_;
     std::unordered_map<std::uint64_t, CaveDistrict> districts_;
+    [[nodiscard]] double flatnessBase(int i, int k);
+    [[nodiscard]] double flatnessNode(int i, int k);
+
     std::unordered_map<std::uint64_t, double> galleryNodes_;
+    std::unordered_map<std::uint64_t, double> flatnessBases_;
+    std::unordered_map<std::uint64_t, double> flatnessNodes_;
 };
 
 } // namespace terrain

@@ -97,12 +97,91 @@ std::array<double, 2> CaveField::galleryDistances(double x, double z) const {
     return {lineDistance(a, x, z, p), lineDistance(b, x, z, p)};
 }
 
+namespace {
+
+double smoothstep(double low, double high, double x) {
+    const double t = std::clamp((x - low) / (high - low), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+} // namespace
+
+// Flatness of a node from the steepest slope between neighbor nodes (diagonals included) of the
+// 5 x 5 nodes around it: where it is not 0, the nodes of the 3 x 3 cells around are all at most
+// as steep as CaveRiverFlatness::high.
+double AquiferCache::flatnessBase(int i, int k) {
+    const auto [it, inserted] = flatnessBases_.try_emplace(nodeKey(i, k));
+    if (inserted) {
+        const GalleryParams& g = field_->params().galleries;
+        const CaveRiverFlatness flat = riverFlatness(field_->params().rivers, g);
+        const double side = g.levelSpacing;
+        const double diagonal = side * std::sqrt(2.0);
+        double steepest = 0.0;
+        for (int b = -2; b <= 2; ++b) {
+            for (int a = -2; a <= 2; ++a) {
+                const double v = galleryNode(i + a, k + b);
+                if (a < 2) {
+                    steepest = std::max(steepest, std::abs(galleryNode(i + a + 1, k + b) - v) /
+                                                      side);
+                }
+                if (b < 2) {
+                    steepest = std::max(steepest, std::abs(galleryNode(i + a, k + b + 1) - v) /
+                                                      side);
+                }
+                if (a < 2 && b < 2) {
+                    const double across = galleryNode(i + a + 1, k + b + 1) - v;
+                    const double other =
+                        galleryNode(i + a + 1, k + b) - galleryNode(i + a, k + b + 1);
+                    steepest = std::max({steepest, std::abs(across) / diagonal,
+                                         std::abs(other) / diagonal});
+                }
+            }
+        }
+        it->second = 1.0 - smoothstep(flat.low, flat.high, steepest);
+    }
+    return it->second;
+}
+
+// The flatness of the 3 x 3 nodes around, averaged: neighbor nodes differ by 1/3 at most.
+double AquiferCache::flatnessNode(int i, int k) {
+    const auto [it, inserted] = flatnessNodes_.try_emplace(nodeKey(i, k));
+    if (inserted) {
+        double sum = 0.0;
+        for (int n = 0; n < 9; ++n) {
+            sum += flatnessBase(i + n % 3 - 1, k + n / 3 - 1);
+        }
+        it->second = sum / 9.0;
+    }
+    return it->second;
+}
+
+double AquiferCache::galleryFlatness(double x, double z) {
+    const double spacing = field_->params().galleries.levelSpacing;
+    const double u = x / spacing;
+    const double v = z / spacing;
+    const int i = static_cast<int>(std::floor(u));
+    const int k = static_cast<int>(std::floor(v));
+    const double wu = nodeWeight(u - i);
+    const double wv = nodeWeight(v - k);
+    const double low = (1.0 - wu) * flatnessNode(i, k) + wu * flatnessNode(i + 1, k);
+    const double high = (1.0 - wu) * flatnessNode(i, k + 1) + wu * flatnessNode(i + 1, k + 1);
+    return (1.0 - wv) * low + wv * high;
+}
+
 void CaveField::addGallery(CaveColumn& column, AquiferCache& cells) const {
     const GalleryParams& p = params_.galleries;
+    const CaveRiverParams& r = params_.rivers;
     const std::array<double, 2> distances = galleryDistances(column.x, column.z);
     column.galleryDistance = static_cast<float>(std::min(distances[0], distances[1]));
-    column.galleryFloor =
-        static_cast<float>(cells.galleryLevel(column.x, column.z) - p.floorDepth);
+    const double floor = cells.galleryLevel(column.x, column.z) - p.floorDepth;
+    column.galleryFloor = static_cast<float>(floor);
+    // The water: maxDepth deep where the level is flat, none where it is steep; it begins at
+    // the threshold of the river field, inside the rock of the sill.
+    if (column.profile[CaveProfile::kRiver] >= r.threshold) {
+        const double depth = static_cast<double>(r.maxDepth) *
+                             cells.galleryFlatness(column.x, column.z);
+        column.riverLevel = static_cast<float>(floor + depth - static_cast<double>(r.minDepth));
+    }
 }
 
 float CaveField::galleryVoid(const CaveColumn& column, double y) const {

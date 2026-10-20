@@ -67,6 +67,7 @@ AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground,
     chance = std::clamp(chance + profile[CaveProfile::kWetOffset], 0.0f, 1.0f);
     chance = chance + flooded * (1.0f - chance);
     result.wet = unitDraw(cell, kWetDraw) < static_cast<double>(chance);
+    result.cold = environment.temperature <= p.freezeTemperature || profile.icy();
     if (result.wet) {
         double depth = p.minLevelDepth +
                        unitDraw(cell, kDepthDraw) * (p.maxLevelDepth - p.minLevelDepth);
@@ -74,7 +75,7 @@ AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground,
         depth += flooded * (p.floodedDepth - depth);
         result.level = static_cast<float>(
             std::floor(static_cast<double>(lowest) - params_.minRoof - depth - 0.5) + 0.5);
-        result.frozen = environment.temperature <= p.freezeTemperature || profile.icy();
+        result.frozen = result.cold;
     }
     return result;
 }
@@ -99,6 +100,7 @@ void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
     const AquiferCell& home = *cells[own];
     column.waterLevel = home.wet ? home.level : kDryLevel;
     column.frozen = home.wet && home.frozen;
+    column.cold = home.cold;
     for (std::size_t n = 0; n < cells.size(); ++n) {
         const AquiferCell& other = *cells[n];
         if (n == own || (!home.wet && !other.wet)) {
