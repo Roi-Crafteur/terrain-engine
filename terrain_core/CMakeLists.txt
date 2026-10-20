@@ -44,7 +44,10 @@ add_library(terrain_core STATIC
     src/io/png.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
+    src/storage/durable_file.cpp
+    src/storage/file_commit.cpp
     src/storage/modifications.cpp
+    src/storage/storage_codec.cpp
     src/streaming/cave_tiles.cpp
     src/streaming/lod.cpp
     src/streaming/stream_manager.cpp

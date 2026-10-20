@@ -1,12 +1,13 @@
 // Modifications: blocks stored per chunk, the chunks a block reaches, local and order-free
 // density edits, plant edits identified by position, and the modification file (round trip,
-// deterministic bytes pinned on a reference file, FNV-1a checksum, rejected corrupt files, atomic
-// save).
+// deterministic bytes pinned on a reference file, FNV-1a checksum, rejected corrupt files and
+// huge coordinates, error kinds, atomic save), and the merge of two stores.
 #include "terrain/storage/modifications.hpp"
 
 #include "test_assert.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -14,6 +15,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -277,6 +279,70 @@ void testCorruptFilesRejected() {
     TEST_CHECK(rejected(resealed(badEdit)));
 }
 
+std::vector<std::uint8_t> withDouble(std::vector<std::uint8_t> bytes, std::size_t offset,
+                                     double value) {
+    const auto bits = std::bit_cast<std::uint64_t>(value);
+    for (std::size_t i = 0; i < 8; ++i) {
+        bytes[offset + i] = static_cast<std::uint8_t>((bits >> (8 * i)) & 0xFFU);
+    }
+    return resealed(bytes);
+}
+
+terrain::StorageErrorKind errorKind(const std::vector<std::uint8_t>& bytes) {
+    try {
+        static_cast<void>(terrain::deserializeModifications(bytes));
+    } catch (const terrain::StorageError& error) {
+        return error.kind();
+    }
+    return terrain::StorageErrorKind::Io; // accepted
+}
+
+// A plant far outside its chunk, even beyond the 32-bit chunk indices, is rejected without any
+// overflow; the errors tell a damaged file from a newer one.
+void testHugeCoordinatesAndErrorKinds() {
+    // Chunk (1, -1) of the reference file: its removed plant x at byte 69, its first added plant
+    // x at byte 90 (after the removed plant, the count of added plants and the type).
+    TEST_CHECK(withDouble(kReferenceFile, 69, 17.5) == kReferenceFile);
+    // The chunk holds x in [16, 32).
+    TEST_CHECK(errorKind(withDouble(kReferenceFile, 69, 16.0)) == terrain::StorageErrorKind::Io);
+    for (const double far : {1e300, -1e300, 15.75, 32.0}) {
+        TEST_CHECK(errorKind(withDouble(kReferenceFile, 69, far)) ==
+                   terrain::StorageErrorKind::Invalid);
+        TEST_CHECK(errorKind(withDouble(kReferenceFile, 90, far)) ==
+                   terrain::StorageErrorKind::Invalid);
+    }
+    std::vector<std::uint8_t> damaged = kReferenceFile;
+    damaged[30] ^= 0x01U;
+    TEST_CHECK(errorKind(damaged) == terrain::StorageErrorKind::Corrupt);
+    std::vector<std::uint8_t> newer = kReferenceFile;
+    newer[4] = 2;
+    TEST_CHECK(errorKind(resealed(newer)) == terrain::StorageErrorKind::NewerVersion);
+}
+
+void testMerge() {
+    ModificationStore merged = sampleStore();
+    ModificationStore other;
+    other.setBlock({500, 1, 500}, BlockEdit::Added);
+    other.addPlant(tree(-500.5, 7.0));
+    ModificationStore expected = sampleStore();
+    expected.setBlock({500, 1, 500}, BlockEdit::Added);
+    expected.addPlant(tree(-500.5, 7.0));
+    merged.merge(std::move(other));
+    TEST_CHECK(merged == expected && other.empty());
+
+    ModificationStore overlap;
+    overlap.setBlock({3, 41, -2}, BlockEdit::Removed); // the chunk (0, -1) of sampleStore()
+    overlap.setBlock({900, 0, 900}, BlockEdit::Removed);
+    const ModificationStore before = overlap;
+    bool threw = false;
+    try {
+        merged.merge(std::move(overlap));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    TEST_CHECK(threw && merged == expected && overlap == before);
+}
+
 std::filesystem::path testDirectory() {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "terrain_engine_modifications_test";
@@ -336,6 +402,8 @@ int main() {
     testRoundTrip();
     testReferenceBytes();
     testCorruptFilesRejected();
+    testHugeCoordinatesAndErrorKinds();
+    testMerge();
     testSaveAndLoad();
     return test::result();
 }
