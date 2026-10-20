@@ -6,6 +6,7 @@ add_library(terrain_core STATIC
     src/generation/biome.cpp
     src/generation/cave_entrances.cpp
     src/generation/cave_flora.cpp
+    src/generation/cave_galleries.cpp
     src/generation/cave_materials.cpp
     src/generation/cave_noise.cpp
     src/generation/cave_regions.cpp

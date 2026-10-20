@@ -84,6 +84,7 @@ terrain_add_test(cave_district_weights_test terrain_core)
 terrain_add_test(cave_districts_neutral_test terrain_core)
 terrain_add_test(cave_flora_test terrain_core)
 terrain_add_test(cave_galleries_test terrain_core)
+terrain_add_test(cave_galleries_network_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.

@@ -216,6 +216,10 @@ struct CaveColumn {
     int barrierCount = 0;
     // Parameters of the caves of the cave regions blended at the column (neutral without them).
     CaveProfile profile;
+    // Galleries, where the profile has galleries or rivers (else left as is): the horizontal
+    // distance to the axis of the nearest one and the height of their floor at the column.
+    float galleryDistance = 1.0e9f;
+    float galleryFloor = kDryLevel;
 };
 
 // What a 4 m noise cell bounds, whatever the profile of a column in it: the smallest distances
@@ -314,6 +318,13 @@ public:
                                         const CaveDetail& detail) const;
     // Void of the ravines at height y of the column.
     [[nodiscard]] float ravineVoid(const CaveColumn& column, double y) const;
+    // Void of the galleries at height y of the column: an ellipse of halfWidth by halfHeight
+    // scaled by the field of the profile around their axis, its floor at galleryFloor, fading
+    // into the rock under presenceOn; voidClamp without galleries.
+    [[nodiscard]] float galleryVoid(const CaveColumn& column, double y) const;
+    // Horizontal distances from (x, z) to the axes of the two networks of galleries (A, B):
+    // galleryDistance of a column is the smaller one.
+    [[nodiscard]] std::array<double, 2> galleryDistances(double x, double z) const;
     // Voids of the components at height y of the column, the noises interpolated there.
     [[nodiscard]] CaveVoids voids(const CaveColumn& column, double y, const CaveNoiseValues& noise,
                                   std::span<const CaveEntrance> entrances,
@@ -341,6 +352,7 @@ public:
 
 private:
     void addAquifer(CaveColumn& column, AquiferCache& aquifers) const;
+    void addGallery(CaveColumn& column, AquiferCache& cells) const;
     [[nodiscard]] float barrierVoid(const CaveColumn& column, double y) const;
     [[nodiscard]] float entranceVoid(const CaveColumn& column, double y,
                                      std::span<const CaveEntrance> entrances) const;
@@ -350,6 +362,8 @@ private:
     std::uint64_t ravineSeed_;
     std::uint64_t ravinePresenceSeed_;
     std::uint64_t aquiferSeed_;
+    std::uint64_t galleryASeed_;
+    std::uint64_t galleryBSeed_;
     CaveNoiseLattice lattice_;
     std::optional<CaveDistricts> districts_;
 };

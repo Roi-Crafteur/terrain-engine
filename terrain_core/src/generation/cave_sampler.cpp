@@ -41,6 +41,9 @@ float CaveSampler::density(const CaveColumn& column, double y, float terrain) {
         if (detail_.has(kCaveRavines)) {
             bound = std::min(bound, field_->ravineVoid(column, y));
         }
+        if (detail_.has(kCaveGalleries)) {
+            bound = std::min(bound, field_->galleryVoid(column, y));
+        }
         if (noises_ != 0 && bound >= threshold) {
             const CaveCellBound& cell = cellBound(column.x, y, column.z);
             bound = std::min(bound, field_->noiseLowerBound(cell, column.profile, detail_));
