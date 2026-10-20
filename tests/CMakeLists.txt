@@ -24,6 +24,7 @@ terrain_add_test(test_lava_look terrain_viewer_cave_look)
 terrain_add_test(test_view_modes terrain_viewer_modes)
 terrain_add_test(marching_cubes_test terrain_core)
 terrain_add_test(noise_test terrain_core)
+terrain_add_test(noise_periodic_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
 terrain_add_test(heightfield_macro_test terrain_core)
 terrain_add_test(heightfield_voronoi_test terrain_core)
@@ -171,15 +172,15 @@ set_tests_properties(export_biomes_smoke PROPERTIES
 add_dependencies(check terrain_export_biomes)
 
 # Smoke test: writes voronoi_plates.png, voronoi_heightmap.png and voronoi_preview.png
-# (128 x 128 px at 256 km/px: 32,768 km around the origin) and voronoi_world.png (128 px, the
-# whole planet) into <build-dir>/voronoi for a visual check. The summary is printed only once
-# the images are written.
+# (128 x 128 px at 256 km/px: 32,768 km around the origin) and voronoi_world.png (128 px wide,
+# the whole wrapped world) into <build-dir>/voronoi for a visual check. The summary is printed
+# only once the images are written.
 add_test(NAME export_voronoi_smoke
     COMMAND terrain_export_voronoi ${CMAKE_BINARY_DIR}/voronoi 20261019 256000 128 0 0 0.5 0.25
             128)
 set_tests_properties(export_voronoi_smoke PROPERTIES
     PASS_REGULAR_EXPRESSION
-    "planet [0-9]+ km, 128 x 128 px, 32768\\.0 km wide.*plates 0\\.50, macro continent 0\\.25")
+    "world 60031 x 34996 km, 128 x 128 px, 32768\\.0 km.*plates 0\\.50, macro continent 0\\.25")
 add_dependencies(check terrain_export_voronoi)
 
 # Invalid arguments of terrain_export_voronoi (plates 0, world size 1, ...) are rejected with

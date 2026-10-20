@@ -16,13 +16,7 @@ namespace terrain::voronoi_layout {
     return delta - period * std::round(delta / period);
 }
 
-// Coordinate brought back into [0, period).
-[[nodiscard]] inline double wrapPosition(double v, double period) {
-    const double wrapped = v - period * std::floor(v / period);
-    return wrapped < period ? wrapped : 0.0;
-}
-
-// wrapOffset for a delta between two coordinates of [0, period), without any rounding.
+// wrapOffset for a delta between two coordinates of the canonical range, without any rounding.
 [[nodiscard]] inline double shortOffset(double delta, double period) {
     if (delta > 0.5 * period) {
         return delta - period;
@@ -30,17 +24,19 @@ namespace terrain::voronoi_layout {
     return delta < -0.5 * period ? delta + period : delta;
 }
 
-// Nearest site to (x, z) on the torus, the lowest index on a tie.
-[[nodiscard]] int nearestSite(const std::vector<Plate>& plates, double x, double z, double period);
+// Nearest site to (x, z) on the torus of the world, the lowest index on a tie.
+[[nodiscard]] int nearestSite(const std::vector<Plate>& plates, double x, double z,
+                              const WorldSize& world);
 
 struct Layout {
-    double planetSize = 0.0;
+    double cellDiameter = 0.0; // mean equivalent diameter of a cell, 2 sqrt(area / pi)
     std::vector<Plate> plates;
     std::vector<PlateBoundary> boundaries; // sorted by (a, b)
 };
 
 // Sites (best candidate sampling then Lloyd relaxation), exact Voronoi neighbors, plate
-// velocities and boundary kinds, then plate kinds. Assumes valid parameters.
-[[nodiscard]] Layout buildLayout(std::uint64_t seed, const VoronoiParams& params);
+// velocities and boundary kinds, then plate kinds. Assumes valid parameters and world.
+[[nodiscard]] Layout buildLayout(std::uint64_t seed, const VoronoiParams& params,
+                                 const WorldSize& world);
 
 } // namespace terrain::voronoi_layout

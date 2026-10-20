@@ -85,7 +85,9 @@ inline constexpr double kCaveEnvironmentSpacing = 16.0;
 
 class CaveEnvironmentField {
 public:
-    // The heightfield and the climate must outlive the field.
+    // The heightfield and the climate must outlive the field. Periodic on their world: the
+    // nodes fall exactly on its sides and every node takes the value of its canonical image.
+    // Throws std::invalid_argument if the climate and the heightfield have different worlds.
     CaveEnvironmentField(const Heightfield& field, const ClimateField& climate,
                          const BiomeParams& biomes = {});
 
@@ -97,6 +99,8 @@ private:
     const Heightfield* field_;
     const ClimateField* climate_;
     BiomeParams biomes_;
+    PeriodicCells nodesX_;
+    PeriodicCells nodesZ_;
 };
 
 // The nodes of a field read so far, kept: the same values as the field, computed once.

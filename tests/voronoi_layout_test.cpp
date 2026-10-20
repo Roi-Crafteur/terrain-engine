@@ -37,16 +37,24 @@ double wrap(double delta, double period) {
     return delta - period * std::round(delta / period);
 }
 
-// Owner of each cell of a raster of the torus, raw Voronoi (no warping), row by row.
+// Owner of each cell of a raster of the torus of the world, raw Voronoi (no warping), row by
+// row: kRaster columns and as many rows as fit at about the same pixel size.
 constexpr int kRaster = 256;
 
+int rasterRows(const TectonicPlates& plates) {
+    return static_cast<int>(std::lround(kRaster * plates.world().z / plates.world().x));
+}
+
 std::vector<int> rasterize(const TectonicPlates& plates) {
+    const int rows = rasterRows(plates);
     std::vector<int> owner;
-    owner.reserve(static_cast<std::size_t>(kRaster * kRaster));
-    const double step = plates.planetSize() / kRaster;
-    for (int row = 0; row < kRaster; ++row) {
+    owner.reserve(static_cast<std::size_t>(kRaster * rows));
+    const double stepX = plates.world().x / kRaster;
+    const double stepZ = plates.world().z / rows;
+    for (int row = 0; row < rows; ++row) {
         for (int column = 0; column < kRaster; ++column) {
-            owner.push_back(plates.rawPlateAt((column + 0.5) * step, (row + 0.5) * step));
+            owner.push_back(plates.rawPlateAt((column + 0.5) * stepX - 0.5 * plates.world().x,
+                                              (row + 0.5) * stepZ - 0.5 * plates.world().z));
         }
     }
     return owner;
@@ -58,10 +66,10 @@ std::vector<double> cellDiameters(const TectonicPlates& plates) {
     for (const int owner : rasterize(plates)) {
         ++cells[static_cast<std::size_t>(owner)];
     }
-    const double pixel = plates.planetSize() / kRaster;
+    const double pixel = plates.world().x / kRaster * plates.world().z / rasterRows(plates);
     std::vector<double> diameters;
     for (const int count : cells) {
-        diameters.push_back(2.0 * std::sqrt(count * pixel * pixel / std::numbers::pi));
+        diameters.push_back(2.0 * std::sqrt(count * pixel / std::numbers::pi));
     }
     return diameters;
 }
@@ -92,7 +100,8 @@ Layouts buildLayouts() {
 }
 
 bool sameLayout(const TectonicPlates& a, const TectonicPlates& b) {
-    bool same = a.planetSize() == b.planetSize() && a.plates().size() == b.plates().size() &&
+    bool same = a.world() == b.world() && a.cellDiameter() == b.cellDiameter() &&
+                a.plates().size() == b.plates().size() &&
                 a.boundaries().size() == b.boundaries().size();
     for (std::size_t i = 0; same && i < a.plates().size(); ++i) {
         const Plate& p = a.plates()[i];
@@ -118,26 +127,29 @@ void testDeterminism(const Layouts& layouts) {
         TEST_CHECK(other.plates()[0].x != a.plates()[0].x);
         const TectonicPlates& raw = layouts.raw[i];
         TEST_CHECK(raw.plates().size() == a.plates().size());
-        TEST_CHECK(raw.planetSize() == a.planetSize());
+        TEST_CHECK(raw.cellDiameter() == a.cellDiameter());
         TEST_CHECK(raw.plates()[0].x != a.plates()[0].x); // the relaxation moved the sites
     }
 }
 
-// 20 to 40 plates drawn from the seed, on a torus sized for 11,000 km cells on average.
+// 20 to 40 plates drawn from the seed, tiling the world: cells of 2 sqrt(area / (pi plates))
+// on average, 8,200 to 11,600 km on the default world.
 void testPlateCount(const Layouts& layouts) {
     std::set<std::size_t> counts;
     for (const TectonicPlates& plates : layouts.relaxed) {
         const std::size_t n = plates.plates().size();
         counts.insert(n);
         TEST_CHECK(n >= 20 && n <= 40);
+        const terrain::WorldSize& world = plates.world();
+        TEST_CHECK(world == terrain::WorldSize{});
         const double expected =
-            11'000'000.0 * std::sqrt(static_cast<double>(n) * std::numbers::pi / 4.0);
-        TEST_CHECK(std::abs(plates.planetSize() - expected) < 1.0);
-        TEST_CHECK(plates.planetSize() > 45'000'000.0 && plates.planetSize() < 65'000'000.0);
+            2.0 * std::sqrt(world.x * world.z / (static_cast<double>(n) * std::numbers::pi));
+        TEST_CHECK(std::abs(plates.cellDiameter() - expected) < 1.0);
+        TEST_CHECK(plates.cellDiameter() > 8'000'000.0 && plates.cellDiameter() < 12'000'000.0);
         bool inside = true;
         for (const Plate& p : plates.plates()) {
-            inside = inside && p.x >= 0.0 && p.x < plates.planetSize() && p.z >= 0.0 &&
-                     p.z < plates.planetSize();
+            inside = inside && p.x >= -0.5 * world.x && p.x < 0.5 * world.x &&
+                     p.z >= -0.5 * world.z && p.z < 0.5 * world.z;
         }
         TEST_CHECK(inside);
     }
@@ -149,9 +161,9 @@ void testPlateCount(const Layouts& layouts) {
     TEST_CHECK(TectonicPlates(kSeeds[0], fixed).plates().size() == 25);
 }
 
-// Every cell is 8,000 to 15,000 km across (equivalent diameter), with and without the Lloyd
-// relaxation, which makes the cells more even. Measured from 8,544 to 13,300 km without it
-// and from 9,448 to 12,855 km with it over 64 seeds.
+// Every cell is 0.7 to 1.35 times the mean cell diameter across (equivalent diameter), with
+// and without the Lloyd relaxation, which makes the cells more even. Measured from 0.769 to
+// 1.208 without it and from 0.850 to 1.155 with it over 16 seeds.
 void testCellSizes(const Layouts& layouts) {
     double spreadRaw = 0.0;
     double spreadRelaxed = 0.0;
@@ -159,8 +171,8 @@ void testCellSizes(const Layouts& layouts) {
         for (const TectonicPlates& plates : *set) {
             const std::vector<double> d = cellDiameters(plates);
             const auto [low, high] = std::minmax_element(d.begin(), d.end());
-            TEST_CHECK(*low >= 8'000'000.0);
-            TEST_CHECK(*high <= 15'000'000.0);
+            TEST_CHECK(*low >= 0.7 * plates.cellDiameter());
+            TEST_CHECK(*high <= 1.35 * plates.cellDiameter());
             (set == &layouts.raw ? spreadRaw : spreadRelaxed) += *high / *low;
         }
     }
@@ -188,27 +200,44 @@ void testBoundaryGraph(const TectonicPlates& plates) {
         TEST_CHECK(plates.boundaryIndex(a, a) == -1);
     }
 
-    // Every pair of raster neighbors is a boundary; every boundary longer than 2 raster
-    // cells shows up on the raster.
+    // Every pair of raster neighbors is a boundary, unless a third plate lies between the two
+    // pixels (near a junction the pixels may straddle a narrow cell); every boundary longer
+    // than 2 raster cells shows up on the raster.
     const std::vector<int> owner = rasterize(plates);
     std::set<std::pair<int, int>> seen;
+    const int rows = rasterRows(plates);
     const auto at = [&](int c, int r) {
-        return owner[static_cast<std::size_t>(((r + kRaster) % kRaster) * kRaster +
+        return owner[static_cast<std::size_t>(((r + rows) % rows) * kRaster +
                                               (c + kRaster) % kRaster)];
     };
-    for (int r = 0; r < kRaster; ++r) {
+    const double stepX = plates.world().x / kRaster;
+    const double stepZ = plates.world().z / rows;
+    bool neighbors = true;
+    for (int r = 0; r < rows; ++r) {
         for (int c = 0; c < kRaster; ++c) {
-            for (const int other : {at(c + 1, r), at(c, r + 1)}) {
-                if (other != at(c, r)) {
-                    seen.insert({std::min(other, at(c, r)), std::max(other, at(c, r))});
+            for (const auto& [dc, dr] : {std::pair{1, 0}, std::pair{0, 1}}) {
+                const int self = at(c, r);
+                const int other = at(c + dc, r + dr);
+                if (other == self) {
+                    continue;
                 }
+                seen.insert({std::min(other, self), std::max(other, self)});
+                if (plates.boundaryIndex(self, other) >= 0) {
+                    continue;
+                }
+                bool third = false;
+                for (int t = 1; t < 64; ++t) {
+                    const double x = (c + 0.5 + dc * t / 64.0) * stepX - 0.5 * plates.world().x;
+                    const double z = (r + 0.5 + dr * t / 64.0) * stepZ - 0.5 * plates.world().z;
+                    const int plate = plates.rawPlateAt(x, z);
+                    third = third || (plate != self && plate != other);
+                }
+                neighbors = neighbors && third;
             }
         }
     }
-    TEST_CHECK(std::all_of(seen.begin(), seen.end(), [&](const auto& p) {
-        return plates.boundaryIndex(p.first, p.second) >= 0;
-    }));
-    const double pixel = plates.planetSize() / kRaster;
+    TEST_CHECK(neighbors);
+    const double pixel = plates.world().x / kRaster;
     TEST_CHECK(std::all_of(boundaries.begin(), boundaries.end(), [&](const PlateBoundary& b) {
         return b.length < 2.0 * pixel || seen.count({b.a, b.b}) == 1;
     }));
@@ -242,7 +271,7 @@ void testBoundaryKinds(const TectonicPlates& plates) {
     std::array<int, 3> kinds{};
     bool consistent = true;
     bool symmetric = true;
-    const double period = plates.planetSize();
+    const terrain::WorldSize& world = plates.world();
     for (const PlateBoundary& b : plates.boundaries()) {
         ++kinds[static_cast<std::size_t>(b.kind)];
         const BoundaryKind expected =
@@ -252,8 +281,8 @@ void testBoundaryKinds(const TectonicPlates& plates) {
         consistent = consistent && b.kind == expected && std::abs(b.convergence) <= 1.0f;
         const Plate& pa = plates.plates()[static_cast<std::size_t>(b.a)];
         const Plate& pb = plates.plates()[static_cast<std::size_t>(b.b)];
-        const double nx = wrap(pb.x - pa.x, period);
-        const double nz = wrap(pb.z - pa.z, period);
+        const double nx = wrap(pb.x - pa.x, world.x);
+        const double nz = wrap(pb.z - pa.z, world.z);
         const double fromA =
             ((pa.velocityX - pb.velocityX) * nx + (pa.velocityZ - pb.velocityZ) * nz) /
             (std::hypot(nx, nz) *
@@ -319,9 +348,9 @@ void testPlateKinds(const Layouts& layouts) {
     TEST_CHECK(withShelf >= 12);
 }
 
-bool rejects(const VoronoiParams& params) {
+bool rejects(const VoronoiParams& params, const terrain::WorldSize& world = {}) {
     try {
-        const TectonicPlates plates(1, params);
+        const TectonicPlates plates(1, params, world);
         return false;
     } catch (const std::invalid_argument&) {
         return true;
@@ -334,14 +363,12 @@ void testInvalidParams() {
         change(params);
         return params;
     };
+    TEST_CHECK(rejects(VoronoiParams{}, {1000.0, 65536.0})); // not a multiple of 65,536 m
     TEST_CHECK(rejects(changed([](VoronoiParams& p) { p.minPlates = 3; })));
     TEST_CHECK(rejects(changed([](VoronoiParams& p) { p.maxPlates = 19; })));
     TEST_CHECK(
         rejects(changed([](VoronoiParams& p) { p.maxPlates = TectonicPlates::kMaxPlates + 1; })));
     TEST_CHECK(rejects(changed([](VoronoiParams& p) { p.lloydIterations = -1; })));
-    TEST_CHECK(rejects(changed([](VoronoiParams& p) { p.cellDiameter = 0.0; })));
-    TEST_CHECK(rejects(changed(
-        [](VoronoiParams& p) { p.cellDiameter = std::numeric_limits<double>::quiet_NaN(); })));
     TEST_CHECK(rejects(changed([](VoronoiParams& p) { p.warpWavelength = 0.0; })));
     TEST_CHECK(rejects(changed([](VoronoiParams& p) { p.warpAmplitude = -1.0; })));
     TEST_CHECK(rejects(changed([](VoronoiParams& p) { p.coastWidth = 0.0; })));

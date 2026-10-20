@@ -25,22 +25,34 @@ float exposureOf(float gradX, float gradZ) {
     return static_cast<float>(-gradZ / length);
 }
 
-ClimateField::ClimateField(std::uint64_t seed, const ClimateParams& params)
-    : params_(params), temperatureSeed_(noise::deriveSeed(seed, kTemperature)),
-      humiditySeed_(noise::deriveSeed(seed, kHumidity)) {}
+ClimateField::ClimateField(std::uint64_t seed, const ClimateParams& params, const WorldSize& world)
+    : params_(params), world_(world), temperatureSeed_(noise::deriveSeed(seed, kTemperature)),
+      humiditySeed_(noise::deriveSeed(seed, kHumidity)) {
+    validate(world_);
+}
+
+float ClimateField::latitudeTemperatureAt(double z) const {
+    // sin(pi z / world.z) is the sine of z / (2 world.z) turns: within [-1/4, 1/4) of a turn
+    // over the canonical range, -1 or 1 at the poles.
+    const double sine = dmath::sinTurns(wrapCoordinate(z, world_.z) / (2.0 * world_.z));
+    const double s = sine * sine;
+    const double equator = params_.equatorTemperature;
+    return static_cast<float>(equator - (equator - params_.poleTemperature) * s * std::sqrt(s));
+}
 
 float ClimateField::baseTemperatureAt(double x, double z) const {
     const noise::FbmParams fbm{.octaves = 4, .frequency = 1.0 / params_.temperatureWavelength};
-    return params_.meanTemperature +
-           params_.temperatureAmplitude * noise::fbm2D(x, z, temperatureSeed_, fbm);
+    return latitudeTemperatureAt(z) +
+           params_.temperatureAmplitude * noise::fbm2D(x, z, temperatureSeed_, fbm, world_);
 }
 
 float ClimateField::humidityAt(double x, double z, float continentalness) const {
     const noise::FbmParams fbm{.octaves = 4, .frequency = 1.0 / params_.humidityWavelength};
     const float inland = noise::smoothstep(params_.inlandLow, params_.inlandHigh, continentalness);
-    const float humidity = params_.meanHumidity +
-                           params_.humidityAmplitude * noise::fbm2D(x, z, humiditySeed_, fbm) -
-                           params_.inlandDrying * inland;
+    const float humidity =
+        params_.meanHumidity +
+        params_.humidityAmplitude * noise::fbm2D(x, z, humiditySeed_, fbm, world_) -
+        params_.inlandDrying * inland;
     return std::clamp(humidity, 0.0f, 1.0f);
 }
 

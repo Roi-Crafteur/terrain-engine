@@ -5,10 +5,17 @@
 
 #include <array>
 #include <cmath>
+#include <stdexcept>
 
 namespace terrain {
 
 namespace {
+
+static_assert(static_cast<long long>(kWorldAlignmentMeters) %
+                      static_cast<long long>(kCaveEnvironmentSpacing) ==
+                  0,
+              "the nodes of the cave environment fall exactly on the sides of "
+              "every world");
 
 // Spacing of the one-pixel surface of a node: its gradient spans one pixel each side.
 constexpr double kNodeMetersPerPixel = 4.0;
@@ -133,11 +140,18 @@ CaveMaterial caveMaterial(const CaveWallSite& site, const CaveMaterialParams& pa
 
 CaveEnvironmentField::CaveEnvironmentField(const Heightfield& field, const ClimateField& climate,
                                            const BiomeParams& biomes)
-    : field_(&field), climate_(&climate), biomes_(biomes) {}
+    : field_(&field), climate_(&climate), biomes_(biomes),
+      nodesX_(periodicCells(field.world().x, kCaveEnvironmentSpacing)),
+      nodesZ_(periodicCells(field.world().z, kCaveEnvironmentSpacing)) {
+    if (!(climate.world() == field.world())) {
+        throw std::invalid_argument("CaveEnvironmentField: the climate and the heightfield "
+                                    "must share their world");
+    }
+}
 
 CaveEnvironment CaveEnvironmentField::node(std::int64_t i, std::int64_t k) const {
-    const double x = static_cast<double>(i) * kCaveEnvironmentSpacing;
-    const double z = static_cast<double>(k) * kCaveEnvironmentSpacing;
+    const double x = static_cast<double>(nodesX_.wrap(i)) * nodesX_.size;
+    const double z = static_cast<double>(nodesZ_.wrap(k)) * nodesZ_.size;
     // A one-pixel surface centered on the node: its sample lies exactly at (x, z).
     const TerrainSurface surface = surfaceFromHeightfield(*field_, {x, z, kNodeMetersPerPixel, 1});
     const SurfaceSite& site = surface.sites.front();

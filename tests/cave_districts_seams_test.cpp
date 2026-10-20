@@ -196,6 +196,26 @@ void checkSeamsAt(const TerrainTiles& tiles, const std::vector<CaveEntrance>& en
     }
 }
 
+// No volcanic district opens within 4 km of the center of the streaming tests: the entrances
+// within 1.5 km of the site of the first one on land among the 17 x 17 districts around it.
+std::vector<DistrictEntrance> volcanicEntrances(const TerrainTiles& tiles) {
+    const terrain::CaveField& field = *tiles.caves();
+    const auto cellX =
+        static_cast<int>(field.districts()->cellsX().cellOf(streaming_test::kCenterX));
+    const auto cellZ =
+        static_cast<int>(field.districts()->cellsZ().cellOf(streaming_test::kCenterZ));
+    const std::vector<terrain::CaveDistrict> found =
+        districts_test::districtsOf(field, tiles.caveGround(), {cellX - 8, 17}, {cellZ - 8, 17},
+                                    CaveDistrictType::Volcanic, 5.0f);
+    if (found.empty()) {
+        return {};
+    }
+    const terrain::CaveDistrict& d = found.front();
+    return districts_test::withDistricts(
+        tiles, field.entrancesNear(d.siteX - 1500.0, d.siteZ - 1500.0, d.siteX + 1500.0,
+                                   d.siteZ + 1500.0, tiles.caveGround()));
+}
+
 // At the entrances of the main districts (crevasses, halls, volcanic) and of the border zones.
 void testSeams(const TerrainTiles& tiles, const std::vector<DistrictEntrance>& entrances) {
     const auto of = [&entrances](bool blended, std::optional<CaveDistrictType> type) {
@@ -225,9 +245,12 @@ void testSeams(const TerrainTiles& tiles, const std::vector<DistrictEntrance>& e
 
 int main() {
     const TerrainTiles tiles(kSeed, {}, {}, districts_test::defaultCaves());
-    const std::vector<DistrictEntrance> entrances = districts_test::districtEntrances(tiles);
-    std::printf("%zu entrances near the origin\n", entrances.size());
-    TEST_CHECK(entrances.size() >= 40);
+    std::vector<DistrictEntrance> entrances = districts_test::districtEntrances(tiles);
+    const std::vector<DistrictEntrance> volcanic = volcanicEntrances(tiles);
+    std::printf("%zu entrances near the origin, %zu around a volcanic district\n", entrances.size(),
+                volcanic.size());
+    TEST_CHECK(entrances.size() >= 40 && volcanic.size() >= 10);
+    entrances.insert(entrances.end(), volcanic.begin(), volcanic.end());
     testSeams(tiles, entrances);
     return test::result();
 }

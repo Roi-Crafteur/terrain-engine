@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/cliffs.hpp"
+#include "terrain/world_size.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -49,7 +50,9 @@ using ReliefHeight = std::function<float(double x, double z)>;
 
 class OverhangField {
 public:
-    explicit OverhangField(std::uint64_t seed, const OverhangParams& params = {});
+    // Periodic on the world (WorldSize). Throws std::invalid_argument for an invalid world.
+    explicit OverhangField(std::uint64_t seed, const OverhangParams& params = {},
+                           const WorldSize& world = {});
 
     // Patch factor of the control mask at (x, z), in [0, 1].
     [[nodiscard]] float patchAt(double x, double z) const;
@@ -76,9 +79,11 @@ public:
     void apply(CliffColumn& column, float weight) const;
 
     [[nodiscard]] const OverhangParams& params() const { return params_; }
+    [[nodiscard]] const WorldSize& world() const { return world_; }
 
 private:
     OverhangParams params_;
+    WorldSize world_;
     std::uint64_t patchSeed_;
 };
 

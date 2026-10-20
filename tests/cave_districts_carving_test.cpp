@@ -72,7 +72,7 @@ void testNeutralIsIdentical() {
     const CaveGround ground = withEnvironment(heightfieldGround(heightfield), humidEnvironment());
     Rng rng(41);
     const std::vector<Point> points =
-        randomPoints(ground, rng, 3000, {1000.0, -2000.0, 256.0}, -5.0, 110.0);
+        randomPoints(ground, rng, 3000, {2000.0, 1000.0, 256.0}, -5.0, 110.0);
     CaveSampler a(plain, ground, CaveDetail{}, boxOf(points));
     CaveSampler b(neutral, ground, CaveDetail{}, boxOf(points));
     bool same = true;
@@ -158,7 +158,7 @@ ComponentAir compare(const std::vector<CaveVoids>& neutral, const std::vector<Ca
 std::vector<Window> componentWindows(const CaveField& field) {
     const auto roof = static_cast<int>(field.params().minRoof);
     const auto deepest = static_cast<int>(field.params().maxDepth);
-    return {{0.0, 0.0, 48.0, 48.0, 4.0, roof, deepest},
+    return {{-2000.0, -1000.0, 48.0, 48.0, 4.0, roof, deepest},
             {2000.0, -1500.0, 48.0, 48.0, 4.0, roof, deepest},
             {-3000.0, 800.0, 48.0, 48.0, 4.0, roof, deepest}};
 }

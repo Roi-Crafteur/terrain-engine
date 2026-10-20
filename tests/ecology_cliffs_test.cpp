@@ -25,7 +25,9 @@ using terrain::SurfaceMaterial;
 using terrain::SurfaceSite;
 using terrain::TerrainSurface;
 
-constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
+// The cliff site of the default seed lies in an equatorial desert: no plant to place around
+// its walls. This one has vegetation (most seeds do).
+constexpr std::uint64_t kSeed = 1;
 
 // Wall test of the cliff preview: a drop of at least half a stratum to a 4-neighbor sample,
 // where the cliff mask of either sample is above 0.

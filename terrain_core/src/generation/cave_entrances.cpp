@@ -149,8 +149,28 @@ float entranceVoidAt(const CaveEntrance& entrance, double x, double y, double z)
     return static_cast<float>(std::min(tube, chamber));
 }
 
+// The entrance of the canonical cell, checked at its canonical position, then placed at the
+// image next to (cellX, cellZ): every image of an entrance is the same entrance.
 bool CaveField::entrance(int cellX, int cellZ, const CaveGround& ground, AquiferCache& aquifers,
                          CaveEntrance& result) const {
+    if (!canonicalEntrance(static_cast<int>(entranceCellsX_.wrap(cellX)),
+                           static_cast<int>(entranceCellsZ_.wrap(cellZ)), ground, aquifers,
+                           result)) {
+        return false;
+    }
+    const double shiftX = entranceCellsX_.shift(cellX);
+    const double shiftZ = entranceCellsZ_.shift(cellZ);
+    result.topX += shiftX;
+    result.bottomX += shiftX;
+    result.topZ += shiftZ;
+    result.bottomZ += shiftZ;
+    result.cellX = cellX;
+    result.cellZ = cellZ;
+    return true;
+}
+
+bool CaveField::canonicalEntrance(int cellX, int cellZ, const CaveGround& ground,
+                                  AquiferCache& aquifers, CaveEntrance& result) const {
     const EntranceParams& p = params_.entrances;
     const std::uint64_t cell = cellSeed(entranceSeed_, cellX, cellZ);
     if (unitDraw(cell, kChanceDraw) >= static_cast<double>(p.chance)) {
@@ -158,8 +178,8 @@ bool CaveField::entrance(int cellX, int cellZ, const CaveGround& ground, Aquifer
     }
     const double offsetX = (unitDraw(cell, kOffsetXDraw) - 0.5) * p.jitter;
     const double offsetZ = (unitDraw(cell, kOffsetZDraw) - 0.5) * p.jitter;
-    const double siteX = (cellX + 0.5 + offsetX) * p.spacing;
-    const double siteZ = (cellZ + 0.5 + offsetZ) * p.spacing;
+    const double siteX = (cellX + 0.5 + offsetX) * entranceCellsX_.size;
+    const double siteZ = (cellZ + 0.5 + offsetZ) * entranceCellsZ_.size;
     const double turns = unitDraw(cell, kAngleDraw);
     const double run = drawBetween(cell, kRunDraw, p.minRun, p.maxRun);
     const float site = ground.height(siteX, siteZ);
@@ -205,15 +225,16 @@ std::vector<CaveEntrance> CaveField::entrancesNear(double minX, double minZ, dou
     const EntranceParams& p = params_.entrances;
     const double margin = p.maxRun + std::max(p.maxTubeRadius, p.maxChamberRadius) +
                           kEntranceReachMargin;
-    const auto first = [&](double value) {
-        return static_cast<int>(std::floor((value - margin) / p.spacing));
+    const auto first = [margin](double value, const PeriodicCells& cells) {
+        return static_cast<int>(cells.cellOf(value - margin));
     };
-    const auto last = [&](double value) {
-        return static_cast<int>(std::floor((value + margin) / p.spacing));
+    const auto last = [margin](double value, const PeriodicCells& cells) {
+        return static_cast<int>(cells.cellOf(value + margin));
     };
     std::vector<CaveEntrance> entrances;
-    for (int cellZ = first(minZ); cellZ <= last(maxZ); ++cellZ) {
-        for (int cellX = first(minX); cellX <= last(maxX); ++cellX) {
+    for (int cellZ = first(minZ, entranceCellsZ_); cellZ <= last(maxZ, entranceCellsZ_); ++cellZ) {
+        for (int cellX = first(minX, entranceCellsX_); cellX <= last(maxX, entranceCellsX_);
+             ++cellX) {
             CaveEntrance entrance;
             if (!this->entrance(cellX, cellZ, ground, aquifers, entrance)) {
                 continue;

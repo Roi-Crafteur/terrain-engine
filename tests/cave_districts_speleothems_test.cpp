@@ -30,7 +30,8 @@ using terrain::CaveProfile;
 using terrain::Speleothem;
 
 // Squares far apart, over flat ground of a mild climate.
-const Square kSquares[] = {{0.0, 0.0, 64.0}, {2000.0, -1500.0, 64.0}, {-3000.0, 800.0, 64.0}};
+const Square kSquares[] = {
+    {-1024.0, -512.0, 64.0}, {2000.0, -1500.0, 64.0}, {-3000.0, 800.0, 64.0}};
 
 std::vector<Speleothem> placeOver(const CaveProfile& profile) {
     const terrain::CaveEnvironment mild = environmentOf(terrain::Biome::Grassland, 12.0f, 0.5f);

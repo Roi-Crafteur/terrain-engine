@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/cave_materials.hpp"
+#include "terrain/world_size.hpp"
 
 #include <array>
 #include <cstddef>
@@ -126,16 +127,19 @@ struct DistrictWeights {
 };
 
 // Deterministic districts: the same seed, parameters and ground always give the same district
-// and the same profile at a point, wherever the area being generated is.
+// and the same profile at a point, wherever the area being generated is. Periodic on the
+// world: the grid of the sites has round(world / cellSize) cells per side (PeriodicCells).
 class CaveDistricts {
 public:
-    // Throws std::invalid_argument for a blend wider than 0.189 of the cell or a jitter above
-    // 0.5.
-    CaveDistricts(std::uint64_t seed, const CaveDistrictParams& params);
+    // Throws std::invalid_argument for a blend wider than 0.189 of the cell, a jitter above
+    // 0.5 or an invalid world (validate).
+    CaveDistricts(std::uint64_t seed, const CaveDistrictParams& params,
+                  const WorldSize& world = {});
 
-    // District of the cell (cellX, cellZ): the type is drawn with weights from the environment
-    // and the height at its site (glaciers only in the cold, lush districts humid and warm,
-    // dripstone humid, flooded on low ground, volcanic rare).
+    // District of the cell (cellX, cellZ), an unwrapped index: the type is drawn with weights
+    // from the environment and the height at its site (glaciers only in the cold, lush
+    // districts humid and warm, dripstone humid, flooded on low ground, volcanic rare). Drawn
+    // and evaluated at the canonical cell, its site placed at the image next to the cell.
     [[nodiscard]] CaveDistrict district(int cellX, int cellZ, const DistrictSite& site) const;
 
     // Weights at (x, z), from the districts of the 3 x 3 cells around it given by districtAt.
@@ -146,9 +150,13 @@ public:
     [[nodiscard]] CaveProfile profile(const DistrictWeights& weights) const;
 
     [[nodiscard]] const CaveDistrictParams& params() const { return params_; }
+    [[nodiscard]] const PeriodicCells& cellsX() const { return cellsX_; }
+    [[nodiscard]] const PeriodicCells& cellsZ() const { return cellsZ_; }
 
 private:
     CaveDistrictParams params_;
+    PeriodicCells cellsX_;
+    PeriodicCells cellsZ_;
     std::uint64_t seed_;
 };
 

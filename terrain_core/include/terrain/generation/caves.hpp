@@ -5,7 +5,9 @@
 #include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/cave_noise.hpp"
 #include "terrain/generation/cave_regions.hpp"
+#include "terrain/generation/noise.hpp"
 #include "terrain/generation/overhangs.hpp"
+#include "terrain/world_size.hpp"
 
 #include <array>
 #include <cstdint>
@@ -264,9 +266,18 @@ struct CaveVoids {
 
 // Deterministic caves: the same seed, parameters, ground and position always give the same
 // void, wherever the area being generated is. CaveSampler evaluates them over an area.
+//
+// Periodic on the world (WorldSize): every noise tiles it, and so does every grid (aquifer
+// cells, entrance cells, nodes of the level of the galleries and of the 3D noises, districts),
+// of round(world / nominal size) cells per side (PeriodicCells). Cells are addressed by
+// unwrapped indices around the position they are read from; a cell is drawn and evaluated at
+// its canonical index and position, and only placed at the image next to its index (its
+// cellX and cellZ keep the unwrapped index), so every image of a cell holds the same values.
 class CaveField {
 public:
-    explicit CaveField(std::uint64_t seed, const CaveParams& params = {});
+    // Throws std::invalid_argument for an invalid world (validate), or as CaveDistricts.
+    explicit CaveField(std::uint64_t seed, const CaveParams& params = {},
+                       const WorldSize& world = {});
 
     // Candidate entrance of the grid cell (cellX, cellZ); false if the cell has none: chance,
     // or its ground is under the sea or on the shore, a river is within its reach, its chamber
@@ -372,8 +383,21 @@ public:
 
     [[nodiscard]] const CaveParams& params() const { return params_; }
     [[nodiscard]] const CaveNoiseLattice& lattice() const { return lattice_; }
+    [[nodiscard]] const WorldSize& world() const { return world_; }
+    // Grids of the aquifer cells, of the entrance cells and of the nodes of the level of the
+    // galleries, along x and z.
+    [[nodiscard]] const PeriodicCells& aquiferCellsX() const { return aquiferCellsX_; }
+    [[nodiscard]] const PeriodicCells& aquiferCellsZ() const { return aquiferCellsZ_; }
+    [[nodiscard]] const PeriodicCells& entranceCellsX() const { return entranceCellsX_; }
+    [[nodiscard]] const PeriodicCells& entranceCellsZ() const { return entranceCellsZ_; }
+    [[nodiscard]] const PeriodicCells& galleryNodesX() const { return galleryNodesX_; }
+    [[nodiscard]] const PeriodicCells& galleryNodesZ() const { return galleryNodesZ_; }
 
 private:
+    [[nodiscard]] AquiferCell canonicalAquifer(int cellX, int cellZ, const CaveGround& ground,
+                                               AquiferCache* cells) const;
+    [[nodiscard]] bool canonicalEntrance(int cellX, int cellZ, const CaveGround& ground,
+                                         AquiferCache& aquifers, CaveEntrance& result) const;
     void addAquifer(CaveColumn& column, AquiferCache& aquifers) const;
     void addGallery(CaveColumn& column, AquiferCache& cells) const;
     // Highest level of the lava of the cell (cellX, cellZ): under the band of the rivers of
@@ -385,6 +409,13 @@ private:
                                      std::span<const CaveEntrance> entrances) const;
 
     CaveParams params_;
+    WorldSize world_;
+    PeriodicCells aquiferCellsX_;
+    PeriodicCells aquiferCellsZ_;
+    PeriodicCells entranceCellsX_;
+    PeriodicCells entranceCellsZ_;
+    PeriodicCells galleryNodesX_;
+    PeriodicCells galleryNodesZ_;
     std::uint64_t entranceSeed_;
     std::uint64_t ravineSeed_;
     std::uint64_t ravinePresenceSeed_;
@@ -392,6 +423,9 @@ private:
     std::uint64_t galleryASeed_;
     std::uint64_t galleryBSeed_;
     CaveNoiseLattice lattice_;
+    noise::Lattice2D ravineLattice_;
+    noise::Lattice2D galleryLatticeA_;
+    noise::Lattice2D galleryLatticeB_;
     std::optional<CaveDistricts> districts_;
 };
 

@@ -155,8 +155,8 @@ Image renderPlatesMap(const TectonicPlates& plates, const HeightmapRegion& regio
 }
 
 HeightmapRegion planetRegion(const TectonicPlates& plates, int size) {
-    const double side = plates.planetSize();
-    return {side / 2.0, side / 2.0, side / size, size};
+    const double side = std::max(plates.world().x, plates.world().z);
+    return {0.0, 0.0, side / size, size};
 }
 
 Image renderWorldMap(const Heightfield& field, int size) {

@@ -477,7 +477,7 @@ int main() {
     if (entrances.size() < 2) {
         return test::result();
     }
-    const std::vector<ChunkCoord> chunks = entranceChunks(entrances);
+    const std::vector<ChunkCoord> chunks = entranceChunks(tiles, entrances);
     testTileMaterials(tiles, chunks);
     testGeometryUnchanged(tiles, chunks);
     testWithoutCaves(tiles, chunks);

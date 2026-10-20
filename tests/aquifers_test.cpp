@@ -232,11 +232,15 @@ void testFreezing() {
     TEST_CHECK(cold.wet == warm.wet);
 }
 
-float lowestGround(const CaveGround& ground, const AquiferParams& p, const AquiferCell& cell) {
+// Lowest ground of a cell (of the canonical range): its site and the 3 x 3 probes of its square
+// of the grid of the world (cells of about cellSize).
+float lowestGround(const CaveField& field, const CaveGround& ground, const AquiferCell& cell) {
+    const double sizeX = field.aquiferCellsX().size;
+    const double sizeZ = field.aquiferCellsZ().size;
     float lowest = ground.height(cell.siteX, cell.siteZ);
     for (int probe = 0; probe < 9; ++probe) {
-        lowest = std::min(lowest, ground.height((cell.cellX + 0.5 * (probe % 3)) * p.cellSize,
-                                                (cell.cellZ + 0.5 * (probe / 3)) * p.cellSize));
+        lowest = std::min(lowest, ground.height((cell.cellX + 0.5 * (probe % 3)) * sizeX,
+                                                (cell.cellZ + 0.5 * (probe / 3)) * sizeZ));
     }
     return lowest;
 }
@@ -258,7 +262,7 @@ void checkLevels(const CaveField& field, const CaveGround& ground, int half, con
                 continue;
             }
             ++wet;
-            const double below = static_cast<double>(lowestGround(ground, p, cell)) -
+            const double below = static_cast<double>(lowestGround(field, ground, cell)) -
                                  static_cast<double>(cell.level);
             closest = std::min(closest, below);
             deepest = std::max(deepest, below);
@@ -405,7 +409,17 @@ void testAquiferBit() {
     if (sites.empty()) {
         return;
     }
-    const Lattice l = latticeAround(sites.front(), 16, 24, 8);
+    // The first bisector whose lattice holds water (caves carved under the level).
+    std::size_t chosen = 0;
+    for (std::size_t n = 0; n < std::min<std::size_t>(sites.size(), 8); ++n) {
+        const Scan probe(field, ground, CaveDetail{}, latticeAround(sites[n], 16, 24, 8));
+        if (std::any_of(probe.water().begin(), probe.water().end(),
+                        [](float w) { return w < 0.0f; })) {
+            chosen = n;
+            break;
+        }
+    }
+    const Lattice l = latticeAround(sites[chosen], 16, 24, 8);
     const CaveDetail bare = withoutAquifers();
     const Scan with(field, ground, CaveDetail{}, l);
     const Scan without(field, ground, bare, l);

@@ -34,7 +34,7 @@ struct Cirque {
 class CliffRegion {
 public:
     CliffRegion(std::uint64_t seed, const HeightmapRegion& region,
-                const CliffRegionParams& params = {});
+                const CliffRegionParams& params = {}, const WorldSize& world = {});
 
     // Cliff state of the column (x, z): eroded height, slope, mask, river proximity
     // (bilinear interpolation of the grids below) and the cirques within reach.

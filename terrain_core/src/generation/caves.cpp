@@ -86,18 +86,28 @@ float smallestMagnitude(float low, float high) {
 
 } // namespace
 
-CaveField::CaveField(std::uint64_t seed, const CaveParams& params)
-    : params_(params), entranceSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream),
-                                                       kEntranceStream)),
+CaveField::CaveField(std::uint64_t seed, const CaveParams& params, const WorldSize& world)
+    : params_(params), world_(world),
+      aquiferCellsX_(periodicCells(world.x, params.aquifers.cellSize)),
+      aquiferCellsZ_(periodicCells(world.z, params.aquifers.cellSize)),
+      entranceCellsX_(periodicCells(world.x, params.entrances.spacing)),
+      entranceCellsZ_(periodicCells(world.z, params.entrances.spacing)),
+      galleryNodesX_(periodicCells(world.x, params.galleries.levelSpacing)),
+      galleryNodesZ_(periodicCells(world.z, params.galleries.levelSpacing)),
+      entranceSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kEntranceStream)),
       ravineSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kRavineStream)),
       ravinePresenceSeed_(
           noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kRavinePresenceStream)),
       aquiferSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kAquiferStream)),
       galleryASeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kGalleryAStream)),
       galleryBSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kGalleryBStream)),
-      lattice_(noiseLayers(noise::deriveSeed(seed, kCaveStream), params)) {
+      lattice_(noiseLayers(noise::deriveSeed(seed, kCaveStream), params), world),
+      ravineLattice_(noise::lattice2D(world, 1.0 / params.ravines.wavelength)),
+      galleryLatticeA_(galleryLattice(world, params.galleries, false)),
+      galleryLatticeB_(galleryLattice(world, params.galleries, true)) {
+    validate(world_);
     if (params.districts) {
-        districts_.emplace(seed, *params.districts);
+        districts_.emplace(seed, *params.districts, world);
     }
 }
 
@@ -134,13 +144,12 @@ CaveColumn CaveField::column(double x, double z, float ground, const CaveGround&
     column.exclusion = std::max(params_.riverClearance - river, seaDepth - params_.deepOceanDepth);
 
     const RavineParams& ravines = params_.ravines;
-    const double frequency = 1.0 / ravines.wavelength;
-    const float axis = noise::gradient2D(x * frequency, z * frequency, ravineSeed_);
+    const float axis = noise::gradient2D(x, z, ravineSeed_, ravineLattice_);
     column.ravineDistance = std::abs(axis) * metersPerUnit(ravines.wavelength);
     const noise::FbmParams presence{2, 1.0 / ravines.presenceWavelength, 2.0, 0.5};
-    column.ravineStrength = noise::smoothstep(
-        ravines.presenceLow, ravines.presenceHigh,
-        noise::fbm2D(x, z, ravinePresenceSeed_, presence));
+    column.ravineStrength =
+        noise::smoothstep(ravines.presenceLow, ravines.presenceHigh,
+                          noise::fbm2D(x, z, ravinePresenceSeed_, presence, world_));
     column.ravineStrength =
         std::min(1.0f, column.ravineStrength + column.profile[CaveProfile::kRavineBoost]);
 

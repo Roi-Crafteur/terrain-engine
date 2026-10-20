@@ -209,20 +209,20 @@ void testExactAndStable() {
     for (const terrain::CaveGround* ground : {&flat, &relief}) {
         for (int lod = 0; lod < 3; ++lod) {
             const terrain::CaveDetail detail = terrain::caveDetailForLod(lod);
-            CaveSampler sampler(field, *ground, detail, {1000.0, -400.0, -2000.0, 1096.0, 1600.0,
-                                                         -1904.0});
+            CaveSampler sampler(field, *ground, detail,
+                                {-500.0, -400.0, -1500.0, -404.0, 1600.0, -1404.0});
             for (int k = 0; k <= 96; k += 3) {
                 for (int i = 0; i <= 96; i += 3) {
-                    const double x = 1000.0 + i;
-                    const double z = -2000.0 + k;
+                    const double x = -500.0 + i;
+                    const double z = -1500.0 + k;
                     const float height = ground->height(x, z);
                     const CaveColumn column = sampler.column(x, z, height);
                     for (int depth = 10; depth <= 40; ++depth) {
                         const double y = static_cast<double>(height) - depth;
                         const float t = caves_test::terrainDensity(y, height);
                         const float carved = sampler.density(column, y, t);
-                        exact += carved == field.carve(t, sampler.voidAt(column, y), detail) ? 1
-                                                                                             : 0;
+                        exact +=
+                            carved == field.carve(t, sampler.voidAt(column, y), detail) ? 1 : 0;
                         galleryAir += sampler.voids(column, y).galleries < 0.0f ? 1 : 0;
                         ++samples;
                     }

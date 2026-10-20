@@ -35,11 +35,14 @@ using caves_test::withEnvironment;
 using speleothems_test::anchoring;
 using speleothems_test::Anchoring;
 using speleothems_test::aquiferParams;
+using speleothems_test::aroundSite;
 using speleothems_test::contains;
 using speleothems_test::countAroundEntrance;
 using speleothems_test::countIce;
 using speleothems_test::countKind;
 using speleothems_test::kFlatHeight;
+using speleothems_test::kSiteX;
+using speleothems_test::kSiteZ;
 using speleothems_test::placeIn;
 using speleothems_test::placeWith;
 using speleothems_test::samplerOver;
@@ -68,7 +71,7 @@ void testDeterministic() {
     const SpeleothemField a(kSeed, p);
     const SpeleothemField b(kSeed, p);
     const SpeleothemField c(kSeed + 1, p);
-    const Square square{0.0, 0.0, 64.0};
+    const Square square = aroundSite(64.0);
     CaveSampler first = samplerOver(field, ground, square);
     CaveSampler second = samplerOver(field, ground, square);
     const std::vector<Speleothem> list = placeIn(a, first, square);
@@ -117,7 +120,7 @@ void testUnion() {
     const CaveField field(kSeed);
     const Heightfield heightfield(kSeed);
     checkUnion(field, withEnvironment(flatGround(kFlatHeight), humidEnvironment()),
-               {-16.0, -16.0, 32.0}, "flat");
+               aroundSite(32.0), "flat");
     checkUnion(field, withEnvironment(heightfieldGround(heightfield), humidEnvironment()),
                {1000.0, -2000.0, 128.0}, "relief");
 }
@@ -133,9 +136,10 @@ void testGeometryUnchanged() {
     dense.speleothems.spacing = 2.0;
     const CaveField denseField(kSeed, dense);
     const CaveGround ground = withEnvironment(flatGround(kFlatHeight), humidEnvironment());
-    const Square square{-16.0, -16.0, 32.0};
+    const Square square = aroundSite(32.0);
     Rng rng(9);
-    const std::vector<Point> points = randomPoints(ground, rng, 1500, {0.0, 0.0, 16.0}, 0.5, 96.0);
+    const std::vector<Point> points =
+        randomPoints(ground, rng, 1500, {kSiteX, kSiteZ, 16.0}, 0.5, 96.0);
     CaveSampler sampler = samplerOver(field, ground, square);
     std::vector<float> before;
     for (const Point& p : points) {
@@ -183,11 +187,11 @@ void testAnchoring() {
     const Heightfield heightfield(kSeed);
     const CaveField field(kSeed);
     const CaveField lakes(kSeed, aquiferParams(true));
-    const Square square{-32.0, -32.0, 64.0};
+    const Square square = aroundSite(64.0);
     checkAnchoring(field, withEnvironment(flatGround(kFlatHeight), humidEnvironment()), square,
                    "flat", false);
     checkAnchoring(lakes, withEnvironment(flatGround(kFlatHeight), humidEnvironment()),
-                   {-64.0, -64.0, 128.0}, "flat, lakes everywhere", true);
+                   aroundSite(128.0), "flat, lakes everywhere", true);
     checkAnchoring(field, withEnvironment(heightfieldGround(heightfield), humidEnvironment()),
                    {1000.0, -2000.0, 192.0}, "relief", false);
     checkAnchoring(field, withEnvironment(flatGround(kFlatHeight), coldEnvironment()), square,
@@ -241,7 +245,7 @@ void testOpenToSky() {
 void testFrequency() {
     const CaveParams noLakes = aquiferParams(false);
     const SpeleothemParams& p = noLakes.speleothems;
-    const Square square{-64.0, -64.0, 128.0};
+    const Square square = aroundSite(128.0);
     const auto in = [](Biome biome, float humidity) {
         return environmentOf(biome, 12.0f, humidity);
     };
@@ -289,7 +293,7 @@ void testIce() {
     const CaveParams lakes = aquiferParams(true);
     const float edge = noLakes.speleothems.iceTemperature;
     const float freezing = lakes.aquifers.freezeTemperature;
-    const Square square{-32.0, -32.0, 64.0};
+    const Square square = aroundSite(64.0);
     const auto at = [&](const CaveParams& params, float temperature) {
         return placeWith(params, environmentOf(Biome::Taiga, temperature, 0.9f), square);
     };

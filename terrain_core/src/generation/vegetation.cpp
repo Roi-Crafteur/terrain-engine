@@ -35,13 +35,17 @@ const char* plantName(PlantType type) {
     return kPlantNames[slot(type)];
 }
 
-VegetationField::VegetationField(std::uint64_t seed, const VegetationParams& params)
-    : params_(params), clumpSeed_(noise::deriveSeed(seed, kClump)),
-      placementSeed_(noise::deriveSeed(seed, kPlacement)) {}
+VegetationField::VegetationField(std::uint64_t seed, const VegetationParams& params,
+                                 const WorldSize& world)
+    : params_(params), world_(world), cellsX_(periodicCells(world.x, params.cellSize)),
+      cellsZ_(periodicCells(world.z, params.cellSize)), clumpSeed_(noise::deriveSeed(seed, kClump)),
+      placementSeed_(noise::deriveSeed(seed, kPlacement)) {
+    validate(world_);
+}
 
 float VegetationField::clumpAt(double x, double z) const {
     const noise::FbmParams fbm{.octaves = 3, .frequency = 1.0 / params_.clumpWavelength};
-    return std::clamp(0.5f + noise::fbm2D(x, z, clumpSeed_, fbm), 0.0f, 1.0f);
+    return std::clamp(0.5f + noise::fbm2D(x, z, clumpSeed_, fbm, world_), 0.0f, 1.0f);
 }
 
 bool VegetationField::canGrow(PlantType type, SurfaceMaterial material,
@@ -95,14 +99,15 @@ PlantDensities VegetationField::densities(double x, double z, Biome biome, Surfa
 }
 
 LatticeDraw VegetationField::drawCell(std::int64_t i, std::int64_t k) const {
+    const std::int64_t ci = cellsX_.wrap(i);
+    const std::int64_t ck = cellsZ_.wrap(k);
     const std::uint64_t cell =
-        noise::deriveSeed(noise::deriveSeed(placementSeed_, static_cast<std::uint64_t>(i)),
-                          static_cast<std::uint64_t>(k));
+        noise::deriveSeed(noise::deriveSeed(placementSeed_, static_cast<std::uint64_t>(ci)),
+                          static_cast<std::uint64_t>(ck));
     const auto draw = [cell](Draw stream) { return unit(noise::deriveSeed(cell, stream)); };
-    const double size = params_.cellSize;
     LatticeDraw result;
-    result.x = (static_cast<double>(i) + draw(kDrawX)) * size;
-    result.z = (static_cast<double>(k) + draw(kDrawZ)) * size;
+    result.x = (static_cast<double>(ci) + draw(kDrawX)) * cellsX_.size + cellsX_.shift(i);
+    result.z = (static_cast<double>(ck) + draw(kDrawZ)) * cellsZ_.size + cellsZ_.shift(k);
     result.pick = draw(kDrawPick);
     result.scale = params_.minScale +
                    (params_.maxScale - params_.minScale) * static_cast<float>(draw(kDrawScale));

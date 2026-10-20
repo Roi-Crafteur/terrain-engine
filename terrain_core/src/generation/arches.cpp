@@ -159,11 +159,16 @@ bool fits(const CliffRegion& cliffs, const ArchField& field, const Bounds& bound
 
 } // namespace
 
-ArchField::ArchField(std::uint64_t seed, const ArchParams& params)
-    : params_(params), seed_(noise::deriveSeed(seed, kArchStream)) {}
+ArchField::ArchField(std::uint64_t seed, const ArchParams& params, const WorldSize& world)
+    : params_(params), cellsX_(periodicCells(world.x, params.spacing)),
+      cellsZ_(periodicCells(world.z, params.spacing)), seed_(noise::deriveSeed(seed, kArchStream)) {
+    validate(world);
+}
 
 bool ArchField::candidate(int cellX, int cellZ, Arch& arch) const {
-    const std::uint64_t cell = cellSeed(seed_, cellX, cellZ);
+    const auto canonicalX = static_cast<int>(cellsX_.wrap(cellX));
+    const auto canonicalZ = static_cast<int>(cellsZ_.wrap(cellZ));
+    const std::uint64_t cell = cellSeed(seed_, canonicalX, canonicalZ);
     if (unitDraw(cell, kChanceDraw) >= static_cast<double>(params_.chance)) {
         return false;
     }
@@ -172,8 +177,8 @@ bool ArchField::candidate(int cellX, int cellZ, Arch& arch) const {
     const double turns = 0.5 * unitDraw(cell, kAngleDraw); // a span has no side
     const double span = params_.minHalfSpan +
                         (params_.maxHalfSpan - params_.minHalfSpan) * unitDraw(cell, kSpanDraw);
-    arch = {(cellX + offsetX) * params_.spacing,
-            (cellZ + offsetZ) * params_.spacing,
+    arch = {(canonicalX + offsetX) * cellsX_.size + cellsX_.shift(cellX),
+            (canonicalZ + offsetZ) * cellsZ_.size + cellsZ_.shift(cellZ),
             dmath::cosTurns(turns),
             dmath::sinTurns(turns),
             static_cast<float>(span),
@@ -250,15 +255,13 @@ float ArchField::apply(const Arch& arch, float terrain, double x, double y, doub
 
 std::vector<Arch> placeArches(const CliffRegion& cliffs, const ArchField& field) {
     const Bounds bounds = placementBounds(cliffs);
-    const double spacing = field.params().spacing;
-    const auto cell = [&](double coordinate) {
-        return static_cast<int>(std::floor(coordinate / spacing));
-    };
+    const auto cellX = [&](double x) { return static_cast<int>(field.cellsX().cellOf(x)); };
+    const auto cellZ = [&](double z) { return static_cast<int>(field.cellsZ().cellOf(z)); };
     std::vector<Arch> arches;
-    for (int cellZ = cell(bounds.minZ); cellZ <= cell(bounds.maxZ); ++cellZ) {
-        for (int cellX = cell(bounds.minX); cellX <= cell(bounds.maxX); ++cellX) {
+    for (int k = cellZ(bounds.minZ); k <= cellZ(bounds.maxZ); ++k) {
+        for (int i = cellX(bounds.minX); i <= cellX(bounds.maxX); ++i) {
             Arch arch;
-            if (field.candidate(cellX, cellZ, arch) && fits(cliffs, field, bounds, arches, arch)) {
+            if (field.candidate(i, k, arch) && fits(cliffs, field, bounds, arches, arch)) {
                 arches.push_back(arch);
             }
         }

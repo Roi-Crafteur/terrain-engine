@@ -30,7 +30,11 @@ struct Speleothem {
 // cell always give the same ones, wherever the area being placed is.
 class SpeleothemField {
 public:
-    explicit SpeleothemField(std::uint64_t seed, const SpeleothemParams& params = {});
+    // Periodic on the world: the grid of the candidates has round(world / spacing) cells per
+    // side (PeriodicCells), each drawn from its canonical cell. Throws std::invalid_argument for
+    // an invalid world (validate).
+    explicit SpeleothemField(std::uint64_t seed, const SpeleothemParams& params = {},
+                             const WorldSize& world = {});
 
     // Speleothems of the cells whose candidate lies in [minX, maxX) x [minZ, maxZ], in cell
     // order, on the caves read from the sampler: adjacent rectangles give the speleothems of
@@ -46,6 +50,8 @@ private:
                         std::vector<Speleothem>& result) const;
 
     SpeleothemParams params_;
+    PeriodicCells cellsX_;
+    PeriodicCells cellsZ_;
     std::uint64_t seed_;
 };
 

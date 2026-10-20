@@ -1,5 +1,8 @@
 #pragma once
 
+#include "terrain/generation/noise.hpp"
+#include "terrain/world_size.hpp"
+
 #include <cmath>
 
 namespace terrain {
@@ -66,6 +69,11 @@ struct CaveRiverFlatness {
     const double high = river.maxSlope / rise - river.maxDepth / (3.0 * galleries.levelSpacing);
     return {high / 2.0, high};
 }
+
+// Lattice of the gradient noise of a network of galleries, A or B, on the world: B is rotated and
+// moved so that its lattice never meets the one of A.
+[[nodiscard]] noise::Lattice2D galleryLattice(const WorldSize& world, const GalleryParams& params,
+                                              bool networkB);
 
 // Largest slope of the surface of a river, from the flatness above: at most maxSlope.
 [[nodiscard]] inline double riverSlopeBound(const CaveRiverParams& river,

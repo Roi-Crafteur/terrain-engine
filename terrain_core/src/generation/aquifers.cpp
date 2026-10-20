@@ -42,26 +42,39 @@ std::uint64_t cellKey(int cellX, int cellZ) {
            static_cast<std::uint32_t>(cellZ);
 }
 
-int cellOf(double meters, double cellSize) {
-    return static_cast<int>(std::floor(meters / cellSize));
+int cellOf(double meters, const PeriodicCells& cells) {
+    return static_cast<int>(cells.cellOf(meters));
 }
 
 } // namespace
 
+// The cell at its canonical index and site, placed at the image next to (cellX, cellZ).
 AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground,
                                AquiferCache* cells) const {
-    const AquiferParams& p = params_.aquifers;
-    const std::uint64_t cell = cellSeed(aquiferSeed_, cellX, cellZ);
-    AquiferCell result;
+    AquiferCell result =
+        canonicalAquifer(static_cast<int>(aquiferCellsX_.wrap(cellX)),
+                         static_cast<int>(aquiferCellsZ_.wrap(cellZ)), ground, cells);
     result.cellX = cellX;
     result.cellZ = cellZ;
-    result.siteX = (cellX + 0.5 + (unitDraw(cell, kOffsetXDraw) - 0.5) * p.jitter) * p.cellSize;
-    result.siteZ = (cellZ + 0.5 + (unitDraw(cell, kOffsetZDraw) - 0.5) * p.jitter) * p.cellSize;
+    result.siteX += aquiferCellsX_.shift(cellX);
+    result.siteZ += aquiferCellsZ_.shift(cellZ);
+    return result;
+}
+
+AquiferCell CaveField::canonicalAquifer(int cellX, int cellZ, const CaveGround& ground,
+                                        AquiferCache* cells) const {
+    const AquiferParams& p = params_.aquifers;
+    const double sizeX = aquiferCellsX_.size;
+    const double sizeZ = aquiferCellsZ_.size;
+    const std::uint64_t cell = cellSeed(aquiferSeed_, cellX, cellZ);
+    AquiferCell result;
+    result.siteX = (cellX + 0.5 + (unitDraw(cell, kOffsetXDraw) - 0.5) * p.jitter) * sizeX;
+    result.siteZ = (cellZ + 0.5 + (unitDraw(cell, kOffsetZDraw) - 0.5) * p.jitter) * sizeZ;
     const float site = ground.height(result.siteX, result.siteZ);
     float lowest = site;
     for (int probe = 0; probe < 9; ++probe) {
-        const double x = (cellX + 0.5 * (probe % 3)) * p.cellSize;
-        const double z = (cellZ + 0.5 * (probe / 3)) * p.cellSize;
+        const double x = (cellX + 0.5 * (probe % 3)) * sizeX;
+        const double z = (cellZ + 0.5 * (probe / 3)) * sizeZ;
         lowest = std::min(lowest, ground.height(x, z));
     }
     const CaveEnvironment environment =
@@ -104,8 +117,8 @@ AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground,
 
 void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
     const AquiferParams& p = params_.aquifers;
-    const int baseX = cellOf(column.x, p.cellSize);
-    const int baseZ = cellOf(column.z, p.cellSize);
+    const int baseX = cellOf(column.x, aquiferCellsX_);
+    const int baseZ = cellOf(column.z, aquiferCellsZ_);
     std::array<const AquiferCell*, 9> cells{};
     std::size_t own = 0;
     double nearest = 0.0;
@@ -180,9 +193,8 @@ CaveProfile AquiferCache::profileAt(double x, double z) {
 }
 
 const AquiferCell& AquiferCache::nearest(double x, double z) {
-    const double size = field_->params().aquifers.cellSize;
-    const int baseX = cellOf(x, size);
-    const int baseZ = cellOf(z, size);
+    const int baseX = cellOf(x, field_->aquiferCellsX());
+    const int baseZ = cellOf(z, field_->aquiferCellsZ());
     const AquiferCell* best = nullptr;
     double nearest = 0.0;
     for (int n = 0; n < 9; ++n) {
@@ -198,8 +210,8 @@ const AquiferCell& AquiferCache::nearest(double x, double z) {
 
 float AquiferCache::highestLevelNear(double x, double z, double reach) {
     const AquiferParams& p = field_->params().aquifers;
-    const int baseX = cellOf(x, p.cellSize);
-    const int baseZ = cellOf(z, p.cellSize);
+    const int baseX = cellOf(x, field_->aquiferCellsX());
+    const int baseZ = cellOf(z, field_->aquiferCellsZ());
     std::array<const AquiferCell*, 9> cells{};
     std::size_t own = 0;
     double nearest = 0.0;

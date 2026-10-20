@@ -60,7 +60,10 @@ struct PlantArea {
 // is ever changed, and every plant stands on the exact surface it is given.
 class Ecology {
 public:
-    explicit Ecology(std::uint64_t seed, const EcologyParams& params = {});
+    // Periodic on the world, as its climate and vegetation. Throws std::invalid_argument for an
+    // invalid world (validate).
+    explicit Ecology(std::uint64_t seed, const EcologyParams& params = {},
+                     const WorldSize& world = {});
 
     [[nodiscard]] EcologySample sampleAt(double x, double z, const SurfaceSite& site) const;
     [[nodiscard]] EcologyMap map(const TerrainSurface& surface) const;
@@ -84,6 +87,7 @@ public:
     [[nodiscard]] const ClimateField& climate() const { return climate_; }
     [[nodiscard]] const VegetationField& vegetation() const { return vegetation_; }
     [[nodiscard]] const EcologyParams& params() const { return params_; }
+    [[nodiscard]] const WorldSize& world() const { return climate_.world(); }
 
 private:
     [[nodiscard]] bool keepPlant(const Plant& plant, const ReliefHeight& surface) const;

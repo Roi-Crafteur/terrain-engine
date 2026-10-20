@@ -68,18 +68,20 @@ struct Box {
 constexpr double kBoxSide = 64.0;
 
 // The district sites (alone: single) or the midpoints of two neighboring sites (the middle of a
-// blend) over land high enough to hold caves, among the cells around the origin: the centers of
-// `count` boxes.
+// blend) over land high enough to hold caves and under the top of the boxes of comparePoints, among
+// the cells [6, 18) x [-6, 6) east of the origin (where the caves of the default world hold lakes):
+// the centers of `count` boxes.
 std::vector<Box> boxesAt(const CaveField& field, const CaveGround& ground, bool single, int count) {
     AquiferCache cache(field, ground);
     std::vector<Box> boxes;
     for (int cellZ = -6; cellZ < 6 && static_cast<int>(boxes.size()) < count; ++cellZ) {
-        for (int cellX = -6; cellX < 6 && static_cast<int>(boxes.size()) < count; ++cellX) {
+        for (int cellX = 6; cellX < 18 && static_cast<int>(boxes.size()) < count; ++cellX) {
             const terrain::CaveDistrict a = cache.district(cellX, cellZ);
             const terrain::CaveDistrict b = cache.district(cellX + 1, cellZ);
             const Box center = single ? Box{a.siteX, a.siteZ}
                                       : Box{(a.siteX + b.siteX) / 2.0, (a.siteZ + b.siteZ) / 2.0};
-            if (ground.height(center.x, center.z) >= 30.0f) {
+            const float height = ground.height(center.x, center.z);
+            if (height >= 30.0f && height < 1300.0f) {
                 boxes.push_back({center.x - kBoxSide / 2.0, center.z - kBoxSide / 2.0});
             }
         }

@@ -75,8 +75,8 @@ void testPlanetRegion() {
     const TectonicPlates& plates = *field.plates();
     const HeightmapRegion region = terrain::planetRegion(plates, 200);
     TEST_CHECK(region.size == 200);
-    TEST_CHECK(region.centerX == plates.planetSize() / 2.0 && region.centerZ == region.centerX);
-    TEST_CHECK(region.metersPerPixel * 200 == plates.planetSize());
+    TEST_CHECK(region.centerX == 0.0 && region.centerZ == 0.0);
+    TEST_CHECK(region.metersPerPixel * 200 == plates.world().x);
 }
 
 // The whole planet at 192 px: every plate kind of the planet is filled with its color away

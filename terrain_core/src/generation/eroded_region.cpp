@@ -17,9 +17,9 @@ constexpr std::uint64_t kRiverStream = 0x52495652;   // "RIVR"
 } // namespace
 
 ErodedRegion::ErodedRegion(std::uint64_t seed, const HeightmapRegion& region,
-                           const ErodedRegionParams& params)
-    : field_(seed, params.heightfield), region_(region), raw_(sampleHeightGrid(field_, region)),
-      grid_(raw_) {
+                           const ErodedRegionParams& params, const WorldSize& world)
+    : field_(seed, params.heightfield, world), region_(region),
+      raw_(sampleHeightGrid(field_, region)), grid_(raw_) {
     erodeHeightGrid(grid_, noise::deriveSeed(seed, kErosionStream), params.erosion);
     rivers_ = generateRivers(grid_, noise::deriveSeed(seed, kRiverStream), params.rivers);
 }

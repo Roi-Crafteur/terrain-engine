@@ -23,7 +23,7 @@ struct ErodedRegionParams {
 class ErodedRegion {
 public:
     ErodedRegion(std::uint64_t seed, const HeightmapRegion& region,
-                 const ErodedRegionParams& params = {});
+                 const ErodedRegionParams& params = {}, const WorldSize& world = {});
 
     // Continuous height of the eroded world: Heightfield::heightAt plus the bilinear
     // interpolation of the change made by the pipeline, which is zero on the border ring.

@@ -40,7 +40,7 @@ struct SculptedColumn {
 class SculptedRegion {
 public:
     SculptedRegion(std::uint64_t seed, const HeightmapRegion& region,
-                   const SculptedRegionParams& params = {});
+                   const SculptedRegionParams& params = {}, const WorldSize& world = {});
 
     [[nodiscard]] SculptedColumn columnAt(double x, double z) const;
     [[nodiscard]] float density(const SculptedColumn& column, double y) const;

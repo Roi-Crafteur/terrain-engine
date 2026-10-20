@@ -16,9 +16,15 @@
 
 namespace districts_test {
 
-// The seed of the real-world checks: with it, every district type appears among the cells
-// [-8, 8] of the default world.
+// The seed of the real-world checks: with it, every district type appears among the cells [-8, 8]^2
+// around the cell (kWindowCellX, kWindowCellZ) of the default world.
 constexpr std::uint64_t kSeed = 1337;
+
+// A window of the default world at a southern mid-latitude (z near -9,000 km), whose climates run
+// from glaciers on the mountains to lush caves: the origin, on the equator, is too warm for
+// glaciers.
+constexpr int kWindowCellX = 400;
+constexpr int kWindowCellZ = -3000;
 
 using TypeCounts = std::array<int, terrain::kCaveDistrictTypeCount>;
 

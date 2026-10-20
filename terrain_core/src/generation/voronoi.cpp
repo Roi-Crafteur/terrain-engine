@@ -57,7 +57,6 @@ void validate(const VoronoiParams& p) {
         p.lloydIterations < 0) {
         throw std::invalid_argument("VoronoiParams: invalid plate count or Lloyd iterations");
     }
-    requireLength(p.cellDiameter, "cellDiameter");
     requireLength(p.warpWavelength, "warpWavelength");
     requireLength(p.warpAmplitude, "warpAmplitude", true);
     requireLength(p.detailWarpWavelength, "detailWarpWavelength");
@@ -89,11 +88,11 @@ struct Neighborhood {
     Near second{}; // second nearest plate, whether it is in near or not
 };
 
-// Plate k seen from q, a point of [0, planetSize)^2.
+// Plate k seen from q, a point of the canonical range.
 Near nearPlate(const TectonicPlates& plates, int k, TectonicPlates::Point q) {
     const Plate& plate = plates.plates()[static_cast<std::size_t>(k)];
-    const double dx = voronoi_layout::shortOffset(plate.x - q.x, plates.planetSize());
-    const double dz = voronoi_layout::shortOffset(plate.z - q.z, plates.planetSize());
+    const double dx = voronoi_layout::shortOffset(plate.x - q.x, plates.world().x);
+    const double dz = voronoi_layout::shortOffset(plate.z - q.z, plates.world().z);
     return {k, dx, dz, dx * dx + dz * dz, 0.0};
 }
 
@@ -103,8 +102,8 @@ bool closer(const Near& a, const Near& b) {
 
 Neighborhood neighborhood(const TectonicPlates& plates, TectonicPlates::Point q, double gate) {
     const int count = static_cast<int>(plates.plates().size());
-    const TectonicPlates::Point wrapped{voronoi_layout::wrapPosition(q.x, plates.planetSize()),
-                                        voronoi_layout::wrapPosition(q.z, plates.planetSize())};
+    const TectonicPlates::Point wrapped{wrapCoordinate(q.x, plates.world().x),
+                                        wrapCoordinate(q.z, plates.world().z)};
     std::array<Near, TectonicPlates::kMaxPlates> all;
     for (int k = 0; k < count; ++k) {
         all[static_cast<std::size_t>(k)] = nearPlate(plates, k, wrapped);
@@ -112,7 +111,7 @@ Neighborhood neighborhood(const TectonicPlates& plates, TectonicPlates::Point q,
     const auto end = all.begin() + count;
     std::partial_sort(all.begin(), all.begin() + 2, end, closer);
     const double nearest2 = all[0].distance2;
-    const double scale = 2.0 * plates.params().cellDiameter;
+    const double scale = 2.0 * plates.cellDiameter();
     Neighborhood hood;
     hood.second = all[1];
     for (auto it = all.begin(); it != end; ++it) {
@@ -137,9 +136,9 @@ double bisectorDistance(const Near& a, const Near& b) {
 // bisector, i.e. within widest * spacing / cellDiameter of gap past the closer plate of the
 // pair, and that plate is at most junctionFade past the nearest one. So the neighborhood
 // changes without any jump in the samples.
-double gateWidth(const VoronoiParams& p, double maxSpacing) {
+double gateWidth(const VoronoiParams& p, double maxSpacing, double cellDiameter) {
     const double widest = std::max({p.coastWidth, p.collisionWidth, p.riftWidth, p.riftFlankWidth});
-    return kGateMargin * (p.junctionFade + widest * std::max(1.0, maxSpacing / p.cellDiameter));
+    return kGateMargin * (p.junctionFade + widest * std::max(1.0, maxSpacing / cellDiameter));
 }
 
 float kindLevel(const VoronoiParams& p, PlateKind kind) {
@@ -175,14 +174,15 @@ float blendedLevel(const TectonicPlates& plates, const Neighborhood& hood) {
 // closer than both of them, fading to 0 over junctionFade once a third plate is closer. The
 // effects of a boundary thus stop at its junctions instead of running along the bisector
 // into the third plate. Continuous: it only depends on squared distances.
-float boundaryWeight(const Neighborhood& hood, int i, int j, const VoronoiParams& p) {
+float boundaryWeight(const Neighborhood& hood, int i, int j, const VoronoiParams& p,
+                     double cellDiameter) {
     const int other = i > 0 ? 0 : (j > 1 ? 1 : 2);
     if (other >= hood.count) {
         return 1.0f;
     }
     const double inside = hood.near[static_cast<std::size_t>(i)].distance2 -
                           hood.near[static_cast<std::size_t>(other)].distance2;
-    return falloff(0.0, p.junctionFade, inside / (2.0 * p.cellDiameter));
+    return falloff(0.0, p.junctionFade, inside / (2.0 * cellDiameter));
 }
 
 struct Rift {
@@ -202,7 +202,8 @@ void addBoundaryEffects(const TectonicPlates& plates, const Neighborhood& hood, 
         for (int j = i + 1; j < hood.count; ++j) {
             const Near& b = hood.near[static_cast<std::size_t>(j)];
             const int index = plates.boundaryIndex(a.plate, b.plate);
-            const float weight = index < 0 ? 0.0f : boundaryWeight(hood, i, j, p);
+            const float weight =
+                index < 0 ? 0.0f : boundaryWeight(hood, i, j, p, plates.cellDiameter());
             if (weight <= 0.0f) {
                 continue;
             }
@@ -230,11 +231,14 @@ void addBoundaryEffects(const TectonicPlates& plates, const Neighborhood& hood, 
 
 } // namespace
 
-TectonicPlates::TectonicPlates(std::uint64_t seed, const VoronoiParams& params) : params_(params) {
+TectonicPlates::TectonicPlates(std::uint64_t seed, const VoronoiParams& params,
+                               const WorldSize& world)
+    : params_(params), world_(world) {
     validate(params);
+    terrain::validate(world);
     voronoi_layout::Layout layout =
-        voronoi_layout::buildLayout(noise::deriveSeed(seed, kLayout), params);
-    planetSize_ = layout.planetSize;
+        voronoi_layout::buildLayout(noise::deriveSeed(seed, kLayout), params, world);
+    cellDiameter_ = layout.cellDiameter;
     plates_ = std::move(layout.plates);
     boundaries_ = std::move(layout.boundaries);
     const std::size_t count = plates_.size();
@@ -245,11 +249,11 @@ TectonicPlates::TectonicPlates(std::uint64_t seed, const VoronoiParams& params) 
         const auto b = static_cast<std::size_t>(boundaries_[k].b);
         boundaryIndex_[a * count + b] = static_cast<int>(k);
         boundaryIndex_[b * count + a] = static_cast<int>(k);
-        maxSpacing = std::max(maxSpacing,
-                              dmath::hypot(wrapOffset(plates_[b].x - plates_[a].x, planetSize_),
-                                           wrapOffset(plates_[b].z - plates_[a].z, planetSize_)));
+        maxSpacing =
+            std::max(maxSpacing, dmath::hypot(wrapOffset(plates_[b].x - plates_[a].x, world_.x),
+                                              wrapOffset(plates_[b].z - plates_[a].z, world_.z)));
     }
-    gateWidth_ = gateWidth(params_, maxSpacing);
+    gateWidth_ = gateWidth(params_, maxSpacing, cellDiameter_);
     warpSeeds_ = {noise::deriveSeed(seed, kWarpX), noise::deriveSeed(seed, kWarpZ),
                   noise::deriveSeed(seed, kDetailWarpX), noise::deriveSeed(seed, kDetailWarpZ)};
     coastSeed_ = noise::deriveSeed(seed, kCoast);
@@ -259,20 +263,20 @@ TectonicPlates::Point TectonicPlates::warp(double x, double z) const {
     Point q{x, z};
     if (params_.warpAmplitude > 0.0) {
         const noise::FbmParams large{.octaves = 3, .frequency = 1.0 / params_.warpWavelength};
-        q.x += params_.warpAmplitude * noise::fbm2D(x, z, warpSeeds_[0], large);
-        q.z += params_.warpAmplitude * noise::fbm2D(x, z, warpSeeds_[1], large);
+        q.x += params_.warpAmplitude * noise::fbm2D(x, z, warpSeeds_[0], large, world_);
+        q.z += params_.warpAmplitude * noise::fbm2D(x, z, warpSeeds_[1], large, world_);
     }
     if (params_.detailWarpAmplitude > 0.0) {
         const noise::FbmParams detail{.octaves = 3,
                                       .frequency = 1.0 / params_.detailWarpWavelength};
-        q.x += params_.detailWarpAmplitude * noise::fbm2D(x, z, warpSeeds_[2], detail);
-        q.z += params_.detailWarpAmplitude * noise::fbm2D(x, z, warpSeeds_[3], detail);
+        q.x += params_.detailWarpAmplitude * noise::fbm2D(x, z, warpSeeds_[2], detail, world_);
+        q.z += params_.detailWarpAmplitude * noise::fbm2D(x, z, warpSeeds_[3], detail, world_);
     }
     return q;
 }
 
 int TectonicPlates::rawPlateAt(double x, double z) const {
-    return voronoi_layout::nearestSite(plates_, x, z, planetSize_);
+    return voronoi_layout::nearestSite(plates_, x, z, world_);
 }
 
 int TectonicPlates::boundaryIndex(int a, int b) const {
@@ -280,7 +284,9 @@ int TectonicPlates::boundaryIndex(int a, int b) const {
     return boundaryIndex_[static_cast<std::size_t>(a) * count + static_cast<std::size_t>(b)];
 }
 
-PlateSample TectonicPlates::sampleAt(double x, double z) const {
+PlateSample TectonicPlates::sampleAt(double worldX, double worldZ) const {
+    const double x = wrapCoordinate(worldX, world_.x);
+    const double z = wrapCoordinate(worldZ, world_.z);
     const Neighborhood hood = neighborhood(*this, warp(x, z), gateWidth_);
     const Near& nearest = hood.near[0];
     PlateSample s;
@@ -291,7 +297,7 @@ PlateSample TectonicPlates::sampleAt(double x, double z) const {
     addBoundaryEffects(*this, hood, s);
     if (s.coast > 0.0f && params_.coastRoughness > 0.0f) {
         const noise::FbmParams rough{.octaves = 3, .frequency = 1.0 / params_.coastNoiseWavelength};
-        s.level += params_.coastRoughness * s.coast * noise::fbm2D(x, z, coastSeed_, rough);
+        s.level += params_.coastRoughness * s.coast * noise::fbm2D(x, z, coastSeed_, rough, world_);
     }
     s.continentalness = s.level + params_.collisionUplift * s.collision + s.rift;
     return s;

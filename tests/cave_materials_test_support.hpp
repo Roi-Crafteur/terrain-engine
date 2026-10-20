@@ -88,12 +88,50 @@ inline Slope slopeAround(const CaveEnvironmentField& field, std::int64_t i, std:
     return slope;
 }
 
+// Speleothems that the LOD 0 tile of a chunk places: those of its square, from a sampler of the
+// carved detail from the ground down to maxDepth + 2 m below it.
+inline std::vector<terrain::Speleothem> speleothemsOf(const TerrainTiles& tiles, ChunkCoord chunk) {
+    const double side = terrain::kChunkSizeMeters;
+    const double x0 = chunk.x * side;
+    const double z0 = chunk.z * side;
+    float low = tiles.heightfield().heightAt(x0, z0);
+    float high = low;
+    for (double z = z0; z <= z0 + side; z += 2.0) {
+        for (double x = x0; x <= x0 + side; x += 2.0) {
+            low = std::min(low, tiles.heightfield().heightAt(x, z));
+            high = std::max(high, tiles.heightfield().heightAt(x, z));
+        }
+    }
+    const double depth = static_cast<double>(tiles.caves()->params().maxDepth) + 2.0;
+    terrain::CaveSampler sampler(*tiles.caves(), tiles.caveGround(), terrain::caveDetailForLod(0),
+                                 {x0, static_cast<double>(low) - depth - 4.0, z0, x0 + side,
+                                  static_cast<double>(high) + 4.0, z0 + side});
+    const terrain::SpeleothemField field(kSeed, tiles.caves()->params().speleothems);
+    return field.place(sampler, x0, z0, x0 + side, z0 + side);
+}
+
+// The chunk of the chamber of an entrance, or the first of its 8 neighbors (row by row) that
+// holds speleothems: none grows in the column of the entrance itself.
+inline ChunkCoord besideChamber(const TerrainTiles& tiles, const CaveEntrance& entrance) {
+    const ChunkCoord chamber = terrain::worldToChunk(entrance.bottomX, entrance.bottomZ);
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            const ChunkCoord chunk{chamber.x + dx, chamber.z + dz};
+            if ((dx != 0 || dz != 0) && !speleothemsOf(tiles, chunk).empty()) {
+                return chunk;
+            }
+        }
+    }
+    return chamber;
+}
+
 // Chunks around the first entrances: the opening and the chamber of the first, the opening of
-// the second.
-inline std::vector<ChunkCoord> entranceChunks(const std::vector<CaveEntrance>& entrances) {
+// the second, and a chunk beside the chamber of the first that holds speleothems.
+inline std::vector<ChunkCoord> entranceChunks(const TerrainTiles& tiles,
+                                              const std::vector<CaveEntrance>& entrances) {
     return {streaming_test::entranceChunk(entrances[0]),
             terrain::worldToChunk(entrances[0].bottomX, entrances[0].bottomZ),
-            streaming_test::entranceChunk(entrances[1])};
+            streaming_test::entranceChunk(entrances[1]), besideChamber(tiles, entrances[0])};
 }
 
 inline terrain::TileRequest requestOf(ChunkCoord chunk, int lod) {

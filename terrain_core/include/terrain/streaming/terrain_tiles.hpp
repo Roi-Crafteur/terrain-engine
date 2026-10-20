@@ -30,9 +30,12 @@ inline constexpr int kPlantLod = 0;
 // (caveDetailForLod).
 class TerrainTiles {
 public:
+    // Every layer tiles the world (WorldSize). Throws std::invalid_argument for an invalid
+    // world (validate).
     explicit TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield = {},
                           const EcologyParams& ecology = {},
-                          const std::optional<CaveParams>& caves = std::nullopt);
+                          const std::optional<CaveParams>& caves = std::nullopt,
+                          const WorldSize& world = {});
 
     // Mesh of the vertical levels of the tile holding its ground or a lattice point an edited
     // block reaches: the density is sampled every tileCellMeters(lod) meters on the lattice of
@@ -67,6 +70,7 @@ public:
     [[nodiscard]] std::optional<BlockEdit> blockAt(BlockCoord block) const;
     [[nodiscard]] ModificationStore modifications() const; // a copy
     [[nodiscard]] std::uint64_t seed() const { return seed_; }
+    [[nodiscard]] const WorldSize& world() const { return field_.world(); }
     [[nodiscard]] const Heightfield& heightfield() const { return field_; }
     [[nodiscard]] const Ecology& ecology() const { return ecology_; }
     // The caves, or nullptr without caves, and the ground they are carved under.

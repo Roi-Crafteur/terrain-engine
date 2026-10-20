@@ -60,7 +60,7 @@ void testDisabledByDefault() {
     for (const std::uint64_t seed : kSeeds) {
         HeightfieldParams unused = layers(0.0f, 0.5f);
         unused.plates.minPlates = 1; // would throw if the plates were built
-        unused.plates.cellDiameter = -1.0;
+        unused.plates.warpWavelength = -1.0;
         const Heightfield off(seed, unused);
         const Heightfield reference(seed, layers(0.0f, 0.5f));
         TEST_CHECK(off.plates() == nullptr);
@@ -76,7 +76,8 @@ void testDisabledByDefault() {
             const double z = points.next(2.0e7);
             const HeightSample s = off.sampleAt(x, z);
             const float massif = terrain::noise::smoothstep(
-                p.maskLow, p.maskHigh, terrain::noise::fbm2D(x, z, maskSeed, mask));
+                p.maskLow, p.maskHigh,
+                terrain::noise::fbm2D(x, z, maskSeed, mask, terrain::WorldSize{}));
             unchanged = unchanged && sameSample(s, reference.sampleAt(x, z)) &&
                         s.plateContinentalness == 0.0f && s.plateCollision == 0.0f &&
                         s.mountainMask == landFactor(s, p) * massif;
@@ -96,7 +97,7 @@ void testMixing() {
         const TectonicPlates reference(terrain::noise::deriveSeed(seed, kPlateLayer),
                                        params.plates);
         TEST_CHECK(both.plates() != nullptr);
-        TEST_CHECK(both.plates()->planetSize() == reference.planetSize());
+        TEST_CHECK(both.plates()->cellDiameter() == reference.cellDiameter());
 
         Points points(seed + 1);
         bool mixed = true;
@@ -218,7 +219,7 @@ void testDeterminism() {
     TEST_CHECK(differ > 900);
 }
 
-// Over the whole planet (96 x 96 samples of one period), oceans and continents are both
+// Over the whole planet (96 x 96 samples of the world), oceans and continents are both
 // large: the interiors of continent plates are land, those of ocean plates are sea. The
 // 32,768 km zoom around the origin holds both as well.
 void testPlanet() {
@@ -226,14 +227,15 @@ void testPlanet() {
         const Heightfield field(seed, layers(0.5f, 0.25f));
         const TectonicPlates& plates = *field.plates();
         constexpr int kSide = 96;
-        const double step = plates.planetSize() / kSide;
+        const double stepX = plates.world().x / kSide;
+        const double stepZ = plates.world().z / kSide;
         int land = 0;
         std::array<int, 2> continent{}; // land, samples, in continent interiors
         std::array<int, 2> ocean{};
         for (int j = 0; j < kSide; ++j) {
             for (int i = 0; i < kSide; ++i) {
-                const double x = (i + 0.5) * step;
-                const double z = (j + 0.5) * step;
+                const double x = (i + 0.5) * stepX;
+                const double z = (j + 0.5) * stepZ;
                 const bool isLand = field.heightAt(x, z) >= terrain::kSeaLevel;
                 land += isLand ? 1 : 0;
                 const TectonicPlates::Point q = plates.warp(x, z);

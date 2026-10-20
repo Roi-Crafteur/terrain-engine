@@ -3,7 +3,8 @@
 // Golden checksums of the surface (see golden_support.hpp): the layers of the Heightfield at
 // 1 m, 1 km and 1000 km, with and without the macro and plate layers, the climate, biomes,
 // materials and plant densities of the Ecology, and the tiles of the streamed world without
-// caves at LOD 0 to 3.
+// caves at LOD 0 to 3; near the origin and across the corner of the wrapped world, where its
+// four edges meet.
 
 #include "terrain/generation/ecology.hpp"
 #include "terrain/generation/heightfield.hpp"
@@ -73,6 +74,11 @@ inline terrain::Heightfield planetField() {
     return terrain::Heightfield(kSeed, params);
 }
 
+// The corner of the canonical range of the default world, (world.x / 2, world.z / 2): also
+// (-world.x / 2, -world.z / 2) and the two other corners.
+inline constexpr double kCornerX = terrain::WorldSize{}.x / 2.0;
+inline constexpr double kCornerZ = terrain::WorldSize{}.z / 2.0;
+
 } // namespace surface_detail
 
 // Computes the parts of the Heightfield and the Ecology with their expected values.
@@ -85,15 +91,20 @@ inline std::vector<Part> heightfieldParts() {
     const double mx = mountain.x * terrain::kChunkSizeMeters;
     const double mz = mountain.z * terrain::kChunkSizeMeters;
     return {
-        {"heights 1 m", heightsChecksum(field, mx, mz, 1.0, 64), 0x2A033DD63F7AF26BULL},
+        {"heights 1 m", heightsChecksum(field, mx, mz, 1.0, 64), 0x0E1882DF87C5BD95ULL},
         {"heights 1 km", heightsChecksum(field, -32000.0, -32000.0, 1000.0, 64),
-         0xDD9EB5901BD3BCCFULL},
-        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0xFFB9B9CE617F6238ULL},
+         0xA0C6AED22E0FB9F5ULL},
+        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x97FA2B5D42440EBFULL},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
-         0xECDE94DB56ACDB64ULL},
-        {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x0CCC12A0F965C50DULL},
-        {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0x3177B586E5EC8B46ULL},
-        {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0x5B7DBFE54EF7A579ULL},
+         0x04E0F4A687118948ULL},
+        {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},
+        {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0x2173402E4D5B1074ULL},
+        {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0xE7B6818322EE4F2EULL},
+        {"corner heights 250 m",
+         heightsChecksum(planet, kCornerX - 4000.0, kCornerZ - 4000.0, 250.0, 32),
+         0xC90D77A823F59462ULL},
+        {"corner ecology 50 m", ecologyChecksum(field, ecology, kCornerX, kCornerZ, 50.0),
+         0x36864A2A69691F40ULL},
     };
 }
 
@@ -106,7 +117,7 @@ inline std::vector<Part> worldParts() {
     const terrain::ChunkCoord mountain = streaming_test::mountainChunk(tiles.heightfield());
     const terrain::ChunkCoord plants = streaming_test::plantChunk(tiles, 10);
     constexpr std::array<std::uint64_t, terrain::kLodCount> kExpected = {
-        0x94031B6685B1D82EULL, 0x98711C081214B3A3ULL, 0x351C09104EBDB090ULL, 0xD1DDC28B9BAB6F2AULL};
+        0x78E762BC0623405FULL, 0xA57CB60486A6A67EULL, 0x64E7A87E965EDEBEULL, 0x03D23AA3867B1863ULL};
     constexpr std::array<const char*, terrain::kLodCount> kNames = {
         "world tiles LOD 0", "world tiles LOD 1", "world tiles LOD 2", "world tiles LOD 3"};
     std::vector<Part> parts;
@@ -120,7 +131,18 @@ inline std::vector<Part> worldParts() {
     }
     Checksum plantSum;
     addTile(plantSum, tiles.generate({{plants, 0}, 0}));
-    parts.push_back({"world plants", plantSum.value(), 0x01CB0AD07C28EC71ULL});
+    parts.push_back({"world plants", plantSum.value(), 0x2CBCFEB03E196771ULL});
+    // The tiles of LOD 0 to 3 holding the last chunk of the canonical range, at the corner: their
+    // sides on the edges of the world, stitched across them.
+    const terrain::ChunkCoord count = terrain::worldChunks(tiles.world());
+    const terrain::ChunkCoord corner{count.x / 2 - 1, count.z / 2 - 1};
+    Checksum cornerSum;
+    for (int lod = 0; lod < terrain::kLodCount; ++lod) {
+        const terrain::TileKey key = terrain::tileContaining(corner, lod);
+        addTile(cornerSum, tiles.generate({key, 0}));
+        addTile(cornerSum, tiles.generate({key, terrain::kSeamPosX | terrain::kSeamPosZ}));
+    }
+    parts.push_back({"world tiles at the corner", cornerSum.value(), 0xFF379C91F644B9A2ULL});
     return parts;
 }
 

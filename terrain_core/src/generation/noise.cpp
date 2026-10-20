@@ -22,6 +22,27 @@ constexpr std::uint64_t mix64(std::uint64_t z) {
     return z ^ (z >> 31);
 }
 
+// Exact rotations (a / c, b / c) of the octaves: see kRotationCount.
+struct Rotation {
+    std::int64_t a;
+    std::int64_t b;
+    std::int64_t c;
+};
+constexpr std::array<Rotation, kRotationCount> kRotations = {{
+    {1, 0, 1},
+    {4, 3, 5},
+    {5, 12, 13},
+    {24, 7, 25},
+    {3, 4, 5},
+    {15, 8, 17},
+    {7, 24, 25},
+    {12, 5, 13},
+}};
+
+// Offsets along y of the octaves of the 3D noises, in cells.
+constexpr std::array<double, kRotationCount> kOffsetsY = {0.0,   0.5,   0.25,  0.75,
+                                                          0.125, 0.625, 0.375, 0.875};
+
 // 16 unit gradients evenly spaced on the circle.
 constexpr double kCos22 = 0.92387953251128674;
 constexpr double kSin22 = 0.38268343236508978;
@@ -33,29 +54,8 @@ constexpr std::array<std::array<double, 2>, 16> kGradients = {{
     {0.0, -1.0},      {kSin22, -kCos22},  {kDiag, -kDiag},  {kCos22, -kSin22},
 }};
 
-// Dot product of the gradient of lattice point (ix, iz) with the offset (dx, dz) to it.
-double cornerDot(std::int64_t ix, std::int64_t iz, double dx, double dz, std::uint64_t seed) {
-    const std::uint64_t h = mix64(mix64(seed ^ (static_cast<std::uint64_t>(ix) * kGolden)) ^
-                                  (static_cast<std::uint64_t>(iz) * kCellZPrime));
-    const auto& g = kGradients[h & 15U];
-    return g[0] * dx + g[1] * dz;
-}
-
-constexpr double fade(double t) {
-    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-}
-
-// Octave coordinates are rotated by atan(3/4) (about 37 degrees), exact in floating point,
-// and scaled by the lacunarity so that octave lattices never line up.
-void nextOctave(double& x, double& z, double lacunarity) {
-    const double rx = 0.8 * x - 0.6 * z;
-    const double rz = 0.6 * x + 0.8 * z;
-    x = rx * lacunarity;
-    z = rz * lacunarity;
-}
-
 // The 12 edge directions of the cube (+-1, +-1, 0), (+-1, 0, +-1), (0, +-1, +-1), then 4 of
-// them again to fill 16 entries, all scaled to unit length.
+// them again to fill 16 entries, all scaled to unit length. Components along (u, y, v).
 constexpr std::array<std::array<double, 3>, 16> kGradients3 = {{
     {kDiag, kDiag, 0.0},   {-kDiag, kDiag, 0.0},  {kDiag, -kDiag, 0.0},  {-kDiag, -kDiag, 0.0},
     {kDiag, 0.0, kDiag},   {-kDiag, 0.0, kDiag},  {kDiag, 0.0, -kDiag},  {-kDiag, 0.0, -kDiag},
@@ -63,27 +63,142 @@ constexpr std::array<std::array<double, 3>, 16> kGradients3 = {{
     {kDiag, kDiag, 0.0},   {-kDiag, kDiag, 0.0},  {0.0, -kDiag, kDiag},  {0.0, -kDiag, -kDiag},
 }};
 
-// Dot product of the gradient of lattice point (ix, iy, iz) with the offset (dx, dy, dz) to it.
-double cornerDot3(std::int64_t ix, std::int64_t iy, std::int64_t iz, double dx, double dy,
-                  double dz, std::uint64_t seed) {
-    const std::uint64_t h =
-        mix64(mix64(mix64(seed ^ (static_cast<std::uint64_t>(ix) * kGolden)) ^
-                    (static_cast<std::uint64_t>(iy) * kCellYPrime)) ^
-              (static_cast<std::uint64_t>(iz) * kCellZPrime));
-    const auto& g = kGradients3[h & 15U];
-    return g[0] * dx + g[1] * dy + g[2] * dz;
+constexpr double fade(double t) {
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
-// Octave coordinates are rotated by the exact orthogonal matrix (1/3) * [[2, -1, 2],
-// [2, 2, -1], [-1, 2, 2]] (a rotation whose entries are small rationals) and scaled by the
-// lacunarity so that octave lattices never line up.
-void nextOctave3D(double& x, double& y, double& z, double lacunarity) {
-    const double rx = (2.0 * x - y + 2.0 * z) / 3.0;
-    const double ry = (2.0 * x + 2.0 * y - z) / 3.0;
-    const double rz = (-x + 2.0 * y + 2.0 * z) / 3.0;
-    x = rx * lacunarity;
-    y = ry * lacunarity;
-    z = rz * lacunarity;
+// Cells along a period of the world: a whole number of super-cells of c cells.
+std::int64_t cellsOn(double period, double frequency, std::int64_t c) {
+    const double superCells =
+        std::max(1.0, std::round(period * frequency / static_cast<double>(c)));
+    return static_cast<std::int64_t>(superCells) * c;
+}
+
+// Invariants of a point of a rotated lattice: equal for all its images (Lattice2D).
+struct Invariants {
+    std::int64_t s;
+    std::int64_t t;
+};
+
+std::int64_t modulo(std::int64_t v, std::int64_t m) {
+    const std::int64_t r = v % m;
+    return r < 0 ? r + m : r;
+}
+
+// (v + step) mod m for v in [0, m) and |step| < m.
+std::int64_t step(std::int64_t v, std::int64_t delta, std::int64_t m) {
+    const std::int64_t r = v + delta;
+    if (r >= m) {
+        return r - m;
+    }
+    return r < 0 ? r + m : r;
+}
+
+// Position in the rotated lattice of a point of the canonical range.
+struct LatticePoint {
+    double u;
+    double v;
+};
+
+LatticePoint toLattice(double x, double z, const Lattice2D& l) {
+    const double px = x * l.scaleX;
+    const double pz = z * l.scaleZ;
+    const auto a = static_cast<double>(l.a);
+    const auto b = static_cast<double>(l.b);
+    const auto c = static_cast<double>(l.c);
+    return {(a * px - b * pz) / c + l.offsetU, (b * px + a * pz) / c + l.offsetV};
+}
+
+// The cell of the rotated lattice holding a point: invariants of its 4 corners, (u0, v0) then
+// (u0 + 1, v0), (u0, v0 + 1) and (u0 + 1, v0 + 1), and the position inside it.
+struct LatticeCell {
+    std::array<Invariants, 4> corners;
+    double fu;
+    double fv;
+};
+
+LatticeCell cellOf(LatticePoint p, const Lattice2D& l) {
+    const double u0 = std::floor(p.u);
+    const double v0 = std::floor(p.v);
+    const auto iu = static_cast<std::int64_t>(u0);
+    const auto iv = static_cast<std::int64_t>(v0);
+    LatticeCell cell{};
+    cell.fu = p.u - u0;
+    cell.fv = p.v - v0;
+    const Invariants base{modulo(l.a * iu + l.b * iv, l.periodS),
+                          modulo(l.a * iv - l.b * iu, l.periodT)};
+    const Invariants alongU{step(base.s, l.a, l.periodS), step(base.t, -l.b, l.periodT)};
+    cell.corners = {base, alongU,
+                    Invariants{step(base.s, l.b, l.periodS), step(base.t, l.a, l.periodT)},
+                    Invariants{step(alongU.s, l.b, l.periodS), step(alongU.t, l.a, l.periodT)}};
+    return cell;
+}
+
+std::uint64_t hashOf(Invariants corner, std::uint64_t seed) {
+    return mix64(mix64(seed ^ (static_cast<std::uint64_t>(corner.s) * kGolden)) ^
+                 (static_cast<std::uint64_t>(corner.t) * kCellZPrime));
+}
+
+// Dot product of the gradient of a corner with the offset (du, dv) to it.
+double cornerDot(Invariants corner, double du, double dv, std::uint64_t seed) {
+    const auto& g = kGradients[hashOf(corner, seed) & 15U];
+    return g[0] * du + g[1] * dv;
+}
+
+// gradient2D of a point of the canonical range.
+float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2D& lattice) {
+    const LatticeCell c = cellOf(toLattice(x, z, lattice), lattice);
+    const double n00 = cornerDot(c.corners[0], c.fu, c.fv, seed);
+    const double n10 = cornerDot(c.corners[1], c.fu - 1.0, c.fv, seed);
+    const double n01 = cornerDot(c.corners[2], c.fu, c.fv - 1.0, seed);
+    const double n11 = cornerDot(c.corners[3], c.fu - 1.0, c.fv - 1.0, seed);
+    const double u = fade(c.fu);
+    const double v = fade(c.fv);
+    const double nv0 = n00 + u * (n10 - n00);
+    const double nv1 = n01 + u * (n11 - n01);
+    // 2D Perlin noise with unit gradients stays within +-sqrt(2) / 2.
+    const double value = (nv0 + v * (nv1 - nv0)) * std::numbers::sqrt2;
+    return static_cast<float>(std::clamp(value, -1.0, 1.0));
+}
+
+// Dot product of the gradient of a 3D corner with the offset (du, dy, dv) to it.
+double cornerDot3(Invariants corner, std::int64_t iy, double du, double dy, double dv,
+                  std::uint64_t seed) {
+    const std::uint64_t h =
+        mix64(hashOf(corner, seed) ^ (static_cast<std::uint64_t>(iy) * kCellYPrime));
+    const auto& g = kGradients3[h & 15U];
+    return g[0] * du + g[1] * dy + g[2] * dv;
+}
+
+// gradient3D of a point of the canonical range.
+float latticeNoise3(double x, double y, double z, std::uint64_t seed, const Lattice2D& lattice,
+                    double frequencyY, double offsetY) {
+    const LatticeCell c = cellOf(toLattice(x, z, lattice), lattice);
+    const double w = y * frequencyY + offsetY;
+    const double w0 = std::floor(w);
+    const auto iy = static_cast<std::int64_t>(w0);
+    const double fy = w - w0;
+    std::array<double, 8> n{}; // corner (u, y, v) at index u + 2 y + 4 v
+    for (int corner = 0; corner < 8; ++corner) {
+        const int du = corner & 1;
+        const int dy = (corner >> 1) & 1;
+        const int dv = (corner >> 2) & 1;
+        n[static_cast<std::size_t>(corner)] =
+            cornerDot3(c.corners[static_cast<std::size_t>(du + 2 * dv)], iy + dy, c.fu - du,
+                       fy - dy, c.fv - dv, seed);
+    }
+    const double su = fade(c.fu);
+    const double sy = fade(fy);
+    const double sv = fade(c.fv);
+    const double y0v0 = n[0] + su * (n[1] - n[0]);
+    const double y1v0 = n[2] + su * (n[3] - n[2]);
+    const double y0v1 = n[4] + su * (n[5] - n[4]);
+    const double y1v1 = n[6] + su * (n[7] - n[6]);
+    const double v0 = y0v0 + sy * (y1v0 - y0v0);
+    const double v1 = y0v1 + sy * (y1v1 - y0v1);
+    // 3D Perlin noise with unit gradients stays within +-sqrt(3) / 2.
+    const double value = (v0 + sv * (v1 - v0)) * (2.0 * std::numbers::inv_sqrt3);
+    return static_cast<float>(std::clamp(value, -1.0, 1.0));
 }
 
 } // namespace
@@ -92,60 +207,65 @@ std::uint64_t deriveSeed(std::uint64_t seed, std::uint64_t stream) {
     return mix64(seed + kGolden * (stream + 1));
 }
 
-float gradient2D(double x, double z, std::uint64_t seed) {
-    const double x0 = std::floor(x);
-    const double z0 = std::floor(z);
-    const auto ix = static_cast<std::int64_t>(x0);
-    const auto iz = static_cast<std::int64_t>(z0);
-    const double fx = x - x0;
-    const double fz = z - z0;
-
-    const double n00 = cornerDot(ix, iz, fx, fz, seed);
-    const double n10 = cornerDot(ix + 1, iz, fx - 1.0, fz, seed);
-    const double n01 = cornerDot(ix, iz + 1, fx, fz - 1.0, seed);
-    const double n11 = cornerDot(ix + 1, iz + 1, fx - 1.0, fz - 1.0, seed);
-    const double u = fade(fx);
-    const double v = fade(fz);
-    const double nz0 = n00 + u * (n10 - n00);
-    const double nz1 = n01 + u * (n11 - n01);
-    // 2D Perlin noise with unit gradients stays within +-sqrt(2) / 2.
-    const double value = (nz0 + v * (nz1 - nz0)) * std::numbers::sqrt2;
-    return static_cast<float>(std::clamp(value, -1.0, 1.0));
+Lattice2D lattice2D(const WorldSize& world, double frequency, int rotation, double offsetU,
+                    double offsetV) {
+    const Rotation& r = kRotations[static_cast<std::size_t>(rotation % kRotationCount)];
+    const std::int64_t cellsX = cellsOn(world.x, frequency, r.c);
+    const std::int64_t cellsZ = cellsOn(world.z, frequency, r.c);
+    return {static_cast<double>(cellsX) / world.x,
+            static_cast<double>(cellsZ) / world.z,
+            r.a,
+            r.b,
+            r.c,
+            cellsX * r.c,
+            cellsZ * r.c,
+            offsetU,
+            offsetV,
+            world};
 }
 
-float fbm2D(double x, double z, std::uint64_t seed, const FbmParams& params) {
-    double px = x * params.frequency;
-    double pz = z * params.frequency;
+float gradient2D(double x, double z, std::uint64_t seed, const Lattice2D& lattice) {
+    return latticeNoise(wrapCoordinate(x, lattice.world.x), wrapCoordinate(z, lattice.world.z),
+                        seed, lattice);
+}
+
+float fbm2D(double x, double z, std::uint64_t seed, const FbmParams& params,
+            const WorldSize& world) {
+    const double cx = wrapCoordinate(x, world.x);
+    const double cz = wrapCoordinate(z, world.z);
+    double frequency = params.frequency;
     double amplitude = 1.0;
     double sum = 0.0;
     double total = 0.0;
     for (int octave = 0; octave < params.octaves; ++octave) {
         const auto octaveSeed = deriveSeed(seed, static_cast<std::uint64_t>(octave));
-        sum += amplitude * gradient2D(px, pz, octaveSeed);
+        sum += amplitude * latticeNoise(cx, cz, octaveSeed, lattice2D(world, frequency, octave));
         total += amplitude;
         amplitude *= params.gain;
-        nextOctave(px, pz, params.lacunarity);
+        frequency *= params.lacunarity;
     }
     return total > 0.0 ? static_cast<float>(std::clamp(sum / total, -1.0, 1.0)) : 0.0f;
 }
 
 float ridged2D(double x, double z, std::uint64_t seed, const FbmParams& params,
-               double sharpness) {
-    double px = x * params.frequency;
-    double pz = z * params.frequency;
+               const WorldSize& world, double sharpness) {
+    const double cx = wrapCoordinate(x, world.x);
+    const double cz = wrapCoordinate(z, world.z);
+    double frequency = params.frequency;
     double amplitude = 1.0;
     double weight = 1.0;
     double sum = 0.0;
     double total = 0.0;
     for (int octave = 0; octave < params.octaves; ++octave) {
         const auto octaveSeed = deriveSeed(seed, static_cast<std::uint64_t>(octave));
-        const double ridge = 1.0 - std::abs(static_cast<double>(gradient2D(px, pz, octaveSeed)));
+        const float n = latticeNoise(cx, cz, octaveSeed, lattice2D(world, frequency, octave));
+        const double ridge = 1.0 - std::abs(static_cast<double>(n));
         const double signal = dmath::pow(ridge, sharpness) * weight;
         weight = std::clamp(2.0 * signal, 0.0, 1.0);
         sum += amplitude * signal;
         total += amplitude;
         amplitude *= params.gain;
-        nextOctave(px, pz, params.lacunarity);
+        frequency *= params.lacunarity;
     }
     return total > 0.0 ? static_cast<float>(std::clamp(sum / total, 0.0, 1.0)) : 0.0f;
 }
@@ -155,52 +275,28 @@ float smoothstep(float edge0, float edge1, float x) {
     return t * t * (3.0f - 2.0f * t);
 }
 
-float gradient3D(double x, double y, double z, std::uint64_t seed) {
-    const double x0 = std::floor(x);
-    const double y0 = std::floor(y);
-    const double z0 = std::floor(z);
-    const auto ix = static_cast<std::int64_t>(x0);
-    const auto iy = static_cast<std::int64_t>(y0);
-    const auto iz = static_cast<std::int64_t>(z0);
-    const double fx = x - x0;
-    const double fy = y - y0;
-    const double fz = z - z0;
-
-    const double n000 = cornerDot3(ix, iy, iz, fx, fy, fz, seed);
-    const double n100 = cornerDot3(ix + 1, iy, iz, fx - 1.0, fy, fz, seed);
-    const double n010 = cornerDot3(ix, iy + 1, iz, fx, fy - 1.0, fz, seed);
-    const double n110 = cornerDot3(ix + 1, iy + 1, iz, fx - 1.0, fy - 1.0, fz, seed);
-    const double n001 = cornerDot3(ix, iy, iz + 1, fx, fy, fz - 1.0, seed);
-    const double n101 = cornerDot3(ix + 1, iy, iz + 1, fx - 1.0, fy, fz - 1.0, seed);
-    const double n011 = cornerDot3(ix, iy + 1, iz + 1, fx, fy - 1.0, fz - 1.0, seed);
-    const double n111 = cornerDot3(ix + 1, iy + 1, iz + 1, fx - 1.0, fy - 1.0, fz - 1.0, seed);
-    const double u = fade(fx);
-    const double v = fade(fy);
-    const double w = fade(fz);
-    const double nx00 = n000 + u * (n100 - n000);
-    const double nx10 = n010 + u * (n110 - n010);
-    const double nx01 = n001 + u * (n101 - n001);
-    const double nx11 = n011 + u * (n111 - n011);
-    const double ny0 = nx00 + v * (nx10 - nx00);
-    const double ny1 = nx01 + v * (nx11 - nx01);
-    // 3D Perlin noise with unit gradients stays within +-sqrt(3) / 2.
-    const double value = (ny0 + w * (ny1 - ny0)) * (2.0 * std::numbers::inv_sqrt3);
-    return static_cast<float>(std::clamp(value, -1.0, 1.0));
+float gradient3D(double x, double y, double z, std::uint64_t seed, const Lattice2D& lattice,
+                 double frequencyY, double offsetY) {
+    return latticeNoise3(wrapCoordinate(x, lattice.world.x), y, wrapCoordinate(z, lattice.world.z),
+                         seed, lattice, frequencyY, offsetY);
 }
 
-float fbm3D(double x, double y, double z, std::uint64_t seed, const FbmParams& params) {
-    double px = x * params.frequency;
-    double py = y * params.frequency;
-    double pz = z * params.frequency;
+float fbm3D(double x, double y, double z, std::uint64_t seed, const FbmParams& params,
+            const WorldSize& world) {
+    const double cx = wrapCoordinate(x, world.x);
+    const double cz = wrapCoordinate(z, world.z);
+    double frequency = params.frequency;
     double amplitude = 1.0;
     double sum = 0.0;
     double total = 0.0;
     for (int octave = 0; octave < params.octaves; ++octave) {
         const auto octaveSeed = deriveSeed(seed, static_cast<std::uint64_t>(octave));
-        sum += amplitude * gradient3D(px, py, pz, octaveSeed);
+        const double offsetY = kOffsetsY[static_cast<std::size_t>(octave % kRotationCount)];
+        sum += amplitude * latticeNoise3(cx, y, cz, octaveSeed, lattice2D(world, frequency, octave),
+                                         frequency, offsetY);
         total += amplitude;
         amplitude *= params.gain;
-        nextOctave3D(px, py, pz, params.lacunarity);
+        frequency *= params.lacunarity;
     }
     return total > 0.0 ? static_cast<float>(std::clamp(sum / total, -1.0, 1.0)) : 0.0f;
 }

@@ -38,7 +38,7 @@ private:
 enum Stream : std::uint64_t { kCount, kSites, kVelocities, kKinds };
 
 constexpr int kCandidatesPerSite = 10; // Mitchell's best candidate sampling
-constexpr int kLloydRaster = 256;      // samples per side of the torus for the centroids
+constexpr int kLloydRaster = 256;      // samples along x of the torus for the centroids
 constexpr double kMinEdgeLength = 1.0; // shorter Voronoi edges are degenerate: not neighbors
 
 // Share of continents, number of continental clusters, and chances of the water kinds.
@@ -56,15 +56,15 @@ struct Offset {
 
 using Neighbors = std::vector<std::vector<int>>;
 
-double torusDistance2(double ax, double az, double bx, double bz, double period) {
-    const double dx = wrapOffset(bx - ax, period);
-    const double dz = wrapOffset(bz - az, period);
+double torusDistance2(double ax, double az, double bx, double bz, const WorldSize& world) {
+    const double dx = wrapOffset(bx - ax, world.x);
+    const double dz = wrapOffset(bz - az, world.z);
     return dx * dx + dz * dz;
 }
 
 // Best candidate sampling: each new site is the candidate farthest from the sites already
 // placed, out of 10 per placed site. Evenly spread sites without any grid.
-std::vector<Plate> placeSites(std::uint64_t seed, int count, double period) {
+std::vector<Plate> placeSites(std::uint64_t seed, int count, const WorldSize& world) {
     Random random(seed);
     std::vector<Plate> plates;
     plates.reserve(static_cast<std::size_t>(count));
@@ -73,12 +73,12 @@ std::vector<Plate> placeSites(std::uint64_t seed, int count, double period) {
         double bestDistance = -1.0;
         for (int c = 0; c < kCandidatesPerSite * i + 1; ++c) {
             Plate candidate;
-            candidate.x = random.unit() * period;
-            candidate.z = random.unit() * period;
+            candidate.x = (random.unit() - 0.5) * world.x;
+            candidate.z = (random.unit() - 0.5) * world.z;
             double nearest = std::numeric_limits<double>::infinity();
             for (const Plate& p : plates) {
                 nearest =
-                    std::min(nearest, torusDistance2(p.x, p.z, candidate.x, candidate.z, period));
+                    std::min(nearest, torusDistance2(p.x, p.z, candidate.x, candidate.z, world));
             }
             if (nearest > bestDistance) {
                 best = candidate;
@@ -91,43 +91,46 @@ std::vector<Plate> placeSites(std::uint64_t seed, int count, double period) {
 }
 
 // One Lloyd iteration: every site moves to the centroid of its cell, measured on a raster of
-// the torus with the offsets wrapped around the site.
-void relax(std::vector<Plate>& plates, double period) {
+// the torus with the offsets wrapped around the site. The raster has kLloydRaster columns and,
+// as every grid of the world, a whole number of rows of about the same size.
+void relax(std::vector<Plate>& plates, const WorldSize& world) {
     const std::size_t count = plates.size();
     std::vector<double> sumX(count, 0.0);
     std::vector<double> sumZ(count, 0.0);
     std::vector<int> samples(count, 0);
-    const double step = period / kLloydRaster;
-    for (int row = 0; row < kLloydRaster; ++row) {
-        const double z = (row + 0.5) * step;
-        for (int column = 0; column < kLloydRaster; ++column) {
-            const double x = (column + 0.5) * step;
-            const auto k = static_cast<std::size_t>(nearestSite(plates, x, z, period));
-            sumX[k] += wrapOffset(x - plates[k].x, period);
-            sumZ[k] += wrapOffset(z - plates[k].z, period);
+    const PeriodicCells columns = periodicCells(world.x, world.x / kLloydRaster);
+    const PeriodicCells rows = periodicCells(world.z, world.x / kLloydRaster);
+    for (std::int64_t row = 0; row < rows.count; ++row) {
+        const double z = (static_cast<double>(row) + 0.5) * rows.size - 0.5 * world.z;
+        for (std::int64_t column = 0; column < columns.count; ++column) {
+            const double x = (static_cast<double>(column) + 0.5) * columns.size - 0.5 * world.x;
+            const auto k = static_cast<std::size_t>(nearestSite(plates, x, z, world));
+            sumX[k] += wrapOffset(x - plates[k].x, world.x);
+            sumZ[k] += wrapOffset(z - plates[k].z, world.z);
             ++samples[k];
         }
     }
     for (std::size_t k = 0; k < count; ++k) {
         if (samples[k] > 0) {
-            plates[k].x = wrapPosition(plates[k].x + sumX[k] / samples[k], period);
-            plates[k].z = wrapPosition(plates[k].z + sumZ[k] / samples[k], period);
+            plates[k].x = wrapCoordinate(plates[k].x + sumX[k] / samples[k], world.x);
+            plates[k].z = wrapCoordinate(plates[k].z + sumZ[k] / samples[k], world.z);
         }
     }
 }
 
 // Offsets from site i to the images of every site in the 3 x 3 tiles around its nearest
 // image, except site i itself.
-std::vector<Offset> imageOffsets(const std::vector<Plate>& plates, std::size_t i, double period) {
+std::vector<Offset> imageOffsets(const std::vector<Plate>& plates, std::size_t i,
+                                 const WorldSize& world) {
     std::vector<Offset> images;
     images.reserve(plates.size() * 9);
     for (std::size_t k = 0; k < plates.size(); ++k) {
-        const double dx = wrapOffset(plates[k].x - plates[i].x, period);
-        const double dz = wrapOffset(plates[k].z - plates[i].z, period);
+        const double dx = wrapOffset(plates[k].x - plates[i].x, world.x);
+        const double dz = wrapOffset(plates[k].z - plates[i].z, world.z);
         for (int tx = -1; tx <= 1; ++tx) {
             for (int tz = -1; tz <= 1; ++tz) {
                 if (k != i || tx != 0 || tz != 0) {
-                    images.push_back({dx + tx * period, dz + tz * period});
+                    images.push_back({dx + tx * world.x, dz + tz * world.z});
                 }
             }
         }
@@ -167,19 +170,19 @@ double edgeLength(const std::vector<Offset>& images, Offset other) {
 // Exact neighbors on the torus: every pair whose Voronoi edge is longer than kMinEdgeLength,
 // through the image of the second site with the longest edge. normals receives the unit
 // vector from site a to that image, for each boundary.
-std::vector<PlateBoundary> findBoundaries(const std::vector<Plate>& plates, double period,
+std::vector<PlateBoundary> findBoundaries(const std::vector<Plate>& plates, const WorldSize& world,
                                           std::vector<Offset>& normals) {
     std::vector<PlateBoundary> boundaries;
     for (std::size_t i = 0; i < plates.size(); ++i) {
-        const std::vector<Offset> images = imageOffsets(plates, i, period);
+        const std::vector<Offset> images = imageOffsets(plates, i, world);
         for (std::size_t j = i + 1; j < plates.size(); ++j) {
-            const double dx = wrapOffset(plates[j].x - plates[i].x, period);
-            const double dz = wrapOffset(plates[j].z - plates[i].z, period);
+            const double dx = wrapOffset(plates[j].x - plates[i].x, world.x);
+            const double dz = wrapOffset(plates[j].z - plates[i].z, world.z);
             double length = 0.0;
             Offset normal{0.0, 0.0};
             for (int tx = -1; tx <= 1; ++tx) {
                 for (int tz = -1; tz <= 1; ++tz) {
-                    const Offset image{dx + tx * period, dz + tz * period};
+                    const Offset image{dx + tx * world.x, dz + tz * world.z};
                     const double edge = edgeLength(images, image);
                     if (edge > length) {
                         length = edge;
@@ -362,14 +365,14 @@ void assignWaters(std::vector<Plate>& plates, const Neighbors& neighbors, int hu
 
 } // namespace
 
-int nearestSite(const std::vector<Plate>& plates, double x, double z, double period) {
-    const double wx = wrapPosition(x, period);
-    const double wz = wrapPosition(z, period);
+int nearestSite(const std::vector<Plate>& plates, double x, double z, const WorldSize& world) {
+    const double wx = wrapCoordinate(x, world.x);
+    const double wz = wrapCoordinate(z, world.z);
     int nearest = 0;
     double best = std::numeric_limits<double>::infinity();
     for (std::size_t k = 0; k < plates.size(); ++k) {
-        const double dx = shortOffset(plates[k].x - wx, period);
-        const double dz = shortOffset(plates[k].z - wz, period);
+        const double dx = shortOffset(plates[k].x - wx, world.x);
+        const double dz = shortOffset(plates[k].z - wz, world.z);
         const double d2 = dx * dx + dz * dz;
         if (d2 < best) {
             best = d2;
@@ -379,17 +382,17 @@ int nearestSite(const std::vector<Plate>& plates, double x, double z, double per
     return nearest;
 }
 
-Layout buildLayout(std::uint64_t seed, const VoronoiParams& params) {
+Layout buildLayout(std::uint64_t seed, const VoronoiParams& params, const WorldSize& world) {
     Random countRandom(noise::deriveSeed(seed, kCount));
     const int count = params.minPlates + countRandom.below(params.maxPlates - params.minPlates + 1);
     Layout layout;
-    layout.planetSize = params.cellDiameter * std::sqrt(count * std::numbers::pi / 4.0);
-    layout.plates = placeSites(noise::deriveSeed(seed, kSites), count, layout.planetSize);
+    layout.cellDiameter = 2.0 * std::sqrt(world.x * world.z / (count * std::numbers::pi));
+    layout.plates = placeSites(noise::deriveSeed(seed, kSites), count, world);
     for (int i = 0; i < params.lloydIterations; ++i) {
-        relax(layout.plates, layout.planetSize);
+        relax(layout.plates, world);
     }
     std::vector<Offset> normals;
-    layout.boundaries = findBoundaries(layout.plates, layout.planetSize, normals);
+    layout.boundaries = findBoundaries(layout.plates, world, normals);
     moveAndClassify(layout.plates, layout.boundaries, normals,
                     noise::deriveSeed(seed, kVelocities));
     const Neighbors neighbors = neighborLists(layout.plates.size(), layout.boundaries);

@@ -2,7 +2,8 @@
 
 // Golden checksums of the caves (see golden_support.hpp): voids, densities and water of LOD 0
 // to 2 at fixed points, aquifer cells, entrances, speleothems, streamed tiles with caves and
-// materials, with a fixed climate and no cave districts.
+// materials, with a fixed climate and no cave districts; and the points, aquifer cells and
+// entrances across the corner of the wrapped world, where its four edges meet.
 
 #include "terrain/generation/cave_entrances.hpp"
 #include "terrain/generation/cave_materials.hpp"
@@ -17,6 +18,7 @@
 #include "golden_support.hpp"
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -59,40 +61,57 @@ inline void addColumn(Checksum& sum, const terrain::CaveColumn& c) {
     sum.add(c.barrierCount);
 }
 
-// Voids, combined void, carved density and water at 2500 points of each of 8 boxes of 64 m,
-// for the detail of a LOD.
+// Voids, combined void, carved density and water at 2500 points (drawn from the stream box) of
+// the square of 64 m from (x0, z0), from 105 m under the ground to 5 m over it, for a detail.
+inline void addBox(Checksum& sum, const terrain::CaveField& field,
+                   const terrain::CaveGround& ground, const terrain::CaveDetail& detail, double x0,
+                   double z0, std::uint64_t box) {
+    float low = ground.height(x0, z0);
+    float high = low;
+    for (std::uint64_t n = 0; n < 2500; ++n) {
+        const float height =
+            ground.height(x0 + 64.0 * unit(box, 3 * n), z0 + 64.0 * unit(box, 3 * n + 1));
+        low = std::min(low, height);
+        high = std::max(high, height);
+    }
+    terrain::CaveSampler sampler(field, ground, detail,
+                                 {x0, static_cast<double>(low) - 106.0, z0, x0 + 64.0,
+                                  static_cast<double>(high) + 6.0, z0 + 64.0});
+    for (std::uint64_t n = 0; n < 2500; ++n) {
+        const double x = x0 + 64.0 * unit(box, 3 * n);
+        const double z = z0 + 64.0 * unit(box, 3 * n + 1);
+        const float height = ground.height(x, z);
+        const double y = static_cast<double>(height) - 105.0 + 110.0 * unit(box, 3 * n + 2);
+        const terrain::CaveColumn column = sampler.column(x, z, height);
+        const auto terrainDensity = static_cast<float>(y - static_cast<double>(height));
+        const float carved = sampler.density(column, y, terrainDensity);
+        addColumn(sum, column);
+        addVoids(sum, sampler.voids(column, y));
+        sum.add(sampler.voidAt(column, y));
+        sum.add(carved);
+        sum.add(sampler.waterDensity(column, y, terrainDensity, carved));
+    }
+}
+
+// The points of 8 boxes of 64 m, for the detail of a LOD.
 inline std::uint64_t pointsChecksum(const terrain::CaveField& field,
                                     const terrain::CaveGround& ground, int lod) {
     Checksum sum;
-    const terrain::CaveDetail detail = terrain::caveDetailForLod(lod);
     for (std::uint64_t box = 0; box < 8; ++box) {
-        const double x0 = -2600.0 + 700.0 * static_cast<double>(box);
-        const double z0 = -4100.0 + 450.0 * static_cast<double>(box % 3);
-        terrain::CaveSampler sampler(field, ground, detail,
-                                     {x0, -1200.0, z0, x0 + 64.0, 1600.0, z0 + 64.0});
-        for (std::uint64_t n = 0; n < 2500; ++n) {
-            const double x = x0 + 64.0 * unit(box, 3 * n);
-            const double z = z0 + 64.0 * unit(box, 3 * n + 1);
-            const float height = ground.height(x, z);
-            const double y = static_cast<double>(height) - 105.0 + 110.0 * unit(box, 3 * n + 2);
-            const terrain::CaveColumn column = sampler.column(x, z, height);
-            const auto terrainDensity = static_cast<float>(y - static_cast<double>(height));
-            const float carved = sampler.density(column, y, terrainDensity);
-            addColumn(sum, column);
-            addVoids(sum, sampler.voids(column, y));
-            sum.add(sampler.voidAt(column, y));
-            sum.add(carved);
-            sum.add(sampler.waterDensity(column, y, terrainDensity, carved));
-        }
+        addBox(sum, field, ground, terrain::caveDetailForLod(lod),
+               -2600.0 + 700.0 * static_cast<double>(box),
+               -4100.0 + 450.0 * static_cast<double>(box % 3), box);
     }
     return sum.value();
 }
 
+// The aquifer cells [-6, 6)^2 around the cell (centerX, centerZ).
 inline std::uint64_t aquifersChecksum(const terrain::CaveField& field,
-                                      const terrain::CaveGround& ground) {
+                                      const terrain::CaveGround& ground, int centerX = 0,
+                                      int centerZ = 0) {
     Checksum sum;
-    for (int cellZ = -6; cellZ < 6; ++cellZ) {
-        for (int cellX = -6; cellX < 6; ++cellX) {
+    for (int cellZ = centerZ - 6; cellZ < centerZ + 6; ++cellZ) {
+        for (int cellX = centerX - 6; cellX < centerX + 6; ++cellX) {
             const terrain::AquiferCell cell = field.aquifer(cellX, cellZ, ground);
             sum.add(cell.siteX);
             sum.add(cell.siteZ);
@@ -171,6 +190,21 @@ inline std::uint64_t materialsChecksum() {
     return sum.value();
 }
 
+// Across the corner (world.x / 2, world.z / 2): the points of a box of 64 m centered on it at
+// LOD 0, the aquifer cells around it and the entrances within 1.5 km of it.
+inline std::uint64_t cornerChecksum(const terrain::CaveField& field,
+                                    const terrain::CaveGround& ground) {
+    const double x = field.world().x / 2.0;
+    const double z = field.world().z / 2.0;
+    Checksum sum;
+    addBox(sum, field, ground, terrain::caveDetailForLod(0), x - 32.0, z - 32.0, 8);
+    sum.add(aquifersChecksum(field, ground, static_cast<int>(field.aquiferCellsX().count / 2),
+                             static_cast<int>(field.aquiferCellsZ().count / 2)));
+    sum.add(entrancesChecksum(
+        field.entrancesNear(x - 1500.0, z - 1500.0, x + 1500.0, z + 1500.0, ground)));
+    return sum.value();
+}
+
 } // namespace cave_detail
 
 // Computes the cave parts with their expected values.
@@ -184,14 +218,15 @@ inline std::vector<Part> caveParts() {
     TEST_CHECK(!entrances.empty());
     const std::uint64_t tiles = entrances.empty() ? 0 : tilesChecksum(entrances.front());
     return {
-        {"cave points LOD 0", pointsChecksum(field, ground, 0), 0xC1B49F441628B500ULL},
-        {"cave points LOD 1", pointsChecksum(field, ground, 1), 0x847399965D4D927AULL},
-        {"cave points LOD 2", pointsChecksum(field, ground, 2), 0x2A7153C19E0A1837ULL},
-        {"aquifers", aquifersChecksum(field, ground), 0x49504A9D474AA707ULL},
-        {"entrances", entrancesChecksum(entrances), 0xCBC03D57177FAB70ULL},
-        {"speleothems", speleothemsChecksum(field, ground), 0x8E535CD1327FED4AULL},
-        {"cave tiles", tiles, 0x77B171615DE6029FULL},
+        {"cave points LOD 0", pointsChecksum(field, ground, 0), 0x25F20B88A91F9C39ULL},
+        {"cave points LOD 1", pointsChecksum(field, ground, 1), 0x6A8478788A51AC17ULL},
+        {"cave points LOD 2", pointsChecksum(field, ground, 2), 0x04B6D0C1DB7ED647ULL},
+        {"aquifers", aquifersChecksum(field, ground), 0x96909C86E783BAD7ULL},
+        {"entrances", entrancesChecksum(entrances), 0x5DC8B742BA973CA8ULL},
+        {"speleothems", speleothemsChecksum(field, ground), 0x7421424613878B8DULL},
+        {"cave tiles", tiles, 0xBB2437EAEBFC164AULL},
         {"cave materials", materialsChecksum(), 0xD9C5568AB1EF9B55ULL},
+        {"caves at the corner", cornerChecksum(field, ground), 0xE8BDA2BA46719F22ULL},
     };
 }
 

@@ -45,6 +45,17 @@ struct Square {
     double size;
 };
 
+// A place of the default world rich in caves under the flat ground, around which the tests lay
+// their squares (found by search for the seed of the tests: the caves of a square depend on
+// where it lies).
+constexpr double kSiteX = 512.0;
+constexpr double kSiteZ = -512.0;
+
+// Square of side size centered on the site.
+inline Square aroundSite(double size) {
+    return {kSiteX - size / 2.0, kSiteZ - size / 2.0, size};
+}
+
 // Sampler whose box holds the columns of the square, from maxDepth + 2 m under their ground to
 // their ground.
 inline CaveSampler samplerOver(const CaveField& field, const CaveGround& ground, const Square& s) {

@@ -24,9 +24,9 @@ bool isPlain(const SculptedColumn& column) {
 } // namespace
 
 SculptedRegion::SculptedRegion(std::uint64_t seed, const HeightmapRegion& region,
-                               const SculptedRegionParams& params)
-    : cliffs_(seed, region, params.cliffs), overhangs_(seed, params.overhangs),
-      archField_(seed, params.arches), archFade_(params.archFade),
+                               const SculptedRegionParams& params, const WorldSize& world)
+    : cliffs_(seed, region, params.cliffs, world), overhangs_(seed, params.overhangs, world),
+      archField_(seed, params.arches, world), archFade_(params.archFade),
       surface_(cliffs_.surface()) {
     arches_ = placeArches(cliffs_, archField_);
     computeGrids();

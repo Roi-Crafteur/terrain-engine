@@ -3,14 +3,20 @@
 #include "test_assert.hpp"
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 
 namespace {
 
 namespace noise = terrain::noise;
+using terrain::WorldSize;
 
 constexpr std::uint64_t kSeed = 42;
+const WorldSize kWorld;
+// One lattice cell per meter, unrotated: its points are the integer coordinates.
+const noise::Lattice2D kUnit = noise::lattice2D(kWorld, 1.0);
 constexpr noise::FbmParams kFbm{.octaves = 5, .frequency = 0.37};
 constexpr noise::FbmParams kFbm3{.octaves = 5, .frequency = 0.05};
 
@@ -29,14 +35,30 @@ private:
     std::uint64_t state_;
 };
 
+float gradient(double x, double z, std::uint64_t seed = kSeed) {
+    return noise::gradient2D(x, z, seed, kUnit);
+}
+
+float gradient3(double x, double y, double z, std::uint64_t seed = kSeed) {
+    return noise::gradient3D(x, y, z, seed, kUnit, 1.0);
+}
+
+float fbm(double x, double z, std::uint64_t seed = kSeed, const noise::FbmParams& p = kFbm) {
+    return noise::fbm2D(x, z, seed, p, kWorld);
+}
+
+float ridged(double x, double z, double sharpness = 2.0) {
+    return noise::ridged2D(x, z, kSeed, kFbm, kWorld, sharpness);
+}
+
 void testDeterminism() {
     Points points(1);
     for (int i = 0; i < 1000; ++i) {
         const double x = points.next(1.0e5);
         const double z = points.next(1.0e5);
-        TEST_CHECK(noise::gradient2D(x, z, kSeed) == noise::gradient2D(x, z, kSeed));
-        TEST_CHECK(noise::fbm2D(x, z, kSeed, kFbm) == noise::fbm2D(x, z, kSeed, kFbm));
-        TEST_CHECK(noise::ridged2D(x, z, kSeed, kFbm) == noise::ridged2D(x, z, kSeed, kFbm));
+        TEST_CHECK(gradient(x, z) == gradient(x, z));
+        TEST_CHECK(fbm(x, z) == fbm(x, z));
+        TEST_CHECK(ridged(x, z) == ridged(x, z));
     }
     TEST_CHECK(noise::deriveSeed(kSeed, 3) == noise::deriveSeed(kSeed, 3));
     TEST_CHECK(noise::deriveSeed(kSeed, 3) != noise::deriveSeed(kSeed, 4));
@@ -46,10 +68,10 @@ void testDeterminism() {
 void testZeroOnLattice() {
     for (int z = -20; z <= 20; ++z) {
         for (int x = -20; x <= 20; ++x) {
-            TEST_CHECK(noise::gradient2D(x, z, kSeed) == 0.0f);
+            TEST_CHECK(gradient(x, z) == 0.0f);
         }
     }
-    TEST_CHECK(noise::gradient2D(-123456789.0, 987654321.0, kSeed) == 0.0f);
+    TEST_CHECK(gradient(-123456789.0, 987654321.0) == 0.0f); // beyond the world, wrapped
 }
 
 void testRanges() {
@@ -60,9 +82,9 @@ void testRanges() {
     for (int i = 0; i < 100000; ++i) {
         const double x = points.next(1.0e4);
         const double z = points.next(1.0e4);
-        const float g = noise::gradient2D(x, z, kSeed);
-        const float f = noise::fbm2D(x, z, kSeed, kFbm);
-        const float r = noise::ridged2D(x, z, kSeed, kFbm);
+        const float g = gradient(x, z);
+        const float f = fbm(x, z);
+        const float r = ridged(x, z);
         inRange = inRange && g >= -1.0f && g <= 1.0f && f >= -1.0f && f <= 1.0f && r >= 0.0f &&
                   r <= 1.0f;
         low = std::fmin(low, g);
@@ -81,15 +103,14 @@ void testContinuity() {
     for (int i = 0; i < 10000; ++i) {
         const double x = points.next(1.0e3);
         const double z = points.next(1.0e3);
-        const float g = noise::gradient2D(x, z, kSeed);
-        const float f = noise::fbm2D(x, z, kSeed, kFbm);
-        const float r = noise::ridged2D(x, z, kSeed, kFbm);
+        const float g = gradient(x, z);
+        const float f = fbm(x, z);
+        const float r = ridged(x, z);
         // Slopes stay below a few units per lattice cell, octave frequencies included.
-        continuous = continuous &&
-                     std::abs(noise::gradient2D(x + kStep, z, kSeed) - g) < 1.0e-3f &&
-                     std::abs(noise::gradient2D(x, z + kStep, kSeed) - g) < 1.0e-3f &&
-                     std::abs(noise::fbm2D(x + kStep, z, kSeed, kFbm) - f) < 1.0e-2f &&
-                     std::abs(noise::ridged2D(x, z + kStep, kSeed, kFbm) - r) < 1.0e-2f;
+        continuous = continuous && std::abs(gradient(x + kStep, z) - g) < 1.0e-3f &&
+                     std::abs(gradient(x, z + kStep) - g) < 1.0e-3f &&
+                     std::abs(fbm(x + kStep, z) - f) < 1.0e-2f &&
+                     std::abs(ridged(x, z + kStep) - r) < 1.0e-2f;
     }
     TEST_CHECK(continuous);
 }
@@ -101,7 +122,7 @@ void testSeedsDiffer() {
     for (int i = 0; i < kCount; ++i) {
         const double x = points.next(1.0e3);
         const double z = points.next(1.0e3);
-        if (noise::gradient2D(x, z, kSeed) != noise::gradient2D(x, z, kSeed + 1)) {
+        if (gradient(x, z) != gradient(x, z, kSeed + 1)) {
             ++different;
         }
     }
@@ -115,16 +136,16 @@ void testRidgedSharpness() {
     for (int i = 0; i < 10000; ++i) {
         const double x = points.next(1.0e3);
         const double z = points.next(1.0e3);
-        lower = lower &&
-                noise::ridged2D(x, z, kSeed, kFbm, 4.0) <= noise::ridged2D(x, z, kSeed, kFbm, 2.0);
+        lower = lower && ridged(x, z, 4.0) <= ridged(x, z, 2.0);
     }
     TEST_CHECK(lower);
 }
 
 void testNoOctaves() {
     const noise::FbmParams none{.octaves = 0};
-    TEST_CHECK(noise::fbm2D(0.3, 0.7, kSeed, none) == 0.0f);
-    TEST_CHECK(noise::ridged2D(0.3, 0.7, kSeed, none) == 0.0f);
+    TEST_CHECK(noise::fbm2D(0.3, 0.7, kSeed, none, kWorld) == 0.0f);
+    TEST_CHECK(noise::ridged2D(0.3, 0.7, kSeed, none, kWorld) == 0.0f);
+    TEST_CHECK(noise::fbm3D(0.3, 0.5, 0.7, kSeed, none, kWorld) == 0.0f);
 }
 
 void testSmoothstep() {
@@ -137,9 +158,9 @@ void testSmoothstep() {
     TEST_CHECK(noise::smoothstep(0.0f, 1.0f, 0.25f) < noise::smoothstep(0.0f, 1.0f, 0.3f));
 }
 
-// Frozen outputs of the 2D noise (printed with %.9g, exact for a float): adding the 3D noise
-// must not change a single bit of the 2D functions or of their helpers.
-void testFrozen2D() {
+// Frozen outputs of the noises (printed with %.9g, exact for a float), the same on every
+// platform.
+void testFrozen() {
     constexpr std::uint64_t kFrozenSeed = 20261019;
     constexpr noise::FbmParams kFrozenFbm{
         .octaves = 4, .frequency = 0.01, .lacunarity = 2.0, .gain = 0.5};
@@ -149,45 +170,60 @@ void testFrozen2D() {
         float gradient;
         float fbm;
         float ridged;
+        float fbm3;
     };
     constexpr std::array<Sample, 4> kSamples = {{
-        {0.3, 0.7, -0.465207815f, 0.00549232913f, 0.975529909f},
-        {-123.45, 678.9, -0.245905474f, 0.326726794f, 0.329790741f},
-        {1.0e5 + 0.25, -3.0e4 - 0.5, 0.162137732f, 0.0358453542f, 0.928310394f},
-        {-7.75, -0.125, -0.0830461159f, -0.120558046f, 0.775927007f},
+        {0.3, 0.7, -0.465207815f, -0.00268229633f, 0.973833144f, 0.0525964573f},
+        {-123.45, 678.9, -0.632714093f, -0.0200588275f, 0.839382648f, 0.129103094f},
+        {1.0e5 + 0.25, -3.0e4 - 0.5, 0.490012705f, 0.0311451126f, 0.93662262f, 0.0574381836f},
+        {-7.75, -0.125, -0.0172758028f, -0.137002751f, 0.750011563f, 0.0275242422f},
     }};
     for (const Sample& s : kSamples) {
-        TEST_CHECK(noise::gradient2D(s.x, s.z, kFrozenSeed) == s.gradient);
-        TEST_CHECK(noise::fbm2D(s.x, s.z, kFrozenSeed, kFrozenFbm) == s.fbm);
-        TEST_CHECK(noise::ridged2D(s.x, s.z, kFrozenSeed, kFrozenFbm) == s.ridged);
+        const float g = gradient(s.x, s.z, kFrozenSeed);
+        const float f = fbm(s.x, s.z, kFrozenSeed, kFrozenFbm);
+        const float r = noise::ridged2D(s.x, s.z, kFrozenSeed, kFrozenFbm, kWorld);
+        const float f3 = noise::fbm3D(s.x, 0.5 * s.z, s.z, kFrozenSeed, kFrozenFbm, kWorld);
+        if (g != s.gradient || f != s.fbm || r != s.ridged || f3 != s.fbm3) {
+            std::printf("frozen {%.17g, %.17g, %.9gf, %.9gf, %.9gf, %.9gf}\n", s.x, s.z,
+                        static_cast<double>(g), static_cast<double>(f), static_cast<double>(r),
+                        static_cast<double>(f3));
+        }
+        TEST_CHECK(g == s.gradient && f == s.fbm && r == s.ridged && f3 == s.fbm3);
     }
 }
 
-void testGradient3DDeterminism() {
+void testGradient3D() {
     Points points(6);
+    constexpr double kStep = 1.0e-4;
     bool same = true;
-    for (int i = 0; i < 1000; ++i) {
-        const double x = points.next(1.0e5);
-        const double y = points.next(1.0e5);
-        const double z = points.next(1.0e5);
-        same = same && noise::gradient3D(x, y, z, kSeed) == noise::gradient3D(x, y, z, kSeed);
-    }
-    TEST_CHECK(same);
-}
-
-void testGradient3DSeedsDiffer() {
-    Points points(7);
-    int different = 0;
-    constexpr int kCount = 1000;
+    bool inRange = true;
+    bool continuous = true;
+    int seedsDiffer = 0;
+    int variesAlongY = 0;
+    float peak = 0.0f;
+    double sum = 0.0;
+    constexpr int kCount = 4000;
     for (int i = 0; i < kCount; ++i) {
         const double x = points.next(1.0e3);
         const double y = points.next(1.0e3);
         const double z = points.next(1.0e3);
-        if (noise::gradient3D(x, y, z, kSeed) != noise::gradient3D(x, y, z, kSeed + 1)) {
-            ++different;
-        }
+        const float g = gradient3(x, y, z);
+        same = same && g == gradient3(x, y, z);
+        inRange = inRange && g >= -1.0f && g <= 1.0f;
+        continuous = continuous && std::abs(gradient3(x + kStep, y, z) - g) <= 1.0e-3f &&
+                     std::abs(gradient3(x, y + kStep, z) - g) <= 1.0e-3f &&
+                     std::abs(gradient3(x, y, z + kStep) - g) <= 1.0e-3f;
+        seedsDiffer += g != gradient3(x, y, z, kSeed + 1) ? 1 : 0;
+        // The noise is really three-dimensional: it changes along y as well.
+        variesAlongY += g != gradient3(x, y + 0.5, z) ? 1 : 0;
+        peak = std::fmax(peak, std::abs(g));
+        sum += static_cast<double>(g);
     }
-    TEST_CHECK(different > kCount * 9 / 10);
+    TEST_CHECK(same && inRange && continuous);
+    TEST_CHECK(seedsDiffer > kCount * 9 / 10 && variesAlongY > kCount * 9 / 10);
+    // The noise uses a good part of its range and is centered on zero.
+    TEST_CHECK(peak > 0.5f);
+    TEST_CHECK(std::abs(sum / kCount) < 0.05);
 }
 
 void testGradient3DZeroOnLattice() {
@@ -195,99 +231,37 @@ void testGradient3DZeroOnLattice() {
     for (int z = -5; z <= 5; ++z) {
         for (int y = -5; y <= 5; ++y) {
             for (int x = -5; x <= 5; ++x) {
-                zero = zero && noise::gradient3D(x, y, z, kSeed) == 0.0f;
+                zero = zero && gradient3(x, y, z) == 0.0f;
             }
         }
     }
     TEST_CHECK(zero);
-    TEST_CHECK(noise::gradient3D(-123456789.0, 987654321.0, -42.0, kSeed) == 0.0f);
-    TEST_CHECK(noise::gradient3D(-1.0, -1.0, -1.0, kSeed + 7) == 0.0f);
-}
-
-void testGradient3DRange() {
-    Points points(8);
-    float peak = 0.0f;
-    double sum = 0.0;
-    bool inRange = true;
-    constexpr int kCount = 20000;
-    for (int i = 0; i < kCount; ++i) {
-        const double x = points.next(1.0e3);
-        const double y = points.next(1.0e3);
-        const double z = points.next(1.0e3);
-        const float g = noise::gradient3D(x, y, z, kSeed);
-        inRange = inRange && g >= -1.0f && g <= 1.0f;
-        peak = std::fmax(peak, std::abs(g));
-        sum += static_cast<double>(g);
-    }
-    TEST_CHECK(inRange);
-    // The noise uses a good part of its range and is centered on zero.
-    TEST_CHECK(peak > 0.5f);
-    TEST_CHECK(std::abs(sum / kCount) < 0.05);
-}
-
-void testGradient3DContinuity() {
-    Points points(9);
-    constexpr double kStep = 1.0e-4;
-    bool continuous = true;
-    for (int i = 0; i < 2000; ++i) {
-        const double x = points.next(1.0e3);
-        const double y = points.next(1.0e3);
-        const double z = points.next(1.0e3);
-        const float g = noise::gradient3D(x, y, z, kSeed);
-        continuous = continuous &&
-                     std::abs(noise::gradient3D(x + kStep, y, z, kSeed) - g) <= 1.0e-3f &&
-                     std::abs(noise::gradient3D(x, y + kStep, z, kSeed) - g) <= 1.0e-3f &&
-                     std::abs(noise::gradient3D(x, y, z + kStep, kSeed) - g) <= 1.0e-3f;
-    }
-    TEST_CHECK(continuous);
-}
-
-// The noise is really three-dimensional: it changes along y as well, not only in x and z.
-void testGradient3DVariesAlongY() {
-    Points points(10);
-    int different = 0;
-    constexpr int kCount = 1000;
-    for (int i = 0; i < kCount; ++i) {
-        const double x = points.next(1.0e3);
-        const double y = points.next(1.0e3);
-        const double z = points.next(1.0e3);
-        if (noise::gradient3D(x, y, z, kSeed) != noise::gradient3D(x, y + 0.5, z, kSeed)) {
-            ++different;
-        }
-    }
-    TEST_CHECK(different > kCount * 9 / 10);
+    TEST_CHECK(gradient3(-123456789.0, 987654321.0, -42.0) == 0.0f);
+    TEST_CHECK(gradient3(-1.0, -1.0, -1.0, kSeed + 7) == 0.0f);
 }
 
 void testFbm3D() {
     Points points(11);
     constexpr double kStep = 1.0e-4;
-    bool same = true;
     bool inRange = true;
     bool continuous = true;
     for (int i = 0; i < 2000; ++i) {
         const double x = points.next(1.0e3);
         const double y = points.next(1.0e3);
         const double z = points.next(1.0e3);
-        const float f = noise::fbm3D(x, y, z, kSeed, kFbm3);
-        same = same && f == noise::fbm3D(x, y, z, kSeed, kFbm3);
+        const float f = noise::fbm3D(x, y, z, kSeed, kFbm3, kWorld);
         inRange = inRange && f >= -1.0f && f <= 1.0f;
         continuous = continuous &&
-                     std::abs(noise::fbm3D(x + kStep, y, z, kSeed, kFbm3) - f) <= 1.0e-3f &&
-                     std::abs(noise::fbm3D(x, y + kStep, z, kSeed, kFbm3) - f) <= 1.0e-3f &&
-                     std::abs(noise::fbm3D(x, y, z + kStep, kSeed, kFbm3) - f) <= 1.0e-3f;
+                     std::abs(noise::fbm3D(x + kStep, y, z, kSeed, kFbm3, kWorld) - f) <= 1.0e-3f &&
+                     std::abs(noise::fbm3D(x, y + kStep, z, kSeed, kFbm3, kWorld) - f) <= 1.0e-3f &&
+                     std::abs(noise::fbm3D(x, y, z + kStep, kSeed, kFbm3, kWorld) - f) <= 1.0e-3f;
     }
-    TEST_CHECK(same);
-    TEST_CHECK(inRange);
-    TEST_CHECK(continuous);
-}
-
-void testFbm3DOctaves() {
-    const noise::FbmParams none{.octaves = 0};
-    TEST_CHECK(noise::fbm3D(0.3, 0.5, 0.7, kSeed, none) == 0.0f);
-    // A single octave is the gradient noise of the first octave seed, at the scaled position.
+    TEST_CHECK(inRange && continuous);
+    // A single octave is the gradient noise of the first octave seed, unrotated.
     const noise::FbmParams one{.octaves = 1, .frequency = 0.25};
-    TEST_CHECK(noise::fbm3D(10.3, -4.6, 7.7, kSeed, one) ==
-               noise::gradient3D(2.575, -1.15, 1.925, noise::deriveSeed(kSeed, 0)));
+    TEST_CHECK(noise::fbm3D(10.3, -4.6, 7.7, kSeed, one, kWorld) ==
+               noise::gradient3D(10.3, -4.6, 7.7, noise::deriveSeed(kSeed, 0),
+                                 noise::lattice2D(kWorld, 0.25), 0.25));
 }
 
 } // namespace
@@ -301,14 +275,9 @@ int main() {
     testRidgedSharpness();
     testNoOctaves();
     testSmoothstep();
-    testFrozen2D();
-    testGradient3DDeterminism();
-    testGradient3DSeedsDiffer();
+    testFrozen();
+    testGradient3D();
     testGradient3DZeroOnLattice();
-    testGradient3DRange();
-    testGradient3DContinuity();
-    testGradient3DVariesAlongY();
     testFbm3D();
-    testFbm3DOctaves();
     return test::result();
 }

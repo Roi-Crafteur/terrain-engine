@@ -79,13 +79,14 @@ struct Cells {
     int count;
 };
 
-// The districts of the type whose site lies on ground at least minHeight high.
+// The districts of the type whose site lies on ground at least minHeight high, over the cells
+// cellsX along x and cellsZ along z, row by row.
 inline std::vector<CaveDistrict> districtsOf(const CaveField& field, const CaveGround& ground,
-                                             const Cells& cells, CaveDistrictType type,
-                                             float minHeight) {
+                                             const Cells& cellsX, const Cells& cellsZ,
+                                             CaveDistrictType type, float minHeight) {
     std::vector<CaveDistrict> found;
-    for (int cellZ = cells.first; cellZ < cells.first + cells.count; ++cellZ) {
-        for (int cellX = cells.first; cellX < cells.first + cells.count; ++cellX) {
+    for (int cellZ = cellsZ.first; cellZ < cellsZ.first + cellsZ.count; ++cellZ) {
+        for (int cellX = cellsX.first; cellX < cellsX.first + cellsX.count; ++cellX) {
             const CaveDistrict district = field.district(cellX, cellZ, ground);
             if (district.type == type &&
                 ground.height(district.siteX, district.siteZ) >= minHeight) {
@@ -94,6 +95,12 @@ inline std::vector<CaveDistrict> districtsOf(const CaveField& field, const CaveG
         }
     }
     return found;
+}
+
+inline std::vector<CaveDistrict> districtsOf(const CaveField& field, const CaveGround& ground,
+                                             const Cells& cells, CaveDistrictType type,
+                                             float minHeight) {
+    return districtsOf(field, ground, cells, cells, type, minHeight);
 }
 
 // A border between two neighbor districts of different types, at the midpoint of their sites

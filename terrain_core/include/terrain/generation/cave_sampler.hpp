@@ -12,6 +12,12 @@ namespace terrain {
 // reach the box and the noise nodes it reads are computed once. Every result is the same as
 // from any other sampler holding the point, so areas sampled apart join without a seam.
 // Not thread-safe (the node cache fills up on use): one sampler per thread.
+//
+// The world wraps around (WorldSize): the sampler works in the canonical frame of its box,
+// moved by whole periods so that its center lies in the canonical range, which makes every
+// image of a box give the same bits. Positions given to the sampler and returned by it are in
+// the frame of the box, except the sites of the aquifer cells (aquiferAt) and the positions of
+// the columns (CaveColumn::x, z), which are in the canonical frame.
 class CaveSampler {
 public:
     // The field and the ground must outlive the sampler.
@@ -39,20 +45,21 @@ public:
     [[nodiscard]] CaveVoids voids(const CaveColumn& column, double y);
     [[nodiscard]] float voidAt(const CaveColumn& column, double y);
 
+    // Entrances reaching the box, in its frame.
     [[nodiscard]] const std::vector<CaveEntrance>& entrances() const { return entrances_; }
     [[nodiscard]] const CaveDetail& detail() const { return detail_; }
     [[nodiscard]] const CaveField& field() const { return *field_; }
     [[nodiscard]] const CaveGround& ground() const { return *ground_; }
     // Aquifer cell of the nearest site to (x, z) (the cell of the column there).
     [[nodiscard]] const AquiferCell& aquiferAt(double x, double z) const {
-        return aquifers_.nearest(x, z);
+        return aquifers_.nearest(x + shiftX_, z + shiftZ_);
     }
     // Profile of the cave regions at (x, z) (neutral without them) and their weights there.
     [[nodiscard]] CaveProfile profileAt(double x, double z) const {
-        return aquifers_.profileAt(x, z);
+        return aquifers_.profileAt(x + shiftX_, z + shiftZ_);
     }
     [[nodiscard]] DistrictWeights districtWeights(double x, double z) const {
-        return aquifers_.districtWeights(x, z);
+        return aquifers_.districtWeights(x + shiftX_, z + shiftZ_);
     }
 
 private:
@@ -63,10 +70,14 @@ private:
     const CaveGround* ground_;
     CaveDetail detail_;
     unsigned noises_;
+    // Whole periods from the frame of the box to its canonical frame, exact.
+    double shiftX_;
+    double shiftZ_;
     // Aquifer cells and cave regions, filled by column(), which is const for its callers: the
     // cells never change a result.
     mutable AquiferCache aquifers_;
-    std::vector<CaveEntrance> entrances_;
+    std::vector<CaveEntrance> entrances_;      // in the frame of the box
+    std::vector<CaveEntrance> frameEntrances_; // in the canonical frame
     CaveNoiseCache cache_;
     std::vector<CaveCellBound> cellBounds_;
     std::vector<std::uint8_t> boundKnown_;

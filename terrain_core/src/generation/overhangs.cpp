@@ -29,13 +29,16 @@ constexpr std::array<std::array<double, 2>, 8> kProbeDirections = {{{1.0, 0.0},
 
 } // namespace
 
-OverhangField::OverhangField(std::uint64_t seed, const OverhangParams& params)
-    : params_(params), patchSeed_(noise::deriveSeed(seed, kPatchStream)) {}
+OverhangField::OverhangField(std::uint64_t seed, const OverhangParams& params,
+                             const WorldSize& world)
+    : params_(params), world_(world), patchSeed_(noise::deriveSeed(seed, kPatchStream)) {
+    validate(world_);
+}
 
 float OverhangField::patchAt(double x, double z) const {
     const noise::FbmParams fbm{.octaves = 3, .frequency = 1.0 / params_.patchWavelength};
     return noise::smoothstep(params_.patchLow, params_.patchHigh,
-                             noise::fbm2D(x, z, patchSeed_, fbm));
+                             noise::fbm2D(x, z, patchSeed_, fbm, world_));
 }
 
 float OverhangField::controlAt(double x, double z, const CliffColumn& column,

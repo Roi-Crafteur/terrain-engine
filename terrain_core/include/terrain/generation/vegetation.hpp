@@ -76,7 +76,9 @@ inline constexpr std::array<PlantRule, kPlantTypeCount> kDefaultPlantRules = {{
 
 struct VegetationParams {
     // Side of the cells of the placement lattice, in meters: cell (i, k) covers
-    // [i, i + 1) x [k, k + 1) * cellSize in world coordinates and holds at most one plant.
+    // [i, i + 1) x [k, k + 1) * size in world coordinates and holds at most one plant, size
+    // being cellSize adjusted to a whole number of cells per side of the world
+    // (VegetationField::cellsX, exactly cellSize when it divides the world).
     double cellSize = 4.0;
     std::array<PlantDensities, kBiomeCount> biomeDensity = kDefaultBiomeDensity;
     std::array<PlantRule, kPlantTypeCount> rules = kDefaultPlantRules;
@@ -126,9 +128,13 @@ struct Plant {
 // Deterministic vegetation: the same seed, parameters and inputs always give the same
 // densities and draws. Draws only depend on the lattice cell, never on a region, so plants
 // join without a seam across regions and chunks. Vegetation never changes a height.
+// Periodic on the world (WorldSize): the clumps tile it, and so does the lattice, of
+// round(world / cellSize) cells per side (PeriodicCells).
 class VegetationField {
 public:
-    explicit VegetationField(std::uint64_t seed, const VegetationParams& params = {});
+    // Throws std::invalid_argument for an invalid world (validate).
+    explicit VegetationField(std::uint64_t seed, const VegetationParams& params = {},
+                             const WorldSize& world = {});
 
     // Clump factor c at (x, z), in [0, 1].
     [[nodiscard]] float clumpAt(double x, double z) const;
@@ -146,12 +152,21 @@ public:
                                            SurfaceMaterial material, const ClimateSample& climate,
                                            const SurfaceSite& site) const;
 
+    // Draw of the cell (i, k) of the lattice, an unwrapped index: hashed from its canonical
+    // index, its position is the image of the canonical one next to the cell.
     [[nodiscard]] LatticeDraw drawCell(std::int64_t i, std::int64_t k) const;
 
     [[nodiscard]] const VegetationParams& params() const { return params_; }
+    [[nodiscard]] const WorldSize& world() const { return world_; }
+    // The lattice of the plants along x and z.
+    [[nodiscard]] const PeriodicCells& cellsX() const { return cellsX_; }
+    [[nodiscard]] const PeriodicCells& cellsZ() const { return cellsZ_; }
 
 private:
     VegetationParams params_;
+    WorldSize world_;
+    PeriodicCells cellsX_;
+    PeriodicCells cellsZ_;
     std::uint64_t clumpSeed_;
     std::uint64_t placementSeed_;
 };

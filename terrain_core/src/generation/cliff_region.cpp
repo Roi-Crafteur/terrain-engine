@@ -269,8 +269,8 @@ void computeGrids(const CliffRegion& region, std::vector<float>& mask, HeightGri
 } // namespace
 
 CliffRegion::CliffRegion(std::uint64_t seed, const HeightmapRegion& region,
-                         const CliffRegionParams& params)
-    : eroded_(seed, region, params.eroded), field_(seed, params.cliffs),
+                         const CliffRegionParams& params, const WorldSize& world)
+    : eroded_(seed, region, params.eroded, world), field_(seed, params.cliffs, world),
       surface_(eroded_.grid()) {
     RiverProximity proximity = computeRiverProximity(eroded_, params.cliffs);
     riverDistance_ = std::move(proximity.distance);

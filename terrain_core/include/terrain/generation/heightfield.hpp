@@ -2,6 +2,7 @@
 
 #include "terrain/det_math.hpp" // also refuses fast math in every unit including it
 #include "terrain/generation/voronoi.hpp"
+#include "terrain/world_size.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -86,17 +87,22 @@ struct HeightSample {
 
 // Multi-scale terrain height y = heightAt(x, z), in meters.
 // Deterministic: the same seed, parameters and coordinates always give the same height.
+// Periodic on the world (WorldSize): every layer tiles it, and (x, z) is brought back into its
+// canonical range first, so every image of a point gets the same bits.
 // Like every fbm layer, the macro continentalness is exactly 0 at the origin, so without the
 // plates the origin always lies on a macro coast: the local layer alone decides whether it
 // is land or sea.
 class Heightfield {
 public:
-    explicit Heightfield(std::uint64_t seed, const HeightfieldParams& params = {});
+    // Throws std::invalid_argument for an invalid world (validate).
+    explicit Heightfield(std::uint64_t seed, const HeightfieldParams& params = {},
+                         const WorldSize& world = {});
 
     [[nodiscard]] float heightAt(double x, double z) const;
     [[nodiscard]] HeightSample sampleAt(double x, double z) const;
 
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
+    [[nodiscard]] const WorldSize& world() const { return world_; }
 
     // The tectonic plates, or nullptr when the layer is disabled (plates.amplitude <= 0).
     [[nodiscard]] const TectonicPlates* plates() const { return plates_.get(); }
@@ -106,6 +112,7 @@ private:
     [[nodiscard]] float mountainAt(double x, double z, float mask) const;
 
     HeightfieldParams params_;
+    WorldSize world_;
     std::uint64_t continentSeed_;
     std::uint64_t maskSeed_;
     std::uint64_t warpXSeed_;

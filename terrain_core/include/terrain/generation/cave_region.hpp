@@ -26,7 +26,7 @@ struct CaveRegionParams {
 class CaveRegion {
 public:
     CaveRegion(std::uint64_t seed, const HeightmapRegion& region,
-               const CaveRegionParams& params = {});
+               const CaveRegionParams& params = {}, const WorldSize& world = {});
 
     // The ground callbacks point into the region: it cannot be copied or moved.
     CaveRegion(const CaveRegion&) = delete;

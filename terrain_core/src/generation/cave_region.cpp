@@ -6,11 +6,11 @@
 namespace terrain {
 
 CaveRegion::CaveRegion(std::uint64_t seed, const HeightmapRegion& region,
-                       const CaveRegionParams& params)
-    : eroded_(seed, region, params.eroded), surface_(surfaceFromEroded(eroded_)),
-      field_(seed, params.caves), ecology_(seed, params.ecology),
+                       const CaveRegionParams& params, const WorldSize& world)
+    : eroded_(seed, region, params.eroded, world), surface_(surfaceFromEroded(eroded_)),
+      field_(seed, params.caves, world), ecology_(seed, params.ecology, world),
       environment_(eroded_.field(), ecology_.climate(), params.ecology.biomes),
-      speleothems_(seed, params.caves.speleothems) {
+      speleothems_(seed, params.caves.speleothems, world) {
     ground_.height = [this](double x, double z) { return groundAt(x, z); };
     ground_.riverDistance = [this](double x, double z) { return riverDistanceAt(x, z); };
     ground_.environment = [this](double x, double z) { return environment_.at(x, z); };

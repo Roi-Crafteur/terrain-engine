@@ -49,9 +49,9 @@ double EcologyMap::sampleZ(int row) const {
     return sampleCoordinate(region.centerZ, row, region);
 }
 
-Ecology::Ecology(std::uint64_t seed, const EcologyParams& params)
-    : params_(params), climate_(noise::deriveSeed(seed, kClimateStream), params.climate),
-      vegetation_(noise::deriveSeed(seed, kVegetationStream), params.vegetation) {}
+Ecology::Ecology(std::uint64_t seed, const EcologyParams& params, const WorldSize& world)
+    : params_(params), climate_(noise::deriveSeed(seed, kClimateStream), params.climate, world),
+      vegetation_(noise::deriveSeed(seed, kVegetationStream), params.vegetation, world) {}
 
 EcologySample Ecology::sampleAt(double x, double z, const SurfaceSite& site) const {
     EcologySample sample;
@@ -129,11 +129,12 @@ bool Ecology::keepPlant(const Plant& plant, const ReliefHeight& surface) const {
 
 std::vector<Plant> Ecology::placePlants(const EcologyMap& map, const ReliefHeight& surface,
                                         const PlantArea& area) const {
-    const double cellSize = params_.vegetation.cellSize;
-    const std::int64_t firstI = firstCell(area.minX, cellSize);
-    const std::int64_t lastI = firstCell(area.maxX, cellSize);
-    const std::int64_t firstK = firstCell(area.minZ, cellSize);
-    const std::int64_t lastK = firstCell(area.maxZ, cellSize);
+    const double sizeX = vegetation_.cellsX().size;
+    const double sizeZ = vegetation_.cellsZ().size;
+    const std::int64_t firstI = firstCell(area.minX, sizeX);
+    const std::int64_t lastI = firstCell(area.maxX, sizeX);
+    const std::int64_t firstK = firstCell(area.minZ, sizeZ);
+    const std::int64_t lastK = firstCell(area.maxZ, sizeZ);
     std::vector<Plant> plants;
     for (std::int64_t k = firstK; k < lastK; ++k) {
         for (std::int64_t i = firstI; i < lastI; ++i) {
