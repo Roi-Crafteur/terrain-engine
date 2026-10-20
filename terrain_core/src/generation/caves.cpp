@@ -22,6 +22,8 @@ enum Stream : std::uint64_t {
     kRavineStream,
     kRavinePresenceStream,
     kAquiferStream,
+    kGalleryAStream,
+    kGalleryBStream,
 };
 
 // Meters per unit of a gradient noise near its zero lines: the noise of wavelength L rises
@@ -91,6 +93,8 @@ CaveField::CaveField(std::uint64_t seed, const CaveParams& params)
       ravinePresenceSeed_(
           noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kRavinePresenceStream)),
       aquiferSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kAquiferStream)),
+      galleryASeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kGalleryAStream)),
+      galleryBSeed_(noise::deriveSeed(noise::deriveSeed(seed, kCaveStream), kGalleryBStream)),
       lattice_(noiseLayers(noise::deriveSeed(seed, kCaveStream), params)) {
     if (params.districts) {
         districts_.emplace(seed, *params.districts);
@@ -114,8 +118,16 @@ CaveColumn CaveField::column(double x, double z, float ground, const CaveGround&
     column.z = z;
     column.ground = ground;
     if (districts_) {
-        AquiferCache alone(*this, relief);
-        column.profile = (cells != nullptr ? cells : &alone)->profileAt(x, z);
+        std::optional<AquiferCache> alone;
+        if (cells == nullptr) {
+            alone.emplace(*this, relief);
+        }
+        AquiferCache& cache = cells != nullptr ? *cells : *alone;
+        column.profile = cache.profileAt(x, z);
+        if (column.profile[CaveProfile::kGalleries] > 0.0f ||
+            column.profile[CaveProfile::kRiver] > 0.0f) {
+            addGallery(column, cache);
+        }
     }
     const float river = relief.riverDistance ? relief.riverDistance(x, z) : kNoRiverDistance;
     const float seaDepth = kSeaLevel - ground;
@@ -260,7 +272,7 @@ CaveVoids CaveField::voids(const CaveColumn& column, double y, const CaveNoiseVa
     result.limit = limit(column, y);
     result.entranceLimit = std::max(depth - params_.maxDepth, column.exclusion);
     result.barrier = detail.has(kCaveAquifers) ? barrierVoid(column, y) : -clamp;
-    result.galleries = clamp;
+    result.galleries = detail.has(kCaveGalleries) ? galleryVoid(column, y) : clamp;
     result.bank = -clamp;
     result.sill = -clamp;
     return result;

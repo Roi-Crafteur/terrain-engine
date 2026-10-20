@@ -94,11 +94,19 @@ public:
     // meters (the 3 x 3 cells around (x, z) are searched).
     [[nodiscard]] float highestLevelNear(double x, double z, double reach);
 
+    // Lowest ground around the node (i, k) of the world lattice of the level of the galleries
+    // (GalleryParams::levelSpacing): the lowest of 3 x 3 probes half a spacing apart around it.
+    [[nodiscard]] double galleryNode(int i, int k);
+    // The nodes interpolated at (x, z) with cubic Hermite weights of zero tangents: C1, and a
+    // convex combination of the 4 nodes around (x, z), never outside their range.
+    [[nodiscard]] double galleryLevel(double x, double z);
+
 private:
     const CaveField* field_;
     const CaveGround* ground_;
     std::unordered_map<std::uint64_t, AquiferCell> cells_;
     std::unordered_map<std::uint64_t, CaveDistrict> districts_;
+    std::unordered_map<std::uint64_t, double> galleryNodes_;
 };
 
 } // namespace terrain
