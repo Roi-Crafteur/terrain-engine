@@ -4,9 +4,11 @@
 
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <stdexcept>
 
