@@ -11,7 +11,8 @@
 namespace viewer {
 
 // How the caves look, computed on the CPU (no OpenGL): colors of the materials, of the lakes and
-// the geometry of the speleothems. Everything only decorates the tiles.
+// the geometry of the speleothems. Everything only decorates the tiles. The cave districts and
+// the cave flora have their own files (district_look.hpp, flora_look.hpp).
 
 // Opacity of the lakes (alpha blending).
 inline constexpr float kLakeOpacity = 0.75f;
@@ -31,12 +32,15 @@ inline constexpr float kLakeOpacity = 0.75f;
 // Color of each vertex of data.water: the color of ice or of water.
 [[nodiscard]] std::vector<Vec3> lakeColors(const terrain::TileData& data);
 
-// Speleothems as one indexed mesh in world meters, with a color per vertex: small cones whose
-// tips point down (stalactites) or up (stalagmites), in the color of limestone or of ice.
-struct SpeleothemMesh {
+// An indexed mesh with a color per vertex (and a normal, in mesh).
+struct PaintedMesh {
     terrain::Mesh mesh;
     std::vector<Vec3> colors;
 };
+
+// Speleothems as one indexed mesh in world meters, with a color per vertex: small cones whose
+// tips point down (stalactites) or up (stalagmites), in the color of limestone or of ice.
+using SpeleothemMesh = PaintedMesh;
 
 [[nodiscard]] SpeleothemMesh speleothemMesh(const std::vector<terrain::Speleothem>& speleothems);
 

@@ -28,7 +28,7 @@ constexpr int kWindowHeight = 720;
 constexpr float kFovYDegrees = 70.0f;
 constexpr float kNearPlane = 0.1f;
 constexpr float kFarPlane = 1000.0f;
-// Left Shift multiplies the camera speed in the streamed modes and in the caves mode, to cross
+// Left Shift multiplies the camera speed in the streamed modes and in the caves modes, to cross
 // the LOD rings.
 constexpr float kFastMove = 8.0f;
 
@@ -98,6 +98,7 @@ using viewer::modeName;
 using viewer::placeOf;
 using viewer::readViewMode;
 using viewer::streamed;
+using viewer::underground;
 
 // Chunk (0, 0) spans [0, 16] m on each axis: start in front of it, looking toward -Z.
 constexpr viewer::Vec3 kChunkViewpoint{8.0f, 10.0f, 32.0f};
@@ -112,8 +113,9 @@ viewer::Camera heightfieldCamera(viewer::Vec3 viewpoint, float pitchDownDegrees 
 
 // The streamed worlds, created on first use: their worker threads start then.
 struct Worlds {
-    std::unique_ptr<viewer::StreamedWorldView> streamed; // modes 8 and 9
-    std::unique_ptr<viewer::CaveWorldView> caves;        // mode 4
+    std::unique_ptr<viewer::StreamedWorldView> streamed;  // modes 8 and 9
+    std::unique_ptr<viewer::CaveWorldView> caves;         // mode 4: caves without regions
+    std::unique_ptr<viewer::CaveWorldView> caveRegions;   // mode 5: caves with cave regions
 };
 
 viewer::StreamedWorldView& streamedWorld(Worlds& worlds) {
@@ -125,9 +127,36 @@ viewer::StreamedWorldView& streamedWorld(Worlds& worlds) {
 
 viewer::CaveWorldView& caveWorld(Worlds& worlds) {
     if (!worlds.caves) {
-        worlds.caves = std::make_unique<viewer::CaveWorldView>();
+        worlds.caves = std::make_unique<viewer::CaveWorldView>(terrain::CaveParams{});
     }
     return *worlds.caves;
+}
+
+viewer::CaveWorldView& caveRegionWorld(Worlds& worlds) {
+    if (!worlds.caveRegions) {
+        terrain::CaveParams params;
+        params.districts = terrain::CaveDistrictParams{};
+        worlds.caveRegions = std::make_unique<viewer::CaveWorldView>(params);
+    }
+    return *worlds.caveRegions;
+}
+
+// The world of the cave mode (4 or 5), or nullptr in the other modes and while it is not created.
+viewer::CaveWorldView* caveWorldOf(const Worlds& worlds, ViewMode mode) {
+    switch (mode) {
+    case ViewMode::Caves:
+        return worlds.caves.get();
+    case ViewMode::CaveRegions:
+        return worlds.caveRegions.get();
+    default:
+        return nullptr;
+    }
+}
+
+// At the spawn of a world of the caves.
+viewer::Camera caveCamera(const viewer::CaveWorldView& world) {
+    const viewer::CaveSpawn spawn = world.spawn();
+    return heightfieldCamera(spawn.position, spawn.pitchDownDegrees);
 }
 
 // Starting camera of a place; generates its region if needed.
@@ -141,10 +170,10 @@ viewer::Camera placeCamera(Place place, LazyViews& views, Worlds& worlds) {
         return heightfieldCamera(viewer::cliffView(views.cliffs).viewpoint);
     case Place::SculptedModel:
         return heightfieldCamera(viewer::sculptedView(views.sculpted).viewpoint);
-    case Place::CaveWorld: {
-        const viewer::CaveSpawn spawn = caveWorld(worlds).spawn();
-        return heightfieldCamera(spawn.position, spawn.pitchDownDegrees);
-    }
+    case Place::CaveWorld:
+        return caveCamera(caveWorld(worlds));
+    case Place::CaveRegionWorld:
+        return caveCamera(caveRegionWorld(worlds));
     case Place::StreamedWorld:
         return heightfieldCamera(streamedWorld(worlds).spawn(), viewer::kStreamedPitchDegrees);
     case Place::ChunkOrigin:
@@ -271,9 +300,8 @@ void renderFrame(GLFWwindow* window, const Scene& scene, const LazyViews& views,
                               mode == ViewMode::Persistent);
         return;
     }
-    if (mode == ViewMode::Caves && worlds.caves != nullptr) {
-        worlds.caves->draw(viewProjection, scene.colorShader, camera.position(),
-                           camera.forward());
+    if (const viewer::CaveWorldView* caves = caveWorldOf(worlds, mode)) {
+        caves->draw(viewProjection, scene.colorShader, camera.position(), camera.forward());
         return;
     }
     scene.terrainShader.use();
@@ -305,6 +333,7 @@ void runLoop(GLFWwindow* window) {
     LazyViews views;
     Worlds worlds;
     ViewMode mode = ViewMode::Heightmap;
+    viewer::ModeKeys modeKeys;
     viewer::Camera camera(kChunkViewpoint);
     std::optional<TitleInfo> shownTitle;
 
@@ -332,7 +361,7 @@ void runLoop(GLFWwindow* window) {
         lastTime = now;
 
         // The regions are far from chunk (0, 0): the camera jumps between places.
-        const ViewMode next = readViewMode(window, mode);
+        const ViewMode next = readViewMode(window, mode, modeKeys);
         if (placeOf(next) != placeOf(mode)) {
             camera = placeCamera(placeOf(next), views, worlds);
             lastTime = glfwGetTime(); // generation time is not camera movement
@@ -349,9 +378,10 @@ void runLoop(GLFWwindow* window) {
             }
             worlds.streamed->update(camera.position());
             detail = worlds.streamed->status(mode == ViewMode::Persistent);
-        } else if (mode == ViewMode::Caves) {
-            worlds.caves->update(camera.position());
-            detail = worlds.caves->status();
+        } else if (underground(mode)) {
+            viewer::CaveWorldView* caves = caveWorldOf(worlds, mode);
+            caves->update(camera.position());
+            detail = caves->status();
         }
         updateTitle(window, mode, camera.position(), std::move(detail), shownTitle);
         renderFrame(window, scene, views, worlds, mode, camera);

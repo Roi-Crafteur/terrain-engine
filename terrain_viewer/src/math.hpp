@@ -16,6 +16,9 @@ constexpr Vec3 operator+(Vec3 a, Vec3 b) { return {a.x + b.x, a.y + b.y, a.z + b
 constexpr Vec3 operator-(Vec3 a, Vec3 b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
 constexpr Vec3 operator*(Vec3 v, float s) { return {v.x * s, v.y * s, v.z * s}; }
 
+// a at t = 0, b at t = 1.
+constexpr Vec3 lerp(Vec3 a, Vec3 b, float t) { return a + (b - a) * t; }
+
 constexpr float dot(Vec3 a, Vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 constexpr Vec3 cross(Vec3 a, Vec3 b) {

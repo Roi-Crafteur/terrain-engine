@@ -1,15 +1,17 @@
 #include "view_modes.hpp"
 
-#include <GLFW/glfw3.h>
-
 namespace viewer {
 
 bool streamed(ViewMode mode) {
     return mode == ViewMode::Streaming || mode == ViewMode::Persistent;
 }
 
+bool underground(ViewMode mode) {
+    return mode == ViewMode::Caves || mode == ViewMode::CaveRegions;
+}
+
 bool fastMoving(ViewMode mode) {
-    return streamed(mode) || mode == ViewMode::Caves;
+    return streamed(mode) || underground(mode);
 }
 
 const char* modeName(ViewMode mode) {
@@ -23,8 +25,11 @@ const char* modeName(ViewMode mode) {
     case ViewMode::Caves:
         return "caves, lakes and speleothems (fly underground: the rock is seen through, the caves "
                "are not; Shift: fast)";
+    case ViewMode::CaveRegions:
+        return "cave regions (districts tint the rock, flora in the lush ones; fly underground "
+               "as in 4; Shift: fast)";
     case ViewMode::Eroded:
-        return "eroded region with rivers (1 unit = 50 m)";
+        return "eroded region with rivers (1 unit = 50 m; Shift+5)";
     case ViewMode::Cliffs:
         return "cliffs region with rivers (1 unit = 12.5 m)";
     case ViewMode::Sculpted:
@@ -45,6 +50,8 @@ Place placeOf(ViewMode mode) {
         return Place::Summit;
     case ViewMode::Caves:
         return Place::CaveWorld;
+    case ViewMode::CaveRegions:
+        return Place::CaveRegionWorld;
     case ViewMode::Eroded:
         return Place::ErodedModel;
     case ViewMode::Cliffs:
@@ -59,38 +66,14 @@ Place placeOf(ViewMode mode) {
     }
 }
 
-ViewMode readViewMode(GLFWwindow* window, ViewMode current) {
-    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS) {
-        return ViewMode::Cube;
-    }
-    if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS) {
-        return ViewMode::Sphere;
-    }
-    if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS) {
-        return ViewMode::Heightmap;
-    }
-    if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) {
-        return ViewMode::Caves;
-    }
-    if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) {
-        return ViewMode::Eroded;
-    }
-    if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) {
-        return ViewMode::Cliffs;
-    }
-    if (glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS) {
-        return ViewMode::Sculpted;
-    }
-    if (glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS) {
-        return ViewMode::Streaming;
-    }
-    if (glfwGetKey(window, GLFW_KEY_9) == GLFW_PRESS) {
-        return ViewMode::Persistent;
-    }
-    if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS) {
-        return ViewMode::Heightfield;
-    }
-    return current;
+bool fivePressed(ModeKeys& keys, bool fiveDown) {
+    const bool pressed = fiveDown && !keys.fiveDown;
+    keys.fiveDown = fiveDown;
+    return pressed;
+}
+
+ViewMode fiveMode(bool shift) {
+    return shift ? ViewMode::Eroded : ViewMode::CaveRegions;
 }
 
 } // namespace viewer
