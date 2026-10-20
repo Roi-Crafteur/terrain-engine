@@ -1,6 +1,9 @@
 #pragma once
 
 #include "terrain/chunk_coord.hpp"
+#include "terrain/generation/cave_flora.hpp"
+#include "terrain/generation/cave_materials.hpp"
+#include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/vegetation.hpp"
 #include "terrain/meshing/mesh.hpp"
 #include "terrain/streaming/lod.hpp"
@@ -33,6 +36,15 @@ struct TileData {
     std::vector<Plant> plants; // world positions
     float minHeight = 0.0f;    // range of the ground of the tile, meters
     float maxHeight = 0.0f;
+    // With caves only, empty otherwise: the material of each vertex of mesh, the lakes of the
+    // caves (relative to the same origin) with the material of each of their vertices (water or
+    // ice), and the speleothems (world positions, LOD 0 tiles only); with cave regions only, the
+    // cave flora of their lush regions (world positions, LOD 0 tiles only).
+    std::vector<CaveMaterial> materials;
+    Mesh water;
+    std::vector<CaveMaterial> waterMaterials;
+    std::vector<Speleothem> speleothems;
+    std::vector<CaveFlora> caveFlora;
 
     friend bool operator==(const TileData&, const TileData&) = default;
 };

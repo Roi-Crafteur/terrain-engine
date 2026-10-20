@@ -33,4 +33,15 @@ struct FbmParams {
 // 0 at or below edge0, 1 at or above edge1, Hermite curve in between. Requires edge0 < edge1.
 [[nodiscard]] float smoothstep(float edge0, float edge1, float x);
 
+// 3D gradient (Perlin) noise, one lattice cell per unit of x, y and z. Each lattice point picks
+// one of 16 unit gradients (the 12 edge directions of the cube, 4 of them repeated) hashed from
+// (cell, seed) without a permutation table. Range [-1, 1], exactly 0 on integer lattice points,
+// C2 continuous (quintic fade).
+[[nodiscard]] float gradient3D(double x, double y, double z, std::uint64_t seed);
+
+// Fractal Brownian motion of gradient3D: octaves with their own seeds, rotated to hide the
+// lattice. Normalized by the total amplitude: range [-1, 1].
+[[nodiscard]] float fbm3D(double x, double y, double z, std::uint64_t seed,
+                          const FbmParams& params);
+
 } // namespace terrain::noise

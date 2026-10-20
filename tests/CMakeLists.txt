@@ -17,6 +17,8 @@ endfunction()
 
 terrain_add_test(test_chunk_coord terrain_core)
 terrain_add_test(test_camera_math terrain_viewer_camera)
+terrain_add_test(test_cave_look terrain_viewer_cave_look)
+terrain_add_test(test_view_modes terrain_viewer_modes)
 terrain_add_test(marching_cubes_test terrain_core)
 terrain_add_test(noise_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
@@ -57,6 +59,30 @@ terrain_add_test(stream_manager_test terrain_core)
 terrain_add_test(modifications_test terrain_core)
 terrain_add_test(terrain_tiles_test terrain_core)
 terrain_add_test(persistence_test terrain_core)
+terrain_add_test(caves_test terrain_core)
+terrain_add_test(cave_entrances_test terrain_core)
+terrain_add_test(cave_region_test terrain_core)
+terrain_add_test(cave_tiles_test terrain_core)
+terrain_add_test(cave_seams_test terrain_core)
+terrain_add_test(cave_districts_carving_test terrain_core)
+terrain_add_test(cave_districts_borders_test terrain_core)
+terrain_add_test(cave_districts_water_test terrain_core)
+terrain_add_test(cave_districts_lakes_test terrain_core)
+terrain_add_test(cave_districts_speleothems_test terrain_core)
+terrain_add_test(cave_districts_tiles_test terrain_core)
+terrain_add_test(cave_districts_seams_test terrain_core)
+terrain_add_test(caves_png_test terrain_core)
+terrain_add_test(caves_png_lakes_test terrain_core)
+terrain_add_test(cave_regions_png_test terrain_core)
+terrain_add_test(aquifers_test terrain_core)
+terrain_add_test(speleothems_test terrain_core)
+terrain_add_test(cave_materials_test terrain_core)
+terrain_add_test(cave_materials_regions_test terrain_core)
+terrain_add_test(cave_golden_test terrain_core)
+terrain_add_test(cave_districts_test terrain_core)
+terrain_add_test(cave_district_weights_test terrain_core)
+terrain_add_test(cave_districts_neutral_test terrain_core)
+terrain_add_test(cave_flora_test terrain_core)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
@@ -133,3 +159,38 @@ add_test(NAME export_voronoi_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_voronoi>
             -DOUT=${CMAKE_BINARY_DIR}/voronoi_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_voronoi_bad_args.cmake)
+
+# Smoke test: writes cave_slice.png (1024 px wide vertical section through an entrance, with its
+# lakes, wall materials and speleothems) and cave_preview.png (224 x 224 px, 20 m/px, around the
+# cliff site of the default world, with its lakes) into <build-dir>/caves for a visual check. The
+# summary is printed only once the images are written.
+string(CONCAT caves_summary
+    "224 x 224 px, 4\\.5 km wide, [0-9]+ entrances, caves under [0-9.]+% of the map, "
+    "lakes under [0-9.]+%; slice 1024 x [0-9]+ px at [0-9.]+ m/px with [0-9]+ speleothems")
+add_test(NAME export_caves_smoke
+    COMMAND terrain_export_caves ${CMAKE_BINARY_DIR}/caves)
+set_tests_properties(export_caves_smoke PROPERTIES PASS_REGULAR_EXPRESSION "${caves_summary}")
+add_dependencies(check terrain_export_caves)
+
+# Smoke test: writes cave_regions.png (512 x 512 px, 100 m/px: 51.2 km of the streamed world
+# around the origin, the blended district types with their borders and sites) and
+# cave_regions_preview.png (224 x 224 px, 20 m/px, a region with districts around the nearest
+# meeting of two types, with its caves, lakes and entrances) into <build-dir>/cave_regions for a
+# visual check. The summary is printed only once the images are written.
+string(CONCAT cave_regions_summary
+    "cave regions 512 x 512 px, 51\\.2 km wide, [0-9]+ types over the ground where caves can "
+    "exist: tunnels [0-9.]+%.*; preview 224 x 224 px, 4\\.5 km wide at \\(-?[0-9]+, -?[0-9]+\\), "
+    "types [a-z]+ [0-9]+%.*, caves under [0-9.]+% of the map, lakes under [0-9.]+%, "
+    "[0-9]+ entrances")
+add_test(NAME export_cave_regions_smoke
+    COMMAND terrain_export_cave_regions ${CMAKE_BINARY_DIR}/cave_regions)
+set_tests_properties(export_cave_regions_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "${cave_regions_summary}")
+add_dependencies(check terrain_export_cave_regions)
+
+# Invalid arguments of terrain_export_cave_regions (size 1, a negative meters-per-pixel, ...)
+# are rejected with an error message, before anything is written.
+add_test(NAME export_cave_regions_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_cave_regions>
+            -DOUT=${CMAKE_BINARY_DIR}/cave_regions_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_cave_regions_bad_args.cmake)

@@ -56,8 +56,6 @@ void main() {
 }
 )";
 
-constexpr float kLowAltitude = 0.0f; // green at sea level, gray from kHighAltitude
-constexpr float kHighAltitude = 2500.0f;
 constexpr float kLodTint = 0.35f;
 
 // Tiles uploaded per frame, worker threads at most.
@@ -70,10 +68,8 @@ constexpr float kReachMeters = 200.0f;
 constexpr float kAimStep = 0.25f;
 constexpr double kUprootRadius = 3.0;
 
-// The sea is a square of side 2 kSeaHalfSize meters just below sea level, centered on the
-// camera again once it moved kSeaRecenter meters away.
+// The sea is a square of side 2 kSeaHalfSize meters, kSeaDrop meters under sea level.
 constexpr float kSeaHalfSize = 4000.0f;
-constexpr float kSeaRecenter = 1000.0f;
 constexpr float kSeaDrop = 0.05f;
 constexpr Vec3 kSeaColor{0.10f, 0.30f, 0.60f};
 
@@ -138,17 +134,6 @@ terrain::Mesh worldMesh(const terrain::TileData& data) {
     return mesh;
 }
 
-std::vector<ColoredVertex> seaQuad(Vec3 center) {
-    const float y = terrain::kSeaLevel - kSeaDrop;
-    const float h = kSeaHalfSize;
-    std::vector<ColoredVertex> sea;
-    appendQuad(sea,
-               {Vec3{center.x - h, y, center.z - h}, Vec3{center.x + h, y, center.z - h},
-                Vec3{center.x + h, y, center.z + h}, Vec3{center.x - h, y, center.z + h}},
-               kSeaColor);
-    return sea;
-}
-
 // A small cross at the center of the screen, in normalized device coordinates.
 std::vector<ColoredVertex> crosshairQuads() {
     constexpr Vec3 kWhite{1.0f, 1.0f, 1.0f};
@@ -170,21 +155,6 @@ terrain::StreamParams streamParams() {
     return params;
 }
 
-// South of a summit, kSpawnClearance meters above the highest ground within kSpawnArea meters,
-// so that nothing near blocks the view of the LOD rings.
-Vec3 spawnPoint(const terrain::Heightfield& field) {
-    const GroundPoint summit = findSummit(field);
-    const double x = summit.x;
-    const double z = summit.z + kSpawnSetback;
-    float top = field.heightAt(x, z);
-    for (double dz = -kSpawnArea; dz <= kSpawnArea; dz += kSpawnProbe) {
-        for (double dx = -kSpawnArea; dx <= kSpawnArea; dx += kSpawnProbe) {
-            top = std::max(top, field.heightAt(x + dx, z + dz));
-        }
-    }
-    return {static_cast<float>(x), top + kSpawnClearance, static_cast<float>(z)};
-}
-
 // Nearest lattice point: the block containing p.
 terrain::BlockCoord latticePoint(Vec3 p) {
     const auto round = [](float v) { return static_cast<std::int32_t>(std::lround(v)); };
@@ -197,6 +167,64 @@ std::string describe(terrain::BlockCoord b) {
 
 } // namespace
 
+std::vector<ColoredVertex> seaQuad(Vec3 center) {
+    const float y = terrain::kSeaLevel - kSeaDrop;
+    const float h = kSeaHalfSize;
+    std::vector<ColoredVertex> sea;
+    appendQuad(sea,
+               {Vec3{center.x - h, y, center.z - h}, Vec3{center.x + h, y, center.z - h},
+                Vec3{center.x + h, y, center.z + h}, Vec3{center.x - h, y, center.z + h}},
+               kSeaColor);
+    return sea;
+}
+
+// South of a summit, kSpawnClearance meters above the highest ground within kSpawnArea meters,
+// so that nothing near blocks the view of the LOD rings.
+Vec3 streamedSpawn(const terrain::Heightfield& field) {
+    const GroundPoint summit = findSummit(field);
+    const double x = summit.x;
+    const double z = summit.z + kSpawnSetback;
+    float top = field.heightAt(x, z);
+    for (double dz = -kSpawnArea; dz <= kSpawnArea; dz += kSpawnProbe) {
+        for (double dx = -kSpawnArea; dx <= kSpawnArea; dx += kSpawnProbe) {
+            top = std::max(top, field.heightAt(x + dx, z + dz));
+        }
+    }
+    return {static_cast<float>(x), top + kSpawnClearance, static_cast<float>(z)};
+}
+
+void applyChanges(TileViews& views, const terrain::StreamManager& manager,
+                  const terrain::StreamChanges& changes) {
+    for (const terrain::TileKey& key : changes.unloaded) {
+        views.erase(key);
+    }
+    for (const terrain::TileKey& key : changes.loaded) {
+        views[key] = std::make_unique<TileView>(*manager.find(key));
+    }
+}
+
+std::string tileCountStatus(const std::array<int, terrain::kLodCount>& counts,
+                            std::size_t pending) {
+    return std::format("tiles LOD0 {} LOD1 {} LOD2 {} LOD3 {}, {} pending", counts[0], counts[1],
+                       counts[2], counts[3], pending);
+}
+
+std::string tileStatus(const TileViews& views, const terrain::StreamManager& manager) {
+    std::array<int, terrain::kLodCount> counts{};
+    for (const auto& [key, view] : views) {
+        ++counts[static_cast<std::size_t>(view->lod)];
+    }
+    return tileCountStatus(counts, manager.pendingCount());
+}
+
+std::vector<ColoredVertex> plantMarkers(const std::vector<terrain::Plant>& plants) {
+    std::vector<ColoredVertex> markers;
+    for (const terrain::Plant& plant : plants) {
+        appendPlant(markers, plant);
+    }
+    return markers;
+}
+
 // What the camera aims at: the first lattice point in rock along the ray, the lattice point in
 // the air just before it, and the point of the ray where it entered the rock.
 struct StreamedWorldView::Aim {
@@ -208,11 +236,7 @@ struct StreamedWorldView::Aim {
 TileView::TileView(const terrain::TileData& data)
     : terrain(worldMesh(data)), lod(data.request.key.lod) {
     if (!data.plants.empty()) {
-        std::vector<ColoredVertex> markers;
-        for (const terrain::Plant& plant : data.plants) {
-            appendPlant(markers, plant);
-        }
-        plants.emplace(markers);
+        plants.emplace(plantMarkers(data.plants));
     }
 }
 
@@ -220,7 +244,7 @@ StreamedWorldView::StreamedWorldView()
     : tiles_(terrain::kDefaultWorldSeed), manager_(terrain::tileGenerator(tiles_), streamParams()),
       terrainShader_(kVertexShader, kFragmentShader),
       crosshair_(std::make_unique<ColoredMesh>(crosshairQuads())),
-      spawn_(spawnPoint(tiles_.heightfield())) {
+      spawn_(streamedSpawn(tiles_.heightfield())) {
     std::fprintf(stderr, "Streaming the world around the camera (seed %llu, %d worker threads)\n",
                  static_cast<unsigned long long>(tiles_.seed()), manager_.params().workerThreads);
 }
@@ -229,12 +253,7 @@ StreamedWorldView::~StreamedWorldView() = default;
 
 void StreamedWorldView::update(Vec3 camera) {
     const terrain::StreamChanges changes = manager_.update(camera.x, camera.z);
-    for (const terrain::TileKey& key : changes.unloaded) {
-        views_.erase(key);
-    }
-    for (const terrain::TileKey& key : changes.loaded) {
-        views_[key] = std::make_unique<TileView>(*manager_.find(key));
-    }
+    applyChanges(views_, manager_, changes);
     const float dx = camera.x - seaCenter_.x;
     const float dz = camera.z - seaCenter_.z;
     if (!sea_ || std::hypot(dx, dz) > kSeaRecenter) {
@@ -247,7 +266,7 @@ void StreamedWorldView::draw(const Mat4& viewProjection, const ShaderProgram& co
                              bool tintLods, bool crosshair) const {
     terrainShader_.use();
     terrainShader_.setMat4("uViewProjection", viewProjection);
-    terrainShader_.setVec2("uAltitudeRange", kLowAltitude, kHighAltitude);
+    terrainShader_.setVec2("uAltitudeRange", kStreamedLowAltitude, kStreamedHighAltitude);
     for (const auto& [key, view] : views_) {
         terrainShader_.setVec2("uLodTint", static_cast<float>(view->lod),
                                tintLods ? kLodTint : 0.0f);
@@ -315,13 +334,7 @@ void StreamedWorldView::reloadIfSaved() {
 }
 
 std::string StreamedWorldView::status(bool editing) const {
-    std::array<int, terrain::kLodCount> counts{};
-    for (const auto& [key, view] : views_) {
-        ++counts[static_cast<std::size_t>(view->lod)];
-    }
-    std::string text = std::format("tiles LOD0 {} LOD1 {} LOD2 {} LOD3 {}, {} pending",
-                                   counts[0], counts[1], counts[2], counts[3],
-                                   manager_.pendingCount());
+    std::string text = tileStatus(views_, manager_);
     if (editing) {
         const terrain::ModificationStore edits = tiles_.modifications();
         text += std::format(" | {} blocks, {} plants edited", edits.blockCount(),

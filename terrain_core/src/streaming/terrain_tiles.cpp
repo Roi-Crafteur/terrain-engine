@@ -1,14 +1,19 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include "cave_tile.hpp"
+#include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/terrain_surface.hpp"
 #include "terrain/meshing/density_grid.hpp"
 #include "terrain/meshing/marching_cubes.hpp"
+#include "terrain/streaming/cave_tiles.hpp"
+#include "tile_lattice.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <utility>
 
@@ -16,82 +21,23 @@ namespace terrain {
 
 namespace {
 
+using tile::TileColumns;
+using tile::TileLattice;
+
 static_assert(tileChunks(kPlantLod) == 1, "plant tiles must cover a single chunk");
 
-// Integer lattice of a tile, in meters: sample (i, j, k) of vertical level n lies at
-// (x0 + i * spacing, n * levelHeight + j * spacing, z0 + k * spacing).
-struct TileLattice {
-    int x0 = 0;
-    int z0 = 0;
-    int spacing = 1;
-    int levelHeight = kChunkCells; // also the side of the tile
-};
-
-TileLattice latticeOf(const TileKey& key) {
-    const auto spacing = static_cast<int>(tileCellMeters(key.lod));
-    const int side = spacing * kChunkCells;
-    return {key.origin.x * kChunkCells, key.origin.z * kChunkCells, spacing, side};
-}
-
-// Ground heights of the kGridSamples x kGridSamples columns of a tile.
-struct TileColumns {
-    std::vector<float> heights; // x varies fastest
-    float minHeight = 0.0f;
-    float maxHeight = 0.0f;
-
-    [[nodiscard]] float at(int i, int k) const {
-        return heights[static_cast<std::size_t>(k * kGridSamples + i)];
-    }
-};
-
-TileColumns sampleColumns(const Heightfield& field, const TileLattice& lattice) {
-    TileColumns columns;
-    columns.heights.reserve(static_cast<std::size_t>(kGridSamples * kGridSamples));
-    for (int k = 0; k < kGridSamples; ++k) {
-        for (int i = 0; i < kGridSamples; ++i) {
-            columns.heights.push_back(field.heightAt(lattice.x0 + i * lattice.spacing,
-                                                     lattice.z0 + k * lattice.spacing));
-        }
-    }
-    const auto [low, high] = std::minmax_element(columns.heights.begin(), columns.heights.end());
-    columns.minHeight = *low;
-    columns.maxHeight = *high;
-    return columns;
-}
-
-// Levels n whose samples [n * height, (n + 1) * height] meet [low, high].
-void addLevels(std::set<int>& levels, double low, double high, int height) {
-    const auto first = static_cast<int>(std::ceil(low / height)) - 1;
-    const auto last = static_cast<int>(std::floor(high / height));
-    for (int level = first; level <= last; ++level) {
-        levels.insert(level);
-    }
-}
-
-// Levels holding the ground of the columns or a lattice point an edited block reaches.
-std::vector<int> levelsToMesh(const TileColumns& columns, const BlockEdits& edits, int height) {
+// Levels holding the ground of the columns, the caves down to caveDepth below it, or a
+// lattice point an edited block reaches.
+std::vector<int> levelsToMesh(const TileColumns& columns, const BlockEdits& edits, int height,
+                              double caveDepth) {
     std::set<int> levels;
-    addLevels(levels, columns.minHeight, columns.maxHeight, height);
+    tile::addLevels(levels, columns.minHeight - caveDepth, columns.maxHeight, height);
     for (const auto* list : {&edits.added, &edits.removed}) {
         for (const BlockCoord& block : *list) {
-            addLevels(levels, block.y - kBlockReach, block.y + kBlockReach, height);
+            tile::addLevels(levels, block.y - kBlockReach, block.y + kBlockReach, height);
         }
     }
     return {levels.begin(), levels.end()};
-}
-
-DensityGrid levelDensity(const TileColumns& columns, const TileLattice& lattice, int originY) {
-    DensityGrid grid(0.0f);
-    for (int k = 0; k < kGridSamples; ++k) {
-        for (int j = 0; j < kGridSamples; ++j) {
-            const double sampleY = originY + j * lattice.spacing;
-            for (int i = 0; i < kGridSamples; ++i) {
-                // Same expression as TerrainTiles::densityAt, so the values are identical.
-                grid.set(i, j, k, static_cast<float>(sampleY - columns.at(i, k)));
-            }
-        }
-    }
-    return grid;
 }
 
 // Indices of the samples first + index * spacing within kBlockReach of center.
@@ -128,6 +74,20 @@ void applyBlocks(DensityGrid& grid, const TileLattice& lattice, int originY,
     for (const BlockCoord& block : edits.removed) {
         applyBlock(grid, lattice, originY, block, BlockEdit::Removed);
     }
+}
+
+// True if the grid holds solid and air samples: otherwise Marching Cubes gives no triangle.
+bool crossesSurface(const DensityGrid& grid) {
+    bool solid = false;
+    bool air = false;
+    for (int k = 0; k < kGridSamples; ++k) {
+        for (int j = 0; j < kGridSamples; ++j) {
+            for (int i = 0; i < kGridSamples; ++i) {
+                (grid.at(i, j, k) < kIsoLevel ? solid : air) = true;
+            }
+        }
+    }
+    return solid && air;
 }
 
 // Appends a level meshed in grid units, scaled to meters and lifted by offsetY.
@@ -176,15 +136,33 @@ void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& c
 } // namespace
 
 TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield,
-                           const EcologyParams& ecology)
-    : seed_(seed), field_(seed, heightfield), ecology_(seed, ecology) {}
+                           const EcologyParams& ecology, const std::optional<CaveParams>& caves)
+    : seed_(seed), field_(seed, heightfield), ecology_(seed, ecology) {
+    if (caves) {
+        caves_.emplace(seed, *caves);
+        caveEnvironment_.emplace(field_, ecology_.climate(), ecology_.params().biomes);
+        speleothems_.emplace(seed, caves->speleothems);
+        if (caves->districts) {
+            flora_.emplace(seed, caves->districts->flora);
+        }
+        caveGround_.height = [this](double x, double z) { return field_.heightAt(x, z); };
+        caveGround_.environment = [this](double x, double z) {
+            return caveEnvironment_->at(x, z);
+        };
+    }
+}
 
 TileData TerrainTiles::generate(const TileRequest& request) const {
-    const TileLattice lattice = latticeOf(request.key);
-    const TileColumns columns = sampleColumns(field_, lattice);
+    const TileLattice lattice = tile::latticeOf(request.key);
+    const TileColumns columns = tile::sampleColumns(field_, lattice);
+    // The far tiles carve nothing: they are those of the world without caves.
+    const bool carved = caves_ && caveDetailForLod(request.key.lod).components != 0;
     std::vector<Plant> plants;
     if (request.key.lod == kPlantLod) {
         plants = placeChunkPlants(field_, ecology_, lattice.x0, lattice.z0);
+        if (carved) {
+            tile::dropPlantsOverEntrances(*caves_, caveGround_, lattice, plants);
+        }
     }
     BlockEdits edits;
     {
@@ -205,22 +183,48 @@ TileData TerrainTiles::generate(const TileRequest& request) const {
     data.minHeight = columns.minHeight;
     data.maxHeight = columns.maxHeight;
     data.plants = std::move(plants);
-    const std::vector<int> levels = levelsToMesh(columns, edits, lattice.levelHeight);
+    const double caveDepth = carved ? tile::caveDepthReach(*caves_, lattice) : 0.0;
+    const std::vector<int> levels =
+        levelsToMesh(columns, edits, lattice.levelHeight, caveDepth);
     const int bottom = levels.front() * lattice.levelHeight; // the ground always has a level
     data.originY = bottom;
+    std::optional<tile::CaveTile> caveTile;
+    if (carved) {
+        caveTile.emplace(*caves_, caveGround_, request, lattice, columns, levels);
+    }
+    const auto scale = static_cast<float>(lattice.spacing);
     for (const int level : levels) {
         const int originY = level * lattice.levelHeight;
-        DensityGrid grid = levelDensity(columns, lattice, originY);
+        DensityGrid grid = caveTile ? caveTile->levelDensity(originY)
+                                    : tile::levelDensity(columns, lattice, originY);
         applyBlocks(grid, lattice, originY, edits);
         stitchSeams(grid, request.seams);
-        appendLevel(data.mesh, marchingCubes(grid), static_cast<float>(lattice.spacing),
-                    static_cast<float>(originY - bottom));
+        const auto offsetY = static_cast<float>(originY - bottom);
+        if (caveTile && caveTile->holdsWater()) {
+            const DensityGrid water = caveTile->waterDensity(grid, originY);
+            if (crossesSurface(water)) {
+                appendLevel(data.water, marchingCubes(water), scale, offsetY);
+            }
+        }
+        if (caveTile && !crossesSurface(grid)) {
+            continue; // a level of rock under the ground, between the caves
+        }
+        appendLevel(data.mesh, marchingCubes(grid), scale, offsetY);
+    }
+    if (caveTile) {
+        const bool objects = request.key.lod == kPlantLod;
+        caveTile->decorate(data, *caveEnvironment_, caves_->params().materials,
+                           objects ? &*speleothems_ : nullptr,
+                           objects && flora_ ? &*flora_ : nullptr);
     }
     return data;
 }
 
 float TerrainTiles::densityAt(int x, int y, int z) const {
-    const auto density = static_cast<float>(static_cast<double>(y) - field_.heightAt(x, z));
+    auto density = static_cast<float>(static_cast<double>(y) - field_.heightAt(x, z));
+    if (caves_) {
+        density = caveDensityAt(*caves_, caveGround_, caveDetailForLod(0), x, y, z);
+    }
     const std::shared_lock lock(mutex_);
     return modifications_.editedDensity(density, x, y, z);
 }

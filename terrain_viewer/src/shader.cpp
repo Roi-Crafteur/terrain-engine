@@ -72,4 +72,8 @@ void ShaderProgram::setVec2(const char* name, float x, float y) const {
     glUniform2f(glGetUniformLocation(program_, name), x, y);
 }
 
+void ShaderProgram::setVec3(const char* name, Vec3 value) const {
+    glUniform3f(glGetUniformLocation(program_, name), value.x, value.y, value.z);
+}
+
 } // namespace viewer

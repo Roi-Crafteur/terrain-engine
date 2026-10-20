@@ -1,8 +1,17 @@
 # Pure generation library: must never depend on OpenGL, GLFW, glad or a window.
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
+    src/generation/aquifers.cpp
     src/generation/arches.cpp
     src/generation/biome.cpp
+    src/generation/cave_entrances.cpp
+    src/generation/cave_flora.cpp
+    src/generation/cave_materials.cpp
+    src/generation/cave_noise.cpp
+    src/generation/cave_regions.cpp
+    src/generation/cave_region.cpp
+    src/generation/cave_sampler.cpp
+    src/generation/caves.cpp
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
     src/generation/climate.cpp
@@ -16,12 +25,16 @@ add_library(terrain_core STATIC
     src/generation/overhangs.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
+    src/generation/speleothems.cpp
     src/generation/surface_material.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
     src/generation/voronoi.cpp
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
+    src/io/cave_regions_png.cpp
+    src/io/caves_png.cpp
+    src/io/caves_png_layers.cpp
     src/io/cliffs_png.cpp
     src/io/ecology_png.cpp
     src/io/eroded_png.cpp
@@ -30,6 +43,7 @@ add_library(terrain_core STATIC
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
     src/storage/modifications.cpp
+    src/streaming/cave_tiles.cpp
     src/streaming/lod.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
@@ -157,3 +171,15 @@ target_link_libraries(terrain_export_arches PRIVATE terrain_core terrain_warning
 # terrain_export_biomes <output-dir> [seed] [m/px] [size] [center-x] [center-z]
 add_executable(terrain_export_biomes tools/export_biomes.cpp)
 target_link_libraries(terrain_export_biomes PRIVATE terrain_core terrain_warnings)
+
+# Cave PNG export, on an eroded region with its rivers around the cliff site (224 px at 20 m/px
+# by default): cave_slice.png (vertical section through an entrance) and cave_preview.png (map
+# of the caves, entrances and rivers): terrain_export_caves <output-dir> [seed] [m/px] [size]
+add_executable(terrain_export_caves tools/export_caves.cpp)
+target_link_libraries(terrain_export_caves PRIVATE terrain_core terrain_warnings)
+
+# Cave regions PNG export: cave_regions.png (map of the district types of the streamed world,
+# 512 px at 100 m/px) and cave_regions_preview.png (a CaveRegion with its districts around a
+# meeting of two types): terrain_export_cave_regions <output-dir> [seed] [m/px] [size] [cx] [cz]
+add_executable(terrain_export_cave_regions tools/export_cave_regions.cpp)
+target_link_libraries(terrain_export_cave_regions PRIVATE terrain_core terrain_warnings)
