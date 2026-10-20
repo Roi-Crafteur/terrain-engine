@@ -2,10 +2,9 @@
 // as they are without districts. Compared field against field, with the same seed: the voids,
 // carved densities and water at thousands of points for the details of LOD 0, 1 and 2, the aquifer
 // cells, the entrances, the speleothems and the streamed tiles (LOD 0 to 2, with seams), whose cave
-// flora stays empty. The comparison is bit for bit wherever a single district weighs; in the
-// blends between districts the profile of identical profiles is off by one unit in the last place
-// (see TODO(8C-1) below), so the results there are only checked to be within 1e-3 of each other.
-// A control with the default profiles shows that the comparison does see the districts.
+// flora stays empty. The comparison is bit for bit, over a single district as in the blends
+// between districts. A control with the default profiles shows that the comparison does see the
+// districts.
 #include "terrain/generation/aquifers.hpp"
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/caves.hpp"
@@ -43,9 +42,6 @@ using terrain::CaveSampler;
 using terrain::ChunkCoord;
 using terrain::TerrainTiles;
 using terrain::TileData;
-
-// Largest difference accepted in the blends between districts (see the TODO below).
-constexpr double kBlendTolerance = 1.0e-3;
 
 CaveParams neutralParams() {
     CaveDistrictParams districts;
@@ -211,14 +207,7 @@ void testPointsMatch() {
                 stats.blendWorst, stats.air, stats.water);
     TEST_CHECK(stats.single > 5000 && stats.blended > 5000);
     TEST_CHECK(stats.air > 1000 && stats.water > 100);
-    TEST_CHECK(stats.singleDiffering == 0);
-    // TODO(8C-1): in the blends the profile of identical profiles is not exactly the neutral one:
-    // CaveDistricts::profile sums normalized float weights that do not add up to exactly 1 (two
-    // districts weighing 0.962905109f and 0.0370948166f add up to 0.99999992549 in double), so
-    // the scales come out as 0.99999994 instead of 1, which moves results by about 1e-6. The
-    // check should be blendDiffering == 0 once the profile of identical profiles is returned
-    // unchanged (for instance as the first profile plus the weighted differences to it).
-    TEST_CHECK(stats.blendWorst <= kBlendTolerance);
+    TEST_CHECK(stats.singleDiffering == 0 && stats.blendDiffering == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -297,37 +286,15 @@ void testSpeleothemsMatch() {
 // ---------------------------------------------------------------------------
 // Tiles
 
-bool meshNear(const terrain::Mesh& a, const terrain::Mesh& b, float tolerance) {
-    const auto within = [tolerance](const terrain::Vec3f& p, const terrain::Vec3f& q) {
-        return std::abs(p.x - q.x) <= tolerance && std::abs(p.y - q.y) <= tolerance &&
-               std::abs(p.z - q.z) <= tolerance;
-    };
-    return a.vertices.size() == b.vertices.size() && a.normals.size() == b.normals.size() &&
-           a.indices == b.indices &&
-           std::equal(a.vertices.begin(), a.vertices.end(), b.vertices.begin(), within) &&
-           std::equal(a.normals.begin(), a.normals.end(), b.normals.begin(), within);
-}
-
-// Same tile up to the last bits of the positions: the topology, materials and objects are the
-// same and the meshes are within the tolerance.
-bool tileNear(const TileData& a, const TileData& b, float tolerance) {
-    return a.request == b.request && a.originX == b.originX && a.originY == b.originY &&
-           a.originZ == b.originZ && a.plants == b.plants && a.minHeight == b.minHeight &&
-           a.maxHeight == b.maxHeight && a.materials == b.materials &&
-           a.waterMaterials == b.waterMaterials && a.speleothems.size() == b.speleothems.size() &&
-           a.caveFlora == b.caveFlora && meshNear(a.mesh, b.mesh, tolerance) &&
-           meshNear(a.water, b.water, tolerance);
-}
-
 struct TileStats {
     std::size_t tiles = 0;
     std::size_t bitForBit = 0; // tiles over a single district, identical
-    std::size_t blended = 0;   // tiles over a blend, within the tolerance
+    std::size_t blended = 0;   // tiles over a blend, identical too
     std::size_t withSpeleothems = 0;
     std::size_t withWater = 0;
     std::size_t emptyFlora = 0;
-    bool strict = true;
-    bool close = true;
+    bool strict = true; // over a single district
+    bool close = true;  // over a blend
 };
 
 // Compares the tile of a chunk at a LOD (with seams) between the worlds without and with neutral
@@ -350,8 +317,7 @@ void compareTile(const TerrainTiles& a, const TerrainTiles& b, AquiferCache& cac
         stats.strict = stats.strict && expected == actual;
     } else {
         ++stats.blended;
-        // TODO(8C-1): bit for bit once the profile of identical profiles is exact (see above).
-        stats.close = stats.close && tileNear(expected, actual, 1.0e-3f);
+        stats.close = stats.close && expected == actual;
     }
 }
 
@@ -381,7 +347,7 @@ void testTilesMatch() {
         compareTile(a, b, cache, lake->chunk, 0, 0, stats);
         compareTile(a, b, cache, lake->chunk, 1, 0, stats);
     }
-    std::printf("tiles: %zu, %zu over a single district (identical), %zu over blends (near); %zu "
+    std::printf("tiles: %zu, %zu over a single district, %zu over blends, all identical; %zu "
                 "with speleothems, %zu with water, %zu without cave flora\n",
                 stats.tiles, stats.bitForBit, stats.blended, stats.withSpeleothems, stats.withWater,
                 stats.emptyFlora);

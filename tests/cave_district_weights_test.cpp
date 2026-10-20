@@ -418,12 +418,10 @@ void testBlendOfEqualProfiles() {
                     "%.2g\n",
                     blended, exact, worst);
         TEST_CHECK(blended > 2000);
-        // TODO(8C-1): the blend of identical profiles is off by one unit in the last place in 16
-        // to 25 % of the blended points (the normalized float weights do not add up to exactly 1:
-        // 0.962905109f + 0.0370948166f is 0.99999992549 in double, and a scale of 1 becomes
-        // 0.99999994). The check should be exact == blended, which makes the neutral districts
-        // leave the caves bit for bit as without districts (cave_districts_neutral_test.cpp).
-        TEST_CHECK(worst <= 4.0 * static_cast<double>(std::numeric_limits<float>::epsilon()));
+        // Exactly the profile, although the normalized float weights only sum to 1 up to
+        // rounding (0.962905109f + 0.0370948166f is 0.99999992549): this is what makes the
+        // neutral districts leave the caves bit for bit (cave_districts_neutral_test.cpp).
+        TEST_CHECK(exact == blended && worst == 0.0);
     }
 }
 

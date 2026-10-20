@@ -139,7 +139,7 @@ public:
     [[nodiscard]] DistrictWeights weights(
         double x, double z, const std::function<const CaveDistrict&(int, int)>& districtAt) const;
     // Profile at (x, z): the profiles of the weights, blended. Exactly the profile of the type
-    // where a single district weighs.
+    // where a single district weighs, or where every district weighing has the same profile.
     [[nodiscard]] CaveProfile profile(const DistrictWeights& weights) const;
 
     [[nodiscard]] const CaveDistrictParams& params() const { return params_; }

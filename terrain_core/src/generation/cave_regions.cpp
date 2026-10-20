@@ -215,13 +215,17 @@ CaveProfile CaveDistricts::profile(const DistrictWeights& weights) const {
     if (weights.count == 1) {
         return profileOf(weights.districts[0]);
     }
+    // The first profile plus the weighted differences to it: the float weights only sum to 1
+    // up to rounding, and this way identical profiles blend into exactly themselves.
+    const CaveProfile& first = profileOf(weights.districts[0]);
     CaveProfile result;
     for (std::size_t f = 0; f < CaveProfile::kFieldCount; ++f) {
-        double value = 0.0;
-        for (int i = 0; i < weights.count; ++i) {
+        const double base = first.values[f];
+        double value = base;
+        for (int i = 1; i < weights.count; ++i) {
             const auto slot = static_cast<std::size_t>(i);
             value += static_cast<double>(weights.weights[slot]) *
-                     profileOf(weights.districts[slot]).values[f];
+                     (profileOf(weights.districts[slot]).values[f] - base);
         }
         result.values[f] = static_cast<float>(value);
     }

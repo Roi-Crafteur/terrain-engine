@@ -144,8 +144,10 @@ const CaveDistrict& AquiferCache::district(int cellX, int cellZ) {
 }
 
 DistrictWeights AquiferCache::districtWeights(double x, double z) {
-    return field_->districts()->weights(
-        x, z, [this](int cellX, int cellZ) -> const CaveDistrict& { return district(cellX, cellZ); });
+    const auto districtAt = [this](int cellX, int cellZ) -> const CaveDistrict& {
+        return district(cellX, cellZ);
+    };
+    return field_->districts()->weights(x, z, districtAt);
 }
 
 CaveProfile AquiferCache::profileAt(double x, double z) {
