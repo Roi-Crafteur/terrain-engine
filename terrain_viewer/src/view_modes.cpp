@@ -21,7 +21,8 @@ const char* modeName(ViewMode mode) {
     case ViewMode::Heightmap:
         return "heightmap chunk";
     case ViewMode::Caves:
-        return "caves (fly underground: the rock is seen through, the caves are not; Shift: fast)";
+        return "caves, lakes and speleothems (fly underground: the rock is seen through, the caves "
+               "are not; Shift: fast)";
     case ViewMode::Eroded:
         return "eroded region with rivers (1 unit = 50 m)";
     case ViewMode::Cliffs:

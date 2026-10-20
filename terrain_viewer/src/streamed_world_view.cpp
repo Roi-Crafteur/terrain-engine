@@ -203,13 +203,26 @@ void applyChanges(TileViews& views, const terrain::StreamManager& manager,
     }
 }
 
+std::string tileCountStatus(const std::array<int, terrain::kLodCount>& counts,
+                            std::size_t pending) {
+    return std::format("tiles LOD0 {} LOD1 {} LOD2 {} LOD3 {}, {} pending", counts[0], counts[1],
+                       counts[2], counts[3], pending);
+}
+
 std::string tileStatus(const TileViews& views, const terrain::StreamManager& manager) {
     std::array<int, terrain::kLodCount> counts{};
     for (const auto& [key, view] : views) {
         ++counts[static_cast<std::size_t>(view->lod)];
     }
-    return std::format("tiles LOD0 {} LOD1 {} LOD2 {} LOD3 {}, {} pending", counts[0], counts[1],
-                       counts[2], counts[3], manager.pendingCount());
+    return tileCountStatus(counts, manager.pendingCount());
+}
+
+std::vector<ColoredVertex> plantMarkers(const std::vector<terrain::Plant>& plants) {
+    std::vector<ColoredVertex> markers;
+    for (const terrain::Plant& plant : plants) {
+        appendPlant(markers, plant);
+    }
+    return markers;
 }
 
 // What the camera aims at: the first lattice point in rock along the ray, the lattice point in
@@ -223,11 +236,7 @@ struct StreamedWorldView::Aim {
 TileView::TileView(const terrain::TileData& data)
     : terrain(worldMesh(data)), lod(data.request.key.lod) {
     if (!data.plants.empty()) {
-        std::vector<ColoredVertex> markers;
-        for (const terrain::Plant& plant : data.plants) {
-            appendPlant(markers, plant);
-        }
-        plants.emplace(markers);
+        plants.emplace(plantMarkers(data.plants));
     }
 }
 

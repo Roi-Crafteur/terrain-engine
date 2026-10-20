@@ -1,11 +1,13 @@
 #include "cave_world_view.hpp"
 
+#include "cave_look.hpp"
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/heightfield.hpp"
 
 #include <glad/gl.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <numbers>
@@ -16,18 +18,23 @@ namespace viewer {
 
 namespace {
 
-// Terrain lit as in the streamed world (sun, tint from green to gray by altitude), plus a
-// headlight at uEye along uViewDirection: a wide soft cone, fading with the distance, so that
-// the ceilings and walls of the caves are lit.
+// Meshes lit as the terrain of the streamed world (sun), plus a headlight at uEye along
+// uViewDirection: a wide soft cone, fading with the distance, so that the ceilings and walls of
+// the caves are lit. The albedo is the color of the vertex, its alpha the opacity of the mesh.
+// The faces seen from behind (lakes and speleothems are drawn without culling) are lit by their
+// other side.
 constexpr const char* kVertexShader = R"(#version 330 core
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec4 aColor;
 uniform mat4 uViewProjection;
 out vec3 vNormal;
 out vec3 vPosition;
+out vec4 vColor;
 void main() {
     vNormal = aNormal;
     vPosition = aPosition;
+    vColor = aColor;
     gl_Position = uViewProjection * vec4(aPosition, 1.0);
 }
 )";
@@ -35,7 +42,7 @@ void main() {
 constexpr const char* kFragmentShader = R"(#version 330 core
 in vec3 vNormal;
 in vec3 vPosition;
-uniform vec2 uAltitudeRange;
+in vec4 vColor;
 uniform vec3 uEye;
 uniform vec3 uViewDirection;
 out vec4 fragColor;
@@ -43,11 +50,11 @@ const float kHeadlightRange = 40.0;
 const float kHeadlightStrength = 0.9;
 void main() {
     vec3 normal = normalize(vNormal);
+    if (!gl_FrontFacing) {
+        normal = -normal;
+    }
     vec3 lightDirection = normalize(vec3(0.4, 1.0, 0.3));
     float diffuse = max(dot(normal, lightDirection), 0.0);
-    float altitude = clamp((vPosition.y - uAltitudeRange.x) / (uAltitudeRange.y - uAltitudeRange.x),
-                           0.0, 1.0);
-    vec3 albedo = mix(vec3(0.30, 0.55, 0.25), vec3(0.65, 0.60, 0.55), altitude);
 
     vec3 toEye = uEye - vPosition;
     float distance = max(length(toEye), 0.001);
@@ -55,7 +62,7 @@ void main() {
     float cone = smoothstep(0.2, 0.9, dot(-toEye / distance, normalize(uViewDirection)));
     float range = distance / kHeadlightRange;
     float headlight = kHeadlightStrength * facing * cone / (1.0 + range * range);
-    fragColor = vec4(albedo * (0.25 + 0.75 * diffuse + headlight), 1.0);
+    fragColor = vec4(vColor.rgb * (0.25 + 0.75 * diffuse + headlight), vColor.a);
 }
 )";
 
@@ -128,7 +135,51 @@ CaveSpawn spawnPoint(const terrain::TerrainTiles& tiles) {
             static_cast<float>(pitch * 180.0 / std::numbers::pi)};
 }
 
+MeshOrigin originOf(const terrain::TileData& data) {
+    return {data.originX, data.originY, data.originZ};
+}
+
+// Drops the views of the unloaded tiles, copies the loaded ones (or replaces them).
+void applyCaveChanges(CaveTileViews& views, const terrain::StreamManager& manager,
+                      const terrain::StreamChanges& changes) {
+    for (const terrain::TileKey& key : changes.unloaded) {
+        views.erase(key);
+    }
+    for (const terrain::TileKey& key : changes.loaded) {
+        views[key] = std::make_unique<CaveTileView>(*manager.find(key));
+    }
+}
+
+// Blends the lakes over what is drawn: no culling (seen from above and from below), no depth
+// writes (the lakes do not hide each other nor what is behind them). The depth test stays.
+void drawLakes(const CaveTileViews& views) {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    for (const auto& [key, view] : views) {
+        if (view->lakes) {
+            view->lakes->draw();
+        }
+    }
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+}
+
 } // namespace
+
+CaveTileView::CaveTileView(const terrain::TileData& data)
+    : rock(data.mesh, rockColors(data), originOf(data)), lod(data.request.key.lod) {
+    if (!data.water.indices.empty()) {
+        lakes.emplace(data.water, lakeColors(data), originOf(data), kLakeOpacity);
+    }
+    if (!data.speleothems.empty()) {
+        const SpeleothemMesh cones = speleothemMesh(data.speleothems);
+        speleothems.emplace(cones.mesh, cones.colors);
+    }
+    if (!data.plants.empty()) {
+        plants.emplace(plantMarkers(data.plants));
+    }
+}
 
 CaveWorldView::CaveWorldView()
     : tiles_(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{}, terrain::EcologyParams{},
@@ -145,7 +196,7 @@ CaveWorldView::~CaveWorldView() = default;
 
 void CaveWorldView::update(Vec3 camera) {
     const terrain::StreamChanges changes = manager_.update(camera.x, camera.z);
-    applyChanges(views_, manager_, changes);
+    applyCaveChanges(views_, manager_, changes);
     const float dx = camera.x - seaCenter_.x;
     const float dz = camera.z - seaCenter_.z;
     if (!sea_ || std::hypot(dx, dz) > kSeaRecenter) {
@@ -158,18 +209,22 @@ void CaveWorldView::draw(const Mat4& viewProjection, const ShaderProgram& colorS
                          Vec3 direction) const {
     terrainShader_.use();
     terrainShader_.setMat4("uViewProjection", viewProjection);
-    terrainShader_.setVec2("uAltitudeRange", kStreamedLowAltitude, kStreamedHighAltitude);
     terrainShader_.setVec3("uEye", eye);
     terrainShader_.setVec3("uViewDirection", normalize(direction));
-    // Triangles are counter-clockwise seen from the air: culling the back faces of the terrain
+    // Triangles are counter-clockwise seen from the air: culling the back faces of the rock
     // only, the near faces seen from inside the rock disappear.
     glFrontFace(GL_CCW);
     glCullFace(GL_BACK);
     glEnable(GL_CULL_FACE);
     for (const auto& [key, view] : views_) {
-        view->terrain.draw();
+        view->rock.draw();
     }
     glDisable(GL_CULL_FACE);
+    for (const auto& [key, view] : views_) {
+        if (view->speleothems) {
+            view->speleothems->draw();
+        }
+    }
     colorShader.use();
     colorShader.setMat4("uViewProjection", viewProjection);
     for (const auto& [key, view] : views_) {
@@ -180,10 +235,16 @@ void CaveWorldView::draw(const Mat4& viewProjection, const ShaderProgram& colorS
     if (sea_) {
         sea_->draw();
     }
+    terrainShader_.use(); // the lakes come last: translucent, over everything opaque
+    drawLakes(views_);
 }
 
 std::string CaveWorldView::status() const {
-    return tileStatus(views_, manager_);
+    std::array<int, terrain::kLodCount> counts{};
+    for (const auto& [key, view] : views_) {
+        ++counts[static_cast<std::size_t>(view->lod)];
+    }
+    return tileCountStatus(counts, manager_.pendingCount());
 }
 
 } // namespace viewer

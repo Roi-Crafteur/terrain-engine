@@ -51,6 +51,13 @@ void applyChanges(TileViews& views, const terrain::StreamManager& manager,
 // "tiles LOD0 n LOD1 n LOD2 n LOD3 n, n pending": the copies per LOD and the queue.
 [[nodiscard]] std::string tileStatus(const TileViews& views, const terrain::StreamManager& manager);
 
+// The same text from the number of copies per LOD and the length of the queue.
+[[nodiscard]] std::string tileCountStatus(const std::array<int, terrain::kLodCount>& counts,
+                                          std::size_t pending);
+
+// One marker per plant of a tile: two crossed vertical quads, in world meters.
+[[nodiscard]] std::vector<ColoredVertex> plantMarkers(const std::vector<terrain::Plant>& plants);
+
 // The sea: a square just below sea level centered on `center`, in the color of the water.
 [[nodiscard]] std::vector<ColoredVertex> seaQuad(Vec3 center);
 
