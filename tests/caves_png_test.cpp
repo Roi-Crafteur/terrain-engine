@@ -1,5 +1,6 @@
-// Cave images: the vertical section and the map of the caves under a small eroded region with
-// a river and surface entrances, an ocean without any entrance, and the files of the export.
+// Cave images: the vertical section and the map of the caves under a small eroded region with a
+// river and entrances, an ocean without any entrance, and the files of the export. (Lakes and
+// speleothems: caves_png_lakes_test.)
 #include "terrain/generation/cave_region.hpp"
 #include "terrain/io/caves_png.hpp"
 #include "terrain/io/heightmap_png.hpp"
@@ -69,6 +70,28 @@ bool isAir(Rgb color) {
            hasColor(color, terrain::kEntranceAirRgb);
 }
 
+// Carved air: dry, under a lake (water or ice), or with a speleothem drawn on it.
+bool isCarved(Rgb color) {
+    return isAir(color) || hasColor(color, terrain::kCaveWaterRgb) ||
+           hasColor(color, terrain::kCaveIceRgb) || hasColor(color, terrain::kCaveSpeleothemRgb) ||
+           hasColor(color, terrain::kCaveSpeleothemIceRgb);
+}
+
+Rgb materialRgb(int material) {
+    const auto c = terrain::caveMaterialRgb(static_cast<terrain::CaveMaterial>(material));
+    return {c[0], c[1], c[2]};
+}
+
+// A wall: the rock next to the air has the color of its material.
+bool isWall(Rgb color) {
+    for (int material = 0; material < terrain::kCaveMaterialCount; ++material) {
+        if (color == materialRgb(material)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Rock color at some depth: the color at the ground, scaled.
 bool isRock(Rgb color) {
     const double light = color.r / static_cast<double>(terrain::kCaveRockRgb[0]);
@@ -97,6 +120,7 @@ const CaveRegion& openSea() {
 struct Maps {
     CaveSlice slice;
     Image sliceImage;
+    terrain::CaveSliceStats sliceStats;
     Image preview;
     CavePreviewStats stats;
 };
@@ -105,7 +129,7 @@ const Maps& riverMaps() {
     static const Maps maps = [] {
         Maps result;
         result.slice = terrain::defaultCaveSlice(riverSite());
-        result.sliceImage = terrain::renderCaveSlice(riverSite(), result.slice);
+        result.sliceImage = terrain::renderCaveSlice(riverSite(), result.slice, &result.sliceStats);
         result.preview = terrain::renderCavePreview(riverSite(), &result.stats);
         return result;
     }();
@@ -155,11 +179,25 @@ void testPalettesDistinct() {
         rgb(terrain::kCaveSkyRgb), rgb(terrain::kCaveSeaRgb), rgb(terrain::kCaveRockRgb),
         rgb(terrain::kCaveGroundRgb), rgb(terrain::kCaveRiverRgb), rgb(terrain::kSpaghettiAirRgb),
         rgb(terrain::kNoodleAirRgb), rgb(terrain::kCheeseAirRgb), rgb(terrain::kRavineAirRgb),
-        rgb(terrain::kEntranceAirRgb), rgb(terrain::kCaveShallowRgb), rgb(terrain::kCaveDeepRgb),
+        rgb(terrain::kEntranceAirRgb), rgb(terrain::kCaveWaterRgb), rgb(terrain::kCaveIceRgb),
+        rgb(terrain::kCaveSpeleothemRgb), rgb(terrain::kCaveSpeleothemIceRgb),
+        rgb(terrain::kCaveShallowRgb), rgb(terrain::kCaveDeepRgb),
         rgb(terrain::kCaveEntranceMarkRgb), rgb(terrain::kCaveSliceLineRgb)};
     for (std::size_t a = 0; a < std::size(colors); ++a) {
         for (std::size_t b = 0; b < a; ++b) {
             TEST_CHECK(!(colors[a] == colors[b]));
+        }
+    }
+    // Materials: Surface and Water are the ground line and the lakes, the others new colors.
+    for (int m = 0; m < terrain::kCaveMaterialCount; ++m) {
+        const Rgb color = materialRgb(m);
+        const bool alias = m == static_cast<int>(terrain::CaveMaterial::Surface) ||
+                           m == static_cast<int>(terrain::CaveMaterial::Water);
+        TEST_CHECK(alias == (std::find(std::begin(colors), std::end(colors), color) !=
+                             std::end(colors)));
+        TEST_CHECK(alias || !isRock(color));
+        for (int n = 0; n < m; ++n) {
+            TEST_CHECK(alias || !(color == materialRgb(n)));
         }
     }
 }
@@ -221,10 +259,17 @@ void testSliceContent() {
     const int line = countColor(image, terrain::kCaveGroundRgb);
     TEST_CHECK(sky > 0 && rock > 0 && air > 0 && entrance > 0);
     TEST_CHECK(line >= image.width / 2);
+    // The walls have at least 2 different materials (the others than Surface and Water).
+    int materials = 0;
+    for (int m = static_cast<int>(terrain::CaveMaterial::Stone);
+         m <= static_cast<int>(terrain::CaveMaterial::Gravel); ++m) {
+        materials += countPixels(image, [&](Rgb c) { return c == materialRgb(m); }) > 0 ? 1 : 0;
+    }
+    TEST_CHECK(materials >= 2);
 }
 
 // Sky over the ground, or the sea under kSeaLevel, then the line of the ground (blue in the
-// columns of rivers) unless carved, then rock, darker with the depth (red never rises).
+// columns of rivers) unless carved, then rock, darker with the depth (red never rises), but walls.
 void testSliceLayers(const CaveRegion& region, const CaveSlice& slice, const Image& image) {
     const auto riverReach = static_cast<float>(region.eroded().region().metersPerPixel) / 2.0f;
     bool above = true;
@@ -242,9 +287,10 @@ void testSliceLayers(const CaveRegion& region, const CaveSlice& slice, const Ima
                 above = above && (y < terrain::kSeaLevel ? hasColor(color, terrain::kCaveSeaRgb)
                                                          : hasColor(color, terrain::kCaveSkyRgb));
             } else if (ground - y <= slice.metersPerPixel) {
-                line = line && (isAir(color) || hasColor(color, river ? terrain::kCaveRiverRgb
-                                                                      : terrain::kCaveGroundRgb));
-            } else if (!isAir(color)) {
+                line = line && (isCarved(color) ||
+                                hasColor(color, river ? terrain::kCaveRiverRgb
+                                                      : terrain::kCaveGroundRgb));
+            } else if (!isCarved(color) && !isWall(color)) {
                 rock = rock && isRock(color) && color.r <= previousRed;
                 previousRed = color.r;
             }
@@ -267,7 +313,8 @@ Rgb expectedAirColor(const terrain::CaveVoids& voids) {
         ->second;
 }
 
-// Cave air is exactly the carved density (>= 0 under the ground), colored by its component.
+// Cave air is exactly the carved density (>= 0 under the ground), colored by its component when
+// dry (lakes and speleothems are in caves_png_lakes_test).
 void testSliceAgainstDensity(const CaveRegion& region, const CaveSlice& slice,
                              const Image& image) {
     bool carved = true;
@@ -276,19 +323,22 @@ void testSliceAgainstDensity(const CaveRegion& region, const CaveSlice& slice,
     for (int column = 0; column < slice.width; column += 7) {
         const double ground = groundAlong(region, slice, column);
         const Point point = pointOf(slice, column);
+        // A sampler of this column alone: its density does not depend on the box of the section.
+        terrain::CaveSampler sampler = region.sampler(
+            {point.x, slice.top - slice.height * slice.metersPerPixel, point.z, point.x, slice.top,
+             point.z});
+        const terrain::CaveColumn caves =
+            sampler.column(point.x, point.z, static_cast<float>(ground));
         for (int row = 0; row < slice.height; ++row) {
             const double y = rowHeight(slice, row);
             const Rgb color = pixel(image, column, row);
-            if (y >= ground || (row % 5 != 0 && !isAir(color))) {
+            if (y >= ground || (row % 5 != 0 && !isCarved(color))) {
                 continue;
             }
-            const bool air = region.densityAt(point.x, y, point.z) >= 0.0f;
-            carved = carved && air == isAir(color);
-            if (air && ++airSeen % 40 == 0) {
-                terrain::CaveSampler sampler =
-                    region.sampler({point.x, y, point.z, point.x, y, point.z});
-                const terrain::CaveColumn caves =
-                    sampler.column(point.x, point.z, static_cast<float>(ground));
+            const auto terrain = static_cast<float>(y - ground);
+            const bool air = sampler.density(caves, y, terrain) >= 0.0f;
+            carved = carved && air == isCarved(color);
+            if (air && isAir(color) && ++airSeen % 40 == 0) {
                 components = components && color == expectedAirColor(sampler.voids(caves, y));
             }
         }
@@ -391,56 +441,6 @@ void testPreviewOverlays() {
     TEST_CHECK(center && hasColor(*center, terrain::kCaveSliceLineRgb));
 }
 
-// Depth of the shallowest cave under a sample, scanned every 4 m from just under the minimum
-// roof to just under the maximum depth, or -1.
-double shallowestDepth(const CaveRegion& region, double x, double z) {
-    const terrain::CaveParams& params = region.field().params();
-    const double ground = region.groundAt(x, z);
-    for (double depth = params.minRoof - 1.0; depth <= params.maxDepth + 1.0; depth += 4.0) {
-        if (region.densityAt(x, ground - depth, z) >= 0.0f) {
-            return depth;
-        }
-    }
-    return -1.0;
-}
-
-// A sample over a cave is tinted by the depth of its shallowest cave, from the shallow tint to
-// the deep one; the others keep the colors of the relief.
-void testPreviewTint() {
-    const CaveRegion& region = riverSite();
-    const Image& preview = riverMaps().preview;
-    const terrain::ErodedRegion& eroded = region.eroded();
-    const Image base = terrain::renderHeightmapPreview(eroded.grid());
-    const terrain::CaveParams& params = region.field().params();
-    const double first = params.minRoof - 1.0;
-    const double span = params.maxDepth + 1.0 - first;
-    int withCave = 0;
-    bool tints = true;
-    bool bare = true;
-    for (int i = 0; i < preview.width * preview.height; i += 7) {
-        const int column = i % preview.width;
-        const int row = i / preview.width;
-        const Rgb color = pixel(preview, column, row);
-        if (eroded.rivers().isRiver(i) || hasColor(color, terrain::kCaveEntranceMarkRgb) ||
-            hasColor(color, terrain::kCaveSliceLineRgb)) {
-            continue;
-        }
-        const double depth = shallowestDepth(region, eroded.sampleX(column), eroded.sampleZ(row));
-        if (depth < 0.0) {
-            bare = bare && color == pixel(base, column, row);
-            continue;
-        }
-        ++withCave;
-        // Red channel of the tint, from the color over the relief (60% tint).
-        const double tint = (color.r - 0.4 * pixel(base, column, row).r) / 0.6;
-        const double observed =
-            (terrain::kCaveShallowRgb[0] - tint) /
-            (terrain::kCaveShallowRgb[0] - static_cast<double>(terrain::kCaveDeepRgb[0]));
-        tints = tints && std::abs(observed - (depth - first) / span) < 0.06;
-    }
-    TEST_CHECK(withCave > 10 && tints && bare);
-}
-
 std::vector<std::uint8_t> readFile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
@@ -465,7 +465,9 @@ void testExportWritesTwoImages() {
     TEST_CHECK(slice == terrain::encodePng(riverMaps().sliceImage));
     TEST_CHECK(preview == terrain::encodePng(riverMaps().preview));
     TEST_CHECK(stats.entrances == riverMaps().stats.entrances &&
-               stats.cavedFraction == riverMaps().stats.cavedFraction);
+               stats.cavedFraction == riverMaps().stats.cavedFraction &&
+               stats.lakeFraction == riverMaps().stats.lakeFraction);
+    TEST_CHECK(stats.speleothems == riverMaps().sliceStats.speleothems);
     std::filesystem::remove_all(directory);
 }
 
@@ -491,7 +493,6 @@ int main() {
     testSliceAlongZ();
     testOpenSea();
     testPreviewOverlays();
-    testPreviewTint();
     testExportWritesTwoImages();
     testExportFailsOnRegularFile();
     return test::result();

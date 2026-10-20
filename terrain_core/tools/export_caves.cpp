@@ -51,11 +51,11 @@ int main(int argc, char** argv) {
     }
     const terrain::CaveSlice slice = terrain::defaultCaveSlice(region);
     std::printf("seed %llu, center (%.0f, %.0f) m, %d x %d px, %.1f km wide, %zu entrances, "
-                "caves under %.1f%% of the map; slice %d x %d px at %.2f m/px: "
-                "%s/cave_slice.png, %s/cave_preview.png\n",
+                "caves under %.1f%% of the map, lakes under %.1f%%; slice %d x %d px at "
+                "%.2f m/px with %zu speleothems: %s/cave_slice.png, %s/cave_preview.png\n",
                 static_cast<unsigned long long>(seed), area.centerX, area.centerZ, area.size,
                 area.size, area.size * area.metersPerPixel / 1000.0, stats.entrances,
-                100.0 * stats.cavedFraction, slice.width, slice.height, slice.metersPerPixel,
-                argv[1], argv[1]);
+                100.0 * stats.cavedFraction, 100.0 * stats.lakeFraction, slice.width,
+                slice.height, slice.metersPerPixel, stats.speleothems, argv[1], argv[1]);
     return EXIT_SUCCESS;
 }

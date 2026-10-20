@@ -31,6 +31,7 @@ add_library(terrain_core STATIC
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
     src/io/caves_png.cpp
+    src/io/caves_png_layers.cpp
     src/io/cliffs_png.cpp
     src/io/ecology_png.cpp
     src/io/eroded_png.cpp

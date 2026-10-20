@@ -151,7 +151,8 @@ DensityGrid CaveTile::waterDensity(const DensityGrid& carved, int originY) {
             if (!coarseWater && onStitchedSide(i, k)) {
                 continue;
             }
-            const CaveColumn& column = fine_.columns[static_cast<std::size_t>(k * kGridSamples + i)];
+            const auto index = static_cast<std::size_t>(k * kGridSamples + i);
+            const CaveColumn& column = fine_.columns[index];
             for (int j = 0; j < kGridSamples; ++j) {
                 const double sampleY = originY + j * lattice_.spacing;
                 const auto terrain = static_cast<float>(sampleY - columns_->at(i, k));

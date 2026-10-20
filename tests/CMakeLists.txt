@@ -64,6 +64,7 @@ terrain_add_test(cave_region_test terrain_core)
 terrain_add_test(cave_tiles_test terrain_core)
 terrain_add_test(cave_seams_test terrain_core)
 terrain_add_test(caves_png_test terrain_core)
+terrain_add_test(caves_png_lakes_test terrain_core)
 terrain_add_test(aquifers_test terrain_core)
 terrain_add_test(speleothems_test terrain_core)
 terrain_add_test(cave_materials_test terrain_core)
@@ -144,12 +145,14 @@ add_test(NAME export_voronoi_bad_args
             -DOUT=${CMAKE_BINARY_DIR}/voronoi_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_voronoi_bad_args.cmake)
 
-# Smoke test: writes cave_slice.png (1024 px wide vertical section through an entrance) and
-# cave_preview.png (224 x 224 px, 20 m/px, around the cliff site of the default world) into
-# <build-dir>/caves for a visual check. The summary is printed only once the images are written.
+# Smoke test: writes cave_slice.png (1024 px wide vertical section through an entrance, with its
+# lakes, wall materials and speleothems) and cave_preview.png (224 x 224 px, 20 m/px, around the
+# cliff site of the default world, with its lakes) into <build-dir>/caves for a visual check. The
+# summary is printed only once the images are written.
+string(CONCAT caves_summary
+    "224 x 224 px, 4\\.5 km wide, [0-9]+ entrances, caves under [0-9.]+% of the map, "
+    "lakes under [0-9.]+%; slice 1024 x [0-9]+ px at [0-9.]+ m/px with [0-9]+ speleothems")
 add_test(NAME export_caves_smoke
     COMMAND terrain_export_caves ${CMAKE_BINARY_DIR}/caves)
-set_tests_properties(export_caves_smoke PROPERTIES
-    PASS_REGULAR_EXPRESSION
-    "224 x 224 px, 4\\.5 km wide, [0-9]+ entrances, caves under [0-9.]+%.*slice 1024 x [0-9]+ px")
+set_tests_properties(export_caves_smoke PROPERTIES PASS_REGULAR_EXPRESSION "${caves_summary}")
 add_dependencies(check terrain_export_caves)
