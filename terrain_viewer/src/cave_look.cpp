@@ -17,6 +17,10 @@ namespace {
 constexpr Vec3 kLowlandColor{0.30f, 0.55f, 0.25f};
 constexpr Vec3 kHighlandColor{0.65f, 0.60f, 0.55f};
 
+// The lava, which glows: yellow orange on the surfaces facing up, deeper orange elsewhere.
+constexpr Vec3 kLavaEmberColor{1.0f, 0.45f, 0.06f};
+constexpr Vec3 kLavaHotColor{1.0f, 0.72f, 0.18f};
+
 // A speleothem is a cone of kSpeleothemSides sides. Its base is sunk kSpeleothemSunk meters in
 // the rock so that no gap shows on uneven walls; its base ring is darker than its tip.
 constexpr int kSpeleothemSides = 7;
@@ -114,7 +118,10 @@ Vec3 caveMaterialColor(terrain::CaveMaterial material) {
     case terrain::CaveMaterial::Basalt:
         return {0.17f, 0.15f, 0.18f}; // near black
     case terrain::CaveMaterial::Magma:
-        return {0.62f, 0.15f, 0.05f}; // dark glowing red
+        // Bright red orange. The rock mesh has no emissive attribute: the walls over the lava glow
+        // by this color alone (and by the orange tint of the volcanic districts, which keeps it
+        // bright), where the headlight or the sun reach them.
+        return {0.90f, 0.20f, 0.04f};
     }
     return {1.0f, 0.0f, 1.0f};
 }
@@ -155,6 +162,22 @@ std::vector<Vec3> lakeColors(const terrain::TileData& data) {
             caveMaterialColor(frozen ? terrain::CaveMaterial::Ice : terrain::CaveMaterial::Water));
     }
     return colors;
+}
+
+std::vector<Vec3> lavaColors(const terrain::TileData& data) {
+    const std::size_t count = data.lava.vertices.size();
+    const bool shaded = data.lava.normals.size() == count;
+    std::vector<Vec3> colors;
+    colors.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const float up = shaded ? std::clamp(data.lava.normals[i].y, 0.0f, 1.0f) : 1.0f;
+        colors.push_back(lerp(kLavaEmberColor, kLavaHotColor, up));
+    }
+    return colors;
+}
+
+Vec3 glowColor(Vec3 lit, Vec3 albedo, float emissive) {
+    return lit * (1.0f - emissive) + albedo * emissive; // GLSL mix(lit, albedo, emissive)
 }
 
 SpeleothemMesh speleothemMesh(const std::vector<terrain::Speleothem>& speleothems) {

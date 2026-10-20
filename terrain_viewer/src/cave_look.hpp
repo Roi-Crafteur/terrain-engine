@@ -17,6 +17,10 @@ namespace viewer {
 // Opacity of the lakes (alpha blending).
 inline constexpr float kLakeOpacity = 0.75f;
 
+// Share of the color of the lava that the terrain shader shows unlit (uEmissive): the lava is
+// drawn at full glow, so it is as bright in the dark as in the light of the headlight.
+inline constexpr float kLavaEmissive = 1.0f;
+
 // Color of a material of the rock or of a lake. Surface, which is tinted by altitude, gives the
 // lowland color.
 [[nodiscard]] Vec3 caveMaterialColor(terrain::CaveMaterial material);
@@ -31,6 +35,18 @@ inline constexpr float kLakeOpacity = 0.75f;
 
 // Color of each vertex of data.water: the color of ice or of water.
 [[nodiscard]] std::vector<Vec3> lakeColors(const terrain::TileData& data);
+
+// Color of each vertex of data.lava, an unlit glow (the lava is drawn with kLavaEmissive): yellow
+// orange where the surface faces up (the normal y is 1), blending to a deeper orange where it
+// faces sideways or down. Warm (red >= green >= blue), bright, within [0, 1] and apart from the
+// colors of the materials and of the lakes. One color per vertex of data.lava.
+[[nodiscard]] std::vector<Vec3> lavaColors(const terrain::TileData& data);
+
+// The color that the terrain shader writes (kFragmentShader of cave_world_view.cpp mixes the same
+// way): lit * (1 - emissive) + albedo * emissive. Emissive 0 gives the lit color, 1 the albedo
+// whatever the light, in between a linear mix. The shader does not clamp emissive; neither does
+// this mirror.
+[[nodiscard]] Vec3 glowColor(Vec3 lit, Vec3 albedo, float emissive);
 
 // An indexed mesh with a color per vertex (and a normal, in mesh).
 struct PaintedMesh {
