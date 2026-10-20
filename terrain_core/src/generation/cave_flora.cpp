@@ -96,14 +96,21 @@ void CaveFloraField::placeCandidate(CaveSampler& sampler, int cellX, int cellZ,
         return;
     }
     const CaveColumn column = sampler.column(x, z, sampler.ground().height(x, z));
+    if (column.lavaLevel > kDryLevel) {
+        return; // no plant in the lava caverns
+    }
     const std::optional<cave_scan::Span> span =
         cave_scan::highestSpan(sampler, column, p.minSpan);
     if (!span || column.frozen) {
         return;
     }
-    // A floor under the water only holds vines hanging above the lake.
-    const bool flooded = column.waterLevel > span->floor;
-    const float free = span->ceiling - std::max(span->floor, column.waterLevel);
+    // A floor under the water only holds vines hanging above the lake or the river.
+    const float water = sampler.field().waterLevelAt(column, static_cast<double>(span->floor));
+    if (water > span->floor && column.cold) {
+        return; // frozen river
+    }
+    const bool flooded = water > span->floor;
+    const float free = span->ceiling - std::max(span->floor, water);
     CaveFloraKind kind = kindOf(unitDraw(cell, kKindDraw));
     if (flooded) {
         kind = CaveFloraKind::Vine;
