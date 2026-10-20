@@ -1,11 +1,14 @@
 #include "district_look.hpp"
 
 #include "cave_look.hpp"
+#include "terrain/io/cave_regions_png.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <functional>
 #include <optional>
@@ -161,29 +164,8 @@ std::vector<TypeShare> typeShares(const terrain::DistrictWeights& weights) {
 } // namespace
 
 Vec3 caveDistrictColor(terrain::CaveDistrictType type) {
-    switch (type) {
-    case terrain::CaveDistrictType::Tunnels:
-        return {0.95f, 0.55f, 0.15f}; // orange
-    case terrain::CaveDistrictType::Halls:
-        return {0.60f, 0.35f, 0.90f}; // violet
-    case terrain::CaveDistrictType::Crevasses:
-        return {0.90f, 0.20f, 0.55f}; // magenta
-    case terrain::CaveDistrictType::Lakes:
-        return {0.15f, 0.45f, 0.95f}; // blue
-    case terrain::CaveDistrictType::Rivers:
-        return {0.10f, 0.75f, 0.70f}; // turquoise
-    case terrain::CaveDistrictType::Flooded:
-        return {0.10f, 0.15f, 0.55f}; // navy
-    case terrain::CaveDistrictType::Volcanic:
-        return {0.90f, 0.15f, 0.10f}; // red
-    case terrain::CaveDistrictType::Glacier:
-        return {0.85f, 0.95f, 1.00f}; // ice white
-    case terrain::CaveDistrictType::Lush:
-        return {0.20f, 0.80f, 0.25f}; // green
-    case terrain::CaveDistrictType::Dripstone:
-        return {0.95f, 0.85f, 0.35f}; // yellow
-    }
-    return {1.0f, 0.0f, 1.0f};
+    const std::array<std::uint8_t, 3> rgb = terrain::caveDistrictRgb(type);
+    return {rgb[0] / 255.0f, rgb[1] / 255.0f, rgb[2] / 255.0f};
 }
 
 Vec3 districtMixColor(const terrain::DistrictWeights& weights) {

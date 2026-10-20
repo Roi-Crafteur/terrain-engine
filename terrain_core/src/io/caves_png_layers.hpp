@@ -5,6 +5,8 @@
 
 #include "terrain/io/caves_png.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <span>
@@ -30,11 +32,17 @@ struct LinePoint {
 // Sets a pixel, if it lies inside the image.
 void setPixel(Image& image, int column, int row, Rgb rgb);
 
+// Color toward which a sample over a cave is tinted, from its index in the image and the share
+// [0, 1] of the depth of the shallowest cave under it between the roof and the deepest caves.
+using CaveTint = std::function<std::array<std::uint8_t, 3>(std::size_t sample, float depth)>;
+
 // The map of cave_preview.png (renderCavePreview): the relief of the region with its rivers,
-// then beforeCaves (if set) called on that image, then the caves, the lakes and the entrances
-// and, if withSliceLine, the line of the default section.
+// then beforeCaves (if set) called on that image, then the caves (tinted toward caveTint if
+// set, else from kCaveShallowRgb to kCaveDeepRgb), the lakes and the entrances and, if
+// withSliceLine, the line of the default section.
 [[nodiscard]] Image renderCaveMap(const CaveRegion& region,
                                   const std::function<void(Image&)>& beforeCaves,
-                                  bool withSliceLine, CavePreviewStats* stats);
+                                  const CaveTint& caveTint, bool withSliceLine,
+                                  CavePreviewStats* stats);
 
 } // namespace terrain::cave_png

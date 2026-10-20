@@ -215,9 +215,10 @@ std::vector<Scan> scanCaves(const CaveRegion& region) {
     return scans;
 }
 
-// Tints the samples over a cave, from the shallow to the deep color with the depth, and the
-// samples over a lake with the water or the ice over that.
-void tintCaves(Image& image, const std::vector<Scan>& scans, const CaveParams& params) {
+// Tints the samples over a cave toward caveTint, or from the shallow to the deep color with the
+// depth without it, and the samples over a lake with the water or the ice over that.
+void tintCaves(Image& image, const std::vector<Scan>& scans, const CaveParams& params,
+               const cave_png::CaveTint& caveTint) {
     const double first = params.minRoof - 1.0;
     const double span = params.maxDepth + 1.0 - first;
     for (std::size_t i = 0; i < scans.size(); ++i) {
@@ -225,8 +226,15 @@ void tintCaves(Image& image, const std::vector<Scan>& scans, const CaveParams& p
             continue;
         }
         const auto t = static_cast<float>(std::clamp((scans[i].depth - first) / span, 0.0, 1.0));
+        std::array<std::uint8_t, 3> tints{};
         for (std::size_t c = 0; c < 3; ++c) {
-            const std::uint8_t tint = mix(kCaveShallowRgb[c], kCaveDeepRgb[c], t);
+            tints[c] = mix(kCaveShallowRgb[c], kCaveDeepRgb[c], t);
+        }
+        if (caveTint) {
+            tints = caveTint(i, t);
+        }
+        for (std::size_t c = 0; c < 3; ++c) {
+            const std::uint8_t tint = tints[c];
             image.pixels[i * 3 + c] = mix(image.pixels[i * 3 + c], tint, kTintShare);
             if (scans[i].water) {
                 const std::uint8_t lake = scans[i].frozen ? kCaveIceRgb[c] : kCaveWaterRgb[c];
@@ -306,7 +314,7 @@ CaveSlice defaultCaveSlice(const CaveRegion& region) {
 namespace cave_png {
 
 Image renderCaveMap(const CaveRegion& region, const std::function<void(Image&)>& beforeCaves,
-                    bool withSliceLine, CavePreviewStats* stats) {
+                    const CaveTint& caveTint, bool withSliceLine, CavePreviewStats* stats) {
     const ErodedRegion& eroded = region.eroded();
     Image image = renderHeightmapPreview(eroded.grid());
     drawRivers(image, eroded.rivers());
@@ -314,7 +322,7 @@ Image renderCaveMap(const CaveRegion& region, const std::function<void(Image&)>&
         beforeCaves(image);
     }
     const std::vector<Scan> scans = scanCaves(region);
-    tintCaves(image, scans, region.field().params());
+    tintCaves(image, scans, region.field().params(), caveTint);
 
     const std::vector<CaveEntrance> entrances = regionEntrances(region);
     for (const CaveEntrance& entrance : entrances) {
@@ -342,7 +350,7 @@ Image renderCaveMap(const CaveRegion& region, const std::function<void(Image&)>&
 } // namespace cave_png
 
 Image renderCavePreview(const CaveRegion& region, CavePreviewStats* stats) {
-    return cave_png::renderCaveMap(region, {}, true, stats);
+    return cave_png::renderCaveMap(region, {}, {}, true, stats);
 }
 
 bool exportCavePngs(const CaveRegion& region, const std::filesystem::path& directory,

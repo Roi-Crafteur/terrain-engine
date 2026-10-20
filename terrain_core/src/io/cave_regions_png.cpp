@@ -256,17 +256,19 @@ struct Step {
 };
 constexpr std::array<Step, 4> kNeighborSteps = {{{1, 0}, {0, 1}, {1, 1}, {-1, 1}}};
 
-// Tints each sample of the preview with the district mix of its point, and adds the weights of
-// the districts there to sums.
+// Tints each sample of the preview with the district mix of its point, kept in mixes, and adds
+// the weights of the districts there to sums.
 void tintDistricts(Image& image, const ErodedRegion& eroded, AquiferCache& cache,
-                   TypeShares& sums) {
+                   TypeShares& sums, std::vector<Color>& mixes) {
     const int size = eroded.region().size;
+    mixes.assign(static_cast<std::size_t>(size) * static_cast<std::size_t>(size), Color{});
     for (int row = 0; row < size; ++row) {
         for (int column = 0; column < size; ++column) {
             const DistrictWeights weights =
                 cache.districtWeights(eroded.sampleX(column), eroded.sampleZ(row));
             const Color tint = districtMix(weights);
             addShares(sums, weights);
+            mixes[static_cast<std::size_t>(row * size + column)] = tint;
             const auto offset = static_cast<std::size_t>(row * size + column) * 3;
             for (std::size_t c = 0; c < 3; ++c) {
                 const float relief = static_cast<float>(image.pixels[offset + c]);
@@ -326,10 +328,20 @@ Image renderCaveRegionsPreview(const CaveRegion& region, CaveRegionsPreviewStats
     requireDistricts(region.field());
     AquiferCache cache(region.field(), region.ground());
     TypeShares sums{};
+    std::vector<Color> mixes;
     const auto tint = [&](Image& image) {
-        tintDistricts(image, region.eroded(), cache, sums);
+        tintDistricts(image, region.eroded(), cache, sums, mixes);
     };
-    Image image = cave_png::renderCaveMap(region, tint, false,
+    // The caves take the color of their districts, darker the deeper they are.
+    const auto caveTint = [&mixes](std::size_t sample, float depth) {
+        const float light = 1.0f - kCaveRegionsPreviewDeepShade * depth;
+        std::array<std::uint8_t, 3> rgb{};
+        for (std::size_t c = 0; c < rgb.size(); ++c) {
+            rgb[c] = toByte(mixes[sample][c] * light);
+        }
+        return rgb;
+    };
+    Image image = cave_png::renderCaveMap(region, tint, caveTint, false,
                                           stats != nullptr ? &stats->caves : nullptr);
     if (stats != nullptr) {
         const int size = region.eroded().region().size;

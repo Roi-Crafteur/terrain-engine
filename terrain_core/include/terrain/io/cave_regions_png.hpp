@@ -41,6 +41,10 @@ inline constexpr int kCaveRegionsSiteReach = 1;
 // The preview tints each sample with the district mix of its point: the color of the relief
 // goes this far toward it (0 = relief, 1 = district color) before the caves are drawn over it.
 inline constexpr float kCaveRegionsPreviewTintShare = 0.45f;
+// The samples over a cave are then tinted toward the district mix too, as cave_preview tints
+// them toward its depth colors, darkened by up to this share with the depth of the shallowest
+// cave: each district keeps its color over its caves.
+inline constexpr float kCaveRegionsPreviewDeepShade = 0.6f;
 
 // Numbers of the map, filled by renderCaveRegionsMap when given.
 struct CaveRegionsMapStats {
@@ -78,9 +82,9 @@ struct CaveRegionsPreviewStats {
 // Map of the caves of a region with cave regions (renderCavePreview without the line of the
 // section): the shaded hypsometric relief with the rivers, tinted with the district mix
 // at each sample (kCaveRegionsPreviewTintShare of the district colors of the map), then
-// the samples over a cave tinted by the depth of the shallowest one, the lakes and the
-// entrances as in renderCavePreview. Deterministic. Throws std::invalid_argument if the field
-// of the region has no cave regions.
+// the samples over a cave tinted toward that mix, darker with the depth of the shallowest one
+// (kCaveRegionsPreviewDeepShade), the lakes and the entrances as in renderCavePreview.
+// Deterministic. Throws std::invalid_argument if the field of the region has no cave regions.
 [[nodiscard]] Image renderCaveRegionsPreview(const CaveRegion& region,
                                              CaveRegionsPreviewStats* stats = nullptr);
 

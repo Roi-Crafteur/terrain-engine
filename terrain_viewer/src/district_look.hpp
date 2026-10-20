@@ -17,9 +17,8 @@ namespace viewer {
 // Share of the district mix in the color of the rock below the outer surface.
 inline constexpr float kDistrictTint = 0.3f;
 
-// Color of a district type, in [0, 1]: a distinct hue each, loosely evoking the type (Tunnels
-// orange, Halls violet, Crevasses magenta, Lakes blue, Rivers turquoise, Flooded navy, Volcanic
-// red, Glacier ice white, Lush green, Dripstone yellow).
+// Color of a district type, in [0, 1]: the one of the cave regions PNGs
+// (terrain::kCaveDistrictRgb), so that the viewer and the images share their legend.
 [[nodiscard]] Vec3 caveDistrictColor(terrain::CaveDistrictType type);
 
 // The colors of the districts of a mix, weighted: the sum of weight * color of each district

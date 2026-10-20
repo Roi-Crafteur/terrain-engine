@@ -12,6 +12,7 @@
 #include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/cave_regions.hpp"
 #include "terrain/generation/speleothems.hpp"
+#include "terrain/io/cave_regions_png.hpp"
 #include "terrain/streaming/stream_manager.hpp"
 
 #include "test_assert.hpp"
@@ -166,12 +167,18 @@ terrain::DistrictWeights mixOf(std::initializer_list<std::pair<CaveDistrictType,
     return weights;
 }
 
-// Each of the ten district types has its own color within [0, 1], clearly apart from the others.
+// Each of the ten district types has its own color within [0, 1], clearly apart from the others:
+// the color of the cave regions PNGs.
 void testDistrictColors() {
     bool inRange = true;
+    bool asPng = true;
     float closest = 10.0f;
     for (int a = 0; a < terrain::kCaveDistrictTypeCount; ++a) {
         const Vec3 color = viewer::caveDistrictColor(static_cast<CaveDistrictType>(a));
+        const auto rgb = terrain::caveDistrictRgb(static_cast<CaveDistrictType>(a));
+        asPng = asPng && std::abs(color.x * 255.0f - rgb[0]) < 1e-3f &&
+                std::abs(color.y * 255.0f - rgb[1]) < 1e-3f &&
+                std::abs(color.z * 255.0f - rgb[2]) < 1e-3f;
         inRange = inRange && std::min({color.x, color.y, color.z}) >= 0.0f &&
                   std::max({color.x, color.y, color.z}) <= 1.0f;
         for (int b = 0; b < a; ++b) {
@@ -180,6 +187,7 @@ void testDistrictColors() {
         }
     }
     TEST_CHECK(inRange);
+    TEST_CHECK(asPng);
     TEST_CHECK(closest > 0.2f);
 }
 
