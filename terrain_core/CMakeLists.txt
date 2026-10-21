@@ -87,6 +87,7 @@ add_library(terrain_core STATIC
     src/streaming/horizon_grids.cpp
     src/streaming/horizon_levels.cpp
     src/streaming/horizon_sampler.cpp
+    src/streaming/horizon_streamer.cpp
     src/streaming/lod.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp

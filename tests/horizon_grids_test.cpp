@@ -8,6 +8,7 @@
 // those invalidated during an epoch included.
 #include "terrain/streaming/horizon_epoch.hpp"
 
+#include "horizon_test_support.hpp"
 #include "test_assert.hpp"
 
 #include <cmath>
@@ -29,71 +30,14 @@ using terrain::HorizonPiece;
 using terrain::HorizonRect;
 using terrain::HorizonSampler;
 
-constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
-// Mountains around (kX, kZ), and 2^20 m, far from the borders of the coarse samples.
-constexpr double kX = 1'048'576.0 + 4.0;
-constexpr double kZ = -3'932'160.0 + 4.0;
-
-HorizonParams smallParams() {
-    HorizonParams params;
-    params.cellsPerSide = 64;
-    return params;
-}
-
-struct World {
-    terrain::Heightfield field{kSeed};
-    terrain::Ecology ecology{kSeed};
-};
-
-void computeAll(const HorizonSampler& sampler, HorizonEpoch& epoch) {
-    for (HorizonPiece& piece : epoch.pieces) {
-        terrain::computePiece(sampler, piece);
-    }
-}
-
-// Plans, computes and commits epochs until nothing changes; returns the samples computed.
-std::int64_t settle(HorizonClipmap& clipmap, const HorizonSampler& sampler, double x, double z) {
-    std::int64_t samples = 0;
-    while (std::optional<HorizonEpoch> epoch = clipmap.plan(x, z)) {
-        computeAll(sampler, *epoch);
-        samples += epoch->samples();
-        clipmap.commit(*epoch);
-    }
-    return samples;
-}
-
-// The same windows (canonical low corners) and the same samples in them, on every level.
-bool sameContent(const HorizonClipmap& a, const HorizonClipmap& b) {
-    for (int n = 0; n < a.levelCount(); ++n) {
-        const terrain::HorizonLevel& la = a.level(n);
-        const terrain::HorizonLevel& lb = b.level(n);
-        const HorizonRect wa = la.window();
-        const HorizonRect wb = lb.window();
-        if (!(terrain::canonicalSample({wa.x0, wa.z0}, la.counts()) ==
-              terrain::canonicalSample({wb.x0, wb.z0}, lb.counts()))) {
-            return false;
-        }
-        for (int k = 0; k < la.side(); ++k) {
-            for (int i = 0; i < la.side(); ++i) {
-                if (!(la.atWindow(i, k) == lb.atWindow(i, k))) {
-                    return false;
-                }
-            }
-        }
-    }
-    return true;
-}
-
-bool sameAsFresh(const HorizonClipmap& clipmap, const HorizonSampler& sampler, double x, double z) {
-    HorizonClipmap fresh(clipmap.params());
-    settle(fresh, sampler, x, z);
-    return sameContent(clipmap, fresh);
-}
-
-std::int64_t fullSamples(const HorizonParams& params) {
-    const std::int64_t side = terrain::samplesPerSide(params);
-    return params.levels * side * side;
-}
+using horizon_test::computeAll;
+using horizon_test::fullSamples;
+using horizon_test::kX;
+using horizon_test::kZ;
+using horizon_test::sameAsFresh;
+using horizon_test::settle;
+using horizon_test::smallParams;
+using horizon_test::World;
 
 void testOneSampleMove() {
     const World world;
