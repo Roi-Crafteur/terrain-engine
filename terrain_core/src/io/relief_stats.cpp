@@ -369,11 +369,17 @@ std::vector<bool> mountainCells(const ReliefGrid& grid, const Torus& torus,
 }
 
 // The bits of every cell, the shares of the land they cover and the land of the large land
-// masses farthest from the chains.
+// masses farthest from both the chains and the sea.
 void classify(const ReliefGrid& grid, const Torus& torus, const ReliefStatsParams& params,
               const std::vector<bool>& mountain, const std::vector<bool>& chain,
               const std::vector<float>& toChain, const std::vector<bool>& large,
               ReliefStats& stats) {
+    std::vector<bool> sea(torus.cells());
+    for (Index cell = 0; cell < torus.cells(); ++cell) {
+        sea[cell] = grid.heights[cell] < kSeaLevel;
+    }
+    const std::vector<float> toSea = chamferDistance(torus, sea);
+    const auto inland = [&](Index cell) { return std::min(toChain[cell], toSea[cell]); };
     stats.cells.assign(torus.cells(), 0);
     std::array<std::size_t, 5> counts{}; // land, mountain, chain, plain, high plain
     const double plainCells = params.plainDistance / grid.spacing;
@@ -390,7 +396,7 @@ void classify(const ReliefGrid& grid, const Torus& torus, const ReliefStatsParam
             bits |= kReliefPlain;
             counts[4] += grid.heights[cell] > 1500.0f ? 1 : 0;
         }
-        if (large[cell] && (!anyLand || toChain[cell] > toChain[farthestLand])) {
+        if (large[cell] && (!anyLand || inland(cell) > inland(farthestLand))) {
             farthestLand = cell;
             anyLand = true;
         }

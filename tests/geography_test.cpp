@@ -1,8 +1,9 @@
 // The planetary geography (phase 11R): built to the same bits on 1 and 4 threads and shared
 // between Heightfields; periodic to the bit at every image of a point, the corner of the world
-// included; the ground below the sea exactly where the coast signal is negative; a map whose
-// regional elevation drains (no closed depression at its scale); the share of land; the origin on
-// a coast; small worlds; memory; invalid parameters.
+// included; the ground below the sea exactly where the coast signal is negative, mountains only
+// on land and within their mask; a map whose regional elevation drains (no closed depression at
+// its scale); the share of land; mountain belts, high plateaus, island arcs, trenches and
+// mid-ocean ridges; the origin on a coast; small worlds; memory; invalid parameters.
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
@@ -10,6 +11,7 @@
 #include "bit_exact_support.hpp"
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -113,23 +115,84 @@ void testPeriodicAndBatch(const WorldSize& world) {
     }
 }
 
-// Below the sea exactly where the coast signal (and the continentalness) is negative.
+// Below the sea exactly where the coast signal (and the continentalness) is negative. The ridged
+// mountains only within their mask, which is 0 at sea and outside the belts of the plates.
 void testSeaWhereTheCoastIsNegative() {
     const Heightfield field(kSeed, geographyParams());
+    const float mountainHeight = field.params().geography.mountainHeight;
     int sea = 0;
     int land = 0;
+    int mountains = 0;
     bool consistent = true;
+    bool masked = true;
     for (const Point& p : bit_exact::randomPoints(20'000, 3e7)) {
         const terrain::HeightSample s = field.sampleAt(p.x, p.z);
         const terrain::GeographySample g =
             field.geography()->sampleAt(terrain::wrapCoordinate(p.x, WorldSize{}.x),
                                         terrain::wrapCoordinate(p.z, WorldSize{}.z));
         consistent = consistent && ((s.height < 0.0f) == (g.coast < 0.0)) &&
-                     ((s.continentalness < 0.0f) == (g.coast < 0.0)) && s.mountain == 0.0f;
+                     ((s.continentalness < 0.0f) == (g.coast < 0.0));
+        masked = masked && s.mountain >= 0.0f && s.mountain <= s.mountainMask * mountainHeight &&
+                 s.mountainMask <= 1.0f && (g.belt > 0.0f || s.mountainMask == 0.0f) &&
+                 s.plateCollision == g.belt &&
+                 (g.coast > 0.0 || s.mountainMask == 0.0f);
         ++(s.height < 0.0f ? sea : land);
+        mountains += s.mountain > 0.0f ? 1 : 0;
     }
     TEST_CHECK(consistent);
+    TEST_CHECK(masked);
     TEST_CHECK(land > 20'000 * 30 / 100 && land < 20'000 * 45 / 100);
+    TEST_CHECK(mountains > 0 && mountains < land / 4);
+}
+
+// The plates leave their marks on the map: mountain belts and high plateaus on land, island arcs
+// far out at sea along the belts, trenches below the abyssal plain and mid-ocean ridges above
+// it.
+void testTectonics() {
+    const Geography& g = *Heightfield(kSeed, geographyParams()).geography();
+    const GeographyParams& p = g.params();
+    int land = 0;
+    int belts = 0;
+    int plateaus = 0;
+    int arcs = 0;
+    int islands = 0;
+    float deepest = 0.0f;
+    float highestOpenSea = p.abyssDepth;
+    for (int j = 0; j < g.rows(); ++j) {
+        for (int i = 0; i < g.columns(); ++i) {
+            const float coast = g.node(i, j, Geography::kCoast);
+            const float belt = g.node(i, j, Geography::kBelt);
+            if (coast > 0.0f) {
+                ++land;
+                belts += belt > 0.5f ? 1 : 0;
+                plateaus += g.node(i, j, Geography::kLand) > 3500.0f ? 1 : 0;
+                continue;
+            }
+            deepest = std::min(deepest, g.node(i, j, Geography::kSea));
+            if (coast < -1.0e6f) {
+                highestOpenSea = std::max(highestOpenSea, g.node(i, j, Geography::kSea));
+            }
+            if (coast < -300'000.0f && belt > 0.5f) {
+                ++arcs; // islands near the node, sampled across it
+                const double x = -0.5 * g.world().x + i * g.world().x / g.columns() - g.anchorX();
+                const double z = -0.5 * g.world().z + j * g.world().z / g.rows();
+                bool island = false;
+                for (int k = 0; k < 64 && !island; ++k) {
+                    island = g.sampleAt(terrain::wrapCoordinate(x + (k % 8 - 4) * 8000.0,
+                                                                g.world().x),
+                                        terrain::wrapCoordinate(z + (k / 8 - 4) * 8000.0,
+                                                                g.world().z))
+                                 .coast > 0.0;
+                }
+                islands += island ? 1 : 0;
+            }
+        }
+    }
+    TEST_CHECK(belts > land / 100 && belts < land / 5);
+    TEST_CHECK(plateaus > land / 500 && plateaus < land / 20);
+    TEST_CHECK(arcs > 0 && islands > arcs / 10 && islands < arcs);
+    TEST_CHECK(deepest < p.abyssDepth - 0.5f * p.trenchDepth);
+    TEST_CHECK(highestOpenSea > p.abyssDepth + 0.5f * p.ridgeLift);
 }
 
 // Every land node of the map has a lower neighbor, or the sea next to it: water leaves every
@@ -161,11 +224,14 @@ void testMapDrains() {
     TEST_CHECK(g.continents() >= 5 && g.continents() <= 10);
 }
 
-// The origin lies on a coast, sea to the west, land to the east.
+// The origin lies on a coast of a continent: land 300 km away along the equator, on one side,
+// over 100 km from the coast of the map.
 void testOriginOnACoast() {
     const Geography& g = *Heightfield(kSeed, geographyParams()).geography();
     TEST_CHECK(std::abs(g.sampleAt(0.0, 0.0).coast) < 10'000.0);
-    TEST_CHECK(g.sampleAt(200'000.0, 0.0).coast > 0.0);
+    const double west = g.sampleAt(terrain::wrapCoordinate(-300'000.0, g.world().x), 0.0).mapCoast;
+    const double east = g.sampleAt(300'000.0, 0.0).mapCoast;
+    TEST_CHECK(std::max(west, east) > 100'000.0);
 }
 
 void testSmallWorlds() {
@@ -194,6 +260,9 @@ void testInvalidParameters() {
     TEST_CHECK(rejects([](GeographyParams& p) { p.crustCandidates = 0; }));
     TEST_CHECK(rejects([](GeographyParams& p) { p.coastBand = p.coastAmplitude; }));
     TEST_CHECK(rejects([](GeographyParams& p) { p.drainSlope = -1.0; }));
+    TEST_CHECK(rejects([](GeographyParams& p) { p.beltWidth = 0.0; }));
+    TEST_CHECK(rejects([](GeographyParams& p) { p.arcLift = -1.0; }));
+    TEST_CHECK(rejects([](GeographyParams& p) { p.plates.minPlates = 2; }));
 }
 
 } // namespace
@@ -204,6 +273,7 @@ int main() {
     testPeriodicAndBatch(WorldSize{});
     testSeaWhereTheCoastIsNegative();
     testMapDrains();
+    testTectonics();
     testOriginOnACoast();
     testSmallWorlds();
     testInvalidParameters();

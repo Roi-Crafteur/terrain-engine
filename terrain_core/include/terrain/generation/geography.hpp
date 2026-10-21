@@ -21,7 +21,8 @@ struct GeographySample {
     float land = 1.0f;     // drained regional elevation of the land, >= 1 m, also over the sea
     float landDX = 0.0f;   // its gradient along x and z, meters per meter
     float landDZ = 0.0f;
-    float sea = 0.0f; // floor of the ocean, meters (the shelf depth under the land)
+    float sea = 0.0f;  // floor of the ocean, meters (the shelf depth under the land)
+    float belt = 0.0f; // [0, 1], the mountain belts of the collisions of the plates
 };
 
 // The planetary geography of a seed (phase 11R): a map of the whole world computed once,
@@ -29,12 +30,14 @@ struct GeographySample {
 // follow the tectonic plates: a crust noise thresholded to a share of land, chosen among a few
 // streams for its count of continents. Its regional elevation drains: it climbs from the coast
 // at least GeographyParams::drainSlope along the way water takes to the sea, so the map holds no
-// closed depression. The point (0, 0) lies on a coast: the map is shifted along x to put one
-// there.
+// closed depression. Its tectonic plates raise mountain belts and high plateaus along their
+// collisions (island arcs and trenches at sea), rifts and mid-ocean ridges along their
+// divergences. The point (0, 0) lies on a coast of a continent, near a mountain belt when one
+// comes close enough: the map is shifted along x to put one there.
 class Geography {
 public:
     // Fields of a node of the map, in this order.
-    enum Field : std::size_t { kCoast, kLand, kSea, kFields };
+    enum Field : std::size_t { kCoast, kLand, kSea, kBelt, kFields };
 
     // Throws std::invalid_argument for invalid parameters or world. The construction runs on
     // up to threads threads (0: the hardware concurrency), in fixed blocks: the same bits
@@ -72,7 +75,8 @@ public:
     struct Noises; // the coast noises (geography.cpp)
 
 private:
-    [[nodiscard]] double coastAt(double x, double z, double mapCoast) const;
+    // The coast signal at (x, z) from the fields of the map there.
+    [[nodiscard]] double coastAt(double x, double z, const GeographySample& map) const;
     // The fields of the map alone at (geoX, z), geoX in the canonical range of the map.
     [[nodiscard]] GeographySample mapAt(double geoX, double z) const;
     [[nodiscard]] double chooseAnchor() const;

@@ -95,7 +95,8 @@ struct ReliefStats {
     double highPlainShare = 0.0; // of that land, above 1,500 m
     std::vector<std::uint8_t> cells; // kRelief* bits of each cell of the grid
     // The highest cell of the longest chain, the cell of a land mass of at least 1,000,000 km2
-    // farthest from the chains (a plain when that distance reaches plainDistance), a coast
+    // farthest from both the chains and the sea (a plain when its distance to the chains reaches
+    // plainDistance), a coast
     // with as much land as sea around it near a chain (else anywhere).
     ReliefSite mountain;
     ReliefSite plain;

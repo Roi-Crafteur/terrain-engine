@@ -55,6 +55,14 @@ double torusOffset(double delta, double period) {
     return delta - period * std::round(delta / period);
 }
 
+// torusOffset of two coordinates of the canonical range, without rounding.
+double shortOffset(double delta, double period) {
+    if (delta > 0.5 * period) {
+        return delta - period;
+    }
+    return delta < -0.5 * period ? delta + period : delta;
+}
+
 // Cores spread by best candidate sampling within the middle latitudes, sized so that their
 // ellipses hold a little more than the land share, from a few large to several small ones.
 std::vector<Core> placeCores(std::uint64_t seed, const GeographyParams& p,
@@ -120,12 +128,12 @@ CrustNoise crustNoise(std::uint64_t seed, const GeographyParams& p, const WorldS
 float crustValue(const CrustNoise& n, const GeographyParams& p, const WorldSize& world, double x,
                  double z) {
     const std::array<float, 2> warp = n.warpX.fbm2DPair(n.warpZ, x, z);
-    const double wx = x + p.crustWarpAmplitude * warp[0];
-    const double wz = z + p.crustWarpAmplitude * warp[1];
+    const double wx = noise::wrapCanonical(x + p.crustWarpAmplitude * warp[0], world.x);
+    const double wz = noise::wrapCanonical(z + p.crustWarpAmplitude * warp[1], world.z);
     double core = -1.0e9;
     for (const Core& c : n.cores) {
-        const double dx = torusOffset(wx - c.x, world.x);
-        const double dz = torusOffset(wz - c.z, world.z);
+        const double dx = shortOffset(wx - c.x, world.x);
+        const double dz = shortOffset(wz - c.z, world.z);
         const double along = dx * c.cosAxis + dz * c.sinAxis;
         const double across = dz * c.cosAxis - dx * c.sinAxis;
         const double d = dmath::hypot(along / c.elongation, across * c.elongation);
@@ -205,20 +213,34 @@ struct Choice {
 std::vector<std::uint8_t> landOf(const GeographyParams& p, const Grid& grid,
                                  const std::vector<float>& values, float& level);
 
+// The grid factor times coarser along each side than grid (at least one node).
+Grid coarser(const Grid& grid, const WorldSize& world, int factor) {
+    Grid g;
+    g.nx = std::max(1, grid.nx / factor);
+    g.nz = std::max(1, grid.nz / factor);
+    g.sizeX = world.x / g.nx;
+    g.sizeZ = world.z / g.nz;
+    return g;
+}
+
+// How far the crust values of a map miss the wanted continents.
+double missOn(const GeographyParams& p, const Grid& grid, const std::vector<float>& values) {
+    float level = 0.0f;
+    return miss(p, landMasses(grid, landOf(p, grid, values, level), p.continentArea));
+}
+
 // The first candidate whose map fits, else the one that misses least (the first of equals).
 // A candidate is screened on a map kCoarse times coarser first: only those that miss by at most
-// one continent there are computed and checked on the whole map, at most kFullChecks of them.
+// one continent there are checked on a map half as fine, at most kChecks of them, and only
+// those that fit there on the whole map.
 Choice chooseCrust(std::uint64_t seed, const GeographyParams& p, const WorldSize& world,
                    const Grid& grid, int threads) {
-    constexpr int kFullChecks = 4;
-    Grid coarse;
-    coarse.nx = std::max(1, grid.nx / kCoarse);
-    coarse.nz = std::max(1, grid.nz / kCoarse);
-    coarse.sizeX = world.x / coarse.nx;
-    coarse.sizeZ = world.z / coarse.nz;
+    constexpr int kChecks = 4;
+    const Grid coarse = coarser(grid, world, kCoarse);
+    const Grid half = coarser(grid, world, 2);
     Choice best;
     int checks = 0;
-    for (int candidate = 0; candidate < p.crustCandidates && checks < kFullChecks; ++candidate) {
+    for (int candidate = 0; candidate < p.crustCandidates && checks < kChecks; ++candidate) {
         const CrustNoise noise = crustNoise(seed, p, world, candidate);
         float level = 0.0f;
         const std::vector<std::uint8_t> screen =
@@ -228,9 +250,11 @@ Choice chooseCrust(std::uint64_t seed, const GeographyParams& p, const WorldSize
             continue;
         }
         ++checks;
-        Choice choice{candidate, crustValues(noise, p, world, grid, threads), 0.0};
-        choice.miss = miss(p, landMasses(grid, landOf(p, grid, choice.values, level),
-                                         p.continentArea));
+        Choice choice{candidate, {}, missOn(p, half, crustValues(noise, p, world, half, threads))};
+        if (choice.miss == 0.0) {
+            choice.values = crustValues(noise, p, world, grid, threads);
+            choice.miss = missOn(p, grid, choice.values);
+        }
         if (best.candidate < 0 || choice.miss < best.miss) {
             best = std::move(choice);
         }
@@ -238,8 +262,10 @@ Choice chooseCrust(std::uint64_t seed, const GeographyParams& p, const WorldSize
             break;
         }
     }
-    if (best.candidate < 0) { // no candidate fits even coarsely: the first one
-        best = {0, crustValues(crustNoise(seed, p, world, 0), p, world, grid, threads), 0.0};
+    best.candidate = std::max(best.candidate, 0); // no candidate fits even coarsely: the first
+    if (best.values.empty()) {
+        best.values = crustValues(crustNoise(seed, p, world, best.candidate), p, world, grid,
+                                  threads);
     }
     return best;
 }
@@ -340,35 +366,6 @@ Crust buildCrust(std::uint64_t seed, const GeographyParams& params, const WorldS
     crust.continents = landMasses(grid, crust.land, params.continentArea).continents;
     crust.coast = coastDistance(grid, choice.values, level, crust.land);
     return crust;
-}
-
-std::vector<float> oceanFloor(const GeographyParams& params, const Grid& grid,
-                              const Crust& crust) {
-    std::vector<float> floor(grid.nodes(), params.shelfDepth);
-    for (std::size_t k = 0; k < floor.size(); ++k) {
-        if (crust.land[k] != 0) {
-            continue;
-        }
-        const double d = -static_cast<double>(crust.coast[k]);
-        const double shelf = static_cast<double>(params.shelfDepth);
-        floor[k] = static_cast<float>(
-            d <= params.shelfWidth
-                ? shelf * d / params.shelfWidth
-                : std::max(static_cast<double>(params.abyssDepth),
-                           shelf - (d - params.shelfWidth) * params.shelfSlope));
-    }
-    return floor;
-}
-
-std::vector<float> landFloor(const GeographyParams& params, const Crust& crust) {
-    std::vector<float> floor(crust.coast.size(), 1.0f);
-    for (std::size_t k = 0; k < floor.size(); ++k) {
-        if (crust.land[k] != 0) {
-            floor[k] = static_cast<float>(
-                1.0 + params.inlandRise * std::max(0.0, static_cast<double>(crust.coast[k])));
-        }
-    }
-    return floor;
 }
 
 } // namespace terrain::geography

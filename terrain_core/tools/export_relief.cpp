@@ -208,6 +208,28 @@ void reportLocal(Report& r, const terrain::LocalReliefStats& l) {
           l.coastSinuosity, l.coastWindows);
 }
 
+// The point of the shore nearest to a coast site of the map, whose cells are too coarse to put
+// it within the 20 km zoom: on a grid of 500 m over 64 km around it, the nearest sample with a
+// neighbor on the other side of the sea level (the site itself when there is none).
+terrain::ReliefSite onShore(const terrain::Heightfield& field, terrain::ReliefSite site) {
+    constexpr int kHalf = 64;
+    constexpr double kStep = 500.0;
+    const auto land = [&](int i, int j) {
+        return field.heightAt(site.x + i * kStep, site.z + j * kStep) >= terrain::kSeaLevel;
+    };
+    terrain::ReliefSite best = site;
+    int nearest = 2 * kHalf * kHalf + 1;
+    for (int j = -kHalf; j < kHalf; ++j) {
+        for (int i = -kHalf; i < kHalf; ++i) {
+            if (i * i + j * j < nearest && land(i, j) != land(i + 1, j)) {
+                nearest = i * i + j * j;
+                best = {true, site.x + (i + 0.5) * kStep, site.z + j * kStep};
+            }
+        }
+    }
+    return best;
+}
+
 // The zooms of 2,048, 200 and 20 km around a site.
 bool writeZooms(const terrain::Heightfield& field, const Options& options, const char* name,
                 const terrain::ReliefSite& site, const std::filesystem::path& directory,
@@ -270,7 +292,9 @@ int main(int argc, char** argv) {
         directory / "world.png", terrain::renderRelief(terrain::downsampleRelief(world, factor)));
     const bool zooms = writeZooms(field, options, "mountain", stats.mountain, directory, r) &&
                        writeZooms(field, options, "plain", stats.plain, directory, r) &&
-                       writeZooms(field, options, "coast", stats.coast, directory, r);
+                       writeZooms(field, options, "coast",
+                                  stats.coast.found ? onShore(field, stats.coast) : stats.coast,
+                                  directory, r);
     if (!mapWritten || !zooms || !r.write(directory / "stats.txt")) {
         std::fprintf(stderr, "Failed to write the maps into %s\n", argv[1]);
         return EXIT_FAILURE;
