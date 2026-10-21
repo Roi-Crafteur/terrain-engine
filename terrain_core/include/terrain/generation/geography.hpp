@@ -1,0 +1,95 @@
+#pragma once
+
+#include "terrain/generation/geography_params.hpp"
+#include "terrain/world_size.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+namespace terrain {
+
+// The geography at one point: the continental signal, whose zero line is the coast, and the
+// regional fields of the map around it (cubic B-spline of its nodes: smooth, C2).
+struct GeographySample {
+    // Signed distance to the coast in meters, positive on land: the coast of the map plus the
+    // coasts of every scale (GeographyParams). The ground is below the sea exactly where it is
+    // negative.
+    double coast = 0.0;
+    float mapCoast = 0.0f; // the distance to the coast of the map alone
+    float land = 1.0f;     // drained regional elevation of the land, >= 1 m, also over the sea
+    float landDX = 0.0f;   // its gradient along x and z, meters per meter
+    float landDZ = 0.0f;
+    float sea = 0.0f; // floor of the ocean, meters (the shelf depth under the land)
+};
+
+// The planetary geography of a seed (phase 11R): a map of the whole world computed once,
+// deterministic to the bit on every platform, then sampled at any point. Its continents do not
+// follow the tectonic plates: a crust noise thresholded to a share of land, chosen among a few
+// streams for its count of continents. Its regional elevation drains: it climbs from the coast
+// at least GeographyParams::drainSlope along the way water takes to the sea, so the map holds no
+// closed depression. The point (0, 0) lies on a coast: the map is shifted along x to put one
+// there.
+class Geography {
+public:
+    // Fields of a node of the map, in this order.
+    enum Field : std::size_t { kCoast, kLand, kSea, kFields };
+
+    // Throws std::invalid_argument for invalid parameters or world. The construction runs on
+    // up to threads threads (0: the hardware concurrency), in fixed blocks: the same bits
+    // whatever their number.
+    Geography(std::uint64_t seed, const GeographyParams& params, const WorldSize& world,
+              int threads = 0);
+
+    // The geography of these arguments, built once and shared while a Heightfield holds it (the
+    // two last ones are kept a little longer): the same object for the same seed, parameters
+    // and world, so that the many Heightfields of a process build it once. Thread-safe.
+    [[nodiscard]] static std::shared_ptr<const Geography> shared(std::uint64_t seed,
+                                                                 const GeographyParams& params,
+                                                                 const WorldSize& world);
+
+    // At (x, z) in the canonical range of the world (as Heightfield::sampleAt brings them).
+    [[nodiscard]] GeographySample sampleAt(double x, double z) const;
+
+    [[nodiscard]] const GeographyParams& params() const { return params_; }
+    [[nodiscard]] const WorldSize& world() const { return world_; }
+    [[nodiscard]] int columns() const { return columns_; }
+    [[nodiscard]] int rows() const { return rows_; }
+    // Shift of the map along x: the point x of the world reads the map at x + anchorX.
+    [[nodiscard]] double anchorX() const { return anchorX_; }
+    // Field f of node (i, j) of the map (indices taken modulo the counts).
+    [[nodiscard]] float node(int i, int j, Field f) const;
+    // The crust stream chosen and the land masses of at least continentArea it gives.
+    [[nodiscard]] int crustCandidate() const { return candidate_; }
+    [[nodiscard]] int continents() const { return continents_; }
+
+    // 64-bit FNV-1a of the raw bits of every field of every node and of the anchor.
+    [[nodiscard]] std::uint64_t checksum() const;
+    // Bytes held once built.
+    [[nodiscard]] std::size_t memoryBytes() const;
+
+    struct Noises; // the coast noises (geography.cpp)
+
+private:
+    [[nodiscard]] double coastAt(double x, double z, double mapCoast) const;
+    // The fields of the map alone at (geoX, z), geoX in the canonical range of the map.
+    [[nodiscard]] GeographySample mapAt(double geoX, double z) const;
+    [[nodiscard]] double chooseAnchor() const;
+    // The fields of node (column, row), both in range.
+    [[nodiscard]] const float* fieldsOf(int column, int row) const;
+
+    GeographyParams params_;
+    WorldSize world_;
+    int columns_ = 1;
+    int rows_ = 1;
+    double sizeX_ = 1.0;
+    double sizeZ_ = 1.0;
+    double anchorX_ = 0.0;
+    int candidate_ = 0;
+    int continents_ = 0;
+    std::vector<float> nodes_; // kFields floats per node, row by row
+    std::shared_ptr<const Noises> noises_;
+};
+
+} // namespace terrain

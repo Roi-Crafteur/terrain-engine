@@ -162,6 +162,7 @@ terrain_add_test(planet_png_test terrain_core)
 terrain_add_test(geography_grid_test terrain_core)
 target_include_directories(geography_grid_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(geography_test terrain_core)
 terrain_add_test(relief_png_test terrain_core)
 terrain_add_test(relief_stats_test terrain_core)
 

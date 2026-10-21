@@ -356,7 +356,8 @@ ReliefGrid smoothedLand(const ReliefGrid& grid, const Torus& torus, int radius) 
 // Mountain cells: high land whose heights around span enough.
 std::vector<bool> mountainCells(const ReliefGrid& grid, const Torus& torus,
                                 const ReliefStatsParams& params) {
-    const int radius = std::max(1, static_cast<int>(std::lround(params.reliefRadius / grid.spacing)));
+    const int radius =
+        std::max(1, static_cast<int>(std::lround(params.reliefRadius / grid.spacing)));
     const std::vector<float> highest = squareFilter(torus, grid.heights, radius, true);
     const std::vector<float> lowest = squareFilter(torus, grid.heights, radius, false);
     std::vector<bool> mountain(torus.cells());

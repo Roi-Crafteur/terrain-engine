@@ -2,6 +2,7 @@
 // some engines and drivers set them on x86: the world must not change. x86-64 only; elsewhere
 // the test says it is skipped.
 #include "cave_golden_support.hpp"
+#include "geography_golden_support.hpp"
 #include "golden_support.hpp"
 #include "horizon_golden_support.hpp"
 #include "planet_golden_support.hpp"
@@ -28,6 +29,7 @@ int main() {
     volatile double smallest = std::numeric_limits<double>::min();
     TEST_CHECK(smallest / 4.0 == 0.0);
     golden::report("heightfield and ecology, FTZ and DAZ", golden::heightfieldParts());
+    golden::report("planetary geography, FTZ and DAZ", golden::geographyParts());
     golden::report("streamed world, FTZ and DAZ", golden::worldParts());
     golden::report("caves, FTZ and DAZ", golden::caveParts());
     golden::report("far horizon, FTZ and DAZ", golden::horizonParts());

@@ -130,6 +130,20 @@ void pointCases(const Config& c, const Heightfield& field, const Heightfield& pl
     record("heightAt planet (macro, plates), mixed", run(planet, sets.mixed), n, "ns");
 }
 
+// heightAt of the planetary geography (phase 11R), on points drawn by kind on its own world.
+void geographyCases(const Config& c, const Heightfield& geography, const PointSets& sets) {
+    bench::section("height samples of the geography, ns per point");
+    const auto kind = [&](const char* name, const std::vector<Point>& points) {
+        record(name, bench::measure(c.runs, [&] { return heights(geography, points); }),
+               points.size(), "ns");
+    };
+    kind("geography heightAt, mixed", sets.mixed);
+    kind("geography heightAt, land", sets.land);
+    kind("geography heightAt, coast", sets.coast);
+    kind("geography heightAt, mountains", sets.mountain);
+    kind("geography heightAt, ocean", sets.ocean);
+}
+
 // Times f(point) over the points; f returns a double, added to the checksum.
 template <class F>
 void pointProfile(const Config& c, const char* name, const std::vector<Point>& points, F&& f) {
@@ -303,6 +317,10 @@ int main(int argc, char** argv) {
     const Heightfield planet(kSeed, bench::planetParams());
     const PointSets sets = pointSets(field, 200'000 / c.divisor);
     pointCases(c, field, planet, sets);
+    terrain::HeightfieldParams geographyParams;
+    geographyParams.geography.enabled = true;
+    const Heightfield geography(kSeed, geographyParams);
+    geographyCases(c, geography, pointSets(geography, 200'000 / c.divisor));
     periodicityProfile(c, sets.mixed);
     layerProfile(c, field, sets.mixed);
     latticeProfile(c, field, sets.mixed);

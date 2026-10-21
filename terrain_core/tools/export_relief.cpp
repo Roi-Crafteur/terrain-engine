@@ -4,7 +4,7 @@
 // terrain::measureRelief and measureLocalRelief (printed, and written to stats.txt). Without
 // the optional arguments: seed 20261019, the default relief, cells of 16,384 m for the planet,
 // zooms of 2,048 px, all the hardware threads, the default world.
-// Usage: terrain_export_relief <output-dir> [seed] [default|planetary] [cell-size]
+// Usage: terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
 //        [zoom-pixels] [threads] [world-x] [world-z]
 
 #include "terrain/generation/planet/planet_params.hpp"
@@ -51,9 +51,16 @@ bool fail(const char* what, const char* text, const char* expected) {
     return false;
 }
 
+// default: HeightfieldParams{}; planetary: the preset of the planet level; legacy: the relief
+// of generator 2 (geography disabled); geography: the planetary geography enabled.
 terrain::HeightfieldParams reliefParams(const std::string& relief) {
-    return relief == "planetary" ? terrain::planetaryHeightfieldParams()
-                                 : terrain::HeightfieldParams{};
+    terrain::HeightfieldParams params = relief == "planetary"
+                                            ? terrain::planetaryHeightfieldParams()
+                                            : terrain::HeightfieldParams{};
+    if (relief == "legacy" || relief == "geography") {
+        params.geography.enabled = relief == "geography";
+    }
+    return params;
 }
 
 bool parseWorld(int argc, char** argv, Options& options) {
@@ -89,8 +96,9 @@ bool parseArguments(int argc, char** argv, Options& options) {
     }
     if (argc > 3) {
         options.relief = argv[3];
-        if (options.relief != "default" && options.relief != "planetary") {
-            return fail("relief", argv[3], "default or planetary");
+        if (options.relief != "default" && options.relief != "planetary" &&
+            options.relief != "legacy" && options.relief != "geography") {
+            return fail("relief", argv[3], "default, planetary, legacy or geography");
         }
     }
     if (argc > 4 && !(parse(argv[4], options.cellSize) && std::isfinite(options.cellSize) &&
@@ -178,8 +186,14 @@ void reportShapes(Report& r, const terrain::ReliefStats& s, const terrain::World
               static_cast<double>(c.highest), c.x / 1000.0, c.z / 1000.0);
     }
     r.add("plains (over 500 km from every chain): %.1f%% of the land, %.2f%% of them above "
-          "1,500 m; the land farthest from the chains is %.0f km away\n",
-          100.0 * s.plainShare, 100.0 * s.highPlainShare, s.plainSiteDistance / 1000.0);
+          "1,500 m",
+          100.0 * s.plainShare, 100.0 * s.highPlainShare);
+    if (s.chains.empty()) {
+        r.add("; no chain\n");
+    } else {
+        r.add("; the land farthest from the chains is %.0f km away\n",
+              s.plainSiteDistance / 1000.0);
+    }
     printStraight(r, "coasts", s.longestStraightCoast, world);
     printStraight(r, "coasts smoothed over about 160 km", s.longestStraightMapCoast, world);
     r.add("coast length at the grid resolution: %.0f km\n", s.coastLength / 1000.0);
@@ -224,7 +238,8 @@ int main(int argc, char** argv) {
     Options options;
     if (!parseArguments(argc, argv, options)) {
         std::fprintf(stderr,
-                     "Usage: %s <output-dir> [seed] [default|planetary] [cell-size] "
+                     "Usage: %s <output-dir> [seed] [default|planetary|legacy|geography] "
+                     "[cell-size] "
                      "[zoom-pixels] [threads] [world-x] [world-z]\n",
                      argv[0]);
         return EXIT_FAILURE;
