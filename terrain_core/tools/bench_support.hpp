@@ -2,6 +2,8 @@
 
 // Timing, checksums and points of terrain_bench_noise (bench_noise.cpp).
 
+#include "terrain/chunk_coord.hpp"
+#include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/meshing/mesh.hpp"
 #include "terrain/streaming/stream_manager.hpp"
@@ -118,6 +120,38 @@ inline void report(const char* name, const Timing& t, std::size_t items, const c
 
 inline void section(const char* title) {
     std::printf("\n== %s\n", title);
+}
+
+inline constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
+// Center of the searches of the tests (streaming_test_support.hpp): inland, at about 44 degrees
+// north, with hundreds of cave entrances around it.
+inline constexpr std::int32_t kCenterChunkX = -77'824;
+inline constexpr std::int32_t kCenterChunkZ = -531'264;
+inline constexpr double kCenterX = kCenterChunkX * terrain::kChunkSizeMeters;
+inline constexpr double kCenterZ = kCenterChunkZ * terrain::kChunkSizeMeters;
+
+struct Config {
+    int runs = 5;
+    std::size_t divisor = 1; // 4 with --quick
+};
+
+// The checksum of every case recorded during the run.
+inline Checksum& total() {
+    static Checksum sum;
+    return sum;
+}
+
+inline void record(const char* name, const Timing& t, std::size_t items, const char* unit) {
+    report(name, t, items, unit);
+    total().add(t.checksum);
+}
+
+// The planet: macro continents and tectonic plates, the world of the planet level.
+inline terrain::HeightfieldParams planetParams() {
+    terrain::HeightfieldParams params;
+    params.macroContinent = 0.25f;
+    params.plates.amplitude = 0.5f;
+    return params;
 }
 
 } // namespace bench
