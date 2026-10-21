@@ -19,9 +19,14 @@ namespace test_relief {
     return params;
 }
 
-// The parameters of a region, the rest unchanged, on legacyRelief().
+// The parameters of a relief or of a region, the rest unchanged, on legacyRelief().
+[[nodiscard]] inline terrain::HeightfieldParams onLegacyRelief(terrain::HeightfieldParams p) {
+    p.geography = legacyRelief().geography;
+    return p;
+}
+
 [[nodiscard]] inline terrain::ErodedRegionParams onLegacyRelief(terrain::ErodedRegionParams p) {
-    p.heightfield = legacyRelief();
+    p.heightfield = onLegacyRelief(p.heightfield);
     return p;
 }
 

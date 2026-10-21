@@ -73,10 +73,10 @@ struct HeightfieldParams {
     double detailWavelength = 200.0;
     float detailAmplitude = 3.0f;
 
-    // The planetary geography of phase 11R (GeographyParams): when enabled, the continents,
-    // coasts, ocean floors and regional elevation come from it, and the local, macro and plate
-    // terms of the continentalness above are not used (the plates of the geography are its
-    // own).
+    // The planetary geography of phase 11R (GeographyParams), enabled by default since
+    // generator 3: the continents, coasts, ocean floors and regional elevation come from it, and
+    // the local, macro and plate terms of the continentalness above are not used (the plates of
+    // the geography are its own). Disabled: the relief of generator 2.
     GeographyParams geography;
 };
 
@@ -98,9 +98,10 @@ struct HeightSample {
 // Deterministic: the same seed, parameters and coordinates always give the same height.
 // Periodic on the world (WorldSize): every layer tiles it, and (x, z) is brought back into its
 // canonical range first, so every image of a point gets the same bits.
-// Like every fbm layer, the macro continentalness is exactly 0 at the origin, so without the
-// plates the origin always lies on a macro coast: the local layer alone decides whether it
-// is land or sea.
+// With the geography, the origin lies on a continental coast, near a mountain belt when the
+// equator has one (Geography::anchorX). Without it, like every fbm layer, the macro
+// continentalness is exactly 0 at the origin, so without the plates the origin always lies on a
+// macro coast: the local layer alone decides whether it is land or sea.
 class Heightfield {
 public:
     // Throws std::invalid_argument for an invalid world (validate).

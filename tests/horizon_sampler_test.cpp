@@ -1,12 +1,14 @@
 // Samples of the far horizon: the ground is Heightfield::heightAt bit for bit, the material and
 // the biome are those of Ecology::map(surfaceFromHeightfield(...)) at the same points bit for bit
 // on every level (the oracle that guards the copy of the site in horizon_sampler.cpp), in an
-// ocean, on a coast, in mountains, in a desert, at a pole and at the corner of the world; then
+// ocean, on a coast, in mountains, in a desert, at a pole and at the corner of the world of the
+// legacy relief, and on a coast of the default world found by search; then
 // the periodicity, the independence from the rectangle, the gradients, the summaries of the
 // player edits and the invalid arguments.
 #include "terrain/generation/terrain_surface.hpp"
 #include "terrain/streaming/horizon_sampler.hpp"
 
+#include "default_world_support.hpp"
 #include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
@@ -128,6 +130,42 @@ void testMaterialOracle() {
     TEST_CHECK(allStats[2].highest > 2000.0f);                     // mountain
     TEST_CHECK(oracleMap(field, ecology, regions[2]).at(16, 16).biome == terrain::Biome::Mountain);
     TEST_CHECK(oracleMap(field, ecology, regions[3]).at(16, 16).biome == terrain::Biome::Desert);
+}
+
+// A coast of the default world: the first point of a lattice of 4096 m (a sample of every level)
+// around the origin whose oracle square, from 128 m before it, holds over 300 samples of water
+// and as many of land. The oracle holds there too.
+void testDefaultWorldCoast() {
+    const terrain::Heightfield& field = default_world::field();
+    const auto mixed = [&field](double x, double z) {
+        int water = 0;
+        for (int j = 0; j < kOracleSize; ++j) {
+            for (int i = 0; i < kOracleSize; ++i) {
+                water += field.heightAt(x - 128.0 + i * kOracleSpacing,
+                                        z - 128.0 + j * kOracleSpacing) < 0.0f
+                             ? 1
+                             : 0;
+            }
+        }
+        return water > 300 && water < kOracleSize * kOracleSize - 300;
+    };
+    const std::optional<default_world::Place> coast = default_world::nearest(4096.0, 64, mixed);
+    TEST_CHECK(coast.has_value());
+    if (!coast) {
+        return;
+    }
+    const terrain::Ecology ecology(kSeed);
+    const HorizonParams params;
+    const HorizonSampler sampler(field, ecology, params);
+    const Region region{"default world coast", coast->x - 128.0, coast->z - 128.0};
+    const terrain::EcologyMap map = oracleMap(field, ecology, region);
+    RegionStats stats;
+    for (int level = 0; level < params.levels; ++level) {
+        compareLevel(sampler, map, region, level, stats);
+    }
+    std::printf("oracle %s at (%.0f, %.0f) m: %d samples (%d water, %d land)\n", region.name,
+                coast->x, coast->z, stats.compared, stats.water, stats.land);
+    TEST_CHECK(stats.water > 300 && stats.land > 300);
 }
 
 // The same samples for every image of a rectangle, and whatever rectangle holds them.
@@ -273,6 +311,7 @@ void testInvalidArguments() {
 
 int main() {
     testMaterialOracle();
+    testDefaultWorldCoast();
     testPeriodicAndSplit();
     testGradients();
     testEditSummaries();

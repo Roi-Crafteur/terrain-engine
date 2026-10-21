@@ -9,6 +9,7 @@
 #include "terrain/generation/planet/planet_params.hpp"
 
 #include "bit_exact_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -58,15 +59,16 @@ void testDeterminismAndSharing() {
     const Heightfield g(kSeed, geographyParams());
     TEST_CHECK(f.geography() != nullptr && f.geography() == g.geography());
     TEST_CHECK(f.plates() == nullptr);
-    TEST_CHECK(Heightfield(kSeed).geography() == nullptr);
+    // The geography is the default world (generator 3); off, the legacy relief has none.
+    TEST_CHECK(Heightfield(kSeed).geography() == f.geography());
+    TEST_CHECK(Heightfield(kSeed, test_relief::legacyRelief()).geography() == nullptr);
     TEST_CHECK(one.memoryBytes() <= 32u * 1024u * 1024u);
 }
 
-// The planetary preset only sets the old plate and macro terms, unused by the geography.
+// The planetary preset only sets the old plate and macro terms, unused by the geography: it is
+// the default world.
 void testPlanetaryPresetIsTheGeography() {
-    HeightfieldParams preset = terrain::planetaryHeightfieldParams();
-    preset.geography.enabled = true;
-    const Heightfield planetary(kSeed, preset);
+    const Heightfield planetary(kSeed, terrain::planetaryHeightfieldParams());
     const Heightfield geography(kSeed, geographyParams());
     bool identical = true;
     for (const Point& p : bit_exact::randomPoints(2'000, 3e7)) {

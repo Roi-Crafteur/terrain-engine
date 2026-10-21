@@ -1,10 +1,12 @@
 // Computes the planet level of a world, prints what it measured (time per stage, peak memory
 // during the construction and memory kept afterwards, figures of the land, the basins and the
 // rivers, false passes) and writes its control images. Without the optional arguments: seed
-// 20261019, cells of 8,192 m, the planetary relief (plates 0.5, macro continent 0.25), one
-// relief sample per cell, all the hardware threads, the default world (60,030,976 x
-// 34,996,224 m). The geography relief is the planetary geography of phase 11R.
-// Usage: terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary|geography]
+// 20261019, cells of 8,192 m, the planetary preset, one relief sample per cell, all the
+// hardware threads, the default world (60,030,976 x 34,996,224 m). Since generator 3 the default
+// and planetary reliefs are both the planetary geography of phase 11R; the legacy relief is the
+// planetary preset of generator 2 (plates 0.5, macro continent 0.25, geography off), for
+// comparisons with earlier figures; geography is an older name of planetary.
+// Usage: terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary|legacy|geography]
 //        [samples-per-axis] [threads] [world-x] [world-z]
 
 #include "terrain/generation/planet/planet_false_passes.hpp"
@@ -59,7 +61,9 @@ terrain::HeightfieldParams reliefParams(const char* relief) {
         return {};
     }
     terrain::HeightfieldParams params = terrain::planetaryHeightfieldParams();
-    params.geography.enabled = std::strcmp(relief, "geography") == 0;
+    if (std::strcmp(relief, "legacy") == 0) {
+        params.geography.enabled = false;
+    }
     return params;
 }
 
@@ -105,14 +109,14 @@ bool parseArguments(int argc, char** argv, Options& options) {
     }
     if (argc > 4) {
         bool known = false;
-        for (const char* relief : {"default", "planetary", "geography"}) {
+        for (const char* relief : {"default", "planetary", "legacy", "geography"}) {
             if (std::strcmp(argv[4], relief) == 0) {
                 options.relief = relief;
                 known = true;
             }
         }
         if (!known) {
-            return fail("relief", argv[4], "default, planetary or geography");
+            return fail("relief", argv[4], "default, planetary, legacy or geography");
         }
     }
     if (argc > 5 &&
@@ -262,7 +266,8 @@ int main(int argc, char** argv) {
     Options options;
     if (!parseArguments(argc, argv, options)) {
         std::fprintf(stderr,
-                     "Usage: %s <output-dir> [seed] [cell-size] [default|planetary|geography] "
+                     "Usage: %s <output-dir> [seed] [cell-size] "
+                     "[default|planetary|legacy|geography] "
                      "[samples-per-axis] [threads] [world-x] [world-z]\n",
                      argv[0]);
         return EXIT_FAILURE;

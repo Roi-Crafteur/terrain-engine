@@ -15,6 +15,7 @@
 #include "cave_environment_test_support.hpp"
 #include "cave_materials_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -185,7 +186,7 @@ void comparePoints(const CaveField& a, const CaveField& b, const CaveGround& gro
 // three details and two climates (a humid temperate one with lakes, a cold one with frozen
 // lakes), in boxes holding a single district and in boxes in the middle of a blend.
 void testPointsMatch() {
-    const terrain::Heightfield heightfield(kSeed);
+    const terrain::Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveField without(kSeed);
     const CaveField neutral(kSeed, neutralParams());
     const CaveGround land = caves_test::heightfieldGround(heightfield);
@@ -218,7 +219,7 @@ void testPointsMatch() {
 // The aquifer cells (alone and from a cache) and the entrances, in a humid and in a cold climate:
 // the districts only add a profile that changes nothing.
 void testCellsAndEntrancesMatch() {
-    const terrain::Heightfield heightfield(kSeed);
+    const terrain::Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveField without(kSeed);
     const CaveField neutral(kSeed, neutralParams());
     const CaveGround land = caves_test::heightfieldGround(heightfield);
@@ -265,7 +266,7 @@ bool singleDistrictOver(AquiferCache& cache, double x0, double z0, double size, 
 
 // The speleothems of a square of 96 m with caves, in a humid climate, are the same.
 void testSpeleothemsMatch() {
-    const terrain::Heightfield heightfield(kSeed);
+    const terrain::Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveField without(kSeed);
     const CaveField neutral(kSeed, neutralParams());
     const CaveGround ground = caves_test::withEnvironment(
@@ -327,8 +328,8 @@ void compareTile(const TerrainTiles& a, const TerrainTiles& b, AquiferCache& cac
 // LOD 0 (all seams) to LOD 2, are the ones of the world without districts, and have no cave
 // flora.
 void testTilesMatch() {
-    const TerrainTiles a(kSeed, {}, {}, CaveParams{});
-    const TerrainTiles b(kSeed, {}, {}, neutralParams());
+    const TerrainTiles a(kSeed, test_relief::legacyRelief(), {}, CaveParams{});
+    const TerrainTiles b(kSeed, test_relief::legacyRelief(), {}, neutralParams());
     const std::vector<CaveEntrance> entrances = streaming_test::entrancesNearOrigin(a);
     TEST_CHECK(entrances.size() >= 6);
     AquiferCache cache(*b.caves(), b.caveGround());
@@ -364,7 +365,7 @@ void testTilesMatch() {
 // The comparison does see districts: with the default profiles the carved densities differ from
 // the world without districts at many of the same points.
 void testControlDefaultProfiles() {
-    const terrain::Heightfield heightfield(kSeed);
+    const terrain::Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveField without(kSeed);
     const CaveField districts(kSeed, defaultDistrictParams());
     const CaveGround ground = caves_test::withEnvironment(

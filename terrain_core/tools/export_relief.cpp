@@ -52,8 +52,9 @@ bool fail(const char* what, const char* text, const char* expected) {
     return false;
 }
 
-// default: HeightfieldParams{}; planetary: the preset of the planet level; legacy: the relief
-// of generator 2 (geography disabled); geography: the planetary geography enabled.
+// default: HeightfieldParams{}, the planetary geography since generator 3; planetary: the preset
+// of the planet level (the same world); legacy: the relief of generator 2 (geography disabled);
+// geography: the planetary geography enabled.
 terrain::HeightfieldParams reliefParams(const std::string& relief) {
     terrain::HeightfieldParams params = relief == "planetary"
                                             ? terrain::planetaryHeightfieldParams()

@@ -146,9 +146,11 @@ inline void record(const char* name, const Timing& t, std::size_t items, const c
     total().add(t.checksum);
 }
 
-// The planet: macro continents and tectonic plates, the world of the planet level.
+// The planet of generator 2: macro continents and tectonic plates, the world of the planet level
+// before the planetary geography.
 inline terrain::HeightfieldParams planetParams() {
     terrain::HeightfieldParams params;
+    params.geography.enabled = false; // the layers of generator 2, as in the earlier runs
     params.macroContinent = 0.25f;
     params.plates.amplitude = 0.5f;
     return params;
