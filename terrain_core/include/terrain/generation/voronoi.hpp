@@ -135,6 +135,14 @@ public:
 
     [[nodiscard]] PlateSample sampleAt(double x, double z) const;
 
+    // The memos of the noises of sampleAt (the warps and the coast) during a batch call of the
+    // Heightfield (FbmOctaves::Memo), and sampleAt through them: the same bits.
+    struct Memos {
+        std::array<noise::FbmOctaves::Memo, 4> warps;
+        noise::FbmOctaves::Memo coast;
+    };
+    [[nodiscard]] PlateSample sampleAt(double x, double z, Memos& memos) const;
+
     // Coordinates after the domain warping, where the Voronoi diagram is evaluated (before
     // being brought back into the canonical range).
     struct Point {
@@ -158,6 +166,9 @@ public:
     [[nodiscard]] const VoronoiParams& params() const { return params_; }
 
 private:
+    [[nodiscard]] PlateSample sampleWith(double x, double z, Memos* memos) const;
+    [[nodiscard]] Point warpWith(double x, double z, Memos* memos) const;
+
     VoronoiParams params_;
     WorldSize world_;
     double cellDiameter_ = 0.0;

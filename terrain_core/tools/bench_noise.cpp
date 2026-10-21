@@ -304,16 +304,9 @@ void tileCases(const Config& c, terrain::ChunkCoord mountain) {
     }
 }
 
-// The work of a LOD 0 tile that reads the relief: its 17 x 17 columns, the map of its plants
-// (relief, climate, biomes and densities every 4 m) and their placement.
-void lod0Parts(const Config& c, terrain::ChunkCoord mountain) {
-    bench::section("parts of a LOD 0 tile, ms per tile");
-    const Heightfield field(kSeed);
-    const terrain::Ecology ecology(kSeed);
-    const int side = c.divisor == 1 ? 4 : 2;
-    std::vector<terrain::TileKey> keys = tileBlock(mountain, 0, side);
-    const std::vector<terrain::TileKey> plain = tileBlock({kCenterChunkX, kCenterChunkZ}, 0, side);
-    keys.insert(keys.end(), plain.begin(), plain.end());
+// The 17 x 17 columns of LOD 0 tiles, point by point and in one batch per tile.
+void columnParts(const Config& c, const Heightfield& field,
+                 const std::vector<terrain::TileKey>& keys) {
     const auto columns = bench::measure(c.runs, [&field, &keys] {
         Checksum sum;
         for (const terrain::TileKey& key : keys) {
@@ -327,6 +320,42 @@ void lod0Parts(const Config& c, terrain::ChunkCoord mountain) {
         return sum.value();
     });
     record("columns, 17 x 17 heightAt", columns, keys.size(), "ms");
+    const auto batch = bench::measure(c.runs, [&field, &keys] {
+        Checksum sum;
+        std::vector<double> xs;
+        std::vector<double> zs;
+        std::vector<float> heights(static_cast<std::size_t>(terrain::kGridSamples) *
+                                   static_cast<std::size_t>(terrain::kGridSamples));
+        for (const terrain::TileKey& key : keys) {
+            xs.clear();
+            zs.clear();
+            for (int k = 0; k < terrain::kGridSamples; ++k) {
+                for (int i = 0; i < terrain::kGridSamples; ++i) {
+                    xs.push_back(key.origin.x * terrain::kChunkCells + i);
+                    zs.push_back(key.origin.z * terrain::kChunkCells + k);
+                }
+            }
+            field.heightsAt(xs, zs, heights);
+            for (const float h : heights) {
+                sum.add(h);
+            }
+        }
+        return sum.value();
+    });
+    bench::report("columns, 17 x 17 heightsAt (batch)", batch, keys.size(), "ms");
+}
+
+// The work of a LOD 0 tile that reads the relief: its 17 x 17 columns, the map of its plants
+// (relief, climate, biomes and densities every 4 m) and their placement.
+void lod0Parts(const Config& c, terrain::ChunkCoord mountain) {
+    bench::section("parts of a LOD 0 tile, ms per tile");
+    const Heightfield field(kSeed);
+    const terrain::Ecology ecology(kSeed);
+    const int side = c.divisor == 1 ? 4 : 2;
+    std::vector<terrain::TileKey> keys = tileBlock(mountain, 0, side);
+    const std::vector<terrain::TileKey> plain = tileBlock({kCenterChunkX, kCenterChunkZ}, 0, side);
+    keys.insert(keys.end(), plain.begin(), plain.end());
+    columnParts(c, field, keys);
     const auto regionOf = [](const terrain::TileKey& key) {
         const double x0 = key.origin.x * terrain::kChunkSizeMeters;
         const double z0 = key.origin.z * terrain::kChunkSizeMeters;

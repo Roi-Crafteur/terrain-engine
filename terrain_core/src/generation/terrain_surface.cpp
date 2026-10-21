@@ -2,8 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <span>
+#include <vector>
 
 namespace terrain {
 
@@ -129,6 +134,76 @@ bool flagged(std::span<const std::uint8_t> mask, std::size_t index) {
     return !mask.empty() && mask[index] != 0;
 }
 
+// The relief of the sites of a surface: the sample of each site, and the heights of its east,
+// west, south and north neighbors one pixel away, through the batch functions of the
+// Heightfield. A neighbor whose coordinates are those of an adjacent site bit for bit takes the
+// height of its sample (heightAt only depends on them); the others are computed. Nothing
+// outlives the call.
+struct SurfaceRelief {
+    std::vector<HeightSample> samples;           // by site
+    std::vector<std::array<float, 4>> neighbors; // by site
+};
+
+bool sameBits(double a, double b) {
+    return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
+}
+
+// The neighbors to compute: their coordinates, and where their heights go.
+struct NeighborQueries {
+    std::vector<double> xs;
+    std::vector<double> zs;
+    std::vector<float*> targets;
+};
+
+SurfaceRelief surfaceRelief(const Heightfield& field, const TerrainSurface& surface) {
+    const int size = surface.size();
+    const auto count = static_cast<std::size_t>(size) * static_cast<std::size_t>(size);
+    const double step = surface.region.metersPerPixel;
+    std::vector<double> xs(static_cast<std::size_t>(size));
+    std::vector<double> zs(static_cast<std::size_t>(size));
+    for (int i = 0; i < size; ++i) {
+        xs[static_cast<std::size_t>(i)] = surface.sampleX(i);
+        zs[static_cast<std::size_t>(i)] = surface.sampleZ(i);
+    }
+    SurfaceRelief relief{std::vector<HeightSample>(count),
+                         std::vector<std::array<float, 4>>(count)};
+    std::vector<double> rowZ(xs.size());
+    for (int row = 0; row < size; ++row) {
+        std::fill(rowZ.begin(), rowZ.end(), zs[static_cast<std::size_t>(row)]);
+        field.samplesAt(xs, rowZ,
+                        std::span(relief.samples).subspan(surface.index(0, row), xs.size()));
+    }
+    NeighborQueries queries;
+    const auto neighbor = [&](int column, int row, double x, double z, float& target) {
+        if (column >= 0 && row >= 0 && column < size && row < size &&
+            sameBits(x, xs[static_cast<std::size_t>(column)]) &&
+            sameBits(z, zs[static_cast<std::size_t>(row)])) {
+            target = relief.samples[surface.index(column, row)].height;
+            return;
+        }
+        queries.xs.push_back(x);
+        queries.zs.push_back(z);
+        queries.targets.push_back(&target);
+    };
+    for (int row = 0; row < size; ++row) {
+        const double z = zs[static_cast<std::size_t>(row)];
+        for (int column = 0; column < size; ++column) {
+            const double x = xs[static_cast<std::size_t>(column)];
+            std::array<float, 4>& heights = relief.neighbors[surface.index(column, row)];
+            neighbor(column + 1, row, x + step, z, heights[0]);
+            neighbor(column - 1, row, x - step, z, heights[1]);
+            neighbor(column, row + 1, x, z + step, heights[2]);
+            neighbor(column, row - 1, x, z - step, heights[3]);
+        }
+    }
+    std::vector<float> computed(queries.xs.size());
+    field.heightsAt(queries.xs, queries.zs, computed);
+    for (std::size_t i = 0; i < computed.size(); ++i) {
+        *queries.targets[i] = computed[i];
+    }
+    return relief;
+}
+
 } // namespace
 
 double TerrainSurface::sampleX(int column) const {
@@ -179,18 +254,15 @@ TerrainSurface surfaceFromHeightfield(const Heightfield& field, const HeightmapR
     surface.sites.reserve(static_cast<std::size_t>(region.size) *
                           static_cast<std::size_t>(region.size));
     const double step = region.metersPerPixel;
+    const SurfaceRelief relief = surfaceRelief(field, surface);
     for (int row = 0; row < region.size; ++row) {
-        const double z = surface.sampleZ(row);
         for (int column = 0; column < region.size; ++column) {
-            const double x = surface.sampleX(column);
-            const HeightSample sample = field.sampleAt(x, z);
+            const std::size_t i = surface.index(column, row);
+            const HeightSample& sample = relief.samples[i];
             SurfaceSite site;
             site.ground = sample.height;
             site.continentalness = sample.continentalness;
-            const Neighbors neighbors{{field.heightAt(x + step, z), field.heightAt(x - step, z),
-                                       field.heightAt(x, z + step), field.heightAt(x, z - step)},
-                                      2.0 * step,
-                                      2.0 * step};
+            const Neighbors neighbors{relief.neighbors[i], 2.0 * step, 2.0 * step};
             setSlopes(site, neighbors, step);
             setWater(site, false);
             surface.sites.push_back(site);

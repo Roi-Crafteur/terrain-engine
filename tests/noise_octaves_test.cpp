@@ -1,7 +1,8 @@
 // FbmOctaves gives exactly the bits of fbm2D, ridged2D and fbm3D with the same seed, parameters
 // and world, for any parameters: no octave or a negative count, more octaves than rotations,
 // another lacunarity, a negative or zero gain, a total amplitude of 0; on pseudo-random points,
-// on the edges and the corner of the world, at -0, and far beyond it. wrapCanonical gives
+// on the edges and the corner of the world, at -0, and far beyond it; and so do they through a
+// memo, along sequences of points (rows across the edges, scattered points). wrapCanonical gives
 // exactly the bits of wrapCoordinate, on both sides of both bounds of the canonical range.
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
@@ -53,6 +54,21 @@ void checkPoint(Tally& tally, const noise::FbmParams& params, const WorldSize& w
                 p, "fbm3D");
 }
 
+// The memoized fbm2D and ridged2D of a sequence of points: the bits of the free functions.
+void checkMemo(Tally& tally, const noise::FbmParams& params, const WorldSize& world,
+               const noise::FbmOctaves& octaves, const std::vector<Point>& points) {
+    noise::FbmOctaves::Memo fbmMemo;
+    noise::FbmOctaves::Memo ridgedMemo;
+    for (const Point& p : points) {
+        tally.check(same(octaves.fbm2D(p.x, p.z, fbmMemo),
+                         noise::fbm2D(p.x, p.z, kSeed, params, world)),
+                    p, "fbm2D with a memo");
+        tally.check(same(octaves.ridged2D(p.x, p.z, 4.0, ridgedMemo),
+                         noise::ridged2D(p.x, p.z, kSeed, params, world, 4.0)),
+                    p, "ridged2D with a memo");
+    }
+}
+
 void checkFreeFunctions() {
     Tally tally("FbmOctaves == free functions");
     const std::vector<Point> random = bit_exact::randomPoints(5'000, 4e7);
@@ -66,7 +82,9 @@ void checkFreeFunctions() {
                 for (const Point& p : *set) {
                     checkPoint(tally, params, world, octaves, p);
                 }
+                checkMemo(tally, params, world, octaves, *set);
             }
+            checkMemo(tally, params, world, octaves, bit_exact::rowPoints(world, 300));
         }
     }
 }

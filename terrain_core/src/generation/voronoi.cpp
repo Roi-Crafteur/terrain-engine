@@ -273,14 +273,21 @@ TectonicPlates::TectonicPlates(std::uint64_t seed, const VoronoiParams& params,
 }
 
 TectonicPlates::Point TectonicPlates::warp(double x, double z) const {
+    return warpWith(x, z, nullptr);
+}
+
+TectonicPlates::Point TectonicPlates::warpWith(double x, double z, Memos* memos) const {
+    const auto fbm = [x, z, memos, this](std::size_t i) {
+        return memos ? warps_[i].fbm2D(x, z, memos->warps[i]) : warps_[i].fbm2D(x, z);
+    };
     Point q{x, z};
     if (params_.warpAmplitude > 0.0) {
-        q.x += params_.warpAmplitude * warps_[0].fbm2D(x, z);
-        q.z += params_.warpAmplitude * warps_[1].fbm2D(x, z);
+        q.x += params_.warpAmplitude * fbm(0);
+        q.z += params_.warpAmplitude * fbm(1);
     }
     if (params_.detailWarpAmplitude > 0.0) {
-        q.x += params_.detailWarpAmplitude * warps_[2].fbm2D(x, z);
-        q.z += params_.detailWarpAmplitude * warps_[3].fbm2D(x, z);
+        q.x += params_.detailWarpAmplitude * fbm(2);
+        q.z += params_.detailWarpAmplitude * fbm(3);
     }
     return q;
 }
@@ -294,10 +301,18 @@ int TectonicPlates::boundaryIndex(int a, int b) const {
     return boundaryIndex_[static_cast<std::size_t>(a) * count + static_cast<std::size_t>(b)];
 }
 
-PlateSample TectonicPlates::sampleAt(double worldX, double worldZ) const {
+PlateSample TectonicPlates::sampleAt(double x, double z) const {
+    return sampleWith(x, z, nullptr);
+}
+
+PlateSample TectonicPlates::sampleAt(double x, double z, Memos& memos) const {
+    return sampleWith(x, z, &memos);
+}
+
+PlateSample TectonicPlates::sampleWith(double worldX, double worldZ, Memos* memos) const {
     const double x = noise::wrapCanonical(worldX, world_.x);
     const double z = noise::wrapCanonical(worldZ, world_.z);
-    const Neighborhood hood = neighborhood(*this, warp(x, z), gateWidth_);
+    const Neighborhood hood = neighborhood(*this, warpWith(x, z, memos), gateWidth_);
     const Near& nearest = hood.near[0];
     PlateSample s;
     s.plate = nearest.plate;
@@ -306,7 +321,8 @@ PlateSample TectonicPlates::sampleAt(double worldX, double worldZ) const {
     s.level = blendedLevel(*this, hood);
     addBoundaryEffects(*this, hood, s);
     if (s.coast > 0.0f && params_.coastRoughness > 0.0f) {
-        s.level += params_.coastRoughness * s.coast * coast_.fbm2D(x, z);
+        const float rough = memos ? coast_.fbm2D(x, z, memos->coast) : coast_.fbm2D(x, z);
+        s.level += params_.coastRoughness * s.coast * rough;
     }
     s.continentalness = s.level + params_.collisionUplift * s.collision + s.rift;
     return s;

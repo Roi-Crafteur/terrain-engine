@@ -28,6 +28,7 @@ terrain_add_test(noise_periodic_test terrain_core)
 terrain_add_test(noise_octaves_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
 terrain_add_test(heightfield_shortcuts_test terrain_core)
+terrain_add_test(heightfield_batch_test terrain_core)
 terrain_add_test(heightfield_macro_test terrain_core)
 terrain_add_test(heightfield_voronoi_test terrain_core)
 terrain_add_test(heightfield_density_test terrain_core)
@@ -109,10 +110,12 @@ add_library(terrain_frozen_reference STATIC
     frozen/frozen_heightfield.cpp
     frozen/frozen_noise.cpp
     frozen/frozen_plates.cpp
+    frozen/frozen_surface.cpp
 )
 target_include_directories(terrain_frozen_reference PUBLIC frozen)
 target_link_libraries(terrain_frozen_reference PUBLIC terrain_core PRIVATE terrain_warnings)
 terrain_add_test(frozen_reference_test terrain_frozen_reference)
+terrain_add_test(height_access_test terrain_frozen_reference)
 terrain_add_test(cave_districts_test terrain_core)
 terrain_add_test(cave_district_weights_test terrain_core)
 terrain_add_test(cave_districts_neutral_test terrain_core)

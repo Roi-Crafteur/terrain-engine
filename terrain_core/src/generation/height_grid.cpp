@@ -1,21 +1,29 @@
 #include "terrain/generation/height_grid.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace terrain {
 
+// Row by row through Heightfield::heightsAt: neighboring pixels share noise cells.
 HeightGrid sampleHeightGrid(const Heightfield& field, const HeightmapRegion& region) {
-    HeightGrid grid{region.size, region.metersPerPixel, {}};
-    grid.heights.reserve(static_cast<std::size_t>(region.size) *
-                         static_cast<std::size_t>(region.size));
+    const auto size = static_cast<std::size_t>(region.size);
+    HeightGrid grid{region.size, region.metersPerPixel, std::vector<float>(size * size)};
     const double half = region.size / 2.0;
+    std::vector<double> xs(size);
+    for (int column = 0; column < region.size; ++column) {
+        xs[static_cast<std::size_t>(column)] =
+            region.centerX + (column + 0.5 - half) * region.metersPerPixel;
+    }
+    std::vector<double> zs(size);
     for (int row = 0; row < region.size; ++row) {
         const double z = region.centerZ + (row + 0.5 - half) * region.metersPerPixel;
-        for (int column = 0; column < region.size; ++column) {
-            const double x = region.centerX + (column + 0.5 - half) * region.metersPerPixel;
-            grid.heights.push_back(field.heightAt(x, z));
-        }
+        std::fill(zs.begin(), zs.end(), z);
+        field.heightsAt(xs, zs, std::span<float>(grid.heights).subspan(grid.index(0, row), size));
     }
     return grid;
 }

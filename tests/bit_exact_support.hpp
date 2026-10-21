@@ -97,6 +97,29 @@ inline std::vector<Point> edgePoints(const WorldSize& world) {
     return points;
 }
 
+// Rows of length points, every 1, 37 and 100 m, along x and along z: through the origin, across
+// the edges of the world and across its corner, where consecutive points of a batch share
+// noise cells and the wrapping changes between them.
+inline std::vector<Point> rowPoints(const WorldSize& world, int length) {
+    const double hx = 0.5 * world.x;
+    const double hz = 0.5 * world.z;
+    const std::array<Point, 4> starts = {Point{-20.5, 3.25}, Point{hx, -77.0}, Point{-1000.0, hz},
+                                         Point{hx, hz}};
+    std::vector<Point> points;
+    for (const double spacing : {1.0, 37.0, 100.0}) {
+        const double back = 0.5 * spacing * length;
+        for (const Point& start : starts) {
+            for (int i = 0; i < length; ++i) {
+                points.push_back({start.x - back + i * spacing, start.z});
+            }
+            for (int i = 0; i < length; ++i) {
+                points.push_back({start.x, start.z - back + i * spacing});
+            }
+        }
+    }
+    return points;
+}
+
 // Mismatches of one family of checks, the first one printed.
 class Tally {
 public:

@@ -5,6 +5,7 @@
 // same bits.
 
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 
 #include <algorithm>
 #include <array>
@@ -106,29 +107,29 @@ inline LatticePoint toLattice(double x, double z, const Lattice2D& l) {
     return {(a * px - b * pz) / c + l.offsetU, (b * px + a * pz) / c + l.offsetV};
 }
 
-// The cell of the rotated lattice holding a point: invariants of its 4 corners, (u0, v0) then
-// (u0 + 1, v0), (u0, v0 + 1) and (u0 + 1, v0 + 1), and the position inside it.
-struct LatticeCell {
-    std::array<Invariants, 4> corners;
+// The cell of the rotated lattice holding a point: its lowest corner (iu, iv) and the position
+// inside it.
+struct CellPosition {
+    std::int64_t iu;
+    std::int64_t iv;
     double fu;
     double fv;
 };
 
-inline LatticeCell cellOf(LatticePoint p, const Lattice2D& l) {
+inline CellPosition positionOf(LatticePoint p) {
     const double u0 = std::floor(p.u);
     const double v0 = std::floor(p.v);
-    const auto iu = static_cast<std::int64_t>(u0);
-    const auto iv = static_cast<std::int64_t>(v0);
-    LatticeCell cell{};
-    cell.fu = p.u - u0;
-    cell.fv = p.v - v0;
+    return {static_cast<std::int64_t>(u0), static_cast<std::int64_t>(v0), p.u - u0, p.v - v0};
+}
+
+// Invariants of the 4 corners of the cell (iu, iv): (iu, iv) then (iu + 1, iv), (iu, iv + 1)
+// and (iu + 1, iv + 1).
+inline std::array<Invariants, 4> cornersOf(std::int64_t iu, std::int64_t iv, const Lattice2D& l) {
     const Invariants base{modulo(l.a * iu + l.b * iv, l.periodS),
                           modulo(l.a * iv - l.b * iu, l.periodT)};
     const Invariants alongU{step(base.s, l.a, l.periodS), step(base.t, -l.b, l.periodT)};
-    cell.corners = {base, alongU,
-                    Invariants{step(base.s, l.b, l.periodS), step(base.t, l.a, l.periodT)},
-                    Invariants{step(alongU.s, l.b, l.periodS), step(alongU.t, l.a, l.periodT)}};
-    return cell;
+    return {base, alongU, Invariants{step(base.s, l.b, l.periodS), step(base.t, l.a, l.periodT)},
+            Invariants{step(alongU.s, l.b, l.periodS), step(alongU.t, l.a, l.periodT)}};
 }
 
 inline std::uint64_t hashOf(Invariants corner, std::uint64_t seed) {
@@ -136,26 +137,54 @@ inline std::uint64_t hashOf(Invariants corner, std::uint64_t seed) {
                  (static_cast<std::uint64_t>(corner.t) * kCellZPrime));
 }
 
-// Dot product of the gradient of a corner with the offset (du, dv) to it.
-inline double cornerDot(Invariants corner, double du, double dv, std::uint64_t seed) {
-    const auto& g = kGradients[hashOf(corner, seed) & 15U];
+// Indices in kGradients of the gradients of the 4 corners of the cell (iu, iv): they only
+// depend on the cell, the lattice and the seed.
+inline CellGradients gradientsOf(std::int64_t iu, std::int64_t iv, std::uint64_t seed,
+                                 const Lattice2D& lattice) {
+    const std::array<Invariants, 4> corners = cornersOf(iu, iv, lattice);
+    CellGradients gradients{};
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        gradients[i] = static_cast<std::uint8_t>(hashOf(corners[i], seed) & 15U);
+    }
+    return gradients;
+}
+
+// Dot product of a gradient with the offset (du, dv) to its corner.
+inline double gradientDot(std::uint8_t gradient, double du, double dv) {
+    const auto& g = kGradients[gradient];
     return g[0] * du + g[1] * dv;
 }
 
-// gradient2D of a point of the canonical range.
-inline float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2D& lattice) {
-    const LatticeCell c = cellOf(toLattice(x, z, lattice), lattice);
-    const double n00 = cornerDot(c.corners[0], c.fu, c.fv, seed);
-    const double n10 = cornerDot(c.corners[1], c.fu - 1.0, c.fv, seed);
-    const double n01 = cornerDot(c.corners[2], c.fu, c.fv - 1.0, seed);
-    const double n11 = cornerDot(c.corners[3], c.fu - 1.0, c.fv - 1.0, seed);
-    const double u = fade(c.fu);
-    const double v = fade(c.fv);
+// The noise inside a cell from the gradients of its corners.
+inline float cellNoise(const CellGradients& g, double fu, double fv) {
+    const double n00 = gradientDot(g[0], fu, fv);
+    const double n10 = gradientDot(g[1], fu - 1.0, fv);
+    const double n01 = gradientDot(g[2], fu, fv - 1.0);
+    const double n11 = gradientDot(g[3], fu - 1.0, fv - 1.0);
+    const double u = fade(fu);
+    const double v = fade(fv);
     const double nv0 = n00 + u * (n10 - n00);
     const double nv1 = n01 + u * (n11 - n01);
     // 2D Perlin noise with unit gradients stays within +-sqrt(2) / 2.
     const double value = (nv0 + v * (nv1 - nv0)) * std::numbers::sqrt2;
     return static_cast<float>(std::clamp(value, -1.0, 1.0));
+}
+
+// gradient2D of a point of the canonical range.
+inline float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2D& lattice) {
+    const CellPosition c = positionOf(toLattice(x, z, lattice));
+    return cellNoise(gradientsOf(c.iu, c.iv, seed, lattice), c.fu, c.fv);
+}
+
+// latticeNoise reusing the gradients of the memo when the point lies in its cell, and keeping
+// those of the cell of the point otherwise: the same bits.
+inline float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2D& lattice,
+                          CellMemo& memo) {
+    const CellPosition c = positionOf(toLattice(x, z, lattice));
+    if (!memo.valid || c.iu != memo.iu || c.iv != memo.iv) {
+        memo = {c.iu, c.iv, true, gradientsOf(c.iu, c.iv, seed, lattice)};
+    }
+    return cellNoise(memo.gradients, c.fu, c.fv);
 }
 
 // Dot product of the gradient of a 3D corner with the offset (du, dy, dv) to it.
@@ -170,7 +199,8 @@ inline double cornerDot3(Invariants corner, std::int64_t iy, double du, double d
 // gradient3D of a point of the canonical range.
 inline float latticeNoise3(double x, double y, double z, std::uint64_t seed,
                            const Lattice2D& lattice, double frequencyY, double offsetY) {
-    const LatticeCell c = cellOf(toLattice(x, z, lattice), lattice);
+    const CellPosition c = positionOf(toLattice(x, z, lattice));
+    const std::array<Invariants, 4> corners = cornersOf(c.iu, c.iv, lattice);
     const double w = y * frequencyY + offsetY;
     const double w0 = std::floor(w);
     const auto iy = static_cast<std::int64_t>(w0);
@@ -181,7 +211,7 @@ inline float latticeNoise3(double x, double y, double z, std::uint64_t seed,
         const int dy = (corner >> 1) & 1;
         const int dv = (corner >> 2) & 1;
         n[static_cast<std::size_t>(corner)] =
-            cornerDot3(c.corners[static_cast<std::size_t>(du + 2 * dv)], iy + dy, c.fu - du,
+            cornerDot3(corners[static_cast<std::size_t>(du + 2 * dv)], iy + dy, c.fu - du,
                        fy - dy, c.fv - dv, seed);
     }
     const double su = fade(c.fu);

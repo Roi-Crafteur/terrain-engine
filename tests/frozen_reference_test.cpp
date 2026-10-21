@@ -155,12 +155,27 @@ void checkField(const char* name, const terrain::HeightfieldParams& params,
             points.push_back({-1245184.0 + 7.0 * i + 0.5, -8500224.0 + 7.0 * k - 0.25});
         }
     }
+    const std::vector<Point> rows = bit_exact::rowPoints(world, 256);
+    points.insert(points.end(), rows.begin(), rows.end());
+    // The batch functions over all the points at once: scattered, then in rows.
+    std::vector<double> xs;
+    std::vector<double> zs;
+    for (const Point& p : points) {
+        xs.push_back(p.x);
+        zs.push_back(p.z);
+    }
+    std::vector<terrain::HeightSample> samples(points.size());
+    std::vector<float> heights(points.size());
+    live.samplesAt(xs, zs, samples);
+    live.heightsAt(xs, zs, heights);
     for (std::size_t n = 0; n < points.size(); ++n) {
         const Point p = points[n];
-        const terrain::HeightSample s = live.sampleAt(p.x, p.z);
-        tally.check(same(s, old.sampleAt(p.x, p.z)), p, "sampleAt");
+        const terrain::HeightSample reference = old.sampleAt(p.x, p.z);
+        tally.check(same(live.sampleAt(p.x, p.z), reference), p, "sampleAt");
+        tally.check(same(samples[n], reference), p, "samplesAt");
+        tally.check(same(heights[n], reference.height), p, "heightsAt");
         if (n % 8 == 0) {
-            tally.check(same(live.heightAt(p.x, p.z), s.height), p, "heightAt");
+            tally.check(same(live.heightAt(p.x, p.z), reference.height), p, "heightAt");
         }
     }
 }

@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 
 namespace terrain {
 
@@ -101,6 +102,16 @@ public:
     [[nodiscard]] float heightAt(double x, double z) const;
     [[nodiscard]] HeightSample sampleAt(double x, double z) const;
 
+    // sampleAt and heightAt of the points (xs[i], zs[i]), into out[i]: the same bits, faster
+    // when consecutive points are close (the rows of a grid or of a tile), as a point reuses the
+    // noise gradients of the lattice cells it shares with the previous one. What is reused only
+    // lives during the call: nothing is shared between calls or threads, and no result depends
+    // on the order of the points. Throws std::invalid_argument unless the spans have one size.
+    void samplesAt(std::span<const double> xs, std::span<const double> zs,
+                   std::span<HeightSample> out) const;
+    void heightsAt(std::span<const double> xs, std::span<const double> zs,
+                   std::span<float> out) const;
+
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
     [[nodiscard]] const WorldSize& world() const { return world_; }
 
@@ -108,10 +119,13 @@ public:
     [[nodiscard]] const TectonicPlates* plates() const { return plates_.get(); }
 
 private:
-    void continentalnessAt(double x, double z, HeightSample& s) const;
-    [[nodiscard]] float mountainAt(double x, double z, float mask) const;
-
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
+    struct Memos;  // the memos of the noises during a batch call (heightfield.cpp)
+
+    // sampleAt, through the memos during a batch call (null otherwise).
+    [[nodiscard]] HeightSample sampleWith(double x, double z, Memos* memos) const;
+    void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
+    [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
 
     HeightfieldParams params_;
     WorldSize world_;
