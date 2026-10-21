@@ -54,4 +54,29 @@ inline Terrain noisyTerrain(int nx, int nz, std::uint64_t seed, float low, float
     return t;
 }
 
+// An island of 50 m in a sea of -100 m, with two basins (pits at 10 m in (4, 3) and 5 m in
+// (7, 3), other cells at 20 m) separated by a ridge of 30 m (columns 5 and 6), whose lowest rim
+// cell (40 m) opens to the sea at (2, 4).
+inline Terrain twoBasinIsland() {
+    Terrain t = flatTerrain(12, 8, -100.0f);
+    for (int j = 2; j <= 5; ++j) {
+        for (int i = 2; i <= 9; ++i) {
+            t.at(i, j) = 50.0f;
+        }
+    }
+    for (const int i : {3, 4, 7, 8}) {
+        t.at(i, 3) = 20.0f;
+        t.at(i, 4) = 20.0f;
+    }
+    t.at(4, 3) = 10.0f;
+    t.at(7, 3) = 5.0f;
+    for (const int i : {5, 6}) {
+        t.at(i, 3) = 30.0f;
+        t.at(i, 4) = 30.0f;
+    }
+    t.at(2, 4) = 40.0f;
+    t.markOcean();
+    return t;
+}
+
 } // namespace planet_test

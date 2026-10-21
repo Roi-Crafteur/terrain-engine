@@ -42,8 +42,8 @@ std::vector<float> marchAllRows(const PlanetGrid& grid, const std::vector<float>
                 row.latitude = rowLatitude(grid, j);
                 row.wind = rowWind(grid, j, params);
                 marchMoistureRow(row, params, moisture, rain);
-                std::copy(rain.begin(), rain.end(), precipitation.begin() +
-                                                        static_cast<std::ptrdiff_t>(grid.index(0, j)));
+                std::copy(rain.begin(), rain.end(),
+                          precipitation.begin() + static_cast<std::ptrdiff_t>(grid.index(0, j)));
                 previous.swap(moisture);
             }
         }
@@ -57,9 +57,9 @@ void blurPass(const PlanetGrid& grid, std::vector<float>& values, int threads) {
     parallelRows(grid.nz, threads, [&](int begin, int end) {
         for (int j = begin; j < end; ++j) {
             for (int i = 0; i < grid.nx; ++i) {
-                const double sum = static_cast<double>(values[grid.index(grid.wrapColumn(i - 1), j)]) +
-                                   2.0 * values[grid.index(i, j)] +
-                                   values[grid.index(grid.wrapColumn(i + 1), j)];
+                const double sum =
+                    static_cast<double>(values[grid.index(grid.wrapColumn(i - 1), j)]) +
+                    2.0 * values[grid.index(i, j)] + values[grid.index(grid.wrapColumn(i + 1), j)];
                 along[grid.index(i, j)] = static_cast<float>(0.25 * sum);
             }
         }
@@ -135,8 +135,7 @@ PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& h
 }
 
 std::int64_t waterUnits(double mmPerYear, double area) {
-    const double units =
-        mmPerYear * 1.0e-3 * area / kSecondsPerYear * kWaterUnitsPerCubicMeter;
+    const double units = mmPerYear * 1.0e-3 * area / kSecondsPerYear * kWaterUnitsPerCubicMeter;
     return units > 0.0 ? static_cast<std::int64_t>(units + 0.5) : 0;
 }
 
@@ -158,6 +157,16 @@ CellWater cellWater(const PlanetGrid& grid, float rowTemperature, float height, 
     water.lakeEvaporation =
         waterUnits(lakeEvaporation(precipitation, pet, runoff), grid.cellArea());
     return water;
+}
+
+WaterOf climateWater(const PlanetGrid& grid, const std::vector<float>& height,
+                     const std::vector<std::uint8_t>& ocean, const PlanetClimate& climate,
+                     const PlanetClimateParams& params) {
+    return [&grid, &height, &ocean, &climate, &params](std::size_t cell) {
+        const auto row = static_cast<std::size_t>(grid.row(cell));
+        return cellWater(grid, climate.rowTemperature[row], height[cell],
+                         climate.precipitation[cell], ocean[cell], params);
+    };
 }
 
 } // namespace terrain::planet

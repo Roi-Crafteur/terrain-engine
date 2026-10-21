@@ -86,35 +86,12 @@ void testReceivers() {
     const std::vector<std::uint8_t> flatReceiver =
         terrain::planet::computeReceivers(flat.grid, flat.height, flat.ocean, 1);
     TEST_CHECK(flatReceiver[flat.cell(3, 3)] == 1);
-    TEST_CHECK(flat.ocean[0] == terrain::planet::kForcedOutlet && flatReceiver[0] == terrain::kNoNeighbor);
-}
-
-// An island of 50 m in a sea, with two basins (pits at 10 and 5 m) separated by a ridge of
-// 30 m, whose lowest rim cell (40 m) opens to the sea at (2, 4).
-Terrain twoBasinIsland() {
-    Terrain t = planet_test::flatTerrain(12, 8, -100.0f);
-    for (int j = 2; j <= 5; ++j) {
-        for (int i = 2; i <= 9; ++i) {
-            t.at(i, j) = 50.0f;
-        }
-    }
-    for (const int i : {3, 4, 7, 8}) {
-        t.at(i, 3) = 20.0f;
-        t.at(i, 4) = 20.0f;
-    }
-    t.at(4, 3) = 10.0f;
-    t.at(7, 3) = 5.0f;
-    for (const int i : {5, 6}) {
-        t.at(i, 3) = 30.0f;
-        t.at(i, 4) = 30.0f;
-    }
-    t.at(2, 4) = 40.0f;
-    t.markOcean();
-    return t;
+    TEST_CHECK(flat.ocean[0] == terrain::planet::kForcedOutlet &&
+               flatReceiver[0] == terrain::kNoNeighbor);
 }
 
 void testTwoBasins() {
-    const Terrain t = twoBasinIsland();
+    const Terrain t = planet_test::twoBasinIsland();
     const DepressionHierarchy h = hierarchyOf(t);
     TEST_CHECK(h.nodes.size() == 4); // ocean, two leaves, their merge
     const auto& b = h.nodes[1];      // pit at 5 m comes first in the order
@@ -174,7 +151,8 @@ void testAcrossSeams() {
     std::vector<std::uint8_t> receiver;
     const DepressionHierarchy h = hierarchyOf(t, &receiver);
     TEST_CHECK(h.nodes.size() == 2 && h.nodes[1].pit == t.cell(0, 0));
-    TEST_CHECK(h.label[t.cell(7, 7)] == 1 && h.label[t.cell(7, 0)] == 1 && h.label[t.cell(0, 7)] == 1);
+    TEST_CHECK(h.label[t.cell(7, 7)] == 1 && h.label[t.cell(7, 0)] == 1 &&
+               h.label[t.cell(0, 7)] == 1);
     TEST_CHECK(t.grid.neighbor(t.cell(7, 7), receiver[t.cell(7, 7)]) == t.cell(0, 0));
     TEST_CHECK(h.nodes[1].parent == kOceanNode);
 }
@@ -208,12 +186,13 @@ void testInvariants() {
         while (receiver[end] != terrain::kNoNeighbor) {
             end = t.grid.neighbor(end, receiver[end]);
         }
-        const std::int32_t expected = t.ocean[end] != terrain::planet::kLand ? kOceanNode : h.own[end];
+        const std::int32_t expected =
+            t.ocean[end] != terrain::planet::kLand ? kOceanNode : h.own[end];
         labels = labels && h.label[c] == expected;
         const std::int32_t own = h.own[c];
         if (own != kOceanNode) {
-            flooded = flooded &&
-                      terrain::planet::lowerCell(t.height, c, h.nodes[static_cast<std::size_t>(own)].pass);
+            flooded = flooded && terrain::planet::lowerCell(
+                                     t.height, c, h.nodes[static_cast<std::size_t>(own)].pass);
         }
     }
     TEST_CHECK(labels && flooded);
@@ -221,13 +200,16 @@ void testInvariants() {
         const auto& node = h.nodes[n];
         TEST_CHECK(node.parent == kOceanNode || static_cast<std::size_t>(node.parent) > n);
         TEST_CHECK(node.pass != kNoCell && node.partner != kNoCell && node.geolink >= 0);
-        TEST_CHECK(node.geolink == kOceanNode || h.nodes[static_cast<std::size_t>(node.geolink)].leaf());
+        TEST_CHECK(node.geolink == kOceanNode ||
+                   h.nodes[static_cast<std::size_t>(node.geolink)].leaf());
         if (node.leaf()) {
-            TEST_CHECK(h.own[node.pit] == static_cast<std::int32_t>(n) && receiver[node.pit] == terrain::kNoNeighbor);
+            TEST_CHECK(h.own[node.pit] == static_cast<std::int32_t>(n) &&
+                       receiver[node.pit] == terrain::kNoNeighbor);
         } else {
             for (const std::int32_t child : node.children) {
                 TEST_CHECK(static_cast<std::size_t>(child) < n &&
-                           h.nodes[static_cast<std::size_t>(child)].parent == static_cast<std::int32_t>(n));
+                           h.nodes[static_cast<std::size_t>(child)].parent ==
+                               static_cast<std::int32_t>(n));
             }
         }
     }

@@ -116,6 +116,7 @@ terrain_add_test(cave_fluid_objects_test terrain_core)
 terrain_add_test(planet_grid_test terrain_core)
 terrain_add_test(planet_climate_test terrain_core)
 terrain_add_test(planet_hierarchy_test terrain_core)
+terrain_add_test(planet_lakes_test terrain_core)
 
 # No platform-dependent floating-point function in the sources of terrain_core (std::sin,
 # std::pow, std::fma, long double...): terrain::dmath replaces them.

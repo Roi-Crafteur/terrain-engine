@@ -3,14 +3,17 @@
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace terrain::planet {
 
 // Sea-level mean temperature of a latitude: the curve of ClimateField::latitudeTemperatureAt,
 // equator - (equator - pole) s^1.5 with s = sin^2(pi z / periodZ).
-[[nodiscard]] float latitudeTemperature(double z, double periodZ, const PlanetClimateParams& params);
+[[nodiscard]] float latitudeTemperature(double z, double periodZ,
+                                        const PlanetClimateParams& params);
 
 // Mean temperature of a cell of the given altitude in a row whose sea-level temperature is
 // rowTemperature: lapse rate above sea level, none over the sea.
@@ -65,6 +68,13 @@ struct CellWater {
 [[nodiscard]] CellWater cellWater(const PlanetGrid& grid, float rowTemperature, float height,
                                   float precipitation, std::uint8_t oceanKind,
                                   const PlanetClimateParams& params);
+
+// The water of every cell, as the hydrology reads it (from the climate, or a table in tests).
+using WaterOf = std::function<CellWater(std::size_t cell)>;
+// The water of the cells of a grid from its climate (the vectors must outlive the result).
+[[nodiscard]] WaterOf climateWater(const PlanetGrid& grid, const std::vector<float>& height,
+                                   const std::vector<std::uint8_t>& ocean,
+                                   const PlanetClimate& climate, const PlanetClimateParams& params);
 
 // Water units of a flow of mmPerYear over area square meters, rounded to the nearest unit.
 [[nodiscard]] std::int64_t waterUnits(double mmPerYear, double area);
