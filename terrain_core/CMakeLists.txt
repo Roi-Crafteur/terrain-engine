@@ -72,6 +72,8 @@ add_library(terrain_core STATIC
     src/io/ecology_png.cpp
     src/io/eroded_png.cpp
     src/io/heightmap_png.cpp
+    src/io/horizon_panorama.cpp
+    src/io/horizon_png.cpp
     src/io/png.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
@@ -84,6 +86,11 @@ add_library(terrain_core STATIC
     src/storage/world_meta.cpp
     src/storage/world_save.cpp
     src/streaming/cave_tiles.cpp
+    src/streaming/horizon_epoch.cpp
+    src/streaming/horizon_grids.cpp
+    src/streaming/horizon_levels.cpp
+    src/streaming/horizon_sampler.cpp
+    src/streaming/horizon_streamer.cpp
     src/streaming/lod.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
@@ -233,3 +240,10 @@ target_link_libraries(terrain_export_caves PRIVATE terrain_core terrain_warnings
 # meeting of two types): terrain_export_cave_regions <output-dir> [seed] [m/px] [size] [cx] [cz]
 add_executable(terrain_export_cave_regions tools/export_cave_regions.cpp)
 target_link_libraries(terrain_export_cave_regions PRIVATE terrain_core terrain_warnings)
+
+# Far horizon PNG export: level_N.png, map_relief.png, map_materials.png and panorama.png (360
+# degrees from a summit found with the grids, or from x z), with how far the relief shows and
+# what the silhouette loses without a prefilter:
+# terrain_export_horizon <output-dir> [seed] [x z] [cells-per-side]
+add_executable(terrain_export_horizon tools/export_horizon.cpp)
+target_link_libraries(terrain_export_horizon PRIVATE terrain_core terrain_warnings)
