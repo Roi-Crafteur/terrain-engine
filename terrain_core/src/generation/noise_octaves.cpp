@@ -31,8 +31,8 @@ float FbmOctaves::fbm2D(double x, double z) const {
     if (!(total_ > 0.0)) {
         return 0.0f;
     }
-    const double cx = wrapCoordinate(x, world_.x);
-    const double cz = wrapCoordinate(z, world_.z);
+    const double cx = wrapCanonical(x, world_.x);
+    const double cz = wrapCanonical(z, world_.z);
     double sum = 0.0;
     for (const Octave& o : octaves_) {
         sum += o.amplitude * detail::latticeNoise(cx, cz, o.seed, o.lattice);
@@ -44,8 +44,8 @@ float FbmOctaves::ridged2D(double x, double z, double sharpness) const {
     if (!(total_ > 0.0)) {
         return 0.0f;
     }
-    const double cx = wrapCoordinate(x, world_.x);
-    const double cz = wrapCoordinate(z, world_.z);
+    const double cx = wrapCanonical(x, world_.x);
+    const double cz = wrapCanonical(z, world_.z);
     double weight = 1.0;
     double sum = 0.0;
     for (const Octave& o : octaves_) {
@@ -62,8 +62,8 @@ float FbmOctaves::fbm3D(double x, double y, double z) const {
     if (!(total_ > 0.0)) {
         return 0.0f;
     }
-    const double cx = wrapCoordinate(x, world_.x);
-    const double cz = wrapCoordinate(z, world_.z);
+    const double cx = wrapCanonical(x, world_.x);
+    const double cz = wrapCanonical(z, world_.z);
     double sum = 0.0;
     for (const Octave& o : octaves_) {
         sum += o.amplitude *

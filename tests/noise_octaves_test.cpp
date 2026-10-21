@@ -1,7 +1,8 @@
 // FbmOctaves gives exactly the bits of fbm2D, ridged2D and fbm3D with the same seed, parameters
 // and world, for any parameters: no octave or a negative count, more octaves than rotations,
 // another lacunarity, a negative or zero gain, a total amplitude of 0; on pseudo-random points,
-// on the edges and the corner of the world, at -0, and far beyond it.
+// on the edges and the corner of the world, at -0, and far beyond it. wrapCanonical gives
+// exactly the bits of wrapCoordinate, on both sides of both bounds of the canonical range.
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 
@@ -10,7 +11,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -81,10 +84,49 @@ void checkEmpty() {
     TEST_CHECK(same(noise::fbm2D(40.0, 2.0, kSeed, cancelled, WorldSize{}), 0.0f));
 }
 
+// Values around the bounds +-period / 2 (8 neighbors on each side), around 0 and the periods,
+// and special values.
+std::vector<double> wrapValues(double period) {
+    using limits = std::numeric_limits<double>;
+    const double half = 0.5 * period;
+    std::vector<double> values = {0.0,           -0.0,          limits::denorm_min(),
+                                  -limits::min(), limits::max(), -limits::max(),
+                                  limits::infinity(), -limits::infinity(), limits::quiet_NaN()};
+    for (const double center : {half, -half, 0.0, period, -period, 1.5 * period, 1e9 * period}) {
+        double below = center;
+        double above = center;
+        values.push_back(center);
+        for (int step = 0; step < 8; ++step) {
+            below = std::nextafter(below, -limits::infinity());
+            above = std::nextafter(above, limits::infinity());
+            values.push_back(below);
+            values.push_back(above);
+        }
+    }
+    bit_exact::Points points;
+    for (int i = 0; i < 20'000; ++i) {
+        values.push_back(points.next(3.0 * period));
+    }
+    return values;
+}
+
+void checkWrapCanonical() {
+    Tally tally("wrapCanonical == wrapCoordinate");
+    for (const double period : {WorldSize{}.x, WorldSize{}.z, 65536.0, 3.0 * 65536.0, 0x1p30}) {
+        for (const double v : wrapValues(period)) {
+            const double fast = noise::wrapCanonical(v, period);
+            const double slow = terrain::wrapCoordinate(v, period);
+            tally.check(same(fast, slow) || (std::isnan(fast) && std::isnan(slow)), {v, period},
+                        "wrapCanonical");
+        }
+    }
+}
+
 } // namespace
 
 int main() {
     checkFreeFunctions();
     checkEmpty();
+    checkWrapCanonical();
     return test::result();
 }

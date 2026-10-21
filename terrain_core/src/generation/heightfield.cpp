@@ -148,8 +148,8 @@ float Heightfield::heightAt(double x, double z) const {
 }
 
 HeightSample Heightfield::sampleAt(double worldX, double worldZ) const {
-    const double x = wrapCoordinate(worldX, world_.x);
-    const double z = wrapCoordinate(worldZ, world_.z);
+    const double x = noise::wrapCanonical(worldX, world_.x);
+    const double z = noise::wrapCanonical(worldZ, world_.z);
     HeightSample s;
     continentalnessAt(x, z, s);
     const float coastOffset = s.continentalness - params_.coastContinentalness;

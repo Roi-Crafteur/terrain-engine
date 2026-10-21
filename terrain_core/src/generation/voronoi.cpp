@@ -102,8 +102,8 @@ bool closer(const Near& a, const Near& b) {
 
 Neighborhood neighborhood(const TectonicPlates& plates, TectonicPlates::Point q, double gate) {
     const int count = static_cast<int>(plates.plates().size());
-    const TectonicPlates::Point wrapped{wrapCoordinate(q.x, plates.world().x),
-                                        wrapCoordinate(q.z, plates.world().z)};
+    const TectonicPlates::Point wrapped{noise::wrapCanonical(q.x, plates.world().x),
+                                        noise::wrapCanonical(q.z, plates.world().z)};
     std::array<Near, TectonicPlates::kMaxPlates> all;
     for (int k = 0; k < count; ++k) {
         all[static_cast<std::size_t>(k)] = nearPlate(plates, k, wrapped);
@@ -295,8 +295,8 @@ int TectonicPlates::boundaryIndex(int a, int b) const {
 }
 
 PlateSample TectonicPlates::sampleAt(double worldX, double worldZ) const {
-    const double x = wrapCoordinate(worldX, world_.x);
-    const double z = wrapCoordinate(worldZ, world_.z);
+    const double x = noise::wrapCanonical(worldX, world_.x);
+    const double z = noise::wrapCanonical(worldZ, world_.z);
     const Neighborhood hood = neighborhood(*this, warp(x, z), gateWidth_);
     const Near& nearest = hood.near[0];
     PlateSample s;

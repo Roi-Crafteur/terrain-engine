@@ -66,14 +66,14 @@ Lattice2D lattice2D(const WorldSize& world, double frequency, int rotation, doub
 }
 
 float gradient2D(double x, double z, std::uint64_t seed, const Lattice2D& lattice) {
-    return latticeNoise(wrapCoordinate(x, lattice.world.x), wrapCoordinate(z, lattice.world.z),
+    return latticeNoise(wrapCanonical(x, lattice.world.x), wrapCanonical(z, lattice.world.z),
                         seed, lattice);
 }
 
 float fbm2D(double x, double z, std::uint64_t seed, const FbmParams& params,
             const WorldSize& world) {
-    const double cx = wrapCoordinate(x, world.x);
-    const double cz = wrapCoordinate(z, world.z);
+    const double cx = wrapCanonical(x, world.x);
+    const double cz = wrapCanonical(z, world.z);
     double frequency = params.frequency;
     double amplitude = 1.0;
     double sum = 0.0;
@@ -90,8 +90,8 @@ float fbm2D(double x, double z, std::uint64_t seed, const FbmParams& params,
 
 float ridged2D(double x, double z, std::uint64_t seed, const FbmParams& params,
                const WorldSize& world, double sharpness) {
-    const double cx = wrapCoordinate(x, world.x);
-    const double cz = wrapCoordinate(z, world.z);
+    const double cx = wrapCanonical(x, world.x);
+    const double cz = wrapCanonical(z, world.z);
     double frequency = params.frequency;
     double amplitude = 1.0;
     double weight = 1.0;
@@ -118,14 +118,14 @@ float smoothstep(float edge0, float edge1, float x) {
 
 float gradient3D(double x, double y, double z, std::uint64_t seed, const Lattice2D& lattice,
                  double frequencyY, double offsetY) {
-    return latticeNoise3(wrapCoordinate(x, lattice.world.x), y, wrapCoordinate(z, lattice.world.z),
+    return latticeNoise3(wrapCanonical(x, lattice.world.x), y, wrapCanonical(z, lattice.world.z),
                          seed, lattice, frequencyY, offsetY);
 }
 
 float fbm3D(double x, double y, double z, std::uint64_t seed, const FbmParams& params,
             const WorldSize& world) {
-    const double cx = wrapCoordinate(x, world.x);
-    const double cz = wrapCoordinate(z, world.z);
+    const double cx = wrapCanonical(x, world.x);
+    const double cz = wrapCanonical(z, world.z);
     double frequency = params.frequency;
     double amplitude = 1.0;
     double sum = 0.0;
