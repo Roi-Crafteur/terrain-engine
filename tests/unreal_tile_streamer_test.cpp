@@ -2,7 +2,8 @@
 // tiles first, collision on LOD 0 only, a random walk after which the simulated Unreal meshes
 // always match the loaded tiles (replacements in place included), the wrapped world (a walk
 // across its edge with every tile at its image nearest to the player, a jump of a whole world
-// that only moves the meshes, a warm-up at its corner), the warm-up under a new player with busy
+// that only moves the meshes, the return of a far player by whole worlds, a warm-up at its
+// corner), the warm-up under a new player with busy
 // workers and its timeout, the errors of the generator, and determinism.
 #include "tile_streamer.hpp"
 
@@ -253,6 +254,36 @@ void testJumpByAWorld() {
     TEST_CHECK(matchesLoaded(shown, streamer, jumped));
 }
 
+// A player beyond the threshold of a world turn, east and north, moved back by worldTurnOffset:
+// nothing is loaded or removed, and every mesh moves by the same offset, exactly, so nothing moves
+// relative to the player.
+void testWorldTurn() {
+    TileStreamer streamer(fakeTile, smallParams(0, 1000));
+    const terrain::WorldSize world = streamer.manager().params().world;
+    const ChunkCoord chunks = terrain::worldChunks(world);
+    const ChunkCoord player{chunks.x * 4 / 5, -chunks.z * 4 / 5};
+    Shown shown;
+    TEST_CHECK(loadAll(streamer, shown, player));
+    const Shown before = shown;
+    const UnrealPoint position = centerOf(player);
+    const UnrealPoint offset = terrain::unreal::worldTurnOffset(position, world);
+    TEST_CHECK(offset.x == -world.x * 100.0 && offset.y == world.z * 100.0 && offset.z == 0.0);
+    const UnrealPoint moved{position.x + offset.x, position.y + offset.y, position.z};
+    const StreamerUpdate update = streamer.update(moved, kFrame);
+    TEST_CHECK(update.uploads.empty() && update.removals.empty());
+    TEST_CHECK(update.moves.size() == shown.size());
+    bool withThePlayer = true;
+    for (const TileMove& move : update.moves) {
+        const UnrealPoint old = before.at(move.key).origin;
+        withThePlayer = withThePlayer && move.origin.x == old.x + offset.x &&
+                        move.origin.y == old.y + offset.y && move.origin.z == old.z;
+    }
+    TEST_CHECK(withThePlayer);
+    std::size_t replaced = 0;
+    TEST_CHECK(apply(shown, update, replaced));
+    TEST_CHECK(streamer.update(moved, kFrame).empty());
+}
+
 // At the corner of the world, the warm-up waits for the LOD 0 tiles on the four sides of the
 // corner, each at its image next to the player.
 void testWarmUpAtTheCorner() {
@@ -387,6 +418,7 @@ int main() {
     testRandomWalk();
     testWalkAcrossTheEdge();
     testJumpByAWorld();
+    testWorldTurn();
     testWarmUpAtTheCorner();
     testWarmUpWithBusyWorkers();
     testWarmUpTimeout();

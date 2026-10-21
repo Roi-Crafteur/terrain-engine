@@ -5,6 +5,7 @@
 
 #include "terrain/chunk_coord.hpp"
 #include "terrain/meshing/mesh.hpp"
+#include "terrain/world_size.hpp"
 
 namespace terrain::unreal {
 
@@ -52,10 +53,8 @@ struct UnrealVector3f {
 //
 // The core world wraps around (WorldSize), the Unreal world does not: the player keeps unwrapped
 // core coordinates across the edges, and every tile is shown at its image nearest to it
-// (tileOrigin, TileStreamer), so crossing an edge changes nothing in the frame.
-// TODO(phase 10, crossing the edges): the Large World Coordinates of Unreal reach about
-// 88,000 km (UE_LARGE_WORLD_MAX): a journey of more than a turn of the world will need the
-// player, the tiles and this frame moved back by whole worlds (shifted by a period).
+// (tileOrigin, TileStreamer), so crossing an edge changes nothing in the frame. Far from the
+// origin, the player is moved back by whole worlds (worldTurnOffset), the frame unchanged.
 struct UnrealFrame {
     CorePoint origin;
 
@@ -77,5 +76,21 @@ struct UnrealFrame {
 
 // Chunk of the core world under an Unreal position.
 [[nodiscard]] ChunkCoord chunkAt(const UnrealFrame& frame, const UnrealPoint& point);
+
+// Beyond this fraction of a world period from the Unreal origin, along X (core x) or Y (core z),
+// the player is moved back by whole periods (worldTurnOffset). Above half a world, so that
+// the player lands within a quarter of a world past the opposite threshold and never moves
+// back and forth; below one world, so that Unreal coordinates stay under 0.75 of the largest
+// side (about 45,000 km, well within the 88,000 km of the Large World Coordinates).
+inline constexpr double kWorldTurnThreshold = 0.75;
+
+// The offset (centimeters, whole world periods along X and Y, 0 along Z) to add to an Unreal
+// position further than kWorldTurnThreshold of a period from the Unreal origin: the core place
+// under it is the same (the world wraps around), and after the move the position lies within
+// kWorldTurnThreshold of a period of the origin again. Zero closer to the origin. Adding it is
+// exact: a whole number of periods is an integer number of centimeters, smaller results stay
+// on the grid of the position. The tiles follow the player to their nearest images by the same
+// periods (TileStreamer: TileMove), so nothing moves relative to the player.
+[[nodiscard]] UnrealPoint worldTurnOffset(const UnrealPoint& position, const WorldSize& world);
 
 } // namespace terrain::unreal

@@ -230,15 +230,20 @@ devra passer à `std::thread` (petit changement dans `terrain_core`, par l'agent
   (`Bridge/determinism_check.cpp`) dans le même commit que le core ;
   `unreal_determinism_check_test` échoue d'ici là et affiche les nouvelles valeurs
   (`probe (x, z): 0x… expected, 0x… computed`, `tile (x, z): 0x… expected, 0x… computed`).
-- **Reste à faire** (`TODO(phase 10, crossing the edges)` dans `Bridge/unreal_frame.hpp`) : les
-  Large World Coordinates d'Unreal vont jusqu'à environ 88 000 km (`UE_LARGE_WORLD_MAX`). Un
-  voyage de plus d'un tour du monde demandera de ramener le joueur, les tuiles et le repère d'un
-  monde entier.
+- **Retour d'un tour du monde** : fait. Les Large World Coordinates d'Unreal vont jusqu'à
+  environ 88 000 km (`UE_LARGE_WORLD_MAX`). Quand le joueur (`FocusActor`, sinon le pion) passe à
+  plus de 0,75 monde de l'origine d'Unreal en X ou en Y (45 000 km en X, 26 000 km en Y), il est
+  ramené d'un nombre entier de mondes (`worldTurnOffset`, `Bridge/unreal_frame.hpp`) par un
+  téléport qui garde sa vitesse ; dans le même tick, toutes les tuiles se déplacent du même
+  décalage, exactement. Rien ne bouge à l'écran, le repère ne change pas. Les autres acteurs
+  (autres joueurs, objets posés) ne sont pas encore ramenés : ce sera la phase multijoueur.
+  Tests : `unreal_frame_test` (seuils, plusieurs tours, jamais d'aller-retour, décalage exact),
+  `unreal_tile_streamer_test` (un joueur au-delà du seuil à l'est et au nord : aucune tuile
+  chargée ni retirée, toutes déplacées du décalage).
 
 ## 9. Pas encore fait
 
 Type de mesh autre que le Procedural Mesh Component (emplacements Dynamic Mesh et Realtime Mesh),
-eau, lave, plantes, matériaux du core, retour du joueur d'un monde entier après un long voyage
-(voir 8). En build empaqueté,
+eau, lave, plantes, matériaux du core. En build empaqueté,
 assigne le matériau explicitement dans `Material` : le chemin chargé par défaut n'est cuit que
 s'il est référencé.

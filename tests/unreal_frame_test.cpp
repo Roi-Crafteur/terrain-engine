@@ -1,6 +1,7 @@
 // Frame of the Unreal plugin: meters to centimeters, Y up to Z up, round trips between the core
 // and Unreal up to the size of the planet, the shift of the origin rebasing, the reflection of
-// the axes that keeps the index order of the triangles, and the chunk under an Unreal position.
+// the axes that keeps the index order of the triangles, the chunk under an Unreal position, and
+// the return of a far player by whole worlds.
 #include "unreal_frame.hpp"
 
 #include "test_assert.hpp"
@@ -175,6 +176,40 @@ void testChunkAt() {
                (terrain::ChunkCoord{99, -100}));
 }
 
+// Within the threshold nothing moves; beyond it, whole periods bring the position back within the
+// threshold on the other side (never back and forth), exactly, along X (core x) and Y (core z).
+void testWorldTurnOffset() {
+    const terrain::WorldSize world;
+    const double px = world.x * 100.0;
+    const double pz = world.z * 100.0;
+    const double limit = terrain::unreal::kWorldTurnThreshold;
+    TEST_CHECK(terrain::unreal::worldTurnOffset({0.0, 0.0, 5.0e5}, world) == UnrealPoint{});
+    TEST_CHECK(terrain::unreal::worldTurnOffset({limit * px, -limit * pz, 0.0}, world) ==
+               UnrealPoint{});
+    const UnrealPoint east{limit * px + 1.0, 12.5, 7.0};
+    TEST_CHECK(terrain::unreal::worldTurnOffset(east, world) == (UnrealPoint{-px, 0.0, 0.0}));
+    const UnrealPoint north{3.0, -(limit * pz + 1.0), 0.0};
+    TEST_CHECK(terrain::unreal::worldTurnOffset(north, world) == (UnrealPoint{0.0, pz, 0.0}));
+    TEST_CHECK(terrain::unreal::worldTurnOffset({-3.6 * px, 2.9 * pz, 0.0}, world) ==
+               (UnrealPoint{3.0 * px, -3.0 * pz, 0.0})); // to -0.6 and -0.1 of a world
+    const double nan = std::nan("");
+    TEST_CHECK(terrain::unreal::worldTurnOffset({nan, nan, 0.0}, world) == UnrealPoint{});
+    // Every position ends within the threshold, and a second offset is then zero.
+    bool settled = true;
+    bool exact = true;
+    for (double turns = -5.0; turns <= 5.0; turns += 0.0625) {
+        const UnrealPoint start{turns * px + 0.37, -turns * pz - 1234.5678, 100.0};
+        const UnrealPoint offset = terrain::unreal::worldTurnOffset(start, world);
+        const UnrealPoint moved{start.x + offset.x, start.y + offset.y, start.z + offset.z};
+        settled = settled && std::abs(moved.x) < limit * px && std::abs(moved.y) < limit * pz &&
+                  terrain::unreal::worldTurnOffset(moved, world) == UnrealPoint{};
+        exact = exact && moved.x - offset.x == start.x && moved.y - offset.y == start.y &&
+                std::fmod(offset.x, px) == 0.0 && std::fmod(offset.y, pz) == 0.0;
+    }
+    TEST_CHECK(settled);
+    TEST_CHECK(exact);
+}
+
 } // namespace
 
 int main() {
@@ -184,5 +219,6 @@ int main() {
     testShift();
     testSwapReversesCrossProducts();
     testChunkAt();
+    testWorldTurnOffset();
     return test::result();
 }
