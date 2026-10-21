@@ -4,9 +4,10 @@
 // walk (across the edge of the world too) equal those of a streamer that went straight there, a
 // world turn only moves the levels, the grids, and the geomorphing: its factor (0 inside, 1 on
 // the border wherever the viewer stands, continuous) and its target, the surface of the coarser
-// level at every sample of the finer one.
+// level at every sample of the finer one; the log line of the texel uploads.
 #include "horizon_gpu_streamer.hpp"
 #include "horizon_morph.hpp"
+#include "horizon_timings.hpp"
 
 #include "horizon_test_support.hpp"
 #include "test_assert.hpp"
@@ -16,6 +17,7 @@
 #include <functional>
 #include <map>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace {
@@ -296,6 +298,19 @@ void testMorphTarget() {
     TEST_CHECK((terrain::unreal::morphSources(2, 5) == terrain::unreal::MorphSources{2, 4, 2, 6}));
 }
 
+// The texel uploads have their own line, after those of the meshes, with no conversion.
+void testTexelsLine() {
+    terrain::unreal::HorizonTimings timings;
+    timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0, 0.25, 1000);
+    timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0, 0.75, 2000);
+    timings.recordTick(-1, false, 0.01);
+    const std::vector<std::string> lines = terrain::unreal::describe(timings.take());
+    TEST_CHECK(lines.size() == 2);
+    TEST_CHECK(lines.back() ==
+               "horizon texels: upload 2 ticks 0.50 ms (max 0.75), 1500 texels per tick");
+    TEST_CHECK(terrain::unreal::describe(timings.take()).empty());
+}
+
 } // namespace
 
 int main() {
@@ -305,5 +320,6 @@ int main() {
     testGrids();
     testMorphFactor();
     testMorphTarget();
+    testTexelsLine();
     return test::result();
 }

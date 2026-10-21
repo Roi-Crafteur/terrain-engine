@@ -43,11 +43,16 @@ std::string ticksLine(const HorizonTimingsReport& report) {
 }
 
 std::string sectionLine(const HorizonTimingsReport& report, std::size_t section) {
-    const char* const name = section == 0 ? "horizon body: " : "horizon trim: ";
     const StageStats& upload = report.upload[section];
-    const std::size_t perMesh = upload.tiles == 0 ? 0 : report.vertices[section] / upload.tiles;
+    const std::size_t each = upload.tiles == 0 ? 0 : report.vertices[section] / upload.tiles;
+    if (section == static_cast<std::size_t>(HorizonSection::Texels)) {
+        // Prepared on the jobs: nothing converted on the game thread.
+        return "horizon texels: " + describeStats("upload", upload, "ticks") + ", " +
+               std::to_string(each) + " texels per tick";
+    }
+    const char* const name = section == 0 ? "horizon body: " : "horizon trim: ";
     return name + describeStats("conversion", report.conversion[section], "meshes") + ", " +
-           describeStats("upload", upload, "meshes") + ", " + std::to_string(perMesh) +
+           describeStats("upload", upload, "meshes") + ", " + std::to_string(each) +
            " vertices per mesh";
 }
 

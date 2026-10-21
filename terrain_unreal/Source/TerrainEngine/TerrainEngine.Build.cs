@@ -38,6 +38,8 @@ public class TerrainEngine : ModuleRules
 		PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "Private"));
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "ProceduralMeshComponent" });
+		// The GPU horizon: static meshes built in game, textures updated by regions, frame times.
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			"ProceduralMeshComponent", "MeshDescription", "StaticMeshDescription", "RenderCore", "RHI" });
 	}
 }

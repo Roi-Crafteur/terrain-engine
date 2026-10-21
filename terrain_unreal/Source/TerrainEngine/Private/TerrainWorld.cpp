@@ -15,6 +15,7 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialInterface.h"
 #include "TerrainEngineLog.h"
+#include "TerrainHorizonClipmap.h"
 #include "TerrainHorizonMeshes.h"
 #include "TerrainMeshBackend.h"
 #include "TerrainWorldState.h"
@@ -115,6 +116,11 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		HorizonMeshes->RemoveAll();
 		HorizonMeshes = nullptr;
 	}
+	if (HorizonClipmap != nullptr)
+	{
+		HorizonClipmap->RemoveAll();
+		HorizonClipmap = nullptr;
+	}
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
 	Super::EndPlay(EndPlayReason);
@@ -193,6 +199,7 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 		return;
 	}
 	TickHorizon(Focus);
+	RecordFrame();
 	LogTimings(DeltaSeconds);
 }
 
