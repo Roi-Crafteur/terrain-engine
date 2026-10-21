@@ -56,7 +56,9 @@ add_library(terrain_core STATIC
     src/generation/overhangs.cpp
     src/generation/planet/planet_climate.cpp
     src/generation/planet/planet_grid.cpp
+    src/generation/planet/planet_hierarchy.cpp
     src/generation/planet/planet_moisture.cpp
+    src/generation/planet/planet_order.cpp
     src/generation/planet/planet_parallel.cpp
     src/generation/planet/planet_relief.cpp
     src/generation/planet/planet_wind.cpp
