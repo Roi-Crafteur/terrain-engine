@@ -24,31 +24,128 @@ std::vector<float> marchAllRows(const PlanetGrid& grid, const std::vector<float>
     std::vector<float> precipitation(grid.cells());
     const auto chainCount = static_cast<int>(rows.chains.size());
     parallelBlocks(chainCount, 1, threads, [&](int begin, int end) {
-        std::vector<float> previous;
-        std::vector<float> moisture;
-        std::vector<float> rain;
+        MoistureOutput previous;
+        MoistureOutput out;
         for (int c = begin; c < end; ++c) {
             for (const int j : rows.chains[static_cast<std::size_t>(c)]) {
-                const int up = rows.upwind[static_cast<std::size_t>(j)];
+                const bool fed = rows.moistureFrom[static_cast<std::size_t>(j)] >= 0;
                 MoistureRow row;
                 row.height = height.data() + grid.index(0, j);
                 row.ocean = ocean.data() + grid.index(0, j);
-                row.upwindHeight = height.data() + grid.index(0, up);
-                row.upwindMoisture =
-                    rows.moistureFrom[static_cast<std::size_t>(j)] >= 0 ? previous.data() : nullptr;
+                row.upwindMoisture = fed ? previous.moisture.data() : nullptr;
+                row.upwindAir = fed ? previous.air.data() : nullptr;
                 row.nx = grid.nx;
                 row.cellSize = grid.cellSize;
                 row.temperature = rowTemperature[static_cast<std::size_t>(j)];
                 row.latitude = rowLatitude(grid, j);
                 row.wind = rowWind(grid, j, params);
-                marchMoistureRow(row, params, moisture, rain);
-                std::copy(rain.begin(), rain.end(),
+                marchMoistureRow(row, params, out);
+                std::copy(out.precipitation.begin(), out.precipitation.end(),
                           precipitation.begin() + static_cast<std::ptrdiff_t>(grid.index(0, j)));
-                previous.swap(moisture);
+                std::swap(previous, out);
             }
         }
     });
     return precipitation;
+}
+
+// One box pass of 2 radius + 1 cells along x then along z, periodic.
+void boxPass(const PlanetGrid& grid, std::vector<float>& values, int radius, int threads) {
+    std::vector<float> along(values.size());
+    const double width = 2.0 * radius + 1.0;
+    parallelRows(grid.nz, threads, [&](int begin, int end) {
+        for (int j = begin; j < end; ++j) {
+            for (int i = 0; i < grid.nx; ++i) {
+                double sum = 0.0;
+                for (int d = -radius; d <= radius; ++d) {
+                    sum += values[grid.index(grid.wrapColumn(i + d), j)];
+                }
+                along[grid.index(i, j)] = static_cast<float>(sum / width);
+            }
+        }
+    });
+    parallelRows(grid.nz, threads, [&](int begin, int end) {
+        for (int j = begin; j < end; ++j) {
+            for (int i = 0; i < grid.nx; ++i) {
+                double sum = 0.0;
+                for (int d = -radius; d <= radius; ++d) {
+                    sum += along[grid.index(i, grid.wrapRow(j + d))];
+                }
+                values[grid.index(i, j)] = static_cast<float>(sum / width);
+            }
+        }
+    });
+}
+
+// One box pass of 2 radius + 1 cells along each axis with running sums (in a fixed order, so
+// the same bits on every run), periodic; the radius is at most the size of the grid.
+void runningBoxPass(const PlanetGrid& grid, std::vector<double>& values, int radius, int threads) {
+    std::vector<double> along(values.size());
+    const double width = 2.0 * radius + 1.0;
+    parallelRows(grid.nz, threads, [&](int begin, int end) {
+        for (int j = begin; j < end; ++j) {
+            double sum = 0.0;
+            for (int d = -radius; d <= radius; ++d) {
+                sum += values[grid.index(grid.wrapColumn(d), j)];
+            }
+            for (int i = 0; i < grid.nx; ++i) {
+                along[grid.index(i, j)] = std::max(sum, 0.0) / width;
+                sum += values[grid.index(grid.wrapColumn(i + radius + 1), j)] -
+                       values[grid.index(grid.wrapColumn(i - radius), j)];
+            }
+        }
+    });
+    parallelBlocks(grid.nx, kRowBlock, threads, [&](int begin, int end) {
+        for (int i = begin; i < end; ++i) {
+            double sum = 0.0;
+            for (int d = -radius; d <= radius; ++d) {
+                sum += along[grid.index(i, grid.wrapRow(d))];
+            }
+            for (int j = 0; j < grid.nz; ++j) {
+                values[grid.index(i, j)] = std::max(sum, 0.0) / width;
+                sum += along[grid.index(i, grid.wrapRow(j + radius + 1))] -
+                       along[grid.index(i, grid.wrapRow(j - radius))];
+            }
+        }
+    });
+}
+
+// Adds the rain of the eddies over land: the saturation moisture of the nearby sea cells,
+// blurred.
+void addEddyRain(const PlanetGrid& grid, const std::vector<float>& surface,
+                 const std::vector<std::uint8_t>& ocean, const std::vector<float>& rowTemperature,
+                 const PlanetClimateParams& params, int threads,
+                 std::vector<float>& precipitation) {
+    const int radius = std::min({static_cast<int>(std::floor(params.eddyRadius / grid.cellSize)),
+                                 (grid.nx - 1) / 2, (grid.nz - 1) / 2});
+    if (params.eddyShare <= 0.0 || radius <= 0) {
+        return;
+    }
+    std::vector<double> sea(grid.cells(), 0.0);
+    for (std::size_t c = 0; c < grid.cells(); ++c) {
+        if (ocean[c] != kLand) {
+            sea[c] =
+                saturationMoisture(rowTemperature[static_cast<std::size_t>(grid.row(c))], params);
+        }
+    }
+    runningBoxPass(grid, sea, radius, threads);
+    runningBoxPass(grid, sea, radius, threads);
+    parallelRows(grid.nz, threads, [&](int begin, int end) {
+        for (int j = begin; j < end; ++j) {
+            const double rate =
+                params.eddyShare * rainFactor(rowLatitude(grid, j), params) / params.rainLength;
+            for (int i = 0; i < grid.nx; ++i) {
+                const std::size_t c = grid.index(i, j);
+                if (ocean[c] != kLand) {
+                    continue; // over the sea the advection already brings the moisture back
+                }
+                const double fade =
+                    dmath::exp(-static_cast<double>(surface[c]) / params.eddyHeight);
+                const double rain = sea[c] * rate * fade;
+                precipitation[c] += rain < 1e-20 ? 0.0f : static_cast<float>(rain);
+            }
+        }
+    });
 }
 
 // One [1 2 1] / 4 pass along x then along z, periodic.
@@ -116,6 +213,22 @@ double saturationMoisture(double temperature, const PlanetClimateParams& params)
            params.rainLength;
 }
 
+std::vector<float> orographicSurface(const PlanetGrid& grid, const std::vector<float>& height,
+                                     const std::vector<std::uint8_t>& ocean,
+                                     const PlanetClimateParams& params, int threads) {
+    std::vector<float> surface(grid.cells());
+    for (std::size_t c = 0; c < grid.cells(); ++c) {
+        surface[c] = ocean[c] != kLand || height[c] < 0.0f ? 0.0f : height[c];
+    }
+    const int radius = static_cast<int>(std::floor(params.orographyRadius / grid.cellSize));
+    if (radius > 0) {
+        const int workers = resolveThreads(threads);
+        boxPass(grid, surface, radius, workers);
+        boxPass(grid, surface, radius, workers);
+    }
+    return surface;
+}
+
 PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                              const std::vector<std::uint8_t>& ocean,
                              const PlanetClimateParams& params, int threads) {
@@ -126,8 +239,11 @@ PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& h
         climate.rowTemperature[static_cast<std::size_t>(j)] =
             latitudeTemperature(grid.centerZ(j), grid.periodZ(), params);
     }
+    const std::vector<float> surface = orographicSurface(grid, height, ocean, params, workers);
     climate.precipitation =
-        marchAllRows(grid, height, ocean, climate.rowTemperature, params, workers);
+        marchAllRows(grid, surface, ocean, climate.rowTemperature, params, workers);
+    addEddyRain(grid, surface, ocean, climate.rowTemperature, params, workers,
+                climate.precipitation);
     for (int pass = 0; pass < params.blurPasses; ++pass) {
         blurPass(grid, climate.precipitation, workers);
     }

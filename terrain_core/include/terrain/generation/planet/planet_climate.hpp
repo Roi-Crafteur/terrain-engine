@@ -45,8 +45,16 @@ namespace terrain::planet {
 // Saturation moisture of the air at a temperature, in mm/yr x m (PlanetClimateParams).
 [[nodiscard]] double saturationMoisture(double temperature, const PlanetClimateParams& params);
 
+// The ground the air flows over: the altitude of every cell (0 over the sea) blurred over
+// orographyRadius (two box passes along each axis, periodic).
+[[nodiscard]] std::vector<float> orographicSurface(const PlanetGrid& grid,
+                                                   const std::vector<float>& height,
+                                                   const std::vector<std::uint8_t>& ocean,
+                                                   const PlanetClimateParams& params, int threads);
+
 // Climate of the grid: precipitation of every cell (mm/yr) and sea-level temperature of every
-// row. The moisture is carried along the prevailing winds (planet_moisture), then blurred.
+// row. The moisture is carried along the prevailing winds over the orographic surface
+// (planet_moisture), the rain of the eddies is added, then the whole is blurred.
 struct PlanetClimate {
     std::vector<float> precipitation;
     std::vector<float> rowTemperature;

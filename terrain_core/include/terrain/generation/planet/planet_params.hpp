@@ -41,19 +41,32 @@ struct PlanetClimateParams {
     double coastPrecipitation = 1100.0;
     double moistureGrowth = 0.07;
     // E-folding lengths: of the rain over flat ground, of the evaporation that brings the air
-    // over the ocean back to saturation, and of the rise that rains the moisture out.
+    // over the ocean back to saturation, and of the rise of the air that rains the moisture out.
     double rainLength = 3.0e6;
     double evaporationLength = 4.0e5;
     double upliftHeight = 1500.0;
+    // The air keeps the altitude it was lifted to and comes down slowly: its height above the
+    // ground decays over this length, so that a valley or an arm of the sea between two
+    // heights does not lift it twice.
+    double airDescentLength = 3.0e5;
+    // The air flows over the relief smoothed over this radius (a box blur of the ground, the
+    // sea at 0, twice along each axis), not over every ridge of the noise: whole ranges lift
+    // it, single peaks do not.
+    double orographyRadius = 5.0e4;
     // The air holds at most capacityFactor times the saturation moisture of its temperature
     // (cold air at altitude holds less: orographic rain, then the rain shadow behind).
     double capacityFactor = 1.5;
-    // Share of the evapotranspiration of the land that goes back into the air (moisture far
-    // inland, as over the Amazon).
-    double recycling = 0.4;
-    // Moisture of the air that descends at the divergence lines (30 degrees and the poles),
-    // relative to the saturation moisture of the row.
-    double subsidenceMoisture = 0.1;
+    // Share of the evapotranspiration of the land that goes back into the air: all of it
+    // physically, so that over land the air only loses what runs off (moisture far inland, as
+    // over the Amazon); less to dry the interiors.
+    double recycling = 1.0;
+    // Transient eddies (storms) bring the moisture of the nearby seas from every direction: the
+    // saturation moisture of the sea cells blurred over eddyRadius (two box passes per axis)
+    // adds eddyShare of its rain over land, fading with the height of the orographic surface
+    // over eddyHeight. Deep continental interiors stay dry.
+    double eddyRadius = 6.0e5;
+    double eddyShare = 0.5;
+    double eddyHeight = 2000.0;
     // Latitude factor of the rain rate: 1 + itcz g(0, 8) - subtropicalDip g(25, 9) +
     // polarFront g(52, 10), with g(center, width) = exp(-((latitude - center) / width)^2) in
     // degrees, at least minRainFactor: wet equator, dry subtropics (descending air), wet polar

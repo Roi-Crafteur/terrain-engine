@@ -37,7 +37,6 @@ MoistureRows moistureRows(const PlanetGrid& grid, const PlanetClimateParams& par
     const auto rows = static_cast<std::size_t>(grid.nz);
     MoistureRows result;
     result.moistureFrom.assign(rows, -1);
-    result.upwind.assign(rows, 0);
     std::vector<int> sign(rows);
     for (int j = 0; j < grid.nz; ++j) {
         sign[static_cast<std::size_t>(j)] = signOf(rowWind(grid, j, params).z);
@@ -45,7 +44,6 @@ MoistureRows moistureRows(const PlanetGrid& grid, const PlanetClimateParams& par
     for (int j = 0; j < grid.nz; ++j) {
         const int s = sign[static_cast<std::size_t>(j)];
         const int up = grid.wrapRow(j - s);
-        result.upwind[static_cast<std::size_t>(j)] = up;
         if (s != 0 && up != j && sign[static_cast<std::size_t>(up)] == s) {
             result.moistureFrom[static_cast<std::size_t>(j)] = up;
         }

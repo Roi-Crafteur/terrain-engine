@@ -37,33 +37,59 @@ RiverSegment segment(double length, RiverMouth mouth, float discharge) {
     return s;
 }
 
+RiverSegment ending(double length, RiverMouth mouth, float discharge, double lastX) {
+    RiverSegment s = segment(length, mouth, discharge);
+    s.vertices[1].x = lastX;
+    s.vertices[1].z = -1.0; // the centers of row 0
+    return s;
+}
+
+terrain::PlanetLake lake(std::uint32_t partner, std::int64_t outflow) {
+    terrain::PlanetLake l;
+    l.overflowing = true;
+    l.pass = partner - 1;
+    l.partner = partner;
+    l.outflow = outflow;
+    return l;
+}
+
 void testLongestRivers() {
-    // Two sources (100 and 300 m) join, enter lake 0, which spills into a river to the sea
-    // (200 m): 550 m. A lone river of 400 m to the sea; one of 10 m into lake 1, which has no
-    // outflow river: it ends there.
+    // On rows of cells 1 m wide (cell i of row 0 centered on (i - 99.5, -1)): two sources (100 and
+    // 300 m) join (50 m) and enter lake 0 at x = -50.5, which spills at cell 60 (x = -39.5,
+    // 11 m across) into a river to the sea (200 m): 561 m. A lone river of 400 m to the sea. A
+    // river of 10 m enters lake 1 at x = 0.5, which spills at cell 110 straight into lake 2,
+    // which spills at cell 130 into the sea: 10 + 10 + 20 = 40 m, with the outflow of lake 2.
+    const terrain::PlanetGrid grid{200, 3, 1.0};
     RiverGraph graph;
     graph.segments.push_back(segment(100.0, RiverMouth::Confluence, 1.0f));
     graph.segments.push_back(segment(300.0, RiverMouth::Confluence, 2.0f));
-    graph.segments.push_back(segment(50.0, RiverMouth::Lake, 3.0f));
+    graph.segments.push_back(ending(50.0, RiverMouth::Lake, 3.0f, -50.5));
     graph.segments.push_back(segment(200.0, RiverMouth::Sea, 4.0f));
     graph.segments.push_back(segment(400.0, RiverMouth::Sea, 5.0f));
-    graph.segments.push_back(segment(10.0, RiverMouth::Lake, 6.0f));
+    graph.segments.push_back(ending(10.0, RiverMouth::Lake, 6.0f, 0.5));
     graph.segments[0].downstream = 2;
     graph.segments[1].downstream = 2;
     graph.segments[2].upstream = {0, 1};
     graph.segments[2].mouthLake = 0;
     graph.segments[3].sourceLakes = {0};
     graph.segments[5].mouthLake = 1;
-    graph.lakeStrahler = {2, 1};
-    const std::vector<terrain::PlanetRiverStat> rivers = terrain::planet::longestRivers(graph, 5);
+    graph.lakeStrahler = {2, 1, 1};
+    const std::vector<terrain::PlanetLake> lakes = {lake(60, 5'000'000), lake(110, 3'000'000),
+                                                    lake(130, 4'000'000)};
+    const auto lakeAt = [](std::size_t c) { return c == 110 ? 2 : -1; };
+    const auto isOcean = [](std::size_t c) { return c == 130; };
+    const std::vector<terrain::PlanetRiverStat> rivers =
+        terrain::planet::longestRivers(graph, lakes, grid, lakeAt, isOcean, 5);
     TEST_CHECK(rivers.size() == 3);
     if (rivers.size() == 3) {
-        TEST_CHECK(rivers[0].mouthSegment == 3 && rivers[0].length == 550.0);
+        TEST_CHECK(rivers[0].mouthSegment == 3 && rivers[0].length == 561.0);
         TEST_CHECK(rivers[0].discharge == 4.0 && rivers[0].mouth == RiverMouth::Sea);
         TEST_CHECK(rivers[1].mouthSegment == 4 && rivers[1].length == 400.0);
-        TEST_CHECK(rivers[2].mouthSegment == 5 && rivers[2].length == 10.0);
+        TEST_CHECK(rivers[2].mouthSegment == -1 && rivers[2].length == 40.0);
+        TEST_CHECK(rivers[2].discharge == 4.0 && rivers[2].mouth == RiverMouth::Sea);
+        TEST_CHECK(rivers[2].x == grid.centerX(130));
     }
-    TEST_CHECK(terrain::planet::longestRivers(graph, 1).size() == 1);
+    TEST_CHECK(terrain::planet::longestRivers(graph, lakes, grid, lakeAt, isOcean, 1).size() == 1);
 }
 
 void testSmallWorld() {
@@ -87,7 +113,8 @@ void testSmallWorld() {
     }
     TEST_CHECK(stats.lakes == level.lakes().size() &&
                stats.lakes == stats.overflowingLakes + stats.terminalLakes + stats.playas);
-    TEST_CHECK(stats.riverLength >= stats.longestRivers[0].length);
+    TEST_CHECK(stats.lakeArea ==
+               static_cast<double>(level.cells().lakeCells.size()) * level.grid().cellArea());
 }
 
 } // namespace

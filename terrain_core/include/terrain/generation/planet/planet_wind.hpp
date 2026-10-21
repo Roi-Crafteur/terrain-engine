@@ -27,7 +27,6 @@ struct PlanetWind {
 // chains, from a divergence line to a convergence line (the equator, 60 degrees).
 struct MoistureRows {
     std::vector<int> moistureFrom;        // upwind row whose moisture a row takes, or -1
-    std::vector<int> upwind;              // the row on the upwind side along z (its relief)
     std::vector<std::vector<int>> chains; // each chain in order, the head first
 };
 [[nodiscard]] MoistureRows moistureRows(const PlanetGrid& grid, const PlanetClimateParams& params);
