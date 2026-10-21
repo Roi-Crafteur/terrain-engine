@@ -4,7 +4,8 @@
 // on the edges and the corner of the world, at -0, and far beyond it; and so do they through a
 // memo, along sequences of points (rows across the edges, scattered points), and as pairs of
 // twins (fbm2DPair, the same octaves with another seed). wrapCanonical gives
-// exactly the bits of wrapCoordinate, on both sides of both bounds of the canonical range.
+// exactly the bits of wrapCoordinate, on both sides of both bounds of the canonical range. The
+// lattices of phase 11R (RotatedFast, Unrotated) differ from the default only as documented.
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 
@@ -28,7 +29,10 @@ using terrain::WorldSize;
 
 constexpr std::uint64_t kSeed = 4242;
 
-const std::array<noise::FbmParams, 10> kParams = {{
+constexpr auto kFast = noise::OctaveLattices::RotatedFast;
+constexpr auto kUnrotated = noise::OctaveLattices::Unrotated;
+
+const std::array<noise::FbmParams, 13> kParams = {{
     {.octaves = -1, .frequency = 1.0 / 900.0},
     {.octaves = 0, .frequency = 1.0 / 900.0},
     {.octaves = 1, .frequency = 1.0 / 60.0},
@@ -39,6 +43,9 @@ const std::array<noise::FbmParams, 10> kParams = {{
     {.octaves = 4, .frequency = 1.0 / 700.0, .gain = 0.0},
     {.octaves = 2, .frequency = 1.0 / 700.0, .gain = -1.0}, // total amplitude 0
     {.octaves = 4, .frequency = 1.0 / 60000.0},
+    {.octaves = 9, .frequency = 1.0 / 5000.0, .gain = 0.55, .lattices = kFast},
+    {.octaves = 10, .frequency = 1.0 / 2e6, .lattices = kUnrotated},
+    {.octaves = 3, .frequency = 1.0 / 700.0, .lacunarity = 1.9, .lattices = kUnrotated},
 }};
 
 void checkPoint(Tally& tally, const noise::FbmParams& params, const WorldSize& world,
@@ -128,6 +135,46 @@ void checkTwinOf() {
     TEST_CHECK(!octaves.twinOf(noise::FbmOctaves(kSeed, params, bit_exact::kWorlds[1])));
 }
 
+// The lattices of phase 11R: RotatedFast differs from Rotated by roundings only; Unrotated has
+// no rotation, and its octaves do not share the zeros of their lattices.
+void checkLatticeModes() {
+    const WorldSize world;
+    noise::FbmParams exact{.octaves = 7, .frequency = 1.0 / 24000.0};
+    noise::FbmParams fast = exact;
+    fast.lattices = kFast;
+    noise::FbmParams unrotated = exact;
+    unrotated.lattices = kUnrotated;
+    double worst = 0.0;
+    int differing = 0;
+    for (const Point& p : bit_exact::randomPoints(20'000, 3e7)) {
+        const float a = noise::fbm2D(p.x, p.z, kSeed, exact, world);
+        const float b = noise::fbm2D(p.x, p.z, kSeed, fast, world);
+        worst = std::max(worst, static_cast<double>(std::abs(a - b)));
+        differing += same(a, b) ? 0 : 1;
+    }
+    TEST_CHECK(worst <= 1.0e-6);
+    TEST_CHECK(differing > 0); // other bits indeed
+    for (int octave = 0; octave < 12; ++octave) {
+        const noise::Lattice2D rotated = noise::octaveLattice(world, 1e-4, octave, kFast);
+        const noise::Lattice2D plain = noise::octaveLattice(world, 1e-4, octave, kUnrotated);
+        TEST_CHECK(plain.c == 1 && !plain.reciprocal);
+        TEST_CHECK(rotated.reciprocal == (rotated.c != 1));
+        TEST_CHECK((octave == 0) == (plain.offsetU == 0.0 && plain.offsetV == 0.0));
+        const noise::Lattice2D same2D = noise::octaveLattice(world, 1e-4, octave,
+                                                             noise::OctaveLattices::Rotated);
+        const noise::Lattice2D reference = noise::lattice2D(world, 1e-4, octave);
+        TEST_CHECK(same2D.c == reference.c && same(same2D.scaleX, reference.scaleX) &&
+                   !same2D.reciprocal);
+    }
+    // Every octave of Rotated is 0 at the origin; Unrotated moves all but the first.
+    TEST_CHECK(noise::fbm2D(0.0, 0.0, kSeed, exact, world) == 0.0f);
+    TEST_CHECK(noise::fbm2D(0.0, 0.0, kSeed, unrotated, world) != 0.0f);
+    const noise::FbmOctaves a(kSeed, exact, world);
+    TEST_CHECK(!a.twinOf(noise::FbmOctaves(kSeed, fast, world)));
+    TEST_CHECK(!a.twinOf(noise::FbmOctaves(kSeed, unrotated, world)));
+    TEST_CHECK(noise::FbmOctaves(kSeed, fast, world).twinOf(noise::FbmOctaves(1, fast, world)));
+}
+
 void checkEmpty() {
     const noise::FbmOctaves none;
     TEST_CHECK(none.octaves() == 0);
@@ -185,6 +232,7 @@ int main() {
     checkFreeFunctions();
     checkEmpty();
     checkTwinOf();
+    checkLatticeModes();
     checkWrapCanonical();
     return test::result();
 }

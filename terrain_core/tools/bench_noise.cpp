@@ -19,6 +19,7 @@
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/terrain_surface.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -31,6 +32,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace {
@@ -193,6 +195,40 @@ void layerProfile(const Config& c, const Heightfield& field, const std::vector<P
     });
 }
 
+// The octave lattices of FbmOctaves (OctaveLattices): the default rotated ones, rotated with
+// 1 / c, unrotated.
+void latticeProfile(const Config& c, const Heightfield& field, const std::vector<Point>& points) {
+    bench::section("octave lattices (FbmOctaves, mixed points), ns per call");
+    namespace noise = terrain::noise;
+    const terrain::HeightfieldParams& h = field.params();
+    struct Mode {
+        const char* name;
+        noise::OctaveLattices lattices;
+    };
+    const Mode modes[] = {{"rotated", noise::OctaveLattices::Rotated},
+                          {"rotated 1/c", noise::OctaveLattices::RotatedFast},
+                          {"unrotated", noise::OctaveLattices::Unrotated}};
+    for (const Mode& mode : modes) {
+        const noise::FbmOctaves fbm(kSeed,
+                                    {.octaves = 4,
+                                     .frequency = 1.0 / h.continentWavelength,
+                                     .lattices = mode.lattices},
+                                    field.world());
+        const noise::FbmOctaves ridged(kSeed,
+                                       {.octaves = h.ridgeOctaves,
+                                        .frequency = 1.0 / h.ridgeWavelength,
+                                        .lattices = mode.lattices},
+                                       field.world());
+        const std::string fbmName = std::string("fbm2D, 4 octaves, ") + mode.name;
+        const std::string ridgedName = std::string("ridged2D, 7 octaves, ") + mode.name;
+        pointProfile(c, fbmName.c_str(), points,
+                     [&fbm](Point p) { return fbm.fbm2D(p.x, p.z); });
+        pointProfile(c, ridgedName.c_str(), points, [&ridged, &h](Point p) {
+            return ridged.ridged2D(p.x, p.z, h.ridgeSharpness);
+        });
+    }
+}
+
 void mathProfile(const Config& c, const Heightfield& planet, const std::vector<Point>& points) {
     bench::section("deterministic math and plates, ns per call");
     namespace dmath = terrain::dmath;
@@ -269,6 +305,7 @@ int main(int argc, char** argv) {
     pointCases(c, field, planet, sets);
     periodicityProfile(c, sets.mixed);
     layerProfile(c, field, sets.mixed);
+    latticeProfile(c, field, sets.mixed);
     mathProfile(c, planet, sets.mixed);
     caveNoiseProfile(c);
     bench::worldCases(c, field, planet);

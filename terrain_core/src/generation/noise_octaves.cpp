@@ -20,7 +20,7 @@ FbmOctaves::FbmOctaves(std::uint64_t seed, const FbmParams& params, const WorldS
     for (int octave = 0; octave < params.octaves; ++octave) {
         octaves_.push_back(
             {deriveSeed(seed, static_cast<std::uint64_t>(octave)),
-             lattice2D(world, frequency, octave), amplitude, frequency,
+             octaveLattice(world, frequency, octave, params.lattices), amplitude, frequency,
              detail::kOffsetsY[static_cast<std::size_t>(octave % kRotationCount)]});
         total_ += amplitude;
         amplitude *= params.gain;
@@ -113,7 +113,8 @@ bool FbmOctaves::twinOf(const FbmOctaves& twin) const {
             !sameBits(la.scaleZ, lb.scaleZ) || la.a != lb.a || la.b != lb.b || la.c != lb.c ||
             la.periodS != lb.periodS || la.periodT != lb.periodT ||
             !sameBits(la.offsetU, lb.offsetU) || !sameBits(la.offsetV, lb.offsetV) ||
-            !(la.world == lb.world)) {
+            !(la.world == lb.world) || la.reciprocal != lb.reciprocal ||
+            !sameBits(la.inverseC, lb.inverseC)) {
             return false;
         }
     }

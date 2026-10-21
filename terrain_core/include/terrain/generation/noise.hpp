@@ -55,6 +55,10 @@ struct Lattice2D {
     double offsetU = 0.0;
     double offsetV = 0.0;
     WorldSize world;
+    // Rotated lattices of OctaveLattices::RotatedFast multiply by inverseC = 1 / c instead of
+    // dividing by c: other bits, faster.
+    bool reciprocal = false;
+    double inverseC = 1.0;
 
     [[nodiscard]] std::int64_t cellsX() const { return periodS / c; }
     [[nodiscard]] std::int64_t cellsZ() const { return periodT / c; }
@@ -70,15 +74,32 @@ struct Lattice2D {
 // exactly 0 on the points of the lattice, C2 continuous (quintic fade).
 [[nodiscard]] float gradient2D(double x, double z, std::uint64_t seed, const Lattice2D& lattice);
 
+// Lattices of the octaves of a noise. Rotated, the default, is the lattice of every noise up to
+// generator 2 and keeps its bits. The others give other bits, faster, for the layers that can
+// change (the planetary geography of phase 11R):
+// - RotatedFast: the same rotations, multiplying by 1 / c instead of dividing by c;
+// - Unrotated: no rotation, octave k moved by (k phi, k sqrt 2) modulo 1 cells, so that the
+//   octaves do not share the zeros of their lattices. Rotation brings nothing to the
+//   planetary layers, whose few cells along a period it bends by up to a quarter to fit whole
+//   super-cells, nor to faint detail.
+enum class OctaveLattices : std::uint8_t { Rotated, RotatedFast, Unrotated };
+
 struct FbmParams {
     int octaves = 4;
     double frequency = 1.0;  // of the first octave, in cycles per meter
     double lacunarity = 2.0; // frequency ratio between consecutive octaves
     double gain = 0.5;       // amplitude ratio between consecutive octaves
+    OctaveLattices lattices = OctaveLattices::Rotated;
 };
 
-// Fractal Brownian motion: octave k is gradient2D of frequency frequency * lacunarity^k and
-// rotation k, with its own seed. Normalized by the total amplitude: range [-1, 1].
+// The lattice of octave octave of a noise of frequency frequency (that octave's): lattice2D
+// with rotation octave for Rotated, the bits of every noise before them.
+[[nodiscard]] Lattice2D octaveLattice(const WorldSize& world, double frequency, int octave,
+                                      OctaveLattices lattices);
+
+// Fractal Brownian motion: octave k is gradient2D of frequency frequency * lacunarity^k on
+// octaveLattice(world, that frequency, k, params.lattices), with its own seed. Normalized by the
+// total amplitude: range [-1, 1].
 [[nodiscard]] float fbm2D(double x, double z, std::uint64_t seed, const FbmParams& params,
                           const WorldSize& world);
 

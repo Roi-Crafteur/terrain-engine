@@ -103,6 +103,10 @@ inline LatticePoint toLattice(double x, double z, const Lattice2D& l) {
     }
     const auto a = static_cast<double>(l.a);
     const auto b = static_cast<double>(l.b);
+    if (l.reciprocal) {
+        return {(a * px - b * pz) * l.inverseC + l.offsetU,
+                (b * px + a * pz) * l.inverseC + l.offsetV};
+    }
     const auto c = static_cast<double>(l.c);
     return {(a * px - b * pz) / c + l.offsetU, (b * px + a * pz) / c + l.offsetV};
 }
