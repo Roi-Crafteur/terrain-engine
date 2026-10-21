@@ -137,6 +137,36 @@ terrain_add_test(cave_lava_test terrain_core)
 terrain_add_test(cave_lava_tiles_test terrain_core)
 terrain_add_test(cave_fluid_objects_test terrain_core)
 
+# Planet level (phase 11A): climate, hydrology and river graph on a grid of the whole world.
+terrain_add_test(planet_grid_test terrain_core)
+terrain_add_test(planet_climate_test terrain_core)
+terrain_add_test(planet_hierarchy_test terrain_core)
+terrain_add_test(planet_lakes_test terrain_core)
+terrain_add_test(planet_flow_test terrain_core)
+terrain_add_test(planet_rivers_test terrain_core)
+terrain_add_test(planet_features_test terrain_core)
+terrain_add_test(planet_level_test terrain_core)
+terrain_add_test(planet_compact_test terrain_core)
+terrain_add_test(planet_golden_test terrain_core)
+terrain_add_test(planet_stats_test terrain_core)
+terrain_add_test(planet_false_passes_test terrain_core)
+terrain_add_test(planet_png_test terrain_core)
+
+# The planet level of a small world (128 x 64 cells of 16 km), its figures and images.
+add_test(NAME export_planet_smoke
+    COMMAND terrain_export_planet ${CMAKE_BINARY_DIR}/planet 20261019 16384 default 1 2 2097152
+            1048576)
+set_tests_properties(export_planet_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "default relief, 128 x 64 cells of 16384 m, 1 x 1 samples, 2 threads")
+add_dependencies(check terrain_export_planet)
+
+# Invalid arguments of terrain_export_planet (cell size not dividing the world, unknown relief,
+# 0 samples...) are rejected with an error message before anything is computed.
+add_test(NAME export_planet_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_planet>
+            -DOUT=${CMAKE_BINARY_DIR}/planet_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_planet_bad_args.cmake)
+
 # No platform-dependent floating-point function in the sources of terrain_core (std::sin,
 # std::pow, std::fma, long double...): terrain::dmath replaces them.
 add_test(NAME forbidden_math_test
