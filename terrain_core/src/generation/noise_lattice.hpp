@@ -187,11 +187,11 @@ inline float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2
     return cellNoise(memo.gradients, c.fu, c.fv);
 }
 
-// Dot product of the gradient of a 3D corner with the offset (du, dy, dv) to it.
-inline double cornerDot3(Invariants corner, std::int64_t iy, double du, double dy, double dv,
-                         std::uint64_t seed) {
-    const std::uint64_t h =
-        mix64(hashOf(corner, seed) ^ (static_cast<std::uint64_t>(iy) * kCellYPrime));
+// Dot product of the gradient of a 3D corner with the offset (du, dy, dv) to it, from the hash
+// of its horizontal corner (hashOf), which both y levels share.
+inline double cornerDot3(std::uint64_t horizontal, std::int64_t iy, double du, double dy,
+                         double dv) {
+    const std::uint64_t h = mix64(horizontal ^ (static_cast<std::uint64_t>(iy) * kCellYPrime));
     const auto& g = kGradients3[h & 15U];
     return g[0] * du + g[1] * dy + g[2] * dv;
 }
@@ -201,6 +201,10 @@ inline float latticeNoise3(double x, double y, double z, std::uint64_t seed,
                            const Lattice2D& lattice, double frequencyY, double offsetY) {
     const CellPosition c = positionOf(toLattice(x, z, lattice));
     const std::array<Invariants, 4> corners = cornersOf(c.iu, c.iv, lattice);
+    std::array<std::uint64_t, 4> horizontal{};
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        horizontal[i] = hashOf(corners[i], seed);
+    }
     const double w = y * frequencyY + offsetY;
     const double w0 = std::floor(w);
     const auto iy = static_cast<std::int64_t>(w0);
@@ -211,8 +215,8 @@ inline float latticeNoise3(double x, double y, double z, std::uint64_t seed,
         const int dy = (corner >> 1) & 1;
         const int dv = (corner >> 2) & 1;
         n[static_cast<std::size_t>(corner)] =
-            cornerDot3(corners[static_cast<std::size_t>(du + 2 * dv)], iy + dy, c.fu - du,
-                       fy - dy, c.fv - dv, seed);
+            cornerDot3(horizontal[static_cast<std::size_t>(du + 2 * dv)], iy + dy, c.fu - du,
+                       fy - dy, c.fv - dv);
     }
     const double su = fade(c.fu);
     const double sy = fade(fy);
