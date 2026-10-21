@@ -117,6 +117,11 @@ struct LocalReliefStats {
     int mountainWindows = 0;
     double mountainRelief = 0.0;   // median of max - min, 1 km steps over 10 km windows
     double mountainRelief90 = 0.0; // 90th percentile
+    // The same in the mountain belts of the planetary geography (belt of at least 0.5 at the
+    // center of the window, on land), when it is enabled.
+    int beltWindows = 0;
+    double beltRelief = 0.0;
+    double beltRelief90 = 0.0;
     int coastWindows = 0;
     // Median of the length of the coast walked with 1 km dividers over its length with 10 km
     // dividers, on 40 km windows sampled every 200 m: 1 for a smooth coast.

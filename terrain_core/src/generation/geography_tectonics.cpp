@@ -248,7 +248,9 @@ void collide(const Context& c, const Boundary& b, double s, float weight, const 
         plateau = weight * step(axis - 0.3 * w, start, s) *
                   (1.0f - step(start + 0.7 * width, start + width, s));
     }
-    const double beltUplift = p.beltUplift * belt * (1.0 + kUpliftSpread * v.uplift);
+    // The uplift peaks on the axis, so that the regional elevation slopes down from it (valleys).
+    const double beltUplift = p.beltUplift * b.strength * weight * ranges *
+                              bump(std::abs(s - axis) / w) * (1.0 + kUpliftSpread * v.uplift);
     const double plateauUplift = p.plateauUplift * plateau * (1.0 + kPlateauSpread * v.uplift);
     const double uplift =
         std::max(beltUplift, plateauUplift) + 0.25 * std::min(beltUplift, plateauUplift);

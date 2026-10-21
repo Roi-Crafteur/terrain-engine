@@ -3,6 +3,7 @@
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
+#include "valleys.hpp"
 
 #include <algorithm>
 #include <array>
@@ -102,7 +103,15 @@ enum Layer : std::uint64_t {
     kMacroContinent,
     kPlates,
     kGeography,
+    kValleys,
 };
+
+// The mountains of the geography: the mass shaped by the valleys, kMassBase of its height plus
+// kCrag times ridged crags of kCragOctaves from kCragWavelength.
+constexpr float kMassBase = 0.7f;
+constexpr float kCrag = 0.45f;
+constexpr double kCragWavelength = 12'000.0;
+constexpr int kCragOctaves = 4;
 
 } // namespace
 
@@ -122,6 +131,7 @@ struct Heightfield::Layers {
     noise::FbmOctaves geographyWarpX;
     noise::FbmOctaves geographyWarpZ;
     noise::FbmOctaves geographyRidge;
+    valleys::Network valleys;
     // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
     // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the
     // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land
@@ -168,7 +178,8 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         };
         layers->geographyWarpX = fast(kWarpX, 3, params_.warpWavelength);
         layers->geographyWarpZ = fast(kWarpZ, 3, params_.warpWavelength);
-        layers->geographyRidge = fast(kRidge, params_.ridgeOctaves, params_.ridgeWavelength);
+        layers->geographyRidge = fast(kRidge, kCragOctaves, kCragWavelength);
+        layers->valleys = valleys::makeNetwork(noise::deriveSeed(seed, kValleys), world);
         layers->twinGeographyWarps = layers->geographyWarpX.twinOf(layers->geographyWarpZ);
     }
     layers->maskSkippable = std::isfinite(params_.maskLow) && std::isfinite(params_.maskHigh) &&
@@ -313,17 +324,21 @@ void Heightfield::continentalnessAt(double x, double z, HeightSample& s, Memos* 
     s.continentalness = std::clamp(local + term, -1.0f, 1.0f);
 }
 
-// The ridged noise is only evaluated inside the mountain mask, and is scaled by it. The
-// geography has its own noises and height.
+// The ridged noise is only evaluated inside the mountain mask, and is scaled by it.
 float Heightfield::mountainAt(double x, double z, float mask, Memos* memos) const {
     if (mask <= 0.0f) {
         return 0.0f;
     }
+    std::array<float, 2> warp{};
+    return mask * params_.mountainHeight * ridgeAt(x, z, memos, warp);
+}
+
+// The geography has its own noises.
+float Heightfield::ridgeAt(double x, double z, Memos* memos, std::array<float, 2>& warp) const {
     const bool geography = geography_ != nullptr;
     const noise::FbmOctaves& warpX = geography ? layers_->geographyWarpX : layers_->warpX;
     const noise::FbmOctaves& warpZ = geography ? layers_->geographyWarpZ : layers_->warpZ;
     const noise::FbmOctaves& ridged = geography ? layers_->geographyRidge : layers_->ridge;
-    std::array<float, 2> warp{};
     if (!(geography ? layers_->twinGeographyWarps : layers_->twinWarps)) {
         warp = {fbm(warpX, x, z, memos, &Memos::warpX), fbm(warpZ, x, z, memos, &Memos::warpZ)};
     } else if (memos) {
@@ -333,11 +348,24 @@ float Heightfield::mountainAt(double x, double z, float mask, Memos* memos) cons
     }
     const double warpedX = x + params_.warpAmplitude * warp[0];
     const double warpedZ = z + params_.warpAmplitude * warp[1];
-    const float ridge =
-        memos ? ridged.ridged2D(warpedX, warpedZ, params_.ridgeSharpness, memos->ridge)
-              : ridged.ridged2D(warpedX, warpedZ, params_.ridgeSharpness);
-    const float height = geography ? params_.geography.mountainHeight : params_.mountainHeight;
-    return mask * height * ridge;
+    return memos ? ridged.ridged2D(warpedX, warpedZ, params_.ridgeSharpness, memos->ridge)
+                 : ridged.ridged2D(warpedX, warpedZ, params_.ridgeSharpness);
+}
+
+// The mountains of the geography: a mass between the valleys of its drainage (valleys, 0 on
+// their floors), furrowed by tributaries down the regional elevation, crowned by ridged crags.
+float Heightfield::geographyMountainAt(double x, double z, float mask, const GeographySample& g,
+                                       float valleys, Memos* memos) const {
+    if (mask <= 0.0f || valleys <= 0.0f) {
+        return 0.0f;
+    }
+    const double downX = -static_cast<double>(g.landDX);
+    const double downZ = -static_cast<double>(g.landDZ);
+    const float mass = valleys * valleys::carve(layers_->valleys, x, z, downX, downZ,
+                                                dmath::hypot(downX, downZ));
+    std::array<float, 2> warp{};
+    const float crags = kMassBase + kCrag * ridgeAt(x, z, memos, warp);
+    return mask * params_.geography.mountainHeight * mass * crags;
 }
 
 } // namespace terrain

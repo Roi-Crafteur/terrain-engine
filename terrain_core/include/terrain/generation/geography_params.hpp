@@ -76,6 +76,31 @@ struct GeographyParams {
     double coastRamp = 30'000.0;
     double drainSlope = 1.0e-4;
     double inlandRise = 1.5e-4;
+    // The flood reaches the nodes in the order of their elevations jittered by up to drainJitter:
+    // where the land is gentle its drainage branches like a tree instead of running down in
+    // parallel lines.
+    float drainJitter = 60.0f;
+
+    // Valleys along the drainage of the map toward the sea, under the hills and mountains: flat
+    // floors valleyFloor wide (up to valleyFloorLarge for the largest drained areas), walls
+    // valleyWall wide up to the ridges between them among hills (mountainWall among mountains),
+    // bent by a warp of valleyWarp.
+    double valleyFloor = 10'000.0;
+    double valleyFloorLarge = 18'000.0;
+    double valleyWall = 30'000.0;
+    double mountainWall = 9'000.0;
+    double valleyWarp = 15'000.0;
+    double valleyWarpWavelength = 70'000.0;
+
+    // Provinces of the land between the belts, their sites on a jittered grid about provinceSize
+    // apart, the nearest to each point after a warp of provinceWarp: lowlands, sedimentary
+    // basins, high plains, shields with hills, old worn massifs, plateaus and intraplate high
+    // relief, with more lowlands and basins in the forelands within forelandDistance of a belt.
+    // Their uplift, hills and massifs blend over provinceBlend.
+    double provinceSize = 2'000'000.0;
+    double provinceWarp = 900'000.0;
+    double forelandDistance = 600'000.0;
+    double provinceBlend = 600'000.0;
 
     // Tectonic plates of the geography: their layout, motions and boundaries (the amplitudes,
     // widths and kinds of VoronoiParams are not used: the geography has its own below). About

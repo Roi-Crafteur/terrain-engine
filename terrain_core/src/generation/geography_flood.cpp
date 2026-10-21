@@ -18,19 +18,23 @@ namespace {
 // Mid-ocean ridges rise beyond the shelf, over this distance.
 constexpr double kRidgeFade = 300'000.0;
 
+// The uplift of the provinces fades out under that of the belts, by this many meters of it.
+constexpr double kProvincesUnder = 1500.0;
+
 float step(double edge0, double edge1, double x) {
     return noise::smoothstep(static_cast<float>(edge0), static_cast<float>(edge1),
                              static_cast<float>(x));
 }
 
-// A node waiting in the flood, ordered by elevation then index: a strict total order, so the
-// flood visits the nodes in one order whatever the queue does with equal keys.
+// A node waiting in the flood, ordered by key (its elevation, jittered) then index: a strict
+// total order, so the flood visits the nodes in one order whatever the queue does with equal
+// keys.
 struct Wave {
-    float elevation;
+    float key;
     std::size_t node;
 
     friend bool operator>(const Wave& a, const Wave& b) {
-        return a.elevation > b.elevation || (a.elevation == b.elevation && a.node > b.node);
+        return a.key > b.key || (a.key == b.key && a.node > b.node);
     }
 };
 
@@ -89,7 +93,7 @@ std::vector<float> oceanFloor(const GeographyParams& params, const Crust& crust,
 }
 
 std::vector<float> landFloor(const GeographyParams& params, const Crust& crust,
-                             const Tectonics& tectonics) {
+                             const Tectonics& tectonics, const Provinces& provinces) {
     std::vector<float> floor(crust.coast.size(), 1.0f);
     for (std::size_t k = 0; k < floor.size(); ++k) {
         if (crust.land[k] == 0) {
@@ -98,43 +102,122 @@ std::vector<float> landFloor(const GeographyParams& params, const Crust& crust,
         const double tilt = params.inlandRise * std::max(0.0, static_cast<double>(crust.coast[k]));
         const double rift = static_cast<double>(params.riftShoulder * tectonics.shoulder[k]) -
                             static_cast<double>(params.riftDepth * tectonics.trough[k]);
+        const float uplift = tectonics.uplift[k];
+        const double province = static_cast<double>(provinces.uplift[k]) *
+                                (1.0 - step(0.0, kProvincesUnder, static_cast<double>(uplift)));
         floor[k] = static_cast<float>(
-            std::max(1.0, 1.0 + tilt + static_cast<double>(tectonics.uplift[k]) + rift));
+            std::max(1.0, 1.0 + tilt + static_cast<double>(uplift) + province + rift));
     }
     return floor;
 }
 
-std::vector<float> drainedLand(const GeographyParams& params, const Grid& grid,
-                               const Crust& crust, const std::vector<float>& floor) {
+namespace {
+
+// The first neighbor of a coast node at sea along the 4 axes (-1 without any).
+std::int8_t seaStep(const Grid& grid, const std::vector<std::uint8_t>& land, std::size_t node) {
+    for (std::int8_t k = 0; k < 4; ++k) {
+        const auto& [di, dj] = kSteps[static_cast<std::size_t>(k)];
+        if (land[grid.index(grid.column(node) + di, grid.row(node) + dj)] == 0) {
+            return k;
+        }
+    }
+    return -1;
+}
+
+// The area drained through each land node: its own, plus that of every node upstream (the nodes
+// in the reverse order of the flood, each giving its area to the node downstream).
+std::vector<float> drainedArea(const Grid& grid, const std::vector<std::uint8_t>& land,
+                               const std::vector<std::int8_t>& down,
+                               const std::vector<std::size_t>& order) {
+    std::vector<double> area(grid.nodes(), 0.0);
+    for (auto it = order.rbegin(); it != order.rend(); ++it) {
+        area[*it] += grid.sizeX * grid.sizeZ;
+        const auto& [di, dj] = kSteps[static_cast<std::size_t>(down[*it])];
+        const std::size_t next = grid.index(grid.column(*it) + di, grid.row(*it) + dj);
+        if (land[next] != 0) {
+            area[next] += area[*it];
+        }
+    }
+    std::vector<float> out(grid.nodes());
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        out[k] = static_cast<float>(area[k]);
+    }
+    return out;
+}
+
+} // namespace
+
+Drainage drainedLand(std::uint64_t seed, const GeographyParams& params, const Grid& grid,
+                     const Crust& crust, const std::vector<float>& floor) {
+    // Up to drainJitter added to the keys of the nodes: where the land is gentle the flood
+    // reaches them in a random order (an invasion percolation): its tree branches.
+    const auto jitter = [seed, &params](std::size_t node) {
+        return params.drainJitter *
+               static_cast<float>(static_cast<double>(noise::deriveSeed(seed, node) >> 11) *
+                                  0x1.0p-53);
+    };
     constexpr float kUnset = std::numeric_limits<float>::infinity();
-    std::vector<float> elevation(grid.nodes(), kUnset);
+    Drainage d;
+    d.elevation.assign(grid.nodes(), kUnset);
+    d.down.assign(grid.nodes(), -1);
     Queue queue;
-    seedFlood(grid, crust, floor, elevation, queue);
-    static constexpr std::array<std::array<int, 2>, 8> kSteps = {
-        {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
+    seedFlood(grid, crust, floor, d.elevation, queue);
+    std::vector<std::size_t> order; // the land nodes, as the flood reaches them
+    order.reserve(grid.nodes());
     while (!queue.empty()) {
         const Wave wave = queue.top();
         queue.pop();
-        if (wave.elevation > elevation[wave.node]) {
-            continue; // an older entry of a node lowered since
+        const float here = d.elevation[wave.node];
+        if (crust.land[wave.node] != 0 && d.down[wave.node] < 0) {
+            d.down[wave.node] = seaStep(grid, crust.land, wave.node); // a seed: the coast
+        }
+        if (crust.land[wave.node] != 0 && d.down[wave.node] >= 0) {
+            order.push_back(wave.node);
         }
         const int i = grid.column(wave.node);
         const int j = grid.row(wave.node);
-        for (const auto& [di, dj] : kSteps) {
+        for (std::size_t k = 0; k < kSteps.size(); ++k) {
+            const auto& [di, dj] = kSteps[k];
             const std::size_t n = grid.index(i + di, j + dj);
-            if (crust.land[n] == 0 || elevation[n] != kUnset) {
+            if (crust.land[n] == 0 || d.elevation[n] != kUnset) {
                 continue;
             }
             const double run = dmath::hypot(di * grid.sizeX, dj * grid.sizeZ);
-            elevation[n] = std::max(
-                floor[n], static_cast<float>(wave.elevation + params.drainSlope * run));
-            queue.push({elevation[n], n});
+            d.elevation[n] =
+                std::max(floor[n], static_cast<float>(here + params.drainSlope * run));
+            d.down[n] = static_cast<std::int8_t>(k ^ 1); // the opposite step (pairs in kSteps)
+            queue.push({d.elevation[n] + jitter(n), n});
         }
     }
-    for (float& e : elevation) {
+    for (float& e : d.elevation) {
         e = e == kUnset ? 1.0f : std::max(e, 1.0f);
     }
-    return elevation;
+    d.area = drainedArea(grid, crust.land, d.down, order);
+    return d;
+}
+
+std::vector<float> valleyGeometry(std::uint64_t seed, const Grid& grid, const Drainage& drainage) {
+    std::vector<float> geometry(kValleyFloats * grid.nodes(), 0.0f);
+    for (std::size_t k = 0; k < grid.nodes(); ++k) {
+        const std::uint64_t h = noise::deriveSeed(seed, k);
+        const auto unit = [h](int b) {
+            return static_cast<double>((h >> (16 * b)) & 0xFFFFU) / 65536.0 - 0.5;
+        };
+        float* g = &geometry[kValleyFloats * k];
+        // The start within 0.4 node of the node; the middle up to 0.4 of the step aside; the
+        // floor 0.8 to 1.2 times as wide as the area drained gives.
+        g[0] = static_cast<float>(0.8 * unit(0) * grid.sizeX);
+        g[1] = static_cast<float>(0.8 * unit(1) * grid.sizeZ);
+        g[4] = static_cast<float>(1.0 + 0.4 * unit(3));
+        if (drainage.down[k] < 0) {
+            continue;
+        }
+        const auto& [di, dj] = kSteps[static_cast<std::size_t>(drainage.down[k])];
+        const double aside = 0.8 * unit(2);
+        g[2] = static_cast<float>((0.5 * di - aside * dj) * grid.sizeX);
+        g[3] = static_cast<float>((0.5 * dj + aside * di) * grid.sizeZ);
+    }
+    return geometry;
 }
 
 } // namespace terrain::geography

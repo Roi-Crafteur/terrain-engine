@@ -5,6 +5,7 @@
 #include "terrain/generation/voronoi.hpp"
 #include "terrain/world_size.hpp"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -136,8 +137,14 @@ private:
     [[nodiscard]] HeightSample sampleWith(double x, double z, Memos* memos) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
-    // sampleWith on the planetary geography (heightfield_geography.cpp), at a canonical point.
+    // The ridged noise at its warped point, and the warp (of the geography when it is enabled).
+    [[nodiscard]] float ridgeAt(double x, double z, Memos* memos, std::array<float, 2>& warp) const;
+    // sampleWith on the planetary geography (heightfield_geography.cpp), at a canonical point,
+    // its mountains carved by its valleys and its hills.
     [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos) const;
+    [[nodiscard]] float geographyMountainAt(double x, double z, float mask,
+                                            const GeographySample& g, float valleys,
+                                            Memos* memos) const;
     [[nodiscard]] float detailAt(double x, double z, float base, Memos* memos) const;
 
     HeightfieldParams params_;

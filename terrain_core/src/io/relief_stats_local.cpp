@@ -108,6 +108,33 @@ std::vector<ReliefGrid> windows(const Heightfield& field, const ReliefGrid& worl
     return out;
 }
 
+// Up to count land cells in the mountain belts of the geography (belt of at least 0.5), spread
+// evenly over all of them; none without the geography.
+std::vector<std::size_t> beltCells(const Heightfield& field, const ReliefGrid& world,
+                                   const ReliefStats& stats, int count) {
+    std::vector<std::size_t> all;
+    const Geography* geography = field.geography();
+    for (std::size_t cell = 0; geography != nullptr && cell < stats.cells.size(); ++cell) {
+        if ((stats.cells[cell] & kReliefLand) == 0U) {
+            continue;
+        }
+        const auto columns = static_cast<std::size_t>(world.columns);
+        const double x = world.x(static_cast<int>(cell % columns));
+        const double z = world.z(static_cast<int>(cell / columns));
+        if (geography->sampleAt(wrapCoordinate(x, field.world().x),
+                                wrapCoordinate(z, field.world().z))
+                .belt >= 0.5f) {
+            all.push_back(cell);
+        }
+    }
+    std::vector<std::size_t> picked;
+    const std::size_t n = std::min(all.size(), static_cast<std::size_t>(std::max(count, 0)));
+    for (std::size_t k = 0; k < n; ++k) {
+        picked.push_back(all[k * all.size() / n]);
+    }
+    return picked;
+}
+
 } // namespace
 
 LocalReliefStats measureLocalRelief(const Heightfield& field, const ReliefGrid& world,
@@ -133,6 +160,14 @@ LocalReliefStats measureLocalRelief(const Heightfield& field, const ReliefGrid& 
     local.mountainWindows = static_cast<int>(reliefs.size());
     local.mountainRelief = percentile(reliefs, 0.5);
     local.mountainRelief90 = percentile(reliefs, 0.9);
+    reliefs.clear();
+    for (const ReliefGrid& w : windows(field, world, beltCells(field, world, stats, windowCount),
+                                       kStep, kSide, threads)) {
+        reliefs.push_back(figures(w).relief);
+    }
+    local.beltWindows = static_cast<int>(reliefs.size());
+    local.beltRelief = percentile(reliefs, 0.5);
+    local.beltRelief90 = percentile(reliefs, 0.9);
     std::vector<double> ratios;
     for (const ReliefGrid& w : windows(field, world, spreadCells(stats, kReliefCoast, windowCount),
                                        kCoastStep, kCoastSide, threads)) {

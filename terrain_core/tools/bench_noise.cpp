@@ -92,6 +92,21 @@ PointSets pointSets(const Heightfield& field, std::size_t count) {
     return sets;
 }
 
+// Patches of 16 x 16 points 4 m apart from the first points of a set, as many points as it has:
+// the way tiles sample the relief, the caches warm.
+std::vector<Point> patches(const std::vector<Point>& points) {
+    constexpr int kSide = 16;
+    std::vector<Point> out;
+    for (std::size_t k = 0; k < points.size() / (kSide * kSide); ++k) {
+        for (int j = 0; j < kSide; ++j) {
+            for (int i = 0; i < kSide; ++i) {
+                out.push_back({points[k].x + 4.0 * i, points[k].z + 4.0 * j});
+            }
+        }
+    }
+    return out;
+}
+
 std::uint64_t heights(const Heightfield& field, const std::vector<Point>& points) {
     Checksum sum;
     for (const Point& p : points) {
@@ -115,6 +130,11 @@ void pointCases(const Config& c, const Heightfield& field, const Heightfield& pl
     kind("heightAt, coast", sets.coast);
     kind("heightAt, mountains", sets.mountain);
     kind("heightAt, ocean", sets.ocean);
+    kind("heightAt, mixed, patches", patches(sets.mixed));
+    kind("heightAt, land, patches", patches(sets.land));
+    kind("heightAt, coast, patches", patches(sets.coast));
+    kind("heightAt, mountains, patches", patches(sets.mountain));
+    kind("heightAt, ocean, patches", patches(sets.ocean));
     const auto samples = bench::measure(c.runs, [&field, &sets] {
         Checksum sum;
         for (const Point& p : sets.mixed) {
@@ -142,6 +162,11 @@ void geographyCases(const Config& c, const Heightfield& geography, const PointSe
     kind("geography heightAt, coast", sets.coast);
     kind("geography heightAt, mountains", sets.mountain);
     kind("geography heightAt, ocean", sets.ocean);
+    kind("geography heightAt, mixed, patches", patches(sets.mixed));
+    kind("geography heightAt, land, patches", patches(sets.land));
+    kind("geography heightAt, coast, patches", patches(sets.coast));
+    kind("geography heightAt, mountains, patches", patches(sets.mountain));
+    kind("geography heightAt, ocean, patches", patches(sets.ocean));
 }
 
 // Times f(point) over the points; f returns a double, added to the checksum.
