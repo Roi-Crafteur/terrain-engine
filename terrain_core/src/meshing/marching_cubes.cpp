@@ -87,8 +87,14 @@ void MeshBuilder::polygonizeCell(GridPoint cell) {
     unsigned cube = 0;
     for (std::size_t i = 0; i < corners.size(); ++i) {
         const mc::CornerOffset offset = mc::kCornerOffsets[i];
-        corners[i] = {cell.x + offset.x, cell.y + offset.y, cell.z + offset.z};
-        if (density(corners[i]) < kIsoLevel) {
+        const int x = cell.x + offset.x;
+        const int y = cell.y + offset.y;
+        const int z = cell.z + offset.z;
+        corners[i] = {x, y, z};
+        // From the coordinates, not from corners[i] just stored: Clang reloads its x and y as
+        // one 8-byte word, which the processor cannot forward from their two 4-byte stores, a
+        // stall at every corner of every cell.
+        if (grid_.at(x, y, z) < kIsoLevel) {
             cube |= 1U << i;
         }
     }
