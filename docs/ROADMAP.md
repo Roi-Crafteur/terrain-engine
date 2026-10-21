@@ -81,7 +81,19 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
 - 11A : niveau Planète, climat et graphe des fleuves, calculés et exportés sans toucher
-  au relief ; 11B : creusement des lits, lacs, canyons et chutes dans le relief
+  au relief
+- 11R : relief planétaire, avant de creuser les fleuves (les cartes de la planète entière
+  montrent un monde par défaut en archipel uniforme, et des continents planétaires qui
+  ont la forme des plaques) :
+  - côtes découpées indépendantes des plaques, plateaux continentaux, mers intérieures
+  - chaînes de montagnes en larges ceintures (centaines de km) aux convergences, piémonts
+    et hauts plateaux derrière (type Himalaya / Tibet, Andes / Altiplano), rifts aux
+    divergences
+  - provinces à l'intérieur des continents : grandes plaines, vieux massifs usés,
+    bassins, plateaux
+  - le monde planétaire devient le monde du jeu (version du générateur 3)
+- 11B : creusement des lits, lacs, canyons et chutes dans le relief, nouveau climat
+  branché sur les biomes
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
 
 ### Phase 12 — Monde streamé unifié
