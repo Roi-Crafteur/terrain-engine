@@ -2,6 +2,7 @@
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/voronoi.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 #include "voronoi_test_support.hpp"
 
@@ -27,9 +28,10 @@ constexpr std::array<std::uint64_t, 3> kSeeds = {terrain::kDefaultWorldSeed, 5, 
 // Seed stream of the plates among the layers of the Heightfield (the 8th one).
 constexpr std::uint64_t kPlateLayer = 7;
 
-// Every test sets the layers explicitly, so none depends on the default amplitudes.
+// Every test sets the layers explicitly, so none depends on the default amplitudes; on the
+// legacy relief, the only one with these layers.
 HeightfieldParams layers(float plates, float macro) {
-    HeightfieldParams params;
+    HeightfieldParams params = test_relief::legacyRelief();
     params.plates.amplitude = plates;
     params.macroContinent = macro;
     params.macroContinentWavelength = 10'000'000.0;

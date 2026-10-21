@@ -13,6 +13,7 @@
 #include "cave_environment_test_support.hpp"
 #include "cave_galleries_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -47,7 +48,7 @@ CaveParams volcanic(float lava) {
 // With lava or without it, the cells keep their sites, wetness, levels and ice; lava only fills
 // cells that are not wet, about lavaChance of them.
 void testCellsUnchanged() {
-    const terrain::Heightfield heightfield(kSeed);
+    const terrain::Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveGround ground = caves_test::withEnvironment(
         caves_test::heightfieldGround(heightfield), caves_test::humidEnvironment());
     const CaveField withLava(kSeed, volcanic(1.0f));
@@ -129,7 +130,7 @@ std::vector<LavaSite> lavaSites(const CaveField& field, const CaveGround& ground
 // The lava stays 5 m at least under the floor of every gallery of its cell (shell and
 // clearance), read from the columns of the cell every 4 m: the bands of the rivers never meet it.
 void testUnderGalleries() {
-    const terrain::Heightfield heightfield(kSeed);
+    const terrain::Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveGround ground = caves_test::heightfieldGround(heightfield);
     const CaveField field(kSeed, volcanic(1.0f));
     const CaveParams& p = field.params();
@@ -273,7 +274,7 @@ void countLava(const FluidLattice& l, const terrain::AquiferParams& a, LavaCount
 
 // Lattices of 1 m around 4 points where the lava shows, in a volcanic world on the relief.
 void testPlacement() {
-    const terrain::Heightfield heightfield(kSeed);
+    const terrain::Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveGround ground = caves_test::withEnvironment(
         caves_test::heightfieldGround(heightfield), caves_test::humidEnvironment());
     const CaveField field(kSeed, volcanic(1.0f));
@@ -301,7 +302,7 @@ void testPlacement() {
 void testVisibility() {
     CaveParams params;
     params.districts = terrain::CaveDistrictParams{};
-    const terrain::TerrainTiles tiles(kSeed, {}, {}, params);
+    const terrain::TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, params);
     const CaveField& field = *tiles.caves();
     const CaveGround& ground = tiles.caveGround();
     const double size = field.params().aquifers.cellSize;

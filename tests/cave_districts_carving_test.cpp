@@ -16,6 +16,7 @@
 #include "cave_districts_carving_support.hpp"
 #include "cave_environment_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -68,7 +69,7 @@ constexpr const char* kComponentNames[kComponents] = {"spaghetti", "noodles", "c
 void testNeutralIsIdentical() {
     const CaveField plain(kSeed);
     const CaveField neutral(kSeed, uniformCaves(CaveProfile{}));
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveGround ground = withEnvironment(heightfieldGround(heightfield), humidEnvironment());
     Rng rng(41);
     const std::vector<Point> points =
@@ -401,7 +402,7 @@ std::vector<Window> districtWindows(const CaveField& field, const CaveGround& gr
 // on relief, at the three details that carve noises.
 void testSkipsAreExact() {
     const CaveField field(kSeed, denseCaves());
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveGround flat = withEnvironment(flatGround(100.0f), humidEnvironment());
     const CaveGround relief = withEnvironment(heightfieldGround(heightfield), humidEnvironment());
     for (const CaveGround* ground : {&flat, &relief}) {

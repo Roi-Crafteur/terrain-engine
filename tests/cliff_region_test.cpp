@@ -4,6 +4,7 @@
 #include "terrain/generation/cliff_region.hpp"
 #include "terrain/generation/noise.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -89,7 +90,7 @@ std::vector<SurfacePair> collectPairs(const CliffRegion& cliffs, std::size_t cou
 
 // Same seed, same region: same grids, cirques and densities. Another seed: another world.
 void testDeterminism(const CliffRegion& a, const HeightmapRegion& site) {
-    const CliffRegion b(kSeed, site);
+    const CliffRegion b(kSeed, site, test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
     TEST_CHECK(a.surface().heights == b.surface().heights);
     TEST_CHECK(a.mask() == b.mask());
     TEST_CHECK(a.riverDistance() == b.riverDistance());
@@ -106,9 +107,11 @@ void testDeterminism(const CliffRegion& a, const HeightmapRegion& site) {
     }
     TEST_CHECK(same);
 
-    const HeightmapRegion small = terrain::findCliffRegion(kSeed, 100.0, 48);
-    const CliffRegion c(kSeed, small);
-    const CliffRegion d(kSeed + 1, small);
+    const HeightmapRegion small =
+        terrain::findCliffRegion(kSeed, 100.0, 48, {}, test_relief::legacyRelief());
+    const CliffRegion c(kSeed, small, test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
+    const CliffRegion d(kSeed + 1, small,
+                        test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
     TEST_CHECK(c.mask() != d.mask() || c.surface().heights != d.surface().heights);
 }
 
@@ -303,8 +306,10 @@ void testBoundedChange(const CliffRegion& cliffs) {
 } // namespace
 
 int main() {
-    const HeightmapRegion site = terrain::findCliffRegion(kSeed, 50.0, 129);
-    const CliffRegion cliffs(kSeed, site);
+    const HeightmapRegion site =
+        terrain::findCliffRegion(kSeed, 50.0, 129, {}, test_relief::legacyRelief());
+    const CliffRegion cliffs(kSeed, site,
+                             test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
     const std::vector<SurfacePair> pairs = collectPairs(cliffs, 16000);
     testDeterminism(cliffs, site);
     testVerticalCliffs(cliffs, pairs);

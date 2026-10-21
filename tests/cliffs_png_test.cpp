@@ -3,6 +3,7 @@
 #include "terrain/io/eroded_png.hpp"
 #include "terrain/io/png.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -40,9 +41,10 @@ bool hasColor(Rgb color, const std::uint8_t (&rgb)[3]) {
 // Small regions keep the tests fast (the build is unoptimized). The cliff site of the world
 // has strata walls, but no ocean and only small rivers.
 const CliffRegion& cliffSite() {
-    static const CliffRegion region(
-        terrain::kDefaultWorldSeed,
-        terrain::findCliffRegion(terrain::kDefaultWorldSeed, 50.0, 65));
+    static const CliffRegion region(terrain::kDefaultWorldSeed,
+                                    terrain::findCliffRegion(terrain::kDefaultWorldSeed, 50.0, 65,
+                                                             {}, test_relief::legacyRelief()),
+                                    test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
     return region;
 }
 
@@ -52,7 +54,8 @@ const CliffRegion& coast() {
     static const CliffRegion region(
         terrain::kDefaultWorldSeed,
         terrain::HeightmapRegion{
-            .centerX = -66800.0, .centerZ = -2800.0, .metersPerPixel = 100.0, .size = 128});
+            .centerX = -66800.0, .centerZ = -2800.0, .metersPerPixel = 100.0, .size = 128},
+        test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
     return region;
 }
 

@@ -10,6 +10,7 @@
 #include "cave_environment_test_support.hpp"
 #include "cave_flora_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "speleothems_test_support.hpp"
 #include "test_assert.hpp"
 #include "world_seams_support.hpp"
@@ -112,7 +113,7 @@ void testCaveFlora() {
 // Plants of a rectangle across the edge on the heightfield, each piece with its own ecology map
 // on the lattice of 4 m of the streamed tiles (x and z = 2 modulo 4), one sample beyond its sides.
 void testPlants() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const terrain::Ecology ecology(kSeed);
     const terrain::ReliefHeight surface = [&field](double x, double z) {
         return field.heightAt(x, z);
@@ -137,7 +138,8 @@ void testPlants() {
 // Entrances whose reach meets an area across the corner, against those of its pieces on both
 // sides of the edge x (each entrance once, its cell given in the frame of the area).
 void testEntrances() {
-    const terrain::TerrainTiles tiles(kSeed, {}, {}, terrain::CaveParams{});
+    const terrain::TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {},
+                                      terrain::CaveParams{});
     const terrain::CaveField& caves = *tiles.caves();
     const terrain::CaveGround& ground = tiles.caveGround();
     const auto cells = static_cast<int>(caves.entranceCellsX().count);

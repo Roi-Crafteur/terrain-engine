@@ -4,6 +4,7 @@
 #include "terrain/io/png.hpp"
 #include "terrain/io/voronoi_png.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -27,8 +28,9 @@ using terrain::PlateColor;
 using terrain::PlateKind;
 using terrain::TectonicPlates;
 
+// The plate layer of the legacy relief.
 HeightfieldParams withPlates() {
-    HeightfieldParams params;
+    HeightfieldParams params = test_relief::legacyRelief();
     params.plates.amplitude = 0.5f;
     params.macroContinent = 0.25f;
     return params;

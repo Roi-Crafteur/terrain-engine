@@ -11,6 +11,7 @@
 
 #include "cave_districts_carving_support.hpp"
 #include "cave_districts_streaming_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "speleothems_test_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
@@ -47,10 +48,10 @@ using terrain::TileKey;
 // the tile of the world without caves, and of the caves without districts. The tiles LOD 0 to 2
 // carve differ from the ones without districts at most of the entrances of the main districts.
 void testDeterministic(const TerrainTiles& tiles, const std::vector<DistrictEntrance>& entrances) {
-    const TerrainTiles again(kSeed, {}, {}, defaultCaves());
-    const TerrainTiles plain(kSeed, {}, {}, terrain::CaveParams{});
-    const TerrainTiles world(kSeed);
-    const TerrainTiles other(kSeed + 1, {}, {}, defaultCaves());
+    const TerrainTiles again(kSeed, test_relief::legacyRelief(), {}, defaultCaves());
+    const TerrainTiles plain(kSeed, test_relief::legacyRelief(), {}, terrain::CaveParams{});
+    const TerrainTiles world(kSeed, test_relief::legacyRelief());
+    const TerrainTiles other(kSeed + 1, test_relief::legacyRelief(), {}, defaultCaves());
     const ChunkCoord chunk = streaming_test::entranceChunk(entrances.front().entrance);
     for (int lod = 0; lod < terrain::kLodCount; ++lod) {
         const terrain::TileRequest request{terrain::tileContaining(chunk, lod),
@@ -181,8 +182,8 @@ std::optional<FloraSpot> findFlora(const TerrainTiles& tiles) {
 // any; neither do the tiles of the world without districts or without caves, nor the LOD 0 tiles
 // at the entrances of the other districts.
 void testCaveFlora(const TerrainTiles& tiles, const std::vector<DistrictEntrance>& pure) {
-    const TerrainTiles plain(kSeed, {}, {}, terrain::CaveParams{});
-    const TerrainTiles world(kSeed);
+    const TerrainTiles plain(kSeed, test_relief::legacyRelief(), {}, terrain::CaveParams{});
+    const TerrainTiles world(kSeed, test_relief::legacyRelief());
     const std::optional<FloraSpot> spot = findFlora(tiles);
     TEST_CHECK(spot.has_value());
     if (!spot) {
@@ -234,10 +235,12 @@ void testMaterials(const std::vector<DistrictEntrance>& pure) {
     const CaveEntrance& entrance = pure.front().entrance;
     const ChunkCoord chunk = terrain::worldToChunk(entrance.bottomX, entrance.bottomZ);
     const auto tileOf = [chunk](CaveDistrictType type) {
-        const TerrainTiles tiles(kSeed, {}, {}, uniformCaves(defaultProfile(type)));
+        const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {},
+                                 uniformCaves(defaultProfile(type)));
         return tiles.generate({{chunk, 0}, 0});
     };
-    const TerrainTiles neutralTiles(kSeed, {}, {}, uniformCaves(CaveProfile{}));
+    const TerrainTiles neutralTiles(kSeed, test_relief::legacyRelief(), {},
+                                    uniformCaves(CaveProfile{}));
     const TileData neutral = neutralTiles.generate({{chunk, 0}, 0});
     const TileData glacier = tileOf(CaveDistrictType::Glacier);
     const TileData volcanic = tileOf(CaveDistrictType::Volcanic);
@@ -265,8 +268,9 @@ void testMaterials(const std::vector<DistrictEntrance>& pure) {
 // ice instead of water.
 void testFrozenLakes(const std::vector<DistrictEntrance>& pure) {
     using terrain::CaveMaterial;
-    const TerrainTiles neutralTiles(kSeed, {}, {}, uniformCaves(CaveProfile{}));
-    const TerrainTiles glacierTiles(kSeed, {}, {},
+    const TerrainTiles neutralTiles(kSeed, test_relief::legacyRelief(), {},
+                                    uniformCaves(CaveProfile{}));
+    const TerrainTiles glacierTiles(kSeed, test_relief::legacyRelief(), {},
                                     uniformCaves(defaultProfile(CaveDistrictType::Glacier)));
     for (std::size_t n = 0; n < std::min<std::size_t>(pure.size(), 24); ++n) {
         const TileKey key{streaming_test::entranceChunk(pure[n].entrance), 0};
@@ -290,7 +294,7 @@ void testFrozenLakes(const std::vector<DistrictEntrance>& pure) {
 } // namespace
 
 int main() {
-    const TerrainTiles tiles(kSeed, {}, {}, defaultCaves());
+    const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, defaultCaves());
     const std::vector<DistrictEntrance> entrances = districts_test::districtEntrances(tiles);
     const std::vector<DistrictEntrance> pure = districts_test::select(entrances, false);
     std::printf("%zu entrances near the origin, %zu in the core of a district\n", entrances.size(),

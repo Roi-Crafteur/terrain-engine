@@ -7,6 +7,7 @@
 #include "terrain/streaming/stream_manager.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "seam_test_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
@@ -302,7 +303,7 @@ void testPlantsAcrossTheEdge(TerrainTiles& tiles) {
 int main() {
     testSelectionAcrossTheEdges();
     testCrossingTheEdge();
-    TerrainTiles tiles(streaming_test::kSeed);
+    TerrainTiles tiles(streaming_test::kSeed, test_relief::legacyRelief());
     testFacesAcrossTheEdges(tiles);
     testBlockAcrossTheEdge(tiles);
     testPlantsAcrossTheEdge(tiles);

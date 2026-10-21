@@ -9,6 +9,7 @@
 
 #include "cave_galleries_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -110,7 +111,7 @@ void testEntrances(const TerrainTiles& tiles, const std::vector<LavaPoint>& poin
 void testTiles(const TerrainTiles& tiles, const std::vector<LavaPoint>& points) {
     const CaveField& field = *tiles.caves();
     AquiferCache cache(field, tiles.caveGround());
-    const TerrainTiles plain(kSeed, {}, {}, terrain::CaveParams{});
+    const TerrainTiles plain(kSeed, test_relief::legacyRelief(), {}, terrain::CaveParams{});
     const float magmaHeight = field.params().materials.magmaHeight;
     std::array<int, 3> withLava{};
     int magma = 0;
@@ -152,7 +153,7 @@ void testTiles(const TerrainTiles& tiles, const std::vector<LavaPoint>& points) 
 } // namespace
 
 int main() {
-    const TerrainTiles tiles(kSeed, {}, {},
+    const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {},
                              galleries_test::uniformParams(CaveDistrictType::Volcanic));
     const std::vector<LavaPoint> points = lavaPoints(*tiles.caves(), tiles.caveGround(), 4);
     TEST_CHECK(points.size() == 4);

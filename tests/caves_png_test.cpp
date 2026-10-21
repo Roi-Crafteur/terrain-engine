@@ -6,6 +6,7 @@
 #include "terrain/io/heightmap_png.hpp"
 #include "terrain/io/png.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -101,19 +102,15 @@ bool isRock(Rgb color) {
 
 // Land with a river and entrances: 64 px at 32 m/px (2 km). Small, as the build is unoptimized.
 const CaveRegion& riverSite() {
-    static const CaveRegion region(
-        terrain::kDefaultWorldSeed,
-        terrain::HeightmapRegion{
-            .centerX = 4000.0, .centerZ = -4000.0, .metersPerPixel = 32.0, .size = 64});
+    static const CaveRegion region(terrain::kDefaultWorldSeed, {4000.0, -4000.0, 32.0, 64},
+                                   test_relief::onLegacyRelief(terrain::CaveRegionParams{}));
     return region;
 }
 
 // Open sea, 32 px at 100 m/px: no entrance, and the sea over the ground.
 const CaveRegion& openSea() {
-    static const CaveRegion region(
-        terrain::kDefaultWorldSeed,
-        terrain::HeightmapRegion{.centerX = -10000.0, .centerZ = 0.0,
-                                 .metersPerPixel = 100.0, .size = 32});
+    static const CaveRegion region(terrain::kDefaultWorldSeed, {-10000.0, 0.0, 100.0, 32},
+                                   test_relief::onLegacyRelief(terrain::CaveRegionParams{}));
     return region;
 }
 

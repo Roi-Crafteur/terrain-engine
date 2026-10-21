@@ -1,6 +1,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <array>
@@ -219,13 +220,13 @@ void testNoPeaksWithoutMask(const Grid& grid, const HeightfieldParams& params) {
 }
 
 // Same world with a mask that is zero everywhere: no peak and gentle land slopes, whereas
-// the default world has both.
+// the legacy world has both.
 void testNoPeaksWhenMaskIsEmpty(std::uint64_t seed) {
-    HeightfieldParams noMask;
+    HeightfieldParams noMask = test_relief::legacyRelief();
     noMask.maskLow = 2.0f; // fbm never reaches it
     noMask.maskHigh = 3.0f;
     const Heightfield flat(seed, noMask);
-    const Heightfield normal(seed);
+    const Heightfield normal(seed, test_relief::legacyRelief());
 
     constexpr double kStep = 5.0;
     constexpr double kMaxLandSlope = 0.5;
@@ -257,8 +258,10 @@ void testNoPeaksWhenMaskIsEmpty(std::uint64_t seed) {
 int main() {
     testDeterminism();
     testLocalContinuity();
+    // The continentalness, the mask and the oceans of the legacy relief (the rules of the
+    // planetary geography: geography_test).
     for (const std::uint64_t seed : kSeeds) {
-        const Heightfield field(seed);
+        const Heightfield field(seed, test_relief::legacyRelief());
         const Grid grid = sampleGrid(field);
         testOceansOnlyAtLowContinentalness(grid, field.params());
         testOceansContinuous(grid);
