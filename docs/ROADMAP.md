@@ -58,6 +58,31 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - tuiles streamées en ProceduralMeshComponent, LOD 0 à 3, collisions, sol prêt sous le pion
 - tuiles montrées à leur image la plus proche du joueur : pas de trou au coin du monde
 - coût mesuré : environ 0,6 ms de génération et 0,5 ms d'envoi par tuile LOD 0
+  (0,25 ms de génération après l'optimisation du bruit)
+- le joueur ramené d'un monde entier après la majeure partie d'un tour (coordonnées Unreal
+  bornées), sans saut visible ni rechargement des tuiles
+
+### Performance du bruit
+- relief environ 2 fois plus rapide, sans changer un seul bit du monde (référence gelée de
+  l'ancien code) : octaves précalculées, bouclage sans division, pas de bruit de masque en
+  mer, lecture du relief par lots
+- grilles de hauteur plus rapides qu'avant la phase 9
+
+### Phase 11A — Niveau Planète
+- grille de toute la planète (cellules de 8 km), calculée depuis la seed en environ 1 min,
+  identique au bit près quel que soit le nombre de threads ; 220 Mo gardés
+- climat continental (vents, pluie, ombres orographiques, glace), lacs et bassins
+  (Fill-Spill-Merge), débits, graphe des fleuves, sites pour 11B (deltas, estuaires,
+  chutes, gorges)
+- mesures du relief actuel : il ne draine pas (lacs sur 27 % des terres du monde
+  planétaire, fleuves qui traversent surtout des lacs) : objectifs chiffrés de 11R
+
+### Phase 13 — Horizon lointain (core)
+- 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
+  520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
+  plateformes
+- raccord exact avec les tuiles LOD 3 ; panorama 360° de contrôle : relief visible
+  jusqu'à 400 km depuis un sommet
 
 ## À venir
 
@@ -67,14 +92,8 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - type de mesh choisi par mesure : Dynamic Mesh, ProceduralMeshComponent ou
   RealtimeMeshComponent
 - compilation du plugin sous Linux et Mac (risque `std::jthread`)
-- meshing 1,6 à 1,9 fois plus lent sous Clang que sous GCC (Unreal Linux et Mac,
-  serveurs) : à profiler
-- ramener le joueur d'un monde entier au-delà d'un tour (coordonnées Unreal ≈ 88 000 km) :
-  PR #24, testée dans UE 5.8
-
-### Chantier parallèle — Performance du bruit
-- retrouver le coût d'avant la phase 9 (heightAt ≈ 2,5 fois plus lent depuis les maths
-  déterministes), sans changer un seul bit du monde
+- meshing environ 7 fois plus lent sous Clang que sous GCC (Unreal Linux et Mac,
+  serveurs) : cause trouvée, correctif en cours
 
 ### Phase 11 — Hydrographie continentale (approche TerraForged)
 - niveau Planète précalculé à la création du monde (attente longue acceptée)
@@ -84,8 +103,7 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - deltas, estuaires, grands lacs, méandres, bras morts
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
-- 11A : niveau Planète, climat et graphe des fleuves, calculés et exportés sans toucher
-  au relief
+- 11A : fait (voir « Réalisé »)
 - 11R : relief planétaire, avant de creuser les fleuves (les cartes de la planète entière
   montrent un monde par défaut en archipel uniforme, et des continents planétaires qui
   ont la forme des plaques) :
@@ -97,7 +115,8 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
     bassins, plateaux
   - le monde planétaire devient le monde du jeu (version du générateur 3)
 - 11B : creusement des lits, lacs, canyons et chutes dans le relief, nouveau climat
-  branché sur les biomes
+  branché sur les biomes ; niveau Planète gardé sur disque (au lieu d'être recalculé) et
+  pic de mémoire de sa construction réduit (1 Go aujourd'hui)
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
 
 ### Phase 12 — Monde streamé unifié
@@ -111,9 +130,14 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 ### Phase 13 — Horizon lointain
 - vue jusqu'à l'horizon réel (300 km et plus depuis un sommet)
-- core : grilles de hauteur et de matériau à résolution libre
+- core : fait (voir « Réalisé »)
 - modifications des joueurs visibles de loin : toutes si possible, sinon les grosses
-- Unreal : rendu en clipmap, courbure simulée, atmosphère
+  (format du résumé à définir avec la phase 15)
+- Unreal : rendu en clipmap (une texture par niveau, envoi des seules bandes changées,
+  géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles, jupe
+  sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure, atmosphère et mer
+- plus tard si besoin : préfiltrage des crêtes lointaines (silhouette aujourd'hui au plus
+  0,2° trop basse)
 
 ### Phase 14 — Rendu Unreal
 - références : Enshrouded, shaders Minecraft (Complementary, BSL, SEUS),
