@@ -28,6 +28,11 @@ struct PlanetFlow {
                                    const std::vector<std::uint32_t>& order,
                                    const LakeSolution& lakes, const WaterOf& water);
 
+// The overflowing lakes in decreasing total order of their pass (then by index): the order in
+// which a pass in decreasing order meets them.
+[[nodiscard]] std::vector<std::int32_t> outflowsByPass(const std::vector<std::uint32_t>& order,
+                                                       const std::vector<PlanetLake>& lakes);
+
 // The lake covering a cell, or -1.
 using LakeAt = std::function<std::int32_t(std::size_t cell)>;
 

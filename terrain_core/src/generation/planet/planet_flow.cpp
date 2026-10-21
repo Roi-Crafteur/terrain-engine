@@ -18,30 +18,6 @@ std::int32_t playaAt(const PitLakes& pits, std::size_t cell) {
     return it != pits.end() && it->first == cell ? it->second : -1;
 }
 
-// The overflowing lakes in decreasing order of their pass (then by index).
-std::vector<std::int32_t> outflowEvents(const std::vector<std::uint32_t>& order,
-                                        const std::vector<PlanetLake>& lakes, std::size_t cells) {
-    std::vector<std::uint32_t> rank(cells);
-    std::vector<std::int32_t> events;
-    for (std::size_t l = 0; l < lakes.size(); ++l) {
-        if (lakes[l].overflowing) {
-            events.push_back(static_cast<std::int32_t>(l));
-        }
-    }
-    if (events.empty()) {
-        return events;
-    }
-    for (std::size_t p = 0; p < order.size(); ++p) {
-        rank[order[p]] = static_cast<std::uint32_t>(p);
-    }
-    std::sort(events.begin(), events.end(), [&](std::int32_t a, std::int32_t b) {
-        const std::uint32_t ra = rank[lakes[static_cast<std::size_t>(a)].pass];
-        const std::uint32_t rb = rank[lakes[static_cast<std::size_t>(b)].pass];
-        return ra != rb ? ra > rb : a < b;
-    });
-    return events;
-}
-
 class Router {
 public:
     Router(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
@@ -169,6 +145,30 @@ void BasinTracer::trace(std::size_t start) {
 
 } // namespace
 
+std::vector<std::int32_t> outflowsByPass(const std::vector<std::uint32_t>& order,
+                                         const std::vector<PlanetLake>& lakes) {
+    std::vector<std::uint32_t> rank;
+    std::vector<std::int32_t> events;
+    for (std::size_t l = 0; l < lakes.size(); ++l) {
+        if (lakes[l].overflowing) {
+            events.push_back(static_cast<std::int32_t>(l));
+        }
+    }
+    if (events.empty()) {
+        return events;
+    }
+    rank.resize(order.size());
+    for (std::size_t p = 0; p < order.size(); ++p) {
+        rank[order[p]] = static_cast<std::uint32_t>(p);
+    }
+    std::sort(events.begin(), events.end(), [&](std::int32_t a, std::int32_t b) {
+        const std::uint32_t ra = rank[lakes[static_cast<std::size_t>(a)].pass];
+        const std::uint32_t rb = rank[lakes[static_cast<std::size_t>(b)].pass];
+        return ra != rb ? ra > rb : a < b;
+    });
+    return events;
+}
+
 PitLakes playaPits(const std::vector<PlanetLake>& lakes) {
     PitLakes pits;
     for (std::size_t l = 0; l < lakes.size(); ++l) {
@@ -187,7 +187,7 @@ PlanetFlow routeFlow(const PlanetGrid& grid, const std::vector<std::uint8_t>& oc
     PlanetFlow flow;
     flow.discharge.assign(grid.cells(), 0.0f);
     flow.lakeInflow.assign(lakes.lakes.size(), 0);
-    const std::vector<std::int32_t> events = outflowEvents(order, lakes.lakes, grid.cells());
+    const std::vector<std::int32_t> events = outflowsByPass(order, lakes.lakes);
     Router router(grid, ocean, lakes, flow);
     std::size_t next = 0;
     for (std::size_t p = order.size(); p-- > 0;) {

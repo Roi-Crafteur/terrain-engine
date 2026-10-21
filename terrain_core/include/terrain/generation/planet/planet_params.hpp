@@ -74,6 +74,17 @@ struct PlanetClimateParams {
     double aridityHigh = 0.4;
 };
 
+// The river graph of the planet level.
+struct PlanetRiverParams {
+    // A dry, unfrozen land cell is a river where at least this many m^3/s leave it.
+    double minDischarge = 100.0;
+    // Bankfull width and depth of a river in meters from its discharge Q (hydraulic geometry,
+    // Leopold and Maddock): widthCoefficient Q^0.5 and depthCoefficient Q^depthExponent.
+    double widthCoefficient = 7.0;
+    double depthCoefficient = 0.3;
+    double depthExponent = 0.4;
+};
+
 // Parameters of the planet level. Lengths are in meters.
 struct PlanetParams {
     // Grid: square cells that divide both sides of the world (makePlanetGrid). 8,192 m gives
@@ -89,6 +100,7 @@ struct PlanetParams {
     double minOceanArea = 1.0e10;
 
     PlanetClimateParams climate;
+    PlanetRiverParams rivers;
 };
 
 } // namespace terrain

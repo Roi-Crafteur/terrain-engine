@@ -63,6 +63,7 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_order.cpp
     src/generation/planet/planet_parallel.cpp
     src/generation/planet/planet_relief.cpp
+    src/generation/planet/planet_rivers.cpp
     src/generation/planet/planet_wind.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
