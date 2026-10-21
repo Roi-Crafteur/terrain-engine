@@ -188,6 +188,10 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 	{
 		return;
 	}
+	if (AActor* Traveller = FocusActor != nullptr ? FocusActor.Get() : Pawn)
+	{
+		ReturnFromWorldTurn(*Traveller, Focus);
+	}
 	try
 	{
 		if (Pawn != nullptr && WarmedPawn.Get() != Pawn)
@@ -238,6 +242,29 @@ bool ATerrainWorld::FindFocus(FVector& OutLocation, APawn*& OutPawn) const
 		return true;
 	}
 	return false;
+}
+
+// Far from the origin, after most of a turn of the wrapped world, the traveller is moved back by
+// whole worlds (Bridge/unreal_frame.hpp: worldTurnOffset): the same place of the core, so the
+// update of this tick moves every tile by the same offset and nothing changes on screen. A
+// teleport keeps the velocity of its physics and of its movement component; the frame stays.
+void ATerrainWorld::ReturnFromWorldTurn(AActor& Traveller, FVector& InOutFocus) const
+{
+	const terrain::unreal::UnrealPoint Offset = terrain::unreal::worldTurnOffset(
+		ToUnrealPoint(InOutFocus), State->Session.streamer().manager().params().world);
+	if (Offset.x == 0.0 && Offset.y == 0.0)
+	{
+		return;
+	}
+	const FVector Shift(Offset.x, Offset.y, Offset.z);
+	Traveller.SetActorLocation(
+		Traveller.GetActorLocation() + Shift, false, nullptr, ETeleportType::TeleportPhysics);
+	InOutFocus += Shift;
+	UE_LOG(LogTerrainEngine, Log,
+		TEXT("Terrain World: %s moved back by whole worlds (%.0f, %.0f) km, now at "
+			 "(%.0f, %.0f) km"),
+		*Traveller.GetName(), Shift.X / 1.0e5, Shift.Y / 1.0e5, InOutFocus.X / 1.0e5,
+		InOutFocus.Y / 1.0e5);
 }
 
 // The ground under a new pawn, before it can fall: the LOD 0 tiles around it are generated now.
