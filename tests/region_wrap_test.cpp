@@ -9,6 +9,7 @@
 #include "terrain/generation/eroded_region.hpp"
 #include "terrain/generation/sculpted_region.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -53,8 +54,10 @@ std::vector<Point> pointsOf(const HeightmapRegion& region) {
 void testErodedAcrossTheCorner() {
     const HeightmapRegion a{kWorld.x / 2.0, kWorld.z / 2.0, 32.0, 64};
     const HeightmapRegion b{-kWorld.x / 2.0, -kWorld.z / 2.0, 32.0, 64};
-    const terrain::ErodedRegion first(kSeed, a);
-    const terrain::ErodedRegion second(kSeed, b);
+    const terrain::ErodedRegion first(kSeed, a,
+                                      test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
+    const terrain::ErodedRegion second(kSeed, b,
+                                       test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
     const terrain::RiverNetwork& rivers = first.rivers();
     const terrain::RiverNetwork& other = second.rivers();
     TEST_CHECK(first.rawGrid().heights == second.rawGrid().heights);
@@ -89,8 +92,10 @@ void testErodedAcrossTheCorner() {
 void testSculptedAcrossTheEdge() {
     const HeightmapRegion a{kWorld.x / 2.0, kEdgeZ, 16.0, 64};
     const HeightmapRegion b{-kWorld.x / 2.0, kEdgeZ, 16.0, 64};
-    const terrain::SculptedRegion first(kSeed, a);
-    const terrain::SculptedRegion second(kSeed, b);
+    const terrain::SculptedRegion first(
+        kSeed, a, test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
+    const terrain::SculptedRegion second(
+        kSeed, b, test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     const terrain::CliffRegion& cliffs = first.cliffs();
     const terrain::CliffRegion& otherCliffs = second.cliffs();
     TEST_CHECK(cliffs.mask() == otherCliffs.mask());
@@ -135,8 +140,10 @@ void testSculptedAcrossTheEdge() {
 void testCavesAcrossTheCorner() {
     const HeightmapRegion a{kWorld.x / 2.0, kWorld.z / 2.0, 32.0, 32};
     const HeightmapRegion b{-kWorld.x / 2.0, -kWorld.z / 2.0, 32.0, 32};
-    const terrain::CaveRegion first(kSeed, a);
-    const terrain::CaveRegion second(kSeed, b);
+    const terrain::CaveRegion first(kSeed, a,
+                                    test_relief::onLegacyRelief(terrain::CaveRegionParams{}));
+    const terrain::CaveRegion second(kSeed, b,
+                                     test_relief::onLegacyRelief(terrain::CaveRegionParams{}));
     float low = first.groundAt(kWorld.x / 2.0, kWorld.z / 2.0);
     float high = low;
     for (double dz = -24.0; dz <= 24.0; dz += 1.0) {

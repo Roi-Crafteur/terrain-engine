@@ -9,6 +9,7 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "cave_districts_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -344,7 +345,7 @@ void testEveryTypeAppears() {
 void testRealWorld() {
     terrain::CaveParams caves;
     caves.districts = CaveDistrictParams{};
-    const terrain::TerrainTiles tiles(kSeed, {}, {}, caves);
+    const terrain::TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, caves);
     const terrain::CaveGround& ground = tiles.caveGround();
     terrain::AquiferCache cache(*tiles.caves(), ground);
     const float floodedMax = caves.districts->floodedMaxHeight;

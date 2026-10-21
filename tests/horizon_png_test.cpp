@@ -7,6 +7,7 @@
 #include "terrain/io/horizon_png.hpp"
 
 #include "horizon_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -26,8 +27,9 @@ namespace {
 using horizon_test::kX;
 using horizon_test::kZ;
 
+// The mountains around (kX, kZ) of the legacy relief.
 struct Fixture {
-    horizon_test::World world;
+    horizon_test::World world{test_relief::legacyRelief()};
     terrain::HorizonParams params = horizon_test::smallParams();
     terrain::HorizonSampler sampler{world.field, world.ecology, params};
     terrain::HorizonClipmap clipmap{params};

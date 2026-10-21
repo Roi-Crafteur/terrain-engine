@@ -7,6 +7,7 @@
 #include "terrain/generation/terrain_surface.hpp"
 #include "terrain/streaming/horizon_sampler.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -104,7 +105,7 @@ void compareLevel(const HorizonSampler& sampler, const terrain::EcologyMap& map,
 }
 
 void testMaterialOracle() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const terrain::Ecology ecology(kSeed);
     const HorizonParams params;
     const HorizonSampler sampler(field, ecology, params);
@@ -131,7 +132,7 @@ void testMaterialOracle() {
 
 // The same samples for every image of a rectangle, and whatever rectangle holds them.
 void testPeriodicAndSplit() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const terrain::Ecology ecology(kSeed);
     const HorizonParams params;
     const HorizonSampler sampler(field, ecology, params);
@@ -154,7 +155,7 @@ void testPeriodicAndSplit() {
 
 // Central differences of the ground at the pitch of the level.
 void testGradients() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const terrain::Ecology ecology(kSeed);
     const HorizonParams params;
     const HorizonSampler sampler(field, ecology, params);
@@ -184,7 +185,7 @@ void testGradients() {
 
 // A summary of edits raising a square of the world by 50 m and leaving rock on it.
 void testEditSummaries() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const terrain::Ecology ecology(kSeed);
     const HorizonParams params;
     constexpr double kX = -1'441'792.0;
@@ -242,7 +243,7 @@ void testEditSummaries() {
 }
 
 void testInvalidArguments() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const terrain::Ecology ecology(kSeed);
     const HorizonParams params;
     const auto throws = [](auto&& action) {

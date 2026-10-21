@@ -11,6 +11,7 @@
 #include "aquifers_test_support.hpp"
 #include "cave_districts_carving_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -202,12 +203,12 @@ void checkLakes(const CaveField& field, const CaveGround& ground,
 // usable bisectors, taking the 8 nearest to it.
 void testLakes() {
     const CaveField dense(kSeed, denseCaves());
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     checkLakes(dense, withEnvironment(flatGround(100.0f), humidEnvironment()), {-6, -6, 12}, 0.0f,
                {}, "dense, flat", 3);
     checkLakes(dense, withEnvironment(heightfieldGround(heightfield), humidEnvironment()),
                {1, -14, 8}, 20.0f, {}, "dense, relief", 3);
-    const TerrainTiles tiles(kSeed, {}, {}, defaultCaves());
+    const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, defaultCaves());
     const CaveField& field = *tiles.caves();
     const CaveGround& ground = tiles.caveGround();
     const double size = field.params().aquifers.cellSize;
@@ -239,7 +240,7 @@ bool wellPlaced(const CaveField& field, const terrain::CaveColumn& column, doubl
 // from 10 m over the ground to 100 m under it: all the water is well placed, so none is ever over
 // the surface.
 void testNoWaterOverTheGround() {
-    const TerrainTiles tiles(kSeed, {}, {}, defaultCaves());
+    const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, defaultCaves());
     const CaveField& field = *tiles.caves();
     const CaveGround& ground = tiles.caveGround();
     std::size_t points = 0;

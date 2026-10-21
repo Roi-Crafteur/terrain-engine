@@ -1,6 +1,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -19,13 +20,14 @@ using terrain::kSeaLevel;
 
 constexpr std::array<std::uint64_t, 4> kSeeds = {terrain::kDefaultWorldSeed, 1, 2, 3};
 
-// Every test sets the macro layer explicitly, so none depends on the default parameters.
+// Every test sets the macro layer explicitly, so none depends on the default parameters; on the
+// legacy relief, the only one with a macro layer.
 constexpr float kAmplitude = 0.5f;
 constexpr double kWavelength = 10'000'000.0; // 10,000 km
 constexpr float kWidth = 0.1f;
 
 HeightfieldParams macroParams(float amplitude) {
-    HeightfieldParams params;
+    HeightfieldParams params = test_relief::legacyRelief();
     params.macroContinent = amplitude;
     params.macroContinentWavelength = kWavelength;
     params.macroContinentWidth = kWidth;

@@ -8,6 +8,7 @@
 
 #include "cave_environment_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "speleothems_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -118,7 +119,7 @@ void checkUnion(const CaveField& field, const CaveGround& ground, const Square& 
 
 void testUnion() {
     const CaveField field(kSeed);
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     checkUnion(field, withEnvironment(flatGround(kFlatHeight), humidEnvironment()),
                aroundSite(32.0), "flat");
     checkUnion(field, withEnvironment(heightfieldGround(heightfield), humidEnvironment()),
@@ -184,7 +185,7 @@ void checkAnchoring(const CaveField& field, const CaveGround& ground, const Squa
 // from a floor with air above; lengths stay within their share of the room (down to the water
 // of a lake); the two of a candidate never touch; nothing lies under the water.
 void testAnchoring() {
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveField field(kSeed);
     const CaveField lakes(kSeed, aquiferParams(true));
     const Square square = aroundSite(64.0);

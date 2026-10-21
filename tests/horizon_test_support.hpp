@@ -13,14 +13,18 @@
 namespace horizon_test {
 
 constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
-// Mountains around (kX, kZ), and 2^20 m east: far from the borders of the coarse windows.
+// Mountains around (kX, kZ) in the legacy relief, and 2^20 m east: far from the borders of the
+// coarse windows.
 constexpr double kX = 1'048'576.0 + 4.0;
 constexpr double kZ = -3'932'160.0 + 4.0;
 
-// The relief and the ecology of the default world.
+// The relief and the ecology of the default world, or of the given relief.
 struct World {
-    terrain::Heightfield field{kSeed};
+    terrain::Heightfield field;
     terrain::Ecology ecology{kSeed};
+
+    World() : field(kSeed) {}
+    explicit World(const terrain::HeightfieldParams& relief) : field(kSeed, relief) {}
 };
 
 // The default levels with small windows (65 x 65 samples), for fast tests.

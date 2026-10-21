@@ -4,6 +4,7 @@
 // Cliffs, overhangs and arches: ecology_cliffs_test.cpp.
 #include "terrain/generation/ecology.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -34,7 +35,7 @@ constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
 // Coast closest to the origin on a lattice of 1024 m: ocean to the west, land to the east.
 // Centers and spacings are powers of two, so sample coordinates are exact.
 HeightmapRegion coastRegion(double metersPerPixel, int size) {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     for (int radius = 0; radius <= 60; ++radius) {
         for (int j = -radius; j <= radius; ++j) {
             for (int i = -radius; i <= radius; ++i) {
@@ -114,7 +115,7 @@ bool validPlant(const Ecology& ecology, const TerrainSurface& surface, const Eco
 }
 
 void testDeterminism() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const TerrainSurface surface = terrain::surfaceFromHeightfield(field, coastRegion(64.0, 48));
     const Ecology a(kSeed);
     const Ecology b(kSeed);
@@ -137,7 +138,7 @@ void testDeterminism() {
 // they overlap; placing two halves of an area gives the plants of the whole area; plants stand
 // exactly on Heightfield::heightAt; the heights are unchanged.
 void testContinuityWithHeightfield() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const HeightmapRegion a = coastRegion(64.0, 64);
     HeightmapRegion b = a;
     b.centerX += 20 * 64.0;
@@ -193,7 +194,7 @@ void testContinuityWithHeightfield() {
 // material and densities; the ocean is exactly under the sea, water exactly on it, and most
 // biomes show up.
 void testCoherenceOnHeightfield() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const HeightmapRegion region{.metersPerPixel = 2048.0, .size = 128};
     const TerrainSurface surface = terrain::surfaceFromHeightfield(field, region);
     const Ecology ecology(kSeed);
@@ -229,7 +230,8 @@ void testCoherenceOnHeightfield() {
 // An eroded region: rivers carry water and no land plant, plants stand on ErodedRegion::heightAt
 // only on valid surfaces, and the region is unchanged.
 void testErodedRegion() {
-    const terrain::ErodedRegion eroded(kSeed, coastRegion(100.0, 96));
+    const terrain::ErodedRegion eroded(kSeed, coastRegion(100.0, 96),
+                                       test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
     const std::vector<float> grid = eroded.grid().heights;
     const std::vector<std::uint8_t> rivers = eroded.rivers().river;
     const TerrainSurface surface = terrain::surfaceFromEroded(eroded);

@@ -10,6 +10,7 @@
 #include "cave_environment_test_support.hpp"
 #include "cave_materials_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -355,7 +356,7 @@ WallCounts paintedWalls(const terrain::TerrainTiles& tiles, double x, double z) 
 void testRegionsPaintTheWalls() {
     terrain::CaveParams caves;
     caves.districts = terrain::CaveDistrictParams{};
-    const terrain::TerrainTiles tiles(1337, {}, {}, caves);
+    const terrain::TerrainTiles tiles(1337, test_relief::legacyRelief(), {}, caves);
 
     const WallCounts volcanic = paintedWalls(tiles, 13568.0, 7012.0);
     std::printf("volcanic: %zu wall vertices, %zu basalt, %zu magma\n", volcanic.deep,

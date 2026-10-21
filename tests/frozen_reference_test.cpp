@@ -13,6 +13,7 @@
 #include "terrain/world_size.hpp"
 
 #include "bit_exact_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <array>
@@ -134,8 +135,10 @@ void checkNoises() {
     }
 }
 
+// The frozen Heightfield is the relief of generator 2: the live one is compared with the planetary
+// geography off (test_relief::legacyRelief), the noise as it is.
 terrain::HeightfieldParams planetParams() {
-    terrain::HeightfieldParams params;
+    terrain::HeightfieldParams params = test_relief::legacyRelief();
     params.macroContinent = 0.25f;
     params.plates.amplitude = 0.5f;
     return params;
@@ -215,9 +218,9 @@ void checkCaveNodes() {
 int main() {
     checkLattices();
     checkNoises();
-    checkField("Heightfield, default world", {}, WorldSize{}, 300'000);
+    checkField("Heightfield, default world", test_relief::legacyRelief(), WorldSize{}, 300'000);
     checkField("Heightfield, planet (macro, plates)", planetParams(), WorldSize{}, 80'000);
-    checkField("Heightfield, small world", {}, kWorlds[1], 60'000);
+    checkField("Heightfield, small world", test_relief::legacyRelief(), kWorlds[1], 60'000);
     checkField("Heightfield, small world planet", planetParams(), kWorlds[1], 20'000);
     checkCaveNodes();
     return test::result();

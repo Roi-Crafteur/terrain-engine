@@ -9,6 +9,7 @@
 #include "terrain/generation/cliffs.hpp"
 
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -316,8 +317,9 @@ void testSamplerEntrances(const CaveRegion& region, const std::vector<CaveEntran
 } // namespace
 
 int main() {
-    const HeightmapRegion site = terrain::findCliffRegion(kSeed, 50.0, 129);
-    const CaveRegion region(kSeed, site);
+    const HeightmapRegion site =
+        terrain::findCliffRegion(kSeed, 50.0, 129, {}, test_relief::legacyRelief());
+    const CaveRegion region(kSeed, site, test_relief::onLegacyRelief(terrain::CaveRegionParams{}));
     testGround(region);
     testRiverDistance(region);
     testDensityAroundGround(region);
