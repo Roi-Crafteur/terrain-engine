@@ -88,6 +88,8 @@ add_library(terrain_core STATIC
     src/io/ecology_png.cpp
     src/io/eroded_png.cpp
     src/io/heightmap_png.cpp
+    src/io/planet_png.cpp
+    src/io/planet_png_layers.cpp
     src/io/png.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
@@ -210,6 +212,27 @@ add_custom_target(export_voronoi_maps
             ${voronoi_maps}/before_heightmap_32768km.png
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${voronoi_maps}/before/heightmap_preview.png
             ${voronoi_maps}/before_preview_32768km.png
+    VERBATIM
+    USES_TERMINAL
+)
+
+# Planet level (climate, lakes, river graph) of a whole world, its figures and control images:
+# terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary] [samples-per-axis]
+#                       [threads] [world-x] [world-z]
+add_executable(terrain_export_planet tools/export_planet.cpp)
+target_link_libraries(terrain_export_planet PRIVATE terrain_core terrain_warnings)
+
+# The planet level of the default world (seed 20261019, cells of 8,192 m) with the planetary
+# relief and with the default one, one sample per cell. Not part of the tests (about a minute
+# each with 8 threads in Release, a few hundred MB kept and about 1.4 GB at the peak):
+#   cmake --build <build-dir> --target export_planet_maps
+# writes the figures to the terminal and the images into <build-dir>/planet_maps/planetary and
+# <build-dir>/planet_maps/default.
+set(planet_maps ${CMAKE_BINARY_DIR}/planet_maps)
+add_custom_target(export_planet_maps
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${planet_maps}
+    COMMAND terrain_export_planet ${planet_maps}/planetary 20261019 8192 planetary 1
+    COMMAND terrain_export_planet ${planet_maps}/default 20261019 8192 default 1
     VERBATIM
     USES_TERMINAL
 )
