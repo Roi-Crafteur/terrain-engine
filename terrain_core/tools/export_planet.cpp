@@ -275,7 +275,7 @@ int main(int argc, char** argv) {
     const terrain::PlanetLevel level(terrain::planet::buildPlanet(field, params), params);
     const std::size_t peak = peakMemory();
     auto start = std::chrono::steady_clock::now();
-    const terrain::PlanetStats stats = terrain::planet::planetStats(level, 5);
+    const terrain::PlanetStats stats = terrain::planet::planetStats(level, 10);
     const double statsTime = seconds(start);
     start = std::chrono::steady_clock::now();
     const terrain::FalsePassStats passes = terrain::planet::measureFalsePasses(

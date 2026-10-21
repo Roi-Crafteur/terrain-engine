@@ -308,7 +308,15 @@ void nodeEffects(const Context& c, const Variation& v, const Sites& sites, Tecto
 // node gives the share of land of the plates.
 constexpr int kSlowCoarse = 2;
 
-enum Slow : std::size_t { kOffsetX, kOffsetZ, kWidthNoise, kUpliftNoise, kMeanderNoise, kRangesNoise, kSlowFields };
+enum Slow : std::size_t {
+    kOffsetX,
+    kOffsetZ,
+    kWidthNoise,
+    kUpliftNoise,
+    kMeanderNoise,
+    kRangesNoise,
+    kSlowFields
+};
 
 struct SlowFields {
     Grid grid;
@@ -394,7 +402,8 @@ Tectonics buildTectonics(std::uint64_t seed, const GeographyParams& params,
                                          landShares(plates.plates().size(), slow.nearest,
                                                     slow.land))};
     Tectonics t;
-    for (std::vector<float>* field : {&t.belt, &t.uplift, &t.trough, &t.shoulder, &t.ridge, &t.trench}) {
+    for (std::vector<float>* field :
+         {&t.belt, &t.uplift, &t.trough, &t.shoulder, &t.ridge, &t.trench}) {
         field->assign(grid.nodes(), 0.0f);
     }
     planet::parallelRows(grid.nz, threads, [&](int begin, int end) {
@@ -403,8 +412,9 @@ Tectonics buildTectonics(std::uint64_t seed, const GeographyParams& params,
             for (int i = 0; i < grid.nx; ++i) {
                 const std::array<double, kSlowFields> f = slowAt(slow, grid, i, j);
                 findSites(plates, {grid.x(i) + f[kOffsetX], grid.z(j) + f[kOffsetZ]}, sites);
-                nodeEffects(context, {f[kWidthNoise], f[kUpliftNoise], f[kMeanderNoise], f[kRangesNoise]}, sites, t,
-                            grid.index(i, j));
+                const Variation v{f[kWidthNoise], f[kUpliftNoise], f[kMeanderNoise],
+                                  f[kRangesNoise]};
+                nodeEffects(context, v, sites, t, grid.index(i, j));
             }
         }
     });
