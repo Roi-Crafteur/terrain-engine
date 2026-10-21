@@ -29,6 +29,12 @@ Pixel pixel(const Image& image, int x, int y) {
     return {image.pixels[at], image.pixels[at + 1], image.pixels[at + 2]};
 }
 
+// Closed on return: Windows cannot remove a file still open.
+std::vector<std::uint8_t> readFile(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
+
 const PlanetLevel& level() {
     static const PlanetLevel planet(terrain::kDefaultWorldSeed, golden::smallPlanetaryParams(),
                                     golden::smallPlanetParams(2), golden::kSmallPlanet);
@@ -112,9 +118,7 @@ void testExport() {
     TEST_CHECK(terrain::exportPlanetPngs(level(), dir, 100));
     const std::vector<std::uint8_t> expected =
         terrain::encodePng(terrain::renderPlanetRelief(level(), 3));
-    std::ifstream file(dir / "planet_relief.png", std::ios::binary);
-    const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file), {}};
-    TEST_CHECK(bytes == expected);
+    TEST_CHECK(readFile(dir / "planet_relief.png") == expected);
     for (const char* name : {"planet_precipitation.png", "planet_temperature.png",
                              "planet_basins.png", "planet_rivers.png", "planet_lakes.png"}) {
         TEST_CHECK(std::filesystem::file_size(dir / name) > 0);
