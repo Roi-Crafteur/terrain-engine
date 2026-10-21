@@ -196,7 +196,7 @@ void validateWorldMeta(const WorldMeta& meta) {
     for (const std::uint64_t size : {meta.sizeX, meta.sizeZ}) {
         if (size == 0 || size % kWorldSizeStep != 0 || size > kMaxWorldSize) {
             invalid("world size of " + std::to_string(size) +
-                    " m: a positive multiple of 65,536 m is required, at most 2^36 m");
+                    " m: a positive multiple of 65,536 m is required, at most 2^30 m");
         }
     }
     for (const auto& [key, value] : meta.generation) {

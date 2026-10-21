@@ -87,7 +87,8 @@ void testRoundTrip() {
 
 // The layout of the fields, then the bytes of the whole file: identical on every platform.
 void testPinnedBytes() {
-    const WorldMeta meta = storage_test::sampleMeta();
+    WorldMeta meta = storage_test::sampleMeta();
+    meta.generatorVersion = 1; // fixed: the pinned bytes must not follow kGeneratorVersion
     const std::vector<std::uint8_t> bytes = terrain::serializeWorldMeta(meta);
     TEST_CHECK(std::vector(bytes.begin(), bytes.begin() + 8) ==
                (std::vector<std::uint8_t>{'T', 'W', 'L', 'D', 1, 0, 0, 0}));
