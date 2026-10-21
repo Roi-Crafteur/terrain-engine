@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -128,12 +129,10 @@ public:
         text_ += line.data();
     }
     [[nodiscard]] bool write(const std::filesystem::path& path) const {
-        std::FILE* file = std::fopen(path.string().c_str(), "wb");
-        if (file == nullptr) {
-            return false;
-        }
-        const bool written = std::fwrite(text_.data(), 1, text_.size(), file) == text_.size();
-        return std::fclose(file) == 0 && written;
+        std::ofstream file(path, std::ios::binary);
+        file.write(text_.data(), static_cast<std::streamsize>(text_.size()));
+        file.close();
+        return static_cast<bool>(file);
     }
 
 private:
