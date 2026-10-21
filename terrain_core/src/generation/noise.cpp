@@ -42,7 +42,28 @@ std::int64_t cellsOn(double period, double frequency, std::int64_t c) {
     return static_cast<std::int64_t>(superCells) * c;
 }
 
+// Offset of octave k of Unrotated lattices along one axis, in cells: the fractional part of
+// k times an irrational step (the golden ratio, sqrt 2), 0 for the first octave.
+double unrotatedOffset(int octave, double step) {
+    const double v = static_cast<double>(octave) * step;
+    return v - std::floor(v);
+}
+
 } // namespace
+
+Lattice2D octaveLattice(const WorldSize& world, double frequency, int octave,
+                        OctaveLattices lattices) {
+    if (lattices == OctaveLattices::Unrotated) {
+        return lattice2D(world, frequency, 0, unrotatedOffset(octave, 0.6180339887498949),
+                         unrotatedOffset(octave, 0.4142135623730951));
+    }
+    Lattice2D lattice = lattice2D(world, frequency, octave);
+    if (lattices == OctaveLattices::RotatedFast && lattice.c != 1) {
+        lattice.reciprocal = true;
+        lattice.inverseC = 1.0 / static_cast<double>(lattice.c);
+    }
+    return lattice;
+}
 
 std::uint64_t deriveSeed(std::uint64_t seed, std::uint64_t stream) {
     return mix64(seed + kGolden * (stream + 1));
@@ -80,7 +101,8 @@ float fbm2D(double x, double z, std::uint64_t seed, const FbmParams& params,
     double total = 0.0;
     for (int octave = 0; octave < params.octaves; ++octave) {
         const auto octaveSeed = deriveSeed(seed, static_cast<std::uint64_t>(octave));
-        sum += amplitude * latticeNoise(cx, cz, octaveSeed, lattice2D(world, frequency, octave));
+        sum += amplitude * latticeNoise(cx, cz, octaveSeed,
+                                        octaveLattice(world, frequency, octave, params.lattices));
         total += amplitude;
         amplitude *= params.gain;
         frequency *= params.lacunarity;
@@ -99,7 +121,8 @@ float ridged2D(double x, double z, std::uint64_t seed, const FbmParams& params,
     double total = 0.0;
     for (int octave = 0; octave < params.octaves; ++octave) {
         const auto octaveSeed = deriveSeed(seed, static_cast<std::uint64_t>(octave));
-        const float n = latticeNoise(cx, cz, octaveSeed, lattice2D(world, frequency, octave));
+        const float n = latticeNoise(cx, cz, octaveSeed,
+                                     octaveLattice(world, frequency, octave, params.lattices));
         const double ridge = 1.0 - std::abs(static_cast<double>(n));
         const double signal = dmath::pow(ridge, sharpness) * weight;
         weight = std::clamp(2.0 * signal, 0.0, 1.0);
@@ -133,8 +156,10 @@ float fbm3D(double x, double y, double z, std::uint64_t seed, const FbmParams& p
     for (int octave = 0; octave < params.octaves; ++octave) {
         const auto octaveSeed = deriveSeed(seed, static_cast<std::uint64_t>(octave));
         const double offsetY = kOffsetsY[static_cast<std::size_t>(octave % kRotationCount)];
-        sum += amplitude * latticeNoise3(cx, y, cz, octaveSeed, lattice2D(world, frequency, octave),
-                                         frequency, offsetY);
+        sum += amplitude *
+               latticeNoise3(cx, y, cz, octaveSeed,
+                             octaveLattice(world, frequency, octave, params.lattices), frequency,
+                             offsetY);
         total += amplitude;
         amplitude *= params.gain;
         frequency *= params.lacunarity;
