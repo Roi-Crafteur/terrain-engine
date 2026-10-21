@@ -112,17 +112,23 @@ terrain_add_test(horizon_golden_test terrain_core)
 terrain_add_test(golden_ftz_test terrain_core)
 
 # Frozen reference of the noise, the Heightfield, the plates and the cave noise nodes (commit
-# 052078b, before the noise performance work): frozen_reference_test compares the live code with
-# it bit for bit, beyond the few thousand points of the golden checksums.
+# 052078b, before the noise performance work) and of the meshing (commit 7cf4877, before the
+# meshing performance work): frozen_reference_test and marching_cubes_frozen_test compare the live
+# code with it bit for bit, beyond the few thousand points of the golden checksums.
 add_library(terrain_frozen_reference STATIC
     frozen/frozen_heightfield.cpp
+    frozen/frozen_marching_cubes.cpp
     frozen/frozen_noise.cpp
     frozen/frozen_plates.cpp
     frozen/frozen_surface.cpp
 )
 target_include_directories(terrain_frozen_reference PUBLIC frozen)
+# The Marching Cubes tables, shared with the live meshing.
+target_include_directories(terrain_frozen_reference PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/meshing)
 target_link_libraries(terrain_frozen_reference PUBLIC terrain_core PRIVATE terrain_warnings)
 terrain_add_test(frozen_reference_test terrain_frozen_reference)
+terrain_add_test(marching_cubes_frozen_test terrain_frozen_reference)
 terrain_add_test(height_access_test terrain_frozen_reference)
 terrain_add_test(cave_districts_test terrain_core)
 terrain_add_test(cave_district_weights_test terrain_core)
