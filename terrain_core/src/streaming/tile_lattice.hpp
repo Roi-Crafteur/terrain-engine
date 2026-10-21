@@ -40,15 +40,22 @@ struct TileColumns {
     }
 };
 
+// The heights in one batch (Heightfield::heightsAt): neighboring columns share noise cells.
 inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& lattice) {
-    TileColumns columns;
-    columns.heights.reserve(static_cast<std::size_t>(kGridSamples * kGridSamples));
+    constexpr auto kCount = static_cast<std::size_t>(kGridSamples * kGridSamples);
+    std::vector<double> xs;
+    std::vector<double> zs;
+    xs.reserve(kCount);
+    zs.reserve(kCount);
     for (int k = 0; k < kGridSamples; ++k) {
         for (int i = 0; i < kGridSamples; ++i) {
-            columns.heights.push_back(field.heightAt(lattice.x0 + i * lattice.spacing,
-                                                     lattice.z0 + k * lattice.spacing));
+            xs.push_back(lattice.x0 + i * lattice.spacing);
+            zs.push_back(lattice.z0 + k * lattice.spacing);
         }
     }
+    TileColumns columns;
+    columns.heights.resize(kCount);
+    field.heightsAt(xs, zs, columns.heights);
     const auto [low, high] = std::minmax_element(columns.heights.begin(), columns.heights.end());
     columns.minHeight = *low;
     columns.maxHeight = *high;

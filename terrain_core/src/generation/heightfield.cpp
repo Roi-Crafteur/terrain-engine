@@ -2,11 +2,16 @@
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <utility>
 
 namespace terrain {
 
@@ -100,49 +105,141 @@ enum Layer : std::uint64_t {
 
 } // namespace
 
+// The noises of the layers, with the parameters sampleAt gives them: the same bits as the free
+// functions (FbmOctaves). The detail and macro layers are only built when enabled, as they are
+// only evaluated then.
+struct Heightfield::Layers {
+    noise::FbmOctaves continent;
+    noise::FbmOctaves macroContinent;
+    noise::FbmOctaves mask;
+    noise::FbmOctaves warpX;
+    noise::FbmOctaves warpZ;
+    noise::FbmOctaves ridge;
+    noise::FbmOctaves detail;
+    // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
+    // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the
+    // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land
+    // factor is 0.
+    bool maskSkippable = false;
+    bool twinWarps = false; // warpX and warpZ are twins (FbmOctaves::twinOf)
+};
+
 Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
                          const WorldSize& world)
-    : params_(params), world_(world), continentSeed_(noise::deriveSeed(seed, kContinent)),
-      maskSeed_(noise::deriveSeed(seed, kMask)), warpXSeed_(noise::deriveSeed(seed, kWarpX)),
-      warpZSeed_(noise::deriveSeed(seed, kWarpZ)), ridgeSeed_(noise::deriveSeed(seed, kRidge)),
-      detailSeed_(noise::deriveSeed(seed, kDetail)),
-      macroContinentSeed_(noise::deriveSeed(seed, kMacroContinent)) {
+    : params_(params), world_(world) {
     validate(world_);
+    const auto layer = [seed, &world](Layer stream, int octaves, double wavelength) {
+        return noise::FbmOctaves(noise::deriveSeed(seed, stream),
+                                 {.octaves = octaves, .frequency = 1.0 / wavelength}, world);
+    };
+    auto layers = std::make_shared<Layers>();
+    layers->continent = layer(kContinent, 4, params_.continentWavelength);
+    if (params_.macroContinent > 0.0f) {
+        layers->macroContinent = layer(kMacroContinent, 2, params_.macroContinentWavelength);
+    }
+    layers->mask = layer(kMask, 3, params_.maskWavelength);
+    layers->warpX = layer(kWarpX, 3, params_.warpWavelength);
+    layers->warpZ = layer(kWarpZ, 3, params_.warpWavelength);
+    layers->ridge = layer(kRidge, params_.ridgeOctaves, params_.ridgeWavelength);
+    if (params_.detailAmplitude > 0.0f) {
+        layers->detail = layer(kDetail, 3, params_.detailWavelength);
+    }
+    layers->twinWarps = layers->warpX.twinOf(layers->warpZ);
+    layers->maskSkippable = std::isfinite(params_.maskLow) && std::isfinite(params_.maskHigh) &&
+                            params_.maskHigh - params_.maskLow >=
+                                std::numeric_limits<float>::min();
+    layers_ = std::move(layers);
     if (params_.plates.amplitude > 0.0f) {
         plates_ = std::make_shared<const TectonicPlates>(noise::deriveSeed(seed, kPlates),
                                                          params_.plates, world_);
     }
 }
 
-float Heightfield::heightAt(double x, double z) const {
-    return sampleAt(x, z).height;
+// The memos of the noises of the layers and of the plates during a batch call.
+struct Heightfield::Memos {
+    noise::FbmOctaves::Memo continent;
+    noise::FbmOctaves::Memo macroContinent;
+    noise::FbmOctaves::Memo mask;
+    noise::FbmOctaves::Memo warpX;
+    noise::FbmOctaves::Memo warpZ;
+    noise::FbmOctaves::Memo ridge;
+    noise::FbmOctaves::Memo detail;
+    TectonicPlates::Memos plates;
+};
+
+namespace {
+
+// fbm2D of a layer, through its memo during a batch call.
+template <class Memos>
+float fbm(const noise::FbmOctaves& layer, double x, double z, Memos* memos,
+          noise::FbmOctaves::Memo Memos::*memo) {
+    return memos ? layer.fbm2D(x, z, memos->*memo) : layer.fbm2D(x, z);
 }
 
-HeightSample Heightfield::sampleAt(double worldX, double worldZ) const {
-    const double x = wrapCoordinate(worldX, world_.x);
-    const double z = wrapCoordinate(worldZ, world_.z);
+void requireOneSize(std::size_t xs, std::size_t zs, std::size_t out) {
+    if (xs != zs || xs != out) {
+        throw std::invalid_argument("Heightfield: the points and the results differ in size");
+    }
+}
+
+} // namespace
+
+float Heightfield::heightAt(double x, double z) const {
+    return sampleWith(x, z, nullptr).height;
+}
+
+HeightSample Heightfield::sampleAt(double x, double z) const {
+    return sampleWith(x, z, nullptr);
+}
+
+void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> zs,
+                            std::span<HeightSample> out) const {
+    requireOneSize(xs.size(), zs.size(), out.size());
+    Memos memos;
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        out[i] = sampleWith(xs[i], zs[i], &memos);
+    }
+}
+
+void Heightfield::heightsAt(std::span<const double> xs, std::span<const double> zs,
+                            std::span<float> out) const {
+    requireOneSize(xs.size(), zs.size(), out.size());
+    Memos memos;
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        out[i] = sampleWith(xs[i], zs[i], &memos).height;
+    }
+}
+
+HeightSample Heightfield::sampleWith(double worldX, double worldZ, Memos* memos) const {
+    const double x = noise::wrapCanonical(worldX, world_.x);
+    const double z = noise::wrapCanonical(worldZ, world_.z);
     HeightSample s;
-    continentalnessAt(x, z, s);
+    continentalnessAt(x, z, s, memos);
     const float coastOffset = s.continentalness - params_.coastContinentalness;
     s.base = continentalBase(coastOffset);
 
-    const noise::FbmParams mask{.octaves = 3, .frequency = 1.0 / params_.maskWavelength};
     const float land = noise::smoothstep(kMountainCoastStart, kMountainCoastFull, coastOffset);
-    const float massif = noise::smoothstep(params_.maskLow, params_.maskHigh,
-                                           noise::fbm2D(x, z, maskSeed_, mask, world_));
+    // On the sea and the shore the land factor is 0, and the mask 0 * max(massif, collision)
+    // whatever the massif: both are finite, at least +0 and never -0, so the mask is a zero of
+    // the sign of land either way. The mask noise is skipped there.
+    float massif = 0.0f;
+    if (land != 0.0f || !layers_->maskSkippable) {
+        massif = noise::smoothstep(params_.maskLow, params_.maskHigh,
+                                   fbm(layers_->mask, x, z, memos, &Memos::mask));
+    }
     // Collision belts are massifs too: the ridged noise draws mountain ranges along them.
     // Without plates the collision is 0 and the mask is unchanged.
     s.mountainMask = land * std::max(massif, s.plateCollision);
-    s.mountain = mountainAt(x, z, s.mountainMask);
+    s.mountain = mountainAt(x, z, s.mountainMask, memos);
     if (s.plateCollision > 0.0f) {
         s.mountain *= 1.0f + params_.plates.collisionMountainBoost * s.plateCollision;
     }
 
     if (params_.detailAmplitude > 0.0f) {
-        const noise::FbmParams detail{.octaves = 3, .frequency = 1.0 / params_.detailWavelength};
         const float fade = noise::smoothstep(0.0f, kDetailCoastFade * params_.detailAmplitude,
                                              std::abs(s.base));
-        s.detail = params_.detailAmplitude * fade * noise::fbm2D(x, z, detailSeed_, detail, world_);
+        s.detail =
+            params_.detailAmplitude * fade * fbm(layers_->detail, x, z, memos, &Memos::detail);
     }
     s.height = s.base + s.mountain + s.detail;
     return s;
@@ -151,24 +248,23 @@ HeightSample Heightfield::sampleAt(double worldX, double worldZ) const {
 // Local continentalness, plus the saturated macro term and the plate term when these layers
 // are enabled: clamp(local + macroContinent * tanh(macro / macroContinentWidth) +
 // plates.amplitude * plate, -1, 1). Without them, the result is exactly the local value.
-void Heightfield::continentalnessAt(double x, double z, HeightSample& s) const {
-    const noise::FbmParams continent{.octaves = 4, .frequency = 1.0 / params_.continentWavelength};
-    const float local = noise::fbm2D(x, z, continentSeed_, continent, world_);
+void Heightfield::continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const {
+    const float local = fbm(layers_->continent, x, z, memos, &Memos::continent);
     s.continentalness = local;
     if (params_.macroContinent <= 0.0f && !plates_) {
         return;
     }
     float term = 0.0f;
     if (params_.macroContinent > 0.0f) {
-        const noise::FbmParams macro{.octaves = 2,
-                                     .frequency = 1.0 / params_.macroContinentWavelength};
-        s.macroContinentalness = noise::fbm2D(x, z, macroContinentSeed_, macro, world_);
+        s.macroContinentalness =
+            fbm(layers_->macroContinent, x, z, memos, &Memos::macroContinent);
         term =
             params_.macroContinent *
             static_cast<float>(dmath::tanh(s.macroContinentalness / params_.macroContinentWidth));
     }
     if (plates_) {
-        const PlateSample plate = plates_->sampleAt(x, z);
+        const PlateSample plate =
+            memos ? plates_->sampleAt(x, z, memos->plates) : plates_->sampleAt(x, z);
         s.plateContinentalness = plate.continentalness;
         s.plateCollision = plate.collision;
         term += params_.plates.amplitude * plate.continentalness;
@@ -177,17 +273,25 @@ void Heightfield::continentalnessAt(double x, double z, HeightSample& s) const {
 }
 
 // The ridged noise is only evaluated inside the mountain mask, and is scaled by it.
-float Heightfield::mountainAt(double x, double z, float mask) const {
+float Heightfield::mountainAt(double x, double z, float mask, Memos* memos) const {
     if (mask <= 0.0f) {
         return 0.0f;
     }
-    const noise::FbmParams warp{.octaves = 3, .frequency = 1.0 / params_.warpWavelength};
-    const double warpedX = x + params_.warpAmplitude * noise::fbm2D(x, z, warpXSeed_, warp, world_);
-    const double warpedZ = z + params_.warpAmplitude * noise::fbm2D(x, z, warpZSeed_, warp, world_);
-    const noise::FbmParams ridge{.octaves = params_.ridgeOctaves,
-                                 .frequency = 1.0 / params_.ridgeWavelength};
-    return mask * params_.mountainHeight *
-           noise::ridged2D(warpedX, warpedZ, ridgeSeed_, ridge, world_, params_.ridgeSharpness);
+    std::array<float, 2> warp{};
+    if (!layers_->twinWarps) {
+        warp = {fbm(layers_->warpX, x, z, memos, &Memos::warpX),
+                fbm(layers_->warpZ, x, z, memos, &Memos::warpZ)};
+    } else if (memos) {
+        warp = layers_->warpX.fbm2DPair(layers_->warpZ, x, z, memos->warpX, memos->warpZ);
+    } else {
+        warp = layers_->warpX.fbm2DPair(layers_->warpZ, x, z);
+    }
+    const double warpedX = x + params_.warpAmplitude * warp[0];
+    const double warpedZ = z + params_.warpAmplitude * warp[1];
+    const float ridge =
+        memos ? layers_->ridge.ridged2D(warpedX, warpedZ, params_.ridgeSharpness, memos->ridge)
+              : layers_->ridge.ridged2D(warpedX, warpedZ, params_.ridgeSharpness);
+    return mask * params_.mountainHeight * ridge;
 }
 
 } // namespace terrain

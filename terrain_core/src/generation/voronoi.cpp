@@ -102,8 +102,8 @@ bool closer(const Near& a, const Near& b) {
 
 Neighborhood neighborhood(const TectonicPlates& plates, TectonicPlates::Point q, double gate) {
     const int count = static_cast<int>(plates.plates().size());
-    const TectonicPlates::Point wrapped{wrapCoordinate(q.x, plates.world().x),
-                                        wrapCoordinate(q.z, plates.world().z)};
+    const TectonicPlates::Point wrapped{noise::wrapCanonical(q.x, plates.world().x),
+                                        noise::wrapCanonical(q.z, plates.world().z)};
     std::array<Near, TectonicPlates::kMaxPlates> all;
     for (int k = 0; k < count; ++k) {
         all[static_cast<std::size_t>(k)] = nearPlate(plates, k, wrapped);
@@ -254,23 +254,53 @@ TectonicPlates::TectonicPlates(std::uint64_t seed, const VoronoiParams& params,
                                               wrapOffset(plates_[b].z - plates_[a].z, world_.z)));
     }
     gateWidth_ = gateWidth(params_, maxSpacing, cellDiameter_);
-    warpSeeds_ = {noise::deriveSeed(seed, kWarpX), noise::deriveSeed(seed, kWarpZ),
-                  noise::deriveSeed(seed, kDetailWarpX), noise::deriveSeed(seed, kDetailWarpZ)};
-    coastSeed_ = noise::deriveSeed(seed, kCoast);
+    // The noises of warp and sampleAt, with the same parameters (FbmOctaves).
+    const auto noiseOf = [seed, &world](Stream stream, double wavelength) {
+        return noise::FbmOctaves(noise::deriveSeed(seed, stream),
+                                 {.octaves = 3, .frequency = 1.0 / wavelength}, world);
+    };
+    if (params_.warpAmplitude > 0.0) {
+        warps_[0] = noiseOf(kWarpX, params_.warpWavelength);
+        warps_[1] = noiseOf(kWarpZ, params_.warpWavelength);
+    }
+    if (params_.detailWarpAmplitude > 0.0) {
+        warps_[2] = noiseOf(kDetailWarpX, params_.detailWarpWavelength);
+        warps_[3] = noiseOf(kDetailWarpZ, params_.detailWarpWavelength);
+    }
+    if (params_.coastRoughness > 0.0f) {
+        coast_ = noiseOf(kCoast, params_.coastNoiseWavelength);
+    }
+    twinWarps_ = {warps_[0].twinOf(warps_[1]), warps_[2].twinOf(warps_[3])};
 }
 
 TectonicPlates::Point TectonicPlates::warp(double x, double z) const {
+    return warpWith(x, z, nullptr);
+}
+
+TectonicPlates::Point TectonicPlates::warpWith(double x, double z, Memos* memos) const {
+    // The warps i (along x) and i + 1 (along z), as a pair when they are twins.
+    const auto pair = [x, z, memos, this](std::size_t i) -> std::array<float, 2> {
+        const noise::FbmOctaves& alongX = warps_[i];
+        const noise::FbmOctaves& alongZ = warps_[i + 1];
+        if (twinWarps_[i / 2]) {
+            return memos ? alongX.fbm2DPair(alongZ, x, z, memos->warps[i], memos->warps[i + 1])
+                         : alongX.fbm2DPair(alongZ, x, z);
+        }
+        if (memos) {
+            return {alongX.fbm2D(x, z, memos->warps[i]), alongZ.fbm2D(x, z, memos->warps[i + 1])};
+        }
+        return {alongX.fbm2D(x, z), alongZ.fbm2D(x, z)};
+    };
     Point q{x, z};
     if (params_.warpAmplitude > 0.0) {
-        const noise::FbmParams large{.octaves = 3, .frequency = 1.0 / params_.warpWavelength};
-        q.x += params_.warpAmplitude * noise::fbm2D(x, z, warpSeeds_[0], large, world_);
-        q.z += params_.warpAmplitude * noise::fbm2D(x, z, warpSeeds_[1], large, world_);
+        const std::array<float, 2> large = pair(0);
+        q.x += params_.warpAmplitude * large[0];
+        q.z += params_.warpAmplitude * large[1];
     }
     if (params_.detailWarpAmplitude > 0.0) {
-        const noise::FbmParams detail{.octaves = 3,
-                                      .frequency = 1.0 / params_.detailWarpWavelength};
-        q.x += params_.detailWarpAmplitude * noise::fbm2D(x, z, warpSeeds_[2], detail, world_);
-        q.z += params_.detailWarpAmplitude * noise::fbm2D(x, z, warpSeeds_[3], detail, world_);
+        const std::array<float, 2> detail = pair(2);
+        q.x += params_.detailWarpAmplitude * detail[0];
+        q.z += params_.detailWarpAmplitude * detail[1];
     }
     return q;
 }
@@ -284,10 +314,18 @@ int TectonicPlates::boundaryIndex(int a, int b) const {
     return boundaryIndex_[static_cast<std::size_t>(a) * count + static_cast<std::size_t>(b)];
 }
 
-PlateSample TectonicPlates::sampleAt(double worldX, double worldZ) const {
-    const double x = wrapCoordinate(worldX, world_.x);
-    const double z = wrapCoordinate(worldZ, world_.z);
-    const Neighborhood hood = neighborhood(*this, warp(x, z), gateWidth_);
+PlateSample TectonicPlates::sampleAt(double x, double z) const {
+    return sampleWith(x, z, nullptr);
+}
+
+PlateSample TectonicPlates::sampleAt(double x, double z, Memos& memos) const {
+    return sampleWith(x, z, &memos);
+}
+
+PlateSample TectonicPlates::sampleWith(double worldX, double worldZ, Memos* memos) const {
+    const double x = noise::wrapCanonical(worldX, world_.x);
+    const double z = noise::wrapCanonical(worldZ, world_.z);
+    const Neighborhood hood = neighborhood(*this, warpWith(x, z, memos), gateWidth_);
     const Near& nearest = hood.near[0];
     PlateSample s;
     s.plate = nearest.plate;
@@ -296,8 +334,8 @@ PlateSample TectonicPlates::sampleAt(double worldX, double worldZ) const {
     s.level = blendedLevel(*this, hood);
     addBoundaryEffects(*this, hood, s);
     if (s.coast > 0.0f && params_.coastRoughness > 0.0f) {
-        const noise::FbmParams rough{.octaves = 3, .frequency = 1.0 / params_.coastNoiseWavelength};
-        s.level += params_.coastRoughness * s.coast * noise::fbm2D(x, z, coastSeed_, rough, world_);
+        const float rough = memos ? coast_.fbm2D(x, z, memos->coast) : coast_.fbm2D(x, z);
+        s.level += params_.coastRoughness * s.coast * rough;
     }
     s.continentalness = s.level + params_.collisionUplift * s.collision + s.rift;
     return s;

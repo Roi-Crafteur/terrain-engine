@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
 #include <array>
@@ -134,6 +135,14 @@ public:
 
     [[nodiscard]] PlateSample sampleAt(double x, double z) const;
 
+    // The memos of the noises of sampleAt (the warps and the coast) during a batch call of the
+    // Heightfield (FbmOctaves::Memo), and sampleAt through them: the same bits.
+    struct Memos {
+        std::array<noise::FbmOctaves::Memo, 4> warps;
+        noise::FbmOctaves::Memo coast;
+    };
+    [[nodiscard]] PlateSample sampleAt(double x, double z, Memos& memos) const;
+
     // Coordinates after the domain warping, where the Voronoi diagram is evaluated (before
     // being brought back into the canonical range).
     struct Point {
@@ -157,14 +166,20 @@ public:
     [[nodiscard]] const VoronoiParams& params() const { return params_; }
 
 private:
+    [[nodiscard]] PlateSample sampleWith(double x, double z, Memos* memos) const;
+    [[nodiscard]] Point warpWith(double x, double z, Memos* memos) const;
+
     VoronoiParams params_;
     WorldSize world_;
     double cellDiameter_ = 0.0;
     std::vector<Plate> plates_;
     std::vector<PlateBoundary> boundaries_;
     std::vector<int> boundaryIndex_; // plates x plates, -1 when not neighbors
-    std::array<std::uint64_t, 4> warpSeeds_{};
-    std::uint64_t coastSeed_ = 0;
+    // Large warp along x and z, detail warp along x and z, coast roughness: only the enabled
+    // ones are built.
+    std::array<noise::FbmOctaves, 4> warps_;
+    std::array<bool, 2> twinWarps_{}; // warps 0 and 1, 2 and 3 are twins (FbmOctaves::twinOf)
+    noise::FbmOctaves coast_;
     double gateWidth_ = 0.0; // plates farther than this gap from a point do not affect it
 };
 
