@@ -96,6 +96,11 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   bit près)
 
 ### Phase 11 — Hydrographie continentale (approche TerraForged)
+- principe : le relief d'abord, l'eau le suit. Le relief monte et descend librement
+  (failles, rifts, bassins fermés, dépressions sous le niveau de la mer) ; puis l'eau naît
+  aux sources, descend toujours, remplit les creux jusqu'à leur point de débordement (lacs,
+  ou lacs salés et déserts si le climat est sec), creuse son lit, tombe aux ruptures de
+  pente et finit dans la mer. Le relief n'est jamais déformé pour que l'eau coule bien
 - niveau Planète précalculé à la création du monde (attente longue acceptée)
 - climat continental : les fleuves en dépendent (pas de source dans un désert,
   des fleuves qui peuvent traverser un désert)
@@ -114,6 +119,9 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   - provinces à l'intérieur des continents : grandes plaines, vieux massifs usés,
     bassins, plateaux
   - le monde planétaire devient le monde du jeu (version du générateur 3)
+- 11B : mer décidée par la géographie (reliée à l'océan) et non plus par l'altitude :
+  dépressions sous le niveau de la mer, sèches ou en lacs salés (type mer Morte, vallée de
+  la Mort)
 - 11B : creusement des lits, lacs, canyons et chutes dans le relief, nouveau climat
   branché sur les biomes ; niveau Planète gardé sur disque (au lieu d'être recalculé) et
   pic de mémoire de sa construction réduit (1 Go aujourd'hui)
