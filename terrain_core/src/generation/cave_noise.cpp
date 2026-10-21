@@ -11,6 +11,10 @@ namespace terrain {
 namespace {
 
 static_assert(kCaveNoiseCount <= 8, "the known bits of a node fit in a byte");
+static_assert(static_cast<long long>(kWorldAlignmentMeters) %
+                      static_cast<long long>(kCaveNodeMeters) ==
+                  0,
+              "the nodes of the cave noises fall exactly on the sides of every world");
 
 std::int64_t nodeIndex(double meters) {
     return static_cast<std::int64_t>(std::floor(meters / kCaveNodeMeters));
@@ -22,17 +26,19 @@ double lerp(double a, double b, double t) {
 
 } // namespace
 
-CaveNoiseLattice::CaveNoiseLattice(const std::array<CaveNoiseLayer, kCaveNoiseCount>& layers)
-    : layers_(layers) {}
+CaveNoiseLattice::CaveNoiseLattice(const std::array<CaveNoiseLayer, kCaveNoiseCount>& layers,
+                                   const WorldSize& world)
+    : layers_(layers), world_(world), nodesX_(periodicCells(world.x, kCaveNodeMeters)),
+      nodesZ_(periodicCells(world.z, kCaveNodeMeters)) {}
 
 float CaveNoiseLattice::nodeValue(CaveNoise noise, std::int64_t i, std::int64_t j,
                                   std::int64_t k) const {
     const CaveNoiseLayer& layer = layers_[noise];
-    const double x = static_cast<double>(i) * kCaveNodeMeters;
+    const double x = static_cast<double>(nodesX_.wrap(i)) * nodesX_.size;
     const double y = static_cast<double>(j) * kCaveNodeMeters * layer.verticalScale;
-    const double z = static_cast<double>(k) * kCaveNodeMeters;
+    const double z = static_cast<double>(nodesZ_.wrap(k)) * nodesZ_.size;
     const noise::FbmParams fbm{layer.octaves, layer.frequency, 2.0, 0.5};
-    return noise::fbm3D(x, y, z, layer.seed, fbm);
+    return noise::fbm3D(x, y, z, layer.seed, fbm, world_);
 }
 
 CaveNoiseCache::CaveNoiseCache(const CaveNoiseLattice& lattice, const CaveBox& box)

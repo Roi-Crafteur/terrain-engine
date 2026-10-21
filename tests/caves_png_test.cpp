@@ -103,8 +103,8 @@ bool isRock(Rgb color) {
 const CaveRegion& riverSite() {
     static const CaveRegion region(
         terrain::kDefaultWorldSeed,
-        terrain::HeightmapRegion{.centerX = 10000.0, .centerZ = -20000.0,
-                                 .metersPerPixel = 32.0, .size = 64});
+        terrain::HeightmapRegion{
+            .centerX = 4000.0, .centerZ = -4000.0, .metersPerPixel = 32.0, .size = 64});
     return region;
 }
 

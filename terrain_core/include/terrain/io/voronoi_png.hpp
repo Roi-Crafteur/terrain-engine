@@ -35,7 +35,9 @@ inline constexpr PlateColor kPlateCoastColor = {0, 0, 0};
 // their kind. Pixels sample the world as in sampleHeightGrid.
 [[nodiscard]] Image renderPlatesMap(const TectonicPlates& plates, const HeightmapRegion& region);
 
-// Region covering one period of the plate layout, [0, planetSize) along x and z, in size px.
+// Square region centered on the origin covering the whole width of the world, in size px:
+// along z it covers as much, so it holds the whole world, both polar edges, and repeats part of
+// it beyond them (the world wraps around).
 [[nodiscard]] HeightmapRegion planetRegion(const TectonicPlates& plates, int size);
 
 // The whole planet, RGB: the hypsometric preview of field over planetRegion, with the plate

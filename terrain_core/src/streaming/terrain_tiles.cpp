@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -144,6 +145,76 @@ void sortUnique(std::vector<ChunkCoord>& chunks) {
     chunks.erase(std::unique(chunks.begin(), chunks.end()), chunks.end());
 }
 
+// The chunks brought back into the canonical range of the world, sorted, without duplicates.
+std::vector<ChunkCoord> canonicalChunks(std::vector<ChunkCoord> chunks, const WorldSize& world) {
+    for (ChunkCoord& chunk : chunks) {
+        chunk = wrapChunk(chunk, world);
+    }
+    sortUnique(chunks);
+    return chunks;
+}
+
+// A coordinate of a block or a lattice point, meters, brought into the canonical range.
+std::int32_t canonicalMeter(std::int64_t meters, double period) {
+    return static_cast<std::int32_t>(wrapIndex(meters, static_cast<std::int64_t>(period)));
+}
+
+BlockCoord canonicalBlock(BlockCoord block, const WorldSize& world) {
+    return {canonicalMeter(block.x, world.x), block.y, canonicalMeter(block.z, world.z)};
+}
+
+Plant canonicalPlant(Plant plant, const WorldSize& world) {
+    plant.x = wrapCoordinate(plant.x, world.x);
+    plant.z = wrapCoordinate(plant.z, world.z);
+    return plant;
+}
+
+// A piece of an interval of meters, in the canonical range, and what moves it back into the
+// frame of the interval.
+struct Piece {
+    std::int64_t first;
+    std::int64_t last;
+    std::int64_t shift;
+};
+
+// The interval [first, last] (shorter than the period) cut at the edge of the canonical range.
+std::vector<Piece> canonicalPieces(std::int64_t first, std::int64_t last, double period) {
+    const auto whole = static_cast<std::int64_t>(period);
+    const std::int64_t start = wrapIndex(first, whole);
+    const std::int64_t end = start + (last - first);
+    const std::int64_t shift = first - start;
+    if (end < whole / 2) {
+        return {{start, end, shift}};
+    }
+    return {{start, whole / 2 - 1, shift}, {-whole / 2, end - whole, shift + whole}};
+}
+
+// Edited blocks centered in [minX, maxX] x [minZ, maxZ] (an area of any image, smaller than the
+// world): the store holds them in the canonical range, so an area across an edge of the world
+// asks for each canonical piece and moves its blocks into the frame of the area. Sorted lists.
+BlockEdits blocksAround(const ModificationStore& store, int minX, int maxX, int minZ, int maxZ,
+                        const WorldSize& world) {
+    BlockEdits edits;
+    for (const Piece& alongZ : canonicalPieces(minZ, maxZ, world.z)) {
+        for (const Piece& alongX : canonicalPieces(minX, maxX, world.x)) {
+            BlockEdits part =
+                store.blocksIn(static_cast<int>(alongX.first), static_cast<int>(alongX.last),
+                               static_cast<int>(alongZ.first), static_cast<int>(alongZ.last));
+            for (auto* list : {&part.added, &part.removed}) {
+                for (BlockCoord& block : *list) {
+                    block.x = static_cast<std::int32_t>(block.x + alongX.shift);
+                    block.z = static_cast<std::int32_t>(block.z + alongZ.shift);
+                }
+            }
+            edits.added.insert(edits.added.end(), part.added.begin(), part.added.end());
+            edits.removed.insert(edits.removed.end(), part.removed.begin(), part.removed.end());
+        }
+    }
+    std::sort(edits.added.begin(), edits.added.end());
+    std::sort(edits.removed.begin(), edits.removed.end());
+    return edits;
+}
+
 // Chunks whose tiles the modifications change.
 void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& chunks) {
     for (const auto& [coord, chunk] : store.byChunk()) {
@@ -158,14 +229,15 @@ void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& c
 } // namespace
 
 TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield,
-                           const EcologyParams& ecology, const std::optional<CaveParams>& caves)
-    : seed_(seed), field_(seed, heightfield), ecology_(seed, ecology) {
+                           const EcologyParams& ecology, const std::optional<CaveParams>& caves,
+                           const WorldSize& world)
+    : seed_(seed), field_(seed, heightfield, world), ecology_(seed, ecology, world) {
     if (caves) {
-        caves_.emplace(seed, *caves);
+        caves_.emplace(seed, *caves, world);
         caveEnvironment_.emplace(field_, ecology_.climate(), ecology_.params().biomes);
-        speleothems_.emplace(seed, caves->speleothems);
+        speleothems_.emplace(seed, caves->speleothems, world);
         if (caves->districts) {
-            flora_.emplace(seed, caves->districts->flora);
+            flora_.emplace(seed, caves->districts->flora, world);
         }
         caveGround_.height = [this](double x, double z) { return field_.heightAt(x, z); };
         caveGround_.environment = [this](double x, double z) {
@@ -174,7 +246,8 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
     }
 }
 
-TileData TerrainTiles::generate(const TileRequest& request) const {
+TileData TerrainTiles::generate(const TileRequest& asked) const {
+    const TileRequest request{wrapTile(asked.key, world()), asked.seams};
     const TileLattice lattice = tile::latticeOf(request.key);
     const TileColumns columns = tile::sampleColumns(field_, lattice);
     // The far tiles carve nothing: they are those of the world without caves.
@@ -189,10 +262,10 @@ TileData TerrainTiles::generate(const TileRequest& request) const {
     BlockEdits edits;
     {
         const std::shared_lock lock(mutex_);
-        edits = modifications_.blocksIn(lattice.x0 - kBlockReach,
-                                        lattice.x0 + lattice.levelHeight + kBlockReach,
-                                        lattice.z0 - kBlockReach,
-                                        lattice.z0 + lattice.levelHeight + kBlockReach);
+        edits =
+            blocksAround(modifications_, lattice.x0 - kBlockReach,
+                         lattice.x0 + lattice.levelHeight + kBlockReach, lattice.z0 - kBlockReach,
+                         lattice.z0 + lattice.levelHeight + kBlockReach, world());
         if (request.key.lod == kPlantLod) {
             modifications_.applyPlantEdits(request.key.origin, plants);
         }
@@ -239,36 +312,55 @@ TileData TerrainTiles::generate(const TileRequest& request) const {
     return data;
 }
 
-float TerrainTiles::densityAt(int x, int y, int z) const {
+float TerrainTiles::densityAt(int worldX, int y, int worldZ) const {
+    const int x = canonicalMeter(worldX, world().x);
+    const int z = canonicalMeter(worldZ, world().z);
     auto density = static_cast<float>(static_cast<double>(y) - field_.heightAt(x, z));
     if (caves_) {
         density = caveDensityAt(*caves_, caveGround_, caveDetailForLod(0), x, y, z);
     }
-    const std::shared_lock lock(mutex_);
-    return modifications_.editedDensity(density, x, y, z);
+    BlockEdits edits;
+    {
+        const std::shared_lock lock(mutex_);
+        edits = blocksAround(modifications_, x - kBlockReach, x + kBlockReach, z - kBlockReach,
+                             z + kBlockReach, world());
+    }
+    // As ModificationStore::editedDensity: every added block first, then every removed one.
+    for (const BlockCoord& block : edits.added) {
+        density = editDensity(density, block, BlockEdit::Added, x, y, z);
+    }
+    for (const BlockCoord& block : edits.removed) {
+        density = editDensity(density, block, BlockEdit::Removed, x, y, z);
+    }
+    return density;
 }
 
 std::vector<ChunkCoord> TerrainTiles::setBlock(BlockCoord block, BlockEdit edit) {
+    const BlockCoord canonical = canonicalBlock(block, world());
     const std::unique_lock lock(mutex_);
-    modifications_.setBlock(block, edit);
-    return blockChunks(block);
+    modifications_.setBlock(canonical, edit);
+    return canonicalChunks(blockChunks(canonical), world());
 }
 
 std::vector<ChunkCoord> TerrainTiles::clearBlock(BlockCoord block) {
+    const BlockCoord canonical = canonicalBlock(block, world());
     const std::unique_lock lock(mutex_);
-    return modifications_.clearBlock(block) ? blockChunks(block) : std::vector<ChunkCoord>{};
+    return modifications_.clearBlock(canonical) ? canonicalChunks(blockChunks(canonical), world())
+                                                : std::vector<ChunkCoord>{};
 }
 
 std::vector<ChunkCoord> TerrainTiles::addPlant(const Plant& plant) {
+    const Plant canonical = canonicalPlant(plant, world());
     const std::unique_lock lock(mutex_);
-    modifications_.addPlant(plant);
-    return {worldToChunk(plant.x, plant.z)};
+    modifications_.addPlant(canonical);
+    return {worldToChunk(canonical.x, canonical.z)};
 }
 
 std::vector<ChunkCoord> TerrainTiles::removePlant(const Plant& plant) {
+    const Plant canonical = canonicalPlant(plant, world());
     const std::unique_lock lock(mutex_);
-    modifications_.removePlant(plant);
-    return {worldToChunk(plant.x, plant.z)};
+    modifications_.removePlant(canonical);
+    return {worldToChunk(canonical.x, canonical.z)};
 }
 
 std::vector<ChunkCoord> TerrainTiles::replaceModifications(ModificationStore store) {
@@ -277,13 +369,13 @@ std::vector<ChunkCoord> TerrainTiles::replaceModifications(ModificationStore sto
     addTouchedChunks(modifications_, chunks);
     addTouchedChunks(store, chunks);
     modifications_ = std::move(store);
-    sortUnique(chunks);
-    return chunks;
+    return canonicalChunks(std::move(chunks), world());
 }
 
 std::optional<BlockEdit> TerrainTiles::blockAt(BlockCoord block) const {
+    const BlockCoord canonical = canonicalBlock(block, world());
     const std::shared_lock lock(mutex_);
-    return modifications_.blockAt(block);
+    return modifications_.blockAt(canonical);
 }
 
 ModificationStore TerrainTiles::modifications() const {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "terrain/world_size.hpp"
+
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -29,13 +31,13 @@ struct VoronoiParams {
     // bit-identical to one without them. 0.5 gives planetary continents and oceans.
     float amplitude = 0.0f;
 
-    // The number of plates is drawn from the seed in [minPlates, maxPlates]. The planet is a
-    // square torus whose side is chosen so that the mean equivalent diameter of a cell
-    // (2 * sqrt(area / pi)) is cellDiameter: side = cellDiameter * sqrt(plates * pi / 4).
+    // The number of plates is drawn from the seed in [minPlates, maxPlates]. They tile the
+    // world (WorldSize), a rectangular torus: the mean equivalent diameter of a cell,
+    // 2 sqrt(area / pi), is TectonicPlates::cellDiameter(), about 9,400 km on the default world
+    // with 30 plates.
     int minPlates = 20;
     int maxPlates = 40;
-    double cellDiameter = 11'000'000.0; // 11,000 km
-    int lloydIterations = 2;            // Lloyd relaxation of the sites; 0 disables it
+    int lloydIterations = 2; // Lloyd relaxation of the sites; 0 disables it
 
     // Domain warping of the coordinates before the Voronoi lookup, so that the boundaries
     // bend instead of drawing raw polygons: a large fbm and a detail fbm, 3 octaves each.
@@ -83,7 +85,7 @@ struct VoronoiParams {
 
 // One plate: its Voronoi site on the torus, its velocity (arbitrary units) and its kind.
 struct Plate {
-    double x = 0.0; // in [0, planetSize)
+    double x = 0.0; // in the canonical range of the world
     double z = 0.0;
     double velocityX = 0.0;
     double velocityZ = 0.0;
@@ -117,21 +119,23 @@ struct PlateSample {
     float continentalness = 0.0f;  // level + collisionUplift * collision + rift
 };
 
-// Deterministic Voronoi layout of tectonic plates on a square torus: the same seed and
-// parameters always give the same plates, boundaries and samples. The world is the plane;
-// the plate layout repeats every planetSize() along x and z, whereas the domain warping
-// does not, so the boundaries never repeat exactly.
+// Deterministic Voronoi layout of tectonic plates on the torus of the world: the same seed and
+// parameters always give the same plates, boundaries and samples. Periodic on the world: the
+// sites, the domain warping and the coast noise all tile it, and (x, z) is brought back into
+// the canonical range first.
 class TectonicPlates {
 public:
     // Throws std::invalid_argument if minPlates < 4, maxPlates < minPlates or
-    // maxPlates > kMaxPlates, lloydIterations < 0, or a length is not finite and above 0.
-    TectonicPlates(std::uint64_t seed, const VoronoiParams& params);
+    // maxPlates > kMaxPlates, lloydIterations < 0, a length is not finite and above 0, or the
+    // world is invalid (validate).
+    TectonicPlates(std::uint64_t seed, const VoronoiParams& params, const WorldSize& world = {});
 
     static constexpr int kMaxPlates = 256;
 
     [[nodiscard]] PlateSample sampleAt(double x, double z) const;
 
-    // Coordinates after the domain warping, where the Voronoi diagram is evaluated.
+    // Coordinates after the domain warping, where the Voronoi diagram is evaluated (before
+    // being brought back into the canonical range).
     struct Point {
         double x;
         double z;
@@ -145,14 +149,17 @@ public:
     // neighbors.
     [[nodiscard]] int boundaryIndex(int a, int b) const;
 
-    [[nodiscard]] double planetSize() const { return planetSize_; }
+    [[nodiscard]] const WorldSize& world() const { return world_; }
+    // Mean equivalent diameter of a cell, 2 sqrt(world area / (pi plates)).
+    [[nodiscard]] double cellDiameter() const { return cellDiameter_; }
     [[nodiscard]] const std::vector<Plate>& plates() const { return plates_; }
     [[nodiscard]] const std::vector<PlateBoundary>& boundaries() const { return boundaries_; }
     [[nodiscard]] const VoronoiParams& params() const { return params_; }
 
 private:
     VoronoiParams params_;
-    double planetSize_ = 0.0;
+    WorldSize world_;
+    double cellDiameter_ = 0.0;
     std::vector<Plate> plates_;
     std::vector<PlateBoundary> boundaries_;
     std::vector<int> boundaryIndex_; // plates x plates, -1 when not neighbors

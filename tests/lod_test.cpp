@@ -54,6 +54,30 @@ void testTileGeometry() {
     TEST_CHECK(hash({{1, 0}, 0}) != hash({{0, 1}, 0}));
 }
 
+// Canonical tiles: aligned on their size, the same key for every image, consistent with
+// tileContaining on canonical chunks.
+void testWrapTile() {
+    const terrain::WorldSize world;
+    const ChunkCoord count = terrain::worldChunks(world);
+    for (int lod = 0; lod < terrain::kLodCount; ++lod) {
+        const int size = terrain::tileChunks(lod);
+        for (const ChunkCoord chunk :
+             {ChunkCoord{0, 0}, ChunkCoord{-1, 5}, ChunkCoord{count.x / 2, 3},
+              ChunkCoord{-count.x / 2 - 1, count.z / 2 + 9},
+              ChunkCoord{3 * count.x + 17, -2 * count.z - 33}}) {
+            const TileKey tile = terrain::tileContaining(chunk, lod);
+            const TileKey wrapped = terrain::wrapTile(tile, world);
+            TEST_CHECK(wrapped.lod == lod);
+            TEST_CHECK(wrapped.origin.x % size == 0 && wrapped.origin.z % size == 0);
+            TEST_CHECK(wrapped.origin.x >= -count.x / 2 && wrapped.origin.x + size <= count.x / 2);
+            TEST_CHECK(wrapped.origin.z >= -count.z / 2 && wrapped.origin.z + size <= count.z / 2);
+            TEST_CHECK(terrain::tileContaining(terrain::wrapChunk(chunk, world), lod) == wrapped);
+            const TileKey image{{tile.origin.x + count.x, tile.origin.z - count.z}, lod};
+            TEST_CHECK(terrain::wrapTile(image, world) == wrapped);
+        }
+    }
+}
+
 void testLodForDistance() {
     const LodParams params;
     const std::tuple<int, int> expected[] = {{0, 0},  {3, 0},  {4, 1},  {7, 1},
@@ -368,6 +392,7 @@ void testStitchKeepsLinearDensity() {
 
 int main() {
     testTileGeometry();
+    testWrapTile();
     testLodForDistance();
     testValidate();
     testSelection();

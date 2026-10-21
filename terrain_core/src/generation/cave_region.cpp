@@ -6,17 +6,19 @@
 namespace terrain {
 
 CaveRegion::CaveRegion(std::uint64_t seed, const HeightmapRegion& region,
-                       const CaveRegionParams& params)
-    : eroded_(seed, region, params.eroded), surface_(surfaceFromEroded(eroded_)),
-      field_(seed, params.caves), ecology_(seed, params.ecology),
+                       const CaveRegionParams& params, const WorldSize& world)
+    : eroded_(seed, region, params.eroded, world), surface_(surfaceFromEroded(eroded_)),
+      field_(seed, params.caves, world), ecology_(seed, params.ecology, world),
       environment_(eroded_.field(), ecology_.climate(), params.ecology.biomes),
-      speleothems_(seed, params.caves.speleothems) {
+      speleothems_(seed, params.caves.speleothems, world) {
     ground_.height = [this](double x, double z) { return groundAt(x, z); };
     ground_.riverDistance = [this](double x, double z) { return riverDistanceAt(x, z); };
     ground_.environment = [this](double x, double z) { return environment_.at(x, z); };
 }
 
-float CaveRegion::riverDistanceAt(double x, double z) const {
+float CaveRegion::riverDistanceAt(double worldX, double worldZ) const {
+    const double x = eroded_.imageX(worldX);
+    const double z = eroded_.imageZ(worldZ);
     const int size = surface_.size();
     const double metersPerPixel = surface_.region.metersPerPixel;
     const double u = std::clamp((x - surface_.sampleX(0)) / metersPerPixel, 0.0, size - 1.0);

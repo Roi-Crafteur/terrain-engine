@@ -35,8 +35,6 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    # Expected failures until phase 9 (FP determinism); remove this line in the phase 9 PR.
-    continue-on-error: ${{ matrix.name == 'macos-appleclang' }}
     strategy:
       # One failing platform must not cancel the others: each one tells something.
       fail-fast: false

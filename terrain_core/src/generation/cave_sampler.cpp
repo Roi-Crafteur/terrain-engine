@@ -4,19 +4,44 @@
 
 namespace terrain {
 
-CaveSampler::CaveSampler(const CaveField& field, const CaveGround& ground,
-                         const CaveDetail& detail, const CaveBox& box)
+namespace {
+
+// Whole periods that bring the center of [low, high] into the canonical range.
+double frameShift(double low, double high, double period) {
+    const double center = 0.5 * (low + high);
+    return wrapCoordinate(center, period) - center;
+}
+
+CaveBox shifted(const CaveBox& box, double shiftX, double shiftZ) {
+    return {box.minX + shiftX, box.minY, box.minZ + shiftZ,
+            box.maxX + shiftX, box.maxY, box.maxZ + shiftZ};
+}
+
+} // namespace
+
+CaveSampler::CaveSampler(const CaveField& field, const CaveGround& ground, const CaveDetail& detail,
+                         const CaveBox& box)
     : field_(&field), ground_(&ground), detail_(detail), noises_(field.noisesOf(detail)),
-      aquifers_(field, ground), cache_(field.lattice(), box), cellBounds_(cache_.cellCount()),
+      shiftX_(frameShift(box.minX, box.maxX, field.world().x)),
+      shiftZ_(frameShift(box.minZ, box.maxZ, field.world().z)), aquifers_(field, ground),
+      cache_(field.lattice(), shifted(box, shiftX_, shiftZ_)), cellBounds_(cache_.cellCount()),
       boundKnown_(cache_.cellCount(), 0) {
     if (detail.has(kCaveEntrances)) {
-        entrances_ =
-            field.entrancesNear(box.minX, box.minZ, box.maxX, box.maxZ, ground, aquifers_);
+        const CaveBox frame = shifted(box, shiftX_, shiftZ_);
+        frameEntrances_ =
+            field.entrancesNear(frame.minX, frame.minZ, frame.maxX, frame.maxZ, ground, aquifers_);
+        entrances_ = frameEntrances_;
+        for (CaveEntrance& entrance : entrances_) {
+            entrance.topX -= shiftX_;
+            entrance.bottomX -= shiftX_;
+            entrance.topZ -= shiftZ_;
+            entrance.bottomZ -= shiftZ_;
+        }
     }
 }
 
 CaveColumn CaveSampler::column(double x, double z, float ground) const {
-    return field_->column(x, z, ground, *ground_, entrances_, &aquifers_,
+    return field_->column(x + shiftX_, z + shiftZ_, ground, *ground_, frameEntrances_, &aquifers_,
                           detail_.has(kCaveAquifers));
 }
 
@@ -40,7 +65,7 @@ float CaveSampler::density(const CaveColumn& column, double y, float terrain) {
     const float threshold = detail_.guard + field_->params().fade;
     float entrance = field_->params().voidClamp;
     if (detail_.has(kCaveEntrances) && column.entranceCount > 0) {
-        entrance = field_->limitedEntranceVoid(column, y, entrances_);
+        entrance = field_->limitedEntranceVoid(column, y, frameEntrances_);
     }
     bool inner = field_->limit(column, y) < threshold &&
                  (detail_.components & ~static_cast<unsigned>(kCaveEntrances)) != 0;
@@ -81,7 +106,7 @@ CaveVoids CaveSampler::voids(const CaveColumn& column, double y) {
     if (noises_ != 0) {
         cache_.sample(column.x, y, column.z, noises_, noise);
     }
-    return field_->voids(column, y, noise, entrances_, detail_);
+    return field_->voids(column, y, noise, frameEntrances_, detail_);
 }
 
 float CaveSampler::voidAt(const CaveColumn& column, double y) {

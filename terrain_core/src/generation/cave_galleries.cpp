@@ -1,5 +1,6 @@
 #include "terrain/generation/cave_galleries.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/aquifers.hpp"
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/noise.hpp"
@@ -8,35 +9,27 @@
 #include <array>
 #include <cmath>
 #include <limits>
-#include <numbers>
 #include <optional>
 
 namespace terrain {
 
 namespace {
 
-// The coordinates of noise B are rotated by (0.8, 0.6), as the octaves of fbm2D, and offset by a
-// fraction of a cell: its lattice, where every gradient noise is 0, never meets the one of A.
-constexpr double kRotationCos = 0.8;
-constexpr double kRotationSin = 0.6;
+// Noise B is rotated by (0.8, 0.6), the rotation (4, 3, 5) of the octaves of fbm2D, and offset
+// by a fraction of a cell: its lattice, where every gradient noise is 0, never meets the one of
+// A.
+constexpr int kRotationB = 1;
 constexpr double kOffsetU = 0.37;
 constexpr double kOffsetV = 0.61;
 
 struct GalleryLine {
     double wavelength;
     std::uint64_t seed;
-    bool rotated;
+    const noise::Lattice2D* lattice;
 };
 
 double lineNoise(const GalleryLine& line, double x, double z) {
-    double u = x / line.wavelength;
-    double v = z / line.wavelength;
-    if (line.rotated) {
-        const double rotatedU = kRotationCos * u - kRotationSin * v + kOffsetU;
-        v = kRotationSin * u + kRotationCos * v + kOffsetV;
-        u = rotatedU;
-    }
-    return static_cast<double>(noise::gradient2D(u, v, line.seed));
+    return static_cast<double>(noise::gradient2D(x, z, line.seed, *line.lattice));
 }
 
 // Horizontal distance in meters to the zero line of the noise, to first order: |n| / |grad n|,
@@ -46,7 +39,7 @@ double lineDistance(const GalleryLine& line, double x, double z, const GalleryPa
     const double h = p.gradientStep;
     const double dx = (lineNoise(line, x + h, z) - lineNoise(line, x - h, z)) / (2.0 * h);
     const double dz = (lineNoise(line, x, z + h) - lineNoise(line, x, z - h)) / (2.0 * h);
-    const double slope = std::max(std::hypot(dx, dz), p.gradientFloor / line.wavelength);
+    const double slope = std::max(dmath::hypot(dx, dz), p.gradientFloor / line.wavelength);
     return std::abs(lineNoise(line, x, z)) / slope;
 }
 
@@ -63,14 +56,26 @@ std::uint64_t nodeKey(int i, int k) {
 
 } // namespace
 
+noise::Lattice2D galleryLattice(const WorldSize& world, const GalleryParams& params,
+                                bool networkB) {
+    if (!networkB) {
+        return noise::lattice2D(world, 1.0 / params.wavelengthA);
+    }
+    return noise::lattice2D(world, 1.0 / params.wavelengthB, kRotationB, kOffsetU, kOffsetV);
+}
+
+// The node at its canonical index: every image of a node has the same level.
 double AquiferCache::galleryNode(int i, int k) {
-    const auto [it, inserted] = galleryNodes_.try_emplace(nodeKey(i, k));
+    const PeriodicCells& nodesX = field_->galleryNodesX();
+    const PeriodicCells& nodesZ = field_->galleryNodesZ();
+    const auto canonicalI = static_cast<int>(nodesX.wrap(i));
+    const auto canonicalK = static_cast<int>(nodesZ.wrap(k));
+    const auto [it, inserted] = galleryNodes_.try_emplace(nodeKey(canonicalI, canonicalK));
     if (inserted) {
-        const double spacing = field_->params().galleries.levelSpacing;
         double lowest = std::numeric_limits<double>::max();
         for (int n = 0; n < 9; ++n) {
-            const double x = (i + 0.5 * (n % 3 - 1)) * spacing;
-            const double z = (k + 0.5 * (n / 3 - 1)) * spacing;
+            const double x = (canonicalI + 0.5 * (n % 3 - 1)) * nodesX.size;
+            const double z = (canonicalK + 0.5 * (n / 3 - 1)) * nodesZ.size;
             lowest = std::min(lowest, static_cast<double>(ground_->height(x, z)));
         }
         it->second = lowest;
@@ -79,9 +84,8 @@ double AquiferCache::galleryNode(int i, int k) {
 }
 
 double AquiferCache::galleryLevel(double x, double z) {
-    const double spacing = field_->params().galleries.levelSpacing;
-    const double u = x / spacing;
-    const double v = z / spacing;
+    const double u = x / field_->galleryNodesX().size;
+    const double v = z / field_->galleryNodesZ().size;
     const int i = static_cast<int>(std::floor(u));
     const int k = static_cast<int>(std::floor(v));
     const double wu = nodeWeight(u - i);
@@ -93,8 +97,8 @@ double AquiferCache::galleryLevel(double x, double z) {
 
 std::array<double, 2> CaveField::galleryDistances(double x, double z) const {
     const GalleryParams& p = params_.galleries;
-    const GalleryLine a{p.wavelengthA, galleryASeed_, false};
-    const GalleryLine b{p.wavelengthB, galleryBSeed_, true};
+    const GalleryLine a{p.wavelengthA, galleryASeed_, &galleryLatticeA_};
+    const GalleryLine b{p.wavelengthB, galleryBSeed_, &galleryLatticeB_};
     return {lineDistance(a, x, z, p), lineDistance(b, x, z, p)};
 }
 
@@ -157,9 +161,8 @@ double AquiferCache::flatnessNode(int i, int k) {
 }
 
 double AquiferCache::galleryFlatness(double x, double z) {
-    const double spacing = field_->params().galleries.levelSpacing;
-    const double u = x / spacing;
-    const double v = z / spacing;
+    const double u = x / field_->galleryNodesX().size;
+    const double v = z / field_->galleryNodesZ().size;
     const int i = static_cast<int>(std::floor(u));
     const int k = static_cast<int>(std::floor(v));
     const double wu = nodeWeight(u - i);
@@ -178,17 +181,19 @@ double CaveField::lavaCeiling(int cellX, int cellZ, const CaveGround& ground,
         alone.emplace(*this, ground);
     }
     AquiferCache& cache = cells != nullptr ? *cells : *alone;
-    const double size = params_.aquifers.cellSize;
-    const double spacing = params_.galleries.levelSpacing;
-    const auto first = [&](int cell) {
-        return static_cast<int>(std::floor((cell - 1) * size / spacing));
+    const auto first = [](int cell, const PeriodicCells& grid, const PeriodicCells& nodes) {
+        return static_cast<int>(std::floor((cell - 1) * grid.size / nodes.size));
     };
-    const auto last = [&](int cell) {
-        return static_cast<int>(std::floor((cell + 2) * size / spacing)) + 1;
+    const auto last = [](int cell, const PeriodicCells& grid, const PeriodicCells& nodes) {
+        return static_cast<int>(std::floor((cell + 2) * grid.size / nodes.size)) + 1;
     };
+    const PeriodicCells& cellsX = aquiferCellsX_;
+    const PeriodicCells& cellsZ = aquiferCellsZ_;
     double lowest = std::numeric_limits<double>::max();
-    for (int k = first(cellZ); k <= last(cellZ); ++k) {
-        for (int i = first(cellX); i <= last(cellX); ++i) {
+    for (int k = first(cellZ, cellsZ, galleryNodesZ_); k <= last(cellZ, cellsZ, galleryNodesZ_);
+         ++k) {
+        for (int i = first(cellX, cellsX, galleryNodesX_); i <= last(cellX, cellsX, galleryNodesX_);
+             ++i) {
             lowest = std::min(lowest, cache.galleryNode(i, k));
         }
     }
@@ -304,8 +309,8 @@ float AquiferCache::riverBandTopNear(double x, double z, double reach) {
     // The districts weighing within reach of (x, z) are among the 5 x 5 cells around it: no
     // band where none of them has rivers.
     const CaveDistrictParams& d = districts->params();
-    const int baseX = static_cast<int>(std::floor(x / d.cellSize));
-    const int baseZ = static_cast<int>(std::floor(z / d.cellSize));
+    const auto baseX = static_cast<int>(districts->cellsX().cellOf(x));
+    const auto baseZ = static_cast<int>(districts->cellsZ().cellOf(z));
     bool rivers = false;
     for (int n = 0; n < 25 && !rivers; ++n) {
         const CaveDistrict& around = district(baseX + n % 5 - 2, baseZ + n / 5 - 2);
@@ -316,9 +321,9 @@ float AquiferCache::riverBandTopNear(double x, double z, double reach) {
     }
     float highest = kDryLevel;
     for (int n = 0; n < 9; ++n) {
-        const double angle = static_cast<double>(n) * std::numbers::pi / 4.0;
-        const double px = n == 8 ? x : x + reach * std::cos(angle);
-        const double pz = n == 8 ? z : z + reach * std::sin(angle);
+        const double turns = static_cast<double>(n) / 8.0;
+        const double px = n == 8 ? x : x + reach * dmath::cosTurns(turns);
+        const double pz = n == 8 ? z : z + reach * dmath::sinTurns(turns);
         const CaveColumn column = field_->column(px, pz, ground_->height(px, pz), *ground_, {},
                                                  this, false);
         const float top = field_->riverBandTop(column);

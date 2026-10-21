@@ -1,5 +1,8 @@
 #include "terrain/generation/height_grid.hpp"
 
+#include <stdexcept>
+#include <string>
+
 namespace terrain {
 
 HeightGrid sampleHeightGrid(const Heightfield& field, const HeightmapRegion& region) {
@@ -15,6 +18,16 @@ HeightGrid sampleHeightGrid(const Heightfield& field, const HeightmapRegion& reg
         }
     }
     return grid;
+}
+
+HeightmapRegion validatedRegion(const HeightmapRegion& region, const WorldSize& world) {
+    const double side = region.size * region.metersPerPixel;
+    if (!(side <= world.x && side <= world.z)) {
+        throw std::invalid_argument("HeightmapRegion: a window of " + std::to_string(side) +
+                                    " m is wider than the world (" + std::to_string(world.x) +
+                                    " x " + std::to_string(world.z) + " m)");
+    }
+    return region;
 }
 
 } // namespace terrain

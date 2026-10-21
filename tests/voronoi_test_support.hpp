@@ -41,13 +41,13 @@ inline double wrap(double delta, double period) {
 // nearest images): negative on the side of a.
 inline double signedBisectorDistance(const TectonicPlates& plates, TectonicPlates::Point q, int a,
                                      int b) {
-    const double period = plates.planetSize();
+    const terrain::WorldSize& world = plates.world();
     const Plate& pa = plates.plates()[static_cast<std::size_t>(a)];
     const Plate& pb = plates.plates()[static_cast<std::size_t>(b)];
-    const double ax = wrap(pa.x - q.x, period);
-    const double az = wrap(pa.z - q.z, period);
-    const double bx = wrap(pb.x - q.x, period);
-    const double bz = wrap(pb.z - q.z, period);
+    const double ax = wrap(pa.x - q.x, world.x);
+    const double az = wrap(pa.z - q.z, world.z);
+    const double bx = wrap(pb.x - q.x, world.x);
+    const double bz = wrap(pb.z - q.z, world.z);
     return ((ax * ax + az * az) - (bx * bx + bz * bz)) / (2.0 * std::hypot(ax - bx, az - bz));
 }
 
@@ -105,8 +105,8 @@ inline std::vector<Crossing> findCrossings(const TectonicPlates& plates, std::ui
     Points points(seed);
     std::vector<Crossing> crossings;
     for (int s = 0; s < segments; ++s) {
-        const double x = points.next(plates.planetSize());
-        const double z = points.next(plates.planetSize());
+        const double x = points.next(plates.world().x);
+        const double z = points.next(plates.world().z);
         const double angle = std::numbers::pi * points.next(1.0);
         const double dx = std::cos(angle);
         const double dz = std::sin(angle);

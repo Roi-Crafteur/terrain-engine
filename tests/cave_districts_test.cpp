@@ -28,6 +28,8 @@ using districts_test::countOf;
 using districts_test::countTypes;
 using districts_test::hashUnit;
 using districts_test::kSeed;
+using districts_test::kWindowCellX;
+using districts_test::kWindowCellZ;
 using districts_test::TypeCounts;
 using districts_test::variedSite;
 using districts_test::World;
@@ -115,11 +117,14 @@ void testDeterminism() {
 
 // Sites lie in their own cell, within jitter / 2 of its center, so that the sites of two
 // neighboring cells are 0.5 to 1.5 cells (1.5 to 4.5 km) apart along an axis; without jitter
-// they are the centers of the cells.
+// they are the centers of the cells. The cells are those of the grid of the world: about
+// cellSize, a whole number of them along each side of the world.
 void testSites() {
     const CaveDistrictParams params;
     World w(kSeed, params, variedSite());
-    const double size = params.cellSize;
+    const double sizeX = w.districts().cellsX().size;
+    const double sizeZ = w.districts().cellsZ().size;
+    TEST_CHECK(std::abs(sizeX - params.cellSize) < 0.1 && std::abs(sizeZ - params.cellSize) < 0.2);
     constexpr int kHalf = 20;
     bool inCell = true;
     bool nearCenter = true;
@@ -128,8 +133,8 @@ void testSites() {
     for (int cellZ = -kHalf; cellZ < kHalf; ++cellZ) {
         for (int cellX = -kHalf; cellX < kHalf; ++cellX) {
             const CaveDistrict& d = w.at(cellX, cellZ);
-            const double offsetX = d.siteX / size - cellX - 0.5;
-            const double offsetZ = d.siteZ / size - cellZ - 0.5;
+            const double offsetX = d.siteX / sizeX - cellX - 0.5;
+            const double offsetZ = d.siteZ / sizeZ - cellZ - 0.5;
             inCell = inCell && d.cellX == cellX && d.cellZ == cellZ && std::abs(offsetX) < 0.5 &&
                      std::abs(offsetZ) < 0.5;
             nearCenter = nearCenter && std::abs(offsetX) <= params.jitter / 2.0 + 1.0e-9 &&
@@ -137,8 +142,8 @@ void testSites() {
             widest = std::max({widest, std::abs(offsetX), std::abs(offsetZ)});
             const double gapX = w.at(cellX + 1, cellZ).siteX - d.siteX;
             const double gapZ = w.at(cellX, cellZ + 1).siteZ - d.siteZ;
-            apart = apart && gapX >= 0.5 * size - 1.0e-6 && gapX <= 1.5 * size + 1.0e-6 &&
-                    gapZ >= 0.5 * size - 1.0e-6 && gapZ <= 1.5 * size + 1.0e-6;
+            apart = apart && gapX >= 0.5 * sizeX - 1.0e-6 && gapX <= 1.5 * sizeX + 1.0e-6 &&
+                    gapZ >= 0.5 * sizeZ - 1.0e-6 && gapZ <= 1.5 * sizeZ + 1.0e-6;
         }
     }
     std::printf("sites: widest offset from a center %.3f cells (jitter / 2 = %.3f)\n", widest,
@@ -151,12 +156,14 @@ void testSites() {
     exact.blend = 100.0;
     exact.jitter = 0.0;
     World centered(kSeed, exact, variedSite());
+    const double exactX = centered.districts().cellsX().size;
+    const double exactZ = centered.districts().cellsZ().size;
     bool centers = true;
     for (int cellZ = -kHalf; cellZ < kHalf; ++cellZ) {
         for (int cellX = -kHalf; cellX < kHalf; ++cellX) {
             const CaveDistrict& d = centered.at(cellX, cellZ);
-            centers = centers && std::abs(d.siteX - (cellX + 0.5) * 1000.0) < 1.0e-9 &&
-                      std::abs(d.siteZ - (cellZ + 0.5) * 1000.0) < 1.0e-9;
+            centers = centers && std::abs(d.siteX - (cellX + 0.5) * exactX) < 1.0e-9 &&
+                      std::abs(d.siteZ - (cellZ + 0.5) * exactZ) < 1.0e-9;
         }
     }
     TEST_CHECK(centers);
@@ -172,13 +179,20 @@ bool constructorThrows(const CaveDistrictParams& params) {
     return false;
 }
 
+// Narrower side of the cells of the grid of the world for a cell size.
+double narrowestCell(double cellSize) {
+    const terrain::WorldSize world;
+    return std::min(terrain::periodicCells(world.x, cellSize).size,
+                    terrain::periodicCells(world.z, cellSize).size);
+}
+
 // The constructor refuses a blend wider than 0.189 of the cell (the 3 x 3 cells around a point
 // would no longer hold every district weighing on it) and a jitter above 0.5, and accepts both
-// limits.
+// limits. The cell is the narrower side of the cells of the grid of the world.
 void testConstructorLimits() {
     CaveDistrictParams params;
     TEST_CHECK(!constructorThrows(params));
-    const double widest = 0.189 * params.cellSize;
+    const double widest = 0.189 * narrowestCell(params.cellSize);
     params.blend = widest;
     TEST_CHECK(!constructorThrows(params));
     params.blend = std::nextafter(widest, 1.0e9);
@@ -205,7 +219,7 @@ void testConstructorLimits() {
     // The limit follows the size of the cell.
     params = CaveDistrictParams{};
     params.cellSize = 1000.0;
-    params.blend = 189.0;
+    params.blend = 0.189 * narrowestCell(1000.0);
     TEST_CHECK(!constructorThrows(params));
     params.blend = 190.0;
     TEST_CHECK(constructorThrows(params));
@@ -324,8 +338,9 @@ void testEveryTypeAppears() {
 
 // ---------------------------------------------------------------------------
 
-// The default world has every type of district among the cells [-8, 8]^2, each on a site whose
-// climate and height allow it; the field of the caves and its cache give the same districts.
+// The default world has every type of district among the cells [-8, 8]^2 around the window,
+// each on a site whose climate and height allow it; the field of the caves and its cache give the
+// same districts.
 void testRealWorld() {
     terrain::CaveParams caves;
     caves.districts = CaveDistrictParams{};
@@ -336,19 +351,19 @@ void testRealWorld() {
     TypeCounts counts{};
     bool rulesHold = true;
     bool sameAsField = true;
-    for (int cellZ = -20; cellZ <= 20; ++cellZ) {
-        for (int cellX = -20; cellX <= 20; ++cellX) {
+    for (int cellZ = kWindowCellZ - 20; cellZ <= kWindowCellZ + 20; ++cellZ) {
+        for (int cellX = kWindowCellX - 20; cellX <= kWindowCellX + 20; ++cellX) {
             const CaveDistrict& d = cache.district(cellX, cellZ);
             const CaveEnvironment environment = ground.environment(d.siteX, d.siteZ);
             rulesHold = rulesHold &&
                         allowed(d.type, environment, ground.height(d.siteX, d.siteZ), floodedMax);
             sameAsField = sameAsField && d == tiles.caves()->district(cellX, cellZ, ground);
-            if (cellX >= -8 && cellX <= 8 && cellZ >= -8 && cellZ <= 8) {
+            if (std::abs(cellX - kWindowCellX) <= 8 && std::abs(cellZ - kWindowCellZ) <= 8) {
                 ++counts[static_cast<std::size_t>(d.type)];
             }
         }
     }
-    std::printf("real world, cells [-8, 8]^2:");
+    std::printf("real world, cells [-8, 8]^2 around (%d, %d):", kWindowCellX, kWindowCellZ);
     for (int type = 0; type < kTypeCount; ++type) {
         std::printf(" %s %d", terrain::caveDistrictName(static_cast<CaveDistrictType>(type)),
                     counts[static_cast<std::size_t>(type)]);

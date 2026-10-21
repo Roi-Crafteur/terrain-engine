@@ -108,14 +108,14 @@ bool continuousAt(const TectonicPlates& plates, double x, double z) {
 // Junction of three plates a, b, c of the raw diagram (no warping): the circumcenter of
 // their sites, if it really is a Voronoi vertex. Returns false otherwise.
 bool junction(const TectonicPlates& plates, int a, int b, int c, double& x, double& z) {
-    const double period = plates.planetSize();
+    const terrain::WorldSize& world = plates.world();
     const Plate& pa = plates.plates()[static_cast<std::size_t>(a)];
     const Plate& pb = plates.plates()[static_cast<std::size_t>(b)];
     const Plate& pc = plates.plates()[static_cast<std::size_t>(c)];
-    const double bx = wrap(pb.x - pa.x, period);
-    const double bz = wrap(pb.z - pa.z, period);
-    const double cx = wrap(pc.x - pa.x, period);
-    const double cz = wrap(pc.z - pa.z, period);
+    const double bx = wrap(pb.x - pa.x, world.x);
+    const double bz = wrap(pb.z - pa.z, world.z);
+    const double cx = wrap(pc.x - pa.x, world.x);
+    const double cz = wrap(pc.z - pa.z, world.z);
     const double d = 2.0 * (bx * cz - bz * cx);
     const double b2 = bx * bx + bz * bz;
     const double c2 = cx * cx + cz * cz;
@@ -183,36 +183,38 @@ void testContinuity() {
         const int junctions = testJunctions(raw);
         TEST_CHECK(junctions >= 2 * static_cast<int>(raw.plates().size()) * 9 / 10);
 
-        // Across the seams of the torus, x or z = k * planetSize.
+        // Across the seams of the world, x = (k + 1/2) world.x or z = (k + 1/2) world.z.
         bool seams = true;
-        for (int k = -2; k <= 2; ++k) {
+        for (int k = -2; k <= 1; ++k) {
             for (int i = 0; i < 100; ++i) {
-                const double seam = k * raw.planetSize() - 0.005;
+                const double seamX = (k + 0.5) * raw.world().x - 0.005;
+                const double seamZ = (k + 0.5) * raw.world().z - 0.005;
                 const double along = points.next(1.0e8);
-                seams = seams && continuousAt(raw, seam, along) && continuousAt(raw, along, seam);
+                seams = seams && continuousAt(raw, seamX, along) && continuousAt(raw, along, seamZ);
             }
         }
         TEST_CHECK(seams);
     }
 }
 
-// Without warping, the plate layout repeats every planetSize along x and z: plates, belts,
-// rifts and coasts. Only the coast roughness, an fbm of the world coordinates, does not.
+// The plates tile the world, warping and coast roughness included: every image of a point
+// gives the same sample, bit for bit (points on a grid of 1/64 m, whose images are exact).
 void testPeriodicLayout() {
-    const TectonicPlates raw(kSeeds[0], unwarped());
-    const double period = raw.planetSize();
+    const TectonicPlates plates(kSeeds[0], VoronoiParams{});
+    const terrain::WorldSize& world = plates.world();
     Points points(3);
     bool periodic = true;
     for (int i = 0; i < 500; ++i) {
-        const double x = points.next(period);
-        const double z = points.next(period);
-        const PlateSample s = raw.sampleAt(x, z);
-        for (const auto& shift : {std::array<double, 2>{period, 0.0}, {0.0, -2.0 * period}}) {
-            const PlateSample t = raw.sampleAt(x + shift[0], z + shift[1]);
-            periodic =
-                periodic && t.plate == s.plate && std::abs(t.collision - s.collision) < 1.0e-5f &&
-                std::abs(t.rift - s.rift) < 1.0e-5f && std::abs(t.coast - s.coast) < 1.0e-5f &&
-                (s.coast > 0.0f || std::abs(t.level - s.level) < 1.0e-5f);
+        const double x = std::floor(points.next(world.x) * 64.0) / 64.0;
+        const double z = std::floor(points.next(world.z) * 64.0) / 64.0;
+        const PlateSample s = plates.sampleAt(x, z);
+        for (const auto& shift :
+             {std::array<double, 2>{world.x, 0.0}, {0.0, -2.0 * world.z}, {-world.x, world.z}}) {
+            const PlateSample t = plates.sampleAt(x + shift[0], z + shift[1]);
+            periodic = periodic && t.plate == s.plate && t.neighbor == s.neighbor &&
+                       t.boundaryDistance == s.boundaryDistance && t.level == s.level &&
+                       t.collision == s.collision && t.rift == s.rift && t.coast == s.coast &&
+                       t.continentalness == s.continentalness;
         }
     }
     TEST_CHECK(periodic);

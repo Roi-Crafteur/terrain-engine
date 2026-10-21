@@ -91,13 +91,16 @@ void testNoWalls() {
     aquifers_test::LakeCounts total;
     int scans = 0;
     for (const CaveGround* ground : {&flat, &relief}) {
-        for (const auto& p : riverPoints(field, *ground, 1000.0, -2000.0, 1500.0, 4, 0.5)) {
+        for (const auto& p : riverPoints(field, *ground, -1000.0, -2000.0, 1500.0, 4, 0.5)) {
             AquiferCache cache(field, *ground);
-            const CaveColumn c = field.column(p[0], p[1], ground->height(p[0], p[1]), *ground, {},
-                                              &cache, false);
+            const CaveColumn c =
+                field.column(p[0], p[1], ground->height(p[0], p[1]), *ground, {}, &cache, false);
             const caves_test::Lattice lattice{static_cast<int>(p[0]) - 24,
                                               static_cast<int>(c.galleryFloor) - 4,
-                                              static_cast<int>(p[1]) - 24, 49, 10, 49};
+                                              static_cast<int>(p[1]) - 24,
+                                              49,
+                                              10,
+                                              49};
             const aquifers_test::Scan scan(field, *ground, terrain::CaveDetail{}, lattice);
             total.add(aquifers_test::countLakes(field, scan, scan.carved(), scan.water()));
             ++scans;

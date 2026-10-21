@@ -240,7 +240,8 @@ void testCarving() {
 void testRiversConnected() {
     HeightGrid grid = makeGrid(64, 30.0, [](int column, int row) {
         const terrain::noise::FbmParams fbm{.octaves = 4, .frequency = 1.0 / 16.0};
-        const float hills = 300.0f * terrain::noise::fbm2D(column, row, kSeed, fbm);
+        const float hills =
+            300.0f * terrain::noise::fbm2D(column, row, kSeed, fbm, terrain::WorldSize{});
         return row < 4 ? -20.0f : 15.0f * static_cast<float>(row) + hills;
     });
     RiverParams params;

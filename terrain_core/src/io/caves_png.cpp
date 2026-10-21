@@ -1,6 +1,7 @@
 #include "terrain/io/caves_png.hpp"
 
 #include "caves_png_layers.hpp"
+#include "terrain/det_math.hpp"
 
 #include "terrain/generation/cave_entrances.hpp"
 #include "terrain/io/heightmap_png.hpp"
@@ -69,8 +70,8 @@ const CaveEntrance* nearestEntrance(const std::vector<CaveEntrance>& entrances,
     const CaveEntrance* best = nullptr;
     double bestDistance = 0.0;
     for (const CaveEntrance& entrance : entrances) {
-        const double distance = std::hypot(entrance.topX - area.centerX,
-                                           entrance.topZ - area.centerZ);
+        const double distance =
+            dmath::hypot(entrance.topX - area.centerX, entrance.topZ - area.centerZ);
         if (keep(entrance) && (best == nullptr || distance < bestDistance)) {
             best = &entrance;
             bestDistance = distance;
@@ -293,7 +294,7 @@ void drawEntrance(Image& image, const ErodedRegion& eroded, const CaveEntrance& 
             const double x = eroded.sampleX(column);
             const double z = eroded.sampleZ(row);
             if (entranceAxisDistance(entrance, x, z) <= tube ||
-                std::hypot(x - entrance.bottomX, z - entrance.bottomZ) <= chamber) {
+                dmath::hypot(x - entrance.bottomX, z - entrance.bottomZ) <= chamber) {
                 setPixel(image, column, row, kCaveEntranceMarkRgb);
             }
         }

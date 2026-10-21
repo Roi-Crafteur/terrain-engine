@@ -348,9 +348,10 @@ WallCounts paintedWalls(const terrain::TerrainTiles& tiles, double x, double z) 
 }
 
 // The walls of the tiles take the material of the region they lie in (districts of the default
-// world with seed 1337, in a single district): basalt in a volcanic one (magma next to its lava),
-// ice in a glacier, moss down to lushDepth in a lush one (with mud next to its lakes), and nothing
-// of the other regions.
+// world with seed 1337, in a single district; the glacier and the lush one at a southern
+// mid-latitude, the equatorial origin being too warm for glaciers): basalt in a volcanic one
+// (magma next to its lava), ice in a glacier, moss down to lushDepth in a lush one (with mud next
+// to its lakes), and nothing of the other regions.
 void testRegionsPaintTheWalls() {
     terrain::CaveParams caves;
     caves.districts = terrain::CaveDistrictParams{};
@@ -364,14 +365,14 @@ void testRegionsPaintTheWalls() {
                volcanic.deep * 99);
     TEST_CHECK(volcanic.of(CaveMaterial::Moss) == 0 && volcanic.of(CaveMaterial::Ice) == 0);
 
-    const WallCounts glacier = paintedWalls(tiles, 17023.0, 22087.0);
+    const WallCounts glacier = paintedWalls(tiles, 1217064.0, -8986736.0);
     std::printf("glacier: %zu wall vertices, %zu ice\n", glacier.deep,
                 glacier.of(CaveMaterial::Ice));
     TEST_CHECK(glacier.deep > 5000);
     TEST_CHECK(glacier.of(CaveMaterial::Ice) * 100 >= glacier.deep * 99);
     TEST_CHECK(glacier.of(CaveMaterial::Moss) == 0 && glacier.of(CaveMaterial::Basalt) == 0);
 
-    const WallCounts lush = paintedWalls(tiles, -19282.0, -1731.0);
+    const WallCounts lush = paintedWalls(tiles, 1213598.0, -9025487.0);
     std::printf("lush: %zu wall vertices, %zu moss, %zu mud; %zu down to lushDepth (%zu neither), "
                 "%zu deeper (%zu moss)\n",
                 lush.deep, lush.of(CaveMaterial::Moss), lush.of(CaveMaterial::Mud), lush.shallow,

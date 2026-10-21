@@ -270,9 +270,10 @@ void testLocalLayerKept() {
             const float term = kAmplitude * std::tanh(withMacro.macroContinentalness / kWidth);
             const float expected = std::clamp(without.continentalness + term, -1.0f, 1.0f);
             kept = kept && std::abs(withMacro.continentalness - expected) <= kTolerance;
-            disabledIsLocal = disabledIsLocal && without.macroContinentalness == 0.0f &&
-                              without.continentalness ==
-                                  terrain::noise::fbm2D(x, z, continentSeed, local);
+            disabledIsLocal =
+                disabledIsLocal && without.macroContinentalness == 0.0f &&
+                without.continentalness ==
+                    terrain::noise::fbm2D(x, z, continentSeed, local, terrain::WorldSize{});
             shifted += withMacro.continentalness != without.continentalness ? 1 : 0;
         }
         TEST_CHECK(kept);

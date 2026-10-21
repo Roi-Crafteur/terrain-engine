@@ -166,15 +166,17 @@ Site searchSite(const Heightfield& field, const CliffField& cliffs, double exten
 
 } // namespace
 
-CliffField::CliffField(std::uint64_t seed, const CliffParams& params)
-    : params_(params), provinceSeed_(noise::deriveSeed(seed, kProvinceStream)),
+CliffField::CliffField(std::uint64_t seed, const CliffParams& params, const WorldSize& world)
+    : params_(params), world_(world), provinceSeed_(noise::deriveSeed(seed, kProvinceStream)),
       rimSeed_(noise::deriveSeed(seed, kRimStream)),
-      stratumOffset_(drawStratumOffset(seed, params.stratumHeight)) {}
+      stratumOffset_(drawStratumOffset(seed, params.stratumHeight)) {
+    validate(world_);
+}
 
 float CliffField::provinceAt(double x, double z) const {
     const noise::FbmParams fbm{.octaves = 3, .frequency = 1.0 / params_.provinceWavelength};
     return noise::smoothstep(params_.provinceLow, params_.provinceHigh,
-                             noise::fbm2D(x, z, provinceSeed_, fbm));
+                             noise::fbm2D(x, z, provinceSeed_, fbm, world_));
 }
 
 float CliffField::maskAt(double x, double z, float ground, float borderWeight) const {
@@ -191,7 +193,7 @@ float CliffField::maskAt(double x, double z, float ground, float borderWeight) c
 
 float CliffField::rimRecessionAt(double x, double z) const {
     const noise::FbmParams fbm{.octaves = 3, .frequency = 1.0 / params_.rimWavelength};
-    return params_.rimRecession * (0.5f + 0.5f * noise::fbm2D(x, z, rimSeed_, fbm));
+    return params_.rimRecession * (0.5f + 0.5f * noise::fbm2D(x, z, rimSeed_, fbm, world_));
 }
 
 float CliffField::stratumTop(int k) const {

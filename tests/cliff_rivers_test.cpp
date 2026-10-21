@@ -30,6 +30,9 @@ using terrain::kSeaLevel;
 using terrain::RiverNetwork;
 
 constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
+// Cascades are rare (only at the slope breaks of the rivers): the cliff site of this seed has
+// one, with its cirque, and gorges dug into the relief (found by a search of seeds 1 to 60).
+constexpr std::uint64_t kCascadeSeed = 47;
 
 struct Point {
     double x;
@@ -92,9 +95,10 @@ constexpr Point kAxes[4] = {{1.0, 0.0}, {-1.0, 0.0}, {0.0, 1.0}, {0.0, -1.0}};
 
 // ---------------------------------------------------------------------------
 
-// Deep inside a gorge (0.4 half-width from the river), in full cliffs, the surface is the
-// water, or the relief where it is lower than the interpolated water level (by up to a meter
-// at the sample interpolation); the river is a network river wide enough to have a gorge.
+// Deep inside a gorge (0.4 half-width from the river), in full cliffs and outside the cirques
+// (which carve the floor deeper), the surface is the water, or the relief where it is lower
+// than the interpolated water level (by up to 1.5 m at the sample interpolation, on steep
+// banks); the river is a network river wide enough to have a gorge.
 void testGorgesAtWater(const CliffRegion& cliffs) {
     const CliffParams& params = cliffs.field().params();
     const std::vector<int> cells = gorgeRiverCells(cliffs, 1.0f);
@@ -111,7 +115,7 @@ void testGorgesAtWater(const CliffRegion& cliffs) {
         for (const Point& axis : kAxes) {
             const Point p{center.x + offset * axis.x, center.z + offset * axis.z};
             const CliffColumn column = cliffs.columnAt(p.x, p.z);
-            if (!(column.riverDistance < 0.5f * column.gorgeHalfWidth)) {
+            if (!(column.riverDistance < 0.5f * column.gorgeHalfWidth) || column.cirqueCount > 0) {
                 continue;
             }
             ++kept;
@@ -119,7 +123,7 @@ void testGorgesAtWater(const CliffRegion& cliffs) {
             atLevel += column.ground >= column.riverLevel ? 1 : 0;
             atWater = atWater &&
                       std::abs(surface - std::min(column.ground, column.riverLevel)) <= 1.0e-2f &&
-                      column.riverLevel - column.ground <= 1.0f;
+                      column.riverLevel - column.ground <= 1.5f;
         }
     }
     std::printf("gorges: %zu river cells in full cliffs, %d points deep inside (%d with the "
@@ -178,8 +182,9 @@ void testGorgeWalls(const CliffRegion& cliffs) {
 }
 
 // The cliffs never change the Phase 4 result: relief, drainage, rivers and cascades.
-void testErodedRegionUnchanged(const CliffRegion& cliffs, const HeightmapRegion& site) {
-    const ErodedRegion plain(kSeed, site);
+void testErodedRegionUnchanged(const CliffRegion& cliffs, const HeightmapRegion& site,
+                               std::uint64_t seed) {
+    const ErodedRegion plain(seed, site);
     const RiverNetwork& rivers = cliffs.eroded().rivers();
     TEST_CHECK(cliffs.eroded().grid().heights == plain.grid().heights);
     TEST_CHECK(rivers.receiver == plain.rivers().receiver);
@@ -384,12 +389,12 @@ void testCascadesAtCliffEdge(const CliffRegion& cliffs) {
 } // namespace
 
 int main() {
-    const HeightmapRegion site = terrain::findCliffRegion(kSeed, 50.0, 129);
-    const CliffRegion cliffs(kSeed, site);
+    const HeightmapRegion site = terrain::findCliffRegion(kCascadeSeed, 50.0, 129);
+    const CliffRegion cliffs(kCascadeSeed, site);
     testGorgesAtWater(cliffs);
     testGorgesDugIntoRelief(cliffs);
     testGorgeWalls(cliffs);
-    testErodedRegionUnchanged(cliffs, site);
+    testErodedRegionUnchanged(cliffs, site, kCascadeSeed);
     testRiverWaterAtSurface(cliffs);
     testRiverBanksNotBuried(cliffs);
     testOceansUntouched(cliffs, false);
@@ -397,13 +402,13 @@ int main() {
     testCascadesAtCliffEdge(cliffs);
 
     // A coast with cliffs inland: the ocean, the coastline and the rivers reaching the sea
-    // are untouched.
-    const HeightmapRegion shore{.centerX = 10000.0, .centerZ = 10000.0, .metersPerPixel = 100.0,
-                                .size = 128};
+    // are untouched (found by a search of the default world).
+    const HeightmapRegion shore{
+        .centerX = -66800.0, .centerZ = -2800.0, .metersPerPixel = 100.0, .size = 128};
     const CliffRegion coast(kSeed, shore);
     TEST_CHECK(std::any_of(coast.mask().begin(), coast.mask().end(),
                            [](float mask) { return mask > 0.0f; }));
-    testErodedRegionUnchanged(coast, shore);
+    testErodedRegionUnchanged(coast, shore, kSeed);
     testRiverWaterAtSurface(coast);
     testRiverBanksNotBuried(coast);
     testOceansUntouched(coast, true);

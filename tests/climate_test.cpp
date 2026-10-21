@@ -1,4 +1,4 @@
-// Climate: base temperature, humidity, altitude correction, exposure and slope.
+// Climate: latitude, base temperature, humidity, altitude correction, exposure and slope.
 #include "terrain/generation/climate.hpp"
 
 #include "test_assert.hpp"
@@ -25,6 +25,8 @@ struct Points {
         return static_cast<double>(state >> 11U) * 0x1.0p-53;
     }
     double coordinate() { return (next() - 0.5) * 4.0e6; }
+    // Anywhere along one side of the world.
+    double anywhere(double side) { return (next() - 0.5) * side; }
 };
 
 void testSlope() {
@@ -76,12 +78,14 @@ void testRanges() {
     float maxTemperature = -1e9f;
     float minHumidity = 1.0f;
     float maxHumidity = 0.0f;
+    const terrain::WorldSize world;
     for (int i = 0; i < 4000; ++i) {
-        const double x = points.coordinate();
-        const double z = points.coordinate();
+        const double x = points.anywhere(world.x);
+        const double z = points.anywhere(world.z);
         const float temperature = field.baseTemperatureAt(x, z);
         const float humidity = field.humidityAt(x, z, static_cast<float>(points.next()));
-        TEST_CHECK(std::abs(temperature - params.meanTemperature) <= params.temperatureAmplitude);
+        TEST_CHECK(std::abs(temperature - field.latitudeTemperatureAt(z)) <=
+                   params.temperatureAmplitude);
         TEST_CHECK(humidity >= 0.0f && humidity <= 1.0f);
         minTemperature = std::min(minTemperature, temperature);
         maxTemperature = std::max(maxTemperature, temperature);
@@ -90,6 +94,52 @@ void testRanges() {
     }
     TEST_CHECK(minTemperature < -6.0f && maxTemperature > 25.0f);
     TEST_CHECK(minHumidity < 0.1f && maxHumidity > 0.9f);
+}
+
+// The latitude: warm on the equator (z = 0), cold at both poles (z = +-world.z / 2, the
+// north-south seam), colder toward the poles, the same in both hemispheres, periodic, and flat
+// at the poles: no jump and no kink at the seam.
+void testLatitude() {
+    const ClimateField field(kSeed);
+    const ClimateParams& p = field.params();
+    const terrain::WorldSize world;
+    const double half = 0.5 * world.z;
+    TEST_CHECK(field.latitudeTemperatureAt(0.0) == p.equatorTemperature);
+    TEST_CHECK(field.latitudeTemperatureAt(half) == p.poleTemperature);
+    TEST_CHECK(field.latitudeTemperatureAt(-half) == p.poleTemperature);
+    // About 9 degrees at 45 degrees of latitude.
+    TEST_CHECK(std::abs(field.latitudeTemperatureAt(0.5 * half) - 9.3f) < 0.5f);
+    bool colder = true;
+    bool symmetric = true;
+    bool periodic = true;
+    float previous = field.latitudeTemperatureAt(0.0);
+    for (int i = 1; i <= 1000; ++i) {
+        const double z = half * i / 1000.0;
+        const float t = field.latitudeTemperatureAt(z);
+        colder = colder && t <= previous;
+        symmetric = symmetric && t == field.latitudeTemperatureAt(-z);
+        periodic = periodic && t == field.latitudeTemperatureAt(z + world.z) &&
+                   t == field.latitudeTemperatureAt(z - 3.0 * world.z);
+        previous = t;
+    }
+    TEST_CHECK(colder && symmetric && periodic);
+    // Across the seam, 2 km apart: within a hundredth of a degree (the slope vanishes there).
+    const float north = field.latitudeTemperatureAt(-half + 1000.0);
+    const float south = field.latitudeTemperatureAt(half - 1000.0);
+    TEST_CHECK(std::abs(north - south) < 1.0e-6f);
+    TEST_CHECK(std::abs(north - p.poleTemperature) < 0.01f);
+    // The base temperature too: polar at both edges, the fbm continuous across the seam.
+    Points points;
+    bool cold = true;
+    bool continuous = true;
+    for (int i = 0; i < 200; ++i) {
+        const double x = points.anywhere(world.x);
+        cold = cold && field.baseTemperatureAt(x, half) < 0.0f &&
+               field.baseTemperatureAt(x, -half) < 0.0f;
+        continuous = continuous && std::abs(field.baseTemperatureAt(x, half - 0.5) -
+                                            field.baseTemperatureAt(x, -half + 0.5)) < 0.01f;
+    }
+    TEST_CHECK(cold && continuous);
 }
 
 // The temperature drops by exactly lapseRate per meter above sea level, never below it.
@@ -196,6 +246,7 @@ int main() {
     testExposure();
     testDeterminism();
     testRanges();
+    testLatitude();
     testAltitudeCorrection();
     testSample();
     testInlandDrying();

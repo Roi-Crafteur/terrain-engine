@@ -28,18 +28,28 @@ inline constexpr int kPlantLod = 0;
 // caves): with CaveParams, the caves of a CaveField under the heightfield (no river) are carved
 // out of the density before the block edits, with the detail of the LOD of each tile
 // (caveDetailForLod).
+//
+// The world wraps around (WorldSize): the tiles, the lattice points, the blocks and the plants
+// may be given at any image, and are brought back into the canonical range of the world (the
+// centered extent of chunk_coord.hpp) before anything is generated or read from or written to
+// the modifications: the store only ever holds canonical blocks, plants and chunks, and the edits
+// return canonical chunks. A tile on an edge of the range reads the edits across it too.
 class TerrainTiles {
 public:
+    // Every layer tiles the world (WorldSize). Throws std::invalid_argument for an invalid
+    // world (validate).
     explicit TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield = {},
                           const EcologyParams& ecology = {},
-                          const std::optional<CaveParams>& caves = std::nullopt);
+                          const std::optional<CaveParams>& caves = std::nullopt,
+                          const WorldSize& world = {});
 
-    // Mesh of the vertical levels of the tile holding its ground or a lattice point an edited
-    // block reaches: the density is sampled every tileCellMeters(lod) meters on the lattice of
-    // the tile, the block edits are applied, the seams are stitched (stitchSeams), and each level
-    // is meshed with Marching Cubes. On LOD 0, the plants of the chunk (Ecology::placePlants on
-    // the exact heightfield) after the plant edits. Deterministic, and thread-safe: it may run
-    // concurrently with the edits.
+    // Mesh of the canonical image of the tile (wrapTile: data.request holds the canonical key),
+    // of the vertical levels holding its ground or a lattice point an edited block reaches: the
+    // density is sampled every tileCellMeters(lod) meters on the lattice of the tile, the block
+    // edits are applied, the seams are stitched (stitchSeams), and each level is meshed with
+    // Marching Cubes. On LOD 0, the plants of the chunk (Ecology::placePlants on the exact
+    // heightfield) after the plant edits. Deterministic, and thread-safe: it may run concurrently
+    // with the edits.
     //
     // With caves, the levels go down to the deepest caves (maxDepth below the lowest ground,
     // plus the blend and a cell) and the levels without any surface are skipped; on the sides
@@ -67,6 +77,7 @@ public:
     [[nodiscard]] std::optional<BlockEdit> blockAt(BlockCoord block) const;
     [[nodiscard]] ModificationStore modifications() const; // a copy
     [[nodiscard]] std::uint64_t seed() const { return seed_; }
+    [[nodiscard]] const WorldSize& world() const { return field_.world(); }
     [[nodiscard]] const Heightfield& heightfield() const { return field_; }
     [[nodiscard]] const Ecology& ecology() const { return ecology_; }
     // The caves, or nullptr without caves, and the ground they are carved under.

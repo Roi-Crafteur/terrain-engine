@@ -1,5 +1,6 @@
 #include "terrain/io/cliffs_png.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/io/eroded_png.hpp"
 #include "terrain/io/heightmap_png.hpp"
 
@@ -31,7 +32,7 @@ void setPixel(Image& image, int column, int row, const std::uint8_t (&rgb)[3]) {
 }
 
 void drawRiver(Image& image, int column, int row, double catchment, double minimum) {
-    const double doublings = std::log2(std::max(catchment / minimum, 1.0));
+    const double doublings = dmath::log2(std::max(catchment / minimum, 1.0));
     const auto t = static_cast<float>(std::min(doublings / kRiverColorDoublings, 1.0));
     std::uint8_t rgb[3];
     for (int c = 0; c < 3; ++c) {
@@ -120,7 +121,7 @@ void drawRing(Image& image, double centerColumn, double centerRow, double radius
     const int lastColumn = std::min(static_cast<int>(std::ceil(centerColumn + radius + 1.0)), last);
     for (int row = firstRow; row <= lastRow; ++row) {
         for (int column = firstColumn; column <= lastColumn; ++column) {
-            const double distance = std::hypot(column - centerColumn, row - centerRow);
+            const double distance = dmath::hypot(column - centerColumn, row - centerRow);
             if (std::abs(distance - radius) < 0.5) {
                 setPixel(image, column, row, kCirqueRgb);
             }

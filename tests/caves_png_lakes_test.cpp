@@ -99,7 +99,8 @@ const CaveRegion& warmSite() {
 const CaveRegion& coldSite() {
     static const CaveRegion region(terrain::kDefaultWorldSeed, kArea, [] {
         terrain::CaveRegionParams params;
-        params.ecology.climate.meanTemperature = -80.0f;
+        params.ecology.climate.equatorTemperature = -80.0f;
+        params.ecology.climate.poleTemperature = -80.0f;
         return params;
     }());
     return region;

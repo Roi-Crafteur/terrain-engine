@@ -1,11 +1,11 @@
 #include "terrain/generation/cliff_region.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <numbers>
 #include <utility>
 
 namespace terrain {
@@ -59,7 +59,7 @@ float reliefSlope(const ErodedRegion& eroded, const CliffParams& params, double 
     };
     const double gradX = (height(x + step, z) - height(x - step, z)) / (2.0 * step);
     const double gradZ = (height(x, z + step) - height(x, z - step)) / (2.0 * step);
-    return std::clamp(static_cast<float>(std::hypot(gradX, gradZ)), params.minSlope,
+    return std::clamp(static_cast<float>(dmath::hypot(gradX, gradZ)), params.minSlope,
                       params.maxSlope);
 }
 
@@ -69,7 +69,7 @@ float gorgeWidth(double catchment, const CliffParams& params) {
     if (catchment < params.gorgeMinCatchment) {
         return 0.0f;
     }
-    const auto doublings = static_cast<float>(std::log2(catchment / params.gorgeMinCatchment));
+    const auto doublings = static_cast<float>(dmath::log2(catchment / params.gorgeMinCatchment));
     return params.gorgeMaxHalfWidth *
            noise::smoothstep(0.0f, static_cast<float>(params.gorgeWidthDoublings), doublings);
 }
@@ -99,7 +99,7 @@ void spreadRiver(RiverProximity& out, const HeightGrid& grid, const RiverSource&
             const int column = source.column + dc;
             const int row = source.row + dr;
             const double meters =
-                std::hypot(static_cast<double>(dc), static_cast<double>(dr)) * mpp;
+                dmath::hypot(static_cast<double>(dc), static_cast<double>(dr)) * mpp;
             if (column < 0 || row < 0 || column >= grid.size || row >= grid.size ||
                 meters > radius) {
                 continue;
@@ -153,8 +153,8 @@ bool cylinderIsClear(const ErodedRegion& eroded, double axisX, double axisZ, flo
     const int lastRow = std::min(grid.size - 1, centerRow + reach);
     for (int row = firstRow; row <= lastRow; ++row) {
         for (int column = firstColumn; column <= lastColumn; ++column) {
-            const double distance = std::hypot(eroded.sampleX(column) - axisX,
-                                               eroded.sampleZ(row) - axisZ);
+            const double distance =
+                dmath::hypot(eroded.sampleX(column) - axisX, eroded.sampleZ(row) - axisZ);
             if (distance < radius && eroded.rivers().isRiver(row * grid.size + column) &&
                 grid.at(column, row) > floor + kFloorTolerance) {
                 return false;
@@ -181,9 +181,10 @@ bool insideCliffs(const CliffRegion& region, double axisX, double axisZ, double 
     };
     bool inside = maskAt(axisX, axisZ) > 0.0f;
     for (int i = 0; i < kRingPoints && inside; ++i) {
-        const double angle = 2.0 * std::numbers::pi * i / kRingPoints;
+        const double turns = static_cast<double>(i) / kRingPoints;
         for (const double r : {0.5 * radius, radius}) {
-            const float mask = maskAt(axisX + r * std::cos(angle), axisZ + r * std::sin(angle));
+            const float mask =
+                maskAt(axisX + r * dmath::cosTurns(turns), axisZ + r * dmath::sinTurns(turns));
             inside = inside && mask > 0.0f;
         }
     }
@@ -213,7 +214,7 @@ bool makeCirque(const CliffRegion& region, int k, Cirque& cirque) {
     const double toX = eroded.sampleX(receiver % grid.size) - x;
     const double toZ = eroded.sampleZ(receiver / grid.size) - z;
     const double scale =
-        (params.cirqueRadius + 0.25 * grid.metersPerPixel) / std::hypot(toX, toZ);
+        (params.cirqueRadius + 0.25 * grid.metersPerPixel) / dmath::hypot(toX, toZ);
     const double axisX = x + toX * scale;
     const double axisZ = z + toZ * scale;
     const float floor = grid.heights[static_cast<std::size_t>(receiver)];
@@ -242,7 +243,7 @@ void addCirques(CliffColumn& column, const std::vector<Cirque>& cirques,
                 const CliffParams& params, double x, double z) {
     const double reach = cirqueReach(params);
     for (const Cirque& cirque : cirques) {
-        const double distance = std::hypot(x - cirque.x, z - cirque.z);
+        const double distance = dmath::hypot(x - cirque.x, z - cirque.z);
         if (distance < reach && column.cirqueCount < kMaxColumnCirques) {
             column.cirques[static_cast<std::size_t>(column.cirqueCount)] = {
                 static_cast<float>(distance), cirque.floor};
@@ -268,8 +269,8 @@ void computeGrids(const CliffRegion& region, std::vector<float>& mask, HeightGri
 } // namespace
 
 CliffRegion::CliffRegion(std::uint64_t seed, const HeightmapRegion& region,
-                         const CliffRegionParams& params)
-    : eroded_(seed, region, params.eroded), field_(seed, params.cliffs),
+                         const CliffRegionParams& params, const WorldSize& world)
+    : eroded_(seed, region, params.eroded, world), field_(seed, params.cliffs, world),
       surface_(eroded_.grid()) {
     RiverProximity proximity = computeRiverProximity(eroded_, params.cliffs);
     riverDistance_ = std::move(proximity.distance);
@@ -281,7 +282,7 @@ CliffRegion::CliffRegion(std::uint64_t seed, const HeightmapRegion& region,
 
 float CliffRegion::borderWeightAt(double x, double z) const {
     const HeightmapRegion& region = eroded_.region();
-    const CellPoint point = cellPoint(region, x, z);
+    const CellPoint point = cellPoint(region, eroded_.imageX(x), eroded_.imageZ(z));
     const double last = region.size - 1;
     const double distance = std::min({point.column, point.row, last - point.column,
                                       last - point.row});
@@ -292,7 +293,9 @@ float CliffRegion::borderWeightAt(double x, double z) const {
     return margin > 0.0f ? noise::smoothstep(0.0f, margin, static_cast<float>(distance)) : 1.0f;
 }
 
-CliffColumn CliffRegion::columnAt(double x, double z) const {
+CliffColumn CliffRegion::columnAt(double worldX, double worldZ) const {
+    const double x = eroded_.imageX(worldX);
+    const double z = eroded_.imageZ(worldZ);
     CliffColumn column;
     column.ground = eroded_.heightAt(x, z);
     const float weight = borderWeightAt(x, z);

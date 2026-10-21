@@ -102,7 +102,7 @@ int faceCount(unsigned faces) {
 void testNetwork() {
     const CaveField field(kSeed, galleries_test::uniformParams(CaveDistrictType::Tunnels));
     const terrain::CaveGround ground = caves_test::flatGround(kFlatHeight);
-    const Network net = galleries_test::scanNetwork(field, ground, 1000.0, -2000.0, 4.0, 750);
+    const Network net = galleries_test::scanNetwork(field, ground, -1000.0, -2000.0, 4.0, 750);
     const std::vector<Component> parts = galleries_test::components(net.open, net.size);
     const auto largest = std::max_element(parts.begin(), parts.end(), [](auto& a, auto& b) {
         return a.size < b.size;

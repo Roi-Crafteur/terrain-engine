@@ -16,12 +16,15 @@ function(terrain_add_test name)
 endfunction()
 
 terrain_add_test(test_chunk_coord terrain_core)
+terrain_add_test(det_math_test terrain_core)
+terrain_add_test(world_size_test terrain_core)
 terrain_add_test(test_camera_math terrain_viewer_camera)
 terrain_add_test(test_cave_look terrain_viewer_cave_look)
 terrain_add_test(test_lava_look terrain_viewer_cave_look)
 terrain_add_test(test_view_modes terrain_viewer_modes)
 terrain_add_test(marching_cubes_test terrain_core)
 terrain_add_test(noise_test terrain_core)
+terrain_add_test(noise_periodic_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
 terrain_add_test(heightfield_macro_test terrain_core)
 terrain_add_test(heightfield_voronoi_test terrain_core)
@@ -40,6 +43,11 @@ terrain_add_test(cliffs_png_test terrain_core)
 terrain_add_test(overhangs_test terrain_core)
 terrain_add_test(arches_test terrain_core)
 terrain_add_test(sculpted_region_test terrain_core)
+terrain_add_test(region_wrap_test terrain_core)
+terrain_add_test(world_wrap_streaming_test terrain_core)
+terrain_add_test(world_seams_noise_test terrain_core)
+terrain_add_test(world_seams_caves_test terrain_core)
+terrain_add_test(world_seams_objects_test terrain_core)
 terrain_add_test(sculpted_water_test terrain_core)
 terrain_add_test(arches_png_test terrain_core)
 terrain_add_test(terrain_surface_test terrain_core)
@@ -88,6 +96,9 @@ terrain_add_test(speleothems_test terrain_core)
 terrain_add_test(cave_materials_test terrain_core)
 terrain_add_test(cave_materials_regions_test terrain_core)
 terrain_add_test(cave_golden_test terrain_core)
+terrain_add_test(heightfield_golden_test terrain_core)
+terrain_add_test(world_golden_test terrain_core)
+terrain_add_test(golden_ftz_test terrain_core)
 terrain_add_test(cave_districts_test terrain_core)
 terrain_add_test(cave_district_weights_test terrain_core)
 terrain_add_test(cave_districts_neutral_test terrain_core)
@@ -100,6 +111,13 @@ terrain_add_test(cave_rivers_tiles_test terrain_core)
 terrain_add_test(cave_lava_test terrain_core)
 terrain_add_test(cave_lava_tiles_test terrain_core)
 terrain_add_test(cave_fluid_objects_test terrain_core)
+
+# No platform-dependent floating-point function in the sources of terrain_core (std::sin,
+# std::pow, std::fma, long double...): terrain::dmath replaces them.
+add_test(NAME forbidden_math_test
+    COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${PROJECT_SOURCE_DIR}/terrain_core
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/forbidden_math_test.cmake)
 
 # Smoke test: writes heightmap.png and heightmap_preview.png (1024 x 1024) into
 # <build-dir>/heightmap for a visual check.
@@ -159,15 +177,15 @@ set_tests_properties(export_biomes_smoke PROPERTIES
 add_dependencies(check terrain_export_biomes)
 
 # Smoke test: writes voronoi_plates.png, voronoi_heightmap.png and voronoi_preview.png
-# (128 x 128 px at 256 km/px: 32,768 km around the origin) and voronoi_world.png (128 px, the
-# whole planet) into <build-dir>/voronoi for a visual check. The summary is printed only once
-# the images are written.
+# (128 x 128 px at 256 km/px: 32,768 km around the origin) and voronoi_world.png (128 px wide,
+# the whole wrapped world) into <build-dir>/voronoi for a visual check. The summary is printed
+# only once the images are written.
 add_test(NAME export_voronoi_smoke
     COMMAND terrain_export_voronoi ${CMAKE_BINARY_DIR}/voronoi 20261019 256000 128 0 0 0.5 0.25
             128)
 set_tests_properties(export_voronoi_smoke PROPERTIES
     PASS_REGULAR_EXPRESSION
-    "planet [0-9]+ km, 128 x 128 px, 32768\\.0 km wide.*plates 0\\.50, macro continent 0\\.25")
+    "world 60031 x 34996 km, 128 x 128 px, 32768\\.0 km.*plates 0\\.50, macro continent 0\\.25")
 add_dependencies(check terrain_export_voronoi)
 
 # Invalid arguments of terrain_export_voronoi (plates 0, world size 1, ...) are rejected with

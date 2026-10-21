@@ -1,5 +1,6 @@
 #include "terrain/generation/cave_regions.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -82,8 +83,8 @@ CaveDistrictType drawType(const Weights& weights, double draw) {
     return CaveDistrictType::Tunnels;
 }
 
-int cellOf(double meters, double cellSize) {
-    return static_cast<int>(std::floor(meters / cellSize));
+int cellOf(double meters, const PeriodicCells& cells) {
+    return static_cast<int>(cells.cellOf(meters));
 }
 
 } // namespace
@@ -154,41 +155,51 @@ std::array<CaveProfile, kCaveDistrictTypeCount> defaultDistrictProfiles() {
     return p;
 }
 
-CaveDistricts::CaveDistricts(std::uint64_t seed, const CaveDistrictParams& params)
-    : params_(params), seed_(noise::deriveSeed(seed, kDistrictStream)) {
+CaveDistricts::CaveDistricts(std::uint64_t seed, const CaveDistrictParams& params,
+                             const WorldSize& world)
+    : params_(params), cellsX_(periodicCells(world.x, params.cellSize)),
+      cellsZ_(periodicCells(world.z, params.cellSize)),
+      seed_(noise::deriveSeed(seed, kDistrictStream)) {
+    validate(world);
     if (params.jitter < 0.0 || params.jitter > 0.5 || params.blend <= 0.0 ||
-        params.blend > kMaxBlendShare * params.cellSize) {
+        params.blend > kMaxBlendShare * std::min(cellsX_.size, cellsZ_.size)) {
         throw std::invalid_argument("cave districts: jitter in [0, 0.5] and blend in (0, "
                                     "0.189 cell] required");
     }
 }
 
 CaveDistrict CaveDistricts::district(int cellX, int cellZ, const DistrictSite& site) const {
-    const std::uint64_t cell = cellSeed(seed_, cellX, cellZ);
+    const auto canonicalX = static_cast<int>(cellsX_.wrap(cellX));
+    const auto canonicalZ = static_cast<int>(cellsZ_.wrap(cellZ));
+    const std::uint64_t cell = cellSeed(seed_, canonicalX, canonicalZ);
     CaveDistrict result;
     result.cellX = cellX;
     result.cellZ = cellZ;
-    const double size = params_.cellSize;
-    result.siteX = (cellX + 0.5 + (unitDraw(cell, kOffsetXDraw) - 0.5) * params_.jitter) * size;
-    result.siteZ = (cellZ + 0.5 + (unitDraw(cell, kOffsetZDraw) - 0.5) * params_.jitter) * size;
+    const double jitter = params_.jitter;
+    const double siteX =
+        (canonicalX + 0.5 + (unitDraw(cell, kOffsetXDraw) - 0.5) * jitter) * cellsX_.size;
+    const double siteZ =
+        (canonicalZ + 0.5 + (unitDraw(cell, kOffsetZDraw) - 0.5) * jitter) * cellsZ_.size;
     float height = 0.0f;
     CaveEnvironment environment;
-    site(result.siteX, result.siteZ, height, environment);
+    site(siteX, siteZ, height, environment);
     result.type = drawType(typeWeights(height, environment, params_), unitDraw(cell, kTypeDraw));
+    result.siteX = siteX + cellsX_.shift(cellX);
+    result.siteZ = siteZ + cellsZ_.shift(cellZ);
     return result;
 }
 
 DistrictWeights CaveDistricts::weights(
     double x, double z, const std::function<const CaveDistrict&(int, int)>& districtAt) const {
-    const int baseX = cellOf(x, params_.cellSize);
-    const int baseZ = cellOf(z, params_.cellSize);
+    const int baseX = cellOf(x, cellsX_);
+    const int baseZ = cellOf(z, cellsZ_);
     std::array<const CaveDistrict*, 9> around{};
     std::array<double, 9> distance{};
     std::size_t nearest = 0;
     for (std::size_t n = 0; n < around.size(); ++n) {
         around[n] = &districtAt(baseX + static_cast<int>(n % 3) - 1,
                                 baseZ + static_cast<int>(n / 3) - 1);
-        distance[n] = std::hypot(x - around[n]->siteX, z - around[n]->siteZ);
+        distance[n] = dmath::hypot(x - around[n]->siteX, z - around[n]->siteZ);
         nearest = distance[n] < distance[nearest] ? n : nearest;
     }
     DistrictWeights result;

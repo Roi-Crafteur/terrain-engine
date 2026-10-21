@@ -46,12 +46,13 @@ const CliffRegion& cliffSite() {
     return region;
 }
 
-// A coastal region with oceans, rivers and a cascade, so the overlay checks are not empty.
+// A coastal region with oceans, rivers and a cascade, so the overlay checks are not empty
+// (found by a search of the default world).
 const CliffRegion& coast() {
     static const CliffRegion region(
         terrain::kDefaultWorldSeed,
-        terrain::HeightmapRegion{.centerX = 10000.0, .centerZ = 10000.0,
-                                 .metersPerPixel = 100.0, .size = 128});
+        terrain::HeightmapRegion{
+            .centerX = -66800.0, .centerZ = -2800.0, .metersPerPixel = 100.0, .size = 128});
     return region;
 }
 

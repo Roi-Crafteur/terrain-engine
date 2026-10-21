@@ -29,14 +29,15 @@ using terrain::TileData;
 using terrain::TileRequest;
 
 // A point on the axis of a gallery whose river is at least 0.6 m deep, around the sites of the
-// Rivers regions on land.
+// Rivers regions on land, from the cells z = 0 northward (the rivers of the first region south of
+// them run too thin for the lattice of LOD 1).
 std::optional<std::array<double, 2>> riverPoint(const TerrainTiles& tiles) {
     const CaveField& field = *tiles.caves();
     const terrain::CaveGround& ground = tiles.caveGround();
     AquiferCache cache(field, ground);
     const double minDepth = static_cast<double>(field.params().rivers.minDepth);
     for (int n = 0; n < 625; ++n) {
-        const terrain::CaveDistrict d = field.district(n % 25 - 12, n / 25 - 12, ground);
+        const terrain::CaveDistrict d = field.district(n % 25 - 12, n / 25, ground);
         if (d.type != CaveDistrictType::Rivers || ground.height(d.siteX, d.siteZ) < 5.0f) {
             continue;
         }

@@ -116,13 +116,16 @@ int main(int argc, char** argv) {
     }
     const terrain::TectonicPlates& plates = *field.plates();
     const double extentKm = region.size * region.metersPerPixel / 1000.0;
-    std::printf("seed %llu, %zu plates, planet %.0f km, %d x %d px, %.1f km wide, center "
+    std::printf("seed %llu, %zu plates, world %.0f x %.0f km, %d x %d px, %.1f "
+                "km wide, center "
                 "(%.0f, %.0f), plates %.2f, macro continent %.2f, world %d px: "
-                "%s/voronoi_plates.png, %s/voronoi_heightmap.png, %s/voronoi_preview.png, "
+                "%s/voronoi_plates.png, %s/voronoi_heightmap.png, "
+                "%s/voronoi_preview.png, "
                 "%s/voronoi_world.png\n",
                 static_cast<unsigned long long>(options.seed), plates.plates().size(),
-                plates.planetSize() / 1000.0, region.size, region.size, extentKm, region.centerX,
-                region.centerZ, static_cast<double>(options.params.plates.amplitude),
+                plates.world().x / 1000.0, plates.world().z / 1000.0, region.size, region.size,
+                extentKm, region.centerX, region.centerZ,
+                static_cast<double>(options.params.plates.amplitude),
                 static_cast<double>(options.params.macroContinent), options.worldSize, argv[1],
                 argv[1], argv[1], argv[1]);
     return EXIT_SUCCESS;

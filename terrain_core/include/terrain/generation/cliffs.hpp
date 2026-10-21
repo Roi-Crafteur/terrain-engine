@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/height_grid.hpp"
+#include "terrain/world_size.hpp"
 
 #include <array>
 #include <cstdint>
@@ -88,7 +89,9 @@ struct CliffColumn {
 // column always give the same density.
 class CliffField {
 public:
-    explicit CliffField(std::uint64_t seed, const CliffParams& params = {});
+    // Periodic on the world (WorldSize). Throws std::invalid_argument for an invalid world.
+    explicit CliffField(std::uint64_t seed, const CliffParams& params = {},
+                        const WorldSize& world = {});
 
     // Province factor of the mask at (x, z), in [0, 1].
     [[nodiscard]] float provinceAt(double x, double z) const;
@@ -135,9 +138,11 @@ public:
     [[nodiscard]] float maxUndercut() const;
 
     [[nodiscard]] const CliffParams& params() const { return params_; }
+    [[nodiscard]] const WorldSize& world() const { return world_; }
 
 private:
     CliffParams params_;
+    WorldSize world_;
     std::uint64_t provinceSeed_;
     std::uint64_t rimSeed_;
     float stratumOffset_;

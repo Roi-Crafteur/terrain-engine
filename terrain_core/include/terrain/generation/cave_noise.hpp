@@ -1,5 +1,7 @@
 #pragma once
 
+#include "terrain/world_size.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -40,19 +42,27 @@ struct CaveNoiseLayer {
     int octaves = 1;
 };
 
-// Pure node values of the cave noises.
+// Pure node values of the cave noises. Periodic on the world: the nodes along x and z fall
+// exactly on its sides (kCaveNodeMeters divides kWorldAlignmentMeters) and every node takes
+// the value of its canonical image, so the noises tile the world.
 class CaveNoiseLattice {
 public:
-    explicit CaveNoiseLattice(const std::array<CaveNoiseLayer, kCaveNoiseCount>& layers);
+    CaveNoiseLattice(const std::array<CaveNoiseLayer, kCaveNoiseCount>& layers,
+                     const WorldSize& world = {});
 
     // Value of the noise at the node (i, j, k), at world (i, j, k) * kCaveNodeMeters.
     [[nodiscard]] float nodeValue(CaveNoise noise, std::int64_t i, std::int64_t j,
                                   std::int64_t k) const;
 
     [[nodiscard]] const CaveNoiseLayer& layer(CaveNoise noise) const { return layers_[noise]; }
+    [[nodiscard]] const PeriodicCells& nodesX() const { return nodesX_; }
+    [[nodiscard]] const PeriodicCells& nodesZ() const { return nodesZ_; }
 
 private:
     std::array<CaveNoiseLayer, kCaveNoiseCount> layers_;
+    WorldSize world_;
+    PeriodicCells nodesX_;
+    PeriodicCells nodesZ_;
 };
 
 // Box of world positions, meters: x in [minX, maxX] and so on.

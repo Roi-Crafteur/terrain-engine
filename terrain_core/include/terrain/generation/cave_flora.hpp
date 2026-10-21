@@ -27,7 +27,11 @@ struct CaveFlora {
 // caves and cell always give the same plants, wherever the area being placed is.
 class CaveFloraField {
 public:
-    explicit CaveFloraField(std::uint64_t seed, const CaveFloraParams& params = {});
+    // Periodic on the world: the grid of the candidates has round(world / spacing) cells per
+    // side (PeriodicCells), each drawn from its canonical cell. Throws std::invalid_argument for
+    // an invalid world (validate).
+    explicit CaveFloraField(std::uint64_t seed, const CaveFloraParams& params = {},
+                            const WorldSize& world = {});
 
     // Plants of the cells whose candidate lies in [minX, maxX) x [minZ, maxZ], in cell order, on
     // the caves read from the sampler, as SpeleothemField::place: adjacent rectangles give the
@@ -36,12 +40,16 @@ public:
                                                double maxX, double maxZ) const;
 
     [[nodiscard]] const CaveFloraParams& params() const { return params_; }
+    [[nodiscard]] const PeriodicCells& cellsX() const { return cellsX_; }
+    [[nodiscard]] const PeriodicCells& cellsZ() const { return cellsZ_; }
 
 private:
     void placeCandidate(CaveSampler& sampler, int cellX, int cellZ,
                         std::vector<CaveFlora>& result) const;
 
     CaveFloraParams params_;
+    PeriodicCells cellsX_;
+    PeriodicCells cellsZ_;
     std::uint64_t seed_;
 };
 

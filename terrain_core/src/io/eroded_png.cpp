@@ -1,5 +1,6 @@
 #include "terrain/io/eroded_png.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/io/heightmap_png.hpp"
 
 #include <algorithm>
@@ -22,7 +23,7 @@ void setPixel(Image& image, int column, int row, const std::uint8_t (&rgb)[3]) {
 }
 
 void drawRiver(Image& image, int column, int row, double catchment, double minimum) {
-    const double doublings = std::log2(std::max(catchment / minimum, 1.0));
+    const double doublings = dmath::log2(std::max(catchment / minimum, 1.0));
     const auto t = static_cast<float>(std::min(doublings / kRiverColorDoublings, 1.0));
     std::uint8_t rgb[3];
     for (int c = 0; c < 3; ++c) {

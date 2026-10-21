@@ -1,5 +1,6 @@
 #include "terrain/generation/aquifers.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
@@ -32,31 +33,48 @@ double unitDraw(std::uint64_t cell, Draw draw) {
     return static_cast<double>(noise::deriveSeed(cell, draw) >> 40) / 16777216.0;
 }
 
+double squared(double v) {
+    return v * v;
+}
+
 std::uint64_t cellKey(int cellX, int cellZ) {
     return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cellX)) << 32) |
            static_cast<std::uint32_t>(cellZ);
 }
 
-int cellOf(double meters, double cellSize) {
-    return static_cast<int>(std::floor(meters / cellSize));
+int cellOf(double meters, const PeriodicCells& cells) {
+    return static_cast<int>(cells.cellOf(meters));
 }
 
 } // namespace
 
+// The cell at its canonical index and site, placed at the image next to (cellX, cellZ).
 AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground,
                                AquiferCache* cells) const {
-    const AquiferParams& p = params_.aquifers;
-    const std::uint64_t cell = cellSeed(aquiferSeed_, cellX, cellZ);
-    AquiferCell result;
+    AquiferCell result =
+        canonicalAquifer(static_cast<int>(aquiferCellsX_.wrap(cellX)),
+                         static_cast<int>(aquiferCellsZ_.wrap(cellZ)), ground, cells);
     result.cellX = cellX;
     result.cellZ = cellZ;
-    result.siteX = (cellX + 0.5 + (unitDraw(cell, kOffsetXDraw) - 0.5) * p.jitter) * p.cellSize;
-    result.siteZ = (cellZ + 0.5 + (unitDraw(cell, kOffsetZDraw) - 0.5) * p.jitter) * p.cellSize;
+    result.siteX += aquiferCellsX_.shift(cellX);
+    result.siteZ += aquiferCellsZ_.shift(cellZ);
+    return result;
+}
+
+AquiferCell CaveField::canonicalAquifer(int cellX, int cellZ, const CaveGround& ground,
+                                        AquiferCache* cells) const {
+    const AquiferParams& p = params_.aquifers;
+    const double sizeX = aquiferCellsX_.size;
+    const double sizeZ = aquiferCellsZ_.size;
+    const std::uint64_t cell = cellSeed(aquiferSeed_, cellX, cellZ);
+    AquiferCell result;
+    result.siteX = (cellX + 0.5 + (unitDraw(cell, kOffsetXDraw) - 0.5) * p.jitter) * sizeX;
+    result.siteZ = (cellZ + 0.5 + (unitDraw(cell, kOffsetZDraw) - 0.5) * p.jitter) * sizeZ;
     const float site = ground.height(result.siteX, result.siteZ);
     float lowest = site;
     for (int probe = 0; probe < 9; ++probe) {
-        const double x = (cellX + 0.5 * (probe % 3)) * p.cellSize;
-        const double z = (cellZ + 0.5 * (probe / 3)) * p.cellSize;
+        const double x = (cellX + 0.5 * (probe % 3)) * sizeX;
+        const double z = (cellZ + 0.5 * (probe / 3)) * sizeZ;
         lowest = std::min(lowest, ground.height(x, z));
     }
     const CaveEnvironment environment =
@@ -99,8 +117,8 @@ AquiferCell CaveField::aquifer(int cellX, int cellZ, const CaveGround& ground,
 
 void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
     const AquiferParams& p = params_.aquifers;
-    const int baseX = cellOf(column.x, p.cellSize);
-    const int baseZ = cellOf(column.z, p.cellSize);
+    const int baseX = cellOf(column.x, aquiferCellsX_);
+    const int baseZ = cellOf(column.z, aquiferCellsZ_);
     std::array<const AquiferCell*, 9> cells{};
     std::size_t own = 0;
     double nearest = 0.0;
@@ -108,7 +126,7 @@ void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
         const AquiferCell& cell = aquifers.at(baseX + static_cast<int>(n % 3) - 1,
                                               baseZ + static_cast<int>(n / 3) - 1);
         cells[n] = &cell;
-        const double d2 = std::pow(column.x - cell.siteX, 2) + std::pow(column.z - cell.siteZ, 2);
+        const double d2 = squared(column.x - cell.siteX) + squared(column.z - cell.siteZ);
         if (n == 0 || d2 < nearest) {
             nearest = d2;
             own = n;
@@ -125,9 +143,8 @@ void CaveField::addAquifer(CaveColumn& column, AquiferCache& aquifers) const {
             continue;
         }
         // Distance to the bisector of the two sites, on the side of the own site.
-        const double far =
-            std::pow(column.x - other.siteX, 2) + std::pow(column.z - other.siteZ, 2);
-        const double span = std::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
+        const double far = squared(column.x - other.siteX) + squared(column.z - other.siteZ);
+        const double span = dmath::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
         const auto distance = static_cast<float>((far - nearest) / (2.0 * span));
         if (distance < p.barrierHalfWidth && column.barrierCount < kMaxColumnBarriers) {
             column.barriers[static_cast<std::size_t>(column.barrierCount)] = {
@@ -176,14 +193,13 @@ CaveProfile AquiferCache::profileAt(double x, double z) {
 }
 
 const AquiferCell& AquiferCache::nearest(double x, double z) {
-    const double size = field_->params().aquifers.cellSize;
-    const int baseX = cellOf(x, size);
-    const int baseZ = cellOf(z, size);
+    const int baseX = cellOf(x, field_->aquiferCellsX());
+    const int baseZ = cellOf(z, field_->aquiferCellsZ());
     const AquiferCell* best = nullptr;
     double nearest = 0.0;
     for (int n = 0; n < 9; ++n) {
         const AquiferCell& cell = at(baseX + n % 3 - 1, baseZ + n / 3 - 1);
-        const double d2 = std::pow(x - cell.siteX, 2) + std::pow(z - cell.siteZ, 2);
+        const double d2 = squared(x - cell.siteX) + squared(z - cell.siteZ);
         if (best == nullptr || d2 < nearest) {
             nearest = d2;
             best = &cell;
@@ -194,14 +210,14 @@ const AquiferCell& AquiferCache::nearest(double x, double z) {
 
 float AquiferCache::highestLevelNear(double x, double z, double reach) {
     const AquiferParams& p = field_->params().aquifers;
-    const int baseX = cellOf(x, p.cellSize);
-    const int baseZ = cellOf(z, p.cellSize);
+    const int baseX = cellOf(x, field_->aquiferCellsX());
+    const int baseZ = cellOf(z, field_->aquiferCellsZ());
     std::array<const AquiferCell*, 9> cells{};
     std::size_t own = 0;
     double nearest = 0.0;
     for (std::size_t n = 0; n < cells.size(); ++n) {
         cells[n] = &at(baseX + static_cast<int>(n % 3) - 1, baseZ + static_cast<int>(n / 3) - 1);
-        const double d2 = std::pow(x - cells[n]->siteX, 2) + std::pow(z - cells[n]->siteZ, 2);
+        const double d2 = squared(x - cells[n]->siteX) + squared(z - cells[n]->siteZ);
         if (n == 0 || d2 < nearest) {
             nearest = d2;
             own = n;
@@ -214,8 +230,8 @@ float AquiferCache::highestLevelNear(double x, double z, double reach) {
         if (n == own || heldLevel(other) <= kDryLevel) {
             continue;
         }
-        const double far = std::pow(x - other.siteX, 2) + std::pow(z - other.siteZ, 2);
-        const double span = std::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
+        const double far = squared(x - other.siteX) + squared(z - other.siteZ);
+        const double span = dmath::hypot(other.siteX - home.siteX, other.siteZ - home.siteZ);
         if ((far - nearest) / (2.0 * span) < reach + p.barrierHalfWidth) {
             highest = std::max(highest, heldLevel(other));
         }

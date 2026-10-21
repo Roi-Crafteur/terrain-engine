@@ -46,10 +46,12 @@ struct Site {
     double z;
 };
 
-// Sites of lush districts with caves (under the sea, with lakes): 5 x 5 tiles of LOD 0 around
-// each hold 20 to 90 plants.
-inline constexpr std::array<Site, 4> kLushSites = {
-    {{26012.0, -22376.0}, {25080.0, -9885.0}, {-19282.0, -1731.0}, {-16612.0, 4990.0}}};
+// Sites of lush districts with caves (under the sea, with lakes), at a southern mid-latitude
+// (z near -9,000 km): the squares of 80 m around them hold 25 to 102 plants.
+inline constexpr std::array<Site, 4> kLushSites = {{{1192472.0, -9029095.0},
+                                                    {1200835.0, -9022527.0},
+                                                    {1195595.0, -9026419.0},
+                                                    {1202011.0, -9029371.0}}};
 
 inline CaveParams districtParams() {
     CaveParams params;

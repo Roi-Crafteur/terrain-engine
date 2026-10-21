@@ -43,6 +43,19 @@ struct TileKeyHash {
 [[nodiscard]] TileKey tileContaining(ChunkCoord chunk, int lod);
 [[nodiscard]] bool tileContains(const TileKey& tile, ChunkCoord chunk);
 
+// The tile with its origin brought back into the canonical range of the world (wrapChunk): the
+// same key for every image of the tile. The sides of the world are multiples of two tiles of
+// the coarsest LOD, so the canonical tiles never straddle the edge of the range.
+[[nodiscard]] TileKey wrapTile(const TileKey& tile, const WorldSize& world);
+static_assert(static_cast<long long>(kWorldAlignmentMeters) %
+                      (2 * static_cast<long long>(tileSizeMeters(kMaxLod))) ==
+                  0,
+              "the world alignment must be a multiple of two tiles of the coarsest LOD");
+
+// The image of the tile nearest to the chunk, its origin moved by whole worlds to lie within
+// half a world of the chunk along each axis: the tile as a player in that chunk sees it.
+[[nodiscard]] TileKey nearestTile(const TileKey& tile, ChunkCoord chunk, const WorldSize& world);
+
 // Chebyshev distance between two chunks, in chunks.
 [[nodiscard]] int chunkDistance(ChunkCoord a, ChunkCoord b);
 

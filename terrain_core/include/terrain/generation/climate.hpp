@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/terrain_surface.hpp"
+#include "terrain/world_size.hpp"
 
 #include <cstdint>
 
@@ -9,11 +10,17 @@ namespace terrain {
 // Temperatures are in degrees Celsius, wavelengths in meters (one noise lattice cell of the
 // first octave). The climate only reads the relief: it never changes a height.
 struct ClimateParams {
-    // Base temperature, the mean annual temperature at sea level:
-    // meanTemperature + temperatureAmplitude * fbm with 4 octaves.
+    // Base temperature, the mean annual temperature at sea level, from the latitude and a
+    // regional fbm with 4 octaves: equatorTemperature - (equatorTemperature - poleTemperature)
+    // * s^1.5 + temperatureAmplitude * fbm, where s = sin^2(pi z / world.z) is 0 on the
+    // equator (z = 0, the middle of the map) and 1 at the poles (z = +-world.z / 2, the
+    // north-south seam). Cold at both edges, warm in the middle, with neither a jump nor a kink
+    // at the seam: s is periodic and flat at the poles. About 9 degrees at 45 degrees of
+    // latitude.
     double temperatureWavelength = 100000.0;
-    float meanTemperature = 14.0f;
-    float temperatureAmplitude = 50.0f;
+    float equatorTemperature = 27.0f;
+    float poleTemperature = -23.0f;
+    float temperatureAmplitude = 15.0f;
 
     // Humidity in [0, 1]: meanHumidity + humidityAmplitude * fbm with 4 octaves, minus
     // inlandDrying * smoothstep(inlandLow, inlandHigh, continentalness): the coasts are wetter
@@ -51,11 +58,16 @@ struct ClimateSample {
 [[nodiscard]] float exposureOf(float gradX, float gradZ);
 
 // Deterministic climate: the same seed, parameters and inputs always give the same climate.
-// The noise layers are continuous, so the climate has no seam between regions or chunks.
+// The noise layers are continuous, so the climate has no seam between regions or chunks, and
+// periodic on the world (WorldSize): (x, z) is brought back into its canonical range first.
 class ClimateField {
 public:
-    explicit ClimateField(std::uint64_t seed, const ClimateParams& params = {});
+    // Throws std::invalid_argument for an invalid world (validate).
+    explicit ClimateField(std::uint64_t seed, const ClimateParams& params = {},
+                          const WorldSize& world = {});
 
+    // Part of the base temperature given by the latitude of z alone (no fbm).
+    [[nodiscard]] float latitudeTemperatureAt(double z) const;
     [[nodiscard]] float baseTemperatureAt(double x, double z) const;
     // Humidity at (x, z) given the continentalness of the Heightfield there.
     [[nodiscard]] float humidityAt(double x, double z, float continentalness) const;
@@ -68,9 +80,11 @@ public:
     [[nodiscard]] ClimateSample sample(double x, double z, const SurfaceSite& site) const;
 
     [[nodiscard]] const ClimateParams& params() const { return params_; }
+    [[nodiscard]] const WorldSize& world() const { return world_; }
 
 private:
     ClimateParams params_;
+    WorldSize world_;
     std::uint64_t temperatureSeed_;
     std::uint64_t humiditySeed_;
 };

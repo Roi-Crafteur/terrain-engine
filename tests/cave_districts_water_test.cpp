@@ -13,6 +13,7 @@
 
 #include "aquifers_test_support.hpp"
 #include "cave_districts_carving_support.hpp"
+#include "cave_districts_test_support.hpp"
 #include "caves_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -53,11 +54,15 @@ CaveDistrictType typeAt(int t) {
 
 // ---------------------------------------------------------------------------
 
-float lowestGround(const CaveGround& ground, const AquiferParams& p, const AquiferCell& cell) {
+// Lowest ground of a cell (of the canonical range): its site and the 3 x 3 probes of its square
+// of the grid of the world (cells of about cellSize).
+float lowestGround(const CaveField& field, const CaveGround& ground, const AquiferCell& cell) {
+    const double sizeX = field.aquiferCellsX().size;
+    const double sizeZ = field.aquiferCellsZ().size;
     float lowest = ground.height(cell.siteX, cell.siteZ);
     for (int probe = 0; probe < 9; ++probe) {
-        lowest = std::min(lowest, ground.height((cell.cellX + 0.5 * (probe % 3)) * p.cellSize,
-                                                (cell.cellZ + 0.5 * (probe / 3)) * p.cellSize));
+        lowest = std::min(lowest, ground.height((cell.cellX + 0.5 * (probe % 3)) * sizeX,
+                                                (cell.cellZ + 0.5 * (probe / 3)) * sizeZ));
     }
     return lowest;
 }
@@ -91,9 +96,11 @@ struct CellChecks {
     bool flooded = true;     // every cell wet, up to just under the roof of its lowest ground
 };
 
-CellChecks checkCells(const AquiferParams& p, const CaveGround& ground, double roof,
-                      const CaveProfile& profile, const std::vector<AquiferCell>& neutral,
+CellChecks checkCells(const CaveField& field, const CaveGround& ground, const CaveProfile& profile,
+                      const std::vector<AquiferCell>& neutral,
                       const std::vector<AquiferCell>& cells) {
+    const AquiferParams& p = field.params().aquifers;
+    const double roof = static_cast<double>(field.params().minRoof);
     CellChecks checks;
     for (std::size_t n = 0; n < cells.size(); ++n) {
         const AquiferCell& cell = cells[n];
@@ -107,7 +114,7 @@ CellChecks checkCells(const AquiferParams& p, const CaveGround& ground, double r
                                                profile[CaveProfile::kLevelRise]) < 1.0e-3f;
         }
         if (profile[CaveProfile::kFlooded] == 1.0f) {
-            const double level = std::floor(static_cast<double>(lowestGround(ground, p, cell)) -
+            const double level = std::floor(static_cast<double>(lowestGround(field, ground, cell)) -
                                             roof - static_cast<double>(p.floodedDepth) - 0.5) +
                                  0.5;
             checks.flooded = checks.flooded && cell.wet && std::abs(cell.level - level) < 1.0e-3;
@@ -126,13 +133,12 @@ void testCells() {
     constexpr int kHalf = 24;
     const CaveField neutralField(kSeed, uniformCaves(CaveProfile{}));
     const AquiferParams& p = neutralField.params().aquifers;
-    const double roof = static_cast<double>(neutralField.params().minRoof);
     const std::vector<AquiferCell> neutral = cellsOf(neutralField, ground, kHalf);
     for (int t = 0; t < kCaveDistrictTypeCount; ++t) {
         const CaveProfile profile = defaultProfile(typeAt(t));
         const CaveField field(kSeed, uniformCaves(profile));
         const std::vector<AquiferCell> cells = cellsOf(field, ground, kHalf);
-        const CellChecks checks = checkCells(p, ground, roof, profile, neutral, cells);
+        const CellChecks checks = checkCells(field, ground, profile, neutral, cells);
         const double share = static_cast<double>(checks.wet) / static_cast<double>(cells.size());
         const double expected = expectedChance(p, profile, 0.5f);
         std::printf("  %-9s %4d of %zu cells wet (%.3f, chance %.3f), frozen %s\n",
@@ -253,17 +259,21 @@ FloodedCells floodedCellsIn(const CaveField& field, const CaveGround& ground,
     const double roof = static_cast<double>(field.params().minRoof);
     AquiferCache cache(field, ground);
     FloodedCells result;
-    const auto first = [&p](double meters) {
-        return static_cast<int>(std::floor(meters / p.cellSize));
+    const auto first = [](double meters, const terrain::PeriodicCells& cells) {
+        return static_cast<int>(cells.cellOf(meters));
     };
-    for (int cellZ = first(d.siteZ - radius); cellZ <= first(d.siteZ + radius); ++cellZ) {
-        for (int cellX = first(d.siteX - radius); cellX <= first(d.siteX + radius); ++cellX) {
+    const terrain::PeriodicCells& alongX = field.aquiferCellsX();
+    const terrain::PeriodicCells& alongZ = field.aquiferCellsZ();
+    for (int cellZ = first(d.siteZ - radius, alongZ); cellZ <= first(d.siteZ + radius, alongZ);
+         ++cellZ) {
+        for (int cellX = first(d.siteX - radius, alongX); cellX <= first(d.siteX + radius, alongX);
+             ++cellX) {
             const AquiferCell& cell = cache.at(cellX, cellZ);
             if (std::abs(cell.siteX - d.siteX) > radius ||
                 std::abs(cell.siteZ - d.siteZ) > radius) {
                 continue;
             }
-            const double level = std::floor(static_cast<double>(lowestGround(ground, p, cell)) -
+            const double level = std::floor(static_cast<double>(lowestGround(field, ground, cell)) -
                                             roof - static_cast<double>(p.floodedDepth) - 0.5) +
                                  0.5;
             ++result.cells;
@@ -273,17 +283,18 @@ FloodedCells floodedCellsIn(const CaveField& field, const CaveGround& ground,
     return result;
 }
 
-// Flooded districts of the default world, on land: in the core of each, every aquifer cell is
-// wet up to just under the roof, at least 90% of the carved air lies under the level of its
-// column, and no entrance opens in the square of the core, where the same square of neutral
-// districts holds many.
+// Flooded districts of the window of the default world, on land: in the core of each, every
+// aquifer cell is wet up to just under the roof, at least 90% of the carved air lies under the
+// level of its column, and no entrance opens in the square of the core, where the same square of
+// neutral districts holds many.
 void testFloodedCores() {
     const TerrainTiles tiles(kSeed, {}, {}, defaultCaves());
     const CaveField& field = *tiles.caves();
     const CaveGround& ground = tiles.caveGround();
     const CaveField neutral(kSeed, uniformCaves(CaveProfile{}));
     const std::vector<terrain::CaveDistrict> found =
-        districtsOf(field, ground, {-8, 17}, CaveDistrictType::Flooded, 5.0f);
+        districtsOf(field, ground, {districts_test::kWindowCellX - 8, 17},
+                    {districts_test::kWindowCellZ - 8, 17}, CaveDistrictType::Flooded, 5.0f);
     TEST_CHECK(found.size() >= 3);
     for (std::size_t n = 0; n < std::min<std::size_t>(found.size(), 3); ++n) {
         const terrain::CaveDistrict& d = found[n];

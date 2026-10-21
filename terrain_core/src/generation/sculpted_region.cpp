@@ -1,5 +1,6 @@
 #include "terrain/generation/sculpted_region.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -23,22 +24,24 @@ bool isPlain(const SculptedColumn& column) {
 } // namespace
 
 SculptedRegion::SculptedRegion(std::uint64_t seed, const HeightmapRegion& region,
-                               const SculptedRegionParams& params)
-    : cliffs_(seed, region, params.cliffs), overhangs_(seed, params.overhangs),
-      archField_(seed, params.arches), archFade_(params.archFade),
+                               const SculptedRegionParams& params, const WorldSize& world)
+    : cliffs_(seed, region, params.cliffs, world), overhangs_(seed, params.overhangs, world),
+      archField_(seed, params.arches, world), archFade_(params.archFade),
       surface_(cliffs_.surface()) {
     arches_ = placeArches(cliffs_, archField_);
     computeGrids();
 }
 
-float SculptedRegion::controlAt(double x, double z, const CliffColumn& column) const {
+float SculptedRegion::controlAt(double worldX, double worldZ, const CliffColumn& column) const {
+    const double x = cliffs_.eroded().imageX(worldX);
+    const double z = cliffs_.eroded().imageZ(worldZ);
     float control = overhangs_.controlAt(x, z, column, cliffs_.field().params());
     for (const Arch& arch : arches_) {
         if (control <= 0.0f) {
             break;
         }
         const double reach = archField_.reach(arch);
-        const double distance = std::hypot(x - arch.x, z - arch.z);
+        const double distance = dmath::hypot(x - arch.x, z - arch.z);
         control *= noise::smoothstep(static_cast<float>(reach),
                                      static_cast<float>(reach + archFade_),
                                      static_cast<float>(distance));
@@ -46,11 +49,13 @@ float SculptedRegion::controlAt(double x, double z, const CliffColumn& column) c
     return control;
 }
 
-SculptedColumn SculptedRegion::columnAt(double x, double z) const {
+SculptedColumn SculptedRegion::columnAt(double worldX, double worldZ) const {
+    const double x = cliffs_.eroded().imageX(worldX);
+    const double z = cliffs_.eroded().imageZ(worldZ);
     SculptedColumn column{x, z, cliffs_.columnAt(x, z)};
     for (std::size_t i = 0; i < arches_.size(); ++i) {
         const Arch& arch = arches_[i];
-        if (std::hypot(x - arch.x, z - arch.z) < archField_.reach(arch)) {
+        if (dmath::hypot(x - arch.x, z - arch.z) < archField_.reach(arch)) {
             column.arch = static_cast<int>(i); // arches are kept out of each other's reach
         }
     }

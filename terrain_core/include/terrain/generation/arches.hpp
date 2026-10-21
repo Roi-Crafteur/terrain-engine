@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/cliff_region.hpp"
+#include "terrain/world_size.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -51,13 +52,18 @@ struct Arch {
 };
 
 // Deterministic candidates and signed distance fields of the arches: the same seed,
-// parameters and cell always give the same candidate, wherever the region is.
+// parameters and cell always give the same candidate, wherever the region is. The grid of the
+// candidates tiles the world: round(world / spacing) cells per side (PeriodicCells).
 class ArchField {
 public:
-    explicit ArchField(std::uint64_t seed, const ArchParams& params = {});
+    // Throws std::invalid_argument for an invalid world (validate).
+    explicit ArchField(std::uint64_t seed, const ArchParams& params = {},
+                       const WorldSize& world = {});
 
-    // Candidate of the grid cell (cellX, cellZ), which spans [cellX, cellX + 1) * spacing
-    // along x and the same along z, with base 0; false if the cell has none (chance).
+    // Candidate of the grid cell (cellX, cellZ), an unwrapped index, which spans
+    // [cellX, cellX + 1) * the cell size along x and the same along z, with base 0; false if
+    // the cell has none (chance). Drawn from the canonical cell, at the image of its position
+    // next to the cell.
     [[nodiscard]] bool candidate(int cellX, int cellZ, Arch& arch) const;
 
     // Heights of the springline (top of the pillars), of the crown of the half-torus and of
@@ -81,9 +87,13 @@ public:
                               double z) const;
 
     [[nodiscard]] const ArchParams& params() const { return params_; }
+    [[nodiscard]] const PeriodicCells& cellsX() const { return cellsX_; }
+    [[nodiscard]] const PeriodicCells& cellsZ() const { return cellsZ_; }
 
 private:
     ArchParams params_;
+    PeriodicCells cellsX_;
+    PeriodicCells cellsZ_;
     std::uint64_t seed_;
 };
 

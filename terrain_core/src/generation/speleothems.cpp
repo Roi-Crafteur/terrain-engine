@@ -45,9 +45,17 @@ struct Candidate {
     double z;
 };
 
-Candidate candidateOf(std::uint64_t cell, int cellX, int cellZ, const SpeleothemParams& p) {
-    return {(cellX + 0.5 + (unitDraw(cell, kOffsetXDraw) - 0.5) * p.jitter) * p.spacing,
-            (cellZ + 0.5 + (unitDraw(cell, kOffsetZDraw) - 0.5) * p.jitter) * p.spacing};
+// Candidate of the cell (cellX, cellZ), an unwrapped index: drawn from its canonical cell, whose
+// stream cell receives, at the image of its canonical position next to the cell.
+Candidate candidateOf(std::uint64_t seed, int cellX, int cellZ, const PeriodicCells& cellsX,
+                      const PeriodicCells& cellsZ, double jitter, std::uint64_t& cell) {
+    const auto canonicalX = static_cast<int>(cellsX.wrap(cellX));
+    const auto canonicalZ = static_cast<int>(cellsZ.wrap(cellZ));
+    cell = cellSeed(seed, canonicalX, canonicalZ);
+    return {(canonicalX + 0.5 + (unitDraw(cell, kOffsetXDraw) - 0.5) * jitter) * cellsX.size +
+                cellsX.shift(cellX),
+            (canonicalZ + 0.5 + (unitDraw(cell, kOffsetZDraw) - 0.5) * jitter) * cellsZ.size +
+                cellsZ.shift(cellZ)};
 }
 
 bool dryBiome(Biome biome) {
@@ -58,21 +66,28 @@ using cave_scan::Span;
 
 } // namespace
 
-SpeleothemField::SpeleothemField(std::uint64_t seed, const SpeleothemParams& params)
-    : params_(params), seed_(noise::deriveSeed(seed, kSpeleothemStream)) {}
+SpeleothemField::SpeleothemField(std::uint64_t seed, const SpeleothemParams& params,
+                                 const WorldSize& world)
+    : params_(params), cellsX_(periodicCells(world.x, params.spacing)),
+      cellsZ_(periodicCells(world.z, params.spacing)),
+      seed_(noise::deriveSeed(seed, kSpeleothemStream)) {
+    validate(world);
+}
 
 std::vector<Speleothem> SpeleothemField::place(CaveSampler& sampler, double minX, double minZ,
                                                double maxX, double maxZ) const {
     std::vector<Speleothem> result;
-    const auto first = [this](double value) {
-        return static_cast<int>(std::floor(value / params_.spacing)) - 1;
+    const auto first = [](double value, const PeriodicCells& cells) {
+        return static_cast<int>(cells.cellOf(value)) - 1;
     };
-    const auto last = [this](double value) {
-        return static_cast<int>(std::floor(value / params_.spacing)) + 1;
+    const auto last = [](double value, const PeriodicCells& cells) {
+        return static_cast<int>(cells.cellOf(value)) + 1;
     };
-    for (int cellZ = first(minZ); cellZ <= last(maxZ); ++cellZ) {
-        for (int cellX = first(minX); cellX <= last(maxX); ++cellX) {
-            const Candidate c = candidateOf(cellSeed(seed_, cellX, cellZ), cellX, cellZ, params_);
+    for (int cellZ = first(minZ, cellsZ_); cellZ <= last(maxZ, cellsZ_); ++cellZ) {
+        for (int cellX = first(minX, cellsX_); cellX <= last(maxX, cellsX_); ++cellX) {
+            std::uint64_t cell = 0;
+            const Candidate c =
+                candidateOf(seed_, cellX, cellZ, cellsX_, cellsZ_, params_.jitter, cell);
             if (c.x >= minX && c.x < maxX && c.z >= minZ && c.z < maxZ) {
                 placeCandidate(sampler, cellX, cellZ, result);
             }
@@ -84,8 +99,8 @@ std::vector<Speleothem> SpeleothemField::place(CaveSampler& sampler, double minX
 void SpeleothemField::placeCandidate(CaveSampler& sampler, int cellX, int cellZ,
                                      std::vector<Speleothem>& result) const {
     const SpeleothemParams& p = params_;
-    const std::uint64_t cell = cellSeed(seed_, cellX, cellZ);
-    const auto [x, z] = candidateOf(cell, cellX, cellZ, p);
+    std::uint64_t cell = 0;
+    const auto [x, z] = candidateOf(seed_, cellX, cellZ, cellsX_, cellsZ_, p.jitter, cell);
     // No speleothem in the whole column of an entrance: neither in its tube nor under it.
     const std::vector<CaveEntrance>& entrances = sampler.entrances();
     if (std::any_of(entrances.begin(), entrances.end(), [&](const CaveEntrance& entrance) {

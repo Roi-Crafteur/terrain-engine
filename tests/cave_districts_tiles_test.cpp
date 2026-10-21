@@ -225,12 +225,14 @@ std::size_t countOf(const std::vector<terrain::CaveMaterial>& materials, terrain
     return static_cast<std::size_t>(std::count(materials.begin(), materials.end(), m));
 }
 
-// The materials of the walls of a tile follow the profile of the district: the glacier districts
-// paint ice (and freeze their lakes), the volcanic ones basalt, the lush ones moss, where the
-// neutral districts, over the very same caves, paint none of the first two.
+// The materials of the walls of a tile (at the chamber of the first entrance, deep enough for the
+// walls under mossDepth) follow the profile of the district: the glacier districts paint ice (and
+// freeze their lakes), the volcanic ones basalt, the lush ones moss, where the neutral districts,
+// over the very same caves, paint none of the first two.
 void testMaterials(const std::vector<DistrictEntrance>& pure) {
     using terrain::CaveMaterial;
-    const ChunkCoord chunk = streaming_test::entranceChunk(pure.front().entrance);
+    const CaveEntrance& entrance = pure.front().entrance;
+    const ChunkCoord chunk = terrain::worldToChunk(entrance.bottomX, entrance.bottomZ);
     const auto tileOf = [chunk](CaveDistrictType type) {
         const TerrainTiles tiles(kSeed, {}, {}, uniformCaves(defaultProfile(type)));
         return tiles.generate({{chunk, 0}, 0});
