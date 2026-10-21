@@ -145,7 +145,8 @@ void testSeaWhereTheCoastIsNegative() {
     TEST_CHECK(consistent);
     TEST_CHECK(masked);
     TEST_CHECK(land > 20'000 * 30 / 100 && land < 20'000 * 45 / 100);
-    TEST_CHECK(mountains > 0 && mountains < land / 4);
+    // Belts, old massifs and intraplate high relief: about a third of the land, not all of it.
+    TEST_CHECK(mountains > land / 10 && mountains < land / 2);
 }
 
 // The plates leave their marks on the map: mountain belts and high plateaus on land, island arcs

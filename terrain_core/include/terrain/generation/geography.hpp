@@ -25,6 +25,8 @@ struct GeographySample {
     float belt = 0.0f;   // [0, 1], the mountain belts of the collisions of the plates
     float hills = 0.0f;  // meters, the amplitude of the hills of the provinces
     float massif = 0.0f; // [0, 1], the old massifs and intraplate high relief of the provinces
+    float rugged = 1.0f; // the share of the amplitude of the small coasts, smoothRugged to 1
+    float coarse = 0.0f; // the broadest octaves of the coarse coast noise
 };
 
 // The share of the hills and of the mountains left by the valleys of the drainage of the map at a
@@ -46,7 +48,17 @@ struct ValleyShape {
 class Geography {
 public:
     // Fields of a node of the map, in this order.
-    enum Field : std::size_t { kCoast, kLand, kSea, kBelt, kHills, kMassif, kFields };
+    enum Field : std::size_t {
+        kCoast,
+        kLand,
+        kSea,
+        kBelt,
+        kHills,
+        kMassif,
+        kRugged,
+        kCoarse,
+        kFields
+    };
 
     // Throws std::invalid_argument for invalid parameters or world. The construction runs on
     // up to threads threads (0: the hardware concurrency), in fixed blocks: the same bits

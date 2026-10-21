@@ -138,18 +138,32 @@ void boxBlur(const Grid& grid, std::vector<float>& field, int radius) {
     if (radius <= 0) {
         return;
     }
-    std::vector<float> along(field.size());
+    // The wrapped column and row offsets of i - radius... i + radius, for i from 0.
+    std::vector<std::size_t> columns(static_cast<std::size_t>(grid.nx + 2 * radius));
+    std::vector<std::size_t> rows(static_cast<std::size_t>(grid.nz + 2 * radius));
+    for (std::size_t k = 0; k < columns.size(); ++k) {
+        columns[k] = static_cast<std::size_t>(grid.wrapI(static_cast<int>(k) - radius));
+    }
+    for (std::size_t k = 0; k < rows.size(); ++k) {
+        rows[k] = static_cast<std::size_t>(grid.wrapJ(static_cast<int>(k) - radius)) *
+                  static_cast<std::size_t>(grid.nx);
+    }
     const double norm = 1.0 / (2 * radius + 1);
+    const auto taps = static_cast<std::size_t>(2 * radius + 1);
+    std::vector<float> along(field.size());
     for (int pass = 0; pass < 2; ++pass) {
         const std::vector<float>& in = pass == 0 ? field : along;
         std::vector<float> out(field.size());
         for (int j = 0; j < grid.nz; ++j) {
+            const std::size_t row = rows[static_cast<std::size_t>(j + radius)];
             for (int i = 0; i < grid.nx; ++i) {
                 double sum = 0.0;
-                for (int d = -radius; d <= radius; ++d) {
-                    sum += pass == 0 ? in[grid.index(i + d, j)] : in[grid.index(i, j + d)];
+                for (std::size_t d = 0; d < taps; ++d) {
+                    sum += pass == 0 ? in[row + columns[static_cast<std::size_t>(i) + d]]
+                                     : in[rows[static_cast<std::size_t>(j) + d] +
+                                          static_cast<std::size_t>(i)];
                 }
-                out[grid.index(i, j)] = static_cast<float>(sum * norm);
+                out[row + static_cast<std::size_t>(i)] = static_cast<float>(sum * norm);
             }
         }
         (pass == 0 ? along : field) = std::move(out);

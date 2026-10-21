@@ -235,7 +235,7 @@ double missOn(const GeographyParams& p, const Grid& grid, const std::vector<floa
 // those that fit there on the whole map.
 Choice chooseCrust(std::uint64_t seed, const GeographyParams& p, const WorldSize& world,
                    const Grid& grid, int threads) {
-    constexpr int kChecks = 4;
+    constexpr int kChecks = 8;
     const Grid coarse = coarser(grid, world, kCoarse);
     const Grid half = coarser(grid, world, 2);
     Choice best;

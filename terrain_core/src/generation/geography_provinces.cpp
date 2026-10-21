@@ -25,13 +25,13 @@ struct Kind {
 };
 
 constexpr std::array<Kind, 7> kKinds = {{
-    {0.28, 0.40, {0.0f, 120.0f}, {0.0f, 0.0f}, 0.0f},          // lowland
+    {0.27, 0.40, {0.0f, 40.0f}, {0.0f, 0.0f}, 0.0f},           // lowland
     {0.10, 0.25, {-250.0f, -80.0f}, {0.0f, 0.0f}, 0.0f},       // sedimentary basin
-    {0.12, 0.08, {500.0f, 1000.0f}, {10.0f, 40.0f}, 0.0f},     // high plain
-    {0.18, 0.10, {120.0f, 350.0f}, {120.0f, 280.0f}, 0.0f},    // shield with hills
-    {0.15, 0.08, {350.0f, 800.0f}, {250.0f, 500.0f}, 0.3f},    // old worn massif
-    {0.11, 0.05, {900.0f, 1350.0f}, {40.0f, 120.0f}, 0.0f},    // plateau
-    {0.06, 0.04, {800.0f, 1500.0f}, {150.0f, 300.0f}, 0.85f},  // intraplate high relief
+    {0.12, 0.08, {500.0f, 1100.0f}, {10.0f, 40.0f}, 0.0f},     // high plain
+    {0.17, 0.10, {60.0f, 250.0f}, {100.0f, 250.0f}, 0.0f},     // shield with hills
+    {0.15, 0.08, {450.0f, 900.0f}, {250.0f, 500.0f}, 0.3f},    // old worn massif
+    {0.10, 0.05, {600.0f, 1000.0f}, {40.0f, 120.0f}, 0.0f},    // plateau
+    {0.09, 0.04, {1000.0f, 1800.0f}, {150.0f, 300.0f}, 0.85f}, // intraplate high relief
 }};
 
 // Belts from this strength on make forelands around them.
@@ -94,22 +94,25 @@ struct Sites {
     }
 };
 
-// Distance from each node to the nearest node of a belt of at least kForelandBelt, meters.
-std::vector<double> beltDistance(const Grid& grid, const Tectonics& tectonics) {
-    std::vector<double> seed(grid.nodes(), kNoSource);
-    for (std::size_t k = 0; k < seed.size(); ++k) {
-        seed[k] = tectonics.belt[k] >= kForelandBelt ? 0.0 : kNoSource;
+// Whether a belt of at least kForelandBelt lies within distance of node (ni, nj).
+bool nearBelt(const Grid& grid, const Tectonics& tectonics, int ni, int nj, double distance) {
+    const int ri = static_cast<int>(std::ceil(distance / grid.sizeX));
+    const int rj = static_cast<int>(std::ceil(distance / grid.sizeZ));
+    for (int dj = -rj; dj <= rj; ++dj) {
+        for (int di = -ri; di <= ri; ++di) {
+            const double dx = di * grid.sizeX;
+            const double dz = dj * grid.sizeZ;
+            if (dx * dx + dz * dz < distance * distance &&
+                tectonics.belt[grid.index(ni + di, nj + dj)] >= kForelandBelt) {
+                return true;
+            }
+        }
     }
-    std::vector<double> distance = distanceTransform(grid, std::move(seed));
-    for (double& d : distance) {
-        d = d < kNoSource ? std::sqrt(d) : std::numeric_limits<double>::max();
-    }
-    return distance;
+    return false;
 }
 
 Sites placeSites(std::uint64_t seed, const GeographyParams& p, const WorldSize& world,
                  const Grid& grid, const Tectonics& tectonics) {
-    const std::vector<double> toBelt = beltDistance(grid, tectonics);
     Sites s;
     s.nx = std::max(1, static_cast<int>(std::lround(world.x / p.provinceSize)));
     s.nz = std::max(1, static_cast<int>(std::lround(world.z / p.provinceSize)));
@@ -127,7 +130,7 @@ Sites placeSites(std::uint64_t seed, const GeographyParams& p, const WorldSize& 
                                                                    grid.sizeX));
             const int nj = std::min(grid.nz - 1, static_cast<int>((v.z + 0.5 * world.z) /
                                                                    grid.sizeZ));
-            const bool foreland = toBelt[grid.index(ni, nj)] < p.forelandDistance;
+            const bool foreland = nearBelt(grid, tectonics, ni, nj, p.forelandDistance);
             const Kind& kind = kKinds[kindOf(unit(draws, 2), foreland)];
             const auto lerp = [](const std::array<float, 2>& range, double t) {
                 return static_cast<float>(range[0] + (range[1] - range[0]) * t);
@@ -162,6 +165,59 @@ const Province& nearest(const Sites& s, const WorldSize& world, double qx, doubl
     return *best;
 }
 
+// The noises of the provinces: the warp of their shapes, the variation within each, the
+// undulation of the land.
+struct Noises {
+    noise::FbmOctaves warpX;
+    noise::FbmOctaves warpZ;
+    noise::FbmOctaves variation;
+    noise::FbmOctaves undulation;
+};
+
+Noises makeNoises(std::uint64_t stream, const GeographyParams& params, const WorldSize& world) {
+    const auto fbm = [&](std::uint64_t s, int octaves, double wavelength) {
+        return noise::FbmOctaves(noise::deriveSeed(stream, s),
+                                 {.octaves = octaves,
+                                  .frequency = 1.0 / wavelength,
+                                  .lattices = noise::OctaveLattices::Unrotated},
+                                 world);
+    };
+    return {fbm(1, 3, 3.0 * params.provinceSize), fbm(2, 3, 3.0 * params.provinceSize),
+            fbm(3, 2, kVariationWavelength), fbm(4, 2, kUndulationWavelength)};
+}
+
+// The uplift, hills and massif of the province nearest to (x, z) after the warp, varied.
+std::array<float, 3> provinceFields(const GeographyParams& params, const WorldSize& world,
+                                    const Sites& sites, const Noises& n, double x, double z) {
+    const std::array<float, 2> w = n.warpX.fbm2DPair(n.warpZ, x, z);
+    const Province& v =
+        nearest(sites, world, noise::wrapCanonical(x + params.provinceWarp * w[0], world.x),
+                noise::wrapCanonical(z + params.provinceWarp * w[1], world.z));
+    const float vary = 1.0f + kVariation * n.variation.fbm2D(x, z);
+    return {v.uplift * vary + kUndulation * n.undulation.fbm2D(x, z), v.hills * vary, v.massif};
+}
+
+// A field of the grid from a field of a coarser grid of the same world, bilinearly.
+std::vector<float> upsample(const Grid& from, const Grid& to, const std::vector<float>& field) {
+    std::vector<float> out(to.nodes());
+    for (int j = 0; j < to.nz; ++j) {
+        const double v = (to.z(j) - from.z(0)) / from.sizeZ;
+        const int j0 = static_cast<int>(std::floor(v));
+        const double tv = v - j0;
+        for (int i = 0; i < to.nx; ++i) {
+            const double u = (to.x(i) - from.x(0)) / from.sizeX;
+            const int i0 = static_cast<int>(std::floor(u));
+            const double tu = u - i0;
+            const double a =
+                field[from.index(i0, j0)] * (1.0 - tu) + field[from.index(i0 + 1, j0)] * tu;
+            const double b =
+                field[from.index(i0, j0 + 1)] * (1.0 - tu) + field[from.index(i0 + 1, j0 + 1)] * tu;
+            out[to.index(i, j)] = static_cast<float>(a * (1.0 - tv) + b * tv);
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 Provinces buildProvinces(std::uint64_t seed, const GeographyParams& params,
@@ -169,45 +225,30 @@ Provinces buildProvinces(std::uint64_t seed, const GeographyParams& params,
                          int threads) {
     const std::uint64_t stream = noise::deriveSeed(seed, kProvinces);
     const Sites sites = placeSites(noise::deriveSeed(stream, 0), params, world, grid, tectonics);
-    const auto warp = [&](std::uint64_t s) {
-        return noise::FbmOctaves(noise::deriveSeed(stream, s),
-                                 {.octaves = 3,
-                                  .frequency = 1.0 / (3.0 * params.provinceSize),
-                                  .lattices = noise::OctaveLattices::Unrotated},
-                                 world);
-    };
-    const noise::FbmOctaves warpX = warp(1);
-    const noise::FbmOctaves warpZ = warp(2);
-    const auto slow = [&](std::uint64_t s, double wavelength) {
-        return noise::FbmOctaves(noise::deriveSeed(stream, s),
-                                 {.octaves = 2,
-                                  .frequency = 1.0 / wavelength,
-                                  .lattices = noise::OctaveLattices::Unrotated},
-                                 world);
-    };
-    const noise::FbmOctaves variation = slow(3, kVariationWavelength);
-    const noise::FbmOctaves undulation = slow(4, kUndulationWavelength);
-    Provinces out;
-    out.uplift.assign(grid.nodes(), 0.0f);
-    out.hills.assign(grid.nodes(), 0.0f);
-    out.massif.assign(grid.nodes(), 0.0f);
-    planet::parallelRows(grid.nz, threads, [&](int begin, int end) {
+    const Noises noises = makeNoises(stream, params, world);
+    // On a grid half as fine (the fields are blurred over provinceBlend), then bilinearly.
+    Grid half;
+    half.nx = std::max(1, grid.nx / 2);
+    half.nz = std::max(1, grid.nz / 2);
+    half.sizeX = world.x / half.nx;
+    half.sizeZ = world.z / half.nz;
+    std::array<std::vector<float>, 3> coarse;
+    for (std::vector<float>& field : coarse) {
+        field.assign(half.nodes(), 0.0f);
+    }
+    planet::parallelRows(half.nz, threads, [&](int begin, int end) {
         for (int j = begin; j < end; ++j) {
-            for (int i = 0; i < grid.nx; ++i) {
-                const std::array<float, 2> w = warpX.fbm2DPair(warpZ, grid.x(i), grid.z(j));
-                const Province& v = nearest(
-                    sites, world,
-                    noise::wrapCanonical(grid.x(i) + params.provinceWarp * w[0], world.x),
-                    noise::wrapCanonical(grid.z(j) + params.provinceWarp * w[1], world.z));
-                const std::size_t k = grid.index(i, j);
-                const float vary = 1.0f + kVariation * variation.fbm2D(grid.x(i), grid.z(j));
-                out.uplift[k] =
-                    v.uplift * vary + kUndulation * undulation.fbm2D(grid.x(i), grid.z(j));
-                out.hills[k] = v.hills * vary;
-                out.massif[k] = v.massif;
+            for (int i = 0; i < half.nx; ++i) {
+                const std::array<float, 3> f =
+                    provinceFields(params, world, sites, noises, half.x(i), half.z(j));
+                for (std::size_t n = 0; n < f.size(); ++n) {
+                    coarse[n][half.index(i, j)] = f[n];
+                }
             }
         }
     });
+    Provinces out{upsample(half, grid, coarse[0]), upsample(half, grid, coarse[1]),
+                  upsample(half, grid, coarse[2])};
     const int radius = std::max(
         1, static_cast<int>(std::lround(params.provinceBlend / (2.0 * params.cellSize))));
     for (std::vector<float>* field : {&out.uplift, &out.hills, &out.massif}) {

@@ -33,7 +33,7 @@ struct GeographyParams {
     // cores), the first whose land masses of at least continentArea number minContinents to
     // maxContinents, the largest holding at most largestShare of the land; else the closest.
     // Smaller water bodies than inlandSeaArea inside the land are filled.
-    int crustCandidates = 8;
+    int crustCandidates = 16;
     int minContinents = 5;
     int maxContinents = 10;
     double continentArea = 1.0e13; // 10 million km2
@@ -50,16 +50,16 @@ struct GeographyParams {
     double coastAmplitude = 250'000.0;
     double coastBand = 700'000.0;
     double detailCoastWavelength = 32'000.0;
-    double detailCoastAmplitude = 22'000.0;
-    double detailCoastBand = 60'000.0;
-    double fineCoastWavelength = 6'000.0;
-    double fineCoastAmplitude = 6'000.0;
-    double fineCoastBand = 16'000.0;
+    double detailCoastAmplitude = 50'000.0;
+    double detailCoastBand = 130'000.0;
+    double fineCoastWavelength = 10'000.0;
+    double fineCoastAmplitude = 22'000.0;
+    double fineCoastBand = 56'000.0;
     // The detail and fine coasts are rugged in some regions (rias, fjords, skerries), smooth in
     // others (beaches, deltas): their amplitude is scaled by smoothRugged up to 1, by an fbm of
     // ruggedWavelength.
     double ruggedWavelength = 2'500'000.0;
-    float smoothRugged = 0.25f;
+    float smoothRugged = 0.5f;
 
     // Continental shelf: from the coast down to shelfDepth over shelfWidth, then the slope
     // (shelfSlope) to the floor of the map: continental rise and abyssal plain at about
@@ -74,8 +74,8 @@ struct GeographyParams {
     // closed depression at its scale), on a continental tilt of inlandRise per meter from the
     // coast.
     double coastRamp = 30'000.0;
-    double drainSlope = 1.0e-4;
-    double inlandRise = 1.5e-4;
+    double drainSlope = 6.0e-5;
+    double inlandRise = 0.8e-4;
     // The flood reaches the nodes in the order of their elevations jittered by up to drainJitter:
     // where the land is gentle its drainage branches like a tree instead of running down in
     // parallel lines.
@@ -111,9 +111,9 @@ struct GeographyParams {
     // to 1.5 times it from one boundary to another, and +-30 % along a boundary), centered
     // beltOffset half widths toward the overriding plate; on land they lift the regional
     // elevation by beltUplift at their axis (+-35 %) and carry the mountains.
-    double beltWidth = 170'000.0;
+    double beltWidth = 200'000.0;
     double beltOffset = 0.35;
-    float beltUplift = 2200.0f;
+    float beltUplift = 2900.0f;
     // High plateaus behind plateauShare of the collisions longer than plateauLength:
     // plateauUplift (+-10 %) over plateauWidth (0.6 to 1.4 times it) on the overriding side.
     float plateauShare = 0.3f;

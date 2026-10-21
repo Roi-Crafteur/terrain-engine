@@ -14,9 +14,11 @@
 
 namespace terrain {
 
-// The noises of the geography at a point: the three coast stages and the ruggedness of the
-// coasts, the island arcs, the warp of the valleys (twins).
+// The noises of the geography: the three coast stages (the broadest octaves of the coarse one,
+// and the ruggedness of the coasts, on the map), the island arcs, the warp of the valleys
+// (twins).
 struct Geography::Noises {
+    noise::FbmOctaves coarseMap;
     noise::FbmOctaves coarse;
     noise::FbmOctaves detail;
     noise::FbmOctaves fine;
@@ -45,6 +47,7 @@ enum Stream : std::uint64_t {
     kValleyWarpX,
     kValleyWarpZ,
     kDrainage,
+    kCoastCoarsePoint,
 };
 
 // The continental crust on the map: which nodes are land, and the signed distance from each

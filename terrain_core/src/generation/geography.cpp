@@ -25,6 +25,13 @@ using geography::Grid;
 // Steps of the search of the anchor along the equator, meters.
 constexpr double kAnchorStep = 1024.0;
 
+// The coarse coast is an fbm of 5 octaves of gain kCoarseGain: the 2 broadest on the map, the 3
+// others at the point, weighted by the sums of their amplitudes.
+constexpr double kCoarseGain = 0.7;
+constexpr double kCoarseMapWeight = 1.0 + kCoarseGain;
+constexpr double kCoarsePointWeight =
+    kCoarseGain * kCoarseGain * (1.0 + kCoarseGain + kCoarseGain * kCoarseGain);
+
 // Island arcs: islands where the fbm of the arcs is above kArcThreshold - kArcBelt belt, their
 // coast signal arcLift / kArcSpan times the excess (kArcFall times as steep below 0), raising the
 // coast signal where it is higher, fully from a belt of kArcFull on.
@@ -110,7 +117,10 @@ double Geography::coastAt(double x, double z, const GeographySample& map) const 
     double c = map.coast;
     const double w1 = bandWeight(c, p.coastAmplitude, p.coastBand);
     if (w1 != 0.0) {
-        c += w1 * p.coastAmplitude * noises_->coarse.fbm2D(x, z);
+        // Its two broadest octaves are on the map, the three others at the point.
+        c += w1 * p.coastAmplitude *
+             (kCoarseMapWeight * map.coarse + kCoarsePointWeight * noises_->coarse.fbm2D(x, z)) /
+             (kCoarseMapWeight + kCoarsePointWeight);
     }
     const double arcBase = kArcBelt * map.belt - kArcThreshold;
     if (map.belt > 0.0f && p.arcLift * (arcBase + 1.0) / kArcSpan > c) {
@@ -122,9 +132,7 @@ double Geography::coastAt(double x, double z, const GeographySample& map) const 
     if (w2 == 0.0) {
         return c;
     }
-    const double rugged =
-        p.smoothRugged + (1.0f - p.smoothRugged) *
-                             noise::smoothstep(-0.25f, 0.35f, noises_->rugged.fbm2D(x, z));
+    const double rugged = map.rugged;
     c += w2 * rugged * p.detailCoastAmplitude * noises_->detail.fbm2D(x, z);
     const double w3 = bandWeight(c, p.fineCoastAmplitude, p.fineCoastBand);
     if (w3 == 0.0) {
@@ -147,19 +155,21 @@ std::shared_ptr<const Geography::Noises> makeNoises(std::uint64_t seed, const Ge
                                  world);
     };
     auto noises = std::make_shared<Geography::Noises>();
-    noises->coarse = fbm(geography::kCoastCoarse, 4, p.coastWavelength, 0.55,
+    noises->coarseMap = fbm(geography::kCoastCoarse, 2, p.coastWavelength, kCoarseGain,
+                            noise::OctaveLattices::Unrotated);
+    noises->coarse = fbm(geography::kCoastCoarsePoint, 3, 0.25 * p.coastWavelength, kCoarseGain,
                          noise::OctaveLattices::Unrotated);
     noises->detail = fbm(geography::kCoastDetail, 3, p.detailCoastWavelength, 0.55,
                          noise::OctaveLattices::RotatedFast);
-    noises->fine = fbm(geography::kCoastFine, 5, p.fineCoastWavelength, 0.6,
+    noises->fine = fbm(geography::kCoastFine, 4, p.fineCoastWavelength, 0.75,
                        noise::OctaveLattices::RotatedFast);
     noises->rugged = fbm(geography::kCoastRugged, 2, p.ruggedWavelength, 0.5,
                          noise::OctaveLattices::Unrotated);
     noises->arc = fbm(geography::kArcs, 3, p.arcWavelength, 0.5,
                       noise::OctaveLattices::RotatedFast);
-    noises->valleyX = fbm(geography::kValleyWarpX, 2, p.valleyWarpWavelength, 0.5,
+    noises->valleyX = fbm(geography::kValleyWarpX, 1, p.valleyWarpWavelength, 0.5,
                           noise::OctaveLattices::RotatedFast);
-    noises->valleyZ = fbm(geography::kValleyWarpZ, 2, p.valleyWarpWavelength, 0.5,
+    noises->valleyZ = fbm(geography::kValleyWarpZ, 1, p.valleyWarpWavelength, 0.5,
                           noise::OctaveLattices::RotatedFast);
     noises->twinValleys = noises->valleyX.twinOf(noises->valleyZ);
     return noises;
@@ -201,6 +211,15 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
         nodes_[k * kFields + kBelt] = tectonics.belt[k];
         nodes_[k * kFields + kHills] = provinces.hills[k];
         nodes_[k * kFields + kMassif] = provinces.massif[k];
+        nodes_[k * kFields + kCoarse] =
+            noises_->coarseMap.fbm2D(grid.x(grid.column(k)), grid.z(grid.row(k)));
+        // The ruggedness of the coasts: smoothRugged up to 1, by a slow fbm.
+        nodes_[k * kFields + kRugged] =
+            params_.smoothRugged +
+            (1.0f - params_.smoothRugged) *
+                noise::smoothstep(-0.25f, 0.35f,
+                                  noises_->rugged.fbm2D(grid.x(grid.column(k)),
+                                                        grid.z(grid.row(k))));
     }
     down_ = std::move(drainage.down);
     drainedArea_ = std::move(drainage.area);
@@ -238,6 +257,8 @@ GeographySample Geography::mapAt(double geoX, double z) const {
     s.belt = static_cast<float>(sum[kBelt]);
     s.hills = static_cast<float>(sum[kHills]);
     s.massif = static_cast<float>(sum[kMassif]);
+    s.rugged = static_cast<float>(sum[kRugged]);
+    s.coarse = static_cast<float>(sum[kCoarse]);
     return s;
 }
 
