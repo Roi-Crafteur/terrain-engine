@@ -62,11 +62,15 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 ## À venir
 
 ### Phase 10 — suite
-- Character qui marche, saute et tombe sur le terrain (pack Third Person)
+- Character qui marche, saute et tombe sur le terrain : vérifié avec le Character du
+  moteur (0 passage sous le sol sur 1,7 km à 108 km/h) ; reste le pack Third Person
 - type de mesh choisi par mesure : Dynamic Mesh, ProceduralMeshComponent ou
   RealtimeMeshComponent
 - compilation du plugin sous Linux et Mac (risque `std::jthread`)
-- ramener le joueur d'un monde entier au-delà d'un tour (coordonnées Unreal ≈ 88 000 km)
+- meshing 1,6 à 1,9 fois plus lent sous Clang que sous GCC (Unreal Linux et Mac,
+  serveurs) : à profiler
+- ramener le joueur d'un monde entier au-delà d'un tour (coordonnées Unreal ≈ 88 000 km) :
+  PR #24, testée dans UE 5.8
 
 ### Chantier parallèle — Performance du bruit
 - retrouver le coût d'avant la phase 9 (heightAt ≈ 2,5 fois plus lent depuis les maths
@@ -112,13 +116,25 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - Unreal : rendu en clipmap, courbure simulée, atmosphère
 
 ### Phase 14 — Rendu Unreal
-- style photoréaliste avec un étalonnage stylisé (esprit shaders Minecraft),
-  ambiance chaude ou froide selon le lieu et la météo
-- matériaux depuis les identifiants de matériau du core
+- références : Enshrouded, shaders Minecraft (Complementary, BSL, SEUS),
+  Red Dead Redemption 2, photos réelles
+- couleurs naturelles saturées et chaleureuses, ambiance chaude ou froide selon le lieu
+  et la météo
+- ciel : couchers spectaculaires et rayons de lumière, nuages volumétriques qui ombrent
+  le relief, nuits étoilées (Voie lactée, phases de la lune), brume dans les vallées et
+  perspective atmosphérique
+- eau : transparente avec caustiques, vagues et écume, couleur selon le lieu (turquoise,
+  vert glacier, brune, noire), cascades spectaculaires (embruns, arcs-en-ciel)
+- végétation PCG depuis les positions du core, densité selon le biome : forêts denses ou
+  clairsemées, clairières, monts, vallons
+- matériaux depuis les identifiants de matériau du core ; très haut détail par des
+  rochers, falaises et arbres Nanite placés par PCG et du relief fin dans le matériau
+  (Nanite ne s'applique pas directement aux tuiles générées en jeu)
+- réglages graphiques jusqu'à « Ultra » / « Natif » (Nanite et détail partout), et un
+  mode sans Lumen ni Nanite pour les anciennes machines
 - Water branché sur les splines de rivière
-- végétation PCG depuis les positions du core
-- jour / nuit, météo régionale, saisons, aurores, éclipses et phénomènes rares
-- PC large : un mode de rendu sans Lumen ni Nanite pour les anciennes machines
+- jour / nuit, météo régionale, aurores, éclipses et phénomènes rares ; saisons et
+  aspect de l'horizon lointain (brumeux, net ou selon la météo) à décider plus tard
 
 ### Phase 15 — Jeu solo
 - modes : exploration / contemplation, survie, créatif réservé aux administrateurs
