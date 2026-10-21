@@ -53,6 +53,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield.cpp
     src/generation/heightfield_density.cpp
     src/generation/noise.cpp
+    src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
     src/generation/planet/planet_build.cpp
     src/generation/planet/planet_climate.cpp
@@ -88,6 +89,8 @@ add_library(terrain_core STATIC
     src/io/ecology_png.cpp
     src/io/eroded_png.cpp
     src/io/heightmap_png.cpp
+    src/io/horizon_panorama.cpp
+    src/io/horizon_png.cpp
     src/io/planet_png.cpp
     src/io/planet_png_layers.cpp
     src/io/png.cpp
@@ -102,6 +105,11 @@ add_library(terrain_core STATIC
     src/storage/world_meta.cpp
     src/storage/world_save.cpp
     src/streaming/cave_tiles.cpp
+    src/streaming/horizon_epoch.cpp
+    src/streaming/horizon_grids.cpp
+    src/streaming/horizon_levels.cpp
+    src/streaming/horizon_sampler.cpp
+    src/streaming/horizon_streamer.cpp
     src/streaming/lod.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
@@ -216,6 +224,13 @@ add_custom_target(export_voronoi_maps
     USES_TERMINAL
 )
 
+# Benchmark of the noise and the relief, not a test (outside ctest): heightAt, sampleAt, the
+# tiles of LOD 0 to 3 with and without caves, 1024 x 1024 height grids and the parts of a height
+# sample, with a checksum of every result that an optimization must leave unchanged. Build in
+# Release: terrain_bench_noise [runs] [--quick]
+add_executable(terrain_bench_noise tools/bench_noise.cpp tools/bench_world.cpp)
+target_link_libraries(terrain_bench_noise PRIVATE terrain_core terrain_warnings)
+
 # Planet level (climate, lakes, river graph) of a whole world, its figures and control images:
 # terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary] [samples-per-axis]
 #                       [threads] [world-x] [world-z]
@@ -265,3 +280,10 @@ target_link_libraries(terrain_export_caves PRIVATE terrain_core terrain_warnings
 # meeting of two types): terrain_export_cave_regions <output-dir> [seed] [m/px] [size] [cx] [cz]
 add_executable(terrain_export_cave_regions tools/export_cave_regions.cpp)
 target_link_libraries(terrain_export_cave_regions PRIVATE terrain_core terrain_warnings)
+
+# Far horizon PNG export: level_N.png, map_relief.png, map_materials.png and panorama.png (360
+# degrees from a summit found with the grids, or from x z), with how far the relief shows and
+# what the silhouette loses without a prefilter:
+# terrain_export_horizon <output-dir> [seed] [x z] [cells-per-side]
+add_executable(terrain_export_horizon tools/export_horizon.cpp)
+target_link_libraries(terrain_export_horizon PRIVATE terrain_core terrain_warnings)

@@ -25,7 +25,10 @@ terrain_add_test(test_view_modes terrain_viewer_modes)
 terrain_add_test(marching_cubes_test terrain_core)
 terrain_add_test(noise_test terrain_core)
 terrain_add_test(noise_periodic_test terrain_core)
+terrain_add_test(noise_octaves_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
+terrain_add_test(heightfield_shortcuts_test terrain_core)
+terrain_add_test(heightfield_batch_test terrain_core)
 terrain_add_test(heightfield_macro_test terrain_core)
 terrain_add_test(heightfield_voronoi_test terrain_core)
 terrain_add_test(heightfield_density_test terrain_core)
@@ -67,6 +70,13 @@ terrain_add_test(lod_seams_test terrain_core)
 terrain_add_test(stream_manager_test terrain_core)
 terrain_add_test(modifications_test terrain_core)
 terrain_add_test(terrain_tiles_test terrain_core)
+terrain_add_test(horizon_levels_test terrain_core)
+terrain_add_test(horizon_sampler_test terrain_core)
+terrain_add_test(horizon_seams_test terrain_core)
+terrain_add_test(horizon_grids_test terrain_core)
+terrain_add_test(horizon_streamer_test terrain_core)
+terrain_add_test(horizon_cost_test terrain_core)
+terrain_add_test(horizon_png_test terrain_core)
 terrain_add_test(persistence_test terrain_core)
 terrain_add_test(world_meta_test terrain_core)
 terrain_add_test(region_file_test terrain_core)
@@ -98,7 +108,22 @@ terrain_add_test(cave_materials_regions_test terrain_core)
 terrain_add_test(cave_golden_test terrain_core)
 terrain_add_test(heightfield_golden_test terrain_core)
 terrain_add_test(world_golden_test terrain_core)
+terrain_add_test(horizon_golden_test terrain_core)
 terrain_add_test(golden_ftz_test terrain_core)
+
+# Frozen reference of the noise, the Heightfield, the plates and the cave noise nodes (commit
+# 052078b, before the noise performance work): frozen_reference_test compares the live code with
+# it bit for bit, beyond the few thousand points of the golden checksums.
+add_library(terrain_frozen_reference STATIC
+    frozen/frozen_heightfield.cpp
+    frozen/frozen_noise.cpp
+    frozen/frozen_plates.cpp
+    frozen/frozen_surface.cpp
+)
+target_include_directories(terrain_frozen_reference PUBLIC frozen)
+target_link_libraries(terrain_frozen_reference PUBLIC terrain_core PRIVATE terrain_warnings)
+terrain_add_test(frozen_reference_test terrain_frozen_reference)
+terrain_add_test(height_access_test terrain_frozen_reference)
 terrain_add_test(cave_districts_test terrain_core)
 terrain_add_test(cave_district_weights_test terrain_core)
 terrain_add_test(cave_districts_neutral_test terrain_core)
@@ -289,3 +314,18 @@ add_test(NAME export_cave_regions_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_cave_regions>
             -DOUT=${CMAKE_BINARY_DIR}/cave_regions_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_cave_regions_bad_args.cmake)
+
+# Smoke test of the far horizon export: the default levels with small windows (64 cells) around
+# mountains, written into <build-dir>/horizon. The summary is printed once the images are written.
+add_test(NAME export_horizon_smoke
+    COMMAND terrain_export_horizon ${CMAKE_BINARY_DIR}/horizon 20261019 -1441792 -3932160 64)
+add_dependencies(check terrain_export_horizon)
+set_tests_properties(export_horizon_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "viewpoint \\(-1441792, -3932160\\), ground [0-9.]+ m")
+
+# Invalid arguments of the far horizon export (a position without z, non-numeric values, a
+# window that is not a multiple of 4 cells, ...) are rejected before anything is written.
+add_test(NAME export_horizon_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_horizon>
+            -DOUT=${CMAKE_BINARY_DIR}/horizon_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_horizon_bad_args.cmake)

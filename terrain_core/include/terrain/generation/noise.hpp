@@ -9,6 +9,20 @@ namespace terrain::noise {
 // Independent seed for a layer or an octave of a generator (splitmix64 mixing).
 [[nodiscard]] std::uint64_t deriveSeed(std::uint64_t seed, std::uint64_t stream);
 
+// wrapCoordinate without its division when v already lies in the canonical range
+// [-period / 2, period / 2), as most sampled coordinates do: there wrapCoordinate gives v itself,
+// bit for bit. Its k = floor(v / period + 0.5) is +0 there, or 1 when v / period rounds up to
+// 0.5, which the comparison with the exact bound period - period / 2 brings back to +0; and
+// v - (+0) * period is v, -0 included. Anything else, NaN and infinities included, takes
+// wrapCoordinate.
+[[nodiscard]] inline double wrapCanonical(double v, double period) {
+    const double half = 0.5 * period;
+    if (v >= -half && v < half) {
+        return v;
+    }
+    return wrapCoordinate(v, period);
+}
+
 // Every noise tiles the world (WorldSize): it is periodic with period world.x along x and
 // world.z along z, exactly continuous across the seam, and gives the same bits at (x, z) and
 // at any image (x + k world.x, z + l world.z) of an exactly representable point, as the
