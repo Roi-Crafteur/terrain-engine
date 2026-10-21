@@ -28,8 +28,14 @@ double lerp(double a, double b, double t) {
 
 CaveNoiseLattice::CaveNoiseLattice(const std::array<CaveNoiseLayer, kCaveNoiseCount>& layers,
                                    const WorldSize& world)
-    : layers_(layers), world_(world), nodesX_(periodicCells(world.x, kCaveNodeMeters)),
-      nodesZ_(periodicCells(world.z, kCaveNodeMeters)) {}
+    : layers_(layers), nodesX_(periodicCells(world.x, kCaveNodeMeters)),
+      nodesZ_(periodicCells(world.z, kCaveNodeMeters)) {
+    for (std::size_t n = 0; n < kCaveNoiseCount; ++n) {
+        const CaveNoiseLayer& layer = layers_[n];
+        octaves_[n] =
+            noise::FbmOctaves(layer.seed, {layer.octaves, layer.frequency, 2.0, 0.5}, world);
+    }
+}
 
 float CaveNoiseLattice::nodeValue(CaveNoise noise, std::int64_t i, std::int64_t j,
                                   std::int64_t k) const {
@@ -37,8 +43,7 @@ float CaveNoiseLattice::nodeValue(CaveNoise noise, std::int64_t i, std::int64_t 
     const double x = static_cast<double>(nodesX_.wrap(i)) * nodesX_.size;
     const double y = static_cast<double>(j) * kCaveNodeMeters * layer.verticalScale;
     const double z = static_cast<double>(nodesZ_.wrap(k)) * nodesZ_.size;
-    const noise::FbmParams fbm{layer.octaves, layer.frequency, 2.0, 0.5};
-    return noise::fbm3D(x, y, z, layer.seed, fbm, world_);
+    return octaves_[noise].fbm3D(x, y, z);
 }
 
 CaveNoiseCache::CaveNoiseCache(const CaveNoiseLattice& lattice, const CaveBox& box)

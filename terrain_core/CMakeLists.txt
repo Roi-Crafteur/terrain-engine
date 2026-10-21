@@ -53,6 +53,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield.cpp
     src/generation/heightfield_density.cpp
     src/generation/noise.cpp
+    src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
@@ -196,6 +197,13 @@ add_custom_target(export_voronoi_maps
     VERBATIM
     USES_TERMINAL
 )
+
+# Benchmark of the noise and the relief, not a test (outside ctest): heightAt, sampleAt, the
+# tiles of LOD 0 to 3 with and without caves, 1024 x 1024 height grids and the parts of a height
+# sample, with a checksum of every result that an optimization must leave unchanged. Build in
+# Release: terrain_bench_noise [runs] [--quick]
+add_executable(terrain_bench_noise tools/bench_noise.cpp tools/bench_world.cpp)
+target_link_libraries(terrain_bench_noise PRIVATE terrain_core terrain_warnings)
 
 # Eroded region PNG export: terrain_export_eroded <output-dir> [seed] [m/px] [size]
 add_executable(terrain_export_eroded tools/export_eroded.cpp)

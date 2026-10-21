@@ -25,7 +25,10 @@ terrain_add_test(test_view_modes terrain_viewer_modes)
 terrain_add_test(marching_cubes_test terrain_core)
 terrain_add_test(noise_test terrain_core)
 terrain_add_test(noise_periodic_test terrain_core)
+terrain_add_test(noise_octaves_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
+terrain_add_test(heightfield_shortcuts_test terrain_core)
+terrain_add_test(heightfield_batch_test terrain_core)
 terrain_add_test(heightfield_macro_test terrain_core)
 terrain_add_test(heightfield_voronoi_test terrain_core)
 terrain_add_test(heightfield_density_test terrain_core)
@@ -99,6 +102,20 @@ terrain_add_test(cave_golden_test terrain_core)
 terrain_add_test(heightfield_golden_test terrain_core)
 terrain_add_test(world_golden_test terrain_core)
 terrain_add_test(golden_ftz_test terrain_core)
+
+# Frozen reference of the noise, the Heightfield, the plates and the cave noise nodes (commit
+# 052078b, before the noise performance work): frozen_reference_test compares the live code with
+# it bit for bit, beyond the few thousand points of the golden checksums.
+add_library(terrain_frozen_reference STATIC
+    frozen/frozen_heightfield.cpp
+    frozen/frozen_noise.cpp
+    frozen/frozen_plates.cpp
+    frozen/frozen_surface.cpp
+)
+target_include_directories(terrain_frozen_reference PUBLIC frozen)
+target_link_libraries(terrain_frozen_reference PUBLIC terrain_core PRIVATE terrain_warnings)
+terrain_add_test(frozen_reference_test terrain_frozen_reference)
+terrain_add_test(height_access_test terrain_frozen_reference)
 terrain_add_test(cave_districts_test terrain_core)
 terrain_add_test(cave_district_weights_test terrain_core)
 terrain_add_test(cave_districts_neutral_test terrain_core)

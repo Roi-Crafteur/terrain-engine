@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
 #include <array>
@@ -60,7 +61,7 @@ public:
 
 private:
     std::array<CaveNoiseLayer, kCaveNoiseCount> layers_;
-    WorldSize world_;
+    std::array<noise::FbmOctaves, kCaveNoiseCount> octaves_; // fbm3D of each layer
     PeriodicCells nodesX_;
     PeriodicCells nodesZ_;
 };
