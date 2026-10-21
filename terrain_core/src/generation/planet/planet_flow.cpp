@@ -1,0 +1,235 @@
+#include "terrain/generation/planet/planet_flow.hpp"
+
+#include "terrain/generation/planet/planet_relief.hpp"
+
+#include <algorithm>
+#include <cstddef>
+#include <utility>
+
+namespace terrain::planet {
+
+namespace {
+
+using PitLakes = std::vector<std::pair<std::uint32_t, std::int32_t>>;
+
+std::int32_t playaAt(const PitLakes& pits, std::size_t cell) {
+    const auto it = std::lower_bound(pits.begin(), pits.end(),
+                                     std::pair{static_cast<std::uint32_t>(cell), std::int32_t{-1}});
+    return it != pits.end() && it->first == cell ? it->second : -1;
+}
+
+// The overflowing lakes in decreasing order of their pass (then by index).
+std::vector<std::int32_t> outflowEvents(const std::vector<std::uint32_t>& order,
+                                        const std::vector<PlanetLake>& lakes, std::size_t cells) {
+    std::vector<std::uint32_t> rank(cells);
+    std::vector<std::int32_t> events;
+    for (std::size_t l = 0; l < lakes.size(); ++l) {
+        if (lakes[l].overflowing) {
+            events.push_back(static_cast<std::int32_t>(l));
+        }
+    }
+    if (events.empty()) {
+        return events;
+    }
+    for (std::size_t p = 0; p < order.size(); ++p) {
+        rank[order[p]] = static_cast<std::uint32_t>(p);
+    }
+    std::sort(events.begin(), events.end(), [&](std::int32_t a, std::int32_t b) {
+        const std::uint32_t ra = rank[lakes[static_cast<std::size_t>(a)].pass];
+        const std::uint32_t rb = rank[lakes[static_cast<std::size_t>(b)].pass];
+        return ra != rb ? ra > rb : a < b;
+    });
+    return events;
+}
+
+class Router {
+public:
+    Router(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
+           const LakeSolution& lakes, PlanetFlow& flow)
+        : grid_(grid), ocean_(ocean), lakes_(lakes), flow_(flow), pits_(playaPits(lakes.lakes)),
+          received_(grid.cells(), 0) {}
+
+    // Water arriving at a cell: into the sea, its lake, or what it passes on.
+    void give(std::size_t cell, std::int64_t amount) {
+        if (ocean_[cell] != kLand) {
+            flow_.toOcean += amount;
+        } else if (const std::int32_t lake = lakes_.lakeOfCell[cell]; lake >= 0) {
+            flow_.lakeInflow[static_cast<std::size_t>(lake)] += amount;
+        } else {
+            received_[cell] += amount;
+        }
+    }
+    void route(std::size_t cell, std::uint8_t direction, std::int64_t runoff);
+
+private:
+    const PlanetGrid& grid_;
+    const std::vector<std::uint8_t>& ocean_;
+    const LakeSolution& lakes_;
+    PlanetFlow& flow_;
+    PitLakes pits_;
+    std::vector<std::int64_t> received_;
+};
+
+void Router::route(std::size_t cell, std::uint8_t direction, std::int64_t runoff) {
+    if (ocean_[cell] != kLand) {
+        return;
+    }
+    if (const std::int32_t lake = lakes_.lakeOfCell[cell]; lake >= 0) {
+        flow_.lakeInflow[static_cast<std::size_t>(lake)] += runoff;
+        return;
+    }
+    const std::int64_t total = received_[cell] + runoff;
+    flow_.discharge[cell] = static_cast<float>(cubicMeters(total));
+    if (direction != kNoNeighbor) {
+        give(grid_.neighbor(cell, direction), total);
+    } else if (const std::int32_t playa = playaAt(pits_, cell); playa >= 0) {
+        flow_.lakeInflow[static_cast<std::size_t>(playa)] += total;
+    }
+}
+
+// Follows the receivers (and the lakes spilling on) from a cell to the end of its water.
+class BasinTracer {
+public:
+    BasinTracer(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
+                const std::vector<std::uint8_t>& receiver, const LakeAt& lakeAt,
+                const std::vector<PlanetLake>& lakes, std::vector<std::int32_t>& basin)
+        : grid_(grid), ocean_(ocean), receiver_(receiver), lakeAt_(lakeAt), lakes_(lakes),
+          pits_(playaPits(lakes)), basin_(basin), lakeBasin_(lakes.size(), kUnknown) {}
+
+    void trace(std::size_t start);
+    [[nodiscard]] std::int32_t lakeBasin(std::size_t lake) const { return lakeBasin_[lake]; }
+
+private:
+    static constexpr std::int32_t kUnknown = -2;
+    [[nodiscard]] std::int32_t lakeId(std::size_t lake) const {
+        return static_cast<std::int32_t>(grid_.cells() + lake);
+    }
+
+    const PlanetGrid& grid_;
+    const std::vector<std::uint8_t>& ocean_;
+    const std::vector<std::uint8_t>& receiver_;
+    const LakeAt& lakeAt_;
+    const std::vector<PlanetLake>& lakes_;
+    PitLakes pits_;
+    std::vector<std::int32_t>& basin_;
+    std::vector<std::int32_t> lakeBasin_;
+    std::vector<std::size_t> path_;
+    std::vector<std::size_t> pendingLakes_;
+};
+
+void BasinTracer::trace(std::size_t start) {
+    path_.clear();
+    pendingLakes_.clear();
+    std::size_t cell = start;
+    std::int32_t id = kNoBasin;
+    while (true) {
+        if (basin_[cell] != kUnknown) {
+            id = basin_[cell];
+            break;
+        }
+        if (const std::int32_t lake = lakeAt_(cell); lake >= 0) {
+            const auto l = static_cast<std::size_t>(lake);
+            if (lakeBasin_[l] != kUnknown) {
+                id = lakeBasin_[l];
+                break;
+            }
+            pendingLakes_.push_back(l);
+            if (!lakes_[l].overflowing) {
+                id = lakeId(l);
+                break;
+            }
+            cell = lakes_[l].partner;
+            if (ocean_[cell] != kLand) {
+                id = static_cast<std::int32_t>(cell); // spills straight into the sea
+                break;
+            }
+            continue;
+        }
+        path_.push_back(cell);
+        if (receiver_[cell] == kNoNeighbor) {
+            const std::int32_t playa = playaAt(pits_, cell);
+            id = playa >= 0 ? lakeId(static_cast<std::size_t>(playa))
+                            : static_cast<std::int32_t>(cell);
+            break;
+        }
+        const std::size_t next = grid_.neighbor(cell, receiver_[cell]);
+        if (ocean_[next] != kLand) {
+            id = static_cast<std::int32_t>(cell);
+            break;
+        }
+        cell = next;
+    }
+    for (const std::size_t c : path_) {
+        basin_[c] = id;
+    }
+    for (const std::size_t l : pendingLakes_) {
+        lakeBasin_[l] = id;
+    }
+}
+
+} // namespace
+
+PitLakes playaPits(const std::vector<PlanetLake>& lakes) {
+    PitLakes pits;
+    for (std::size_t l = 0; l < lakes.size(); ++l) {
+        if (lakes[l].playa) {
+            pits.emplace_back(lakes[l].pit, static_cast<std::int32_t>(l));
+        }
+    }
+    std::sort(pits.begin(), pits.end());
+    return pits;
+}
+
+PlanetFlow routeFlow(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
+                     const std::vector<std::uint8_t>& receiver,
+                     const std::vector<std::uint32_t>& order, const LakeSolution& lakes,
+                     const WaterOf& water) {
+    PlanetFlow flow;
+    flow.discharge.assign(grid.cells(), 0.0f);
+    flow.lakeInflow.assign(lakes.lakes.size(), 0);
+    const std::vector<std::int32_t> events = outflowEvents(order, lakes.lakes, grid.cells());
+    Router router(grid, ocean, lakes, flow);
+    std::size_t next = 0;
+    for (std::size_t p = order.size(); p-- > 0;) {
+        const std::uint32_t cell = order[p];
+        for (; next < events.size() &&
+               lakes.lakes[static_cast<std::size_t>(events[next])].pass == cell;
+             ++next) {
+            const PlanetLake& lake = lakes.lakes[static_cast<std::size_t>(events[next])];
+            router.give(lake.partner, lake.outflow);
+        }
+        router.route(cell, receiver[cell], water(cell).runoff);
+    }
+    return flow;
+}
+
+std::vector<std::int32_t> computeBasins(const PlanetGrid& grid,
+                                        const std::vector<std::uint8_t>& ocean,
+                                        const std::vector<std::uint8_t>& receiver,
+                                        const LakeAt& lakeAt,
+                                        const std::vector<PlanetLake>& lakes) {
+    std::vector<std::int32_t> basin(grid.cells(), -2);
+    BasinTracer tracer(grid, ocean, receiver, lakeAt, lakes, basin);
+    for (std::size_t c = 0; c < grid.cells(); ++c) {
+        if (ocean[c] != kLand) {
+            basin[c] = kNoBasin;
+        }
+    }
+    for (std::size_t c = 0; c < grid.cells(); ++c) {
+        if (basin[c] == -2 && lakeAt(c) < 0) {
+            tracer.trace(c);
+        }
+    }
+    for (std::size_t c = 0; c < grid.cells(); ++c) {
+        if (const std::int32_t lake = lakeAt(c); lake >= 0) {
+            const std::int32_t id = tracer.lakeBasin(static_cast<std::size_t>(lake));
+            if (id == -2) {
+                tracer.trace(c); // a lake no dry cell drains into
+            }
+            basin[c] = tracer.lakeBasin(static_cast<std::size_t>(lake));
+        }
+    }
+    return basin;
+}
+
+} // namespace terrain::planet
