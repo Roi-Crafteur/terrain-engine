@@ -94,6 +94,10 @@ add_library(terrain_core STATIC
     src/io/planet_png.cpp
     src/io/planet_png_layers.cpp
     src/io/png.cpp
+    src/io/relief_png.cpp
+    src/io/relief_stats.cpp
+    src/io/relief_stats_local.cpp
+    src/io/relief_stats_shapes.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
     src/storage/durable_file.cpp
@@ -248,6 +252,26 @@ add_custom_target(export_planet_maps
     COMMAND ${CMAKE_COMMAND} -E make_directory ${planet_maps}
     COMMAND terrain_export_planet ${planet_maps}/planetary 20261019 8192 planetary 1
     COMMAND terrain_export_planet ${planet_maps}/default 20261019 8192 default 1
+    VERBATIM
+    USES_TERMINAL
+)
+
+# Maps and figures of a relief, to compare reliefs (phase 11R): the planet, zooms of 2,048,
+# 200 and 20 km on a chain, a plain and a coast, land masses, chains, hypsometry, coasts:
+# terrain_export_relief <output-dir> [seed] [default|planetary] [cell-size] [zoom-pixels]
+#                       [threads] [world-x] [world-z]
+add_executable(terrain_export_relief tools/export_relief.cpp)
+target_link_libraries(terrain_export_relief PRIVATE terrain_core terrain_warnings)
+
+# The maps of the default world (seed 20261019) with the default and the planetary relief, into
+# <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests
+# (about a minute each in Release):
+#   cmake --build <build-dir> --target export_relief_maps
+set(relief_maps ${CMAKE_BINARY_DIR}/relief_maps)
+add_custom_target(export_relief_maps
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${relief_maps}
+    COMMAND terrain_export_relief ${relief_maps}/default 20261019 default
+    COMMAND terrain_export_relief ${relief_maps}/planetary 20261019 planetary
     VERBATIM
     USES_TERMINAL
 )
