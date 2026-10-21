@@ -52,7 +52,9 @@ add_library(terrain_core STATIC
     src/generation/geography_crust.cpp
     src/generation/geography_flood.cpp
     src/generation/geography_grid.cpp
+    src/generation/geography_provinces.cpp
     src/generation/geography_tectonics.cpp
+    src/generation/geography_valleys.cpp
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
     src/generation/heightfield.cpp
@@ -83,6 +85,7 @@ add_library(terrain_core STATIC
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp
     src/generation/terrain_surface.cpp
+    src/generation/valleys.cpp
     src/generation/vegetation.cpp
     src/generation/voronoi.cpp
     src/generation/voronoi_layout.cpp

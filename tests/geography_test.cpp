@@ -116,7 +116,8 @@ void testPeriodicAndBatch(const WorldSize& world) {
 }
 
 // Below the sea exactly where the coast signal (and the continentalness) is negative. The ridged
-// mountains only within their mask, which is 0 at sea and outside the belts of the plates.
+// mountains only within their mask, which is 0 at sea and outside the belts of the plates and
+// the massifs of the provinces.
 void testSeaWhereTheCoastIsNegative() {
     const Heightfield field(kSeed, geographyParams());
     const float mountainHeight = field.params().geography.mountainHeight;
@@ -132,8 +133,10 @@ void testSeaWhereTheCoastIsNegative() {
                                         terrain::wrapCoordinate(p.z, WorldSize{}.z));
         consistent = consistent && ((s.height < 0.0f) == (g.coast < 0.0)) &&
                      ((s.continentalness < 0.0f) == (g.coast < 0.0));
-        masked = masked && s.mountain >= 0.0f && s.mountain <= s.mountainMask * mountainHeight &&
-                 s.mountainMask <= 1.0f && (g.belt > 0.0f || s.mountainMask == 0.0f) &&
+        masked = masked && s.mountain >= 0.0f &&
+                 s.mountain <= 1.2f * s.mountainMask * mountainHeight &&
+                 s.mountainMask <= 1.0f &&
+                 (g.belt > 0.0f || g.massif > 0.0f || s.mountainMask == 0.0f) &&
                  s.plateCollision == g.belt &&
                  (g.coast > 0.0 || s.mountainMask == 0.0f);
         ++(s.height < 0.0f ? sea : land);

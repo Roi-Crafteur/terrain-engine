@@ -198,11 +198,17 @@ void reportShapes(Report& r, const terrain::ReliefStats& s, const terrain::World
     printStraight(r, "coasts smoothed over about 160 km", s.longestStraightMapCoast, world);
     r.add("coast length at the grid resolution: %.0f km\n", s.coastLength / 1000.0);
 }
+
 void reportLocal(Report& r, const terrain::LocalReliefStats& l) {
     r.add("walk, 1 km steps over 10 km: plains slope %.2f%%, relief %.0f m (%d windows); "
           "mountains relief %.0f m, 90th percentile %.0f m (%d windows)\n",
           100.0 * l.plainSlope, l.plainRelief, l.plainWindows, l.mountainRelief,
           l.mountainRelief90, l.mountainWindows);
+    if (l.beltWindows > 0) {
+        r.add("walk in the mountain belts of the geography, 1 km steps over 10 km: relief %.0f m, "
+              "90th percentile %.0f m (%d windows)\n",
+              l.beltRelief, l.beltRelief90, l.beltWindows);
+    }
     r.add("coast sinuosity, length with 1 km dividers / with 10 km dividers: %.3f (median of "
           "%d windows of 40 km)\n",
           l.coastSinuosity, l.coastWindows);

@@ -69,6 +69,19 @@ void validate(const GeographyParams& p) {
     requirePositive(p.shelfWidth, "shelfWidth");
     requirePositive(p.coastRamp, "coastRamp");
     requirePositive(p.drainSlope, "drainSlope");
+    if (!(p.drainJitter >= 0.0f) || !std::isfinite(p.drainJitter)) {
+        throw std::invalid_argument("GeographyParams: invalid drainJitter");
+    }
+    requirePositive(p.provinceSize, "provinceSize");
+    requirePositive(p.provinceBlend, "provinceBlend");
+    requirePositive(p.valleyFloor, "valleyFloor");
+    requirePositive(p.valleyWall, "valleyWall");
+    requirePositive(p.mountainWall, "mountainWall");
+    requirePositive(p.valleyWarpWavelength, "valleyWarpWavelength");
+    if (!(p.valleyFloorLarge >= p.valleyFloor) || !std::isfinite(p.valleyFloorLarge) ||
+        !(p.valleyWarp >= 0.0) || !std::isfinite(p.valleyWarp)) {
+        throw std::invalid_argument("GeographyParams: invalid valleys");
+    }
     requirePositive(p.beltWidth, "beltWidth");
     requirePositive(p.plateauWidth, "plateauWidth");
     requirePositive(p.arcWavelength, "arcWavelength");
@@ -89,15 +102,6 @@ double bandWeight(double d, double amplitude, double band) {
 }
 
 } // namespace
-
-// The fbm of the three coast stages and of the ruggedness of the coasts.
-struct Geography::Noises {
-    noise::FbmOctaves coarse;
-    noise::FbmOctaves detail;
-    noise::FbmOctaves fine;
-    noise::FbmOctaves rugged;
-    noise::FbmOctaves arc;
-};
 
 // Past the coarse stage, the island arcs of the belts at sea (their noise is only computed
 // where it may raise the coast signal), then the detail and fine stages.
@@ -153,6 +157,11 @@ std::shared_ptr<const Geography::Noises> makeNoises(std::uint64_t seed, const Ge
                          noise::OctaveLattices::Unrotated);
     noises->arc = fbm(geography::kArcs, 3, p.arcWavelength, 0.5,
                       noise::OctaveLattices::RotatedFast);
+    noises->valleyX = fbm(geography::kValleyWarpX, 2, p.valleyWarpWavelength, 0.5,
+                          noise::OctaveLattices::RotatedFast);
+    noises->valleyZ = fbm(geography::kValleyWarpZ, 2, p.valleyWarpWavelength, 0.5,
+                          noise::OctaveLattices::RotatedFast);
+    noises->twinValleys = noises->valleyX.twinOf(noises->valleyZ);
     return noises;
 }
 
@@ -175,16 +184,26 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
     continents_ = crust.continents;
     const geography::Tectonics tectonics = geography::buildTectonics(
         seed, params_, world_, grid, crust, planet::resolveThreads(threads));
+    const geography::Provinces provinces = geography::buildProvinces(
+        seed, params_, world_, grid, tectonics, planet::resolveThreads(threads));
     const std::vector<float> sea = geography::oceanFloor(params_, crust, tectonics);
-    const std::vector<float> land = geography::drainedLand(
-        params_, grid, crust, geography::landFloor(params_, crust, tectonics));
+    geography::Drainage drainage = geography::drainedLand(
+        noise::deriveSeed(seed, geography::kDrainage), params_, grid, crust,
+        geography::landFloor(params_, crust, tectonics, provinces));
+    const std::vector<float>& land = drainage.elevation;
+    valleyGeometry_ = geography::valleyGeometry(
+        noise::deriveSeed(seed, geography::kValleyGeometry), grid, drainage);
     nodes_.assign(grid.nodes() * kFields, 0.0f);
     for (std::size_t k = 0; k < grid.nodes(); ++k) {
         nodes_[k * kFields + kCoast] = crust.coast[k];
         nodes_[k * kFields + kLand] = land[k];
         nodes_[k * kFields + kSea] = sea[k];
         nodes_[k * kFields + kBelt] = tectonics.belt[k];
+        nodes_[k * kFields + kHills] = provinces.hills[k];
+        nodes_[k * kFields + kMassif] = provinces.massif[k];
     }
+    down_ = std::move(drainage.down);
+    drainedArea_ = std::move(drainage.area);
     anchorX_ = chooseAnchor();
 }
 
@@ -217,6 +236,8 @@ GeographySample Geography::mapAt(double geoX, double z) const {
     s.landDZ = static_cast<float>(dz / sizeZ_);
     s.sea = static_cast<float>(sum[kSea]);
     s.belt = static_cast<float>(sum[kBelt]);
+    s.hills = static_cast<float>(sum[kHills]);
+    s.massif = static_cast<float>(sum[kMassif]);
     return s;
 }
 
@@ -285,11 +306,21 @@ std::uint64_t Geography::checksum() const {
     for (const float v : nodes_) {
         add(std::bit_cast<std::uint32_t>(v), 4);
     }
+    for (const std::int8_t v : down_) {
+        add(static_cast<std::uint8_t>(v), 1);
+    }
+    for (const std::vector<float>* values : {&drainedArea_, &valleyGeometry_}) {
+        for (const float v : *values) {
+            add(std::bit_cast<std::uint32_t>(v), 4);
+        }
+    }
     return hash;
 }
 
 std::size_t Geography::memoryBytes() const {
-    return sizeof(*this) + nodes_.size() * sizeof(float) + sizeof(Noises);
+    return sizeof(*this) + sizeof(Noises) +
+           (nodes_.size() + drainedArea_.size() + valleyGeometry_.size()) * sizeof(float) +
+           down_.size();
 }
 
 std::shared_ptr<const Geography> Geography::shared(std::uint64_t seed,

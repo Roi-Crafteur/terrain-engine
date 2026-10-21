@@ -163,6 +163,11 @@ terrain_add_test(geography_grid_test terrain_core)
 target_include_directories(geography_grid_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 terrain_add_test(geography_test terrain_core)
+terrain_add_test(geography_relief_test terrain_core)
+# The tributary valleys of the mountains of the geography (internal header).
+terrain_add_test(valleys_test terrain_core)
+target_include_directories(valleys_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 terrain_add_test(relief_png_test terrain_core)
 terrain_add_test(relief_stats_test terrain_core)
 

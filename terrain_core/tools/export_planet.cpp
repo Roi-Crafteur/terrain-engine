@@ -3,8 +3,8 @@
 // rivers, false passes) and writes its control images. Without the optional arguments: seed
 // 20261019, cells of 8,192 m, the planetary relief (plates 0.5, macro continent 0.25), one
 // relief sample per cell, all the hardware threads, the default world (60,030,976 x
-// 34,996,224 m).
-// Usage: terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary]
+// 34,996,224 m). The geography relief is the planetary geography of phase 11R.
+// Usage: terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary|geography]
 //        [samples-per-axis] [threads] [world-x] [world-z]
 
 #include "terrain/generation/planet/planet_false_passes.hpp"
@@ -48,11 +48,20 @@ template <class T> bool parse(const char* text, T& value) {
 struct Options {
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     double cellSize = 8192.0;
-    bool planetary = true;
+    const char* relief = "planetary";
     int samples = 1;
     int threads = 0;
     terrain::WorldSize world;
 };
+
+terrain::HeightfieldParams reliefParams(const char* relief) {
+    if (std::strcmp(relief, "default") == 0) {
+        return {};
+    }
+    terrain::HeightfieldParams params = terrain::planetaryHeightfieldParams();
+    params.geography.enabled = std::strcmp(relief, "geography") == 0;
+    return params;
+}
 
 bool fail(const char* what, const char* text, const char* expected) {
     std::fprintf(stderr, "Invalid %s '%s': expected %s\n", what, text, expected);
@@ -95,10 +104,16 @@ bool parseArguments(int argc, char** argv, Options& options) {
         return fail("cell size", argv[3], "a number of meters above 0");
     }
     if (argc > 4) {
-        if (std::strcmp(argv[4], "default") != 0 && std::strcmp(argv[4], "planetary") != 0) {
-            return fail("relief", argv[4], "default or planetary");
+        bool known = false;
+        for (const char* relief : {"default", "planetary", "geography"}) {
+            if (std::strcmp(argv[4], relief) == 0) {
+                options.relief = relief;
+                known = true;
+            }
         }
-        options.planetary = std::strcmp(argv[4], "planetary") == 0;
+        if (!known) {
+            return fail("relief", argv[4], "default, planetary or geography");
+        }
     }
     if (argc > 5 &&
         !(parse(argv[5], options.samples) && options.samples >= 1 && options.samples <= 8)) {
@@ -247,7 +262,7 @@ int main(int argc, char** argv) {
     Options options;
     if (!parseArguments(argc, argv, options)) {
         std::fprintf(stderr,
-                     "Usage: %s <output-dir> [seed] [cell-size] [default|planetary] "
+                     "Usage: %s <output-dir> [seed] [cell-size] [default|planetary|geography] "
                      "[samples-per-axis] [threads] [world-x] [world-z]\n",
                      argv[0]);
         return EXIT_FAILURE;
@@ -256,10 +271,7 @@ int main(int argc, char** argv) {
     params.cellSize = options.cellSize;
     params.samplesPerAxis = options.samples;
     params.threads = options.threads;
-    const terrain::Heightfield field(options.seed,
-                                     options.planetary ? terrain::planetaryHeightfieldParams()
-                                                       : terrain::HeightfieldParams{},
-                                     options.world);
+    const terrain::Heightfield field(options.seed, reliefParams(options.relief), options.world);
     const terrain::PlanetLevel level(terrain::planet::buildPlanet(field, params), params);
     const std::size_t peak = peakMemory();
     auto start = std::chrono::steady_clock::now();
@@ -283,7 +295,7 @@ int main(int argc, char** argv) {
     std::printf("seed %llu, %s relief, %d x %d cells of %.0f m, %d x %d samples, %d threads: "
                 "checksum %016llx, %s/planet_*.png\n",
                 static_cast<unsigned long long>(options.seed),
-                options.planetary ? "planetary" : "default", grid.nx, grid.nz, grid.cellSize,
+                options.relief, grid.nx, grid.nz, grid.cellSize,
                 options.samples, options.samples, threads,
                 static_cast<unsigned long long>(level.checksum()), argv[1]);
     printTimes(level.timings(), statsTime, passesTime, imagesTime);

@@ -22,7 +22,16 @@ struct GeographySample {
     float landDX = 0.0f;   // its gradient along x and z, meters per meter
     float landDZ = 0.0f;
     float sea = 0.0f;  // floor of the ocean, meters (the shelf depth under the land)
-    float belt = 0.0f; // [0, 1], the mountain belts of the collisions of the plates
+    float belt = 0.0f;   // [0, 1], the mountain belts of the collisions of the plates
+    float hills = 0.0f;  // meters, the amplitude of the hills of the provinces
+    float massif = 0.0f; // [0, 1], the old massifs and intraplate high relief of the provinces
+};
+
+// The share of the hills and of the mountains left by the valleys of the drainage of the map at a
+// point: 1 far from them, less in them, down to 0 on the floors of the largest.
+struct ValleyShape {
+    float hills = 1.0f;
+    float mountains = 1.0f; // steeper walls
 };
 
 // The planetary geography of a seed (phase 11R): a map of the whole world computed once,
@@ -37,7 +46,7 @@ struct GeographySample {
 class Geography {
 public:
     // Fields of a node of the map, in this order.
-    enum Field : std::size_t { kCoast, kLand, kSea, kBelt, kFields };
+    enum Field : std::size_t { kCoast, kLand, kSea, kBelt, kHills, kMassif, kFields };
 
     // Throws std::invalid_argument for invalid parameters or world. The construction runs on
     // up to threads threads (0: the hardware concurrency), in fixed blocks: the same bits
@@ -63,11 +72,24 @@ public:
     [[nodiscard]] double anchorX() const { return anchorX_; }
     // Field f of node (i, j) of the map (indices taken modulo the counts).
     [[nodiscard]] float node(int i, int j, Field f) const;
+    // The drainage of node (i, j) of the map (indices taken modulo the counts): the step to the
+    // node downstream, (di, dj) with each in {-1, 0, 1}, false at sea; and the area it drains,
+    // square meters (0 at sea).
+    [[nodiscard]] bool downstream(int i, int j, int& di, int& dj) const;
+    [[nodiscard]] float drainedArea(int i, int j) const;
     // The crust stream chosen and the land masses of at least continentArea it gives.
     [[nodiscard]] int crustCandidate() const { return candidate_; }
     [[nodiscard]] int continents() const { return continents_; }
 
-    // 64-bit FNV-1a of the raw bits of every field of every node and of the anchor.
+    // The valleys of the drainage of the map at (x, z), canonical (GeographyParams): they follow
+    // its tree toward the sea (each node to the node downstream), bent; the larger the area they
+    // drain, the deeper they are and the wider their floors, flat and level across. A relief
+    // scaled by it has no minimum but on these floors, which descend with the regional elevation
+    // and step down where a valley joins a larger one: it drains.
+    [[nodiscard]] ValleyShape valleyShape(double x, double z) const;
+
+    // 64-bit FNV-1a of the raw bits of every field of every node, of the drainage and of the
+    // anchor.
     [[nodiscard]] std::uint64_t checksum() const;
     // Bytes held once built.
     [[nodiscard]] std::size_t memoryBytes() const;
@@ -93,6 +115,11 @@ private:
     int candidate_ = 0;
     int continents_ = 0;
     std::vector<float> nodes_; // kFields floats per node, row by row
+    // The drainage of the map: the step to the node downstream of each node (-1 at sea), the
+    // area it drains (square meters), the polylines of its valleys (geography::valleyGeometry).
+    std::vector<std::int8_t> down_;
+    std::vector<float> drainedArea_;
+    std::vector<float> valleyGeometry_;
     std::shared_ptr<const Noises> noises_;
 };
 
