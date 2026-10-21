@@ -8,6 +8,7 @@
 
 class APawn;
 class UMaterialInterface;
+class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
 struct FTerrainWorldState;
 
@@ -130,6 +131,49 @@ public:
 		meta = (ClampMin = "0"))
 	float TimingLogIntervalSeconds = 5.0f;
 
+	// The far horizon: the levels of the clipmap of terrain_core around the player, from under the
+	// tiles up to 520 km with 10 levels, curved by its material. The tiles must end inside its
+	// first level: ViewDistanceChunks from 28 to 55 with the default LOD rings.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon")
+	bool bHorizon = true;
+
+	// Levels of the horizon: samples every 8 m on the first, twice as far apart on each next one.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon", ClampMin = "1", ClampMax = "10"))
+	int32 HorizonLevels = 10;
+
+	// Threads computing the horizon, besides the workers of the tiles.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon", ClampMin = "1", ClampMax = "8"))
+	int32 HorizonThreads = 2;
+
+	// Material of the horizon. None: /Game/TerrainEngine/M_TerrainHorizon if it exists
+	// (Scripts/create_horizon_material.py), which curves it; otherwise the material of the tiles,
+	// flat. Its scalar parameter PlanetRadiusCm receives the radius of the planet.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	TObjectPtr<UMaterialInterface> HorizonMaterial;
+
+	// How far below its ground the horizon lies: where the tiles cover it, they stay in front.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon", ClampMin = "0"))
+	float HorizonDropCm = 100.0f;
+
+	// The ocean flat at the sea level on the horizon, and a sea square under the tiles.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	bool bHorizonSea = true;
+
+	// Radius of the planet for the curvature of the horizon, km. 0: the circumference of the
+	// world along x (about 9,554 km by default).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon", ClampMin = "0"))
+	double PlanetRadiusKm = 0.0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	bool bHorizonShadows = false;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -137,6 +181,11 @@ protected:
 private:
 	bool StartStreaming();
 	void StopStreaming(const FString& Reason);
+	void StartHorizon();
+	void StopHorizon(const FString& Reason);
+	void TickHorizon(const FVector& Focus);
+	void LogHorizon();
+	UMaterialInterface* ResolveHorizonMaterial() const;
 	bool FindFocus(FVector& OutLocation, APawn*& OutPawn) const;
 	void ReturnFromWorldTurn(AActor& Traveller, FVector& InOutFocus) const;
 	void WarmUpAround(APawn& Pawn);
@@ -146,6 +195,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainMeshBackend> Backend;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTerrainHorizonMeshes> HorizonMeshes;
 
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor).

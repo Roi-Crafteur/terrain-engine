@@ -15,7 +15,9 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialInterface.h"
 #include "TerrainEngineLog.h"
+#include "TerrainHorizonMeshes.h"
 #include "TerrainMeshBackend.h"
+#include "TerrainWorldState.h"
 
 #include <chrono>
 #include <cstddef>
@@ -23,39 +25,17 @@
 #include <exception>
 #include <string>
 
-// The terrain_core side of a playing ATerrainWorld: its session (tiles, timings, streamer) and
-// the frame placing the core world in the Unreal world.
-struct FTerrainWorldState
-{
-	explicit FTerrainWorldState(const terrain::unreal::SessionParams& Params)
-		: Session(Params)
-	{
-	}
-
-	terrain::unreal::TerrainSession Session;
-	// Fixed while playing, rebasing aside: the player keeps unwrapped coordinates across the edges
-	// of the wrapped world, the tiles follow it to their nearest images (Bridge/tile_streamer.hpp).
-	terrain::unreal::UnrealFrame Frame;
-};
-
 namespace
 {
+	using TerrainWorldConversions::ToFString;
+	using TerrainWorldConversions::ToUnrealPoint;
+
 	// Above the ground, the bottom of a pawn placed on it, centimeters.
 	constexpr double SnapClearanceCm = 50.0;
 
 	// Created by terrain_unreal/Scripts/create_terrain_material.py.
 	const TCHAR* const GeneratedMaterialPath =
 		TEXT("/Game/TerrainEngine/M_TerrainAltitude.M_TerrainAltitude");
-
-	terrain::unreal::UnrealPoint ToUnrealPoint(const FVector& Vector)
-	{
-		return {Vector.X, Vector.Y, Vector.Z};
-	}
-
-	FString ToFString(const std::string& Text)
-	{
-		return FString(UTF8_TO_TCHAR(Text.c_str()));
-	}
 
 	terrain::unreal::SessionParams MakeSessionParams(const ATerrainWorld& World)
 	{
@@ -130,7 +110,12 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		Backend->RemoveAllTiles();
 		Backend = nullptr;
 	}
-	State.Reset(); // the workers stop once their current tile is generated
+	if (HorizonMeshes != nullptr)
+	{
+		HorizonMeshes->RemoveAll();
+		HorizonMeshes = nullptr;
+	}
+	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
 	Super::EndPlay(EndPlayReason);
 }
@@ -166,6 +151,7 @@ bool ATerrainWorld::StartStreaming()
 		Seed, CoreOriginX, CoreOriginZ, State->Frame.origin.y, Lod0DistanceChunks,
 		Lod1DistanceChunks, Lod2DistanceChunks, ViewDistanceChunks, WorkerThreads,
 		MaxTileUploadsPerFrame);
+	StartHorizon();
 	return true;
 }
 
@@ -206,6 +192,7 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 		StopStreaming(ToFString(Exception.what()));
 		return;
 	}
+	TickHorizon(Focus);
 	LogTimings(DeltaSeconds);
 }
 
@@ -333,6 +320,7 @@ void ATerrainWorld::LogTimings(float DeltaSeconds)
 	{
 		UE_LOG(LogTerrainEngine, Log, TEXT("  %s"), *ToFString(Line));
 	}
+	LogHorizon();
 }
 
 UMaterialInterface* ATerrainWorld::ResolveMaterial() const

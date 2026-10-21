@@ -134,6 +134,14 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `bSnapPawnToGround` | oui | pose sur le sol un nouveau pion qui est dessous |
 | `WarmUpRadiusChunks`, `WarmUpTimeoutSeconds` | 1, 10 | tuiles LOD 0 générées avant qu'un nouveau pion bouge |
 | `TimingLogIntervalSeconds` | 5 | intervalle du résumé des mesures (0 : aucun) |
+| `bHorizon` | oui | horizon lointain (section 10) |
+| `HorizonLevels` | 10 | niveaux de l'horizon : 8 m, puis le double à chaque niveau ; 10 vont à 520 km |
+| `HorizonThreads` | 2 | threads de calcul de l'horizon, en plus de ceux des tuiles |
+| `HorizonMaterial` | aucun | matériau de l'horizon (voir 10) |
+| `HorizonDropCm` | 100 | l'horizon est posé ce tant sous son sol : les tuiles restent devant là où les deux se recouvrent |
+| `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles |
+| `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
+| `bHorizonShadows` | non | ombres portées par l'horizon |
 
 ## 6. Comment c'est construit
 
@@ -141,11 +149,15 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 terrain_unreal/
   TerrainEngine.uplugin        module Runtime (Win64, Linux, Mac), plugin ProceduralMeshComponent
   Scripts/create_terrain_material.py
+  Scripts/create_horizon_material.py
   Source/TerrainEngine/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType
     Private/
       TerrainWorld.cpp         cycle de vie, tick, démarrage d'un pion, mesures
+      TerrainWorldHorizon.cpp  l'horizon lointain d'ATerrainWorld
+      TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
+      TerrainHorizonMeshes.*   un ProceduralMeshComponent par niveau de l'horizon
       TerrainMeshBackend.*     interface des types de mesh, fabrique
       ProceduralMeshTerrainBackend.*
       Bridge/                  C++ pur, compilé par Unreal ET testé par ctest
@@ -206,6 +218,7 @@ terrain_unreal/
 Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_frame_test`,
 `unreal_tile_mesh_test`, `unreal_altitude_color_test`, `unreal_tile_timings_test`,
 `unreal_tile_streamer_test`, `unreal_terrain_session_test`, `unreal_determinism_check_test`,
+`unreal_horizon_layout_test`, `unreal_horizon_mesh_test`, `unreal_horizon_streamer_test`,
 `unreal_core_sources`.
 
 ## 7. Linux et Mac (non essayés)
@@ -245,5 +258,49 @@ devra passer à `std::thread` (petit changement dans `terrain_core`, par l'agent
 
 Type de mesh autre que le Procedural Mesh Component (emplacements Dynamic Mesh et Realtime Mesh),
 eau, lave, plantes, matériaux du core. En build empaqueté,
-assigne le matériau explicitement dans `Material` : le chemin chargé par défaut n'est cuit que
-s'il est référencé.
+assigne le matériau explicitement dans `Material` (et `HorizonMaterial`) : le chemin chargé par
+défaut n'est cuit que s'il est référencé.
+
+## 10. L'horizon lointain (phase 13, étape 1)
+
+Les 10 niveaux de grilles de `terrain_core` (`HorizonStreamer` : 257 × 257 échantillons, de 8 m à
+4 km, 520 km de rayon) sont montrés autour du joueur, au-delà des tuiles.
+
+- **Matériau** (une fois par projet) : Tools → Execute Python Script… →
+  `Plugins/terrain-engine/terrain_unreal/Scripts/create_horizon_material.py`. Il crée
+  `/Game/TerrainEngine/M_TerrainHorizon` : la couleur des sommets, comme `M_TerrainAltitude`, et
+  la **courbure** de la planète : son World Position Offset abaisse chaque sommet de d² / 2R (d :
+  sa distance horizontale à la caméra, R : le paramètre `PlanetRadiusCm`, que l'acteur règle). La
+  courbure est recalculée à chaque frame, sans rien reconstruire, et les deux côtés d'un raccord
+  tombent de la même hauteur. Sans ce matériau, l'horizon prend celui des tuiles et reste plat
+  (un avertissement dans le log). Les tuiles ne sont pas courbées : 2 cm à 640 m.
+- **Un ProceduralMeshComponent par niveau**, sans collision ni ombre, placé à l'image du niveau la
+  plus proche du joueur (comme les tuiles). Section 0, le corps : la fenêtre moins un carré central
+  fixe, qui contient la fenêtre du niveau plus fin où qu'elle soit ; ses triangles ne changent
+  jamais, un déplacement du niveau ne renvoie que ses sommets (`UpdateMeshSection`). Section 1, la
+  bordure : le cadre de 1 ou 2 mailles laissé par la fenêtre plus fine, reconstruit quand l'un des
+  deux niveaux bouge. Toutes les sections d'une époque sont appliquées dans la même frame : les
+  niveaux s'emboîtent toujours, sans trou ni recouvrement (`Bridge/horizon_layout.hpp`).
+- **Raccords** : le bord extérieur de chaque niveau est cousu sur le niveau plus grossier (ses
+  échantillons impairs prennent la moyenne de leurs voisins ; les pairs sont ceux du niveau
+  grossier au bit près), et une jupe tournée vers l'intérieur pend dessous (2 m, ou un seizième du
+  pas). Les bornes de chaque mesh descendent jusqu'au sol courbé (un sommet sans triangle) : aucun
+  niveau n'est éliminé à tort.
+- **Sous les tuiles** : le niveau 0 a un trou carré qui contient toutes les tuiles LOD 0 à 2
+  (grottes, falaises, surplombs) ; autour, une bande de tuiles LOD 3 (128 m, au moins 64 m)
+  recouvre l'horizon, posé `HorizonDropCm` plus bas : pas de z-fighting, et pas de trou quand des
+  tuiles du bord arrivent en retard. Les tuiles doivent finir dans le niveau 0 :
+  `ViewDistanceChunks` de 28 à 55 avec les anneaux par défaut, sinon l'horizon est désactivé avec
+  une erreur dans le log.
+- **Mer** : sur l'horizon, tout échantillon sous le niveau de la mer est posé à plat au niveau de
+  la mer, en bleu (un lac en altitude garde son sol) ; un carré de mer à 0 m s'étend sous les
+  tuiles. Le reste de l'eau (rivières, lacs, Water) vient avec la phase 14.
+- **Threads** : `HorizonThreads` threads du core, à part de ceux des tuiles. Tant que rien ne
+  bouge, le tick de l'horizon coûte 0,01 ms.
+- **Log** : toutes les `TimingLogIntervalSeconds`, le coût de l'horizon sur le thread de jeu (le
+  premier affichage, les ticks qui déplacent un niveau, par niveau, les autres), la conversion et
+  l'envoi des corps et des bordures, les époques (du plan à l'application) et la mémoire.
+- **Scène** : avec une `SkyAtmosphere`, mettre son `Bottom Radius` au rayon de la planète et son
+  `Transform Mode` à *Planet Top at Component Transform*, l'acteur au niveau de la mer ; un
+  `ExponentialHeightFog` au niveau de la mer, peu dense, avec `Fog Cutoff Distance` (1 000 km par
+  exemple) : sinon ce brouillard plat peint le ciel sous l'horizontale.
