@@ -82,17 +82,6 @@ struct GeographyParams {
     // parallel lines.
     float drainJitter = 60.0f;
 
-    // Valleys along the drainage of the map toward the sea, under the hills and mountains: flat
-    // floors valleyFloor wide (up to valleyFloorLarge for the largest drained areas), walls
-    // valleyWall wide up to the ridges between them among hills (mountainWall among mountains),
-    // bent by a warp of valleyWarp.
-    double valleyFloor = 10'000.0;
-    double valleyFloorLarge = 18'000.0;
-    double valleyWall = 30'000.0;
-    double mountainWall = 9'000.0;
-    double valleyWarp = 15'000.0;
-    double valleyWarpWavelength = 70'000.0;
-
     // Provinces of the land between the belts, their sites on a jittered grid about provinceSize
     // apart, the nearest to each point after a warp of provinceWarp: lowlands, sedimentary
     // basins, high plains, shields with hills, old worn massifs, plateaus and intraplate high
@@ -121,9 +110,13 @@ struct GeographyParams {
     double plateauLength = 2'000'000.0;
     float plateauUplift = 4300.0f;
     double plateauWidth = 700'000.0;
-    // The ridged mountains of the Heightfield in the belts rise up to mountainHeight above the
-    // regional elevation.
-    float mountainHeight = 5000.0f;
+    // The ridged mountains of the Heightfield (its warp, octaves and wavelength) rise up to
+    // mountainHeight above the regional elevation under their mask, with their own sharpness and
+    // gain: sharp crests, valleys in V between them, steep walls without a fractal roughness at
+    // every scale.
+    float mountainHeight = 4400.0f;
+    double mountainSharpness = 3.0;
+    double mountainGain = 0.45;
     // Island arcs where a belt crosses the ocean: the coast signal rises to about arcLift on
     // their axis, broken into islands by an fbm of arcWavelength.
     double arcLift = 45'000.0;

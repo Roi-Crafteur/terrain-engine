@@ -81,13 +81,9 @@ void validate(const GeographyParams& p) {
     }
     requirePositive(p.provinceSize, "provinceSize");
     requirePositive(p.provinceBlend, "provinceBlend");
-    requirePositive(p.valleyFloor, "valleyFloor");
-    requirePositive(p.valleyWall, "valleyWall");
-    requirePositive(p.mountainWall, "mountainWall");
-    requirePositive(p.valleyWarpWavelength, "valleyWarpWavelength");
-    if (!(p.valleyFloorLarge >= p.valleyFloor) || !std::isfinite(p.valleyFloorLarge) ||
-        !(p.valleyWarp >= 0.0) || !std::isfinite(p.valleyWarp)) {
-        throw std::invalid_argument("GeographyParams: invalid valleys");
+    requirePositive(p.mountainSharpness, "mountainSharpness");
+    if (!(p.mountainGain > 0.0) || !(p.mountainGain < 1.0) || !std::isfinite(p.mountainHeight)) {
+        throw std::invalid_argument("GeographyParams: invalid mountains");
     }
     requirePositive(p.beltWidth, "beltWidth");
     requirePositive(p.plateauWidth, "plateauWidth");
@@ -167,11 +163,6 @@ std::shared_ptr<const Geography::Noises> makeNoises(std::uint64_t seed, const Ge
                          noise::OctaveLattices::Unrotated);
     noises->arc = fbm(geography::kArcs, 3, p.arcWavelength, 0.5,
                       noise::OctaveLattices::RotatedFast);
-    noises->valleyX = fbm(geography::kValleyWarpX, 1, p.valleyWarpWavelength, 0.5,
-                          noise::OctaveLattices::RotatedFast);
-    noises->valleyZ = fbm(geography::kValleyWarpZ, 1, p.valleyWarpWavelength, 0.5,
-                          noise::OctaveLattices::RotatedFast);
-    noises->twinValleys = noises->valleyX.twinOf(noises->valleyZ);
     return noises;
 }
 
@@ -201,8 +192,6 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
         noise::deriveSeed(seed, geography::kDrainage), params_, grid, crust,
         geography::landFloor(params_, crust, tectonics, provinces));
     const std::vector<float>& land = drainage.elevation;
-    valleyGeometry_ = geography::valleyGeometry(
-        noise::deriveSeed(seed, geography::kValleyGeometry), grid, drainage);
     nodes_.assign(grid.nodes() * kFields, 0.0f);
     for (std::size_t k = 0; k < grid.nodes(); ++k) {
         nodes_[k * kFields + kCoast] = crust.coast[k];
@@ -303,6 +292,24 @@ double Geography::chooseAnchor() const {
     return best;
 }
 
+bool Geography::downstream(int i, int j, int& di, int& dj) const {
+    const std::size_t k =
+        static_cast<std::size_t>((j % rows_ + rows_) % rows_) * static_cast<std::size_t>(columns_) +
+        static_cast<std::size_t>((i % columns_ + columns_) % columns_);
+    if (down_[k] < 0) {
+        return false;
+    }
+    di = geography::kSteps[static_cast<std::size_t>(down_[k])][0];
+    dj = geography::kSteps[static_cast<std::size_t>(down_[k])][1];
+    return true;
+}
+
+float Geography::drainedArea(int i, int j) const {
+    return drainedArea_[static_cast<std::size_t>((j % rows_ + rows_) % rows_) *
+                            static_cast<std::size_t>(columns_) +
+                        static_cast<std::size_t>((i % columns_ + columns_) % columns_)];
+}
+
 const float* Geography::fieldsOf(int column, int row) const {
     const std::size_t node = static_cast<std::size_t>(row) * static_cast<std::size_t>(columns_) +
                              static_cast<std::size_t>(column);
@@ -330,17 +337,15 @@ std::uint64_t Geography::checksum() const {
     for (const std::int8_t v : down_) {
         add(static_cast<std::uint8_t>(v), 1);
     }
-    for (const std::vector<float>* values : {&drainedArea_, &valleyGeometry_}) {
-        for (const float v : *values) {
-            add(std::bit_cast<std::uint32_t>(v), 4);
-        }
+    for (const float v : drainedArea_) {
+        add(std::bit_cast<std::uint32_t>(v), 4);
     }
     return hash;
 }
 
 std::size_t Geography::memoryBytes() const {
     return sizeof(*this) + sizeof(Noises) +
-           (nodes_.size() + drainedArea_.size() + valleyGeometry_.size()) * sizeof(float) +
+           (nodes_.size() + drainedArea_.size()) * sizeof(float) +
            down_.size();
 }
 

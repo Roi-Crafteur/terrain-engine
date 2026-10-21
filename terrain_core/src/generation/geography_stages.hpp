@@ -15,8 +15,7 @@
 namespace terrain {
 
 // The noises of the geography: the three coast stages (the broadest octaves of the coarse one,
-// and the ruggedness of the coasts, on the map), the island arcs, the warp of the valleys
-// (twins).
+// and the ruggedness of the coasts, on the map), the island arcs.
 struct Geography::Noises {
     noise::FbmOctaves coarseMap;
     noise::FbmOctaves coarse;
@@ -24,9 +23,6 @@ struct Geography::Noises {
     noise::FbmOctaves fine;
     noise::FbmOctaves rugged;
     noise::FbmOctaves arc;
-    noise::FbmOctaves valleyX;
-    noise::FbmOctaves valleyZ;
-    bool twinValleys = false;
 };
 
 } // namespace terrain
@@ -43,7 +39,7 @@ enum Stream : std::uint64_t {
     kProvinces,
     kCoastRugged,
     kArcs,
-    kValleyGeometry,
+    kValleyGeometry, // the next three: unused since phase 11R bis, kept for the next seeds
     kValleyWarpX,
     kValleyWarpZ,
     kDrainage,
@@ -128,12 +124,5 @@ struct Drainage {
 [[nodiscard]] Drainage drainedLand(std::uint64_t seed, const GeographyParams& params,
                                    const Grid& grid, const Crust& crust,
                                    const std::vector<float>& floor);
-
-// The polyline of the valley of each node toward the node downstream, kValleyFloats floats per
-// node: the offsets of its start and of its middle from the position of the node (meters) and
-// the scale of its floor, drawn from the seed. Its end is the start of the node downstream.
-inline constexpr std::size_t kValleyFloats = 5;
-[[nodiscard]] std::vector<float> valleyGeometry(std::uint64_t seed, const Grid& grid,
-                                                const Drainage& drainage);
 
 } // namespace terrain::geography

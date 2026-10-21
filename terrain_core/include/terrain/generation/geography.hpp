@@ -29,13 +29,6 @@ struct GeographySample {
     float coarse = 0.0f; // the broadest octaves of the coarse coast noise
 };
 
-// The share of the hills and of the mountains left by the valleys of the drainage of the map at a
-// point: 1 far from them, less in them, down to 0 on the floors of the largest.
-struct ValleyShape {
-    float hills = 1.0f;
-    float mountains = 1.0f; // steeper walls
-};
-
 // The planetary geography of a seed (phase 11R): a map of the whole world computed once,
 // deterministic to the bit on every platform, then sampled at any point. Its continents do not
 // follow the tectonic plates: a crust noise thresholded to a share of land, chosen among a few
@@ -93,13 +86,6 @@ public:
     [[nodiscard]] int crustCandidate() const { return candidate_; }
     [[nodiscard]] int continents() const { return continents_; }
 
-    // The valleys of the drainage of the map at (x, z), canonical (GeographyParams): they follow
-    // its tree toward the sea (each node to the node downstream), bent; the larger the area they
-    // drain, the deeper they are and the wider their floors, flat and level across. A relief
-    // scaled by it has no minimum but on these floors, which descend with the regional elevation
-    // and step down where a valley joins a larger one: it drains.
-    [[nodiscard]] ValleyShape valleyShape(double x, double z) const;
-
     // 64-bit FNV-1a of the raw bits of every field of every node, of the drainage and of the
     // anchor.
     [[nodiscard]] std::uint64_t checksum() const;
@@ -127,11 +113,10 @@ private:
     int candidate_ = 0;
     int continents_ = 0;
     std::vector<float> nodes_; // kFields floats per node, row by row
-    // The drainage of the map: the step to the node downstream of each node (-1 at sea), the
-    // area it drains (square meters), the polylines of its valleys (geography::valleyGeometry).
+    // The drainage of the map: the step to the node downstream of each node (-1 at sea) and the
+    // area it drains (square meters).
     std::vector<std::int8_t> down_;
     std::vector<float> drainedArea_;
-    std::vector<float> valleyGeometry_;
     std::shared_ptr<const Noises> noises_;
 };
 

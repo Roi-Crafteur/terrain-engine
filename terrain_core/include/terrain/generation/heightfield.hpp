@@ -140,12 +140,14 @@ private:
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
     // The ridged noise at its warped point, and the warp (of the geography when it is enabled).
     [[nodiscard]] float ridgeAt(double x, double z, Memos* memos, std::array<float, 2>& warp) const;
-    // sampleWith on the planetary geography (heightfield_geography.cpp), at a canonical point,
-    // its mountains carved by its valleys and its hills.
+    // sampleWith on the planetary geography (heightfield_geography.cpp), at a canonical point:
+    // its regional elevation, the local relief around it and the ridged mountains.
     [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos) const;
-    [[nodiscard]] float geographyMountainAt(double x, double z, float mask,
-                                            const GeographySample& g, float valleys,
-                                            Memos* memos) const;
+    [[nodiscard]] float geographyMountainAt(double x, double z, float mask, Memos* memos) const;
+    // The hills and vallons of the geography of this amplitude, and its buttes this high
+    // (relief_local).
+    [[nodiscard]] float localReliefAt(double x, double z, float amplitude, float buttes,
+                                      Memos* memos) const;
     [[nodiscard]] float detailAt(double x, double z, float base, Memos* memos) const;
 
     HeightfieldParams params_;

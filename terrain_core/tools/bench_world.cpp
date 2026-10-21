@@ -355,12 +355,19 @@ void worldCases(const Config& c, const Heightfield& field, const Heightfield& pl
     const terrain::ChunkCoord fieldPlain = chunkWhere(field, plain);
     const terrain::ChunkCoord planetMountain = chunkWhere(planet, mountainous);
     const terrain::ChunkCoord planetPlain = chunkWhere(planet, plain);
+    terrain::HeightfieldParams legacyParams;
+    legacyParams.geography.enabled = false;
+    const Heightfield legacy(kSeed, legacyParams);
+    const terrain::ChunkCoord legacyMountain = chunkWhere(legacy, mountainous);
+    const terrain::ChunkCoord legacyPlain = chunkWhere(legacy, plain);
     std::printf("\nmountain chunk (%d, %d), plain chunk (%d, %d) of the default world\n",
                 mountain.x, mountain.z, fieldPlain.x, fieldPlain.z);
     section("tiles of the default world (mountains and inland plains), ms per tile");
     tileCases(c, "", field.params(), mountain, fieldPlain);
     section("tiles of the planet (mountains and plains), ms per tile");
     tileCases(c, ", planet", planet.params(), planetMountain, planetPlain);
+    section("tiles of the legacy relief (generator 2, the world of main), ms per tile");
+    tileCases(c, ", legacy", legacyParams, legacyMountain, legacyPlain);
     section("marchingCubes over the levels of the tiles, us per level");
     meshingCases(c, "", field.params(), mountain, fieldPlain);
     meshingCases(c, ", planet", planet.params(), planetMountain, planetPlain);

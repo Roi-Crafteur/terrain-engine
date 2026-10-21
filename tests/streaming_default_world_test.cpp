@@ -48,8 +48,9 @@ void testTiles(const TerrainTiles& tiles, ChunkCoord chunk) {
             onSurface = onSurface && std::isfinite(p.y) &&
                         (lod > 0 || std::abs(p.y - tiles.heightfield().heightAt(p.x, p.z)) <= 0.25);
         }
-        covered = covered && std::abs(low - data.minHeight) < 1e-3f &&
-                  std::abs(high - data.maxHeight) < 1e-3f;
+        // The heights of the tile cover its vertices: along the seams the vertices follow the
+        // coarser neighbor, so the extreme columns may lie between them.
+        covered = covered && low >= data.minHeight - 1e-3f && high <= data.maxHeight + 1e-3f;
     }
     TEST_CHECK(meshed);
     TEST_CHECK(same);

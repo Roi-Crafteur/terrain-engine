@@ -196,28 +196,4 @@ Drainage drainedLand(std::uint64_t seed, const GeographyParams& params, const Gr
     return d;
 }
 
-std::vector<float> valleyGeometry(std::uint64_t seed, const Grid& grid, const Drainage& drainage) {
-    std::vector<float> geometry(kValleyFloats * grid.nodes(), 0.0f);
-    for (std::size_t k = 0; k < grid.nodes(); ++k) {
-        const std::uint64_t h = noise::deriveSeed(seed, k);
-        const auto unit = [h](int b) {
-            return static_cast<double>((h >> (16 * b)) & 0xFFFFU) / 65536.0 - 0.5;
-        };
-        float* g = &geometry[kValleyFloats * k];
-        // The start within 0.4 node of the node; the middle up to 0.4 of the step aside; the
-        // floor 0.8 to 1.2 times as wide as the area drained gives.
-        g[0] = static_cast<float>(0.8 * unit(0) * grid.sizeX);
-        g[1] = static_cast<float>(0.8 * unit(1) * grid.sizeZ);
-        g[4] = static_cast<float>(1.0 + 0.4 * unit(3));
-        if (drainage.down[k] < 0) {
-            continue;
-        }
-        const auto& [di, dj] = kSteps[static_cast<std::size_t>(drainage.down[k])];
-        const double aside = 0.8 * unit(2);
-        g[2] = static_cast<float>((0.5 * di - aside * dj) * grid.sizeX);
-        g[3] = static_cast<float>((0.5 * dj + aside * di) * grid.sizeZ);
-    }
-    return geometry;
-}
-
 } // namespace terrain::geography

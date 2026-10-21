@@ -1,9 +1,9 @@
 #include "terrain/generation/heightfield.hpp"
 
+#include "relief_local.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
-#include "valleys.hpp"
 
 #include <algorithm>
 #include <array>
@@ -103,15 +103,9 @@ enum Layer : std::uint64_t {
     kMacroContinent,
     kPlates,
     kGeography,
-    kValleys,
+    kValleys, // unused since phase 11R bis: kept so that the next seeds never change
+    kLocalRelief,
 };
-
-// The mountains of the geography: the mass shaped by the valleys, kMassBase of its height plus
-// kCrag times ridged crags of kCragOctaves from kCragWavelength.
-constexpr float kMassBase = 0.7f;
-constexpr float kCrag = 0.45f;
-constexpr double kCragWavelength = 12'000.0;
-constexpr int kCragOctaves = 4;
 
 } // namespace
 
@@ -131,7 +125,7 @@ struct Heightfield::Layers {
     noise::FbmOctaves geographyWarpX;
     noise::FbmOctaves geographyWarpZ;
     noise::FbmOctaves geographyRidge;
-    valleys::Network valleys;
+    relief_local::Noises local; // the hills, vallons and buttes of the geography
     // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
     // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the
     // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land
@@ -169,17 +163,20 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
     }
     layers->twinWarps = layers->warpX.twinOf(layers->warpZ);
     if (params_.geography.enabled) {
-        const auto fast = [seed, &world](Layer stream, int octaves, double wavelength) {
+        const auto fast = [seed, &world](Layer stream, int octaves, double wavelength,
+                                         double gain) {
             return noise::FbmOctaves(noise::deriveSeed(seed, stream),
                                      {.octaves = octaves,
                                       .frequency = 1.0 / wavelength,
+                                      .gain = gain,
                                       .lattices = noise::OctaveLattices::RotatedFast},
                                      world);
         };
-        layers->geographyWarpX = fast(kWarpX, 3, params_.warpWavelength);
-        layers->geographyWarpZ = fast(kWarpZ, 3, params_.warpWavelength);
-        layers->geographyRidge = fast(kRidge, kCragOctaves, kCragWavelength);
-        layers->valleys = valleys::makeNetwork(noise::deriveSeed(seed, kValleys), world);
+        layers->geographyWarpX = fast(kWarpX, 3, params_.warpWavelength, 0.5);
+        layers->geographyWarpZ = fast(kWarpZ, 3, params_.warpWavelength, 0.5);
+        layers->geographyRidge = fast(kRidge, params_.ridgeOctaves, params_.ridgeWavelength,
+                                      params_.geography.mountainGain);
+        layers->local = relief_local::makeNoises(noise::deriveSeed(seed, kLocalRelief), world);
         layers->twinGeographyWarps = layers->geographyWarpX.twinOf(layers->geographyWarpZ);
     }
     layers->maskSkippable = std::isfinite(params_.maskLow) && std::isfinite(params_.maskHigh) &&
@@ -207,6 +204,7 @@ struct Heightfield::Memos {
     noise::FbmOctaves::Memo ridge;
     noise::FbmOctaves::Memo detail;
     TectonicPlates::Memos plates;
+    relief_local::Memos local;
 };
 
 namespace {
@@ -348,24 +346,27 @@ float Heightfield::ridgeAt(double x, double z, Memos* memos, std::array<float, 2
     }
     const double warpedX = x + params_.warpAmplitude * warp[0];
     const double warpedZ = z + params_.warpAmplitude * warp[1];
-    return memos ? ridged.ridged2D(warpedX, warpedZ, params_.ridgeSharpness, memos->ridge)
-                 : ridged.ridged2D(warpedX, warpedZ, params_.ridgeSharpness);
+    const double sharpness =
+        geography ? params_.geography.mountainSharpness : params_.ridgeSharpness;
+    return memos ? ridged.ridged2D(warpedX, warpedZ, sharpness, memos->ridge)
+                 : ridged.ridged2D(warpedX, warpedZ, sharpness);
 }
 
-// The mountains of the geography: a mass between the valleys of its drainage (valleys, 0 on
-// their floors), furrowed by tributaries down the regional elevation, crowned by ridged crags.
-float Heightfield::geographyMountainAt(double x, double z, float mask, const GeographySample& g,
-                                       float valleys, Memos* memos) const {
-    if (mask <= 0.0f || valleys <= 0.0f) {
+// The mountains of the geography: the ridged noise of the Heightfield (its warp, octaves and
+// wavelength, the sharpness and gain of the geography) under the mask, up to
+// GeographyParams::mountainHeight.
+float Heightfield::geographyMountainAt(double x, double z, float mask, Memos* memos) const {
+    if (mask <= 0.0f) {
         return 0.0f;
     }
-    const double downX = -static_cast<double>(g.landDX);
-    const double downZ = -static_cast<double>(g.landDZ);
-    const float mass = valleys * valleys::carve(layers_->valleys, x, z, downX, downZ,
-                                                dmath::hypot(downX, downZ));
     std::array<float, 2> warp{};
-    const float crags = kMassBase + kCrag * ridgeAt(x, z, memos, warp);
-    return mask * params_.geography.mountainHeight * mass * crags;
+    return mask * params_.geography.mountainHeight * ridgeAt(x, z, memos, warp);
+}
+
+float Heightfield::localReliefAt(double x, double z, float amplitude, float buttes,
+                                Memos* memos) const {
+    return relief_local::rolling(layers_->local, x, z, amplitude, buttes,
+                                 memos != nullptr ? &memos->local : nullptr);
 }
 
 } // namespace terrain

@@ -1,6 +1,6 @@
 // Views of a relief in perspective (terrain::renderReliefView), at the places that judge it:
-// view_foot.png at the foot of the longest chain, 20 to 30 km from its highest point and
-// looking at it; view_plain.png in the plain farthest from the chains; view_summit.png from the
+// view_foot.png at the foot of the longest chain, 20 to 30 km from its highest point (the lowest
+// place from which it is seen) and looking at it; view_plain.png in the plain farthest from the chains; view_summit.png from the
 // highest summit of the planet toward the lowest ground 15 km around; view_above.png from 300 m
 // above the longest chain, looking at its highest point. The eye stands 1.8 m above the ground
 // (300 m for the last view), the field of view is 70 degrees wide, and a tower of 330 m stands
@@ -173,10 +173,20 @@ Point highestAround(const terrain::Heightfield& field, double x, double z, int h
     return best;
 }
 
-// The summit near a cell of the grid: the highest point within 12 km, to 25 m.
+// The summit near a cell of the grid: the highest point within 12 km at 500 m, then climbed to
+// the top in steps of 100, 25 and 5 m (each repeated while it rises): crests are sharp.
 Point summitNear(const terrain::Heightfield& field, double x, double z) {
-    const Point coarse = highestAround(field, x, z, 24, 500.0);
-    return highestAround(field, coarse.x, coarse.z, 20, 25.0);
+    Point best = highestAround(field, x, z, 24, 500.0);
+    for (const double step : {100.0, 25.0, 5.0}) {
+        for (int k = 0; k < 64; ++k) {
+            const Point next = highestAround(field, best.x, best.z, 4, step);
+            if (!(next.height > best.height)) {
+                break;
+            }
+            best = next;
+        }
+    }
+    return best;
 }
 
 // The lowest land (at least 1 m) seen from (x, z) at these distances, in 64 directions; the
@@ -234,23 +244,47 @@ bool writeView(const terrain::Heightfield& field, const Options& options, const 
                              terrain::renderReliefView(ground, view, options.threads));
 }
 
-// The foot of the longest chain and what it sees of the highest point of the chain.
+// The foot of the longest chain: among the land 20, 25 and 30 km from its highest point in 64
+// directions, the lowest from which the ground does not hide it (else the lowest); and what it
+// sees of it.
 terrain::ViewParams footView(const terrain::Heightfield& field, const Options& options,
                              const Point& summit, Report& r) {
-    const Point foot = lowestAround(field, summit.x, summit.z, {20'000.0, 25'000.0, 30'000.0});
-    terrain::ViewParams view =
-        viewFrom(options, foot, kEyeAboveGround, headingTo(foot.x, foot.z, summit.x, summit.z),
-                 0.0);
     const terrain::ViewGround ground = [&field](double x, double z) {
         return field.heightAt(x, z);
     };
+    Point foot{0.0, 0.0, 1.0e9f};
+    Point lowest = foot;
+    int candidates = 0;
+    int seeing = 0;
+    for (const double d : {20'000.0, 25'000.0, 30'000.0}) {
+        for (int k = 0; k < 64; ++k) {
+            const Point p = pointAt(field, summit.x + d * terrain::dmath::sinTurns(k / 64.0),
+                                    summit.z - d * terrain::dmath::cosTurns(k / 64.0));
+            if (p.height < 1.0f) {
+                continue;
+            }
+            ++candidates;
+            lowest = p.height < lowest.height ? p : lowest;
+            const terrain::ViewParams eye = viewFrom(options, p, kEyeAboveGround, 0.0, 0.0);
+            if (terrain::sightline(ground, eye, summit.x, summit.z, summit.height, kOwnTop)
+                    .visible) {
+                ++seeing;
+                foot = p.height < foot.height ? p : foot;
+            }
+        }
+    }
+    foot = seeing > 0 ? foot : (candidates > 0 ? lowest : pointAt(field, summit.x, summit.z + 25'000.0));
+    terrain::ViewParams view =
+        viewFrom(options, foot, kEyeAboveGround, headingTo(foot.x, foot.z, summit.x, summit.z),
+                 0.0);
     const terrain::Sightline line =
         terrain::sightline(ground, view, summit.x, summit.z, summit.height, kOwnTop);
     view.tilt = std::max(0.0, 0.6 * line.tangent);
-    r.add("highest point of the longest chain: %.0f m at (%.3f, %.3f) km; seen from the foot "
-          "(%.0f m, %.1f km away) %.2f degrees above the horizontal, %s",
-          static_cast<double>(summit.height), summit.x / 1000.0, summit.z / 1000.0,
-          static_cast<double>(foot.height), line.distance / 1000.0,
+    r.add("highest point of the longest chain: %.0f m at (%.3f, %.3f) km, seen from %d of the "
+          "%d points of land 20 to 30 km around it; from the lowest of them (%.0f m, %.1f km "
+          "away) %.2f degrees above the horizontal, %s",
+          static_cast<double>(summit.height), summit.x / 1000.0, summit.z / 1000.0, seeing,
+          candidates, static_cast<double>(foot.height), line.distance / 1000.0,
           terrain::dmath::atan(line.tangent) * 360.0 / kTwoPi,
           line.visible ? "visible\n" : "hidden by the ground");
     if (!line.visible) {
