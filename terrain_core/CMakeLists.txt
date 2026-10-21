@@ -55,6 +55,23 @@ add_library(terrain_core STATIC
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
+    src/generation/planet/planet_build.cpp
+    src/generation/planet/planet_climate.cpp
+    src/generation/planet/planet_compact.cpp
+    src/generation/planet/planet_false_passes.cpp
+    src/generation/planet/planet_features.cpp
+    src/generation/planet/planet_flow.cpp
+    src/generation/planet/planet_grid.cpp
+    src/generation/planet/planet_hierarchy.cpp
+    src/generation/planet/planet_lakes.cpp
+    src/generation/planet/planet_level.cpp
+    src/generation/planet/planet_moisture.cpp
+    src/generation/planet/planet_order.cpp
+    src/generation/planet/planet_parallel.cpp
+    src/generation/planet/planet_relief.cpp
+    src/generation/planet/planet_rivers.cpp
+    src/generation/planet/planet_stats.cpp
+    src/generation/planet/planet_wind.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
@@ -74,6 +91,8 @@ add_library(terrain_core STATIC
     src/io/heightmap_png.cpp
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
+    src/io/planet_png.cpp
+    src/io/planet_png_layers.cpp
     src/io/png.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
@@ -211,6 +230,27 @@ add_custom_target(export_voronoi_maps
 # Release: terrain_bench_noise [runs] [--quick]
 add_executable(terrain_bench_noise tools/bench_noise.cpp tools/bench_world.cpp)
 target_link_libraries(terrain_bench_noise PRIVATE terrain_core terrain_warnings)
+
+# Planet level (climate, lakes, river graph) of a whole world, its figures and control images:
+# terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary] [samples-per-axis]
+#                       [threads] [world-x] [world-z]
+add_executable(terrain_export_planet tools/export_planet.cpp)
+target_link_libraries(terrain_export_planet PRIVATE terrain_core terrain_warnings)
+
+# The planet level of the default world (seed 20261019, cells of 8,192 m) with the planetary
+# relief and with the default one, one sample per cell. Not part of the tests (about a minute
+# each with 8 threads in Release, a few hundred MB kept and about 1.4 GB at the peak):
+#   cmake --build <build-dir> --target export_planet_maps
+# writes the figures to the terminal and the images into <build-dir>/planet_maps/planetary and
+# <build-dir>/planet_maps/default.
+set(planet_maps ${CMAKE_BINARY_DIR}/planet_maps)
+add_custom_target(export_planet_maps
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${planet_maps}
+    COMMAND terrain_export_planet ${planet_maps}/planetary 20261019 8192 planetary 1
+    COMMAND terrain_export_planet ${planet_maps}/default 20261019 8192 default 1
+    VERBATIM
+    USES_TERMINAL
+)
 
 # Eroded region PNG export: terrain_export_eroded <output-dir> [seed] [m/px] [size]
 add_executable(terrain_export_eroded tools/export_eroded.cpp)
