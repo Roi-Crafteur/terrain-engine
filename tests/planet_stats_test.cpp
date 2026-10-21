@@ -56,9 +56,10 @@ terrain::PlanetLake lake(std::uint32_t partner, std::int64_t outflow) {
 void testLongestRivers() {
     // On rows of cells 1 m wide (cell i of row 0 centered on (i - 99.5, -1)): two sources (100 and
     // 300 m) join (50 m) and enter lake 0 at x = -50.5, which spills at cell 60 (x = -39.5,
-    // 11 m across) into a river to the sea (200 m): 561 m. A lone river of 400 m to the sea. A
-    // river of 10 m enters lake 1 at x = 0.5, which spills at cell 110 straight into lake 2,
-    // which spills at cell 130 into the sea: 10 + 10 + 20 = 40 m, with the outflow of lake 2.
+    // 11 m across) into a river to the sea (200 m): 561 m, 11 of them across the lake. A lone
+    // river of 400 m to the sea. A river of 10 m enters lake 1 at x = 0.5, which spills at cell
+    // 110 straight into lake 2, which spills at cell 130 into the sea: 10 + 10 + 20 = 40 m, 30 of
+    // them across the lakes, with the outflow of lake 2.
     const terrain::PlanetGrid grid{200, 3, 1.0};
     RiverGraph graph;
     graph.segments.push_back(segment(100.0, RiverMouth::Confluence, 1.0f));
@@ -79,17 +80,31 @@ void testLongestRivers() {
     const auto lakeAt = [](std::size_t c) { return c == 110 ? 2 : -1; };
     const auto isOcean = [](std::size_t c) { return c == 130; };
     const std::vector<terrain::PlanetRiverStat> rivers =
-        terrain::planet::longestRivers(graph, lakes, grid, lakeAt, isOcean, 5);
+        terrain::planet::longestRivers(graph, lakes, grid, lakeAt, isOcean, 1.0, 5);
     TEST_CHECK(rivers.size() == 3);
     if (rivers.size() == 3) {
         TEST_CHECK(rivers[0].mouthSegment == 3 && rivers[0].length == 561.0);
+        TEST_CHECK(rivers[0].lakeLength == 11.0);
         TEST_CHECK(rivers[0].discharge == 4.0 && rivers[0].mouth == RiverMouth::Sea);
         TEST_CHECK(rivers[1].mouthSegment == 4 && rivers[1].length == 400.0);
+        TEST_CHECK(rivers[1].lakeLength == 0.0);
         TEST_CHECK(rivers[2].mouthSegment == -1 && rivers[2].length == 40.0);
+        TEST_CHECK(rivers[2].lakeLength == 30.0);
         TEST_CHECK(rivers[2].discharge == 4.0 && rivers[2].mouth == RiverMouth::Sea);
         TEST_CHECK(rivers[2].x == grid.centerX(130));
     }
-    TEST_CHECK(terrain::planet::longestRivers(graph, lakes, grid, lakeAt, isOcean, 1).size() == 1);
+    TEST_CHECK(terrain::planet::longestRivers(graph, lakes, grid, lakeAt, isOcean, 1.0, 1).size() ==
+               1);
+    // Lake 1 lets out 3 m^3/s, less than a river of 4.5 m^3/s: the river of 10 m ends in it.
+    const std::vector<terrain::PlanetRiverStat> larger =
+        terrain::planet::longestRivers(graph, lakes, grid, lakeAt, isOcean, 4.5, 5);
+    TEST_CHECK(larger.size() == 3);
+    if (larger.size() == 3) {
+        TEST_CHECK(larger[0].length == 561.0 && larger[1].length == 400.0);
+        TEST_CHECK(larger[2].mouthSegment == 5 && larger[2].length == 10.0);
+        TEST_CHECK(larger[2].lakeLength == 0.0 && larger[2].discharge == 6.0);
+        TEST_CHECK(larger[2].mouth == RiverMouth::Lake);
+    }
 }
 
 void testSmallWorld() {
@@ -110,6 +125,9 @@ void testSmallWorld() {
     TEST_CHECK(stats.largestBasins[0].area <= stats.landMasses[0]);
     for (std::size_t k = 1; k < stats.longestRivers.size(); ++k) {
         TEST_CHECK(stats.longestRivers[k].length <= stats.longestRivers[k - 1].length);
+    }
+    for (const terrain::PlanetRiverStat& river : stats.longestRivers) {
+        TEST_CHECK(river.lakeLength >= 0.0 && river.lakeLength < river.length);
     }
     TEST_CHECK(stats.lakes == level.lakes().size() &&
                stats.lakes == stats.overflowingLakes + stats.terminalLakes + stats.playas);

@@ -15,16 +15,22 @@ namespace {
 
 // Longest paths through the river graph, the lakes included: a river crossing a lake goes
 // straight from where it enters to the partner of the lake's pass, and goes on from there in a
-// river, in another lake or into the sea. Kahn order on the segments [0, S) and the lakes
-// [S, S + L): every node after all the nodes upstream of it.
+// river, in another lake or into the sea, when the lake lets out a river's discharge (else it
+// ends in the lake). Kahn order on the segments [0, S) and the lakes [S, S + L): every node after
+// all the nodes upstream of it.
+struct RiverPath {
+    double length = 0.0;
+    double lakeLength = 0.0; // the part of it across lakes
+};
+
 class RiverLengths {
 public:
     RiverLengths(const RiverGraph& graph, const std::vector<PlanetLake>& lakes,
                  const PlanetGrid& grid, const LakeAt& lakeAt,
-                 const std::function<bool(std::size_t)>& isOcean)
+                 const std::function<bool(std::size_t)>& isOcean, double minDischarge)
         : graph_(graph), lakes_(lakes), grid_(grid), lakeAt_(lakeAt), isOcean_(isOcean),
-          up_(graph.segments.size() + lakes.size(), 0.0), entered_(lakes.size(), false),
-          waiting_(up_.size(), 0), outlets_(lakes.size()) {}
+          minDischarge_(minDischarge), up_(graph.segments.size() + lakes.size()),
+          entered_(lakes.size(), false), waiting_(up_.size(), 0), outlets_(lakes.size()) {}
 
     std::vector<PlanetRiverStat> run();
 
@@ -37,13 +43,17 @@ private:
         const double z = nearestImage(grid_.centerZ(grid_.row(cell)), z0, grid_.periodZ());
         return dmath::hypot(x - x0, z - z0);
     }
+    // A river entering the lake goes on beyond it.
+    [[nodiscard]] bool goesOn(std::size_t lake) const {
+        return lakes_[lake].overflowing && cubicMeters(lakes_[lake].outflow) >= minDischarge_;
+    }
     [[nodiscard]] std::int32_t nextLake(std::size_t lake) const;
     void count();
-    void release(std::size_t node, double length);
-    void enterLake(std::size_t lake, double length, double x, double z, bool river);
+    void release(std::size_t node, RiverPath path);
+    void enterLake(std::size_t lake, RiverPath path, double x, double z, bool river);
     void segmentDone(std::size_t s);
     void lakeDone(std::size_t lake);
-    void end(double length, double discharge, RiverMouth mouth, std::int32_t segment, double x,
+    void end(RiverPath path, double discharge, RiverMouth mouth, std::int32_t segment, double x,
              double z, std::uint8_t strahler);
 
     const RiverGraph& graph_;
@@ -51,7 +61,8 @@ private:
     const PlanetGrid& grid_;
     const LakeAt& lakeAt_;
     const std::function<bool(std::size_t)>& isOcean_;
-    std::vector<double> up_;    // longest length to the start of a segment / the exit of a lake
+    double minDischarge_;
+    std::vector<RiverPath> up_; // longest path to the start of a segment / the exit of a lake
     std::vector<bool> entered_; // a river reaches the lake
     std::vector<int> waiting_;
     std::vector<std::vector<std::int32_t>> outlets_; // segments starting at each lake's exit
@@ -59,10 +70,9 @@ private:
     std::vector<PlanetRiverStat> ends_;
 };
 
-// The lake an overflowing lake spills straight into, or -1.
+// The lake a lake spills a river's discharge straight into, or -1.
 std::int32_t RiverLengths::nextLake(std::size_t lake) const {
-    const PlanetLake& l = lakes_[lake];
-    return l.overflowing && l.outflow > 0 && outlets_[lake].empty() ? lakeAt_(l.partner) : -1;
+    return goesOn(lake) && outlets_[lake].empty() ? lakeAt_(lakes_[lake].partner) : -1;
 }
 
 void RiverLengths::count() {
@@ -83,28 +93,35 @@ void RiverLengths::count() {
     }
 }
 
-void RiverLengths::release(std::size_t node, double length) {
-    up_[node] = std::max(up_[node], length);
+void RiverLengths::release(std::size_t node, RiverPath path) {
+    if (path.length > up_[node].length) {
+        up_[node] = path;
+    }
     if (--waiting_[node] == 0) {
         queue_.push_back(node);
     }
 }
 
-// A river (or a lake spilling) enters a lake at (x, z) after length meters.
-void RiverLengths::enterLake(std::size_t lake, double length, double x, double z, bool river) {
+// A river (or a lake spilling) enters a lake at (x, z) at the end of path.
+void RiverLengths::enterLake(std::size_t lake, RiverPath path, double x, double z, bool river) {
     const PlanetLake& l = lakes_[lake];
     entered_[lake] = entered_[lake] || river;
-    release(lakeNode(lake), l.overflowing ? length + distance(x, z, l.partner) : length);
+    if (l.overflowing) {
+        const double across = distance(x, z, l.partner);
+        path.length += across;
+        path.lakeLength += across;
+    }
+    release(lakeNode(lake), path);
 }
 
-void RiverLengths::end(double length, double discharge, RiverMouth mouth, std::int32_t segment,
+void RiverLengths::end(RiverPath path, double discharge, RiverMouth mouth, std::int32_t segment,
                        double x, double z, std::uint8_t strahler) {
-    ends_.push_back({segment, length, discharge, mouth, strahler, x, z});
+    ends_.push_back({segment, path.length, path.lakeLength, discharge, mouth, strahler, x, z});
 }
 
 void RiverLengths::segmentDone(std::size_t s) {
     const RiverSegment& segment = graph_.segments[s];
-    const double length = up_[s] + segment.length;
+    const RiverPath path{up_[s].length + segment.length, up_[s].lakeLength};
     const RiverVertex& last = segment.vertices.back();
     const RiverVertex& river =
         segment
@@ -112,17 +129,17 @@ void RiverLengths::segmentDone(std::size_t s) {
     const auto id = static_cast<std::int32_t>(s);
     switch (segment.mouth) {
     case RiverMouth::Confluence:
-        release(static_cast<std::size_t>(segment.downstream), length);
+        release(static_cast<std::size_t>(segment.downstream), path);
         return;
     case RiverMouth::Lake:
     case RiverMouth::TerminalLake:
-        if (segment.mouth == RiverMouth::TerminalLake) {
-            end(length, river.discharge, segment.mouth, id, river.x, river.z, segment.strahler);
+        if (!goesOn(static_cast<std::size_t>(segment.mouthLake))) {
+            end(path, river.discharge, segment.mouth, id, river.x, river.z, segment.strahler);
         }
-        enterLake(static_cast<std::size_t>(segment.mouthLake), length, last.x, last.z, true);
+        enterLake(static_cast<std::size_t>(segment.mouthLake), path, last.x, last.z, true);
         return;
     default:
-        end(length, river.discharge, segment.mouth, id, river.x, river.z, segment.strahler);
+        end(path, river.discharge, segment.mouth, id, river.x, river.z, segment.strahler);
     }
 }
 
@@ -131,28 +148,30 @@ void RiverLengths::lakeDone(std::size_t lake) {
     if (!l.overflowing || l.outflow <= 0) {
         return;
     }
-    const double length = up_[lakeNode(lake)];
+    const RiverPath path = up_[lakeNode(lake)];
     const double x = grid_.centerX(grid_.column(l.partner));
     const double z = grid_.centerZ(grid_.row(l.partner));
     const double outflow = cubicMeters(l.outflow);
     const std::uint8_t order = lake < graph_.lakeStrahler.size() ? graph_.lakeStrahler[lake] : 1;
+    const bool onward = entered_[lake] && goesOn(lake);
     for (const std::int32_t s : outlets_[lake]) {
-        release(static_cast<std::size_t>(s), entered_[lake] ? length : 0.0);
+        release(static_cast<std::size_t>(s), onward ? path : RiverPath{});
     }
-    if (!outlets_[lake].empty() || !entered_[lake]) {
+    if (!outlets_[lake].empty() || !onward) {
         if (const std::int32_t next = nextLake(lake); next >= 0) {
-            enterLake(static_cast<std::size_t>(next), 0.0, x, z, false);
+            enterLake(static_cast<std::size_t>(next), RiverPath{}, x, z, false);
         }
         return;
     }
     if (const std::int32_t next = nextLake(lake); next >= 0) {
         const auto n = static_cast<std::size_t>(next);
-        if (!lakes_[n].overflowing) {
-            end(length, outflow, RiverMouth::TerminalLake, -1, x, z, order);
+        if (!goesOn(n)) {
+            end(path, outflow, lakes_[n].overflowing ? RiverMouth::Lake : RiverMouth::TerminalLake,
+                -1, x, z, order);
         }
-        enterLake(n, length, x, z, true);
+        enterLake(n, path, x, z, true);
     } else {
-        end(length, outflow, isOcean_(l.partner) ? RiverMouth::Sea : RiverMouth::Lake, -1, x, z,
+        end(path, outflow, isOcean_(l.partner) ? RiverMouth::Sea : RiverMouth::Lake, -1, x, z,
             order);
     }
 }
@@ -257,8 +276,9 @@ std::vector<PlanetRiverStat> longestRivers(const RiverGraph& graph,
                                            const std::vector<PlanetLake>& lakes,
                                            const PlanetGrid& grid, const LakeAt& lakeAt,
                                            const std::function<bool(std::size_t)>& isOcean,
-                                           std::size_t top) {
-    std::vector<PlanetRiverStat> rivers = RiverLengths(graph, lakes, grid, lakeAt, isOcean).run();
+                                           double minDischarge, std::size_t top) {
+    std::vector<PlanetRiverStat> rivers =
+        RiverLengths(graph, lakes, grid, lakeAt, isOcean, minDischarge).run();
     std::stable_sort(rivers.begin(), rivers.end(),
                      [](const auto& a, const auto& b) { return a.length > b.length; });
     rivers.resize(std::min(top, rivers.size()));
@@ -281,7 +301,8 @@ PlanetStats planetStats(const PlanetLevel& level, std::size_t top) {
     const std::function<bool(std::size_t)> isOcean = [&level](std::size_t c) {
         return level.cells().ocean(c);
     };
-    stats.longestRivers = longestRivers(level.rivers(), level.lakes(), grid, lakeAt, isOcean, top);
+    stats.longestRivers = longestRivers(level.rivers(), level.lakes(), grid, lakeAt, isOcean,
+                                        level.params().rivers.minDischarge, top);
     stats.lakeArea = static_cast<double>(level.cells().lakeCells.size()) * grid.cellArea();
     for (const PlanetLake& lake : level.lakes()) {
         ++stats.lakes;

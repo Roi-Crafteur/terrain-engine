@@ -27,6 +27,7 @@ struct PlanetBasinStat {
 struct PlanetRiverStat {
     std::int32_t mouthSegment = -1; // its last segment, or -1 when it ends through a lake
     double length = 0.0;            // meters along the polylines (cell to cell: no meanders)
+    double lakeLength = 0.0;        // meters of it straight across the lakes it crosses
     double discharge = 0.0;         // m^3/s at its last river point
     RiverMouth mouth = RiverMouth::Sea;
     std::uint8_t strahler = 1;
@@ -56,13 +57,15 @@ namespace planet {
                                              const std::vector<std::uint8_t>& isOcean);
 
 // The top longest rivers of a graph: longest paths from a source to an end (the sea, a terminal
-// lake, a playa, the ice, or a lake whose outflow becomes no river), through the confluences and
-// the lakes: a river crossing a lake goes straight from where it enters to the partner of the
-// lake's pass, then on in a river, another lake or the sea. Longest first, then in order.
+// lake, a playa, the ice, or a lake letting out less than minDischarge m^3/s or no river),
+// through the confluences and the lakes: a river crossing a lake goes straight from where it
+// enters to the partner of the lake's pass, then on in a river, another lake or the sea. Longest
+// first, then in order.
 [[nodiscard]] std::vector<PlanetRiverStat>
 longestRivers(const RiverGraph& graph, const std::vector<PlanetLake>& lakes, const PlanetGrid& grid,
               const std::function<std::int32_t(std::size_t)>& lakeAt,
-              const std::function<bool(std::size_t)>& isOcean, std::size_t top);
+              const std::function<bool(std::size_t)>& isOcean, double minDischarge,
+              std::size_t top);
 
 // Every figure of a level; the top largest basins and longest rivers.
 [[nodiscard]] PlanetStats planetStats(const PlanetLevel& level, std::size_t top = 5);

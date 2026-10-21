@@ -177,9 +177,11 @@ void printBasinsAndRivers(const terrain::PlanetStats& stats) {
     }
     for (std::size_t k = 0; k < stats.longestRivers.size(); ++k) {
         const terrain::PlanetRiverStat& r = stats.longestRivers[k];
-        std::printf("river %zu: %.0f km, %.0f m3/s, into %s at (%.0f, %.0f) km, Strahler %d\n",
-                    k + 1, r.length / 1000.0, r.discharge, mouthName(r.mouth), r.x / 1000.0,
-                    r.z / 1000.0, static_cast<int>(r.strahler));
+        std::printf(
+            "river %zu: %.0f km (%.0f across lakes), %.0f m3/s, into %s at (%.0f, %.0f) km, "
+            "Strahler %d\n",
+            k + 1, r.length / 1000.0, r.lakeLength / 1000.0, r.discharge, mouthName(r.mouth),
+            r.x / 1000.0, r.z / 1000.0, static_cast<int>(r.strahler));
     }
 }
 
