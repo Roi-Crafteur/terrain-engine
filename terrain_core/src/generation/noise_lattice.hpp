@@ -170,21 +170,29 @@ inline float cellNoise(const CellGradients& g, double fu, double fv) {
     return static_cast<float>(std::clamp(value, -1.0, 1.0));
 }
 
-// gradient2D of a point of the canonical range.
-inline float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2D& lattice) {
-    const CellPosition c = positionOf(toLattice(x, z, lattice));
+// The noise of the seed at a position of the lattice.
+inline float noiseAt(const CellPosition& c, std::uint64_t seed, const Lattice2D& lattice) {
     return cellNoise(gradientsOf(c.iu, c.iv, seed, lattice), c.fu, c.fv);
 }
 
-// latticeNoise reusing the gradients of the memo when the point lies in its cell, and keeping
-// those of the cell of the point otherwise: the same bits.
-inline float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2D& lattice,
-                          CellMemo& memo) {
-    const CellPosition c = positionOf(toLattice(x, z, lattice));
+// noiseAt reusing the gradients of the memo when the position lies in its cell, and keeping
+// those of the cell of the position otherwise: the same bits.
+inline float noiseAt(const CellPosition& c, std::uint64_t seed, const Lattice2D& lattice,
+                     CellMemo& memo) {
     if (!memo.valid || c.iu != memo.iu || c.iv != memo.iv) {
         memo = {c.iu, c.iv, true, gradientsOf(c.iu, c.iv, seed, lattice)};
     }
     return cellNoise(memo.gradients, c.fu, c.fv);
+}
+
+// gradient2D of a point of the canonical range, directly or through a memo.
+inline float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2D& lattice) {
+    return noiseAt(positionOf(toLattice(x, z, lattice)), seed, lattice);
+}
+
+inline float latticeNoise(double x, double z, std::uint64_t seed, const Lattice2D& lattice,
+                          CellMemo& memo) {
+    return noiseAt(positionOf(toLattice(x, z, lattice)), seed, lattice, memo);
 }
 
 // Dot product of the gradient of a 3D corner with the offset (du, dy, dv) to it, from the hash

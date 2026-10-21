@@ -178,6 +178,7 @@ private:
     // Large warp along x and z, detail warp along x and z, coast roughness: only the enabled
     // ones are built.
     std::array<noise::FbmOctaves, 4> warps_;
+    std::array<bool, 2> twinWarps_{}; // warps 0 and 1, 2 and 3 are twins (FbmOctaves::twinOf)
     noise::FbmOctaves coast_;
     double gateWidth_ = 0.0; // plates farther than this gap from a point do not affect it
 };

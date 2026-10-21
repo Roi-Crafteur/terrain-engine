@@ -46,6 +46,18 @@ public:
     [[nodiscard]] float fbm2D(double x, double z, Memo& memo) const;
     [[nodiscard]] float ridged2D(double x, double z, double sharpness, Memo& memo) const;
 
+    // True if the twin has the same octaves but for their seeds: built with the same parameters
+    // and world and another seed.
+    [[nodiscard]] bool twinOf(const FbmOctaves& twin) const;
+
+    // fbm2D of this noise and of a twin (twinOf) at one point, the position in the cells of
+    // each octave computed once for both: the same bits as the two fbm2D. Without memos, or
+    // through one memo each.
+    [[nodiscard]] std::array<float, 2> fbm2DPair(const FbmOctaves& twin, double x,
+                                                 double z) const;
+    [[nodiscard]] std::array<float, 2> fbm2DPair(const FbmOctaves& twin, double x, double z,
+                                                 Memo& memo, Memo& twinMemo) const;
+
     [[nodiscard]] int octaves() const { return static_cast<int>(octaves_.size()); }
 
 private:
@@ -63,6 +75,11 @@ private:
     [[nodiscard]] float fbm2DWith(double x, double z, Noise&& noise) const;
     template <class Noise>
     [[nodiscard]] float ridged2DWith(double x, double z, double sharpness, Noise&& noise) const;
+    // The pair, with the noises of octave i at a position given by noise(i, octave, twinOctave,
+    // position).
+    template <class Noise>
+    [[nodiscard]] std::array<float, 2> pairWith(const FbmOctaves& twin, double x, double z,
+                                                Noise&& noise) const;
 
     std::vector<Octave> octaves_;
     double total_ = 0.0;

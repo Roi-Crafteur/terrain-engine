@@ -121,6 +121,7 @@ struct Heightfield::Layers {
     // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land
     // factor is 0.
     bool maskSkippable = false;
+    bool twinWarps = false; // warpX and warpZ are twins (FbmOctaves::twinOf)
 };
 
 Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
@@ -143,6 +144,7 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
     if (params_.detailAmplitude > 0.0f) {
         layers->detail = layer(kDetail, 3, params_.detailWavelength);
     }
+    layers->twinWarps = layers->warpX.twinOf(layers->warpZ);
     layers->maskSkippable = std::isfinite(params_.maskLow) && std::isfinite(params_.maskHigh) &&
                             params_.maskHigh - params_.maskLow >=
                                 std::numeric_limits<float>::min();
@@ -275,10 +277,17 @@ float Heightfield::mountainAt(double x, double z, float mask, Memos* memos) cons
     if (mask <= 0.0f) {
         return 0.0f;
     }
-    const float warpX = fbm(layers_->warpX, x, z, memos, &Memos::warpX);
-    const float warpZ = fbm(layers_->warpZ, x, z, memos, &Memos::warpZ);
-    const double warpedX = x + params_.warpAmplitude * warpX;
-    const double warpedZ = z + params_.warpAmplitude * warpZ;
+    std::array<float, 2> warp{};
+    if (!layers_->twinWarps) {
+        warp = {fbm(layers_->warpX, x, z, memos, &Memos::warpX),
+                fbm(layers_->warpZ, x, z, memos, &Memos::warpZ)};
+    } else if (memos) {
+        warp = layers_->warpX.fbm2DPair(layers_->warpZ, x, z, memos->warpX, memos->warpZ);
+    } else {
+        warp = layers_->warpX.fbm2DPair(layers_->warpZ, x, z);
+    }
+    const double warpedX = x + params_.warpAmplitude * warp[0];
+    const double warpedZ = z + params_.warpAmplitude * warp[1];
     const float ridge =
         memos ? layers_->ridge.ridged2D(warpedX, warpedZ, params_.ridgeSharpness, memos->ridge)
               : layers_->ridge.ridged2D(warpedX, warpedZ, params_.ridgeSharpness);

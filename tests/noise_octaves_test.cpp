@@ -2,7 +2,8 @@
 // and world, for any parameters: no octave or a negative count, more octaves than rotations,
 // another lacunarity, a negative or zero gain, a total amplitude of 0; on pseudo-random points,
 // on the edges and the corner of the world, at -0, and far beyond it; and so do they through a
-// memo, along sequences of points (rows across the edges, scattered points). wrapCanonical gives
+// memo, along sequences of points (rows across the edges, scattered points), and as pairs of
+// twins (fbm2DPair, the same octaves with another seed). wrapCanonical gives
 // exactly the bits of wrapCoordinate, on both sides of both bounds of the canonical range.
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
@@ -69,6 +70,24 @@ void checkMemo(Tally& tally, const noise::FbmParams& params, const WorldSize& wo
     }
 }
 
+// A twin (another seed) through fbm2DPair, straight and through memos: the bits of the two
+// fbm2D.
+void checkTwins(Tally& tally, const noise::FbmParams& params, const WorldSize& world,
+                const noise::FbmOctaves& octaves, const std::vector<Point>& points) {
+    const noise::FbmOctaves twin(kSeed + 1, params, world);
+    TEST_CHECK(octaves.twinOf(twin) && twin.twinOf(octaves));
+    noise::FbmOctaves::Memo memo;
+    noise::FbmOctaves::Memo twinMemo;
+    for (const Point& p : points) {
+        const float a = octaves.fbm2D(p.x, p.z);
+        const float b = twin.fbm2D(p.x, p.z);
+        const std::array<float, 2> straight = octaves.fbm2DPair(twin, p.x, p.z);
+        const std::array<float, 2> memoized = octaves.fbm2DPair(twin, p.x, p.z, memo, twinMemo);
+        tally.check(same(straight[0], a) && same(straight[1], b), p, "fbm2DPair");
+        tally.check(same(memoized[0], a) && same(memoized[1], b), p, "fbm2DPair with memos");
+    }
+}
+
 void checkFreeFunctions() {
     Tally tally("FbmOctaves == free functions");
     const std::vector<Point> random = bit_exact::randomPoints(5'000, 4e7);
@@ -85,8 +104,28 @@ void checkFreeFunctions() {
                 checkMemo(tally, params, world, octaves, *set);
             }
             checkMemo(tally, params, world, octaves, bit_exact::rowPoints(world, 300));
+            checkTwins(tally, params, world, octaves, bit_exact::rowPoints(world, 100));
+            checkTwins(tally, params, world, octaves, edges);
         }
     }
+}
+
+// Twins differ by their seed only: another frequency (beyond the adjustment of the lattices),
+// world, gain or count of octaves is not a twin.
+void checkTwinOf() {
+    const noise::FbmParams params{.octaves = 3, .frequency = 1.0 / 15000.0};
+    const noise::FbmOctaves octaves(kSeed, params, WorldSize{});
+    TEST_CHECK(octaves.twinOf(noise::FbmOctaves(kSeed + 7, params, WorldSize{})));
+    noise::FbmParams other = params;
+    other.frequency = 1.0 / 16000.0; // 1 / 15001 rounds to the same lattices: twins indeed
+    TEST_CHECK(!octaves.twinOf(noise::FbmOctaves(kSeed, other, WorldSize{})));
+    other = params;
+    other.octaves = 4;
+    TEST_CHECK(!octaves.twinOf(noise::FbmOctaves(kSeed, other, WorldSize{})));
+    other = params;
+    other.gain = 0.6;
+    TEST_CHECK(!octaves.twinOf(noise::FbmOctaves(kSeed, other, WorldSize{})));
+    TEST_CHECK(!octaves.twinOf(noise::FbmOctaves(kSeed, params, bit_exact::kWorlds[1])));
 }
 
 void checkEmpty() {
@@ -145,6 +184,7 @@ void checkWrapCanonical() {
 int main() {
     checkFreeFunctions();
     checkEmpty();
+    checkTwinOf();
     checkWrapCanonical();
     return test::result();
 }

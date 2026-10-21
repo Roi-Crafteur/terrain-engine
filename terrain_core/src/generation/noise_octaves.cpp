@@ -4,8 +4,11 @@
 #include "noise_lattice.hpp"
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 
 namespace terrain::noise {
 
@@ -62,6 +65,10 @@ float FbmOctaves::ridged2DWith(double x, double z, double sharpness, Noise&& noi
 
 namespace {
 
+bool sameBits(double a, double b) {
+    return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
+}
+
 // The noise of an octave, straight or through the memo of its cells.
 constexpr auto kStraight = [](std::size_t, const auto& o, double x, double z) {
     return detail::latticeNoise(x, z, o.seed, o.lattice);
@@ -90,6 +97,68 @@ float FbmOctaves::ridged2D(double x, double z, double sharpness) const {
 
 float FbmOctaves::ridged2D(double x, double z, double sharpness, Memo& memo) const {
     return ridged2DWith(x, z, sharpness, throughMemo(memo));
+}
+
+bool FbmOctaves::twinOf(const FbmOctaves& twin) const {
+    if (octaves_.size() != twin.octaves_.size() || !sameBits(total_, twin.total_) ||
+        !(world_ == twin.world_)) {
+        return false;
+    }
+    for (std::size_t i = 0; i < octaves_.size(); ++i) {
+        const Octave& a = octaves_[i];
+        const Octave& b = twin.octaves_[i];
+        const Lattice2D& la = a.lattice;
+        const Lattice2D& lb = b.lattice;
+        if (!sameBits(a.amplitude, b.amplitude) || !sameBits(la.scaleX, lb.scaleX) ||
+            !sameBits(la.scaleZ, lb.scaleZ) || la.a != lb.a || la.b != lb.b || la.c != lb.c ||
+            la.periodS != lb.periodS || la.periodT != lb.periodT ||
+            !sameBits(la.offsetU, lb.offsetU) || !sameBits(la.offsetV, lb.offsetV) ||
+            !(la.world == lb.world)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The two sums of fbm2DWith, each in its own order, the position computed once per octave.
+template <class Noise>
+std::array<float, 2> FbmOctaves::pairWith(const FbmOctaves& twin, double x, double z,
+                                          Noise&& noise) const {
+    if (!(total_ > 0.0)) {
+        return {0.0f, 0.0f};
+    }
+    const double cx = wrapCanonical(x, world_.x);
+    const double cz = wrapCanonical(z, world_.z);
+    double sum = 0.0;
+    double twinSum = 0.0;
+    for (std::size_t i = 0; i < octaves_.size(); ++i) {
+        const Octave& o = octaves_[i];
+        const detail::CellPosition c = detail::positionOf(detail::toLattice(cx, cz, o.lattice));
+        const std::array<float, 2> n = noise(i, o, twin.octaves_[i], c);
+        sum += o.amplitude * n[0];
+        twinSum += o.amplitude * n[1];
+    }
+    return {static_cast<float>(std::clamp(sum / total_, -1.0, 1.0)),
+            static_cast<float>(std::clamp(twinSum / total_, -1.0, 1.0))};
+}
+
+std::array<float, 2> FbmOctaves::fbm2DPair(const FbmOctaves& twin, double x, double z) const {
+    return pairWith(twin, x, z, [](std::size_t, const auto& o, const auto& t, const auto& c) {
+        return std::array<float, 2>{detail::noiseAt(c, o.seed, o.lattice),
+                                    detail::noiseAt(c, t.seed, t.lattice)};
+    });
+}
+
+std::array<float, 2> FbmOctaves::fbm2DPair(const FbmOctaves& twin, double x, double z, Memo& memo,
+                                           Memo& twinMemo) const {
+    return pairWith(twin, x, z, [&](std::size_t i, const auto& o, const auto& t, const auto& c) {
+        if (i >= memo.cells.size()) {
+            return std::array<float, 2>{detail::noiseAt(c, o.seed, o.lattice),
+                                        detail::noiseAt(c, t.seed, t.lattice)};
+        }
+        return std::array<float, 2>{detail::noiseAt(c, o.seed, o.lattice, memo.cells[i]),
+                                    detail::noiseAt(c, t.seed, t.lattice, twinMemo.cells[i])};
+    });
 }
 
 float FbmOctaves::fbm3D(double x, double y, double z) const {

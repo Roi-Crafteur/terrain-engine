@@ -270,6 +270,7 @@ TectonicPlates::TectonicPlates(std::uint64_t seed, const VoronoiParams& params,
     if (params_.coastRoughness > 0.0f) {
         coast_ = noiseOf(kCoast, params_.coastNoiseWavelength);
     }
+    twinWarps_ = {warps_[0].twinOf(warps_[1]), warps_[2].twinOf(warps_[3])};
 }
 
 TectonicPlates::Point TectonicPlates::warp(double x, double z) const {
@@ -277,17 +278,29 @@ TectonicPlates::Point TectonicPlates::warp(double x, double z) const {
 }
 
 TectonicPlates::Point TectonicPlates::warpWith(double x, double z, Memos* memos) const {
-    const auto fbm = [x, z, memos, this](std::size_t i) {
-        return memos ? warps_[i].fbm2D(x, z, memos->warps[i]) : warps_[i].fbm2D(x, z);
+    // The warps i (along x) and i + 1 (along z), as a pair when they are twins.
+    const auto pair = [x, z, memos, this](std::size_t i) -> std::array<float, 2> {
+        const noise::FbmOctaves& alongX = warps_[i];
+        const noise::FbmOctaves& alongZ = warps_[i + 1];
+        if (twinWarps_[i / 2]) {
+            return memos ? alongX.fbm2DPair(alongZ, x, z, memos->warps[i], memos->warps[i + 1])
+                         : alongX.fbm2DPair(alongZ, x, z);
+        }
+        if (memos) {
+            return {alongX.fbm2D(x, z, memos->warps[i]), alongZ.fbm2D(x, z, memos->warps[i + 1])};
+        }
+        return {alongX.fbm2D(x, z), alongZ.fbm2D(x, z)};
     };
     Point q{x, z};
     if (params_.warpAmplitude > 0.0) {
-        q.x += params_.warpAmplitude * fbm(0);
-        q.z += params_.warpAmplitude * fbm(1);
+        const std::array<float, 2> large = pair(0);
+        q.x += params_.warpAmplitude * large[0];
+        q.z += params_.warpAmplitude * large[1];
     }
     if (params_.detailWarpAmplitude > 0.0) {
-        q.x += params_.detailWarpAmplitude * fbm(2);
-        q.z += params_.detailWarpAmplitude * fbm(3);
+        const std::array<float, 2> detail = pair(2);
+        q.x += params_.detailWarpAmplitude * detail[0];
+        q.z += params_.detailWarpAmplitude * detail[1];
     }
     return q;
 }
