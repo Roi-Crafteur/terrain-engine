@@ -29,12 +29,13 @@ struct TileProbe {
     std::uint64_t fingerprint = 0; // tileFingerprint(generate(request))
 };
 
-// The probes: heights at the origin, on a slope, a mountain, the sea floor, and far points up to
-// the size of the planet, with negative and fractional coordinates; LOD 0 tiles at the origin, on
-// a mountain, and with seams.
-// TODO(phase 9): the values of the terrain change with the wrapped world and the math functions
-// of the core: update these tables in the same commit as the core (the ctest test fails until
-// then, printing the new values).
+// The probes: heights at the origin, on a slope, a mountain, the sea floor, far points, the corner
+// of the wrapped world and a point one world away from another (the plugin samples unwrapped
+// coordinates), with negative and fractional coordinates; LOD 0 tiles at the origin, on a
+// mountain, with seams and at the corner of the world.
+// Whenever the values of the terrain change (a new kGeneratorVersion of the world format), these
+// tables change in the same commit as the core: unreal_determinism_check_test fails until then,
+// printing the new values.
 [[nodiscard]] std::span<const HeightProbe> heightProbes();
 [[nodiscard]] std::span<const TileProbe> tileProbes();
 

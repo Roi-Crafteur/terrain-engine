@@ -1,11 +1,8 @@
 // Self-check of the Unreal plugin: the tables of heights and tile fingerprints hold what the core
 // built by CMake computes (when the values of the terrain change, the tables must follow in the
 // same commit), a fingerprint changes with any bit of a mesh, and the check passes on the default
-// world and names the first probe that differs on another world. As for cave_golden_test, the
-// tables are only asserted on the platforms whose floats are those they were captured on (x86-64
-// without FMA, Windows included: the first target of the plugin) and printed elsewhere, where the
-// plugin refuses to stream.
-// TODO(phase 9): assert them everywhere once the floats of the core are the same on every platform.
+// world and names the first probe that differs on another world. As every golden value since
+// phase 9, the tables hold on every platform.
 #include "determinism_check.hpp"
 
 #include "test_assert.hpp"
@@ -15,18 +12,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string>
 #include <utility>
 
-#if (defined(__x86_64__) && !defined(__FMA__)) || (defined(_M_X64) && !defined(__AVX2__))
-#define TERRAIN_PROBES_PLATFORM 1
-#else
-#define TERRAIN_PROBES_PLATFORM 0
-#endif
-
 namespace {
-
-constexpr bool kProbesAsserted = TERRAIN_PROBES_PLATFORM == 1;
 
 using terrain::Heightfield;
 using terrain::TerrainTiles;
@@ -52,7 +42,7 @@ void testHeightTableMatchesCore() {
                          static_cast<unsigned>(bits));
         }
     }
-    TEST_CHECK(matching || !kProbesAsserted);
+    TEST_CHECK(matching);
 }
 
 // Prints the fingerprint computed for each tile probe that differs, to update the table.
@@ -71,11 +61,26 @@ void testTileTableMatchesCore() {
                          static_cast<unsigned long long>(fingerprint));
         }
     }
-    TEST_CHECK(matching || !kProbesAsserted);
+    TEST_CHECK(matching);
 }
 
-// The probes cover the planet, negative and fractional coordinates, land, sea and mountains; the
-// tiles are LOD 0, one with seams.
+// A probe outside the canonical range of the world, whose canonical image is another probe with
+// the same bits: the plugin samples unwrapped coordinates.
+bool hasWrappedImage(std::span<const HeightProbe> heights) {
+    const terrain::WorldSize world;
+    return std::any_of(heights.begin(), heights.end(), [&](const HeightProbe& far) {
+        const double x = terrain::wrapCoordinate(far.x, world.x);
+        const double z = terrain::wrapCoordinate(far.z, world.z);
+        return (x != far.x || z != far.z) &&
+               std::any_of(heights.begin(), heights.end(), [&](const HeightProbe& near) {
+                   return near.x == x && near.z == z && near.bits == far.bits;
+               });
+    });
+}
+
+// The probes cover the planet, its corner, a point outside the canonical range, negative and
+// fractional coordinates, land, sea and mountains; the tiles are LOD 0, one with seams, one at
+// the edge of the canonical range.
 void testProbesCover() {
     const auto heights = terrain::unreal::heightProbes();
     TEST_CHECK(heights.size() >= 8);
@@ -87,12 +92,18 @@ void testProbesCover() {
     TEST_CHECK(has([](const HeightProbe& p) { return p.x != std::floor(p.x); }));
     TEST_CHECK(has([](const HeightProbe& p) { return std::bit_cast<float>(p.bits) < -100.0f; }));
     TEST_CHECK(has([](const HeightProbe& p) { return std::bit_cast<float>(p.bits) > 1000.0f; }));
+    TEST_CHECK(hasWrappedImage(heights));
     const auto tiles = terrain::unreal::tileProbes();
     TEST_CHECK(tiles.size() >= 2);
     TEST_CHECK(std::all_of(tiles.begin(), tiles.end(),
                            [](const TileProbe& p) { return p.request.key.lod == 0; }));
     TEST_CHECK(std::any_of(tiles.begin(), tiles.end(),
                            [](const TileProbe& p) { return p.request.seams != 0; }));
+    const terrain::ChunkCoord chunks = terrain::worldChunks(terrain::WorldSize{});
+    TEST_CHECK(std::any_of(tiles.begin(), tiles.end(), [&chunks](const TileProbe& p) {
+        return p.request.key.origin.x == chunks.x / 2 - 1 &&
+               p.request.key.origin.z == chunks.z / 2 - 1;
+    }));
 }
 
 // One bit of a vertex, of a normal, of the origin, or the order of two indices changes the
@@ -118,13 +129,9 @@ void testFingerprintSensitive() {
 
 void testDefaultWorldPasses() {
     const DeterminismReport report = terrain::unreal::checkDefaultWorld();
-    std::printf("self-check of the default world%s: %s\n",
-                kProbesAsserted ? "" : ", not asserted on this platform",
-                terrain::unreal::describe(report).c_str());
-    if constexpr (kProbesAsserted) {
-        TEST_CHECK(report.same);
-        TEST_CHECK(contains(terrain::unreal::describe(report), "match"));
-    }
+    std::printf("self-check of the default world: %s\n", terrain::unreal::describe(report).c_str());
+    TEST_CHECK(report.same);
+    TEST_CHECK(contains(terrain::unreal::describe(report), "match"));
 }
 
 // Another world differs: the reports name the first probe that differs, with both values.

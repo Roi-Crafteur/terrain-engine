@@ -9,23 +9,25 @@ namespace terrain::unreal {
 namespace {
 
 // Produced by the core built by CMake (GCC 13, no optimization) and checked by
-// unreal_determinism_check_test on every ctest run.
-constexpr std::array<HeightProbe, 8> kHeightProbes{{
-    {0.0, 0.0, 0x00000000U},                    // 0 m: the origin lies on a coast
-    {1234.5, -6789.25, 0x4358C2E5U},            // 216.76 m
-    {1027.75, -33803.5, 0x449F0DD9U},           // 1272.43 m: a mountain
-    {-98765.4321, 250000.125, 0xC4C1E1C0U},     // -1551.05 m: the sea floor
-    {3000000.0, -1500000.0, 0x4169C867U},       // 14.61 m
-    {-12345678.9, 7654321.5, 0x43B50E1CU},      // 362.11 m
-    {29999999.5, 17499999.25, 0xC2906F28U},     // -72.22 m
-    {-29999999.5, -17499999.25, 0x44CD8C34U},   // 1644.38 m
+// unreal_determinism_check_test on every ctest run, on every platform of the CI.
+constexpr std::array<HeightProbe, 9> kHeightProbes{{
+    {0.0, 0.0, 0x00000000U},                           // 0 m: the origin lies on a coast
+    {1234.5, -6789.25, 0x42915897U},                   // 72.67 m
+    {11267.75, -61451.5, 0x44AF2BD0U},                 // 1401.37 m: a mountain
+    {-31740.25, -61451.5, 0xC3FAA320U},                // -501.27 m: the sea floor
+    {3000000.0, -1500000.0, 0x422BD224U},              // 42.96 m
+    {-12345678.9, 7654321.5, 0x44D7860AU},             // 1724.19 m
+    {30015487.5, 17498111.75, 0x44DB8946U},            // 1756.29 m: by the corner of the world
+    {-30015488.0, -17498112.0, 0x44DB9295U},           // 1756.58 m: the corner itself
+    {60032210.5, -35003013.25, 0x42915897U},           // the second probe, one world away
 }};
 
 // Produced and checked the same way.
-constexpr std::array<TileProbe, 3> kTileProbes{{
-    {{{{0, 0}, 0}, 0}, 0x76E2C71D9DD1844EULL},                        // the origin, a coast
-    {{{{64, -2112}, 0}, 0}, 0xD9BE92101C85A6B8ULL},                   // a mountain
-    {{{{77, -424}, 0}, kSeamNegX | kSeamPosZ}, 0x977E69E4E2D02A81ULL}, // with seams
+constexpr std::array<TileProbe, 4> kTileProbes{{
+    {{{{0, 0}, 0}, 0}, 0xDE452DC46BBD895BULL},                        // the origin, a coast
+    {{{{704, -3840}, 0}, 0}, 0x8ED26E191898C6C5ULL},                  // a mountain
+    {{{{77, -424}, 0}, kSeamNegX | kSeamPosZ}, 0xFC60AEF14751408AULL}, // with seams
+    {{{{1875967, 1093631}, 0}, 0}, 0xD80F5970AF506686ULL},            // the corner of the world
 }};
 
 class Fnv1a {
