@@ -73,6 +73,7 @@ terrain_add_test(horizon_seams_test terrain_core)
 terrain_add_test(horizon_grids_test terrain_core)
 terrain_add_test(horizon_streamer_test terrain_core)
 terrain_add_test(horizon_cost_test terrain_core)
+terrain_add_test(horizon_png_test terrain_core)
 terrain_add_test(persistence_test terrain_core)
 terrain_add_test(world_meta_test terrain_core)
 terrain_add_test(region_file_test terrain_core)
@@ -266,3 +267,18 @@ add_test(NAME export_cave_regions_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_cave_regions>
             -DOUT=${CMAKE_BINARY_DIR}/cave_regions_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_cave_regions_bad_args.cmake)
+
+# Smoke test of the far horizon export: the default levels with small windows (64 cells) around
+# mountains, written into <build-dir>/horizon. The summary is printed once the images are written.
+add_test(NAME export_horizon_smoke
+    COMMAND terrain_export_horizon ${CMAKE_BINARY_DIR}/horizon 20261019 -1441792 -3932160 64)
+add_dependencies(check terrain_export_horizon)
+set_tests_properties(export_horizon_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "viewpoint \\(-1441792, -3932160\\), ground [0-9.]+ m")
+
+# Invalid arguments of the far horizon export (a position without z, non-numeric values, a
+# window that is not a multiple of 4 cells, ...) are rejected before anything is written.
+add_test(NAME export_horizon_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_horizon>
+            -DOUT=${CMAKE_BINARY_DIR}/horizon_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_horizon_bad_args.cmake)
