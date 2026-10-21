@@ -3,6 +3,7 @@
 // the test says it is skipped.
 #include "cave_golden_support.hpp"
 #include "golden_support.hpp"
+#include "planet_golden_support.hpp"
 #include "surface_golden_support.hpp"
 
 #include "test_assert.hpp"
@@ -28,6 +29,7 @@ int main() {
     golden::report("heightfield and ecology, FTZ and DAZ", golden::heightfieldParts());
     golden::report("streamed world, FTZ and DAZ", golden::worldParts());
     golden::report("caves, FTZ and DAZ", golden::caveParts());
+    golden::report("planet level, FTZ and DAZ", golden::planetGoldenParts());
 #else
     std::printf("FTZ and DAZ are only tested on x86-64: skipped\n");
 #endif

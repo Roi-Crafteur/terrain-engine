@@ -16,7 +16,7 @@ namespace {
 using planet_test::Terrain;
 using terrain::planet::CellWater;
 using terrain::planet::LakeSolution;
-using terrain::planet::PlanetLake;
+using terrain::PlanetLake;
 
 // Runoff and lake evaporation per cell, in water units.
 struct Table {

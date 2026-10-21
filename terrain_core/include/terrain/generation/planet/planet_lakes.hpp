@@ -7,29 +7,31 @@
 #include <cstdint>
 #include <vector>
 
-namespace terrain::planet {
-
-// Water state of a depression in the steady state: dry (no water reaches its own level),
-// partial (a lake whose evaporation balances its inflow, below its pass) or full (it spills).
-enum class DepressionState : std::uint8_t { Dry, Partial, Full };
+namespace terrain {
 
 // A lake of the planet level: the topmost wet node of a branch of the hierarchy. Water in units
 // of 1e-6 m^3/s (planet_climate).
 struct PlanetLake {
     std::int32_t node = -1;
-    bool overflowing = false;        // full: the outflow leaves at the partner of its pass
-    bool playa = false;              // its water evaporates before covering one cell
-    bool frozen = false;             // most of its cells are frozen
-    float level = 0.0f;              // altitude of its surface, meters
-    std::uint32_t pit = kNoCell;     // its lowest cell (a playa: where its water vanishes)
-    std::uint32_t pass = kNoCell;    // lowest point of its rim
-    std::uint32_t partner = kNoCell; // where its outflow goes on
-    std::uint32_t cells = 0;         // cells under its water
-    double volume = 0.0;             // cubic meters
+    bool overflowing = false;                // full: the outflow leaves at the partner of its pass
+    bool playa = false;                      // its water evaporates before covering one cell
+    bool frozen = false;                     // most of its cells are frozen
+    float level = 0.0f;                      // altitude of its surface, meters
+    std::uint32_t pit = planet::kNoCell;     // its lowest cell (a playa: where its water vanishes)
+    std::uint32_t pass = planet::kNoCell;    // lowest point of its rim
+    std::uint32_t partner = planet::kNoCell; // where its outflow goes on
+    std::uint32_t cells = 0;                 // cells under its water
+    double volume = 0.0;                     // cubic meters
     std::int64_t inflow = 0;
     std::int64_t evaporation = 0;
     std::int64_t outflow = 0;
 };
+
+namespace planet {
+
+// Water state of a depression in the steady state: dry (no water reaches its own level),
+// partial (a lake whose evaporation balances its inflow, below its pass) or full (it spills).
+enum class DepressionState : std::uint8_t { Dry, Partial, Full };
 
 struct LakeSolution {
     std::vector<DepressionState> state;   // per node (the ocean: Full)
@@ -57,4 +59,6 @@ struct LakeSolution {
                                       const std::vector<std::uint32_t>& order,
                                       const WaterOf& water);
 
-} // namespace terrain::planet
+} // namespace planet
+
+} // namespace terrain

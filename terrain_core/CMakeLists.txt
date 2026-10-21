@@ -54,12 +54,15 @@ add_library(terrain_core STATIC
     src/generation/heightfield_density.cpp
     src/generation/noise.cpp
     src/generation/overhangs.cpp
+    src/generation/planet/planet_build.cpp
     src/generation/planet/planet_climate.cpp
+    src/generation/planet/planet_compact.cpp
     src/generation/planet/planet_features.cpp
     src/generation/planet/planet_flow.cpp
     src/generation/planet/planet_grid.cpp
     src/generation/planet/planet_hierarchy.cpp
     src/generation/planet/planet_lakes.cpp
+    src/generation/planet/planet_level.cpp
     src/generation/planet/planet_moisture.cpp
     src/generation/planet/planet_order.cpp
     src/generation/planet/planet_parallel.cpp
