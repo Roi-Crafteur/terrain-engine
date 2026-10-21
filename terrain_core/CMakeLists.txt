@@ -54,6 +54,9 @@ add_library(terrain_core STATIC
     src/generation/heightfield_density.cpp
     src/generation/noise.cpp
     src/generation/overhangs.cpp
+    src/generation/planet/planet_grid.cpp
+    src/generation/planet/planet_parallel.cpp
+    src/generation/planet/planet_relief.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
