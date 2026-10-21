@@ -1,10 +1,25 @@
 #include "unreal_frame.hpp"
 
+#include <cmath>
+
 namespace terrain::unreal {
 
 namespace {
 
 constexpr auto kCentimetersPerMeterF = static_cast<float>(kCentimetersPerMeter);
+
+// The whole periods (centimeters, of the opposite sign) bringing a coordinate back within
+// kWorldTurnThreshold of a period of 0: n = floor(|d| / period + 1 - threshold) leaves
+// |d| - n period in [threshold - 1, threshold). Zero within the threshold, or for NaN.
+double turnsBack(double centimeters, double period) {
+    const double distance = std::abs(centimeters) / kCentimetersPerMeter;
+    if (!(distance > kWorldTurnThreshold * period)) {
+        return 0.0;
+    }
+    const double turns = std::floor(distance / period + (1.0 - kWorldTurnThreshold));
+    const double back = turns * period * kCentimetersPerMeter;
+    return centimeters > 0.0 ? -back : back;
+}
 
 } // namespace
 
@@ -40,6 +55,11 @@ UnrealFrame shifted(const UnrealFrame& frame, const UnrealPoint& offset) {
 ChunkCoord chunkAt(const UnrealFrame& frame, const UnrealPoint& point) {
     const CorePoint core = toCore(frame, point);
     return worldToChunk(core.x, core.z);
+}
+
+UnrealPoint worldTurnOffset(const UnrealPoint& position, const WorldSize& world) {
+    // Unreal X is core x, Unreal Y is core z (toUnreal).
+    return {turnsBack(position.x, world.x), turnsBack(position.y, world.z), 0.0};
 }
 
 } // namespace terrain::unreal

@@ -138,6 +138,7 @@ private:
 	bool StartStreaming();
 	void StopStreaming(const FString& Reason);
 	bool FindFocus(FVector& OutLocation, APawn*& OutPawn) const;
+	void ReturnFromWorldTurn(AActor& Traveller, FVector& InOutFocus) const;
 	void WarmUpAround(APawn& Pawn);
 	void SnapToGround(APawn& Pawn) const;
 	void LogTimings(float DeltaSeconds);
