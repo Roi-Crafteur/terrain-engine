@@ -181,6 +181,11 @@ ReliefGrid downsampleRelief(const ReliefGrid& grid, int factor) {
     return out;
 }
 
+std::array<float, 3> reliefColor(float height) {
+    const Rgb color = height < kSeaLevel ? tint(kSea, height) : tint(kLand, height);
+    return {color.r, color.g, color.b};
+}
+
 double reliefExaggeration(double spacing) {
     return std::clamp(std::sqrt(spacing / 10.0), 1.0, 30.0);
 }
@@ -193,13 +198,13 @@ Image renderRelief(const ReliefGrid& grid) {
         for (int i = 0; i < grid.columns; ++i) {
             const float height = grid.at(i, j);
             const bool sea = height < kSeaLevel;
-            const Rgb color = sea ? tint(kSea, height) : tint(kLand, height);
+            const std::array<float, 3> color = reliefColor(height);
             // The sea floor is shaded lightly: shelves, ridges and trenches still show.
             const float light = shading(grid, i, j, exaggeration);
             const float factor = sea ? 0.75f + 0.25f * light : light;
-            image.pixels.insert(image.pixels.end(), {toByte(color.r * factor),
-                                                     toByte(color.g * factor),
-                                                     toByte(color.b * factor)});
+            image.pixels.insert(image.pixels.end(), {toByte(color[0] * factor),
+                                                     toByte(color[1] * factor),
+                                                     toByte(color[2] * factor)});
         }
     }
     return image;

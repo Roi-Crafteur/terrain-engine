@@ -1,11 +1,12 @@
 // Maps and figures of a relief, to compare reliefs and judge them: the whole planet in
 // hypsometric colors shaded (world.png), zooms of 2,048 km, 200 km and 20 km on a mountain
-// chain, a plain and a coast found on the planet (zoom_<site>_<km>km.png), and the figures of
-// terrain::measureRelief and measureLocalRelief (printed, and written to stats.txt). Without
-// the optional arguments: seed 20261019, the default relief, cells of 16,384 m for the planet,
-// zooms of 2,048 px, all the hardware threads, the default world.
+// chain, a plain and a coast found on the planet (zoom_<site>_<km>km.png) and on the places
+// given by --at (fixed places, to compare reliefs at the same points), and the figures of
+// terrain::measureRelief, measureLocalRelief and measureTerrain (printed, and written to
+// stats.txt). Without the optional arguments: seed 20261019, the default relief, cells of
+// 16,384 m for the planet, zooms of 2,048 px, all the hardware threads, the default world.
 // Usage: terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
-//        [zoom-pixels] [threads] [world-x] [world-z]
+//        [zoom-pixels] [threads] [world-x] [world-z] [--at <name> <x> <z>]...
 
 #include "terrain/generation/planet/planet_params.hpp"
 #include "terrain/io/relief_png.hpp"
@@ -26,6 +27,7 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace {
 
@@ -38,7 +40,15 @@ template <class T> bool parse(const char* text, T& value) {
     return error == std::errc{} && last == end;
 }
 
+// A place given by --at: its name (letters, digits and _) and its point, meters.
+struct Place {
+    std::string name;
+    double x = 0.0;
+    double z = 0.0;
+};
+
 struct Options {
+    std::vector<Place> places;
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     std::string relief = "default";
     double cellSize = 16384.0;
@@ -82,6 +92,41 @@ bool parseWorld(int argc, char** argv, Options& options) {
         std::fmod(options.world.z, options.cellSize) != 0.0 || cells < 3.0) {
         return fail("cell size", argc > 4 ? argv[4] : "16384",
                     "meters dividing both sides of the world, at least 3 cells per side");
+    }
+    return true;
+}
+
+bool validName(const std::string& name) {
+    return !name.empty() && std::all_of(name.begin(), name.end(), [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+               c == '_';
+    });
+}
+
+// Moves the --at triples out of the arguments into options.places; the other arguments stay in
+// order in kept (the program name first).
+bool parsePlaces(int argc, char** argv, Options& options, std::vector<char*>& kept) {
+    for (int k = 0; k < argc; ++k) {
+        if (std::strcmp(argv[k], "--at") != 0) {
+            kept.push_back(argv[k]);
+            continue;
+        }
+        if (k + 3 >= argc) {
+            std::fprintf(stderr, "Invalid place: expected --at <name> <x> <z>\n");
+            return false;
+        }
+        Place place{argv[k + 1], 0.0, 0.0};
+        if (!validName(place.name)) {
+            return fail("place name", argv[k + 1], "letters, digits and _");
+        }
+        if (!(parse(argv[k + 2], place.x) && std::isfinite(place.x))) {
+            return fail("place x", argv[k + 2], "a number of meters");
+        }
+        if (!(parse(argv[k + 3], place.z) && std::isfinite(place.z))) {
+            return fail("place z", argv[k + 3], "a number of meters");
+        }
+        options.places.push_back(place);
+        k += 3;
     }
     return true;
 }
@@ -214,6 +259,29 @@ void reportLocal(Report& r, const terrain::LocalReliefStats& l) {
           l.coastSinuosity, l.coastWindows);
 }
 
+void printZone(Report& r, const char* what, double share, const terrain::ReliefZone& zone) {
+    r.add("%s: %.1f%%; widest zone %.0f km wide (%.0f km2) around (%.0f, %.0f) km\n", what,
+          100.0 * share, zone.width / 1000.0, zone.area / 1.0e6, zone.x / 1000.0,
+          zone.z / 1000.0);
+}
+
+void reportTerrain(Report& r, const terrain::TerrainFigures& f, bool geography) {
+    const char* belts = geography ? "belts" : "mountain cells";
+    r.add("%s (%d windows): relief over 5 km %.0f m (median); slopes at 25 m above 30 degrees "
+          "%.1f%%, above 45 degrees %.2f%%\n",
+          belts, f.beltWindows, f.beltRelief5, 100.0 * f.steepShare, 100.0 * f.cliffShare);
+    r.add("plains (%d windows): relief over 10 km min %.0f m, 10th percentile %.0f m, median "
+          "%.0f m, 90th percentile %.0f m; windows below 10 m %.1f%%\n",
+          f.plainWindows, f.plainReliefMin, f.plainRelief10, f.plainRelief50, f.plainRelief90,
+          100.0 * f.plainFlatShare);
+    r.add("land below the mean within 1 km (%d windows): %.1f%%; plains %.1f%%, %s %.1f%%\n",
+          f.meanWindows, 100.0 * f.belowMean, 100.0 * f.belowMeanPlains, belts,
+          100.0 * f.belowMeanBelts);
+    printZone(r, "land with less than 10 m of relief over 10 km", f.flatShare, f.widestFlat);
+    printZone(r, "highlands (belts or 2,500 m) with less than 300 m of relief over 10 km",
+              f.dullShare, f.widestDull);
+}
+
 // The point of the shore nearest to a coast site of the map, whose cells are too coarse to put
 // it within the 20 km zoom: on a grid of 500 m over 64 km around it, the nearest sample with a
 // neighbor on the other side of the sea level (the site itself when there is none).
@@ -264,15 +332,17 @@ bool writeZooms(const terrain::Heightfield& field, const Options& options, const
 
 int main(int argc, char** argv) {
     Options options;
-    if (!parseArguments(argc, argv, options)) {
+    std::vector<char*> args;
+    if (!parsePlaces(argc, argv, options, args) ||
+        !parseArguments(static_cast<int>(args.size()), args.data(), options)) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [seed] [default|planetary|legacy|geography] "
-                     "[cell-size] "
-                     "[zoom-pixels] [threads] [world-x] [world-z]\n",
+                     "[cell-size] [zoom-pixels] [threads] [world-x] [world-z] "
+                     "[--at <name> <x> <z>]...\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
-    const std::filesystem::path directory = argv[1];
+    const std::filesystem::path directory = args[1];
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     const terrain::Heightfield field(options.seed, reliefParams(options.relief), options.world);
@@ -284,6 +354,8 @@ int main(int argc, char** argv) {
     const terrain::ReliefStats stats = terrain::measureRelief(world);
     const terrain::LocalReliefStats local =
         terrain::measureLocalRelief(field, world, stats, kWindowCount, options.threads);
+    const terrain::TerrainFigures terrainFigures =
+        terrain::measureTerrain(field, world, stats, kWindowCount, options.threads);
     Report r;
     r.add("relief %s, seed %llu, world %.0f x %.0f km, cells of %.0f m (%d x %d): sampled in "
           "%.1f s, measured in %.1f s\n",
@@ -293,6 +365,7 @@ int main(int argc, char** argv) {
     reportLand(r, stats);
     reportShapes(r, stats, options.world);
     reportLocal(r, local);
+    reportTerrain(r, terrainFigures, field.geography() != nullptr);
     const int factor = (world.columns + kMaxMapWidth - 1) / kMaxMapWidth;
     const bool mapWritten = terrain::writePng(
         directory / "world.png", terrain::renderRelief(terrain::downsampleRelief(world, factor)));
@@ -301,8 +374,13 @@ int main(int argc, char** argv) {
                        writeZooms(field, options, "coast",
                                   stats.coast.found ? onShore(field, stats.coast) : stats.coast,
                                   directory, r);
-    if (!mapWritten || !zooms || !r.write(directory / "stats.txt")) {
-        std::fprintf(stderr, "Failed to write the maps into %s\n", argv[1]);
+    bool places = true;
+    for (const Place& place : options.places) {
+        places = places && writeZooms(field, options, place.name.c_str(),
+                                      {true, place.x, place.z}, directory, r);
+    }
+    if (!mapWritten || !zooms || !places || !r.write(directory / "stats.txt")) {
+        std::fprintf(stderr, "Failed to write the maps into %s\n", args[1]);
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

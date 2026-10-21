@@ -1,6 +1,7 @@
 // Figures of a relief on synthetic grids whose answers are known: an island, a rectangular
 // chain on a plateau, a straight and a wavy coast, the altitude bands; the divider lengths of
-// known lines.
+// known lines. The figures of the shapes of a small world: shares and zones within their
+// ranges, the same whatever the number of threads.
 #include "terrain/io/relief_stats.hpp"
 
 #include "test_assert.hpp"
@@ -138,9 +139,50 @@ void testRejectsWindows() {
     TEST_CHECK(thrown);
 }
 
+bool sameFigures(const terrain::TerrainFigures& a, const terrain::TerrainFigures& b) {
+    return a.beltWindows == b.beltWindows && a.beltRelief5 == b.beltRelief5 &&
+           a.steepShare == b.steepShare && a.cliffShare == b.cliffShare &&
+           a.plainWindows == b.plainWindows && a.plainRelief50 == b.plainRelief50 &&
+           a.belowMean == b.belowMean && a.belowMeanBelts == b.belowMeanBelts &&
+           a.flatShare == b.flatShare && a.widestFlat.width == b.widestFlat.width &&
+           a.widestFlat.area == b.widestFlat.area && a.dullShare == b.dullShare &&
+           a.widestDull.width == b.widestDull.width;
+}
+
+bool share(double value) { return value >= 0.0 && value <= 1.0; }
+
+void testTerrainFigures() {
+    const terrain::WorldSize world{16.0 * 65536.0, 8.0 * 65536.0};
+    for (const bool geography : {true, false}) {
+        terrain::HeightfieldParams params;
+        params.geography.enabled = geography;
+        const terrain::Heightfield field(terrain::kDefaultWorldSeed, params, world);
+        const ReliefGrid g = terrain::sampleReliefWorld(field, 16384.0, 1);
+        const ReliefStats stats = terrain::measureRelief(g);
+        const terrain::TerrainFigures one = terrain::measureTerrain(field, g, stats, 8, 1);
+        const terrain::TerrainFigures three = terrain::measureTerrain(field, g, stats, 8, 3);
+        TEST_CHECK(sameFigures(one, three));
+        TEST_CHECK(share(one.steepShare) && share(one.cliffShare) &&
+                   one.cliffShare <= one.steepShare);
+        TEST_CHECK(share(one.belowMean) && share(one.belowMeanPlains) &&
+                   share(one.belowMeanBelts));
+        TEST_CHECK(one.meanWindows > 0 && one.belowMean > 0.2 && one.belowMean < 0.8);
+        TEST_CHECK(share(one.flatShare) && share(one.dullShare) && share(one.plainFlatShare));
+        TEST_CHECK(one.plainReliefMin <= one.plainRelief10 &&
+                   one.plainRelief10 <= one.plainRelief50 &&
+                   one.plainRelief50 <= one.plainRelief90);
+        // A zone is at least one cell wide, and its disk fits in its area.
+        for (const terrain::ReliefZone& zone : {one.widestFlat, one.widestDull}) {
+            TEST_CHECK(zone.width == 0.0 || zone.width >= 16384.0 - 1e-6);
+            TEST_CHECK(zone.width * zone.width <= 1.3 * zone.area + 1e-6);
+        }
+    }
+}
+
 } // namespace
 
 int main() {
+    testTerrainFigures();
     testIsland();
     testChain();
     testStraightCoasts();

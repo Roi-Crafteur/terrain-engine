@@ -133,6 +133,54 @@ struct LocalReliefStats {
                                                   const ReliefStats& stats, int windowCount,
                                                   int threads);
 
+// A zone of cells of the grid: its width (twice the radius of the widest disk inside it, to
+// the cell), its area and the center of that disk.
+struct ReliefZone {
+    double width = 0.0;
+    double area = 0.0;
+    double x = 0.0;
+    double z = 0.0;
+};
+
+// Figures of the shapes of the relief, to judge whether mountains are steep and plains alive.
+// Belts: the mountain belts of the planetary geography (belt of at least 0.5 at the center of a
+// window), the mountain cells without it. Highlands: the belts and the land at least 2,500 m
+// high (high plateaus).
+struct TerrainFigures {
+    int beltWindows = 0;
+    double beltRelief5 = 0.0; // median of max - min over 5 km (11 x 11 samples 500 m apart)
+    double steepShare = 0.0;  // of the slopes above 30 degrees, at 25 m over 2 km windows
+    double cliffShare = 0.0;  // above 45 degrees
+    // Plains (kReliefPlain): max - min over 10 km windows sampled every 1 km.
+    int plainWindows = 0;
+    double plainReliefMin = 0.0;
+    double plainRelief10 = 0.0; // 10th percentile
+    double plainRelief50 = 0.0;
+    double plainRelief90 = 0.0;
+    double plainFlatShare = 0.0; // of the windows below 10 m
+    // Points of the land below the mean of the ground within 1 km (a square of 2 km) around
+    // them, 100 m apart over windows of 2 km whose squares hold no sea.
+    int meanWindows = 0;
+    double belowMean = 0.0;       // over the land
+    double belowMeanPlains = 0.0; // over the plains
+    double belowMeanBelts = 0.0;  // over the belts
+    // Every land cell of the grid: max - min over 10 km (6 x 6 samples 2 km apart).
+    double flatShare = 0.0; // of the land cells below 10 m
+    ReliefZone widestFlat;  // the widest zone of them
+    double dullShare = 0.0; // of the highland cells below 300 m
+    ReliefZone widestDull;
+};
+
+// Thresholds of the flat land and of the dull highlands, meters over 10 km.
+inline constexpr double kFlatRelief = 10.0;
+inline constexpr double kDullRelief = 300.0;
+
+// From windows around up to windowCount cells of each kind (spread evenly), and from every land
+// cell of the grid.
+[[nodiscard]] TerrainFigures measureTerrain(const Heightfield& field, const ReliefGrid& world,
+                                            const ReliefStats& stats, int windowCount,
+                                            int threads);
+
 namespace relief_shapes {
 
 // A polyline in meters.

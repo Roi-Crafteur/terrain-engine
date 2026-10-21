@@ -175,11 +175,13 @@ target_include_directories(valleys_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 terrain_add_test(relief_png_test terrain_core)
 terrain_add_test(relief_stats_test terrain_core)
+terrain_add_test(relief_view_test terrain_core)
 
-# Maps and figures of the relief of a small world (64 x 32 cells of 64 km, zooms of 64 px).
+# Maps and figures of the relief of a small world (64 x 32 cells of 64 km, zooms of 64 px), with
+# the zooms of a place given by --at.
 add_test(NAME export_relief_smoke
     COMMAND terrain_export_relief ${CMAKE_BINARY_DIR}/relief 20261019 default 65536 64 2 4194304
-            2097152)
+            2097152 --at place 1000 -2000)
 set_tests_properties(export_relief_smoke PROPERTIES
     PASS_REGULAR_EXPRESSION "relief default, seed 20261019, world 4194 x 2097 km, cells of 65536 m")
 add_dependencies(check terrain_export_relief)
@@ -189,6 +191,20 @@ add_test(NAME export_relief_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_relief>
             -DOUT=${CMAKE_BINARY_DIR}/relief_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_relief_bad_args.cmake)
+
+# Views in perspective of the relief of a small world (64 x 36 pixels).
+add_test(NAME export_view_smoke
+    COMMAND terrain_export_view ${CMAKE_BINARY_DIR}/views 20261019 default 64 65536 2 4194304
+            2097152)
+set_tests_properties(export_view_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "relief default, seed 20261019, world 4194 x 2097 km, views of 64 x 36")
+add_dependencies(check terrain_export_view)
+
+# Invalid arguments of terrain_export_view are rejected before anything is computed.
+add_test(NAME export_view_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_view>
+            -DOUT=${CMAKE_BINARY_DIR}/view_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_view_bad_args.cmake)
 
 # The planet level of a small world (128 x 64 cells of 16 km), its figures and images.
 add_test(NAME export_planet_smoke

@@ -107,6 +107,8 @@ add_library(terrain_core STATIC
     src/io/relief_stats.cpp
     src/io/relief_stats_local.cpp
     src/io/relief_stats_shapes.cpp
+    src/io/relief_stats_terrain.cpp
+    src/io/relief_view.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
     src/storage/durable_file.cpp
@@ -267,10 +269,17 @@ add_custom_target(export_planet_maps
 
 # Maps and figures of a relief, to compare reliefs (phase 11R): the planet, zooms of 2,048,
 # 200 and 20 km on a chain, a plain and a coast, land masses, chains, hypsometry, coasts:
-# terrain_export_relief <output-dir> [seed] [default|planetary] [cell-size] [zoom-pixels]
-#                       [threads] [world-x] [world-z]
+# terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
+#                       [zoom-pixels] [threads] [world-x] [world-z] [--at <name> <x> <z>]...
 add_executable(terrain_export_relief tools/export_relief.cpp)
 target_link_libraries(terrain_export_relief PRIVATE terrain_core terrain_warnings)
+
+# Views of a relief in perspective, 70 degrees wide, at the foot of the longest chain, in a
+# plain, from the highest summit and from 300 m above a chain, with a tower of 330 m 2 km away:
+# terrain_export_view <output-dir> [seed] [default|planetary|legacy|geography] [width]
+#                     [cell-size] [threads] [world-x] [world-z]
+add_executable(terrain_export_view tools/export_view.cpp)
+target_link_libraries(terrain_export_view PRIVATE terrain_core terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
 # <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests

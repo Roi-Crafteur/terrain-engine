@@ -3,6 +3,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/io/png.hpp"
 
+#include <array>
 #include <cstddef>
 #include <vector>
 
@@ -55,6 +56,10 @@ struct ReliefGrid {
 // Slope exaggeration of the shading for a map of this spacing: 1 at 10 m, growing as the
 // square root of the spacing, at most 30.
 [[nodiscard]] double reliefExaggeration(double spacing);
+
+// The hypsometric color of a height before the shading, red, green and blue in [0, 255]: the
+// tints of the sea below kSeaLevel, of the land above.
+[[nodiscard]] std::array<float, 3> reliefColor(float height);
 
 // The hypsometric shaded map of the grid, one pixel per sample (RGB).
 [[nodiscard]] Image renderRelief(const ReliefGrid& grid);
