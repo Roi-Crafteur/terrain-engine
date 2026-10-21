@@ -303,4 +303,29 @@ Les 10 niveaux de grilles de `terrain_core` (`HorizonStreamer` : 257 × 257 éch
 - **Scène** : avec une `SkyAtmosphere`, mettre son `Bottom Radius` au rayon de la planète et son
   `Transform Mode` à *Planet Top at Component Transform*, l'acteur au niveau de la mer ; un
   `ExponentialHeightFog` au niveau de la mer, peu dense, avec `Fog Cutoff Distance` (1 000 km par
-  exemple) : sinon ce brouillard plat peint le ciel sous l'horizontale.
+  exemple) : sinon ce brouillard plat peint le ciel sous l'horizontale. La `SkyAtmosphere` reste
+  où elle est posée : à des milliers de km de l'origine (après un tour du monde), le ciel devient
+  noir ; elle devra suivre le joueur (phase 14).
+
+### Mesures (UE 5.8, éditeur en PIE, Ryzen 9 9950X3D, 10 niveaux, `ViewDistanceChunks` 32)
+
+- **Premier affichage** : 0,6 à 1,05 s après le démarrage (660 490 échantillons, 2 threads), puis
+  28 à 35 ms sur le thread de jeu, une fois (10 corps et 9 bordures créés).
+- **Déplacement d'un niveau** (le niveau n bouge tous les 16 × 2ⁿ m) : 2,1 à 2,9 ms en moyenne sur
+  le thread de jeu (conversion 0,5 à 1 ms, envoi 1,3 à 1,7 ms), 3,4 ms au plus, quelques pics à
+  5 ou 6 ms ; les époques sont calculées en 9 à 13 ms. Sans déplacement : 0,01 ms par tick.
+- **Frames** (Character, 6 m/s puis 30 m/s) : sans horizon 8,3 / 9,0 ms en moyenne, 99ᵉ centile
+  8,9 / 12,2 ms ; avec 8,4 / 8,6 ms, 99ᵉ centile 9,0 / 18,0 ms : à 108 km/h, un déplacement de
+  niveau (deux par seconde) fait parfois manquer une image à 120 Hz. La génération des tuiles ne
+  change pas (0,22 à 0,27 ms par tuile LOD 0 avec ou sans horizon).
+- **Mémoire** : 12 Mo d'échantillons et de topologies ; 521 000 sommets et 1 018 000 triangles
+  (508 000 et 994 000 avec `ViewDistanceChunks` 45), dont 87 Mo gardés par les Procedural Mesh
+  Components côté CPU ; côté GPU, environ 35 à 45 Mo (estimation).
+- **Image** : depuis un sommet de 4 085 m, les silhouettes à 45, 147 et 400 km tombent à environ
+  0,2° près sur celles du panorama de contrôle du core calculé avec le même rayon (sans la
+  courbure, celle à 400 km serait 1° trop haut) ; aucun niveau n'est
+  éliminé en tournant la caméra ; traversée du bord est du monde et tour du monde sans
+  reconstruction (les niveaux se déplacent d'un monde, en moins de 2 ms).
+- **Étape 2 possible** : une texture de hauteur par niveau et une grille fixe déplacée par le
+  matériau ne renverraient que les bandes nouvelles (environ 500 échantillons au lieu de 50 000
+  sommets), avec le géomorphing et des époques moins prioritaires que les tuiles.

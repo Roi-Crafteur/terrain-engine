@@ -186,7 +186,7 @@ struct LevelMesh {
     UnrealMesh mesh;
 };
 
-LevelMesh body(const Clipmap& map, int n, const HorizonLook& look) {
+LevelMesh makeBody(const Clipmap& map, int n, const HorizonLook& look) {
     const HorizonLevel& level = map.clipmap.level(n);
     LevelMesh body;
     body.topology = terrain::unreal::bodyTopology(
@@ -347,7 +347,7 @@ void testLevels(double x, double z) {
     const HorizonLook look{1.0, true};
     std::vector<LevelMesh> bodies;
     for (int n = 0; n < map.params.levels; ++n) {
-        bodies.push_back(body(map, n, look));
+        bodies.push_back(makeBody(map, n, look));
         checkBody(map, n, bodies.back(), look);
         if (n > 0) {
             checkTrim(map, n, bodies.back(), look);
@@ -358,7 +358,7 @@ void testLevels(double x, double z) {
         checkStitch(map, n, bodies[static_cast<std::size_t>(n)], look);
     }
     // Filled again: the same mesh.
-    TEST_CHECK(body(map, 2, look).mesh == bodies[2].mesh);
+    TEST_CHECK(makeBody(map, 2, look).mesh == bodies[2].mesh);
 }
 
 } // namespace
