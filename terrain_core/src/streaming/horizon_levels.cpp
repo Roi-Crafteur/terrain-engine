@@ -11,9 +11,7 @@ namespace terrain {
 
 namespace {
 
-bool powerOfTwo(int value) {
-    return value > 0 && (value & (value - 1)) == 0;
-}
+bool powerOfTwo(int value) { return value > 0 && (value & (value - 1)) == 0; }
 
 std::int64_t floorMod(std::int64_t value, std::int64_t modulus) {
     const std::int64_t rest = value % modulus;
@@ -82,13 +80,9 @@ void validate(const HorizonParams& params, const LodParams& lod) {
     }
 }
 
-int levelPitch(const HorizonParams& params, int level) {
-    return params.basePitch << level;
-}
+int levelPitch(const HorizonParams& params, int level) { return params.basePitch << level; }
 
-int samplesPerSide(const HorizonParams& params) {
-    return params.cellsPerSide + 1;
-}
+int samplesPerSide(const HorizonParams& params) { return params.cellsPerSide + 1; }
 
 double levelRadius(const HorizonParams& params, int level) {
     return (params.cellsPerSide / 2 - 1) * static_cast<double>(levelPitch(params, level));
@@ -99,8 +93,7 @@ double guaranteedRadius(const HorizonParams& params) {
 }
 
 HorizonRect intersection(const HorizonRect& a, const HorizonRect& b) {
-    return {std::max(a.x0, b.x0), std::max(a.z0, b.z0), std::min(a.x1, b.x1),
-            std::min(a.z1, b.z1)};
+    return {std::max(a.x0, b.x0), std::max(a.z0, b.z0), std::min(a.x1, b.x1), std::min(a.z1, b.z1)};
 }
 
 HorizonIndex levelCounts(const HorizonParams& params, int level) {

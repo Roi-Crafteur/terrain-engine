@@ -266,10 +266,10 @@ void testNesting() {
             const HorizonIndex b = terrain::canonicalCenter(params, level + 1, x, z);
             for (const auto& [ia, ib, v, period] :
                  {std::tuple{a.x, b.x, x, world.x}, std::tuple{a.z, b.z, z, world.z}}) {
-                const double ca = terrain::nearestImage(terrain::samplePosition(ia, fine), v,
-                                                        period);
-                const double cb = terrain::nearestImage(terrain::samplePosition(ib, coarse), v,
-                                                        period);
+                const double ca =
+                    terrain::nearestImage(terrain::samplePosition(ia, fine), v, period);
+                const double cb =
+                    terrain::nearestImage(terrain::samplePosition(ib, coarse), v, period);
                 const double low = ca - half * fine;
                 TEST_CHECK(std::fmod(std::abs(low), coarse) == 0.0);
                 const double margin = (half * coarse - (std::abs(ca - cb) + half * fine)) / coarse;
