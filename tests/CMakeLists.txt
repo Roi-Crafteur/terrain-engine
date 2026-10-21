@@ -114,6 +114,7 @@ terrain_add_test(cave_fluid_objects_test terrain_core)
 
 # Planet level (phase 11A): climate, hydrology and river graph on a grid of the whole world.
 terrain_add_test(planet_grid_test terrain_core)
+terrain_add_test(planet_climate_test terrain_core)
 
 # No platform-dependent floating-point function in the sources of terrain_core (std::sin,
 # std::pow, std::fma, long double...): terrain::dmath replaces them.
