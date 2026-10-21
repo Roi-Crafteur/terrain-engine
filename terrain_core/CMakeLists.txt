@@ -55,6 +55,7 @@ add_library(terrain_core STATIC
     src/generation/noise.cpp
     src/generation/overhangs.cpp
     src/generation/planet/planet_climate.cpp
+    src/generation/planet/planet_features.cpp
     src/generation/planet/planet_flow.cpp
     src/generation/planet/planet_grid.cpp
     src/generation/planet/planet_hierarchy.cpp

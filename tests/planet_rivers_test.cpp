@@ -1,8 +1,5 @@
 // River graph of the planet level: segments, confluences, Strahler orders (through lakes too),
 // discharge, polylines across the seam, mouths and ice.
-#include "terrain/generation/planet/planet_rivers.hpp"
-#include "terrain/generation/planet/planet_order.hpp"
-
 #include "planet_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -13,61 +10,15 @@
 
 namespace {
 
+using planet_test::Network;
+using planet_test::network;
+using planet_test::plateau;
+using planet_test::sources;
 using planet_test::Terrain;
 using terrain::RiverGraph;
 using terrain::RiverMouth;
 using terrain::RiverSegment;
 using terrain::planet::CellWater;
-
-struct Cell {
-    int i;
-    int j;
-    float h;
-};
-
-// A plateau of 2,000 m with the sea at column 0 and the given channel cells.
-Terrain plateau(int nx, int nz, std::initializer_list<Cell> channels) {
-    Terrain t = planet_test::flatTerrain(nx, nz, 2000.0f);
-    for (int j = 0; j < nz; ++j) {
-        t.at(0, j) = -100.0f;
-    }
-    for (const Cell& c : channels) {
-        t.at(c.i, c.j) = c.h;
-    }
-    t.markOcean();
-    return t;
-}
-
-struct Network {
-    terrain::planet::LakeSolution lakes;
-    terrain::planet::PlanetFlow flow;
-    RiverGraph graph;
-};
-
-Network network(const Terrain& t, const std::vector<CellWater>& table) {
-    const terrain::planet::WaterOf water = [&](std::size_t c) { return table[c]; };
-    const std::vector<std::uint32_t> order = terrain::planet::sortCells(t.height, 1);
-    const std::vector<std::uint8_t> receiver =
-        terrain::planet::computeReceivers(t.grid, t.height, t.ocean, 1);
-    const auto hierarchy =
-        terrain::planet::buildHierarchy(t.grid, t.height, t.ocean, order, receiver);
-    Network n;
-    n.lakes = terrain::planet::solveLakes(t.grid, t.height, hierarchy, order, water);
-    n.flow = terrain::planet::routeFlow(t.grid, t.ocean, receiver, order, n.lakes, water);
-    terrain::PlanetRiverParams params;
-    params.minDischarge = 1.0e-4; // 100 water units
-    n.graph = terrain::planet::buildRiverGraph(t.grid, t.height, t.ocean, receiver, order, n.lakes,
-                                               n.flow, water, params);
-    return n;
-}
-
-std::vector<CellWater> sources(const Terrain& t, std::initializer_list<std::pair<int, int>> cells) {
-    std::vector<CellWater> table(t.grid.cells());
-    for (const auto& [i, j] : cells) {
-        table[t.cell(i, j)].runoff = 1000;
-    }
-    return table;
-}
 
 float units(std::int64_t u) {
     return static_cast<float>(terrain::planet::cubicMeters(u));

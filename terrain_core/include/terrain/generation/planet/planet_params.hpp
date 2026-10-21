@@ -85,6 +85,31 @@ struct PlanetRiverParams {
     double depthExponent = 0.4;
 };
 
+// Places of the river graph where 11B carves remarkable forms. Discharges in m^3/s, lengths in
+// meters, slopes in meters per meter.
+struct PlanetFeatureParams {
+    // A sea mouth of at least deltaMinDischarge is a delta if the river falls by at most
+    // deltaMaxSlope over its last mouthReach steps and the sea next to the mouth is at most
+    // shelfDepth deep; otherwise, from estuaryMinDischarge, an estuary.
+    double deltaMinDischarge = 1000.0;
+    double deltaMaxSlope = 3.0e-4;
+    double shelfDepth = 200.0;
+    int mouthReach = 3;
+    double estuaryMinDischarge = 1000.0;
+    // A waterfall where a step of a river of at least fallMinDischarge drops by fallMinDrop or
+    // more, at a slope of at least fallMinSlope and fallBreak times the steeper of the steps
+    // just above and just below: falls only at the breaks of slope (never on the first step of
+    // a plain source, whose slope above is unknown; a lake outlet has its flat lake above).
+    double fallMinDischarge = 100.0;
+    double fallMinDrop = 50.0;
+    double fallMinSlope = 0.005;
+    double fallBreak = 3.0;
+    // A gorge where the ground rises at least gorgeMinDepth above a river of at least
+    // gorgeMinDischarge on both sides, within 2 cells across the flow.
+    double gorgeMinDischarge = 100.0;
+    double gorgeMinDepth = 800.0;
+};
+
 // Parameters of the planet level. Lengths are in meters.
 struct PlanetParams {
     // Grid: square cells that divide both sides of the world (makePlanetGrid). 8,192 m gives
@@ -101,6 +126,7 @@ struct PlanetParams {
 
     PlanetClimateParams climate;
     PlanetRiverParams rivers;
+    PlanetFeatureParams features;
 };
 
 } // namespace terrain
