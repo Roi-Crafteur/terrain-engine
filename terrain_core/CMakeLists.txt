@@ -52,6 +52,7 @@ add_library(terrain_core STATIC
     src/generation/geography_crust.cpp
     src/generation/geography_flood.cpp
     src/generation/geography_grid.cpp
+    src/generation/geography_tectonics.cpp
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
     src/generation/heightfield.cpp

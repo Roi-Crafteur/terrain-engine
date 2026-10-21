@@ -25,6 +25,15 @@ using geography::Grid;
 // Steps of the search of the anchor along the equator, meters.
 constexpr double kAnchorStep = 1024.0;
 
+// Island arcs: islands where the fbm of the arcs is above kArcThreshold - kArcBelt belt, their
+// coast signal arcLift / kArcSpan times the excess (kArcFall times as steep below 0), raising the
+// coast signal where it is higher, fully from a belt of kArcFull on.
+constexpr double kArcThreshold = 0.75;
+constexpr double kArcBelt = 0.6;
+constexpr double kArcSpan = 0.4;
+constexpr double kArcFall = 4.0;
+constexpr float kArcFull = 0.25f;
+
 void requirePositive(double value, const char* name) {
     if (!std::isfinite(value) || value <= 0.0) {
         throw std::invalid_argument(std::string("GeographyParams: invalid ") + name);
@@ -60,6 +69,16 @@ void validate(const GeographyParams& p) {
     requirePositive(p.shelfWidth, "shelfWidth");
     requirePositive(p.coastRamp, "coastRamp");
     requirePositive(p.drainSlope, "drainSlope");
+    requirePositive(p.beltWidth, "beltWidth");
+    requirePositive(p.plateauWidth, "plateauWidth");
+    requirePositive(p.arcWavelength, "arcWavelength");
+    requirePositive(p.trenchWidth, "trenchWidth");
+    requirePositive(p.ridgeWidth, "ridgeWidth");
+    requirePositive(p.riftWidth, "riftWidth");
+    if (!std::isfinite(p.arcLift) || p.arcLift < 0.0 || !std::isfinite(p.beltOffset) ||
+        std::abs(p.beltOffset) > 1.0) {
+        throw std::invalid_argument("GeographyParams: invalid arcs or belt offset");
+    }
 }
 
 // Weight of a coast stage of amplitude a and band b at the distance d to the coast of the
@@ -77,16 +96,24 @@ struct Geography::Noises {
     noise::FbmOctaves detail;
     noise::FbmOctaves fine;
     noise::FbmOctaves rugged;
+    noise::FbmOctaves arc;
 };
 
-double Geography::coastAt(double x, double z, double mapCoast) const {
+// Past the coarse stage, the island arcs of the belts at sea (their noise is only computed
+// where it may raise the coast signal), then the detail and fine stages.
+double Geography::coastAt(double x, double z, const GeographySample& map) const {
     const GeographyParams& p = params_;
-    double c = mapCoast;
+    double c = map.coast;
     const double w1 = bandWeight(c, p.coastAmplitude, p.coastBand);
-    if (w1 == 0.0) {
-        return c;
+    if (w1 != 0.0) {
+        c += w1 * p.coastAmplitude * noises_->coarse.fbm2D(x, z);
     }
-    c += w1 * p.coastAmplitude * noises_->coarse.fbm2D(x, z);
+    const double arcBase = kArcBelt * map.belt - kArcThreshold;
+    if (map.belt > 0.0f && p.arcLift * (arcBase + 1.0) / kArcSpan > c) {
+        const double excess = arcBase + noises_->arc.fbm2D(x, z);
+        const double arc = p.arcLift / kArcSpan * (excess < 0.0 ? kArcFall * excess : excess);
+        c += noise::smoothstep(0.0f, kArcFull, map.belt) * std::max(0.0, arc - c);
+    }
     const double w2 = bandWeight(c, p.detailCoastAmplitude, p.detailCoastBand);
     if (w2 == 0.0) {
         return c;
@@ -124,6 +151,8 @@ std::shared_ptr<const Geography::Noises> makeNoises(std::uint64_t seed, const Ge
                        noise::OctaveLattices::RotatedFast);
     noises->rugged = fbm(geography::kCoastRugged, 2, p.ruggedWavelength, 0.5,
                          noise::OctaveLattices::Unrotated);
+    noises->arc = fbm(geography::kArcs, 3, p.arcWavelength, 0.5,
+                      noise::OctaveLattices::RotatedFast);
     return noises;
 }
 
@@ -144,14 +173,17 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
                                                          planet::resolveThreads(threads));
     candidate_ = crust.candidate;
     continents_ = crust.continents;
-    const std::vector<float> sea = geography::oceanFloor(params_, grid, crust);
-    const std::vector<float> land =
-        geography::drainedLand(params_, grid, crust, geography::landFloor(params_, crust));
+    const geography::Tectonics tectonics = geography::buildTectonics(
+        seed, params_, world_, grid, crust, planet::resolveThreads(threads));
+    const std::vector<float> sea = geography::oceanFloor(params_, crust, tectonics);
+    const std::vector<float> land = geography::drainedLand(
+        params_, grid, crust, geography::landFloor(params_, crust, tectonics));
     nodes_.assign(grid.nodes() * kFields, 0.0f);
     for (std::size_t k = 0; k < grid.nodes(); ++k) {
         nodes_[k * kFields + kCoast] = crust.coast[k];
         nodes_[k * kFields + kLand] = land[k];
         nodes_[k * kFields + kSea] = sea[k];
+        nodes_[k * kFields + kBelt] = tectonics.belt[k];
     }
     anchorX_ = chooseAnchor();
 }
@@ -184,43 +216,49 @@ GeographySample Geography::mapAt(double geoX, double z) const {
     s.landDX = static_cast<float>(dx / sizeX_);
     s.landDZ = static_cast<float>(dz / sizeZ_);
     s.sea = static_cast<float>(sum[kSea]);
+    s.belt = static_cast<float>(sum[kBelt]);
     return s;
 }
 
 GeographySample Geography::sampleAt(double x, double z) const {
     GeographySample s = mapAt(wrapCoordinate(x + anchorX_, world_.x), z);
-    s.coast = coastAt(x, z, s.coast);
+    s.coast = coastAt(x, z, s);
     return s;
 }
 
-// The shift of the map that puts a coast at (0, 0), sea to the west and land to the east: on
-// the equator every kAnchorStep, the one closest to no shift whose land reaches 300 km east
-// over 100 km from the coast of the map (a continent, not an islet); else any coast; else none.
+// The shift of the map that puts a coast at (0, 0), sea on one side and land on the other along
+// the equator, every kAnchorStep: among those whose land reaches 300 km inland over 100 km from
+// the coast of the map (a continent, not an islet), the one with the strongest belt within
+// 500 km of the coast; else any coast; the closest to no shift among equals; else none.
 double Geography::chooseAnchor() const {
     const auto count = static_cast<long long>(std::floor(world_.x / kAnchorStep));
     const double half = 0.5 * world_.x;
+    const auto along = [this](double shift, double distance) {
+        return mapAt(wrapCoordinate(shift + distance, world_.x), 0.0);
+    };
     double best = 0.0;
-    double fallback = 0.0;
-    bool found = false;
-    bool any = false;
-    double previous = coastAt(0.0, 0.0, mapAt(-half, 0.0).coast);
+    float bestScore = -2.0f; // -1 for any coast, the belt for the coast of a continent
+    double previous = coastAt(0.0, 0.0, mapAt(-half, 0.0));
     for (long long k = 1; k < count; ++k) {
         const double shift = -half + static_cast<double>(k) * kAnchorStep;
-        const double here = coastAt(0.0, 0.0, mapAt(shift, 0.0).coast);
-        if (previous < 0.0 && here >= 0.0) {
-            const double inland = mapAt(wrapCoordinate(shift + 300'000.0, world_.x), 0.0).coast;
-            if (!any || std::abs(shift) < std::abs(fallback)) {
-                fallback = shift;
-                any = true;
+        const double here = coastAt(0.0, 0.0, mapAt(shift, 0.0));
+        if ((previous < 0.0) != (here < 0.0)) {
+            const double inland = here >= 0.0 ? 1.0 : -1.0; // the way to the land
+            float score = -1.0f;
+            if (along(shift, inland * 300'000.0).coast > 100'000.0) {
+                score = 0.0f;
+                for (int step = -10; step <= 10; ++step) {
+                    score = std::max(score, along(shift, 50'000.0 * step).belt);
+                }
             }
-            if (inland > 100'000.0 && (!found || std::abs(shift) < std::abs(best))) {
+            if (score > bestScore || (score == bestScore && std::abs(shift) < std::abs(best))) {
                 best = shift;
-                found = true;
+                bestScore = score;
             }
         }
         previous = here;
     }
-    return found ? best : fallback;
+    return best;
 }
 
 const float* Geography::fieldsOf(int column, int row) const {

@@ -77,8 +77,43 @@ struct GeographyParams {
     double drainSlope = 1.0e-4;
     double inlandRise = 1.5e-4;
 
-    // Tectonic plates of the geography (their layout, motions and boundaries).
-    VoronoiParams plates;
+    // Tectonic plates of the geography: their layout, motions and boundaries (the amplitudes,
+    // widths and kinds of VoronoiParams are not used: the geography has its own below). About
+    // as many plates for the area of the world as on the Earth.
+    VoronoiParams plates{.minPlates = 48, .maxPlates = 72};
+
+    // Mountain belts along the collisions of the plates: half width beltWidth at the axis (0.8
+    // to 1.5 times it from one boundary to another, and +-30 % along a boundary), centered
+    // beltOffset half widths toward the overriding plate; on land they lift the regional
+    // elevation by beltUplift at their axis (+-35 %) and carry the mountains.
+    double beltWidth = 170'000.0;
+    double beltOffset = 0.35;
+    float beltUplift = 2200.0f;
+    // High plateaus behind plateauShare of the collisions longer than plateauLength:
+    // plateauUplift (+-10 %) over plateauWidth (0.6 to 1.4 times it) on the overriding side.
+    float plateauShare = 0.3f;
+    double plateauLength = 2'000'000.0;
+    float plateauUplift = 4300.0f;
+    double plateauWidth = 700'000.0;
+    // The ridged mountains of the Heightfield in the belts rise up to mountainHeight above the
+    // regional elevation.
+    float mountainHeight = 5000.0f;
+    // Island arcs where a belt crosses the ocean: the coast signal rises to about arcLift on
+    // their axis, broken into islands by an fbm of arcWavelength.
+    double arcLift = 45'000.0;
+    double arcWavelength = 90'000.0;
+    // Trenches on the subducting side of the collisions at sea, mid-ocean ridges along the
+    // divergences between oceans.
+    float trenchDepth = 3200.0f;
+    double trenchWidth = 110'000.0;
+    float ridgeLift = 2000.0f;
+    double ridgeWidth = 450'000.0;
+    // Continental rifts along riftShare of the strongest divergences: a trough riftDepth deep and
+    // riftWidth wide between shoulders riftShoulder high, on land.
+    float riftShare = 0.5f;
+    float riftDepth = 900.0f;
+    double riftWidth = 130'000.0;
+    float riftShoulder = 500.0f;
 
     friend bool operator==(const GeographyParams&, const GeographyParams&) = default;
 };

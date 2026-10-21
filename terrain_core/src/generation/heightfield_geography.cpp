@@ -13,6 +13,10 @@ namespace {
 // the deep interior beyond 0.6 for the climate.
 constexpr double kContinentalScale = 1'500'000.0;
 
+// The mountain mask is full from this belt on: the weakest belts are as rugged as the others, only
+// lower (their uplift).
+constexpr float kBeltFull = 0.5f;
+
 // The coastal plain rises this many meters per meter from the shore, up to kCoastPlainTop,
 // before the regional elevation takes over over GeographyParams::coastRamp.
 constexpr double kCoastPlainRise = 0.002;
@@ -47,6 +51,12 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
     HeightSample s;
     s.continentalness = static_cast<float>(std::clamp(g.coast / kContinentalScale, -1.0, 1.0));
     s.base = groundBase(params_.geography, g);
+    // The mountains of the belts, faded in from the coast: none at sea.
+    s.plateCollision = g.belt;
+    s.mountainMask = noise::smoothstep(0.0f, static_cast<float>(params_.geography.coastRamp),
+                                       static_cast<float>(g.coast)) *
+                     noise::smoothstep(0.0f, kBeltFull, g.belt);
+    s.mountain = mountainAt(x, z, s.mountainMask, memos);
     s.detail = detailAt(x, z, s.base, memos);
     s.height = s.base + s.mountain + s.detail;
     return s;
