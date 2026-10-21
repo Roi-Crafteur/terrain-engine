@@ -48,6 +48,7 @@ add_library(terrain_core STATIC
     src/generation/climate.cpp
     src/generation/ecology.cpp
     src/generation/eroded_region.cpp
+    src/generation/geography_grid.cpp
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
     src/generation/heightfield.cpp

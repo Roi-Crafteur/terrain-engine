@@ -158,6 +158,10 @@ terrain_add_test(planet_stats_test terrain_core)
 terrain_add_test(planet_false_passes_test terrain_core)
 terrain_add_test(planet_png_test terrain_core)
 
+# The grid primitives of the planetary geography (internal header).
+terrain_add_test(geography_grid_test terrain_core)
+target_include_directories(geography_grid_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 terrain_add_test(relief_png_test terrain_core)
 terrain_add_test(relief_stats_test terrain_core)
 
