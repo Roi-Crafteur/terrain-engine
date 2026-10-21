@@ -123,6 +123,8 @@ terrain_add_test(planet_features_test terrain_core)
 terrain_add_test(planet_level_test terrain_core)
 terrain_add_test(planet_compact_test terrain_core)
 terrain_add_test(planet_golden_test terrain_core)
+terrain_add_test(planet_stats_test terrain_core)
+terrain_add_test(planet_false_passes_test terrain_core)
 
 # No platform-dependent floating-point function in the sources of terrain_core (std::sin,
 # std::pow, std::fma, long double...): terrain::dmath replaces them.

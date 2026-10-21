@@ -57,6 +57,7 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_build.cpp
     src/generation/planet/planet_climate.cpp
     src/generation/planet/planet_compact.cpp
+    src/generation/planet/planet_false_passes.cpp
     src/generation/planet/planet_features.cpp
     src/generation/planet/planet_flow.cpp
     src/generation/planet/planet_grid.cpp
@@ -68,6 +69,7 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_parallel.cpp
     src/generation/planet/planet_relief.cpp
     src/generation/planet/planet_rivers.cpp
+    src/generation/planet/planet_stats.cpp
     src/generation/planet/planet_wind.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
