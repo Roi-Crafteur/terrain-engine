@@ -41,6 +41,7 @@ void transformLine(const double* in, std::size_t stride, int n, double spacing, 
         z[static_cast<std::size_t>(k)] = k == 0 ? -kFar : s;
         z[static_cast<std::size_t>(k) + 1] = kFar;
     }
+    int j = 0; // the parabola of the lower envelope over xp: it only moves right
     for (int p = n; p < 2 * n; ++p) {
         double& result = out[static_cast<std::size_t>(p - n) * stride];
         if (k < 0) {
@@ -48,7 +49,6 @@ void transformLine(const double* in, std::size_t stride, int n, double spacing, 
             continue;
         }
         const double xp = p * spacing;
-        int j = 0;
         while (j < k && z[static_cast<std::size_t>(j) + 1] < xp) {
             ++j;
         }

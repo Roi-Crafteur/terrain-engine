@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/det_math.hpp" // also refuses fast math in every unit including it
+#include "terrain/generation/geography.hpp"
 #include "terrain/generation/voronoi.hpp"
 #include "terrain/world_size.hpp"
 
@@ -70,6 +71,12 @@ struct HeightfieldParams {
     // the continentalness exactly.
     double detailWavelength = 200.0;
     float detailAmplitude = 3.0f;
+
+    // The planetary geography of phase 11R (GeographyParams): when enabled, the continents,
+    // coasts, ocean floors and regional elevation come from it, and the local, macro and plate
+    // terms of the continentalness above are not used (the plates of the geography are its
+    // own).
+    GeographyParams geography;
 };
 
 // Layers of the height at one point: height = base + mountain + detail. In the collision
@@ -115,8 +122,11 @@ public:
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
     [[nodiscard]] const WorldSize& world() const { return world_; }
 
-    // The tectonic plates, or nullptr when the layer is disabled (plates.amplitude <= 0).
+    // The tectonic plates of the continentalness, or nullptr when the layer is disabled
+    // (plates.amplitude <= 0, or the geography is enabled).
     [[nodiscard]] const TectonicPlates* plates() const { return plates_.get(); }
+    // The planetary geography, or nullptr when it is disabled.
+    [[nodiscard]] const Geography* geography() const { return geography_.get(); }
 
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
@@ -126,11 +136,15 @@ private:
     [[nodiscard]] HeightSample sampleWith(double x, double z, Memos* memos) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
+    // sampleWith on the planetary geography (heightfield_geography.cpp), at a canonical point.
+    [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos) const;
+    [[nodiscard]] float detailAt(double x, double z, float base, Memos* memos) const;
 
     HeightfieldParams params_;
     WorldSize world_;
     std::shared_ptr<const Layers> layers_;         // shared by copies, immutable
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
+    std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
 };
 
 } // namespace terrain
