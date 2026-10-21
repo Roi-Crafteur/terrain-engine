@@ -92,8 +92,8 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - type de mesh choisi par mesure : Dynamic Mesh, ProceduralMeshComponent ou
   RealtimeMeshComponent
 - compilation du plugin sous Linux et Mac (risque `std::jthread`)
-- meshing environ 7 fois plus lent sous Clang que sous GCC (Unreal Linux et Mac,
-  serveurs) : cause trouvée, correctif en cours
+- meshing environ 7 fois plus lent sous Clang que sous GCC : corrigé (même maillage au
+  bit près)
 
 ### Phase 11 — Hydrographie continentale (approche TerraForged)
 - niveau Planète précalculé à la création du monde (attente longue acceptée)
@@ -125,6 +125,8 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   et côtière (falaises marines, arches, stacks)
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
+- mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
+  province du relief au cœur des continents secs, jamais placée par le biome
 - falaises, surplombs et arches dans le monde infini
 - fin des deux mondes séparés (régions finies / monde streamé)
 
@@ -151,6 +153,13 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   vert glacier, brune, noire), cascades spectaculaires (embruns, arcs-en-ciel)
 - végétation PCG depuis les positions du core, densité selon le biome : forêts denses ou
   clairsemées, clairières, monts, vallons
+- transitions entre biomes (aujourd'hui un seul biome et un seul matériau par point, à
+  seuils nets) : frontières irrégulières par du bruit sur les seuils (avancées, bosquets
+  isolés, clairières), poids des 2 ou 3 biomes et matériaux dominants calculés par le core
+  de façon déterministe, fondus de textures et densité de végétation progressive dans
+  Unreal ; largeur réaliste selon le couple (quelques km entre forêt et prairie, quelques
+  mètres entre plage et roche). Le relief n'en dépend pas : les biomes ne modifient
+  jamais la hauteur
 - matériaux depuis les identifiants de matériau du core ; très haut détail par des
   rochers, falaises et arbres Nanite placés par PCG et du relief fin dans le matériau
   (Nanite ne s'applique pas directement aux tuiles générées en jeu)
