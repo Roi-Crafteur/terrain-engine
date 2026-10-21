@@ -113,10 +113,25 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - nouveau monde : nom, seed, aperçu de la carte et choix du point d'apparition
 - sauvegarde et chargement
 - destruction de bloc en jeu
+- modifications en différences, sous une forme qui tient les grosses destructions
+  (à essayer et mesurer ; si ça ne convient pas, on cherche autre chose) :
+  - chaque chunk découpé en cubes de 16 × 16 × 16 blocs : inchangé, entièrement vidé,
+    entièrement rempli, ou masque compressé
+  - opérations volumiques (sphère, boîte, explosion) : quelques octets, appliquées de façon
+    déterministe par chaque machine puis enregistrées dans les masques
+  - critères : un trou de 10 m ≈ 1 Ko, une montagne rasée (1 km × 1 km × 500 m) ≤ ~1 Mo,
+    rechargement d'une tuile modifiée sans coût visible ; comparaison avec des chunks
+    complets compressés (méthode Minecraft)
+  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels
 - coop et serveurs de 16 à 100+ joueurs
+- le serveur fait autorité : il génère lui aussi le terrain autour des joueurs (sans rendu),
+  les clients n'envoient que des intentions (casser, poser, se déplacer), vérifiées par le
+  serveur dans sa propre version du monde
+- seed secrète côté serveur pour les secrets (minerais rares, trésors, ressources de
+  survie) : la forme du monde reste calculée par les clients, les secrets jamais (anti X-ray)
 - réplication des modifications, vérification du déterminisme entre clients
 
 ### Phase 17 — MMO
