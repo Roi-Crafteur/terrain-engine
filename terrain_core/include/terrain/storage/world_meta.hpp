@@ -17,7 +17,8 @@ inline constexpr std::uint32_t kWorldFormatVersion = 1;
 // Version of the terrain generator: the same seed and parameters give the same terrain only with
 // the same generator version. Every change of the generated values (relief, caves, biomes,
 // plants...) must increment it. Kept here for now; it belongs to generation/.
-inline constexpr std::uint32_t kGeneratorVersion = 1;
+// 2: phase 9 (deterministic math, wrapped world).
+inline constexpr std::uint32_t kGeneratorVersion = 2;
 
 // Generator of the worlds saved before the world format (TMOD files): the one up to phase 8C-2.
 inline constexpr std::uint32_t kLegacyGeneratorVersion = 1;
@@ -25,8 +26,8 @@ inline constexpr std::uint32_t kLegacyGeneratorVersion = 1;
 // The world sizes are multiples of this step, in meters: chunks (16 m), regions (512 m), region
 // groups (16,384 m) and the future far tiles all fit exactly at the seams of the wrapped world.
 inline constexpr std::uint64_t kWorldSizeStep = 65'536;
-// Largest world side, in meters: every chunk coordinate fits in 32 bits.
-inline constexpr std::uint64_t kMaxWorldSize = std::uint64_t{1} << 36;
+// Largest world side, in meters: the same bound as the generator (WorldSize, kMaxWorldMeters).
+inline constexpr std::uint64_t kMaxWorldSize = std::uint64_t{1} << 30;
 // The default world, about 60,000 x 35,000 km.
 inline constexpr std::uint64_t kDefaultWorldSizeX = 916 * kWorldSizeStep; // 60,030,976 m
 inline constexpr std::uint64_t kDefaultWorldSizeZ = 534 * kWorldSizeStep; // 34,996,224 m
