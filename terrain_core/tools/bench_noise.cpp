@@ -1,7 +1,8 @@
 // Benchmark of the noise and the relief, not a test: the cost of heightAt and sampleAt, of the
 // tiles of LOD 0 to 3 with and without caves and of 1024 x 1024 height grids, on the default world
 // and on the planet (bench_world.cpp), and of each part of a height sample (lattices, seeds,
-// wrapping, each layer of the relief, plates, cave noises). Each
+// wrapping, each layer of the relief, plates, cave noises). The default world is the planetary
+// geography (generator 3); the planet and the legacy cases are the relief of generator 2. Each
 // line gives the median cost per item over the runs, the fastest run, the items per run and an
 // FNV checksum of the results: an optimization of the noise must leave every checksum unchanged.
 // Build in Release and run on a quiet machine:
@@ -150,23 +151,24 @@ void pointCases(const Config& c, const Heightfield& field, const Heightfield& pl
     record("heightAt planet (macro, plates), mixed", run(planet, sets.mixed), n, "ns");
 }
 
-// heightAt of the planetary geography (phase 11R), on points drawn by kind on its own world.
-void geographyCases(const Config& c, const Heightfield& geography, const PointSets& sets) {
-    bench::section("height samples of the geography, ns per point");
+// heightAt of the relief of generator 2 (the planetary geography off), on points drawn by kind on
+// its own world: the default world of the earlier runs, for comparison.
+void legacyCases(const Config& c, const Heightfield& legacy, const PointSets& sets) {
+    bench::section("height samples of the legacy relief (generator 2), ns per point");
     const auto kind = [&](const char* name, const std::vector<Point>& points) {
-        record(name, bench::measure(c.runs, [&] { return heights(geography, points); }),
-               points.size(), "ns");
+        record(name, bench::measure(c.runs, [&] { return heights(legacy, points); }), points.size(),
+               "ns");
     };
-    kind("geography heightAt, mixed", sets.mixed);
-    kind("geography heightAt, land", sets.land);
-    kind("geography heightAt, coast", sets.coast);
-    kind("geography heightAt, mountains", sets.mountain);
-    kind("geography heightAt, ocean", sets.ocean);
-    kind("geography heightAt, mixed, patches", patches(sets.mixed));
-    kind("geography heightAt, land, patches", patches(sets.land));
-    kind("geography heightAt, coast, patches", patches(sets.coast));
-    kind("geography heightAt, mountains, patches", patches(sets.mountain));
-    kind("geography heightAt, ocean, patches", patches(sets.ocean));
+    kind("legacy heightAt, mixed", sets.mixed);
+    kind("legacy heightAt, land", sets.land);
+    kind("legacy heightAt, coast", sets.coast);
+    kind("legacy heightAt, mountains", sets.mountain);
+    kind("legacy heightAt, ocean", sets.ocean);
+    kind("legacy heightAt, mixed, patches", patches(sets.mixed));
+    kind("legacy heightAt, land, patches", patches(sets.land));
+    kind("legacy heightAt, coast, patches", patches(sets.coast));
+    kind("legacy heightAt, mountains, patches", patches(sets.mountain));
+    kind("legacy heightAt, ocean, patches", patches(sets.ocean));
 }
 
 // Times f(point) over the points; f returns a double, added to the checksum.
@@ -342,10 +344,10 @@ int main(int argc, char** argv) {
     const Heightfield planet(kSeed, bench::planetParams());
     const PointSets sets = pointSets(field, 200'000 / c.divisor);
     pointCases(c, field, planet, sets);
-    terrain::HeightfieldParams geographyParams;
-    geographyParams.geography.enabled = true;
-    const Heightfield geography(kSeed, geographyParams);
-    geographyCases(c, geography, pointSets(geography, 200'000 / c.divisor));
+    terrain::HeightfieldParams legacyParams;
+    legacyParams.geography.enabled = false;
+    const Heightfield legacy(kSeed, legacyParams);
+    legacyCases(c, legacy, pointSets(legacy, 200'000 / c.divisor));
     periodicityProfile(c, sets.mixed);
     layerProfile(c, field, sets.mixed);
     latticeProfile(c, field, sets.mixed);

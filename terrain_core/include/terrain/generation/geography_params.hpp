@@ -9,8 +9,9 @@ namespace terrain {
 // drained regional elevation, computed once on a periodic map of the world when the Heightfield
 // is built, then read at every point (Geography). Lengths in meters, altitudes in meters.
 struct GeographyParams {
-    // Off: the relief of generator 2 (local continentalness, macro and plate layers).
-    bool enabled = false;
+    // On by default (generator 3). Off: the relief of generator 2 (local continentalness, macro
+    // and plate layers).
+    bool enabled = true;
 
     // Nodes of the map, about this far apart (a whole number along each side of the world).
     double cellSize = 65'536.0;

@@ -28,6 +28,15 @@ namespace cave_detail {
 
 constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
 
+// The parts are taken around (kAreaX, kAreaZ): land of the default world, a few kilometers from
+// the coast of the origin, with entrances and speleothems where the parts look for them (the
+// first point of a lattice of 3,072 m, by rings around the origin, to have them). kAreaCellX and
+// kAreaCellZ: its aquifer cell (cells of 192 m).
+constexpr double kAreaX = -9216.0;
+constexpr double kAreaZ = 6144.0;
+constexpr int kAreaCellX = -48;
+constexpr int kAreaCellZ = 32;
+
 // A temperate, humid climate everywhere: wet aquifers and speleothems without the cost of the
 // climate fields.
 inline terrain::CaveGround groundOf(const terrain::Heightfield& field) {
@@ -99,16 +108,15 @@ inline std::uint64_t pointsChecksum(const terrain::CaveField& field,
     Checksum sum;
     for (std::uint64_t box = 0; box < 8; ++box) {
         addBox(sum, field, ground, terrain::caveDetailForLod(lod),
-               -2600.0 + 700.0 * static_cast<double>(box),
-               -4100.0 + 450.0 * static_cast<double>(box % 3), box);
+               kAreaX - 2600.0 + 700.0 * static_cast<double>(box),
+               kAreaZ - 4100.0 + 450.0 * static_cast<double>(box % 3), box);
     }
     return sum.value();
 }
 
 // The aquifer cells [-6, 6)^2 around the cell (centerX, centerZ).
 inline std::uint64_t aquifersChecksum(const terrain::CaveField& field,
-                                      const terrain::CaveGround& ground, int centerX = 0,
-                                      int centerZ = 0) {
+                                      const terrain::CaveGround& ground, int centerX, int centerZ) {
     Checksum sum;
     for (int cellZ = centerZ - 6; cellZ < centerZ + 6; ++cellZ) {
         for (int cellX = centerX - 6; cellX < centerX + 6; ++cellX) {
@@ -140,8 +148,8 @@ inline std::uint64_t entrancesChecksum(const std::vector<terrain::CaveEntrance>&
 // Speleothems of a 96 m square at LOD 0.
 inline std::uint64_t speleothemsChecksum(const terrain::CaveField& field,
                                          const terrain::CaveGround& ground) {
-    constexpr double x0 = 1000.0;
-    constexpr double z0 = -2000.0;
+    constexpr double x0 = kAreaX + 1000.0;
+    constexpr double z0 = kAreaZ - 2000.0;
     constexpr double side = 96.0;
     terrain::CaveSampler sampler(field, ground, terrain::caveDetailForLod(0),
                                  {x0, -1200.0, z0, x0 + side, 4000.0, z0 + side});
@@ -213,20 +221,21 @@ inline std::vector<Part> caveParts() {
     const terrain::Heightfield heightfield(kSeed);
     const terrain::CaveGround ground = groundOf(heightfield);
     const terrain::CaveField field(kSeed);
-    const std::vector<terrain::CaveEntrance> entrances =
-        field.entrancesNear(-750.0, -4750.0, 750.0, -3250.0, ground);
+    const std::vector<terrain::CaveEntrance> entrances = field.entrancesNear(
+        kAreaX - 750.0, kAreaZ - 4750.0, kAreaX + 750.0, kAreaZ - 3250.0, ground);
     TEST_CHECK(!entrances.empty());
     const std::uint64_t tiles = entrances.empty() ? 0 : tilesChecksum(entrances.front());
     return {
-        {"cave points LOD 0", pointsChecksum(field, ground, 0), 0x25F20B88A91F9C39ULL},
-        {"cave points LOD 1", pointsChecksum(field, ground, 1), 0x6A8478788A51AC17ULL},
-        {"cave points LOD 2", pointsChecksum(field, ground, 2), 0x04B6D0C1DB7ED647ULL},
-        {"aquifers", aquifersChecksum(field, ground), 0x96909C86E783BAD7ULL},
-        {"entrances", entrancesChecksum(entrances), 0x5DC8B742BA973CA8ULL},
-        {"speleothems", speleothemsChecksum(field, ground), 0x7421424613878B8DULL},
-        {"cave tiles", tiles, 0xBB2437EAEBFC164AULL},
+        {"cave points LOD 0", pointsChecksum(field, ground, 0), 0x26711CB3DC45E77AULL},
+        {"cave points LOD 1", pointsChecksum(field, ground, 1), 0x99AA4FC5876E4883ULL},
+        {"cave points LOD 2", pointsChecksum(field, ground, 2), 0x09A42B051116C57DULL},
+        {"aquifers", aquifersChecksum(field, ground, kAreaCellX, kAreaCellZ),
+         0x0A80280C53E86A3BULL},
+        {"entrances", entrancesChecksum(entrances), 0xAE5A39071A179693ULL},
+        {"speleothems", speleothemsChecksum(field, ground), 0xE64D5302AB44599FULL},
+        {"cave tiles", tiles, 0xFB4FB588FEB856C1ULL},
         {"cave materials", materialsChecksum(), 0xD9C5568AB1EF9B55ULL},
-        {"caves at the corner", cornerChecksum(field, ground), 0xE8BDA2BA46719F22ULL},
+        {"caves at the corner", cornerChecksum(field, ground), 0xC10818C8B7783D74ULL},
     };
 }
 

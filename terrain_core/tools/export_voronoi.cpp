@@ -3,7 +3,8 @@
 // meters-per-pixel apart, centered on (center-x, center-z), and voronoi_world.png, the whole
 // planet in world-size x world-size pixels. Without the optional arguments: seed 20261019,
 // 8000 m/px, 4096 px (32,768 km) around the origin, plates 0.5, macro continent 0.25 and a
-// 2048 px world map.
+// 2048 px world map. The plate layer is that of the relief of generator 2: the planetary
+// geography, which has plates of its own, is disabled.
 // Usage: terrain_export_voronoi <output-dir> [seed] [meters-per-pixel] [size] [center-x]
 //        [center-z] [plates] [macro-continent] [world-size]
 
@@ -109,6 +110,7 @@ int main(int argc, char** argv) {
 
     const std::filesystem::path directory = argv[1];
     const terrain::HeightmapRegion& region = options.region;
+    options.params.geography.enabled = false; // the plate layer of generator 2
     const terrain::Heightfield field(options.seed, options.params);
     if (!terrain::exportVoronoiPngs(field, region, options.worldSize, directory)) {
         std::fprintf(stderr, "Failed to write the Voronoi maps into %s\n", argv[1]);
