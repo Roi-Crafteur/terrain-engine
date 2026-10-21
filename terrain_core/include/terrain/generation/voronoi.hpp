@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
 #include <array>
@@ -163,8 +164,10 @@ private:
     std::vector<Plate> plates_;
     std::vector<PlateBoundary> boundaries_;
     std::vector<int> boundaryIndex_; // plates x plates, -1 when not neighbors
-    std::array<std::uint64_t, 4> warpSeeds_{};
-    std::uint64_t coastSeed_ = 0;
+    // Large warp along x and z, detail warp along x and z, coast roughness: only the enabled
+    // ones are built.
+    std::array<noise::FbmOctaves, 4> warps_;
+    noise::FbmOctaves coast_;
     double gateWidth_ = 0.0; // plates farther than this gap from a point do not affect it
 };
 

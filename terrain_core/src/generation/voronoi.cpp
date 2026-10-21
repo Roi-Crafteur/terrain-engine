@@ -254,23 +254,33 @@ TectonicPlates::TectonicPlates(std::uint64_t seed, const VoronoiParams& params,
                                               wrapOffset(plates_[b].z - plates_[a].z, world_.z)));
     }
     gateWidth_ = gateWidth(params_, maxSpacing, cellDiameter_);
-    warpSeeds_ = {noise::deriveSeed(seed, kWarpX), noise::deriveSeed(seed, kWarpZ),
-                  noise::deriveSeed(seed, kDetailWarpX), noise::deriveSeed(seed, kDetailWarpZ)};
-    coastSeed_ = noise::deriveSeed(seed, kCoast);
+    // The noises of warp and sampleAt, with the same parameters (FbmOctaves).
+    const auto noiseOf = [seed, &world](Stream stream, double wavelength) {
+        return noise::FbmOctaves(noise::deriveSeed(seed, stream),
+                                 {.octaves = 3, .frequency = 1.0 / wavelength}, world);
+    };
+    if (params_.warpAmplitude > 0.0) {
+        warps_[0] = noiseOf(kWarpX, params_.warpWavelength);
+        warps_[1] = noiseOf(kWarpZ, params_.warpWavelength);
+    }
+    if (params_.detailWarpAmplitude > 0.0) {
+        warps_[2] = noiseOf(kDetailWarpX, params_.detailWarpWavelength);
+        warps_[3] = noiseOf(kDetailWarpZ, params_.detailWarpWavelength);
+    }
+    if (params_.coastRoughness > 0.0f) {
+        coast_ = noiseOf(kCoast, params_.coastNoiseWavelength);
+    }
 }
 
 TectonicPlates::Point TectonicPlates::warp(double x, double z) const {
     Point q{x, z};
     if (params_.warpAmplitude > 0.0) {
-        const noise::FbmParams large{.octaves = 3, .frequency = 1.0 / params_.warpWavelength};
-        q.x += params_.warpAmplitude * noise::fbm2D(x, z, warpSeeds_[0], large, world_);
-        q.z += params_.warpAmplitude * noise::fbm2D(x, z, warpSeeds_[1], large, world_);
+        q.x += params_.warpAmplitude * warps_[0].fbm2D(x, z);
+        q.z += params_.warpAmplitude * warps_[1].fbm2D(x, z);
     }
     if (params_.detailWarpAmplitude > 0.0) {
-        const noise::FbmParams detail{.octaves = 3,
-                                      .frequency = 1.0 / params_.detailWarpWavelength};
-        q.x += params_.detailWarpAmplitude * noise::fbm2D(x, z, warpSeeds_[2], detail, world_);
-        q.z += params_.detailWarpAmplitude * noise::fbm2D(x, z, warpSeeds_[3], detail, world_);
+        q.x += params_.detailWarpAmplitude * warps_[2].fbm2D(x, z);
+        q.z += params_.detailWarpAmplitude * warps_[3].fbm2D(x, z);
     }
     return q;
 }
@@ -296,8 +306,7 @@ PlateSample TectonicPlates::sampleAt(double worldX, double worldZ) const {
     s.level = blendedLevel(*this, hood);
     addBoundaryEffects(*this, hood, s);
     if (s.coast > 0.0f && params_.coastRoughness > 0.0f) {
-        const noise::FbmParams rough{.octaves = 3, .frequency = 1.0 / params_.coastNoiseWavelength};
-        s.level += params_.coastRoughness * s.coast * noise::fbm2D(x, z, coastSeed_, rough, world_);
+        s.level += params_.coastRoughness * s.coast * coast_.fbm2D(x, z);
     }
     s.continentalness = s.level + params_.collisionUplift * s.collision + s.rift;
     return s;

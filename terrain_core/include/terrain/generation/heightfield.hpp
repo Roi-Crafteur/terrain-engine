@@ -111,15 +111,11 @@ private:
     void continentalnessAt(double x, double z, HeightSample& s) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask) const;
 
+    struct Layers; // the noises of the layers, built once (heightfield.cpp)
+
     HeightfieldParams params_;
     WorldSize world_;
-    std::uint64_t continentSeed_;
-    std::uint64_t maskSeed_;
-    std::uint64_t warpXSeed_;
-    std::uint64_t warpZSeed_;
-    std::uint64_t ridgeSeed_;
-    std::uint64_t detailSeed_;
-    std::uint64_t macroContinentSeed_;
+    std::shared_ptr<const Layers> layers_;         // shared by copies, immutable
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
 };
 

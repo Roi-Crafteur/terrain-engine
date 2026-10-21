@@ -9,8 +9,10 @@
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
+#include "bit_exact_support.hpp"
 #include "test_assert.hpp"
 
 #include <array>
@@ -24,128 +26,20 @@
 namespace {
 
 namespace noise = terrain::noise;
+using bit_exact::edgePoints;
+using bit_exact::kWorlds;
+using bit_exact::Point;
+using bit_exact::randomPoints;
+using bit_exact::same;
+using bit_exact::Tally;
 using terrain::WorldSize;
 
 constexpr std::uint64_t kSeed = 20261019;
-const std::array<WorldSize, 2> kWorlds = {WorldSize{}, WorldSize{65536.0, 3.0 * 65536.0}};
-
-struct Point {
-    double x;
-    double z;
-};
-
-// Deterministic coordinates in [-range, range).
-class Points {
-public:
-    double next(double range) {
-        state_ = noise::deriveSeed(state_, 0);
-        const double unit = static_cast<double>(state_ >> 11) * 0x1p-53;
-        return (2.0 * unit - 1.0) * range;
-    }
-
-private:
-    std::uint64_t state_ = 11;
-};
-
-std::vector<Point> randomPoints(std::size_t count, double range) {
-    Points points;
-    std::vector<Point> result;
-    for (std::size_t i = 0; i < count; ++i) {
-        const double x = points.next(range);
-        result.push_back({x, points.next(range)});
-    }
-    return result;
-}
-
-// Coordinates along an axis of period p that exercise every branch of the wrapping: 0 and -0,
-// +-p / 2 and their two neighbors on each side, their images 1, 2 and 1000 periods away, other
-// negatives, and coordinates far beyond the world.
-std::vector<double> edgeValues(double period) {
-    const double half = 0.5 * period;
-    const double inf = std::numeric_limits<double>::infinity();
-    std::vector<double> base = {0.0, -0.0, 1.0 / 64.0, -1.0 / 64.0, 0.25 * period, -0.3 * period};
-    for (const double bound : {half, -half}) {
-        double below = bound;
-        double above = bound;
-        base.push_back(bound);
-        for (int step = 0; step < 2; ++step) {
-            below = std::nextafter(below, -inf);
-            above = std::nextafter(above, inf);
-            base.push_back(below);
-            base.push_back(above);
-        }
-        base.push_back(bound - 1.0 / 64.0);
-        base.push_back(bound + 1.0 / 64.0);
-    }
-    std::vector<double> values = base;
-    for (const double k : {1.0, -1.0, 2.0, -2.0, 1000.0, -1000.0}) {
-        for (const double v : base) {
-            values.push_back(v + k * period);
-        }
-    }
-    values.push_back(1e12 + 0.5);
-    values.push_back(-1e12 - 0.25);
-    return values;
-}
-
-std::vector<Point> edgePoints(const WorldSize& world) {
-    std::vector<Point> points;
-    const std::vector<double> xs = edgeValues(world.x);
-    const std::vector<double> zs = edgeValues(world.z);
-    for (const double z : zs) {
-        for (const double x : xs) {
-            points.push_back({x, z});
-        }
-    }
-    return points;
-}
-
-// Mismatches of one family of checks, the first one printed.
-class Tally {
-public:
-    explicit Tally(const char* name) : name_(name) {}
-    ~Tally() {
-        std::printf("%-34s %9ld checks, %ld different\n", name_, checked_, failed_);
-        TEST_CHECK(failed_ == 0);
-        TEST_CHECK(checked_ > 0);
-    }
-    Tally(const Tally&) = delete;
-    Tally& operator=(const Tally&) = delete;
-
-    void check(bool same, Point p, const char* what) {
-        ++checked_;
-        if (!same && failed_++ == 0) {
-            std::printf("  first difference: %s at (%.17g, %.17g)\n", what, p.x, p.z);
-        }
-    }
-
-private:
-    const char* name_;
-    long checked_ = 0;
-    long failed_ = 0;
-};
-
-bool same(float a, float b) {
-    return std::bit_cast<std::uint32_t>(a) == std::bit_cast<std::uint32_t>(b);
-}
-
-bool same(double a, double b) {
-    return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
-}
 
 bool same(const noise::Lattice2D& a, const noise::Lattice2D& b) {
     return same(a.scaleX, b.scaleX) && same(a.scaleZ, b.scaleZ) && a.a == b.a && a.b == b.b &&
            a.c == b.c && a.periodS == b.periodS && a.periodT == b.periodT &&
            same(a.offsetU, b.offsetU) && same(a.offsetV, b.offsetV) && a.world == b.world;
-}
-
-bool same(const terrain::HeightSample& a, const terrain::HeightSample& b) {
-    return same(a.continentalness, b.continentalness) &&
-           same(a.macroContinentalness, b.macroContinentalness) &&
-           same(a.plateContinentalness, b.plateContinentalness) &&
-           same(a.plateCollision, b.plateCollision) && same(a.mountainMask, b.mountainMask) &&
-           same(a.base, b.base) && same(a.mountain, b.mountain) && same(a.detail, b.detail) &&
-           same(a.height, b.height);
 }
 
 // Parameter sets of the fbm checks: the layers of the Heightfield and the caves, and unusual
@@ -193,20 +87,24 @@ std::vector<Point> latticeLinePoints(const WorldSize& world, double frequency) {
     return points;
 }
 
-void checkNoisePoint(Tally& tally, const noise::FbmParams& fbm, const WorldSize& world, Point p) {
+// The free functions and FbmOctaves against the frozen free functions.
+void checkNoisePoint(Tally& tally, const noise::FbmParams& fbm, const WorldSize& world,
+                     const noise::FbmOctaves& octaves, Point p) {
     namespace old = frozen::noise;
     const double y = 0.37 * p.x - 0.11 * p.z;
-    tally.check(same(noise::fbm2D(p.x, p.z, kSeed, fbm, world),
-                     old::fbm2D(p.x, p.z, kSeed, fbm, world)),
-                p, "fbm2D");
+    const float fbm2D = old::fbm2D(p.x, p.z, kSeed, fbm, world);
+    tally.check(same(noise::fbm2D(p.x, p.z, kSeed, fbm, world), fbm2D), p, "fbm2D");
+    tally.check(same(octaves.fbm2D(p.x, p.z), fbm2D), p, "FbmOctaves::fbm2D");
     for (const double sharpness : {1.0, 2.0, 2.5, 4.0}) {
-        tally.check(same(noise::ridged2D(p.x, p.z, kSeed, fbm, world, sharpness),
-                         old::ridged2D(p.x, p.z, kSeed, fbm, world, sharpness)),
-                    p, "ridged2D");
+        const float ridged = old::ridged2D(p.x, p.z, kSeed, fbm, world, sharpness);
+        tally.check(same(noise::ridged2D(p.x, p.z, kSeed, fbm, world, sharpness), ridged), p,
+                    "ridged2D");
+        tally.check(same(octaves.ridged2D(p.x, p.z, sharpness), ridged), p,
+                    "FbmOctaves::ridged2D");
     }
-    tally.check(same(noise::fbm3D(p.x, y, p.z, kSeed, fbm, world),
-                     old::fbm3D(p.x, y, p.z, kSeed, fbm, world)),
-                p, "fbm3D");
+    const float fbm3D = old::fbm3D(p.x, y, p.z, kSeed, fbm, world);
+    tally.check(same(noise::fbm3D(p.x, y, p.z, kSeed, fbm, world), fbm3D), p, "fbm3D");
+    tally.check(same(octaves.fbm3D(p.x, y, p.z), fbm3D), p, "FbmOctaves::fbm3D");
     const noise::Lattice2D lattice = noise::lattice2D(world, fbm.frequency, 1, 0.25, 0.5);
     tally.check(same(noise::gradient2D(p.x, p.z, kSeed, lattice),
                      old::gradient2D(p.x, p.z, kSeed, lattice)),
@@ -217,19 +115,20 @@ void checkNoisePoint(Tally& tally, const noise::FbmParams& fbm, const WorldSize&
 }
 
 void checkNoises() {
-    Tally tally("fbm2D, ridged2D, fbm3D, gradients");
+    Tally tally("noises and FbmOctaves");
     const std::vector<Point> random = randomPoints(12'000, 2e7);
     const std::vector<Point> near = randomPoints(4'000, 3000.0);
     for (const WorldSize& world : kWorlds) {
         const std::vector<Point> edges = edgePoints(world);
         for (const noise::FbmParams& fbm : kFbms) {
+            const noise::FbmOctaves octaves(kSeed, fbm, world);
             for (const auto* set : {&random, &near, &edges}) {
                 for (const Point& p : *set) {
-                    checkNoisePoint(tally, fbm, world, p);
+                    checkNoisePoint(tally, fbm, world, octaves, p);
                 }
             }
             for (const Point& p : latticeLinePoints(world, fbm.frequency)) {
-                checkNoisePoint(tally, fbm, world, p);
+                checkNoisePoint(tally, fbm, world, octaves, p);
             }
         }
     }

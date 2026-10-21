@@ -53,6 +53,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield.cpp
     src/generation/heightfield_density.cpp
     src/generation/noise.cpp
+    src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
