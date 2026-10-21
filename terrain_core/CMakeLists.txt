@@ -197,6 +197,13 @@ add_custom_target(export_voronoi_maps
     USES_TERMINAL
 )
 
+# Benchmark of the noise and the relief, not a test (outside ctest): heightAt, sampleAt, the
+# tiles of LOD 0 to 3 with and without caves, 1024 x 1024 height grids and the parts of a height
+# sample, with a checksum of every result that an optimization must leave unchanged. Build in
+# Release: terrain_bench_noise [runs] [--quick]
+add_executable(terrain_bench_noise tools/bench_noise.cpp)
+target_link_libraries(terrain_bench_noise PRIVATE terrain_core terrain_warnings)
+
 # Eroded region PNG export: terrain_export_eroded <output-dir> [seed] [m/px] [size]
 add_executable(terrain_export_eroded tools/export_eroded.cpp)
 target_link_libraries(terrain_export_eroded PRIVATE terrain_core terrain_warnings)
