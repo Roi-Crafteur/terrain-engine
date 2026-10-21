@@ -366,13 +366,13 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   courbe la planète (d² / 2R, comme en section 10). La normale (espace monde) et la couleur passent
   au nuanceur de pixels par des interpolateurs.
 - **Géomorphing** (`Bridge/horizon_morph.hpp`) : dans une bande de `HorizonMorphCells` mailles
-  avant le bord de chaque niveau, chaque sommet glisse vers la surface du niveau plus grossier : la
-  moyenne des deux échantillons pairs de l'arête du triangle grossier qui le porte (un échantillon
-  pair n'a pas à bouger). Facteur α = clamp((d − (K/2 − 2 − w)) / w, 0, 1), d la distance de
-  Tchebychev au joueur en mailles, K = 256, w la largeur : α vaut 1 au bord, où les deux niveaux
-  coïncident (pas de couture), et varie avec le joueur, pas avec l'emplacement du niveau (un
-  déplacement de niveau ne fait rien sauter). Les pentes glissent vers celles du niveau plus
-  grossier, lues dans sa texture.
+  (32 par défaut, sans couture visible dans les captures teintées) avant le bord de chaque niveau,
+  chaque sommet glisse vers la surface du niveau plus grossier : la moyenne des deux échantillons
+  pairs de l'arête du triangle grossier qui le porte (un échantillon pair n'a pas à bouger).
+  Facteur α = clamp((d − (K/2 − 2 − w)) / w, 0, 1), d la distance de Tchebychev au joueur en
+  mailles, K = 256, w la largeur : α vaut 1 au bord, où les deux niveaux coïncident (pas de
+  couture), et varie avec le joueur, pas avec l'emplacement du niveau (un déplacement de niveau ne
+  fait rien sauter). Les pentes glissent vers celles du niveau plus grossier, lues dans sa texture.
 - **Époques en tâches de basse priorité** (`Bridge/horizon_epochs.hpp`) : les morceaux d'une
   époque sont calculés par `UE::Tasks` en `BackgroundLow`, au plus `HorizonThreads` à la fois ;
   les workers des tuiles passent devant. Une époque est appliquée en une frame (bandes et
@@ -385,6 +385,37 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   non essayé (assigner `HorizonGpuMaterial`, section 9).
 - **Log** : en plus de la section 10, `horizon texels` (envoi des bandes : ticks, ms, texels par
   tick) et, toujours, `frames` : thread de jeu, thread de rendu et GPU, comme `stat unit`.
+
+### Mesures, GPU contre CPU (UE 5.8, éditeur en PIE, Ryzen 9 9950X3D, `ViewDistanceChunks` 32)
+
+Même marche dans les trois cas (Character, 40 s à 6 m/s puis 60 s à 30 m/s), même machine, même
+jour ; « sans » : `bHorizon` désactivé.
+
+| | GPU | CPU (étape 1) | sans |
+|---|---|---|---|
+| Déplacement d'un niveau, thread de jeu, moyenne par niveau | 0,04 à 0,08 ms | 2,2 à 2,9 ms | – |
+| Déplacement d'un niveau, au plus (marche, course) | 0,10 ms, 0,13 ms | 3,0 ms, 4,9 ms | – |
+| Envoi des bandes, thread de jeu, par époque | < 0,01 ms | 2,5 ms (conversion et envoi) | – |
+| Premier affichage, thread de jeu (660 490 échantillons) | 4,1 à 4,9 ms | 33 à 43 ms | – |
+| Époques, du plan à l'application | 11,3 à 11,6 ms | 11,5 à 11,6 ms | – |
+| Frames à 6 / 30 m/s, moyenne | 10,5 / 10,7 ms | 10,8 / 11,0 ms | 10,2 / 10,4 ms |
+| Frames à 6 / 30 m/s, 99ᵉ centile | 13,6 / 14,6 ms | 14,5 / 22,4 ms | 13,2 / 14,1 ms |
+| Temps GPU par frame, à 6 / 30 m/s | 8,0 / 8,1 ms | 8,2 / 8,3 ms | 7,5 / 7,6 ms |
+| Mémoire côté CPU | 10,1 Mo d'échantillons | 12 Mo + 87 Mo de meshes | – |
+| Mémoire côté GPU | 16,2 Mo (textures 10,1, grilles 6,1) | 35 à 45 Mo (estimation) | – |
+
+- Le temps GPU est celui de `stat unit` (`RHIGetGPUFrameCycles`) : l'horizon coûte environ 0,5 ms
+  de GPU par frame (1 018 000 triangles). Le thread de rendu de l'éditeur (environ 10 ms) borne
+  les frames dans les trois cas.
+- Les grilles sont construites une fois, au `BeginPlay` : 215 à 270 ms sur le thread de jeu,
+  pendant le chargement du niveau.
+- Génération des tuiles LOD 0 pendant la première époque (0,9 s) : 0,25 ms par tuile en GPU comme
+  en CPU, 0,24 ms sans horizon, et de même avec l'éditeur limité à 2 cœurs logiques (0,27, 0,25 et
+  0,26 ms). Pas d'effet mesurable de la basse priorité ici : les tuiles du départ sont générées en
+  quelques dizaines de millisecondes, bien avant la fin de l'époque.
+- Bord est du monde traversé à 100 m/s (500 m d'altitude) : 0,04 à 0,07 ms par déplacement de
+  niveau, 0,15 ms au plus ; tour du monde : les 10 niveaux replacés d'un monde en 0,05 ms, sans
+  époque (étape 1 : moins de 2 ms).
 
 ### Ajouter les matériaux et les biomes (pas encore fait)
 
@@ -409,3 +440,5 @@ le matériau et le biome.
 - Normales par sommet : le relief plus fin que la maille d'un niveau n'éclaire pas. Les normales
   par pixel viendront avec le rendu de la phase 14.
 - Matériaux et biomes : pas encore dessinés (ci-dessus).
+- Les grilles sont construites sur le thread de jeu au `BeginPlay` (0,2 s, une fois) ; elles
+  pourraient l'être hors de ce thread si ce temps gêne au chargement.
