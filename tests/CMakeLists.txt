@@ -158,6 +158,23 @@ terrain_add_test(planet_stats_test terrain_core)
 terrain_add_test(planet_false_passes_test terrain_core)
 terrain_add_test(planet_png_test terrain_core)
 
+terrain_add_test(relief_png_test terrain_core)
+terrain_add_test(relief_stats_test terrain_core)
+
+# Maps and figures of the relief of a small world (64 x 32 cells of 64 km, zooms of 64 px).
+add_test(NAME export_relief_smoke
+    COMMAND terrain_export_relief ${CMAKE_BINARY_DIR}/relief 20261019 default 65536 64 2 4194304
+            2097152)
+set_tests_properties(export_relief_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "relief default, seed 20261019, world 4194 x 2097 km, cells of 65536 m")
+add_dependencies(check terrain_export_relief)
+
+# Invalid arguments of terrain_export_relief are rejected before anything is computed.
+add_test(NAME export_relief_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_relief>
+            -DOUT=${CMAKE_BINARY_DIR}/relief_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_relief_bad_args.cmake)
+
 # The planet level of a small world (128 x 64 cells of 16 km), its figures and images.
 add_test(NAME export_planet_smoke
     COMMAND terrain_export_planet ${CMAKE_BINARY_DIR}/planet 20261019 16384 default 1 2 2097152

@@ -45,45 +45,48 @@ using bench::kCenterChunkZ;
 using bench::kSeed;
 using bench::record;
 
-// The mixed points lie within this distance of the origin: oceans, plains and mountains.
+// Scale of the inputs of the math profiles: abs(x) / kMixedRange.
 constexpr double kMixedRange = 1'000'000.0;
+// Candidates drawn per point of a kind: a kind that the relief lacks stays short instead of
+// looping.
+constexpr std::size_t kAttemptsPerPoint = 40;
 
+// Points by kind, drawn over the whole world so that two reliefs compare alike. The kinds
+// overlap: a mountain on the coast is in both.
 struct PointSets {
-    std::vector<Point> mixed;
+    std::vector<Point> mixed;    // anywhere
+    std::vector<Point> land;     // above the sea, without mountain mask
+    std::vector<Point> coast;    // within 100 m of sea level
     std::vector<Point> mountain; // mountain mask above 0
-    std::vector<Point> ocean;    // below the coast, without mountains
+    std::vector<Point> ocean;    // deeper than 1,000 m
 };
 
 PointSets pointSets(const Heightfield& field, std::size_t count) {
     PointSets sets;
     bench::Points points;
-    std::size_t landShare = 0;
-    while (sets.mixed.size() < count || sets.mountain.size() < count || sets.ocean.size() < count) {
-        const Point p{points.next(kMixedRange), points.next(kMixedRange)};
-        const terrain::HeightSample s = field.sampleAt(p.x, p.z);
-        if (sets.mixed.size() < count) {
-            sets.mixed.push_back(p);
-            if (s.base >= 0.0f) {
-                ++landShare;
-            }
+    const terrain::WorldSize& world = field.world();
+    const auto add = [count](std::vector<Point>& set, Point p, bool member) {
+        if (member && set.size() < count) {
+            set.push_back(p);
         }
-        if (s.mountainMask > 0.0f && sets.mountain.size() < count) {
-            sets.mountain.push_back(p);
-        } else if (s.base < 0.0f && s.mountainMask == 0.0f && sets.ocean.size() < count) {
-            sets.ocean.push_back(p);
-        }
-    }
-    std::size_t mountains = 0;
-    for (const Point& p : sets.mixed) {
-        if (field.sampleAt(p.x, p.z).mountainMask > 0.0f) {
-            ++mountains;
-        }
-    }
-    const auto share = [count](std::size_t n) {
-        return 100.0 * static_cast<double>(n) / static_cast<double>(count);
     };
-    std::printf("mixed points within %.0f km: %.0f %% land, %.0f %% under a mountain mask\n",
-                kMixedRange / 1000.0, share(landShare), share(mountains));
+    for (std::size_t attempt = 0; attempt < kAttemptsPerPoint * count; ++attempt) {
+        const Point p{points.next(0.5 * world.x), points.next(0.5 * world.z)};
+        const terrain::HeightSample s = field.sampleAt(p.x, p.z);
+        add(sets.mixed, p, true);
+        add(sets.land, p, s.height >= 0.0f && s.mountainMask == 0.0f);
+        add(sets.coast, p, std::abs(s.height) < 100.0f);
+        add(sets.mountain, p, s.mountainMask > 0.0f);
+        add(sets.ocean, p, s.height < -1000.0f);
+        if (sets.land.size() == count && sets.coast.size() == count &&
+            sets.mountain.size() == count && sets.ocean.size() == count) {
+            break;
+        }
+    }
+    std::printf("points over the whole world: %zu mixed, %zu land, %zu coast, %zu mountain, %zu "
+                "ocean\n",
+                sets.mixed.size(), sets.land.size(), sets.coast.size(), sets.mountain.size(),
+                sets.ocean.size());
     return sets;
 }
 
@@ -102,9 +105,14 @@ void pointCases(const Config& c, const Heightfield& field, const Heightfield& pl
     const auto run = [&c](const Heightfield& f, const std::vector<Point>& points) {
         return bench::measure(c.runs, [&f, &points] { return heights(f, points); });
     };
-    record("heightAt, mixed", run(field, sets.mixed), n, "ns");
-    record("heightAt, mountains", run(field, sets.mountain), n, "ns");
-    record("heightAt, ocean", run(field, sets.ocean), n, "ns");
+    const auto kind = [&](const char* name, const std::vector<Point>& points) {
+        record(name, run(field, points), points.size(), "ns");
+    };
+    kind("heightAt, mixed", sets.mixed);
+    kind("heightAt, land", sets.land);
+    kind("heightAt, coast", sets.coast);
+    kind("heightAt, mountains", sets.mountain);
+    kind("heightAt, ocean", sets.ocean);
     const auto samples = bench::measure(c.runs, [&field, &sets] {
         Checksum sum;
         for (const Point& p : sets.mixed) {
