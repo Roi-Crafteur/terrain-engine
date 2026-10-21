@@ -83,6 +83,8 @@ add_library(terrain_core STATIC
     src/storage/world_meta.cpp
     src/storage/world_save.cpp
     src/streaming/cave_tiles.cpp
+    src/streaming/horizon_epoch.cpp
+    src/streaming/horizon_grids.cpp
     src/streaming/horizon_levels.cpp
     src/streaming/horizon_sampler.cpp
     src/streaming/lod.cpp
