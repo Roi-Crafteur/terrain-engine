@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -114,6 +115,11 @@ struct Heightfield::Layers {
     noise::FbmOctaves warpZ;
     noise::FbmOctaves ridge;
     noise::FbmOctaves detail;
+    // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
+    // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the
+    // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land
+    // factor is 0.
+    bool maskSkippable = false;
 };
 
 Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
@@ -136,6 +142,9 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
     if (params_.detailAmplitude > 0.0f) {
         layers->detail = layer(kDetail, 3, params_.detailWavelength);
     }
+    layers->maskSkippable = std::isfinite(params_.maskLow) && std::isfinite(params_.maskHigh) &&
+                            params_.maskHigh - params_.maskLow >=
+                                std::numeric_limits<float>::min();
     layers_ = std::move(layers);
     if (params_.plates.amplitude > 0.0f) {
         plates_ = std::make_shared<const TectonicPlates>(noise::deriveSeed(seed, kPlates),
@@ -156,8 +165,13 @@ HeightSample Heightfield::sampleAt(double worldX, double worldZ) const {
     s.base = continentalBase(coastOffset);
 
     const float land = noise::smoothstep(kMountainCoastStart, kMountainCoastFull, coastOffset);
-    const float massif =
-        noise::smoothstep(params_.maskLow, params_.maskHigh, layers_->mask.fbm2D(x, z));
+    // On the sea and the shore the land factor is 0, and the mask 0 * max(massif, collision)
+    // whatever the massif: both are finite, at least +0 and never -0, so the mask is a zero of
+    // the sign of land either way. The mask noise is skipped there.
+    float massif = 0.0f;
+    if (land != 0.0f || !layers_->maskSkippable) {
+        massif = noise::smoothstep(params_.maskLow, params_.maskHigh, layers_->mask.fbm2D(x, z));
+    }
     // Collision belts are massifs too: the ridged noise draws mountain ranges along them.
     // Without plates the collision is 0 and the mask is unchanged.
     s.mountainMask = land * std::max(massif, s.plateCollision);
