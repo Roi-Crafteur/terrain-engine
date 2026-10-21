@@ -42,31 +42,35 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - 8C-2 : grands réseaux de galeries, rivières souterraines en pente douce (sèches au-delà
   de 10 %), cavernes à lave sous les galeries, parois de magma
 
+### Phase 9 — Fondations
+- CI multiplateforme : Windows (MSVC), Linux (GCC, Clang), macOS (AppleClang, ARM)
+- déterminisme multiplateforme : pas de FMA, options flottantes figées, fonctions
+  mathématiques maison ; golden identiques sur les 3 plateformes
+- monde bouclé de 60 030 976 × 34 996 224 m : est ↔ ouest et nord ↔ sud, bords polaires,
+  tous les bruits périodiques, raccord exact au bit près
+- format de monde v1 : world.meta, fichiers de région, dossiers de mondes, écritures
+  durables ; version du générateur 2
+- eau statique et blocs suspendus pour commencer
+
+### Phase 10 — Tranche verticale Unreal (partie 1)
+- plugin `terrain_unreal/` qui compile les sources de terrain_core, testé dans UE 5.8
+  (Windows, VS 2026) : autocontrôle du déterminisme au bit près dans Unreal
+- tuiles streamées en ProceduralMeshComponent, LOD 0 à 3, collisions, sol prêt sous le pion
+- tuiles montrées à leur image la plus proche du joueur : pas de trou au coin du monde
+- coût mesuré : environ 0,6 ms de génération et 0,5 ms d'envoi par tuile LOD 0
+
 ## À venir
 
-### Phase 9 — Fondations
-- déterminisme multiplateforme (chaque client génère le terrain) :
-  - Windows, Linux et Mac (Apple Silicon), en client comme en serveur ; consoles plus tard
-  - pas de FMA, options flottantes figées, fonctions mathématiques maison
-    (sin, pow, exp... jamais celles de la bibliothèque standard)
-  - golden vérifiés sur chaque plateforme
-- monde bouclé qui simule une planète :
-  - carte plate, courbure simulée au rendu
-  - est ↔ ouest et nord ↔ sud bouclent ; les bords nord et sud sont polaires
-  - tous les bruits périodiques, raccord exact aux bords
-- format de monde v1 : nom, seed, paramètres, version du générateur, modifications
-- eau statique pour commencer (eau physique complète prévue plus tard)
-- blocs suspendus acceptés pour commencer (intégrité structurelle envisagée plus tard)
-
-### Phase 10 — Tranche verticale Unreal
-- UE 5.8, conçu pour évoluer vers UE 6
-- plugin `terrain_unreal/` dans ce dépôt, qui compile les sources de terrain_core ;
-  le projet de jeu (maps, assets) dans un dépôt séparé
-- tuiles converties en mesh, collisions, Character qui marche
+### Phase 10 — suite
+- Character qui marche, saute et tombe sur le terrain (pack Third Person)
 - type de mesh choisi par mesure : Dynamic Mesh, ProceduralMeshComponent ou
   RealtimeMeshComponent
-- Large World Coordinates, recentrage de l'origine, passage des bords du monde bouclé
-- mesure du coût réel d'une tuile
+- compilation du plugin sous Linux et Mac (risque `std::jthread`)
+- ramener le joueur d'un monde entier au-delà d'un tour (coordonnées Unreal ≈ 88 000 km)
+
+### Chantier parallèle — Performance du bruit
+- retrouver le coût d'avant la phase 9 (heightAt ≈ 2,5 fois plus lent depuis les maths
+  déterministes), sans changer un seul bit du monde
 
 ### Phase 11 — Hydrographie continentale (approche TerraForged)
 - niveau Planète précalculé à la création du monde (attente longue acceptée)
@@ -76,6 +80,8 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - deltas, estuaires, grands lacs, méandres, bras morts
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
+- 11A : niveau Planète, climat et graphe des fleuves, calculés et exportés sans toucher
+  au relief ; 11B : creusement des lits, lacs, canyons et chutes dans le relief
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
 
 ### Phase 12 — Monde streamé unifié
