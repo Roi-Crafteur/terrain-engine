@@ -187,6 +187,7 @@ add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/altitude_color.cpp
     ${unreal_bridge}/determinism_check.cpp
     ${unreal_bridge}/horizon_layout.cpp
+    ${unreal_bridge}/horizon_mesh.cpp
     ${unreal_bridge}/terrain_session.cpp
     ${unreal_bridge}/tile_mesh_conversion.cpp
     ${unreal_bridge}/tile_streamer.cpp
@@ -204,6 +205,7 @@ terrain_add_test(unreal_tile_streamer_test terrain_unreal_bridge)
 terrain_add_test(unreal_terrain_session_test terrain_unreal_bridge)
 terrain_add_test(unreal_determinism_check_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_layout_test terrain_unreal_bridge)
+terrain_add_test(unreal_horizon_mesh_test terrain_unreal_bridge)
 
 # Every source of terrain_core outside io/ has its wrapper in the Unreal plugin, which compiles
 # it: a source added to the core without its wrapper fails here.
