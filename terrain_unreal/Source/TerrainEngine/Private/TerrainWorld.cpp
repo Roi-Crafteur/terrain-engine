@@ -33,7 +33,8 @@ struct FTerrainWorldState
 	}
 
 	terrain::unreal::TerrainSession Session;
-	// TODO(phase 9): crossing an edge of the wrapped world moves this frame by one period.
+	// Fixed while playing, rebasing aside: the player keeps unwrapped coordinates across the edges
+	// of the wrapped world, the tiles follow it to their nearest images (Bridge/tile_streamer.hpp).
 	terrain::unreal::UnrealFrame Frame;
 };
 
@@ -71,7 +72,8 @@ namespace
 		return Params;
 	}
 
-	// Applies an update of the streamer to the meshes: the uploads (timed), then the removals.
+	// Applies an update of the streamer to the meshes: the uploads (timed), the moves to other
+	// images of the wrapped world, then the removals.
 	void ApplyUpdate(UTerrainMeshBackend& Backend, terrain::unreal::TileTimings& Timings,
 		const terrain::unreal::StreamerUpdate& Update)
 	{
@@ -89,6 +91,10 @@ namespace
 				static_cast<int32>(Upload.mesh.triangleCount()),
 				Upload.collision ? TEXT("yes") : TEXT("no"), Upload.conversionMilliseconds,
 				UploadMs);
+		}
+		for (const terrain::unreal::TileMove& Move : Update.moves)
+		{
+			Backend.MoveTile(Move.key, Move.origin);
 		}
 		for (const terrain::TileKey& Key : Update.removals)
 		{

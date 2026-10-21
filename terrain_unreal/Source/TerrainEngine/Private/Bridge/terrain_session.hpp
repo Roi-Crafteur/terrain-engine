@@ -7,6 +7,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/streaming/stream_manager.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
+#include "terrain/world_size.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -17,7 +18,8 @@ struct SessionParams {
     std::uint64_t seed = kDefaultWorldSeed;
     bool caves = false;       // the caves of CaveParams{} under the heightfield
     bool caveRegions = false; // with caves only: their regions (CaveDistrictParams{})
-    StreamParams stream;
+    WorldSize world;          // the wrapped world, of the tiles and of the streaming
+    StreamParams stream;      // its world is replaced by world
 };
 
 // The streamed world of an Unreal level: its tiles, the timings of their generations and
@@ -25,7 +27,8 @@ struct SessionParams {
 // streamer stop (once their current tile is generated) before the tiles they read go away.
 class TerrainSession {
 public:
-    // Throws like TileStreamer for invalid stream parameters.
+    // Throws std::invalid_argument for an invalid world, like TileStreamer for invalid stream
+    // parameters.
     explicit TerrainSession(const SessionParams& params);
 
     TerrainSession(const TerrainSession&) = delete;

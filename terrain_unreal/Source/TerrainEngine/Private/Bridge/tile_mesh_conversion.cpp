@@ -46,8 +46,14 @@ UnrealMesh convertMesh(const Mesh& mesh, double originY) {
     return out;
 }
 
-UnrealPoint tileOrigin(const UnrealFrame& frame, const TileData& data) {
-    return toUnreal(frame, {data.originX, data.originY, data.originZ});
+UnrealPoint tileOrigin(const UnrealFrame& frame, const TileData& data, const TileKey& image) {
+    const ChunkCoord canonical = data.request.key.origin;
+    const auto chunks = [](std::int32_t to, std::int32_t from) {
+        return static_cast<double>(std::int64_t{to} - std::int64_t{from});
+    };
+    const double shiftX = chunks(image.origin.x, canonical.x) * kChunkSizeMeters;
+    const double shiftZ = chunks(image.origin.z, canonical.z) * kChunkSizeMeters;
+    return toUnreal(frame, {data.originX + shiftX, data.originY, data.originZ + shiftZ});
 }
 
 } // namespace terrain::unreal

@@ -1,7 +1,9 @@
 // Streamer of the Unreal plugin, on cheap tiles: the budget of conversions per update, nearest
 // tiles first, collision on LOD 0 only, a random walk after which the simulated Unreal meshes
-// always match the loaded tiles (replacements in place included), the warm-up under a new
-// player with busy workers and its timeout, the errors of the generator, and determinism.
+// always match the loaded tiles (replacements in place included), the wrapped world (a walk
+// across its edge with every tile at its image nearest to the player, a jump of a whole world
+// that only moves the meshes, a warm-up at its corner), the warm-up under a new player with busy
+// workers and its timeout, the errors of the generator, and determinism.
 #include "tile_streamer.hpp"
 
 #include "streaming_test_support.hpp"
@@ -26,6 +28,7 @@ using terrain::TileKey;
 using terrain::TileKeyHash;
 using terrain::TileRequest;
 using terrain::unreal::StreamerUpdate;
+using terrain::unreal::TileMove;
 using terrain::unreal::TileStreamer;
 using terrain::unreal::TileUpload;
 using terrain::unreal::UnrealFrame;
@@ -66,8 +69,8 @@ UnrealPoint centerOf(ChunkCoord chunk) {
 // The meshes of Unreal, simulated: what each shown tile displays.
 using Shown = std::unordered_map<TileKey, TileUpload, TileKeyHash>;
 
-// Applies an update as the Unreal side does, counting the tiles replaced in place. False if it
-// removes a tile that is not shown.
+// Applies an update as the Unreal side does (uploads, moves, removals), counting the tiles
+// replaced in place. False if it moves or removes a tile that is not shown.
 bool apply(Shown& shown, StreamerUpdate update, std::size_t& replaced) {
     for (TileUpload& upload : update.uploads) {
         replaced += shown.contains(upload.key) ? 1 : 0;
@@ -75,6 +78,13 @@ bool apply(Shown& shown, StreamerUpdate update, std::size_t& replaced) {
         shown.insert_or_assign(key, std::move(upload));
     }
     bool known = true;
+    for (const TileMove& move : update.moves) {
+        const auto it = shown.find(move.key);
+        known = it != shown.end() && known;
+        if (it != shown.end()) {
+            it->second.origin = move.origin;
+        }
+    }
     for (const TileKey& key : update.removals) {
         known = shown.erase(key) == 1 && known;
     }
@@ -87,8 +97,19 @@ StreamerUpdate step(TileStreamer& streamer, ChunkCoord player, std::size_t gener
     return streamer.update(centerOf(player), kFrame);
 }
 
-// The shown meshes are those of the loaded tiles, converted, at their place.
-bool matchesLoaded(const Shown& shown, const TileStreamer& streamer) {
+// The image of a tile nearest to the player, within reach of its view (a tile leaving the
+// selection stays loaded until the tiles overlapping it are: one coarsest tile further at most).
+bool shownNear(const TileStreamer& streamer, const TileKey& key, ChunkCoord player) {
+    const terrain::StreamParams& params = streamer.manager().params();
+    const TileKey image = streamer.shownImage(key);
+    const int reach = params.lod.viewDistance + terrain::tileChunks(terrain::kMaxLod);
+    return image == terrain::nearestTile(key, player, params.world) &&
+           terrain::tileDistance(image, player) <= reach;
+}
+
+// The shown meshes are those of the loaded tiles (canonical keys), converted, each at its image
+// nearest to the player.
+bool matchesLoaded(const Shown& shown, const TileStreamer& streamer, ChunkCoord player) {
     const std::vector<TileKey> loaded = streamer.manager().loadedTiles();
     if (loaded.size() != shown.size() || streamer.shownCount() != shown.size()) {
         return false;
@@ -97,8 +118,11 @@ bool matchesLoaded(const Shown& shown, const TileStreamer& streamer) {
         const auto it = shown.find(key);
         const TileData* data = streamer.manager().find(key);
         if (it == shown.end() || data == nullptr || !streamer.shown(key) ||
+            key != terrain::wrapTile(key, streamer.manager().params().world) ||
+            !shownNear(streamer, key, player) ||
             it->second.mesh != terrain::unreal::convertMesh(data->mesh, data->originY) ||
-            it->second.origin != terrain::unreal::tileOrigin(kFrame, *data) ||
+            it->second.origin !=
+                terrain::unreal::tileOrigin(kFrame, *data, streamer.shownImage(key)) ||
             it->second.collision != (key.lod == 0)) {
             return false;
         }
@@ -133,7 +157,7 @@ void testBudgetNearestFirst() {
     TEST_CHECK(replaced == 0);
     TEST_CHECK(shown.size() == streamer.manager().selection().size());
     TEST_CHECK(shown.contains(TileKey{player, 0}) && shown.at(TileKey{player, 0}).collision);
-    TEST_CHECK(matchesLoaded(shown, streamer));
+    TEST_CHECK(matchesLoaded(shown, streamer, player));
 }
 
 // A deterministic walk: small moves and, every 20 frames, a jump far away.
@@ -158,11 +182,97 @@ void testRandomWalk() {
     for (int frame = 0; frame < 80; ++frame) {
         player = walk(player, frame, state);
         known = apply(shown, step(streamer, player, 9), replaced) && known;
-        matching = matching && matchesLoaded(shown, streamer);
+        matching = matching && matchesLoaded(shown, streamer, player);
     }
     TEST_CHECK(known);
     TEST_CHECK(matching);
     TEST_CHECK(replaced > 0); // the seams of tiles kept by the walk changed
+}
+
+// Generates and loads every selected tile around the player, applying each update.
+bool loadAll(TileStreamer& streamer, Shown& shown, ChunkCoord player) {
+    std::size_t replaced = 0;
+    bool known = apply(shown, step(streamer, player, 0), replaced);
+    for (int round = 0; round < 100 && streamer.manager().pendingCount() > 0; ++round) {
+        known = apply(shown, step(streamer, player, 1000), replaced) && known;
+    }
+    return known && streamer.manager().pendingCount() == 0;
+}
+
+// A walk east across the edge x = world.x / 2: the keys stay canonical, every tile is shown at its
+// image nearest to the player, so the tiles beyond the edge (canonical keys at the west end of the
+// world) stand next to the others, and nothing ever moves.
+void testWalkAcrossTheEdge() {
+    TileStreamer streamer(fakeTile, smallParams(0, 1000));
+    const ChunkCoord chunks = terrain::worldChunks(streamer.manager().params().world);
+    Shown shown;
+    bool matching = true;
+    bool crossing = false;
+    bool still = true;
+    for (int x = chunks.x / 2 - 12; x <= chunks.x / 2 + 12; x += 3) {
+        const ChunkCoord player{x, 40};
+        std::size_t replaced = 0;
+        StreamerUpdate update = step(streamer, player, 1000);
+        still = still && update.moves.empty();
+        matching = apply(shown, std::move(update), replaced) && matching;
+        matching = loadAll(streamer, shown, player) && matchesLoaded(shown, streamer, player) &&
+                   matching;
+        for (const auto& [key, upload] : shown) {
+            const TileKey image = streamer.shownImage(key);
+            crossing = crossing || (key.origin.x < 0 && image.origin.x > 0) ||
+                       (key.origin.x > 0 && image.origin.x < 0);
+        }
+    }
+    TEST_CHECK(matching);
+    TEST_CHECK(crossing);
+    TEST_CHECK(still);
+}
+
+// A jump of exactly one world east: the manager sees the same canonical place, nothing is loaded
+// or removed, and every mesh moves one world east, exactly.
+void testJumpByAWorld() {
+    TileStreamer streamer(fakeTile, smallParams(0, 1000));
+    const terrain::WorldSize world = streamer.manager().params().world;
+    const ChunkCoord player{-1234, 5678};
+    Shown shown;
+    TEST_CHECK(loadAll(streamer, shown, player));
+    const Shown before = shown;
+    const ChunkCoord jumped{player.x + terrain::worldChunks(world).x, player.z};
+    const StreamerUpdate update = streamer.update(centerOf(jumped), kFrame);
+    TEST_CHECK(update.uploads.empty() && update.removals.empty());
+    TEST_CHECK(update.moves.size() == shown.size());
+    bool byAWorld = true;
+    for (const TileMove& move : update.moves) {
+        const UnrealPoint old = before.at(move.key).origin;
+        byAWorld = byAWorld && move.origin.x == old.x + world.x * 100.0 &&
+                   move.origin.y == old.y && move.origin.z == old.z;
+    }
+    TEST_CHECK(byAWorld);
+    std::size_t replaced = 0;
+    TEST_CHECK(apply(shown, update, replaced));
+    TEST_CHECK(matchesLoaded(shown, streamer, jumped));
+}
+
+// At the corner of the world, the warm-up waits for the LOD 0 tiles on the four sides of the
+// corner, each at its image next to the player.
+void testWarmUpAtTheCorner() {
+    TileStreamer streamer(fakeTile, smallParams(0, 4));
+    const terrain::WorldSize world = streamer.manager().params().world;
+    const ChunkCoord chunks = terrain::worldChunks(world);
+    const ChunkCoord player{chunks.x / 2, -chunks.z / 2}; // just past the north-east corner
+    const terrain::unreal::WarmUpResult warm =
+        streamer.warmUp(centerOf(player), kFrame, 1, std::chrono::seconds(10));
+    TEST_CHECK(warm.complete);
+    bool around = true;
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            const TileKey key =
+                terrain::wrapTile({{player.x + dx, player.z + dz}, 0}, world);
+            around = around && streamer.shown(key) && shownNear(streamer, key, player) &&
+                     streamer.shownImage(key) == TileKey{{player.x + dx, player.z + dz}, 0};
+        }
+    }
+    TEST_CHECK(around);
 }
 
 // The warm-up returns once the LOD 0 tiles around the player are shown, even when a worker holds
@@ -275,6 +385,9 @@ void testDeterministic() {
 int main() {
     testBudgetNearestFirst();
     testRandomWalk();
+    testWalkAcrossTheEdge();
+    testJumpByAWorld();
+    testWarmUpAtTheCorner();
     testWarmUpWithBusyWorkers();
     testWarmUpTimeout();
     testGeneratorError();

@@ -15,7 +15,8 @@ class UMaterialInterface;
  * How the tiles of an ATerrainWorld become Unreal meshes: one implementation per mesh type
  * (ETerrainMeshType), so that they can be compared by measure. The tiles come as the Bridge
  * converts them (centimeters, Z up, Unreal triangle order, a color per vertex), each placed in
- * world space at its origin. A UObject, so that the garbage collector sees the components.
+ * world space at the origin of its image nearest to the player, under its canonical key. A
+ * UObject, so that the garbage collector sees the components.
  */
 UCLASS(Abstract, Transient)
 class UTerrainMeshBackend : public UObject
@@ -31,6 +32,13 @@ public:
 
 	// Shows the tile: creates its mesh, or replaces the one shown under its key.
 	virtual void SetTile(const terrain::unreal::TileUpload& /*Tile*/) {}
+
+	// Moves the mesh shown under this key to another image of its tile (whole worlds away),
+	// unchanged otherwise; nothing for a key not shown.
+	virtual void MoveTile(const terrain::TileKey& /*Key*/,
+		const terrain::unreal::UnrealPoint& /*Origin*/)
+	{
+	}
 
 	// Removes the mesh shown under this key; nothing for a key not shown.
 	virtual void RemoveTile(const terrain::TileKey& /*Key*/) {}

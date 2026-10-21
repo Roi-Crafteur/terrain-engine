@@ -1,6 +1,7 @@
 // Conversion of tile meshes for Unreal: vertex and triangle counts, centimeters and Z up, unit
 // normals, the triangle order Unreal expects ((c - a) x (b - a) toward the air), the world
-// position of the vertices, empty and malformed meshes, and the same arrays for the same tile.
+// position of the vertices, a tile of the wrapped world shown at another image, empty and
+// malformed meshes, and the same arrays for the same tile.
 #include "tile_mesh_conversion.hpp"
 
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -125,7 +126,7 @@ void testWorldPositions() {
     const terrain::ChunkCoord m = streaming_test::mountainChunk(tiles.heightfield());
     const TileData data = tiles.generate({{m, 0}, 0});
     const UnrealFrame frame{{1000.25, -20.5, -333.0}};
-    const UnrealPoint origin = terrain::unreal::tileOrigin(frame, data);
+    const UnrealPoint origin = terrain::unreal::tileOrigin(frame, data, data.request.key);
     TEST_CHECK(origin == terrain::unreal::toUnreal(frame, {data.originX, data.originY,
                                                           data.originZ}));
     const UnrealMesh out = terrain::unreal::convertMesh(data.mesh, data.originY);
@@ -139,6 +140,34 @@ void testWorldPositions() {
                  std::abs(origin.z + local.z - expected.z) < 1e-3;
     }
     TEST_CHECK(placed);
+}
+
+// The tile at the corner of the wrapped world, shown at its image one world west and one world
+// north: its origin moves by whole worlds exactly, and its vertices lie on the ground there.
+void testImages() {
+    const TerrainTiles tiles(streaming_test::kSeed);
+    const terrain::WorldSize world = tiles.world();
+    const terrain::ChunkCoord chunks = terrain::worldChunks(world);
+    const terrain::TileKey corner{{chunks.x / 2 - 1, chunks.z / 2 - 1}, 0};
+    const terrain::TileKey image{{corner.origin.x - chunks.x, corner.origin.z - chunks.z}, 0};
+    const TileData data = tiles.generate({image, 0}); // generated at its canonical image
+    TEST_CHECK(data.request.key == corner);
+    TEST_CHECK(data == tiles.generate({corner, 0}));
+    const UnrealFrame frame{{-30015000.0, 12.5, -17497000.0}};
+    const UnrealPoint canonical = terrain::unreal::tileOrigin(frame, data, corner);
+    const UnrealPoint shown = terrain::unreal::tileOrigin(frame, data, image);
+    TEST_CHECK(shown.x == canonical.x - world.x * 100.0);
+    TEST_CHECK(shown.y == canonical.y - world.z * 100.0);
+    TEST_CHECK(shown.z == canonical.z);
+    const UnrealMesh out = terrain::unreal::convertMesh(data.mesh, data.originY);
+    bool onGround = !out.positions.empty();
+    for (const terrain::unreal::UnrealVector3f& local : out.positions) {
+        const terrain::unreal::CorePoint p = terrain::unreal::toCore(
+            frame, {shown.x + local.x, shown.y + local.y, shown.z + local.z});
+        // Linear interpolation along the edges of 1 m cells, as in terrain_tiles_test.
+        onGround = onGround && std::abs(p.y - tiles.heightfield().heightAt(p.x, p.z)) <= 0.25;
+    }
+    TEST_CHECK(onGround);
 }
 
 bool throwsInvalid(const Mesh& mesh) {
@@ -181,8 +210,8 @@ void testDeterministic() {
         const UnrealMesh converted = terrain::unreal::convertMesh(first.mesh, first.originY);
         TEST_CHECK(!converted.empty());
         TEST_CHECK(converted == terrain::unreal::convertMesh(second.mesh, second.originY));
-        TEST_CHECK(terrain::unreal::tileOrigin(frame, first) ==
-                   terrain::unreal::tileOrigin(frame, second));
+        TEST_CHECK(terrain::unreal::tileOrigin(frame, first, first.request.key) ==
+                   terrain::unreal::tileOrigin(frame, second, second.request.key));
     }
 }
 
@@ -192,6 +221,7 @@ int main() {
     testHandMadeTriangle();
     testMountainTile();
     testWorldPositions();
+    testImages();
     testEmptyAndMalformed();
     testDeterministic();
     return test::result();

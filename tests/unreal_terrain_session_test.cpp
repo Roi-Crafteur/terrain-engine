@@ -76,7 +76,8 @@ void testWarmUp() {
         TEST_CHECK(ground->collision);
         TEST_CHECK(!ground->mesh.empty());
         const terrain::TileData* data = session.streamer().manager().find(TileKey{player, 0});
-        TEST_CHECK(data != nullptr && ground->origin == terrain::unreal::tileOrigin(frame, *data));
+        TEST_CHECK(data != nullptr &&
+                   ground->origin == terrain::unreal::tileOrigin(frame, *data, TileKey{player, 0}));
     }
     const terrain::unreal::TimingsReport report = session.timings().snapshot();
     TEST_CHECK(report[0].stage(TileStage::Generation).tiles >= 9);

@@ -49,9 +49,13 @@ struct UnrealVector3f {
 // cross products, which keeps the index order of the triangles (tile_mesh_conversion.hpp).
 //
 // Extension point of the origin rebasing: shifted() follows Unreal when it moves the world.
-// TODO(phase 9): in the wrapped world, crossing an edge of the world moves this frame by one
-// period of the world, and the tiles are placed at the image of their canonical origin nearest
-// to the player (nearestImage, see tileOrigin).
+//
+// The core world wraps around (WorldSize), the Unreal world does not: the player keeps unwrapped
+// core coordinates across the edges, and every tile is shown at its image nearest to it
+// (tileOrigin, TileStreamer), so crossing an edge changes nothing in the frame.
+// TODO(phase 10, crossing the edges): the Large World Coordinates of Unreal reach about
+// 88,000 km (UE_LARGE_WORLD_MAX): a journey of more than a turn of the world will need the
+// player, the tiles and this frame moved back by whole worlds (shifted by a period).
 struct UnrealFrame {
     CorePoint origin;
 

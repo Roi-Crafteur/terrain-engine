@@ -39,9 +39,12 @@ struct UnrealMesh {
 // triangle, every index names a vertex, and the vertices fit int32 indices.
 [[nodiscard]] UnrealMesh convertMesh(const Mesh& mesh, double originY);
 
-// Unreal position of the origin of a tile mesh.
-// TODO(phase 9): in the wrapped world, the image of the canonical origin of the tile nearest to
-// the player (nearestImage), so that the tiles across an edge of the world stand side by side.
-[[nodiscard]] UnrealPoint tileOrigin(const UnrealFrame& frame, const TileData& data);
+// Unreal position of the origin of a tile mesh shown at an image of its tile. The world wraps
+// around: the data of a tile lie in the canonical range of the world (data.request.key is
+// canonical), and a client shows it at its image nearest to the player (nearestTile), so that
+// the tiles across an edge of the world stand side by side. The origin moves by the whole
+// worlds between the two keys, exactly.
+[[nodiscard]] UnrealPoint tileOrigin(const UnrealFrame& frame, const TileData& data,
+                                     const TileKey& image);
 
 } // namespace terrain::unreal

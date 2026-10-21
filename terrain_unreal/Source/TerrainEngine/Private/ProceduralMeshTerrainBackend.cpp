@@ -58,6 +58,16 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 		Tile.collision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
 }
 
+void UProceduralMeshTerrainBackend::MoveTile(const terrain::TileKey& Key,
+	const terrain::unreal::UnrealPoint& Origin)
+{
+	const TObjectPtr<UProceduralMeshComponent>* Found = Tiles.Find(TileMapKey(Key));
+	if (Found != nullptr && *Found != nullptr)
+	{
+		(*Found)->SetWorldLocation(FVector(Origin.x, Origin.y, Origin.z));
+	}
+}
+
 void UProceduralMeshTerrainBackend::RemoveTile(const terrain::TileKey& Key)
 {
 	TObjectPtr<UProceduralMeshComponent> Component;

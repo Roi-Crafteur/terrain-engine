@@ -19,12 +19,19 @@ std::optional<CaveParams> caveParams(const SessionParams& params) {
     return caves;
 }
 
+StreamParams streamParams(const SessionParams& params) {
+    StreamParams stream = params.stream;
+    stream.world = params.world;
+    return stream;
+}
+
 } // namespace
 
 TerrainSession::TerrainSession(const SessionParams& params)
-    : tiles_(params.seed, HeightfieldParams{}, EcologyParams{}, caveParams(params)),
+    : tiles_(params.seed, HeightfieldParams{}, EcologyParams{}, caveParams(params), params.world),
       timings_(std::make_shared<TileTimings>()),
-      streamer_(timedGenerator(tileGenerator(tiles_), timings_), params.stream, timings_) {}
+      streamer_(timedGenerator(tileGenerator(tiles_), timings_), streamParams(params), timings_) {
+}
 
 UnrealFrame TerrainSession::frameAt(double x, double z) const {
     return {{x, static_cast<double>(tiles_.heightfield().heightAt(x, z)), z}};
