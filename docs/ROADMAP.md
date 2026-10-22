@@ -196,15 +196,15 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   plateformes, éperon aplani pour un château, quais) : une étape dédiée, déterministe, après
   les rivières ; les biomes, eux, ne modifient toujours pas la hauteur
 - trois axes indépendants (une seule table biome → style referait des zones strictes) :
-  - climat et biome → matériaux locaux et cultures agricoles (bois, torchis, chaume en
-    plaine ; pierre et ardoise en montagne ; argile et pierre au désert ; pilotis au marais),
-    lus sur le climat du niveau Planète, pas sur le biome au point
+  - climat → matériaux locaux, agriculture et densité (bois, torchis, chaume en plaine ;
+    pierre et ardoise en montagne ; argile et pierre au désert ; pilotis au marais), lus sur
+    le climat du niveau Planète, pas sur le biome au point
   - culture → style architectural, défenses, noms ; territoires propres qui peuvent
     traverser plusieurs biomes et s'y adapter, transitions progressives aux frontières
   - site → fonction (port, ville minière, ville caravanière, ville fluviale, oasis, place
     forte de col)
-- le core décide du plan (sites, routes, parcelles, emprise, hauteur, type, style, matériaux),
-  Unreal assemble les bâtiments depuis des kits modulaires (PCG) : aucune géométrie de
+- le core décide du plan (sites, routes, parcelles ; pour chaque bâtiment : emprise, hauteur,
+  type, style, orientation, matériaux), Unreal assemble les bâtiments depuis des kits modulaires (PCG) : aucune géométrie de
   bâtiment dans `terrain_core`
 - économie : seulement des étiquettes de ressources et de production pour le gameplay plus
   tard (pas de simulation)
@@ -217,10 +217,18 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   4. capitale : château sur une hauteur, remparts et portes, cathédrale, marché, port,
      faubourgs
   5. cultures et archétypes supplémentaires (désert, montagne, côte, marais, toundra, jungle)
-- à décider avant de commencer : densité du peuplement (monde surtout sauvage avec de rares
-  royaumes, ou peuplé partout), époque et styles, kits d'assets ou bâtiments générés,
-  intérieurs, bâtiments destructibles (phase 15), villes vues depuis l'horizon lointain
-  (silhouettes, lumières la nuit)
+- décisions de game design :
+  - monde sauvage, royaumes rares ; par royaume : rayon de 2 000 à 5 000 km, 1 capitale,
+    3 à 8 villes, 10 à 30 bourgs, 30 à 120 villages
+  - à vérifier sur les cartes de l'étape 1 : à ces chiffres, deux villages voisins sont à
+    environ 300 à 1 600 km l'un de l'autre (plusieurs jours de marche) ; ajuster la taille
+    des royaumes, le nombre de villages ou ajouter des hameaux et des haltes isolés si le
+    monde paraît vide, et lier aux transports (« Plus tard »)
+  - médiéval-fantasy
+  - kits modulaires Unreal assemblés par PCG
+  - intérieurs : plus tard ; bâtiments destructibles : plus tard (phase 15)
+  - villes visibles depuis l'horizon lointain (phase 13) : silhouettes avec un LOD propre,
+    lumières la nuit
 
 ### Phase 15 — Jeu solo
 - modes : exploration / contemplation, survie, créatif réservé aux administrateurs
