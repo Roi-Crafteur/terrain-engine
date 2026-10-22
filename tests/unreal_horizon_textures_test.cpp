@@ -1,6 +1,6 @@
 // Textures and grids of the GPU horizon (Bridge/horizon_textures): the texel of a sample (the
-// ocean flat at the sea level with its ground under the sea, a mountain lake kept, the colors
-// packed exactly), the regions of a rectangle split where the slots wrap, simulated textures
+// ocean flat at the sea level with its ground under the sea, a mountain lake kept, the surface
+// of the land packed), the regions of a rectangle split where the slots wrap, simulated textures
 // written by the epochs along a walk across the edge of the world holding the texel of every
 // sample of every window at its slot, and the grids: the body without its bounds vertex, the 9
 // trims and their variants.
@@ -27,25 +27,20 @@ using terrain::unreal::GridMesh;
 using terrain::unreal::GridVertexKind;
 using terrain::unreal::HorizonTexel;
 using terrain::unreal::kTexelFloats;
-using terrain::unreal::VertexColor;
 
 void testTexels() {
-    for (int r = 0; r < 256; r += 5) {
-        for (int g = 0; g < 256; g += 7) {
-            for (const int b : {0, 1, 127, 128, 254, 255}) {
-                const VertexColor color{static_cast<std::uint8_t>(r), static_cast<std::uint8_t>(g),
-                                        static_cast<std::uint8_t>(b), 255};
-                TEST_CHECK(terrain::unreal::unpackColor(terrain::unreal::packColor(color)) == color);
-            }
-        }
-    }
     HorizonCell land;
     land.height = 812.5f;
     land.gradX = 0.25f;
     land.gradZ = -0.5f;
+    land.material = terrain::SurfaceMaterial::Pebbles;
+    land.biome = terrain::Biome::Mountain;
     const HorizonTexel ground = terrain::unreal::horizonTexel(land, true);
     TEST_CHECK(ground.height == 812.5f && ground.gradX == 0.25f && ground.gradZ == -0.5f);
-    TEST_CHECK(terrain::unreal::unpackColor(ground.color) == terrain::unreal::altitudeColor(812.5));
+    // The surface of the land: its material and its biome, packed.
+    TEST_CHECK((terrain::unreal::unpackSurface(ground.color) ==
+                terrain::unreal::SurfaceCode{terrain::SurfaceMaterial::Pebbles,
+                                             terrain::Biome::Mountain}));
     TEST_CHECK(!terrain::unreal::isSeaTexel(ground));
     TEST_CHECK(terrain::unreal::texelGround(ground) == 812.5f);
     // The ocean: flat at the sea level, its normal up, the ground under the sea in the last float.

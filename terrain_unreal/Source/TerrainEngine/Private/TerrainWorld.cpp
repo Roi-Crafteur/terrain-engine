@@ -6,6 +6,7 @@
 #include "Bridge/tile_timings.hpp"
 #include "Components/SceneComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/Texture.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PawnMovementComponent.h"
@@ -13,6 +14,7 @@
 #include "HAL/PlatformTime.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "TerrainEngineLog.h"
 #include "TerrainHorizonClipmap.h"
@@ -34,9 +36,14 @@ namespace
 	// Above the ground, the bottom of a pawn placed on it, centimeters.
 	constexpr double SnapClearanceCm = 50.0;
 
-	// Created by terrain_unreal/Scripts/create_terrain_material.py.
+	// Created by terrain_unreal/Scripts/create_temporary_terrain_material.py, the temporary terrain
+	// material of phase 14, and by create_terrain_material.py, the altitude colors.
+	const TCHAR* const TemporaryMaterialPath =
+		TEXT("/Game/TerrainEngine/M_TemporaryTerrain.M_TemporaryTerrain");
 	const TCHAR* const GeneratedMaterialPath =
 		TEXT("/Game/TerrainEngine/M_TerrainAltitude.M_TerrainAltitude");
+	// The texture parameter of a material of the tiles that reads the surface of the ground.
+	const FName SurfaceTexelsParameter(TEXT("SurfaceTexels"));
 
 	terrain::unreal::SessionParams MakeSessionParams(const ATerrainWorld& World)
 	{
@@ -121,6 +128,7 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		HorizonClipmap->RemoveAll();
 		HorizonClipmap = nullptr;
 	}
+	TileSurfaceLook = nullptr;
 	StopAtmosphere();
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
@@ -151,7 +159,7 @@ bool ATerrainWorld::StartStreaming()
 			*ToFString(Exception.what()));
 		return false;
 	}
-	Backend = CreateTerrainMeshBackend(MeshType, *this, ResolveMaterial(), bAsyncCollisionCooking);
+	Backend = CreateTerrainMeshBackend(MeshType, *this, MakeTileLook(), bAsyncCollisionCooking);
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: seed %lld, ground of (%.1f, %.1f) m at %.2f m placed at the origin, "
 			 "LOD rings %d/%d/%d/%d chunks, %d workers, %d uploads per frame"),
@@ -333,16 +341,34 @@ void ATerrainWorld::LogTimings(float DeltaSeconds)
 	LogHorizon();
 }
 
+// The material of the tiles; an instance of its own when it reads the surface of the ground, so
+// that the GPU horizon can bind its texels (TerrainWorldHorizon.cpp).
+UMaterialInterface* ATerrainWorld::MakeTileLook()
+{
+	UMaterialInterface* Look = ResolveMaterial();
+	UTexture* Texels = nullptr;
+	if (Look == nullptr ||
+		!Look->GetTextureParameterValue(FHashedMaterialParameterInfo(SurfaceTexelsParameter), Texels))
+	{
+		return Look;
+	}
+	TileSurfaceLook = UMaterialInstanceDynamic::Create(Look, this);
+	return TileSurfaceLook;
+}
+
 UMaterialInterface* ATerrainWorld::ResolveMaterial() const
 {
 	if (Material != nullptr)
 	{
 		return Material;
 	}
-	if (UMaterialInterface* Generated = LoadObject<UMaterialInterface>(
-			nullptr, GeneratedMaterialPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
+	for (const TCHAR* const Path : {TemporaryMaterialPath, GeneratedMaterialPath})
 	{
-		return Generated;
+		if (UMaterialInterface* Generated =
+				LoadObject<UMaterialInterface>(nullptr, Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			return Generated;
+		}
 	}
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: no material set and no %s (terrain_unreal/Scripts/"

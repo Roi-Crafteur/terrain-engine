@@ -10,6 +10,7 @@ class AExponentialHeightFog;
 class APawn;
 class ASkyAtmosphere;
 class ASkyLight;
+class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UTerrainAtmosphereFollower;
 class UTerrainHorizonClipmap;
@@ -115,8 +116,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Meshes")
 	ETerrainMeshType MeshType = ETerrainMeshType::ProceduralMesh;
 
-	// Material of the tiles. None: /Game/TerrainEngine/M_TerrainAltitude if it exists
-	// (Scripts/create_terrain_material.py), otherwise the vertex color material of Unreal.
+	// Material of the tiles. None: /Game/TerrainEngine/M_TemporaryTerrain if it exists (the
+	// temporary terrain material, Scripts/create_temporary_terrain_material.py), else
+	// /Game/TerrainEngine/M_TerrainAltitude (Scripts/create_terrain_material.py), otherwise the
+	// vertex color material of Unreal. A material with the texture parameter SurfaceTexels reads
+	// the material and the biome of the ground from the texels of the GPU horizon.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Meshes")
 	TObjectPtr<UMaterialInterface> Material;
 
@@ -269,6 +273,7 @@ private:
 	void SnapToGround(APawn& Pawn) const;
 	void LogTimings(float DeltaSeconds);
 	UMaterialInterface* ResolveMaterial() const;
+	UMaterialInterface* MakeTileLook();
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainMeshBackend> Backend;
@@ -281,6 +286,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainAtmosphereFollower> AtmosphereFollower;
+
+	// The instance of the material of the tiles that reads the surface of the ground, if it does.
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> TileSurfaceLook;
 
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor).

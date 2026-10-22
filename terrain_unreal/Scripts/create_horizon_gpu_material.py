@@ -27,18 +27,25 @@ be enabled); it rebuilds an existing asset in place (the levels referencing it k
     Tools > Execute Python Script... > terrain_unreal/Scripts/create_horizon_gpu_material.py
 """
 
+import importlib
 import math
+import os
+import sys
 
 import unreal
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import temporary_terrain_look as look  # noqa: E402  (after the path of this script)
+look = importlib.reload(look)  # the module of this checkout, even if run before
+
 PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TerrainHorizonGpu"
-ROUGHNESS = 0.9
 DEFAULT_TEXTURE = "/Engine/EngineResources/Black"
 SCALARS = {
     "Cells": 256.0, "FirstSlotX": 0.0, "FirstSlotZ": 0.0, "CoarseX": 0.0, "CoarseZ": 0.0,
     "CoarseFirstX": 0.0, "CoarseFirstZ": 0.0, "HasCoarser": 0.0, "MorphCells": 32.0,
     "SkirtCm": 200.0, "DropCm": 100.0, "PlanetRadiusCm": 60_030_976.0 / (2.0 * math.pi) * 100.0,
+    "PitchCm": 800.0, "DropCoveredCm": 0.0, "DropFadeCm": 0.0,
 }
 # The look of the sea, tunable on the instances: colors of the water (linear), the strength of the
 # waves and the roughness of the sea between them (GGX alpha).
@@ -74,30 +81,41 @@ float4 ca = Coarse.Load(int3((inCoarser + s0 / 2 + coarseFirst) % side, 0));
 float4 cb = Coarse.Load(int3((inCoarser + s1 / 2 + coarseFirst) % side, 0));
 float distance = max(abs(ik.x - Viewer.x), abs(ik.y - Viewer.y));
 float alpha = HasCoarser > 0.5 ? saturate((distance - (Cells * 0.5 - 2.0 - MorphCells)) / MorphCells) : 0.0;
-// Colors packed as r + 256 g + 65536 b (Bridge/horizon_textures.hpp), exact in floats. On the
-// ocean the last float is the ground under the sea, below 0 (texelGround); its color, the sand
-// of the shore, only shows on the land side of the coast line. The ground of the land gets 1 cm:
-// land at the sea level (or the whole ocean without bHorizonSea) stays dry.
-#define HORIZON_UNPACK(v) ((v) < 0.0 ? SHORE_COLOR : float3(fmod(v, 256.0), fmod(floor((v) / 256.0), 256.0), floor((v) / 65536.0)) / 255.0)
+// On the ocean the last float is the ground under the sea, below 0 (texelGround). The ground of
+// the land gets 1 cm: land at the sea level (or the whole ocean without bHorizonSea) stays dry.
 #define HORIZON_GROUND(t) ((t).a < 0.0 ? (t).a : max((t).r, 0.0) + 0.01)
 float height = lerp(own.r, 0.5 * (a.r + b.r), alpha);
 float ground = lerp(HORIZON_GROUND(own), 0.5 * (HORIZON_GROUND(a) + HORIZON_GROUND(b)), alpha);
 float2 slope = lerp(own.gb, 0.5 * (ca.gb + cb.gb), alpha);
-float3 color = lerp(HORIZON_UNPACK(own.a), 0.5 * (HORIZON_UNPACK(a.a) + HORIZON_UNPACK(b.a)), alpha);
-#undef HORIZON_UNPACK
 #undef HORIZON_GROUND
-float z = height * 100.0 - DropCm;
+// The layers of the ground (the temporary terrain material): its packed surface (material and
+// biome, Bridge/terrain_surface.hpp), morphed as the heights.
+float4 la0, la1, la2, lb0, lb1, lb2;
+float2 lc0, lc1, lc2;
+Look.Layers(own.a, la0, lb0, lc0);
+Look.Layers(a.a, la1, lb1, lc1);
+Look.Layers(b.a, la2, lb2, lc2);
+W0Out = lerp(la0, 0.5 * (la1 + la2), alpha);
+W1Out = lerp(lb0, 0.5 * (lb1 + lb2), alpha);
+W2Out = float4(lerp(lc0, 0.5 * (lc1 + lc2), alpha), 0.0, height / 1000.0);
+// The drop below the tiles fades out across their band over level 0 (Bridge/terrain_surface.hpp:
+// dropShare): no step at their outer edge, none on the levels 1 and up.
+float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;
+float z = height * 100.0 - DropCm * saturate((DropCoveredCm - fromCenter) / max(DropFadeCm, 1.0));
 if (Kind.r > 0.5) { z -= SkirtCm; }
 // The sea square under the tiles, at the sea level; the pixel shader reads its ground.
-if (Kind.g > 0.5) { z = 0.0; slope = float2(0.0, 0.0); color = SHORE_COLOR; ground = -1.0; }
+if (Kind.g > 0.5)
+{
+    z = 0.0; slope = float2(0.0, 0.0); ground = -1.0;
+    W0Out = float4(0.0, 0.0, 0.0, 0.0); W1Out = float4(0.0, 1.0, 0.0, 0.0); W2Out = float4(0.0, 0.0, 0.0, 0.0);
+}
 z -= dot(CameraRel, CameraRel) / (2.0 * PlanetRadiusCm);
 // The normal of the curved ground: its slopes, and the curvature that leans it away from the
 // camera by d / R (the sun shines at another angle far away).
 NormalOut = normalize(float3(-slope + CameraRel / PlanetRadiusCm, 1.0));
-ColorOut = color;
 GroundOut = ground;
 return float3(0.0, 0.0, z);
-""".replace("SHORE_COLOR", SHORE)
+"""
 
 # Waves: (a, b) whole cycles per period of 4096 m along X and Y (kSeaWavePeriodMeters,
 # Bridge/horizon_atmosphere.hpp), slope amplitude, phase. From 90 m to 1.6 m, spread around the
@@ -285,11 +303,12 @@ def parameters(material):
 
 
 def vertex_shader(material, nodes, kind):
+    float4 = unreal.CustomMaterialOutputType.CMOT_FLOAT4
     custom = custom_node(
-        material, -900, 0, "HorizonVertex", VERTEX_HLSL,
+        material, -900, 0, "HorizonVertex", look.struct_hlsl() + VERTEX_HLSL,
         ["Tex", "Coarse", "Local", "Kind", "Viewer", "CameraRel"] + list(SCALARS),
         [("NormalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
-         ("ColorOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
+         ("W0Out", float4), ("W1Out", float4), ("W2Out", float4),
          ("GroundOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1)],
         unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     connect(nodes["HorizonTexels"], "", custom, "Tex")
@@ -352,18 +371,50 @@ def sea_shader(material, nodes, kind, ground):
     return custom
 
 
+def land_shader(material, vertex, normal):
+    """The land of the pixel: the temporary terrain material without its near detail (only the
+    mean color of each texture), as the far tiles."""
+    float1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
+    float2 = unreal.CustomMaterialOutputType.CMOT_FLOAT2
+    float3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
+    weights = {f"W{index}": interpolate(material, vertex, f"W{index}Out", 400 + 100 * index)
+               for index in range(3)}
+    params = look.look_parameters(material, False, -2400, 1200)
+    camera_relative = world_position(
+        material, unreal.WorldPositionIncludedOffsets.WPT_CAMERA_RELATIVE, -900, 900)
+    position = custom_node(material, -600, 900, "HorizonLandPosition", look.POSITION_HLSL,
+                           ["CameraRel", "WaveOriginX", "WaveOriginY"], [("Dist", float1)], float2)
+    connect(camera_relative, "", position, "CameraRel")
+    altitude = mask(material, weights["W2"], -350, 800, "a")
+    meters = expression(material, unreal.MaterialExpressionMultiply, -250, 800)
+    meters.set_editor_property("const_b", 1000.0)
+    connect(altitude, "", meters, "A")
+    inputs = look.shade_inputs() + look.layer_inputs(False)
+    shade = custom_node(material, -100, 600, "HorizonLand", look.shade_hlsl(False), inputs,
+                        [("NormalOut", float3), ("RoughOut", float1)], float3)
+    for source, output, name in ((weights["W0"], "", "W0"), (weights["W1"], "", "W1"),
+                                 (weights["W2"], "", "W2"), (normal, "", "N"),
+                                 (position, "", "P"), (position, "Dist", "Dist"),
+                                 (meters, "", "Z")):
+        connect(source, output, shade, name)
+    for name in inputs:
+        if name in params:
+            connect(params[name], "", shade, name)
+    return shade, position
+
+
 def pixel_shader(material, nodes, vertex, kind):
     editing = unreal.MaterialEditingLibrary
     normal = interpolate(material, vertex, "NormalOut", 0)
-    color = interpolate(material, vertex, "ColorOut", 150)
     ground = interpolate(material, vertex, "GroundOut", 250)
     sea = sea_shader(material, nodes, kind, ground)
+    land, position = land_shader(material, vertex, normal)
+    for name in ("WaveOriginX", "WaveOriginY"):
+        connect(nodes[name], "", position, name)
     # The default output of a vector parameter is its RGB; its alpha is the amount of the tint.
     tint = expression(material, unreal.MaterialExpressionVectorParameter, 100, 300)
     tint.set_editor_property("parameter_name", "DebugTint")
     tint.set_editor_property("default_value", unreal.LinearColor(0.0, 0.0, 0.0, 0.0))
-    land_roughness = expression(material, unreal.MaterialExpressionConstant, 100, 400)
-    land_roughness.set_editor_property("r", ROUGHNESS)
     float1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
     float3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
     shade = custom_node(
@@ -372,8 +423,8 @@ def pixel_shader(material, nodes, vertex, kind):
          "SeaBody", "SeaNormal", "Glint"] + list(SHADE_SCALARS),
         [("EmissiveOut", float3), ("NormalOut", float3), ("RoughnessOut", float1),
          ("SpecularOut", float1)], float3)
-    for source, output, name in ((color, "", "LandColor"), (normal, "", "LandNormal"),
-                                 (land_roughness, "", "LandRoughness"), (tint, "", "Tint"),
+    for source, output, name in ((land, "", "LandColor"), (land, "NormalOut", "LandNormal"),
+                                 (land, "RoughOut", "LandRoughness"), (tint, "", "Tint"),
                                  (tint, "A", "TintAmount"),
                                  (sea, "", "Reflection"), (sea, "SeaMask", "SeaMask"),
                                  (sea, "SeaBody", "SeaBody"),
@@ -393,7 +444,7 @@ def create_horizon_gpu_material():
     asset_path = f"{PACKAGE_PATH}/{ASSET_NAME}"
     if unreal.EditorAssetLibrary.does_asset_exist(asset_path):
         material = unreal.EditorAssetLibrary.load_asset(asset_path)
-        unreal.MaterialEditingLibrary.delete_all_material_expressions(material)
+        look.clear_material(material)
         unreal.log(f"{asset_path} exists: rebuilt in place")
     else:
         tools = unreal.AssetToolsHelpers.get_asset_tools()

@@ -7,6 +7,7 @@
 #include "Bridge/horizon_atmosphere.hpp"
 #include "Bridge/horizon_gpu_streamer.hpp"
 #include "Bridge/horizon_timings.hpp"
+#include "Bridge/terrain_surface.hpp"
 
 #include "TerrainHorizonClipmap.generated.h"
 
@@ -52,8 +53,14 @@ public:
 
 	void RemoveAll();
 
-	// Where the waves of the sea are measured from (Bridge/horizon_atmosphere.hpp), every level.
+	// Where the waves of the sea are measured from (Bridge/horizon_atmosphere.hpp), every level and
+	// the surface look of the tiles.
 	void SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin);
+
+	// The material of the tiles reads the surface of the ground (material and biome) from the
+	// texels of level 0 (the temporary terrain material, Bridge/terrain_surface.hpp): its
+	// parameters follow level 0 from now on.
+	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
 
 	// Time spent building the grids, and the bytes of the textures and of the grids on the GPU.
 	double GetBuildMilliseconds() const { return BuildMilliseconds; }
@@ -67,6 +74,7 @@ private:
 		UMaterialInterface* Material);
 	void UploadRegion(terrain::unreal::TexelRegion& Region);
 	void Place(const terrain::unreal::LevelPlacement& Placement);
+	void PlaceSurface(const terrain::unreal::LevelPlacement& Placement);
 
 	UPROPERTY()
 	TObjectPtr<AActor> OwnerActor;
@@ -86,9 +94,14 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UStaticMeshComponent>> Trims; // none for level 0
 
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic> SurfaceLook; // of the tiles, none without it
+
 	TArray<int32> TrimShown;
 	TArray<TOptional<terrain::unreal::LevelPlacement>> Placed;
 	FTerrainHorizonLook HorizonLook;
+	terrain::unreal::DropFade Fade;
+	double Level0PitchCm = 0.0;
 	int32 Side = 0;
 	double BuildMilliseconds = 0.0;
 	int64 GpuBytes = 0;
