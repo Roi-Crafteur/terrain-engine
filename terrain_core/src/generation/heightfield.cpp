@@ -111,6 +111,7 @@ enum Layer : std::uint64_t {
     kRock,
     kMountainForms,
     kMountainWalls,
+    kPlainForms,
 };
 
 } // namespace
@@ -169,6 +170,7 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
                                        fast(kRidge, 1, params_.geography.mountainWavelength,
                                             params_.geography.mountainGain));
         layers->walls = mountain_walls::makeNoises(noise::deriveSeed(seed, kMountainWalls), world);
+        layers->plains = plain_forms::makeNoises(noise::deriveSeed(seed, kPlainForms), world);
         layers->local = relief_local::makeNoises(noise::deriveSeed(seed, kLocalRelief), world,
                                                  params_.geography.livelyPlains);
         layers->twinGeographyWarps = layers->geographyWarpX.twinOf(layers->geographyWarpZ);

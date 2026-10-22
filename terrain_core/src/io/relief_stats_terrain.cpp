@@ -5,6 +5,7 @@
 #include "terrain/det_math.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -53,6 +54,29 @@ double relief(const ReliefGrid& window) {
     return static_cast<double>(*high - *low);
 }
 
+// Standard deviation of the heights of the window around their mean.
+double deviation(const ReliefGrid& window) {
+    double sum = 0.0;
+    for (const float h : window.heights) {
+        sum += static_cast<double>(h);
+    }
+    const double mean = sum / static_cast<double>(window.heights.size());
+    double squares = 0.0;
+    for (const float h : window.heights) {
+        squares += (static_cast<double>(h) - mean) * (static_cast<double>(h) - mean);
+    }
+    return std::sqrt(squares / static_cast<double>(window.heights.size()));
+}
+
+// 10th percentile, median and 90th percentile of the deviations of the windows.
+std::array<double, 3> deviations(const std::vector<ReliefGrid>& windows) {
+    std::vector<double> values;
+    for (const ReliefGrid& w : windows) {
+        values.push_back(deviation(w));
+    }
+    return {percentile(values, 0.1), percentile(values, 0.5), percentile(values, 0.9)};
+}
+
 // Shares of the slopes of the window above 30 and 45 degrees (central differences).
 void addSlopes(const ReliefGrid& w, double& steep, double& cliff, double& count) {
     for (int j = 1; j + 1 < w.rows; ++j) {
@@ -96,6 +120,13 @@ void measurePlains(const Heightfield& field, const ReliefGrid& world, const Reli
     }
     f.plainNear10 = percentile(near, 0.1);
     f.plainNear50 = percentile(near, 0.5);
+    f.plainDeviation200 = deviations(windows(field, world, cells, 10.0, 21, threads));
+    f.plainDeviation1k = deviations(windows(field, world, cells, 50.0, 21, threads));
+    std::vector<double> five;
+    for (const ReliefGrid& w : windows(field, world, cells, 500.0, 11, threads)) {
+        five.push_back(relief(w));
+    }
+    f.plainRelief5k = percentile(five, 0.5);
     std::vector<double> reliefs;
     for (const ReliefGrid& w : windows(field, world, cells, 1000.0, 11, threads)) {
         reliefs.push_back(relief(w));

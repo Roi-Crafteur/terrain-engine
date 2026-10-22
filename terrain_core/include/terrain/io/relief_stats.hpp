@@ -162,6 +162,13 @@ struct TerrainFigures {
     // relief at the scale of a walk.
     double plainNear10 = 0.0;
     double plainNear50 = 0.0;
+    // The median of max - min over 5 km (11 x 11 samples 500 m apart): next to that over 10 km,
+    // whether the plains have long swells.
+    double plainRelief5k = 0.0;
+    // Standard deviation of the height around its mean over 200 m (21 x 21 samples 10 m apart)
+    // and over 1 km (21 x 21 samples 50 m apart): 10th percentile, median, 90th percentile.
+    std::array<double, 3> plainDeviation200{};
+    std::array<double, 3> plainDeviation1k{};
     // Points of the land below the mean of the ground within 1 km (a square of 2 km) around
     // them, 100 m apart over windows of 2 km whose squares hold no sea.
     int meanWindows = 0;

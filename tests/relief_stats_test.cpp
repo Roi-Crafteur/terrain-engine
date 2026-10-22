@@ -144,6 +144,8 @@ bool sameFigures(const terrain::TerrainFigures& a, const terrain::TerrainFigures
            a.steepShare == b.steepShare && a.cliffShare == b.cliffShare &&
            a.plainWindows == b.plainWindows && a.plainRelief50 == b.plainRelief50 &&
            a.plainNear10 == b.plainNear10 && a.plainNear50 == b.plainNear50 &&
+           a.plainRelief5k == b.plainRelief5k && a.plainDeviation200 == b.plainDeviation200 &&
+           a.plainDeviation1k == b.plainDeviation1k &&
            a.belowMean == b.belowMean && a.belowMeanBelts == b.belowMeanBelts &&
            a.flatShare == b.flatShare && a.widestFlat.width == b.widestFlat.width &&
            a.widestFlat.area == b.widestFlat.area && a.dullShare == b.dullShare &&
@@ -175,6 +177,12 @@ void testTerrainFigures() {
         // Over 1 km the plains of the geography are alive too.
         TEST_CHECK(one.plainNear10 <= one.plainNear50 &&
                    (!geography || one.plainWindows == 0 || one.plainNear50 > 0.0));
+        // The deviations of the height of the plains, ordered; a window of 1 km holds that of
+        // 200 m on average.
+        for (const auto& d : {one.plainDeviation200, one.plainDeviation1k}) {
+            TEST_CHECK(d[0] >= 0.0 && d[0] <= d[1] && d[1] <= d[2]);
+        }
+        TEST_CHECK(one.plainWindows == 0 || one.plainDeviation1k[1] >= one.plainDeviation200[1]);
         // A zone is at least one cell wide, and its disk fits in its area.
         for (const terrain::ReliefZone& zone : {one.widestFlat, one.widestDull}) {
             TEST_CHECK(zone.width == 0.0 || zone.width >= 16384.0 - 1e-6);

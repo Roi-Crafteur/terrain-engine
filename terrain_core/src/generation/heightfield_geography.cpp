@@ -24,6 +24,9 @@ constexpr double kContinentalScale = 1'500'000.0;
 // geography from kHeightHigh on, worn ones kWorn of it.
 constexpr float kMountainLow = 0.12f;
 constexpr float kMountainHigh = 0.5f;
+// The forms of the plains fade out as the intensity rises from kPlainFormsLow to kMountainLow,
+// where the mountains begin.
+constexpr float kPlainFormsLow = 0.06f;
 constexpr float kHeightLow = 0.1f;
 constexpr float kHeightHigh = 0.7f;
 constexpr float kWorn = 0.65f;
@@ -192,10 +195,18 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
                          (1.0f - noise::smoothstep(kButteLow, kButteHigh, intensity));
     const float plain = 1.0f - noise::smoothstep(kPlainLow, kPlainHigh, s.mountainMask);
     const float rough = noise::smoothstep(kRoughLow, kRoughHigh, intensity);
-    const float local =
-        amplitude > 0.0f
-            ? localReliefAt(x, z, amplitude, buttes, g.regions, plain, rough, memos)
+    float local = amplitude > 0.0f
+                      ? localReliefAt(x, z, amplitude, buttes, g.regions, plain, rough, memos)
+                      : 0.0f;
+    // The forms of the plains, only where the mask of the mountains is 0: their weight is 0 from
+    // kMountainLow on, and the local relief keeps its bits there.
+    const float plains =
+        params_.geography.plainForms
+            ? land * (1.0f - noise::smoothstep(kPlainFormsLow, kMountainLow, intensity))
             : 0.0f;
+    if (plains > 0.0f) {
+        local = plainFormsAt(x, z, g.regions, local, plains, memos);
+    }
     s.base = ground + relief_local::boundBelow(local, kLocalRoom * ground);
     if (g.rift > 0.0f && params_.geography.ravines) {
         s.base -= riftRavinesAt(x, z, kRavineRoom * std::max(0.0f, s.base - 1.0f), memos);
@@ -361,6 +372,12 @@ float Heightfield::riftRavinesAt(double x, double z, float room, Memos* memos) c
     const float depth = ravines::depth(layers_->ravines, x, z, slopeX, slopeZ, strength,
                                        memos != nullptr ? &memos->ravines : nullptr);
     return -relief_local::boundBelow(-depth, room);
+}
+
+float Heightfield::plainFormsAt(double x, double z, float region, float local, float weight,
+                               Memos* memos) const {
+    return plain_forms::relief(layers_->plains, x, z, {weight, region, local},
+                               memos != nullptr ? &memos->plains : nullptr);
 }
 
 float Heightfield::localReliefAt(double x, double z, float amplitude, float buttes, float region,
