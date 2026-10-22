@@ -136,8 +136,12 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `TimingLogIntervalSeconds` | 5 | intervalle du résumé des mesures (0 : aucun) |
 | `bHorizon` | oui | horizon lointain (section 10) |
 | `HorizonLevels` | 10 | niveaux de l'horizon : 8 m, puis le double à chaque niveau ; 10 vont à 520 km |
-| `HorizonThreads` | 2 | threads de calcul de l'horizon, en plus de ceux des tuiles |
-| `HorizonMaterial` | aucun | matériau de l'horizon (voir 10) |
+| `HorizonRenderer` | GPU | GPU : textures et grilles fixes (section 11) ; CPU : un mesh procédural par niveau (section 10), pour comparer, à retirer |
+| `HorizonThreads` | 2 | GPU : morceaux calculés à la fois en tâches de basse priorité ; CPU : threads de l'horizon, en plus de ceux des tuiles |
+| `HorizonGpuMaterial` | aucun | matériau de l'horizon GPU (voir 11) |
+| `HorizonMorphCells` | 32 | GPU : largeur, en mailles de chaque niveau, de la bande où il se fond dans le niveau plus grossier |
+| `bHorizonDebugTint` | non | GPU : chaque niveau teinté de sa couleur |
+| `HorizonMaterial` | aucun | matériau de l'horizon CPU (voir 10) |
 | `HorizonDropCm` | 100 | l'horizon est posé ce tant sous son sol : les tuiles restent devant là où les deux se recouvrent |
 | `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles |
 | `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
@@ -150,14 +154,17 @@ terrain_unreal/
   TerrainEngine.uplugin        module Runtime (Win64, Linux, Mac), plugin ProceduralMeshComponent
   Scripts/create_terrain_material.py
   Scripts/create_horizon_material.py
+  Scripts/create_horizon_gpu_material.py
   Source/TerrainEngine/
     TerrainEngine.Build.cs
-    Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType
+    Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
     Private/
       TerrainWorld.cpp         cycle de vie, tick, démarrage d'un pion, mesures
       TerrainWorldHorizon.cpp  l'horizon lointain d'ATerrainWorld
       TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
-      TerrainHorizonMeshes.*   un ProceduralMeshComponent par niveau de l'horizon
+      TerrainHorizonClipmap.*  l'horizon GPU : textures, grilles fixes, placements
+      TerrainHorizonGrids.*    les grilles fixes, des UStaticMesh construits en jeu
+      TerrainHorizonMeshes.*   l'horizon CPU : un ProceduralMeshComponent par niveau
       TerrainMeshBackend.*     interface des types de mesh, fabrique
       ProceduralMeshTerrainBackend.*
       Bridge/                  C++ pur, compilé par Unreal ET testé par ctest
@@ -219,6 +226,7 @@ Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_fr
 `unreal_tile_mesh_test`, `unreal_altitude_color_test`, `unreal_tile_timings_test`,
 `unreal_tile_streamer_test`, `unreal_terrain_session_test`, `unreal_determinism_check_test`,
 `unreal_horizon_layout_test`, `unreal_horizon_mesh_test`, `unreal_horizon_streamer_test`,
+`unreal_horizon_epochs_test`, `unreal_horizon_textures_test`, `unreal_horizon_gpu_streamer_test`,
 `unreal_core_sources`.
 
 ## 7. Linux et Mac (non essayés)
@@ -257,14 +265,15 @@ devra passer à `std::thread` (petit changement dans `terrain_core`, par l'agent
 ## 9. Pas encore fait
 
 Type de mesh autre que le Procedural Mesh Component (emplacements Dynamic Mesh et Realtime Mesh),
-eau, lave, plantes, matériaux du core. En build empaqueté,
-assigne le matériau explicitement dans `Material` (et `HorizonMaterial`) : le chemin chargé par
-défaut n'est cuit que s'il est référencé.
+eau, lave, plantes, matériaux du core. En build empaqueté, assigne les matériaux explicitement
+dans `Material`, `HorizonGpuMaterial` et `HorizonMaterial` : le chemin chargé par défaut n'est cuit
+que s'il est référencé.
 
 ## 10. L'horizon lointain (phase 13, étape 1)
 
 Les 10 niveaux de grilles de `terrain_core` (`HorizonStreamer` : 257 × 257 échantillons, de 8 m à
-4 km, 520 km de rayon) sont montrés autour du joueur, au-delà des tuiles.
+4 km, 520 km de rayon) sont montrés autour du joueur, au-delà des tuiles. Cette section décrit le
+mode CPU (`HorizonRenderer` = CPU) ; le mode par défaut, sur le GPU, est en section 11.
 
 - **Matériau** (une fois par projet) : Tools → Execute Python Script… →
   `Plugins/terrain-engine/terrain_unreal/Scripts/create_horizon_material.py`. Il crée
@@ -326,6 +335,110 @@ Les 10 niveaux de grilles de `terrain_core` (`HorizonStreamer` : 257 × 257 éch
   courbure, celle à 400 km serait 1° trop haut) ; aucun niveau n'est
   éliminé en tournant la caméra ; traversée du bord est du monde et tour du monde sans
   reconstruction (les niveaux se déplacent d'un monde, en moins de 2 ms).
-- **Étape 2 possible** : une texture de hauteur par niveau et une grille fixe déplacée par le
-  matériau ne renverraient que les bandes nouvelles (environ 500 échantillons au lieu de 50 000
-  sommets), avec le géomorphing et des époques moins prioritaires que les tuiles.
+- **Étape 2** : faite, section 11.
+
+## 11. L'horizon sur le GPU (phase 13, étape 2)
+
+Par défaut (`HorizonRenderer` = GPU), l'horizon n'est plus un mesh reconstruit par le CPU : chaque
+niveau est une texture réécrite par bandes et une grille fixe que le matériau déforme.
+
+- **Matériau** (une fois par projet) : Tools → Execute Python Script… →
+  `Plugins/terrain-engine/terrain_unreal/Scripts/create_horizon_gpu_material.py`. Il crée
+  `/Game/TerrainEngine/M_TerrainHorizonGpu`. Sans lui, l'horizon CPU est dessiné, avec un
+  avertissement dans le log.
+- **Textures** (`Bridge/horizon_textures.hpp`) : une texture de 257 × 257 texels par niveau,
+  `PF_A32B32G32R32F`, au plus proche, sans mipmap. Un texel : la hauteur (m, déjà à plat au niveau
+  de la mer), les deux pentes, la couleur empaquetée `r + 256 g + 65536 b` (exacte en float).
+  Adressage torique, celui du core : l'échantillon (i, k) de la fenêtre est au texel
+  (premier emplacement + (i, k)) mod 257. Un déplacement de niveau n'écrit que la bande nouvelle
+  (`UpdateTextureRegions`, quelques centaines de texels), préparée sur les tâches : rien n'est
+  converti sur le thread de jeu, rien n'est gardé côté CPU en dehors des échantillons du core.
+- **Grilles fixes** (`TerrainHorizonGrids.cpp`, `bodyGrid`, `trimGrid`) : des `UStaticMesh`
+  construits une fois en jeu (`BuildFromMeshDescriptions`, sans accès CPU), sommets en mailles
+  (i, k, 0) : la grille du niveau 0 (sa fenêtre moins le trou sous les tuiles, plus le carré de
+  mer), une grille d'anneau partagée par les niveaux 1 à 9 (mise à l'échelle de leur pas), et les
+  9 bordures possibles (la place de la fenêtre plus fine dans le carré central). Un déplacement de
+  niveau : une nouvelle position du composant, quelques paramètres scalaires, parfois une autre
+  bordure. Les bornes sont étendues (10 km au-dessus, 45 km dessous) : aucun niveau n'est éliminé
+  à tort.
+- **Nuanceur de sommets** : il lit le texel du sommet, le fond dans le niveau plus grossier
+  (géomorphing), abaisse la jupe, pose la mer à 0 m, descend l'horizon de `HorizonDropCm` et
+  courbe la planète (d² / 2R, comme en section 10). La normale (espace monde) et la couleur passent
+  au nuanceur de pixels par des interpolateurs.
+- **Géomorphing** (`Bridge/horizon_morph.hpp`) : dans une bande de `HorizonMorphCells` mailles
+  (32 par défaut, sans couture visible dans les captures teintées) avant le bord de chaque niveau,
+  chaque sommet glisse vers la surface du niveau plus grossier : la moyenne des deux échantillons
+  pairs de l'arête du triangle grossier qui le porte (un échantillon pair n'a pas à bouger).
+  Facteur α = clamp((d − (K/2 − 2 − w)) / w, 0, 1), d la distance de Tchebychev au joueur en
+  mailles, K = 256, w la largeur : α vaut 1 au bord, où les deux niveaux coïncident (pas de
+  couture), et varie avec le joueur, pas avec l'emplacement du niveau (un déplacement de niveau ne
+  fait rien sauter). Les pentes glissent vers celles du niveau plus grossier, lues dans sa texture.
+- **Époques en tâches de basse priorité** (`Bridge/horizon_epochs.hpp`) : les morceaux d'une
+  époque sont calculés par `UE::Tasks` en `BackgroundLow`, au plus `HorizonThreads` à la fois ;
+  les workers des tuiles passent devant. Une époque est appliquée en une frame (bandes et
+  placements de tous ses niveaux), comme à l'étape 1.
+- **Inchangé** : le monde bouclé (image la plus proche, tour du monde sans rien reconstruire), la
+  mer à 0 m, le raccord sous les tuiles, l'autocontrôle bit à bit.
+- **Teinte de débogage** : `bHorizonDebugTint` colore chaque niveau de sa teinte.
+- **Hors éditeur** : vérifié en `UnrealEditor.exe TerrainSandbox.uproject <niveau> -game`
+  (standalone) : les grilles se construisent (250 ms) et l'horizon s'affiche. Build empaqueté :
+  non essayé (assigner `HorizonGpuMaterial`, section 9).
+- **Log** : en plus de la section 10, `horizon texels` (envoi des bandes : ticks, ms, texels par
+  tick) et, toujours, `frames` : thread de jeu, thread de rendu et GPU, comme `stat unit`.
+
+### Mesures, GPU contre CPU (UE 5.8, éditeur en PIE, Ryzen 9 9950X3D, `ViewDistanceChunks` 32)
+
+Même marche dans les trois cas (Character, 40 s à 6 m/s puis 60 s à 30 m/s), même machine, même
+jour ; « sans » : `bHorizon` désactivé.
+
+| | GPU | CPU (étape 1) | sans |
+|---|---|---|---|
+| Déplacement d'un niveau, thread de jeu, moyenne par niveau | 0,04 à 0,08 ms | 2,2 à 2,9 ms | – |
+| Déplacement d'un niveau, au plus (marche, course) | 0,10 ms, 0,13 ms | 3,0 ms, 4,9 ms | – |
+| Envoi des bandes, thread de jeu, par époque | < 0,01 ms | 2,5 ms (conversion et envoi) | – |
+| Premier affichage, thread de jeu (660 490 échantillons) | 4,1 à 4,9 ms | 33 à 43 ms | – |
+| Époques, du plan à l'application | 11,3 à 11,6 ms | 11,5 à 11,6 ms | – |
+| Frames à 6 / 30 m/s, moyenne | 10,5 / 10,7 ms | 10,8 / 11,0 ms | 10,2 / 10,4 ms |
+| Frames à 6 / 30 m/s, 99ᵉ centile | 13,6 / 14,6 ms | 14,5 / 22,4 ms | 13,2 / 14,1 ms |
+| Temps GPU par frame, à 6 / 30 m/s | 8,0 / 8,1 ms | 8,2 / 8,3 ms | 7,5 / 7,6 ms |
+| Mémoire côté CPU | 10,1 Mo d'échantillons | 12 Mo + 87 Mo de meshes | – |
+| Mémoire côté GPU | 16,2 Mo (textures 10,1, grilles 6,1) | 35 à 45 Mo (estimation) | – |
+
+- Le temps GPU est celui de `stat unit` (`RHIGetGPUFrameCycles`) : l'horizon coûte environ 0,5 ms
+  de GPU par frame (1 018 000 triangles). Le thread de rendu de l'éditeur (environ 10 ms) borne
+  les frames dans les trois cas.
+- Les grilles sont construites une fois, au `BeginPlay` : 215 à 270 ms sur le thread de jeu,
+  pendant le chargement du niveau.
+- Génération des tuiles LOD 0 pendant la première époque (0,9 s) : 0,25 ms par tuile en GPU comme
+  en CPU, 0,24 ms sans horizon, et de même avec l'éditeur limité à 2 cœurs logiques (0,27, 0,25 et
+  0,26 ms). Pas d'effet mesurable de la basse priorité ici : les tuiles du départ sont générées en
+  quelques dizaines de millisecondes, bien avant la fin de l'époque.
+- Bord est du monde traversé à 100 m/s (500 m d'altitude) : 0,04 à 0,07 ms par déplacement de
+  niveau, 0,15 ms au plus ; tour du monde : les 10 niveaux replacés d'un monde en 0,05 ms, sans
+  époque (étape 1 : moins de 2 ms).
+
+### Ajouter les matériaux et les biomes (pas encore fait)
+
+Chaque échantillon du core porte déjà un matériau et un biome (`HorizonCell`). Pour les dessiner
+sans rien refaire :
+
+1. une seconde texture par niveau, entière (`PF_R8G8B8A8_UINT` : matériau, biome, drapeaux, libre),
+   créée à côté de la première dans `UTerrainHorizonClipmap::CreateLevel` ;
+2. remplie par les mêmes régions : `texelRegions` découpe déjà chaque morceau en régions de la
+   texture torique ; il suffit d'un second `pieceTexels` qui écrit ces champs, et d'un second
+   `UpdateTextureRegions` ;
+3. un paramètre de texture de plus dans le matériau, lu au même emplacement torique.
+
+Les grilles, les placements, le géomorphing et le streaming ne changent pas. La couleur empaquetée
+de la première texture pourra alors disparaître si le nuanceur de pixels calcule la couleur depuis
+le matériau et le biome.
+
+### Limites
+
+- Le mode CPU (`HorizonRenderer` = CPU) reste pour comparer ; il sera retiré après la fusion du
+  nouveau relief (agent 10).
+- Normales par sommet : le relief plus fin que la maille d'un niveau n'éclaire pas. Les normales
+  par pixel viendront avec le rendu de la phase 14.
+- Matériaux et biomes : pas encore dessinés (ci-dessus).
+- Les grilles sont construites sur le thread de jeu au `BeginPlay` (0,2 s, une fois) ; elles
+  pourraient l'être hors de ce thread si ce temps gêne au chargement.

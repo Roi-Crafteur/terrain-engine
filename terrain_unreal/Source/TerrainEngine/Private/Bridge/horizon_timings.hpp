@@ -12,9 +12,10 @@
 
 namespace terrain::unreal {
 
-// The sections of the mesh of a level: its body and its trim (horizon_layout.hpp).
-enum class HorizonSection : std::uint8_t { Body, Trim };
-inline constexpr std::size_t kHorizonSectionCount = 2;
+// What is uploaded for a level: the body and the trim of its mesh (horizon_layout.hpp), or the
+// texels of the GPU horizon (horizon_textures.hpp).
+enum class HorizonSection : std::uint8_t { Body, Trim, Texels };
+inline constexpr std::size_t kHorizonSectionCount = 3;
 
 // What the far horizon cost, on the game thread unless stated. StageStats counts measures in
 // its field tiles.
@@ -58,6 +59,7 @@ private:
 //   horizon ticks: first show 1 tick 85.20 ms, level 0 moves 12 ticks 4.10 ms (max 5.20), ...
 //   horizon body: conversion 13 meshes 1.90 ms (max 2.40), upload 13 meshes 2.20 ms (max 3.10),
 //   55432 vertices per mesh
+//   horizon texels: upload 12 ticks 0.02 ms (max 0.05), 514 texels per tick
 //   horizon epochs: 12 epochs 9.30 ms (max 21.00) from plan to commit, 9252 samples
 [[nodiscard]] std::vector<std::string> describe(const HorizonTimingsReport& report);
 

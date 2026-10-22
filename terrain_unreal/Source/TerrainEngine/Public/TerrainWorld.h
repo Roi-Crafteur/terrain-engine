@@ -8,6 +8,7 @@
 
 class APawn;
 class UMaterialInterface;
+class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
 struct FTerrainWorldState;
@@ -20,6 +21,17 @@ enum class ETerrainMeshType : uint8
 	// Placeholders, not implemented yet: they fall back to ProceduralMesh with a warning.
 	DynamicMesh UMETA(DisplayName = "Dynamic Mesh (not implemented)"),
 	RealtimeMesh UMETA(DisplayName = "Realtime Mesh Component (not implemented)")
+};
+
+// How the far horizon is drawn.
+UENUM(BlueprintType)
+enum class ETerrainHorizonRenderer : uint8
+{
+	// Textures written by bands and fixed grids moved by the material (phase 13, step 2).
+	Gpu UMETA(DisplayName = "GPU (textures and fixed grids)"),
+	// A procedural mesh per level rebuilt on the CPU when it moves (step 1), for comparison;
+	// to be removed.
+	Cpu UMETA(DisplayName = "CPU (procedural meshes)")
 };
 
 /**
@@ -142,10 +154,31 @@ public:
 		meta = (EditCondition = "bHorizon", ClampMin = "1", ClampMax = "10"))
 	int32 HorizonLevels = 10;
 
-	// Threads computing the horizon, besides the workers of the tiles.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	ETerrainHorizonRenderer HorizonRenderer = ETerrainHorizonRenderer::Gpu;
+
+	// GPU: pieces of the horizon computed at once as low priority tasks of Unreal, below the
+	// workers of the tiles. CPU: threads computing the horizon, besides those of the tiles.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
 		meta = (EditCondition = "bHorizon", ClampMin = "1", ClampMax = "8"))
 	int32 HorizonThreads = 2;
+
+	// Material of the GPU horizon. None: /Game/TerrainEngine/M_TerrainHorizonGpu
+	// (Scripts/create_horizon_gpu_material.py); without it, the CPU horizon is drawn instead.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	TObjectPtr<UMaterialInterface> HorizonGpuMaterial;
+
+	// GPU: width of the band, in cells of each level, where it blends into the next coarser one.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon", ClampMin = "1", ClampMax = "100"))
+	float HorizonMorphCells = 32.0f;
+
+	// GPU: each level tinted with its own hue, to see the levels and their blends.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	bool bHorizonDebugTint = false;
 
 	// Material of the horizon. None: /Game/TerrainEngine/M_TerrainHorizon if it exists
 	// (Scripts/create_horizon_material.py), which curves it; otherwise the material of the tiles,
@@ -182,10 +215,14 @@ private:
 	bool StartStreaming();
 	void StopStreaming(const FString& Reason);
 	void StartHorizon();
+	bool StartGpuHorizon();
+	void StartCpuHorizon();
 	void StopHorizon(const FString& Reason);
 	void TickHorizon(const FVector& Focus);
+	void RecordFrame();
 	void LogHorizon();
 	UMaterialInterface* ResolveHorizonMaterial() const;
+	UMaterialInterface* ResolveHorizonGpuMaterial() const;
 	bool FindFocus(FVector& OutLocation, APawn*& OutPawn) const;
 	void ReturnFromWorldTurn(AActor& Traveller, FVector& InOutFocus) const;
 	void WarmUpAround(APawn& Pawn);
@@ -198,6 +235,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainHorizonMeshes> HorizonMeshes;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTerrainHorizonClipmap> HorizonClipmap;
 
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor).

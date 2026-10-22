@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+#include "Bridge/horizon_gpu_streamer.hpp"
 #include "Bridge/horizon_streamer.hpp"
 #include "Bridge/horizon_timings.hpp"
 #include "Bridge/terrain_session.hpp"
@@ -23,10 +24,16 @@ struct FTerrainWorldState
 	// Fixed while playing, rebasing aside: the player keeps unwrapped coordinates across the edges
 	// of the wrapped world, the tiles follow it to their nearest images (Bridge/tile_streamer.hpp).
 	terrain::unreal::UnrealFrame Frame;
-	// After the session: its workers read the relief of the tiles, and stop first.
+	// After the session: their workers and jobs read the relief of the tiles, and stop first. One
+	// of them, as ATerrainWorld::HorizonRenderer chose.
 	std::unique_ptr<terrain::unreal::HorizonMeshStreamer> Horizon;
+	std::unique_ptr<terrain::unreal::HorizonGpuStreamer> HorizonGpu;
 	terrain::unreal::HorizonTimings HorizonTimings;
 	double HorizonStartSeconds = 0.0;
+	// The frames since the last summary: game thread, render thread and GPU (as stat unit).
+	terrain::unreal::StageStats GameThreadFrames;
+	terrain::unreal::StageStats RenderThreadFrames;
+	terrain::unreal::StageStats GpuFrames;
 };
 
 namespace TerrainWorldConversions
