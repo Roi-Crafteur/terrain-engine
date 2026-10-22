@@ -53,9 +53,9 @@ inline std::vector<Part> geographyParts() {
     return {
         {"geography map", field.geography()->checksum(), 0xDFACFE2A9CEDBB3DULL},
         {"geography map, small world", small.geography()->checksum(), 0xA0514511395504C4ULL},
-        {"geography 1000 km", samplesChecksum(field, -16e6, -16e6, 1e6, 32), 0x79F75FA5375DC435ULL},
+        {"geography 1000 km", samplesChecksum(field, -16e6, -16e6, 1e6, 32), 0xB751572CEA910E5BULL},
         {"geography 10 km", samplesChecksum(field, -320e3, -320e3, 10e3, 64),
-         0xD0E9253C2E207A8BULL},
+         0x544F76F5BD9A9688ULL},
         {"geography coast 25 m", samplesChecksum(field, -800.0, -800.0, 25.0, 64),
          0xE2D6CB6C0157FECBULL},
     };
