@@ -111,7 +111,7 @@ void testRise() {
 
 // A massif of constant height cut by the valleys where they are lower (as the Heightfield takes
 // them): never below 0, its floors (and the passes they climb to) under 15 degrees, about one
-// point in forty or more on a floor; no step (the ends of the tributaries rise steeply, up to a
+// point in fifty or more on a floor; no step (the ends of the tributaries rise steeply, up to a
 // slope of about 13: 1 cm apart, no more than 15 cm).
 void testValleys() {
     const forms::Noises n = noisesOf(kSeed, WorldSize{});
@@ -139,7 +139,7 @@ void testValleys() {
     }
     TEST_CHECK(cut);
     TEST_CHECK(gentle);
-    TEST_CHECK(floors > 20'000 / 40);
+    TEST_CHECK(floors > 20'000 / 50);
     TEST_CHECK(jump < 0.15);
 }
 

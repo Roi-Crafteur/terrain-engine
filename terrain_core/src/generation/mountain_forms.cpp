@@ -29,8 +29,9 @@ constexpr double kLeastGradient = 1.0e-7;
 // of its walls (a smoothstep: rounded at their foot, a shoulder at their top), its crests and
 // hollows kept: no plane. Main floors kMainHalfLow to kMainHalfHigh wide on each side of the axis
 // with walls kMainWallLow to kMainWallHigh wide (a slow noise of kWidthWavelength); tributaries
-// kSideHalf and kSideWall. A point is on the floor where the valley is gentler than kFlatLow to
-// kFlatHigh (7 to 14 degrees).
+// kSideHalf and kSideWall. A point is on the floor up to kBottom meters into the walls, where
+// the valley is gentler than kFlatLow to kFlatHigh (7 to 14 degrees).
+constexpr double kBottom = 300.0;
 constexpr double kFlatLow = 0.12;
 constexpr double kFlatHigh = 0.25;
 // Nor where the valley ends (its floor rising to the massif): only where it is kWhole to 1 there.
@@ -150,7 +151,7 @@ Carve valleyForm(const Form& massif, double floor, double e, double wall, const 
     const double kept = above > 0.0 ? keep : 0.0;
     const Form form{floor + above * keep, kept * massif.gradX + rise * line.awayX,
                     kept * massif.gradZ + rise * line.awayZ};
-    return {form, smooth(kCutLow, kCutHigh, above) *
+    return {form, smooth(kCutLow, kCutHigh, above) * (1.0 - smooth(0.0, kBottom, e)) *
                       (1.0 - smooth(kFlatLow, kFlatHigh, dmath::hypot(form.gradX, form.gradZ)))};
 }
 
@@ -311,11 +312,13 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
     const double floor = base + (1.0 - own) * std::max(0.0, massif.height - base);
     Carve tributary = valleyForm(massif, floor, line.distance - kSideHalf, kSideWall, line);
     tributary.floor *= smooth(kWhole, 1.0, own);
-    // The lower of the two, their meeting rounded over kJoin meters (less near the base, never
-    // below it): a continuous slope.
+    // The lower of the two, their meeting rounded over kJoin meters: a continuous slope. Less
+    // near the base (never below it) and where either does not cut the massif (none where
+    // neither is).
     const double a = out.form.height;
     const double b = tributary.form.height;
-    const double join = std::min(kJoin, 4.0 * std::max(0.0, std::min(a, b)));
+    const double join = std::min({kJoin, 4.0 * std::max(0.0, std::min(a, b)),
+                                  4.0 * std::max(0.0, massif.height - std::max(a, b))});
     const double overlap = std::max(join - std::abs(a - b), 0.0);
     const double share = join > 0.0 ? 0.5 * overlap / join : 0.0;
     const double toB = a < b ? share : 1.0 - share;
