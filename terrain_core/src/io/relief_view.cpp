@@ -32,6 +32,21 @@ constexpr double kSunSine = 0.5;     // of its elevation (30 degrees)
 constexpr int kColumnBlock = 16;     // columns per block on the threads
 constexpr double kStepShare = 0.0015; // step along a ray: this share of its depth, at least
 constexpr double kMinStep = 0.5;     // this many meters
+// Where the ground rises more than kFaceSlope meters per meter of the ray between two points (70
+// degrees), the rows between them show the face of a wall, lit as such (not a blend of their
+// colors).
+constexpr double kFaceSlope = 2.75;
+constexpr double kFaceRead = 4.0;
+constexpr Rgb kRock = {128.0, 118.0, 108.0};
+// The ground turns to bare rock as its slope passes kRockSlopeLow to kRockSlopeHigh.
+constexpr double kRockSlopeLow = 0.7;
+constexpr double kRockSlopeHigh = 1.0;
+
+// The light on ground whose normal makes this cosine with the sun: an ambient share, so that the
+// faces in the shade keep their relief.
+double light(double lambert) {
+    return std::clamp(0.45 + 0.75 * lambert, 0.3, 1.2);
+}
 
 Rgb mix(const Rgb& a, const Rgb& b, double t) {
     return {a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t};
@@ -103,8 +118,26 @@ Rgb groundColor(const ViewGround& ground, const ViewParams& p, const Camera& c, 
         const double lambert =
             (-gx * c.sun[0] + c.sun[1] - gz * c.sun[2]) / std::sqrt(gx * gx + 1.0 + gz * gz);
         const std::array<float, 3> tint = reliefColor(h);
-        color = scale({tint[0], tint[1], tint[2]}, std::clamp(0.3 + 0.9 * lambert, 0.15, 1.25));
+        // Steep ground is bare rock, whatever its altitude.
+        const double steep = std::clamp((std::sqrt(gx * gx + gz * gz) - kRockSlopeLow) /
+                                            (kRockSlopeHigh - kRockSlopeLow),
+                                        0.0, 1.0);
+        color = scale(mix({tint[0], tint[1], tint[2]}, kRock, steep), light(lambert));
     }
+    return mix(color, kHaze, 1.0 - dmath::exp(-distance / p.hazeDistance));
+}
+
+// Color of the face of a wall seen along the ray (unit direction dirX, dirZ): it rises rise
+// meters over run meters away from the eye, facing it; the tint of the rock lit by the sun on
+// that face, then hazed.
+Rgb faceColor(const ViewParams& p, const Camera& c, double dirX, double dirZ, double run,
+              double rise, double distance) {
+    // Read at least as steep as kFaceRead: the walls of a scene are lit alike, not in stripes as
+    // the run between two points of a ray comes and goes.
+    const double g = std::max(rise / run, kFaceRead);
+    const double lambert =
+        (-g * dirX * c.sun[0] + c.sun[1] - g * dirZ * c.sun[2]) / std::sqrt(g * g + 1.0);
+    const Rgb color = scale(kRock, light(lambert));
     return mix(color, kHaze, 1.0 - dmath::exp(-distance / p.hazeDistance));
 }
 
@@ -151,6 +184,8 @@ void castColumn(const ViewGround& ground, const ViewParams& p, const Camera& c,
     int lowestFree = p.height;                     // rows 0 to lowestFree - 1 still free
     bool seen = false; // the previous point of the ray was seen, in color below
     Rgb below{};
+    double before = 0.0; // the height of the previous point of the ray
+    double previous = 0.0; // and its depth
     for (double s = p.minDistance; s <= p.maxDistance && lowestFree > 0;) {
         const double x = p.eyeX + dirX * s;
         const double z = p.eyeZ + dirZ * s;
@@ -170,13 +205,20 @@ void castColumn(const ViewGround& ground, const ViewParams& p, const Camera& c,
         } else if (visible) {
             const Rgb color = groundColor(ground, p, c, x, z, h, std::max(1.0, step), distance);
             const double rows = lowestFree - row;
+            const double run = (s - previous) * stretch;
+            const double rise = static_cast<double>(h) - before;
+            const bool face = seen && rise > kFaceSlope * run;
+            const Rgb wall =
+                face ? faceColor(p, c, dirX / stretch, dirZ / stretch, run, rise, distance) : color;
             for (int r = row; r < lowestFree; ++r) {
                 setPixel(image, column, r,
-                         seen ? mix(color, below, (r - row + 0.5) / rows) : color);
+                         face ? wall : (seen ? mix(color, below, (r - row + 0.5) / rows) : color));
             }
             below = color;
         }
         seen = visible && !onTower;
+        before = static_cast<double>(h);
+        previous = s;
         lowestFree = visible ? row : lowestFree;
         s += step;
     }

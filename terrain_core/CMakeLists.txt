@@ -81,6 +81,8 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_rivers.cpp
     src/generation/planet/planet_stats.cpp
     src/generation/planet/planet_wind.cpp
+    src/generation/mountain_forms.cpp
+    src/generation/mountain_walls.cpp
     src/generation/ravines.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp

@@ -4,6 +4,8 @@
 // terrain_core: heightfield.cpp builds them, heightfield_geography.cpp reads those of the
 // planetary geography.
 
+#include "mountain_forms.hpp"
+#include "mountain_walls.hpp"
 #include "ravines.hpp"
 #include "relief_local.hpp"
 #include "terrain/generation/heightfield.hpp"
@@ -33,6 +35,9 @@ struct Heightfield::Layers {
     // The spurs of the chains (ridged) and the ravines of the slopes.
     noise::FbmOctaves geographySpurs;
     ravines::Network ravines;
+    // The valleys in U and the dominant summits of the mountains, and their walls.
+    mountain_forms::Noises forms;
+    mountain_walls::Noises walls;
     // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
     // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the
     // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land
@@ -56,6 +61,8 @@ struct Heightfield::Memos {
     noise::FbmOctaves::Memo spurs;
     ravines::Memo ravines;
     noise::FbmOctaves::Memo rock;
+    mountain_forms::Memo forms;
+    mountain_walls::Memo walls;
 };
 
 } // namespace terrain

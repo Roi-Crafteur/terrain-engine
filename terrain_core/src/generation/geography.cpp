@@ -82,6 +82,7 @@ void validate(const GeographyParams& p) {
     requirePositive(p.provinceSize, "provinceSize");
     requirePositive(p.provinceBlend, "provinceBlend");
     requirePositive(p.mountainSharpness, "mountainSharpness");
+    requirePositive(p.mountainWavelength, "mountainWavelength");
     requirePositive(p.beltReach, "beltReach");
     requirePositive(p.spurWavelength, "spurWavelength");
     if (!(p.reliefFloor >= 0.0f) || !(p.reliefFloor < 1.0f) || !(p.reliefVariation >= 0.0f) ||
