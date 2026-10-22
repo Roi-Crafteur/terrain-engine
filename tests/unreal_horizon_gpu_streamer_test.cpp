@@ -253,8 +253,8 @@ void testMorphFactor() {
 // The height of the coarser level under the sample (i, k) of the finer one: its triangles.
 double coarseSurface(const Session& session, int fine, int i, int k) {
     const LevelPlacement& placement = session.gpu.placements().at(fine);
-    const double u = placement.inCoarser.x + i / 2.0;
-    const double v = placement.inCoarser.z + k / 2.0;
+    const double u = static_cast<double>(placement.inCoarser.x) + i / 2.0;
+    const double v = static_cast<double>(placement.inCoarser.z) + k / 2.0;
     const int ci = static_cast<int>(std::floor(u));
     const int ck = static_cast<int>(std::floor(v));
     const double s = u - ci;
