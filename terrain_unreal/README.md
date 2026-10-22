@@ -150,6 +150,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles (section 12) |
 | `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
 | `bHorizonShadows` | non | ombres portées par l'horizon |
+| `bHorizonDetailNormals`, `HorizonNormalRatio`, `HorizonNormalJobs` | oui, 4, 2 | GPU : normales de détail, 4 fois plus fines que la grille de chaque niveau, calculées par 2 tâches (TEMPORARY_MATERIAL.md) |
 | `bAtmosphereFollowsCamera` | oui | le ciel, le brouillard et la lumière du ciel suivent la caméra (section 12) |
 | `SkyAtmosphere`, `HeightFog`, `SkyLight` | aucun | ceux qui suivent la caméra ; sinon les premiers du niveau |
 | `FogEndDistanceKm` | 20 | distance où le brouillard cesse d'intégrer ; 0 : son propre réglage |
@@ -437,8 +438,7 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
 
 - Le mode CPU (`HorizonRenderer` = CPU) reste pour comparer ; il sera retiré après la fusion du
   nouveau relief (agent 10).
-- Normales par sommet : le relief plus fin que la maille d'un niveau n'éclaire pas. Les normales
-  par pixel viendront avec le rendu de la phase 14.
+- Silhouettes à la maille de chaque niveau ; les normales de détail éclairent le relief 4 fois plus fin.
 - Matériaux et biomes : dessinés par le matériau temporaire (section 13).
 - Les grilles sont construites sur le thread de jeu au `BeginPlay` (0,2 s, une fois) ; elles
   pourraient l'être hors de ce thread si ce temps gêne au chargement.
