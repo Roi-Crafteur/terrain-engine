@@ -210,10 +210,12 @@ sum += vegetation * soil * (1.0 - foot) + foot;
 if (sum < 1e-3) { g[4] = 1.0; sum = 1.0; }
 float3 ground = float3(0.0, 0.0, 0.0);
 float2 nts = float2(0.0, 0.0);
+// What shows of the ground under the rock and the snow: nothing to sample when it is covered.
+float cover = (1.0 - rock) * (1.0 - snow);
 """
 
 LAYER_FAR = r"""
-BRANCH if (g[I] > 0.01)
+BRANCH if (g[I] > 0.01 && cover > 0.02)
 {
     float3 c = TAI.SampleLevel(TAISampler, P / SCALE, 13.0).rgb;
 DETAIL_CODE    ground += (g[I] / sum) * c * TintI;
@@ -224,14 +226,15 @@ LAYER_DETAIL = r"""    BRANCH if (detail > 0.0)
     {
         float2 uv = P / SCALE;
         c = lerp(c, TAI.SampleGrad(TAISampler, uv, dPx.xy / SCALE, dPy.xy / SCALE).rgb, detail);
-        if (g[I] > 0.2) { nts += (g[I] / sum) * (TNI.SampleGrad(TNISampler, uv, dPx.xy / SCALE, dPy.xy / SCALE).rg * 2.0 - 1.0); }
+        if (g[I] > 0.35 * sum) { nts += (g[I] / sum) * (TNI.SampleGrad(TNISampler, uv, dPx.xy / SCALE, dPy.xy / SCALE).rg * 2.0 - 1.0); }
     }
 """
 
 ROCK_DETAIL = r"""
-BRANCH if (rock > 0.01 && detail > 0.0)
+BRANCH if (rock > 0.01 && detail > 0.0 && snow < 0.98)
 {
-    float3 bw = pow(abs(N), 4.0);
+    float3 bw = pow(abs(N), 8.0);
+    bw = max(bw - 0.15 * max(bw.x, max(bw.y, bw.z)), 0.0);
     bw /= dot(bw, float3(1.0, 1.0, 1.0));
     float3 c3 = float3(0.0, 0.0, 0.0);
     float3 dn = float3(0.0, 0.0, 0.0);
