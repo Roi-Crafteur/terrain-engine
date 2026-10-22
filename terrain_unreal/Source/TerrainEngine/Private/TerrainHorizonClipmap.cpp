@@ -10,6 +10,7 @@
 #include "Materials/MaterialInterface.h"
 #include "RHI.h"
 #include "TerrainHorizonGrids.h"
+#include "TextureResource.h"
 
 #include <utility>
 #include <vector>
