@@ -50,7 +50,7 @@ GROUND = 8  # the first 8 layers are the ground; then the snow and the rock
 # Tints of the layers (linear multipliers), tunable on the instances.
 TINTS = {
     "Grass": (0.8, 1.1, 0.6), "DryGrass": (1.0, 0.95, 0.75), "Forest": (0.75, 0.95, 0.7),
-    "Alpine": (0.85, 1.05, 0.85), "Dirt": (1.0, 0.95, 0.9), "Sand": (1.05, 1.02, 0.95),
+    "Alpine": (0.85, 1.05, 0.85), "Dirt": (1.0, 0.95, 0.9), "Sand": (1.3, 1.25, 1.12),
     "Desert": (0.95, 0.95, 1.0), "Scree": (0.85, 0.95, 1.1), "Snow": (1.0, 1.0, 1.0),
     "Rock": (0.75, 0.9, 1.2),
 }
@@ -58,7 +58,7 @@ TINTS = {
 SCALARS = {
     "RockStartDeg": 36.0, "RockFullDeg": 50.0, "SnowHoldDeg": 32.0, "SnowShedDeg": 44.0,
     "DetailNearM": 150.0, "DetailFarM": 400.0, "Saturation": 1.2, "NormalStrength": 0.8,
-    "SnowWhiten": 0.6, "MacroVariation": 1.0, "CoreRock": 0.8, "DebugView": 0.0,
+    "SnowWhiten": 0.7, "MacroVariation": 1.0, "CoreRock": 0.8, "DebugView": 0.0,
 }
 WARMTH = (1.03, 1.0, 0.95)
 
