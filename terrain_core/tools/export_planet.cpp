@@ -13,6 +13,7 @@
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/planet/planet_stats.hpp"
 #include "terrain/io/planet_png.hpp"
+#include "terrain/io/relief_lakes.hpp"
 
 #include <algorithm>
 #include <array>
@@ -24,7 +25,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <limits>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -189,30 +189,6 @@ void printLand(const terrain::PlanetStats& stats) {
                 stats.lakeArea / 1.0e6, 100.0 * stats.lakeArea / land, stats.riverLength / 1000.0);
 }
 
-// Share of the lake area in lakes at least 500 m deep: their level above their lowest cell.
-void printDeepLakes(const terrain::PlanetLevel& level) {
-    const std::vector<terrain::PlanetLake>& lakes = level.lakes();
-    std::vector<float> lowest(lakes.size(), std::numeric_limits<float>::max());
-    std::vector<double> cells(lakes.size(), 0.0);
-    for (std::size_t cell = 0; cell < level.grid().cells(); ++cell) {
-        const std::int32_t lake = level.cells().lakeAt(cell);
-        if (lake >= 0) {
-            const auto k = static_cast<std::size_t>(lake);
-            lowest[k] = std::min(lowest[k], level.elevation(cell));
-            cells[k] += 1.0;
-        }
-    }
-    double all = 0.0;
-    double deep = 0.0;
-    for (std::size_t k = 0; k < lakes.size(); ++k) {
-        all += cells[k];
-        deep += lakes[k].level - lowest[k] >= 500.0f ? cells[k] : 0.0;
-    }
-    std::printf("lakes at least 500 m deep (level above their lowest cell): %.0f%% of the lake "
-                "area\n",
-                all > 0.0 ? 100.0 * deep / all : 0.0);
-}
-
 void printBasinsAndRivers(const terrain::PlanetStats& stats) {
     for (std::size_t k = 0; k < stats.largestBasins.size(); ++k) {
         const terrain::PlanetBasinStat& b = stats.largestBasins[k];
@@ -307,7 +283,9 @@ int main(int argc, char** argv) {
     std::printf("memory: peak %.0f MB during the construction, %.0f MB kept by the level\n",
                 megabytes(peak), megabytes(level.memoryBytes()));
     printLand(stats);
-    printDeepLakes(level);
+    std::printf("lakes at least 500 m deep (level above their lowest cell): %.0f%% of the lake "
+                "area\n",
+                100.0 * terrain::deepLakeShare(level));
     printBasinsAndRivers(stats);
     printFeaturesAndPasses(level, passes);
     return EXIT_SUCCESS;

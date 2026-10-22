@@ -81,6 +81,7 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_stats.cpp
     src/generation/planet/planet_wind.cpp
     src/generation/ravines.cpp
+    src/generation/wave_erosion.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
@@ -101,6 +102,7 @@ add_library(terrain_core STATIC
     src/io/heightmap_png.cpp
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
+    src/io/relief_lakes.cpp
     src/io/planet_png.cpp
     src/io/planet_png_layers.cpp
     src/io/png.cpp

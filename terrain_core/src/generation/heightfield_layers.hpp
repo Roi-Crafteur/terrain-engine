@@ -6,6 +6,7 @@
 
 #include "ravines.hpp"
 #include "relief_local.hpp"
+#include "wave_erosion.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/voronoi.hpp"
@@ -28,10 +29,13 @@ struct Heightfield::Layers {
     noise::FbmOctaves geographyWarpX;
     noise::FbmOctaves geographyWarpZ;
     noise::FbmOctaves geographyRidge;
+    noise::FbmOctaves geographyRock; // only built with a rock
     relief_local::Noises local; // the hills, vallons and buttes of the geography
     // The spurs of the chains (ridged) and the ravines of the slopes.
     noise::FbmOctaves geographySpurs;
     ravines::Network ravines;
+    wave_erosion::Waves waves; // only built with the erosion by waves
+    wave_erosion::Waves plainWaves;
     // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
     // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the
     // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land
@@ -54,6 +58,7 @@ struct Heightfield::Memos {
     relief_local::Memos local;
     noise::FbmOctaves::Memo spurs;
     ravines::Memo ravines;
+    noise::FbmOctaves::Memo rock;
 };
 
 } // namespace terrain

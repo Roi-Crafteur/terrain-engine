@@ -158,6 +158,10 @@ struct TerrainFigures {
     double plainRelief50 = 0.0;
     double plainRelief90 = 0.0;
     double plainFlatShare = 0.0; // of the windows below 10 m
+    // The same over 1 km (11 x 11 samples 100 m apart, at the centers of those windows): the
+    // relief at the scale of a walk.
+    double plainNear10 = 0.0;
+    double plainNear50 = 0.0;
     // Points of the land below the mean of the ground within 1 km (a square of 2 km) around
     // them, 100 m apart over windows of 2 km whose squares hold no sea.
     int meanWindows = 0;

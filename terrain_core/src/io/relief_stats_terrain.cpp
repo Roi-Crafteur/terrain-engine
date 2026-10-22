@@ -89,9 +89,15 @@ void measureBelts(const Heightfield& field, const ReliefGrid& world,
 
 void measurePlains(const Heightfield& field, const ReliefGrid& world, const ReliefStats& stats,
                    int count, int threads, TerrainFigures& f) {
+    const std::vector<std::size_t> cells = spread(cellsWith(stats, kReliefPlain), count);
+    std::vector<double> near;
+    for (const ReliefGrid& w : windows(field, world, cells, 100.0, 11, threads)) {
+        near.push_back(relief(w));
+    }
+    f.plainNear10 = percentile(near, 0.1);
+    f.plainNear50 = percentile(near, 0.5);
     std::vector<double> reliefs;
-    for (const ReliefGrid& w : windows(field, world, spread(cellsWith(stats, kReliefPlain), count),
-                                       1000.0, 11, threads)) {
+    for (const ReliefGrid& w : windows(field, world, cells, 1000.0, 11, threads)) {
         reliefs.push_back(relief(w));
     }
     f.plainWindows = static_cast<int>(reliefs.size());

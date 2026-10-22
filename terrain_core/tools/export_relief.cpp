@@ -298,9 +298,10 @@ void reportTerrain(Report& r, const terrain::TerrainFigures& f, bool geography) 
           "%.1f%%, above 45 degrees %.2f%%\n",
           belts, f.beltWindows, f.beltRelief5, 100.0 * f.steepShare, 100.0 * f.cliffShare);
     r.add("plains (%d windows): relief over 10 km min %.0f m, 10th percentile %.0f m, median "
-          "%.0f m, 90th percentile %.0f m; windows below 10 m %.1f%%\n",
+          "%.0f m, 90th percentile %.0f m; windows below 10 m %.1f%%; relief over 1 km 10th "
+          "percentile %.0f m, median %.0f m\n",
           f.plainWindows, f.plainReliefMin, f.plainRelief10, f.plainRelief50, f.plainRelief90,
-          100.0 * f.plainFlatShare);
+          100.0 * f.plainFlatShare, f.plainNear10, f.plainNear50);
     r.add("land below the mean within 1 km (%d windows): %.1f%%; plains %.1f%%, %s %.1f%%\n",
           f.meanWindows, 100.0 * f.belowMean, 100.0 * f.belowMeanPlains, belts,
           100.0 * f.belowMeanBelts);

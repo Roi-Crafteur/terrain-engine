@@ -161,6 +161,7 @@ terrain_add_test(planet_level_test terrain_core)
 terrain_add_test(planet_compact_test terrain_core)
 terrain_add_test(planet_golden_test terrain_core)
 terrain_add_test(planet_stats_test terrain_core)
+terrain_add_test(relief_lakes_test terrain_core)
 terrain_add_test(planet_false_passes_test terrain_core)
 terrain_add_test(planet_png_test terrain_core)
 

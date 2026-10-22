@@ -139,6 +139,25 @@ struct GeographyParams {
     // The valleys between the crests keep at least this share of the finer octaves of the
     // ridged noise (FbmOctaves::ridged2DSlope): secondary crests and hollows, not smooth floors.
     double mountainValleyDetail = 0.2;
+    // Under the mask of the massifs, a rock of up to rockRelief meters breaks the walls and the
+    // floors at the scale of a walk: the sharp crests of a ridged noise of rockOctaves from
+    // rockWavelength, not warped (no curls), its octaves turned and offset (no line, no grid).
+    float rockRelief = 35.0f;
+    double rockWavelength = 400.0;
+    int rockOctaves = 4;
+    // The erosion by waves (wave_erosion.hpp) in place of the ravines when waveErosion > 0: its
+    // amplitude is waveErosion times waveLongest meters, wavesPerOctave from waveLongest down to
+    // waveShortest.
+    double waveErosion = 0.0;
+    int wavesPerOctave = 16;
+    double waveLongest = 4096.0;
+    double waveShortest = 64.0;
+    // Diagnosis: the erosion by waves on the local relief of the plains too, plainWaves times
+    // 1,024 m, from the slope of that relief (finite differences).
+    double plainWaves = 0.0;
+    // The detail of the Heightfield (its wavelength) over the land of the geography: up to
+    // detailAmplitude meters.
+    float detailAmplitude = 6.0f;
     // Island arcs where a belt crosses the ocean: the coast signal rises to about arcLift on
     // their axis, broken into islands by an fbm of arcWavelength.
     double arcLift = 45'000.0;

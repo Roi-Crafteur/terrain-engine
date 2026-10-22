@@ -30,14 +30,16 @@ constexpr float kWorn = 0.65f;
 // kPlainHills + kHillsRange where the intensity passes kHillsLow to kHillsHigh; buttes
 // kButteShare of it high, at most kButteMax, where the intensity is below kButteLow to
 // kButteHigh; vallons and terraces fading under the mountains (mask kPlainLow to kPlainHigh).
-constexpr float kPlainHills = 24.0f;
+constexpr float kPlainHills = 18.0f;
 constexpr float kHillsRange = 450.0f;
 constexpr float kHillsLow = 0.08f;
 constexpr float kHillsHigh = 0.7f;
-constexpr float kButteShare = 1.0f;
+constexpr float kButteShare = 1.6f;
 constexpr float kButteMax = 40.0f;
 constexpr float kButteLow = 0.1f;
 constexpr float kButteHigh = 0.25f;
+// The hills keep 1 - kHillsUnderMassifs of their amplitude under a full mask of the massifs.
+constexpr float kHillsUnderMassifs = 0.8f;
 constexpr float kPlainLow = 0.3f;
 constexpr float kPlainHigh = 0.6f;
 // The hills of the plains give way to those of the rough country as the intensity passes
@@ -72,6 +74,21 @@ constexpr float kRavineRoom = 0.7f;
 // The ravines fade out where the noise of one of those octaves is below kDivide in absolute
 // value: about a kilometer around the divides.
 constexpr float kDivide = 0.1f;
+
+// The sharpness of the ridged noise of the rock.
+constexpr double kRockSharpness = 2.0;
+
+// How much the slope (slopeX, slopeZ) of the first octaves of the ridged noise r is carved:
+// nothing on the flat, near the crests and on the creases of those octaves (where the slope turns
+// over: the divides).
+double carvingStrength(double slopeX, double slopeZ, const noise::FbmOctaves::RidgedSlope& r) {
+    const double slope = dmath::hypot(slopeX, slopeZ);
+    return static_cast<double>(noise::smoothstep(static_cast<float>(kRavineFlat),
+                                                 static_cast<float>(kRavineSteep),
+                                                 static_cast<float>(slope))) *
+           (1.0 - static_cast<double>(noise::smoothstep(kCrestLow, kCrestHigh, r.head))) *
+           static_cast<double>(noise::smoothstep(0.0f, kDivide, r.crease));
+}
 
 // The coastal plain rises this many meters per meter from the shore, up to kCoastPlainTop,
 // before the regional elevation takes over over GeographyParams::coastRamp.
@@ -115,8 +132,11 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
     s.mountainMask = land * noise::smoothstep(kMountainLow, kMountainHigh, intensity);
     // Around the regional elevation, the local relief rises and falls.
     const float ground = groundBase(params_.geography, g);
+    // Under the massifs the hills give way to the ridged mountains: no smooth swell of hundreds
+    // of meters under the crests.
     const float amplitude =
-        land * (kPlainHills + kHillsRange * noise::smoothstep(kHillsLow, kHillsHigh, intensity));
+        land * (kPlainHills + kHillsRange * noise::smoothstep(kHillsLow, kHillsHigh, intensity)) *
+        (1.0f - kHillsUnderMassifs * s.mountainMask);
     const float buttes = std::min(kButteShare * amplitude, kButteMax) *
                          (1.0f - noise::smoothstep(kButteLow, kButteHigh, intensity));
     const float plain = 1.0f - noise::smoothstep(kPlainLow, kPlainHigh, s.mountainMask);
@@ -125,7 +145,20 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
         amplitude > 0.0f
             ? localReliefAt(x, z, amplitude, buttes, g.regions, plain, rough, memos)
             : 0.0f;
-    s.base = ground + relief_local::boundBelow(local, kLocalRoom * ground);
+    float eroded = local;
+    if (params_.geography.plainWaves > 0.0 && plain > 0.0f && amplitude > 0.0f) {
+        constexpr double kStep = 10.0;
+        constexpr double kExaggerate = 10.0;
+        const float east =
+            localReliefAt(x + kStep, z, amplitude, buttes, g.regions, plain, rough, nullptr);
+        const float north =
+            localReliefAt(x, z + kStep, amplitude, buttes, g.regions, plain, rough, nullptr);
+        const double gx = kExaggerate * static_cast<double>(east - local) / kStep;
+        const double gz = kExaggerate * static_cast<double>(north - local) / kStep;
+        eroded += static_cast<float>(params_.geography.plainWaves * 1024.0 * plain *
+                                     wave_erosion::erode(layers_->plainWaves, x, z, gx, gz));
+    }
+    s.base = ground + relief_local::boundBelow(eroded, kLocalRoom * ground);
     s.mountain = geographyMountainAt(x, z, s.mountainMask, intensity, g.character, memos);
     s.detail = detailAt(x, z, s.base, memos);
     s.height = s.base + s.mountain + s.detail;
@@ -166,11 +199,30 @@ float Heightfield::geographyMountainAt(double x, double z, float mask, float int
     const float height = p.mountainHeight * noise::smoothstep(kHeightLow, kHeightHigh, intensity) *
                          (kWorn + (1.0f - kWorn) * character);
     const float worn = r.value * r.value * (3.0f - 2.0f * r.value);
-    const float mountain = mask * height * (character * r.value + (1.0f - character) * worn);
+    float mountain = mask * height * (character * r.value + (1.0f - character) * worn);
+    if (p.rockRelief > 0.0f) {
+        const noise::FbmOctaves& rock = layers_->geographyRock;
+        mountain += mask * p.rockRelief *
+                    (memos != nullptr ? rock.ridged2D(x, z, kRockSharpness, memos->rock)
+                                      : rock.ridged2D(x, z, kRockSharpness));
+    }
+    const double amplitude = static_cast<double>(mask * height);
+    if (p.waveErosion > 0.0) {
+        const double slopeX = amplitude * r.headX;
+        const double slopeZ = amplitude * r.headZ;
+        const double strength = carvingStrength(slopeX, slopeZ, r);
+        const float waves =
+            strength > 0.0
+                ? static_cast<float>(strength * p.waveErosion * p.waveLongest *
+                                     wave_erosion::erode(layers_->waves, warped[0], warped[1],
+                                                         slopeX, slopeZ))
+                : 0.0f;
+        return mountain + (waves >= 0.0f ? waves
+                                         : relief_local::boundBelow(waves, kRavineRoom * mountain));
+    }
     if (!p.ravines) {
         return mountain;
     }
-    const double amplitude = static_cast<double>(mask * height);
     const float ravines = ravinesAt(warped[0], warped[1], r, amplitude, memos);
     return mountain + relief_local::boundBelow(-ravines, kRavineRoom * mountain);
 }
@@ -183,13 +235,7 @@ float Heightfield::ravinesAt(double warpedX, double warpedZ,
                              Memos* memos) const {
     const double slopeX = amplitude * ridge.headX;
     const double slopeZ = amplitude * ridge.headZ;
-    const double slope = dmath::hypot(slopeX, slopeZ);
-    const double strength =
-        static_cast<double>(noise::smoothstep(static_cast<float>(kRavineFlat),
-                                              static_cast<float>(kRavineSteep),
-                                              static_cast<float>(slope))) *
-        (1.0 - static_cast<double>(noise::smoothstep(kCrestLow, kCrestHigh, ridge.head))) *
-        static_cast<double>(noise::smoothstep(0.0f, kDivide, ridge.crease));
+    const double strength = carvingStrength(slopeX, slopeZ, ridge);
     return ravines::depth(layers_->ravines, warpedX, warpedZ, slopeX, slopeZ, strength,
                           memos != nullptr ? &memos->ravines : nullptr);
 }

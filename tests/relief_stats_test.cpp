@@ -143,6 +143,7 @@ bool sameFigures(const terrain::TerrainFigures& a, const terrain::TerrainFigures
     return a.beltWindows == b.beltWindows && a.beltRelief5 == b.beltRelief5 &&
            a.steepShare == b.steepShare && a.cliffShare == b.cliffShare &&
            a.plainWindows == b.plainWindows && a.plainRelief50 == b.plainRelief50 &&
+           a.plainNear10 == b.plainNear10 && a.plainNear50 == b.plainNear50 &&
            a.belowMean == b.belowMean && a.belowMeanBelts == b.belowMeanBelts &&
            a.flatShare == b.flatShare && a.widestFlat.width == b.widestFlat.width &&
            a.widestFlat.area == b.widestFlat.area && a.dullShare == b.dullShare &&
@@ -171,6 +172,9 @@ void testTerrainFigures() {
         TEST_CHECK(one.plainReliefMin <= one.plainRelief10 &&
                    one.plainRelief10 <= one.plainRelief50 &&
                    one.plainRelief50 <= one.plainRelief90);
+        // Over 1 km the plains of the geography are alive too.
+        TEST_CHECK(one.plainNear10 <= one.plainNear50 &&
+                   (!geography || one.plainWindows == 0 || one.plainNear50 > 0.0));
         // A zone is at least one cell wide, and its disk fits in its area.
         for (const terrain::ReliefZone& zone : {one.widestFlat, one.widestDull}) {
             TEST_CHECK(zone.width == 0.0 || zone.width >= 16384.0 - 1e-6);
