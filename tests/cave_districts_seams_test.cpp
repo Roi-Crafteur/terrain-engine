@@ -1,7 +1,8 @@
-// Seams of the streamed tiles with cave districts (Phase 8C-1), on the default world, where the
-// tube of an entrance crosses the shared side of two tiles: at the entrances of the main district
-// types (crevasses, halls, volcanic), in the border zones between districts, and over small
-// districts. Tiles of the same LOD share their side exactly. A tile stitched to a coarser one
+// Seams of the streamed tiles with cave districts (Phase 8C-1), on the legacy relief (the places
+// of the streaming tests, test_relief::legacyRelief, as the other tests of the districts), where
+// the tube of an entrance crosses the shared side of two tiles: at the entrances of the main
+// district types (crevasses, halls, volcanic), in the border zones between districts, and over
+// small districts. Tiles of the same LOD share their side exactly. A tile stitched to a coarser one
 // holds the samples of that tile, carved with its detail (cave_seams_test.cpp, without
 // districts): every coarse vertex lies on the fine outline, every fine vertex on the coarse
 // lattice lines on the coarse outline, and the others within half a coarse cell, the known limit
@@ -12,6 +13,7 @@
 
 #include "cave_districts_carving_support.hpp"
 #include "cave_districts_streaming_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "seam_test_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
@@ -236,7 +238,7 @@ void testSeams(const TerrainTiles& tiles, const std::vector<DistrictEntrance>& e
     std::printf("  seams at the entrances in the border zones\n");
     checkSeamsAt(tiles, of(true, std::nullopt));
     // Small districts (480 m, blended over 90 m): the borders are everywhere.
-    const TerrainTiles dense(kSeed, {}, {}, districts_test::denseCaves());
+    const TerrainTiles dense(kSeed, test_relief::legacyRelief(), {}, districts_test::denseCaves());
     std::printf("  seams at the entrances of small districts\n");
     checkSeamsAt(dense, streaming_test::entrancesNearOrigin(dense));
 }
@@ -244,7 +246,8 @@ void testSeams(const TerrainTiles& tiles, const std::vector<DistrictEntrance>& e
 } // namespace
 
 int main() {
-    const TerrainTiles tiles(kSeed, {}, {}, districts_test::defaultCaves());
+    const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {},
+                             districts_test::defaultCaves());
     std::vector<DistrictEntrance> entrances = districts_test::districtEntrances(tiles);
     const std::vector<DistrictEntrance> volcanic = volcanicEntrances(tiles);
     std::printf("%zu entrances near the origin, %zu around a volcanic district\n", entrances.size(),
