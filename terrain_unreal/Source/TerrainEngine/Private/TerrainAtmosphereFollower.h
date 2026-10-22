@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 
+#include "Bridge/tile_timings.hpp"
 #include "Bridge/unreal_frame.hpp"
 
 #include "TerrainAtmosphereFollower.generated.h"
@@ -40,6 +41,9 @@ public:
 	// Places the sky, the fog and the sky light for a camera at this location.
 	void PlaceFor(const FVector& Camera);
 
+	// The cost of the ticks since the last call, on the game thread.
+	terrain::unreal::StageStats TakeTimings();
+
 private:
 	bool FindCamera(FVector& OutLocation) const;
 
@@ -48,4 +52,5 @@ private:
 	TWeakObjectPtr<USkyLightComponent> Light;
 	terrain::unreal::UnrealFrame Frame;
 	double FogAboveSeaCm = 0.0;
+	terrain::unreal::StageStats Timings;
 };

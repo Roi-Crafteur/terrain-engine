@@ -5,7 +5,11 @@
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/SkyLightComponent.h"
+#include "HAL/PlatformTime.h"
 #include "Kismet/GameplayStatics.h"
+
+#include <algorithm>
+#include <utility>
 
 namespace
 {
@@ -48,11 +52,21 @@ void UTerrainAtmosphereFollower::TickComponent(float DeltaTime, ELevelTick TickT
 	FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	const double Start = FPlatformTime::Seconds();
 	FVector Camera;
 	if (FindCamera(Camera))
 	{
 		PlaceFor(Camera);
 	}
+	const double Milliseconds = (FPlatformTime::Seconds() - Start) * 1000.0;
+	++Timings.tiles;
+	Timings.totalMilliseconds += Milliseconds;
+	Timings.maxMilliseconds = std::max(Timings.maxMilliseconds, Milliseconds);
+}
+
+terrain::unreal::StageStats UTerrainAtmosphereFollower::TakeTimings()
+{
+	return std::exchange(Timings, {});
 }
 
 void UTerrainAtmosphereFollower::PlaceFor(const FVector& Camera)

@@ -8,6 +8,7 @@
 #include "Materials/MaterialInterface.h"
 #include "RenderTimer.h"
 #include "Tasks/Task.h"
+#include "TerrainAtmosphereFollower.h"
 #include "TerrainEngineLog.h"
 #include "TerrainHorizonClipmap.h"
 #include "TerrainHorizonMeshes.h"
@@ -286,6 +287,12 @@ void ATerrainWorld::LogHorizon()
 		static_cast<int32>(Game.tiles), Game.meanMilliseconds(), Game.maxMilliseconds,
 		Render.meanMilliseconds(), Render.maxMilliseconds, Gpu.meanMilliseconds(),
 		Gpu.maxMilliseconds);
+	if (AtmosphereFollower != nullptr)
+	{
+		const terrain::unreal::StageStats Sky = AtmosphereFollower->TakeTimings();
+		UE_LOG(LogTerrainEngine, Log, TEXT("  sky following the camera: %d ticks %.4f ms (max %.4f)"),
+			static_cast<int32>(Sky.tiles), Sky.meanMilliseconds(), Sky.maxMilliseconds);
+	}
 	if (State->Horizon == nullptr && State->HorizonGpu == nullptr)
 	{
 		return;
