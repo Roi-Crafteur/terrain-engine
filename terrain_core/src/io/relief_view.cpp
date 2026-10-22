@@ -26,8 +26,9 @@ constexpr Rgb kTowerRed = {205.0, 45.0, 35.0};
 constexpr Rgb kTowerWhite = {240.0, 240.0, 240.0};
 constexpr double kTowerBand = 50.0; // meters of each band of the tower
 
-// The sun is low on the left of the view, so that the slopes facing the eye are lit across.
-constexpr double kSunLeft = 0.2;     // turns left of the axis
+// The sun is low on the left of the view and a little behind the eye, so that the slopes and the
+// walls facing the eye are lit across.
+constexpr double kSunLeft = 0.3;     // turns left of the axis
 constexpr double kSunSine = 0.5;     // of its elevation (30 degrees)
 constexpr int kColumnBlock = 16;     // columns per block on the threads
 constexpr double kStepShare = 0.0015; // step along a ray: this share of its depth, at least

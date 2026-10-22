@@ -93,6 +93,9 @@ constexpr float kFloorHills = 0.9f;
 // deep as a slope of kRavineSlope at most.
 constexpr double kSteepest = 3.0;
 constexpr double kRavineSlope = 1.0;
+// The massif gives way to a valley over its first kValleyBlend meters of cut: its crests, its
+// creases and its slope, which shape the ravines and the walls, fade into those of the valley.
+constexpr double kValleyBlend = 50.0;
 
 // The faces of the walls of the rifts: their slope read over kRiftRun meters, carved by ravines
 // from kRiftFaceLow to kRiftFaceHigh of it.
@@ -221,7 +224,7 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
     const double rise = over > 0.0 ? full * kRise * raised / over / (1.0 - kFlatten) : 0.0;
     out.gradX = rise * r.headX;
     out.gradZ = rise * r.headZ;
-    bool massif = true;
+    double onMassif = 1.0; // 0 where a valley cuts the massif kValleyBlend meters or more
     mountain_forms::Memo* forms = memos != nullptr ? &memos->forms : nullptr;
     if (p.summits) {
         // Around the dominant summits the crests of the massif rise far above their hollows.
@@ -238,11 +241,11 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
         const mountain_forms::Carve carve = mountain_forms::valleys(
             layers_->forms, x, z, full, {form, out.gradX, out.gradZ}, forms);
         if (carve.form.height < form) {
+            onMassif = std::max(0.0, 1.0 - (form - carve.form.height) / kValleyBlend);
             form = carve.form.height;
-            out.gradX = carve.form.gradX;
-            out.gradZ = carve.form.gradZ;
+            out.gradX = onMassif * out.gradX + (1.0 - onMassif) * carve.form.gradX;
+            out.gradZ = onMassif * out.gradZ + (1.0 - onMassif) * carve.form.gradZ;
             out.floor = static_cast<float>(carve.floor);
-            massif = carve.floor <= 0.0;
         }
     }
     // The slope of the great forms, at most kSteepest: it orients the ravines and the walls.
@@ -253,9 +256,7 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
     }
     float mountain = static_cast<float>(form);
     out.shape = mountain;
-    if (massif) {
-        out.crest = noise::smoothstep(kCrestLow, kCrestHigh, r.head);
-    }
+    out.crest = static_cast<float>(onMassif) * noise::smoothstep(kCrestLow, kCrestHigh, r.head);
     const float open = 1.0f - out.floor;
     if (p.rockRelief > 0.0f) {
         const noise::FbmOctaves& rock = layers_->geographyRock;
@@ -263,26 +264,24 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
                     (memos != nullptr ? rock.ridged2D(x, z, kRockSharpness, memos->rock)
                                       : rock.ridged2D(x, z, kRockSharpness));
     }
-    out.height = p.ravines ? mountainRavinesAt(warped, out, massif ? r.crease : -1.0f, mountain,
-                                               memos)
-                           : mountain;
+    out.height =
+        p.ravines ? mountainRavinesAt(warped, out, r.crease, onMassif, mountain, memos) : mountain;
     return out;
 }
 
-// The ravines run down the great forms, as deep as they are steep; on the massifs (crease at
-// least 0) they fade out near the crests and on the creases of the first octaves (the divides).
+// The ravines run down the great forms, as deep as they are steep; on the massifs (onMassif of
+// them) they fade out near the crests and on the creases of the first octaves (the divides).
 float Heightfield::mountainRavinesAt(const std::array<double, 2>& warped,
-                                     const MountainForm& form, float crease, float mountain,
-                                     Memos* memos) const {
+                                     const MountainForm& form, float crease, double onMassif,
+                                     float mountain, Memos* memos) const {
     const double slope = dmath::hypot(form.gradX, form.gradZ);
     double strength = static_cast<double>(1.0f - form.floor) *
                       static_cast<double>(noise::smoothstep(static_cast<float>(kRavineFlat),
                                                             static_cast<float>(kRavineSteep),
                                                             static_cast<float>(slope)));
-    if (crease >= 0.0f) {
-        strength *= (1.0 - static_cast<double>(form.crest)) *
-                    static_cast<double>(noise::smoothstep(0.0f, kDivide, crease));
-    }
+    strength *= (1.0 - static_cast<double>(form.crest)) *
+                (1.0 - onMassif +
+                 onMassif * static_cast<double>(noise::smoothstep(0.0f, kDivide, crease)));
     // As deep as the slope, up to kRavineSlope.
     const double deep = std::min(1.0, kRavineSlope / std::max(slope, kRavineSlope));
     const float ravines =

@@ -113,6 +113,7 @@ add_library(terrain_core STATIC
     src/io/relief_stats.cpp
     src/io/relief_stats_local.cpp
     src/io/relief_stats_shapes.cpp
+    src/io/relief_stats_peaks.cpp
     src/io/relief_stats_terrain.cpp
     src/io/relief_view.cpp
     src/io/voronoi_png.cpp

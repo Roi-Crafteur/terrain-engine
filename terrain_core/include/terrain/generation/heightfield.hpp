@@ -165,10 +165,11 @@ private:
                                                    float intensity, float character,
                                                    Memos* memos) const;
     // A mountain of height mountain (the great forms of form, warped there, with the rock) carved
-    // by its ravines; crease: that of the massif, negative off the massif.
+    // by its ravines; crease: that of the massif, which counts onMassif in [0, 1] (0 in the
+    // valleys).
     [[nodiscard]] float mountainRavinesAt(const std::array<double, 2>& warped,
-                                          const MountainForm& form, float crease, float mountain,
-                                          Memos* memos) const;
+                                          const MountainForm& form, float crease, double onMassif,
+                                          float mountain, Memos* memos) const;
     // The depth of the ravines down the faces of the walls of the rifts at a canonical point,
     // meters, at most room.
     [[nodiscard]] float riftRavinesAt(double x, double z, float room, Memos* memos) const;

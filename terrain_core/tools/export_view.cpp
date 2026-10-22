@@ -6,8 +6,8 @@
 // view_slope.png at a flank of the chain from 2 km away, at its height (the flank below the
 // highest point toward the lowest ground 3 km from it); view_k2.png from the floor of a great
 // valley 8 to 14 km from the highest summit of the planet, looking at it (the lowest place that
-// sees it); view_wall.png 800 m before the foot of the highest wall within 4 km of that summit,
-// looking at it (view_places.hpp). The eye stands 1.8 m above the ground
+// sees it); view_wall.png 400 to 566 m before the foot of the highest wall within 4 km of that
+// summit with a gentle approach, looking at it (view_places.hpp). The eye stands 1.8 m above the ground
 // (300 m for view_above), the field of view is 70 degrees wide, and a tower of 330 m stands 2 km
 // away in each view as a scale mark. Prints, and writes to views.txt, where each view stands
 // and what the eye at the foot sees of the highest point of the chain: the angle of its
@@ -66,8 +66,6 @@ constexpr double kFlankAbove = 30.0;
 // view_rift: the eye on the floor of the largest rift, kRiftEye before the foot of its wall
 // (RiftProfile::wall), looking at the wall.
 constexpr double kRiftEye = 3000.0;
-// view_wall: the eye kWallEye before the foot of the wall.
-constexpr double kWallEye = 800.0;
 constexpr double kTwoPi = 6.283185307179586476925286766559;
 
 template <class T> bool parse(const char* text, T& value) {
@@ -394,15 +392,18 @@ bool writeK2Views(const terrain::Heightfield& field, const Options& options, con
           terrain::dmath::atan(floor.tangent) * 360.0 / kTwoPi,
           floor.found ? "" : " (hidden from every floor 8 to 14 km around: the lowest of them)");
     const view_places::Wall wall = view_places::highestWall(field, summit);
-    const Point before = pointAt(field, wall.foot.x - kWallEye * wall.upX,
-                                 wall.foot.z - kWallEye * wall.upZ);
-    r.add("view_wall: the highest wall within 4 km of the summit rises %.0f m within 400 m of its "
-          "foot (%.0f m), %.0f m over its steepest 20 m\n",
-          wall.height, static_cast<double>(wall.foot.height), wall.step);
-    const double tilt = std::clamp(
-        0.5 * (static_cast<double>(wall.foot.height) + 0.5 * wall.height -
-               static_cast<double>(before.height)) / kWallEye,
-        0.0, 0.45);
+    const Point& before = wall.approach;
+    const double distance =
+        terrain::dmath::hypot(wall.foot.x - before.x, wall.foot.z - before.z);
+    r.add("view_wall: the highest wall within 4 km of the summit with a gentle approach rises "
+          "%.0f m within 20 steps of its foot (%.0f m), %.0f m over its steepest 60 m%s\n",
+          wall.height, static_cast<double>(wall.foot.height), wall.step,
+          wall.found ? "" : " (none: the view looks at the summit)");
+    const double tilt =
+        std::clamp(0.5 * (static_cast<double>(wall.foot.height) + 0.5 * wall.height -
+                          static_cast<double>(before.height)) /
+                       std::max(distance, 1.0),
+                   0.0, 0.45);
     return writeView(field, options, "k2",
                      viewFrom(options, eye, kEyeAboveGround,
                               headingTo(eye.x, eye.z, summit.x, summit.z), 0.55 * floor.tangent),

@@ -44,15 +44,19 @@ struct ValleyEye {
 };
 [[nodiscard]] ValleyEye valleyEye(const terrain::Heightfield& field, const Point& summit);
 
-// The highest wall within 4 km of a summit: the steepest step between neighbors 20 m apart of a
-// lattice of 20 m (its foot the lower), the direction up it, the rise of the step and the height
-// the ground rises within 400 m up from the foot.
+// The highest wall within 4 km of a summit that one can stand before: on a lattice of 20 m, the
+// greatest rise over 3 steps in one of 8 directions (60 m, or 85 m along the diagonals) from a
+// foot whose approach, the 20 steps before it (400 or 566 m), climbs or drops less than 100 m;
+// the direction up it, that rise, the height the ground rises within 20 steps up from the foot,
+// and the end of the approach (the eye of view_wall). found false without one.
 struct Wall {
     Point foot;
     double upX = 1.0;
     double upZ = 0.0;
     double step = 0.0;
     double height = 0.0;
+    Point approach;
+    bool found = false;
 };
 [[nodiscard]] Wall highestWall(const terrain::Heightfield& field, const Point& summit);
 

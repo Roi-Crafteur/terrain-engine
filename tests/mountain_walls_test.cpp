@@ -1,7 +1,8 @@
 // The walls of the mountains of the geography (mountain_walls.hpp): the closed form of the top of
 // the strata against the union of their flat-topped prisms; tops never above the ground but by a
 // few hundredths of a band, never below it but by a band, continuous and rising with the ground;
-// no wall on the floors and the crests; both characters, strata and crystalline, present; one
+// no wall on the floors and the crests; both characters, strata and crystalline, present (the
+// cores of the highest chains crystalline); one
 // surface (the density changes sign once along y); the same bits through a memo and from one
 // Noises to its twin; continuous across the seams of the world.
 #include "mountain_walls.hpp"
@@ -89,12 +90,14 @@ void testStrataBounds() {
     TEST_CHECK(rising);
 }
 
+// A steep face of a core below the crystalline cores of the highest chains (intensity 0.65):
+// both characters, region by region.
 walls::Column wallColumn(double ground, double gradX, double gradZ) {
     walls::Column c;
     c.ground = ground;
     c.gradX = gradX;
     c.gradZ = gradZ;
-    c.intensity = 1.0f;
+    c.intensity = 0.65f;
     c.character = 0.8f;
     c.relief = 1'500.0f;
     return c;
@@ -131,6 +134,14 @@ void testSurface() {
     TEST_CHECK(bounded);
     TEST_CHECK(once);
     TEST_CHECK(strata > total / 10 && crystal > total / 10);
+    // The cores of the highest chains are crystalline.
+    walls::Column high = wallColumn(3'000.0, 0.8, -0.6);
+    high.intensity = 1.0f;
+    int layered = 0;
+    for (const bit_exact::Point& p : bit_exact::randomPoints(2'000, 2e7)) {
+        layered += walls::masks(n, high, p.x, p.z, nullptr).strata > 0.5 ? 1 : 0;
+    }
+    TEST_CHECK(layered < 2'000 / 10);
 }
 
 // The same bits through a memo along rows of points and from a twin; another seed differs;

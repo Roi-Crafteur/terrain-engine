@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <vector>
 
@@ -19,11 +20,13 @@ constexpr double kEyeAboveGround = 1.8;
 constexpr std::initializer_list<double> kFloorDistances = {8'000.0, 10'000.0, 12'000.0,
                                                            14'000.0};
 constexpr double kOwnTop = 300.0;
-// view_wall: a lattice of kWallStep meters within kWallReach meters of the summit; the wall is
-// the rise within kWallSpan meters up from its foot.
+// view_wall: a lattice of kWallStep meters within kWallReach meters of the summit; the steepest
+// rise over kWallRun steps; the wall is the rise within kWallSpan steps up from its foot.
 constexpr double kWallStep = 20.0;
 constexpr int kWallHalf = 200; // kWallReach / kWallStep
-constexpr int kWallSpan = 20;  // steps of kWallStep
+constexpr int kWallRun = 3;
+constexpr int kWallSpan = 20;
+constexpr float kApproachRise = 100.0f;
 
 } // namespace
 
@@ -124,11 +127,17 @@ Wall highestWall(const terrain::Heightfield& field, const Point& summit) {
     int footJ = kWallHalf;
     int di = 1;
     int dj = 0;
-    for (int j = 1; j + 1 < n; ++j) {
-        for (int i = 1; i + 1 < n; ++i) {
-            for (const auto [u, v] : {std::array<int, 2>{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
-                const double rise = static_cast<double>(at(i + u, j + v) - at(i, j));
-                if (rise > best.step) {
+    for (int j = kWallSpan; j + kWallSpan < n; ++j) {
+        for (int i = kWallSpan; i + kWallSpan < n; ++i) {
+            for (const auto [u, v] :
+                 {std::array<int, 2>{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1},
+                  {-1, -1}}) {
+                const double rise =
+                    static_cast<double>(at(i + kWallRun * u, j + kWallRun * v) - at(i, j));
+                if (rise > best.step &&
+                    std::abs(at(i - kWallSpan * u, j - kWallSpan * v) - at(i, j)) <
+                        kApproachRise) {
+                    best.found = true;
                     best.step = rise;
                     footI = i;
                     footJ = j;
@@ -141,12 +150,16 @@ Wall highestWall(const terrain::Heightfield& field, const Point& summit) {
     best.foot = {xs[static_cast<std::size_t>(footJ) * n + static_cast<std::size_t>(footI)],
                  zs[static_cast<std::size_t>(footJ) * n + static_cast<std::size_t>(footI)],
                  at(footI, footJ)};
-    best.upX = di;
-    best.upZ = dj;
+    const auto back = static_cast<std::size_t>(footJ - kWallSpan * dj) * n +
+                      static_cast<std::size_t>(footI - kWallSpan * di);
+    best.approach = {xs[back], zs[back], h[back]};
+    const double length = terrain::dmath::hypot(di, dj);
+    best.upX = di / length;
+    best.upZ = dj / length;
     float top = best.foot.height;
     for (int k = 1; k <= kWallSpan; ++k) {
-        top = std::max(top, field.heightAt(best.foot.x + di * kWallStep * k,
-                                           best.foot.z + dj * kWallStep * k));
+        top = std::max(top, field.heightAt(best.foot.x + best.upX * kWallStep * k,
+                                           best.foot.z + best.upZ * kWallStep * k));
     }
     best.height = static_cast<double>(top - best.foot.height);
     return best;

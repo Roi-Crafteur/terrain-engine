@@ -191,6 +191,38 @@ inline constexpr double kDullRelief = 300.0;
                                             const ReliefStats& stats, int windowCount,
                                             int threads);
 
+// The cores of the chains of the geography (land cells of intensity at least kCoreRelief, up to
+// count of them spread evenly over the cells of the belts) and their summits. Slopes: 64 points
+// 250 m apart around the center of each cell, central differences over 2 m. Summits: the highest
+// point within 6 km of the center of each cell, climbed to the top; its dominance over the
+// highest ground 3 to 5 km around it; the mean slope of its faces over their first 1,500 m of
+// drop (the mean horizontal distance at which 16 straight lines from it have dropped that much);
+// the floor 8 to 14 km around (the lowest land, in 64 directions every 2 km, that sees it), the
+// angle at which the summit stands above its horizontal, and its own slope over 25 m. All 0
+// without the geography or without a core.
+struct PeakFigures {
+    int cores = 0;
+    double cliffShare = 0.0;    // of the slopes above 45 degrees
+    double wallShare = 0.0;     // above 70 degrees
+    double dominance50 = 0.0;   // median, meters
+    double dominantShare = 0.0; // of the summits at least kDominant above their ring
+    double faces50 = 0.0;       // median, degrees
+    double steepFaces = 0.0;    // of the summits whose faces are at least kSteepFaces
+    double seen50 = 0.0;        // median angle above the horizontal of the floor, degrees
+    double seenShare = 0.0;     // of the summits at least kSeenAngle above it
+    double floorSlope50 = 0.0;  // median slope of the floors, degrees
+    double highest = 0.0;       // the highest of the summits, meters
+};
+
+inline constexpr float kCoreRelief = 0.7f;
+inline constexpr double kDominant = 1000.0;
+inline constexpr double kSteepFaces = 40.0;
+inline constexpr double kSeenAngle = 15.0;
+
+// The same figures whatever the number of threads (0: the hardware concurrency).
+[[nodiscard]] PeakFigures measurePeaks(const Heightfield& field, const ReliefGrid& world,
+                                       const ReliefStats& stats, int count, int threads);
+
 namespace relief_shapes {
 
 // A polyline in meters.
