@@ -224,7 +224,7 @@ def create_temporary_terrain_material():
     asset_path = f"{PACKAGE_PATH}/{ASSET_NAME}"
     if unreal.EditorAssetLibrary.does_asset_exist(asset_path):
         material = unreal.EditorAssetLibrary.load_asset(asset_path)
-        unreal.MaterialEditingLibrary.delete_all_material_expressions(material)
+        look.clear_material(material)
         unreal.log(f"{asset_path} exists: rebuilt in place")
     else:
         tools = unreal.AssetToolsHelpers.get_asset_tools()

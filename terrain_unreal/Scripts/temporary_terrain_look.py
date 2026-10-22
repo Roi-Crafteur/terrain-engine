@@ -51,8 +51,8 @@ GROUND = 8  # the first 8 layers are the ground; then the snow and the rock
 TINTS = {
     "Grass": (0.8, 1.1, 0.6), "DryGrass": (1.0, 0.95, 0.75), "Forest": (0.75, 0.95, 0.7),
     "Alpine": (0.85, 1.05, 0.85), "Dirt": (1.0, 0.95, 0.9), "Sand": (1.05, 1.02, 0.95),
-    "Desert": (0.95, 0.95, 1.0), "Scree": (1.0, 1.0, 1.0), "Snow": (1.0, 1.0, 1.0),
-    "Rock": (1.0, 1.0, 1.0),
+    "Desert": (0.95, 0.95, 1.0), "Scree": (0.85, 0.95, 1.1), "Snow": (1.0, 1.0, 1.0),
+    "Rock": (0.75, 0.9, 1.2),
 }
 
 SCALARS = {
@@ -159,6 +159,18 @@ def texture_paths(pack):
     return result
 
 
+def clear_material(material):
+    """Deletes every expression of a material rebuilt in place: delete_all_material_expressions
+    only deletes about half of them per call (UE 5.8), and the remaining parameters of the same
+    name would keep their old default values."""
+    editing = unreal.MaterialEditingLibrary
+    for _ in range(32):
+        if editing.get_num_material_expressions(material) == 0:
+            return
+        editing.delete_all_material_expressions(material)
+    raise RuntimeError(f"cannot delete the expressions of {material.get_name()}")
+
+
 def has_pack():
     found = unreal.EditorAssetLibrary.does_asset_exist(STYLESCAPE + LAYERS[0][1])
     if not found:
@@ -195,8 +207,11 @@ rock = max(rock, W2.y * CoreRock);
 float cold = saturate((W2.x - 0.5) * 2.5 + (n2 - 0.5) * 1.2 + 0.5);
 float snow = cold * saturate((SnowShedDeg + jit - slope) / max(SnowShedDeg - SnowHoldDeg, 1.0));
 float g[8] = { W0.x, W0.y, W0.z, W0.w, W1.x, W1.y, W1.z, W1.w };
-float soil = 0.8 * saturate((slope - 26.0 - jit) / 10.0);
-float vegetation = g[0] + g[1] + g[2] + g[3];
+// Moderate slopes show their soil: dirt under the grass and the forest, scree under the alpine
+// grass.
+float soil = 0.6 * saturate((slope - 26.0 - jit) / 10.0);
+float lowland = g[0] + g[1] + g[2];
+float alpine = g[3];
 float foot = 0.7 * saturate(W2.z) * (1.0 - rock);
 float sum = 0.0;
 [unroll] for (int s = 0; s < 8; ++s)
@@ -204,9 +219,9 @@ float sum = 0.0;
     g[s] *= (s < 4 ? 1.0 - soil : 1.0) * (1.0 - foot);
     sum += g[s];
 }
-g[4] += vegetation * soil * (1.0 - foot);
-g[7] += foot;
-sum += vegetation * soil * (1.0 - foot) + foot;
+g[4] += lowland * soil * (1.0 - foot);
+g[7] += alpine * soil * (1.0 - foot) + foot;
+sum += (lowland + alpine) * soil * (1.0 - foot) + foot;
 if (sum < 1e-3) { g[4] = 1.0; sum = 1.0; }
 float3 ground = float3(0.0, 0.0, 0.0);
 float2 nts = float2(0.0, 0.0);
