@@ -2,8 +2,8 @@
 // hypsometric colors shaded (world.png), zooms of 2,048 km, 200 km and 20 km on a mountain
 // chain, a plain and a coast found on the planet (zoom_<site>_<km>km.png) and on the places
 // given by --at (fixed places, to compare reliefs at the same points), and the figures of
-// terrain::measureRelief, measureLocalRelief and measureTerrain (printed, and written to
-// stats.txt). --without ravines or --without lively switches off a step of the relief of the
+// terrain::measureRelief, measureLocalRelief, measureTerrain and measurePeaks (printed, and
+// written to stats.txt). --without ravines or --without lively switches off a step of the relief of the
 // geography (GeographyParams::ravines, livelyPlains), to compare them. Without the optional
 // arguments: seed 20261019, the default relief, cells of 16,384 m for the planet, zooms of
 // 2,048 px, all the hardware threads, the default world.
@@ -320,6 +320,22 @@ void reportTerrain(Report& r, const terrain::TerrainFigures& f, bool geography) 
     }
 }
 
+void reportPeaks(Report& r, const terrain::PeakFigures& p) {
+    if (p.cores == 0) {
+        return;
+    }
+    r.add("cores of the chains (%d cells of intensity %.1f or more): slopes at 2 m above 45 "
+          "degrees %.1f%%, above 70 degrees %.1f%%; their summits (highest %.0f m): dominance over "
+          "3 to 5 km %.0f m (median), %.0f%% at least %.0f m; faces over their first 1,500 m of "
+          "drop %.1f degrees (median), %.0f%% at least %.0f; from the floor 8 to 14 km away that "
+          "sees them, %.1f degrees above the horizontal (median), %.0f%% at least %.0f; slope of "
+          "those floors %.1f degrees (median)\n",
+          p.cores, static_cast<double>(terrain::kCoreRelief), 100.0 * p.cliffShare,
+          100.0 * p.wallShare, p.highest, p.dominance50, 100.0 * p.dominantShare,
+          terrain::kDominant, p.faces50, 100.0 * p.steepFaces, terrain::kSteepFaces, p.seen50,
+          100.0 * p.seenShare, terrain::kSeenAngle, p.floorSlope50);
+}
+
 // The point of the shore nearest to a coast site of the map, whose cells are too coarse to put
 // it within the 20 km zoom: on a grid of 500 m over 64 km around it, the nearest sample with a
 // neighbor on the other side of the sea level (the site itself when there is none).
@@ -394,6 +410,8 @@ int main(int argc, char** argv) {
         terrain::measureLocalRelief(field, world, stats, kWindowCount, options.threads);
     const terrain::TerrainFigures terrainFigures =
         terrain::measureTerrain(field, world, stats, kWindowCount, options.threads);
+    const terrain::PeakFigures peaks =
+        terrain::measurePeaks(field, world, stats, 4 * kWindowCount, options.threads);
     Report r;
     r.add("relief %s, seed %llu, world %.0f x %.0f km, cells of %.0f m (%d x %d): sampled in "
           "%.1f s, measured in %.1f s\n",
@@ -404,6 +422,7 @@ int main(int argc, char** argv) {
     reportShapes(r, stats, options.world);
     reportLocal(r, local);
     reportTerrain(r, terrainFigures, field.geography() != nullptr);
+    reportPeaks(r, peaks);
     const int factor = (world.columns + kMaxMapWidth - 1) / kMaxMapWidth;
     const bool mapWritten = terrain::writePng(
         directory / "world.png", terrain::renderRelief(terrain::downsampleRelief(world, factor)));

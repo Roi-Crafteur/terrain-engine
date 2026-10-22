@@ -174,6 +174,12 @@ terrain_add_test(geography_relief_test terrain_core)
 terrain_add_test(ravines_test terrain_core)
 target_include_directories(ravines_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(mountain_forms_test terrain_core)
+target_include_directories(mountain_forms_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(mountain_walls_test terrain_core)
+target_include_directories(mountain_walls_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 terrain_add_test(geography_tectonics_test terrain_core)
 target_include_directories(geography_tectonics_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

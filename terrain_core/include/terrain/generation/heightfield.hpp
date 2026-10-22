@@ -147,14 +147,29 @@ private:
     [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos) const;
     // The intensity of the relief at the point: that of the map with the spurs of the chains.
     [[nodiscard]] float reliefAt(double x, double z, float mapRelief, Memos* memos) const;
-    // The ridged mountains of this intensity and character under the mask, carved by ravines.
-    [[nodiscard]] float geographyMountainAt(double x, double z, float mask, float intensity,
-                                            float character, Memos* memos) const;
-    // The depth of the ravines at a warped point, meters, from the ridged noise of the mountains
-    // there (its first octaves and their slope), the mountains amplitude meters high at most.
-    [[nodiscard]] float ravinesAt(double warpedX, double warpedZ,
-                                  const noise::FbmOctaves::RidgedSlope& ridge, double amplitude,
-                                  Memos* memos) const;
+    // The mountains at a point: their height above the base, that of their great forms alone
+    // (without the rock and the ravines) and its gradient (meters per meter, up), how much the
+    // point lies on the floor of a valley and on a crest of the massif, in [0, 1].
+    struct MountainForm {
+        float height = 0.0f;
+        float shape = 0.0f;
+        double gradX = 0.0;
+        double gradZ = 0.0;
+        float floor = 0.0f;
+        float crest = 0.0f;
+    };
+    // The ridged mountains of this intensity and character under the mask, cut by the valleys in
+    // U, crowned by the dominant summits (mountain_forms), carved by ravines, over ground meters
+    // of regional elevation.
+    [[nodiscard]] MountainForm geographyMountainAt(double x, double z, float ground, float mask,
+                                                   float intensity, float character,
+                                                   Memos* memos) const;
+    // A mountain of height mountain (the great forms of form, warped there, with the rock) carved
+    // by its ravines; crease: that of the massif, which counts onMassif in [0, 1] (0 in the
+    // valleys).
+    [[nodiscard]] float mountainRavinesAt(const std::array<double, 2>& warped,
+                                          const MountainForm& form, float crease, double onMassif,
+                                          float mountain, Memos* memos) const;
     // The depth of the ravines down the faces of the walls of the rifts at a canonical point,
     // meters, at most room.
     [[nodiscard]] float riftRavinesAt(double x, double z, float room, Memos* memos) const;
@@ -163,6 +178,10 @@ private:
                                       float region, float plain, float rough,
                                       Memos* memos) const;
     [[nodiscard]] float detailAt(double x, double z, float base, Memos* memos) const;
+    // The top of the rock with the walls of the mountains (mountain_walls) over ground meters
+    // (the base and the great forms of the mountains).
+    [[nodiscard]] float wallsAt(double x, double z, float ground, const MountainForm& form,
+                                float intensity, float character, Memos* memos) const;
 
     HeightfieldParams params_;
     WorldSize world_;

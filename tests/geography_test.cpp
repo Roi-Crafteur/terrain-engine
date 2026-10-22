@@ -137,8 +137,9 @@ void testSeaWhereTheCoastIsNegative() {
                                         terrain::wrapCoordinate(p.z, WorldSize{}.z));
         consistent = consistent && ((s.height < 0.0f) == (g.coast < 0.0)) &&
                      ((s.continentalness < 0.0f) == (g.coast < 0.0));
+        // The dominant summits rise the massif up to about 2.4 times its height.
         masked = masked && s.mountain >= 0.0f &&
-                 s.mountain <= 1.2f * s.mountainMask * mountainHeight &&
+                 s.mountain <= 2.5f * s.mountainMask * mountainHeight &&
                  s.mountainMask <= 1.0f &&
                  (s.relief >= 0.12f || s.mountainMask == 0.0f) && s.relief <= 1.0f &&
                  (g.coast <= 0.0 ||

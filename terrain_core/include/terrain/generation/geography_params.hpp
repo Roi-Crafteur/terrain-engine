@@ -127,15 +127,19 @@ struct GeographyParams {
     double spurWavelength = 180'000.0;
     // Steps of the relief that the comparisons can switch off: the ravines of the mountain slopes
     // and the lively plains (vallons and buttes everywhere, terraces, more relief at the scale
-    // of a walk).
+    // of a walk); the valleys in U, the dominant summits and the rock walls of the mountains.
     bool ravines = true;
     bool livelyPlains = true;
+    bool valleys = true;
+    bool summits = true;
+    bool walls = true;
 
-    // The ridged mountains of the Heightfield (its warp, octaves and wavelength) rise up to
-    // mountainHeight above the regional elevation under their mask, with their own sharpness and
+    // The ridged mountains of the Heightfield (its warp and octaves) rise up to mountainHeight
+    // above the regional elevation under their mask, with their own wavelength, sharpness and
     // gain: sharp crests, valleys in V between them, steep walls without a fractal roughness at
     // every scale.
-    float mountainHeight = 4250.0f;
+    float mountainHeight = 4100.0f;
+    double mountainWavelength = 14'000.0;
     double mountainSharpness = 4.0;
     double mountainGain = 0.42;
     // The valleys between the crests keep at least this share of the finer octaves of the

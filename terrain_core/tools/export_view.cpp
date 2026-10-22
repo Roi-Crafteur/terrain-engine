@@ -4,21 +4,28 @@
 // chains; view_summit.png from the highest summit of the planet toward the lowest ground 15 km
 // around; view_above.png from 300 m above the longest chain, looking at its highest point;
 // view_slope.png at a flank of the chain from 2 km away, at its height (the flank below the
-// highest point toward the lowest ground 3 km from it). The eye stands 1.8 m above the ground
+// highest point toward the lowest ground 3 km from it); view_k2.png from the floor of a great
+// valley 8 to 14 km from the highest summit of the planet, looking at it (the lowest place that
+// sees it); view_wall.png 400 to 566 m before the foot of the highest wall within 4 km of that
+// summit with a gentle approach, looking at it (view_places.hpp). The eye stands 1.8 m above the ground
 // (300 m for view_above), the field of view is 70 degrees wide, and a tower of 330 m stands 2 km
 // away in each view as a scale mark. Prints, and writes to views.txt, where each view stands
 // and what the eye at the foot sees of the highest point of the chain: the angle of its
 // elevation and whether the ground hides it farther than 1 km before it (nearer, it is its own
-// top). The places come from terrain::measureRelief on cells of cell-size meters; --mountain
+// top); the angle of the summit above the floor of view_k2 and the height of the wall of
+// view_wall. The places come from terrain::measureRelief on cells of cell-size meters; --mountain
 // takes the chain around a point instead (its highest point within 12 km), the same in every
 // relief compared; with --plain, view_plain_fixed.png is a plain view at that point; --without
 // switches off a step of the relief of the geography (the ravines, the lively plains, the warp
-// of the mountains or the floor of their valleys, kSteps), to compare them. Without the optional
+// of the mountains, the floor of their valleys, their valleys in U, their dominant summits or
+// their walls, kSteps), to compare them. Without the optional
 // arguments: seed 20261019, the default relief, 1,600 x 900 pixels, cells of 16,384 m, all the
 // hardware threads, the default world.
 // Usage: terrain_export_view <output-dir> [seed] [default|planetary|legacy|geography] [width]
 //        [cell-size] [threads] [world-x] [world-z] [--plain <x> <z>] [--mountain <x> <z>]
-//        [--without ravines|lively|warp|valley-detail]...
+//        [--without ravines|lively|warp|valley-detail|valleys|summits|walls]...
+
+#include "view_places.hpp"
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
@@ -123,9 +130,11 @@ bool parseWorld(int argc, char** argv, Options& options) {
 
 // The steps of the relief of the geography that --without switches off, to compare them: the
 // ravines and the lively plains (GeographyParams::ravines, livelyPlains), the warp of the
-// mountains (warpAmplitude 0) and the floor of the finer octaves in their valleys
-// (GeographyParams::mountainValleyDetail 0).
-constexpr std::array<const char*, 4> kSteps = {"ravines", "lively", "warp", "valley-detail"};
+// mountains (warpAmplitude 0), the floor of the finer octaves in their valleys
+// (GeographyParams::mountainValleyDetail 0), their valleys in U, dominant summits and walls
+// (GeographyParams::valleys, summits, walls).
+constexpr std::array<const char*, 7> kSteps = {"ravines", "lively",  "warp", "valley-detail",
+                                               "valleys", "summits", "walls"};
 
 unsigned stepBit(const char* name) {
     for (std::size_t k = 0; k < kSteps.size(); ++k) {
@@ -145,6 +154,9 @@ void switchOff(unsigned without, terrain::HeightfieldParams& params) {
     if ((without & stepBit("valley-detail")) != 0) {
         params.geography.mountainValleyDetail = 0.0;
     }
+    params.geography.valleys = (without & stepBit("valleys")) == 0;
+    params.geography.summits = (without & stepBit("summits")) == 0;
+    params.geography.walls = (without & stepBit("walls")) == 0;
 }
 
 // Reads the point <x> <z> after the flag at argv[k] (--plain or --mountain).
@@ -239,66 +251,11 @@ private:
     std::string text_;
 };
 
-struct Point {
-    double x = 0.0;
-    double z = 0.0;
-    float height = 0.0f;
-};
-
-Point pointAt(const terrain::Heightfield& field, double x, double z) {
-    return {x, z, field.heightAt(x, z)};
-}
-
-// The highest sample of a square of 2 half + 1 samples step meters apart around (x, z).
-Point highestAround(const terrain::Heightfield& field, double x, double z, int half, double step) {
-    Point best = pointAt(field, x, z);
-    for (int j = -half; j <= half; ++j) {
-        for (int i = -half; i <= half; ++i) {
-            const Point p = pointAt(field, x + i * step, z + j * step);
-            best = p.height > best.height ? p : best;
-        }
-    }
-    return best;
-}
-
-// The summit near a cell of the grid: the highest point within 12 km at 500 m, then climbed to
-// the top in steps of 100, 25 and 5 m (each repeated while it rises): crests are sharp.
-Point summitNear(const terrain::Heightfield& field, double x, double z) {
-    Point best = highestAround(field, x, z, 24, 500.0);
-    for (const double step : {100.0, 25.0, 5.0}) {
-        for (int k = 0; k < 64; ++k) {
-            const Point next = highestAround(field, best.x, best.z, 4, step);
-            if (!(next.height > best.height)) {
-                break;
-            }
-            best = next;
-        }
-    }
-    return best;
-}
-
-// The lowest land (at least 1 m) seen from (x, z) at these distances, in 64 directions; the
-// point at the first distance due south when there is none.
-Point lowestAround(const terrain::Heightfield& field, double x, double z,
-                   std::initializer_list<double> distances) {
-    Point best{x, z + *distances.begin(), 1.0e9f};
-    for (const double d : distances) {
-        for (int k = 0; k < 64; ++k) {
-            const Point p = pointAt(field, x + d * terrain::dmath::sinTurns(k / 64.0),
-                                    z - d * terrain::dmath::cosTurns(k / 64.0));
-            best = p.height >= 1.0f && p.height < best.height ? p : best;
-        }
-    }
-    if (best.height == 1.0e9f) {
-        best = pointAt(field, x, z + *distances.begin());
-    }
-    return best;
-}
-
-// Heading in turns from (x0, z0) toward (x1, z1).
-double headingTo(double x0, double z0, double x1, double z1) {
-    return terrain::dmath::atan2(x1 - x0, -(z1 - z0)) / kTwoPi;
-}
+using view_places::headingTo;
+using view_places::lowestAround;
+using view_places::Point;
+using view_places::pointAt;
+using view_places::summitNear;
 
 terrain::ViewParams viewFrom(const Options& options, const Point& eye, double above,
                              double heading, double tilt) {
@@ -422,6 +379,41 @@ bool writeRiftView(const terrain::Heightfield& field, const Options& options,
                      directory, r);
 }
 
+// From the floor of a great valley toward the summit, looking up at it; at the foot of its
+// highest wall, looking at the wall.
+bool writeK2Views(const terrain::Heightfield& field, const Options& options, const Point& summit,
+                  const std::filesystem::path& directory, Report& r) {
+    const view_places::ValleyEye floor = view_places::valleyEye(field, summit);
+    const Point eye = floor.found ? floor.eye : lowestAround(field, summit.x, summit.z, {10'000.0});
+    r.add("view_k2: the floor at %.0f m, %.1f km from the summit, sees it %.1f degrees above the "
+          "horizontal%s\n",
+          static_cast<double>(eye.height),
+          terrain::dmath::hypot(eye.x - summit.x, eye.z - summit.z) / 1000.0,
+          terrain::dmath::atan(floor.tangent) * 360.0 / kTwoPi,
+          floor.found ? "" : " (hidden from every floor 8 to 14 km around: the lowest of them)");
+    const view_places::Wall wall = view_places::highestWall(field, summit);
+    const Point& before = wall.approach;
+    const double distance =
+        terrain::dmath::hypot(wall.foot.x - before.x, wall.foot.z - before.z);
+    r.add("view_wall: the highest wall within 4 km of the summit with a gentle approach rises "
+          "%.0f m within 20 steps of its foot (%.0f m), %.0f m over its steepest 60 m%s\n",
+          wall.height, static_cast<double>(wall.foot.height), wall.step,
+          wall.found ? "" : " (none: the view looks at the summit)");
+    const double tilt =
+        std::clamp(0.5 * (static_cast<double>(wall.foot.height) + 0.5 * wall.height -
+                          static_cast<double>(before.height)) /
+                       std::max(distance, 1.0),
+                   0.0, 0.45);
+    return writeView(field, options, "k2",
+                     viewFrom(options, eye, kEyeAboveGround,
+                              headingTo(eye.x, eye.z, summit.x, summit.z), 0.55 * floor.tangent),
+                     directory, r) &&
+           writeView(field, options, "wall",
+                     viewFrom(options, before, kEyeAboveGround,
+                              headingTo(before.x, before.z, wall.foot.x, wall.foot.z), tilt),
+                     directory, r);
+}
+
 bool writeViews(const terrain::Heightfield& field, const Options& options,
                 const terrain::ReliefStats& stats, const std::filesystem::path& directory,
                 Report& r) {
@@ -457,7 +449,8 @@ bool writeViews(const terrain::Heightfield& field, const Options& options,
                               headingTo(over.x, over.z, summit.x, summit.z), 0.0),
                      directory, r) &&
            writeView(field, options, "slope", slopeView(field, options, summit), directory, r) &&
-           writeRiftView(field, options, directory, r);
+           writeRiftView(field, options, directory, r) &&
+           writeK2Views(field, options, highest, directory, r);
 }
 
 } // namespace
@@ -471,7 +464,7 @@ int main(int argc, char** argv) {
                      "Usage: %s <output-dir> [seed] [default|planetary|legacy|geography] "
                      "[width] [cell-size] [threads] [world-x] [world-z] [--plain <x> <z>] "
                      "[--mountain <x> <z>] "
-                     "[--without ravines|lively|warp|valley-detail]...\n",
+                     "[--without ravines|lively|warp|valley-detail|valleys|summits|walls]...\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
