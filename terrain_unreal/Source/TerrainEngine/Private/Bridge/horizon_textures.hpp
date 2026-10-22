@@ -4,6 +4,7 @@
 #include "horizon_layout.hpp"
 #include "horizon_mesh.hpp"
 
+#include "terrain/generation/heightfield.hpp"
 #include "terrain/streaming/horizon_epoch.hpp"
 #include "terrain/streaming/horizon_levels.hpp"
 #include "terrain/streaming/horizon_sampler.hpp"
@@ -23,10 +24,15 @@ namespace terrain::unreal {
 // A texel is 4 floats: the height shown (meters, the ocean flat at the sea level), the slopes of
 // the ground along x and z (0 on the ocean, whose normal points up), and the color of the ground
 // as the integer r + 256 g + 65536 b, exact in a float below 2^24: the altitude colors of the
-// tiles (altitudeColor) and kSeaColor, bit for bit. The material and the biome of a sample (for
-// the materials of phase 14) would take a second texture of the same layout, written with the
-// same regions (terrain_unreal/README.md).
+// tiles (altitudeColor), bit for bit. On the ocean the last float is instead the ground under
+// the sea, meters from the sea level, below 0: the material colors the sea by its depth
+// (texelGround). The material and the biome of a sample (for the materials of phase 14) would
+// take a second texture of the same layout, written with the same regions
+// (terrain_unreal/README.md).
 inline constexpr int kTexelFloats = 4;
+
+// The material of the horizon draws the sea at the altitude 0.
+static_assert(kSeaLevel == 0.0f, "the sea of the horizon lies at the altitude 0");
 
 struct HorizonTexel {
     float height = 0.0f;
@@ -39,7 +45,14 @@ struct HorizonTexel {
 
 [[nodiscard]] HorizonTexel horizonTexel(const HorizonCell& cell, bool sea);
 [[nodiscard]] float packColor(VertexColor color);
-[[nodiscard]] VertexColor unpackColor(float color); // opaque
+[[nodiscard]] VertexColor unpackColor(float color); // opaque, of a land texel
+
+// A texel of the ocean (horizonTexel with the sea): its last float is negative.
+[[nodiscard]] bool isSeaTexel(const HorizonTexel& texel);
+// The ground the material colors the sea from, meters from the sea level: under the sea for a
+// texel of the ocean (below 0), the height shown, at least 0, elsewhere. The material
+// interpolates it between the samples: the coast lies where it crosses 0.
+[[nodiscard]] float texelGround(const HorizonTexel& texel);
 
 // The texels of a computed piece, kTexelFloats floats per cell, row by row as its cells.
 [[nodiscard]] std::vector<float> pieceTexels(const HorizonPiece& piece, bool sea);

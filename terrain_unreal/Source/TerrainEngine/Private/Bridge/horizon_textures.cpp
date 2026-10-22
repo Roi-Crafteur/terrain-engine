@@ -75,9 +75,17 @@ VertexColor unpackColor(float color) {
 
 HorizonTexel horizonTexel(const HorizonCell& cell, bool sea) {
     if (sea && cell.height < kSeaLevel) {
-        return {kSeaLevel, 0.0f, 0.0f, packColor(kSeaColor)};
+        return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel};
     }
     return {cell.height, cell.gradX, cell.gradZ, packColor(altitudeColor(cell.height))};
+}
+
+bool isSeaTexel(const HorizonTexel& texel) {
+    return texel.color < 0.0f;
+}
+
+float texelGround(const HorizonTexel& texel) {
+    return isSeaTexel(texel) ? texel.color : std::max(texel.height - kSeaLevel, 0.0f);
 }
 
 std::vector<float> pieceTexels(const HorizonPiece& piece, bool sea) {
