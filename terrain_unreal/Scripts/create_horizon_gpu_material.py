@@ -76,9 +76,10 @@ float distance = max(abs(ik.x - Viewer.x), abs(ik.y - Viewer.y));
 float alpha = HasCoarser > 0.5 ? saturate((distance - (Cells * 0.5 - 2.0 - MorphCells)) / MorphCells) : 0.0;
 // Colors packed as r + 256 g + 65536 b (Bridge/horizon_textures.hpp), exact in floats. On the
 // ocean the last float is the ground under the sea, below 0 (texelGround); its color, the sand
-// of the shore, only shows on the land side of the coast line.
+// of the shore, only shows on the land side of the coast line. The ground of the land gets 1 cm:
+// land at the sea level (or the whole ocean without bHorizonSea) stays dry.
 #define HORIZON_UNPACK(v) ((v) < 0.0 ? SHORE_COLOR : float3(fmod(v, 256.0), fmod(floor((v) / 256.0), 256.0), floor((v) / 65536.0)) / 255.0)
-#define HORIZON_GROUND(t) ((t).a < 0.0 ? (t).a : max((t).r, 0.0))
+#define HORIZON_GROUND(t) ((t).a < 0.0 ? (t).a : max((t).r, 0.0) + 0.01)
 float height = lerp(own.r, 0.5 * (a.r + b.r), alpha);
 float ground = lerp(HORIZON_GROUND(own), 0.5 * (HORIZON_GROUND(a) + HORIZON_GROUND(b)), alpha);
 float2 slope = lerp(own.gb, 0.5 * (ca.gb + cb.gb), alpha);
