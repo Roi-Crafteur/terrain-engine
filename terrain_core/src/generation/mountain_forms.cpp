@@ -24,6 +24,7 @@ constexpr double kSideWavelengthB = 9'000.0;
 // Distance to a zero line, first order: |n| / |grad n|, the gradient at least kLeastGradient
 // per meter.
 constexpr double kLeastGradient = 1.0e-7;
+constexpr double kTwoPi = 6.283185307179586476925286766559;
 
 // A valley in U: a flat floor of half width w, then the massif comes down to it over the width
 // of its walls (a smoothstep: rounded at their foot, a shoulder at their top), its crests and
@@ -36,6 +37,17 @@ constexpr double kFlatLow = 0.12;
 constexpr double kFlatHigh = 0.25;
 // Nor where the valley ends (its floor rising to the massif): only where it is kWhole to 1 there.
 constexpr double kWhole = 0.97;
+// Cones of scree lean on the foot of the walls, up to kFan meters high (at most kFanShare of the
+// height of the walls) where a noise of kFanWavelength passes kFanLow to kFanHigh (separate
+// cones), over kFanReach meters of the floor: at most as steep as the scree at rest; they meet
+// the wall rounded over kFanRound of their height.
+constexpr double kFan = 70.0;
+constexpr double kFanWavelength = 700.0;
+constexpr double kFanLow = -0.1;
+constexpr double kFanHigh = 0.4;
+constexpr double kFanReach = 250.0;
+constexpr double kFanShare = 0.5;
+constexpr double kFanRound = 0.25;
 constexpr double kMainHalfLow = 500.0;
 constexpr double kMainHalfHigh = 1'500.0;
 constexpr double kMainWallLow = 1'800.0;
@@ -73,7 +85,8 @@ constexpr double kHangHigh = 0.6;
 // The summits: one in kSummitShare of the cells of about kSummitCell meters, within kSummitJitter
 // of a cell from its center; the crests of the massif rise kProminenceLow to kProminenceHigh
 // meters there (over kLevel of the height of the mountains), over kRadiusLow to kRadiusHigh
-// meters around, as (1 - r / radius)^2: steepest at the center.
+// meters around on average, kLobeLow to kLobeHigh farther or nearer in 1, 2 and 3 lobes (no
+// summit is round: a long side and a short one).
 constexpr double kSummitCell = 16'384.0;
 constexpr double kSummitShare = 0.6;
 constexpr double kSummitJitter = 0.35;
@@ -82,16 +95,17 @@ constexpr double kProminenceLow = 1'200.0;
 constexpr double kProminenceHigh = 2'200.0;
 constexpr double kRadiusLow = 2'500.0;
 constexpr double kRadiusHigh = 3'500.0;
+constexpr std::array<double, 3> kLobeLow = {0.1, 0.05, 0.0};
+constexpr std::array<double, 3> kLobeHigh = {0.3, 0.2, 0.12};
+// The farthest a rise reaches, in radii: 1 plus the sum of kLobeHigh.
+constexpr double kLobeReach = 1.62;
 // Around the rise, out to kMoatEnd times its radius, the massif is lower by up to kMoat: the
 // summit stands above its neighbors.
 constexpr double kMoatEnd = 2.2;
 constexpr double kMoat = 0.4;
-// Under each summit a base of kBase of its prominence rises as (1 - r / radius)^2: the summit
-// stands even where its site falls in a hollow of the massif.
-constexpr double kBase = 1.2;
 // The summits rise at most to about kCeiling meters: lower, or none, where the ground and the
 // massif are already high.
-constexpr double kCeiling = 8'300.0;
+constexpr double kCeiling = 8'100.0;
 // Each summit moves onto the nearest zero line of the first octave of the massif (its crest) by
 // kCrestSteps steps of Newton of at most kCrestStep meters each (no leap from near an extremum
 // of the noise), at most kCrestReach meters in all.
@@ -141,16 +155,34 @@ Line lineOf(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::M
 }
 
 // The massif brought down to a valley in U of floor floor, at e meters beyond the half width of
-// the floor, its walls wall meters wide; the point on its floor where the valley cuts the massif
-// (kCutLow to kCutHigh meters) and is gentle.
-Carve valleyForm(const Form& massif, double floor, double e, double wall, const Line& line) {
+// the floor, its walls wall meters wide, a cone of scree up to fan meters high at their foot; the
+// point on its floor where the valley cuts the massif (kCutLow to kCutHigh meters) and is gentle.
+Carve valleyForm(const Form& massif, double floor, double e, double wall, const Line& line,
+                 double fan) {
     const double above = std::max(0.0, massif.height - floor);
     const double t = std::clamp(e / wall, 0.0, 1.0);
     const double keep = t * t * (3.0 - 2.0 * t);
     const double rise = above * 6.0 * t * (1.0 - t) / wall;
     const double kept = above > 0.0 ? keep : 0.0;
-    const Form form{floor + above * keep, kept * massif.gradX + rise * line.awayX,
-                    kept * massif.gradZ + rise * line.awayZ};
+    Form form{floor + above * keep, kept * massif.gradX + rise * line.awayX,
+              kept * massif.gradZ + rise * line.awayZ};
+    const double cone = std::min(fan, kFanShare * above);
+    if (cone > 0.0) {
+        // Its top in the wall, where the U is already cone + round above the floor (the U
+        // rises at least as t * t): the cone leans on the wall, its excess over it rounded
+        // over round meters (a continuous slope).
+        const double round = kFanRound * cone;
+        const double top = wall * std::sqrt((cone + round) / above);
+        const double v = std::clamp(1.0 - (top - e) / kFanReach, 0.0, 1.0);
+        const double over = floor + cone * v * v - form.height;
+        if (over > 0.0) {
+            const double share = over < round ? over / round : 1.0;
+            const double slope = 2.0 * cone * v / kFanReach;
+            form = {form.height + (over < round ? 0.5 * over * share : over - 0.5 * round),
+                    form.gradX + share * (slope * line.awayX - form.gradX),
+                    form.gradZ + share * (slope * line.awayZ - form.gradZ)};
+        }
+    }
     return {form, smooth(kCutLow, kCutHigh, above) * (1.0 - smooth(0.0, kBottom, e)) *
                       (1.0 - smooth(kFlatLow, kFlatHigh, dmath::hypot(form.gradX, form.gradZ)))};
 }
@@ -200,6 +232,11 @@ Summit summitOf(const Noises& n, int i, int j, int i0, int j0, bool onCrest) {
     s.prominence = kProminenceLow + (kProminenceHigh - kProminenceLow) * field(a, 3);
     const std::uint64_t b = noise::deriveSeed(a, 1);
     s.radius = kRadiusLow + (kRadiusHigh - kRadiusLow) * field(b, 0);
+    const std::uint64_t c = noise::deriveSeed(a, 2);
+    for (std::size_t k = 0; k < s.lobes.size(); ++k) {
+        s.lobes[k] = kLobeLow[k] + (kLobeHigh[k] - kLobeLow[k]) * field(b, static_cast<int>(k) + 1);
+        s.phases[k] = field(c, static_cast<int>(k));
+    }
     if (onCrest) {
         const int wi = (i % n.cellsX + n.cellsX) % n.cellsX;
         const int wj = (j % n.cellsZ + n.cellsZ) % n.cellsZ;
@@ -215,37 +252,54 @@ Summit summitOf(const Noises& n, int i, int j, int i0, int j0, bool onCrest) {
 // lowered by the product of their rings.
 struct Lifts {
     Form rise{1.0, 0.0, 0.0};
-    Form base;
     Form moat{1.0, 0.0, 0.0};
 };
 
-// Summit s seen at (dx, dz) from it, r away: within its radius, the factor 1 + gain (1 - (r /
-// radius)^2)^2 of the massif (broad enough to lift the crests near the center) and the base
-// base (1 - r / radius)^2; beyond, out to kMoatEnd radii, the factor 1 - depth 16 u^2 (1 - u)^2
-// (a lowered ring). With their gradients.
-void addSummit(const Summit& s, double dx, double dz, double r, double gain, double base,
-               double depth, Lifts& lifts) {
-    if (r < s.radius) {
-        const double q = 1.0 - (r / s.radius) * (r / s.radius);
+// The distance from summit s to (dx, dz), r away, in its lobed radii: r / (radius L(a)), and its
+// gradient.
+Form lobedDistance(const Summit& s, double dx, double dz, double r) {
+    if (!(r > 0.0)) {
+        return {0.0, 0.0, 0.0};
+    }
+    const double a = dmath::atan2(dz, dx) / kTwoPi;
+    double lobe = 1.0;
+    double turn = 0.0; // dL / da
+    for (std::size_t k = 0; k < s.lobes.size(); ++k) {
+        const double w = static_cast<double>(k + 1);
+        lobe += s.lobes[k] * dmath::cosTurns(w * a - s.phases[k]);
+        turn -= s.lobes[k] * kTwoPi * w * dmath::sinTurns(w * a - s.phases[k]);
+    }
+    // d a / dx = -dz / (2 pi r^2), d a / dz = dx / (2 pi r^2).
+    const double scale = 1.0 / (s.radius * lobe);
+    const double twist = turn / (kTwoPi * r * lobe);
+    return {r * scale, scale * (dx / r + dz * twist), scale * (dz / r - dx * twist)};
+}
+
+// Summit s seen at (dx, dz) from it, r away, rho lobed radii: within one, the factor 1 + gain
+// (1 - rho^2)^2 of the massif (broad enough to lift the crests near the center); beyond, out to
+// kMoatEnd, the factor 1 - depth 16 u^2 (1 - u)^2 (a lowered ring). With their gradients.
+void addSummit(const Summit& s, double dx, double dz, double r, double gain, double depth,
+               Lifts& lifts) {
+    const Form rho = lobedDistance(s, dx, dz, r);
+    if (rho.height < 1.0) {
+        const double q = 1.0 - rho.height * rho.height;
         const double factor = 1.0 + gain * q * q;
         if (factor > lifts.rise.height) {
-            const double along = -4.0 * gain * q / (s.radius * s.radius);
-            lifts.rise = {factor, along * dx, along * dz};
-        }
-        const double t = 1.0 - r / s.radius;
-        if (base * t * t > lifts.base.height) {
-            const double along = r > 0.0 ? -2.0 * base * t / (s.radius * r) : 0.0;
-            lifts.base = {base * t * t, along * dx, along * dz};
+            const double along = -4.0 * gain * q * rho.height;
+            lifts.rise = {factor, along * rho.gradX, along * rho.gradZ};
         }
         return;
     }
-    const double span = (kMoatEnd - 1.0) * s.radius;
-    const double u = (r - s.radius) / span;
+    if (!(rho.height < kMoatEnd)) {
+        return;
+    }
+    const double span = kMoatEnd - 1.0;
+    const double u = (rho.height - 1.0) / span;
     const double factor = 1.0 - depth * 16.0 * u * u * (1.0 - u) * (1.0 - u);
-    const double along = -depth * 32.0 * u * (1.0 - u) * (1.0 - 2.0 * u) / (span * r);
+    const double along = -depth * 32.0 * u * (1.0 - u) * (1.0 - 2.0 * u) / span;
     Form& m = lifts.moat;
-    m = {m.height * factor, m.gradX * factor + m.height * along * dx,
-         m.gradZ * factor + m.height * along * dz};
+    m = {m.height * factor, m.gradX * factor + m.height * along * rho.gradX,
+         m.gradZ * factor + m.height * along * rho.gradZ};
 }
 
 } // namespace
@@ -262,6 +316,7 @@ Noises makeNoises(std::uint64_t seed, const WorldSize& world, noise::FbmOctaves 
     n.widths = octaves(seed, 6, 1, kWidthWavelength, world);
     n.hanging = octaves(seed, 7, 1, kHangWavelength, world);
     n.presence = octaves(seed, 11, 1, kPresenceWavelength, world);
+    n.fans = octaves(seed, 12, 1, kFanWavelength, world);
     n.summits = noise::deriveSeed(seed, 9);
     n.cellsX = std::max(1, static_cast<int>(std::lround(world.x / kSummitCell)));
     n.cellsZ = std::max(1, static_cast<int>(std::lround(world.z / kSummitCell)));
@@ -294,7 +349,11 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
         smooth(-0.5, 0.5, fbm(n.widths, x, z, memo ? &memo->widths : nullptr));
     const double half = kMainHalfLow + (kMainHalfHigh - kMainHalfLow) * width;
     const double wall = kMainWallLow + (kMainWallHigh - kMainWallLow) * width;
-    Carve out = valleyForm(massif, floorMain, main.distance - half, wall, main);
+    // The cones of scree at the foot of the walls of the main valleys, half as high at those of
+    // the tributaries.
+    const double fan =
+        kFan * smooth(kFanLow, kFanHigh, fbm(n.fans, x, z, memo ? &memo->fans : nullptr));
+    Carve out = valleyForm(massif, floorMain, main.distance - half, wall, main, fan);
     out.floor *= smooth(kWhole, 1.0, presence);
     const double reach = main.distance - half;
     const double keep = presence * (1.0 - smooth(kReachLow, kReachHigh, main.distance));
@@ -310,7 +369,8 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
                              memo ? (positive ? &memo->sideA : &memo->sideB) : nullptr);
     const double base = passes + hang + kClimb * std::max(0.0, reach);
     const double floor = base + (1.0 - own) * std::max(0.0, massif.height - base);
-    Carve tributary = valleyForm(massif, floor, line.distance - kSideHalf, kSideWall, line);
+    Carve tributary =
+        valleyForm(massif, floor, line.distance - kSideHalf, kSideWall, line, 0.5 * fan);
     tributary.floor *= smooth(kWhole, 1.0, own);
     // The lower of the two, their meeting rounded over kJoin meters: a continuous slope. Less
     // near the base (never below it) and where either does not cut the massif (none where
@@ -336,11 +396,10 @@ Summit summitOfCell(const Noises& n, int i, int j) {
     return s;
 }
 
-Rise summits(const Noises& n, double x, double z, double ground, double height, double core,
+Form summits(const Noises& n, double x, double z, double ground, double height, double core,
              Memo* memo) {
-    Rise out;
     if (!(core > 0.0) || !(height > 0.0)) {
-        return out;
+        return {1.0, 0.0, 0.0};
     }
     const double sizeX = n.world.x / n.cellsX;
     const double sizeZ = n.world.z / n.cellsZ;
@@ -371,7 +430,8 @@ Rise summits(const Noises& n, double x, double z, double ground, double height, 
             continue;
         }
         if (memo == nullptr) {
-            if (!(dmath::hypot(px - s.x, pz - s.z) < kMoatEnd * s.radius + kCrestReach)) {
+            if (!(dmath::hypot(px - s.x, pz - s.z) <
+                  kMoatEnd * kLobeReach * s.radius + kCrestReach)) {
                 continue;
             }
             s = summitOf(n, i + static_cast<int>(k % 3) - 1, j + static_cast<int>(k / 3) - 1, i,
@@ -380,23 +440,20 @@ Rise summits(const Noises& n, double x, double z, double ground, double height, 
         const double dx = px - s.x;
         const double dz = pz - s.z;
         const double r = dmath::hypot(dx, dz);
-        if (!(r < kMoatEnd * s.radius)) {
+        if (!(r < kMoatEnd * kLobeReach * s.radius)) {
             continue;
         }
         // Lower summits where the ground and the massif are already high: the top of the rise,
-        // at most ground + height + core * prominence * (1 / kLevel + kBase), under kCeiling.
+        // at most ground + height + core * prominence / kLevel, under kCeiling.
         const double prominence =
-            std::clamp((kCeiling - ground - height) / (1.0 / kLevel + kBase), 0.0, s.prominence);
-        addSummit(s, dx, dz, r, core * prominence / (kLevel * height), core * kBase * prominence,
-                  core * kMoat, lifts);
+            std::clamp(kLevel * (kCeiling - ground - height), 0.0, s.prominence);
+        addSummit(s, dx, dz, r, core * prominence / (kLevel * height), core * kMoat, lifts);
     }
     // The highest rise, lowered by the rings: (F f)' = F' f + F f'.
     const Form& f = lifts.rise;
     const Form& g = lifts.moat;
-    out.factor = {f.height * g.height, f.gradX * g.height + f.height * g.gradX,
-                  f.gradZ * g.height + f.height * g.gradZ};
-    out.base = lifts.base;
-    return out;
+    return {f.height * g.height, f.gradX * g.height + f.height * g.gradX,
+            f.gradZ * g.height + f.height * g.gradZ};
 }
 
 } // namespace terrain::mountain_forms

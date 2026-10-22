@@ -1,6 +1,6 @@
 // The great forms of the mountains of the geography (mountain_forms.hpp): summits in about 60 %
 // of their cells, on the crests of the massif; their rise within its bounds, none above the
-// ceiling, its gradient that of its height; valleys that only cut the massif, never below its
+// ceiling, its gradient that of its height, no summit round; valleys that only cut the massif, never below its
 // base, with floors and passes under 15 degrees; the same bits through a memo (the summits move
 // onto their crests once per cell through it, one by one without it), from a twin, periodic and
 // continuous across the seams of the world.
@@ -22,11 +22,10 @@ namespace noise = terrain::noise;
 constexpr std::uint64_t kSeed = 0xF0F0ULL;
 constexpr double kHeight = 3'800.0; // of the massif
 constexpr double kGround = 1'500.0; // regional elevation
-// The bounds of the summits: prominence, rise of the massif, base, ceiling.
+// The bounds of the summits: prominence, rise of the massif, ceiling.
 constexpr double kProminenceHigh = 2'200.0;
 constexpr double kLevel = 0.6;
-constexpr double kBase = 0.8;
-constexpr double kCeiling = 8'300.0;
+constexpr double kCeiling = 8'100.0;
 
 forms::Noises noisesOf(std::uint64_t seed, const WorldSize& world) {
     return forms::makeNoises(seed, world,
@@ -64,9 +63,11 @@ void testSummitsOnCrests() {
 }
 
 // The rise: a factor above 0 (the rings lower the massif by up to kMoat each) and up to 1 + the
-// highest prominence over kLevel of the massif, a base
-// up to kBase of it, nothing where the core is 0 or above the ceiling; its gradient that of its
-// height (finite differences over 1 cm, away from the meeting of two summits).
+// highest prominence over kLevel of the massif; nothing where the core is 0 or above the
+// ceiling; its gradient that of its height (finite differences over 1 cm, away from the meeting
+// of two summits); no summit round: along the 8 directions from its center, the distance at
+// which the rise has fallen to half differs by a third or more between the farthest and the
+// nearest.
 void testRise() {
     const forms::Noises n = noisesOf(kSeed, WorldSize{});
     bool bounded = true;
@@ -75,30 +76,22 @@ void testRise() {
     int matching = 0;
     int compared = 0;
     for (const bit_exact::Point& p : bit_exact::randomPoints(20'000, 1e6)) {
-        const forms::Rise r = forms::summits(n, p.x, p.z, kGround, kHeight, 1.0, nullptr);
+        const forms::Form r = forms::summits(n, p.x, p.z, kGround, kHeight, 1.0, nullptr);
         // The rings of several summits may overlap: their factors multiply.
-        bounded = bounded && r.factor.height > 0.0 &&
-                  r.factor.height <= 1.0 + kProminenceHigh / (kLevel * kHeight) + 1e-12 &&
-                  r.base.height >= 0.0 && r.base.height <= kBase * kProminenceHigh;
-        raised += r.factor.height > 1.0 ? 1 : 0;
-        const forms::Rise off = forms::summits(n, p.x, p.z, kGround, kHeight, 0.0, nullptr);
-        const forms::Rise high =
+        bounded = bounded && r.height > 0.0 &&
+                  r.height <= 1.0 + kProminenceHigh / (kLevel * kHeight) + 1e-12;
+        raised += r.height > 1.0 ? 1 : 0;
+        const forms::Form off = forms::summits(n, p.x, p.z, kGround, kHeight, 0.0, nullptr);
+        const forms::Form high =
             forms::summits(n, p.x, p.z, kCeiling - kHeight, kHeight, 1.0, nullptr);
-        none = none && off.factor.height == 1.0 && off.base.height == 0.0 &&
-               high.factor.height <= 1.0 && high.base.height == 0.0;
+        none = none && off.height == 1.0 && high.height <= 1.0;
         const double step = 0.01;
-        const forms::Rise x = forms::summits(n, p.x + step, p.z, kGround, kHeight, 1.0, nullptr);
-        const forms::Rise z = forms::summits(n, p.x, p.z + step, kGround, kHeight, 1.0, nullptr);
-        const double fx = (x.factor.height - r.factor.height) / step;
-        const double fz = (z.factor.height - r.factor.height) / step;
-        const double bx = (x.base.height - r.base.height) / step;
-        const double bz = (z.base.height - r.base.height) / step;
-        if (r.factor.height != 1.0) {
+        const forms::Form x = forms::summits(n, p.x + step, p.z, kGround, kHeight, 1.0, nullptr);
+        const forms::Form z = forms::summits(n, p.x, p.z + step, kGround, kHeight, 1.0, nullptr);
+        if (r.height != 1.0) {
             ++compared;
-            matching += std::abs(fx - r.factor.gradX) < 1e-5 &&
-                                std::abs(fz - r.factor.gradZ) < 1e-5 &&
-                                std::abs(bx - r.base.gradX) < 1e-2 &&
-                                std::abs(bz - r.base.gradZ) < 1e-2
+            matching += std::abs((x.height - r.height) / step - r.gradX) < 1e-5 &&
+                                std::abs((z.height - r.height) / step - r.gradZ) < 1e-5
                             ? 1
                             : 0;
         }
@@ -107,6 +100,40 @@ void testRise() {
     TEST_CHECK(none);
     TEST_CHECK(raised > 20'000 / 20);
     TEST_CHECK(matching > compared * 99 / 100);
+}
+
+void testUneven() {
+    const forms::Noises n = noisesOf(kSeed, WorldSize{});
+    int summits = 0;
+    int uneven = 0;
+    for (int j = 0; j < n.cellsZ && summits < 200; j += 13) {
+        for (int i = 0; i < n.cellsX && summits < 200; i += 17) {
+            const forms::Summit s = forms::summitOfCell(n, i, j);
+            if (!(s.prominence > 0.0)) {
+                continue;
+            }
+            const double top = forms::summits(n, s.x, s.z, kGround, kHeight, 1.0, nullptr).height;
+            double nearest = 1e30;
+            double farthest = 0.0;
+            for (int k = 0; k < 8; ++k) {
+                const double cx = std::cos(k * 0.785398163397448);
+                const double cz = std::sin(k * 0.785398163397448);
+                double d = 0.0;
+                while (d < 2.0 * s.radius &&
+                       forms::summits(n, s.x + d * cx, s.z + d * cz, kGround, kHeight, 1.0,
+                                      nullptr)
+                               .height > 1.0 + 0.5 * (top - 1.0)) {
+                    d += 25.0;
+                }
+                nearest = std::min(nearest, d);
+                farthest = std::max(farthest, d);
+            }
+            ++summits;
+            uneven += farthest > 1.33 * nearest ? 1 : 0;
+        }
+    }
+    TEST_CHECK(summits > 50);
+    TEST_CHECK(uneven > summits * 9 / 10);
 }
 
 // A massif of constant height cut by the valleys where they are lower (as the Heightfield takes
@@ -155,29 +182,26 @@ void testDeterminismAndSeams() {
     bool same = true;
     int differ = 0;
     double seam = 0.0;
-    const auto rise = [](const forms::Rise& r) {
-        return r.factor.height * r.factor.height + r.base.height + r.factor.gradX + r.base.gradZ;
-    };
+    const auto rise = [](const forms::Form& r) { return r.height * r.height + r.gradX; };
     for (const bit_exact::Point& p : bit_exact::randomPoints(4'000, 1e7)) {
-        const forms::Rise r = forms::summits(a, p.x, p.z, kGround, kHeight, 1.0, nullptr);
+        const forms::Form r = forms::summits(a, p.x, p.z, kGround, kHeight, 1.0, nullptr);
         same = same && rise(r) == rise(forms::summits(b, p.x, p.z, kGround, kHeight, 1.0, nullptr));
         differ += rise(r) != rise(forms::summits(c, p.x, p.z, kGround, kHeight, 1.0, nullptr));
         for (int k = 0; k < 8; ++k) {
             const double x = p.x + 997.0 * k;
-            const forms::Rise m = forms::summits(a, x, p.z, kGround, kHeight, 1.0, &memo);
-            const forms::Rise o = forms::summits(a, x, p.z, kGround, kHeight, 1.0, nullptr);
-            same = same && rise(m) == rise(o) && m.factor.gradZ == o.factor.gradZ &&
-                   m.base.gradX == o.base.gradX;
+            const forms::Form m = forms::summits(a, x, p.z, kGround, kHeight, 1.0, &memo);
+            const forms::Form o = forms::summits(a, x, p.z, kGround, kHeight, 1.0, nullptr);
+            same = same && rise(m) == rise(o) && m.gradZ == o.gradZ;
             same = same && forms::valleys(a, x, p.z, kHeight, massif, &memo).form.height ==
                                forms::valleys(a, x, p.z, kHeight, massif, nullptr).form.height;
         }
         const double east = forms::summits(a, 0.5 * world.x - 1e-4, p.z, kGround, kHeight, 1.0,
-                                           nullptr).factor.height;
+                                           nullptr).height;
         const double west = forms::summits(a, -0.5 * world.x + 1e-4, p.z, kGround, kHeight, 1.0,
-                                           nullptr).factor.height;
+                                           nullptr).height;
         const double image = forms::summits(a, p.x + world.x, p.z, kGround, kHeight, 1.0,
-                                            nullptr).factor.height;
-        seam = std::max({seam, std::abs(east - west), std::abs(image - r.factor.height)});
+                                            nullptr).height;
+        seam = std::max({seam, std::abs(east - west), std::abs(image - r.height)});
     }
     TEST_CHECK(same);
     TEST_CHECK(differ > 100);
@@ -189,6 +213,7 @@ void testDeterminismAndSeams() {
 int main() {
     testSummitsOnCrests();
     testRise();
+    testUneven();
     testValleys();
     testDeterminismAndSeams();
     return test::result();

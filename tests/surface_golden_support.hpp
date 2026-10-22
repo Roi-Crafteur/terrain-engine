@@ -93,14 +93,14 @@ inline std::vector<Part> heightfieldParts() {
     const double mx = mountain.x * terrain::kChunkSizeMeters;
     const double mz = mountain.z * terrain::kChunkSizeMeters;
     return {
-        {"heights 1 m", heightsChecksum(field, mx, mz, 1.0, 64), 0x12972C4EC77AAA44ULL},
+        {"heights 1 m", heightsChecksum(field, mx, mz, 1.0, 64), 0xF7C7557679FD1C4FULL},
         {"heights 1 km", heightsChecksum(field, -32000.0, -32000.0, 1000.0, 64),
          0x73D7F5BF647B6283ULL},
-        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x2D81B772C2694E68ULL},
+        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x9FF8C251068C9CDEULL},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},
-        {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0x2D8217A0240A16C3ULL},
+        {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0xF80ECB03DD6E059BULL},
         {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0xF124765E3EFA05A2ULL},
         {"corner heights 250 m",
          heightsChecksum(planet, kCornerX - 4000.0, kCornerZ - 4000.0, 250.0, 32),
@@ -119,8 +119,8 @@ inline std::vector<Part> worldParts() {
     const terrain::ChunkCoord mountain = streaming_test::mountainChunk(tiles.heightfield());
     const terrain::ChunkCoord plants = streaming_test::plantChunk(tiles, 10);
     constexpr std::array<std::uint64_t, terrain::kLodCount> kExpected = {
-        0xC1A4AB59BA8D52F0ULL, 0x4D5347058F81AAF6ULL, 0x393C6AE8A858CA33ULL,
-        0x37D04B74FC9C9BF9ULL};
+        0xEDCA3808F38482BAULL, 0xEA27271740D58FF2ULL, 0x1F48CA6AB58266E4ULL,
+        0x8201336C9628A60DULL};
     constexpr std::array<const char*, terrain::kLodCount> kNames = {
         "world tiles LOD 0", "world tiles LOD 1", "world tiles LOD 2", "world tiles LOD 3"};
     std::vector<Part> parts;

@@ -31,8 +31,10 @@ constexpr double kTowerBand = 50.0; // meters of each band of the tower
 constexpr double kSunLeft = 0.3;     // turns left of the axis
 constexpr double kSunSine = 0.5;     // of its elevation (30 degrees)
 constexpr int kColumnBlock = 16;     // columns per block on the threads
-constexpr double kStepShare = 0.0015; // step along a ray: this share of its depth, at least
-constexpr double kMinStep = 0.5;     // this many meters
+// Fine enough that the rock steps of the walls are not missed from one column to the next (no
+// comb of stripes on the faces).
+constexpr double kStepShare = 0.0005; // step along a ray: this share of its depth, at least
+constexpr double kMinStep = 0.25;    // this many meters
 // Where the ground rises more than kFaceSlope meters per meter of the ray between two points (70
 // degrees), the rows between them show the face of a wall, lit as such (not a blend of their
 // colors).

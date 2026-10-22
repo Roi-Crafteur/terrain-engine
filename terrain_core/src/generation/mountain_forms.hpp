@@ -4,7 +4,8 @@
 // terrain_core: valleys in U and dominant summits, laid on the ridged massifs of the Heightfield.
 //
 // Valleys: main valleys along the zero lines of a strongly warped noise (sinuous, unevenly
-// spaced), tributaries along those of two shorter noises, each kept on one side of the main
+// spaced), cones of scree at the foot of their walls, tributaries along those of two shorter
+// noises, each kept on one side of the main
 // valley and faded out away from it: they join it in T, branch and end in passes or cirques.
 // Each has a flat floor, to which the massif comes down steeply over the width of its walls,
 // its crests and hollows kept (a U, with shoulders); the floors of the main valleys climb to
@@ -37,6 +38,7 @@ struct Noises {
     noise::FbmOctaves widths; // the widths of their floors
     noise::FbmOctaves hanging; // the tributaries hanging above the main valley
     noise::FbmOctaves presence; // where the main valleys are
+    noise::FbmOctaves fans;     // the cones of scree at the foot of their walls
     noise::FbmOctaves crests;   // the first octave of the massif: its zero lines are its crests
     std::uint64_t summits = 0;
     int cellsX = 1; // cells of the summits along each side of the world
@@ -56,7 +58,11 @@ struct Summit {
     double x = 0.0; // meters from the center of the cell met
     double z = 0.0;
     double prominence = 0.0; // 0 without a summit
-    double radius = 1.0;     // of its rise, meters
+    double radius = 1.0;     // of its rise, meters, on average
+    // Its rise reaches radius L(a) in the direction a (turns from +x toward +z), L(a) = 1 + sum
+    // over k of lobes[k] cos(2 pi ((k + 1) a - phases[k])): 1, 2 and 3 lobes, uneven sides.
+    std::array<double, 3> lobes{};
+    std::array<double, 3> phases{};
 };
 struct Memo {
     noise::FbmOctaves::Memo warpX;
@@ -68,6 +74,7 @@ struct Memo {
     noise::FbmOctaves::Memo widths;
     noise::FbmOctaves::Memo hanging;
     noise::FbmOctaves::Memo presence;
+    noise::FbmOctaves::Memo fans;
     bool valid = false;
     int cellI = 0;
     int cellJ = 0;
@@ -97,16 +104,11 @@ struct Carve {
 [[nodiscard]] Summit summitOfCell(const Noises& noises, int i, int j);
 
 // The rise of the summits around (x, z) of the warped space of the massif (the gradients along
-// it), in mountains up to height meters high, core in [0, 1]
-// where they stand (the cores of the chains): the factor by which the massif rises (its crests
-// far more than its hollows, then lower around), and the height added under the summits (their
-// base), with their gradients. The massif becomes massif * factor + base.
-struct Rise {
-    Form factor{1.0, 0.0, 0.0};
-    Form base;
-};
-// ground: the regional elevation under the massif; the summits rise at most to kCeiling.
-[[nodiscard]] Rise summits(const Noises& noises, double x, double z, double ground,
+// it), in mountains up to height meters high, core in [0, 1] where they stand (the cores of the
+// chains): the factor by which the massif rises (its crests far more than its hollows, then lower
+// around), with its gradient. ground: the regional elevation under the massif; the summits rise
+// at most to kCeiling.
+[[nodiscard]] Form summits(const Noises& noises, double x, double z, double ground,
                            double height, double core, Memo* memo);
 
 } // namespace terrain::mountain_forms

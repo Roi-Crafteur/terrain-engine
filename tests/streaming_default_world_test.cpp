@@ -26,7 +26,9 @@ ChunkCoord chunkOf(const Place& p) {
 }
 
 // Tiles of every LOD over the chunk: meshed, deterministic, covering their ground; at LOD 0 on
-// the Heightfield (within the interpolation along 1 m cells of a steep slope).
+// the Heightfield (within the interpolation along 1 m cells of a steep slope, 2 m on the stitched
+// seams, across the sharp crests of the rock of the mountains: their slope breaks by about 1.5
+// within a meter).
 void testTiles(const TerrainTiles& tiles, ChunkCoord chunk) {
     bool meshed = true;
     bool same = true;
@@ -46,7 +48,7 @@ void testTiles(const TerrainTiles& tiles, ChunkCoord chunk) {
             low = std::min(low, static_cast<float>(p.y));
             high = std::max(high, static_cast<float>(p.y));
             onSurface = onSurface && std::isfinite(p.y) &&
-                        (lod > 0 || std::abs(p.y - tiles.heightfield().heightAt(p.x, p.z)) <= 0.25);
+                        (lod > 0 || std::abs(p.y - tiles.heightfield().heightAt(p.x, p.z)) <= 0.5);
         }
         // The heights of the tile cover its vertices: along the seams the vertices follow the
         // coarser neighbor, so the extreme columns may lie between them.
