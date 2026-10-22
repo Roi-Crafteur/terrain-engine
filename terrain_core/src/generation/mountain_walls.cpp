@@ -19,8 +19,8 @@ namespace {
 // least kPatchFloor of the mask everywhere.
 constexpr float kCoreLow = 0.45f;
 constexpr float kCoreHigh = 0.7f;
-constexpr double kSteepLow = 0.25;
-constexpr double kSteepHigh = 0.55;
+constexpr double kSteepLow = 0.2;
+constexpr double kSteepHigh = 0.45;
 constexpr double kIsolatedWavelength = 70'000.0;
 constexpr float kIsolatedLow = 0.55f;
 constexpr float kIsolatedHigh = 0.7f;
@@ -32,16 +32,21 @@ constexpr double kGentleHigh = 0.5;
 constexpr double kReliefLow = 100.0;
 constexpr double kReliefHigh = 400.0;
 constexpr double kPatchWavelength = 1'500.0;
-constexpr double kPatchLow = -0.75;
-constexpr double kPatchHigh = -0.35;
+constexpr double kPatchLow = -0.9;
+constexpr double kPatchHigh = -0.5;
 constexpr double kPatchFloor = 0.0;
 // Strata or crystalline: a noise of kCharacterWavelength, plus kWornStrata per unit of character
 // below kSharp (the worn massifs and the plateaus are layered), plus kIsolatedStrata in the
-// isolated regions, from -kCharacterEdge to kCharacterEdge.
+// isolated regions, minus kCrystalCores in the most intense cores (intensity kCrystalLow to
+// kCrystalHigh: the crystalline cores of the highest chains), from -kCharacterEdge to
+// kCharacterEdge.
 constexpr double kCharacterWavelength = 160'000.0;
 constexpr double kWornStrata = 0.4;
 constexpr double kSharp = 0.7;
 constexpr double kIsolatedStrata = 0.6;
+constexpr double kCrystalCores = 0.6;
+constexpr float kCrystalLow = 0.6f;
+constexpr float kCrystalHigh = 0.8f;
 constexpr double kCharacterEdge = 0.15;
 
 // The strata: great bands kBandLow to kBandHigh high (a noise of kBandWavelength), offset by up
@@ -49,13 +54,13 @@ constexpr double kCharacterEdge = 0.15;
 // kStepShare of them high. Their rims recede by up to kRim meters, their faces rise over kRunLow
 // to kRunHigh of their height (one noise of kRimWavelength: 75 to 88 degrees), their treads rise
 // kTilt of their band.
-constexpr double kBandLow = 60.0;
-constexpr double kBandHigh = 300.0;
+constexpr double kBandLow = 100.0;
+constexpr double kBandHigh = 400.0;
 constexpr double kBandWavelength = 4'000.0;
-constexpr double kDip = 500.0;
+constexpr double kDip = 1500.0;
 constexpr double kDipWavelength = 20'000.0;
 constexpr double kStepShare = 0.15;
-constexpr double kStepMask = 1.0;
+constexpr double kStepMask = 0.5;
 constexpr double kRim = 25.0;
 constexpr double kRunLow = 0.05;
 constexpr double kRunHigh = 0.25;
@@ -65,7 +70,7 @@ constexpr double kTilt = 0.25;
 // on): for the great bands, the rock steps and the joints.
 constexpr double kHardBands = 0.7;
 constexpr double kHardSteps = 0.7;
-constexpr double kHardJoints = 0.7;
+constexpr double kHardJoints = 0.85;
 // The treads of the joints keep kJointTilt of the slope of the ground: no plane slabs.
 constexpr double kJointTilt = 0.55;
 // The share of a band its face may take at most.
@@ -82,7 +87,7 @@ constexpr std::array<double, 2> kJointHigh = {260.0, 55.0};
 constexpr double kTiltLow = 0.36;
 constexpr double kTiltHigh = 1.2;
 constexpr double kRamp = 2.0;
-constexpr double kFine = 0.25;
+constexpr double kFine = 0.5;
 // The joints wave by up to kJointWave of their spacing (the noise of the rims): never a row of
 // even teeth.
 constexpr double kJointWave = 0.6;
@@ -193,7 +198,9 @@ Masks masks(const Noises& n, const Column& c, double x, double z, Memo* memo) {
         smooth(-kCharacterEdge, kCharacterEdge,
                fbm(n.character, x, z, memo ? &memo->character : nullptr) +
                    kWornStrata * (kSharp - static_cast<double>(c.character)) +
-                   kIsolatedStrata * isolated);
+                   kIsolatedStrata * isolated -
+                   kCrystalCores * static_cast<double>(
+                                       noise::smoothstep(kCrystalLow, kCrystalHigh, c.intensity)));
     out.strata = mask * layered;
     out.crystal = mask * (1.0 - layered);
     return out;

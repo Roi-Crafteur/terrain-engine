@@ -281,10 +281,11 @@ add_executable(terrain_export_relief tools/export_relief.cpp)
 target_link_libraries(terrain_export_relief PRIVATE terrain_core terrain_warnings)
 
 # Views of a relief in perspective, 70 degrees wide, at the foot of the longest chain, in a
-# plain, from the highest summit and from 300 m above a chain, with a tower of 330 m 2 km away:
+# plain, from the highest summit, from 300 m above a chain, from the floor of a great valley and at
+# the foot of a wall, with a tower of 330 m 2 km away:
 # terrain_export_view <output-dir> [seed] [default|planetary|legacy|geography] [width]
 #                     [cell-size] [threads] [world-x] [world-z]
-add_executable(terrain_export_view tools/export_view.cpp)
+add_executable(terrain_export_view tools/export_view.cpp tools/view_places.cpp)
 target_link_libraries(terrain_export_view PRIVATE terrain_core terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
