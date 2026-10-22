@@ -2,6 +2,7 @@
 // GPU (textures and fixed grids, step 2) or by the CPU (procedural meshes, step 1).
 #include "TerrainWorld.h"
 
+#include "Bridge/horizon_atmosphere.hpp"
 #include "DynamicRHI.h"
 #include "HAL/PlatformTime.h"
 #include "Materials/MaterialInterface.h"
@@ -132,6 +133,7 @@ bool ATerrainWorld::StartGpuHorizon()
 	Look.bDebugTint = bHorizonDebugTint;
 	HorizonClipmap = NewObject<UTerrainHorizonClipmap>(this);
 	HorizonClipmap->Initialize(*this, GpuLook, Horizon, Look);
+	HorizonClipmap->SetWaveOrigin(terrain::unreal::seaWaveOrigin(State->Frame));
 	State->HorizonStartSeconds = FPlatformTime::Seconds();
 	const terrain::unreal::TileHole& Hole = Horizon.tileHole();
 	UE_LOG(LogTerrainEngine, Log,

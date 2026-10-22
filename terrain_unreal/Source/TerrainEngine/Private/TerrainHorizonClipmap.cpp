@@ -41,6 +41,8 @@ namespace
 	const FName DropParameter(TEXT("DropCm"));
 	const FName RadiusParameter(TEXT("PlanetRadiusCm"));
 	const FName TintParameter(TEXT("DebugTint"));
+	const FName WaveOriginXParameter(TEXT("WaveOriginX"));
+	const FName WaveOriginYParameter(TEXT("WaveOriginY"));
 
 	FVector ToFVector(const terrain::unreal::UnrealPoint& Point)
 	{
@@ -248,6 +250,15 @@ void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placem
 		Trim->SetVisibility(true);
 	}
 	Placed[Level] = Placement;
+}
+
+void UTerrainHorizonClipmap::SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin)
+{
+	for (UMaterialInstanceDynamic* Look : Looks)
+	{
+		Look->SetScalarParameterValue(WaveOriginXParameter, static_cast<float>(Origin.x));
+		Look->SetScalarParameterValue(WaveOriginYParameter, static_cast<float>(Origin.y));
+	}
 }
 
 void UTerrainHorizonClipmap::RemoveAll()

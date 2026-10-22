@@ -121,6 +121,7 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		HorizonClipmap->RemoveAll();
 		HorizonClipmap = nullptr;
 	}
+	StopAtmosphere();
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
 	Super::EndPlay(EndPlayReason);
@@ -158,6 +159,7 @@ bool ATerrainWorld::StartStreaming()
 		Lod1DistanceChunks, Lod2DistanceChunks, ViewDistanceChunks, WorkerThreads,
 		MaxTileUploadsPerFrame);
 	StartHorizon();
+	StartAtmosphere();
 	return true;
 }
 
@@ -211,6 +213,7 @@ void ATerrainWorld::ApplyWorldOffset(const FVector& InOffset, bool bWorldShift)
 	if (State.IsValid())
 	{
 		State->Frame = terrain::unreal::shifted(State->Frame, ToUnrealPoint(InOffset));
+		FollowFrame();
 	}
 }
 
