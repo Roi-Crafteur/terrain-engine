@@ -177,6 +177,51 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - jour / nuit, météo régionale, aurores, éclipses et phénomènes rares ; saisons et
   aspect de l'horizon lointain (brumeux, net ou selon la météo) à décider plus tard
 
+### Peuplement — royaumes, villes, villages et routes (après la 11B et la 12)
+- hiérarchie de peuplement générée de haut en bas, jamais une structure posée seule :
+  royaume → capitale → villes → bourgs → villages → hameaux ; puis ville → quartiers →
+  rues → parcelles → bâtiments
+- sites et routes calculés sur le niveau Planète (comme les fleuves, déterministes, identiques
+  sur toutes les machines), le détail (quartiers, parcelles) à la volée dans les régions
+  streamées : une capitale de plusieurs km n'est jamais générée d'un coup
+- choix des sites par le terrain : gués, confluents, estuaires, ports abrités, éperons
+  défendables, vallées fertiles, cols, ressources (mines) ; climat, pente, altitude, eau
+- routes : liaisons pondérées par la population et la distance (modèle de gravité), tracées
+  par coût (pente, rivières à franchir par pont ou gué, vallées, cols, lacets en montagne),
+  regroupées, avec des boucles et pas seulement un arbre
+- villes qui poussent depuis leur site (le long des routes, de la rivière, autour d'un
+  château ou d'un marché, faubourgs hors les murs) : pas d'anneaux au compas ni de quartiers
+  Voronoi réguliers, pas de zones strictes
+- le peuplement modifie le relief localement (routes creusées ou en remblai, terrasses,
+  plateformes, éperon aplani pour un château, quais) : une étape dédiée, déterministe, après
+  les rivières ; les biomes, eux, ne modifient toujours pas la hauteur
+- trois axes indépendants (une seule table biome → style referait des zones strictes) :
+  - climat et biome → matériaux locaux et cultures agricoles (bois, torchis, chaume en
+    plaine ; pierre et ardoise en montagne ; argile et pierre au désert ; pilotis au marais),
+    lus sur le climat du niveau Planète, pas sur le biome au point
+  - culture → style architectural, défenses, noms ; territoires propres qui peuvent
+    traverser plusieurs biomes et s'y adapter, transitions progressives aux frontières
+  - site → fonction (port, ville minière, ville caravanière, ville fluviale, oasis, place
+    forte de col)
+- le core décide du plan (sites, routes, parcelles, emprise, hauteur, type, style, matériaux),
+  Unreal assemble les bâtiments depuis des kits modulaires (PCG) : aucune géométrie de
+  bâtiment dans `terrain_core`
+- économie : seulement des étiquettes de ressources et de production pour le gameplay plus
+  tard (pas de simulation)
+- étapes :
+  1. données seules : sites, hiérarchie et routes sur le niveau Planète, vérifiés sur des
+     cartes de la planète (aucun bâtiment)
+  2. un village complet dans Unreal, une culture, un kit modulaire : style et adaptation
+     au terrain
+  3. bourgs et villes, une deuxième culture et un deuxième climat
+  4. capitale : château sur une hauteur, remparts et portes, cathédrale, marché, port,
+     faubourgs
+  5. cultures et archétypes supplémentaires (désert, montagne, côte, marais, toundra, jungle)
+- à décider avant de commencer : densité du peuplement (monde surtout sauvage avec de rares
+  royaumes, ou peuplé partout), époque et styles, kits d'assets ou bâtiments générés,
+  intérieurs, bâtiments destructibles (phase 15), villes vues depuis l'horizon lointain
+  (silhouettes, lumières la nuit)
+
 ### Phase 15 — Jeu solo
 - modes : exploration / contemplation, survie, créatif réservé aux administrateurs
 - nouveau monde : nom, seed, aperçu de la carte et choix du point d'apparition
