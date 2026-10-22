@@ -22,6 +22,7 @@
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
+#include "terrain/io/relief_rifts.hpp"
 #include "terrain/io/relief_stats.hpp"
 #include "terrain/io/relief_view.hpp"
 
@@ -55,6 +56,9 @@ constexpr double kOwnTop = 1000.0;   // the ground this close to a summit is its
 constexpr double kFlankDistance = 3000.0;
 constexpr double kFlankEye = 2000.0;
 constexpr double kFlankAbove = 30.0;
+// view_rift: the eye on the floor of the largest rift, kRiftEye before the foot of its wall
+// (RiftProfile::wall), looking at the wall.
+constexpr double kRiftEye = 3000.0;
 constexpr double kTwoPi = 6.283185307179586476925286766559;
 
 template <class T> bool parse(const char* text, T& value) {
@@ -398,6 +402,26 @@ terrain::ViewParams slopeView(const terrain::Heightfield& field, const Options& 
     return viewFrom(options, eye, above, headingTo(eye.x, eye.z, summit.x, summit.z), tilt);
 }
 
+bool writeRiftView(const terrain::Heightfield& field, const Options& options,
+                   const std::filesystem::path& directory, Report& r) {
+    const std::vector<terrain::RiftProfile> rifts = terrain::measureRifts(field, 1);
+    if (rifts.empty()) {
+        r.add("no rift: no view_rift.png\n");
+        return true;
+    }
+    const terrain::RiftProfile& rift = rifts.front();
+    const double d = std::max(0.0, rift.wall - kRiftEye);
+    const Point eye = pointAt(field, rift.x + d * rift.acrossX, rift.z + d * rift.acrossZ);
+    r.add("largest rift (%d nodes of the map) at (%.3f, %.3f) km: floor %.0f m, rims %.0f and "
+          "%.0f m, %.0f km apart; its wall %.1f km from its axis\n",
+          rift.nodes, rift.x / 1000.0, rift.z / 1000.0, static_cast<double>(rift.floor),
+          static_cast<double>(rift.rimLow), static_cast<double>(rift.rimHigh),
+          rift.width / 1000.0, rift.wall / 1000.0);
+    const double heading = headingTo(eye.x, eye.z, eye.x + rift.acrossX, eye.z + rift.acrossZ);
+    return writeView(field, options, "rift", viewFrom(options, eye, kEyeAboveGround, heading, 0.1),
+                     directory, r);
+}
+
 bool writeViews(const terrain::Heightfield& field, const Options& options,
                 const terrain::ReliefStats& stats, const std::filesystem::path& directory,
                 Report& r) {
@@ -432,7 +456,8 @@ bool writeViews(const terrain::Heightfield& field, const Options& options,
                      viewFrom(options, over, kFlightAboveGround,
                               headingTo(over.x, over.z, summit.x, summit.z), 0.0),
                      directory, r) &&
-           writeView(field, options, "slope", slopeView(field, options, summit), directory, r);
+           writeView(field, options, "slope", slopeView(field, options, summit), directory, r) &&
+           writeRiftView(field, options, directory, r);
 }
 
 } // namespace

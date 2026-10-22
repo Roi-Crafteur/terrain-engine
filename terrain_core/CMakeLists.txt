@@ -54,6 +54,7 @@ add_library(terrain_core STATIC
     src/generation/geography_grid.cpp
     src/generation/geography_provinces.cpp
     src/generation/geography_relief.cpp
+    src/generation/geography_boundaries.cpp
     src/generation/geography_tectonics.cpp
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
@@ -102,6 +103,7 @@ add_library(terrain_core STATIC
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
     src/io/relief_lakes.cpp
+    src/io/relief_rifts.cpp
     src/io/planet_png.cpp
     src/io/planet_png_layers.cpp
     src/io/png.cpp

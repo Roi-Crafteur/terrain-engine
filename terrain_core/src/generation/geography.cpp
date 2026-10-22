@@ -103,10 +103,41 @@ void validate(const GeographyParams& p) {
     requirePositive(p.trenchWidth, "trenchWidth");
     requirePositive(p.ridgeWidth, "ridgeWidth");
     requirePositive(p.riftWidth, "riftWidth");
+    if (!(p.chainlessShare >= 0.0f) || !(p.chainlessShare <= 1.0f) || !(p.riftShare >= 0.0f) ||
+        !(p.riftShare <= 1.0f) || !(p.riftDepthLow >= 0.0f) ||
+        !(p.riftDepthHigh >= p.riftDepthLow) || !std::isfinite(p.riftDepthHigh) ||
+        !(p.riftShoulder >= 0.0f) || !std::isfinite(p.riftShoulder) || !std::isfinite(p.landMin)) {
+        throw std::invalid_argument("GeographyParams: invalid chains or rifts");
+    }
     if (!std::isfinite(p.arcLift) || p.arcLift < 0.0 || !std::isfinite(p.beltOffset) ||
         std::abs(p.beltOffset) > 1.0) {
         throw std::invalid_argument("GeographyParams: invalid arcs or belt offset");
     }
+}
+
+// The troughs of the rifts: a flat floor over kRiftFloorShare of their half width from the axis,
+// then walls rising to the rim in kRiftSteps steps (tilted fault blocks): a steep face over
+// kRiftFace of each step, then a tread rising kRiftTilt of the step toward the rim. The faces
+// wander by up to kRiftJitter of the walls, along a noise of kRiftStepsWavelength.
+constexpr double kRiftFloorShare = 0.35;
+constexpr int kRiftSteps = 3;
+constexpr double kRiftFace = 0.02;
+constexpr double kRiftTilt = 0.15;
+constexpr double kRiftJitter = 0.04;
+constexpr double kRiftStepsWavelength = 40'000.0;
+
+// The share of the depth of a rift at the trough t (the bump (1 - u^2)^2 of the distance u to
+// the axis, in half widths), its faces shifted by jitter: 1 on the floor, 0 at the rim.
+double riftProfile(float trough, double jitter) {
+    const double u = std::sqrt(1.0 - std::sqrt(std::clamp(static_cast<double>(trough), 0.0, 1.0)));
+    const double v =
+        std::clamp((u - kRiftFloorShare) / (1.0 - kRiftFloorShare) + jitter, 0.0, 1.0);
+    const double w = v * kRiftSteps;
+    const double k = std::min(std::floor(w), static_cast<double>(kRiftSteps - 1));
+    const double f = w - k;
+    const double face =
+        noise::smoothstep(0.0f, static_cast<float>(kRiftFace), static_cast<float>(f));
+    return 1.0 - (k + (1.0 - kRiftTilt) * face + kRiftTilt * f) / kRiftSteps;
 }
 
 // Weight of a coast stage of amplitude a and band b at the distance d to the coast of the
@@ -175,6 +206,8 @@ std::shared_ptr<const Geography::Noises> makeNoises(std::uint64_t seed, const Ge
                          noise::OctaveLattices::Unrotated);
     noises->arc = fbm(geography::kArcs, 3, p.arcWavelength, 0.5,
                       noise::OctaveLattices::RotatedFast);
+    noises->riftSteps = fbm(geography::kRiftSteps, 2, kRiftStepsWavelength, 0.5,
+                            noise::OctaveLattices::RotatedFast);
     return noises;
 }
 
@@ -200,9 +233,10 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
     const geography::Provinces provinces = geography::buildProvinces(
         seed, params_, world_, grid, tectonics, planet::resolveThreads(threads));
     const std::vector<float> sea = geography::oceanFloor(params_, crust, tectonics);
+    const geography::LandFloor floor =
+        geography::landFloor(params_, crust, tectonics, provinces);
     geography::Drainage drainage = geography::drainedLand(
-        noise::deriveSeed(seed, geography::kDrainage), params_, grid, crust,
-        geography::landFloor(params_, crust, tectonics, provinces));
+        noise::deriveSeed(seed, geography::kDrainage), params_, grid, crust, floor.floor);
     const std::vector<float>& land = drainage.elevation;
     const geography::ReliefFields relief = geography::reliefFields(
         seed, params_, world_, grid, tectonics, provinces, planet::resolveThreads(threads));
@@ -215,6 +249,8 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
         nodes_[k * kFields + kRelief] = relief.relief[k];
         nodes_[k * kFields + kCharacter] = relief.character[k];
         nodes_[k * kFields + kRegions] = relief.regions[k];
+        nodes_[k * kFields + kRift] = tectonics.trough[k];
+        nodes_[k * kFields + kRiftFloor] = floor.rift[k];
         nodes_[k * kFields + kCoarse] =
             noises_->coarseMap.fbm2D(grid.x(grid.column(k)), grid.z(grid.row(k)));
         // The ruggedness of the coasts: smoothRugged up to 1, by a slow fbm.
@@ -227,7 +263,32 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
     }
     down_ = std::move(drainage.down);
     drainedArea_ = std::move(drainage.area);
+    markRifts();
     anchorX_ = chooseAnchor();
+}
+
+static_assert(Geography::kRift + 1 == Geography::kRiftFloor &&
+                  Geography::kRiftFloor + 1 == Geography::kFields,
+              "the fields of the rifts come last: mapAt skips them away from the rifts");
+
+void Geography::markRifts() {
+    rifts_.assign(static_cast<std::size_t>(columns_) * static_cast<std::size_t>(rows_), 0);
+    for (int j = 0; j < rows_; ++j) {
+        for (int i = 0; i < columns_; ++i) {
+            const float* n = fieldsOf(i, j);
+            if (n[kRift] == 0.0f && n[kRiftFloor] == 0.0f) {
+                continue;
+            }
+            // The spans from nodes i - 2 to i + 1 read node i (and so along the rows).
+            for (int b = j - 2; b <= j + 1; ++b) {
+                for (int a = i - 2; a <= i + 1; ++a) {
+                    rifts_[static_cast<std::size_t>((b % rows_ + rows_) % rows_) *
+                               static_cast<std::size_t>(columns_) +
+                           static_cast<std::size_t>((a % columns_ + columns_) % columns_)] = 1;
+                }
+            }
+        }
+    }
 }
 
 GeographySample Geography::mapAt(double geoX, double z) const {
@@ -244,6 +305,12 @@ GeographySample Geography::mapAt(double geoX, double z) const {
         columns[k] = i >= 0 && i < columns_ ? i : (i % columns_ + columns_) % columns_;
         rows[k] = j >= 0 && j < rows_ ? j : (j % rows_ + rows_) % rows_;
     }
+    // The fields of the rifts (the last ones) are 0 on every node read but near the rifts.
+    const std::size_t fields =
+        rifts_[static_cast<std::size_t>(rows[1]) * static_cast<std::size_t>(columns_) +
+               static_cast<std::size_t>(columns[1])] != 0
+            ? kFields
+            : kRift;
     std::array<double, kFields> sum{};
     for (int b = 0; b < 4; ++b) {
         const int row = rows[static_cast<std::size_t>(b)];
@@ -251,7 +318,7 @@ GeographySample Geography::mapAt(double geoX, double z) const {
             const int column = columns[static_cast<std::size_t>(a)];
             const float* n = fieldsOf(column, row);
             const double w = wx.w[static_cast<std::size_t>(a)] * wz.w[static_cast<std::size_t>(b)];
-            for (std::size_t f = 0; f < kFields; ++f) {
+            for (std::size_t f = 0; f < fields; ++f) {
                 sum[f] += w * n[f];
             }
         }
@@ -267,13 +334,28 @@ GeographySample Geography::mapAt(double geoX, double z) const {
     s.regions = static_cast<float>(sum[kRegions]);
     s.rugged = static_cast<float>(sum[kRugged]);
     s.coarse = static_cast<float>(sum[kCoarse]);
+    s.rift = static_cast<float>(std::clamp(sum[kRift], 0.0, 1.0));
+    s.riftFloor = static_cast<float>(sum[kRiftFloor]);
     return s;
+}
+
+float Geography::riftLand(const GeographySample& s, double x, double z) const {
+    if (!(s.rift > 0.0f)) {
+        return s.land;
+    }
+    const double depth = riftProfile(s.rift, kRiftJitter * noises_->riftSteps.fbm2D(x, z));
+    return std::max(params_.landMin, static_cast<float>(s.land + (s.riftFloor - s.land) * depth));
 }
 
 GeographySample Geography::sampleAt(double x, double z) const {
     GeographySample s = mapAt(wrapCoordinate(x + anchorX_, world_.x), z);
     s.coast = coastAt(x, z, s);
+    s.land = riftLand(s, x, z);
     return s;
+}
+
+float Geography::landAt(double x, double z) const {
+    return riftLand(mapAt(wrapCoordinate(x + anchorX_, world_.x), z), x, z);
 }
 
 // The shift of the map that puts a coast at (0, 0), sea on one side and land on the other along
@@ -364,8 +446,8 @@ std::uint64_t Geography::checksum() const {
 
 std::size_t Geography::memoryBytes() const {
     return sizeof(*this) + sizeof(Noises) +
-           (nodes_.size() + drainedArea_.size()) * sizeof(float) +
-           down_.size();
+           (nodes_.size() + drainedArea_.size()) * sizeof(float) + down_.size() +
+           rifts_.size();
 }
 
 std::shared_ptr<const Geography> Geography::shared(std::uint64_t seed,

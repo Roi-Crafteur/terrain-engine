@@ -23,6 +23,7 @@ struct Geography::Noises {
     noise::FbmOctaves fine;
     noise::FbmOctaves rugged;
     noise::FbmOctaves arc;
+    noise::FbmOctaves riftSteps; // the faces of the steps of the rifts wander
 };
 
 } // namespace terrain
@@ -45,6 +46,7 @@ enum Stream : std::uint64_t {
     kDrainage,
     kCoastCoarsePoint,
     kRelief,
+    kRiftSteps,
 };
 
 // The continental crust on the map: which nodes are land, and the signed distance from each
@@ -66,9 +68,11 @@ struct Crust {
 // each effect over the boundaries, faded beyond the junctions of their edges.
 struct Tectonics {
     std::vector<float> belt;   // [0, 1], the mountain belts of the collisions
+    std::vector<float> reach;  // meters: the reach of the tails of the belt of each node
     std::vector<float> uplift; // meters: the regional uplift of the belts and high plateaus
-    std::vector<float> trough;   // [0, 1], the troughs of the continental rifts
-    std::vector<float> shoulder; // [0, 1], their shoulders
+    std::vector<float> trough;    // [0, 1], the troughs of the continental rifts
+    std::vector<float> shoulder;  // [0, 1], their shoulders
+    std::vector<float> riftDepth; // meters of the floor below the shoulders, where they reach
     std::vector<float> ridge;    // [0, 1], the mid-ocean ridges along every divergence
     std::vector<float> trench; // [0, 1], the trenches on the subducting side of collisions
     std::vector<float> plateau; // [0, 1], the high plateaus behind the belts
@@ -103,11 +107,22 @@ struct Provinces {
                                             const Tectonics& tectonics);
 
 // The lowest regional elevation each land node may have before the drainage: the continental
-// tilt from the coast, the uplift of the belts and plateaus, the rift shoulders and troughs, the
-// uplift of the provinces (fading under the belts); at least 1 m.
-[[nodiscard]] std::vector<float> landFloor(const GeographyParams& params, const Crust& crust,
-                                           const Tectonics& tectonics,
-                                           const Provinces& provinces);
+// tilt from the coast, the uplift of the belts and plateaus, the shoulders of the rifts, the
+// uplift of the provinces (fading under the belts); at least 1 m. And the level of the floor of
+// the rifts where their shoulders reach (0 elsewhere): riftDepth below their rim, the shoulders
+// raised where the land is low so that it stays at least kRiftMargin above landMin. The troughs
+// are cut after the drainage (Geography::sampleAt): closed basins, never filled for the water.
+struct LandFloor {
+    std::vector<float> floor;
+    std::vector<float> rift;
+};
+
+[[nodiscard]] LandFloor landFloor(const GeographyParams& params, const Crust& crust,
+                                  const Tectonics& tectonics, const Provinces& provinces);
+
+// The share of its height a shoulder keeps at the rim of the trough (bump(1 / kShoulders)).
+inline constexpr double kRimShare = 0.7056;
+inline constexpr double kRiftMargin = 150.0;
 
 // The relief of the map (phase 11R bis): its intensity, its character and its regions of
 // vallons and buttes at each node (GeographyParams).
@@ -117,8 +132,9 @@ struct ReliefFields {
     std::vector<float> regions;
 };
 
-// The belts with their tails (beltReach) varied along the chains, with intramontane basins; the
-// provinces; the high plateaus; isolated massifs; at least reliefFloor. Node loops on threads in
+// The belts with their tails (their own reach near them, beltReach for the hills far away)
+// varied along the chains, with intramontane basins; the provinces; the high plateaus; the walls
+// and shoulders of the rifts; isolated massifs; at least reliefFloor. Node loops on threads in
 // blocks of rows: the same bits for any number.
 [[nodiscard]] ReliefFields reliefFields(std::uint64_t seed, const GeographyParams& params,
                                         const WorldSize& world, const Grid& grid,

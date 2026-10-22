@@ -62,7 +62,7 @@ inline std::vector<Part> horizonParts() {
     const double z = mountain.z * terrain::kChunkSizeMeters + 4.0;
     const terrain::WorldSize size;
     return {
-        {"horizon around mountains", horizonChecksum(world, x, z), 0x7013C63C8B11D4A0ULL},
+        {"horizon around mountains", horizonChecksum(world, x, z), 0xBF10C0A61CD176D3ULL},
         {"horizon around legacy mountains",
          horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ), 0x11E2BE2F5A504D0CULL},
         {"horizon at the world corner", horizonChecksum(world, size.x / 2.0, size.z / 2.0),

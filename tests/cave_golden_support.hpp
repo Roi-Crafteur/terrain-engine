@@ -226,14 +226,14 @@ inline std::vector<Part> caveParts() {
     TEST_CHECK(!entrances.empty());
     const std::uint64_t tiles = entrances.empty() ? 0 : tilesChecksum(entrances.front());
     return {
-        {"cave points LOD 0", pointsChecksum(field, ground, 0), 0x42FCFD06E613FEA0ULL},
-        {"cave points LOD 1", pointsChecksum(field, ground, 1), 0xF84CE366AC14B7A6ULL},
-        {"cave points LOD 2", pointsChecksum(field, ground, 2), 0xD6F55A51C5DDA421ULL},
+        {"cave points LOD 0", pointsChecksum(field, ground, 0), 0x35BF9C6F53D06892ULL},
+        {"cave points LOD 1", pointsChecksum(field, ground, 1), 0xC998D0A78179A650ULL},
+        {"cave points LOD 2", pointsChecksum(field, ground, 2), 0xFC6A19BCC6AADBEEULL},
         {"aquifers", aquifersChecksum(field, ground, kAreaCellX, kAreaCellZ),
-         0x84D21FCE71B4A80BULL},
-        {"entrances", entrancesChecksum(entrances), 0x7F51BD24F4FDB432ULL},
-        {"speleothems", speleothemsChecksum(field, ground), 0x2EC88D4955651A20ULL},
-        {"cave tiles", tiles, 0x38FC5610D0AA0BD8ULL},
+         0x401DBE73B0264FF3ULL},
+        {"entrances", entrancesChecksum(entrances), 0x29FADD2F44AD37B1ULL},
+        {"speleothems", speleothemsChecksum(field, ground), 0xA595865A7BE2ACD0ULL},
+        {"cave tiles", tiles, 0xD3C892A8A4AC7DBEULL},
         {"cave materials", materialsChecksum(), 0xD9C5568AB1EF9B55ULL},
         {"caves at the corner", cornerChecksum(field, ground), 0x98E6B32188631A0CULL},
     };

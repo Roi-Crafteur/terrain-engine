@@ -97,13 +97,15 @@ struct GeographyParams {
     // as many plates for the area of the world as on the Earth.
     VoronoiParams plates{.minPlates = 48, .maxPlates = 72};
 
-    // Mountain belts along the collisions of the plates: half width beltWidth at the axis (0.8
-    // to 1.5 times it from one boundary to another, and +-30 % along a boundary), centered
+    // Mountain belts along the collisions of the plates: half width beltWidth at the axis (0.25
+    // to 2 times it from one boundary to another, and +-30 % along a boundary), centered
     // beltOffset half widths toward the overriding plate; on land they lift the regional
-    // elevation by beltUplift at their axis (+-35 %) and carry the mountains.
+    // elevation by beltUplift at their axis (+-35 %) and carry the mountains. chainlessShare of
+    // the collisions raise foothills only, without a chain.
     double beltWidth = 200'000.0;
     double beltOffset = 0.35;
     float beltUplift = 2000.0f;
+    float chainlessShare = 0.25f;
     // High plateaus behind plateauShare of the collisions longer than plateauLength:
     // plateauUplift (+-10 %) over plateauWidth (0.6 to 1.4 times it) on the overriding side.
     float plateauShare = 0.3f;
@@ -133,7 +135,7 @@ struct GeographyParams {
     // mountainHeight above the regional elevation under their mask, with their own sharpness and
     // gain: sharp crests, valleys in V between them, steep walls without a fractal roughness at
     // every scale.
-    float mountainHeight = 4100.0f;
+    float mountainHeight = 4250.0f;
     double mountainSharpness = 4.0;
     double mountainGain = 0.42;
     // The valleys between the crests keep at least this share of the finer octaves of the
@@ -158,12 +160,19 @@ struct GeographyParams {
     double trenchWidth = 110'000.0;
     float ridgeLift = 2000.0f;
     double ridgeWidth = 450'000.0;
-    // Continental rifts along riftShare of the strongest divergences: a trough riftDepth deep and
-    // riftWidth wide between shoulders riftShoulder high, on land.
+    // Continental rifts along riftShare of the strongest divergences: a trough of half width
+    // riftWidth whose flat floor lies riftDepthLow to riftDepthHigh (drawn for each rift) below
+    // its rim, its walls in steps (tilted fault blocks), between shoulders at least riftShoulder
+    // high (more where the land is low), on land.
     float riftShare = 0.5f;
-    float riftDepth = 900.0f;
+    float riftDepthLow = 1500.0f;
+    float riftDepthHigh = 2500.0f;
     double riftWidth = 130'000.0;
-    float riftShoulder = 500.0f;
+    float riftShoulder = 1000.0f;
+    // The lowest the regional elevation of the land may go (the floors of the rifts): above the
+    // sea for now, since the surface puts the sea wherever the ground is below 0 m; the code of
+    // the rifts allows less once the sea follows the geography instead (phase 11B).
+    float landMin = 1.0f;
 
     friend bool operator==(const GeographyParams&, const GeographyParams&) = default;
 };

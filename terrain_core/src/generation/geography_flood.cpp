@@ -92,23 +92,32 @@ std::vector<float> oceanFloor(const GeographyParams& params, const Crust& crust,
     return floor;
 }
 
-std::vector<float> landFloor(const GeographyParams& params, const Crust& crust,
-                             const Tectonics& tectonics, const Provinces& provinces) {
-    std::vector<float> floor(crust.coast.size(), 1.0f);
-    for (std::size_t k = 0; k < floor.size(); ++k) {
+LandFloor landFloor(const GeographyParams& params, const Crust& crust, const Tectonics& tectonics,
+                    const Provinces& provinces) {
+    LandFloor out;
+    out.floor.assign(crust.coast.size(), 1.0f);
+    out.rift.assign(crust.coast.size(), 0.0f);
+    for (std::size_t k = 0; k < out.floor.size(); ++k) {
         if (crust.land[k] == 0) {
             continue;
         }
         const double tilt = params.inlandRise * std::max(0.0, static_cast<double>(crust.coast[k]));
-        const double rift = static_cast<double>(params.riftShoulder * tectonics.shoulder[k]) -
-                            static_cast<double>(params.riftDepth * tectonics.trough[k]);
         const float uplift = tectonics.uplift[k];
         const double province = static_cast<double>(provinces.uplift[k]) *
                                 (1.0 - step(0.0, kProvincesUnder, static_cast<double>(uplift)));
-        floor[k] = static_cast<float>(
-            std::max(1.0, 1.0 + tilt + static_cast<double>(uplift) + province + rift));
+        const double base = std::max(1.0, 1.0 + tilt + static_cast<double>(uplift) + province);
+        double shoulders = 0.0;
+        if (tectonics.shoulder[k] > 0.0f) {
+            const double depth = static_cast<double>(tectonics.riftDepth[k]);
+            const double height = std::max(
+                static_cast<double>(params.riftShoulder),
+                (depth + static_cast<double>(params.landMin) + kRiftMargin - base) / kRimShare);
+            shoulders = height * static_cast<double>(tectonics.shoulder[k]);
+            out.rift[k] = static_cast<float>(base + kRimShare * height - depth);
+        }
+        out.floor[k] = static_cast<float>(base + shoulders);
     }
-    return floor;
+    return out;
 }
 
 namespace {

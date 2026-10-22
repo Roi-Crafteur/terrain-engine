@@ -78,6 +78,12 @@ constexpr float kDivide = 0.1f;
 // The sharpness of the ridged noise of the rock.
 constexpr double kRockSharpness = 2.0;
 
+// The faces of the walls of the rifts: their slope read over kRiftRun meters, carved by ravines
+// from kRiftFaceLow to kRiftFaceHigh of it.
+constexpr double kRiftRun = 50.0;
+constexpr float kRiftFaceLow = 0.15f;
+constexpr float kRiftFaceHigh = 0.35f;
+
 // The coastal plain rises this many meters per meter from the shore, up to kCoastPlainTop,
 // before the regional elevation takes over over GeographyParams::coastRamp.
 constexpr double kCoastPlainRise = 0.002;
@@ -134,6 +140,9 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
             ? localReliefAt(x, z, amplitude, buttes, g.regions, plain, rough, memos)
             : 0.0f;
     s.base = ground + relief_local::boundBelow(local, kLocalRoom * ground);
+    if (g.rift > 0.0f && params_.geography.ravines) {
+        s.base -= riftRavinesAt(x, z, kRavineRoom * std::max(0.0f, s.base - 1.0f), memos);
+    }
     s.mountain = geographyMountainAt(x, z, s.mountainMask, intensity, g.character, memos);
     s.detail = detailAt(x, z, s.base, memos);
     s.height = s.base + s.mountain + s.detail;
@@ -206,6 +215,27 @@ float Heightfield::ravinesAt(double warpedX, double warpedZ,
         static_cast<double>(noise::smoothstep(0.0f, kDivide, ridge.crease));
     return ravines::depth(layers_->ravines, warpedX, warpedZ, slopeX, slopeZ, strength,
                           memos != nullptr ? &memos->ravines : nullptr);
+}
+
+// The ravines of the walls of the rifts run down the slope of their land (centered differences
+// kRiftRun meters apart), on their faces only (slopes from kRiftFaceLow to kRiftFaceHigh).
+float Heightfield::riftRavinesAt(double x, double z, float room, Memos* memos) const {
+    const Geography& geography = *geography_;
+    const double slopeX = static_cast<double>(geography.landAt(x + kRiftRun, z) -
+                                              geography.landAt(x - kRiftRun, z)) /
+                          (2.0 * kRiftRun);
+    const double slopeZ = static_cast<double>(geography.landAt(x, z + kRiftRun) -
+                                              geography.landAt(x, z - kRiftRun)) /
+                          (2.0 * kRiftRun);
+    const double strength = static_cast<double>(
+        noise::smoothstep(kRiftFaceLow, kRiftFaceHigh,
+                          static_cast<float>(dmath::hypot(slopeX, slopeZ))));
+    if (!(strength > 0.0)) {
+        return 0.0f;
+    }
+    const float depth = ravines::depth(layers_->ravines, x, z, slopeX, slopeZ, strength,
+                                       memos != nullptr ? &memos->ravines : nullptr);
+    return -relief_local::boundBelow(-depth, room);
 }
 
 float Heightfield::localReliefAt(double x, double z, float amplitude, float buttes, float region,

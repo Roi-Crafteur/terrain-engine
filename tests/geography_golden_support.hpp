@@ -51,13 +51,13 @@ inline std::vector<Part> geographyParts() {
     const terrain::Heightfield field(kSeed, geographyParams());
     const terrain::Heightfield small(kSeed, geographyParams(), kSmallWorld);
     return {
-        {"geography map", field.geography()->checksum(), 0x8CED4B954146E78CULL},
-        {"geography map, small world", small.geography()->checksum(), 0x309760CDCD62D986ULL},
-        {"geography 1000 km", samplesChecksum(field, -16e6, -16e6, 1e6, 32), 0x6BA6BE002C00FF0EULL},
+        {"geography map", field.geography()->checksum(), 0xDFACFE2A9CEDBB3DULL},
+        {"geography map, small world", small.geography()->checksum(), 0xA0514511395504C4ULL},
+        {"geography 1000 km", samplesChecksum(field, -16e6, -16e6, 1e6, 32), 0x79F75FA5375DC435ULL},
         {"geography 10 km", samplesChecksum(field, -320e3, -320e3, 10e3, 64),
-         0x0595C75493C7D84DULL},
+         0xD0E9253C2E207A8BULL},
         {"geography coast 25 m", samplesChecksum(field, -800.0, -800.0, 25.0, 64),
-         0x7CEBCC528B2605F1ULL},
+         0xE2D6CB6C0157FECBULL},
     };
 }
 

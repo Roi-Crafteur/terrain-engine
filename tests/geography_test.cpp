@@ -272,6 +272,9 @@ void testInvalidParameters() {
     TEST_CHECK(rejects([](GeographyParams& p) { p.drainSlope = -1.0; }));
     TEST_CHECK(rejects([](GeographyParams& p) { p.beltWidth = 0.0; }));
     TEST_CHECK(rejects([](GeographyParams& p) { p.arcLift = -1.0; }));
+    TEST_CHECK(rejects([](GeographyParams& p) { p.chainlessShare = 1.5f; }));
+    TEST_CHECK(rejects([](GeographyParams& p) { p.riftDepthHigh = p.riftDepthLow - 1.0f; }));
+    TEST_CHECK(rejects([](GeographyParams& p) { p.riftShoulder = -1.0f; }));
     TEST_CHECK(rejects([](GeographyParams& p) { p.plates.minPlates = 2; }));
 }
 
