@@ -91,9 +91,12 @@ void validate(const GeographyParams& p) {
         throw std::invalid_argument("GeographyParams: invalid relief");
     }
     if (!(p.mountainGain > 0.0) || !(p.mountainGain < 1.0) || !std::isfinite(p.mountainHeight) ||
-        !(p.mountainValleyDetail >= 0.0) || !(p.mountainValleyDetail <= 1.0)) {
+        !(p.mountainValleyDetail >= 0.0) || !(p.mountainValleyDetail <= 1.0) ||
+        !(p.rockRelief >= 0.0f) || !std::isfinite(p.rockRelief) || p.rockOctaves < 1 ||
+        !(p.detailAmplitude >= 0.0f) || !std::isfinite(p.detailAmplitude)) {
         throw std::invalid_argument("GeographyParams: invalid mountains");
     }
+    requirePositive(p.rockWavelength, "rockWavelength");
     requirePositive(p.beltWidth, "beltWidth");
     requirePositive(p.plateauWidth, "plateauWidth");
     requirePositive(p.arcWavelength, "arcWavelength");

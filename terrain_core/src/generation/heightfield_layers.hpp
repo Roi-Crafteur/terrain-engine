@@ -28,6 +28,7 @@ struct Heightfield::Layers {
     noise::FbmOctaves geographyWarpX;
     noise::FbmOctaves geographyWarpZ;
     noise::FbmOctaves geographyRidge;
+    noise::FbmOctaves geographyRock; // only built with a rock
     relief_local::Noises local; // the hills, vallons and buttes of the geography
     // The spurs of the chains (ridged) and the ravines of the slopes.
     noise::FbmOctaves geographySpurs;
@@ -54,6 +55,7 @@ struct Heightfield::Memos {
     relief_local::Memos local;
     noise::FbmOctaves::Memo spurs;
     ravines::Memo ravines;
+    noise::FbmOctaves::Memo rock;
 };
 
 } // namespace terrain

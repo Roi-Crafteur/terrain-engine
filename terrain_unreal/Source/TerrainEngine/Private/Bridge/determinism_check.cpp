@@ -11,25 +11,25 @@ namespace {
 // Produced by the core built by CMake (GCC 13, Release) and checked by
 // unreal_determinism_check_test on every ctest run, on every platform of the CI.
 constexpr std::array<HeightProbe, 10> kHeightProbes{{
-    {0.0, 0.0, 0xBEE0B883U},                 // -0.44 m: the origin lies on a coast
-    {1234.5, -6789.25, 0xC185AC74U},         // -16.71 m: the shallow sea by that coast
-    {162047.75, 188158.5, 0x45233E31U},      // 2611.89 m: a mountain
-    {-147456.25, 57344.5, 0x42179410U},      // 37.89 m: a plain
-    {400000.0, 0.25, 0xC3A5B480U},           // -331.41 m: the continental slope
-    {163296.25, -11327312.5, 0x45AF5DC1U},   // 5611.72 m: the summit of a belt
-    {-12345678.9, 7654321.5, 0x435E0D42U},   // 222.05 m: far inland
-    {30015487.5, 17498111.75, 0xC58FC0D3U},  // -4600.10 m: by the corner of the world
-    {-30015488.0, -17498112.0, 0xC58FC0D5U}, // -4600.10 m: the corner itself
-    {60032210.5, -35003013.25, 0xC185AC74U}, // the second probe, one world away
+    {0.0, 0.0, 0xBEE06B9EU},                 // -0.44 m: the origin lies on a coast
+    {1234.5, -6789.25, 0xC18162C8U},         // -16.17 m: the shallow sea by that coast
+    {162047.75, 188158.5, 0x4524ACA6U},      // 2634.79 m: a mountain
+    {-147456.25, 57344.5, 0x41D971FFU},      // 27.18 m: a plain
+    {400000.0, 0.25, 0xC3A5C384U},           // -331.53 m: the continental slope
+    {163296.25, -11327312.5, 0x45ADD63AU},   // 5562.78 m: the summit of a belt
+    {-12345678.9, 7654321.5, 0x43502052U},   // 208.13 m: far inland
+    {30015487.5, 17498111.75, 0xC58FC1A6U},  // -4600.21 m: by the corner of the world
+    {-30015488.0, -17498112.0, 0xC58FC1AAU}, // -4600.21 m: the corner itself
+    {60032210.5, -35003013.25, 0xC18162C8U}, // the second probe, one world away
 }};
 
 // Produced and checked the same way.
 constexpr std::array<TileProbe, 5> kTileProbes{{
-    {{{{0, 0}, 0}, 0}, 0x8B9B1FB5558A2F1DULL},                      // the origin, a coast
-    {{{{10128, 11760}, 0}, 0}, 0xD44368150476C663ULL},              // a mountain
-    {{{{-9216, 3584}, 0}, 0}, 0x29BE34450E519420ULL},               // a plain
-    {{{{-2, 3}, 0}, kSeamNegX | kSeamPosZ}, 0xA833FDBD33E86263ULL}, // the coast, with seams
-    {{{{1875967, 1093631}, 0}, 0}, 0x9D9F183BDB302F4EULL},          // the corner of the world
+    {{{{0, 0}, 0}, 0}, 0x8971119F3AD3CDF3ULL},                      // the origin, a coast
+    {{{{10128, 11760}, 0}, 0}, 0xEFA8E99D6D2C041BULL},              // a mountain
+    {{{{-9216, 3584}, 0}, 0}, 0xFA18595803DDB506ULL},               // a plain
+    {{{{-2, 3}, 0}, kSeamNegX | kSeamPosZ}, 0x90BA93745D9FB9FEULL}, // the coast, with seams
+    {{{{1875967, 1093631}, 0}, 0}, 0x80EC1ABA1F475CA5ULL},          // the corner of the world
 }};
 
 class Fnv1a {

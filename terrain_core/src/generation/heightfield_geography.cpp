@@ -30,14 +30,16 @@ constexpr float kWorn = 0.65f;
 // kPlainHills + kHillsRange where the intensity passes kHillsLow to kHillsHigh; buttes
 // kButteShare of it high, at most kButteMax, where the intensity is below kButteLow to
 // kButteHigh; vallons and terraces fading under the mountains (mask kPlainLow to kPlainHigh).
-constexpr float kPlainHills = 24.0f;
+constexpr float kPlainHills = 18.0f;
 constexpr float kHillsRange = 450.0f;
 constexpr float kHillsLow = 0.08f;
 constexpr float kHillsHigh = 0.7f;
-constexpr float kButteShare = 1.0f;
+constexpr float kButteShare = 1.6f;
 constexpr float kButteMax = 40.0f;
 constexpr float kButteLow = 0.1f;
 constexpr float kButteHigh = 0.25f;
+// The hills keep 1 - kHillsUnderMassifs of their amplitude under a full mask of the massifs.
+constexpr float kHillsUnderMassifs = 0.8f;
 constexpr float kPlainLow = 0.3f;
 constexpr float kPlainHigh = 0.6f;
 // The hills of the plains give way to those of the rough country as the intensity passes
@@ -72,6 +74,9 @@ constexpr float kRavineRoom = 0.7f;
 // The ravines fade out where the noise of one of those octaves is below kDivide in absolute
 // value: about a kilometer around the divides.
 constexpr float kDivide = 0.1f;
+
+// The sharpness of the ridged noise of the rock.
+constexpr double kRockSharpness = 2.0;
 
 // The coastal plain rises this many meters per meter from the shore, up to kCoastPlainTop,
 // before the regional elevation takes over over GeographyParams::coastRamp.
@@ -115,8 +120,11 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
     s.mountainMask = land * noise::smoothstep(kMountainLow, kMountainHigh, intensity);
     // Around the regional elevation, the local relief rises and falls.
     const float ground = groundBase(params_.geography, g);
+    // Under the massifs the hills give way to the ridged mountains: no smooth swell of hundreds
+    // of meters under the crests.
     const float amplitude =
-        land * (kPlainHills + kHillsRange * noise::smoothstep(kHillsLow, kHillsHigh, intensity));
+        land * (kPlainHills + kHillsRange * noise::smoothstep(kHillsLow, kHillsHigh, intensity)) *
+        (1.0f - kHillsUnderMassifs * s.mountainMask);
     const float buttes = std::min(kButteShare * amplitude, kButteMax) *
                          (1.0f - noise::smoothstep(kButteLow, kButteHigh, intensity));
     const float plain = 1.0f - noise::smoothstep(kPlainLow, kPlainHigh, s.mountainMask);
@@ -147,8 +155,8 @@ float Heightfield::reliefAt(double x, double z, float mapRelief, Memos* memos) c
 
 // The ridged mountains of the geography (the warp, octaves and wavelength of the Heightfield,
 // the sharpness and gain of the geography): sharp where the character is 1, worn and rounder
-// (a smoothstep of the same noise, kWorn as high) where it is 0; carved by the ravines, at most
-// kRavineRoom of their height.
+// (a smoothstep of the same noise, kWorn as high) where it is 0; broken by the rock (its sharp
+// crests, not warped); carved by the ravines, at most kRavineRoom of their height.
 float Heightfield::geographyMountainAt(double x, double z, float mask, float intensity,
                                        float character, Memos* memos) const {
     if (mask <= 0.0f) {
@@ -166,7 +174,13 @@ float Heightfield::geographyMountainAt(double x, double z, float mask, float int
     const float height = p.mountainHeight * noise::smoothstep(kHeightLow, kHeightHigh, intensity) *
                          (kWorn + (1.0f - kWorn) * character);
     const float worn = r.value * r.value * (3.0f - 2.0f * r.value);
-    const float mountain = mask * height * (character * r.value + (1.0f - character) * worn);
+    float mountain = mask * height * (character * r.value + (1.0f - character) * worn);
+    if (p.rockRelief > 0.0f) {
+        const noise::FbmOctaves& rock = layers_->geographyRock;
+        mountain += mask * p.rockRelief *
+                    (memos != nullptr ? rock.ridged2D(x, z, kRockSharpness, memos->rock)
+                                      : rock.ridged2D(x, z, kRockSharpness));
+    }
     if (!p.ravines) {
         return mountain;
     }

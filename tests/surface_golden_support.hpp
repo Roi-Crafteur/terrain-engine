@@ -93,20 +93,20 @@ inline std::vector<Part> heightfieldParts() {
     const double mx = mountain.x * terrain::kChunkSizeMeters;
     const double mz = mountain.z * terrain::kChunkSizeMeters;
     return {
-        {"heights 1 m", heightsChecksum(field, mx, mz, 1.0, 64), 0x402F0B36F9837C7EULL},
+        {"heights 1 m", heightsChecksum(field, mx, mz, 1.0, 64), 0x8C1D04DF1C30A94AULL},
         {"heights 1 km", heightsChecksum(field, -32000.0, -32000.0, 1000.0, 64),
-         0x35FA57BB5214B95DULL},
-        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x6FE745707234B6BCULL},
+         0xBBA35175CDA6560DULL},
+        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x6BA6BE002C00FF0EULL},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},
-        {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0x7AC9F85AB1D86479ULL},
-        {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0xD179A1684A76B87EULL},
+        {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0xAC75FC7E5077EFE9ULL},
+        {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0x64BB4B8AE2FBC9E2ULL},
         {"corner heights 250 m",
          heightsChecksum(planet, kCornerX - 4000.0, kCornerZ - 4000.0, 250.0, 32),
          0xC90D77A823F59462ULL},
         {"corner ecology 50 m", ecologyChecksum(field, ecology, kCornerX, kCornerZ, 50.0),
-         0x84C50765CC56FDD1ULL},
+         0xFA20E298BEAD1A4FULL},
     };
 }
 
@@ -119,8 +119,8 @@ inline std::vector<Part> worldParts() {
     const terrain::ChunkCoord mountain = streaming_test::mountainChunk(tiles.heightfield());
     const terrain::ChunkCoord plants = streaming_test::plantChunk(tiles, 10);
     constexpr std::array<std::uint64_t, terrain::kLodCount> kExpected = {
-        0x00C484C115C25694ULL, 0x8CD7677D4CA5E9B2ULL, 0x4FE1D686BB9C6D8AULL,
-        0xDB55FB4281327749ULL};
+        0x86F0DE9FD7FD3880ULL, 0x892D37F9FB34CE07ULL, 0x37F7FB56F4D07886ULL,
+        0xF7B74ECABE7191F4ULL};
     constexpr std::array<const char*, terrain::kLodCount> kNames = {
         "world tiles LOD 0", "world tiles LOD 1", "world tiles LOD 2", "world tiles LOD 3"};
     std::vector<Part> parts;
@@ -134,7 +134,7 @@ inline std::vector<Part> worldParts() {
     }
     Checksum plantSum;
     addTile(plantSum, tiles.generate({{plants, 0}, 0}));
-    parts.push_back({"world plants", plantSum.value(), 0x30286930BFA09043ULL});
+    parts.push_back({"world plants", plantSum.value(), 0x3F8863195483EC75ULL});
     // The tiles of LOD 0 to 3 holding the last chunk of the canonical range, at the corner: their
     // sides on the edges of the world, stitched across them.
     const terrain::ChunkCoord count = terrain::worldChunks(tiles.world());
@@ -145,7 +145,7 @@ inline std::vector<Part> worldParts() {
         addTile(cornerSum, tiles.generate({key, 0}));
         addTile(cornerSum, tiles.generate({key, terrain::kSeamPosX | terrain::kSeamPosZ}));
     }
-    parts.push_back({"world tiles at the corner", cornerSum.value(), 0x4CA1D40A8DE5983BULL});
+    parts.push_back({"world tiles at the corner", cornerSum.value(), 0xC1A9874A1B7B175AULL});
     return parts;
 }
 

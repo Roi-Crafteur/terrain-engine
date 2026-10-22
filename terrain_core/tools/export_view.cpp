@@ -12,13 +12,13 @@
 // top). The places come from terrain::measureRelief on cells of cell-size meters; --mountain
 // takes the chain around a point instead (its highest point within 12 km), the same in every
 // relief compared; with --plain, view_plain_fixed.png is a plain view at that point; --without
-// ravines or --without lively switches off a step of the relief of the geography
-// (GeographyParams::ravines, livelyPlains), to compare them. Without the optional arguments:
-// seed 20261019, the default relief, 1,600 x 900 pixels, cells of 16,384 m, all the hardware
-// threads, the default world.
+// switches off a step of the relief of the geography (the ravines, the lively plains, the warp
+// of the mountains or the floor of their valleys, kSteps), to compare them. Without the optional
+// arguments: seed 20261019, the default relief, 1,600 x 900 pixels, cells of 16,384 m, all the
+// hardware threads, the default world.
 // Usage: terrain_export_view <output-dir> [seed] [default|planetary|legacy|geography] [width]
 //        [cell-size] [threads] [world-x] [world-z] [--plain <x> <z>] [--mountain <x> <z>]
-//        [--without ravines|lively]...
+//        [--without ravines|lively|warp|valley-detail]...
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
@@ -70,8 +70,7 @@ struct Options {
     bool fixedMountain = false; // --mountain: the chain of the views around this point
     double mountainX = 0.0;
     double mountainZ = 0.0;
-    bool ravines = true;
-    bool lively = true;
+    unsigned without = 0; // kSteps bits of the steps switched off
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     std::string relief = "default";
     int width = 1600;
@@ -118,6 +117,32 @@ bool parseWorld(int argc, char** argv, Options& options) {
     return true;
 }
 
+// The steps of the relief of the geography that --without switches off, to compare them: the
+// ravines and the lively plains (GeographyParams::ravines, livelyPlains), the warp of the
+// mountains (warpAmplitude 0) and the floor of the finer octaves in their valleys
+// (GeographyParams::mountainValleyDetail 0).
+constexpr std::array<const char*, 4> kSteps = {"ravines", "lively", "warp", "valley-detail"};
+
+unsigned stepBit(const char* name) {
+    for (std::size_t k = 0; k < kSteps.size(); ++k) {
+        if (std::strcmp(name, kSteps[k]) == 0) {
+            return 1U << k;
+        }
+    }
+    return 0;
+}
+
+void switchOff(unsigned without, terrain::HeightfieldParams& params) {
+    params.geography.ravines = (without & stepBit("ravines")) == 0;
+    params.geography.livelyPlains = (without & stepBit("lively")) == 0;
+    if ((without & stepBit("warp")) != 0) {
+        params.warpAmplitude = 0.0;
+    }
+    if ((without & stepBit("valley-detail")) != 0) {
+        params.geography.mountainValleyDetail = 0.0;
+    }
+}
+
 // Reads the point <x> <z> after the flag at argv[k] (--plain or --mountain).
 bool parsePoint(int argc, char** argv, int k, double& x, double& z) {
     if (k + 2 >= argc || !(parse(argv[k + 1], x) && std::isfinite(x) && parse(argv[k + 2], z) &&
@@ -141,14 +166,13 @@ bool parseFlags(int argc, char** argv, Options& options, std::vector<char*>& kep
             (plain ? options.fixedPlain : options.fixedMountain) = true;
             k += 2;
         } else if (std::strcmp(argv[k], "--without") == 0) {
-            const bool ravines = k + 1 < argc && std::strcmp(argv[k + 1], "ravines") == 0;
-            const bool lively = k + 1 < argc && std::strcmp(argv[k + 1], "lively") == 0;
-            if (!ravines && !lively) {
-                std::fprintf(stderr, "Invalid step: expected --without ravines or lively\n");
+            const unsigned step = k + 1 < argc ? stepBit(argv[k + 1]) : 0;
+            if (step == 0) {
+                std::fprintf(stderr, "Invalid step: expected --without ravines, lively, warp or "
+                                     "valley-detail\n");
                 return false;
             }
-            options.ravines = options.ravines && !ravines;
-            options.lively = options.lively && !lively;
+            options.without |= step;
             ++k;
         } else {
             kept.push_back(argv[k]);
@@ -422,7 +446,7 @@ int main(int argc, char** argv) {
                      "Usage: %s <output-dir> [seed] [default|planetary|legacy|geography] "
                      "[width] [cell-size] [threads] [world-x] [world-z] [--plain <x> <z>] "
                      "[--mountain <x> <z>] "
-                     "[--without ravines|lively]...\n",
+                     "[--without ravines|lively|warp|valley-detail]...\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -430,8 +454,7 @@ int main(int argc, char** argv) {
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     terrain::HeightfieldParams params = reliefParams(options.relief);
-    params.geography.ravines = options.ravines;
-    params.geography.livelyPlains = options.lively;
+    switchOff(options.without, params);
     const terrain::Heightfield field(options.seed, params, options.world);
     const terrain::ReliefStats stats = terrain::measureRelief(
         terrain::sampleReliefWorld(field, options.cellSize, options.threads));

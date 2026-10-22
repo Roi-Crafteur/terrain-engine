@@ -108,6 +108,7 @@ enum Layer : std::uint64_t {
     kLocalRelief,
     kSpurs,
     kRavines,
+    kRock,
 };
 
 } // namespace
@@ -153,6 +154,10 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         layers->geographyWarpZ = fast(kWarpZ, 3, params_.warpWavelength, 0.5);
         layers->geographyRidge = fast(kRidge, params_.ridgeOctaves, params_.ridgeWavelength,
                                       params_.geography.mountainGain);
+        if (params_.geography.rockRelief > 0.0f) {
+            layers->geographyRock = fast(kRock, params_.geography.rockOctaves,
+                                         params_.geography.rockWavelength, 0.5);
+        }
         layers->geographySpurs = fast(kSpurs, 2, params_.geography.spurWavelength, 0.5);
         layers->ravines = ravines::makeNetwork(noise::deriveSeed(seed, kRavines), world);
         layers->local = relief_local::makeNoises(noise::deriveSeed(seed, kLocalRelief), world,
@@ -260,7 +265,9 @@ float Heightfield::detailAt(double x, double z, float base, Memos* memos) const 
     const float fade =
         noise::smoothstep(0.0f, kDetailCoastFade * params_.detailAmplitude, std::abs(base));
     const noise::FbmOctaves& layer = geography_ ? layers_->geographyDetail : layers_->detail;
-    return params_.detailAmplitude * fade * fbm(layer, x, z, memos, &Memos::detail);
+    const float amplitude =
+        geography_ ? params_.geography.detailAmplitude : params_.detailAmplitude;
+    return amplitude * fade * fbm(layer, x, z, memos, &Memos::detail);
 }
 
 // Local continentalness, plus the saturated macro term and the plate term when these layers

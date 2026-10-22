@@ -6,15 +6,14 @@
 // drop of the slope over their spacing): deep side valleys on the steep walls, shallow furrows on
 // gentle slopes, none on the flat.
 //
-// Each octave is a pattern of ravines running down a direction (phacelle noise): the four
-// anchors of the cells around a point each draw straight parallel ravines through themselves,
-// the direction turned by up to about 25 degrees per anchor and their spacing up to 35 % closer
-// or farther; their blend bends the ravines, keeps them continuous where the anchors agree and
-// forks or ends them where they do not. A third of the anchors have none and the depth of the
-// others varies: the ravines begin, fork and end at various lengths, and no comb or grid shows.
-// The direction of the first octave is the slope given by the caller; that of the second also
-// turns down the walls of the ravines of the first (tributaries). Pure arithmetic of doubles and
-// hashes: the same bits on every platform; periodic on the world when the caller's points are.
+// Each octave is a scatter of ravines: the anchor of each cell (a third of a cell from its
+// center at most) draws one ravine through itself, straight down the slope at the point, of its
+// own length, width and depth; a fifth of the anchors have none. A ravine deepens from its head
+// and fades out at its mouth, and where ravines overlap the deepest is kept: the spurs between
+// them are sharp, and no blend of phases twists or dams them. The direction of the first octave
+// is the slope given by the caller; that of the second also turns down the walls of the ravines
+// of the first (tributaries). Pure arithmetic of doubles and hashes: the same bits on every
+// platform; periodic on the world when the caller's points are.
 
 #include "terrain/world_size.hpp"
 
@@ -36,16 +35,21 @@ struct Network {
     WorldSize world;
 };
 
-// The anchors of the last cell met by each octave during a batch call (their hashes, and the
-// inverse norm of the directions they turn): a point in the same cell reuses them, with the same
-// bits.
+// The anchors around the last cell met by each octave during a batch call (their place, length,
+// width and depth): a point nearest to the same cell reuses them, with the same bits.
 struct Memo {
+    struct Anchor {
+        double x = 0.0; // cells from the center of the cell
+        double z = 0.0;
+        double length = 0.0; // cells on each side of the anchor, down the slope
+        double width = 0.0;  // cells on each side of the axis
+        double depth = 0.0;  // share of the depth of the octave, 0 without a ravine
+    };
     struct Cell {
         bool valid = false;
-        double fx = 0.0;
-        double fz = 0.0;
-        std::array<std::uint64_t, 4> hashes{};
-        std::array<double, 4> inverse{};
+        double i = 0.0;
+        double j = 0.0;
+        std::array<Anchor, 9> anchors{};
     };
     std::array<Cell, 2> octaves{};
 };

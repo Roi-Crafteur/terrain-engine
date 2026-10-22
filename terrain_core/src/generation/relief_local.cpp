@@ -27,27 +27,32 @@ struct Style {
     double butteWavelength;
 };
 
-constexpr Style kLively = {2'500.0, 0.6, 2, 8'000.0, 2, 2'000.0};
+constexpr Style kLively = {800.0, 0.7, 2, 5'000.0, 2, 1'200.0};
 constexpr Style kStepTwo = {6'000.0, 0.55, 3, 14'000.0, 3, 3'500.0};
 // The hills of the rough country of the lively plains.
 constexpr double kBroadWavelength = 4'500.0;
 
-// A vallon follows the zero lines of its noise, kVallonWidth of it on each side: about 1 km
-// wide, its walls concave at their foot.
-constexpr float kVallonWidth = 0.13f;
+// A vallon follows the zero lines of its noise, kVallonWidth of it on each side: about 500 m
+// wide (lively plains), its walls concave at their foot.
+constexpr float kVallonWidth = 0.09f;
 
 // The buttes rise where their noise goes from their foot to kButteRise above it: their sides
-// about 100 m wide. Lively plains: a foot from kButteFoot in the lands of buttes to kButteFoot +
-// kButteShift in those of vallons (fewer there, never none).
-constexpr float kButteFoot = 0.18f;
+// about 60 m wide (lively plains). Lively plains: a foot from kButteFoot in the lands of buttes
+// to kButteFoot + kButteShift in those of vallons (fewer there, never none).
+constexpr float kButteFoot = 0.24f;
 constexpr float kButteShift = 0.12f;
 constexpr float kButteRise = 0.07f;
+// The sides take kButteSides of the height of a butte, its dome the rest up to kButteDome above
+// its foot.
+constexpr float kButteSides = 0.6f;
+constexpr float kButteDome = 0.3f;
 
 // Lively plains: the lands of vallons and of buttes pass from one to the other as the regions go
-// from -kLandsSpan to kLandsSpan; between them, where |regions| is below kTerraceLands, soft
-// terraces of kTerraceStep meters: flat treads, steeper risers.
+// from -kLandsSpan to kLandsSpan; between them, where |regions| is below kTerraceCore (fading out
+// at kTerraceLands), soft terraces of kTerraceStep meters: flat treads, steeper risers.
 constexpr float kLandsSpan = 0.4f;
-constexpr float kTerraceLands = 0.25f;
+constexpr float kTerraceCore = 0.04f;
+constexpr float kTerraceLands = 0.12f;
 constexpr double kTerraceStep = 10.0;
 
 float fbm(const noise::FbmOctaves& layer, double x, double z, noise::FbmOctaves::Memo* memo) {
@@ -81,7 +86,7 @@ Lands landsOf(bool lively, const Shape& shape) {
     return {shape.plain * (0.5f + 0.5f * vallonLands), kButteFoot + kButteShift * vallonLands,
             1.0f,
             shape.plain *
-                (1.0f - noise::smoothstep(0.1f, kTerraceLands, std::abs(shape.region)))};
+                (1.0f - noise::smoothstep(kTerraceCore, kTerraceLands, std::abs(shape.region)))};
 }
 
 } // namespace
@@ -137,7 +142,10 @@ float rolling(const Noises& noises, double x, double z, const Shape& shape, Memo
         return relief;
     }
     const float n = fbm(noises.buttes, x, z, memos != nullptr ? &memos->buttes : nullptr);
-    return relief + buttes * noise::smoothstep(lands.butteFoot, lands.butteFoot + kButteRise, n);
+    // Steep sides, then a domed top.
+    const float sides = noise::smoothstep(lands.butteFoot, lands.butteFoot + kButteRise, n);
+    const float dome = noise::smoothstep(lands.butteFoot, lands.butteFoot + kButteDome, n);
+    return relief + buttes * (kButteSides * sides + (1.0f - kButteSides) * dome);
 }
 
 float boundBelow(float local, float room) {

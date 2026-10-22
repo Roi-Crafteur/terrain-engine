@@ -104,8 +104,8 @@ inline std::vector<Part> planetGoldenParts() {
     std::vector<Part> parts = planetParts({"planet default relief", "planet default climate",
                                            "planet default hydrology", "planet default level"},
                                           smallBuild(terrain::HeightfieldParams{}, 1, 2),
-                                          {0x266DB6494D8D8550ULL, 0x87C22D4DFDDB8E1DULL,
-                                           0xFAD43DCC1E63568CULL, 0x2E8E5ECA1072766FULL});
+                                          {0x395DA5203727FD8EULL, 0xB87E9C77865716A5ULL,
+                                           0x71084B668CEE6AB4ULL, 0x65A6FF4B051E81ACULL});
     const std::vector<Part> planetary =
         planetParts({"planet planetary relief", "planet planetary climate",
                      "planet planetary hydrology", "planet planetary level"},

@@ -101,6 +101,7 @@ add_library(terrain_core STATIC
     src/io/heightmap_png.cpp
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
+    src/io/relief_lakes.cpp
     src/io/planet_png.cpp
     src/io/planet_png_layers.cpp
     src/io/png.cpp

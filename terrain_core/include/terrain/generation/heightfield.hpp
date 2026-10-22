@@ -92,7 +92,7 @@ struct HeightSample {
     float relief = 0.0f; // [0, 1], the intensity of the relief of the geography on land (else 0)
     float base = 0.0f;                 // continental curve, [kMinBaseHeight, kMaxBaseHeight]
     float mountain = 0.0f;             // [0, mountainMask * mountainHeight * (1 + boost)]
-    float detail = 0.0f;               // [-detailAmplitude, detailAmplitude]
+    float detail = 0.0f; // [-detailAmplitude, detailAmplitude] (with the geography, its own)
     float height = 0.0f;
 };
 
