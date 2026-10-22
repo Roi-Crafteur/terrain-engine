@@ -73,10 +73,14 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
    **Procedural Mesh Component** sont activés.
 2. Matériau (une fois par projet, facultatif) : active **Python Editor Script Plugin** si besoin,
    puis Tools → **Execute Python Script…** →
-   `Plugins/terrain-engine/terrain_unreal/Scripts/create_terrain_material.py`. Il crée
+   `Plugins/terrain-engine/terrain_unreal/Scripts/create_temporary_terrain_material.py`. Il crée
+   `/Game/TerrainEngine/M_TemporaryTerrain`, le **matériau temporaire** du terrain (section 13) :
+   roche sur les pentes, neige, herbe, sable… selon les matériaux et biomes du core, en attendant
+   les vrais matériaux de la phase 14. Ou bien `Scripts/create_terrain_material.py`, qui crée
    `/Game/TerrainEngine/M_TerrainAltitude`, un matériau éclairé qui affiche la couleur des sommets
-   (sable au bord de la mer, vert, gris en altitude, blanc sur les sommets). Sans lui, l'acteur
-   prend le matériau de debug d'Unreal qui affiche les couleurs de sommet, et le dit dans le log.
+   (sable au bord de la mer, vert, gris en altitude, blanc sur les sommets). Sans aucun des deux,
+   l'acteur prend le matériau de debug d'Unreal qui affiche les couleurs de sommet, et le dit dans
+   le log.
 3. Niveau : File → New Level → **Basic** (ciel, lumière, un Player Start), puis supprime le sol
    (`Floor`), qui cacherait le terrain. Le mode de jeu du gabarit Third Person
    (`BP_ThirdPersonGameMode`) donne le Character qui marche. Ou bien, dans `ThirdPersonMap`,
@@ -128,7 +132,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `WorkerThreads` | 2 | threads de génération |
 | `MaxTileUploadsPerFrame` | 8 | budget de tuiles converties par frame |
 | `MeshType` | Procedural Mesh | type de mesh (Dynamic Mesh, Realtime Mesh : emplacements) |
-| `Material` | aucun | matériau des tuiles (voir 4.2) |
+| `Material` | aucun | matériau des tuiles (voir 4.2) ; aucun : `M_TemporaryTerrain`, sinon `M_TerrainAltitude` |
 | `bAsyncCollisionCooking` | non | cuisson des collisions hors du thread de jeu |
 | `FocusActor` | aucun | acteur suivi ; sinon le pion du premier joueur, ou sa caméra |
 | `bSnapPawnToGround` | oui | pose sur le sol un nouveau pion qui est dessous |
@@ -142,7 +146,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `HorizonMorphCells` | 32 | GPU : largeur, en mailles de chaque niveau, de la bande où il se fond dans le niveau plus grossier |
 | `bHorizonDebugTint` | non | GPU : chaque niveau teinté de sa couleur |
 | `HorizonMaterial` | aucun | matériau de l'horizon CPU (voir 10) |
-| `HorizonDropCm` | 100 | l'horizon est posé ce tant sous son sol : les tuiles restent devant là où les deux se recouvrent |
+| `HorizonDropCm` | 100 | l'horizon est posé ce tant sous son sol là où les tuiles le recouvrent : elles restent devant ; il remonte à son sol vers le bord des tuiles (section 13) |
 | `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles (section 12) |
 | `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
 | `bHorizonShadows` | non | ombres portées par l'horizon |
@@ -158,6 +162,7 @@ terrain_unreal/
   Scripts/create_terrain_material.py
   Scripts/create_horizon_material.py
   Scripts/create_horizon_gpu_material.py
+  Scripts/create_temporary_terrain_material.py, temporary_terrain_look.py  le matériau temporaire
   Source/TerrainEngine/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
@@ -231,7 +236,7 @@ Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_fr
 `unreal_tile_streamer_test`, `unreal_terrain_session_test`, `unreal_determinism_check_test`,
 `unreal_horizon_layout_test`, `unreal_horizon_mesh_test`, `unreal_horizon_streamer_test`,
 `unreal_horizon_epochs_test`, `unreal_horizon_textures_test`, `unreal_horizon_gpu_streamer_test`,
-`unreal_horizon_atmosphere_test`,
+`unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`,
 `unreal_core_sources`.
 
 ## 7. Linux et Mac (non essayés)
@@ -270,9 +275,10 @@ devra passer à `std::thread` (petit changement dans `terrain_core`, par l'agent
 ## 9. Pas encore fait
 
 Type de mesh autre que le Procedural Mesh Component (emplacements Dynamic Mesh et Realtime Mesh),
-eau, lave, plantes, matériaux du core. En build empaqueté, assigne les matériaux explicitement
-dans `Material`, `HorizonGpuMaterial` et `HorizonMaterial` : le chemin chargé par défaut n'est cuit
-que s'il est référencé.
+eau, lave, plantes, vrais matériaux de la phase 14 (un matériau temporaire en tient lieu,
+section 13). En build empaqueté, assigne les matériaux explicitement dans `Material`,
+`HorizonGpuMaterial` et `HorizonMaterial` : le chemin chargé par défaut n'est cuit que s'il est
+référencé.
 
 ## 10. L'horizon lointain (phase 13, étape 1)
 
@@ -350,8 +356,9 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   avertissement dans le log.
 - **Textures** (`Bridge/horizon_textures.hpp`) : une texture de 257 × 257 texels par niveau,
   `PF_A32B32G32R32F`, au plus proche, sans mipmap. Un texel : la hauteur (m, déjà à plat au niveau
-  de la mer), les deux pentes, la couleur empaquetée `r + 256 g + 65536 b` (exacte en float) ou,
-  sur l'océan, le sol sous la mer (négatif).
+  de la mer), les deux pentes, la surface empaquetée `matériau + 8 biome` (exacte en float,
+  `Bridge/terrain_surface.hpp`, lue par le matériau temporaire, section 13) ou, sur l'océan, le sol
+  sous la mer (négatif).
   Adressage torique, celui du core : l'échantillon (i, k) de la fenêtre est au texel
   (premier emplacement + (i, k)) mod 257. Un déplacement de niveau n'écrit que la bande nouvelle
   (`UpdateTextureRegions`, quelques centaines de texels), préparée sur les tâches : rien n'est
@@ -420,21 +427,10 @@ jour ; « sans » : `bHorizon` désactivé.
   niveau, 0,15 ms au plus ; tour du monde : les 10 niveaux replacés d'un monde en 0,05 ms, sans
   époque (étape 1 : moins de 2 ms).
 
-### Ajouter les matériaux et les biomes (pas encore fait)
+### Les matériaux et les biomes
 
-Chaque échantillon du core porte déjà un matériau et un biome (`HorizonCell`). Pour les dessiner
-sans rien refaire :
-
-1. une seconde texture par niveau, entière (`PF_R8G8B8A8_UINT` : matériau, biome, drapeaux, libre),
-   créée à côté de la première dans `UTerrainHorizonClipmap::CreateLevel` ;
-2. remplie par les mêmes régions : `texelRegions` découpe déjà chaque morceau en régions de la
-   texture torique ; il suffit d'un second `pieceTexels` qui écrit ces champs, et d'un second
-   `UpdateTextureRegions` ;
-3. un paramètre de texture de plus dans le matériau, lu au même emplacement torique.
-
-Les grilles, les placements, le géomorphing et le streaming ne changent pas. La couleur empaquetée
-de la première texture pourra alors disparaître si le nuanceur de pixels calcule la couleur depuis
-le matériau et le biome.
+Fait sans seconde texture : le dernier flottant d'un texel de terre porte la surface (matériau et
+biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du niveau 0 (section 13).
 
 ### Limites
 
@@ -442,7 +438,7 @@ le matériau et le biome.
   nouveau relief (agent 10).
 - Normales par sommet : le relief plus fin que la maille d'un niveau n'éclaire pas. Les normales
   par pixel viendront avec le rendu de la phase 14.
-- Matériaux et biomes : pas encore dessinés (ci-dessus).
+- Matériaux et biomes : dessinés par le matériau temporaire (section 13).
 - Les grilles sont construites sur le thread de jeu au `BeginPlay` (0,2 s, une fois) ; elles
   pourraient l'être hors de ce thread si ce temps gêne au chargement.
 
@@ -488,3 +484,15 @@ le matériau et le biome.
   mer reste opaque (transparence, caustiques, écume : phase 14) ; avec la caméra du Game Animation
   Sample, une frame est vue d'ailleurs pendant un recentrage d'origine (la caméra du jeu, pas le
   ciel ; une `CameraActor` ne le fait pas).
+
+## 13. Le matériau temporaire du terrain (phase 14, provisoire)
+
+En attendant les vrais matériaux de la phase 14 : roche sur les pentes raides, neige sur le sol
+froid peu pentu, herbe, herbe sèche, forêt, alpage, terre, sable, désert et éboulis selon les
+matériaux et biomes du core, les mêmes de près (tuiles, `M_TemporaryTerrain`) et de loin
+(`M_TerrainHorizonGpu`). Ses textures viennent du pack **Stylescape HD** (licence Fab : jamais
+dans ce dépôt) copié sous `/Game/StylescapeHD` du projet ; sans lui, des couleurs unies. Tout est
+décrit dans [`TEMPORARY_MATERIAL.md`](TEMPORARY_MATERIAL.md) : règles, installation du pack,
+réglages, coût, limites, et trois défauts de rendu (le trait sombre au bord des tuiles, corrigé
+par le fondu de `HorizonDropCm` ; les dents de scie sous un soleil bas, corrigées par des
+normales lissées ; la « ligne d'ombre » au pied de la chaîne, une arête du relief).
