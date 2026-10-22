@@ -4,6 +4,7 @@
 #include "Misc/Optional.h"
 #include "UObject/Object.h"
 
+#include "Bridge/horizon_atmosphere.hpp"
 #include "Bridge/horizon_gpu_streamer.hpp"
 #include "Bridge/horizon_timings.hpp"
 
@@ -50,6 +51,9 @@ public:
 	void Apply(terrain::unreal::HorizonGpuUpdate& Update, terrain::unreal::HorizonTimings& Timings);
 
 	void RemoveAll();
+
+	// Where the waves of the sea are measured from (Bridge/horizon_atmosphere.hpp), every level.
+	void SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin);
 
 	// Time spent building the grids, and the bytes of the textures and of the grids on the GPU.
 	double GetBuildMilliseconds() const { return BuildMilliseconds; }

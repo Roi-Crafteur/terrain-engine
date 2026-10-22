@@ -159,9 +159,11 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - core : fait (voir « Réalisé »)
 - modifications des joueurs visibles de loin : toutes si possible, sinon les grosses
   (format du résumé à définir avec la phase 15)
-- Unreal : rendu en clipmap (une texture par niveau, envoi des seules bandes changées,
-  géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles, jupe
-  sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure, atmosphère et mer
+- Unreal : fait — rendu en clipmap (une texture par niveau, envoi des seules bandes
+  changées, géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles,
+  jupe sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure ; ciel qui suit la
+  caméra partout sur la planète (perspective aérienne jusqu'au bout de l'horizon), mer
+  colorée selon la profondeur avec vagues, reflet du ciel et du soleil
 - plus tard si besoin : préfiltrage des crêtes lointaines (silhouette aujourd'hui au plus
   0,2° trop basse)
 
