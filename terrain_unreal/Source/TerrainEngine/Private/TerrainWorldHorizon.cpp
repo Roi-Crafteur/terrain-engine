@@ -134,6 +134,7 @@ bool ATerrainWorld::StartGpuHorizon()
 	Look.bDebugTint = bHorizonDebugTint;
 	HorizonClipmap = NewObject<UTerrainHorizonClipmap>(this);
 	HorizonClipmap->Initialize(*this, GpuLook, Horizon, Look);
+	HorizonClipmap->BindSurfaceLook(TileSurfaceLook);
 	HorizonClipmap->SetWaveOrigin(terrain::unreal::seaWaveOrigin(State->Frame));
 	State->HorizonStartSeconds = FPlatformTime::Seconds();
 	const terrain::unreal::TileHole& Hole = Horizon.tileHole();

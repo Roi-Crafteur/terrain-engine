@@ -43,6 +43,19 @@ namespace
 	const FName TintParameter(TEXT("DebugTint"));
 	const FName WaveOriginXParameter(TEXT("WaveOriginX"));
 	const FName WaveOriginYParameter(TEXT("WaveOriginY"));
+	const FName PitchParameter(TEXT("PitchCm"));
+	const FName DropCoveredParameter(TEXT("DropCoveredCm"));
+	const FName DropFadeParameter(TEXT("DropFadeCm"));
+
+	// Parameters of the materials of the tiles that read the surface of level 0
+	// (Scripts/temporary_terrain_look.py).
+	const FName SurfaceTexelsParameter(TEXT("SurfaceTexels"));
+	const FName SurfaceCellsParameter(TEXT("SurfaceCells"));
+	const FName SurfacePitchParameter(TEXT("SurfacePitchCm"));
+	const FName SurfaceFirstXParameter(TEXT("SurfaceFirstX"));
+	const FName SurfaceFirstZParameter(TEXT("SurfaceFirstZ"));
+	const FName SurfaceOriginParameter(TEXT("SurfaceOrigin"));
+	const FName HasSurfaceParameter(TEXT("HasSurface"));
 
 	FVector ToFVector(const terrain::unreal::UnrealPoint& Point)
 	{
@@ -79,6 +92,9 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 	OwnerActor = &Owner;
 	HorizonLook = Look;
 	Side = Streamer.side();
+	const double Level0Pitch = terrain::levelPitch(Streamer.params(), 0);
+	Level0PitchCm = Level0Pitch * 100.0;
+	Fade = terrain::unreal::dropFade(Streamer.tileHole(), Level0Pitch);
 	const int32 Cells = Streamer.params().cellsPerSide;
 	std::vector<terrain::unreal::GridMesh> Shapes{Streamer.level0Grid(), Streamer.ringGrid()};
 	for (int32 Variant = 0; Variant < terrain::unreal::kTrimVariants; ++Variant)
@@ -131,6 +147,9 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	Look->SetScalarParameterValue(SkirtParameter,
 		static_cast<float>(Streamer.skirtMetersOf(Level) * 100.0));
 	Look->SetScalarParameterValue(DropParameter, static_cast<float>(HorizonLook.DropCm));
+	Look->SetScalarParameterValue(PitchParameter, static_cast<float>(PitchCm));
+	Look->SetScalarParameterValue(DropCoveredParameter, static_cast<float>(Fade.coveredMeters * 100.0));
+	Look->SetScalarParameterValue(DropFadeParameter, static_cast<float>(Fade.fadeMeters * 100.0));
 	Look->SetScalarParameterValue(RadiusParameter,
 		static_cast<float>(Streamer.planetRadiusMeters() * 100.0));
 	Look->SetVectorParameterValue(TintParameter,
@@ -250,6 +269,43 @@ void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placem
 		Trim->SetVisibility(true);
 	}
 	Placed[Level] = Placement;
+	if (Level == 0)
+	{
+		PlaceSurface(Placement);
+	}
+}
+
+void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
+{
+	SurfaceLook = Look;
+	if (SurfaceLook == nullptr || Textures.IsEmpty())
+	{
+		return;
+	}
+	SurfaceLook->SetTextureParameterValue(SurfaceTexelsParameter, Textures[0]);
+	SurfaceLook->SetScalarParameterValue(SurfaceCellsParameter, static_cast<float>(Side - 1));
+	SurfaceLook->SetScalarParameterValue(SurfacePitchParameter, static_cast<float>(Level0PitchCm));
+	if (!Placed.IsEmpty() && Placed[0].IsSet())
+	{
+		PlaceSurface(*Placed[0]);
+	}
+}
+
+// The tiles read the texels of level 0 where it stands: its texels are only valid inside its
+// window, which holds every tile.
+void UTerrainHorizonClipmap::PlaceSurface(const terrain::unreal::LevelPlacement& Placement)
+{
+	if (SurfaceLook == nullptr)
+	{
+		return;
+	}
+	SurfaceLook->SetScalarParameterValue(SurfaceFirstXParameter,
+		static_cast<float>(Placement.firstSlot.x));
+	SurfaceLook->SetScalarParameterValue(SurfaceFirstZParameter,
+		static_cast<float>(Placement.firstSlot.z));
+	SurfaceLook->SetDoubleVectorParameterValue(SurfaceOriginParameter,
+		FVector4(Placement.origin.x, Placement.origin.y, Placement.origin.z, 0.0));
+	SurfaceLook->SetScalarParameterValue(HasSurfaceParameter, 1.0f);
 }
 
 void UTerrainHorizonClipmap::SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin)
@@ -258,6 +314,11 @@ void UTerrainHorizonClipmap::SetWaveOrigin(const terrain::unreal::WaveOrigin& Or
 	{
 		Look->SetScalarParameterValue(WaveOriginXParameter, static_cast<float>(Origin.x));
 		Look->SetScalarParameterValue(WaveOriginYParameter, static_cast<float>(Origin.y));
+	}
+	if (SurfaceLook != nullptr)
+	{
+		SurfaceLook->SetScalarParameterValue(WaveOriginXParameter, static_cast<float>(Origin.x));
+		SurfaceLook->SetScalarParameterValue(WaveOriginYParameter, static_cast<float>(Origin.y));
 	}
 }
 
@@ -276,4 +337,9 @@ void UTerrainHorizonClipmap::RemoveAll()
 	}
 	Placed.Empty();
 	TrimShown.Empty();
+	if (SurfaceLook != nullptr)
+	{
+		SurfaceLook->SetScalarParameterValue(HasSurfaceParameter, 0.0f);
+		SurfaceLook = nullptr;
+	}
 }
