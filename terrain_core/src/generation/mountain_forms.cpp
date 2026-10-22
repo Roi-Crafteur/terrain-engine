@@ -38,7 +38,7 @@ constexpr double kMainWallHigh = 3'200.0;
 constexpr double kWidthWavelength = 22'000.0;
 constexpr double kSideHalf = 350.0;
 constexpr double kSideWall = 1'400.0;
-// The main valley and a tributary meet rounded over kJoin meters.
+// The main valley and a tributary meet rounded over up to kJoin meters.
 constexpr double kJoin = 150.0;
 // The floors of the main valleys climb to passes up to kPasses of the height of the mountains,
 // along a slow noise of kPassWavelength (7 degrees at most). The main valleys are where a noise
@@ -302,12 +302,15 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
                              memo ? (positive ? &memo->sideA : &memo->sideB) : nullptr);
     const double floor = passes + hang + kClimb * std::max(0.0, reach) + (1.0 - own) * 2.0 * height;
     const Carve tributary = valleyForm(massif, floor, line.distance - kSideHalf, kSideWall, line);
-    // The lower of the two, their meeting rounded over kJoin meters: a continuous slope.
+    // The lower of the two, their meeting rounded over kJoin meters (less near the base, never
+    // below it): a continuous slope.
     const double a = out.form.height;
     const double b = tributary.form.height;
-    const double overlap = std::max(kJoin - std::abs(a - b), 0.0);
-    const double toB = a < b ? 0.5 * overlap / kJoin : 1.0 - 0.5 * overlap / kJoin;
-    out.form = {std::min(a, b) - overlap * overlap / (4.0 * kJoin),
+    const double join = std::min(kJoin, 4.0 * std::max(0.0, std::min(a, b)));
+    const double overlap = std::max(join - std::abs(a - b), 0.0);
+    const double share = join > 0.0 ? 0.5 * overlap / join : 0.0;
+    const double toB = a < b ? share : 1.0 - share;
+    out.form = {std::min(a, b) - (join > 0.0 ? overlap * overlap / (4.0 * join) : 0.0),
                 (1.0 - toB) * out.form.gradX + toB * tributary.form.gradX,
                 (1.0 - toB) * out.form.gradZ + toB * tributary.form.gradZ};
     out.floor = (1.0 - toB) * out.floor + toB * tributary.floor;

@@ -164,10 +164,11 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
     }
     s.mountain = mountain.height;
     if (params_.geography.walls && s.mountainMask > 0.0f) {
-        // The walls cut the great forms; the rock and the ravines break them afterward.
-        s.mountain += wallsAt(x, z, s.base + mountain.shape, mountain, intensity, g.character,
-                              memos) -
-                      (s.base + mountain.shape);
+        // The walls cut the great forms, never below the base; the rock and the ravines break
+        // them afterward.
+        const float top = std::max(
+            s.base, wallsAt(x, z, s.base + mountain.shape, mountain, intensity, g.character, memos));
+        s.mountain = std::max(0.0f, s.mountain + (top - (s.base + mountain.shape)));
     }
     s.detail = detailAt(x, z, s.base, memos);
     s.height = s.base + s.mountain + s.detail;
@@ -262,28 +263,32 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
                     (memos != nullptr ? rock.ridged2D(x, z, kRockSharpness, memos->rock)
                                       : rock.ridged2D(x, z, kRockSharpness));
     }
-    out.height = mountain;
-    if (!p.ravines) {
-        return out;
-    }
-    // The ravines run down the great forms, as deep as they are steep; on the massifs they fade
-    // out near the crests and on the creases of the first octaves (the divides).
-    const double slope = dmath::hypot(out.gradX, out.gradZ);
-    double strength = static_cast<double>(open) *
+    out.height = p.ravines ? mountainRavinesAt(warped, out, massif ? r.crease : -1.0f, mountain,
+                                               memos)
+                           : mountain;
+    return out;
+}
+
+// The ravines run down the great forms, as deep as they are steep; on the massifs (crease at
+// least 0) they fade out near the crests and on the creases of the first octaves (the divides).
+float Heightfield::mountainRavinesAt(const std::array<double, 2>& warped,
+                                     const MountainForm& form, float crease, float mountain,
+                                     Memos* memos) const {
+    const double slope = dmath::hypot(form.gradX, form.gradZ);
+    double strength = static_cast<double>(1.0f - form.floor) *
                       static_cast<double>(noise::smoothstep(static_cast<float>(kRavineFlat),
                                                             static_cast<float>(kRavineSteep),
                                                             static_cast<float>(slope)));
-    if (massif) {
-        strength *= (1.0 - static_cast<double>(noise::smoothstep(kCrestLow, kCrestHigh, r.head))) *
-                    static_cast<double>(noise::smoothstep(0.0f, kDivide, r.crease));
+    if (crease >= 0.0f) {
+        strength *= (1.0 - static_cast<double>(form.crest)) *
+                    static_cast<double>(noise::smoothstep(0.0f, kDivide, crease));
     }
     // As deep as the slope, up to kRavineSlope.
     const double deep = std::min(1.0, kRavineSlope / std::max(slope, kRavineSlope));
     const float ravines =
-        ravines::depth(layers_->ravines, warped[0], warped[1], deep * out.gradX, deep * out.gradZ,
-                       strength, memos != nullptr ? &memos->ravines : nullptr);
-    out.height = mountain + relief_local::boundBelow(-ravines, kRavineRoom * std::max(0.0f, mountain));
-    return out;
+        ravines::depth(layers_->ravines, warped[0], warped[1], deep * form.gradX,
+                       deep * form.gradZ, strength, memos != nullptr ? &memos->ravines : nullptr);
+    return mountain + relief_local::boundBelow(-ravines, kRavineRoom * std::max(0.0f, mountain));
 }
 
 float Heightfield::wallsAt(double x, double z, float ground, const MountainForm& form,

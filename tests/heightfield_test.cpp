@@ -94,10 +94,11 @@ void testDeterminism() {
 }
 
 void testLocalContinuity() {
-    // Measured slopes stay below 3; the bound leaves a wide margin but still catches any
-    // jump larger than a few centimeters.
-    constexpr double kMaxSlope = 10.0;
-    constexpr double kStep = 0.01;
+    // The walls of the mountains rise at up to 89 degrees (a slope of about 90 over a few
+    // meters, the same at 1 cm and at 1 mm): the bound leaves a margin and, over 1 mm, still
+    // catches any jump larger than a few centimeters.
+    constexpr double kMaxSlope = 100.0;
+    constexpr double kStep = 0.001;
     constexpr double kTolerance = kMaxSlope * kStep + 1.0e-3; // + float rounding
     for (const std::uint64_t seed : kSeeds) {
         const Heightfield field(seed);

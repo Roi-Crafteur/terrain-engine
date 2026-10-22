@@ -32,8 +32,8 @@ constexpr double kGentleHigh = 0.5;
 constexpr double kReliefLow = 100.0;
 constexpr double kReliefHigh = 400.0;
 constexpr double kPatchWavelength = 1'500.0;
-constexpr double kPatchLow = -0.5;
-constexpr double kPatchHigh = -0.05;
+constexpr double kPatchLow = -0.75;
+constexpr double kPatchHigh = -0.35;
 constexpr double kPatchFloor = 0.0;
 // Strata or crystalline: a noise of kCharacterWavelength, plus kWornStrata per unit of character
 // below kSharp (the worn massifs and the plateaus are layered), plus kIsolatedStrata in the
