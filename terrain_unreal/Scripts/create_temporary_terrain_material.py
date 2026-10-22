@@ -35,7 +35,8 @@ PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TemporaryTerrain"
 SURFACE_SCALARS = {"SurfaceFirstX": 0.0, "SurfaceFirstZ": 0.0, "SurfaceCells": 256.0,
                    "SurfacePitchCm": 800.0, "HasSurface": 0.0, "WaveOriginX": 0.0,
-                   "WaveOriginY": 0.0}
+                   "WaveOriginY": 0.0, "SmoothNormal": 0.8, "SmoothNearM": 60.0,
+                   "SmoothFarM": 220.0}
 FLOAT1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
 FLOAT2 = unreal.CustomMaterialOutputType.CMOT_FLOAT2
 FLOAT3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
@@ -45,6 +46,7 @@ VERTEX_HLSL = r"""
 float4 a = float4(1.0, 0.0, 0.0, 0.0);
 float4 b = float4(0.0, 0.0, 0.0, 0.0);
 float4 c = float4(0.0, 0.0, 0.0, 0.0);
+float2 slope = float2(0.0, 0.0);
 float altitude = Rel.z / 100.0;
 BRANCH if (HasSurface > 0.5)
 {
@@ -68,6 +70,7 @@ BRANCH if (HasSurface > 0.5)
     a = w.x * a00 + w.y * a10 + w.z * a01 + w.w * a11;
     b = w.x * b00 + w.y * b10 + w.z * b01 + w.w * b11;
     c.xy = w.x * c00 + w.y * c10 + w.z * c01 + w.w * c11;
+    slope = w.x * t00.gb + w.y * t10.gb + w.z * t01.gb + w.w * t11.gb;
     // The foot of steep slopes: the steepest of the 4 samples (rise over run), from 35 degrees.
     float steep = max(max(length(t00.gb), length(t10.gb)), max(length(t01.gb), length(t11.gb)));
     c.z = saturate((steep - 0.7) / 0.5);
@@ -82,13 +85,21 @@ else
 c.w = altitude / 1000.0;
 W1 = b;
 W2 = c;
+W3 = float4(slope, HasSurface, 0.0);
 return a;
 """
 
-const float PERIOD = 409600.0;
-float2 w = GetTranslatedWorldPosition(Parameters).xy - GetPeriodicWorldOrigin(float3(PERIOD, PERIOD, PERIOD)).xy - float2(WaveOriginX, WaveOriginY);
-Dist = length(CameraRel) / 100.0;
-return w / 100.0;
+# The normal of the pixel: beyond the tiles of LOD 0 the tiles are coarse Marching Cubes meshes
+# whose vertex normals draw saw-teeth and facets along the terminator under a low sun; there the
+# normal leans toward the smooth normal of the samples of level 0 (bilinear slopes, the normals of
+# the horizon), except on cliffs, overhangs and caves, where the two disagree.
+NORMAL_HLSL = r"""
+float3 n = normalize(Nv);
+if (W3.z < 0.5) { return n; }
+float3 smooth = normalize(float3(-W3.xy, 1.0));
+float k = SmoothNormal * saturate((Dist - SmoothNearM) / max(SmoothFarM - SmoothNearM, 1.0));
+k *= saturate((dot(n, smooth) - 0.6) / 0.2);
+return normalize(lerp(n, smooth, k));
 """
 
 
@@ -136,7 +147,7 @@ def vertex_shader(material, scalars):
     custom = custom_node(
         material, -1400, 0, "TemporaryTerrainVertex", look.struct_hlsl() + VERTEX_HLSL,
         ["Tex", "Rel", "SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm",
-         "HasSurface"], [("W1", FLOAT4), ("W2", FLOAT4)], FLOAT4)
+         "HasSurface"], [("W1", FLOAT4), ("W2", FLOAT4), ("W3", FLOAT4)], FLOAT4)
     texels = expression(material, unreal.MaterialExpressionTextureObjectParameter, -2000, -200)
     texels.set_editor_property("parameter_name", "SurfaceTexels")
     texels.set_editor_property("texture", unreal.EditorAssetLibrary.load_asset(
@@ -157,7 +168,7 @@ def vertex_shader(material, scalars):
     for name in ["SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm", "HasSurface"]:
         connect(scalars[name], "", custom, name)
     interpolated = {}
-    for index, output in enumerate(["", "W1", "W2"]):
+    for index, output in enumerate(["", "W1", "W2", "W3"]):
         node = expression(material, unreal.MaterialExpressionVertexInterpolator, -1000, 150 * index)
         connect(custom, output, node, "")
         interpolated[f"W{index}"] = node
@@ -175,7 +186,15 @@ def pixel_shader(material, scalars, weights):
     connect(camera_relative, "", position, "CameraRel")
     connect(scalars["WaveOriginX"], "", position, "WaveOriginX")
     connect(scalars["WaveOriginY"], "", position, "WaveOriginY")
-    normal = expression(material, unreal.MaterialExpressionVertexNormalWS, -1100, 650)
+    vertex_normal = expression(material, unreal.MaterialExpressionVertexNormalWS, -1100, 650)
+    normal = custom_node(material, -800, 650, "TemporaryTerrainNormal", NORMAL_HLSL,
+                         ["Nv", "W3", "Dist", "SmoothNormal", "SmoothNearM", "SmoothFarM"], [],
+                         FLOAT3)
+    connect(vertex_normal, "", normal, "Nv")
+    connect(weights["W3"], "", normal, "W3")
+    connect(position, "Dist", normal, "Dist")
+    for name in ("SmoothNormal", "SmoothNearM", "SmoothFarM"):
+        connect(scalars[name], "", normal, name)
     altitude = expression(material, unreal.MaterialExpressionComponentMask, -800, 400)
     for channel in "rgba":
         altitude.set_editor_property(channel, channel == "a")

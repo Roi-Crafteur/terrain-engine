@@ -10,7 +10,7 @@ Rules (kept simple on purpose):
   Bridge/terrain_surface.hpp) pick the ground layers: grass, dry grass, forest floor, alpine
   grass, dirt, sand, desert, scree, with soft transitions (blended per vertex between samples);
 - rock from about RockStartDeg of slope, fully rock from RockFullDeg, the threshold jittered by
-  noise; where the pixels are coarse (far tiles, the horizon) the rock of the core is kept;
+  noise, and wherever the core puts rock (CoreRock of it, at every distance);
 - snow where the core says it is cold (snow biome or material, which includes the altitude and the
   exposure), only on slopes gentler than SnowShedDeg: rock pokes through on the steep faces;
 - scree at the foot of steep slopes (tiles: the steepest of the 4 texels around a vertex);
@@ -39,7 +39,7 @@ LAYERS = [
     ("Forest", "T_ForestGround_D", "T_ForestGround_N", (0.130, 0.109, 0.053), 4.0),
     ("Alpine", "T_ForestGround_Alpine_D", "T_ForestGround_N", (0.130, 0.109, 0.053), 4.0),
     ("Dirt", "T_DirtDry_D", "T_DirtDry_N", (0.180, 0.117, 0.062), 4.0),
-    ("Sand", "T_Wet_Sand_D", "T_Wet_Sand_N", (0.325, 0.231, 0.145), 4.0),
+    ("Sand", "T_Trampled_Sand_D", "T_Trampled_Sand_N", (0.302, 0.247, 0.177), 4.0),
     ("Desert", "T_Sand_Rocky_D", "T_Sand_Rocky_N", (0.349, 0.184, 0.096), 8.0),
     ("Scree", "T_RockyGround_D", "T_RockyGround_N", (0.139, 0.106, 0.072), 4.0),
     ("Snow", "T_Snowy_Rocky_Dirt_D", "T_Snowy_Rocky_Dirt_N", (0.421, 0.415, 0.431), 8.0),
@@ -49,18 +49,18 @@ GROUND = 8  # the first 8 layers are the ground; then the snow and the rock
 
 # Tints of the layers (linear multipliers), tunable on the instances.
 TINTS = {
-    "Grass": (1.0, 1.05, 0.85), "DryGrass": (1.05, 1.0, 0.85), "Forest": (0.85, 0.95, 0.8),
-    "Alpine": (0.95, 1.05, 1.0), "Dirt": (1.05, 0.95, 0.85), "Sand": (1.1, 1.05, 0.95),
-    "Desert": (1.05, 1.0, 0.95), "Scree": (1.0, 1.0, 1.0), "Snow": (1.0, 1.0, 1.0),
-    "Rock": (1.05, 1.0, 0.95),
+    "Grass": (0.8, 1.1, 0.6), "DryGrass": (1.0, 0.95, 0.75), "Forest": (0.75, 0.95, 0.7),
+    "Alpine": (0.85, 1.05, 0.85), "Dirt": (1.0, 0.95, 0.9), "Sand": (1.05, 1.02, 0.95),
+    "Desert": (0.95, 0.95, 1.0), "Scree": (1.0, 1.0, 1.0), "Snow": (1.0, 1.0, 1.0),
+    "Rock": (1.0, 1.0, 1.0),
 }
 
 SCALARS = {
     "RockStartDeg": 36.0, "RockFullDeg": 50.0, "SnowHoldDeg": 32.0, "SnowShedDeg": 44.0,
-    "DetailNearM": 150.0, "DetailFarM": 400.0, "Saturation": 1.25, "NormalStrength": 0.8,
-    "SnowWhiten": 0.35, "MacroVariation": 1.0, "DebugView": 0.0,
+    "DetailNearM": 150.0, "DetailFarM": 400.0, "Saturation": 1.2, "NormalStrength": 0.8,
+    "SnowWhiten": 0.6, "MacroVariation": 1.0, "CoreRock": 0.8, "DebugView": 0.0,
 }
-WARMTH = (1.04, 1.0, 0.94)
+WARMTH = (1.03, 1.0, 0.95)
 
 # Ground weights (Grass, DryGrass, Forest, Alpine | Dirt, Sand, Desert, Scree) and (cold, rock) of
 # each biome of the core (terrain_core biome.hpp, in order), then the overrides of its materials.
@@ -191,7 +191,7 @@ float n3 = Look.Noise(P, 8.0);
 float slope = degrees(acos(saturate(N.z)));
 float jit = (n1 - 0.5) * 8.0 + (n3 - 0.5) * 3.0;
 float rock = saturate((slope - (RockStartDeg + jit)) / max(RockFullDeg - RockStartDeg, 1.0));
-rock = max(rock, W2.y * (1.0 - detail) * 0.85);
+rock = max(rock, W2.y * CoreRock);
 float cold = saturate((W2.x - 0.5) * 2.5 + (n2 - 0.5) * 1.2 + 0.5);
 float snow = cold * saturate((SnowShedDeg + jit - slope) / max(SnowShedDeg - SnowHoldDeg, 1.0));
 float g[8] = { W0.x, W0.y, W0.z, W0.w, W1.x, W1.y, W1.z, W1.w };
