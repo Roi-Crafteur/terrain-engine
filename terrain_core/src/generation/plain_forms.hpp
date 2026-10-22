@@ -11,12 +11,15 @@
 // - long swells of 5 to 10 km, bumps on the drained ground only (no closed hollow of that size:
 //   the low land between them holds together, the water passes);
 // - hills of 300 m to 1 km, and a micro relief of 30 to 100 m;
-// - vallons along the zero lines of a warped noise: sinuous, unevenly spaced (1 to 2 km),
-//   100 to 300 m wide, 8 to 25 m deep, deeper here and shallower there, in the low land between
-//   the swells; shorter branches, here and there, that join them;
-// - now and then an isolated hill of 50 to 150 m in a cell of about 7 km: an irregular outline,
-//   a broad rounded top, one flank longer than the other, knolls and shoulders on it, its own
-//   hills and micro relief stronger, gullies down the outer part of its flanks.
+// - vallons along the zero lines of a warped noise of one octave: sinuous, unevenly spaced (1 to
+//   2 km), 100 to 300 m wide, 8 to 25 m deep, deeper here and shallower there, in the low land
+//   between the swells; they head on the crests of the hills and fade where their lines would
+//   close in rings; shorter branches, here and there, that join them;
+// - now and then an isolated hill of 50 to 150 m in a cell of about 7 km: a short ridge of 2 to 4
+//   rounded summits of unequal heights with saddles between them, an irregular outline, one
+//   flank longer than the other, knolls and shoulders, its own hills and micro relief stronger,
+//   gullies down the outer part of its flanks; the vallons and the relief of relief_local end at
+//   its foot.
 // Deterministic, periodic on the world, the same bits through the memos.
 
 #include "terrain/generation/noise_octaves.hpp"
@@ -70,6 +73,10 @@ struct Ground {
 
 // The height of the isolated hills at (x, z), meters (0 away from them), weight 1.
 [[nodiscard]] double hillAt(const Noises& noises, double x, double z, Memos* memos);
+
+// The depth of the vallons at (x, z), meters, as deep as they go: in the most rolling plains, in
+// the lands of vallons, off the swells and the isolated hills.
+[[nodiscard]] double vallonsAt(const Noises& noises, double x, double z, Memos* memos);
 
 // The relief of the plain at (x, z), canonical: the local relief, scaled by the kind of plain,
 // plus the forms of the plains, all of it weight of the way from the local relief alone.

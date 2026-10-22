@@ -403,6 +403,13 @@ double hillAt(const Noises& noises, double x, double z, Memos* memos) {
     return hillsOf(noises, x, z, warpAt(noises, x, z, memos), memos).height;
 }
 
+double vallonsAt(const Noises& noises, double x, double z, Memos* memos) {
+    const Warp warp = warpAt(noises, x, z, memos);
+    const double crest = fbm(noises.hills, x, z, memos ? &memos->hills : nullptr);
+    return vallonsOf(noises, x + kVallonWarp * warp.x, z + kVallonWarp * warp.z,
+                     kVallonDeepHigh, crest, memos);
+}
+
 float relief(const Noises& n, double x, double z, const Ground& g, Memos* memos) {
     const double kind = dmath::pow(static_cast<double>(kindAt(n, x, z, memos)), kRolling);
     const Warp warp = warpAt(n, x, z, memos);
