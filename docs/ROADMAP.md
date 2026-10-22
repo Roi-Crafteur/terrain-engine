@@ -9,6 +9,11 @@ Principe : `terrain_core` décide de la forme du monde (déterministe, identique
 machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
+Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
+locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
+réécrit tout nous-mêmes, sans copier ni traduire son code.
+
 ## Réalisé
 
 ### Phase 1 — Base
@@ -136,6 +141,17 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
   province du relief au cœur des continents secs, jamais placée par le biome
 - falaises, surplombs et arches dans le monde infini
+- érosion par ondes alignées sur la pente (sillons et ravins ramifiés à toutes les tailles,
+  de 4 m à 256 m, type Big Globe) si elle n'est pas déjà venue avec la 11R bis
+- reliefs fantastiques, rares et spectaculaires (médiéval-fantasy), placés par le niveau
+  Planète, jamais par le biome :
+  - îles flottantes au-dessus des mers et des plaines basses, jamais au-dessus des montagnes
+    ni dans le froid : un dessous qui pend en cuvette et un dessus avec relief et érosion,
+    dans le SDF ; types variés (montagne en spirale, plateformes étagées, plaines fissurées,
+    plaines percées) ; nuages en dessous
+  - monolithes (obélisques) : prismes très hauts, parfois creux, raccordés au terrain par
+    une courbe (le sol monte ou descend jusqu'à leur pied)
+  - visibles depuis l'horizon lointain (phase 13)
 - fin des deux mondes séparés (régions finies / monde streamé)
 
 ### Phase 13 — Horizon lointain
