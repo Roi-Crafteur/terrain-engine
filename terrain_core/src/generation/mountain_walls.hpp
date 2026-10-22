@@ -82,30 +82,45 @@ struct Column {
                             // great faces, not on the knolls of the floors
 };
 
-// The masks of the two characters at a column, in [0, 1], their sum at most 1.
+// The masks of the two characters at a column, in [0, 1], their sum at most 1, and the noise of
+// the patches of walls there (about -1 to 1).
 struct Masks {
     double strata = 0.0;
     double crystal = 0.0;
+    double patch = 0.0;
 };
 [[nodiscard]] Masks masks(const Noises& noises, const Column& column, double x, double z,
                           Memo* memo);
 
+// How the layers of a stack are drawn: the seed of the draws of each layer; the share of them
+// that are hard here (a share that varies from place to place: banks that thin out and stop);
+// the tread of a hard layer rising tilt of its band, plus up to spread of the rest (walls of
+// uneven heights); the share scree of its wall buried under its scree.
+struct Bedding {
+    std::uint64_t layers = 0;
+    double hard = 0.7;
+    double tilt = 0.25;
+    double spread = 0.0;
+    double scree = 0.0;
+};
+
 // The top of a stack of strata over ground of slope slope (meters per meter): bands band meters
-// high from offset, their rims receded by rim meters. The share hard of them (drawn from the
-// seed layers for each band) are hard: a ledge rising tilt of the band, then a face rising over
-// run meters (0: a vertical wall) up to the next band; the others keep the slope. At most a few
-// thousandths of band above the ground.
+// high from offset, their rims receded by rim meters. A hard layer (blended over the draw of its
+// hardness) is a ledge, then a face rising over run meters (0: a vertical wall) up to the next
+// band, its foot buried in a concave apron of scree at most as steep as the scree at rest; a
+// soft one keeps the slope. Continuous, rising with the ground, at most a few hundredths of a
+// band above it.
 [[nodiscard]] double strataTop(double ground, double slope, double band, double offset,
-                               double rim, double run, double tilt, std::uint64_t layers,
-                               double hard);
+                               double rim, double run, const Bedding& bedding);
 
 // The top of the crystalline rock over ground at (x, z) for the scale (0: cells of 512 m, 1: of
 // 128 m), the ground of gradient (gradX, gradZ): the ground cut by the joints of each cell
-// (strataTop along its tilted planes, waving with rims, the noise of the rims there), blended
+// (strataTop along its tilted planes, waving with rims, the noise of the rims there, hard of
+// them hard), blended
 // with those of the neighbors within ramp meters of the fractures (0: the nearest cell alone).
 [[nodiscard]] double crystalTop(const Noises& noises, double x, double z, double ground,
                                 double gradX, double gradZ, int scale, double ramp, double rims,
-                                Memo* memo);
+                                double hard, Memo* memo);
 
 // The top of the rock at a column at (x, z), canonical.
 [[nodiscard]] double surface(const Noises& noises, const Column& column, double x, double z,

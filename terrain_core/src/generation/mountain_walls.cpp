@@ -19,8 +19,8 @@ namespace {
 // least kPatchFloor of the mask everywhere.
 constexpr float kCoreLow = 0.45f;
 constexpr float kCoreHigh = 0.7f;
-constexpr double kSteepLow = 0.2;
-constexpr double kSteepHigh = 0.45;
+constexpr double kSteepLow = 0.15;
+constexpr double kSteepHigh = 0.4;
 constexpr double kIsolatedWavelength = 70'000.0;
 constexpr float kIsolatedLow = 0.55f;
 constexpr float kIsolatedHigh = 0.7f;
@@ -38,13 +38,14 @@ constexpr double kPatchFloor = 0.0;
 // Strata or crystalline: a noise of kCharacterWavelength, plus kWornStrata per unit of character
 // below kSharp (the worn massifs and the plateaus are layered), plus kIsolatedStrata in the
 // isolated regions, minus kCrystalCores in the most intense cores (intensity kCrystalLow to
-// kCrystalHigh: the crystalline cores of the highest chains), from -kCharacterEdge to
-// kCharacterEdge.
+// kCrystalHigh: the crystalline cores of the highest chains), minus kRareStrata (the strata are
+// regional, about a quarter of the walls), from -kCharacterEdge to kCharacterEdge.
 constexpr double kCharacterWavelength = 160'000.0;
 constexpr double kWornStrata = 0.4;
 constexpr double kSharp = 0.7;
 constexpr double kIsolatedStrata = 0.6;
-constexpr double kCrystalCores = 0.6;
+constexpr double kCrystalCores = 1.0;
+constexpr double kRareStrata = 0.25;
 constexpr float kCrystalLow = 0.6f;
 constexpr float kCrystalHigh = 0.8f;
 constexpr double kCharacterEdge = 0.15;
@@ -60,17 +61,27 @@ constexpr double kBandWavelength = 4'000.0;
 constexpr double kDip = 1500.0;
 constexpr double kDipWavelength = 20'000.0;
 constexpr double kStepShare = 0.15;
-constexpr double kStepMask = 0.5;
+constexpr double kStepMask = 0.35;
 constexpr double kRim = 25.0;
-constexpr double kRunLow = 0.05;
-constexpr double kRunHigh = 0.25;
+constexpr double kRunLow = 0.03;
+constexpr double kRunHigh = 0.15;
 constexpr double kRimWavelength = 300.0;
 constexpr double kTilt = 0.25;
 // The share of the layers that are hard (a ledge and a wall), the others soft (the slope goes
-// on): for the great bands, the rock steps and the joints.
-constexpr double kHardBands = 0.7;
-constexpr double kHardSteps = 0.7;
-constexpr double kHardJoints = 0.85;
+// on): for the great bands, the rock steps and the joints, plus kHardSwing times the noise of
+// the patches (the banks come and go along their length, each blended over kHardEdge of its
+// draw). The treads of the hard layers rise kTilt plus up to kSpread of the rest of their band;
+// the scree buries kScree of their walls (kJointScree for the joints), no steeper than
+// kScreeSlope (35 degrees).
+constexpr double kHardBands = 0.4;
+constexpr double kHardSteps = 0.3;
+constexpr double kHardJoints = 0.7;
+constexpr double kHardSwing = 0.25;
+constexpr double kHardEdge = 0.06;
+constexpr double kSpread = 0.7;
+constexpr double kScree = 0.35;
+constexpr double kJointScree = 0.25;
+constexpr double kScreeSlope = 0.7;
 // The treads of the joints keep kJointTilt of the slope of the ground: no plane slabs.
 constexpr double kJointTilt = 0.55;
 // The share of a band its face may take at most.
@@ -82,12 +93,12 @@ constexpr double kLeastSlope = 0.05;
 // kJointHigh meters apart along planes of slope kTiltLow to kTiltHigh (20 to 50 degrees); the
 // tops blend over kRamp meters across the fractures; the finer scale counts kFine of the coarser.
 constexpr std::array<double, 2> kCellSize = {512.0, 128.0};
-constexpr std::array<double, 2> kJointLow = {80.0, 15.0};
-constexpr std::array<double, 2> kJointHigh = {260.0, 55.0};
+constexpr std::array<double, 2> kJointLow = {120.0, 20.0};
+constexpr std::array<double, 2> kJointHigh = {400.0, 80.0};
 constexpr double kTiltLow = 0.36;
 constexpr double kTiltHigh = 1.2;
 constexpr double kRamp = 2.0;
-constexpr double kFine = 0.5;
+constexpr double kFine = 0.75;
 // The joints wave by up to kJointWave of their spacing (the noise of the rims): never a row of
 // even teeth.
 constexpr double kJointWave = 0.6;
@@ -191,40 +202,55 @@ Masks masks(const Noises& n, const Column& c, double x, double z, Memo* memo) {
     if (!(wall > 0.0)) {
         return out;
     }
-    const double patches =
-        smooth(kPatchLow, kPatchHigh, fbm(n.patches, x, z, memo ? &memo->patches : nullptr));
+    const double patch = fbm(n.patches, x, z, memo ? &memo->patches : nullptr);
+    const double patches = smooth(kPatchLow, kPatchHigh, patch);
     const double mask = wall * (kPatchFloor + (1.0 - kPatchFloor) * patches);
     const double layered =
         smooth(-kCharacterEdge, kCharacterEdge,
                fbm(n.character, x, z, memo ? &memo->character : nullptr) +
                    kWornStrata * (kSharp - static_cast<double>(c.character)) +
-                   kIsolatedStrata * isolated -
+                   kIsolatedStrata * isolated - kRareStrata -
                    kCrystalCores * static_cast<double>(
                                        noise::smoothstep(kCrystalLow, kCrystalHigh, c.intensity)));
     out.strata = mask * layered;
     out.crystal = mask * (1.0 - layered);
+    out.patch = patch;
     return out;
 }
 
 double strataTop(double ground, double slope, double band, double offset, double rim, double run,
-                 double tilt, std::uint64_t layers, double hard) {
+                 const Bedding& b) {
     const double s = std::max(slope, kLeastSlope);
     const double u = (ground - rim * s - offset) / band;
     const double k = std::floor(u);
     const double t = u - k;
-    // A soft layer keeps the slope; a hard one is a ledge, then a wall up to the next layer.
+    // A soft layer keeps the slope; a hard one is a ledge, then a wall up to the next layer. Both
+    // meet at the bounds of the band, whatever their blend.
+    const double soft = offset + band * u;
     const auto index = static_cast<std::uint64_t>(static_cast<std::int64_t>(k));
-    if (!(field(noise::deriveSeed(layers, index), 0) < hard)) {
-        return offset + band * u;
+    const std::uint64_t draw = noise::deriveSeed(b.layers, index);
+    const double hardness = smooth(-kHardEdge, kHardEdge, b.hard - field(draw, 0));
+    if (!(hardness > 0.0)) {
+        return soft;
     }
+    const double tilt = b.tilt + (1.0 - b.tilt) * b.spread * field(draw, 1);
     // The face takes the share of the band the ground climbs over run meters.
     const double face = std::clamp(s * run / band, 0.0, kFaceShare);
-    const double riser = face > 0.0 ? smooth(1.0 - face, 1.0, t) : (t >= 1.0 ? 1.0 : 0.0);
-    return offset + band * (k + tilt * t + (1.0 - tilt) * riser);
+    double rise = face > 0.0 ? smooth(1.0 - face, 1.0, t) : (t >= 1.0 ? 1.0 : 0.0);
+    if (b.scree > 0.0 && face > 0.0) {
+        // The scree: a concave apron from start, at most kScreeSlope steep, up to scree of the
+        // wall.
+        const double width =
+            std::clamp(2.0 * b.scree * (1.0 - tilt) * s / kScreeSlope, face, 1.0);
+        const double q = std::clamp((t - (1.0 - width)) / width, 0.0, 1.0);
+        rise = (1.0 - b.scree) * rise + b.scree * q * q;
+    }
+    const double hard = offset + band * (k + tilt * t + (1.0 - tilt) * rise);
+    return soft + hardness * (hard - soft);
 }
 
 double crystalTop(const Noises& n, double x, double z, double ground, double gradX,
-                  double gradZ, int scale, double ramp, double rims, Memo* memo) {
+                  double gradZ, int scale, double ramp, double rims, double hard, Memo* memo) {
     const auto s = static_cast<std::size_t>(scale);
     const double size = kCellSize[s];
     const double cx = (x + 0.5 * n.world.x) / size;
@@ -254,8 +280,8 @@ double crystalTop(const Noises& n, double x, double z, double ground, double gra
         const double lift = (c.tiltX * (px - c.x) + c.tiltZ * (pz - c.z)) * size;
         const double slope = dmath::hypot(gradX + c.tiltX, gradZ + c.tiltZ);
         return strataTop(ground + lift, slope, c.band, c.offset + wave * c.band, 0.0,
-                         c.band * (kRunLow + (kRunHigh - kRunLow) * 0.35), kJointTilt,
-                         c.layers, kHardJoints) -
+                         c.band * (kRunLow + (kRunHigh - kRunLow) * 0.35),
+                         {c.layers, hard, kJointTilt, kSpread, kJointScree}) -
                lift;
     };
     if (!(ramp > 0.0)) {
@@ -293,16 +319,22 @@ double surface(const Noises& n, const Column& c, double x, double z, Memo* memo)
         const double rims = 0.5 + 0.5 * noise;
         const double rim = kRim * rims;
         const double run = kRunLow + (kRunHigh - kRunLow) * (1.0 - rims);
-        h += m.strata *
-             (strataTop(h, slope, band, offset, rim, run * band, kTilt, n.layers, kHardBands) - h);
+        const double swing = kHardSwing * m.patch;
+        h += m.strata * (strataTop(h, slope, band, offset, rim, run * band,
+                                   {n.layers, kHardBands + swing, kTilt, kSpread, kScree}) -
+                         h);
         const double steps = kStepShare * band;
-        h += kStepMask * m.strata * (strataTop(h, slope, steps, 0.37 * offset, kStepShare * rim,
-                                               run * steps, kTilt, n.steps, kHardSteps) -
-                                     h);
+        h += kStepMask * m.strata *
+             (strataTop(h, slope, steps, 0.37 * offset, kStepShare * rim, run * steps,
+                        {n.steps, kHardSteps + swing, kTilt, kSpread, kScree}) -
+              h);
     }
     if (m.crystal > 0.0) {
-        h += m.crystal * (crystalTop(n, x, z, h, c.gradX, c.gradZ, 0, kRamp, noise, memo) - h);
-        h += kFine * m.crystal * (crystalTop(n, x, z, h, c.gradX, c.gradZ, 1, kRamp, noise, memo) - h);
+        const double hard = kHardJoints + kHardSwing * m.patch;
+        h += m.crystal *
+             (crystalTop(n, x, z, h, c.gradX, c.gradZ, 0, kRamp, noise, hard, memo) - h);
+        h += kFine * m.crystal *
+             (crystalTop(n, x, z, h, c.gradX, c.gradZ, 1, kRamp, noise, hard, memo) - h);
     }
     return h;
 }

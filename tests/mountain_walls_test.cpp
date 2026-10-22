@@ -44,7 +44,8 @@ void testStrataClosedForm() {
         const double offset = uniform(points, -500.0, 500.0);
         const double rim = uniform(points, 0.0, kRim);
         const auto layers = static_cast<std::uint64_t>(k) * 0x9E3779B97F4A7C15ULL;
-        const double top = walls::strataTop(ground, slope, band, offset, rim, 0.0, 0.0, layers, 1.0);
+        const double top =
+            walls::strataTop(ground, slope, band, offset, rim, 0.0, {layers, 2.0, 0.0, 0.0, 0.0});
         const double receded = ground - rim * std::max(slope, 0.05);
         double highest = -1.0e300;
         for (int j = -1'200; j <= 1'200; ++j) {
@@ -55,7 +56,8 @@ void testStrataClosedForm() {
         }
         union_ = union_ && std::abs(top - highest) <= 1e-6 * band;
         // Soft layers keep the receded ground.
-        const double kept = walls::strataTop(ground, slope, band, offset, rim, 0.0, 0.0, layers, 0.0);
+        const double kept =
+            walls::strataTop(ground, slope, band, offset, rim, 0.0, {layers, -1.0, 0.0, 0.0, 0.0});
         soft = soft && std::abs(kept - receded) <= 1e-9 * std::max(1.0, std::abs(ground));
     }
     TEST_CHECK(union_);
@@ -63,11 +65,13 @@ void testStrataClosedForm() {
 }
 
 // Never more than a few hundredths of a band above the ground, at most a band and a rim below
-// it; rising with the ground and continuous.
+// it; rising with the ground and continuous, the scree at the foot of the walls included; the
+// banks thin out and stop with the share of hard layers, without a step.
 void testStrataBounds() {
     bit_exact::Points points;
     bool bounded = true;
     bool rising = true;
+    bool fading = true;
     for (int k = 0; k < 20'000; ++k) {
         const double ground = uniform(points, 0.0, 9'000.0);
         const double slope = uniform(points, 0.0, 3.0);
@@ -76,29 +80,34 @@ void testStrataBounds() {
         const double rim = uniform(points, 0.0, kRim);
         const double run = band * uniform(points, 0.05, 0.25);
         const auto layers = static_cast<std::uint64_t>(k) * 0xD1B54A32D192ED03ULL;
-        const auto top = [&](double g) {
-            return walls::strataTop(g, slope, band, offset, rim, run, kTilt, layers, 0.7);
+        const double hard = uniform(points, 0.0, 1.0);
+        const auto top = [&](double g, double h) {
+            return walls::strataTop(g, slope, band, offset, rim, run,
+                                    {layers, h, kTilt, 0.7, 0.35});
         };
-        const double t = top(ground);
+        const double t = top(ground, hard);
         bounded = bounded && t <= ground + 0.03 * band &&
                   t >= ground - rim * std::max(slope, 0.05) - band - 1e-9;
         // The faces are at most 600 times steeper than the ground below them: no step.
-        const double next = top(ground + 1e-3);
+        const double next = top(ground + 1e-3, hard);
         rising = rising && next >= t && next - t <= 600.0 * 1e-3 + 1e-9;
+        // The banks thin out with the share of hard layers, without a step.
+        fading = fading && std::abs(top(ground, hard + 1e-4) - t) <= 0.002 * band;
     }
     TEST_CHECK(bounded);
     TEST_CHECK(rising);
+    TEST_CHECK(fading);
 }
 
-// A steep face of a core below the crystalline cores of the highest chains (intensity 0.65):
-// both characters, region by region.
+// A steep face of a worn core below the crystalline cores of the highest chains (intensity
+// 0.65, character 0.4): both characters, region by region.
 walls::Column wallColumn(double ground, double gradX, double gradZ) {
     walls::Column c;
     c.ground = ground;
     c.gradX = gradX;
     c.gradZ = gradZ;
     c.intensity = 0.65f;
-    c.character = 0.8f;
+    c.character = 0.4f;
     c.relief = 1'500.0f;
     return c;
 }
@@ -116,8 +125,8 @@ void testSurface() {
     for (const bit_exact::Point& p : bit_exact::randomPoints(20'000, 2e7)) {
         walls::Column c = wallColumn(3'000.0 + 0.001 * p.x, 0.8, -0.6);
         const walls::Masks m = walls::masks(n, c, p.x, p.z, nullptr);
-        strata += m.strata > 0.5 ? 1 : 0;
-        crystal += m.crystal > 0.5 ? 1 : 0;
+        strata += m.strata > 0.1 && m.strata > m.crystal ? 1 : 0;
+        crystal += m.crystal > 0.1 && m.crystal > m.strata ? 1 : 0;
         ++total;
         const double s = walls::surface(n, c, p.x, p.z, nullptr);
         bounded = bounded && s <= c.ground + 0.03 * kBandHigh && s >= c.ground - 800.0;

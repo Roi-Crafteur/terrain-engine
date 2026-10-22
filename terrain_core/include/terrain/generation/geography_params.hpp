@@ -138,7 +138,7 @@ struct GeographyParams {
     // above the regional elevation under their mask, with their own wavelength, sharpness and
     // gain: sharp crests, valleys in V between them, steep walls without a fractal roughness at
     // every scale.
-    float mountainHeight = 4100.0f;
+    float mountainHeight = 4300.0f;
     double mountainWavelength = 14'000.0;
     double mountainSharpness = 4.0;
     double mountainGain = 0.42;

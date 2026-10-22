@@ -40,8 +40,9 @@ constexpr float kButteShare = 1.6f;
 constexpr float kButteMax = 40.0f;
 constexpr float kButteLow = 0.1f;
 constexpr float kButteHigh = 0.25f;
-// The hills keep 1 - kHillsUnderMassifs of their amplitude under a full mask of the massifs.
-constexpr float kHillsUnderMassifs = 0.8f;
+// The hills keep 1 - kHillsUnderMassifs of their amplitude under a full mask of the massifs: the
+// relief of the mountains is theirs, not a swell of the ground.
+constexpr float kHillsUnderMassifs = 0.92f;
 constexpr float kPlainLow = 0.3f;
 constexpr float kPlainHigh = 0.6f;
 // The hills of the plains give way to those of the rough country as the intensity passes
@@ -70,8 +71,8 @@ constexpr double kSpurSharpness = 2.0;
 constexpr int kSlopeOctaves = 2;
 constexpr double kRavineFlat = 0.05;
 constexpr double kRavineSteep = 0.2;
-constexpr float kCrestLow = 0.75f;
-constexpr float kCrestHigh = 0.95f;
+constexpr float kCrestLow = 0.9f;
+constexpr float kCrestHigh = 0.98f;
 constexpr float kRavineRoom = 0.7f;
 // The ravines fade out where the noise of one of those octaves is below kDivide in absolute
 // value: about a kilometer around the divides.
@@ -81,14 +82,19 @@ constexpr float kDivide = 0.1f;
 constexpr double kRockSharpness = 2.0;
 
 // The massifs are flat below kFlatten of their height and steeper above it, their profile raised
-// to the power kRise: their faces rise steep from the floors, the relief gathers on their walls. The dominant summits stand where the intensity passes kSummitLow to
-// kSummitHigh (the cores of the chains). On the floors of the valleys the hills keep
-// 1 - kFloorHills of their amplitude.
+// to the power kRise: their faces rise steep from the floors, the relief gathers on their walls.
+// The dominant summits stand where the intensity passes kSummitLow to kSummitHigh (the cores of
+// the chains). Within the valleys the hills keep 1 - kFloorHills of their amplitude: flat floors.
 constexpr double kFlatten = 0.05;
 constexpr double kRise = 0.7;
 constexpr float kSummitLow = 0.55f;
+// On the dominant summits the rock (sharp crests of 190 to 750 m) grows kSummitRock times per unit
+// of their rise: secondary ridges, gullies and rock bands on their faces, no smooth cone.
+constexpr double kSummitRock = 1.0;
+// The rock grows by kRockShare of the height of the massif.
+constexpr float kRockShare = 0.04f;
 constexpr float kSummitHigh = 0.8f;
-constexpr float kFloorHills = 0.9f;
+constexpr float kFloorHills = 0.95f;
 // The slope of the great forms is read at most kSteepest (meters per meter); the ravines are as
 // deep as a slope of kRavineSlope at most.
 constexpr double kSteepest = 3.0;
@@ -156,7 +162,7 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
     const float amplitude =
         land * (kPlainHills + kHillsRange * noise::smoothstep(kHillsLow, kHillsHigh, intensity)) *
         (1.0f - kHillsUnderMassifs * s.mountainMask) *
-        (1.0f - kFloorHills * mountain.floor * s.mountainMask);
+        (1.0f - kFloorHills * std::max(mountain.floor, mountain.valley) * s.mountainMask);
     const float buttes = std::min(kButteShare * amplitude, kButteMax) *
                          (1.0f - noise::smoothstep(kButteLow, kButteHigh, intensity));
     const float plain = 1.0f - noise::smoothstep(kPlainLow, kPlainHigh, s.mountainMask);
@@ -229,17 +235,19 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
     out.gradX = rise * r.headX;
     out.gradZ = rise * r.headZ;
     double onMassif = 1.0; // 0 where a valley cuts the massif kValleyBlend meters or more
+    double rocky = 1.0;    // the rock, kSummitRock times rougher per unit of rise of the summits
     mountain_forms::Memo* forms = memos != nullptr ? &memos->forms : nullptr;
     if (p.summits) {
         // Around the dominant summits the crests of the massif rise far above their hollows.
         const double core =
             static_cast<double>(mask * noise::smoothstep(kSummitLow, kSummitHigh, intensity));
-        const mountain_forms::Rise lift = mountain_forms::summits(
+        const mountain_forms::Form lift = mountain_forms::summits(
             layers_->forms, warped[0], warped[1], static_cast<double>(ground),
             static_cast<double>(height), core, forms);
-        out.gradX = out.gradX * lift.factor.height + form * lift.factor.gradX + lift.base.gradX;
-        out.gradZ = out.gradZ * lift.factor.height + form * lift.factor.gradZ + lift.base.gradZ;
-        form = form * lift.factor.height + lift.base.height;
+        out.gradX = out.gradX * lift.height + form * lift.gradX;
+        out.gradZ = out.gradZ * lift.height + form * lift.gradZ;
+        form *= lift.height;
+        rocky += kSummitRock * std::max(0.0, lift.height - 1.0);
     }
     if (p.valleys && full > static_cast<double>(kValleyLow)) {
         const mountain_forms::Carve carve = mountain_forms::valleys(
@@ -253,6 +261,7 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
             out.gradX = onMassif * out.gradX + (1.0 - onMassif) * carve.form.gradX;
             out.gradZ = onMassif * out.gradZ + (1.0 - onMassif) * carve.form.gradZ;
             out.floor = static_cast<float>(cuts * carve.floor);
+            out.valley = static_cast<float>(1.0 - onMassif);
         }
     }
     // The slope of the great forms, at most kSteepest: it orients the ravines and the walls.
@@ -267,7 +276,10 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
     const float open = 1.0f - out.floor;
     if (p.rockRelief > 0.0f) {
         const noise::FbmOctaves& rock = layers_->geographyRock;
-        mountain += mask * p.rockRelief * open *
+        // As rough as the massif is high: no smooth face, no smooth cone.
+        const float relief =
+            (p.rockRelief + kRockShare * std::max(0.0f, mountain)) * static_cast<float>(rocky);
+        mountain += mask * relief * open *
                     (memos != nullptr ? rock.ridged2D(x, z, kRockSharpness, memos->rock)
                                       : rock.ridged2D(x, z, kRockSharpness));
     }

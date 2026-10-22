@@ -149,13 +149,15 @@ private:
     [[nodiscard]] float reliefAt(double x, double z, float mapRelief, Memos* memos) const;
     // The mountains at a point: their height above the base, that of their great forms alone
     // (without the rock and the ravines) and its gradient (meters per meter, up), how much the
-    // point lies on the floor of a valley and on a crest of the massif, in [0, 1].
+    // point lies on the floor of a valley, within a valley and on a crest of the massif, in
+    // [0, 1].
     struct MountainForm {
         float height = 0.0f;
         float shape = 0.0f;
         double gradX = 0.0;
         double gradZ = 0.0;
         float floor = 0.0f;
+        float valley = 0.0f;
         float crest = 0.0f;
     };
     // The ridged mountains of this intensity and character under the mask, cut by the valleys in
