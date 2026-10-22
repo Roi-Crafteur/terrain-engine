@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <utility>
 
 namespace terrain::mountain_forms {
 
@@ -75,18 +76,22 @@ constexpr double kSummitJitter = 0.35;
 constexpr double kLevel = 0.6;
 constexpr double kProminenceLow = 1'200.0;
 constexpr double kProminenceHigh = 2'200.0;
-constexpr double kRadiusLow = 3'000.0;
-constexpr double kRadiusHigh = 4'500.0;
+constexpr double kRadiusLow = 2'500.0;
+constexpr double kRadiusHigh = 3'500.0;
 // Around the rise, out to kMoatEnd times its radius, the massif is lower by up to kMoat: the
 // summit stands above its neighbors.
 constexpr double kMoatEnd = 2.2;
-constexpr double kMoat = 0.3;
+constexpr double kMoat = 0.4;
 // Under each summit a base of kBase of its prominence rises as (1 - r / radius)^2: the summit
 // stands even where its site falls in a hollow of the massif.
-constexpr double kBase = 0.8;
-// The summits rise at most to about kCeiling meters, keeping kLeastProminence of their prominence.
+constexpr double kBase = 1.2;
+// The summits rise at most to about kCeiling meters: lower, or none, where the ground and the
+// massif are already high.
 constexpr double kCeiling = 8'300.0;
-constexpr double kLeastProminence = 0.3;
+// Each summit moves onto the nearest zero line of the first octave of the massif (its crest) by
+// kCrestSteps steps of Newton, at most kCrestReach meters.
+constexpr int kCrestSteps = 2;
+constexpr double kCrestReach = 4'000.0;
 
 
 noise::FbmOctaves octaves(std::uint64_t seed, std::uint64_t stream, int count, double wavelength,
@@ -149,25 +154,98 @@ std::uint64_t cellIndex(int i, int j, int cellsX, int cellsZ) {
     return wj * static_cast<std::uint64_t>(cellsX) + wi;
 }
 
-// The summit of cell (i, j), its place in meters from the center of the cell (i0, j0).
-Summit summitOf(const Noises& n, int i, int j, int i0, int j0) {
+// The move from (x, z) onto the nearest crest of the massif: the zero line of the first octave
+// of its noise, where 1 - |n| rises to 1.
+std::array<double, 2> crestShift(const Noises& n, double x, double z) {
+    std::array<double, 2> d{};
+    for (int step = 0; step < kCrestSteps; ++step) {
+        const noise::FbmOctaves::RidgedSlope r =
+            n.crests.ridged2DSlope(x + d[0], z + d[1], 1.0, 0.0, 1);
+        const double g2 = r.headX * r.headX + r.headZ * r.headZ;
+        if (!(g2 > kLeastGradient * kLeastGradient)) {
+            break;
+        }
+        const double toward = (1.0 - static_cast<double>(r.head)) / g2;
+        d = {d[0] + toward * r.headX, d[1] + toward * r.headZ};
+        const double length = dmath::hypot(d[0], d[1]);
+        if (length > kCrestReach) {
+            d = {d[0] * kCrestReach / length, d[1] * kCrestReach / length};
+            break;
+        }
+    }
+    return d;
+}
+
+// The summit of cell (i, j), its place in meters from the center of the cell (i0, j0); on its
+// crest if onCrest (the move computed from the wrapped cell: the same from every cell).
+Summit summitOf(const Noises& n, int i, int j, int i0, int j0, bool onCrest) {
     const std::uint64_t a = noise::deriveSeed(n.summits, cellIndex(i, j, n.cellsX, n.cellsZ));
     Summit s;
     if (!(field(a, 0) < kSummitShare)) {
         return s;
     }
-    s.x = (i - i0 + kSummitJitter * (2.0 * field(a, 1) - 1.0)) * (n.world.x / n.cellsX);
-    s.z = (j - j0 + kSummitJitter * (2.0 * field(a, 2) - 1.0)) * (n.world.z / n.cellsZ);
+    const double sizeX = n.world.x / n.cellsX;
+    const double sizeZ = n.world.z / n.cellsZ;
+    const double jitterX = kSummitJitter * (2.0 * field(a, 1) - 1.0);
+    const double jitterZ = kSummitJitter * (2.0 * field(a, 2) - 1.0);
+    s.x = (i - i0 + jitterX) * sizeX;
+    s.z = (j - j0 + jitterZ) * sizeZ;
     s.prominence = kProminenceLow + (kProminenceHigh - kProminenceLow) * field(a, 3);
     const std::uint64_t b = noise::deriveSeed(a, 1);
     s.radius = kRadiusLow + (kRadiusHigh - kRadiusLow) * field(b, 0);
+    if (onCrest) {
+        const int wi = (i % n.cellsX + n.cellsX) % n.cellsX;
+        const int wj = (j % n.cellsZ + n.cellsZ) % n.cellsZ;
+        const std::array<double, 2> d = crestShift(n, (wi + 0.5 + jitterX) * sizeX - 0.5 * n.world.x,
+                                                   (wj + 0.5 + jitterZ) * sizeZ - 0.5 * n.world.z);
+        s.x += d[0];
+        s.z += d[1];
+    }
     return s;
+}
+
+// The rises of the summits around a point: the highest (two summits on one crest never stack),
+// lowered by the product of their rings.
+struct Lifts {
+    Form rise{1.0, 0.0, 0.0};
+    Form base;
+    Form moat{1.0, 0.0, 0.0};
+};
+
+// Summit s seen at (dx, dz) from it, r away: within its radius, the factor 1 + gain (1 - (r /
+// radius)^2)^2 of the massif (broad enough to lift the crests near the center) and the base
+// base (1 - r / radius)^2; beyond, out to kMoatEnd radii, the factor 1 - depth 16 u^2 (1 - u)^2
+// (a lowered ring). With their gradients.
+void addSummit(const Summit& s, double dx, double dz, double r, double gain, double base,
+               double depth, Lifts& lifts) {
+    if (r < s.radius) {
+        const double q = 1.0 - (r / s.radius) * (r / s.radius);
+        const double factor = 1.0 + gain * q * q;
+        if (factor > lifts.rise.height) {
+            const double along = -4.0 * gain * q / (s.radius * s.radius);
+            lifts.rise = {factor, along * dx, along * dz};
+        }
+        const double t = 1.0 - r / s.radius;
+        if (base * t * t > lifts.base.height) {
+            const double along = r > 0.0 ? -2.0 * base * t / (s.radius * r) : 0.0;
+            lifts.base = {base * t * t, along * dx, along * dz};
+        }
+        return;
+    }
+    const double span = (kMoatEnd - 1.0) * s.radius;
+    const double u = (r - s.radius) / span;
+    const double factor = 1.0 - depth * 16.0 * u * u * (1.0 - u) * (1.0 - u);
+    const double along = -depth * 32.0 * u * (1.0 - u) * (1.0 - 2.0 * u) / (span * r);
+    Form& m = lifts.moat;
+    m = {m.height * factor, m.gradX * factor + m.height * along * dx,
+         m.gradZ * factor + m.height * along * dz};
 }
 
 } // namespace
 
-Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
+Noises makeNoises(std::uint64_t seed, const WorldSize& world, noise::FbmOctaves crests) {
     Noises n;
+    n.crests = std::move(crests);
     n.warpX = octaves(seed, 0, 2, kWarpWavelength, world);
     n.warpZ = octaves(seed, 1, 2, kWarpWavelength, world);
     n.main = octaves(seed, 2, 1, kMainWavelength, world);
@@ -237,7 +315,7 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
 }
 
 Summit summitOfCell(const Noises& n, int i, int j) {
-    Summit s = summitOf(n, i, j, 0, 0);
+    Summit s = summitOf(n, i, j, 0, 0, true);
     s.x += 0.5 * n.world.x / n.cellsX - 0.5 * n.world.x;
     s.z += 0.5 * n.world.z / n.cellsZ - 0.5 * n.world.z;
     return s;
@@ -246,7 +324,6 @@ Summit summitOfCell(const Noises& n, int i, int j) {
 Rise summits(const Noises& n, double x, double z, double ground, double height, double core,
              Memo* memo) {
     Rise out;
-    Form& rise = out.factor;
     if (!(core > 0.0) || !(height > 0.0)) {
         return out;
     }
@@ -258,10 +335,12 @@ Rise summits(const Noises& n, double x, double z, double ground, double height, 
     const auto j = static_cast<int>(std::floor(cz));
     Memo local;
     Memo& m = memo != nullptr ? *memo : local;
+    // Through a memo the summits of the 3 x 3 cells move onto their crests once per cell;
+    // without one, only those that may reach the point.
     if (!m.valid || m.cellI != i || m.cellJ != j) {
         for (std::size_t k = 0; k < m.summits.size(); ++k) {
             m.summits[k] = summitOf(n, i + static_cast<int>(k % 3) - 1,
-                                    j + static_cast<int>(k / 3) - 1, i, j);
+                                    j + static_cast<int>(k / 3) - 1, i, j, memo != nullptr);
         }
         m.valid = true;
         m.cellI = i;
@@ -270,41 +349,38 @@ Rise summits(const Noises& n, double x, double z, double ground, double height, 
     // The point in meters from the center of its cell.
     const double px = (cx - i - 0.5) * sizeX;
     const double pz = (cz - j - 0.5) * sizeZ;
-    for (const Summit& s : m.summits) {
+    Lifts lifts;
+    for (std::size_t k = 0; k < m.summits.size(); ++k) {
+        Summit s = m.summits[k];
+        if (!(s.prominence > 0.0)) {
+            continue;
+        }
+        if (memo == nullptr) {
+            if (!(dmath::hypot(px - s.x, pz - s.z) < kMoatEnd * s.radius + kCrestReach)) {
+                continue;
+            }
+            s = summitOf(n, i + static_cast<int>(k % 3) - 1, j + static_cast<int>(k / 3) - 1, i,
+                         j, true);
+        }
         const double dx = px - s.x;
         const double dz = pz - s.z;
         const double r = dmath::hypot(dx, dz);
-        if (!(s.prominence > 0.0) || !(r < kMoatEnd * s.radius)) {
+        if (!(r < kMoatEnd * s.radius)) {
             continue;
         }
-        // Lower summits where the ground and the massif are already high: under kCeiling.
+        // Lower summits where the ground and the massif are already high: the top of the rise,
+        // at most ground + height + core * prominence * (1 / kLevel + kBase), under kCeiling.
         const double prominence =
-            std::clamp(kCeiling - ground - height, kLeastProminence * s.prominence, s.prominence);
-        // The factor of this summit and its derivative along r: the rise (1 - r / radius)^2,
-        // then the lowered ring 16 u^2 (1 - u)^2 beyond it.
-        double factor = 1.0;
-        double perMeter = 0.0;
-        if (r < s.radius) {
-            const double t = 1.0 - r / s.radius;
-            const double gain = core * prominence / (kLevel * height);
-            factor = 1.0 + gain * t * t;
-            perMeter = -2.0 * gain * t / s.radius;
-            const double base = core * kBase * prominence;
-            const double baseAlong = r > 0.0 ? -2.0 * base * t / (s.radius * r) : 0.0;
-            out.base = {out.base.height + base * t * t, out.base.gradX + baseAlong * dx,
-                        out.base.gradZ + baseAlong * dz};
-        } else {
-            const double span = (kMoatEnd - 1.0) * s.radius;
-            const double u = (r - s.radius) / span;
-            const double depth = core * kMoat;
-            factor = 1.0 - depth * 16.0 * u * u * (1.0 - u) * (1.0 - u);
-            perMeter = -depth * 32.0 * u * (1.0 - u) * (1.0 - 2.0 * u) / span;
-        }
-        // The factors of the summits multiply: (F f)' = F' f + F f'.
-        const double along = r > 0.0 ? perMeter / r : 0.0;
-        rise = {rise.height * factor, rise.gradX * factor + rise.height * along * dx,
-                rise.gradZ * factor + rise.height * along * dz};
+            std::clamp((kCeiling - ground - height) / (1.0 / kLevel + kBase), 0.0, s.prominence);
+        addSummit(s, dx, dz, r, core * prominence / (kLevel * height), core * kBase * prominence,
+                  core * kMoat, lifts);
     }
+    // The highest rise, lowered by the rings: (F f)' = F' f + F f'.
+    const Form& f = lifts.rise;
+    const Form& g = lifts.moat;
+    out.factor = {f.height * g.height, f.gradX * g.height + f.height * g.gradX,
+                  f.gradZ * g.height + f.height * g.gradZ};
+    out.base = lifts.base;
     return out;
 }
 

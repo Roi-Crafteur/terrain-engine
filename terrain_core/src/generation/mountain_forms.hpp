@@ -10,10 +10,11 @@
 // its crests and hollows kept (a U, with shoulders); the floors of the main valleys climb to
 // passes, those of some tributaries hang above the main valley.
 //
-// Summits: at most one per cell of about 16 km, off the center of its cell. The massif rises
-// around it, its crests much more than its hollows (the caller multiplies it): the summit is the
-// crest of the massif nearest to the center of the rise, its ridges, faces and gullies those of
-// the massif, steeper: 2 to 5 ridges as they come, asymmetric faces, no geometric figure.
+// Summits: at most one per cell of about 16 km of the warped space of the massif, off the center
+// of its cell, moved onto the nearest crest of the first octave of the massif. The massif rises
+// around it, its crests much more than its hollows (the caller multiplies it): the summit is that
+// crest lifted, its ridges, faces and gullies those of the massif, steeper: 2 to 5 ridges as they
+// come, asymmetric faces, no geometric figure.
 //
 // Pure arithmetic of doubles, noises and hashes: the same bits on every platform, periodic on
 // the world.
@@ -36,6 +37,7 @@ struct Noises {
     noise::FbmOctaves widths; // the widths of their floors
     noise::FbmOctaves hanging; // the tributaries hanging above the main valley
     noise::FbmOctaves presence; // where the main valleys are
+    noise::FbmOctaves crests;   // the first octave of the massif: its zero lines are its crests
     std::uint64_t summits = 0;
     int cellsX = 1; // cells of the summits along each side of the world
     int cellsZ = 1;
@@ -43,7 +45,10 @@ struct Noises {
     bool twinWarps = false;
 };
 
-[[nodiscard]] Noises makeNoises(std::uint64_t seed, const WorldSize& world);
+// crests: the first octave of the ridged noise of the massif alone (the same seed, lattice and
+// frequency).
+[[nodiscard]] Noises makeNoises(std::uint64_t seed, const WorldSize& world,
+                                noise::FbmOctaves crests);
 
 // The memos of the noises during a batch call of the Heightfield, and the summits of the 3 x 3
 // cells around the last cell met.
@@ -87,11 +92,12 @@ struct Carve {
 [[nodiscard]] Carve valleys(const Noises& noises, double x, double z, double height,
                             const Form& massif, Memo* memo);
 
-// The summit of cell (i, j) of the summits (wrapped), at (x, z) in meters of the world; a
-// prominence of 0 without one.
+// The summit of cell (i, j) of the summits (wrapped), at (x, z) in meters of the warped space
+// of the massif; a prominence of 0 without one.
 [[nodiscard]] Summit summitOfCell(const Noises& noises, int i, int j);
 
-// The rise of the summits around (x, z), in mountains up to height meters high, core in [0, 1]
+// The rise of the summits around (x, z) of the warped space of the massif (the gradients along
+// it), in mountains up to height meters high, core in [0, 1]
 // where they stand (the cores of the chains): the factor by which the massif rises (its crests
 // far more than its hollows, then lower around), and the height added under the summits (their
 // base), with their gradients. The massif becomes massif * factor + base.

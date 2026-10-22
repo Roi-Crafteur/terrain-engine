@@ -227,8 +227,8 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
         const double core =
             static_cast<double>(mask * noise::smoothstep(kSummitLow, kSummitHigh, intensity));
         const mountain_forms::Rise lift = mountain_forms::summits(
-            layers_->forms, x, z, static_cast<double>(ground), static_cast<double>(height), core,
-            forms);
+            layers_->forms, warped[0], warped[1], static_cast<double>(ground),
+            static_cast<double>(height), core, forms);
         out.gradX = out.gradX * lift.factor.height + form * lift.factor.gradX + lift.base.gradX;
         out.gradZ = out.gradZ * lift.factor.height + form * lift.factor.gradZ + lift.base.gradZ;
         form = form * lift.factor.height + lift.base.height;

@@ -163,7 +163,11 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         }
         layers->geographySpurs = fast(kSpurs, 2, params_.geography.spurWavelength, 0.5);
         layers->ravines = ravines::makeNetwork(noise::deriveSeed(seed, kRavines), world);
-        layers->forms = mountain_forms::makeNoises(noise::deriveSeed(seed, kMountainForms), world);
+        // The summits sit on the crests of the first octave of the massif.
+        layers->forms =
+            mountain_forms::makeNoises(noise::deriveSeed(seed, kMountainForms), world,
+                                       fast(kRidge, 1, params_.geography.mountainWavelength,
+                                            params_.geography.mountainGain));
         layers->walls = mountain_walls::makeNoises(noise::deriveSeed(seed, kMountainWalls), world);
         layers->local = relief_local::makeNoises(noise::deriveSeed(seed, kLocalRelief), world,
                                                  params_.geography.livelyPlains);
