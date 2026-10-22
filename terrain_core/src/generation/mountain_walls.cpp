@@ -224,7 +224,7 @@ double strataTop(double ground, double slope, double band, double offset, double
 }
 
 double crystalTop(const Noises& n, double x, double z, double ground, double gradX,
-                  double gradZ, int scale, double ramp, Memo* memo) {
+                  double gradZ, int scale, double ramp, double rims, Memo* memo) {
     const auto s = static_cast<std::size_t>(scale);
     const double size = kCellSize[s];
     const double cx = (x + 0.5 * n.world.x) / size;
@@ -248,7 +248,7 @@ double crystalTop(const Noises& n, double x, double z, double ground, double gra
         }
     }
     // The ground of a cell cut by its joints: strata along its tilted planes, waving.
-    const double wave = kJointWave * fbm(n.rims, x, z, memo ? &memo->rims : nullptr);
+    const double wave = kJointWave * rims;
     const auto cut = [&](std::size_t k) {
         const Cell& c = cells.cells[k];
         const double lift = (c.tiltX * (px - c.x) + c.tiltZ * (pz - c.z)) * size;
@@ -279,13 +279,18 @@ double crystalTop(const Noises& n, double x, double z, double ground, double gra
 double surface(const Noises& n, const Column& c, double x, double z, Memo* memo) {
     const Masks m = masks(n, c, x, z, memo);
     double h = c.ground;
+    if (!(m.strata > 0.0) && !(m.crystal > 0.0)) {
+        return h;
+    }
+    // The noise of the rims, once for the strata and the joints.
+    const double noise = fbm(n.rims, x, z, memo ? &memo->rims : nullptr);
     if (m.strata > 0.0) {
         const double slope = dmath::hypot(c.gradX, c.gradZ);
         const double band =
             kBandLow + (kBandHigh - kBandLow) *
                            smooth(-0.5, 0.5, fbm(n.bands, x, z, memo ? &memo->bands : nullptr));
         const double offset = kDip * fbm(n.dip, x, z, memo ? &memo->dip : nullptr);
-        const double rims = 0.5 + 0.5 * fbm(n.rims, x, z, memo ? &memo->rims : nullptr);
+        const double rims = 0.5 + 0.5 * noise;
         const double rim = kRim * rims;
         const double run = kRunLow + (kRunHigh - kRunLow) * (1.0 - rims);
         h += m.strata *
@@ -296,8 +301,8 @@ double surface(const Noises& n, const Column& c, double x, double z, Memo* memo)
                                      h);
     }
     if (m.crystal > 0.0) {
-        h += m.crystal * (crystalTop(n, x, z, h, c.gradX, c.gradZ, 0, kRamp, memo) - h);
-        h += kFine * m.crystal * (crystalTop(n, x, z, h, c.gradX, c.gradZ, 1, kRamp, memo) - h);
+        h += m.crystal * (crystalTop(n, x, z, h, c.gradX, c.gradZ, 0, kRamp, noise, memo) - h);
+        h += kFine * m.crystal * (crystalTop(n, x, z, h, c.gradX, c.gradZ, 1, kRamp, noise, memo) - h);
     }
     return h;
 }

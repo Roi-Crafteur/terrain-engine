@@ -96,6 +96,10 @@ constexpr double kRavineSlope = 1.0;
 // The massif gives way to a valley over its first kValleyBlend meters of cut: its crests, its
 // creases and its slope, which shape the ravines and the walls, fade into those of the valley.
 constexpr double kValleyBlend = 50.0;
+// The valleys cut the massifs from kValleyLow to kValleyHigh meters of height on (none below:
+// nothing to cut in the foothills, and nothing to compute).
+constexpr float kValleyLow = 100.0f;
+constexpr float kValleyHigh = 400.0f;
 
 // The faces of the walls of the rifts: their slope read over kRiftRun meters, carved by ravines
 // from kRiftFaceLow to kRiftFaceHigh of it.
@@ -237,15 +241,18 @@ Heightfield::MountainForm Heightfield::geographyMountainAt(double x, double z, f
         out.gradZ = out.gradZ * lift.factor.height + form * lift.factor.gradZ + lift.base.gradZ;
         form = form * lift.factor.height + lift.base.height;
     }
-    if (p.valleys) {
+    if (p.valleys && full > static_cast<double>(kValleyLow)) {
         const mountain_forms::Carve carve = mountain_forms::valleys(
             layers_->forms, x, z, full, {form, out.gradX, out.gradZ}, forms);
         if (carve.form.height < form) {
-            onMassif = std::max(0.0, 1.0 - (form - carve.form.height) / kValleyBlend);
-            form = carve.form.height;
+            const auto cuts = static_cast<double>(
+                noise::smoothstep(kValleyLow, kValleyHigh, static_cast<float>(full)));
+            const double cut = cuts * (form - carve.form.height);
+            onMassif = std::max(0.0, 1.0 - cut / kValleyBlend);
+            form -= cut;
             out.gradX = onMassif * out.gradX + (1.0 - onMassif) * carve.form.gradX;
             out.gradZ = onMassif * out.gradZ + (1.0 - onMassif) * carve.form.gradZ;
-            out.floor = static_cast<float>(carve.floor);
+            out.floor = static_cast<float>(cuts * carve.floor);
         }
     }
     // The slope of the great forms, at most kSteepest: it orients the ravines and the walls.

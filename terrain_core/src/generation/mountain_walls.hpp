@@ -101,10 +101,11 @@ struct Masks {
 
 // The top of the crystalline rock over ground at (x, z) for the scale (0: cells of 512 m, 1: of
 // 128 m), the ground of gradient (gradX, gradZ): the ground cut by the joints of each cell
-// (strataTop along its tilted planes), blended with those of the neighbors within ramp meters
-// of the fractures (0: the nearest cell alone).
+// (strataTop along its tilted planes, waving with rims, the noise of the rims there), blended
+// with those of the neighbors within ramp meters of the fractures (0: the nearest cell alone).
 [[nodiscard]] double crystalTop(const Noises& noises, double x, double z, double ground,
-                                double gradX, double gradZ, int scale, double ramp, Memo* memo);
+                                double gradX, double gradZ, int scale, double ramp, double rims,
+                                Memo* memo);
 
 // The top of the rock at a column at (x, z), canonical.
 [[nodiscard]] double surface(const Noises& noises, const Column& column, double x, double z,
