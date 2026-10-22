@@ -162,7 +162,8 @@ terrain_unreal/
   Scripts/create_terrain_material.py
   Scripts/create_horizon_material.py
   Scripts/create_horizon_gpu_material.py
-  Scripts/create_temporary_terrain_material.py, temporary_terrain_look.py  le matériau temporaire
+  Scripts/create_temporary_terrain_material.py, temporary_terrain_look.py,
+    temporary_terrain_hlsl.py  le matériau temporaire
   Source/TerrainEngine/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
@@ -487,9 +488,10 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
 
 ## 13. Le matériau temporaire du terrain (phase 14, provisoire)
 
-En attendant les vrais matériaux de la phase 14 : roche sur les pentes raides, neige sur le sol
-froid peu pentu, herbe, herbe sèche, forêt, alpage, terre, sable, désert et éboulis selon les
-matériaux et biomes du core, les mêmes de près (tuiles, `M_TemporaryTerrain`) et de loin
+En attendant les vrais matériaux de la phase 14 : roche grise sur les pentes raides, neige sur le
+sol froid peu pentu, herbe, herbe sèche, forêt, alpage, terre, sable, désert et éboulis selon les
+matériaux et biomes du core, avec des plaques dans chaque biome et des textures sans répétition
+visible, les mêmes de près (tuiles, `M_TemporaryTerrain`) et de loin
 (`M_TerrainHorizonGpu`). Ses textures viennent du pack **Stylescape HD** (licence Fab : jamais
 dans ce dépôt) copié sous `/Game/StylescapeHD` du projet ; sans lui, des couleurs unies. Tout est
 décrit dans [`TEMPORARY_MATERIAL.md`](TEMPORARY_MATERIAL.md) : règles, installation du pack,

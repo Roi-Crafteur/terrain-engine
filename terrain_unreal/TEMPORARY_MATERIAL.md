@@ -2,7 +2,8 @@
 
 > **Provisoire** : un matériau lisible en attendant les vrais matériaux de la phase 14, qui le
 > remplaceront. Tout ce qui le concerne tient dans `Scripts/temporary_terrain_look.py` (les
-> règles, les couches, le HLSL), `Scripts/create_temporary_terrain_material.py` (les tuiles) et la
+> règles, les couches), `Scripts/temporary_terrain_hlsl.py` (le HLSL),
+> `Scripts/create_temporary_terrain_material.py` (les tuiles) et la
 > partie « terre » de `Scripts/create_horizon_gpu_material.py` (l'horizon). Le C++ ne connaît que
 > le paramètre de texture `SurfaceTexels` et la surface empaquetée des texels.
 
@@ -20,22 +21,41 @@
   herbe alpine, terre, sable, désert, éboulis ; puis selon le matériau du core : lit de rivière,
   sable ou désert, terre et boue, roche, neige, éboulis. Transitions douces : les poids des
   couches sont interpolés entre les échantillons (8 m sur le niveau 0).
-- **La roche** de `RockStartDeg` (36°) à `RockFullDeg` (50°) de pente, seuil bruité d'environ
-  ± 5°, et partout où le core met de la roche (`CoreRock` = 0,8 de celle-ci).
+- **La roche** de `RockStartDeg` (34°) à `RockFullDeg` (46°) de pente, par plaques au bord
+  déchiqueté (pas un mélange uniforme), partout où le core met de la roche (`CoreRock` = 0,8 de
+  celle-ci), et au-dessus de la limite des neiges sur toutes les faces trop raides pour la neige :
+  rien n'y pousse. Un minéral gris froid, jamais du sable : ses textures (`T_RockyCliff` et, par
+  plaques, `T_Cliff` assombrie) sont presque désaturées (`RockGrey` 0,85), leurs clairs et leurs
+  sombres renforcés (`RockContrast` 1,4 : fissures et strates), albédo d'environ 0,15
+  (`RockAlbedo`), teinte bleutée.
 - **La neige** là où le core dit qu'il fait froid (biome ou matériau neige : sa température tient
   compte de l'altitude et de l'exposition), bord bruité, seulement sur les pentes douces : entière
-  sous `SnowHoldDeg` (32°), plus du tout au-dessus de `SnowShedDeg` (44°). La roche perce sur les
-  faces raides, comme sur le K2.
+  sous `SnowHoldDeg` (22°), plus du tout au-dessus de `SnowShedDeg` (33°), par plaques. Un blanc
+  propre et un peu froid (`SnowWhiten` 0,92), avec un léger lustre. La roche perce sur les faces
+  raides, comme sur le K2. Sous un soleil rasant, roche et neige prennent sa lumière orangée ; à
+  midi, roche grise et neige blanche.
+- **Pas de sable en montagne** : au-dessus de `SandMaxAltitudeM` (1 800 m) et sur les pentes de
+  plus de 30°, le sable et le désert de n'importe quel biome deviennent des éboulis. Vérifié
+  (`DebugView` 3) : aucune part de sable sur le flanc, la vue à 2 km et le sommet.
 - **Le sol** sur les pentes moyennes (26° à 36°) : la terre sous l'herbe et la forêt, les
   éboulis sous l'alpage ; **les éboulis** aussi au pied des pentes raides (tuiles : la plus raide
   des 4 pentes autour du sommet, à partir de 35°).
+- **Des plaques dans chaque biome, comme dans Minecraft** (bruit du monde déformé, bords doux
+  mais lisibles, de quelques mètres à quelques dizaines de mètres, `PatchAmount`) : dans les
+  prairies, de la terre nue, du gravier, de l'herbe sèche et une herbe plus sombre ; dans le
+  désert, du gravier ; dans la roche, des éboulis et une seconde roche ; dans la neige, des
+  affleurements rocheux.
 - **Les textures**, alignées sur le monde : projection du dessus pour le sol, triplanaire pour la
   roche, une répétition tous les 4 ou 8 m (qui divise 4 096 m, la période des coordonnées
-  périodiques du monde, comme les vagues de la mer). Entre `DetailNearM` (150 m) et `DetailFarM`
-  (400 m), elles se fondent dans la couleur moyenne de chaque texture (son dernier mip), la seule
-  que l'horizon dessine : pas de couture.
-- **Contre la répétition** : variation macro par bruit (cellules de 32 et 256 m). Puis saturation
-  (`Saturation` 1,2) et chaleur (`Warmth` 1,03 ; 1 ; 0,95).
+  périodiques du monde, comme les vagues de la mer). **Sans répétition visible** : chaque cellule
+  de 0,7 répétition prend son propre décalage et son propre quart de tour, fondus sur le dernier
+  quart de la cellule (texture bombing, déterministe, selon la seule position). Entre
+  `DetailNearM` (150 m) et `DetailFarM` (400 m), elles se fondent dans la couleur moyenne de
+  chaque texture (son dernier mip), la seule que l'horizon dessine : pas de couture.
+- **Variation à grande échelle** du ton et de la teinte (cellules de 32 à 512 m,
+  `MacroVariation`) : une prairie n'est pas un vert uniforme. Puis saturation (`Saturation` 1,2)
+  et chaleur (`Warmth` 1,03 ; 1 ; 0,95) pour le sol seulement : la roche reste grise, la neige
+  blanche.
 - **Les normales des tuiles grossières** : au-delà des tuiles LOD 0, la normale penche vers la
   normale lisse des échantillons du niveau 0 (leurs pentes bilinéaires, celles de l'horizon), de
   `SmoothNearM` (60 m) à `SmoothFarM` (220 m), jusqu'à `SmoothNormal` (0,8) ; pas sur les
@@ -46,7 +66,8 @@
 
 Les textures viennent de `/Game/StylescapeHD/Landscape/Textures` du projet de jeu : `T_Grass`,
 `T_DriedGrass`, `T_ForestGround` et `T_ForestGround_Alpine`, `T_DirtDry`, `T_Trampled_Sand`,
-`T_Sand_Rocky`, `T_RockyGround`, `T_Snowy_Rocky_Dirt`, `T_RockyCliff` (albédo `_D`, normale `_N`).
+`T_Sand_Rocky`, `T_RockyGround`, `T_Snowy_Rocky_Dirt`, `T_RockyCliff` (albédo `_D`, normale `_N`),
+et de `/Game/StylescapeHD/Foliage/Textures/Cliff` : `T_Cliff` (la seconde roche).
 
 1. Décompresse le zip du pack dans un dossier à lui (par exemple `C:\Projets\StylescapeHD_56`) ;
    ne lance aucun script du pack.
@@ -67,32 +88,33 @@ scripts l'appellent jusqu'à ce qu'il n'en reste aucun (`clear_material`).
 Paramètres des matériaux, modifiables sur des instances : la teinte de chaque couche
 (`GrassTint`, `RockTint`, …), `RockStartDeg`, `RockFullDeg`, `SnowHoldDeg`, `SnowShedDeg`,
 `CoreRock`, `DetailNearM`, `DetailFarM`, `Saturation`, `Warmth`, `NormalStrength`, `SnowWhiten`,
-`MacroVariation` ; `DebugView` 1 montre les couches (vert herbe, jaune herbe sèche, vert foncé
-forêt, turquoise alpin, brun terre, beige sable, orange désert, gris éboulis, rouge roche, blanc
-neige), 2 la roche (rouge), la neige (vert) et le pied des pentes (bleu).
+`MacroVariation`, `PatchAmount`, `RockGrey`, `RockAlbedo`, `RockContrast`, `SandMaxAltitudeM` ;
+`DebugView` 1 montre les couches (vert herbe, jaune herbe sèche, vert foncé forêt, turquoise
+alpin, brun terre, beige sable, orange désert, gris éboulis, rouge roche, blanc neige), 2 la roche
+(rouge), la neige (vert) et le pied des pentes (bleu), 3 la part de sable et de désert (rouge).
 
 ## Coût
 
 Mesuré dans l'éditeur (PIE 2042 × 1752, 3,6 Mpx, autant que le 1440p ; RTX 4090), mêmes vues
 fixes, sessions PIE alternées A B A B dans une même session de l'éditeur : A avec les couleurs
 d'altitude et le matériau d'horizon de `main`, B avec le matériau temporaire ; temps GPU moyen par
-frame (profil CSV), écart B − A. Deux sessions de l'éditeur, à une heure d'écart (le GPU n'y
-tournait pas à la même vitesse : 5,3 ms puis 7,5 ms de base) :
+frame (profil CSV), écart B − A. Version finale (roche grise, plaques, textures sans répétition),
+base A de 5,2 à 5,5 ms :
 
-| Vue | Écart, session 1 | Écart, session 2 |
-|---|---|---|
-| pied de la chaîne, 1,7 m, soleil bas | +0,02 ms | +0,45 ms |
-| pied de la chaîne, 300 m | +0,14 ms | +0,08 ms |
-| flanc à 5 km, 1,7 m (roche, neige et éboulis au premier plan : le pire cas) | +0,89 ms | +0,66 ms |
-| plaine, 1,7 m | +0,03 ms | +0,31 ms |
-| plaine, 300 m | −0,07 ms | +0,30 ms |
-| sommet, 1,7 m, horizon lointain | −0,02 ms | +0,46 ms |
+| Vue | Écart |
+|---|---|
+| pied de la chaîne, 1,7 m, soleil bas | +0,29 ms |
+| pied de la chaîne, 300 m | +0,29 ms |
+| flanc à 5 km, 1,7 m (roche, neige et éboulis au premier plan : le pire cas) | +0,80 ms |
+| plaine, 1,7 m | +0,54 ms |
+| plaine, 300 m | +0,31 ms |
 
-Entre 0 et +0,9 ms selon la vue et la session, sous le budget de +1,0 ms. Le surcoût vient des
-pixels proches où la roche (triplanaire), la neige et le sol se mélangent ; le matériau
+Au plus +0,8 ms, sous le budget de +1,0 ms (la version sans plaques ni texture bombing coûtait de
+0 à +0,9 ms selon les sessions). Le surcoût vient des pixels proches : jusqu'à 4 lectures par
+texture pour casser la répétition, la roche triplanaire et ses deux variantes. Le matériau
 n'échantillonne que ce qui se voit (pas de sol sous la roche ou la neige pleine, deux plans au plus
-pour la roche, une seule carte de normales pour le sol). L'horizon ne lit que la couleur moyenne de
-chaque texture.
+pour la roche, une seule carte de normales pour le sol, la seconde roche seulement dans ses
+plaques). L'horizon ne lit que la couleur moyenne de chaque texture.
 
 ## Trois défauts de rendu, au passage
 
@@ -118,7 +140,9 @@ chaque texture.
 ## Limites
 
 - Provisoire : pas de mélange par hauteur des textures, pas de couches par biome au-delà de la
-  table, pas de RVT ; une seule texture par couche.
+  table, pas de RVT ; une texture par couche (deux pour la roche).
+- Les plaques et le texture bombing n'existent que sur les tuiles ; l'horizon garde la couleur
+  moyenne des couches et sa variation à grande échelle.
 - Les biomes changent tous les 8 m sur le niveau 0 : des transitions douces mais régulières.
 - La neige vient du biome du core : une neige plus basse ou plus haute demande de régler le
   climat du core, pas le matériau.
