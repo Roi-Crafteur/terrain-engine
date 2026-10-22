@@ -1,8 +1,8 @@
 #pragma once
 
-#include "altitude_color.hpp"
 #include "horizon_layout.hpp"
 #include "horizon_mesh.hpp"
+#include "terrain_surface.hpp"
 
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/streaming/horizon_epoch.hpp"
@@ -22,13 +22,12 @@ namespace terrain::unreal {
 // enter its window.
 //
 // A texel is 4 floats: the height shown (meters, the ocean flat at the sea level), the slopes of
-// the ground along x and z (0 on the ocean, whose normal points up), and the color of the ground
-// as the integer r + 256 g + 65536 b, exact in a float below 2^24: the altitude colors of the
-// tiles (altitudeColor), bit for bit. On the ocean the last float is instead the ground under
-// the sea, meters from the sea level, below 0: the material colors the sea by its depth
-// (texelGround). The material and the biome of a sample (for the materials of phase 14) would
-// take a second texture of the same layout, written with the same regions
-// (terrain_unreal/README.md).
+// the ground along x and z (0 on the ocean, whose normal points up), and the surface of the
+// ground, its material and its biome packed by packSurface (terrain_surface.hpp), at least 0.
+// On the ocean the last float is instead the ground under the sea, meters from the sea level,
+// below 0: the material colors the sea by its depth (texelGround). The materials of the horizon
+// and of the tiles take the layers of the ground from the surface (the temporary terrain
+// material of phase 14, Scripts/temporary_terrain_look.py).
 inline constexpr int kTexelFloats = 4;
 
 // The material of the horizon draws the sea at the altitude 0.
@@ -44,8 +43,6 @@ struct HorizonTexel {
 };
 
 [[nodiscard]] HorizonTexel horizonTexel(const HorizonCell& cell, bool sea);
-[[nodiscard]] float packColor(VertexColor color);
-[[nodiscard]] VertexColor unpackColor(float color); // opaque, of a land texel
 
 // A texel of the ocean (horizonTexel with the sea): its last float is negative.
 [[nodiscard]] bool isSeaTexel(const HorizonTexel& texel);

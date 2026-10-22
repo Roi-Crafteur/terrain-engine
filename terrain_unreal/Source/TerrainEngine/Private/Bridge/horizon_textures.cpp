@@ -63,21 +63,11 @@ CellRect finerAt(int cells, int dx, int dz) {
 
 } // namespace
 
-float packColor(VertexColor color) {
-    return static_cast<float>(color.r + 256 * color.g + 65536 * color.b);
-}
-
-VertexColor unpackColor(float color) {
-    const auto bits = static_cast<std::uint32_t>(color);
-    return {static_cast<std::uint8_t>(bits & 255U), static_cast<std::uint8_t>((bits >> 8) & 255U),
-            static_cast<std::uint8_t>((bits >> 16) & 255U), 255};
-}
-
 HorizonTexel horizonTexel(const HorizonCell& cell, bool sea) {
     if (sea && cell.height < kSeaLevel) {
         return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel};
     }
-    return {cell.height, cell.gradX, cell.gradZ, packColor(altitudeColor(cell.height))};
+    return {cell.height, cell.gradX, cell.gradZ, packSurface(cell.material, cell.biome)};
 }
 
 bool isSeaTexel(const HorizonTexel& texel) {
