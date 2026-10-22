@@ -29,8 +29,12 @@ constexpr double kLeastGradient = 1.0e-7;
 // of its walls (a smoothstep: rounded at their foot, a shoulder at their top), its crests and
 // hollows kept: no plane. Main floors kMainHalfLow to kMainHalfHigh wide on each side of the axis
 // with walls kMainWallLow to kMainWallHigh wide (a slow noise of kWidthWavelength); tributaries
-// kSideHalf and kSideWall. The floor ends kBottom meters into the walls.
-constexpr double kBottom = 300.0;
+// kSideHalf and kSideWall. A point is on the floor where the valley is gentler than kFlatLow to
+// kFlatHigh (7 to 14 degrees).
+constexpr double kFlatLow = 0.12;
+constexpr double kFlatHigh = 0.25;
+// Nor where the valley ends (its floor rising to the massif): only where it is kWhole to 1 there.
+constexpr double kWhole = 0.97;
 constexpr double kMainHalfLow = 500.0;
 constexpr double kMainHalfHigh = 1'500.0;
 constexpr double kMainWallLow = 1'800.0;
@@ -42,29 +46,28 @@ constexpr double kSideWall = 1'400.0;
 constexpr double kJoin = 150.0;
 // The floors of the main valleys climb to passes up to kPasses of the height of the mountains,
 // along a slow noise of kPassWavelength (7 degrees at most). The main valleys are where a noise
-// of kPresenceWavelength passes kPresenceLow to kPresenceHigh: elsewhere their floors rise
-// kEnds of the height of the mountains, and they end in cirques and passes (no loop).
+// of kPresenceWavelength passes kPresenceLow to kPresenceHigh: elsewhere their floors rise to the
+// massif, and they end in cirques and passes (no loop).
 constexpr double kPasses = 0.3;
 constexpr double kPassWavelength = 60'000.0;
 constexpr double kPresenceWavelength = 50'000.0;
 constexpr double kPresenceLow = -0.25;
 constexpr double kPresenceHigh = 0.15;
-constexpr double kEnds = 0.6;
 // A point is on a floor where the valley cuts kCutLow to kCutHigh meters of the massif.
 constexpr double kCutLow = 30.0;
 constexpr double kCutHigh = 200.0;
 // The tributaries are kept where the main noise is of their sign beyond kSideEdge (their own side
-// of the main valley) and fade out from kReachLow to kReachHigh meters from it; their floors
-// climb kClimb meters per meter away from it, and hang up to kHang meters above it where a slow
-// noise of kHangWavelength passes kHangLow to kHangHigh.
+// of the main valley) and fade out from kReachLow to kReachHigh meters from it (their floors rise
+// to the massif); their floors climb kClimb meters per meter away from it, and hang up to kHang
+// meters above it where a slow noise of kHangWavelength passes kHangLow to kHangHigh.
 constexpr double kSideEdge = 0.03;
 constexpr double kReachLow = 4'000.0;
 constexpr double kReachHigh = 9'000.0;
 constexpr double kClimb = 0.06;
 constexpr double kHang = 450.0;
 constexpr double kHangWavelength = 30'000.0;
-constexpr double kHangLow = 0.15;
-constexpr double kHangHigh = 0.5;
+constexpr double kHangLow = 0.0;
+constexpr double kHangHigh = 0.6;
 
 // The summits: one in kSummitShare of the cells of about kSummitCell meters, within kSummitJitter
 // of a cell from its center; the crests of the massif rise kProminenceLow to kProminenceHigh
@@ -89,9 +92,11 @@ constexpr double kBase = 1.2;
 // massif are already high.
 constexpr double kCeiling = 8'300.0;
 // Each summit moves onto the nearest zero line of the first octave of the massif (its crest) by
-// kCrestSteps steps of Newton, at most kCrestReach meters.
-constexpr int kCrestSteps = 2;
-constexpr double kCrestReach = 4'000.0;
+// kCrestSteps steps of Newton of at most kCrestStep meters each (no leap from near an extremum
+// of the noise), at most kCrestReach meters in all.
+constexpr int kCrestSteps = 4;
+constexpr double kCrestStep = 1'500.0;
+constexpr double kCrestReach = 5'000.0;
 
 
 noise::FbmOctaves octaves(std::uint64_t seed, std::uint64_t stream, int count, double wavelength,
@@ -136,16 +141,17 @@ Line lineOf(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::M
 
 // The massif brought down to a valley in U of floor floor, at e meters beyond the half width of
 // the floor, its walls wall meters wide; the point on its floor where the valley cuts the massif
-// (kCutLow to kCutHigh meters).
+// (kCutLow to kCutHigh meters) and is gentle.
 Carve valleyForm(const Form& massif, double floor, double e, double wall, const Line& line) {
     const double above = std::max(0.0, massif.height - floor);
     const double t = std::clamp(e / wall, 0.0, 1.0);
     const double keep = t * t * (3.0 - 2.0 * t);
     const double rise = above * 6.0 * t * (1.0 - t) / wall;
     const double kept = above > 0.0 ? keep : 0.0;
-    return {{floor + above * keep, kept * massif.gradX + rise * line.awayX,
-             kept * massif.gradZ + rise * line.awayZ},
-            (1.0 - smooth(0.0, kBottom, e)) * smooth(kCutLow, kCutHigh, above)};
+    const Form form{floor + above * keep, kept * massif.gradX + rise * line.awayX,
+                    kept * massif.gradZ + rise * line.awayZ};
+    return {form, smooth(kCutLow, kCutHigh, above) *
+                      (1.0 - smooth(kFlatLow, kFlatHigh, dmath::hypot(form.gradX, form.gradZ)))};
 }
 
 std::uint64_t cellIndex(int i, int j, int cellsX, int cellsZ) {
@@ -161,15 +167,15 @@ std::array<double, 2> crestShift(const Noises& n, double x, double z) {
     for (int step = 0; step < kCrestSteps; ++step) {
         const noise::FbmOctaves::RidgedSlope r =
             n.crests.ridged2DSlope(x + d[0], z + d[1], 1.0, 0.0, 1);
-        const double g2 = r.headX * r.headX + r.headZ * r.headZ;
-        if (!(g2 > kLeastGradient * kLeastGradient)) {
+        const double g = dmath::hypot(r.headX, r.headZ);
+        if (!(g > kLeastGradient)) {
             break;
         }
-        const double toward = (1.0 - static_cast<double>(r.head)) / g2;
+        const double toward = std::min((1.0 - static_cast<double>(r.head)) / g, kCrestStep) / g;
         d = {d[0] + toward * r.headX, d[1] + toward * r.headZ};
-        const double length = dmath::hypot(d[0], d[1]);
-        if (length > kCrestReach) {
-            d = {d[0] * kCrestReach / length, d[1] * kCrestReach / length};
+        const double moved = dmath::hypot(d[0], d[1]);
+        if (moved > kCrestReach) {
+            d = {d[0] * kCrestReach / moved, d[1] * kCrestReach / moved};
             break;
         }
     }
@@ -281,13 +287,14 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
     const double presence =
         smooth(kPresenceLow, kPresenceHigh, fbm(n.presence, x, z, memo ? &memo->presence : nullptr));
     const double passes =
-        height * (kPasses * smooth(-0.1, 0.5, fbm(n.passes, x, z, memo ? &memo->passes : nullptr)) +
-                  kEnds * (1.0 - presence));
+        height * kPasses * smooth(-0.1, 0.5, fbm(n.passes, x, z, memo ? &memo->passes : nullptr));
+    const double floorMain = passes + (1.0 - presence) * std::max(0.0, massif.height - passes);
     const double width =
         smooth(-0.5, 0.5, fbm(n.widths, x, z, memo ? &memo->widths : nullptr));
     const double half = kMainHalfLow + (kMainHalfHigh - kMainHalfLow) * width;
     const double wall = kMainWallLow + (kMainWallHigh - kMainWallLow) * width;
-    Carve out = valleyForm(massif, passes, main.distance - half, wall, main);
+    Carve out = valleyForm(massif, floorMain, main.distance - half, wall, main);
+    out.floor *= smooth(kWhole, 1.0, presence);
     const double reach = main.distance - half;
     const double keep = presence * (1.0 - smooth(kReachLow, kReachHigh, main.distance));
     if (!(keep > 0.0)) {
@@ -300,8 +307,10 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
     const noise::FbmOctaves& tributaries = positive ? n.sideA : n.sideB;
     const Line line = lineOf(tributaries, wx, wz,
                              memo ? (positive ? &memo->sideA : &memo->sideB) : nullptr);
-    const double floor = passes + hang + kClimb * std::max(0.0, reach) + (1.0 - own) * 2.0 * height;
-    const Carve tributary = valleyForm(massif, floor, line.distance - kSideHalf, kSideWall, line);
+    const double base = passes + hang + kClimb * std::max(0.0, reach);
+    const double floor = base + (1.0 - own) * std::max(0.0, massif.height - base);
+    Carve tributary = valleyForm(massif, floor, line.distance - kSideHalf, kSideWall, line);
+    tributary.floor *= smooth(kWhole, 1.0, own);
     // The lower of the two, their meeting rounded over kJoin meters (less near the base, never
     // below it): a continuous slope.
     const double a = out.form.height;
