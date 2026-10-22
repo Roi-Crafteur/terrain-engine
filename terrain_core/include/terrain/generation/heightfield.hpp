@@ -175,6 +175,10 @@ private:
     // The depth of the ravines down the faces of the walls of the rifts at a canonical point,
     // meters, at most room.
     [[nodiscard]] float riftRavinesAt(double x, double z, float room, Memos* memos) const;
+    // The local relief of a plain where the mountains are not (plain_forms), weight (0, 1] of
+    // the way from local, at a canonical point.
+    [[nodiscard]] float plainFormsAt(double x, double z, float region, float local, float weight,
+                                     Memos* memos) const;
     // The hills, vallons, buttes and terraces of the geography (relief_local).
     [[nodiscard]] float localReliefAt(double x, double z, float amplitude, float buttes,
                                       float region, float plain, float rough,

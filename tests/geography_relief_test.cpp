@@ -184,7 +184,9 @@ void testPits() {
     TEST_CHECK(plainPits < kMaxPlainPits);
 }
 
-// The plains are alive: 10 to 150 m of relief over 10 km at every lowland place.
+// The plains are alive, from almost flat to rolling (step 5c): 10 to 350 m of relief over 10 km
+// at every lowland place (the flat Beauce has 44 m, the rolling Palouse 262 m; an isolated hill
+// of up to 150 m on a swell of the most rolling plains adds to that).
 void testPlainsLive() {
     const std::vector<Place> plains = places(lowland, 16);
     TEST_CHECK(plains.size() >= 12);
@@ -197,7 +199,7 @@ void testPlainsLive() {
     }
     std::printf("plains: relief over 10 km from %.0f to %.0f m\n", static_cast<double>(low),
                 static_cast<double>(high));
-    TEST_CHECK(low >= 10.0f && high <= 150.0f);
+    TEST_CHECK(low >= 10.0f && high <= 350.0f);
 }
 
 // The belts are steep: their median relief over 5 km reaches 1,000 m and some of their slopes at

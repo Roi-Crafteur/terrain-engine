@@ -6,6 +6,7 @@
 
 #include "mountain_forms.hpp"
 #include "mountain_walls.hpp"
+#include "plain_forms.hpp"
 #include "ravines.hpp"
 #include "relief_local.hpp"
 #include "terrain/generation/heightfield.hpp"
@@ -38,6 +39,7 @@ struct Heightfield::Layers {
     // The valleys in U and the dominant summits of the mountains, and their walls.
     mountain_forms::Noises forms;
     mountain_walls::Noises walls;
+    plain_forms::Noises plains; // the forms of the plains, where the mountains are not
     // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
     // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the
     // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land
@@ -63,6 +65,7 @@ struct Heightfield::Memos {
     noise::FbmOctaves::Memo rock;
     mountain_forms::Memo forms;
     mountain_walls::Memo walls;
+    plain_forms::Memos plains;
 };
 
 } // namespace terrain

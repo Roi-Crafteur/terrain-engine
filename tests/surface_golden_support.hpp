@@ -95,13 +95,13 @@ inline std::vector<Part> heightfieldParts() {
     return {
         {"heights 1 m", heightsChecksum(field, mx, mz, 1.0, 64), 0xF7C7557679FD1C4FULL},
         {"heights 1 km", heightsChecksum(field, -32000.0, -32000.0, 1000.0, 64),
-         0x73D7F5BF647B6283ULL},
-        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x9FF8C251068C9CDEULL},
+         0x00687ACED72B3163ULL},
+        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0xB4DE98445C86FE76ULL},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},
         {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0xF80ECB03DD6E059BULL},
-        {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0xF124765E3EFA05A2ULL},
+        {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0xDA1CC601D3290B08ULL},
         {"corner heights 250 m",
          heightsChecksum(planet, kCornerX - 4000.0, kCornerZ - 4000.0, 250.0, 32),
          0xC90D77A823F59462ULL},
@@ -134,7 +134,7 @@ inline std::vector<Part> worldParts() {
     }
     Checksum plantSum;
     addTile(plantSum, tiles.generate({{plants, 0}, 0}));
-    parts.push_back({"world plants", plantSum.value(), 0x7F031868C8F6A812ULL});
+    parts.push_back({"world plants", plantSum.value(), 0x8BBDBF8840AEB77EULL});
     // The tiles of LOD 0 to 3 holding the last chunk of the canonical range, at the corner: their
     // sides on the edges of the world, stitched across them.
     const terrain::ChunkCoord count = terrain::worldChunks(tiles.world());
