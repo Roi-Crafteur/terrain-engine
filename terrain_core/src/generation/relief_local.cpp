@@ -14,37 +14,80 @@ enum Stream : std::uint64_t {
     kHills,
     kVallons,
     kButtes,
-    kRegions,
+    kBroadHills,
 };
 
-constexpr double kHillsWavelength = 6'000.0;
-constexpr double kHillsGain = 0.55;
-constexpr double kVallonWavelength = 14'000.0;
-constexpr double kButteWavelength = 3'500.0;
-constexpr double kRegionWavelength = 200'000.0;
+// The noises of a style of relief: the lively plains, or the relief of step 2.
+struct Style {
+    double hillsWavelength; // of the plains (lively) or everywhere (step 2)
+    double hillsGain;
+    int vallonOctaves;
+    double vallonWavelength;
+    int butteOctaves;
+    double butteWavelength;
+};
 
-// The vallons deepen where the noise of the regions rises past kVallonLands, the buttes rise
-// where it falls past kButteLands (both fade in over kLandsFade of it).
-constexpr float kVallonLands = -0.25f;
-constexpr float kButteLands = 0.0f;
-constexpr float kLandsFade = 0.35f;
+constexpr Style kLively = {2'500.0, 0.6, 2, 8'000.0, 2, 2'000.0};
+constexpr Style kStepTwo = {6'000.0, 0.55, 3, 14'000.0, 3, 3'500.0};
+// The hills of the rough country of the lively plains.
+constexpr double kBroadWavelength = 4'500.0;
 
 // A vallon follows the zero lines of its noise, kVallonWidth of it on each side: about 1 km
 // wide, its walls concave at their foot.
-constexpr float kVallonWidth = 0.12f;
+constexpr float kVallonWidth = 0.13f;
 
-// The buttes rise where their noise goes from kButteFoot to kButteTop: a few percent of the
-// ground, their sides about 100 m wide.
-constexpr float kButteFoot = 0.38f;
-constexpr float kButteTop = 0.46f;
+// The buttes rise where their noise goes from their foot to kButteRise above it: their sides
+// about 100 m wide. Lively plains: a foot from kButteFoot in the lands of buttes to kButteFoot +
+// kButteShift in those of vallons (fewer there, never none).
+constexpr float kButteFoot = 0.18f;
+constexpr float kButteShift = 0.12f;
+constexpr float kButteRise = 0.07f;
+
+// Lively plains: the lands of vallons and of buttes pass from one to the other as the regions go
+// from -kLandsSpan to kLandsSpan; between them, where |regions| is below kTerraceLands, soft
+// terraces of kTerraceStep meters: flat treads, steeper risers.
+constexpr float kLandsSpan = 0.4f;
+constexpr float kTerraceLands = 0.25f;
+constexpr double kTerraceStep = 10.0;
 
 float fbm(const noise::FbmOctaves& layer, double x, double z, noise::FbmOctaves::Memo* memo) {
     return memo != nullptr ? layer.fbm2D(x, z, *memo) : layer.fbm2D(x, z);
 }
 
+// Soft terraces: flat treads over 60 % of each step, then the riser.
+float terrace(float h) {
+    const double steps = static_cast<double>(h) / kTerraceStep;
+    const double k = std::floor(steps);
+    const double f = steps - k;
+    const double t = f <= 0.6 ? 0.0 : (f - 0.6) / 0.4;
+    return static_cast<float>(kTerraceStep * (k + t * t * (3.0 - 2.0 * t)));
+}
+
+// The share of the vallons, the foot of the buttes and the share of the terraces at a point.
+struct Lands {
+    float vallons;
+    float butteFoot;
+    float buttes;
+    float terraces;
+};
+
+Lands landsOf(bool lively, const Shape& shape) {
+    if (!lively) {
+        // Step 2: lands of vallons only above -0.25, of buttes only below 0.
+        return {shape.plain * noise::smoothstep(-0.25f, 0.10f, shape.region), 0.38f,
+                noise::smoothstep(0.0f, 0.35f, -shape.region), 0.0f};
+    }
+    const float vallonLands = noise::smoothstep(-kLandsSpan, kLandsSpan, shape.region);
+    return {shape.plain * (0.5f + 0.5f * vallonLands), kButteFoot + kButteShift * vallonLands,
+            1.0f,
+            shape.plain *
+                (1.0f - noise::smoothstep(0.1f, kTerraceLands, std::abs(shape.region)))};
+}
+
 } // namespace
 
-Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
+Noises makeNoises(std::uint64_t seed, const WorldSize& world, bool lively) {
+    const Style& style = lively ? kLively : kStepTwo;
     const auto layer = [seed, &world](Stream stream, int octaves, double wavelength,
                                       double gain) {
         return noise::FbmOctaves(noise::deriveSeed(seed, stream),
@@ -54,32 +97,47 @@ Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
                                   .lattices = noise::OctaveLattices::RotatedFast},
                                  world);
     };
-    return {layer(kHills, 4, kHillsWavelength, kHillsGain),
-            layer(kVallons, 3, kVallonWavelength, 0.5), layer(kButtes, 3, kButteWavelength, 0.5),
-            layer(kRegions, 2, kRegionWavelength, 0.5)};
+    return {layer(kHills, lively ? 3 : 4, style.hillsWavelength, style.hillsGain),
+            lively ? layer(kBroadHills, 3, kBroadWavelength, style.hillsGain)
+                   : noise::FbmOctaves(),
+            layer(kVallons, style.vallonOctaves, style.vallonWavelength, 0.5),
+            layer(kButtes, style.butteOctaves, style.butteWavelength, 0.5), lively};
 }
 
-float rolling(const Noises& noises, double x, double z, float amplitude, float butteHeight,
-              Memos* memos) {
-    const float hills = fbm(noises.hills, x, z, memos != nullptr ? &memos->hills : nullptr);
-    const float region = fbm(noises.regions, x, z, memos != nullptr ? &memos->regions : nullptr);
-    const float vallons = noise::smoothstep(kVallonLands, kVallonLands + kLandsFade, region);
-    float relief = amplitude * hills;
-    if (vallons > 0.0f) {
+// The hills, from those of the plains to those of the rough country (lively plains), only the
+// noises needed.
+float hillsAt(const Noises& noises, double x, double z, float rough, Memos* memos) {
+    const float broad = noises.lively ? rough : 0.0f;
+    const float plain =
+        broad < 1.0f ? fbm(noises.hills, x, z, memos != nullptr ? &memos->hills : nullptr) : 0.0f;
+    if (!(broad > 0.0f)) {
+        return plain;
+    }
+    const float wide =
+        fbm(noises.broadHills, x, z, memos != nullptr ? &memos->broadHills : nullptr);
+    return plain + broad * (wide - plain);
+}
+
+float rolling(const Noises& noises, double x, double z, const Shape& shape, Memos* memos) {
+    const Lands lands = landsOf(noises.lively, shape);
+    float relief = shape.amplitude * hillsAt(noises, x, z, shape.rough, memos);
+    if (lands.terraces > 0.0f) {
+        relief += lands.terraces * (terrace(relief) - relief);
+    }
+    if (lands.vallons > 0.0f) {
         const float across =
             fbm(noises.vallons, x, z, memos != nullptr ? &memos->vallons : nullptr) /
             kVallonWidth;
         const float inside = 1.0f - across * across;
-        relief -= amplitude * kVallonDepth * vallons * (inside > 0.0f ? inside * inside : 0.0f);
+        relief -= shape.amplitude * kVallonDepth * lands.vallons *
+                  (inside > 0.0f ? inside * inside : 0.0f);
     }
-    const float buttes =
-        butteHeight * noise::smoothstep(kButteLands, kButteLands + kLandsFade, -region);
+    const float buttes = shape.buttes * lands.buttes;
     if (!(buttes > 0.0f)) {
         return relief;
     }
-    return relief + buttes * noise::smoothstep(kButteFoot, kButteTop,
-                                               fbm(noises.buttes, x, z,
-                                                   memos != nullptr ? &memos->buttes : nullptr));
+    const float n = fbm(noises.buttes, x, z, memos != nullptr ? &memos->buttes : nullptr);
+    return relief + buttes * noise::smoothstep(lands.butteFoot, lands.butteFoot + kButteRise, n);
 }
 
 float boundBelow(float local, float room) {

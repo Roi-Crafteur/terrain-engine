@@ -30,7 +30,7 @@ constexpr double kTowerBand = 50.0; // meters of each band of the tower
 constexpr double kSunLeft = 0.2;     // turns left of the axis
 constexpr double kSunSine = 0.5;     // of its elevation (30 degrees)
 constexpr int kColumnBlock = 16;     // columns per block on the threads
-constexpr double kStepShare = 0.004; // step along a ray: this share of its depth, at least
+constexpr double kStepShare = 0.0015; // step along a ray: this share of its depth, at least
 constexpr double kMinStep = 0.5;     // this many meters
 
 Rgb mix(const Rgb& a, const Rgb& b, double t) {
@@ -90,13 +90,16 @@ double drop(const ViewParams& p, double distance) {
 }
 
 // Color of the ground at (x, z), height h, seen from distance: the tint lit by the sun through
-// the gradient of the ground over run meters, the sea flat, then hazed.
+// the gradient of the ground over run meters on each side (centered, so that a sharp crest
+// takes the mean of its faces), the sea flat, then hazed.
 Rgb groundColor(const ViewGround& ground, const ViewParams& p, const Camera& c, double x, double z,
                 float h, double run, double distance) {
     Rgb color = kWater;
     if (h >= kSeaLevel) {
-        const double gx = (static_cast<double>(ground(x + run, z)) - h) / run;
-        const double gz = (static_cast<double>(ground(x, z + run)) - h) / run;
+        const double gx =
+            (static_cast<double>(ground(x + run, z)) - ground(x - run, z)) / (2.0 * run);
+        const double gz =
+            (static_cast<double>(ground(x, z + run)) - ground(x, z - run)) / (2.0 * run);
         const double lambert =
             (-gx * c.sun[0] + c.sun[1] - gz * c.sun[2]) / std::sqrt(gx * gx + 1.0 + gz * gz);
         const std::array<float, 3> tint = reliefColor(h);
@@ -137,7 +140,8 @@ void paintSky(Image& image, const Camera& c, int column, int lowestFree) {
 }
 
 // Casts the ray of a column front to back: each point of the ground higher on the image than
-// every nearer one covers the rows down to them.
+// every nearer one covers the rows down to them, in colors going from that of the nearer point
+// when it was seen (the face of ground between them) to its own.
 void castColumn(const ViewGround& ground, const ViewParams& p, const Camera& c,
                 const Tower& tower, int column, Image& image) {
     const double u = (column + 0.5 - 0.5 * p.width) / c.focal;
@@ -145,6 +149,8 @@ void castColumn(const ViewGround& ground, const ViewParams& p, const Camera& c,
     const double dirZ = c.forwardZ + u * c.rightZ;
     const double stretch = std::sqrt(1.0 + u * u); // horizontal meters per meter of depth
     int lowestFree = p.height;                     // rows 0 to lowestFree - 1 still free
+    bool seen = false; // the previous point of the ray was seen, in color below
+    Rgb below{};
     for (double s = p.minDistance; s <= p.maxDistance && lowestFree > 0;) {
         const double x = p.eyeX + dirX * s;
         const double z = p.eyeZ + dirZ * s;
@@ -158,18 +164,20 @@ void castColumn(const ViewGround& ground, const ViewParams& p, const Camera& c,
         const float h = onTower ? static_cast<float>(tower.top) : ground(x, z);
         const double surface = std::max(static_cast<double>(h), static_cast<double>(kSeaLevel));
         const int row = std::max(c.rowOf((surface - drop(p, distance) - p.eyeHeight) / s), 0);
-        if (row < lowestFree) {
-            if (onTower) {
-                paintTower(image, p, c, tower, column, row, lowestFree, s, distance);
-            } else {
-                const Rgb color =
-                    groundColor(ground, p, c, x, z, h, std::max(1.0, step), distance);
-                for (int r = row; r < lowestFree; ++r) {
-                    setPixel(image, column, r, color);
-                }
+        const bool visible = row < lowestFree;
+        if (visible && onTower) {
+            paintTower(image, p, c, tower, column, row, lowestFree, s, distance);
+        } else if (visible) {
+            const Rgb color = groundColor(ground, p, c, x, z, h, std::max(1.0, step), distance);
+            const double rows = lowestFree - row;
+            for (int r = row; r < lowestFree; ++r) {
+                setPixel(image, column, r,
+                         seen ? mix(color, below, (r - row + 0.5) / rows) : color);
             }
-            lowestFree = row;
+            below = color;
         }
+        seen = visible && !onTower;
+        lowestFree = visible ? row : lowestFree;
         s += step;
     }
     paintSky(image, c, column, lowestFree);

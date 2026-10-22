@@ -118,9 +118,11 @@ void testPeriodicAndBatch(const WorldSize& world) {
 }
 
 // Below the sea exactly where the coast signal (and the continentalness) is negative. The ridged
-// mountains only within their mask, which is 0 at sea and outside the belts of the plates and
-// the massifs of the provinces.
+// mountains only within their mask, which is 0 at sea and where the intensity of the relief is
+// below 0.12. The intensity of the map within [reliefFloor, 1] on land.
 void testSeaWhereTheCoastIsNegative() {
+    // The mountains rise from a few meters in the hills: counted from this height.
+    constexpr float kMountainous = 100.0f;
     const Heightfield field(kSeed, geographyParams());
     const float mountainHeight = field.params().geography.mountainHeight;
     int sea = 0;
@@ -138,16 +140,18 @@ void testSeaWhereTheCoastIsNegative() {
         masked = masked && s.mountain >= 0.0f &&
                  s.mountain <= 1.2f * s.mountainMask * mountainHeight &&
                  s.mountainMask <= 1.0f &&
-                 (g.belt > 0.0f || g.massif > 0.0f || s.mountainMask == 0.0f) &&
+                 (s.relief >= 0.12f || s.mountainMask == 0.0f) && s.relief <= 1.0f &&
+                 (g.coast <= 0.0 ||
+                  (g.relief >= field.params().geography.reliefFloor - 1e-6f && g.relief <= 1.0f)) &&
                  s.plateCollision == g.belt &&
                  (g.coast > 0.0 || s.mountainMask == 0.0f);
         ++(s.height < 0.0f ? sea : land);
-        mountains += s.mountain > 0.0f ? 1 : 0;
+        mountains += s.mountain > kMountainous ? 1 : 0;
     }
     TEST_CHECK(consistent);
     TEST_CHECK(masked);
     TEST_CHECK(land > 20'000 * 30 / 100 && land < 20'000 * 45 / 100);
-    // Belts, old massifs and intraplate high relief: about a third of the land, not all of it.
+    // Belts, their foothills, old massifs and intraplate high relief: not all of the land.
     TEST_CHECK(mountains > land / 10 && mountains < land / 2);
 }
 

@@ -82,7 +82,16 @@ void validate(const GeographyParams& p) {
     requirePositive(p.provinceSize, "provinceSize");
     requirePositive(p.provinceBlend, "provinceBlend");
     requirePositive(p.mountainSharpness, "mountainSharpness");
-    if (!(p.mountainGain > 0.0) || !(p.mountainGain < 1.0) || !std::isfinite(p.mountainHeight)) {
+    requirePositive(p.beltReach, "beltReach");
+    requirePositive(p.spurWavelength, "spurWavelength");
+    if (!(p.reliefFloor >= 0.0f) || !(p.reliefFloor < 1.0f) || !(p.reliefVariation >= 0.0f) ||
+        !(p.reliefVariation < 1.0f) || !(p.plateauRelief >= 0.0f) || !(p.massifRelief >= 0.0f) ||
+        !(p.spurRelief >= 0.0f) || !std::isfinite(p.plateauRelief) ||
+        !std::isfinite(p.massifRelief) || !std::isfinite(p.spurRelief)) {
+        throw std::invalid_argument("GeographyParams: invalid relief");
+    }
+    if (!(p.mountainGain > 0.0) || !(p.mountainGain < 1.0) || !std::isfinite(p.mountainHeight) ||
+        !(p.mountainValleyDetail >= 0.0) || !(p.mountainValleyDetail <= 1.0)) {
         throw std::invalid_argument("GeographyParams: invalid mountains");
     }
     requirePositive(p.beltWidth, "beltWidth");
@@ -192,14 +201,17 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
         noise::deriveSeed(seed, geography::kDrainage), params_, grid, crust,
         geography::landFloor(params_, crust, tectonics, provinces));
     const std::vector<float>& land = drainage.elevation;
+    const geography::ReliefFields relief = geography::reliefFields(
+        seed, params_, world_, grid, tectonics, provinces, planet::resolveThreads(threads));
     nodes_.assign(grid.nodes() * kFields, 0.0f);
     for (std::size_t k = 0; k < grid.nodes(); ++k) {
         nodes_[k * kFields + kCoast] = crust.coast[k];
         nodes_[k * kFields + kLand] = land[k];
         nodes_[k * kFields + kSea] = sea[k];
         nodes_[k * kFields + kBelt] = tectonics.belt[k];
-        nodes_[k * kFields + kHills] = provinces.hills[k];
-        nodes_[k * kFields + kMassif] = provinces.massif[k];
+        nodes_[k * kFields + kRelief] = relief.relief[k];
+        nodes_[k * kFields + kCharacter] = relief.character[k];
+        nodes_[k * kFields + kRegions] = relief.regions[k];
         nodes_[k * kFields + kCoarse] =
             noises_->coarseMap.fbm2D(grid.x(grid.column(k)), grid.z(grid.row(k)));
         // The ruggedness of the coasts: smoothRugged up to 1, by a slow fbm.
@@ -220,32 +232,36 @@ GeographySample Geography::mapAt(double geoX, double z) const {
     const geography::Span sz = geography::spanOf(z, world_.z, sizeZ_);
     const geography::Spline wx = geography::bspline(sx.t);
     const geography::Spline wz = geography::bspline(sz.t);
+    // The 4 columns and rows of the nodes, wrapped once.
+    std::array<int, 4> columns{};
+    std::array<int, 4> rows{};
+    for (std::size_t k = 0; k < 4; ++k) {
+        const int i = sx.node - 1 + static_cast<int>(k);
+        const int j = sz.node - 1 + static_cast<int>(k);
+        columns[k] = i >= 0 && i < columns_ ? i : (i % columns_ + columns_) % columns_;
+        rows[k] = j >= 0 && j < rows_ ? j : (j % rows_ + rows_) % rows_;
+    }
     std::array<double, kFields> sum{};
-    double dx = 0.0;
-    double dz = 0.0;
     for (int b = 0; b < 4; ++b) {
-        const int row = ((sz.node - 1 + b) % rows_ + rows_) % rows_;
+        const int row = rows[static_cast<std::size_t>(b)];
         for (int a = 0; a < 4; ++a) {
-            const int column = ((sx.node - 1 + a) % columns_ + columns_) % columns_;
+            const int column = columns[static_cast<std::size_t>(a)];
             const float* n = fieldsOf(column, row);
             const double w = wx.w[static_cast<std::size_t>(a)] * wz.w[static_cast<std::size_t>(b)];
             for (std::size_t f = 0; f < kFields; ++f) {
                 sum[f] += w * n[f];
             }
-            dx += wx.dw[static_cast<std::size_t>(a)] * wz.w[static_cast<std::size_t>(b)] * n[kLand];
-            dz += wx.w[static_cast<std::size_t>(a)] * wz.dw[static_cast<std::size_t>(b)] * n[kLand];
         }
     }
     GeographySample s;
     s.mapCoast = static_cast<float>(sum[kCoast]);
     s.coast = sum[kCoast];
     s.land = static_cast<float>(sum[kLand]);
-    s.landDX = static_cast<float>(dx / sizeX_);
-    s.landDZ = static_cast<float>(dz / sizeZ_);
     s.sea = static_cast<float>(sum[kSea]);
     s.belt = static_cast<float>(sum[kBelt]);
-    s.hills = static_cast<float>(sum[kHills]);
-    s.massif = static_cast<float>(sum[kMassif]);
+    s.relief = static_cast<float>(sum[kRelief]);
+    s.character = static_cast<float>(sum[kCharacter]);
+    s.regions = static_cast<float>(sum[kRegions]);
     s.rugged = static_cast<float>(sum[kRugged]);
     s.coarse = static_cast<float>(sum[kCoarse]);
     return s;

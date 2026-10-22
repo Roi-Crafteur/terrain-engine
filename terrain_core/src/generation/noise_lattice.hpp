@@ -174,6 +174,68 @@ inline float cellNoise(const CellGradients& g, double fu, double fv) {
     return static_cast<float>(std::clamp(value, -1.0, 1.0));
 }
 
+// The derivative of fade.
+constexpr double fadeSlope(double t) {
+    return 30.0 * t * t * (t - 1.0) * (t - 1.0);
+}
+
+// The noise inside a cell, as cellNoise (the same bits), with its derivatives along u and v per
+// cell: 0 where the noise is clamped.
+struct NoiseSlope {
+    float value;
+    double du;
+    double dv;
+};
+
+inline NoiseSlope cellNoiseSlope(const CellGradients& g, double fu, double fv) {
+    const double n00 = gradientDot(g[0], fu, fv);
+    const double n10 = gradientDot(g[1], fu - 1.0, fv);
+    const double n01 = gradientDot(g[2], fu, fv - 1.0);
+    const double n11 = gradientDot(g[3], fu - 1.0, fv - 1.0);
+    const double u = fade(fu);
+    const double v = fade(fv);
+    const double nv0 = n00 + u * (n10 - n00);
+    const double nv1 = n01 + u * (n11 - n01);
+    const double value = (nv0 + v * (nv1 - nv0)) * std::numbers::sqrt2;
+    const double clamped = std::clamp(value, -1.0, 1.0);
+    if (clamped != value) {
+        return {static_cast<float>(clamped), 0.0, 0.0};
+    }
+    const auto& g0 = kGradients[g[0]];
+    const auto& g1 = kGradients[g[1]];
+    const auto& g2 = kGradients[g[2]];
+    const auto& g3 = kGradients[g[3]];
+    const double su = fadeSlope(fu);
+    const double u0 = g0[0] + u * (g1[0] - g0[0]) + su * (n10 - n00);
+    const double u1 = g2[0] + u * (g3[0] - g2[0]) + su * (n11 - n01);
+    const double v0 = g0[1] + u * (g1[1] - g0[1]);
+    const double v1 = g2[1] + u * (g3[1] - g2[1]);
+    return {static_cast<float>(value), (u0 + v * (u1 - u0)) * std::numbers::sqrt2,
+            (v0 + v * (v1 - v0) + fadeSlope(fv) * (nv1 - nv0)) * std::numbers::sqrt2};
+}
+
+// The derivatives of the position in the lattice along the world axes: du/dx, du/dz, dv/dx,
+// dv/dz (toLattice).
+inline std::array<double, 4> latticeJacobian(const Lattice2D& l) {
+    if (l.c == 1) {
+        return {l.scaleX, 0.0, 0.0, l.scaleZ};
+    }
+    const double inverse = l.reciprocal ? l.inverseC : 1.0 / static_cast<double>(l.c);
+    const auto a = static_cast<double>(l.a);
+    const auto b = static_cast<double>(l.b);
+    return {a * l.scaleX * inverse, -b * l.scaleZ * inverse, b * l.scaleX * inverse,
+            a * l.scaleZ * inverse};
+}
+
+// The gradients of the corners of the cell of a position, through a memo as noiseAt.
+inline const CellGradients& gradientsThrough(const CellPosition& c, std::uint64_t seed,
+                                             const Lattice2D& lattice, CellMemo& memo) {
+    if (!memo.valid || c.iu != memo.iu || c.iv != memo.iv) {
+        memo = {c.iu, c.iv, true, gradientsOf(c.iu, c.iv, seed, lattice)};
+    }
+    return memo.gradients;
+}
+
 // The noise of the seed at a position of the lattice.
 inline float noiseAt(const CellPosition& c, std::uint64_t seed, const Lattice2D& lattice) {
     return cellNoise(gradientsOf(c.iu, c.iv, seed, lattice), c.fu, c.fv);

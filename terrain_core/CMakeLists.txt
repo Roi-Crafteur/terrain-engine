@@ -53,6 +53,7 @@ add_library(terrain_core STATIC
     src/generation/geography_flood.cpp
     src/generation/geography_grid.cpp
     src/generation/geography_provinces.cpp
+    src/generation/geography_relief.cpp
     src/generation/geography_tectonics.cpp
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
@@ -79,6 +80,7 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_rivers.cpp
     src/generation/planet/planet_stats.cpp
     src/generation/planet/planet_wind.cpp
+    src/generation/ravines.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp

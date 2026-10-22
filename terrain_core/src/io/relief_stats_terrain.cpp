@@ -306,6 +306,42 @@ void measureZones(const Heightfield& field, const ReliefGrid& world, const Relie
     f.widestDull = widestZone(world, dull);
 }
 
+// The shares of the land cells by class of intensity (none without the geography).
+std::array<double, 5> reliefShares(const Heightfield& field, const ReliefGrid& world,
+                                   const ReliefStats& stats, int threads) {
+    std::array<double, 5> shares{};
+    if (field.geography() == nullptr) {
+        return shares;
+    }
+    std::vector<std::uint8_t> classOf(stats.cells.size(), 255);
+    planet::parallelRows(world.rows, planet::resolveThreads(threads), [&](int begin, int end) {
+        for (int j = begin; j < end; ++j) {
+            for (int i = 0; i < world.columns; ++i) {
+                if ((stats.cells[world.index(i, j)] & kReliefLand) == 0U) {
+                    continue;
+                }
+                const float relief = field.sampleAt(world.x(i), world.z(j)).relief;
+                std::uint8_t c = 0;
+                while (c < kReliefClasses.size() && relief >= kReliefClasses[c]) {
+                    ++c;
+                }
+                classOf[world.index(i, j)] = c;
+            }
+        }
+    });
+    double land = 0.0;
+    for (const std::uint8_t c : classOf) {
+        if (c != 255) {
+            shares[c] += 1.0;
+            land += 1.0;
+        }
+    }
+    for (double& share : shares) {
+        share = land > 0.0 ? share / land : 0.0;
+    }
+    return shares;
+}
+
 } // namespace
 
 TerrainFigures measureTerrain(const Heightfield& field, const ReliefGrid& world,
@@ -320,6 +356,7 @@ TerrainFigures measureTerrain(const Heightfield& field, const ReliefGrid& world,
         belowShare(field, world, cellsWith(stats, kReliefPlain), windowCount, threads, nullptr);
     f.belowMeanBelts = belowShare(field, world, belts, windowCount, threads, nullptr);
     measureZones(field, world, stats, belts, threads, f);
+    f.reliefShares = reliefShares(field, world, stats, threads);
     return f;
 }
 

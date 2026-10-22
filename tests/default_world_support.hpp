@@ -56,12 +56,12 @@ inline std::optional<Place> coast() {
     });
 }
 
-// A plain: land over 100 km from the coast, without the hills, belts and massifs of the
-// geography (lattice of 8 km, out to 2,000 km).
+// A plain: land over 100 km from the coast, where the relief of the geography is the weakest
+// (an intensity of at most 0.06) and no belt reaches (lattice of 8 km, out to 2,000 km).
 inline std::optional<Place> plain() {
     return nearest(8192.0, 250, [](double x, double z) {
         const terrain::GeographySample g = field().geography()->sampleAt(x, z);
-        return g.coast > 100'000.0 && g.hills == 0.0f && g.belt == 0.0f && g.massif == 0.0f;
+        return g.coast > 100'000.0 && g.relief <= 0.06f && g.belt == 0.0f;
     });
 }
 

@@ -4,7 +4,8 @@
 // 150 m over 10 km), the belts are steep (their relief over 5 km, slopes above 30 degrees), the
 // land lies below and above its local mean alike. Pits on an 8 km grid (the cells of the planet
 // level) are allowed, the water follows the relief (phase 11B): their share is only bounded so
-// that the lakes of the planet level stay a few percent of the land.
+// that the lakes of the planet level stay a few percent of the land. The intensity of the relief
+// is continuous and never below its floor, the lowlands a minority of the land.
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/heightfield.hpp"
 
@@ -144,8 +145,7 @@ std::vector<Place> places(const std::function<bool(int, int)>& wanted, int count
 
 bool lowland(int i, int j) {
     const Geography& g = *field().geography();
-    return g.node(i, j, Geography::kHills) == 0.0f && g.node(i, j, Geography::kBelt) == 0.0f &&
-           g.node(i, j, Geography::kMassif) == 0.0f;
+    return g.node(i, j, Geography::kRelief) <= 0.06f && g.node(i, j, Geography::kBelt) == 0.0f;
 }
 
 bool belt(int i, int j) {
@@ -211,8 +211,10 @@ void testMountainsSteep() {
         for (int k = 0; k < 400; ++k) {
             const double x = p.x + 25.0 * (k % 20);
             const double z = p.z + 25.0 * (k / 20);
-            const double gx = (field().heightAt(x + 25.0, z) - field().heightAt(x - 25.0, z)) / 50.0;
-            const double gz = (field().heightAt(x, z + 25.0) - field().heightAt(x, z - 25.0)) / 50.0;
+            const double gx =
+                (field().heightAt(x + 25.0, z) - field().heightAt(x - 25.0, z)) / 50.0;
+            const double gz =
+                (field().heightAt(x, z + 25.0) - field().heightAt(x, z - 25.0)) / 50.0;
             steep += std::sqrt(gx * gx + gz * gz) > 0.57735 ? 1 : 0;
             ++slopes;
         }
@@ -252,6 +254,40 @@ void testRiseAndFall() {
     TEST_CHECK(share > 0.3 && share < 0.7);
 }
 
+// The intensity of the relief on land: continuous, no edge anywhere (at most kMaxStep from a
+// point to the next 1 km away), never below the floor; the lowlands (below 0.06) a minority of
+// the land, but present.
+void testIntensity() {
+    constexpr float kMaxStep = 0.1f;
+    const float floor = field().params().geography.reliefFloor;
+    float step = 0.0f;
+    bool floored = true;
+    int land = 0;
+    int lowland = 0;
+    const WorldSize world{};
+    for (int j = 0; j < 160; ++j) {
+        for (int i = 0; i < 280; ++i) {
+            const double x = -0.5 * world.x + (i + 0.5) * world.x / 280.0;
+            const double z = -0.5 * world.z + (j + 0.5) * world.z / 160.0;
+            const terrain::HeightSample s = field().sampleAt(x, z);
+            const terrain::HeightSample east = field().sampleAt(x + 1000.0, z);
+            if (!(s.relief > 0.0f) || !(east.relief > 0.0f)) {
+                continue; // at sea or on its shore
+            }
+            ++land;
+            lowland += s.relief < 0.06f ? 1 : 0;
+            floored = floored && s.relief >= floor - 1e-6f;
+            step = std::max(step, std::abs(east.relief - s.relief));
+        }
+    }
+    std::printf("intensity: largest step over 1 km %.3f, lowlands %.1f%% of %d land points\n",
+                static_cast<double>(step), 100.0 * lowland / std::max(land, 1), land);
+    TEST_CHECK(land > 10'000);
+    TEST_CHECK(floored);
+    TEST_CHECK(step < kMaxStep);
+    TEST_CHECK(lowland > land / 50 && lowland < land * 35 / 100);
+}
+
 } // namespace
 
 int main() {
@@ -260,5 +296,6 @@ int main() {
     testPlainsLive();
     testMountainsSteep();
     testRiseAndFall();
+    testIntensity();
     return test::result();
 }

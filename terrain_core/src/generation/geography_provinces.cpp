@@ -15,29 +15,30 @@ namespace terrain::geography {
 namespace {
 
 // The kinds of provinces, their shares of the land (far from the belts, and in their forelands),
-// the ranges of their uplift and hills (meters, drawn per province) and their massif.
+// the ranges of their uplift (meters) and of the intensity of their relief (drawn per province)
+// and its character (0 worn and round, 1 young and sharp).
 struct Kind {
     double share;
     double forelandShare;
     std::array<float, 2> uplift;
-    std::array<float, 2> hills;
-    float massif;
+    std::array<float, 2> relief;
+    float character;
 };
 
 constexpr std::array<Kind, 7> kKinds = {{
-    {0.27, 0.40, {0.0f, 40.0f}, {0.0f, 0.0f}, 0.0f},           // lowland
-    {0.10, 0.25, {-250.0f, -80.0f}, {0.0f, 0.0f}, 0.0f},       // sedimentary basin
-    {0.12, 0.08, {500.0f, 1100.0f}, {10.0f, 40.0f}, 0.0f},     // high plain
-    {0.17, 0.10, {60.0f, 250.0f}, {100.0f, 250.0f}, 0.0f},     // shield with hills
-    {0.15, 0.08, {450.0f, 900.0f}, {250.0f, 500.0f}, 0.3f},    // old worn massif
-    {0.10, 0.05, {600.0f, 1000.0f}, {40.0f, 120.0f}, 0.0f},    // plateau
-    {0.09, 0.04, {1000.0f, 1800.0f}, {150.0f, 300.0f}, 0.85f}, // intraplate high relief
+    {0.27, 0.40, {0.0f, 40.0f}, {0.04f, 0.08f}, 0.5f},       // lowland
+    {0.10, 0.25, {-250.0f, -80.0f}, {0.03f, 0.07f}, 0.5f},   // sedimentary basin
+    {0.12, 0.08, {500.0f, 1100.0f}, {0.05f, 0.10f}, 0.5f},   // high plain
+    {0.17, 0.10, {60.0f, 250.0f}, {0.10f, 0.20f}, 0.4f},     // shield with hills
+    {0.15, 0.08, {450.0f, 900.0f}, {0.30f, 0.45f}, 0.15f},   // old worn massif
+    {0.10, 0.05, {600.0f, 1000.0f}, {0.12f, 0.25f}, 0.5f},   // plateau
+    {0.09, 0.04, {1000.0f, 1800.0f}, {0.45f, 0.65f}, 0.6f},  // intraplate high relief
 }};
 
 // Belts from this strength on make forelands around them.
 constexpr float kForelandBelt = 0.3f;
 
-// Within a province, its uplift and hills vary by +-kVariation, by an fbm of this wavelength.
+// Within a province, its uplift and relief vary by +-kVariation, by an fbm of this wavelength.
 constexpr double kVariationWavelength = 1'500'000.0;
 constexpr float kVariation = 0.4f;
 
@@ -75,8 +76,8 @@ struct Province {
     double x;
     double z;
     float uplift;
-    float hills;
-    float massif;
+    float relief;
+    float character;
 };
 
 // Sites on a jittered grid of cells about provinceSize wide (a whole number along each side).
@@ -136,8 +137,8 @@ Sites placeSites(std::uint64_t seed, const GeographyParams& p, const WorldSize& 
                 return static_cast<float>(range[0] + (range[1] - range[0]) * t);
             };
             v.uplift = lerp(kind.uplift, unit(draws, 3));
-            v.hills = lerp(kind.hills, unit(draws, 4));
-            v.massif = kind.massif;
+            v.relief = lerp(kind.relief, unit(draws, 4));
+            v.character = kind.character;
             s.provinces.push_back(v);
         }
     }
@@ -186,7 +187,7 @@ Noises makeNoises(std::uint64_t stream, const GeographyParams& params, const Wor
             fbm(3, 2, kVariationWavelength), fbm(4, 2, kUndulationWavelength)};
 }
 
-// The uplift, hills and massif of the province nearest to (x, z) after the warp, varied.
+// The uplift, relief and character of the province nearest to (x, z) after the warp, varied.
 std::array<float, 3> provinceFields(const GeographyParams& params, const WorldSize& world,
                                     const Sites& sites, const Noises& n, double x, double z) {
     const std::array<float, 2> w = n.warpX.fbm2DPair(n.warpZ, x, z);
@@ -194,7 +195,8 @@ std::array<float, 3> provinceFields(const GeographyParams& params, const WorldSi
         nearest(sites, world, noise::wrapCanonical(x + params.provinceWarp * w[0], world.x),
                 noise::wrapCanonical(z + params.provinceWarp * w[1], world.z));
     const float vary = 1.0f + kVariation * n.variation.fbm2D(x, z);
-    return {v.uplift * vary + kUndulation * n.undulation.fbm2D(x, z), v.hills * vary, v.massif};
+    return {v.uplift * vary + kUndulation * n.undulation.fbm2D(x, z), v.relief * vary,
+            v.character};
 }
 
 // A field of the grid from a field of a coarser grid of the same world, bilinearly.
@@ -251,7 +253,7 @@ Provinces buildProvinces(std::uint64_t seed, const GeographyParams& params,
                   upsample(half, grid, coarse[2])};
     const int radius = std::max(
         1, static_cast<int>(std::lround(params.provinceBlend / (2.0 * params.cellSize))));
-    for (std::vector<float>* field : {&out.uplift, &out.hills, &out.massif}) {
+    for (std::vector<float>* field : {&out.uplift, &out.relief, &out.character}) {
         boxBlur(grid, *field, radius);
     }
     return out;

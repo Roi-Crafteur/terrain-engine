@@ -33,3 +33,5 @@ expect_failure("too many arguments" 20261019 default 16384 64 1 2097152 1048576 
 expect_failure("place without its point" 20261019 default 16384 64 1 --at here 1)
 expect_failure("place with an invalid name" --at a-b 1 2)
 expect_failure("place with a non-numeric x" --at here east 2)
+expect_failure("unknown step to switch off" --without rivers)
+expect_failure("step to switch off missing" 20261019 --without)

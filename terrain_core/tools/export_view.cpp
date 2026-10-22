@@ -1,17 +1,24 @@
 // Views of a relief in perspective (terrain::renderReliefView), at the places that judge it:
 // view_foot.png at the foot of the longest chain, 20 to 30 km from its highest point (the lowest
-// place from which it is seen) and looking at it; view_plain.png in the plain farthest from the chains; view_summit.png from the
-// highest summit of the planet toward the lowest ground 15 km around; view_above.png from 300 m
-// above the longest chain, looking at its highest point. The eye stands 1.8 m above the ground
-// (300 m for the last view), the field of view is 70 degrees wide, and a tower of 330 m stands
-// 2 km away in each view as a scale mark. Prints, and writes to views.txt, where each view
-// stands and what the eye at the foot sees of the highest point of the chain: the angle of its
+// place from which it is seen) and looking at it; view_plain.png in the plain farthest from the
+// chains; view_summit.png from the highest summit of the planet toward the lowest ground 15 km
+// around; view_above.png from 300 m above the longest chain, looking at its highest point;
+// view_slope.png at a flank of the chain from 2 km away, at its height (the flank below the
+// highest point toward the lowest ground 3 km from it). The eye stands 1.8 m above the ground
+// (300 m for view_above), the field of view is 70 degrees wide, and a tower of 330 m stands 2 km
+// away in each view as a scale mark. Prints, and writes to views.txt, where each view stands
+// and what the eye at the foot sees of the highest point of the chain: the angle of its
 // elevation and whether the ground hides it farther than 1 km before it (nearer, it is its own
-// top). The places come from terrain::measureRelief on
-// cells of cell-size meters. Without the optional arguments: seed 20261019, the default relief,
-// 1,600 x 900 pixels, cells of 16,384 m, all the hardware threads, the default world.
+// top). The places come from terrain::measureRelief on cells of cell-size meters; --mountain
+// takes the chain around a point instead (its highest point within 12 km), the same in every
+// relief compared; with --plain, view_plain_fixed.png is a plain view at that point; --without
+// ravines or --without lively switches off a step of the relief of the geography
+// (GeographyParams::ravines, livelyPlains), to compare them. Without the optional arguments:
+// seed 20261019, the default relief, 1,600 x 900 pixels, cells of 16,384 m, all the hardware
+// threads, the default world.
 // Usage: terrain_export_view <output-dir> [seed] [default|planetary|legacy|geography] [width]
-//        [cell-size] [threads] [world-x] [world-z]
+//        [cell-size] [threads] [world-x] [world-z] [--plain <x> <z>] [--mountain <x> <z>]
+//        [--without ravines|lively]...
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
@@ -33,6 +40,7 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace {
 
@@ -42,6 +50,11 @@ constexpr double kTowerHeight = 330.0;
 constexpr double kTowerDistance = 2000.0;
 constexpr double kTowerAside = 0.03; // turns left of the axis
 constexpr double kOwnTop = 1000.0;   // the ground this close to a summit is its own top
+// The flank of view_slope: its point kFlankDistance from the summit, the eye kFlankEye farther
+// and at least kFlankAbove above its ground.
+constexpr double kFlankDistance = 3000.0;
+constexpr double kFlankEye = 2000.0;
+constexpr double kFlankAbove = 30.0;
 constexpr double kTwoPi = 6.283185307179586476925286766559;
 
 template <class T> bool parse(const char* text, T& value) {
@@ -51,6 +64,14 @@ template <class T> bool parse(const char* text, T& value) {
 }
 
 struct Options {
+    bool fixedPlain = false;
+    double plainX = 0.0;
+    double plainZ = 0.0;
+    bool fixedMountain = false; // --mountain: the chain of the views around this point
+    double mountainX = 0.0;
+    double mountainZ = 0.0;
+    bool ravines = true;
+    bool lively = true;
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     std::string relief = "default";
     int width = 1600;
@@ -93,6 +114,45 @@ bool parseWorld(int argc, char** argv, Options& options) {
         std::fmod(options.world.z, options.cellSize) != 0.0 || cells < 3.0) {
         return fail("cell size", argc > 5 ? argv[5] : "16384",
                     "meters dividing both sides of the world, at least 3 cells per side");
+    }
+    return true;
+}
+
+// Reads the point <x> <z> after the flag at argv[k] (--plain or --mountain).
+bool parsePoint(int argc, char** argv, int k, double& x, double& z) {
+    if (k + 2 >= argc || !(parse(argv[k + 1], x) && std::isfinite(x) && parse(argv[k + 2], z) &&
+                           std::isfinite(z))) {
+        std::fprintf(stderr, "Invalid point: expected %s <x> <z> in meters\n", argv[k]);
+        return false;
+    }
+    return true;
+}
+
+// Moves --plain <x> <z>, --mountain <x> <z> and --without <step> out of the arguments into
+// options; the other arguments stay in order in kept (the program name first).
+bool parseFlags(int argc, char** argv, Options& options, std::vector<char*>& kept) {
+    for (int k = 0; k < argc; ++k) {
+        if (std::strcmp(argv[k], "--plain") == 0 || std::strcmp(argv[k], "--mountain") == 0) {
+            const bool plain = argv[k][2] == 'p';
+            if (!parsePoint(argc, argv, k, plain ? options.plainX : options.mountainX,
+                            plain ? options.plainZ : options.mountainZ)) {
+                return false;
+            }
+            (plain ? options.fixedPlain : options.fixedMountain) = true;
+            k += 2;
+        } else if (std::strcmp(argv[k], "--without") == 0) {
+            const bool ravines = k + 1 < argc && std::strcmp(argv[k + 1], "ravines") == 0;
+            const bool lively = k + 1 < argc && std::strcmp(argv[k + 1], "lively") == 0;
+            if (!ravines && !lively) {
+                std::fprintf(stderr, "Invalid step: expected --without ravines or lively\n");
+                return false;
+            }
+            options.ravines = options.ravines && !ravines;
+            options.lively = options.lively && !lively;
+            ++k;
+        } else {
+            kept.push_back(argv[k]);
+        }
     }
     return true;
 }
@@ -273,7 +333,9 @@ terrain::ViewParams footView(const terrain::Heightfield& field, const Options& o
             }
         }
     }
-    foot = seeing > 0 ? foot : (candidates > 0 ? lowest : pointAt(field, summit.x, summit.z + 25'000.0));
+    if (seeing == 0) {
+        foot = candidates > 0 ? lowest : pointAt(field, summit.x, summit.z + 25'000.0);
+    }
     terrain::ViewParams view =
         viewFrom(options, foot, kEyeAboveGround, headingTo(foot.x, foot.z, summit.x, summit.z),
                  0.0);
@@ -293,12 +355,33 @@ terrain::ViewParams footView(const terrain::Heightfield& field, const Options& o
     return view;
 }
 
+// A flank of the chain seen from 2 km away: the point of the flank is the lowest ground 3 km
+// from the summit, the eye 2 km farther from the summit, at the height of that point (at least
+// kFlankAbove above its own ground), looking back at the summit.
+terrain::ViewParams slopeView(const terrain::Heightfield& field, const Options& options,
+                              const Point& summit) {
+    const Point flank = lowestAround(field, summit.x, summit.z, {kFlankDistance});
+    const double dx = flank.x - summit.x;
+    const double dz = flank.z - summit.z;
+    const double away = kFlankEye / terrain::dmath::hypot(dx, dz);
+    const Point eye = pointAt(field, flank.x + away * dx, flank.z + away * dz);
+    const double above =
+        std::max(static_cast<double>(flank.height) - static_cast<double>(eye.height), kFlankAbove);
+    const double eyeHeight = static_cast<double>(eye.height) + above;
+    const double distance = kFlankDistance + kFlankEye;
+    const double tilt =
+        std::clamp(0.5 * (static_cast<double>(summit.height) - eyeHeight) / distance, 0.0, 0.4);
+    return viewFrom(options, eye, above, headingTo(eye.x, eye.z, summit.x, summit.z), tilt);
+}
+
 bool writeViews(const terrain::Heightfield& field, const Options& options,
                 const terrain::ReliefStats& stats, const std::filesystem::path& directory,
                 Report& r) {
     const Point highest = summitNear(field, stats.highestX, stats.highestZ);
-    const Point summit = stats.mountain.found ? summitNear(field, stats.mountain.x, stats.mountain.z)
-                                              : highest;
+    const Point summit =
+        options.fixedMountain ? summitNear(field, options.mountainX, options.mountainZ)
+        : stats.mountain.found ? summitNear(field, stats.mountain.x, stats.mountain.z)
+                               : highest;
     const terrain::ViewParams foot = footView(field, options, summit, r);
     const Point plain = stats.plain.found ? pointAt(field, stats.plain.x, stats.plain.z)
                                           : pointAt(field, stats.coast.x, stats.coast.z);
@@ -307,7 +390,14 @@ bool writeViews(const terrain::Heightfield& field, const Options& options,
                                foot.eyeZ + 0.4 * (summit.z - foot.eyeZ));
     r.add("highest summit of the planet: %.0f m at (%.3f, %.3f) km\n",
           static_cast<double>(highest.height), highest.x / 1000.0, highest.z / 1000.0);
-    return writeView(field, options, "foot", foot, directory, r) &&
+    bool written = true;
+    if (options.fixedPlain) {
+        written = writeView(field, options, "plain_fixed",
+                            viewFrom(options, pointAt(field, options.plainX, options.plainZ),
+                                     kEyeAboveGround, 0.0, -0.04),
+                            directory, r);
+    }
+    return written && writeView(field, options, "foot", foot, directory, r) &&
            writeView(field, options, "plain", viewFrom(options, plain, kEyeAboveGround, 0.0, -0.04),
                      directory, r) &&
            writeView(field, options, "summit",
@@ -317,24 +407,32 @@ bool writeViews(const terrain::Heightfield& field, const Options& options,
            writeView(field, options, "above",
                      viewFrom(options, over, kFlightAboveGround,
                               headingTo(over.x, over.z, summit.x, summit.z), 0.0),
-                     directory, r);
+                     directory, r) &&
+           writeView(field, options, "slope", slopeView(field, options, summit), directory, r);
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
     Options options;
-    if (!parseArguments(argc, argv, options)) {
+    std::vector<char*> args;
+    if (!parseFlags(argc, argv, options, args) ||
+        !parseArguments(static_cast<int>(args.size()), args.data(), options)) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [seed] [default|planetary|legacy|geography] "
-                     "[width] [cell-size] [threads] [world-x] [world-z]\n",
+                     "[width] [cell-size] [threads] [world-x] [world-z] [--plain <x> <z>] "
+                     "[--mountain <x> <z>] "
+                     "[--without ravines|lively]...\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
-    const std::filesystem::path directory = argv[1];
+    const std::filesystem::path directory = args[1];
     std::error_code error;
     std::filesystem::create_directories(directory, error);
-    const terrain::Heightfield field(options.seed, reliefParams(options.relief), options.world);
+    terrain::HeightfieldParams params = reliefParams(options.relief);
+    params.geography.ravines = options.ravines;
+    params.geography.livelyPlains = options.lively;
+    const terrain::Heightfield field(options.seed, params, options.world);
     const terrain::ReliefStats stats = terrain::measureRelief(
         terrain::sampleReliefWorld(field, options.cellSize, options.threads));
     Report r;
@@ -344,7 +442,7 @@ int main(int argc, char** argv) {
           options.world.x / 1000.0, options.world.z / 1000.0, options.width,
           options.width * 9 / 16);
     if (!writeViews(field, options, stats, directory, r) || !r.write(directory / "views.txt")) {
-        std::fprintf(stderr, "Failed to write the views into %s\n", argv[1]);
+        std::fprintf(stderr, "Failed to write the views into %s\n", args[1]);
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

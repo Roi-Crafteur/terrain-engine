@@ -19,12 +19,11 @@ struct GeographySample {
     double coast = 0.0;
     float mapCoast = 0.0f; // the distance to the coast of the map alone
     float land = 1.0f;     // drained regional elevation of the land, >= 1 m, also over the sea
-    float landDX = 0.0f;   // its gradient along x and z, meters per meter
-    float landDZ = 0.0f;
     float sea = 0.0f;  // floor of the ocean, meters (the shelf depth under the land)
     float belt = 0.0f;   // [0, 1], the mountain belts of the collisions of the plates
-    float hills = 0.0f;  // meters, the amplitude of the hills of the provinces
-    float massif = 0.0f; // [0, 1], the old massifs and intraplate high relief of the provinces
+    float relief = 0.0f;    // [reliefFloor, 1], the intensity of the relief (GeographyParams)
+    float character = 0.5f; // [0, 1], from worn and round (0) to young and sharp (1)
+    float regions = 0.0f;   // [-1, 1], lands of vallons (above 0) or of buttes (below)
     float rugged = 1.0f; // the share of the amplitude of the small coasts, smoothRugged to 1
     float coarse = 0.0f; // the broadest octaves of the coarse coast noise
 };
@@ -46,10 +45,11 @@ public:
         kLand,
         kSea,
         kBelt,
-        kHills,
-        kMassif,
+        kRelief,
+        kCharacter,
         kRugged,
         kCoarse,
+        kRegions,
         kFields
     };
 

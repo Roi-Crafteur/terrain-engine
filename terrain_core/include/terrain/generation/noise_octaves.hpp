@@ -46,6 +46,27 @@ public:
     [[nodiscard]] float fbm2D(double x, double z, Memo& memo) const;
     [[nodiscard]] float ridged2D(double x, double z, double sharpness, Memo& memo) const;
 
+    // ridged2D, with the ridged sum of its first `head` octaves alone (over their own total
+    // amplitude, as a noise of `head` octaves would give it) and the gradient of that sum per
+    // meter along x and z, for the slope of the broad shapes of the noise: the weights of the
+    // octaves taken as constants, so that it only turns over on the creases. The weight of each
+    // octave by the signal of the one before never falls below floor in [0, 1]: the valleys
+    // keep that share of the finer octaves (secondary crests). With a floor of 0, the same bits
+    // as ridged2D for the value. Without a memo, or through one.
+    struct RidgedSlope {
+        float value = 0.0f;
+        float head = 0.0f;
+        double headX = 0.0;
+        double headZ = 0.0;
+        // The least |noise| of the head octaves: 0 on the creases of one of them, where the
+        // gradient turns over.
+        float crease = 1.0f;
+    };
+    [[nodiscard]] RidgedSlope ridged2DSlope(double x, double z, double sharpness, double floor,
+                                            int head) const;
+    [[nodiscard]] RidgedSlope ridged2DSlope(double x, double z, double sharpness, double floor,
+                                            int head, Memo& memo) const;
+
     // True if the twin has the same octaves but for their seeds: built with the same parameters
     // and world and another seed.
     [[nodiscard]] bool twinOf(const FbmOctaves& twin) const;
@@ -75,6 +96,11 @@ private:
     [[nodiscard]] float fbm2DWith(double x, double z, Noise&& noise) const;
     template <class Noise>
     [[nodiscard]] float ridged2DWith(double x, double z, double sharpness, Noise&& noise) const;
+    // ridged2DSlope, with the gradients of the corners of the cell of octave i at a position
+    // given by cells(i, octave, position).
+    template <class Cells>
+    [[nodiscard]] RidgedSlope ridgedSlopeWith(double x, double z, double sharpness, double floor,
+                                              int head, Cells&& cells) const;
     // The pair, with the noises of octave i at a position given by noise(i, octave, twinOctave,
     // position).
     template <class Noise>

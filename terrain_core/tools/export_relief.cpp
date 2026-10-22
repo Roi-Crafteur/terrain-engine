@@ -3,10 +3,13 @@
 // chain, a plain and a coast found on the planet (zoom_<site>_<km>km.png) and on the places
 // given by --at (fixed places, to compare reliefs at the same points), and the figures of
 // terrain::measureRelief, measureLocalRelief and measureTerrain (printed, and written to
-// stats.txt). Without the optional arguments: seed 20261019, the default relief, cells of
-// 16,384 m for the planet, zooms of 2,048 px, all the hardware threads, the default world.
+// stats.txt). --without ravines or --without lively switches off a step of the relief of the
+// geography (GeographyParams::ravines, livelyPlains), to compare them. Without the optional
+// arguments: seed 20261019, the default relief, cells of 16,384 m for the planet, zooms of
+// 2,048 px, all the hardware threads, the default world.
 // Usage: terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
 //        [zoom-pixels] [threads] [world-x] [world-z] [--at <name> <x> <z>]...
+//        [--without ravines|lively]...
 
 #include "terrain/generation/planet/planet_params.hpp"
 #include "terrain/io/relief_png.hpp"
@@ -49,6 +52,8 @@ struct Place {
 
 struct Options {
     std::vector<Place> places;
+    bool ravines = true; // GeographyParams::ravines, livelyPlains
+    bool lively = true;
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     std::string relief = "default";
     double cellSize = 16384.0;
@@ -65,13 +70,15 @@ bool fail(const char* what, const char* text, const char* expected) {
 // default: HeightfieldParams{}, the planetary geography since generator 3; planetary: the preset
 // of the planet level (the same world); legacy: the relief of generator 2 (geography disabled);
 // geography: the planetary geography enabled.
-terrain::HeightfieldParams reliefParams(const std::string& relief) {
-    terrain::HeightfieldParams params = relief == "planetary"
+terrain::HeightfieldParams reliefParams(const Options& options) {
+    terrain::HeightfieldParams params = options.relief == "planetary"
                                             ? terrain::planetaryHeightfieldParams()
                                             : terrain::HeightfieldParams{};
-    if (relief == "legacy" || relief == "geography") {
-        params.geography.enabled = relief == "geography";
+    if (options.relief == "legacy" || options.relief == "geography") {
+        params.geography.enabled = options.relief == "geography";
     }
+    params.geography.ravines = options.ravines;
+    params.geography.livelyPlains = options.lively;
     return params;
 }
 
@@ -103,10 +110,30 @@ bool validName(const std::string& name) {
     });
 }
 
-// Moves the --at triples out of the arguments into options.places; the other arguments stay in
-// order in kept (the program name first).
+// Reads --without <step> at argv[k] into options.
+bool parseWithout(int argc, char** argv, int k, Options& options) {
+    const bool ravines = k + 1 < argc && std::strcmp(argv[k + 1], "ravines") == 0;
+    const bool lively = k + 1 < argc && std::strcmp(argv[k + 1], "lively") == 0;
+    if (!ravines && !lively) {
+        std::fprintf(stderr, "Invalid step: expected --without ravines or lively\n");
+        return false;
+    }
+    options.ravines = options.ravines && !ravines;
+    options.lively = options.lively && !lively;
+    return true;
+}
+
+// Moves the --at triples and --without <step> out of the arguments into options; the other
+// arguments stay in order in kept (the program name first).
 bool parsePlaces(int argc, char** argv, Options& options, std::vector<char*>& kept) {
     for (int k = 0; k < argc; ++k) {
+        if (std::strcmp(argv[k], "--without") == 0) {
+            if (!parseWithout(argc, argv, k, options)) {
+                return false;
+            }
+            ++k;
+            continue;
+        }
         if (std::strcmp(argv[k], "--at") != 0) {
             kept.push_back(argv[k]);
             continue;
@@ -280,6 +307,16 @@ void reportTerrain(Report& r, const terrain::TerrainFigures& f, bool geography) 
     printZone(r, "land with less than 10 m of relief over 10 km", f.flatShare, f.widestFlat);
     printZone(r, "highlands (belts or 2,500 m) with less than 300 m of relief over 10 km",
               f.dullShare, f.widestDull);
+    if (geography) {
+        r.add("land by intensity of the relief: below %.2f %.1f%%",
+              static_cast<double>(terrain::kReliefClasses[0]), 100.0 * f.reliefShares[0]);
+        for (std::size_t c = 1; c < terrain::kReliefClasses.size(); ++c) {
+            r.add(" | %.2f-%.2f %.1f%%", static_cast<double>(terrain::kReliefClasses[c - 1]),
+                  static_cast<double>(terrain::kReliefClasses[c]), 100.0 * f.reliefShares[c]);
+        }
+        r.add(" | above %.2f %.1f%%\n", static_cast<double>(terrain::kReliefClasses.back()),
+              100.0 * f.reliefShares.back());
+    }
 }
 
 // The point of the shore nearest to a coast site of the map, whose cells are too coarse to put
@@ -338,14 +375,14 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [seed] [default|planetary|legacy|geography] "
                      "[cell-size] [zoom-pixels] [threads] [world-x] [world-z] "
-                     "[--at <name> <x> <z>]...\n",
+                     "[--at <name> <x> <z>]... [--without ravines|lively]...\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
     const std::filesystem::path directory = args[1];
     std::error_code error;
     std::filesystem::create_directories(directory, error);
-    const terrain::Heightfield field(options.seed, reliefParams(options.relief), options.world);
+    const terrain::Heightfield field(options.seed, reliefParams(options), options.world);
     auto start = std::chrono::steady_clock::now();
     const terrain::ReliefGrid world =
         terrain::sampleReliefWorld(field, options.cellSize, options.threads);

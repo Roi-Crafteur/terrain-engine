@@ -2,6 +2,7 @@
 
 #include "terrain/det_math.hpp" // also refuses fast math in every unit including it
 #include "terrain/generation/geography.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/voronoi.hpp"
 #include "terrain/world_size.hpp"
 
@@ -88,6 +89,7 @@ struct HeightSample {
     float plateContinentalness = 0.0f; // PlateSample::continentalness, 0 when disabled
     float plateCollision = 0.0f;       // [0, 1], PlateSample::collision, 0 when disabled
     float mountainMask = 0.0f;         // [0, 1]
+    float relief = 0.0f; // [0, 1], the intensity of the relief of the geography on land (else 0)
     float base = 0.0f;                 // continental curve, [kMinBaseHeight, kMaxBaseHeight]
     float mountain = 0.0f;             // [0, mountainMask * mountainHeight * (1 + boost)]
     float detail = 0.0f;               // [-detailAmplitude, detailAmplitude]
@@ -138,15 +140,24 @@ private:
     [[nodiscard]] HeightSample sampleWith(double x, double z, Memos* memos) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
-    // The ridged noise at its warped point, and the warp (of the geography when it is enabled).
-    [[nodiscard]] float ridgeAt(double x, double z, Memos* memos, std::array<float, 2>& warp) const;
+    // The warped point of the ridged noise (the warp of the geography when it is enabled).
+    [[nodiscard]] std::array<double, 2> warpedAt(double x, double z, Memos* memos) const;
     // sampleWith on the planetary geography (heightfield_geography.cpp), at a canonical point:
     // its regional elevation, the local relief around it and the ridged mountains.
     [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos) const;
-    [[nodiscard]] float geographyMountainAt(double x, double z, float mask, Memos* memos) const;
-    // The hills and vallons of the geography of this amplitude, and its buttes this high
-    // (relief_local).
+    // The intensity of the relief at the point: that of the map with the spurs of the chains.
+    [[nodiscard]] float reliefAt(double x, double z, float mapRelief, Memos* memos) const;
+    // The ridged mountains of this intensity and character under the mask, carved by ravines.
+    [[nodiscard]] float geographyMountainAt(double x, double z, float mask, float intensity,
+                                            float character, Memos* memos) const;
+    // The depth of the ravines at a warped point, meters, from the ridged noise of the mountains
+    // there (its first octaves and their slope), the mountains amplitude meters high at most.
+    [[nodiscard]] float ravinesAt(double warpedX, double warpedZ,
+                                  const noise::FbmOctaves::RidgedSlope& ridge, double amplitude,
+                                  Memos* memos) const;
+    // The hills, vallons, buttes and terraces of the geography (relief_local).
     [[nodiscard]] float localReliefAt(double x, double z, float amplitude, float buttes,
+                                      float region, float plain, float rough,
                                       Memos* memos) const;
     [[nodiscard]] float detailAt(double x, double z, float base, Memos* memos) const;
 

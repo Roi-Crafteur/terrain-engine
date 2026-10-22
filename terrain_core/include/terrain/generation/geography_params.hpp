@@ -86,7 +86,7 @@ struct GeographyParams {
     // apart, the nearest to each point after a warp of provinceWarp: lowlands, sedimentary
     // basins, high plains, shields with hills, old worn massifs, plateaus and intraplate high
     // relief, with more lowlands and basins in the forelands within forelandDistance of a belt.
-    // Their uplift, hills and massifs blend over provinceBlend.
+    // Their uplift, the intensity and the character of their relief blend over provinceBlend.
     double provinceSize = 2'000'000.0;
     double provinceWarp = 900'000.0;
     double forelandDistance = 600'000.0;
@@ -103,20 +103,42 @@ struct GeographyParams {
     // elevation by beltUplift at their axis (+-35 %) and carry the mountains.
     double beltWidth = 200'000.0;
     double beltOffset = 0.35;
-    float beltUplift = 2900.0f;
+    float beltUplift = 2000.0f;
     // High plateaus behind plateauShare of the collisions longer than plateauLength:
     // plateauUplift (+-10 %) over plateauWidth (0.6 to 1.4 times it) on the overriding side.
     float plateauShare = 0.3f;
     double plateauLength = 2'000'000.0;
-    float plateauUplift = 4300.0f;
+    float plateauUplift = 3800.0f;
     double plateauWidth = 700'000.0;
+    // The intensity of the relief (phase 11R bis), a field of the map from reliefFloor on the
+    // land to 1, without any edge: the belts with a tail decaying as exp(-d / beltReach) into
+    // foothills then hills, varied along the chains by +-reliefVariation (high and low parts,
+    // passes, intramontane basins); the provinces; the high plateaus (plateauRelief); isolated
+    // massifs in the plains up to massifRelief. Spurs and secondary ranges leave the chains up
+    // to spurRelief more, along the lines of a ridged noise of spurWavelength.
+    double beltReach = 200'000.0;
+    float reliefFloor = 0.03f;
+    float reliefVariation = 0.35f;
+    float plateauRelief = 0.42f;
+    float massifRelief = 0.5f;
+    float spurRelief = 0.35f;
+    double spurWavelength = 180'000.0;
+    // Steps of the relief that the comparisons can switch off: the ravines of the mountain slopes
+    // and the lively plains (vallons and buttes everywhere, terraces, more relief at the scale
+    // of a walk).
+    bool ravines = true;
+    bool livelyPlains = true;
+
     // The ridged mountains of the Heightfield (its warp, octaves and wavelength) rise up to
     // mountainHeight above the regional elevation under their mask, with their own sharpness and
     // gain: sharp crests, valleys in V between them, steep walls without a fractal roughness at
     // every scale.
-    float mountainHeight = 4400.0f;
-    double mountainSharpness = 3.0;
-    double mountainGain = 0.45;
+    float mountainHeight = 4100.0f;
+    double mountainSharpness = 4.0;
+    double mountainGain = 0.42;
+    // The valleys between the crests keep at least this share of the finer octaves of the
+    // ridged noise (FbmOctaves::ridged2DSlope): secondary crests and hollows, not smooth floors.
+    double mountainValleyDetail = 0.2;
     // Island arcs where a belt crosses the ocean: the coast signal rises to about arcLift on
     // their axis, broken into islands by an fbm of arcWavelength.
     double arcLift = 45'000.0;

@@ -255,6 +255,7 @@ void collide(const Context& c, const Boundary& b, double s, float weight, const 
     const double uplift =
         std::max(beltUplift, plateauUplift) + 0.25 * std::min(beltUplift, plateauUplift);
     t.belt[k] = std::max(t.belt[k], belt);
+    t.plateau[k] = std::max(t.plateau[k], plateau);
     t.uplift[k] = std::max(t.uplift[k], static_cast<float>(uplift));
     t.trench[k] =
         std::max(t.trench[k], b.strength * weight * bump((s - axis + 1.35 * w) / p.trenchWidth));
@@ -403,7 +404,7 @@ Tectonics buildTectonics(std::uint64_t seed, const GeographyParams& params,
                                                     slow.land))};
     Tectonics t;
     for (std::vector<float>* field :
-         {&t.belt, &t.uplift, &t.trough, &t.shoulder, &t.ridge, &t.trench}) {
+         {&t.belt, &t.uplift, &t.trough, &t.shoulder, &t.ridge, &t.trench, &t.plateau}) {
         field->assign(grid.nodes(), 0.0f);
     }
     planet::parallelRows(grid.nz, threads, [&](int begin, int end) {

@@ -169,7 +169,13 @@ struct TerrainFigures {
     ReliefZone widestFlat;  // the widest zone of them
     double dullShare = 0.0; // of the highland cells below 300 m
     ReliefZone widestDull;
+    // Shares of the land cells by the intensity of the relief of the geography at their center
+    // (HeightSample::relief), in the classes bounded by kReliefClasses; all 0 without it.
+    std::array<double, 5> reliefShares{};
 };
+
+// Upper bounds of the classes of the intensity of the relief; the last class has no bound.
+inline constexpr std::array<float, 4> kReliefClasses = {0.06f, 0.2f, 0.45f, 0.7f};
 
 // Thresholds of the flat land and of the dull highlands, meters over 10 km.
 inline constexpr double kFlatRelief = 10.0;

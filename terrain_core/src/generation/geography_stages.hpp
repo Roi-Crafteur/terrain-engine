@@ -44,6 +44,7 @@ enum Stream : std::uint64_t {
     kValleyWarpZ,
     kDrainage,
     kCoastCoarsePoint,
+    kRelief,
 };
 
 // The continental crust on the map: which nodes are land, and the signed distance from each
@@ -70,6 +71,7 @@ struct Tectonics {
     std::vector<float> shoulder; // [0, 1], their shoulders
     std::vector<float> ridge;    // [0, 1], the mid-ocean ridges along every divergence
     std::vector<float> trench; // [0, 1], the trenches on the subducting side of collisions
+    std::vector<float> plateau; // [0, 1], the high plateaus behind the belts
 };
 
 // The plates of the geography (TectonicPlates of params.plates) on the map: for each node, its
@@ -82,13 +84,14 @@ struct Tectonics {
 // The provinces of the land between the belts (GeographyParams): what each node gets from the
 // province nearest to it (after a warp), blended over provinceBlend.
 struct Provinces {
-    std::vector<float> uplift; // meters, added to the floor of the land
-    std::vector<float> hills;  // meters, the amplitude of the hills
-    std::vector<float> massif; // [0, 1], the low mountains of old massifs and high relief
+    std::vector<float> uplift;    // meters, added to the floor of the land
+    std::vector<float> relief;    // the intensity of their relief
+    std::vector<float> character; // [0, 1], worn (0) to sharp (1)
 };
 
 // Sites on a jittered grid, each of a kind drawn from its shares (those of the forelands within
-// forelandDistance of a belt), its uplift and hills drawn in the ranges of its kind.
+// forelandDistance of a belt), its uplift and the intensity of its relief drawn in the ranges of
+// its kind.
 [[nodiscard]] Provinces buildProvinces(std::uint64_t seed, const GeographyParams& params,
                                        const WorldSize& world, const Grid& grid,
                                        const Tectonics& tectonics, int threads);
@@ -105,6 +108,22 @@ struct Provinces {
 [[nodiscard]] std::vector<float> landFloor(const GeographyParams& params, const Crust& crust,
                                            const Tectonics& tectonics,
                                            const Provinces& provinces);
+
+// The relief of the map (phase 11R bis): its intensity, its character and its regions of
+// vallons and buttes at each node (GeographyParams).
+struct ReliefFields {
+    std::vector<float> relief;
+    std::vector<float> character;
+    std::vector<float> regions;
+};
+
+// The belts with their tails (beltReach) varied along the chains, with intramontane basins; the
+// provinces; the high plateaus; isolated massifs; at least reliefFloor. Node loops on threads in
+// blocks of rows: the same bits for any number.
+[[nodiscard]] ReliefFields reliefFields(std::uint64_t seed, const GeographyParams& params,
+                                        const WorldSize& world, const Grid& grid,
+                                        const Tectonics& tectonics, const Provinces& provinces,
+                                        int threads);
 
 // The steps from a node to its 8 neighbors, in opposite pairs (k ^ 1 is the opposite of k).
 inline constexpr std::array<std::array<int, 2>, 8> kSteps = {
