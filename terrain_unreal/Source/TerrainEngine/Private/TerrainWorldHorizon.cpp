@@ -56,6 +56,11 @@ namespace
 		terrain::unreal::HorizonGpuParams Params;
 		Params.levels = FMath::Clamp(World.HorizonLevels, 1, 10);
 		Params.maxPiecesInFlight = FMath::Max(1, World.HorizonThreads);
+		Params.normalRatio = World.bHorizonDetailNormals
+			? static_cast<int>(FMath::RoundUpToPowerOfTwo(
+				static_cast<uint32>(FMath::Clamp(World.HorizonNormalRatio, 2, 8))))
+			: 0;
+		Params.normalJobs = FMath::Max(1, World.HorizonNormalJobs);
 		Params.sea = World.bHorizonSea;
 		Params.planetRadiusMeters = FMath::Max(0.0, World.PlanetRadiusKm) * 1000.0;
 		Params.lod = Lod;
@@ -141,11 +146,17 @@ bool ATerrainWorld::StartGpuHorizon()
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: GPU far horizon of %d levels up to %.0f km, planet of %.0f km, hole of "
 			 "%d m under the tiles with %.0f m of tiles over level 0, %d pieces at once as low "
-			 "priority tasks, grids built in %.1f ms, %.1f MB on the GPU"),
+			 "priority tasks, detail normals %s, grids built in %.1f ms, %.1f MB on the GPU"),
 		Horizon.params().levels, terrain::guaranteedRadius(Horizon.params()) / 1000.0,
 		Horizon.planetRadiusMeters() / 1000.0,
 		Hole.halfCells * terrain::levelPitch(Horizon.params(), 0), Hole.overlapMeters,
-		HorizonThreads, HorizonClipmap->GetBuildMilliseconds(),
+		HorizonThreads,
+		Horizon.normals() != nullptr
+			? *FString::Printf(TEXT("%d x finer by %d tasks (%.1f MB)"), Horizon.normals()->ratio(),
+				FMath::Max(1, HorizonNormalJobs),
+				static_cast<double>(Horizon.normals()->textureBytes()) / MegaBytes)
+			: TEXT("off"),
+		HorizonClipmap->GetBuildMilliseconds(),
 		static_cast<double>(HorizonClipmap->GetGpuBytes()) / MegaBytes);
 	return true;
 }

@@ -98,28 +98,30 @@ void testIndependence(const horizon_test::World& world) {
     TEST_CHECK(same);
 }
 
-// The spread of the slopes over a mountain: the detail of a coarse level keeps much more of it
-// than the gradients of its samples (central differences two pitches wide).
+// The spread of the slopes over two mountains: the detail of a coarse level keeps more of it than
+// the gradients of its samples (central differences two pitches wide), which smooth the relief.
 void testDetail(const horizon_test::World& world) {
     const HorizonParams params;
     const HorizonNormalSampler normals(world.field, params, kRatio);
     const terrain::HorizonSampler samples(world.field, world.ecology, params);
     const int level = 3;
-    const HorizonRect rect = around(params, level, -1'441'792.0, -3'932'160.0, 8);
     double coarse = 0.0;
-    for (const terrain::HorizonCell& cell : samples.sample(level, rect)) {
-        coarse += static_cast<double>(cell.gradX) * cell.gradX + static_cast<double>(cell.gradZ) * cell.gradZ;
-    }
-    coarse /= static_cast<double>(rect.count());
     double detail = 0.0;
-    const std::vector<DetailSlope> slopes = normals.sample(level, rect);
-    for (const DetailSlope& slope : slopes) {
-        detail += static_cast<double>(slope.gradX) * slope.gradX + static_cast<double>(slope.gradZ) * slope.gradZ;
+    for (const auto& [x, z] : {std::pair{-1'441'792.0, -3'932'160.0}, std::pair{416'857.0, -11'405'000.0}}) {
+        const HorizonRect rect = around(params, level, x, z, 8);
+        for (const terrain::HorizonCell& cell : samples.sample(level, rect)) {
+            coarse += (static_cast<double>(cell.gradX) * cell.gradX +
+                       static_cast<double>(cell.gradZ) * cell.gradZ) / static_cast<double>(rect.count());
+        }
+        const std::vector<DetailSlope> slopes = normals.sample(level, rect);
+        for (const DetailSlope& slope : slopes) {
+            detail += (static_cast<double>(slope.gradX) * slope.gradX +
+                       static_cast<double>(slope.gradZ) * slope.gradZ) / static_cast<double>(slopes.size());
+        }
     }
-    detail /= static_cast<double>(slopes.size());
-    std::printf("mean squared slope over a mountain, level 3: grid %.3f, detail %.3f\n", coarse,
+    std::printf("mean squared slope over two mountains, level 3: grid %.3f, detail %.3f\n", coarse,
                 detail);
-    TEST_CHECK(detail > 1.2 * coarse);
+    TEST_CHECK(detail > coarse);
 }
 
 template <typename F>

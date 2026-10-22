@@ -7,7 +7,9 @@ with the far horizon (create_horizon_gpu_material.py).
 Vertex shader: the 4 texels of level 0 of the GPU horizon around the vertex (texture
 SurfaceTexels, its window placed by SurfaceOrigin, SurfaceFirstX/Z, SurfacePitchCm, SurfaceCells:
 ATerrainWorld binds them, UTerrainHorizonClipmap::BindSurfaceLook) give the layers of the ground,
-bilinear: the same samples as the horizon, so the near and far ground match. Without the GPU
+bilinear: the same samples as the horizon, so the near and far ground match. The far tiles lean
+toward the detail normals of level 0 (horizon_detail_normals.py: 2 m at the default ratio 4,
+SurfaceNormals), or the smooth normals of its samples where the detail is not ready. Without the GPU
 horizon (HasSurface 0), the layers follow the altitude only.
 
 Pixel shader: rock on steep slopes, snow on the gentle cold ground, the ground layers, world
@@ -28,15 +30,17 @@ import sys
 import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import temporary_terrain_look as look  # noqa: E402  (after the path of this script)
-look = importlib.reload(look)  # the module of this checkout, even if run before
+import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
+import temporary_terrain_look as look  # noqa: E402
+detail = importlib.reload(detail)  # the modules of this checkout, even if run before
+look = importlib.reload(look)
 
 PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TemporaryTerrain"
 SURFACE_SCALARS = {"SurfaceFirstX": 0.0, "SurfaceFirstZ": 0.0, "SurfaceCells": 256.0,
                    "SurfacePitchCm": 800.0, "HasSurface": 0.0, "WaveOriginX": 0.0,
                    "WaveOriginY": 0.0, "SmoothNormal": 0.8, "SmoothNearM": 60.0,
-                   "SmoothFarM": 220.0}
+                   "SmoothFarM": 220.0, **detail.TILE_SCALARS}
 FLOAT1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
 FLOAT2 = unreal.CustomMaterialOutputType.CMOT_FLOAT2
 FLOAT3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
@@ -91,12 +95,13 @@ return a;
 
 # The normal of the pixel: beyond the tiles of LOD 0 the tiles are coarse Marching Cubes meshes
 # whose vertex normals draw saw-teeth and facets along the terminator under a low sun; there the
-# normal leans toward the smooth normal of the samples of level 0 (bilinear slopes, the normals of
-# the horizon), except on cliffs, overhangs and caves, where the two disagree.
+# normal leans toward the detail normal of level 0 (S, horizon_detail_normals.py) or, where it is
+# not ready, the smooth normal of its samples (bilinear slopes), except on cliffs, overhangs and
+# caves, where the two disagree.
 NORMAL_HLSL = r"""
 float3 n = normalize(Nv);
 if (W3.z < 0.5) { return n; }
-float3 smooth = normalize(float3(-W3.xy, 1.0));
+float3 smooth = normalize(float3(-S.xy, 1.0));
 float k = SmoothNormal * saturate((Dist - SmoothNearM) / max(SmoothFarM - SmoothNearM, 1.0));
 k *= saturate((dot(n, smooth) - 0.6) / 0.2);
 return normalize(lerp(n, smooth, k));
@@ -167,12 +172,30 @@ def vertex_shader(material, scalars):
     connect(to_float, "", custom, "Rel")
     for name in ["SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm", "HasSurface"]:
         connect(scalars[name], "", custom, name)
-    interpolated = {}
+    # The position from level 0, also read by the pixel shader (detail_slope), evaluated there.
+    interpolated = {"Rel": to_float}
     for index, output in enumerate(["", "W1", "W2", "W3"]):
         node = expression(material, unreal.MaterialExpressionVertexInterpolator, -1000, 150 * index)
         connect(custom, output, node, "")
         interpolated[f"W{index}"] = node
     return interpolated
+
+
+def detail_slope(material, scalars, weights):
+    """The slope of the ground under the pixel from the detail normals of level 0, or the smooth
+    slope of its samples."""
+    node = detail.custom(material, -1100, 800, "TemporaryTerrainDetail", detail.TILE_SLOPE_HLSL,
+                         detail.TILE_INPUTS)
+    smooth = expression(material, unreal.MaterialExpressionComponentMask, -1300, 800)
+    for channel in "rgba":
+        smooth.set_editor_property(channel, channel in "rg")
+    connect(weights["W3"], "", smooth, "")
+    connect(smooth, "", node, "Smooth")
+    connect(weights["Rel"], "", node, "Rel")
+    connect(detail.texture(material, "SurfaceNormals", -1500, 900), "", node, "Tex")
+    for name in detail.TILE_INPUTS[3:]:
+        connect(scalars[name], "", node, name)
+    return node
 
 
 def pixel_shader(material, scalars, weights):
@@ -188,8 +211,9 @@ def pixel_shader(material, scalars, weights):
     connect(scalars["WaveOriginY"], "", position, "WaveOriginY")
     vertex_normal = expression(material, unreal.MaterialExpressionVertexNormalWS, -1100, 650)
     normal = custom_node(material, -800, 650, "TemporaryTerrainNormal", NORMAL_HLSL,
-                         ["Nv", "W3", "Dist", "SmoothNormal", "SmoothNearM", "SmoothFarM"], [],
-                         FLOAT3)
+                         ["Nv", "W3", "S", "Dist", "SmoothNormal", "SmoothNearM", "SmoothFarM"],
+                         [], FLOAT3)
+    connect(detail_slope(material, scalars, weights), "", normal, "S")
     connect(vertex_normal, "", normal, "Nv")
     connect(weights["W3"], "", normal, "W3")
     connect(position, "Dist", normal, "Dist")

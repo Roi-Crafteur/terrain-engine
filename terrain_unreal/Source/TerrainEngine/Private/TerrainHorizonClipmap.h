@@ -36,6 +36,9 @@ struct FTerrainHorizonLook
  * near the border and curves the planet.
  * A move of a level writes the texels of its new band and sets a few parameters: nothing is
  * rebuilt, nothing is kept on the CPU but the samples of the clipmap.
+ * With the detail normals (Bridge/horizon_normal_stream.hpp), a second texture per level of
+ * (257 * ratio)^2 texels (half floats: the slopes) lights the levels and the tiles finer than
+ * their grids; its texels arrive after the samples, pending until then.
  */
 UCLASS(Transient)
 class UTerrainHorizonClipmap : public UObject
@@ -73,6 +76,8 @@ private:
 	void CreateLevel(int32 Level, const terrain::unreal::HorizonGpuStreamer& Streamer,
 		UMaterialInterface* Material);
 	void UploadRegion(terrain::unreal::TexelRegion& Region);
+	void UploadNormals(terrain::unreal::NormalRegion& Region);
+	void BindNormals(int32 Level);
 	void Place(const terrain::unreal::LevelPlacement& Placement);
 	void PlaceSurface(const terrain::unreal::LevelPlacement& Placement);
 
@@ -84,6 +89,9 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> Textures;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them
 
 	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> Looks;
@@ -103,6 +111,7 @@ private:
 	terrain::unreal::DropFade Fade;
 	double Level0PitchCm = 0.0;
 	int32 Side = 0;
+	int32 NormalRatio = 0; // detail texels per sample along each axis, 0 without the detail
 	double BuildMilliseconds = 0.0;
 	int64 GpuBytes = 0;
 	int64 Vertices = 0;

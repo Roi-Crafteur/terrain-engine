@@ -10,23 +10,6 @@ namespace terrain::unreal {
 
 namespace {
 
-// A run of samples along an axis and the slots it lands in, without wrapping.
-struct SlotSpan {
-    std::int64_t sample = 0; // first sample
-    int slot = 0;            // its slot
-    int length = 0;
-};
-
-std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side) {
-    const int start = static_cast<int>(slotOf({first, 0}, side).x);
-    const auto length = static_cast<int>(last - first);
-    if (start + length <= side) {
-        return {{first, start, length}};
-    }
-    const int head = side - start;
-    return {{first, start, head}, {first + head, 0, length - head}};
-}
-
 // The cells of the trim: the square of the body hole outside the finer window.
 void addTrimCells(GridMesh& mesh, const CellRect& square, const CellRect& finer) {
     const int width = square.i1 - square.i0 + 1;
@@ -62,6 +45,16 @@ CellRect finerAt(int cells, int dx, int dz) {
 }
 
 } // namespace
+
+std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side) {
+    const int start = static_cast<int>(slotOf({first, 0}, side).x);
+    const auto length = static_cast<int>(last - first);
+    if (start + length <= side) {
+        return {{first, start, length}};
+    }
+    const int head = side - start;
+    return {{first, start, head}, {first + head, 0, length - head}};
+}
 
 HorizonTexel horizonTexel(const HorizonCell& cell, bool sea) {
     if (sea && cell.height < kSeaLevel) {
