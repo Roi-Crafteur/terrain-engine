@@ -73,23 +73,26 @@ neige), 2 la roche (rouge), la neige (vert) et le pied des pentes (bleu).
 
 ## Coût
 
-Mesuré dans l'éditeur (PIE 2042 × 1752, 3,6 Mpx, autant que le 1440p ; RTX 4090), même session,
-mêmes vues fixes, sessions alternées A B A B : A avec les couleurs d'altitude et le matériau
-d'horizon de `main`, B avec le matériau temporaire ; temps GPU moyen par frame (profil CSV).
+Mesuré dans l'éditeur (PIE 2042 × 1752, 3,6 Mpx, autant que le 1440p ; RTX 4090), mêmes vues
+fixes, sessions PIE alternées A B A B dans une même session de l'éditeur : A avec les couleurs
+d'altitude et le matériau d'horizon de `main`, B avec le matériau temporaire ; temps GPU moyen par
+frame (profil CSV), écart B − A. Deux sessions de l'éditeur, à une heure d'écart (le GPU n'y
+tournait pas à la même vitesse : 5,3 ms puis 7,5 ms de base) :
 
-| Vue | A | B | Écart |
-|---|---|---|---|
-| pied de la chaîne, 1,7 m, soleil bas | 5,26 ms | 5,28 ms | +0,02 ms |
-| pied de la chaîne, 300 m | 5,30 ms | 5,44 ms | +0,14 ms |
-| flanc à 5 km, 1,7 m (roche, neige et éboulis au premier plan : le pire cas) | 5,44 ms | 6,33 ms | +0,89 ms |
-| plaine, 1,7 m | 5,43 ms | 5,46 ms | +0,03 ms |
-| plaine, 300 m | 5,28 ms | 5,21 ms | −0,07 ms (bruit) |
-| sommet, 1,7 m, horizon lointain | 5,22 ms | 5,20 ms | −0,02 ms (bruit) |
+| Vue | Écart, session 1 | Écart, session 2 |
+|---|---|---|
+| pied de la chaîne, 1,7 m, soleil bas | +0,02 ms | +0,45 ms |
+| pied de la chaîne, 300 m | +0,14 ms | +0,08 ms |
+| flanc à 5 km, 1,7 m (roche, neige et éboulis au premier plan : le pire cas) | +0,89 ms | +0,66 ms |
+| plaine, 1,7 m | +0,03 ms | +0,31 ms |
+| plaine, 300 m | −0,07 ms | +0,30 ms |
+| sommet, 1,7 m, horizon lointain | −0,02 ms | +0,46 ms |
 
-Le surcoût vient des pixels proches où la roche (triplanaire), la neige et le sol se mélangent ;
-le matériau n'échantillonne que ce qui se voit (pas de sol sous la roche ou la neige pleine, deux
-plans au plus pour la roche, une seule carte de normales pour le sol). L'horizon ne lit que la
-couleur moyenne de chaque texture : son coût ne change pas.
+Entre 0 et +0,9 ms selon la vue et la session, sous le budget de +1,0 ms. Le surcoût vient des
+pixels proches où la roche (triplanaire), la neige et le sol se mélangent ; le matériau
+n'échantillonne que ce qui se voit (pas de sol sous la roche ou la neige pleine, deux plans au plus
+pour la roche, une seule carte de normales pour le sol). L'horizon ne lit que la couleur moyenne de
+chaque texture.
 
 ## Trois défauts de rendu, au passage
 
