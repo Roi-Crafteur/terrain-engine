@@ -29,6 +29,8 @@ struct GroundGrid {
     HorizonRect rect;
     std::vector<float> heights;
     std::vector<float> continentalness;
+    std::vector<WaterKind> water;
+    std::vector<float> waterLevel;
 
     [[nodiscard]] std::size_t index(std::int64_t i, std::int64_t k) const {
         return static_cast<std::size_t>((k - rect.z0) * rect.width() + (i - rect.x0));
@@ -37,34 +39,38 @@ struct GroundGrid {
 
 GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
                         const HorizonRect& rect) {
-    GroundGrid grid{rect, {}, {}};
+    GroundGrid grid{rect, {}, {}, {}, {}};
     const auto count = static_cast<std::size_t>(rect.count());
     grid.heights.reserve(count);
     grid.continentalness.reserve(count);
+    grid.water.reserve(count);
+    grid.waterLevel.reserve(count);
     for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
         const double z = frame.z(k);
         for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
             const HeightSample sample = field.sampleAt(frame.x(i), z);
             grid.heights.push_back(sample.height);
             grid.continentalness.push_back(sample.continentalness);
+            grid.water.push_back(sample.water);
+            grid.waterLevel.push_back(sample.waterLevel);
         }
     }
     return grid;
 }
 
 // Site of the ground at a sample from the heights of its 4 neighbors step meters away (east,
-// west, south, north).
+// west, south, north), with the water of the field there.
 //
 // A copy of the site of surfaceFromHeightfield (setSlopes and setWater in
 // generation/terrain_surface.cpp): the same expressions, so that the same inputs give the same
 // bits. horizon_sampler_test (testMaterialOracle) compares the materials and biomes of the
 // horizon with Ecology::map(surfaceFromHeightfield(...)) bit for bit in several regions: it
 // fails if the two ever diverge.
-SurfaceSite groundSite(float ground, float continentalness, const std::array<float, 4>& h,
+SurfaceSite groundSite(const GroundGrid& grid, std::size_t at, const std::array<float, 4>& h,
                        double step) {
     SurfaceSite site;
-    site.ground = ground;
-    site.continentalness = continentalness;
+    site.ground = grid.heights[at];
+    site.continentalness = grid.continentalness[at];
     const double run = 2.0 * step;
     site.gradX = static_cast<float>((static_cast<double>(h[0]) - h[1]) / run);
     site.gradZ = static_cast<float>((static_cast<double>(h[2]) - h[3]) / run);
@@ -73,13 +79,8 @@ SurfaceSite groundSite(float ground, float continentalness, const std::array<flo
         difference = std::max(difference, std::abs(height - site.ground));
     }
     site.steepness = static_cast<float>(difference / step);
-    if (site.ground < kSeaLevel) {
-        site.water = WaterKind::Ocean;
-        site.waterLevel = kSeaLevel;
-    } else {
-        site.water = WaterKind::None;
-        site.waterLevel = site.ground;
-    }
+    site.water = grid.water[at];
+    site.waterLevel = grid.waterLevel[at];
     return site;
 }
 
@@ -98,13 +99,13 @@ void classify(const Heightfield& field, const Ecology& ecology, const LevelFrame
         neighbors = {field.heightAt(x + slopeStep, z), field.heightAt(x - slopeStep, z),
                      field.heightAt(x, z + slopeStep), field.heightAt(x, z - slopeStep)};
     }
-    const SurfaceSite site =
-        groundSite(grid.heights[at], grid.continentalness[at], neighbors, slopeStep);
+    const SurfaceSite site = groundSite(grid, at, neighbors, slopeStep);
     const EcologyParams& params = ecology.params();
     const ClimateSample climate = ecology.climate().sample(x, z, site);
     cell.biome = classifyBiome(climate, site, params.biomes);
     cell.material = surfaceMaterial(cell.biome, climate, site, params.materials);
-    cell.flags = site.dry() ? 0 : kHorizonWater;
+    cell.flags = static_cast<std::uint8_t>((site.dry() ? 0U : kHorizonWater) |
+                                           (site.water == WaterKind::Ocean ? kHorizonSea : 0U));
 }
 
 } // namespace

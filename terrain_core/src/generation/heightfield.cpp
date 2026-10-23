@@ -112,6 +112,7 @@ enum Layer : std::uint64_t {
     kMountainForms,
     kMountainWalls,
     kPlainForms,
+    kDepressions,
 };
 
 } // namespace
@@ -182,12 +183,11 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
     if (params_.geography.enabled) {
         geography_ =
             Geography::shared(noise::deriveSeed(seed, kGeography), params_.geography, world_);
-        return;
-    }
-    if (params_.plates.amplitude > 0.0f) {
+    } else if (params_.plates.amplitude > 0.0f) {
         plates_ = std::make_shared<const TectonicPlates>(noise::deriveSeed(seed, kPlates),
                                                          params_.plates, world_);
     }
+    water_ = makeWater(noise::deriveSeed(seed, kDepressions), params_, geography_.get());
 }
 
 
@@ -238,7 +238,9 @@ HeightSample Heightfield::sampleWith(double worldX, double worldZ, Memos* memos)
     const double x = noise::wrapCanonical(worldX, world_.x);
     const double z = noise::wrapCanonical(worldZ, world_.z);
     if (geography_) {
-        return geographySample(x, z, memos);
+        HeightSample s = geographySample(x, z, memos);
+        finishWater(x, z, s);
+        return s;
     }
     HeightSample s;
     continentalnessAt(x, z, s, memos);
@@ -264,6 +266,7 @@ HeightSample Heightfield::sampleWith(double worldX, double worldZ, Memos* memos)
 
     s.detail = detailAt(x, z, s.base, memos);
     s.height = s.base + s.mountain + s.detail;
+    finishWater(x, z, s);
     return s;
 }
 

@@ -64,9 +64,9 @@ inline std::vector<Part> horizonParts() {
     return {
         {"horizon around mountains", horizonChecksum(world, x, z), 0x7ABB51040F9F6976ULL},
         {"horizon around legacy mountains",
-         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ), 0x11E2BE2F5A504D0CULL},
+         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ), 0xB79BC665E0D85848ULL},
         {"horizon at the world corner", horizonChecksum(world, size.x / 2.0, size.z / 2.0),
-         0xC2F16F1F22D49331ULL},
+         0xA63D923300435B79ULL},
     };
 }
 

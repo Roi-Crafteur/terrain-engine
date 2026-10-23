@@ -4,6 +4,7 @@
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/sculpted_region.hpp"
+#include "terrain/generation/water_kind.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,13 +12,6 @@
 #include <vector>
 
 namespace terrain {
-
-// Water over a column of the surface.
-enum class WaterKind : std::uint8_t {
-    None,  // dry land
-    Ocean, // ground below kSeaLevel: under the sea
-    River, // river cell of the drainage network: its water is at the ground height
-};
 
 // What the climate, the biomes, the surface materials and the vegetation read from the relief
 // at one sample. It is a copy: nothing is ever written back to the relief.
@@ -80,7 +74,8 @@ struct SurfaceGrids {
 // Surface of the Heightfield alone (no river, no cliff). Every value of a sample is computed
 // from the field at its position and at fixed offsets of one pixel, never from the other
 // samples: two regions with the same metersPerPixel agree on the samples they share, so
-// regions and chunks join without a seam. ground is exactly Heightfield::heightAt.
+// regions and chunks join without a seam. ground is exactly Heightfield::heightAt, and the
+// water that of HeightSample (the sea where the geography puts it, not below kSeaLevel).
 [[nodiscard]] TerrainSurface surfaceFromHeightfield(const Heightfield& field,
                                                     const HeightmapRegion& region);
 

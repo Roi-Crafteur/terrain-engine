@@ -136,6 +136,9 @@ struct GeographyParams {
     bool summits = true;
     bool walls = true;
     bool plainForms = true;
+    // The depressions below the sea level of phase 11B, deep in the plains of the continents, only
+    // where the mask of the mountains is 0 (depressions.hpp).
+    bool depressions = true;
 
     // The ridged mountains of the Heightfield (its warp and octaves) rise up to mountainHeight
     // above the regional elevation under their mask, with their own wavelength, sharpness and

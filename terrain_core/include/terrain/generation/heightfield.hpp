@@ -4,12 +4,14 @@
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/voronoi.hpp"
+#include "terrain/generation/water_kind.hpp"
 #include "terrain/world_size.hpp"
 
 #include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <vector>
 
 namespace terrain {
 
@@ -94,6 +96,22 @@ struct HeightSample {
     float mountain = 0.0f;             // [0, mountainMask * mountainHeight * (1 + boost)]
     float detail = 0.0f; // [-detailAmplitude, detailAmplitude] (with the geography, its own)
     float height = 0.0f;
+    // The water over the point: the sea where the geography puts it (its coast signal below 0;
+    // without the geography, the ground below kSeaLevel), at the level waterLevel (the height on
+    // dry land).
+    WaterKind water = WaterKind::None;
+    float waterLevel = 0.0f;
+};
+
+// A depression below the sea level of the geography (phase 11B): its center (canonical), its mean
+// radius and the altitude of its floor, meters, and the direction of its escarpment from the
+// center along (x, z) (cos, sin of escarpment turns).
+struct Depression {
+    double x = 0.0;
+    double z = 0.0;
+    double radius = 0.0;
+    float floor = 0.0f;
+    double escarpment = 0.0;
 };
 
 // Multi-scale terrain height y = heightAt(x, z), in meters.
@@ -131,10 +149,19 @@ public:
     [[nodiscard]] const TectonicPlates* plates() const { return plates_.get(); }
     // The planetary geography, or nullptr when it is disabled.
     [[nodiscard]] const Geography* geography() const { return geography_.get(); }
+    // The depressions below the sea level, deep in the plains (none without the geography or
+    // with GeographyParams::depressions off).
+    [[nodiscard]] std::vector<Depression> depressions() const;
 
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
     struct Memos;  // the memos of the noises during a batch call (heightfield.cpp)
+    struct Water;  // the depressions and the water (heightfield_water.cpp)
+
+    [[nodiscard]] static std::shared_ptr<const Water>
+    makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
+    // The depressions below the sea and the water of a sample at a canonical point, last.
+    void finishWater(double x, double z, HeightSample& s) const;
 
     // sampleAt, through the memos during a batch call (null otherwise).
     [[nodiscard]] HeightSample sampleWith(double x, double z, Memos* memos) const;
@@ -194,6 +221,7 @@ private:
     std::shared_ptr<const Layers> layers_;         // shared by copies, immutable
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
+    std::shared_ptr<const Water> water_;           // shared by copies, immutable
 };
 
 } // namespace terrain

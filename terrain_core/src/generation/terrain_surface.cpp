@@ -264,7 +264,9 @@ TerrainSurface surfaceFromHeightfield(const Heightfield& field, const HeightmapR
             site.continentalness = sample.continentalness;
             const Neighbors neighbors{relief.neighbors[i], 2.0 * step, 2.0 * step};
             setSlopes(site, neighbors, step);
-            setWater(site, false);
+            // The water of the field: the sea where the geography puts it.
+            site.water = sample.water;
+            site.waterLevel = sample.waterLevel;
             surface.sites.push_back(site);
         }
     }
