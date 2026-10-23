@@ -70,5 +70,9 @@ struct Sightline {
 
 [[nodiscard]] Sightline sightline(const ViewGround& ground, const ViewParams& params, double x,
                                   double z, double height, double margin);
+// The same over the water given (the sea at the sea level for the one above).
+[[nodiscard]] Sightline sightline(const ViewGround& ground, const ViewWater& water,
+                                  const ViewParams& params, double x, double z, double height,
+                                  double margin);
 
 } // namespace terrain

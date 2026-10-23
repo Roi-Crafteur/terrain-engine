@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -50,7 +51,8 @@ bool sameSample(const HeightSample& a, const HeightSample& b) {
 }
 
 // Tens of depressions over the world, each one dry land below the sea at its center, far from
-// the sea, its floor flat.
+// the sea; its floor never a plane: the relief of the plains, a little of it, with salt pans and
+// buttes.
 void testSites() {
     const std::vector<Depression> sites = field().depressions();
     std::printf("%zu depressions\n", sites.size());
@@ -58,25 +60,79 @@ void testSites() {
     bool dry = true;
     bool below = true;
     bool inland = true;
-    bool flat = true;
+    bool relief = true;
     for (const Depression& d : sites) {
         const HeightSample s = field().sampleAt(d.x, d.z);
         dry = dry && s.water == WaterKind::None && s.waterLevel == s.height;
-        below = below && s.height < 0.0f && d.floor < 0.0f && std::abs(s.height - d.floor) < 10.0f;
+        below = below && s.height < 0.0f && d.floor < 0.0f && s.height > d.floor - 40.0f &&
+                s.height < d.floor + 130.0f;
         inland = inland && field().geography()->sampleAt(d.x, d.z).coast > 300'000.0;
-        // The floor varies by the detail only within a kilometer of the center.
-        for (int k = 0; k < 8; ++k) {
-            const double a = 0.125 * k;
-            const float h = field().heightAt(d.x + 1000.0 * std::cos(6.283185307 * a),
-                                             d.z + 1000.0 * std::sin(6.283185307 * a));
-            flat = flat && std::abs(h - s.height) < 15.0f;
+        // Within 2 km of the center the floor rises and falls by meters, by 200 m at most (its
+        // buttes and vallons).
+        double sum = 0.0;
+        double squares = 0.0;
+        float low = 1e9f;
+        float high = -1e9f;
+        for (int j = -20; j <= 20; ++j) {
+            for (int i = -20; i <= 20; ++i) {
+                const float h = field().heightAt(d.x + 100.0 * i, d.z + 100.0 * j);
+                sum += h;
+                squares += static_cast<double>(h) * h;
+                low = std::min(low, h);
+                high = std::max(high, h);
+            }
         }
+        const double n = 41.0 * 41.0;
+        const double deviation = std::sqrt(std::max(0.0, squares / n - (sum / n) * (sum / n)));
+        relief = relief && deviation > 0.5 && high - low < 200.0f;
     }
     TEST_CHECK(dry);
     TEST_CHECK(below);
     TEST_CHECK(inland);
-    TEST_CHECK(flat);
+    TEST_CHECK(relief);
     TEST_CHECK(withoutDepressions().depressions().empty());
+}
+
+// The highest cliff of the deepest depression: the greatest rise outward over 400 m along rays
+// around its escarpment, and the steepest slope over 25 m there.
+void testCliffAndPans() {
+    const std::vector<Depression> sites = field().depressions();
+    const Depression d = *std::min_element(
+        sites.begin(), sites.end(), [](const auto& a, const auto& b) { return a.floor < b.floor; });
+    double rise = 0.0;
+    double steepest = 0.0;
+    for (int k = 0; k < 32; ++k) {
+        const double t = 6.283185307179586 * (d.escarpment + 0.5 * (k / 32.0 - 0.5));
+        std::vector<float> h;
+        for (double r = 0.3 * d.radius; r < 2.2 * d.radius; r += 25.0) {
+            h.push_back(field().heightAt(d.x + r * std::cos(t), d.z + r * std::sin(t)));
+        }
+        for (std::size_t i = 0; i + 16 < h.size(); ++i) {
+            rise = std::max(rise, static_cast<double>(h[i + 16] - h[i]));
+            steepest = std::max(steepest, static_cast<double>(h[i + 1] - h[i]) / 25.0);
+        }
+    }
+    // Flat salt pans on its floor: points whose neighbors 25 m away are within 5 cm.
+    int flat = 0;
+    for (int j = -60; j <= 60 && flat == 0; ++j) {
+        for (int i = -60; i <= 60; ++i) {
+            const double x = d.x + 100.0 * i;
+            const double z = d.z + 100.0 * j;
+            const float h = field().heightAt(x, z);
+            bool same = h < d.floor;
+            for (const auto& [a, b] :
+                 {std::pair{25.0, 0.0}, {-25.0, 0.0}, {0.0, 25.0}, {0.0, -25.0}}) {
+                same = same && std::abs(field().heightAt(x + a, z + b) - h) < 0.05f;
+            }
+            flat += same ? 1 : 0;
+        }
+    }
+    std::printf("deepest depression: cliff of %.0f m over 400 m, steepest %.2f over 25 m, "
+                "pans found: %d\n",
+                rise, steepest, flat);
+    TEST_CHECK(rise >= 80.0);
+    TEST_CHECK(steepest >= 0.58); // 30 degrees
+    TEST_CHECK(flat > 0);
 }
 
 // Wherever the depressions change a sample, the mountain mask is 0 and the sea is far: the
@@ -113,37 +169,53 @@ void testMountainsKeepTheirBits() {
     TEST_CHECK(changed > 1'000);
 }
 
-// Continuous: no step between samples 4 m apart across a depression (it makes the ground at most
-// a little steeper than without it: gentle sides, an escarpment of a few degrees on one of them),
-// the same bits in batches and alone.
+// Continuous from the center of every depression out across its escarpment: the largest rise
+// between samples 2 m apart is a steep face, not a step (sampled every 10 cm, it rises by less
+// than a fifth of it at a time); the same bits in batches and alone.
 void testContinuousAndBatched() {
-    const Depression d = field().depressions().front();
-    std::vector<double> xs;
-    std::vector<double> zs;
-    for (int i = -2000; i <= 2000; ++i) {
-        xs.push_back(d.x + 4.0 * d.radius * i / 2000.0);
-        zs.push_back(d.z + 0.3 * d.radius * i / 2000.0);
-    }
-    std::vector<HeightSample> batch(xs.size());
-    std::vector<HeightSample> before(xs.size());
-    field().samplesAt(xs, zs, batch);
-    withoutDepressions().samplesAt(xs, zs, before);
     bool same = true;
-    double added = 0.0;
-    for (std::size_t i = 0; i < xs.size(); ++i) {
-        same = same && sameSample(batch[i], field().sampleAt(xs[i], zs[i]));
-        if (i > 0) {
-            const double run = std::hypot(xs[i] - xs[i - 1], zs[i] - zs[i - 1]);
-            const double slope =
-                std::abs(static_cast<double>(batch[i].height - batch[i - 1].height)) / run;
-            const double was =
-                std::abs(static_cast<double>(before[i].height - before[i - 1].height)) / run;
-            added = std::max(added, slope - was);
+    float largest = 0.0f;
+    double atX = 0.0;
+    double atZ = 0.0;
+    double dirX = 0.0;
+    double dirZ = 0.0;
+    for (const Depression& d : field().depressions()) {
+        std::vector<double> xs;
+        std::vector<double> zs;
+        const double c = std::cos(6.283185307179586 * d.escarpment);
+        const double n = std::sin(6.283185307179586 * d.escarpment);
+        for (double r = 0.0; r < 1.8 * d.radius; r += 2.0) {
+            xs.push_back(d.x + r * c);
+            zs.push_back(d.z + r * n);
+        }
+        std::vector<HeightSample> batch(xs.size());
+        field().samplesAt(xs, zs, batch);
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            if (i % 97 == 0) {
+                same = same && sameSample(batch[i], field().sampleAt(xs[i], zs[i]));
+            }
+            const float step = i > 0 ? std::abs(batch[i].height - batch[i - 1].height) : 0.0f;
+            if (step > largest) {
+                largest = step;
+                atX = xs[i - 1];
+                atZ = zs[i - 1];
+                dirX = c;
+                dirZ = n;
+            }
         }
     }
-    std::printf("steepest slope added across a depression: %.3f\n", added);
+    float finest = 0.0f;
+    for (int k = 0; k < 20; ++k) {
+        const float a = field().heightAt(atX + 0.1 * k * dirX, atZ + 0.1 * k * dirZ);
+        const float b = field().heightAt(atX + 0.1 * (k + 1) * dirX, atZ + 0.1 * (k + 1) * dirZ);
+        finest = std::max(finest, std::abs(b - a));
+    }
+    std::printf("largest rise over 2 m across the escarpments: %.2f m at (%.1f, %.1f), over 10 "
+                "cm there: %.2f m\n",
+                static_cast<double>(largest), atX, atZ, static_cast<double>(finest));
     TEST_CHECK(same);
-    TEST_CHECK(added < 0.3);
+    TEST_CHECK(finest < 0.2f * largest);
+    TEST_CHECK(largest < 10.0f);
 }
 
 // The surface of a depression: dry land below the sea, never the sea nor a beach.
@@ -214,6 +286,7 @@ void testSeaConnectedToTheOcean() {
 
 int main() {
     testSites();
+    testCliffAndPans();
     testMountainsKeepTheirBits();
     testContinuousAndBatched();
     testSurface();

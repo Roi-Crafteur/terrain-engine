@@ -4,7 +4,7 @@
 // view_<name>.png, a view at the height of a walker from each place given by --view (its eye
 // 1.8 m above the ground, heading in degrees clockwise from the north, -Z), and prints, and writes
 // to water.txt, the depressions and where each view stands. Without --map and --view: the deepest
-// depression, its map, and a view from its floor toward its steepest side.
+// depression, its maps and views of its highest cliff (view_floor, view_foot, view_rim).
 // Usage: terrain_export_water <output-dir> [--seed <seed>] [--world <x> <z>] [--threads <n>]
 //        [--cell <meters>] [--width <pixels>] [--pixels <map-pixels>] [--map <name> <x> <z>]...
 //        [--view <name> <x> <z> <heading-degrees>]...
@@ -118,7 +118,8 @@ bool parseOption(int argc, char** argv, int& i, Options& o) {
         i += 3;
     } else if (flag == "--view" && need(4)) {
         Place p{argv[i + 1]};
-        ok = (parse(argv[i + 2], p.x) && parse(argv[i + 3], p.z) && parse(argv[i + 4], p.heading)) ||
+        ok = (parse(argv[i + 2], p.x) && parse(argv[i + 3], p.z) &&
+              parse(argv[i + 4], p.heading)) ||
              fail("view", argv[i + 1]);
         o.views.push_back(p);
         i += 4;
@@ -163,6 +164,15 @@ bool writeMaps(const terrain::Heightfield& field, const Options& o, const Place&
     return written;
 }
 
+// The surface of the water of the field (far below the ground where it is dry).
+terrain::ViewWater waterOf(const terrain::Heightfield& field) {
+    return [&field](double x, double z) {
+        const terrain::HeightSample s = field.sampleAt(x, z);
+        return s.water == terrain::WaterKind::None ? -std::numeric_limits<float>::infinity()
+                                                   : s.waterLevel;
+    };
+}
+
 bool writeView(const terrain::Heightfield& field, const Options& o, const Place& place,
                const std::filesystem::path& directory, Report& r) {
     const terrain::HeightSample at = field.sampleAt(place.x, place.z);
@@ -180,11 +190,7 @@ bool writeView(const terrain::Heightfield& field, const Options& o, const Place&
     const terrain::ViewGround ground = [&field](double x, double z) {
         return field.heightAt(x, z);
     };
-    const terrain::ViewWater water = [&field](double x, double z) {
-        const terrain::HeightSample s = field.sampleAt(x, z);
-        return s.water == terrain::WaterKind::None ? -std::numeric_limits<float>::infinity()
-                                                   : s.waterLevel;
-    };
+    const terrain::ViewWater water = waterOf(field);
     const std::string file = "view_" + place.name + ".png";
     r.add("%s: eye at x %.0f m, z %.0f m, ground %.1f m, water %s, heading %.1f degrees\n",
           file.c_str(), place.x, place.z, static_cast<double>(at.height),
@@ -193,8 +199,105 @@ bool writeView(const terrain::Heightfield& field, const Options& o, const Place&
                              terrain::renderReliefView(ground, water, p, o.threads));
 }
 
-// The deepest depression, a map around it, a view from its floor toward its escarpment and one
-// from the top of the escarpment back over the floor, looking down a little.
+// The highest cliff of a depression: along rays around the direction of its escarpment, every
+// kRayStep meters, the greatest rise outward over kCliffRun meters; its foot, its top and the
+// direction of the ray (turns from +x toward +z).
+constexpr double kRayStep = 25.0;
+constexpr int kCliffSteps = 16; // kCliffRun = 400 m
+struct Cliff {
+    double footX = 0.0;
+    double footZ = 0.0;
+    double topX = 0.0;
+    double topZ = 0.0;
+    double height = 0.0;
+    double turns = 0.0;
+};
+
+Cliff highestCliff(const terrain::Heightfield& field, const terrain::Depression& d) {
+    Cliff best;
+    for (int k = 0; k < 64; ++k) {
+        const double t = d.escarpment + 0.5 * (k / 64.0 - 0.5);
+        const double dx = terrain::dmath::cosTurns(t);
+        const double dz = terrain::dmath::sinTurns(t);
+        std::vector<float> h;
+        for (double r = 0.3 * d.radius; r < 2.2 * d.radius; r += kRayStep) {
+            h.push_back(field.heightAt(d.x + r * dx, d.z + r * dz));
+        }
+        for (std::size_t i = 0; i + kCliffSteps < h.size(); ++i) {
+            const double rise = static_cast<double>(h[i + kCliffSteps] - h[i]);
+            if (rise > best.height) {
+                const double foot = 0.3 * d.radius + static_cast<double>(i) * kRayStep;
+                const double top = foot + kCliffSteps * kRayStep;
+                best = {d.x + foot * dx, d.z + foot * dz, d.x + top * dx, d.z + top * dz, rise, t};
+            }
+        }
+    }
+    return best;
+}
+
+// Degrees clockwise from -Z of the direction (cos, sin) of turns along (x, z).
+double headingOf(double turns) {
+    return std::fmod(360.0 * (turns + 0.25) + 720.0, 360.0);
+}
+
+// Along the ray of the cliff: the edge of its top (the last point, coming in from its top, before
+// the ground drops more than 5 m over a step), and an eye looking at it from 800 to 2,500 m before
+// its foot from which its top is seen (else 1 km before the foot).
+struct CliffEyes {
+    double edgeX = 0.0;
+    double edgeZ = 0.0;
+    double footX = 0.0;
+    double footZ = 0.0;
+};
+
+CliffEyes cliffEyes(const terrain::Heightfield& field, const Cliff& c) {
+    const double dx = terrain::dmath::cosTurns(c.turns);
+    const double dz = terrain::dmath::sinTurns(c.turns);
+    CliffEyes e{c.topX, c.topZ, c.footX - 1000.0 * dx, c.footZ - 1000.0 * dz};
+    double before = field.heightAt(c.topX, c.topZ);
+    for (int k = 1; k <= kCliffSteps; ++k) {
+        const double x = c.topX - k * kRayStep * dx;
+        const double z = c.topZ - k * kRayStep * dz;
+        const float h = field.heightAt(x, z);
+        if (static_cast<double>(h) < before - 5.0) {
+            break;
+        }
+        e.edgeX = x;
+        e.edgeZ = z;
+        before = static_cast<double>(h);
+    }
+    const terrain::ViewGround ground = [&field](double x, double z) {
+        return field.heightAt(x, z);
+    };
+    const terrain::ViewWater water = waterOf(field);
+    const float top = field.heightAt(e.edgeX, e.edgeZ);
+    // The nearest to 1 km first, straight before the foot, then up to 400 m aside, on gentle
+    // ground (no butte under the eye).
+    for (int k = 0; k <= 34; ++k) {
+        const double back = 1000.0 + (k % 2 == 0 ? 50.0 : -50.0) * ((k + 1) / 2);
+        for (const double aside : {0.0, 200.0, -200.0, 400.0, -400.0}) {
+            terrain::ViewParams eye;
+            eye.eyeX = c.footX - back * dx - aside * dz;
+            eye.eyeZ = c.footZ - back * dz + aside * dx;
+            const float h = field.heightAt(eye.eyeX, eye.eyeZ);
+            const float ahead = field.heightAt(eye.eyeX + 20.0 * dx, eye.eyeZ + 20.0 * dz);
+            eye.eyeHeight = static_cast<double>(h) + kEyeAboveGround;
+            if (std::abs(ahead - h) < 6.0f &&
+                terrain::sightline(ground, water, eye, e.edgeX, e.edgeZ,
+                                   static_cast<double>(top) + 2.0, 30.0)
+                    .visible) {
+                e.footX = eye.eyeX;
+                e.footZ = eye.eyeZ;
+                return e;
+            }
+        }
+    }
+    return e;
+}
+
+// The deepest depression, maps around it and around its highest cliff, and three views of that
+// cliff: from the floor 6 km before its foot, from 800 to 2,500 m before its foot (where its top
+// is seen), and from the edge of its top back over the floor, looking down.
 void addDeepest(const terrain::Heightfield& field, Options& o, Report& r) {
     const std::vector<terrain::Depression> all = field.depressions();
     if (all.empty()) {
@@ -202,24 +305,21 @@ void addDeepest(const terrain::Heightfield& field, Options& o, Report& r) {
     }
     const terrain::Depression d = *std::min_element(
         all.begin(), all.end(), [](const auto& a, const auto& b) { return a.floor < b.floor; });
-    const double dx = terrain::dmath::cosTurns(d.escarpment);
-    const double dz = terrain::dmath::sinTurns(d.escarpment);
-    // The heading of the escarpment from the center: turns from -Z, clockwise.
-    const double heading = std::fmod(360.0 * (d.escarpment + 0.25) + 360.0, 360.0);
-    double reach = 0.0;
-    while (reach < 3.0 * d.radius && field.heightAt(d.x + reach * dx, d.z + reach * dz) < -5.0f) {
-        reach += 100.0;
-    }
-    r.add("deepest depression: floor %.0f m at (%.0f, %.0f) m, radius %.0f km, its escarpment "
-          "%.1f km away heading %.1f degrees\n",
-          static_cast<double>(d.floor), d.x, d.z, d.radius / 1000.0, reach / 1000.0, heading);
+    const Cliff c = highestCliff(field, d);
+    const CliffEyes e = cliffEyes(field, c);
+    const double dx = terrain::dmath::cosTurns(c.turns);
+    const double dz = terrain::dmath::sinTurns(c.turns);
+    const double out = headingOf(c.turns);
+    r.add("deepest depression: floor %.0f m at (%.0f, %.0f) m, radius %.0f km; its highest cliff "
+          "%.0f m over 400 m, its foot at (%.0f, %.0f) m, facing heading %.1f degrees\n",
+          static_cast<double>(d.floor), d.x, d.z, d.radius / 1000.0, c.height, c.footX, c.footZ,
+          std::fmod(out + 180.0, 360.0));
     o.maps.push_back({"depression", d.x, d.z, 0.0});
-    o.maps.push_back({"escarpment", d.x + reach * dx, d.z + reach * dz, 0.0});
-    const double floorReach = std::max(0.0, reach - 6000.0);
-    o.views.push_back(
-        {"depression", d.x + floorReach * dx, d.z + floorReach * dz, heading, 0.02});
-    o.views.push_back({"depression_rim", d.x + (reach + 200.0) * dx, d.z + (reach + 200.0) * dz,
-                       std::fmod(heading + 180.0, 360.0), -0.06});
+    o.maps.push_back({"cliff", 0.5 * (c.footX + c.topX), 0.5 * (c.footZ + c.topZ), 0.0});
+    o.views.push_back({"floor", c.footX - 6000.0 * dx, c.footZ - 6000.0 * dz, out, 0.03});
+    o.views.push_back({"foot", e.footX, e.footZ, out, 0.1});
+    o.views.push_back({"rim", e.edgeX + 5.0 * dx, e.edgeZ + 5.0 * dz,
+                       std::fmod(out + 180.0, 360.0), -0.15});
 }
 
 void reportDepressions(const terrain::Heightfield& field, Report& r) {

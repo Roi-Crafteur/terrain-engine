@@ -255,7 +255,7 @@ Image renderReliefView(const ViewGround& ground, const ViewWater& water, const V
     if (params.towerHeight > 0.0) {
         tower.present = true;
         tower.base = std::max(static_cast<double>(ground(params.towerX, params.towerZ)),
-                              static_cast<double>(kSeaLevel));
+                              static_cast<double>(water(params.towerX, params.towerZ)));
         tower.top = tower.base + params.towerHeight;
     }
     const auto pixels =
@@ -273,6 +273,12 @@ Image renderReliefView(const ViewGround& ground, const ViewWater& water, const V
 
 Sightline sightline(const ViewGround& ground, const ViewParams& params, double x, double z,
                     double height, double margin) {
+    return sightline(
+        ground, [](double, double) { return kSeaLevel; }, params, x, z, height, margin);
+}
+
+Sightline sightline(const ViewGround& ground, const ViewWater& water, const ViewParams& params,
+                    double x, double z, double height, double margin) {
     Sightline line;
     const double dx = x - params.eyeX;
     const double dz = z - params.eyeZ;
@@ -284,9 +290,10 @@ Sightline sightline(const ViewGround& ground, const ViewParams& params, double x
     const double step = std::max(5.0, line.distance / 2000.0);
     for (double d = step; d < line.distance - margin; d += step) {
         const double t = d / line.distance;
-        const double h = std::max(static_cast<double>(ground(params.eyeX + dx * t,
-                                                             params.eyeZ + dz * t)),
-                                  static_cast<double>(kSeaLevel));
+        const double px = params.eyeX + dx * t;
+        const double pz = params.eyeZ + dz * t;
+        const double h =
+            std::max(static_cast<double>(ground(px, pz)), static_cast<double>(water(px, pz)));
         if ((h - drop(params, d) - params.eyeHeight) / d > line.tangent) {
             line.visible = false;
             line.blockedAt = d;
