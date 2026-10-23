@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <optional>
 
 namespace terrain::depressions {
 
@@ -32,30 +33,16 @@ constexpr double kElongation = 2.6;
 constexpr double kFloorLow = 30.0;
 constexpr double kFloorHigh = 420.0;
 constexpr double kEscarpment = 0.35;
-// The space of a basin is warped by up to kWarp meters (3 octaves from kWarpWavelength), its rim
-// lobed by up to kLobes of the way (3 octaves from kLobeWavelength); its floor is flat within
-// kFlat of the way to the rim, and up to kSteep more of it on its steep side (an escarpment: the
-// ground drops from the rim over the last part only).
+// The rim lies at most kReach long radii, plus kWarp, from the center (the lobes and the warp of
+// depression_forms). The depressions that may reach a point are looked for on a lattice of
+// kReachCell meters (it divides every world).
+constexpr double kReach = 1.25 + kEscarpment;
 constexpr double kWarp = 9'000.0;
-constexpr double kWarpWavelength = 30'000.0;
-constexpr double kLobes = 0.25;
-constexpr double kLobeWavelength = 14'000.0;
-constexpr double kFlat = 0.4;
-constexpr double kSteep = 0.45;
-// The rim lies at most kReach long radii, plus the warp, from the center. The depressions that
-// may reach a point are looked for on a lattice of kReachCell meters (it divides every world).
-constexpr double kReach = 1.0 + kLobes + kEscarpment;
 constexpr double kReachCell = 65'536.0;
-constexpr double kTwoPi = 6.283185307179586476925286766559;
 
 // Field k (16 bits) of a hash, in [0, 1).
 double field(std::uint64_t hash, int k) {
     return static_cast<double>((hash >> (16 * k)) & 0xFFFFU) / 65536.0;
-}
-
-double smooth(double edge0, double edge1, double v) {
-    const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
-    return t * t * (3.0 - 2.0 * t);
 }
 
 // The difference a - b brought within half a period.
@@ -92,25 +79,6 @@ std::optional<Site> candidate(std::uint64_t seed, const Geography& geography, in
     s.escarpment = kEscarpment * field(b, 3);
     s.steepSide = field(noise::deriveSeed(a, 2), 0);
     return s;
-}
-
-// The share of the way to its floor at (x, z), (dx, dz) from its center: 1 on its flat floor, 0
-// beyond its rim.
-double shareOf(const Sites& sites, const Site& s, double x, double z, double dx, double dz) {
-    const std::array<float, 2> warp = sites.warpX.fbm2DPair(sites.warpZ, x, z);
-    dx += kWarp * static_cast<double>(warp[0]);
-    dz += kWarp * static_cast<double>(warp[1]);
-    const double c = dmath::cosTurns(s.angle);
-    const double n = dmath::sinTurns(s.angle);
-    const double along = dx * c + dz * n;
-    const double across = dz * c - dx * n;
-    const double root = std::sqrt(s.elongation);
-    const double ellipse = dmath::hypot(along / (s.radius * root), across * root / s.radius);
-    const double toward = dmath::cosTurns(dmath::atan2(dz, dx) / kTwoPi - s.steepSide);
-    const double rim = 1.0 + kLobes * static_cast<double>(sites.outline.fbm2D(x, z)) -
-                       s.escarpment * toward;
-    const double side = std::max(0.0, toward);
-    return 1.0 - smooth(kFlat + kSteep * side * side, 1.0, ellipse / rim);
 }
 
 // The lattice cell holding the canonical coordinate v of a side of the world, wrapped.
@@ -168,16 +136,7 @@ Sites makeSites(std::uint64_t seed, const Geography& geography) {
     sites.world = world;
     const int cellsX = std::max(1, static_cast<int>(std::lround(world.x / kCell)));
     const int cellsZ = std::max(1, static_cast<int>(std::lround(world.z / kCell)));
-    const auto octaves = [&](std::uint64_t stream, double wavelength) {
-        return noise::FbmOctaves(noise::deriveSeed(seed, stream),
-                                 {.octaves = 3,
-                                  .frequency = 1.0 / wavelength,
-                                  .lattices = noise::OctaveLattices::RotatedFast},
-                                 world);
-    };
-    sites.outline = octaves(1, kLobeWavelength);
-    sites.warpX = octaves(2, kWarpWavelength);
-    sites.warpZ = octaves(3, kWarpWavelength);
+    sites.forms = makeForms(seed, world);
     const std::uint64_t cells = noise::deriveSeed(seed, 0);
     for (int j = 0; j < cellsZ; ++j) {
         for (int i = 0; i < cellsX; ++i) {
@@ -201,7 +160,7 @@ bool mayReach(const Sites& sites, double x, double z) {
     return reachAt(sites, x, z)[0] != 0;
 }
 
-Basin basinAt(const Sites& sites, double x, double z) {
+Basin basinAt(const Sites& sites, double x, double z, double base) {
     Basin best;
     for (const std::uint16_t k : reachAt(sites, x, z)) {
         if (k == 0) {
@@ -214,9 +173,10 @@ Basin basinAt(const Sites& sites, double x, double z) {
         if (!(dx * dx + dz * dz < reach * reach)) {
             continue;
         }
-        const double share = shareOf(sites, s, x, z, dx, dz);
-        if (share > best.share) {
-            best = {share, s.floor};
+        const Profile p =
+            profileOf(sites.forms, s, x, z, dx, dz, std::max(1.0, base - s.floor));
+        if (p.share > best.profile.share) {
+            best = {p, s.floor};
         }
     }
     return best;

@@ -46,6 +46,7 @@ add_library(terrain_core STATIC
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
     src/generation/climate.cpp
+    src/generation/depression_forms.cpp
     src/generation/depressions.cpp
     src/generation/ecology.cpp
     src/generation/eroded_region.cpp

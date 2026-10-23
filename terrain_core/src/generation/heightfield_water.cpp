@@ -3,8 +3,12 @@
 #include "terrain/generation/heightfield.hpp"
 
 #include "depressions.hpp"
+#include "heightfield_layers.hpp"
+#include "ravines.hpp"
+#include "relief_local.hpp"
 #include "terrain/generation/noise.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -29,9 +33,49 @@ constexpr float kDepressionHigh = 0.12f;
 constexpr float kCoastLow = 150'000.0f;
 constexpr float kCoastHigh = 250'000.0f;
 
+// On the floor of a depression the ground keeps kKeep of the relief of the plains (the local relief
+// over the regional elevation): almost flat, never a plane.
+constexpr double kKeep = 0.35;
+constexpr double kHead = 1.5;
+
 void setSea(HeightSample& s, bool sea) {
     s.water = sea ? WaterKind::Ocean : WaterKind::None;
     s.waterLevel = sea ? kSeaLevel : s.height;
+}
+
+// The ground in a depression, and how flat it is there (1 in a salt pan: no detail).
+struct Lowered {
+    double ground = 0.0;
+    double flat = 0.0;
+};
+
+// The ground base meters high at (x, z) brought weight of the way into the depression of basin:
+// toward its floor, which keeps kKeep of the local relief over the regional elevation land, with
+// its salt pans and buttes; then carved by the ravines of the relief down its sides.
+Lowered inDepression(const depressions::Sites& sites, const ravines::Network& network, double x,
+                     double z, double base, double land, double weight,
+                     const depressions::Basin& basin) {
+    const depressions::Profile& p = basin.profile;
+    double floor = basin.floor + kKeep * (base - land);
+    const double t = weight * p.share;
+    Lowered out;
+    if (p.onFloor > 0.0) {
+        const depressions::Floor f = depressions::floorAt(sites.forms, x, z);
+        floor += p.onFloor * f.butte;
+        floor += p.onFloor * f.pan * (basin.floor - depressions::kPanDepth - floor);
+        out.flat = t * p.onFloor * f.pan;
+    }
+    double ground = base + t * (floor - base);
+    // The ravines grow from nothing at the rim: at most kHead times the drop of the profile there.
+    const double room = weight * std::min(p.room, kHead * p.share * (base - basin.floor));
+    const double strength = weight * (1.0 - p.onFloor);
+    if (room > 0.0 && strength > 0.0 && p.slope > 0.0) {
+        const double slope = weight * p.slope;
+        const float cut = ravines::depth(network, x, z, slope * p.upX, slope * p.upZ, strength);
+        ground += static_cast<double>(relief_local::boundBelow(-cut, static_cast<float>(room)));
+    }
+    out.ground = ground;
+    return out;
 }
 
 } // namespace
@@ -71,11 +115,15 @@ void Heightfield::finishWater(double x, double z, HeightSample& s) const {
         const float weight = (1.0f - noise::smoothstep(kDepressionLow, kDepressionHigh, s.relief)) *
                              noise::smoothstep(kCoastLow, kCoastHigh, coast);
         if (weight > 0.0f) {
-            const depressions::Basin basin = depressions::basinAt(*water_->depressions, x, z);
-            if (basin.share > 0.0) {
-                const double t = static_cast<double>(weight) * basin.share;
-                s.base = static_cast<float>(static_cast<double>(s.base) +
-                                            t * (basin.floor - static_cast<double>(s.base)));
+            const depressions::Basin basin = depressions::basinAt(
+                *water_->depressions, x, z, static_cast<double>(s.base));
+            if (basin.profile.share > 0.0) {
+                const Lowered lowered = inDepression(
+                    *water_->depressions, layers_->ravines, x, z, static_cast<double>(s.base),
+                    static_cast<double>(geography_->landAt(x, z)), static_cast<double>(weight),
+                    basin);
+                s.base = static_cast<float>(lowered.ground);
+                s.detail = static_cast<float>(static_cast<double>(s.detail) * (1.0 - lowered.flat));
                 s.height = s.base + s.mountain + s.detail;
             }
         }

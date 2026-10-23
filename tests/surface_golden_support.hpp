@@ -96,7 +96,7 @@ inline std::vector<Part> heightfieldParts() {
         {"heights 1 m", heightsChecksum(field, mx, mz, 1.0, 64), 0xF7C7557679FD1C4FULL},
         {"heights 1 km", heightsChecksum(field, -32000.0, -32000.0, 1000.0, 64),
          0x00687ACED72B3163ULL},
-        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x8AF884C3A63C577AULL},
+        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x8D9DF7F006B94878ULL},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},

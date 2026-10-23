@@ -17,37 +17,20 @@
 // Pure arithmetic of doubles, noises and hashes: the same bits on every platform, periodic on
 // the world.
 
+#include "depression_forms.hpp"
 #include "terrain/generation/geography.hpp"
-#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
 #include <array>
 #include <cstdint>
-#include <optional>
 #include <vector>
 
 namespace terrain::depressions {
 
-// A depression: its center (canonical), its mean radius (meters), the ratio of its axes (at
-// least 1) and the direction of the long one (turns from +x toward +z), the altitude of its
-// floor (below 0), how much steeper its steep side is and the direction of that side (turns).
-struct Site {
-    double x = 0.0;
-    double z = 0.0;
-    double radius = 1.0;
-    double elongation = 1.0;
-    double angle = 0.0;
-    double floor = -1.0;
-    double escarpment = 0.0;
-    double steepSide = 0.0;
-};
-
 // The depressions of a world, found once.
 struct Sites {
     WorldSize world;
-    noise::FbmOctaves warpX; // the warp of the space of the basins
-    noise::FbmOctaves warpZ;
-    noise::FbmOctaves outline; // the lobes of their rims
+    Forms forms;
     std::vector<Site> sites; // the depressions, cell by cell
     // On a lattice of kReachCell meters, 1 + the indices of the depressions that may reach a
     // cell (at most three: they lie at least 360 km apart and reach at most 165 km), 0 where none
@@ -64,12 +47,12 @@ struct Sites {
 // Whether a depression may reach the canonical (x, z): false far from all of them (cheap).
 [[nodiscard]] bool mayReach(const Sites& sites, double x, double z);
 
-// How much of the way to the floor of a depression the ground goes at the canonical (x, z), in
-// [0, 1] (1 on its floor, 0 outside), and that floor.
+// The depression reaching the canonical (x, z) whose profile there goes the deepest (a share of 0
+// without any), for ground base meters high, and the altitude of its floor.
 struct Basin {
-    double share = 0.0;
+    Profile profile;
     double floor = 0.0;
 };
-[[nodiscard]] Basin basinAt(const Sites& sites, double x, double z);
+[[nodiscard]] Basin basinAt(const Sites& sites, double x, double z, double base);
 
 } // namespace terrain::depressions
