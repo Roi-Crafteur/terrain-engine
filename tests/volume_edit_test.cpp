@@ -33,7 +33,7 @@ VolumeEdit box(EditMode mode, BlockCoord anchor, std::uint16_t x, std::uint16_t 
     return {EditShape::Box, mode, anchor, {x, y, z}, 0};
 }
 
-VolumeEdit round(EditShape shape, EditMode mode, BlockCoord center, double radiusMeters) {
+VolumeEdit roundEdit(EditShape shape, EditMode mode, BlockCoord center, double radiusMeters) {
     return {shape, mode, center, {}, static_cast<std::uint16_t>(radiusMeters * 16.0)};
 }
 
@@ -79,7 +79,7 @@ bool rejected(const std::vector<std::uint8_t>& bytes) {
 
 void testBytes() {
     const VolumeEdit cube = box(EditMode::Add, {-5, 70, 1 << 20}, 3, 65535, 1);
-    const VolumeEdit blast = round(EditShape::Explosion, EditMode::Remove, {9, -40, -9}, 6.5);
+    const VolumeEdit blast = roundEdit(EditShape::Explosion, EditMode::Remove, {9, -40, -9}, 6.5);
     const std::vector<std::uint8_t> cubeBytes = terrain::serializeVolumeEdit(cube);
     const std::vector<std::uint8_t> blastBytes = terrain::serializeVolumeEdit(blast);
     TEST_CHECK(cubeBytes.size() == terrain::kBoxEditBytes && cubeBytes.size() == 19);
@@ -118,9 +118,10 @@ void testValidation() {
     TEST_CHECK(!invalid(box(EditMode::Remove, {0, 0, 0}, 1, 1, 1), kWorld));
     TEST_CHECK(invalid(box(EditMode::Remove, {0, 0, 0}, 1, 0, 1), kWorld));
     TEST_CHECK(invalid(box(EditMode::Remove, {0, 2147483000, 0}, 1, 1000, 1), kWorld));
-    TEST_CHECK(invalid(round(EditShape::Explosion, EditMode::Restore, {}, 3.0), kWorld));
-    TEST_CHECK(invalid(round(EditShape::Sphere, EditMode::Add, {}, 0.0), kWorld));
-    TEST_CHECK(invalid(round(EditShape::Sphere, EditMode::Add, {}, 300.0), WorldSize{512, 4096}));
+    TEST_CHECK(invalid(roundEdit(EditShape::Explosion, EditMode::Restore, {}, 3.0), kWorld));
+    TEST_CHECK(invalid(roundEdit(EditShape::Sphere, EditMode::Add, {}, 0.0), kWorld));
+    TEST_CHECK(
+        invalid(roundEdit(EditShape::Sphere, EditMode::Add, {}, 300.0), WorldSize{512, 4096}));
     ModificationStore store;
     store.setBlock({1, 1, 1}, BlockEdit::Added);
     const ModificationStore before = store;
@@ -140,11 +141,11 @@ void testValidation() {
 void testAgainstBlocks() {
     const std::vector<VolumeEdit> edits = {
         box(EditMode::Remove, {-20, -9, 3}, 50, 40, 37),
-        round(EditShape::Sphere, EditMode::Add, {7, 3, 7}, 9.3),
-        round(EditShape::Explosion, EditMode::Remove, {-16, 16, 30}, 12.0),
+        roundEdit(EditShape::Sphere, EditMode::Add, {7, 3, 7}, 9.3),
+        roundEdit(EditShape::Explosion, EditMode::Remove, {-16, 16, 30}, 12.0),
         box(EditMode::Restore, {-3, -5, 10}, 9, 30, 9),
-        round(EditShape::Sphere, EditMode::Restore, {0, 0, 16}, 5.0),
-        round(EditShape::Sphere, EditMode::Remove, {64, 64, -64}, 0.5),
+        roundEdit(EditShape::Sphere, EditMode::Restore, {0, 0, 16}, 5.0),
+        roundEdit(EditShape::Sphere, EditMode::Remove, {64, 64, -64}, 0.5),
         box(EditMode::Add, {-48, 0, -48}, 64, 32, 64)};
     ModificationStore bySections;
     ModificationStore byBlocks;
@@ -168,7 +169,8 @@ void testAgainstBlocks() {
 
 // The rough edge of an explosion lies between 90 % and 100 % of its radius.
 void testExplosion() {
-    const VolumeEdit blast = round(EditShape::Explosion, EditMode::Remove, {100, 40, -300}, 10.0);
+    const VolumeEdit blast =
+        roundEdit(EditShape::Explosion, EditMode::Remove, {100, 40, -300}, 10.0);
     int inside = 0;
     int rough = 0;
     bool edge = true;
@@ -196,10 +198,10 @@ void testExplosion() {
 void testOrder() {
     const std::vector<SequencedEdit> edits = {
         {10, box(EditMode::Remove, {0, 0, 0}, 40, 20, 40)},
-        {11, round(EditShape::Sphere, EditMode::Add, {20, 10, 20}, 8.0)},
-        {12, round(EditShape::Explosion, EditMode::Remove, {25, 12, 18}, 6.0)},
+        {11, roundEdit(EditShape::Sphere, EditMode::Add, {20, 10, 20}, 8.0)},
+        {12, roundEdit(EditShape::Explosion, EditMode::Remove, {25, 12, 18}, 6.0)},
         {13, box(EditMode::Restore, {10, 0, 10}, 4, 30, 4)},
-        {20, round(EditShape::Sphere, EditMode::Add, {0, 0, 0}, 3.0)}};
+        {20, roundEdit(EditShape::Sphere, EditMode::Add, {0, 0, 0}, 3.0)}};
     ModificationStore reference;
     terrain::applyInSequence(reference, edits, kWorld);
     const std::vector<std::uint8_t> bytes = storeBytes(reference);
@@ -229,7 +231,7 @@ void testOrder() {
 void testAcrossTheEdge() {
     const ChunkCoord count = terrain::worldChunks(kWorld);
     const int edge = count.x * 8; // world.x / 2
-    const VolumeEdit east = round(EditShape::Sphere, EditMode::Remove, {edge - 2, 5, 100}, 6.0);
+    const VolumeEdit east = roundEdit(EditShape::Sphere, EditMode::Remove, {edge - 2, 5, 100}, 6.0);
     VolumeEdit image = east;
     image.anchor.x -= count.x * 16;
     ModificationStore a;

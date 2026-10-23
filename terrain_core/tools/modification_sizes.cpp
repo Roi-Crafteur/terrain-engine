@@ -45,7 +45,7 @@ int groundAt(const TerrainTiles& tiles, int x, int z) {
     return static_cast<int>(std::floor(tiles.heightfield().heightAt(x, z)));
 }
 
-VolumeEdit round(EditShape shape, BlockCoord center, double radius) {
+VolumeEdit roundEdit(EditShape shape, BlockCoord center, double radius) {
     return {shape, EditMode::Remove, center, {}, static_cast<std::uint16_t>(radius * 16.0)};
 }
 
@@ -169,9 +169,9 @@ std::vector<Case> holes(const TerrainTiles& tiles, ChunkCoord chunk) {
         }
     }
     return {applyCase("hole of 10 m in a section",
-                      {round(EditShape::Sphere, {x + 8, middle, z + 8}, 5.0)}, chunk, {}),
+                      {roundEdit(EditShape::Sphere, {x + 8, middle, z + 8}, 5.0)}, chunk, {}),
             applyCase("hole of 10 m on 8 sections",
-                      {round(EditShape::Sphere, {corner.x * 16, height, corner.z * 16}, 5.0)},
+                      {roundEdit(EditShape::Sphere, {corner.x * 16, height, corner.z * 16}, 5.0)},
                       corner, {{corner.x - 1, corner.z - 1}})};
 }
 
@@ -197,13 +197,13 @@ std::vector<Case> razedMountain(const TerrainTiles& tiles, ChunkCoord mountain) 
     std::vector<VolumeEdit> blasts = {box};
     for (int a = 0; a < 1000; a += 8) {
         for (int b = 0; b < 1000; b += 8) {
-            blasts.push_back(round(EditShape::Explosion, {x0 + a, floor, z0 + b}, 7.0));
+            blasts.push_back(roundEdit(EditShape::Explosion, {x0 + a, floor, z0 + b}, 7.0));
         }
         for (int y = floor; y < top; y += 8) {
-            blasts.push_back(round(EditShape::Explosion, {x0, y, z0 + a}, 7.0));
-            blasts.push_back(round(EditShape::Explosion, {x0 + 999, y, z0 + a}, 7.0));
-            blasts.push_back(round(EditShape::Explosion, {x0 + a, y, z0}, 7.0));
-            blasts.push_back(round(EditShape::Explosion, {x0 + a, y, z0 + 999}, 7.0));
+            blasts.push_back(roundEdit(EditShape::Explosion, {x0, y, z0 + a}, 7.0));
+            blasts.push_back(roundEdit(EditShape::Explosion, {x0 + 999, y, z0 + a}, 7.0));
+            blasts.push_back(roundEdit(EditShape::Explosion, {x0 + a, y, z0}, 7.0));
+            blasts.push_back(roundEdit(EditShape::Explosion, {x0 + a, y, z0 + 999}, 7.0));
         }
     }
     const ChunkCoord middle{(x0 + 500) >> 4, (z0 + 500) >> 4};
@@ -265,8 +265,8 @@ std::size_t windowBytes(const ModificationStore& store, ChunkCoord chunk) {
         std::size_t lattice = 0;
         for (const auto& [low, high] : window.editedSpans()) {
             for (int y = (low / side - 1) * side; y <= high + side; y += side) {
-                lattice = std::max(lattice,
-                                   terrain::EditLattice(window, x0, y, z0, spacing, 17).heapBytes());
+                const terrain::EditLattice level(window, x0, y, z0, spacing, 17);
+                lattice = std::max(lattice, level.heapBytes());
             }
         }
         largest = std::max(largest, window.heapBytes() + lattice);

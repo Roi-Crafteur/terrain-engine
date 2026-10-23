@@ -119,7 +119,7 @@ void BlockSection::set(int index, std::optional<BlockEdit> edit) {
             cells_.begin(), cells_.end(), index,
             [](std::uint16_t cell, int value) { return (cell & kIndexMask) < value; });
         const auto cell = static_cast<std::uint16_t>(
-            index | (edit == BlockEdit::Removed ? kRemovedFlag : 0U));
+            static_cast<unsigned>(index) | (edit == BlockEdit::Removed ? kRemovedFlag : 0U));
         if (!old) {
             cells_.insert(it, cell);
         } else if (!edit) {
@@ -222,7 +222,7 @@ void BlockSection::normalize() {
         cells.reserve(static_cast<std::size_t>(edited));
         forEach([&cells](int index, BlockEdit edit) {
             cells.push_back(static_cast<std::uint16_t>(
-                index | (edit == BlockEdit::Removed ? kRemovedFlag : 0U)));
+                static_cast<unsigned>(index) | (edit == BlockEdit::Removed ? kRemovedFlag : 0U)));
         });
         release(masks_);
         cells_ = std::move(cells);
