@@ -4,6 +4,7 @@
 #include "terrain/generation/ecology.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/surface_material.hpp"
+#include "terrain/streaming/horizon_crests.hpp"
 #include "terrain/streaming/horizon_levels.hpp"
 
 #include <cstdint>
@@ -20,12 +21,14 @@ inline constexpr std::uint8_t kHorizonEdited = 1U << 1; // changed by a summary 
 
 // What the far horizon holds at a sample of a level: 16 bytes, for compact level buffers.
 struct HorizonCell {
-    // Top of the ground, meters: Heightfield::heightAt at the sample, bit for bit (then the
-    // height change of the player edits). Sample J of level n + 1 is sample 2J of level n: the
-    // same bits on both levels.
+    // Top of the ground, meters: Heightfield::heightAt at the sample, bit for bit, plus its
+    // lift to the crests of its cells from level 1 on (HorizonCrestSampler, when it rises), then
+    // the height change of the player edits. Without lift, sample J of level n + 1 is sample 2J
+    // of level n: the same bits on both levels (always so with HorizonParams::crestRatio 0).
     float height = 0.0f;
     // Gradient of the ground at the scale of the level (rise over run), by central differences
-    // of the heights of its neighbor samples: the normal is normalize(-gradX, 1, -gradZ).
+    // of the point heights (and edits) of its neighbor samples, without their lifts: the normal
+    // is normalize(-gradX, 1, -gradZ).
     float gradX = 0.0f;
     float gradZ = 0.0f;
     // Material and biome of the ground, as the Ecology classifies a surface sampled every
@@ -68,7 +71,8 @@ void applyEditSummary(const EditSummary& summary, HorizonCell& cell);
 // both). A sample is a pure function of the seed, the parameters, its level and its canonical
 // index: neither the observer, nor the rectangle it is computed in, nor the thread change it.
 //
-// The ground of a sample is the Heightfield at its canonical position. Its material and biome
+// The ground of a sample is the Heightfield at its canonical position, raised to the crests of
+// its cells (HorizonCrestSampler) from level 1 on unless crestRatio is 0. Its material and biome
 // come from a SurfaceSite built as surfaceFromHeightfield builds it at a spacing of
 // materialSlopeStep (the slopes of the 4 ground samples around it), then classified as
 // Ecology::sampleAt does (climate, biome, material); the water is the ocean of that site. With
@@ -96,6 +100,7 @@ private:
     const Heightfield* field_;
     const Ecology* ecology_;
     HorizonParams params_;
+    HorizonCrestSampler crests_;
     EditSummarySource edits_;
 };
 

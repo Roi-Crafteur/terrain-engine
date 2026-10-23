@@ -1,9 +1,11 @@
 // Coverage and cost of the far horizon. Asserted: the default levels cover at least 300 km
 // around any observer. Printed only, never asserted: the time of a full computation of every
-// level on one thread and on every hardware thread, of the updates of a walk, the memory, and
-// the same with the slopes of the materials at the pitch of each level and with K = 512; the
-// detail slopes around the K2, timed on one piece in kDetailStride and extrapolated (in the
-// mountain cores of the default world, the full computation would take minutes).
+// level of point samples (crestRatio 0) on one thread and on every hardware thread, of the
+// updates of a walk, the memory, and the same with the slopes of the materials at the pitch of
+// each level and with K = 512; the samples around the K2 with and without the crests, timed on
+// one piece in kCrestStride and extrapolated; the detail slopes around the K2, timed on one
+// piece in kDetailStride and extrapolated (in the mountain cores of the default world, the full
+// computation would take minutes).
 #include "terrain/streaming/horizon_normals.hpp"
 #include "terrain/streaming/horizon_streamer.hpp"
 
@@ -35,6 +37,17 @@ private:
 };
 
 int hardwareThreads() { return std::max(1, static_cast<int>(std::thread::hardware_concurrency())); }
+
+// The valley of the K2: high mountains all around.
+constexpr double kK2X = 416'857.0;
+constexpr double kK2Z = -11'398'966.0;
+
+// The levels without the crests, as before them: the same work as the measures of main.
+terrain::HorizonParams pointSamples() {
+    terrain::HorizonParams params;
+    params.crestRatio = 0;
+    return params;
+}
 
 void testCoverage() {
     const terrain::HorizonParams params;
@@ -139,9 +152,51 @@ double detailSeconds(const terrain::HorizonNormalSampler& sampler, double x, dou
     return watch.seconds() * texels / timedTexels;
 }
 
+// The samples are timed on one piece in kCrestStride, taken in order through the levels.
+constexpr std::size_t kCrestStride = 32;
+
+// The time of the samples of every window around (x, z) on one thread, in pieces of 16 rows,
+// extrapolated from the pieces timed, by their share of the samples.
+double samplesSeconds(const World& world, const terrain::HorizonParams& params, double x,
+                      double z) {
+    const terrain::HorizonSampler sampler(world.field, world.ecology, params);
+    std::vector<std::pair<int, terrain::HorizonRect>> pieces;
+    double samples = 0.0;
+    double timedSamples = 0.0;
+    std::size_t index = 0;
+    for (int level = 0; level < params.levels; ++level) {
+        const terrain::HorizonRect window = terrain::windowAround(
+            terrain::canonicalCenter(params, level, x, z), params.cellsPerSide);
+        for (std::int64_t k = window.z0; k < window.z1; k += 16, ++index) {
+            const terrain::HorizonRect piece{window.x0, k, window.x1,
+                                             std::min<std::int64_t>(k + 16, window.z1)};
+            samples += static_cast<double>(piece.count());
+            if (index % kCrestStride == 0) {
+                pieces.emplace_back(level, piece);
+                timedSamples += static_cast<double>(piece.count());
+            }
+        }
+    }
+    const Stopwatch watch;
+    std::vector<terrain::HorizonCell> out;
+    for (const auto& [level, piece] : pieces) {
+        out.resize(static_cast<std::size_t>(piece.count()));
+        sampler.fill(level, piece, out);
+    }
+    return watch.seconds() * samples / timedSamples;
+}
+
+void measureCrests(const World& world) {
+    const double points = samplesSeconds(world, pointSamples(), kK2X, kK2Z);
+    const terrain::HorizonParams crests;
+    const double raised = samplesSeconds(world, crests, kK2X, kK2Z);
+    std::printf("samples of every level around the K2, 1 thread: %.2f s with the crests (ratio "
+                "%d), %.2f s without (x%.2f); the same memory (extrapolated from one piece in "
+                "%zu)\n",
+                raised, crests.crestRatio, points, raised / points, kCrestStride);
+}
+
 void measureDetail(const World& world) {
-    constexpr double kK2X = 416'857.0;
-    constexpr double kK2Z = -11'398'966.0;
     const terrain::HorizonParams params;
     for (const int ratio : {2, 4, 8}) {
         const terrain::HorizonNormalSampler sampler(world.field, params, ratio);
@@ -167,15 +222,16 @@ void measureDetail(const World& world) {
 int main() {
     testCoverage();
     const World world;
-    const terrain::HorizonParams defaults;
+    const terrain::HorizonParams defaults = pointSamples();
     measureOneThread(world, defaults);
-    measureWorkers(world, defaults, "default (K = 256)");
-    terrain::HorizonParams coarseSlopes;
+    measureWorkers(world, defaults, "point samples (K = 256)");
+    terrain::HorizonParams coarseSlopes = pointSamples();
     coarseSlopes.materialSlopeStep = 0;
     measureWorkers(world, coarseSlopes, "material slopes at the pitch of each level");
-    terrain::HorizonParams wide;
+    terrain::HorizonParams wide = pointSamples();
     wide.cellsPerSide = 512;
     measureWorkers(world, wide, "K = 512");
+    measureCrests(world);
     measureDetail(world);
     return test::result();
 }
