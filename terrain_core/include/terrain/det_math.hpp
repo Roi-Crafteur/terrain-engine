@@ -83,14 +83,15 @@ struct SineCosine {
 // compiler calls the library for std::floor (Clang and MSVC on x86-64; the noise lattices take two
 // floors per octave): normal numbers below 2^52 in magnitude are truncated through an integer, one
 // less below a negative number, the integer at hand; zeros (their sign), subnormals (the
-// flush-to-zero modes), larger numbers, infinities and NaN go to std::floor. ARM64 and SSE4.1
-// have a floor instruction: std::floor there.
+// flush-to-zero modes), larger numbers, infinities and NaN go to std::floor. ARM64, SSE4.1 and
+// AVX (MSVC /arch:AVX and /arch:AVX2 define __AVX__ but not __SSE4_1__) have a floor instruction
+// that the compilers use for std::floor: std::floor there.
 struct FloorIndex {
     double value;
     std::int64_t index;
 };
 [[nodiscard]] inline FloorIndex floorIndex(double x) {
-#if !defined(__aarch64__) && !defined(_M_ARM64) && !defined(__SSE4_1__)
+#if !defined(__aarch64__) && !defined(_M_ARM64) && !defined(__SSE4_1__) && !defined(__AVX__)
     const double magnitude = std::abs(x);
     if (magnitude >= 0x1p-1022 && magnitude < 0x1p52) {
         const auto truncated = static_cast<std::int64_t>(x);
