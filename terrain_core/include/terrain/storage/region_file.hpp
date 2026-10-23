@@ -59,8 +59,8 @@ struct RegionCoord {
                                                         RegionCoord region, std::uint64_t seed);
 
 // The modifications of a region file. Throws StorageError unless bytes are a whole region file
-// of a format this build reads (1 or 2), of the world seed and of region, with chunks in order, all in
-// the region, and valid records.
+// of a format this build reads (1 or 2), of the world seed and of region, with chunks in order,
+// all in the region, and valid records.
 [[nodiscard]] ModificationStore deserializeRegion(std::span<const std::uint8_t> bytes,
                                                   RegionCoord region, std::uint64_t seed);
 

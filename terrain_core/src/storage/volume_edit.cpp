@@ -297,8 +297,9 @@ std::vector<ChunkCoord> applyInSequence(ModificationStore& store,
                                         std::span<const SequencedEdit> edits,
                                         const WorldSize& world) {
     std::vector<SequencedEdit> ordered(edits.begin(), edits.end());
-    std::sort(ordered.begin(), ordered.end(),
-              [](const SequencedEdit& a, const SequencedEdit& b) { return a.sequence < b.sequence; });
+    std::sort(ordered.begin(), ordered.end(), [](const SequencedEdit& a, const SequencedEdit& b) {
+        return a.sequence < b.sequence;
+    });
     for (std::size_t i = 0; i < ordered.size(); ++i) {
         if (i > 0 && ordered[i].sequence == ordered[i - 1].sequence) {
             throw std::invalid_argument("two edits share a sequence");

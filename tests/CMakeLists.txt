@@ -76,6 +76,7 @@ terrain_add_test(modifications_test terrain_core)
 terrain_add_test(block_section_test terrain_core)
 terrain_add_test(volume_edit_test terrain_core)
 terrain_add_test(edit_window_test terrain_core)
+terrain_add_test(edit_summary_test terrain_core)
 # The compressed masks of the sections (internal header).
 terrain_add_test(section_codec_test terrain_core)
 target_include_directories(section_codec_test PRIVATE

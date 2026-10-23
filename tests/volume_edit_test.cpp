@@ -124,8 +124,8 @@ void testValidation() {
     ModificationStore store;
     store.setBlock({1, 1, 1}, BlockEdit::Added);
     const ModificationStore before = store;
-    const std::vector<SequencedEdit> repeated = {
-        {4, box(EditMode::Remove, {0, 0, 0}, 9, 9, 9)}, {4, box(EditMode::Add, {0, 0, 0}, 2, 2, 2)}};
+    const std::vector<SequencedEdit> repeated = {{4, box(EditMode::Remove, {0, 0, 0}, 9, 9, 9)},
+                                                 {4, box(EditMode::Add, {0, 0, 0}, 2, 2, 2)}};
     bool threw = false;
     try {
         static_cast<void>(terrain::applyInSequence(store, repeated, kWorld));
