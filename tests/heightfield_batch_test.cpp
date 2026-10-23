@@ -1,7 +1,8 @@
 // The batch functions of the Heightfield (samplesAt, heightsAt) give the bits of sampleAt at each
 // point whatever the sequence: empty, one point, the same point again and again, a row and the
-// same row reversed, points alternating between both ends of the world; and they refuse spans
-// of different sizes. frozen_reference_test compares them with the frozen reference on rows and
+// same row reversed, points alternating between both ends of the world, rows 256 m and 1 km apart
+// through the walls of the highest chain and through a plain (the cells of the memos change at
+// every point, as for the far horizon); and they refuse spans of different sizes. frozen_reference_test compares them with the frozen reference on rows and
 // scattered points.
 #include "terrain/generation/heightfield.hpp"
 
@@ -52,6 +53,20 @@ void checkSequences(const terrain::Heightfield& field) {
     checkSequence(field, alternating);
 }
 
+// Rows along x and z from (x, z), points step meters apart.
+void checkCoarseRows(const terrain::Heightfield& field, double x, double z) {
+    for (const double step : {256.0, 1024.0}) {
+        std::vector<Point> alongX;
+        std::vector<Point> alongZ;
+        for (int i = 0; i < 64; ++i) {
+            alongX.push_back({x + step * i, z});
+            alongZ.push_back({x, z - step * i});
+        }
+        checkSequence(field, alongX);
+        checkSequence(field, alongZ);
+    }
+}
+
 void checkSizes(const terrain::Heightfield& field) {
     const std::vector<double> two = {1.0, 2.0};
     const std::vector<double> three = {1.0, 2.0, 3.0};
@@ -78,6 +93,8 @@ void checkSizes(const terrain::Heightfield& field) {
 int main() {
     const terrain::Heightfield field(20261019);
     checkSequences(field);
+    checkCoarseRows(field, 400'000.0, -11'412'000.0); // the walls below the highest summit
+    checkCoarseRows(field, -1'286'144.0, -8'541'184.0); // a plain of the benchmark
     checkSizes(field);
     terrain::HeightfieldParams planet;
     planet.macroContinent = 0.25f;

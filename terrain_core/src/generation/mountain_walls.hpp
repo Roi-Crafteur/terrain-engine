@@ -38,14 +38,21 @@ struct Noises {
     std::uint64_t layers = 0;    // which great bands are hard
     std::uint64_t steps = 0;     // and which rock steps
     WorldSize world;
+    // The crystalline cells of each scale: their seed and how many along each side of the world.
+    std::array<std::uint64_t, 2> cellSeeds{};
+    std::array<int, 2> cellsX{1, 1};
+    std::array<int, 2> cellsZ{1, 1};
 };
 
 [[nodiscard]] Noises makeNoises(std::uint64_t seed, const WorldSize& world);
 
-// The cells of the crystalline rock around the last cell met at each scale.
+// The cells of the crystalline rock around the last cell met at each scale. Their joints are only
+// drawn (detailed) for the cells that cut the rock at a point: most of them only lie farther.
 struct Cell {
     double x = 0.0; // in cells from the corner of the cell met
     double z = 0.0;
+    std::uint64_t hash = 0; // of the cell, from which everything below is drawn
+    bool detailed = false;  // the fields below are drawn
     double tiltX = 0.0; // the slope of its joints (meters per meter)
     double tiltZ = 0.0;
     double band = 1.0;   // meters between its joints

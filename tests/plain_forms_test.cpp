@@ -2,14 +2,16 @@
 // bits); the kind of plain from flat to rolling from one region to the next; vallons within their
 // depth, unevenly spaced, narrow; isolated hills within their height, in a part of the cells,
 // rounded on top (no point); bounded and continuous (across the seams of the world too);
-// deterministic, the same bits through the memos.
+// deterministic, the same bits through the memos (also across the cells of the isolated hills).
 #include "plain_forms.hpp"
 
 #include "bit_exact_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
@@ -191,6 +193,40 @@ void testDeterminismAndMemo() {
     TEST_CHECK(differ > 1'900);
 }
 
+// One memo along rows through isolated hills, crossing their cells (about 7 km) one by one and
+// several at a time, along x and z, both ways: the bits of the calls without it.
+void testMemoAcrossHillCells() {
+    const plain_forms::Noises a = plain_forms::makeNoises(kSeed, WorldSize{});
+    plain_forms::Memos memos;
+    bool same = true;
+    int rows = 0;
+    int onHills = 0;
+    for (const bit_exact::Point& p : bit_exact::randomPoints(20'000, 1e7)) {
+        if (rows == 48 || !(plain_forms::hillAt(a, p.x, p.z, nullptr) > 0.0)) {
+            continue;
+        }
+        const double step =
+            std::array<double, 3>{150.0, 2'500.0, 9'000.0}[static_cast<std::size_t>(rows % 3)];
+        const double sign = rows % 2 == 0 ? 1.0 : -1.0;
+        const bool alongX = rows % 4 < 2;
+        ++rows;
+        const plain_forms::Ground g = groundAt(p);
+        // Starting a cell or two before the hill, so that the memo holds other cells first.
+        for (int k = -2; k < 22; ++k) {
+            const double x = p.x + (alongX ? sign * step * k : 0.0);
+            const double z = p.z + (alongX ? 0.0 : sign * step * k);
+            const double hill = plain_forms::hillAt(a, x, z, &memos);
+            onHills += hill > 0.0 ? 1 : 0;
+            same = same && hill == plain_forms::hillAt(a, x, z, nullptr) &&
+                   bit_exact::same(plain_forms::relief(a, x, z, g, &memos),
+                                   plain_forms::relief(a, x, z, g, nullptr));
+        }
+    }
+    TEST_CHECK(rows == 48);
+    TEST_CHECK(onHills > 100);
+    TEST_CHECK(same);
+}
+
 } // namespace
 
 int main() {
@@ -200,5 +236,6 @@ int main() {
     testHills();
     testBoundsContinuous();
     testDeterminismAndMemo();
+    testMemoAcrossHillCells();
     return test::result();
 }

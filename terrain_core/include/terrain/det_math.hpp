@@ -16,6 +16,7 @@
 #endif
 
 #include <cmath>
+#include <cstdint>
 
 namespace terrain::dmath {
 
@@ -24,6 +25,13 @@ namespace terrain::dmath {
 // turn. Accurate to about 1 ulp; exactly 0 or +-1 on multiples of a quarter turn.
 [[nodiscard]] double sinTurns(double turns);
 [[nodiscard]] double cosTurns(double turns);
+
+// sinTurns(turns) and cosTurns(turns), bit for bit, the reduction done once.
+struct SineCosine {
+    double sine;
+    double cosine;
+};
+[[nodiscard]] SineCosine sinCosTurns(double turns);
 
 // Sine and cosine in radians, reduced by three-part pi / 2: accurate to about 1 ulp for
 // |x| < 1e5, less accurate (but still deterministic) beyond.
@@ -44,6 +52,25 @@ namespace terrain::dmath {
 // |y * log2(x)| * 2e-16 relative.
 [[nodiscard]] double pow(double x, double y);
 
+// x^n for an integer |n| <= 64, by repeated squaring (pow(x, 2) is exactly x * x): the bits of
+// pow(x, n) for every x but NaN. Inline, for the loops that raise many values to one exponent.
+[[nodiscard]] inline double powInteger(double x, int n) {
+    auto k = static_cast<unsigned>(n < 0 ? -n : n);
+    double result = 1.0;
+    double base = x;
+    while (true) {
+        if ((k & 1U) != 0U) {
+            result *= base;
+        }
+        k >>= 1U;
+        if (k == 0U) {
+            break;
+        }
+        base *= base;
+    }
+    return n < 0 ? 1.0 / result : result;
+}
+
 // Hyperbolic tangent. Accurate to about 2 ulp.
 [[nodiscard]] double tanh(double x);
 
@@ -51,6 +78,32 @@ namespace terrain::dmath {
 // signs of zero handled like std::atan2. Accurate to about 2 ulp.
 [[nodiscard]] double atan(double x);
 [[nodiscard]] double atan2(double y, double x);
+
+// std::floor(x), bit for bit, and its value as an integer (for |x| < 2^63), faster where Clang
+// calls the library for std::floor (x86-64; the noise lattices take two floors per octave):
+// normal numbers below 2^52 in magnitude are truncated through an integer, one less below a
+// negative number, the integer at hand; zeros (their sign), subnormals (the flush-to-zero modes),
+// larger numbers, infinities and NaN go to std::floor. ARM64, SSE4.1 and AVX (MSVC /arch:AVX and
+// /arch:AVX2 define __AVX__ but not __SSE4_1__) have a floor instruction that the compilers use
+// for std::floor: std::floor there. MSVC keeps std::floor without AVX too: the samples that
+// memoize nothing (the far horizon) were slower through the integer.
+struct FloorIndex {
+    double value;
+    std::int64_t index;
+};
+[[nodiscard]] inline FloorIndex floorIndex(double x) {
+#if !defined(__aarch64__) && !defined(_M_ARM64) && !defined(__SSE4_1__) && !defined(__AVX__) && \
+    (defined(__clang__) || !defined(_MSC_VER))
+    const double magnitude = std::abs(x);
+    if (magnitude >= 0x1p-1022 && magnitude < 0x1p52) {
+        const auto truncated = static_cast<std::int64_t>(x);
+        const bool below = static_cast<double>(truncated) > x;
+        return {static_cast<double>(truncated) - (below ? 1.0 : 0.0), truncated - (below ? 1 : 0)};
+    }
+#endif
+    const double value = std::floor(x);
+    return {value, static_cast<std::int64_t>(value)};
+}
 
 // Euclidean norms, without the overflow protection of std::hypot (useless at the scale of the
 // world, and implemented differently by each standard library).

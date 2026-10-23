@@ -3,7 +3,8 @@
 // few hundredths of a band, never below it but by a band, continuous and rising with the ground;
 // no wall on the floors and the crests; both characters, strata and crystalline, present (the
 // cores of the highest chains crystalline); one
-// surface (the density changes sign once along y); the same bits through a memo and from one
+// surface (the density changes sign once along y); the same bits through a memo (the crystalline
+// cells also along rows that cross them at every spacing and in every direction) and from one
 // Noises to its twin; continuous across the seams of the world.
 #include "mountain_walls.hpp"
 
@@ -11,7 +12,9 @@
 #include "test_assert.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 namespace {
@@ -183,6 +186,34 @@ void testDeterminismAndSeams() {
     TEST_CHECK(seam < 0.05); // 0.2 mm apart, faces of slope 100 at most
 }
 
+// The crystalline rock through one memo along rows of points 1 to 700 m apart, along x, z and
+// the diagonals in both directions (the cells of the memo change by one, two or more at a time,
+// each drawn only once it cuts the rock): the bits without a memo, at both scales.
+void testCrystalRows() {
+    const walls::Noises n = walls::makeNoises(kSeed, WorldSize{});
+    walls::Memo memo;
+    bool same = true;
+    std::size_t rows = 0;
+    for (const bit_exact::Point& p : bit_exact::randomPoints(60, 1e7)) {
+        const double step = std::array<double, 5>{1.0, 64.0, 130.0, 256.0, 700.0}[rows % 5];
+        const double dirX = std::array<double, 4>{1.0, 0.0, -1.0, 0.7}[rows % 4];
+        const double dirZ = std::array<double, 4>{0.0, -1.0, 0.7, 0.7}[rows % 4];
+        ++rows;
+        for (int k = 0; k < 40; ++k) {
+            const double x = p.x + dirX * step * k;
+            const double z = p.z + dirZ * step * k;
+            const double ground = 2'000.0 + 0.3 * step * k;
+            for (const int scale : {0, 1}) {
+                same = same && walls::crystalTop(n, x, z, ground, 0.6, -0.3, scale, 2.0, 0.2, 0.7,
+                                                 &memo) == walls::crystalTop(n, x, z, ground, 0.6,
+                                                                            -0.3, scale, 2.0, 0.2,
+                                                                            0.7, nullptr);
+            }
+        }
+    }
+    TEST_CHECK(same);
+}
+
 } // namespace
 
 int main() {
@@ -190,5 +221,6 @@ int main() {
     testStrataBounds();
     testSurface();
     testDeterminismAndSeams();
+    testCrystalRows();
     return test::result();
 }

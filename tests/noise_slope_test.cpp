@@ -1,6 +1,7 @@
 // FbmOctaves::ridged2DSlope: with a floor of 0, exactly the bits of ridged2D, without a memo and
 // through one along a sequence of points; its head exactly the bits of a ridged noise of the
-// head octaves alone; the gradient of a head of one octave that of the noise (finite
+// head octaves alone, and its headFbm those of fbm2D of that noise (a noise of one octave: the
+// zero lines of the valleys and their side); the gradient of a head of one octave that of the noise (finite
 // differences), and that of two octaves close to it at most points; a floor of the weights that
 // only raises the noise; the crease small where the head is near its crests.
 #include "terrain/generation/noise_octaves.hpp"
@@ -46,13 +47,34 @@ void testBits() {
                 memoized =
                     memoized && same(m.value, full.ridged2D(p.x + 3.0, p.z, sharpness)) &&
                     same(m.head, full.ridged2DSlope(p.x + 3.0, p.z, sharpness, 0.0, 2).head);
-                heads = heads && same(r.head, head.ridged2D(p.x, p.z, sharpness));
+                heads = heads && same(r.head, head.ridged2D(p.x, p.z, sharpness)) &&
+                        same(r.headFbm, head.fbm2D(p.x, p.z)) &&
+                        same(m.headFbm, head.fbm2D(p.x + 3.0, p.z));
             }
         }
         TEST_CHECK(value);
         TEST_CHECK(memoized);
         TEST_CHECK(heads);
     }
+}
+
+// A noise of one octave with a head of one: headFbm is fbm2D, with and without a memo, along rows.
+void testHeadFbmOneOctave() {
+    const WorldSize world{};
+    const noise::FbmOctaves line(kSeed, {.octaves = 1, .frequency = 1.0 / 50'000.0,
+                                         .lattices = noise::OctaveLattices::RotatedFast},
+                                 world);
+    noise::FbmOctaves::Memo memo;
+    bool equal = true;
+    for (const Point& p : bit_exact::randomPoints(2'000, 3e7)) {
+        for (int k = 0; k < 4; ++k) {
+            const double x = p.x + 2'500.0 * k;
+            equal = equal && same(line.ridged2DSlope(x, p.z, 1.0, 0.0, 1, memo).headFbm,
+                                  line.fbm2D(x, p.z)) &&
+                    same(line.ridged2DSlope(x, p.z, 1.0, 0.0, 1).headFbm, line.fbm2D(x, p.z));
+        }
+    }
+    TEST_CHECK(equal);
 }
 
 // The gradient of a head of one octave is that of the noise; with two, the weight of the second
@@ -110,6 +132,7 @@ void testFloorAndCrease() {
 } // namespace
 
 int main() {
+    testHeadFbmOneOctave();
     testBits();
     testGradient();
     testFloorAndCrease();

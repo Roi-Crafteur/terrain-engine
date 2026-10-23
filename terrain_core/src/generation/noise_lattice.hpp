@@ -4,6 +4,7 @@
 // noise_octaves.cpp (FbmOctaves) share this single definition, so that they always give the
 // same bits.
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 
@@ -16,16 +17,8 @@
 
 namespace terrain::noise::detail {
 
-inline constexpr std::uint64_t kGolden = 0x9E3779B97F4A7C15ULL;
 inline constexpr std::uint64_t kCellZPrime = 0xC2B2AE3D27D4EB4FULL;
 inline constexpr std::uint64_t kCellYPrime = 0xD6E8FEB86659FD93ULL;
-
-// splitmix64 finalizer: every input bit affects every output bit.
-constexpr std::uint64_t mix64(std::uint64_t z) {
-    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-    return z ^ (z >> 31);
-}
 
 // Offsets along y of the octaves of the 3D noises, in cells.
 inline constexpr std::array<double, kRotationCount> kOffsetsY = {0.0,   0.5,   0.25,  0.75,
@@ -121,9 +114,9 @@ struct CellPosition {
 };
 
 inline CellPosition positionOf(LatticePoint p) {
-    const double u0 = std::floor(p.u);
-    const double v0 = std::floor(p.v);
-    return {static_cast<std::int64_t>(u0), static_cast<std::int64_t>(v0), p.u - u0, p.v - v0};
+    const dmath::FloorIndex u0 = dmath::floorIndex(p.u);
+    const dmath::FloorIndex v0 = dmath::floorIndex(p.v);
+    return {u0.index, v0.index, p.u - u0.value, p.v - v0.value};
 }
 
 // Invariants of the 4 corners of the cell (iu, iv): (iu, iv) then (iu + 1, iv), (iu, iv + 1)
