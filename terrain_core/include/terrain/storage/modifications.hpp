@@ -2,6 +2,7 @@
 
 #include "terrain/chunk_coord.hpp"
 #include "terrain/generation/vegetation.hpp"
+#include "terrain/storage/block_section.hpp"
 #include "terrain/storage/storage_error.hpp"
 
 #include <compare>
@@ -12,6 +13,7 @@
 #include <optional>
 #include <set>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace terrain {
@@ -29,11 +31,6 @@ struct BlockCoord {
 };
 
 inline constexpr int kBlockReach = 1;
-
-enum class BlockEdit : std::uint8_t {
-    Added,   // density = min(density, cube): the cube becomes rock
-    Removed, // density = max(density, -cube): the cube becomes air
-};
 
 // The chunk storing the edit of a block: the chunk of its center.
 [[nodiscard]] ChunkCoord blockChunk(BlockCoord block);
@@ -60,15 +57,27 @@ struct PlantSpot {
     friend auto operator<=>(const PlantSpot&, const PlantSpot&) = default;
 };
 
+// Index of a block in its section (block_section.hpp).
+[[nodiscard]] int blockIndex(BlockCoord block);
+
 // Modifications of one chunk.
 struct ChunkModifications {
-    std::map<BlockCoord, BlockEdit> blocks; // blocks centered in the chunk
-    std::set<PlantSpot> removedPlants;      // generated plants standing in the chunk
-    std::vector<Plant> addedPlants;         // plants standing in the chunk, in order of addition
+    // Blocks centered in the chunk, by section (sectionOf of their y): no empty section.
+    std::map<std::int32_t, BlockSection> sections;
+    std::set<PlantSpot> removedPlants; // generated plants standing in the chunk
+    std::vector<Plant> addedPlants;    // plants standing in the chunk, in order of addition
 
     [[nodiscard]] bool empty() const;
+    [[nodiscard]] std::size_t blockCount() const;
+    // The edited blocks, sorted.
+    [[nodiscard]] std::vector<std::pair<BlockCoord, BlockEdit>> blocks(ChunkCoord coord) const;
     friend bool operator==(const ChunkModifications&, const ChunkModifications&) = default;
 };
+
+// Chunks with a lattice point an edited block of the chunk coord reaches (blockChunks of each
+// block, merged), sorted by z, then x.
+[[nodiscard]] std::vector<ChunkCoord> reachedChunks(ChunkCoord coord,
+                                                    const ChunkModifications& chunk);
 
 // Edited blocks of an area, each list sorted.
 struct BlockEdits {
@@ -81,14 +90,20 @@ struct ChunkOrder {
     [[nodiscard]] bool operator()(ChunkCoord a, ChunkCoord b) const;
 };
 
-// Modifications of the world, stored per chunk: blocks added or removed, generated plants
-// removed and plants added. A chunk without modifications holds no entry. Not thread-safe.
+// Modifications of the world, stored per chunk: blocks added or removed (by section), generated
+// plants removed and plants added. A chunk without modifications holds no entry. Not
+// thread-safe.
 class ModificationStore {
 public:
     void setBlock(BlockCoord block, BlockEdit edit);
     // Gives the block back to the generated terrain. False if it was not edited.
     bool clearBlock(BlockCoord block);
     [[nodiscard]] std::optional<BlockEdit> blockAt(BlockCoord block) const;
+
+    // The section sectionY of a chunk, nullptr if none of its blocks is edited.
+    [[nodiscard]] const BlockSection* section(ChunkCoord coord, std::int32_t sectionY) const;
+    // Replaces a section of a chunk: an empty section gives its blocks back to the terrain.
+    void setSection(ChunkCoord coord, std::int32_t sectionY, BlockSection section);
 
     // Edited blocks centered in [minX, maxX] x [minZ, maxZ], meters, bounds included.
     [[nodiscard]] BlockEdits blocksIn(int minX, int maxX, int minZ, int maxZ) const;
@@ -139,8 +154,10 @@ private:
 //   and last u32 FNV-1a of every byte before it.
 // The blocks and the removed plants of a chunk are in increasing order, the added plants in
 // order of addition. The same modifications always give the same bytes. The world format
-// (world_save.hpp) replaces this file; migrateModificationFile converts it.
+// (world_save.hpp) replaces this file; migrateModificationFile converts it. It holds the blocks
+// one by one: at most kMaxModificationFileBlocks of them.
 inline constexpr std::uint32_t kModificationFileVersion = 1;
+inline constexpr std::size_t kMaxModificationFileBlocks = std::size_t{1} << 24;
 
 struct SavedModifications {
     std::uint64_t seed = 0;
@@ -150,6 +167,7 @@ struct SavedModifications {
 // 32-bit FNV-1a.
 [[nodiscard]] std::uint32_t fnv1a(std::span<const std::uint8_t> bytes);
 
+// Throws a StorageError (Invalid) beyond kMaxModificationFileBlocks blocks: save a world.
 [[nodiscard]] std::vector<std::uint8_t> serializeModifications(const ModificationStore& store,
                                                                std::uint64_t seed);
 
@@ -161,7 +179,7 @@ struct SavedModifications {
 
 // Atomic and durable save: writes path + ".tmp" and flushes it to the disk, then renames it over
 // path, so neither a failed save nor a power cut leaves a partial file at path. Throws a
-// StorageError on failure.
+// StorageError on failure, as serializeModifications.
 void saveModifications(const std::filesystem::path& path, const ModificationStore& store,
                        std::uint64_t seed);
 

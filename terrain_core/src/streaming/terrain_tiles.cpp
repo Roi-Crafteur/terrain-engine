@@ -219,10 +219,8 @@ BlockEdits blocksAround(const ModificationStore& store, int minX, int maxX, int 
 void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& chunks) {
     for (const auto& [coord, chunk] : store.byChunk()) {
         chunks.push_back(coord);
-        for (const auto& [block, edit] : chunk.blocks) {
-            const std::vector<ChunkCoord> reached = blockChunks(block);
-            chunks.insert(chunks.end(), reached.begin(), reached.end());
-        }
+        const std::vector<ChunkCoord> reached = reachedChunks(coord, chunk);
+        chunks.insert(chunks.end(), reached.begin(), reached.end());
     }
 }
 

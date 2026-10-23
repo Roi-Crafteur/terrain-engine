@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <optional>
+#include <utility>
+#include <vector>
 
 namespace terrain::storage {
 
@@ -82,15 +84,16 @@ void readAddedPlants(ByteReader& in, ChunkCoord coord, ModificationStore& store)
 } // namespace
 
 std::size_t chunkRecordSize(const ChunkModifications& chunk) {
-    return kMinChunkRecord + chunk.blocks.size() * kBlockRecord +
+    return kMinChunkRecord + chunk.blockCount() * kBlockRecord +
            chunk.removedPlants.size() * kSpotRecord + chunk.addedPlants.size() * kPlantRecord;
 }
 
 void writeChunk(ByteWriter& out, ChunkCoord coord, const ChunkModifications& chunk) {
     out.i32(coord.x);
     out.i32(coord.z);
-    out.count(chunk.blocks.size());
-    for (const auto& [block, edit] : chunk.blocks) {
+    const std::vector<std::pair<BlockCoord, BlockEdit>> blocks = chunk.blocks(coord);
+    out.count(blocks.size());
+    for (const auto& [block, edit] : blocks) {
         out.i32(block.x);
         out.i32(block.y);
         out.i32(block.z);

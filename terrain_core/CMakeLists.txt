@@ -119,6 +119,7 @@ add_library(terrain_core STATIC
     src/io/relief_view.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
+    src/storage/block_section.cpp
     src/storage/durable_file.cpp
     src/storage/file_commit.cpp
     src/storage/modifications.cpp

@@ -78,8 +78,67 @@ float editDensity(float density, BlockCoord block, BlockEdit edit, int x, int y,
     return edit == BlockEdit::Added ? std::min(density, cube) : std::max(density, -cube);
 }
 
+int blockIndex(BlockCoord block) {
+    return sectionIndex(localOf(block.x), localOf(block.y), localOf(block.z));
+}
+
 bool ChunkModifications::empty() const {
-    return blocks.empty() && removedPlants.empty() && addedPlants.empty();
+    return sections.empty() && removedPlants.empty() && addedPlants.empty();
+}
+
+std::size_t ChunkModifications::blockCount() const {
+    std::size_t count = 0;
+    for (const auto& [y, section] : sections) {
+        count += static_cast<std::size_t>(section.count());
+    }
+    return count;
+}
+
+std::vector<std::pair<BlockCoord, BlockEdit>> ChunkModifications::blocks(ChunkCoord coord) const {
+    std::vector<std::pair<BlockCoord, BlockEdit>> list;
+    list.reserve(blockCount());
+    for (const auto& [y, section] : sections) {
+        section.forEach([&list, &coord, sy = y](int index, BlockEdit edit) {
+            const BlockCoord block{coord.x * kSectionSide + index % kSectionSide,
+                                   sy * kSectionSide + index / (kSectionSide * kSectionSide),
+                                   coord.z * kSectionSide + (index / kSectionSide) % kSectionSide};
+            list.emplace_back(block, edit);
+        });
+    }
+    std::sort(list.begin(), list.end());
+    return list;
+}
+
+std::vector<ChunkCoord> reachedChunks(ChunkCoord coord, const ChunkModifications& chunk) {
+    SectionColumns columns{};
+    for (const auto& [y, section] : chunk.sections) {
+        section.addColumns(columns);
+    }
+    // As blockChunks: a block reaches the chunk before it from the local coordinates 0 and 1,
+    // the chunk after it from 15.
+    std::array<std::array<bool, 3>, 3> reached{};
+    for (int z = 0; z < kSectionSide; ++z) {
+        for (int x = 0; x < kSectionSide; ++x) {
+            if ((columns[static_cast<std::size_t>(z)] >> x & 1U) == 0) {
+                continue;
+            }
+            for (int dz = z < 2 ? -1 : 0; dz <= (z == kSectionSide - 1 ? 1 : 0); ++dz) {
+                for (int dx = x < 2 ? -1 : 0; dx <= (x == kSectionSide - 1 ? 1 : 0); ++dx) {
+                    reached[static_cast<std::size_t>(dz + 1)][static_cast<std::size_t>(dx + 1)] =
+                        true;
+                }
+            }
+        }
+    }
+    std::vector<ChunkCoord> chunks;
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            if (reached[static_cast<std::size_t>(dz + 1)][static_cast<std::size_t>(dx + 1)]) {
+                chunks.push_back({coord.x + dx, coord.z + dz});
+            }
+        }
+    }
+    return chunks;
 }
 
 bool ChunkOrder::operator()(ChunkCoord a, ChunkCoord b) const {
@@ -98,26 +157,52 @@ void ModificationStore::pruneIfEmpty(ChunkCoord coord) {
 }
 
 void ModificationStore::setBlock(BlockCoord block, BlockEdit edit) {
-    this->edit(blockChunk(block)).blocks[block] = edit;
+    this->edit(blockChunk(block)).sections[sectionOf(block.y)].set(blockIndex(block), edit);
 }
 
 bool ModificationStore::clearBlock(BlockCoord block) {
     const ChunkCoord coord = blockChunk(block);
     const auto it = chunks_.find(coord);
-    if (it == chunks_.end() || it->second.blocks.erase(block) == 0) {
+    if (it == chunks_.end()) {
         return false;
+    }
+    const auto section = it->second.sections.find(sectionOf(block.y));
+    if (section == it->second.sections.end() || !section->second.at(blockIndex(block))) {
+        return false;
+    }
+    section->second.set(blockIndex(block), std::nullopt);
+    if (section->second.empty()) {
+        it->second.sections.erase(section);
     }
     pruneIfEmpty(coord);
     return true;
 }
 
 std::optional<BlockEdit> ModificationStore::blockAt(BlockCoord block) const {
-    const ChunkModifications* modifications = chunk(blockChunk(block));
+    const BlockSection* found = section(blockChunk(block), sectionOf(block.y));
+    return found == nullptr ? std::nullopt : found->at(blockIndex(block));
+}
+
+const BlockSection* ModificationStore::section(ChunkCoord coord, std::int32_t sectionY) const {
+    const ChunkModifications* modifications = chunk(coord);
     if (modifications == nullptr) {
-        return std::nullopt;
+        return nullptr;
     }
-    const auto it = modifications->blocks.find(block);
-    return it == modifications->blocks.end() ? std::nullopt : std::optional(it->second);
+    const auto it = modifications->sections.find(sectionY);
+    return it == modifications->sections.end() ? nullptr : &it->second;
+}
+
+void ModificationStore::setSection(ChunkCoord coord, std::int32_t sectionY,
+                                   BlockSection section) {
+    if (!section.empty()) {
+        edit(coord).sections[sectionY] = std::move(section);
+        return;
+    }
+    const auto it = chunks_.find(coord);
+    if (it != chunks_.end()) {
+        it->second.sections.erase(sectionY);
+        pruneIfEmpty(coord);
+    }
 }
 
 BlockEdits ModificationStore::blocksIn(int minX, int maxX, int minZ, int maxZ) const {
@@ -130,7 +215,7 @@ BlockEdits ModificationStore::blocksIn(int minX, int maxX, int minZ, int maxZ) c
             if (modifications == nullptr) {
                 continue;
             }
-            for (const auto& [block, edit] : modifications->blocks) {
+            for (const auto& [block, edit] : modifications->blocks({cx, cz})) {
                 if (block.x >= minX && block.x <= maxX && block.z >= minZ && block.z <= maxZ) {
                     (edit == BlockEdit::Added ? edits.added : edits.removed).push_back(block);
                 }
@@ -208,7 +293,7 @@ const ChunkModifications* ModificationStore::chunk(ChunkCoord coord) const {
 std::size_t ModificationStore::blockCount() const {
     std::size_t count = 0;
     for (const auto& [coord, chunk] : chunks_) {
-        count += chunk.blocks.size();
+        count += chunk.blockCount();
     }
     return count;
 }
@@ -239,6 +324,10 @@ std::uint32_t fnv1a(std::span<const std::uint8_t> bytes) {
 
 std::vector<std::uint8_t> serializeModifications(const ModificationStore& store,
                                                  std::uint64_t seed) {
+    if (store.blockCount() > kMaxModificationFileBlocks) {
+        throw StorageError(StorageErrorKind::Invalid,
+                           "too many edited blocks for a modification file: save a world");
+    }
     constexpr std::size_t kHeaderAndChecksum = 24;
     std::size_t size = kHeaderAndChecksum;
     for (const auto& [coord, chunk] : store.byChunk()) {
