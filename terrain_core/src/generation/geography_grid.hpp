@@ -57,6 +57,25 @@ struct Spline {
 };
 [[nodiscard]] Spline bspline(double t);
 
+// sum[f] += wx.w[a] wz.w[b] n[f] over the 4 x 4 nodes n = node(a, b) and their first `fields`
+// fields f (rows b, then columns a, then fields f). Each field keeps its own sum, so vectorizing
+// the loop over the fields changes no bit: Clang only vectorizes it over a constant count
+// (Fields), MSVC only over a count it does not know (Fields = 0: `fields`).
+template <std::size_t Fields, class Node, std::size_t Size>
+void sumNodes(const Node& node, const Spline& wx, const Spline& wz, std::size_t fields,
+              std::array<double, Size>& sum) {
+    const std::size_t count = Fields > 0 ? Fields : fields;
+    for (std::size_t b = 0; b < 4; ++b) {
+        for (std::size_t a = 0; a < 4; ++a) {
+            const float* n = node(a, b);
+            const double w = wx.w[a] * wz.w[b];
+            for (std::size_t f = 0; f < count; ++f) {
+                sum[f] += w * n[f];
+            }
+        }
+    }
+}
+
 // Where a coordinate falls in the grid along one axis: the node before it (unwrapped) and the
 // fraction of the span.
 struct Span {

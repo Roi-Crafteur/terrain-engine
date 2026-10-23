@@ -148,22 +148,6 @@ double bandWeight(double d, double amplitude, double band) {
                                    static_cast<float>(band), static_cast<float>(std::abs(d)));
 }
 
-// sum[f] += wx[a] wz[b] n[f] over the 4 x 4 nodes (rows b, columns a, fields f): a constant count
-// of fields, which every compiler unrolls and vectorizes.
-template <std::size_t Fields, class Node>
-void sumNodes(const Node& node, const geography::Spline& wx, const geography::Spline& wz,
-              std::array<double, Geography::kFields>& sum) {
-    for (std::size_t b = 0; b < 4; ++b) {
-        for (std::size_t a = 0; a < 4; ++a) {
-            const float* n = node(a, b);
-            const double w = wx.w[a] * wz.w[b];
-            for (std::size_t f = 0; f < Fields; ++f) {
-                sum[f] += w * n[f];
-            }
-        }
-    }
-}
-
 } // namespace
 
 // Past the coarse stage, the island arcs of the belts at sea (their noise is only computed
@@ -322,14 +306,21 @@ GeographySample Geography::mapAt(double geoX, double z) const {
         columns[k] = i >= 0 && i < columns_ ? i : (i % columns_ + columns_) % columns_;
         rows[k] = j >= 0 && j < rows_ ? j : (j % rows_ + rows_) % rows_;
     }
-    // The fields of the rifts (the last ones) are 0 on every node read but near the rifts.
+    // The fields of the rifts (the last ones) are 0 on every node read but near the rifts. Their
+    // count is a constant for every compiler but MSVC, which only vectorizes the loop without it.
     const auto node = [&](std::size_t a, std::size_t b) { return fieldsOf(columns[a], rows[b]); };
+    const std::size_t fields =
+        rifts_[static_cast<std::size_t>(rows[1] * columns_ + columns[1])] != 0 ? kFields : kRift;
     std::array<double, kFields> sum{};
-    if (rifts_[static_cast<std::size_t>(rows[1] * columns_ + columns[1])] != 0) {
-        sumNodes<kFields>(node, wx, wz, sum);
+#if defined(_MSC_VER) && !defined(__clang__)
+    geography::sumNodes<0>(node, wx, wz, fields, sum);
+#else
+    if (fields == kFields) {
+        geography::sumNodes<kFields>(node, wx, wz, fields, sum);
     } else {
-        sumNodes<kRift>(node, wx, wz, sum);
+        geography::sumNodes<kRift>(node, wx, wz, fields, sum);
     }
+#endif
     GeographySample s;
     s.mapCoast = static_cast<float>(sum[kCoast]);
     s.coast = sum[kCoast];
