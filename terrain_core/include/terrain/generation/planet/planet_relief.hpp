@@ -38,6 +38,10 @@ struct CellRelief {
 [[nodiscard]] CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid,
                                      int samplesPerAxis, int threads, int floorSamples = 1);
 
+// The floor index of a cell as sampleCells gives it (kCenterFloor with one sample).
+[[nodiscard]] std::uint8_t floorOf(const Heightfield& field, const PlanetGrid& grid,
+                                   std::size_t cell, int floorSamples);
+
 // The point of floor index floor of cell (i, j) with floorSamples^2 points (the center for
 // kCenterFloor), meters, in the canonical range of the cell.
 [[nodiscard]] std::array<double, 2> floorPoint(const PlanetGrid& grid, std::size_t cell,

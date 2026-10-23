@@ -106,6 +106,9 @@ std::vector<Depression> Heightfield::depressions() const {
 void Heightfield::finishWater(double x, double z, HeightSample& s) const {
     if (!geography_) {
         setSea(s, s.height < kSeaLevel);
+        if (hydrology_) {
+            applyHydrology(x, z, s);
+        }
         return;
     }
     if (water_->depressions && s.relief < kDepressionHigh && s.continentalness > 0.0f &&
@@ -129,6 +132,9 @@ void Heightfield::finishWater(double x, double z, HeightSample& s) const {
         }
     }
     setSea(s, s.continentalness < 0.0f);
+    if (hydrology_) {
+        applyHydrology(x, z, s);
+    }
 }
 
 } // namespace terrain

@@ -127,9 +127,15 @@ PlanetLevel::PlanetLevel(std::uint64_t seed, const HeightfieldParams& heightfiel
 PlanetLevel::PlanetLevel(PlanetBuild&& build, const PlanetParams& params)
     : params_(params), cells_(planet::compactCells(build)), lakes_(std::move(build.lakes)),
       rivers_(std::move(build.rivers)), features_(std::move(build.features)), budget_(build.budget),
-      timings_(build.timings), breach_(build.breach) {
+      timings_(build.timings), breach_(build.breach), passes_(build.passes) {
     build = PlanetBuild{}; // the full-precision cells are not kept
 }
+
+PlanetLevel::PlanetLevel(Parts&& parts)
+    : params_(parts.params), cells_(std::move(parts.cells)), lakes_(std::move(parts.lakes)),
+      rivers_(std::move(parts.rivers)), features_(std::move(parts.features)),
+      budget_(parts.budget), timings_(parts.timings), breach_(parts.breach),
+      passes_(parts.passes) {}
 
 float PlanetLevel::temperature(std::size_t cell) const {
     return planet::cellTemperature(

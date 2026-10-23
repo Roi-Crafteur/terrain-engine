@@ -24,13 +24,19 @@ void testSurfaceCodes() {
             roundTrip = roundTrip && terrain::unreal::unpackSurface(code) == SurfaceCode{material, biome};
             // The integer the materials decode: material + 8 biome, never negative.
             exact = exact && code == static_cast<float>(m + terrain::unreal::kSurfaceBiomeStride * b);
+            // Under a lake or a river: the water code on top.
+            const float wet = terrain::unreal::packSurface(material, biome, true);
+            roundTrip = roundTrip &&
+                        terrain::unreal::unpackSurface(wet) == SurfaceCode{material, biome, true};
+            exact = exact && wet == code + static_cast<float>(terrain::unreal::kSurfaceWaterCode);
         }
     }
     TEST_CHECK(roundTrip);
     TEST_CHECK(exact);
     TEST_CHECK(terrain::unreal::packSurface(SurfaceMaterial::Water, Biome::Ocean) == 0.0f);
     // Anything else (the negative ground of the ocean, NaN, too large) is the ocean.
-    for (const float bad : {-3.0f, 96.0f, 1.0e6f, std::numeric_limits<float>::quiet_NaN()}) {
+    for (const float bad : {-3.0f, 96.0f, 224.0f, 256.0f, 1.0e6f,
+                            std::numeric_limits<float>::quiet_NaN()}) {
         TEST_CHECK(terrain::unreal::unpackSurface(bad) == SurfaceCode{});
     }
 }

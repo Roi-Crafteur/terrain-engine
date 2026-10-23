@@ -107,13 +107,13 @@ inline std::vector<Part> planetGoldenParts() {
                                            "planet default hydrology", "planet default level"},
                                           smallBuild(terrain::HeightfieldParams{}, 1, 2),
                                           {0x3F4264CF06FB5493ULL, 0xAB9EB405E174EAA4ULL,
-                                           0x27B5C16AD4EC6D79ULL, 0x6DB7EB144C254102ULL});
+                                           0x27B5C16AD4EC6D79ULL, 0xCDBFA06D845540C8ULL});
     const std::vector<Part> planetary =
         planetParts({"planet planetary relief", "planet planetary climate",
                      "planet planetary hydrology", "planet planetary level"},
                     smallBuild(smallPlanetaryParams(), 1),
-                    {0xF240E66CF7EB32B7ULL, 0x37D0255B8A8B73D2ULL, 0xE3443DB3F1A7B9EAULL,
-                     0x60D3435FCBED6046ULL});
+                    {0x5567F4879C93953CULL, 0xC810421090695B0AULL, 0x3E2EEAEDCF06B9B4ULL,
+                     0x4B75A8B9F9E442BFULL});
     parts.insert(parts.end(), planetary.begin(), planetary.end());
     return parts;
 }

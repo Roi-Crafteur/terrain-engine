@@ -99,6 +99,16 @@ std::vector<float> sampleRelief(const Heightfield& field, const PlanetGrid& grid
     return sampleCells(field, grid, samplesPerAxis, threads).height;
 }
 
+std::uint8_t floorOf(const Heightfield& field, const PlanetGrid& grid, std::size_t cell,
+                     int floorSamples) {
+    if (floorSamples <= 1) {
+        return kCenterFloor;
+    }
+    const HeightSample center =
+        field.sampleAt(grid.centerX(grid.column(cell)), grid.centerZ(grid.row(cell)));
+    return cellFloor(field, grid, cell, floorSamples, center).index;
+}
+
 std::array<double, 2> floorPoint(const PlanetGrid& grid, std::size_t cell, std::uint8_t floor,
                                  int floorSamples) {
     const double x = grid.centerX(grid.column(cell));

@@ -24,7 +24,8 @@ namespace terrain::unreal {
 // A texel is 4 floats: the height shown (meters, the sea flat at the sea level where isSeaCell,
 // never a dry depression below it), the slopes of the ground along x and z (0 on the ocean,
 // whose normal points up), and the surface of the ground, its material and its biome packed by
-// packSurface (terrain_surface.hpp), at least 0.
+// packSurface (terrain_surface.hpp), at least 0, with the water code (kSurfaceWaterCode) under a
+// lake or a river: the ground of a dry depression below the sea level never has it.
 // On the ocean the last float is instead the ground under the sea, meters from the sea level,
 // below 0: the material colors the sea by its depth (texelGround). The materials of the horizon
 // and of the tiles take the layers of the ground from the surface (the temporary terrain

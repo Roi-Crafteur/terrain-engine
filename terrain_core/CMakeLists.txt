@@ -65,6 +65,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield.cpp
     src/generation/heightfield_density.cpp
     src/generation/heightfield_geography.cpp
+    src/generation/heightfield_hydrology.cpp
     src/generation/heightfield_water.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
@@ -82,6 +83,7 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_level.cpp
     src/generation/planet/planet_moisture.cpp
     src/generation/planet/planet_order.cpp
+    src/generation/planet/planet_passes.cpp
     src/generation/planet/planet_parallel.cpp
     src/generation/planet/planet_relief.cpp
     src/generation/planet/planet_rivers.cpp
@@ -99,6 +101,13 @@ add_library(terrain_core STATIC
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
     src/generation/voronoi.cpp
+    src/generation/water/fine_lake.cpp
+    src/generation/water/hydrology.cpp
+    src/generation/water/hydrology_lakes.cpp
+    src/generation/water/hydrology_query.cpp
+    src/generation/water/river_course.cpp
+    src/generation/water/river_path.cpp
+    src/generation/water/river_profile.cpp
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
     src/io/blend_png.cpp
@@ -135,6 +144,7 @@ add_library(terrain_core STATIC
     src/storage/edit_window.cpp
     src/storage/file_commit.cpp
     src/storage/modifications.cpp
+    src/storage/planet_file.cpp
     src/storage/region_file.cpp
     src/storage/section_codec.cpp
     src/storage/storage_codec.cpp
@@ -324,6 +334,20 @@ target_link_libraries(terrain_export_view PRIVATE terrain_core terrain_warnings)
 #                      [--view <name> <x> <z> <heading-degrees>]...
 add_executable(terrain_export_water tools/export_water.cpp)
 target_link_libraries(terrain_export_water PRIVATE terrain_core terrain_warnings)
+
+# Maps and views of the rivers and lakes of a world (phase 11B), its planet level read from (or
+# built and written to) --planet:
+# terrain_export_rivers <output-dir> [--planet <file>] [--seed <seed>] [--world <x> <z>]
+#                       [--threads <n>] [--width <pixels>] [--pixels <map-pixels>]
+#                       [--map <name> <x> <z>]... [--view <name> <x> <z> <heading> <above>]...
+add_executable(terrain_export_rivers tools/export_rivers.cpp tools/rivers_places.cpp
+                                     tools/rivers_report.cpp)
+target_link_libraries(terrain_export_rivers PRIVATE terrain_core terrain_warnings)
+
+# The planet level of a world written to its file, as the game reads it (phase 11B):
+# terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>]
+add_executable(terrain_make_planet tools/make_planet.cpp)
+target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
 # <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests

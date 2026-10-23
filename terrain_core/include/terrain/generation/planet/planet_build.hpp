@@ -25,10 +25,11 @@ struct PlanetTimings {
     double rivers = 0.0;
     double features = 0.0;
     double breach = 0.0;
+    double passes = 0.0; // the crossings of the links (the stages after them add their times)
 
     [[nodiscard]] double total() const {
         return relief + ocean + breach + climate + order + hierarchy + lakes + flow + rivers +
-               features;
+               features + passes;
     }
 };
 
@@ -51,6 +52,7 @@ struct PlanetBuild {
     std::vector<std::uint8_t> floor;
     std::vector<std::uint8_t> mountain;
     PlanetBreach breach;
+    PlanetPasses passes;
     planet::PlanetClimate climate;        // precipitation, row temperatures
     std::vector<std::uint8_t> receiver;   // direction, kNoNeighbor
     std::vector<std::int32_t> lakeOfCell; // lake covering each cell, or -1

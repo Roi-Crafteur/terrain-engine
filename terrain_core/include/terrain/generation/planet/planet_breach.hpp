@@ -16,13 +16,14 @@ struct PlanetBreachParams {
     // A depression is breached when its depth (its fill level above its lowest cell) is at most
     // depthLow where its outlet drains areaLow or less, up to depthHigh where it drains areaHigh
     // or more (in between, on the logarithm of the area): the larger the river, the deeper it
-    // cuts. Under the mountains (its outlet or a cell of it), at most mountainDepth: the bed only
-    // (a deeper sill holds a lake, to its spill level).
+    // cuts. Under the mountains (its outlet or a cell of it), up to mountainDepth: the rivers carve
+    // their valleys through the closed valleys of the mountains (phase 11B), a deeper sill holds
+    // a lake of a high basin, to its spill level.
     double depthLow = 15.0;
     double depthHigh = 60.0;
     double areaLow = 1.0e9;  // 1,000 km^2
     double areaHigh = 1.0e11; // 100,000 km^2
-    double mountainDepth = 30.0;
+    double mountainDepth = 300.0;
 };
 
 // What breachDepressions did.

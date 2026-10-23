@@ -11,14 +11,14 @@ Custom nodes cannot declare functions: the helpers live in a struct (FTemporaryT
 STRUCT_HLSL = r"""
 struct FTemporaryTerrain
 {
-    // The layers of a texel: its packed surface (material + 8 biome, Bridge/terrain_surface.hpp)
-    // or, on the ocean, a negative ground.
+    // The layers of a texel: its packed surface (material + 8 biome, plus 128 under a lake or a
+    // river, Bridge/terrain_surface.hpp) or, on the ocean, a negative ground.
     void Layers(float code, out float4 a, out float4 b, out float2 c)
     {
         const float4 BA[12] = { BIOME_A };
         const float4 BB[12] = { BIOME_B };
         const float2 BC[12] = { BIOME_C };
-        int v = code < 0.0 ? 0 : (int)(code + 0.5);
+        int v = code < 0.0 ? 0 : (int)(code + 0.5) % 128;
         int m = v % 8;
         int biome = min(v / 8, 11);
         a = BA[biome]; b = BB[biome]; c = BC[biome];

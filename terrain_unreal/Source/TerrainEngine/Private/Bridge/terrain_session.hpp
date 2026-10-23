@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace terrain::unreal {
 
@@ -20,6 +21,11 @@ struct SessionParams {
     bool caveRegions = false; // with caves only: their regions (CaveDistrictParams{})
     WorldSize world;          // the wrapped world, of the tiles and of the streaming
     StreamParams stream;      // its world is replaced by world
+    // The water of the world (phase 11B): the planet level of the seed in this file (written by
+    // terrain_make_planet, storage/planet_file.hpp), built and written there when it does not
+    // hold it; its hydrology carves the rivers and fills the lakes of the tiles and the horizon.
+    // Empty: the relief alone, without rivers or lakes. UTF-8.
+    std::string planetFile;
 };
 
 // The streamed world of an Unreal level: its tiles, the timings of their generations and

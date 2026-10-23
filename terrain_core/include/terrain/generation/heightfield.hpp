@@ -122,6 +122,8 @@ struct Depression {
 // equator has one (Geography::anchorX). Without it, like every fbm layer, the macro
 // continentalness is exactly 0 at the origin, so without the plates the origin always lies on a
 // macro coast: the local layer alone decides whether it is land or sea.
+class Hydrology; // the water of the world (water/hydrology.hpp)
+
 class Heightfield {
 public:
     // Throws std::invalid_argument for an invalid world (validate).
@@ -153,6 +155,13 @@ public:
     // with GeographyParams::depressions off).
     [[nodiscard]] std::vector<Depression> depressions() const;
 
+    // The Heightfield of the world (phase 11B): this relief with the water of hydrology, built
+    // over it: the valleys of its rivers carved, the water of its rivers and lakes. The same bits
+    // as this relief wherever no valley lies.
+    [[nodiscard]] Heightfield withHydrology(std::shared_ptr<const Hydrology> hydrology) const;
+    // The water of the world, or nullptr for the relief alone.
+    [[nodiscard]] const Hydrology* hydrology() const { return hydrology_.get(); }
+
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
     struct Memos;  // the memos of the noises during a batch call (heightfield.cpp)
@@ -162,6 +171,8 @@ private:
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
     // The depressions below the sea and the water of a sample at a canonical point, last.
     void finishWater(double x, double z, HeightSample& s) const;
+    // The valleys, rivers and lakes of the hydrology at a canonical point (heightfield_hydrology).
+    void applyHydrology(double x, double z, HeightSample& s) const;
 
     // sampleAt, through the memos during a batch call (null otherwise).
     [[nodiscard]] HeightSample sampleWith(double x, double z, Memos* memos) const;
@@ -222,6 +233,7 @@ private:
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
+    std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
 };
 
 } // namespace terrain

@@ -236,10 +236,18 @@ Image renderRelief(const ReliefGrid& grid) {
         for (int i = 0; i < grid.columns; ++i) {
             const float height = grid.at(i, j);
             const bool sea = grid.sea(i, j);
-            const std::array<float, 3> color = reliefColor(height, sea);
+            std::array<float, 3> color = reliefColor(height, sea);
+            // The water of the land (phase 11B): rivers and lakes, salt lakes.
+            const WaterKind water = grid.water.empty() ? WaterKind::None : grid.water[grid.index(i, j)];
+            const bool inland = water == WaterKind::River || water == WaterKind::Lake ||
+                                water == WaterKind::SaltLake;
+            if (inland) {
+                color = water == WaterKind::SaltLake ? std::array<float, 3>{170.0f, 205.0f, 210.0f}
+                                                     : std::array<float, 3>{45.0f, 105.0f, 190.0f};
+            }
             // The sea floor is shaded lightly: shelves, ridges and trenches still show.
             const float light = shading(grid, i, j, exaggeration);
-            const float factor = sea ? 0.75f + 0.25f * light : light;
+            const float factor = sea || inland ? 0.75f + 0.25f * light : light;
             image.pixels.insert(image.pixels.end(), {toByte(color[0] * factor),
                                                      toByte(color[1] * factor),
                                                      toByte(color[2] * factor)});
