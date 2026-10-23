@@ -72,6 +72,7 @@ terrain_add_test(modifications_test terrain_core)
 terrain_add_test(terrain_tiles_test terrain_core)
 terrain_add_test(horizon_levels_test terrain_core)
 terrain_add_test(horizon_sampler_test terrain_core)
+terrain_add_test(horizon_normals_test terrain_core)
 terrain_add_test(horizon_seams_test terrain_core)
 terrain_add_test(horizon_grids_test terrain_core)
 terrain_add_test(horizon_streamer_test terrain_core)
@@ -191,6 +192,8 @@ add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/horizon_gpu_streamer.cpp
     ${unreal_bridge}/horizon_layout.cpp
     ${unreal_bridge}/horizon_mesh.cpp
+    ${unreal_bridge}/horizon_normal_stream.cpp
+    ${unreal_bridge}/horizon_normal_texels.cpp
     ${unreal_bridge}/horizon_morph.cpp
     ${unreal_bridge}/horizon_streamer.cpp
     ${unreal_bridge}/horizon_textures.cpp
@@ -218,6 +221,7 @@ terrain_add_test(unreal_horizon_streamer_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_epochs_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_textures_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_gpu_streamer_test terrain_unreal_bridge)
+terrain_add_test(unreal_horizon_normals_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_atmosphere_test terrain_unreal_bridge)
 terrain_add_test(unreal_terrain_surface_test terrain_unreal_bridge)
 

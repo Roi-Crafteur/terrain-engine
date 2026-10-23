@@ -215,6 +215,26 @@ public:
 		meta = (EditCondition = "bHorizon"))
 	bool bHorizonShadows = false;
 
+	// Detail normals of the GPU horizon (Bridge/horizon_normal_stream.hpp): the slopes of the
+	// ground HorizonNormalRatio times finer than the grid of each level (2 m on level 0, 16 m on
+	// level 3 at 4), which light the levels and the far tiles: crests, walls and gullies stay
+	// visible kilometers away. Computed after the samples, by HorizonNormalJobs low priority
+	// tasks; the grid normals show until then. Off: the normals of the grids, as before.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	bool bHorizonDetailNormals = true;
+
+	// Detail texels per sample along each axis: 2, 4 or 8 (the cost grows with its square).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon && bHorizonDetailNormals", ClampMin = "2",
+			ClampMax = "8"))
+	int32 HorizonNormalRatio = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon && bHorizonDetailNormals", ClampMin = "1",
+			ClampMax = "8"))
+	int32 HorizonNormalJobs = 2;
+
 	// The sky follows the camera over the curved planet (terrain_unreal/README.md, section 12):
 	// the SkyAtmosphere of the level takes the radius of the planet, its top at the sea level
 	// right under the camera, the ExponentialHeightFog stays under the camera at its height above

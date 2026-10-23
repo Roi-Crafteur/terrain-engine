@@ -2,6 +2,7 @@
 // around any observer. Printed only, never asserted: the time of a full computation of every
 // level on one thread and on every hardware thread, of the updates of a walk, the memory, and
 // the same with the slopes of the materials at the pitch of each level and with K = 512.
+#include "terrain/streaming/horizon_normals.hpp"
 #include "terrain/streaming/horizon_streamer.hpp"
 
 #include "horizon_test_support.hpp"
@@ -13,6 +14,7 @@
 #include <optional>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -88,6 +90,60 @@ void measureWorkers(const World& world, const terrain::HorizonParams& params, co
                 full.seconds(), static_cast<double>(streamer.clipmap().memoryBytes()) / 1e6);
 }
 
+// The detail slopes of every window around (x, z), in pieces of 16 rows of samples on `threads`
+// threads; the levels whose index is at least `fromLevel` only.
+double detailSeconds(const terrain::HorizonNormalSampler& sampler, double x, double z, int threads,
+                     int fromLevel) {
+    const terrain::HorizonParams& params = sampler.params();
+    std::vector<terrain::HorizonRect> pieces;
+    std::vector<int> levelOf;
+    for (int level = fromLevel; level < params.levels; ++level) {
+        const terrain::HorizonRect window = terrain::windowAround(
+            terrain::canonicalCenter(params, level, x, z), params.cellsPerSide);
+        for (std::int64_t k = window.z0; k < window.z1; k += 16) {
+            pieces.push_back({window.x0, k, window.x1, std::min<std::int64_t>(k + 16, window.z1)});
+            levelOf.push_back(level);
+        }
+    }
+    const Stopwatch watch;
+    std::vector<std::thread> workers;
+    for (int t = 0; t < threads; ++t) {
+        workers.emplace_back([&, t] {
+            std::vector<terrain::DetailSlope> out;
+            for (std::size_t n = static_cast<std::size_t>(t); n < pieces.size();
+                 n += static_cast<std::size_t>(threads)) {
+                out.resize(static_cast<std::size_t>(sampler.texelCount(pieces[n])));
+                sampler.fill(levelOf[n], pieces[n], out);
+            }
+        });
+    }
+    for (std::thread& worker : workers) {
+        worker.join();
+    }
+    return watch.seconds();
+}
+
+void measureDetail(const World& world) {
+    constexpr double kK2X = 416'857.0;
+    constexpr double kK2Z = -11'398'966.0;
+    const terrain::HorizonParams params;
+    for (const int ratio : {2, 4, 8}) {
+        const terrain::HorizonNormalSampler sampler(world.field, params, ratio);
+        const double texels = static_cast<double>(params.levels) *
+                              terrain::samplesPerSide(params) * terrain::samplesPerSide(params) *
+                              ratio * ratio;
+        const double one = detailSeconds(sampler, kK2X, kK2Z, 1, 0);
+        std::printf("detail slopes, ratio %d, every level around the K2: %.2f s on 1 thread "
+                    "(%.2f us per texel), %.2f s on 2, %.2f s on %d; %.1f MB as half floats\n",
+                    ratio, one, 1e6 * one / texels, detailSeconds(sampler, kK2X, kK2Z, 2, 0),
+                    detailSeconds(sampler, kK2X, kK2Z, hardwareThreads(), 0), hardwareThreads(),
+                    texels * 4.0 / 1e6);
+    }
+    const terrain::HorizonNormalSampler sampler(world.field, params, 4);
+    std::printf("detail slopes, ratio 4, levels 5 and up only, 2 threads: %.2f s\n",
+                detailSeconds(sampler, kK2X, kK2Z, 2, 5));
+}
+
 } // namespace
 
 int main() {
@@ -102,5 +158,6 @@ int main() {
     terrain::HorizonParams wide;
     wide.cellsPerSide = 512;
     measureWorkers(world, wide, "K = 512");
+    measureDetail(world);
     return test::result();
 }

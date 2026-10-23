@@ -57,9 +57,23 @@
   et chaleur (`Warmth` 1,03 ; 1 ; 0,95) pour le sol seulement : la roche reste grise, la neige
   blanche.
 - **Les normales des tuiles grossières** : au-delà des tuiles LOD 0, la normale penche vers la
-  normale lisse des échantillons du niveau 0 (leurs pentes bilinéaires, celles de l'horizon), de
-  `SmoothNearM` (60 m) à `SmoothFarM` (220 m), jusqu'à `SmoothNormal` (0,8) ; pas sur les
-  falaises, surplombs et grottes, où les deux normales ne s'accordent pas.
+  normale de détail du niveau 0 (2 m, ci-dessous) ou, tant qu'elle n'est pas prête, vers la
+  normale lisse de ses échantillons (8 m), de `SmoothNearM` (60 m) à `SmoothFarM` (220 m),
+  jusqu'à `SmoothNormal` (0,8) ; pas sur les falaises, surplombs et grottes, où les deux normales
+  ne s'accordent pas.
+- **Les normales de détail de l'horizon** (`horizon_detail_normals.py`) : le core calcule, pour
+  chaque niveau, les pentes du sol `HorizonNormalRatio` (4) fois plus fines que sa grille (2 m sur
+  le niveau 0, 16 m sur le niveau 3 à 4-8 km, 32 m sur le niveau 4 à 8-16 km :
+  `HorizonNormalSampler`, filtre de Sobel sur les hauteurs à un pas, au bit près). Une seconde
+  texture par niveau (demi-flottants, 4 Mo) les porte ; le matériau de l'horizon les lit par pixel
+  (et celles du niveau plus grossier dans la bande de géomorphing) : crêtes, faces, ravines et
+  murs restent lisibles à 2-16 km, sous un soleil rasant comme à midi. Elles arrivent après les
+  échantillons (`HorizonNormalJobs` tâches de basse priorité, environ 10 s pour un horizon neuf,
+  quelques millisecondes par pas de marche) ; en attendant, la normale de la grille. Le détail
+  s'efface là où un pixel couvre plus d'un texel (pas de scintillement au loin ni en vue
+  rasante). `DetailNormals` 0 sur les instances (ou `bHorizonDetailNormals` faux) rend les
+  normales d'avant, pour comparer. Les pentes de détail suivent le relief du core, pas les
+  modifications des joueurs (leur résumé ne change que les hauteurs).
 - **Sans l'horizon GPU** (`HasSurface` 0) : les couches suivent la seule altitude.
 
 ## Le pack Stylescape HD (licence Fab : jamais dans le dépôt git)
@@ -116,6 +130,16 @@ n'échantillonne que ce qui se voit (pas de sol sous la roche ou la neige pleine
 pour la roche, une seule carte de normales pour le sol, la seconde roche seulement dans ses
 plaques). L'horizon ne lit que la couleur moyenne de chaque texture.
 
+**Normales de détail** (relief 11R bis étape 5 bis, mêmes conditions, PIE 2027 × 1724 à 103 %,
+`DetailNormals` 0 puis 1 dans la même session, A B A B) : +0,01 à +0,02 ms sur les six vues (K2,
+mur, pied de la chaîne, à 1,7 m et 300 m, base 4,4 à 4,6 ms). CPU (`horizon_cost_test`, autour
+du K2) : 15,9 s sur un thread pour tout l'horizon (1,5 µs par texel ; les échantillons seuls :
+1,5 s), 10,6 s sur 2 tâches ; dans le jeu, le détail est complet environ 10 s après la première
+apparition de l'horizon, qu'il ne retarde pas ; envoi au GPU 0,01 ms par tick. Mémoire : 42 Mo
+de textures sur le GPU, rien de gardé sur le CPU. Au ratio 8 : 4 fois tout cela (169 Mo, environ
+35 s), pour un gain visible mais modeste. Les ombres portées de l'horizon (`bHorizonShadows`)
+coûtent +0,45 ms à la vue du K2.
+
 ## Trois défauts de rendu, au passage
 
 - **Fissure sombre sur la plage vue de 300 m** : l'horizon est posé `HorizonDropCm` (1 m) sous son
@@ -146,5 +170,6 @@ plaques). L'horizon ne lit que la couleur moyenne de chaque texture.
 - Les biomes changent tous les 8 m sur le niveau 0 : des transitions douces mais régulières.
 - La neige vient du biome du core : une neige plus basse ou plus haute demande de régler le
   climat du core, pas le matériau.
-- La normale lissée des tuiles grossières suit le relief à 8 m : le relief plus fin que 8 m
-  s'éclaire moins au-delà de 200 m.
+- La normale des tuiles grossières suit le relief à 2 m (les normales de détail du niveau 0) ;
+  celle de l'horizon à un quart de la maille de chaque niveau. Les silhouettes restent celles des
+  grilles (8 m × 2^niveau) et l'horizon ne projette pas d'ombre (`bHorizonShadows`).

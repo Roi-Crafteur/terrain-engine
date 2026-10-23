@@ -65,6 +65,17 @@ struct TexelRegion {
     std::vector<float> data;
 };
 
+// A run of samples along an axis and the slots it lands in, without wrapping.
+struct SlotSpan {
+    std::int64_t sample = 0; // first sample
+    int slot = 0;            // its slot
+    int length = 0;
+};
+
+// The samples [first, last) of an axis (at most side) as at most 2 runs, split where their slots
+// wrap around.
+[[nodiscard]] std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side);
+
 // The regions of the texels of a rectangle of samples of a level, given as pieceTexels lays
 // them out: at most 4, split where the slots wrap around. Throws std::invalid_argument for data
 // of another size or a rectangle wider than the texture.

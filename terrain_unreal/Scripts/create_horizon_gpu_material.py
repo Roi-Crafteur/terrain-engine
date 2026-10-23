@@ -19,6 +19,8 @@ whose normals fade into roughness with the size of a pixel (no tiling far away, 
 the reflection of the sky (Fresnel, from the sky view LUT of the SkyAtmosphere) and the glint of
 the sun in emissive, without the engine's specular: no Lumen reflection to trace. The sea square under the tiles reads its ground
 from the texels of level 0, bilinear, so that the near and far seas match.
+The land is lit by the detail normals of its level (horizon_detail_normals.py), finer than its
+grid, where they are ready: DetailNormals 0 gives back the normals of the grid.
 ATerrainWorld (UTerrainHorizonClipmap) sets its parameters per level.
 
 The asset belongs to the game project, not to this repository. Run the script once per project,
@@ -35,8 +37,10 @@ import sys
 import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import temporary_terrain_look as look  # noqa: E402  (after the path of this script)
-look = importlib.reload(look)  # the module of this checkout, even if run before
+import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
+import temporary_terrain_look as look  # noqa: E402
+detail = importlib.reload(detail)  # the modules of this checkout, even if run before
+look = importlib.reload(look)
 
 PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TerrainHorizonGpu"
@@ -114,6 +118,7 @@ z -= dot(CameraRel, CameraRel) / (2.0 * PlanetRadiusCm);
 // camera by d / R (the sun shines at another angle far away).
 NormalOut = normalize(float3(-slope + CameraRel / PlanetRadiusCm, 1.0));
 GroundOut = ground;
+MorphOut = alpha;
 return float3(0.0, 0.0, z);
 """
 
@@ -285,7 +290,10 @@ def local_position(material, x, y):
 def parameters(material):
     """The textures and the scalar and vector parameters, shared by both shaders."""
     nodes = {"HorizonTexels": texture_parameter(material, "HorizonTexels", -400),
-             "CoarseTexels": texture_parameter(material, "CoarseTexels", -250)}
+             "CoarseTexels": texture_parameter(material, "CoarseTexels", -250),
+             "HorizonNormals": texture_parameter(material, "HorizonNormals", -1700),
+             "CoarseNormals": texture_parameter(material, "CoarseNormals", -1550)}
+    nodes.update(detail.scalars(material, detail.HORIZON_SCALARS, -1300, -1900))
     scalars = list(SCALARS.items()) + list(SEA_SCALARS.items()) + list(SHADE_SCALARS.items())
     for index, (name, value) in enumerate(scalars):
         scalar = expression(material, unreal.MaterialExpressionScalarParameter, -1300,
@@ -309,7 +317,8 @@ def vertex_shader(material, nodes, kind):
         ["Tex", "Coarse", "Local", "Kind", "Viewer", "CameraRel"] + list(SCALARS),
         [("NormalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
          ("W0Out", float4), ("W1Out", float4), ("W2Out", float4),
-         ("GroundOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1)],
+         ("GroundOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
+         ("MorphOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1)],
         unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     connect(nodes["HorizonTexels"], "", custom, "Tex")
     connect(nodes["CoarseTexels"], "", custom, "Coarse")
@@ -403,9 +412,28 @@ def land_shader(material, vertex, normal):
     return shade, position
 
 
+def detail_normal(material, nodes, vertex):
+    """The normal of the land: the normal of the grid, lit by the detail normals of the level."""
+    node = detail.custom(material, -700, 1500, "HorizonDetailNormal", detail.HORIZON_HLSL,
+                         detail.HORIZON_INPUTS)
+    connect(interpolate(material, vertex, "NormalOut", 0), "", node, "N")
+    connect(interpolate(material, vertex, "MorphOut", 1700), "", node, "Morph")
+    local = local_position(material, -1000, 1500)
+    connect(world_position(material, unreal.WorldPositionIncludedOffsets.WPT_DEFAULT, -1200,
+                           1500), "", local, "")
+    connect(local, "", node, "Local")
+    connect(world_position(material, unreal.WorldPositionIncludedOffsets.WPT_CAMERA_RELATIVE,
+                           -1000, 1600), "", node, "CameraRel")
+    connect(nodes["HorizonNormals"], "", node, "Tex")
+    connect(nodes["CoarseNormals"], "", node, "Coarse")
+    for name in detail.HORIZON_INPUTS[6:]:
+        connect(nodes[name], "", node, name)
+    return node
+
+
 def pixel_shader(material, nodes, vertex, kind):
     editing = unreal.MaterialEditingLibrary
-    normal = interpolate(material, vertex, "NormalOut", 0)
+    normal = detail_normal(material, nodes, vertex)
     ground = interpolate(material, vertex, "GroundOut", 250)
     sea = sea_shader(material, nodes, kind, ground)
     land, position = land_shader(material, vertex, normal)

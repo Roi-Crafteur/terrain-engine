@@ -2,6 +2,7 @@
 
 #include "horizon_epochs.hpp"
 #include "horizon_layout.hpp"
+#include "horizon_normal_stream.hpp"
 #include "horizon_textures.hpp"
 #include "unreal_frame.hpp"
 
@@ -15,6 +16,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -27,6 +29,10 @@ struct HorizonGpuParams {
     bool sea = true;                 // the ocean flat at the sea level, a sea square under the tiles
     double planetRadiusMeters = 0.0; // 0: planetRadiusMeters(world)
     LodParams lod;                   // the tiles: level 0 leaves out the area under them
+    // The detail normals (HorizonNormalStream): detail texels per sample along each axis, 0 for
+    // none (the normals of the grids only, as before them), and the jobs computing them at once.
+    int normalRatio = 4;
+    int normalJobs = 2;
 };
 
 // Where a level of the GPU horizon stands and how its material reads its textures.
@@ -46,7 +52,8 @@ struct LevelPlacement {
 // levels of an epoch move together, so they always nest without gap or overlap.
 struct HorizonGpuUpdate {
     std::vector<TexelRegion> regions;
-    std::vector<LevelPlacement> placements; // the levels whose placement changed
+    std::vector<NormalRegion> normalRegions; // detail normals: pending, then computed
+    std::vector<LevelPlacement> placements;  // the levels whose placement changed
     // With an epoch committed: the coarsest level it moved (-1: none), whether it showed the
     // levels for the first time, the time from its plan to its commit, the samples it wrote.
     bool committed = false;
@@ -55,7 +62,9 @@ struct HorizonGpuUpdate {
     double epochMilliseconds = 0.0;
     std::int64_t samples = 0;
 
-    [[nodiscard]] bool empty() const { return regions.empty() && placements.empty(); }
+    [[nodiscard]] bool empty() const {
+        return regions.empty() && normalRegions.empty() && placements.empty();
+    }
 };
 
 // The far horizon drawn by the GPU (phase 13, step 2): the epochs of the clipmap of terrain_core
@@ -76,7 +85,7 @@ public:
 
     // One update around the player (unwrapped Unreal position). Rethrows the errors of the jobs.
     HorizonGpuUpdate update(const UnrealPoint& player, const UnrealFrame& frame);
-    void waitIdle() { runner_.waitIdle(); }
+    void waitIdle();
 
     [[nodiscard]] const HorizonParams& params() const { return horizonParams_; }
     [[nodiscard]] const HorizonGpuParams& gpuParams() const { return params_; }
@@ -86,6 +95,8 @@ public:
     [[nodiscard]] bool shown() const { return runner_.clipmap().placed(); }
     [[nodiscard]] const HorizonClipmap& clipmap() const { return runner_.clipmap(); }
     [[nodiscard]] std::size_t memoryBytes() const { return runner_.clipmap().memoryBytes(); }
+    // The detail normals, or nullptr without them (normalRatio 0).
+    [[nodiscard]] HorizonNormalStream* normals() const { return normals_.get(); }
 
     // The fixed grids: the body of level 0 (with the sea square), the body shared by the levels
     // 1 and up, and the trims (trimGrid).
@@ -107,6 +118,7 @@ private:
     HorizonSampler sampler_;
     std::vector<std::optional<LevelPlacement>> shown_;
     std::optional<std::chrono::steady_clock::time_point> epochStart_;
+    std::unique_ptr<HorizonNormalStream> normals_;
     HorizonEpochRunner runner_; // last: its jobs end before the sampler goes away
 };
 

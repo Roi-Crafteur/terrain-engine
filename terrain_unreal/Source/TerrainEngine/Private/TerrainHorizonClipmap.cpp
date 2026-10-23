@@ -10,6 +10,7 @@
 #include "Materials/MaterialInterface.h"
 #include "RHI.h"
 #include "TerrainHorizonGrids.h"
+#include "TextureResource.h"
 
 #include <utility>
 #include <vector>
@@ -46,6 +47,10 @@ namespace
 	const FName PitchParameter(TEXT("PitchCm"));
 	const FName DropCoveredParameter(TEXT("DropCoveredCm"));
 	const FName DropFadeParameter(TEXT("DropFadeCm"));
+	const FName NormalsParameter(TEXT("HorizonNormals"));
+	const FName CoarseNormalsParameter(TEXT("CoarseNormals"));
+	const FName NormalRatioParameter(TEXT("NormalRatio"));
+	const FName HasNormalsParameter(TEXT("HasNormals"));
 
 	// Parameters of the materials of the tiles that read the surface of level 0
 	// (Scripts/temporary_terrain_look.py).
@@ -56,6 +61,10 @@ namespace
 	const FName SurfaceFirstZParameter(TEXT("SurfaceFirstZ"));
 	const FName SurfaceOriginParameter(TEXT("SurfaceOrigin"));
 	const FName HasSurfaceParameter(TEXT("HasSurface"));
+	const FName SurfaceNormalsParameter(TEXT("SurfaceNormals"));
+	const FName SurfaceNormalRatioParameter(TEXT("SurfaceNormalRatio"));
+	const FName SurfaceHasNormalsParameter(TEXT("SurfaceHasNormals"));
+	constexpr int32 NormalTexelBytes = terrain::unreal::kNormalHalves * 2;
 
 	FVector ToFVector(const terrain::unreal::UnrealPoint& Point)
 	{
@@ -72,6 +81,31 @@ namespace
 		Texture->AddressY = TA_Wrap;
 		Texture->NeverStream = true;
 		Texture->CompressionSettings = TC_HDR;
+		Texture->UpdateResource();
+		return Texture;
+	}
+
+	// The detail normals of a level: bilinear, wrapped as the slots, every texel pending until
+	// its detail is uploaded (the material keeps the normals of the grid there).
+	UTexture2D* CreateNormals(int32 TextureSide, int32 Level)
+	{
+		UTexture2D* Texture = UTexture2D::CreateTransient(TextureSide, TextureSide, PF_G16R16F,
+			FName(*FString::Printf(TEXT("HorizonNormals%d"), Level)));
+		Texture->Filter = TF_Bilinear;
+		Texture->SRGB = false;
+		Texture->AddressX = TA_Wrap;
+		Texture->AddressY = TA_Wrap;
+		Texture->NeverStream = true;
+		Texture->CompressionSettings = TC_HDR;
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		uint16* Texels = static_cast<uint16*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
+		const int64 Count =
+			static_cast<int64>(TextureSide) * TextureSide * terrain::unreal::kNormalHalves;
+		for (int64 Index = 0; Index < Count; ++Index)
+		{
+			Texels[Index] = terrain::unreal::kNormalPendingHalf;
+		}
+		Mip.BulkData.Unlock();
 		Texture->UpdateResource();
 		return Texture;
 	}
@@ -111,6 +145,7 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 			static_cast<int64>(Shape.triangles.size()) * static_cast<int64>(sizeof(int32));
 	}
 	const int32 Levels = Streamer.params().levels;
+	NormalRatio = Streamer.normals() != nullptr ? Streamer.normals()->ratio() : 0;
 	for (int32 Level = 0; Level < Levels; ++Level)
 	{
 		CreateLevel(Level, Streamer, Material);
@@ -125,9 +160,29 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 	{
 		Looks[Level]->SetTextureParameterValue(CoarseTexelsParameter,
 			Textures[FMath::Min(Level + 1, Levels - 1)]);
+		BindNormals(Level);
 	}
 	GpuBytes += static_cast<int64>(Levels) * Side * Side * TexelBytes;
+	if (Streamer.normals() != nullptr)
+	{
+		GpuBytes += Streamer.normals()->textureBytes();
+	}
 	BuildMilliseconds = (FPlatformTime::Seconds() - Start) * 1000.0;
+}
+
+// The detail normals of a level and of the next coarser one (for the morph), or none.
+void UTerrainHorizonClipmap::BindNormals(int32 Level)
+{
+	UMaterialInstanceDynamic* Look = Looks[Level];
+	Look->SetScalarParameterValue(HasNormalsParameter, NormalRatio > 0 ? 1.0f : 0.0f);
+	if (NormalRatio == 0)
+	{
+		return;
+	}
+	Look->SetScalarParameterValue(NormalRatioParameter, static_cast<float>(NormalRatio));
+	Look->SetTextureParameterValue(NormalsParameter, NormalTextures[Level]);
+	Look->SetTextureParameterValue(CoarseNormalsParameter,
+		NormalTextures[FMath::Min(Level + 1, NormalTextures.Num() - 1)]);
 }
 
 void UTerrainHorizonClipmap::CreateLevel(int32 Level,
@@ -135,6 +190,10 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 {
 	UTexture2D* Texture = CreateTexels(Side, Level);
 	Textures.Add(Texture);
+	if (NormalRatio > 0)
+	{
+		NormalTextures.Add(CreateNormals(Side * NormalRatio, Level));
+	}
 	UMaterialInstanceDynamic* Look = UMaterialInstanceDynamic::Create(Material, this);
 	Looks.Add(Look);
 	const double PitchCm = terrain::levelPitch(Streamer.params(), Level) * 100.0;
@@ -207,6 +266,19 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 		Timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0,
 			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
 	}
+	if (!Update.normalRegions.empty() && NormalRatio > 0)
+	{
+		const double Start = FPlatformTime::Seconds();
+		std::size_t Texels = 0;
+		for (terrain::unreal::NormalRegion& Region : Update.normalRegions)
+		{
+			Texels += static_cast<std::size_t>(Region.width) *
+				static_cast<std::size_t>(Region.height);
+			UploadNormals(Region);
+		}
+		Timings.recordUpload(terrain::unreal::HorizonSection::Normals, 0.0,
+			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
+	}
 	TArray<bool> Changed;
 	Changed.Init(false, Bodies.Num());
 	for (const terrain::unreal::LevelPlacement& Placement : Update.placements)
@@ -237,6 +309,23 @@ void UTerrainHorizonClipmap::UploadRegion(terrain::unreal::TexelRegion& Region)
 	Textures[Region.level]->UpdateTextureRegions(0, 1, Rect,
 		static_cast<uint32>(Region.width * TexelBytes), static_cast<uint32>(TexelBytes),
 		reinterpret_cast<uint8*>(Texels->data()),
+		[Texels](uint8*, const FUpdateTextureRegion2D* Regions)
+		{
+			delete Texels;
+			delete Regions;
+		});
+}
+
+// The detail normals of a region, handed over to the render thread without a copy.
+void UTerrainHorizonClipmap::UploadNormals(terrain::unreal::NormalRegion& Region)
+{
+	auto* Texels = new std::vector<uint16_t>(std::move(Region.data));
+	auto* Rect = new FUpdateTextureRegion2D(static_cast<uint32>(Region.x),
+		static_cast<uint32>(Region.z), 0, 0, static_cast<uint32>(Region.width),
+		static_cast<uint32>(Region.height));
+	NormalTextures[Region.level]->UpdateTextureRegions(0, 1, Rect,
+		static_cast<uint32>(Region.width * NormalTexelBytes),
+		static_cast<uint32>(NormalTexelBytes), reinterpret_cast<uint8*>(Texels->data()),
 		[Texels](uint8*, const FUpdateTextureRegion2D* Regions)
 		{
 			delete Texels;
@@ -285,6 +374,14 @@ void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
 	SurfaceLook->SetTextureParameterValue(SurfaceTexelsParameter, Textures[0]);
 	SurfaceLook->SetScalarParameterValue(SurfaceCellsParameter, static_cast<float>(Side - 1));
 	SurfaceLook->SetScalarParameterValue(SurfacePitchParameter, static_cast<float>(Level0PitchCm));
+	SurfaceLook->SetScalarParameterValue(SurfaceHasNormalsParameter,
+		NormalTextures.IsEmpty() ? 0.0f : 1.0f);
+	if (!NormalTextures.IsEmpty())
+	{
+		SurfaceLook->SetTextureParameterValue(SurfaceNormalsParameter, NormalTextures[0]);
+		SurfaceLook->SetScalarParameterValue(SurfaceNormalRatioParameter,
+			static_cast<float>(NormalRatio));
+	}
 	if (!Placed.IsEmpty() && Placed[0].IsSet())
 	{
 		PlaceSurface(*Placed[0]);
@@ -340,6 +437,7 @@ void UTerrainHorizonClipmap::RemoveAll()
 	if (SurfaceLook != nullptr)
 	{
 		SurfaceLook->SetScalarParameterValue(HasSurfaceParameter, 0.0f);
+		SurfaceLook->SetScalarParameterValue(SurfaceHasNormalsParameter, 0.0f);
 		SurfaceLook = nullptr;
 	}
 }
