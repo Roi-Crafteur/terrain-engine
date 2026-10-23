@@ -3,6 +3,8 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_grid.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -18,13 +20,28 @@ namespace terrain::planet {
                                               int samplesPerAxis, int threads);
 
 // The altitudes of sampleRelief, and the sea of every cell: 1 where the field puts the sea at its
-// center (HeightSample::water: where the geography puts it, not below kSeaLevel), else 0.
+// center (HeightSample::water: where the geography puts it, not below kSeaLevel), else 0. With
+// floorSamples above 1, the cells of the land and of the sea within kFloorCoast meters of it
+// take instead their floor, the lowest of floorSamples^2 points at the centers of a regular
+// subdivision of the cell of the same water as its center (the land of a cell on the coast, not
+// the bottom of the sea; its center when there is none) (floor: its index, row by row;
+// kCenterFloor for the center alone or a mean), and mountain says whether the mountain mask is
+// above 0 there.
+inline constexpr double kFloorCoast = 16'384.0;
+inline constexpr std::uint8_t kCenterFloor = 255;
 struct CellRelief {
     std::vector<float> height;
     std::vector<std::uint8_t> sea;
+    std::vector<std::uint8_t> floor;
+    std::vector<std::uint8_t> mountain;
 };
 [[nodiscard]] CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid,
-                                     int samplesPerAxis, int threads);
+                                     int samplesPerAxis, int threads, int floorSamples = 1);
+
+// The point of floor index floor of cell (i, j) with floorSamples^2 points (the center for
+// kCenterFloor), meters, in the canonical range of the cell.
+[[nodiscard]] std::array<double, 2> floorPoint(const PlanetGrid& grid, std::size_t cell,
+                                               std::uint8_t floor, int floorSamples);
 
 // Water kinds of the cells, in an ocean mask.
 enum OceanKind : std::uint8_t {

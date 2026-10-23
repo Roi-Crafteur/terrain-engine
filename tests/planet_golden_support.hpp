@@ -78,6 +78,8 @@ inline std::vector<Part> planetParts(const std::array<const char*, 4>& names,
     for (std::size_t c = 0; c < build.grid.cells(); ++c) {
         relief.add(build.height[c]);
         relief.add(static_cast<std::uint64_t>(build.ocean[c]), 1);
+        relief.add(static_cast<std::uint64_t>(build.floor[c]), 1);
+        relief.add(static_cast<std::uint64_t>(build.mountain[c]), 1);
         climate.add(build.climate.precipitation[c]);
         hydrology.add(static_cast<std::uint64_t>(build.receiver[c]), 1);
         hydrology.add(build.lakeOfCell[c]);
@@ -104,14 +106,14 @@ inline std::vector<Part> planetGoldenParts() {
     std::vector<Part> parts = planetParts({"planet default relief", "planet default climate",
                                            "planet default hydrology", "planet default level"},
                                           smallBuild(terrain::HeightfieldParams{}, 1, 2),
-                                          {0x48B9A2C30DF86B3EULL, 0x06C266497C5547CDULL,
-                                           0xF56D8D8BA35720F3ULL, 0x419C578293BE846BULL});
+                                          {0x3F4264CF06FB5493ULL, 0xAB9EB405E174EAA4ULL,
+                                           0x27B5C16AD4EC6D79ULL, 0x6DB7EB144C254102ULL});
     const std::vector<Part> planetary =
         planetParts({"planet planetary relief", "planet planetary climate",
                      "planet planetary hydrology", "planet planetary level"},
                     smallBuild(smallPlanetaryParams(), 1),
-                    {0x1C5872A57E9256C3ULL, 0x61D9F4AD23A90506ULL, 0xB3588C84BF7256B8ULL,
-                     0xAC005018817F4FFBULL});
+                    {0xF240E66CF7EB32B7ULL, 0x37D0255B8A8B73D2ULL, 0xE3443DB3F1A7B9EAULL,
+                     0x60D3435FCBED6046ULL});
     parts.insert(parts.end(), planetary.begin(), planetary.end());
     return parts;
 }

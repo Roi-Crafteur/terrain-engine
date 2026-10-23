@@ -92,6 +92,7 @@ public:
     [[nodiscard]] const std::vector<RiverFeature>& features() const { return features_; }
     [[nodiscard]] const PlanetWaterBudget& budget() const { return budget_; }
     [[nodiscard]] const PlanetTimings& timings() const { return timings_; }
+    [[nodiscard]] const PlanetBreach& breach() const { return breach_; }
 
     // Drainage basin of every cell (planet::computeBasins), recomputed on demand.
     [[nodiscard]] std::vector<std::int32_t> basins() const;
@@ -109,6 +110,7 @@ private:
     std::vector<RiverFeature> features_;
     PlanetWaterBudget budget_;
     PlanetTimings timings_;
+    PlanetBreach breach_;
 };
 
 namespace planet {
