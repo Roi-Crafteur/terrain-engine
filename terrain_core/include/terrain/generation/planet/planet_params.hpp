@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/planet/planet_breach.hpp"
 
 namespace terrain {
 
@@ -130,12 +131,22 @@ struct PlanetParams {
     double cellSize = 8192.0;
     // Relief samples per cell and per axis, averaged (1 = the cell center only).
     int samplesPerAxis = 1;
+    // With floorSamples above 1, the cells of the land (and of the sea near it) take their floor
+    // instead, the lowest of floorSamples^2 points (planet::sampleCells), and their rivers pass
+    // there: the water of a cell gathers at its low point, not at its center on a slope or on a
+    // hill (most false lakes of one cell).
+    int floorSamples = 3;
     // Threads of the parallel stages, 0 for the hardware concurrency. The result never depends
     // on it.
     int threads = 0;
 
     // Below-sea components smaller than this are land depressions, not ocean: 10,000 km^2.
     double minOceanArea = 1.0e10;
+
+    // The rivers cut through the sills of the shallow depressions (planet::breachDepressions),
+    // or none of them without breachSills.
+    bool breachSills = true;
+    PlanetBreachParams breach;
 
     PlanetClimateParams climate;
     PlanetRiverParams rivers;

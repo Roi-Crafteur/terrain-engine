@@ -127,7 +127,7 @@ PlanetLevel::PlanetLevel(std::uint64_t seed, const HeightfieldParams& heightfiel
 PlanetLevel::PlanetLevel(PlanetBuild&& build, const PlanetParams& params)
     : params_(params), cells_(planet::compactCells(build)), lakes_(std::move(build.lakes)),
       rivers_(std::move(build.rivers)), features_(std::move(build.features)), budget_(build.budget),
-      timings_(build.timings) {
+      timings_(build.timings), breach_(build.breach) {
     build = PlanetBuild{}; // the full-precision cells are not kept
 }
 

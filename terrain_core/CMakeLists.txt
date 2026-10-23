@@ -67,6 +67,7 @@ add_library(terrain_core STATIC
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
+    src/generation/planet/planet_breach.cpp
     src/generation/planet/planet_build.cpp
     src/generation/planet/planet_climate.cpp
     src/generation/planet/planet_compact.cpp

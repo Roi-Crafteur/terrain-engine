@@ -18,6 +18,7 @@ void testDefaultWorld() {
     const terrain::Heightfield field(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{});
     terrain::PlanetParams params;
     params.cellSize = 16'384.0;
+    params.floorSamples = 1; // the centers of the cells, as when the watch was set (phase 11R bis)
     params.threads = 0;
     const terrain::PlanetLevel level(terrain::planet::buildPlanet(field, params), params);
     TEST_CHECK(!level.lakes().empty());
