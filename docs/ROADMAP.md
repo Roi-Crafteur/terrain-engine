@@ -82,6 +82,26 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - mesures du relief actuel : il ne draine pas (lacs sur 27 % des terres du monde
   planétaire, fleuves qui traversent surtout des lacs) : objectifs chiffrés de 11R
 
+### Phase 11R — Relief planétaire
+- la géographie planétaire devient le monde par défaut (version du générateur 3) : carte de
+  toute la planète calculée une fois, identique au bit près quel que soit le nombre de threads
+- continents indépendants des plaques (37 % de terres, 5 à 10 continents), côtes à toutes les
+  échelles, plateaux continentaux, fonds océaniques, altitude régionale qui draine vers la mer
+- chaînes en larges ceintures aux convergences, hauts plateaux derrière, rifts en marches aux
+  divergences, dorsales, arcs insulaires ; provinces (plaines, bassins, vieux massifs, plateaux)
+- outils de cartes et de chiffres du relief (`terrain_export_relief`)
+
+### Phase 11R bis — Relief naturel
+- intensité du relief continue, sans bord ; montagnes ridged aiguës, ravins en V et roche sur
+  les pentes ; frontières de plaques courbées, chaînes coupées, bords de plateaux
+- parois rocheuses, vallées en U et sommets dominants (jusqu'à 8 392 m, vus à plus de 15° du
+  fond des vallées) ; montagnes gelées depuis (`mountain_freeze_test`)
+- plaines plates ou ondulées, collines isolées, réseau de vallons (formes des plaines,
+  seulement hors du masque des montagnes)
+- vues en perspective à hauteur d'homme (`terrain_export_view`), vérifiées dans Unreal avec le
+  personnage
+- coût : montagnes ×2,6 et plaines ×1,9 de l'ancien relief en patchs
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
@@ -113,17 +133,7 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - deltas, estuaires, grands lacs, méandres, bras morts
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
-- 11A : fait (voir « Réalisé »)
-- 11R : relief planétaire, avant de creuser les fleuves (les cartes de la planète entière
-  montrent un monde par défaut en archipel uniforme, et des continents planétaires qui
-  ont la forme des plaques) :
-  - côtes découpées indépendantes des plaques, plateaux continentaux, mers intérieures
-  - chaînes de montagnes en larges ceintures (centaines de km) aux convergences, piémonts
-    et hauts plateaux derrière (type Himalaya / Tibet, Andes / Altiplano), rifts aux
-    divergences
-  - provinces à l'intérieur des continents : grandes plaines, vieux massifs usés,
-    bassins, plateaux
-  - le monde planétaire devient le monde du jeu (version du générateur 3)
+- 11A, 11R et 11R bis : faits (voir « Réalisé »)
 - 11B : mer décidée par la géographie (reliée à l'océan) et non plus par l'altitude :
   dépressions sous le niveau de la mer, sèches ou en lacs salés (type mer Morte, vallée de
   la Mort)
