@@ -127,6 +127,7 @@ add_library(terrain_core STATIC
     src/storage/region_file.cpp
     src/storage/section_codec.cpp
     src/storage/storage_codec.cpp
+    src/storage/volume_edit.cpp
     src/storage/world_directory.cpp
     src/storage/world_meta.cpp
     src/storage/world_save.cpp
