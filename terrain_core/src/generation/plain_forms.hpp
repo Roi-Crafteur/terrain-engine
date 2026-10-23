@@ -25,6 +25,7 @@
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
+#include <array>
 #include <cstdint>
 
 namespace terrain::plain_forms {
@@ -44,6 +45,27 @@ struct Noises {
     int cellsX = 1; // cells of the isolated hills along each side of the world
     int cellsZ = 1;
     WorldSize world;
+    bool twinWarps = false; // warpX and warpZ are twins (FbmOctaves::twinOf)
+};
+
+// The isolated hills of the 3 x 3 cells around the last cell met by a batch call: their draws,
+// their place (meters from the center of the cell met) and how far they reach. Left unset until a
+// cell is met (valid), the fields after hill only set and read where the cell has a hill: a call
+// without a memo then builds them without clearing them first.
+struct HillCell {
+    std::uint64_t hash;
+    bool hill; // the cell has one
+    std::uint64_t more;
+    double x;
+    double z;
+    double radius;
+    double reach;
+};
+struct HillCells {
+    bool valid = false;
+    int i = 0;
+    int j = 0;
+    std::array<HillCell, 9> cells;
 };
 
 struct Memos {
@@ -57,6 +79,7 @@ struct Memos {
     noise::FbmOctaves::Memo branches;
     noise::FbmOctaves::Memo presence;
     noise::FbmOctaves::Memo knolls;
+    HillCells hillCells;
 };
 
 [[nodiscard]] Noises makeNoises(std::uint64_t seed, const WorldSize& world);
