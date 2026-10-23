@@ -19,9 +19,11 @@ constexpr double kTwoPi = 6.283185307179586476925286766559;
 constexpr Rgb8 kZenithRgb = {70, 120, 200};
 constexpr Rgb8 kHazeRgb = {200, 215, 235};
 
-// The next distance along a ray: steps of 2 m or distance / 256, the larger, finer than the
-// pitch of the level holding the point (at most 1/64 of the distance).
-double nextDistance(double distance) { return distance + std::max(2.0, distance / 256.0); }
+// The next distance along a ray: steps of 2 m or distance / divisor, the larger; at 256, finer
+// than the pitch of the level holding the point (at most 1/64 of the distance).
+double nextDistance(double distance, double divisor = 256.0) {
+    return distance + std::max(2.0, distance / divisor);
+}
 
 struct Ray {
     double dx;
@@ -136,14 +138,14 @@ double columnAzimuth(const PanoramaParams& params, int column) {
 }
 
 Silhouette traceSilhouette(const GroundHeight& ground, const PanoramaParams& params,
-                           int firstColumn, int columns, double maxDistance) {
+                           int firstColumn, int columns, double maxDistance, double stepDivisor) {
     Silhouette silhouette;
     silhouette.tangent.assign(static_cast<std::size_t>(std::max(columns, 0)),
                               -std::numeric_limits<double>::infinity());
     silhouette.distance.assign(silhouette.tangent.size(), 0.0);
     for (int c = 0; c < columns; ++c) {
         const Ray ray = rayOf(params, firstColumn + c);
-        for (double d = params.minDistance; d <= maxDistance; d = nextDistance(d)) {
+        for (double d = params.minDistance; d <= maxDistance; d = nextDistance(d, stepDivisor)) {
             const std::optional<float> height =
                 ground(params.eyeX + ray.dx * d, params.eyeZ + ray.dz * d);
             if (!height) {

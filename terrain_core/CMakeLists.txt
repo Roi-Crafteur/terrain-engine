@@ -105,6 +105,7 @@ add_library(terrain_core STATIC
     src/io/heightmap_png.cpp
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
+    src/io/horizon_silhouette.cpp
     src/io/relief_lakes.cpp
     src/io/relief_rifts.cpp
     src/io/planet_png.cpp
@@ -336,7 +337,14 @@ target_link_libraries(terrain_export_cave_regions PRIVATE terrain_core terrain_w
 
 # Far horizon PNG export: level_N.png, map_relief.png, map_materials.png and panorama.png (360
 # degrees from a summit found with the grids, or from x z), with how far the relief shows and
-# what the silhouette loses without a prefilter:
+# what the silhouette loses against finer point samples:
 # terrain_export_horizon <output-dir> [seed] [x z] [cells-per-side]
 add_executable(terrain_export_horizon tools/export_horizon.cpp)
 target_link_libraries(terrain_export_horizon PRIVATE terrain_core terrain_warnings)
+
+# Silhouette of the far horizon against the truth (heightAt along each ray) at the valley of the
+# K2 and at the foot of the longest chain, before and with the crests, with images and timings:
+# terrain_export_silhouette <output-dir> [--timings] [cells-per-side] [columns-per-degree]
+#     [ratio...]
+add_executable(terrain_export_silhouette tools/export_silhouette.cpp)
+target_link_libraries(terrain_export_silhouette PRIVATE terrain_core terrain_warnings)
