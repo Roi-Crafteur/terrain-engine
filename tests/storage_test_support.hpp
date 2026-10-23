@@ -1,10 +1,11 @@
 #pragma once
 
 // Helpers of the storage tests: temporary directories, file bytes, frames sealed again after a
-// change, a file held open by another reader, sample modifications and metadata, expected
-// errors.
+// change, a file held open by another reader, sample modifications and metadata, region files
+// of format 1, expected errors.
 
 #include "terrain/storage/modifications.hpp"
+#include "terrain/storage/region_file.hpp"
 #include "terrain/storage/storage_error.hpp"
 #include "terrain/storage/world_meta.hpp"
 
@@ -153,6 +154,25 @@ inline terrain::ModificationStore sampleStore() {
     store.addPlant({terrain::PlantType::Boulder, 18.0, -1.0, 2.0f, 0.9f, 4.0f});
     store.addPlant({terrain::PlantType::Flower, -9000.5, 7000.25, 31.0f, 0.5f, 1.5f});
     return store;
+}
+
+// A region file of format 1 (phase 9): the chunk records of the modification file of the same
+// chunks, block by block, in the frame of format 1.
+inline std::vector<std::uint8_t> formatOneRegion(const terrain::ModificationStore& store,
+                                                 terrain::RegionCoord region) {
+    const terrain::ModificationStore part =
+        terrain::deserializeRegion(terrain::serializeRegion(store, region, kSeed), region, kSeed);
+    const std::vector<std::uint8_t> tmod = terrain::serializeModifications(part, kSeed);
+    std::vector<std::uint8_t> bytes = {'T', 'R', 'E', 'G', 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    bytes.resize(36);
+    putU64(bytes, 16, kSeed);
+    putU32(bytes, 24, static_cast<std::uint32_t>(region.x));
+    putU32(bytes, 28, static_cast<std::uint32_t>(region.z));
+    putU32(bytes, 32, static_cast<std::uint32_t>(part.byChunk().size()));
+    constexpr std::size_t kTmodHeader = 20;
+    bytes.insert(bytes.end(), tmod.begin() + kTmodHeader, tmod.end() - 4);
+    bytes.resize(bytes.size() + 4);
+    return resealed(bytes);
 }
 
 inline terrain::WorldMeta sampleMeta() {

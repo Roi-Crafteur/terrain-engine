@@ -50,14 +50,16 @@ struct RegionCoord {
 //   frame: "TREG", u32 format version (kWorldFormatVersion), u64 size of the whole file, body,
 //   u32 FNV-1a of every byte before it;
 //   body: u64 world seed, i32 region x, i32 region z, u32 chunk count (1 to 1024), then the
-//   chunks of the region by z, then x, as in the modification file (modifications.hpp).
+//   chunks of the region by z, then x: from format 2 (kSectionFormatVersion) the records of
+//   chunk_record.hpp, by sections; in format 1 the records of the modification file
+//   (modifications.hpp), block by block, still read.
 // Empty if store holds no modification in the region: a region without modifications has no
 // file. The same modifications always give the same bytes.
 [[nodiscard]] std::vector<std::uint8_t> serializeRegion(const ModificationStore& store,
                                                         RegionCoord region, std::uint64_t seed);
 
 // The modifications of a region file. Throws StorageError unless bytes are a whole region file
-// of a format this build reads, of the world seed and of region, with chunks in order, all in
+// of a format this build reads (1 or 2), of the world seed and of region, with chunks in order, all in
 // the region, and valid records.
 [[nodiscard]] ModificationStore deserializeRegion(std::span<const std::uint8_t> bytes,
                                                   RegionCoord region, std::uint64_t seed);

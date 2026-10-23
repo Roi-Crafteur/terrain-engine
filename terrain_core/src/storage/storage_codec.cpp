@@ -99,6 +99,10 @@ void writeChunk(ByteWriter& out, ChunkCoord coord, const ChunkModifications& chu
         out.i32(block.z);
         out.u8(static_cast<std::uint8_t>(edit));
     }
+    writePlants(out, chunk);
+}
+
+void writePlants(ByteWriter& out, const ChunkModifications& chunk) {
     out.count(chunk.removedPlants.size());
     for (const PlantSpot& spot : chunk.removedPlants) {
         out.f64(spot.x);
@@ -124,11 +128,15 @@ ChunkCoord readChunkCoord(ByteReader& in) {
 
 void readChunkBody(ByteReader& in, ChunkCoord coord, ModificationStore& store) {
     readBlocks(in, coord, store);
-    readRemovedPlants(in, coord, store);
-    readAddedPlants(in, coord, store);
+    readPlants(in, coord, store);
     if (store.chunk(coord) == nullptr) {
         in.fail("empty chunk");
     }
+}
+
+void readPlants(ByteReader& in, ChunkCoord coord, ModificationStore& store) {
+    readRemovedPlants(in, coord, store);
+    readAddedPlants(in, coord, store);
 }
 
 ByteWriter beginFrame(const Magic& magic, std::uint32_t version, std::size_t bodySize) {

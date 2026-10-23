@@ -120,10 +120,12 @@ add_library(terrain_core STATIC
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
     src/storage/block_section.cpp
+    src/storage/chunk_record.cpp
     src/storage/durable_file.cpp
     src/storage/file_commit.cpp
     src/storage/modifications.cpp
     src/storage/region_file.cpp
+    src/storage/section_codec.cpp
     src/storage/storage_codec.cpp
     src/storage/world_directory.cpp
     src/storage/world_meta.cpp

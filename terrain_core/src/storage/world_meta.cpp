@@ -256,8 +256,8 @@ std::vector<std::uint8_t> serializeWorldMeta(const WorldMeta& meta) {
 }
 
 WorldMeta deserializeWorldMeta(std::span<const std::uint8_t> bytes) {
-    // Version 1 is the only one; a later version reads the older ones here, the fields they
-    // lack taking their defaults.
+    // Versions 1 and 2 share the fields; a later version reads the older ones here, the fields
+    // they lack taking their defaults.
     const storage::Frame frame =
         storage::openFrame(bytes, kMagic, kWorldFormatVersion, "world.meta");
     ByteReader in(frame.body, "invalid world.meta: ");

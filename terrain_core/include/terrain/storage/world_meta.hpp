@@ -11,8 +11,14 @@
 namespace terrain {
 
 // Version of the world format (world.meta and the region files) written by this build. A world
-// of a newer format is refused; an older one would be migrated when read.
-inline constexpr std::uint32_t kWorldFormatVersion = 1;
+// of a newer format is refused; an older one is read, and written in the current format when
+// saved.
+// 1: phase 9, the blocks of the region files one by one.
+// 2: phase 15, the blocks of the region files by sections (chunk_record.hpp); world.meta is
+//    unchanged, its version tells the builds of format 1 that they cannot read the regions.
+inline constexpr std::uint32_t kWorldFormatVersion = 2;
+// First format whose region files hold sections.
+inline constexpr std::uint32_t kSectionFormatVersion = 2;
 
 // Version of the terrain generator: the same seed and parameters give the same terrain only with
 // the same generator version. Every change of the generated values (relief, caves, biomes,

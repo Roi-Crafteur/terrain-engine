@@ -47,7 +47,8 @@ std::vector<Field> fieldsOf(const std::vector<std::uint8_t>& bytes) {
 }
 
 // A sealed world.meta of these fields.
-std::vector<std::uint8_t> withFields(const std::vector<Field>& fields, std::uint32_t version = 1) {
+std::vector<std::uint8_t> withFields(const std::vector<Field>& fields,
+                                     std::uint32_t version = terrain::kWorldFormatVersion) {
     std::vector<std::uint8_t> bytes = {'T', 'W', 'L', 'D', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     storage_test::putU32(bytes, 4, version);
     for (const Field& field : fields) {
@@ -91,7 +92,7 @@ void testPinnedBytes() {
     meta.generatorVersion = 1; // fixed: the pinned bytes must not follow kGeneratorVersion
     const std::vector<std::uint8_t> bytes = terrain::serializeWorldMeta(meta);
     TEST_CHECK(std::vector(bytes.begin(), bytes.begin() + 8) ==
-               (std::vector<std::uint8_t>{'T', 'W', 'L', 'D', 1, 0, 0, 0}));
+               (std::vector<std::uint8_t>{'T', 'W', 'L', 'D', 2, 0, 0, 0}));
     TEST_CHECK(storage_test::getU64(bytes, 8) == bytes.size());
     const std::vector<Field> fields = fieldsOf(bytes);
     const std::vector<std::size_t> sizes = {
@@ -104,7 +105,7 @@ void testPinnedBytes() {
     TEST_CHECK(fields[1].payload ==
                (std::vector<std::uint8_t>{0x9B, 0x28, 0x35, 0x01, 0, 0, 0, 0})); // the seed
     TEST_CHECK(bytes.size() == 233);
-    TEST_CHECK(terrain::fnv1a(bytes) == 0xA2B3ADC6U);
+    TEST_CHECK(terrain::fnv1a(bytes) == 0xAA424DB1U);
 }
 
 void testDefaults() {
@@ -147,8 +148,10 @@ std::vector<Field> sampleFields() {
 void testVersions() {
     const std::vector<Field> fields = sampleFields();
     TEST_CHECK(terrain::deserializeWorldMeta(withFields(fields)) == storage_test::sampleMeta());
+    // Format 1 (phase 9) has the same fields: still read.
+    TEST_CHECK(terrain::deserializeWorldMeta(withFields(fields, 1)) == storage_test::sampleMeta());
     std::string message;
-    TEST_CHECK(readError(withFields(fields, 2), &message) == StorageErrorKind::NewerVersion);
+    TEST_CHECK(readError(withFields(fields, 3), &message) == StorageErrorKind::NewerVersion);
     TEST_CHECK(message.find("newer version") != std::string::npos);
     TEST_CHECK(readError(withFields(fields, 0)) == StorageErrorKind::Invalid);
     std::vector<std::uint8_t> other = withFields(fields);

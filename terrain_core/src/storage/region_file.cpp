@@ -1,6 +1,7 @@
 #include "terrain/storage/region_file.hpp"
 
 #include "byte_stream.hpp"
+#include "chunk_record.hpp"
 #include "storage_codec.hpp"
 #include "terrain/storage/world_meta.hpp"
 
@@ -113,7 +114,7 @@ std::vector<std::uint8_t> serializeRegion(const ModificationStore& store, Region
     std::size_t size = kBodyHeader;
     forEachChunk(store, region, [&](ChunkCoord, const ChunkModifications& chunk) {
         ++count;
-        size += storage::chunkRecordSize(chunk);
+        size += storage::kMinChunkRecordV2 + chunk.sections.size() * 4;
     });
     if (count == 0) {
         return {};
@@ -124,7 +125,7 @@ std::vector<std::uint8_t> serializeRegion(const ModificationStore& store, Region
     out.i32(region.z);
     out.count(count);
     forEachChunk(store, region, [&out](ChunkCoord coord, const ChunkModifications& chunk) {
-        storage::writeChunk(out, coord, chunk);
+        storage::writeChunkV2(out, coord, chunk);
     });
     return storage::sealFrame(std::move(out));
 }
@@ -145,7 +146,9 @@ ModificationStore deserializeRegion(std::span<const std::uint8_t> bytes, RegionC
     if (stored != region) {
         in.fail("holds the " + regionText(stored));
     }
-    const std::size_t count = in.count(storage::kMinChunkRecord);
+    const bool sections = frame.version >= kSectionFormatVersion;
+    const std::size_t count =
+        in.count(sections ? storage::kMinChunkRecordV2 : storage::kMinChunkRecord);
     if (count == 0 || count > kMaxRegionChunks) {
         in.fail(std::to_string(count) + " chunks, 1 to 1024 expected");
     }
@@ -160,7 +163,11 @@ ModificationStore deserializeRegion(std::span<const std::uint8_t> bytes, RegionC
             in.fail("chunks out of order or repeated");
         }
         previous = coord;
-        storage::readChunkBody(in, coord, store);
+        if (sections) {
+            storage::readChunkBodyV2(in, coord, store);
+        } else {
+            storage::readChunkBody(in, coord, store);
+        }
     }
     in.expectEnd("trailing bytes");
     return store;
