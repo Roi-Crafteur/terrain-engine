@@ -128,38 +128,101 @@ double fbm(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::Me
     return static_cast<double>(memo != nullptr ? n.fbm2D(x, z, *memo) : n.fbm2D(x, z));
 }
 
-const Cells& cellsAt(const Noises& n, int scale, int i, int j, Cells& cells) {
+// The positions of the cells around cell (i, j) of the scale, their joints not drawn yet.
+Cells& cellsAt(const Noises& n, int scale, int i, int j, Cells& cells) {
     if (cells.valid && cells.i == i && cells.j == j) {
         return cells;
     }
-    const auto size = kCellSize[static_cast<std::size_t>(scale)];
-    const auto countX = std::max(1, static_cast<int>(std::lround(n.world.x / size)));
-    const auto countZ = std::max(1, static_cast<int>(std::lround(n.world.z / size)));
-    const std::uint64_t seed = noise::deriveSeed(n.crystal, static_cast<std::uint64_t>(scale));
+    const auto s = static_cast<std::size_t>(scale);
+    const int countX = n.cellsX[s];
+    const int countZ = n.cellsZ[s];
     for (std::size_t k = 0; k < cells.cells.size(); ++k) {
         const int di = static_cast<int>(k % 3) - 1;
         const int dj = static_cast<int>(k / 3) - 1;
         const auto ci = static_cast<std::uint64_t>(((i + di) % countX + countX) % countX);
         const auto cj = static_cast<std::uint64_t>(((j + dj) % countZ + countZ) % countZ);
         const std::uint64_t hash =
-            noise::deriveSeed(seed, cj * static_cast<std::uint64_t>(countX) + ci);
+            noise::deriveSeed(n.cellSeeds[s], cj * static_cast<std::uint64_t>(countX) + ci);
         Cell& c = cells.cells[k];
         c.x = di + 0.5 + kCellJitter * (2.0 * field(hash, 0) - 1.0);
         c.z = dj + 0.5 + kCellJitter * (2.0 * field(hash, 1) - 1.0);
-        const auto s = static_cast<std::size_t>(scale);
-        const double tilt = kTiltLow + (kTiltHigh - kTiltLow) * field(hash, 2);
-        const double angle = field(hash, 3);
-        c.tiltX = tilt * dmath::cosTurns(angle);
-        c.tiltZ = tilt * dmath::sinTurns(angle);
-        const std::uint64_t more = noise::deriveSeed(hash, 1);
-        c.band = kJointLow[s] + (kJointHigh[s] - kJointLow[s]) * field(more, 0);
-        c.offset = c.band * field(more, 1);
-        c.layers = noise::deriveSeed(more, 2);
+        c.hash = hash;
+        c.detailed = false;
     }
     cells.valid = true;
     cells.i = i;
     cells.j = j;
     return cells;
+}
+
+// The joints of a cell of the scale, drawn once.
+const Cell& detailed(Cell& c, std::size_t s) {
+    if (!c.detailed) {
+        const double tilt = kTiltLow + (kTiltHigh - kTiltLow) * field(c.hash, 2);
+        const double angle = field(c.hash, 3);
+        c.tiltX = tilt * dmath::cosTurns(angle);
+        c.tiltZ = tilt * dmath::sinTurns(angle);
+        const std::uint64_t more = noise::deriveSeed(c.hash, 1);
+        c.band = kJointLow[s] + (kJointHigh[s] - kJointLow[s]) * field(more, 0);
+        c.offset = c.band * field(more, 1);
+        c.layers = noise::deriveSeed(more, 2);
+        c.detailed = true;
+    }
+    return c;
+}
+
+// crystalTop through the cells of a memo, or of the call.
+double crystalTopIn(const Noises& n, double x, double z, double ground, double gradX,
+                    double gradZ, int scale, double ramp, double rims, double hard,
+                    Cells& memoCells) {
+    const auto s = static_cast<std::size_t>(scale);
+    const double size = kCellSize[s];
+    const double cx = (x + 0.5 * n.world.x) / size;
+    const double cz = (z + 0.5 * n.world.z) / size;
+    const auto i = static_cast<int>(std::floor(cx));
+    const auto j = static_cast<int>(std::floor(cz));
+    Cells& cells = cellsAt(n, scale, i, j, memoCells);
+    const double px = cx - i;
+    const double pz = cz - j;
+    std::array<double, 9> distance2{};
+    double nearest = 1.0e300;
+    std::size_t first = 0;
+    for (std::size_t k = 0; k < cells.cells.size(); ++k) {
+        const double dx = px - cells.cells[k].x;
+        const double dz = pz - cells.cells[k].z;
+        distance2[k] = (dx * dx + dz * dz) * size * size;
+        if (distance2[k] < nearest) {
+            nearest = distance2[k];
+            first = k;
+        }
+    }
+    // The ground of a cell cut by its joints: strata along its tilted planes, waving.
+    const double wave = kJointWave * rims;
+    const auto cut = [&](std::size_t k) {
+        const Cell& c = detailed(cells.cells[k], s);
+        const double lift = (c.tiltX * (px - c.x) + c.tiltZ * (pz - c.z)) * size;
+        const double slope = dmath::hypot(gradX + c.tiltX, gradZ + c.tiltZ);
+        return strataTop(ground + lift, slope, c.band, c.offset + wave * c.band, 0.0,
+                         c.band * (kRunLow + (kRunHigh - kRunLow) * 0.35),
+                         {c.layers, hard, kJointTilt, kSpread, kJointScree}) -
+               lift;
+    };
+    if (!(ramp > 0.0)) {
+        return cut(first);
+    }
+    const double spread = 2.0 * size * ramp;
+    double sum = 0.0;
+    double weights = 0.0;
+    for (std::size_t k = 0; k < cells.cells.size(); ++k) {
+        const double e = (distance2[k] - nearest) / spread;
+        if (e > kFarWeight) {
+            continue;
+        }
+        const double w = k == first ? 1.0 : dmath::exp(-e);
+        sum += w * cut(k);
+        weights += w;
+    }
+    return sum / weights;
 }
 
 } // namespace
@@ -176,6 +239,11 @@ Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
     n.layers = noise::deriveSeed(seed, 7);
     n.steps = noise::deriveSeed(seed, 8);
     n.world = world;
+    for (std::size_t s = 0; s < kCellSize.size(); ++s) {
+        n.cellSeeds[s] = noise::deriveSeed(n.crystal, static_cast<std::uint64_t>(s));
+        n.cellsX[s] = std::max(1, static_cast<int>(std::lround(world.x / kCellSize[s])));
+        n.cellsZ[s] = std::max(1, static_cast<int>(std::lround(world.z / kCellSize[s])));
+    }
     return n;
 }
 
@@ -251,55 +319,12 @@ double strataTop(double ground, double slope, double band, double offset, double
 
 double crystalTop(const Noises& n, double x, double z, double ground, double gradX,
                   double gradZ, int scale, double ramp, double rims, double hard, Memo* memo) {
-    const auto s = static_cast<std::size_t>(scale);
-    const double size = kCellSize[s];
-    const double cx = (x + 0.5 * n.world.x) / size;
-    const double cz = (z + 0.5 * n.world.z) / size;
-    const auto i = static_cast<int>(std::floor(cx));
-    const auto j = static_cast<int>(std::floor(cz));
+    if (memo != nullptr) {
+        return crystalTopIn(n, x, z, ground, gradX, gradZ, scale, ramp, rims, hard,
+                            memo->crystal[static_cast<std::size_t>(scale)]);
+    }
     Cells local;
-    const Cells& cells = cellsAt(n, scale, i, j, memo != nullptr ? memo->crystal[s] : local);
-    const double px = cx - i;
-    const double pz = cz - j;
-    std::array<double, 9> distance2{};
-    double nearest = 1.0e300;
-    std::size_t first = 0;
-    for (std::size_t k = 0; k < cells.cells.size(); ++k) {
-        const double dx = px - cells.cells[k].x;
-        const double dz = pz - cells.cells[k].z;
-        distance2[k] = (dx * dx + dz * dz) * size * size;
-        if (distance2[k] < nearest) {
-            nearest = distance2[k];
-            first = k;
-        }
-    }
-    // The ground of a cell cut by its joints: strata along its tilted planes, waving.
-    const double wave = kJointWave * rims;
-    const auto cut = [&](std::size_t k) {
-        const Cell& c = cells.cells[k];
-        const double lift = (c.tiltX * (px - c.x) + c.tiltZ * (pz - c.z)) * size;
-        const double slope = dmath::hypot(gradX + c.tiltX, gradZ + c.tiltZ);
-        return strataTop(ground + lift, slope, c.band, c.offset + wave * c.band, 0.0,
-                         c.band * (kRunLow + (kRunHigh - kRunLow) * 0.35),
-                         {c.layers, hard, kJointTilt, kSpread, kJointScree}) -
-               lift;
-    };
-    if (!(ramp > 0.0)) {
-        return cut(first);
-    }
-    const double spread = 2.0 * size * ramp;
-    double sum = 0.0;
-    double weights = 0.0;
-    for (std::size_t k = 0; k < cells.cells.size(); ++k) {
-        const double e = (distance2[k] - nearest) / spread;
-        if (e > kFarWeight) {
-            continue;
-        }
-        const double w = k == first ? 1.0 : dmath::exp(-e);
-        sum += w * cut(k);
-        weights += w;
-    }
-    return sum / weights;
+    return crystalTopIn(n, x, z, ground, gradX, gradZ, scale, ramp, rims, hard, local);
 }
 
 double surface(const Noises& n, const Column& c, double x, double z, Memo* memo) {
