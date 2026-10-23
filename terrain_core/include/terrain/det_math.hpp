@@ -79,19 +79,21 @@ struct SineCosine {
 [[nodiscard]] double atan(double x);
 [[nodiscard]] double atan2(double y, double x);
 
-// std::floor(x), bit for bit, and its value as an integer (for |x| < 2^63), faster where the
-// compiler calls the library for std::floor (Clang and MSVC on x86-64; the noise lattices take two
-// floors per octave): normal numbers below 2^52 in magnitude are truncated through an integer, one
-// less below a negative number, the integer at hand; zeros (their sign), subnormals (the
-// flush-to-zero modes), larger numbers, infinities and NaN go to std::floor. ARM64, SSE4.1 and
-// AVX (MSVC /arch:AVX and /arch:AVX2 define __AVX__ but not __SSE4_1__) have a floor instruction
-// that the compilers use for std::floor: std::floor there.
+// std::floor(x), bit for bit, and its value as an integer (for |x| < 2^63), faster where Clang
+// calls the library for std::floor (x86-64; the noise lattices take two floors per octave):
+// normal numbers below 2^52 in magnitude are truncated through an integer, one less below a
+// negative number, the integer at hand; zeros (their sign), subnormals (the flush-to-zero modes),
+// larger numbers, infinities and NaN go to std::floor. ARM64, SSE4.1 and AVX (MSVC /arch:AVX and
+// /arch:AVX2 define __AVX__ but not __SSE4_1__) have a floor instruction that the compilers use
+// for std::floor: std::floor there. MSVC keeps std::floor without AVX too: the samples that
+// memoize nothing (the far horizon) were slower through the integer.
 struct FloorIndex {
     double value;
     std::int64_t index;
 };
 [[nodiscard]] inline FloorIndex floorIndex(double x) {
-#if !defined(__aarch64__) && !defined(_M_ARM64) && !defined(__SSE4_1__) && !defined(__AVX__)
+#if !defined(__aarch64__) && !defined(_M_ARM64) && !defined(__SSE4_1__) && !defined(__AVX__) && \
+    (defined(__clang__) || !defined(_MSC_VER))
     const double magnitude = std::abs(x);
     if (magnitude >= 0x1p-1022 && magnitude < 0x1p52) {
         const auto truncated = static_cast<std::int64_t>(x);
