@@ -6,6 +6,7 @@
 #include "terrain/generation/terrain_surface.hpp"
 #include "terrain/meshing/density_grid.hpp"
 #include "terrain/meshing/marching_cubes.hpp"
+#include "terrain/storage/edit_window.hpp"
 #include "terrain/streaming/cave_tiles.hpp"
 #include "tile_blend.hpp"
 #include "tile_lattice.hpp"
@@ -30,52 +31,55 @@ static_assert(tileChunks(kPlantLod) == 1, "plant tiles must cover a single chunk
 
 // Levels holding the ground of the columns, the caves down to caveDepth below it, or a
 // lattice point an edited block reaches.
-std::vector<int> levelsToMesh(const TileColumns& columns, const BlockEdits& edits, int height,
+std::vector<int> levelsToMesh(const TileColumns& columns, const EditWindow& edits, int height,
                               double caveDepth) {
     std::set<int> levels;
     tile::addLevels(levels, columns.minHeight - caveDepth, columns.maxHeight, height);
-    for (const auto* list : {&edits.added, &edits.removed}) {
-        for (const BlockCoord& block : *list) {
-            tile::addLevels(levels, block.y - kBlockReach, block.y + kBlockReach, height);
-        }
+    // The edited blocks of a section span its edited heights: their levels are those of its
+    // lowest and highest blocks and every level between, as block by block.
+    for (const auto& [low, high] : edits.editedSpans()) {
+        tile::addLevels(levels, low - kBlockReach, high + kBlockReach, height);
     }
     return {levels.begin(), levels.end()};
 }
 
-// Indices of the samples first + index * spacing within kBlockReach of center.
-std::pair<int, int> reachedSamples(int center, int first, int spacing) {
-    const double low = std::ceil(static_cast<double>(center - kBlockReach - first) / spacing);
-    const double high = std::floor(static_cast<double>(center + kBlockReach - first) / spacing);
-    return {std::max(static_cast<int>(low), 0),
-            std::min(static_cast<int>(high), kGridSamples - 1)};
-}
-
-void applyBlock(DensityGrid& grid, const TileLattice& lattice, int originY, BlockCoord block,
-                BlockEdit edit) {
-    const auto [i0, i1] = reachedSamples(block.x, lattice.x0, lattice.spacing);
-    const auto [j0, j1] = reachedSamples(block.y, originY, lattice.spacing);
-    const auto [k0, k1] = reachedSamples(block.z, lattice.z0, lattice.spacing);
-    for (int k = k0; k <= k1; ++k) {
-        for (int j = j0; j <= j1; ++j) {
-            for (int i = i0; i <= i1; ++i) {
-                const float edited = editDensity(
-                    grid.at(i, j, k), block, edit, lattice.x0 + i * lattice.spacing,
-                    originY + j * lattice.spacing, lattice.z0 + k * lattice.spacing);
-                grid.set(i, j, k, edited);
+// Every added block first, then every removed one, as ModificationStore::editedDensity.
+void applyBlocks(DensityGrid& grid, const TileLattice& lattice, int originY,
+                 const EditWindow& edits) {
+    const EditLattice samples(edits, lattice.x0, originY, lattice.z0, lattice.spacing,
+                              kGridSamples);
+    if (samples.empty()) {
+        return;
+    }
+    for (int k = 0; k < kGridSamples; ++k) {
+        for (int j = 0; j < kGridSamples; ++j) {
+            for (int i = 0; i < kGridSamples; ++i) {
+                grid.set(i, j, k, samples.density(grid.at(i, j, k), i, j, k));
             }
         }
     }
 }
 
-// Every added block first, then every removed one, as ModificationStore::editedDensity.
-void applyBlocks(DensityGrid& grid, const TileLattice& lattice, int originY,
-                 const BlockEdits& edits) {
-    for (const BlockCoord& block : edits.added) {
-        applyBlock(grid, lattice, originY, block, BlockEdit::Added);
+// True if the edits leave no surface in the level: every block within reach of its samples
+// lies in filled sections of one edit, or the level lies above the ground without an added
+// block within reach (all air), or under it without a removed one (all rock). Tiles without
+// caves only: the caves carve the rock.
+bool filledLevel(const EditWindow& edits, const TileLattice& lattice, const TileColumns& columns,
+                 int originY) {
+    const int side = lattice.levelHeight;
+    const BlockCoord min{lattice.x0 - kBlockReach, originY - kBlockReach,
+                         lattice.z0 - kBlockReach};
+    const BlockCoord max{lattice.x0 + side + kBlockReach, originY + side + kBlockReach,
+                         lattice.z0 + side + kBlockReach};
+    if (static_cast<double>(originY) > columns.maxHeight &&
+        !edits.holds(BlockEdit::Added, min, max)) {
+        return true;
     }
-    for (const BlockCoord& block : edits.removed) {
-        applyBlock(grid, lattice, originY, block, BlockEdit::Removed);
+    if (static_cast<double>(originY + side) < columns.minHeight &&
+        !edits.holds(BlockEdit::Removed, min, max)) {
+        return true;
     }
+    return edits.filled(min, max);
 }
 
 // True if the grid holds solid and air samples: otherwise Marching Cubes gives no triangle.
@@ -170,60 +174,20 @@ Plant canonicalPlant(Plant plant, const WorldSize& world) {
     return plant;
 }
 
-// A piece of an interval of meters, in the canonical range, and what moves it back into the
-// frame of the interval.
-struct Piece {
-    std::int64_t first;
-    std::int64_t last;
-    std::int64_t shift;
-};
-
-// The interval [first, last] (shorter than the period) cut at the edge of the canonical range.
-std::vector<Piece> canonicalPieces(std::int64_t first, std::int64_t last, double period) {
-    const auto whole = static_cast<std::int64_t>(period);
-    const std::int64_t start = wrapIndex(first, whole);
-    const std::int64_t end = start + (last - first);
-    const std::int64_t shift = first - start;
-    if (end < whole / 2) {
-        return {{start, end, shift}};
-    }
-    return {{start, whole / 2 - 1, shift}, {-whole / 2, end - whole, shift + whole}};
-}
-
 // Edited blocks centered in [minX, maxX] x [minZ, maxZ] (an area of any image, smaller than the
-// world): the store holds them in the canonical range, so an area across an edge of the world
-// asks for each canonical piece and moves its blocks into the frame of the area. Sorted lists.
-BlockEdits blocksAround(const ModificationStore& store, int minX, int maxX, int minZ, int maxZ,
+// world): the store holds them in the canonical range, the window reads the canonical chunks of
+// the area and answers in its frame.
+EditWindow blocksAround(const ModificationStore& store, int minX, int maxX, int minZ, int maxZ,
                         const WorldSize& world) {
-    BlockEdits edits;
-    for (const Piece& alongZ : canonicalPieces(minZ, maxZ, world.z)) {
-        for (const Piece& alongX : canonicalPieces(minX, maxX, world.x)) {
-            BlockEdits part =
-                store.blocksIn(static_cast<int>(alongX.first), static_cast<int>(alongX.last),
-                               static_cast<int>(alongZ.first), static_cast<int>(alongZ.last));
-            for (auto* list : {&part.added, &part.removed}) {
-                for (BlockCoord& block : *list) {
-                    block.x = static_cast<std::int32_t>(block.x + alongX.shift);
-                    block.z = static_cast<std::int32_t>(block.z + alongZ.shift);
-                }
-            }
-            edits.added.insert(edits.added.end(), part.added.begin(), part.added.end());
-            edits.removed.insert(edits.removed.end(), part.removed.begin(), part.removed.end());
-        }
-    }
-    std::sort(edits.added.begin(), edits.added.end());
-    std::sort(edits.removed.begin(), edits.removed.end());
-    return edits;
+    return {store, minX, maxX, minZ, maxZ, world};
 }
 
 // Chunks whose tiles the modifications change.
 void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& chunks) {
     for (const auto& [coord, chunk] : store.byChunk()) {
         chunks.push_back(coord);
-        for (const auto& [block, edit] : chunk.blocks) {
-            const std::vector<ChunkCoord> reached = blockChunks(block);
-            chunks.insert(chunks.end(), reached.begin(), reached.end());
-        }
+        const std::vector<ChunkCoord> reached = reachedChunks(coord, chunk);
+        chunks.insert(chunks.end(), reached.begin(), reached.end());
     }
 }
 
@@ -260,7 +224,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
             tile::dropPlantsOverEntrances(*caves_, caveGround_, lattice, plants);
         }
     }
-    BlockEdits edits;
+    EditWindow edits;
     {
         const std::shared_lock lock(mutex_);
         edits =
@@ -268,6 +232,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
                          lattice.x0 + lattice.levelHeight + kBlockReach, lattice.z0 - kBlockReach,
                          lattice.z0 + lattice.levelHeight + kBlockReach, world());
         if (request.key.lod == kPlantLod) {
+            dropPlantsOnRemovedGround(edits, plants);
             modifications_.applyPlantEdits(request.key.origin, plants);
         }
     }
@@ -292,6 +257,9 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     const auto scale = static_cast<float>(lattice.spacing);
     for (const int level : levels) {
         const int originY = level * lattice.levelHeight;
+        if (!caveTile && filledLevel(edits, lattice, columns, originY)) {
+            continue; // inside a filled or emptied volume: no surface
+        }
         DensityGrid grid = caveTile ? caveTile->levelDensity(originY)
                                     : tile::levelDensity(columns, lattice, originY);
         applyBlocks(grid, lattice, originY, edits);
@@ -321,20 +289,14 @@ float TerrainTiles::densityAt(int worldX, int y, int worldZ) const {
     if (caves_) {
         density = caveDensityAt(*caves_, caveGround_, caveDetailForLod(0), x, y, z);
     }
-    BlockEdits edits;
+    EditWindow edits;
     {
         const std::shared_lock lock(mutex_);
         edits = blocksAround(modifications_, x - kBlockReach, x + kBlockReach, z - kBlockReach,
                              z + kBlockReach, world());
     }
     // As ModificationStore::editedDensity: every added block first, then every removed one.
-    for (const BlockCoord& block : edits.added) {
-        density = editDensity(density, block, BlockEdit::Added, x, y, z);
-    }
-    for (const BlockCoord& block : edits.removed) {
-        density = editDensity(density, block, BlockEdit::Removed, x, y, z);
-    }
-    return density;
+    return edits.density(density, x, y, z);
 }
 
 std::vector<ChunkCoord> TerrainTiles::setBlock(BlockCoord block, BlockEdit edit) {
@@ -363,6 +325,16 @@ std::vector<ChunkCoord> TerrainTiles::removePlant(const Plant& plant) {
     const std::unique_lock lock(mutex_);
     modifications_.removePlant(canonical);
     return {worldToChunk(canonical.x, canonical.z)};
+}
+
+std::vector<ChunkCoord> TerrainTiles::applyEdit(const VolumeEdit& edit) {
+    const std::unique_lock lock(mutex_);
+    return applyVolumeEdit(modifications_, edit, world());
+}
+
+std::vector<ChunkCoord> TerrainTiles::applyInSequence(std::span<const SequencedEdit> edits) {
+    const std::unique_lock lock(mutex_);
+    return terrain::applyInSequence(modifications_, edits, world());
 }
 
 std::vector<ChunkCoord> TerrainTiles::replaceModifications(ModificationStore store) {

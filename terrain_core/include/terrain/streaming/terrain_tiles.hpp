@@ -8,11 +8,13 @@
 #include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/storage/modifications.hpp"
+#include "terrain/storage/volume_edit.hpp"
 #include "terrain/streaming/stream_manager.hpp"
 
 #include <cstdint>
 #include <optional>
 #include <shared_mutex>
+#include <span>
 #include <vector>
 
 namespace terrain {
@@ -48,9 +50,10 @@ public:
     // density is sampled every tileCellMeters(lod) meters on the lattice of the tile, the block
     // edits are applied, the seams are stitched (stitchSeams), and each level is meshed with
     // Marching Cubes. On LOD 0, the plants of the chunk (Ecology::placePlants on the exact
-    // heightfield) after the plant edits; on every LOD, the surface blend of the natural ground
-    // (TileData::surfaceBlend). Deterministic, and thread-safe: it may run concurrently with the
-    // edits.
+    // heightfield) after the plant edits, less the generated plants standing on a removed block
+    // (dropPlantsOnRemovedGround); on every LOD, the surface blend of the natural ground
+    // (TileData::surfaceBlend), which the edits never change. Deterministic, and thread-safe: it
+    // may run concurrently with the edits.
     //
     // With caves, the levels go down to the deepest caves (maxDepth below the lowest ground,
     // plus the blend and a cell) and the levels without any surface are skipped; on the sides
@@ -72,6 +75,10 @@ public:
     std::vector<ChunkCoord> clearBlock(BlockCoord block);
     std::vector<ChunkCoord> addPlant(const Plant& plant);
     std::vector<ChunkCoord> removePlant(const Plant& plant);
+    // A volume edit given at any image (volume_edit.hpp), or edits applied by sequence. Throw
+    // std::invalid_argument for an invalid edit, before any change.
+    std::vector<ChunkCoord> applyEdit(const VolumeEdit& edit);
+    std::vector<ChunkCoord> applyInSequence(std::span<const SequencedEdit> edits);
     // Replaces every modification, to load a save: returns the chunks of the old and new ones.
     std::vector<ChunkCoord> replaceModifications(ModificationStore store);
 

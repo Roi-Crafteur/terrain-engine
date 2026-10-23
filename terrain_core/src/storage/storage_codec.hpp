@@ -1,7 +1,7 @@
 #pragma once
 
-// Records shared by the modification files (TMOD) and the region files, and the frame of the
-// world files. Shared by the files of src/storage only.
+// Records shared by the modification files (TMOD) and the region files of format 1, and the
+// frame of the world files. Shared by the files of src/storage only.
 
 #include "byte_stream.hpp"
 #include "terrain/chunk_coord.hpp"
@@ -32,6 +32,11 @@ inline constexpr std::size_t kMinChunkRecord = 20;
 //   u32 added plants, per plant: u8 type, f64 x, f64 z, f32 y, f32 scale, f32 rotation.
 // The blocks and the removed plants in increasing order, the added plants in order of addition.
 void writeChunk(ByteWriter& out, ChunkCoord coord, const ChunkModifications& chunk);
+
+// The plants of a chunk record, as above: u32 removed plants and their records, u32 added
+// plants and their records.
+void writePlants(ByteWriter& out, const ChunkModifications& chunk);
+void readPlants(ByteReader& in, ChunkCoord coord, ModificationStore& store);
 
 [[nodiscard]] ChunkCoord readChunkCoord(ByteReader& in);
 

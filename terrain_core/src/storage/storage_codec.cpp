@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <optional>
+#include <utility>
+#include <vector>
 
 namespace terrain::storage {
 
@@ -82,20 +84,25 @@ void readAddedPlants(ByteReader& in, ChunkCoord coord, ModificationStore& store)
 } // namespace
 
 std::size_t chunkRecordSize(const ChunkModifications& chunk) {
-    return kMinChunkRecord + chunk.blocks.size() * kBlockRecord +
+    return kMinChunkRecord + chunk.blockCount() * kBlockRecord +
            chunk.removedPlants.size() * kSpotRecord + chunk.addedPlants.size() * kPlantRecord;
 }
 
 void writeChunk(ByteWriter& out, ChunkCoord coord, const ChunkModifications& chunk) {
     out.i32(coord.x);
     out.i32(coord.z);
-    out.count(chunk.blocks.size());
-    for (const auto& [block, edit] : chunk.blocks) {
+    const std::vector<std::pair<BlockCoord, BlockEdit>> blocks = chunk.blocks(coord);
+    out.count(blocks.size());
+    for (const auto& [block, edit] : blocks) {
         out.i32(block.x);
         out.i32(block.y);
         out.i32(block.z);
         out.u8(static_cast<std::uint8_t>(edit));
     }
+    writePlants(out, chunk);
+}
+
+void writePlants(ByteWriter& out, const ChunkModifications& chunk) {
     out.count(chunk.removedPlants.size());
     for (const PlantSpot& spot : chunk.removedPlants) {
         out.f64(spot.x);
@@ -121,11 +128,15 @@ ChunkCoord readChunkCoord(ByteReader& in) {
 
 void readChunkBody(ByteReader& in, ChunkCoord coord, ModificationStore& store) {
     readBlocks(in, coord, store);
-    readRemovedPlants(in, coord, store);
-    readAddedPlants(in, coord, store);
+    readPlants(in, coord, store);
     if (store.chunk(coord) == nullptr) {
         in.fail("empty chunk");
     }
+}
+
+void readPlants(ByteReader& in, ChunkCoord coord, ModificationStore& store) {
+    readRemovedPlants(in, coord, store);
+    readAddedPlants(in, coord, store);
 }
 
 ByteWriter beginFrame(const Magic& magic, std::uint32_t version, std::size_t bodySize) {
