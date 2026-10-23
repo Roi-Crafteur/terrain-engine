@@ -73,6 +73,19 @@ public:
                 const PlanetParams& params = {}, const WorldSize& world = {});
     // Keeps a build compact (build is consumed).
     PlanetLevel(PlanetBuild&& build, const PlanetParams& params);
+    // A level kept before (the planet file, storage/planet_file.hpp): everything it keeps.
+    struct Parts {
+        PlanetParams params;
+        PlanetCells cells;
+        std::vector<PlanetLake> lakes;
+        RiverGraph rivers;
+        std::vector<RiverFeature> features;
+        PlanetWaterBudget budget;
+        PlanetTimings timings;
+        PlanetBreach breach;
+        PlanetPasses passes;
+    };
+    explicit PlanetLevel(Parts&& parts);
 
     [[nodiscard]] const PlanetGrid& grid() const { return cells_.grid; }
     [[nodiscard]] const PlanetCells& cells() const { return cells_; }
@@ -93,6 +106,7 @@ public:
     [[nodiscard]] const PlanetWaterBudget& budget() const { return budget_; }
     [[nodiscard]] const PlanetTimings& timings() const { return timings_; }
     [[nodiscard]] const PlanetBreach& breach() const { return breach_; }
+    [[nodiscard]] const PlanetPasses& passes() const { return passes_; }
 
     // Drainage basin of every cell (planet::computeBasins), recomputed on demand.
     [[nodiscard]] std::vector<std::int32_t> basins() const;
@@ -111,6 +125,7 @@ private:
     PlanetWaterBudget budget_;
     PlanetTimings timings_;
     PlanetBreach breach_;
+    PlanetPasses passes_;
 };
 
 namespace planet {

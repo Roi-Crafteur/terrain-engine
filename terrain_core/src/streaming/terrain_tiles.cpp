@@ -230,8 +230,10 @@ void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& c
 
 TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield,
                            const EcologyParams& ecology, const std::optional<CaveParams>& caves,
-                           const WorldSize& world)
-    : seed_(seed), field_(seed, heightfield, world), ecology_(seed, ecology, world) {
+                           const WorldSize& world, std::shared_ptr<const Hydrology> hydrology)
+    : seed_(seed),
+      field_(Heightfield(seed, heightfield, world).withHydrology(std::move(hydrology))),
+      ecology_(seed, ecology, world) {
     if (caves) {
         caves_.emplace(seed, *caves, world);
         caveEnvironment_.emplace(field_, ecology_.climate(), ecology_.params().biomes);

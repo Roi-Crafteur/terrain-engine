@@ -2,6 +2,7 @@
 
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_breach.hpp"
+#include "terrain/generation/planet/planet_passes.hpp"
 
 namespace terrain {
 
@@ -91,7 +92,7 @@ struct PlanetClimateParams {
 // The river graph of the planet level.
 struct PlanetRiverParams {
     // A dry, unfrozen land cell is a river where at least this many m^3/s leave it.
-    double minDischarge = 100.0;
+    double minDischarge = 10.0;
     // Bankfull width and depth of a river in meters from its discharge Q (hydraulic geometry,
     // Leopold and Maddock): widthCoefficient Q^0.5 and depthCoefficient Q^depthExponent.
     double widthCoefficient = 7.0;
@@ -147,6 +148,8 @@ struct PlanetParams {
     // or none of them without breachSills.
     bool breachSills = true;
     PlanetBreachParams breach;
+    // The sills of the fine relief across the links of the rivers (with floorSamples above 1).
+    PlanetPassParams passes;
 
     PlanetClimateParams climate;
     PlanetRiverParams rivers;

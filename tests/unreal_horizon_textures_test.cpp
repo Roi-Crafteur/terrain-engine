@@ -70,9 +70,17 @@ void testTexels() {
     const HorizonTexel dry = terrain::unreal::horizonTexel(ocean, false);
     TEST_CHECK(dry.height == -42.0f && !terrain::unreal::isSeaTexel(dry));
     TEST_CHECK(terrain::unreal::texelGround(dry) == 0.0f);
+    TEST_CHECK(!terrain::unreal::unpackSurface(basin.color).water);
+    // Under a lake or a river: the ground, its surface with the water code.
     HorizonCell lake = land;
     lake.flags = terrain::kHorizonWater;
-    TEST_CHECK(terrain::unreal::horizonTexel(lake, true) == ground);
+    const HorizonTexel inland = terrain::unreal::horizonTexel(lake, true);
+    TEST_CHECK(inland.height == ground.height && !terrain::unreal::isSeaTexel(inland));
+    TEST_CHECK((terrain::unreal::unpackSurface(inland.color) ==
+                terrain::unreal::SurfaceCode{terrain::SurfaceMaterial::Pebbles,
+                                             terrain::Biome::Mountain, true}));
+    TEST_CHECK(inland.color >= static_cast<float>(terrain::unreal::kSurfaceWaterCode));
+    TEST_CHECK(!(ground.color >= static_cast<float>(terrain::unreal::kSurfaceWaterCode)));
 }
 
 // A texture of side x side texels, kTexelFloats floats each.

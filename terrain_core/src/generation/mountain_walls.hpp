@@ -126,6 +126,16 @@ struct Bedding {
 [[nodiscard]] double surface(const Noises& noises, const Column& column, double x, double z,
                              Memo* memo);
 
+// The top of the rock of surface over ground of gradient (gradX, gradZ) with the masks given
+// instead of those of the map: walls cut into the ground by other forms (the gorges of the rivers,
+// phase 11B). surface is rockTop with masks (where they are not 0).
+[[nodiscard]] double rockTop(const Noises& noises, const Masks& masks, double x, double z,
+                             double ground, double gradX, double gradZ, Memo* memo);
+// The share of strata of the walls at (x, z) for a character of the map (the rest crystalline),
+// as surface draws it, without its isolated regions and its crystalline cores.
+[[nodiscard]] double strataShare(const Noises& noises, double x, double z, float character,
+                                 Memo* memo);
+
 // The density of the rock at height y: the vertical distance to its surface (negative inside).
 [[nodiscard]] double density(const Noises& noises, const Column& column, double x, double z,
                              double y, Memo* memo);

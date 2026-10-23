@@ -60,7 +60,8 @@ HorizonTexel horizonTexel(const HorizonCell& cell, bool sea) {
     if (sea && isSeaCell(cell)) {
         return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel};
     }
-    return {cell.height, cell.gradX, cell.gradZ, packSurface(cell.material, cell.biome)};
+    const bool inland = (cell.flags & kHorizonWater) != 0 && (cell.flags & kHorizonSea) == 0;
+    return {cell.height, cell.gradX, cell.gradZ, packSurface(cell.material, cell.biome, inland)};
 }
 
 bool isSeaTexel(const HorizonTexel& texel) {

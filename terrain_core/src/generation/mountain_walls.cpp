@@ -304,10 +304,22 @@ double crystalTop(const Noises& n, double x, double z, double ground, double gra
 
 double surface(const Noises& n, const Column& c, double x, double z, Memo* memo) {
     const Masks m = masks(n, c, x, z, memo);
-    double h = c.ground;
     if (!(m.strata > 0.0) && !(m.crystal > 0.0)) {
-        return h;
+        return c.ground;
     }
+    return rockTop(n, m, x, z, c.ground, c.gradX, c.gradZ, memo);
+}
+
+double strataShare(const Noises& n, double x, double z, float character, Memo* memo) {
+    return smooth(-kCharacterEdge, kCharacterEdge,
+                  fbm(n.character, x, z, memo ? &memo->character : nullptr) +
+                      kWornStrata * (kSharp - static_cast<double>(character)) - kRareStrata);
+}
+
+double rockTop(const Noises& n, const Masks& m, double x, double z, double ground, double gradX,
+               double gradZ, Memo* memo) {
+    const Column c{ground, gradX, gradZ};
+    double h = c.ground;
     // The noise of the rims, once for the strata and the joints.
     const double noise = fbm(n.rims, x, z, memo ? &memo->rims : nullptr);
     if (m.strata > 0.0) {

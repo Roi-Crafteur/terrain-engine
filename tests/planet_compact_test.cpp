@@ -54,9 +54,12 @@ void testCompact(const terrain::HeightfieldParams& relief) {
     const terrain::planet::LakeAt lakeAt = [&](std::size_t c) { return build.lakeOfCell[c]; };
     TEST_CHECK(level.basins() == terrain::planet::computeBasins(
                                      build.grid, build.ocean, build.receiver, lakeAt, build.lakes));
-    // About 5 bytes per cell, plus the sparse lakes and rivers.
+    // About 5 bytes per cell, plus the sparse lakes and rivers (the river cells from 10 m3/s on).
+    const std::size_t sparse =
+        cells.riverCells.size() * sizeof(terrain::PlanetCells::RiverCell) +
+        cells.lakeCells.size() * sizeof(terrain::PlanetCells::LakeCell);
     TEST_CHECK(cells.memoryBytes() >= 5 * build.grid.cells());
-    TEST_CHECK(cells.memoryBytes() < 7 * build.grid.cells());
+    TEST_CHECK(cells.memoryBytes() < 6 * build.grid.cells() + sparse);
 }
 
 void testQuantization() {
