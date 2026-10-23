@@ -162,4 +162,9 @@ inline bool same(const terrain::HeightSample& a, const terrain::HeightSample& b)
            same(a.height, b.height);
 }
 
+// The water of two samples (the frozen references predate it).
+inline bool sameWater(const terrain::HeightSample& a, const terrain::HeightSample& b) {
+    return a.water == b.water && same(a.waterLevel, b.waterLevel);
+}
+
 } // namespace bit_exact

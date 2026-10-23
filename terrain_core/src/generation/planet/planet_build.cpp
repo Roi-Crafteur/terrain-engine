@@ -67,9 +67,12 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params) {
     Stopwatch watch;
     PlanetBuild build;
     build.grid = makePlanetGrid(field.world(), params.cellSize);
-    build.height = sampleRelief(field, build.grid, params.samplesPerAxis, threads);
+    CellRelief cells = sampleCells(field, build.grid, params.samplesPerAxis, threads);
+    build.height = std::move(cells.height);
     build.timings.relief = watch.lap();
-    build.ocean = markOcean(build.grid, build.height, params.minOceanArea);
+    // The sea where the field puts it: with the geography, a dry depression below the sea level
+    // is land.
+    build.ocean = markOcean(build.grid, build.height, cells.sea, params.minOceanArea);
     build.timings.ocean = watch.lap();
     build.climate = computeClimate(build.grid, build.height, build.ocean, params.climate, threads);
     build.timings.climate = watch.lap();

@@ -48,6 +48,7 @@ add_library(terrain_core STATIC
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
     src/generation/climate.cpp
+    src/generation/depressions.cpp
     src/generation/ecology.cpp
     src/generation/eroded_region.cpp
     src/generation/geography.cpp
@@ -63,6 +64,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield.cpp
     src/generation/heightfield_density.cpp
     src/generation/heightfield_geography.cpp
+    src/generation/heightfield_water.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
@@ -312,6 +314,14 @@ target_link_libraries(terrain_export_relief PRIVATE terrain_core terrain_warning
 #                     [cell-size] [threads] [world-x] [world-z]
 add_executable(terrain_export_view tools/export_view.cpp tools/view_places.cpp)
 target_link_libraries(terrain_export_view PRIVATE terrain_core terrain_warnings)
+
+# Maps and views of the water of a world (phase 11B): the sea, the depressions below the sea
+# level. See the comment at the top of tools/export_water.cpp.
+# terrain_export_water <output-dir> [--seed <seed>] [--world <x> <z>] [--threads <n>]
+#                      [--cell <meters>] [--width <pixels>] [--map <name> <x> <z>]...
+#                      [--view <name> <x> <z> <heading-degrees>]...
+add_executable(terrain_export_water tools/export_water.cpp)
+target_link_libraries(terrain_export_water PRIVATE terrain_core terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
 # <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests

@@ -158,7 +158,7 @@ void fillExtras(const BodyTopology& topology, const BodyShape& shape, double pit
 } // namespace
 
 HorizonVertex horizonVertex(const HorizonCell& cell, const HorizonLook& look) {
-    const bool ocean = look.sea && cell.height < kSeaLevel;
+    const bool ocean = look.sea && isSeaCell(cell);
     const double ground = ocean ? static_cast<double>(kSeaLevel) : static_cast<double>(cell.height);
     HorizonVertex vertex;
     vertex.z = static_cast<float>((ground - look.dropMeters) * kCentimetersPerMeter);

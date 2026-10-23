@@ -16,8 +16,11 @@
 namespace terrain {
 
 // Flags of a horizon sample.
-inline constexpr std::uint8_t kHorizonWater = 1U << 0;  // under the sea (rivers: phase 11B)
+inline constexpr std::uint8_t kHorizonWater = 1U << 0;  // under water: the sea, a lake, a river
 inline constexpr std::uint8_t kHorizonEdited = 1U << 1; // changed by a summary of player edits
+// Under the sea, where the geography puts it (HeightSample::water), whatever the height: a dry
+// depression below the sea level is not the sea.
+inline constexpr std::uint8_t kHorizonSea = 1U << 2;
 
 // What the far horizon holds at a sample of a level: 16 bytes, for compact level buffers.
 struct HorizonCell {
@@ -35,7 +38,7 @@ struct HorizonCell {
     // HorizonParams::materialSlopeStep meters (the same on every level by default).
     SurfaceMaterial material = SurfaceMaterial::Water;
     Biome biome = Biome::Ocean;
-    std::uint8_t flags = 0; // kHorizonWater, kHorizonEdited
+    std::uint8_t flags = 0; // kHorizonWater, kHorizonEdited, kHorizonSea
     std::uint8_t reserved = 0;
 
     friend bool operator==(const HorizonCell&, const HorizonCell&) = default;

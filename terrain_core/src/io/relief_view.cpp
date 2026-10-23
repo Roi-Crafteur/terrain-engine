@@ -109,18 +109,18 @@ double drop(const ViewParams& p, double distance) {
 
 // Color of the ground at (x, z), height h, seen from distance: the tint lit by the sun through
 // the gradient of the ground over run meters on each side (centered, so that a sharp crest
-// takes the mean of its faces), the sea flat, then hazed.
+// takes the mean of its faces), the water (wet) flat, then hazed.
 Rgb groundColor(const ViewGround& ground, const ViewParams& p, const Camera& c, double x, double z,
-                float h, double run, double distance) {
+                float h, bool wet, double run, double distance) {
     Rgb color = kWater;
-    if (h >= kSeaLevel) {
+    if (!wet) {
         const double gx =
             (static_cast<double>(ground(x + run, z)) - ground(x - run, z)) / (2.0 * run);
         const double gz =
             (static_cast<double>(ground(x, z + run)) - ground(x, z - run)) / (2.0 * run);
         const double lambert =
             (-gx * c.sun[0] + c.sun[1] - gz * c.sun[2]) / std::sqrt(gx * gx + 1.0 + gz * gz);
-        const std::array<float, 3> tint = reliefColor(h);
+        const std::array<float, 3> tint = reliefColor(h, false);
         // Steep ground is bare rock, whatever its altitude.
         const double steep = std::clamp((std::sqrt(gx * gx + gz * gz) - kRockSlopeLow) /
                                             (kRockSlopeHigh - kRockSlopeLow),
@@ -178,8 +178,8 @@ void paintSky(Image& image, const Camera& c, int column, int lowestFree) {
 // Casts the ray of a column front to back: each point of the ground higher on the image than
 // every nearer one covers the rows down to them, in colors going from that of the nearer point
 // when it was seen (the face of ground between them) to its own.
-void castColumn(const ViewGround& ground, const ViewParams& p, const Camera& c,
-                const Tower& tower, int column, Image& image) {
+void castColumn(const ViewGround& ground, const ViewWater& water, const ViewParams& p,
+                const Camera& c, const Tower& tower, int column, Image& image) {
     const double u = (column + 0.5 - 0.5 * p.width) / c.focal;
     const double dirX = c.forwardX + u * c.rightX;
     const double dirZ = c.forwardZ + u * c.rightZ;
@@ -200,13 +200,16 @@ void castColumn(const ViewGround& ground, const ViewParams& p, const Camera& c,
         }
         const bool onTower = tower.covers(p, x, z);
         const float h = onTower ? static_cast<float>(tower.top) : ground(x, z);
-        const double surface = std::max(static_cast<double>(h), static_cast<double>(kSeaLevel));
+        const float level = onTower ? h : water(x, z);
+        const bool wet = level > h;
+        const double surface = static_cast<double>(wet ? level : h);
         const int row = std::max(c.rowOf((surface - drop(p, distance) - p.eyeHeight) / s), 0);
         const bool visible = row < lowestFree;
         if (visible && onTower) {
             paintTower(image, p, c, tower, column, row, lowestFree, s, distance);
         } else if (visible) {
-            const Rgb color = groundColor(ground, p, c, x, z, h, std::max(1.0, step), distance);
+            const Rgb color =
+                groundColor(ground, p, c, x, z, h, wet, std::max(1.0, step), distance);
             const double rows = lowestFree - row;
             const double run = (s - previous) * stretch;
             const double rise = static_cast<double>(h) - before;
@@ -240,6 +243,12 @@ void validateView(const ViewParams& p) {
 } // namespace
 
 Image renderReliefView(const ViewGround& ground, const ViewParams& params, int threads) {
+    return renderReliefView(
+        ground, [](double, double) { return kSeaLevel; }, params, threads);
+}
+
+Image renderReliefView(const ViewGround& ground, const ViewWater& water, const ViewParams& params,
+                       int threads) {
     validateView(params);
     const Camera camera = cameraOf(params);
     Tower tower;
@@ -255,7 +264,8 @@ Image renderReliefView(const ViewGround& ground, const ViewParams& params, int t
     planet::parallelBlocks(params.width, kColumnBlock, planet::resolveThreads(threads),
                            [&](int begin, int end) {
                                for (int column = begin; column < end; ++column) {
-                                   castColumn(ground, params, camera, tower, column, image);
+                                   castColumn(ground, water, params, camera, tower, column,
+                                              image);
                                }
                            });
     return image;

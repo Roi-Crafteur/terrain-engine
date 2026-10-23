@@ -32,6 +32,7 @@ void checkSequence(const terrain::Heightfield& field, const std::vector<Point>& 
     for (std::size_t i = 0; i < points.size(); ++i) {
         const terrain::HeightSample expected = field.sampleAt(points[i].x, points[i].z);
         TEST_CHECK(same(samples[i], expected));
+        TEST_CHECK(bit_exact::sameWater(samples[i], expected));
         TEST_CHECK(same(heights[i], expected.height));
     }
 }

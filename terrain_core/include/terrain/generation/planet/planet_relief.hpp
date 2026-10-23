@@ -17,6 +17,15 @@ namespace terrain::planet {
 [[nodiscard]] std::vector<float> sampleRelief(const Heightfield& field, const PlanetGrid& grid,
                                               int samplesPerAxis, int threads);
 
+// The altitudes of sampleRelief, and the sea of every cell: 1 where the field puts the sea at its
+// center (HeightSample::water: where the geography puts it, not below kSeaLevel), else 0.
+struct CellRelief {
+    std::vector<float> height;
+    std::vector<std::uint8_t> sea;
+};
+[[nodiscard]] CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid,
+                                     int samplesPerAxis, int threads);
+
 // Water kinds of the cells, in an ocean mask.
 enum OceanKind : std::uint8_t {
     kLand = 0,
@@ -30,6 +39,12 @@ enum OceanKind : std::uint8_t {
 // kForcedOutlet, so that all the water of the world has somewhere to go.
 [[nodiscard]] std::vector<std::uint8_t>
 markOcean(const PlanetGrid& grid, const std::vector<float>& height, double minOceanArea);
+// markOcean on the cells of the sea (sea[c] != 0) instead of the cells below sea level: a dry
+// depression below the sea level is land.
+[[nodiscard]] std::vector<std::uint8_t> markOcean(const PlanetGrid& grid,
+                                                  const std::vector<float>& height,
+                                                  const std::vector<std::uint8_t>& sea,
+                                                  double minOceanArea);
 
 // The strict total order of the cells used by the whole hydrology: by altitude, then by index.
 // No two cells are equal, so there are no flats.
