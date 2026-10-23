@@ -31,16 +31,21 @@ inline TileLattice latticeOf(const TileKey& key) {
 
 // Ground heights of the kGridSamples x kGridSamples columns of a tile.
 struct TileColumns {
-    std::vector<float> heights; // x varies fastest
+    std::vector<float> heights;         // x varies fastest
+    std::vector<float> continentalness; // of each column, for the climate
     float minHeight = 0.0f;
     float maxHeight = 0.0f;
 
     [[nodiscard]] float at(int i, int k) const {
         return heights[static_cast<std::size_t>(k * kGridSamples + i)];
     }
+    [[nodiscard]] float continentalnessAt(int i, int k) const {
+        return continentalness[static_cast<std::size_t>(k * kGridSamples + i)];
+    }
 };
 
-// The heights in one batch (Heightfield::heightsAt): neighboring columns share noise cells.
+// The heights in one batch (Heightfield::samplesAt, the bits of heightsAt): neighboring columns
+// share noise cells.
 inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& lattice) {
     constexpr auto kCount = static_cast<std::size_t>(kGridSamples * kGridSamples);
     std::vector<double> xs;
@@ -53,9 +58,15 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
             zs.push_back(lattice.z0 + k * lattice.spacing);
         }
     }
+    std::vector<HeightSample> samples(kCount);
+    field.samplesAt(xs, zs, samples);
     TileColumns columns;
-    columns.heights.resize(kCount);
-    field.heightsAt(xs, zs, columns.heights);
+    columns.heights.reserve(kCount);
+    columns.continentalness.reserve(kCount);
+    for (const HeightSample& sample : samples) {
+        columns.heights.push_back(sample.height);
+        columns.continentalness.push_back(sample.continentalness);
+    }
     const auto [low, high] = std::minmax_element(columns.heights.begin(), columns.heights.end());
     columns.minHeight = *low;
     columns.maxHeight = *high;

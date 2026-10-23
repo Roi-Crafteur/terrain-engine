@@ -107,6 +107,24 @@ void classify(const Heightfield& field, const Ecology& ecology, const LevelFrame
     cell.flags = site.dry() ? 0 : kHorizonWater;
 }
 
+// Raises the samples of the rectangle to the crests of their cells (their natural ground).
+void raiseToCrests(const HorizonCrestSampler& crests, int level, const HorizonRect& rect,
+                   const GroundGrid& grid, std::span<HorizonCell> cells) {
+    if (!crests.raises(level)) {
+        return;
+    }
+    std::vector<float> lifts(static_cast<std::size_t>(rect.count()));
+    crests.fill(level, rect, grid.heights, lifts);
+    std::size_t next = 0;
+    for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
+        for (std::int64_t i = rect.x0; i < rect.x1; ++i, ++next) {
+            if (lifts[next] > 0.0f) {
+                cells[grid.index(i, k)].height += lifts[next];
+            }
+        }
+    }
+}
+
 } // namespace
 
 void applyEditSummary(const EditSummary& summary, HorizonCell& cell) {
@@ -119,7 +137,8 @@ void applyEditSummary(const EditSummary& summary, HorizonCell& cell) {
 
 HorizonSampler::HorizonSampler(const Heightfield& field, const Ecology& ecology,
                                const HorizonParams& params, EditSummarySource edits)
-    : field_(&field), ecology_(&ecology), params_(params), edits_(std::move(edits)) {
+    : field_(&field), ecology_(&ecology), params_(params), crests_(field, params),
+      edits_(std::move(edits)) {
     validate(params_);
     if (!(field.world() == params_.world) || !(ecology.world() == params_.world)) {
         throw std::invalid_argument("HorizonSampler: the relief, the ecology and the horizon "
@@ -152,6 +171,9 @@ void HorizonSampler::fill(int level, const HorizonRect& rect, std::span<HorizonC
             classify(*field_, *ecology_, frame, grid, slopeStep, i, k, cells[grid.index(i, k)]);
         }
     }
+    raiseToCrests(crests_, level, rect, grid, cells);
+    // The point heights and their edits, for the gradients: the lifts leave them out.
+    std::vector<float> ground = grid.heights;
     if (edits_) {
         const double half = frame.pitch / 2.0;
         for (std::int64_t k = margin.z0; k < margin.z1; ++k) {
@@ -160,6 +182,7 @@ void HorizonSampler::fill(int level, const HorizonRect& rect, std::span<HorizonC
                     edits_(CellFootprint{level, frame.x(i), frame.z(k), half});
                 if (summary) {
                     applyEditSummary(*summary, cells[grid.index(i, k)]);
+                    ground[grid.index(i, k)] += summary->heightChange;
                 }
             }
         }
@@ -169,10 +192,10 @@ void HorizonSampler::fill(int level, const HorizonRect& rect, std::span<HorizonC
     for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
         for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
             HorizonCell cell = cells[grid.index(i, k)];
-            const double east = cells[grid.index(i + 1, k)].height;
-            const double south = cells[grid.index(i, k + 1)].height;
-            cell.gradX = static_cast<float>((east - cells[grid.index(i - 1, k)].height) / run);
-            cell.gradZ = static_cast<float>((south - cells[grid.index(i, k - 1)].height) / run);
+            const double east = ground[grid.index(i + 1, k)];
+            const double south = ground[grid.index(i, k + 1)];
+            cell.gradX = static_cast<float>((east - ground[grid.index(i - 1, k)]) / run);
+            cell.gradZ = static_cast<float>((south - ground[grid.index(i, k - 1)]) / run);
             out[next++] = cell;
         }
     }

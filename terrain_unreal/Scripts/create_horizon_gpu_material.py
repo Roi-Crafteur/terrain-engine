@@ -71,7 +71,9 @@ int2 coarseFirst = int2((int)CoarseFirstX, (int)CoarseFirstZ);
 int2 inCoarser = int2((int)CoarseX, (int)CoarseZ);
 int2 ik = int2(round(Local.xy));
 float4 own = Tex.Load(int3((ik + first) % side, 0));
-// The samples whose mean the coarser level shows here (Bridge/horizon_morph.hpp).
+// The samples whose mean the coarser level shows here (Bridge/horizon_morph.hpp): the morph
+// takes the heights and the ground of the coarser texels (ca, cb), the crests lifting them by
+// their own cells, and the surface layers of this level's texels (a, b, the same materials).
 int2 s0 = ik;
 int2 s1 = ik;
 bool oddI = (ik.x & 1) != 0;
@@ -88,8 +90,8 @@ float alpha = HasCoarser > 0.5 ? saturate((distance - (Cells * 0.5 - 2.0 - Morph
 // On the ocean the last float is the ground under the sea, below 0 (texelGround). The ground of
 // the land gets 1 cm: land at the sea level (or the whole ocean without bHorizonSea) stays dry.
 #define HORIZON_GROUND(t) ((t).a < 0.0 ? (t).a : max((t).r, 0.0) + 0.01)
-float height = lerp(own.r, 0.5 * (a.r + b.r), alpha);
-float ground = lerp(HORIZON_GROUND(own), 0.5 * (HORIZON_GROUND(a) + HORIZON_GROUND(b)), alpha);
+float height = lerp(own.r, 0.5 * (ca.r + cb.r), alpha);
+float ground = lerp(HORIZON_GROUND(own), 0.5 * (HORIZON_GROUND(ca) + HORIZON_GROUND(cb)), alpha);
 float2 slope = lerp(own.gb, 0.5 * (ca.gb + cb.gb), alpha);
 #undef HORIZON_GROUND
 // The layers of the ground (the temporary terrain material): its packed surface (material and

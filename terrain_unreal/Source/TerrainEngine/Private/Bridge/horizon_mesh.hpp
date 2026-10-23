@@ -66,10 +66,11 @@ struct BodyTopology {
 
 // What the body of one level needs besides its topology.
 struct BodyShape {
-    // A coarser level surrounds this one: each odd sample of the window border takes the mean of
-    // its two neighbors along the border, so the border lies on the edges of the coarser level
-    // (whose samples are the even ones, bit for bit) and leaves no crack.
-    bool stitch = false;
+    // The next coarser level, placed around this one, or nullptr: the window border is stitched
+    // onto its edges, so that it leaves no crack. Each even sample of the border takes the
+    // altitude of the coarser sample there (the same bits as its own with point samples; the
+    // crests lift the coarser one by its own cells), each odd one the mean of its two neighbors.
+    const HorizonLevel* coarser = nullptr;
     double skirtMeters = 2.0;
     double seaHalfMeters = 0.0; // half side of the sea square, around the window center
     // Lowest drop of the curvature over the window (curvatureDropMeters at levelReachMeters).

@@ -2,8 +2,10 @@
 // borders of their meshes lie on the polyline of the level 0 samples (no step, no crack). A
 // tile whose border is cut by a cave entrance leaves that polyline: the gap is measured and
 // reported (Unreal hides such gaps with a skirt under the border of level 0). The even samples
-// of a level are the samples of the next coarser one, bit for bit. Across an edge and the
-// corner of the wrapped world the samples are those of the unwrapped positions, without a jump.
+// of a level are the samples of the next coarser one, bit for bit: their material, biome and
+// flags always, their heights with point samples (crestRatio 0; the crests lift the levels 1
+// and up by their own cells). Across an edge and the corner of the wrapped world the samples
+// are those of the unwrapped positions (point samples), without a jump (with crests too).
 #include "terrain/streaming/horizon_sampler.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -206,11 +208,13 @@ void testCaveEntranceGap() {
     TEST_CHECK(outerGap.gap <= kTileTolerance);
 }
 
-// Sample J of level n + 1 is sample 2J of level n: the same ground, material, biome and flags.
-void testNestedLevels() {
+// Sample J of level n + 1 is sample 2J of level n: the same material, biome and flags, and the
+// same ground for point samples.
+void testNestedLevels(int crestRatio) {
     const terrain::Heightfield field(streaming_test::kSeed);
     const terrain::Ecology ecology(streaming_test::kSeed);
-    const HorizonParams params;
+    HorizonParams params;
+    params.crestRatio = crestRatio;
     const HorizonSampler sampler(field, ecology, params);
     const terrain::WorldSize world = params.world;
     for (const auto& [x, z] :
@@ -227,8 +231,8 @@ void testNestedLevels() {
                     const HorizonCell& p = a[static_cast<std::size_t>(k * coarse.width() + i)];
                     const HorizonCell& q =
                         b[static_cast<std::size_t>(2 * k * fine.width() + 2 * i)];
-                    TEST_CHECK(p.height == q.height && p.material == q.material);
-                    TEST_CHECK(p.biome == q.biome && p.flags == q.flags);
+                    TEST_CHECK(p.material == q.material && p.biome == q.biome);
+                    TEST_CHECK(p.flags == q.flags && (crestRatio != 0 || p.height == q.height));
                 }
             }
         }
@@ -236,11 +240,13 @@ void testNestedLevels() {
 }
 
 // A rectangle across the east edge and one at the corner of the world: the samples of the
-// unwrapped positions, and no larger jump across the edges than between other neighbors.
-void testWorldEdges() {
+// unwrapped positions (point samples), and no larger jump across the edges than between other
+// neighbors.
+void testWorldEdges(int crestRatio) {
     const terrain::Heightfield field(streaming_test::kSeed);
     const terrain::Ecology ecology(streaming_test::kSeed);
-    const HorizonParams params;
+    HorizonParams params;
+    params.crestRatio = crestRatio;
     const HorizonSampler sampler(field, ecology, params);
     for (const int level : {0, 5, 9}) {
         const int pitch = terrain::levelPitch(params, level);
@@ -255,7 +261,7 @@ void testWorldEdges() {
                 for (std::int64_t i = rect.x0; i < rect.x1; ++i, ++n) {
                     const double x = terrain::samplePosition(i, pitch); // beyond the edges
                     const double z = terrain::samplePosition(k, pitch);
-                    TEST_CHECK(cells[n].height == field.heightAt(x, z));
+                    TEST_CHECK(crestRatio != 0 || cells[n].height == field.heightAt(x, z));
                     if (i + 1 == rect.x1) {
                         continue;
                     }
@@ -274,7 +280,9 @@ void testWorldEdges() {
 int main() {
     testOuterTiles();
     testCaveEntranceGap();
-    testNestedLevels();
-    testWorldEdges();
+    for (const int crestRatio : {0, HorizonParams{}.crestRatio}) {
+        testNestedLevels(crestRatio);
+        testWorldEdges(crestRatio);
+    }
     return test::result();
 }

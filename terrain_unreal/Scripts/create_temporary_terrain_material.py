@@ -51,6 +51,7 @@ float4 a = float4(1.0, 0.0, 0.0, 0.0);
 float4 b = float4(0.0, 0.0, 0.0, 0.0);
 float4 c = float4(0.0, 0.0, 0.0, 0.0);
 float2 slope = float2(0.0, 0.0);
+float curvature = 0.0;
 float altitude = Rel.z / 100.0;
 BRANCH if (HasSurface > 0.5)
 {
@@ -78,6 +79,15 @@ BRANCH if (HasSurface > 0.5)
     // The foot of steep slopes: the steepest of the 4 samples (rise over run), from 35 degrees.
     float steep = max(max(length(t00.gb), length(t10.gb)), max(length(t01.gb), length(t11.gb)));
     c.z = saturate((steep - 0.7) / 0.5);
+    // The curvature of the ground (Laplacian of the heights, 1/m) over 2 samples on each side
+    // (16 m at the default pitch): above 0 in the hollows, below 0 on bumps and crests.
+    float hc = Look.Height(Tex, ij, first, side, SurfaceCells);
+    float lap = Look.Height(Tex, ij + float2(2.0, 0.0), first, side, SurfaceCells)
+              + Look.Height(Tex, ij - float2(2.0, 0.0), first, side, SurfaceCells)
+              + Look.Height(Tex, ij + float2(0.0, 2.0), first, side, SurfaceCells)
+              + Look.Height(Tex, ij - float2(0.0, 2.0), first, side, SurfaceCells) - 4.0 * hc;
+    float span = 0.02 * SurfacePitchCm;
+    curvature = lap / (span * span);
 }
 else
 {
@@ -89,7 +99,7 @@ else
 c.w = altitude / 1000.0;
 W1 = b;
 W2 = c;
-W3 = float4(slope, HasSurface, 0.0);
+W3 = float4(slope, HasSurface, curvature);
 return a;
 """
 
@@ -226,10 +236,10 @@ def pixel_shader(material, scalars, weights):
     meters = expression(material, unreal.MaterialExpressionMultiply, -650, 400)
     meters.set_editor_property("const_b", 1000.0)
     connect(altitude, "", meters, "A")
-    inputs = look.shade_inputs() + look.layer_inputs(True)
+    inputs = look.shade_inputs() + ["W3"] + look.layer_inputs(True)
     shade = custom_node(material, -300, 300, "TemporaryTerrainShade", look.shade_hlsl(True),
                         inputs, [("NormalOut", FLOAT3), ("RoughOut", FLOAT1)], FLOAT3)
-    for name in ("W0", "W1", "W2"):
+    for name in ("W0", "W1", "W2", "W3"):
         connect(weights[name], "", shade, name)
     connect(normal, "", shade, "N")
     connect(position, "", shade, "P")

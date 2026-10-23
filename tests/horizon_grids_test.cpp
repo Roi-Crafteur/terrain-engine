@@ -4,7 +4,8 @@
 // computations; crossing an edge of the world or jumping by a whole world computes no full
 // level; the origins stay at the image nearest to the observer even when it crossed an edge
 // while an epoch was computed; two observers read the same samples; the geomorphing target
-// along the border of a level is the next coarser level; invalidated areas are computed again,
+// along the border of a level is the next coarser level (its even samples with point samples,
+// raised samples with crests); invalidated areas are computed again,
 // those invalidated during an epoch included.
 #include "terrain/streaming/horizon_epoch.hpp"
 
@@ -126,11 +127,16 @@ void testOriginsAcrossEdge() {
         TEST_CHECK(std::abs(center - after) <= 200.0 + level.pitch());
         const double fromBefore = level.originX(before) + params.cellsPerSide / 2 * level.pitch();
         TEST_CHECK(std::abs(fromBefore - before) <= level.pitch());
-        // The samples read at the image of the observer are the ground there.
+        // The samples read at the image of the observer are the samples there.
         const double sampleX = level.originX(after) + 3.0 * level.pitch();
         const double sampleZ = level.originZ(kZ) + 5.0 * level.pitch();
         const std::optional<float> height = level.heightAt(sampleX, sampleZ);
-        TEST_CHECK(height && *height == world.field.heightAt(sampleX, sampleZ));
+        const terrain::HorizonIndex there = terrain::canonicalSample(
+            {std::llround(sampleX / level.pitch()), std::llround(sampleZ / level.pitch())},
+            level.counts());
+        const std::vector<HorizonCell> ground =
+            sampler.sample(n, {there.x, there.z, there.x + 1, there.z + 1});
+        TEST_CHECK(height && *height == ground.front().height);
     }
 }
 
@@ -158,14 +164,18 @@ void testTwoObservers() {
     TEST_CHECK(shared > params.levels * 64 * 32);
 }
 
-// Along the border of level n, the samples of level n + 1 are its even samples and their
-// bilinear interpolation gives the odd ones the mean of their neighbors: the geomorphing target.
-void testMorphTargets() {
+// Along the border of level n, the geomorphing target is the surface of level n + 1: its sample
+// at the even samples, the mean of its two samples around the odd ones. With point samples
+// (crestRatio 0) its samples are the even samples of level n, bit for bit; with crests they
+// differ where the crests lift them: the renderer morphs toward the coarser samples.
+void testMorphTargets(int crestRatio) {
     const World world;
-    const HorizonParams params = smallParams();
+    HorizonParams params = smallParams();
+    params.crestRatio = crestRatio;
     const HorizonSampler sampler(world.field, world.ecology, params);
     HorizonClipmap clipmap(params);
     settle(clipmap, sampler, kX, kZ);
+    int differ = 0;
     for (int n = 0; n + 1 < params.levels; ++n) {
         const terrain::HorizonLevel& fine = clipmap.level(n);
         const terrain::HorizonLevel& coarse = clipmap.level(n + 1);
@@ -174,15 +184,25 @@ void testMorphTargets() {
                 const double x = fine.originX(kX) + i * fine.pitch();
                 const double z = fine.originZ(kZ) + k * fine.pitch();
                 const std::optional<float> target = coarse.heightAt(x, z);
-                double expected = fine.atWindow(i, k).height;
-                if (i % 2 == 1) {
-                    expected = 0.5 * (static_cast<double>(fine.atWindow(i - 1, k).height) +
-                                      fine.atWindow(i + 1, k).height);
-                }
+                const double u = (x - coarse.originX(kX)) / coarse.pitch();
+                const auto v = static_cast<int>((z - coarse.originZ(kZ)) / coarse.pitch());
+                const auto at = [&](double a) {
+                    return static_cast<double>(coarse.atWindow(static_cast<int>(a), v).height);
+                };
+                const double expected = i % 2 == 0 ? at(u) : 0.5 * (at(u - 0.5) + at(u + 0.5));
                 TEST_CHECK(target && *target == static_cast<float>(expected));
+                if (i % 2 == 0) {
+                    const bool same = at(u) == fine.atWindow(i, k).height;
+                    TEST_CHECK(crestRatio != 0 || same);
+                    differ += same ? 0 : 1;
+                }
             }
         }
     }
+    std::printf("morph targets, crest ratio %d: %d even border samples differ from the coarser "
+                "level\n",
+                crestRatio, differ);
+    TEST_CHECK(crestRatio == 0 || differ > 0);
 }
 
 // Edits raising the ground by a value the test changes, over an area.
@@ -267,7 +287,8 @@ int main() {
     testWorldEdges();
     testOriginsAcrossEdge();
     testTwoObservers();
-    testMorphTargets();
+    testMorphTargets(0);
+    testMorphTargets(HorizonParams{}.crestRatio);
     testInvalidations();
     testErrors();
     return test::result();

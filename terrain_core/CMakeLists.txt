@@ -34,6 +34,8 @@ add_library(terrain_core STATIC
     src/generation/aquifers.cpp
     src/generation/arches.cpp
     src/generation/biome.cpp
+    src/generation/biome_blend.cpp
+    src/generation/biome_margins.cpp
     src/generation/cave_entrances.cpp
     src/generation/cave_flora.cpp
     src/generation/cave_galleries.cpp
@@ -95,6 +97,7 @@ add_library(terrain_core STATIC
     src/generation/voronoi.cpp
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
+    src/io/blend_png.cpp
     src/io/cave_regions_png.cpp
     src/io/caves_png.cpp
     src/io/caves_png_layers.cpp
@@ -105,6 +108,7 @@ add_library(terrain_core STATIC
     src/io/heightmap_png.cpp
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
+    src/io/horizon_silhouette.cpp
     src/io/relief_lakes.cpp
     src/io/relief_rifts.cpp
     src/io/planet_png.cpp
@@ -128,6 +132,7 @@ add_library(terrain_core STATIC
     src/storage/world_meta.cpp
     src/storage/world_save.cpp
     src/streaming/cave_tiles.cpp
+    src/streaming/horizon_crests.cpp
     src/streaming/horizon_epoch.cpp
     src/streaming/horizon_grids.cpp
     src/streaming/horizon_levels.cpp
@@ -137,6 +142,7 @@ add_library(terrain_core STATIC
     src/streaming/lod.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
+    src/streaming/tile_blend.cpp
     src/world_size.cpp
 )
 
@@ -254,6 +260,8 @@ add_custom_target(export_voronoi_maps
 # Release: terrain_bench_noise [runs] [--quick]
 add_executable(terrain_bench_noise tools/bench_noise.cpp tools/bench_world.cpp)
 target_link_libraries(terrain_bench_noise PRIVATE terrain_core terrain_warnings)
+# The surface blend of the tiles, internal to terrain_core (src/streaming/tile_blend.hpp).
+target_include_directories(terrain_bench_noise PRIVATE src/streaming)
 
 # Planet level (climate, lakes, river graph) of a whole world, its figures and control images:
 # terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary] [samples-per-axis]
@@ -321,6 +329,15 @@ target_link_libraries(terrain_export_arches PRIVATE terrain_core terrain_warning
 add_executable(terrain_export_biomes tools/export_biomes.cpp)
 target_link_libraries(terrain_export_biomes PRIVATE terrain_core terrain_warnings)
 
+# Biome and material maps before and after the transitions (the colors mixed by the weights of
+# the surface blend) at 200, 20 and 2 km around given places, and the texels of LOD 0 tiles on an
+# edge between sand and rock against the blend every 0.5 m:
+# terrain_export_blend maps <output-dir> [--seed <s>] [--size <px>] [--threads <n>]
+#                      --at <name> <x> <z>...
+# terrain_export_blend edge <output-dir> <x> <z> [--seed <s>]
+add_executable(terrain_export_blend tools/export_blend.cpp)
+target_link_libraries(terrain_export_blend PRIVATE terrain_core terrain_warnings)
+
 # Cave PNG export, on an eroded region with its rivers around the cliff site (224 px at 20 m/px
 # by default): cave_slice.png (vertical section through an entrance) and cave_preview.png (map
 # of the caves, entrances and rivers): terrain_export_caves <output-dir> [seed] [m/px] [size]
@@ -335,7 +352,14 @@ target_link_libraries(terrain_export_cave_regions PRIVATE terrain_core terrain_w
 
 # Far horizon PNG export: level_N.png, map_relief.png, map_materials.png and panorama.png (360
 # degrees from a summit found with the grids, or from x z), with how far the relief shows and
-# what the silhouette loses without a prefilter:
+# what the silhouette loses against finer point samples:
 # terrain_export_horizon <output-dir> [seed] [x z] [cells-per-side]
 add_executable(terrain_export_horizon tools/export_horizon.cpp)
 target_link_libraries(terrain_export_horizon PRIVATE terrain_core terrain_warnings)
+
+# Silhouette of the far horizon against the truth (heightAt along each ray) at the valley of the
+# K2 and at the foot of the longest chain, before and with the crests, with images and timings:
+# terrain_export_silhouette <output-dir> [--timings] [cells-per-side] [columns-per-degree]
+#     [ratio...]
+add_executable(terrain_export_silhouette tools/export_silhouette.cpp)
+target_link_libraries(terrain_export_silhouette PRIVATE terrain_core terrain_warnings)

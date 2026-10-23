@@ -66,6 +66,10 @@ terrain_add_test(ecology_test terrain_core)
 terrain_add_test(ecology_default_world_test terrain_core)
 terrain_add_test(ecology_cliffs_test terrain_core)
 terrain_add_test(ecology_png_test terrain_core)
+terrain_add_test(biome_blend_test terrain_core)
+target_include_directories(biome_blend_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(biome_blend_world_test terrain_core)
+terrain_add_test(blend_png_test terrain_core)
 terrain_add_test(voronoi_layout_test terrain_core)
 terrain_add_test(voronoi_test terrain_core)
 terrain_add_test(voronoi_boundaries_test terrain_core)
@@ -75,9 +79,12 @@ terrain_add_test(lod_seams_test terrain_core)
 terrain_add_test(stream_manager_test terrain_core)
 terrain_add_test(modifications_test terrain_core)
 terrain_add_test(terrain_tiles_test terrain_core)
+terrain_add_test(tile_blend_test terrain_core)
+target_include_directories(tile_blend_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
 terrain_add_test(streaming_default_world_test terrain_core)
 terrain_add_test(horizon_levels_test terrain_core)
 terrain_add_test(horizon_sampler_test terrain_core)
+terrain_add_test(horizon_crests_test terrain_core)
 terrain_add_test(horizon_normals_test terrain_core)
 terrain_add_test(horizon_seams_test terrain_core)
 terrain_add_test(horizon_grids_test terrain_core)
@@ -117,6 +124,7 @@ terrain_add_test(cave_golden_test terrain_core)
 terrain_add_test(heightfield_golden_test terrain_core)
 terrain_add_test(world_golden_test terrain_core)
 terrain_add_test(horizon_golden_test terrain_core)
+terrain_add_test(blend_golden_test terrain_core)
 terrain_add_test(golden_ftz_test terrain_core)
 
 # Frozen reference of the noise, the Heightfield, the plates and the cave noise nodes (commit
@@ -221,6 +229,20 @@ add_test(NAME export_view_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_view>
             -DOUT=${CMAKE_BINARY_DIR}/view_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_view_bad_args.cmake)
+
+# Maps of the transitions of 64 x 64 pixels around the origin.
+add_test(NAME export_blend_smoke
+    COMMAND terrain_export_blend maps ${CMAKE_BINARY_DIR}/blend_maps --size 64 --threads 2
+            --at origin 0 0)
+set_tests_properties(export_blend_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "origin at \\(0, 0\\): maps of 200, 20 and 2 km written")
+add_dependencies(check terrain_export_blend)
+
+# Invalid arguments of terrain_export_blend are rejected before anything is computed.
+add_test(NAME export_blend_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_blend>
+            -DOUT=${CMAKE_BINARY_DIR}/blend_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_blend_bad_args.cmake)
 
 # The planet level of a small world (128 x 64 cells of 16 km), its figures and images.
 add_test(NAME export_planet_smoke
@@ -420,3 +442,19 @@ add_test(NAME export_horizon_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_horizon>
             -DOUT=${CMAKE_BINARY_DIR}/horizon_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_horizon_bad_args.cmake)
+
+# Smoke test of the silhouette measure: small windows (64 cells), one column per degree, the
+# default crests, written into <build-dir>/silhouette. Its first line comes once the truth of
+# the first place is traced.
+add_test(NAME export_silhouette_smoke
+    COMMAND terrain_export_silhouette ${CMAKE_BINARY_DIR}/silhouette 64 1)
+add_dependencies(check terrain_export_silhouette)
+set_tests_properties(export_silhouette_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "k2_valley: \\(416857, -11398966\\), ground [0-9.]+ m")
+
+# Invalid arguments of the silhouette measure (windows, columns per degree, crest ratios) are
+# rejected before anything is written.
+add_test(NAME export_silhouette_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_silhouette>
+            -DOUT=${CMAKE_BINARY_DIR}/silhouette_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_silhouette_bad_args.cmake)

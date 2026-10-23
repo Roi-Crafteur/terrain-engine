@@ -13,6 +13,7 @@ HorizonParams horizonParams(const WorldSize& world, const HorizonGpuParams& para
     HorizonParams horizon;
     horizon.levels = params.levels;
     horizon.cellsPerSide = params.cellsPerSide;
+    horizon.crestRatio = params.crestRatio;
     horizon.world = world;
     return horizon;
 }

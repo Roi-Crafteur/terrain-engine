@@ -164,8 +164,11 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   jupe sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure ; ciel qui suit la
   caméra partout sur la planète (perspective aérienne jusqu'au bout de l'horizon), mer
   colorée selon la profondeur avec vagues, reflet du ciel et du soleil
-- plus tard si besoin : préfiltrage des crêtes lointaines (silhouette aujourd'hui au plus
-  0,2° trop basse)
+- préfiltrage des crêtes lointaines : fait — à partir du niveau 1, le coin le plus haut de
+  chaque maille monte au sommet de la maille, cherché 2 fois plus finement (les fonds de vallée
+  ne montent jamais) ; silhouette trop basse de 0,10° au lieu de 0,17° en moyenne depuis la
+  vallée du K2, pour ×1,4 sur l'époque. Plus tard : 4 fois plus finement (0,08°), presque
+  gratuit avec une grille commune aux normales de détail, calculée en arrière-plan
 
 ### Phase 14 — Rendu Unreal
 - références : Enshrouded, shaders Minecraft (Complementary, BSL, SEUS),
