@@ -303,7 +303,7 @@ void testCrestSetting() {
                                          std::pair{7, 4}, std::pair{8, 8}, std::pair{40, 8}}) {
         TEST_CHECK(terrain::unreal::crestRatioSetting(setting) == ratio);
     }
-    TEST_CHECK(terrain::unreal::crestRatioSetting(4) == HorizonParams{}.crestRatio);
+    TEST_CHECK(terrain::unreal::crestRatioSetting(2) == HorizonParams{}.crestRatio);
 }
 
 int main() {

@@ -37,7 +37,7 @@ struct HorizonParams {
     // Crest prefilter (horizon_crests.hpp): from level 1 on, the samples rise to the crests of
     // their cells, sought on a lattice crestRatio times finer than the level. 0: every sample is
     // the point height of the ground (the horizon before the prefilter).
-    int crestRatio = 4;
+    int crestRatio = 2;
     WorldSize world;
 };
 
