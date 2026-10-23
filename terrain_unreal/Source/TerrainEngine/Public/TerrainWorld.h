@@ -6,8 +6,13 @@
 
 #include "TerrainWorld.generated.h"
 
+class AExponentialHeightFog;
 class APawn;
+class ASkyAtmosphere;
+class ASkyLight;
+class UMaterialInstanceDynamic;
 class UMaterialInterface;
+class UTerrainAtmosphereFollower;
 class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
@@ -111,8 +116,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Meshes")
 	ETerrainMeshType MeshType = ETerrainMeshType::ProceduralMesh;
 
-	// Material of the tiles. None: /Game/TerrainEngine/M_TerrainAltitude if it exists
-	// (Scripts/create_terrain_material.py), otherwise the vertex color material of Unreal.
+	// Material of the tiles. None: /Game/TerrainEngine/M_TemporaryTerrain if it exists (the
+	// temporary terrain material, Scripts/create_temporary_terrain_material.py), else
+	// /Game/TerrainEngine/M_TerrainAltitude (Scripts/create_terrain_material.py), otherwise the
+	// vertex color material of Unreal. A material with the texture parameter SurfaceTexels reads
+	// the material and the biome of the ground from the texels of the GPU horizon.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Meshes")
 	TObjectPtr<UMaterialInterface> Material;
 
@@ -207,6 +215,57 @@ public:
 		meta = (EditCondition = "bHorizon"))
 	bool bHorizonShadows = false;
 
+	// Detail normals of the GPU horizon (Bridge/horizon_normal_stream.hpp): the slopes of the
+	// ground HorizonNormalRatio times finer than the grid of each level (2 m on level 0, 16 m on
+	// level 3 at 4), which light the levels and the far tiles: crests, walls and gullies stay
+	// visible kilometers away. Computed after the samples, by HorizonNormalJobs low priority
+	// tasks; the grid normals show until then. Off: the normals of the grids, as before.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	bool bHorizonDetailNormals = true;
+
+	// Detail texels per sample along each axis: 2, 4 or 8 (the cost grows with its square).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon && bHorizonDetailNormals", ClampMin = "2",
+			ClampMax = "8"))
+	int32 HorizonNormalRatio = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon && bHorizonDetailNormals", ClampMin = "1",
+			ClampMax = "8"))
+	int32 HorizonNormalJobs = 2;
+
+	// The sky follows the camera over the curved planet (terrain_unreal/README.md, section 12):
+	// the SkyAtmosphere of the level takes the radius of the planet, its top at the sea level
+	// right under the camera, the ExponentialHeightFog stays under the camera at its height above
+	// the sea level, and the SkyLight (its real-time capture) on the camera; they move after the
+	// camera, every frame. The aerial perspective then reaches the end of the horizon. Off: they
+	// stay where the level puts them, and the sky turns black thousands of kilometers away.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Atmosphere")
+	bool bAtmosphereFollowsCamera = true;
+
+	// The SkyAtmosphere that follows the camera. None: the first one of the level.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Atmosphere",
+		meta = (EditCondition = "bAtmosphereFollowsCamera"))
+	TObjectPtr<ASkyAtmosphere> SkyAtmosphere;
+
+	// The ExponentialHeightFog that follows the camera. None: the first one of the level.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Atmosphere",
+		meta = (EditCondition = "bAtmosphereFollowsCamera"))
+	TObjectPtr<AExponentialHeightFog> HeightFog;
+
+	// The SkyLight that follows the camera. None: the first one of the level.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Atmosphere",
+		meta = (EditCondition = "bAtmosphereFollowsCamera"))
+	TObjectPtr<ASkyLight> SkyLight;
+
+	// Distance at which the height fog stops integrating (its End Distance), km; 0: its own
+	// setting. The fog is flat and the horizon curved: tens of kilometers away the ground lies
+	// far below its height, where it would hide it completely.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Atmosphere",
+		meta = (EditCondition = "bAtmosphereFollowsCamera", ClampMin = "0"))
+	float FogEndDistanceKm = 20.0f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -223,12 +282,18 @@ private:
 	void LogHorizon();
 	UMaterialInterface* ResolveHorizonMaterial() const;
 	UMaterialInterface* ResolveHorizonGpuMaterial() const;
+	void StartAtmosphere();
+	void StopAtmosphere();
+	double ExtendAerialPerspective();
+	double PlanetRadiusMeters() const;
+	void FollowFrame();
 	bool FindFocus(FVector& OutLocation, APawn*& OutPawn) const;
 	void ReturnFromWorldTurn(AActor& Traveller, FVector& InOutFocus) const;
 	void WarmUpAround(APawn& Pawn);
 	void SnapToGround(APawn& Pawn) const;
 	void LogTimings(float DeltaSeconds);
 	UMaterialInterface* ResolveMaterial() const;
+	UMaterialInterface* MakeTileLook();
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainMeshBackend> Backend;
@@ -239,9 +304,18 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainHorizonClipmap> HorizonClipmap;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UTerrainAtmosphereFollower> AtmosphereFollower;
+
+	// The instance of the material of the tiles that reads the surface of the ground, if it does.
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> TileSurfaceLook;
+
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor).
 	TPimplPtr<FTerrainWorldState> State;
 	TWeakObjectPtr<APawn> WarmedPawn;
 	float SecondsSinceTimingLog = 0.0f;
+	// The depth of the aerial perspective before StartAtmosphere extended it, km; -1: unchanged.
+	float RestoredAerialPerspectiveDepthKm = -1.0f;
 };

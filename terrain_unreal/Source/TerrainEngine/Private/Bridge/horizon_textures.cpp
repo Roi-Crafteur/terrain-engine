@@ -10,23 +10,6 @@ namespace terrain::unreal {
 
 namespace {
 
-// A run of samples along an axis and the slots it lands in, without wrapping.
-struct SlotSpan {
-    std::int64_t sample = 0; // first sample
-    int slot = 0;            // its slot
-    int length = 0;
-};
-
-std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side) {
-    const int start = static_cast<int>(slotOf({first, 0}, side).x);
-    const auto length = static_cast<int>(last - first);
-    if (start + length <= side) {
-        return {{first, start, length}};
-    }
-    const int head = side - start;
-    return {{first, start, head}, {first + head, 0, length - head}};
-}
-
 // The cells of the trim: the square of the body hole outside the finer window.
 void addTrimCells(GridMesh& mesh, const CellRect& square, const CellRect& finer) {
     const int width = square.i1 - square.i0 + 1;
@@ -63,21 +46,29 @@ CellRect finerAt(int cells, int dx, int dz) {
 
 } // namespace
 
-float packColor(VertexColor color) {
-    return static_cast<float>(color.r + 256 * color.g + 65536 * color.b);
-}
-
-VertexColor unpackColor(float color) {
-    const auto bits = static_cast<std::uint32_t>(color);
-    return {static_cast<std::uint8_t>(bits & 255U), static_cast<std::uint8_t>((bits >> 8) & 255U),
-            static_cast<std::uint8_t>((bits >> 16) & 255U), 255};
+std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side) {
+    const int start = static_cast<int>(slotOf({first, 0}, side).x);
+    const auto length = static_cast<int>(last - first);
+    if (start + length <= side) {
+        return {{first, start, length}};
+    }
+    const int head = side - start;
+    return {{first, start, head}, {first + head, 0, length - head}};
 }
 
 HorizonTexel horizonTexel(const HorizonCell& cell, bool sea) {
     if (sea && cell.height < kSeaLevel) {
-        return {kSeaLevel, 0.0f, 0.0f, packColor(kSeaColor)};
+        return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel};
     }
-    return {cell.height, cell.gradX, cell.gradZ, packColor(altitudeColor(cell.height))};
+    return {cell.height, cell.gradX, cell.gradZ, packSurface(cell.material, cell.biome)};
+}
+
+bool isSeaTexel(const HorizonTexel& texel) {
+    return texel.color < 0.0f;
+}
+
+float texelGround(const HorizonTexel& texel) {
+    return isSeaTexel(texel) ? texel.color : std::max(texel.height - kSeaLevel, 0.0f);
 }
 
 std::vector<float> pieceTexels(const HorizonPiece& piece, bool sea) {

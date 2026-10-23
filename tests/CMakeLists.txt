@@ -77,6 +77,7 @@ terrain_add_test(terrain_tiles_test terrain_core)
 terrain_add_test(streaming_default_world_test terrain_core)
 terrain_add_test(horizon_levels_test terrain_core)
 terrain_add_test(horizon_sampler_test terrain_core)
+terrain_add_test(horizon_normals_test terrain_core)
 terrain_add_test(horizon_seams_test terrain_core)
 terrain_add_test(horizon_grids_test terrain_core)
 terrain_add_test(horizon_streamer_test terrain_core)
@@ -248,15 +249,19 @@ set(unreal_bridge ${PROJECT_SOURCE_DIR}/terrain_unreal/Source/TerrainEngine/Priv
 add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/altitude_color.cpp
     ${unreal_bridge}/determinism_check.cpp
+    ${unreal_bridge}/horizon_atmosphere.cpp
     ${unreal_bridge}/horizon_epochs.cpp
     ${unreal_bridge}/horizon_gpu_streamer.cpp
     ${unreal_bridge}/horizon_layout.cpp
     ${unreal_bridge}/horizon_mesh.cpp
+    ${unreal_bridge}/horizon_normal_stream.cpp
+    ${unreal_bridge}/horizon_normal_texels.cpp
     ${unreal_bridge}/horizon_morph.cpp
     ${unreal_bridge}/horizon_streamer.cpp
     ${unreal_bridge}/horizon_textures.cpp
     ${unreal_bridge}/horizon_timings.cpp
     ${unreal_bridge}/terrain_session.cpp
+    ${unreal_bridge}/terrain_surface.cpp
     ${unreal_bridge}/tile_mesh_conversion.cpp
     ${unreal_bridge}/tile_streamer.cpp
     ${unreal_bridge}/tile_timings.cpp
@@ -278,6 +283,9 @@ terrain_add_test(unreal_horizon_streamer_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_epochs_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_textures_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_gpu_streamer_test terrain_unreal_bridge)
+terrain_add_test(unreal_horizon_normals_test terrain_unreal_bridge)
+terrain_add_test(unreal_horizon_atmosphere_test terrain_unreal_bridge)
+terrain_add_test(unreal_terrain_surface_test terrain_unreal_bridge)
 
 # Every source of terrain_core outside io/ has its wrapper in the Unreal plugin, which compiles
 # it: a source added to the core without its wrapper fails here.

@@ -17,6 +17,19 @@ HorizonParams horizonParams(const WorldSize& world, const HorizonGpuParams& para
     return horizon;
 }
 
+std::unique_ptr<HorizonNormalStream> normalStream(const Heightfield& field,
+                                                  const HorizonParams& horizon,
+                                                  const HorizonGpuParams& params,
+                                                  const JobLauncher& launch) {
+    if (params.normalRatio == 0) {
+        return nullptr;
+    }
+    HorizonNormalParams normals;
+    normals.ratio = params.normalRatio;
+    normals.maxJobsInFlight = params.normalJobs;
+    return std::make_unique<HorizonNormalStream>(field, horizon, normals, launch);
+}
+
 std::int64_t samplesWritten(const HorizonChanges& changes) {
     std::int64_t samples = 0;
     for (const HorizonLevelChange& change : changes.levels) {
@@ -38,6 +51,7 @@ HorizonGpuStreamer::HorizonGpuStreamer(const Heightfield& field, const Ecology& 
                                               : terrain::unreal::planetRadiusMeters(world)),
       sampler_(field, ecology, horizonParams_),
       shown_(static_cast<std::size_t>(horizonParams_.levels)),
+      normals_(normalStream(field, horizonParams_, params, launch)),
       runner_(sampler_, std::move(launch),
               [sea = params.sea](const HorizonPiece& piece) { return pieceTexels(piece, sea); },
               HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples}) {}
@@ -67,12 +81,25 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
                 result.regions.push_back(std::move(region));
             }
         }
+        if (normals_) {
+            normals_->written(runner_.clipmap(), commit.changes, result.normalRegions);
+        }
+    }
+    if (normals_) {
+        normals_->collect(result.normalRegions);
     }
     if (runner_.busy() && !epochStart_) {
         epochStart_ = now; // planned by this update
     }
     placeLevels(observer, frame, result);
     return result;
+}
+
+void HorizonGpuStreamer::waitIdle() {
+    runner_.waitIdle();
+    if (normals_) {
+        normals_->waitIdle();
+    }
 }
 
 GridMesh HorizonGpuStreamer::level0Grid() const {

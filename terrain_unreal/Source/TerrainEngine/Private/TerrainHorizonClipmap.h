@@ -4,8 +4,10 @@
 #include "Misc/Optional.h"
 #include "UObject/Object.h"
 
+#include "Bridge/horizon_atmosphere.hpp"
 #include "Bridge/horizon_gpu_streamer.hpp"
 #include "Bridge/horizon_timings.hpp"
+#include "Bridge/terrain_surface.hpp"
 
 #include "TerrainHorizonClipmap.generated.h"
 
@@ -34,6 +36,9 @@ struct FTerrainHorizonLook
  * near the border and curves the planet.
  * A move of a level writes the texels of its new band and sets a few parameters: nothing is
  * rebuilt, nothing is kept on the CPU but the samples of the clipmap.
+ * With the detail normals (Bridge/horizon_normal_stream.hpp), a second texture per level of
+ * (257 * ratio)^2 texels (half floats: the slopes) lights the levels and the tiles finer than
+ * their grids; its texels arrive after the samples, pending until then.
  */
 UCLASS(Transient)
 class UTerrainHorizonClipmap : public UObject
@@ -51,6 +56,15 @@ public:
 
 	void RemoveAll();
 
+	// Where the waves of the sea are measured from (Bridge/horizon_atmosphere.hpp), every level and
+	// the surface look of the tiles.
+	void SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin);
+
+	// The material of the tiles reads the surface of the ground (material and biome) from the
+	// texels of level 0 (the temporary terrain material, Bridge/terrain_surface.hpp): its
+	// parameters follow level 0 from now on.
+	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
+
 	// Time spent building the grids, and the bytes of the textures and of the grids on the GPU.
 	double GetBuildMilliseconds() const { return BuildMilliseconds; }
 	int64 GetGpuBytes() const { return GpuBytes; }
@@ -62,7 +76,10 @@ private:
 	void CreateLevel(int32 Level, const terrain::unreal::HorizonGpuStreamer& Streamer,
 		UMaterialInterface* Material);
 	void UploadRegion(terrain::unreal::TexelRegion& Region);
+	void UploadNormals(terrain::unreal::NormalRegion& Region);
+	void BindNormals(int32 Level);
 	void Place(const terrain::unreal::LevelPlacement& Placement);
+	void PlaceSurface(const terrain::unreal::LevelPlacement& Placement);
 
 	UPROPERTY()
 	TObjectPtr<AActor> OwnerActor;
@@ -74,6 +91,9 @@ private:
 	TArray<TObjectPtr<UTexture2D>> Textures;
 
 	UPROPERTY()
+	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them
+
+	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> Looks;
 
 	UPROPERTY()
@@ -82,10 +102,16 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UStaticMeshComponent>> Trims; // none for level 0
 
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic> SurfaceLook; // of the tiles, none without it
+
 	TArray<int32> TrimShown;
 	TArray<TOptional<terrain::unreal::LevelPlacement>> Placed;
 	FTerrainHorizonLook HorizonLook;
+	terrain::unreal::DropFade Fade;
+	double Level0PitchCm = 0.0;
 	int32 Side = 0;
+	int32 NormalRatio = 0; // detail texels per sample along each axis, 0 without the detail
 	double BuildMilliseconds = 0.0;
 	int64 GpuBytes = 0;
 	int64 Vertices = 0;

@@ -73,10 +73,14 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
    **Procedural Mesh Component** sont activés.
 2. Matériau (une fois par projet, facultatif) : active **Python Editor Script Plugin** si besoin,
    puis Tools → **Execute Python Script…** →
-   `Plugins/terrain-engine/terrain_unreal/Scripts/create_terrain_material.py`. Il crée
+   `Plugins/terrain-engine/terrain_unreal/Scripts/create_temporary_terrain_material.py`. Il crée
+   `/Game/TerrainEngine/M_TemporaryTerrain`, le **matériau temporaire** du terrain (section 13) :
+   roche sur les pentes, neige, herbe, sable… selon les matériaux et biomes du core, en attendant
+   les vrais matériaux de la phase 14. Ou bien `Scripts/create_terrain_material.py`, qui crée
    `/Game/TerrainEngine/M_TerrainAltitude`, un matériau éclairé qui affiche la couleur des sommets
-   (sable au bord de la mer, vert, gris en altitude, blanc sur les sommets). Sans lui, l'acteur
-   prend le matériau de debug d'Unreal qui affiche les couleurs de sommet, et le dit dans le log.
+   (sable au bord de la mer, vert, gris en altitude, blanc sur les sommets). Sans aucun des deux,
+   l'acteur prend le matériau de debug d'Unreal qui affiche les couleurs de sommet, et le dit dans
+   le log.
 3. Niveau : File → New Level → **Basic** (ciel, lumière, un Player Start), puis supprime le sol
    (`Floor`), qui cacherait le terrain. Le mode de jeu du gabarit Third Person
    (`BP_ThirdPersonGameMode`) donne le Character qui marche. Ou bien, dans `ThirdPersonMap`,
@@ -128,7 +132,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `WorkerThreads` | 2 | threads de génération |
 | `MaxTileUploadsPerFrame` | 8 | budget de tuiles converties par frame |
 | `MeshType` | Procedural Mesh | type de mesh (Dynamic Mesh, Realtime Mesh : emplacements) |
-| `Material` | aucun | matériau des tuiles (voir 4.2) |
+| `Material` | aucun | matériau des tuiles (voir 4.2) ; aucun : `M_TemporaryTerrain`, sinon `M_TerrainAltitude` |
 | `bAsyncCollisionCooking` | non | cuisson des collisions hors du thread de jeu |
 | `FocusActor` | aucun | acteur suivi ; sinon le pion du premier joueur, ou sa caméra |
 | `bSnapPawnToGround` | oui | pose sur le sol un nouveau pion qui est dessous |
@@ -142,10 +146,14 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `HorizonMorphCells` | 32 | GPU : largeur, en mailles de chaque niveau, de la bande où il se fond dans le niveau plus grossier |
 | `bHorizonDebugTint` | non | GPU : chaque niveau teinté de sa couleur |
 | `HorizonMaterial` | aucun | matériau de l'horizon CPU (voir 10) |
-| `HorizonDropCm` | 100 | l'horizon est posé ce tant sous son sol : les tuiles restent devant là où les deux se recouvrent |
-| `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles |
+| `HorizonDropCm` | 100 | l'horizon est posé ce tant sous son sol là où les tuiles le recouvrent : elles restent devant ; il remonte à son sol vers le bord des tuiles (section 13) |
+| `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles (section 12) |
 | `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
 | `bHorizonShadows` | non | ombres portées par l'horizon |
+| `bHorizonDetailNormals`, `HorizonNormalRatio`, `HorizonNormalJobs` | oui, 4, 2 | GPU : normales de détail, 4 fois plus fines que la grille de chaque niveau, calculées par 2 tâches (TEMPORARY_MATERIAL.md) |
+| `bAtmosphereFollowsCamera` | oui | le ciel, le brouillard et la lumière du ciel suivent la caméra (section 12) |
+| `SkyAtmosphere`, `HeightFog`, `SkyLight` | aucun | ceux qui suivent la caméra ; sinon les premiers du niveau |
+| `FogEndDistanceKm` | 20 | distance où le brouillard cesse d'intégrer ; 0 : son propre réglage |
 
 ## 6. Comment c'est construit
 
@@ -155,6 +163,8 @@ terrain_unreal/
   Scripts/create_terrain_material.py
   Scripts/create_horizon_material.py
   Scripts/create_horizon_gpu_material.py
+  Scripts/create_temporary_terrain_material.py, temporary_terrain_look.py,
+    temporary_terrain_hlsl.py  le matériau temporaire
   Source/TerrainEngine/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
@@ -163,6 +173,7 @@ terrain_unreal/
       TerrainWorldHorizon.cpp  l'horizon lointain d'ATerrainWorld
       TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
       TerrainHorizonClipmap.*  l'horizon GPU : textures, grilles fixes, placements
+      TerrainWorldAtmosphere.cpp, TerrainAtmosphereFollower.*  le ciel qui suit la caméra
       TerrainHorizonGrids.*    les grilles fixes, des UStaticMesh construits en jeu
       TerrainHorizonMeshes.*   l'horizon CPU : un ProceduralMeshComponent par niveau
       TerrainMeshBackend.*     interface des types de mesh, fabrique
@@ -227,6 +238,7 @@ Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_fr
 `unreal_tile_streamer_test`, `unreal_terrain_session_test`, `unreal_determinism_check_test`,
 `unreal_horizon_layout_test`, `unreal_horizon_mesh_test`, `unreal_horizon_streamer_test`,
 `unreal_horizon_epochs_test`, `unreal_horizon_textures_test`, `unreal_horizon_gpu_streamer_test`,
+`unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`,
 `unreal_core_sources`.
 
 ## 7. Linux et Mac (non essayés)
@@ -265,9 +277,10 @@ devra passer à `std::thread` (petit changement dans `terrain_core`, par l'agent
 ## 9. Pas encore fait
 
 Type de mesh autre que le Procedural Mesh Component (emplacements Dynamic Mesh et Realtime Mesh),
-eau, lave, plantes, matériaux du core. En build empaqueté, assigne les matériaux explicitement
-dans `Material`, `HorizonGpuMaterial` et `HorizonMaterial` : le chemin chargé par défaut n'est cuit
-que s'il est référencé.
+eau, lave, plantes, vrais matériaux de la phase 14 (un matériau temporaire en tient lieu,
+section 13). En build empaqueté, assigne les matériaux explicitement dans `Material`,
+`HorizonGpuMaterial` et `HorizonMaterial` : le chemin chargé par défaut n'est cuit que s'il est
+référencé.
 
 ## 10. L'horizon lointain (phase 13, étape 1)
 
@@ -302,19 +315,16 @@ mode CPU (`HorizonRenderer` = CPU) ; le mode par défaut, sur le GPU, est en sec
   `ViewDistanceChunks` de 28 à 55 avec les anneaux par défaut, sinon l'horizon est désactivé avec
   une erreur dans le log.
 - **Mer** : sur l'horizon, tout échantillon sous le niveau de la mer est posé à plat au niveau de
-  la mer, en bleu (un lac en altitude garde son sol) ; un carré de mer à 0 m s'étend sous les
-  tuiles. Le reste de l'eau (rivières, lacs, Water) vient avec la phase 14.
+  la mer (un lac en altitude garde son sol) ; un carré de mer à 0 m s'étend sous les tuiles. Son
+  aspect : section 12. Le reste de l'eau (rivières, lacs, Water) vient avec la phase 14.
 - **Threads** : `HorizonThreads` threads du core, à part de ceux des tuiles. Tant que rien ne
   bouge, le tick de l'horizon coûte 0,01 ms.
 - **Log** : toutes les `TimingLogIntervalSeconds`, le coût de l'horizon sur le thread de jeu (le
   premier affichage, les ticks qui déplacent un niveau, par niveau, les autres), la conversion et
   l'envoi des corps et des bordures, les époques (du plan à l'application) et la mémoire.
-- **Scène** : avec une `SkyAtmosphere`, mettre son `Bottom Radius` au rayon de la planète et son
-  `Transform Mode` à *Planet Top at Component Transform*, l'acteur au niveau de la mer ; un
-  `ExponentialHeightFog` au niveau de la mer, peu dense, avec `Fog Cutoff Distance` (1 000 km par
-  exemple) : sinon ce brouillard plat peint le ciel sous l'horizontale. La `SkyAtmosphere` reste
-  où elle est posée : à des milliers de km de l'origine (après un tour du monde), le ciel devient
-  noir ; elle devra suivre le joueur (phase 14).
+- **Scène** : une `SkyAtmosphere`, une `SkyLight` en capture temps réel et un
+  `ExponentialHeightFog` peu dense au niveau de la mer ; l'acteur règle et déplace le reste
+  (section 12).
 
 ### Mesures (UE 5.8, éditeur en PIE, Ryzen 9 9950X3D, 10 niveaux, `ViewDistanceChunks` 32)
 
@@ -348,7 +358,9 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   avertissement dans le log.
 - **Textures** (`Bridge/horizon_textures.hpp`) : une texture de 257 × 257 texels par niveau,
   `PF_A32B32G32R32F`, au plus proche, sans mipmap. Un texel : la hauteur (m, déjà à plat au niveau
-  de la mer), les deux pentes, la couleur empaquetée `r + 256 g + 65536 b` (exacte en float).
+  de la mer), les deux pentes, la surface empaquetée `matériau + 8 biome` (exacte en float,
+  `Bridge/terrain_surface.hpp`, lue par le matériau temporaire, section 13) ou, sur l'océan, le sol
+  sous la mer (négatif).
   Adressage torique, celui du core : l'échantillon (i, k) de la fenêtre est au texel
   (premier emplacement + (i, k)) mod 257. Un déplacement de niveau n'écrit que la bande nouvelle
   (`UpdateTextureRegions`, quelques centaines de texels), préparée sur les tâches : rien n'est
@@ -417,28 +429,72 @@ jour ; « sans » : `bHorizon` désactivé.
   niveau, 0,15 ms au plus ; tour du monde : les 10 niveaux replacés d'un monde en 0,05 ms, sans
   époque (étape 1 : moins de 2 ms).
 
-### Ajouter les matériaux et les biomes (pas encore fait)
+### Les matériaux et les biomes
 
-Chaque échantillon du core porte déjà un matériau et un biome (`HorizonCell`). Pour les dessiner
-sans rien refaire :
-
-1. une seconde texture par niveau, entière (`PF_R8G8B8A8_UINT` : matériau, biome, drapeaux, libre),
-   créée à côté de la première dans `UTerrainHorizonClipmap::CreateLevel` ;
-2. remplie par les mêmes régions : `texelRegions` découpe déjà chaque morceau en régions de la
-   texture torique ; il suffit d'un second `pieceTexels` qui écrit ces champs, et d'un second
-   `UpdateTextureRegions` ;
-3. un paramètre de texture de plus dans le matériau, lu au même emplacement torique.
-
-Les grilles, les placements, le géomorphing et le streaming ne changent pas. La couleur empaquetée
-de la première texture pourra alors disparaître si le nuanceur de pixels calcule la couleur depuis
-le matériau et le biome.
+Fait sans seconde texture : le dernier flottant d'un texel de terre porte la surface (matériau et
+biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du niveau 0 (section 13).
 
 ### Limites
 
 - Le mode CPU (`HorizonRenderer` = CPU) reste pour comparer ; il sera retiré après la fusion du
   nouveau relief (agent 10).
-- Normales par sommet : le relief plus fin que la maille d'un niveau n'éclaire pas. Les normales
-  par pixel viendront avec le rendu de la phase 14.
-- Matériaux et biomes : pas encore dessinés (ci-dessus).
+- Silhouettes à la maille de chaque niveau ; les normales de détail éclairent le relief 4 fois plus fin.
+- Matériaux et biomes : dessinés par le matériau temporaire (section 13).
 - Les grilles sont construites sur le thread de jeu au `BeginPlay` (0,2 s, une fois) ; elles
   pourraient l'être hors de ce thread si ce temps gêne au chargement.
+
+## 12. Le ciel et la mer de l'horizon (phase 13, étape 3)
+
+- **Pourquoi le ciel devenait noir** : la `SkyAtmosphere` est une sphère du rayon de la planète,
+  immobile dans le monde, alors que l'horizon est courbé autour de la caméra. À 5 000 km de son
+  sommet, la caméra est pour elle à 1 229 km au-dessus de son sol, dans l'espace (son air s'arrête
+  à 60 km) ; à un demi-monde, au-delà de la planète. Sa lumière du ciel (`SkyLight` en capture
+  temps réel) est calculée depuis où elle est posée : noire elle aussi, d'où des ombres noires.
+- **Le ciel suit la caméra** (`bAtmosphereFollowsCamera`, `Bridge/horizon_atmosphere.hpp`) : au
+  `BeginPlay`, la `SkyAtmosphere` (la première du niveau, ou `SkyAtmosphere`) reçoit le rayon de la
+  planète et le mode *Planet Top at Component Transform* ; un composant
+  (`TerrainAtmosphereFollower`) qui passe après la caméra (`TG_PostUpdateWork`) pose, à chaque
+  frame, le sommet de sa planète au niveau de la mer sous la caméra : la même sphère que la
+  courbure de l'horizon, dont la mer tombe sur son sol et l'horizon sur le sien. Il pose
+  l'`ExponentialHeightFog` sous la caméra à sa hauteur au-dessus de la mer, et la `SkyLight` sur la
+  caméra. Après un tour du monde ou un recentrage d'origine, la frame suivante a déjà son ciel
+  (vérifié par les positions et des captures). Coût : 0,0015 ms par frame sur le thread de jeu.
+- **Perspective aérienne** : son volume (`r.SkyAtmosphere.AerialPerspectiveLUT.Depth`, 96 km par
+  défaut) est porté à la portée de l'horizon (748 km avec 10 niveaux), rendu à `EndPlay` : les
+  montagnes lointaines bleuissent et s'effacent jusqu'au bout, sans bord visible.
+- **Brouillard** : il est plat, l'horizon courbé : à 500 km le sol est 14 km sous lui et serait
+  entièrement noyé. `FogEndDistanceKm` (20 km ; 0 : son réglage) borne l'intégration
+  (`End Distance`) ; au-delà, la perspective aérienne prend le relais.
+- **Mer** (`Scripts/create_horizon_gpu_material.py`, qui reconstruit l'asset en place) : sur
+  l'océan, la texture porte le sol sous la mer (`texelGround`) ; la côte est là où le sol
+  interpolé passe sous 0, au pixel près (pas de z-fighting ni de trou : un seul maillage). Couleur
+  selon la profondeur (sable sous l'eau, turquoise, bleu profond ; `SeaDeepColor`, `SeaOpenColor`,
+  `SeaShallowColor`), 14 vagues sinusoïdales fixes dans le monde (période 4 096 m, qui divise
+  chaque côté du monde : rien ne bouge après un tour du monde ; `WaveOriginX/Y` suit le
+  recentrage), qui s'effacent dans la rugosité selon la taille du pixel (aucune répétition au
+  loin, un chemin de soleil plus large), reflet du ciel (Fresnel, ciel lu dans la table de vue de
+  la `SkyAtmosphere`) et reflet du soleil (GGX) en émissif, sans spéculaire du moteur (aucun reflet
+  Lumen à tracer). Le carré de mer sous les tuiles lit le sol du niveau 0 : même mer près et loin.
+  Les normales penchent avec la courbure (d / R). Seuls les pixels de mer paient ces calculs.
+- **Mesures** (PIE 2042 × 1752, 3,6 Mpx, autant que le 1440p ; même session, A sans ces
+  changements, B avec, GPU saturé à 200 % de résolution) : GPU +0,1 à +0,6 ms à 4 fois les pixels
+  du 1440p, soit environ +0,03 à +0,15 ms en 1440p ; déplacement d'un niveau inchangé (0,05 ms en
+  moyenne sur le thread de jeu, mêmes pointes que sur `main`).
+- **Limites** : un seul ciel pour la première caméra locale (écran partagé : non) ; le reflet de
+  la mer ne voit que le ciel (ni relief, ni nuages) ; le reflet du soleil ignore les ombres ; la
+  mer reste opaque (transparence, caustiques, écume : phase 14) ; avec la caméra du Game Animation
+  Sample, une frame est vue d'ailleurs pendant un recentrage d'origine (la caméra du jeu, pas le
+  ciel ; une `CameraActor` ne le fait pas).
+
+## 13. Le matériau temporaire du terrain (phase 14, provisoire)
+
+En attendant les vrais matériaux de la phase 14 : roche grise sur les pentes raides, neige sur le
+sol froid peu pentu, herbe, herbe sèche, forêt, alpage, terre, sable, désert et éboulis selon les
+matériaux et biomes du core, avec des plaques dans chaque biome et des textures sans répétition
+visible, les mêmes de près (tuiles, `M_TemporaryTerrain`) et de loin
+(`M_TerrainHorizonGpu`). Ses textures viennent du pack **Stylescape HD** (licence Fab : jamais
+dans ce dépôt) copié sous `/Game/StylescapeHD` du projet ; sans lui, des couleurs unies. Tout est
+décrit dans [`TEMPORARY_MATERIAL.md`](TEMPORARY_MATERIAL.md) : règles, installation du pack,
+réglages, coût, limites, et trois défauts de rendu (le trait sombre au bord des tuiles, corrigé
+par le fondu de `HorizonDropCm` ; les dents de scie sous un soleil bas, corrigées par des
+normales lissées ; la « ligne d'ombre » au pied de la chaîne, une arête du relief).

@@ -9,6 +9,11 @@ Principe : `terrain_core` décide de la forme du monde (déterministe, identique
 machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
+Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
+locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
+réécrit tout nous-mêmes, sans copier ni traduire son code.
+
 ## Réalisé
 
 ### Phase 1 — Base
@@ -92,10 +97,15 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - type de mesh choisi par mesure : Dynamic Mesh, ProceduralMeshComponent ou
   RealtimeMeshComponent
 - compilation du plugin sous Linux et Mac (risque `std::jthread`)
-- meshing environ 7 fois plus lent sous Clang que sous GCC (Unreal Linux et Mac,
-  serveurs) : cause trouvée, correctif en cours
+- meshing environ 7 fois plus lent sous Clang que sous GCC : corrigé (même maillage au
+  bit près)
 
 ### Phase 11 — Hydrographie continentale (approche TerraForged)
+- principe : le relief d'abord, l'eau le suit. Le relief monte et descend librement
+  (failles, rifts, bassins fermés, dépressions sous le niveau de la mer) ; puis l'eau naît
+  aux sources, descend toujours, remplit les creux jusqu'à leur point de débordement (lacs,
+  ou lacs salés et déserts si le climat est sec), creuse son lit, tombe aux ruptures de
+  pente et finit dans la mer. Le relief n'est jamais déformé pour que l'eau coule bien
 - niveau Planète précalculé à la création du monde (attente longue acceptée)
 - climat continental : les fleuves en dépendent (pas de source dans un désert,
   des fleuves qui peuvent traverser un désert)
@@ -114,6 +124,9 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   - provinces à l'intérieur des continents : grandes plaines, vieux massifs usés,
     bassins, plateaux
   - le monde planétaire devient le monde du jeu (version du générateur 3)
+- 11B : mer décidée par la géographie (reliée à l'océan) et non plus par l'altitude :
+  dépressions sous le niveau de la mer, sèches ou en lacs salés (type mer Morte, vallée de
+  la Mort)
 - 11B : creusement des lits, lacs, canyons et chutes dans le relief, nouveau climat
   branché sur les biomes ; niveau Planète gardé sur disque (au lieu d'être recalculé) et
   pic de mémoire de sa construction réduit (1 Go aujourd'hui)
@@ -125,7 +138,20 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   et côtière (falaises marines, arches, stacks)
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
+- mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
+  province du relief au cœur des continents secs, jamais placée par le biome
 - falaises, surplombs et arches dans le monde infini
+- érosion par ondes alignées sur la pente (sillons et ravins ramifiés à toutes les tailles,
+  de 4 m à 256 m, type Big Globe) si elle n'est pas déjà venue avec la 11R bis
+- reliefs fantastiques, rares et spectaculaires (médiéval-fantasy), placés par le niveau
+  Planète, jamais par le biome :
+  - îles flottantes au-dessus des mers et des plaines basses, jamais au-dessus des montagnes
+    ni dans le froid : un dessous qui pend en cuvette et un dessus avec relief et érosion,
+    dans le SDF ; types variés (montagne en spirale, plateformes étagées, plaines fissurées,
+    plaines percées) ; nuages en dessous
+  - monolithes (obélisques) : prismes très hauts, parfois creux, raccordés au terrain par
+    une courbe (le sol monte ou descend jusqu'à leur pied)
+  - visibles depuis l'horizon lointain (phase 13)
 - fin des deux mondes séparés (régions finies / monde streamé)
 
 ### Phase 13 — Horizon lointain
@@ -133,9 +159,11 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - core : fait (voir « Réalisé »)
 - modifications des joueurs visibles de loin : toutes si possible, sinon les grosses
   (format du résumé à définir avec la phase 15)
-- Unreal : rendu en clipmap (une texture par niveau, envoi des seules bandes changées,
-  géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles, jupe
-  sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure, atmosphère et mer
+- Unreal : fait — rendu en clipmap (une texture par niveau, envoi des seules bandes
+  changées, géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles,
+  jupe sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure ; ciel qui suit la
+  caméra partout sur la planète (perspective aérienne jusqu'au bout de l'horizon), mer
+  colorée selon la profondeur avec vagues, reflet du ciel et du soleil
 - plus tard si besoin : préfiltrage des crêtes lointaines (silhouette aujourd'hui au plus
   0,2° trop basse)
 
@@ -151,6 +179,13 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
   vert glacier, brune, noire), cascades spectaculaires (embruns, arcs-en-ciel)
 - végétation PCG depuis les positions du core, densité selon le biome : forêts denses ou
   clairsemées, clairières, monts, vallons
+- transitions entre biomes (aujourd'hui un seul biome et un seul matériau par point, à
+  seuils nets) : frontières irrégulières par du bruit sur les seuils (avancées, bosquets
+  isolés, clairières), poids des 2 ou 3 biomes et matériaux dominants calculés par le core
+  de façon déterministe, fondus de textures et densité de végétation progressive dans
+  Unreal ; largeur réaliste selon le couple (quelques km entre forêt et prairie, quelques
+  mètres entre plage et roche). Le relief n'en dépend pas : les biomes ne modifient
+  jamais la hauteur
 - matériaux depuis les identifiants de matériau du core ; très haut détail par des
   rochers, falaises et arbres Nanite placés par PCG et du relief fin dans le matériau
   (Nanite ne s'applique pas directement aux tuiles générées en jeu)
@@ -159,6 +194,59 @@ Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 - Water branché sur les splines de rivière
 - jour / nuit, météo régionale, aurores, éclipses et phénomènes rares ; saisons et
   aspect de l'horizon lointain (brumeux, net ou selon la météo) à décider plus tard
+
+### Peuplement — royaumes, villes, villages et routes (après la 11B et la 12)
+- hiérarchie de peuplement générée de haut en bas, jamais une structure posée seule :
+  royaume → capitale → villes → bourgs → villages → hameaux ; puis ville → quartiers →
+  rues → parcelles → bâtiments
+- sites et routes calculés sur le niveau Planète (comme les fleuves, déterministes, identiques
+  sur toutes les machines), le détail (quartiers, parcelles) à la volée dans les régions
+  streamées : une capitale de plusieurs km n'est jamais générée d'un coup
+- choix des sites par le terrain : gués, confluents, estuaires, ports abrités, éperons
+  défendables, vallées fertiles, cols, ressources (mines) ; climat, pente, altitude, eau
+- routes : liaisons pondérées par la population et la distance (modèle de gravité), tracées
+  par coût (pente, rivières à franchir par pont ou gué, vallées, cols, lacets en montagne),
+  regroupées, avec des boucles et pas seulement un arbre
+- villes qui poussent depuis leur site (le long des routes, de la rivière, autour d'un
+  château ou d'un marché, faubourgs hors les murs) : pas d'anneaux au compas ni de quartiers
+  Voronoi réguliers, pas de zones strictes
+- le peuplement modifie le relief localement (routes creusées ou en remblai, terrasses,
+  plateformes, éperon aplani pour un château, quais) : une étape dédiée, déterministe, après
+  les rivières ; les biomes, eux, ne modifient toujours pas la hauteur
+- trois axes indépendants (une seule table biome → style referait des zones strictes) :
+  - climat → matériaux locaux, agriculture et densité (bois, torchis, chaume en plaine ;
+    pierre et ardoise en montagne ; argile et pierre au désert ; pilotis au marais), lus sur
+    le climat du niveau Planète, pas sur le biome au point
+  - culture → style architectural, défenses, noms ; territoires propres qui peuvent
+    traverser plusieurs biomes et s'y adapter, transitions progressives aux frontières
+  - site → fonction (port, ville minière, ville caravanière, ville fluviale, oasis, place
+    forte de col)
+- le core décide du plan (sites, routes, parcelles ; pour chaque bâtiment : emprise, hauteur,
+  type, style, orientation, matériaux), Unreal assemble les bâtiments depuis des kits modulaires (PCG) : aucune géométrie de
+  bâtiment dans `terrain_core`
+- économie : seulement des étiquettes de ressources et de production pour le gameplay plus
+  tard (pas de simulation)
+- étapes :
+  1. données seules : sites, hiérarchie et routes sur le niveau Planète, vérifiés sur des
+     cartes de la planète (aucun bâtiment)
+  2. un village complet dans Unreal, une culture, un kit modulaire : style et adaptation
+     au terrain
+  3. bourgs et villes, une deuxième culture et un deuxième climat
+  4. capitale : château sur une hauteur, remparts et portes, cathédrale, marché, port,
+     faubourgs
+  5. cultures et archétypes supplémentaires (désert, montagne, côte, marais, toundra, jungle)
+- décisions de game design :
+  - monde sauvage, royaumes rares ; par royaume : rayon de 2 000 à 5 000 km, 1 capitale,
+    3 à 8 villes, 10 à 30 bourgs, 30 à 120 villages
+  - à vérifier sur les cartes de l'étape 1 : à ces chiffres, deux villages voisins sont à
+    environ 300 à 1 600 km l'un de l'autre (plusieurs jours de marche) ; ajuster la taille
+    des royaumes, le nombre de villages ou ajouter des hameaux et des haltes isolés si le
+    monde paraît vide, et lier aux transports (« Plus tard »)
+  - médiéval-fantasy
+  - kits modulaires Unreal assemblés par PCG
+  - intérieurs : plus tard ; bâtiments destructibles : plus tard (phase 15)
+  - villes visibles depuis l'horizon lointain (phase 13) : silhouettes avec un LOD propre,
+    lumières la nuit
 
 ### Phase 15 — Jeu solo
 - modes : exploration / contemplation, survie, créatif réservé aux administrateurs

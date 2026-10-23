@@ -10,6 +10,7 @@
 #include "Materials/MaterialInterface.h"
 #include "RHI.h"
 #include "TerrainHorizonGrids.h"
+#include "TextureResource.h"
 
 #include <utility>
 #include <vector>
@@ -41,6 +42,29 @@ namespace
 	const FName DropParameter(TEXT("DropCm"));
 	const FName RadiusParameter(TEXT("PlanetRadiusCm"));
 	const FName TintParameter(TEXT("DebugTint"));
+	const FName WaveOriginXParameter(TEXT("WaveOriginX"));
+	const FName WaveOriginYParameter(TEXT("WaveOriginY"));
+	const FName PitchParameter(TEXT("PitchCm"));
+	const FName DropCoveredParameter(TEXT("DropCoveredCm"));
+	const FName DropFadeParameter(TEXT("DropFadeCm"));
+	const FName NormalsParameter(TEXT("HorizonNormals"));
+	const FName CoarseNormalsParameter(TEXT("CoarseNormals"));
+	const FName NormalRatioParameter(TEXT("NormalRatio"));
+	const FName HasNormalsParameter(TEXT("HasNormals"));
+
+	// Parameters of the materials of the tiles that read the surface of level 0
+	// (Scripts/temporary_terrain_look.py).
+	const FName SurfaceTexelsParameter(TEXT("SurfaceTexels"));
+	const FName SurfaceCellsParameter(TEXT("SurfaceCells"));
+	const FName SurfacePitchParameter(TEXT("SurfacePitchCm"));
+	const FName SurfaceFirstXParameter(TEXT("SurfaceFirstX"));
+	const FName SurfaceFirstZParameter(TEXT("SurfaceFirstZ"));
+	const FName SurfaceOriginParameter(TEXT("SurfaceOrigin"));
+	const FName HasSurfaceParameter(TEXT("HasSurface"));
+	const FName SurfaceNormalsParameter(TEXT("SurfaceNormals"));
+	const FName SurfaceNormalRatioParameter(TEXT("SurfaceNormalRatio"));
+	const FName SurfaceHasNormalsParameter(TEXT("SurfaceHasNormals"));
+	constexpr int32 NormalTexelBytes = terrain::unreal::kNormalHalves * 2;
 
 	FVector ToFVector(const terrain::unreal::UnrealPoint& Point)
 	{
@@ -61,6 +85,31 @@ namespace
 		return Texture;
 	}
 
+	// The detail normals of a level: bilinear, wrapped as the slots, every texel pending until
+	// its detail is uploaded (the material keeps the normals of the grid there).
+	UTexture2D* CreateNormals(int32 TextureSide, int32 Level)
+	{
+		UTexture2D* Texture = UTexture2D::CreateTransient(TextureSide, TextureSide, PF_G16R16F,
+			FName(*FString::Printf(TEXT("HorizonNormals%d"), Level)));
+		Texture->Filter = TF_Bilinear;
+		Texture->SRGB = false;
+		Texture->AddressX = TA_Wrap;
+		Texture->AddressY = TA_Wrap;
+		Texture->NeverStream = true;
+		Texture->CompressionSettings = TC_HDR;
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		uint16* Texels = static_cast<uint16*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
+		const int64 Count =
+			static_cast<int64>(TextureSide) * TextureSide * terrain::unreal::kNormalHalves;
+		for (int64 Index = 0; Index < Count; ++Index)
+		{
+			Texels[Index] = terrain::unreal::kNormalPendingHalf;
+		}
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+		return Texture;
+	}
+
 	FLinearColor DebugTint(int32 Level)
 	{
 		FLinearColor Tint =
@@ -77,6 +126,9 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 	OwnerActor = &Owner;
 	HorizonLook = Look;
 	Side = Streamer.side();
+	const double Level0Pitch = terrain::levelPitch(Streamer.params(), 0);
+	Level0PitchCm = Level0Pitch * 100.0;
+	Fade = terrain::unreal::dropFade(Streamer.tileHole(), Level0Pitch);
 	const int32 Cells = Streamer.params().cellsPerSide;
 	std::vector<terrain::unreal::GridMesh> Shapes{Streamer.level0Grid(), Streamer.ringGrid()};
 	for (int32 Variant = 0; Variant < terrain::unreal::kTrimVariants; ++Variant)
@@ -93,6 +145,7 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 			static_cast<int64>(Shape.triangles.size()) * static_cast<int64>(sizeof(int32));
 	}
 	const int32 Levels = Streamer.params().levels;
+	NormalRatio = Streamer.normals() != nullptr ? Streamer.normals()->ratio() : 0;
 	for (int32 Level = 0; Level < Levels; ++Level)
 	{
 		CreateLevel(Level, Streamer, Material);
@@ -107,9 +160,29 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 	{
 		Looks[Level]->SetTextureParameterValue(CoarseTexelsParameter,
 			Textures[FMath::Min(Level + 1, Levels - 1)]);
+		BindNormals(Level);
 	}
 	GpuBytes += static_cast<int64>(Levels) * Side * Side * TexelBytes;
+	if (Streamer.normals() != nullptr)
+	{
+		GpuBytes += Streamer.normals()->textureBytes();
+	}
 	BuildMilliseconds = (FPlatformTime::Seconds() - Start) * 1000.0;
+}
+
+// The detail normals of a level and of the next coarser one (for the morph), or none.
+void UTerrainHorizonClipmap::BindNormals(int32 Level)
+{
+	UMaterialInstanceDynamic* Look = Looks[Level];
+	Look->SetScalarParameterValue(HasNormalsParameter, NormalRatio > 0 ? 1.0f : 0.0f);
+	if (NormalRatio == 0)
+	{
+		return;
+	}
+	Look->SetScalarParameterValue(NormalRatioParameter, static_cast<float>(NormalRatio));
+	Look->SetTextureParameterValue(NormalsParameter, NormalTextures[Level]);
+	Look->SetTextureParameterValue(CoarseNormalsParameter,
+		NormalTextures[FMath::Min(Level + 1, NormalTextures.Num() - 1)]);
 }
 
 void UTerrainHorizonClipmap::CreateLevel(int32 Level,
@@ -117,6 +190,10 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 {
 	UTexture2D* Texture = CreateTexels(Side, Level);
 	Textures.Add(Texture);
+	if (NormalRatio > 0)
+	{
+		NormalTextures.Add(CreateNormals(Side * NormalRatio, Level));
+	}
 	UMaterialInstanceDynamic* Look = UMaterialInstanceDynamic::Create(Material, this);
 	Looks.Add(Look);
 	const double PitchCm = terrain::levelPitch(Streamer.params(), Level) * 100.0;
@@ -129,6 +206,9 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	Look->SetScalarParameterValue(SkirtParameter,
 		static_cast<float>(Streamer.skirtMetersOf(Level) * 100.0));
 	Look->SetScalarParameterValue(DropParameter, static_cast<float>(HorizonLook.DropCm));
+	Look->SetScalarParameterValue(PitchParameter, static_cast<float>(PitchCm));
+	Look->SetScalarParameterValue(DropCoveredParameter, static_cast<float>(Fade.coveredMeters * 100.0));
+	Look->SetScalarParameterValue(DropFadeParameter, static_cast<float>(Fade.fadeMeters * 100.0));
 	Look->SetScalarParameterValue(RadiusParameter,
 		static_cast<float>(Streamer.planetRadiusMeters() * 100.0));
 	Look->SetVectorParameterValue(TintParameter,
@@ -186,6 +266,19 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 		Timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0,
 			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
 	}
+	if (!Update.normalRegions.empty() && NormalRatio > 0)
+	{
+		const double Start = FPlatformTime::Seconds();
+		std::size_t Texels = 0;
+		for (terrain::unreal::NormalRegion& Region : Update.normalRegions)
+		{
+			Texels += static_cast<std::size_t>(Region.width) *
+				static_cast<std::size_t>(Region.height);
+			UploadNormals(Region);
+		}
+		Timings.recordUpload(terrain::unreal::HorizonSection::Normals, 0.0,
+			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
+	}
 	TArray<bool> Changed;
 	Changed.Init(false, Bodies.Num());
 	for (const terrain::unreal::LevelPlacement& Placement : Update.placements)
@@ -223,6 +316,23 @@ void UTerrainHorizonClipmap::UploadRegion(terrain::unreal::TexelRegion& Region)
 		});
 }
 
+// The detail normals of a region, handed over to the render thread without a copy.
+void UTerrainHorizonClipmap::UploadNormals(terrain::unreal::NormalRegion& Region)
+{
+	auto* Texels = new std::vector<uint16_t>(std::move(Region.data));
+	auto* Rect = new FUpdateTextureRegion2D(static_cast<uint32>(Region.x),
+		static_cast<uint32>(Region.z), 0, 0, static_cast<uint32>(Region.width),
+		static_cast<uint32>(Region.height));
+	NormalTextures[Region.level]->UpdateTextureRegions(0, 1, Rect,
+		static_cast<uint32>(Region.width * NormalTexelBytes),
+		static_cast<uint32>(NormalTexelBytes), reinterpret_cast<uint8*>(Texels->data()),
+		[Texels](uint8*, const FUpdateTextureRegion2D* Regions)
+		{
+			delete Texels;
+			delete Regions;
+		});
+}
+
 void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placement)
 {
 	const int32 Level = Placement.level;
@@ -248,6 +358,65 @@ void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placem
 		Trim->SetVisibility(true);
 	}
 	Placed[Level] = Placement;
+	if (Level == 0)
+	{
+		PlaceSurface(Placement);
+	}
+}
+
+void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
+{
+	SurfaceLook = Look;
+	if (SurfaceLook == nullptr || Textures.IsEmpty())
+	{
+		return;
+	}
+	SurfaceLook->SetTextureParameterValue(SurfaceTexelsParameter, Textures[0]);
+	SurfaceLook->SetScalarParameterValue(SurfaceCellsParameter, static_cast<float>(Side - 1));
+	SurfaceLook->SetScalarParameterValue(SurfacePitchParameter, static_cast<float>(Level0PitchCm));
+	SurfaceLook->SetScalarParameterValue(SurfaceHasNormalsParameter,
+		NormalTextures.IsEmpty() ? 0.0f : 1.0f);
+	if (!NormalTextures.IsEmpty())
+	{
+		SurfaceLook->SetTextureParameterValue(SurfaceNormalsParameter, NormalTextures[0]);
+		SurfaceLook->SetScalarParameterValue(SurfaceNormalRatioParameter,
+			static_cast<float>(NormalRatio));
+	}
+	if (!Placed.IsEmpty() && Placed[0].IsSet())
+	{
+		PlaceSurface(*Placed[0]);
+	}
+}
+
+// The tiles read the texels of level 0 where it stands: its texels are only valid inside its
+// window, which holds every tile.
+void UTerrainHorizonClipmap::PlaceSurface(const terrain::unreal::LevelPlacement& Placement)
+{
+	if (SurfaceLook == nullptr)
+	{
+		return;
+	}
+	SurfaceLook->SetScalarParameterValue(SurfaceFirstXParameter,
+		static_cast<float>(Placement.firstSlot.x));
+	SurfaceLook->SetScalarParameterValue(SurfaceFirstZParameter,
+		static_cast<float>(Placement.firstSlot.z));
+	SurfaceLook->SetDoubleVectorParameterValue(SurfaceOriginParameter,
+		FVector4(Placement.origin.x, Placement.origin.y, Placement.origin.z, 0.0));
+	SurfaceLook->SetScalarParameterValue(HasSurfaceParameter, 1.0f);
+}
+
+void UTerrainHorizonClipmap::SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin)
+{
+	for (UMaterialInstanceDynamic* Look : Looks)
+	{
+		Look->SetScalarParameterValue(WaveOriginXParameter, static_cast<float>(Origin.x));
+		Look->SetScalarParameterValue(WaveOriginYParameter, static_cast<float>(Origin.y));
+	}
+	if (SurfaceLook != nullptr)
+	{
+		SurfaceLook->SetScalarParameterValue(WaveOriginXParameter, static_cast<float>(Origin.x));
+		SurfaceLook->SetScalarParameterValue(WaveOriginYParameter, static_cast<float>(Origin.y));
+	}
 }
 
 void UTerrainHorizonClipmap::RemoveAll()
@@ -265,4 +434,10 @@ void UTerrainHorizonClipmap::RemoveAll()
 	}
 	Placed.Empty();
 	TrimShown.Empty();
+	if (SurfaceLook != nullptr)
+	{
+		SurfaceLook->SetScalarParameterValue(HasSurfaceParameter, 0.0f);
+		SurfaceLook->SetScalarParameterValue(SurfaceHasNormalsParameter, 0.0f);
+		SurfaceLook = nullptr;
+	}
 }
