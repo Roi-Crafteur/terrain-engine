@@ -12,11 +12,9 @@ namespace terrain::noise {
 
 namespace {
 
-using detail::kGolden;
 using detail::kOffsetsY;
 using detail::latticeNoise;
 using detail::latticeNoise3;
-using detail::mix64;
 
 // Exact rotations (a / c, b / c) of the octaves: see kRotationCount.
 struct Rotation {
@@ -63,10 +61,6 @@ Lattice2D octaveLattice(const WorldSize& world, double frequency, int octave,
         lattice.inverseC = 1.0 / static_cast<double>(lattice.c);
     }
     return lattice;
-}
-
-std::uint64_t deriveSeed(std::uint64_t seed, std::uint64_t stream) {
-    return mix64(seed + kGolden * (stream + 1));
 }
 
 Lattice2D lattice2D(const WorldSize& world, double frequency, int rotation, double offsetU,
