@@ -8,6 +8,7 @@
 #include "terrain/meshing/marching_cubes.hpp"
 #include "terrain/storage/edit_window.hpp"
 #include "terrain/streaming/cave_tiles.hpp"
+#include "tile_blend.hpp"
 #include "tile_lattice.hpp"
 
 #include <algorithm>
@@ -242,6 +243,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     data.originZ = lattice.z0;
     data.minHeight = columns.minHeight;
     data.maxHeight = columns.maxHeight;
+    data.surfaceBlend = tile::blendTexels(field_, ecology_, lattice, columns);
     data.plants = std::move(plants);
     const double caveDepth = carved ? tile::caveDepthReach(*caves_, lattice) : 0.0;
     const std::vector<int> levels =

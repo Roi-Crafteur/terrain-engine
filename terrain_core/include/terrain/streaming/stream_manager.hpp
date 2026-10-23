@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/chunk_coord.hpp"
+#include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/cave_flora.hpp"
 #include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/speleothems.hpp"
@@ -24,6 +25,13 @@
 
 namespace terrain {
 
+// The texels of the surface blend of a tile (TileData::surfaceBlend): kTileBlendTexels along
+// each side, every kTileBlendStride cells of the tile (4, 8, 16 and 32 m on LOD 0 to 3), from its
+// lowest corner to the opposite one.
+inline constexpr int kTileBlendStride = 4;
+inline constexpr int kTileBlendTexels = kChunkCells / kTileBlendStride + 1;
+static_assert(kChunkCells % kTileBlendStride == 0, "the texels reach both sides of a tile");
+
 // Generated content of a tile. The world wraps around (WorldSize): the tiles of a StreamManager
 // have canonical keys (wrapTile), and their data lie in the canonical range of the world; a
 // client shows a tile at its image nearest to the player (nearestTile), moving its positions by
@@ -39,6 +47,12 @@ struct TileData {
     std::vector<Plant> plants; // world positions
     float minHeight = 0.0f;    // range of the ground of the tile, meters
     float maxHeight = 0.0f;
+    // The weights of the dominant biomes and materials of the ground (biome_blend.hpp), for the
+    // materials to blend: texel (i, k), at index k * kTileBlendTexels + i, is the column at
+    // (originX + i * pitch, originZ + k * pitch), pitch = kTileBlendStride * tileCellMeters(lod).
+    // A pure function of the world position at each LOD: two tiles of a LOD hold the same bits
+    // on the side they share. The ground of the natural relief, without the caves and the edits.
+    std::vector<BlendTexel> surfaceBlend;
     // With caves only, empty otherwise: the material of each vertex of mesh, the lakes of the
     // caves (relative to the same origin) with the material of each of their vertices (water or
     // ice), and the speleothems (world positions, LOD 0 tiles only); with cave regions only, the

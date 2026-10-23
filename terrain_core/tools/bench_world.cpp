@@ -2,6 +2,7 @@
 // terrain_bench_noise, on the default world and on the planet: see bench_noise.cpp.
 
 #include "bench_world.hpp"
+#include "tile_blend.hpp"
 
 #include "terrain/chunk_coord.hpp"
 #include "terrain/generation/cave_sampler.hpp"
@@ -149,8 +150,36 @@ void columnParts(const Config& c, const Heightfield& field,
     report("columns, 17 x 17 heightsAt (batch)", batch, keys.size(), "ms");
 }
 
+// The surface blend of the tiles (TileData::surfaceBlend, tile_blend.cpp): their texels every 4
+// cells (5 x 5, those of the tiles) and every 8 (3 x 3), with the heights beyond their sides.
+// Reported apart from the total checksum, which stays that of the world before the blend.
+void blendParts(const Config& c, const Heightfield& field, const terrain::Ecology& ecology,
+                const std::vector<terrain::TileKey>& keys) {
+    std::vector<terrain::tile::TileLattice> lattices;
+    std::vector<terrain::tile::TileColumns> columns;
+    for (const terrain::TileKey& key : keys) {
+        lattices.push_back(terrain::tile::latticeOf(key));
+        columns.push_back(terrain::tile::sampleColumns(field, lattices.back()));
+    }
+    for (const int stride : {4, 8}) {
+        const auto texels = measure(c.runs, [&, stride] {
+            Checksum sum;
+            for (std::size_t t = 0; t < keys.size(); ++t) {
+                for (const terrain::BlendTexel& texel : terrain::tile::blendTexels(
+                         field, ecology, lattices[t], columns[t], stride)) {
+                    sum.add(static_cast<std::uint64_t>(texel.ids) << 32 | texel.weights);
+                }
+            }
+            return sum.value();
+        });
+        report(stride == 4 ? "surface blend: 5 x 5 texels (the tiles)"
+                           : "surface blend: 3 x 3 texels",
+               texels, keys.size(), "ms");
+    }
+}
+
 // The work of a LOD 0 tile that reads the relief: its 17 x 17 columns, the map of its plants
-// (relief, climate, biomes and densities every 4 m) and their placement.
+// (relief, climate, biomes and densities every 4 m), their placement and the surface blend.
 void lod0Parts(const Config& c, const Heightfield& field, terrain::ChunkCoord mountain) {
     section("parts of a LOD 0 tile, ms per tile");
     const terrain::Ecology ecology(kSeed);
@@ -207,6 +236,7 @@ void lod0Parts(const Config& c, const Heightfield& field, terrain::ChunkCoord mo
         return sum.value();
     });
     record("plant map + placement (heightAt)", placement, keys.size(), "ms");
+    blendParts(c, field, ecology, keys);
 }
 
 // Ground heights of the 17 x 17 columns of a tile.

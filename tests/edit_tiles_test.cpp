@@ -2,7 +2,8 @@
 // vertices on the sides the LOD 0 tiles share; a crater and a razed area across the edge of two
 // LODs stay stitched; a sphere across the edge x = world.x / 2 digs both sides alike; the
 // generated plants standing on removed ground are dropped, and come back when it is restored,
-// the tiles without edits keeping their bits.
+// the tiles without edits keeping their bits; the surface blend of an edited tile stays that of
+// the natural ground.
 #include "terrain/storage/edit_window.hpp"
 #include "terrain/storage/volume_edit.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -84,6 +85,9 @@ void testCraterAcrossChunks() {
     for (int lod = 1; lod < terrain::kLodCount; ++lod) {
         const TileData tile = tiles.generate({terrain::tileContaining(c, lod), 0});
         TEST_CHECK(!(tile.mesh == before[static_cast<std::size_t>(lod)].mesh));
+        // The surface blend is that of the natural ground: the edits never change it.
+        TEST_CHECK(!tile.surfaceBlend.empty() &&
+                   tile.surfaceBlend == before[static_cast<std::size_t>(lod)].surfaceBlend);
     }
 }
 
@@ -132,9 +136,14 @@ void testAcrossLods() {
     }
     const VolumeEdit razed{EditShape::Box, EditMode::Remove, {edge - 24, lowest - 30, m.z * 16},
                            {48, 400, 32}, 0};
+    const TileData fineBefore = tiles.generate({fine, terrain::kSeamNegX});
     tiles.applyEdit(razed);
     checkSeam(tiles, fine, coarse, terrain::kSeamNegX, plane, kSeamTolerance);
     TEST_CHECK(tiles.densityAt(edge, lowest - 20, m.z * 16 + 5) > 0.0f);
+    // Razed, the tile keeps the surface blend of the natural ground.
+    const TileData fineAfter = tiles.generate({fine, terrain::kSeamNegX});
+    TEST_CHECK(!(fineAfter.mesh == fineBefore.mesh) &&
+               fineAfter.surfaceBlend == fineBefore.surfaceBlend);
 }
 
 // A sphere across the edge x = world.x / 2, given at the eastern image: both sides dug, their

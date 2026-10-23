@@ -13,6 +13,7 @@ namespace {
 // Streams of the climate and the vegetation, distinct from the relief layers.
 constexpr std::uint64_t kClimateStream = 0x434C494D;    // "CLIM"
 constexpr std::uint64_t kVegetationStream = 0x56454745; // "VEGE"
+constexpr std::uint64_t kBlendStream = 0x424C4E44;      // "BLND"
 
 double sampleCoordinate(double center, int index, const HeightmapRegion& region) {
     return center + (index + 0.5 - region.size / 2.0) * region.metersPerPixel;
@@ -51,7 +52,8 @@ double EcologyMap::sampleZ(int row) const {
 
 Ecology::Ecology(std::uint64_t seed, const EcologyParams& params, const WorldSize& world)
     : params_(params), climate_(noise::deriveSeed(seed, kClimateStream), params.climate, world),
-      vegetation_(noise::deriveSeed(seed, kVegetationStream), params.vegetation, world) {}
+      vegetation_(noise::deriveSeed(seed, kVegetationStream), params.vegetation, world),
+      blend_(noise::deriveSeed(seed, kBlendStream), params.blend, world) {}
 
 EcologySample Ecology::sampleAt(double x, double z, const SurfaceSite& site) const {
     EcologySample sample;
@@ -73,6 +75,25 @@ EcologyMap Ecology::map(const TerrainSurface& surface) const {
         }
     }
     return result;
+}
+
+SurfaceBlend Ecology::blendAt(double x, double z, const SurfaceSite& site,
+                              const ClimateSample& climate) const {
+    return blend_.blend(x, z, climate, site, params_.biomes, params_.materials);
+}
+
+std::vector<SurfaceBlend> Ecology::blendMap(const TerrainSurface& surface,
+                                            const EcologyMap& map) const {
+    std::vector<SurfaceBlend> blends;
+    blends.reserve(surface.sites.size());
+    for (int row = 0; row < surface.size(); ++row) {
+        const double z = surface.sampleZ(row);
+        for (int column = 0; column < surface.size(); ++column) {
+            blends.push_back(blendAt(surface.sampleX(column), z, surface.at(column, row),
+                                     map.at(column, row).climate));
+        }
+    }
+    return blends;
 }
 
 bool Ecology::densitiesAt(const EcologyMap& map, double x, double z,
