@@ -123,11 +123,18 @@ add_library(terrain_core STATIC
     src/io/relief_view.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
+    src/storage/block_section.cpp
+    src/storage/chunk_record.cpp
     src/storage/durable_file.cpp
+    src/storage/edit_lattice.cpp
+    src/storage/edit_summary.cpp
+    src/storage/edit_window.cpp
     src/storage/file_commit.cpp
     src/storage/modifications.cpp
     src/storage/region_file.cpp
+    src/storage/section_codec.cpp
     src/storage/storage_codec.cpp
+    src/storage/volume_edit.cpp
     src/storage/world_directory.cpp
     src/storage/world_meta.cpp
     src/storage/world_save.cpp
@@ -262,6 +269,13 @@ add_executable(terrain_bench_noise tools/bench_noise.cpp tools/bench_world.cpp)
 target_link_libraries(terrain_bench_noise PRIVATE terrain_core terrain_warnings)
 # The surface blend of the tiles, internal to terrain_core (src/streaming/tile_blend.hpp).
 target_include_directories(terrain_bench_noise PRIVATE src/streaming)
+
+# Sizes, times and memory of the modifications by sections against the criteria of phase 15
+# (a hole of 10 m, a mountain of 1 km x 1 km x 500 m razed), not a test (outside ctest). Build
+# in Release: terrain_modification_sizes <output-dir> [runs]; then compare with the full chunks
+# of Minecraft: python3 scripts/minecraft_chunk_sizes.py <output-dir>/*.chunks
+add_executable(terrain_modification_sizes tools/modification_sizes.cpp)
+target_link_libraries(terrain_modification_sizes PRIVATE terrain_core terrain_warnings)
 
 # Planet level (climate, lakes, river graph) of a whole world, its figures and control images:
 # terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary] [samples-per-axis]

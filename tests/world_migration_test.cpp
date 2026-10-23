@@ -80,6 +80,9 @@ void testFixture(const fs::path& dir) {
                (terrain::kLegacyGeneratorVersion != terrain::kGeneratorVersion));
     TEST_CHECK(terrain::savedRegions(root / folder) ==
                (std::vector<terrain::RegionCoord>{{-1, -1}, {0, 0}}));
+    // Written in the current format.
+    TEST_CHECK(storage_test::fileBytes(root / folder / terrain::regionRelativePath({0, 0}))[4] ==
+               terrain::kWorldFormatVersion);
 }
 
 void testSavedFile(const fs::path& dir) {

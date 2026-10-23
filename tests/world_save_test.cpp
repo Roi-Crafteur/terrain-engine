@@ -2,7 +2,8 @@
 // touches only its regions, abandoned temporary files and failed saves never damage a world, a
 // damaged or missing file is read from its .bak copy and reported, the errors are clear, unknown
 // files and reserved directories are left alone, a file held open by another reader never
-// damages the world, and a changed generator is reported.
+// damages the world, a changed generator is reported, a world of format 1 is read and saved in
+// the current format, and a large destruction keeps its previous version.
 #include "terrain/storage/world_save.hpp"
 
 #include "storage_test_support.hpp"
@@ -214,7 +215,7 @@ void testBackups(const fs::path& dir) {
 
     // A world.meta of a newer version is refused, never replaced by its backup.
     std::vector<std::uint8_t> newer = goodMeta;
-    newer[4] = 2;
+    newer[4] = 3;
     writeBytes(metaFile, storage_test::resealed(newer));
     TEST_CHECK(loadError(world) == StorageErrorKind::NewerVersion);
     writeBytes(metaFile, goodMeta);
@@ -319,6 +320,63 @@ void testGeneratorChanged(const fs::path& dir) {
 
 } // namespace
 
+// A world of format 1 (phase 9): read, then saved in the current format, its files replaced.
+void testFormatOneWorld(const fs::path& dir) {
+    const fs::path world = dir / "format1";
+    const WorldMeta meta = storage_test::sampleMeta();
+    const ModificationStore store = storage_test::sampleStore();
+    std::vector<std::uint8_t> oldMeta = terrain::serializeWorldMeta(meta);
+    oldMeta[4] = 1;
+    fs::create_directories(world);
+    writeBytes(world / "world.meta", storage_test::resealed(oldMeta));
+    for (const RegionCoord region : terrain::regionsOf(store)) {
+        fs::create_directories(regionFile(world, region).parent_path());
+        writeBytes(regionFile(world, region), storage_test::formatOneRegion(store, region));
+    }
+    const LoadedWorld loaded = terrain::loadWorld(world);
+    TEST_CHECK(loaded.meta == meta && loaded.modifications == store && loaded.warnings.empty());
+    terrain::saveWorld(world, loaded.meta, loaded.modifications);
+    TEST_CHECK(fileBytes(world / "world.meta")[4] == terrain::kWorldFormatVersion);
+    for (const RegionCoord region : terrain::regionsOf(store)) {
+        TEST_CHECK(fileBytes(regionFile(world, region)) ==
+                   terrain::serializeRegion(store, region, kSeed));
+        TEST_CHECK(fileBytes(suffixed(regionFile(world, region), ".bak"))[4] == 1);
+    }
+    TEST_CHECK(terrain::loadWorld(world).modifications == store);
+}
+
+// A large destruction (filled and coded sections over a whole region), saved, then changed and
+// saved again: its region keeps the previous version in its .bak, read when the file is damaged.
+void testLargeDestruction(const fs::path& dir) {
+    const fs::path world = dir / "destruction";
+    const WorldMeta meta = storage_test::sampleMeta();
+    ModificationStore first;
+    for (int cz = 0; cz < terrain::kRegionChunks; ++cz) {
+        for (int cx = 0; cx < terrain::kRegionChunks; ++cx) {
+            for (int y = 2; y < 6; ++y) {
+                first.setSection({cx, cz}, y, terrain::BlockSection::filled(BlockEdit::Removed));
+            }
+            for (int x = 0; x < 16; ++x) {
+                for (int z = 0; z < 16; ++z) {
+                    first.setBlock({cx * 16 + x, 31 - (x + z + cx) % 5, cz * 16 + z},
+                                   BlockEdit::Removed);
+                }
+            }
+        }
+    }
+    terrain::saveWorld(world, meta, first);
+    ModificationStore second = first;
+    second.setSection({3, 3}, 4, terrain::BlockSection::filled(BlockEdit::Added));
+    terrain::saveWorldRegions(world, meta, second, std::vector<RegionCoord>{{0, 0}});
+    TEST_CHECK(terrain::loadWorld(world).modifications == second);
+    const fs::path region = regionFile(world, {0, 0});
+    std::vector<std::uint8_t> damaged = fileBytes(region);
+    damaged[damaged.size() / 2] ^= 0x40U;
+    writeBytes(region, damaged);
+    const LoadedWorld restored = terrain::loadWorld(world);
+    TEST_CHECK(restored.modifications == first && restored.restored.size() == 1);
+}
+
 int main() {
     const fs::path dir = storage_test::freshDirectory("terrain_engine_world_save_test");
     testRoundTrip(dir);
@@ -329,6 +387,8 @@ int main() {
     testErrors(dir);
     testSaveWhileOpen(dir);
     testGeneratorChanged(dir);
+    testFormatOneWorld(dir);
+    testLargeDestruction(dir);
     fs::remove_all(dir);
     return test::result();
 }

@@ -256,16 +256,25 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - nouveau monde : nom, seed, aperçu de la carte et choix du point d'apparition
 - sauvegarde et chargement
 - destruction de bloc en jeu
-- modifications en différences, sous une forme qui tient les grosses destructions
-  (à essayer et mesurer ; si ça ne convient pas, on cherche autre chose) :
+- modifications en différences, sous une forme qui tient les grosses destructions — core :
+  fait (format de monde v2, l'ancien format v1 toujours lu) :
   - chaque chunk découpé en cubes de 16 × 16 × 16 blocs : inchangé, entièrement vidé,
-    entièrement rempli, ou masque compressé
-  - opérations volumiques (sphère, boîte, explosion) : quelques octets, appliquées de façon
-    déterministe par chaque machine puis enregistrées dans les masques
-  - critères : un trou de 10 m ≈ 1 Ko, une montagne rasée (1 km × 1 km × 500 m) ≤ ~1 Mo,
-    rechargement d'une tuile modifiée sans coût visible ; comparaison avec des chunks
-    complets compressés (méthode Minecraft)
-  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques
+    entièrement rempli, liste de blocs ou masque compressé (codeur arithmétique en entiers)
+  - opérations volumiques (sphère, boîte, explosion) : 15 ou 19 octets, appliquées de façon
+    déterministe par chaque machine dans l'ordre de leur numéro, puis enregistrées dans les
+    masques
+  - mesuré (`terrain_modification_sizes`) : un trou de 10 m fait 134 à 300 octets ; une
+    montagne rasée (1 km × 1 km × 500 m) fait 294 Ko par une boîte, 833 Ko par 47 000
+    explosions, contre 547 Ko et 1,4 Mo pour les chunks complets compressés de Minecraft
+    (16 et 17 Mo dans ses secteurs de 4 Ko) ; une tuile sur un trou coûte 1,05 à 1,17 fois
+    la même tuile intacte, une tuile au milieu d'une zone rasée 1,2 à 2 fois, une tuile sur la
+    falaise qui la borde 4 à 6 fois (4 à 28 fois plus de surface)
+  - les plantes générées dont le sol est retiré disparaissent, de près comme de loin
+  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : format
+    seulement, pas encore branché sur l'horizon
+  - reste : casser et poser en jeu dans Unreal, effets de destruction, branchement du résumé
+    sur l'horizon, coutures entre LOD au bord des cratères (jusqu'à 0,26 m, le recousage
+    interpole la face fine là où la face grossière est droite)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

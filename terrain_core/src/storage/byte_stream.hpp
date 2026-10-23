@@ -33,6 +33,20 @@ public:
     void f32(float value) { u32(std::bit_cast<std::uint32_t>(value)); }
     void f64(double value) { u64(std::bit_cast<std::uint64_t>(value)); }
     void count(std::size_t value) { u32(static_cast<std::uint32_t>(value)); }
+    // LEB128: 7 bits per byte, low bits first, the high bit set on every byte but the last.
+    void varint(std::uint32_t value) {
+        while (value >= 0x80U) {
+            out_.push_back(static_cast<std::uint8_t>((value & 0x7FU) | 0x80U));
+            value >>= 7;
+        }
+        out_.push_back(static_cast<std::uint8_t>(value));
+    }
+    // Writes value over the 4 bytes at offset, already written.
+    void patchU32(std::size_t offset, std::uint32_t value) {
+        for (std::size_t i = 0; i < 4; ++i) {
+            out_[offset + i] = static_cast<std::uint8_t>((value >> (8 * i)) & 0xFFU);
+        }
+    }
     // Writes value over the 8 bytes at offset, already written.
     void patchU64(std::size_t offset, std::uint64_t value) {
         for (std::size_t i = 0; i < 8; ++i) {
@@ -75,6 +89,22 @@ public:
             fail("truncated");
         }
         return value;
+    }
+    // A varint of ByteWriter, in its shortest form, of 32 bits at most.
+    std::uint32_t varint() {
+        std::uint32_t value = 0;
+        for (int shift = 0; shift < 35; shift += 7) {
+            const std::uint8_t byte = u8();
+            const std::uint32_t bits = byte & 0x7FU;
+            if ((shift == 28 && bits > 0x0FU) || (shift > 0 && byte == 0)) {
+                fail("invalid varint");
+            }
+            value |= bits << shift;
+            if ((byte & 0x80U) == 0) {
+                return value;
+            }
+        }
+        fail("invalid varint");
     }
     // The next size bytes.
     std::span<const std::uint8_t> take(std::size_t size) {

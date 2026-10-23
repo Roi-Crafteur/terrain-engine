@@ -226,10 +226,8 @@ bool canonicalStore(const terrain::ModificationStore& store) {
     return std::all_of(store.byChunk().begin(), store.byChunk().end(), [](const auto& entry) {
         const ChunkCoord chunk = entry.first;
         return terrain::wrapChunk(chunk, kWorld) == chunk &&
-               std::all_of(entry.second.blocks.begin(), entry.second.blocks.end(),
-                           [&chunk](const auto& block) {
-                               return terrain::blockChunk(block.first) == chunk;
-                           });
+               std::all_of(entry.second.sections.begin(), entry.second.sections.end(),
+                           [](const auto& section) { return !section.second.empty(); });
     });
 }
 
