@@ -5,6 +5,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/sculpted_region.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -83,6 +84,12 @@ struct SurfaceGrids {
 // regions and chunks join without a seam. ground is exactly Heightfield::heightAt.
 [[nodiscard]] TerrainSurface surfaceFromHeightfield(const Heightfield& field,
                                                     const HeightmapRegion& region);
+
+// The site surfaceFromHeightfield gives a sample of this ground and continentalness whose 4
+// neighbors step meters away (east +X, west, south +Z, north) have these heights: the same
+// expressions, so the same bits.
+[[nodiscard]] SurfaceSite heightfieldSite(float ground, float continentalness,
+                                          const std::array<float, 4>& neighbors, double step);
 
 // Surface of an eroded region: its final grid and its river cells.
 [[nodiscard]] TerrainSurface surfaceFromEroded(const ErodedRegion& eroded);

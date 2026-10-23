@@ -288,4 +288,14 @@ TerrainSurface surfaceFromSculpted(const SculptedRegion& sculpted) {
                              .cliffWall = walls});
 }
 
+SurfaceSite heightfieldSite(float ground, float continentalness,
+                            const std::array<float, 4>& neighbors, double step) {
+    SurfaceSite site;
+    site.ground = ground;
+    site.continentalness = continentalness;
+    setSlopes(site, Neighbors{neighbors, 2.0 * step, 2.0 * step}, step);
+    setWater(site, false);
+    return site;
+}
+
 } // namespace terrain

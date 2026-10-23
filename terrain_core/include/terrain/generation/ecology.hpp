@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/biome.hpp"
+#include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/climate.hpp"
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/overhangs.hpp"
@@ -19,6 +20,7 @@ struct EcologyParams {
     BiomeParams biomes;
     MaterialParams materials;
     VegetationParams vegetation;
+    BlendParams blend; // the transitions between the biomes and the materials
 };
 
 // Everything the ecology gives a column.
@@ -68,6 +70,15 @@ public:
     [[nodiscard]] EcologySample sampleAt(double x, double z, const SurfaceSite& site) const;
     [[nodiscard]] EcologyMap map(const TerrainSurface& surface) const;
 
+    // The weights of the dominant biomes and materials of the column at (x, z) of this site and
+    // climate (biome_blend.hpp): its dominant biome and material are those of sampleAt, with the
+    // same bits. An addition to the ecology, which it never changes.
+    [[nodiscard]] SurfaceBlend blendAt(double x, double z, const SurfaceSite& site,
+                                       const ClimateSample& climate) const;
+    // blendAt of every sample of a surface and of its map (map(surface)), indexed like them.
+    [[nodiscard]] std::vector<SurfaceBlend> blendMap(const TerrainSurface& surface,
+                                                     const EcologyMap& map) const;
+
     // Densities at (x, z), bilinear between the 4 samples of the map around it. A type is 0
     // unless all 4 samples allow it, so no plant grows next to a sample where it cannot grow
     // (a wall, a river, the ocean for a land plant). False outside the samples of the map.
@@ -86,6 +97,7 @@ public:
 
     [[nodiscard]] const ClimateField& climate() const { return climate_; }
     [[nodiscard]] const VegetationField& vegetation() const { return vegetation_; }
+    [[nodiscard]] const BlendField& blend() const { return blend_; }
     [[nodiscard]] const EcologyParams& params() const { return params_; }
     [[nodiscard]] const WorldSize& world() const { return climate_.world(); }
 
@@ -95,6 +107,7 @@ private:
     EcologyParams params_;
     ClimateField climate_;
     VegetationField vegetation_;
+    BlendField blend_;
 };
 
 } // namespace terrain

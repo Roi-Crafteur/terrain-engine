@@ -48,8 +48,9 @@ public:
     // density is sampled every tileCellMeters(lod) meters on the lattice of the tile, the block
     // edits are applied, the seams are stitched (stitchSeams), and each level is meshed with
     // Marching Cubes. On LOD 0, the plants of the chunk (Ecology::placePlants on the exact
-    // heightfield) after the plant edits. Deterministic, and thread-safe: it may run concurrently
-    // with the edits.
+    // heightfield) after the plant edits; on every LOD, the surface blend of the natural ground
+    // (TileData::surfaceBlend). Deterministic, and thread-safe: it may run concurrently with the
+    // edits.
     //
     // With caves, the levels go down to the deepest caves (maxDepth below the lowest ground,
     // plus the blend and a cell) and the levels without any surface are skipped; on the sides
