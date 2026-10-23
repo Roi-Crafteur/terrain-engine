@@ -47,6 +47,7 @@ namespace
 		Params.look.sea = World.bHorizonSea;
 		Params.planetRadiusMeters = FMath::Max(0.0, World.PlanetRadiusKm) * 1000.0;
 		Params.lod = Lod;
+		Params.crestRatio = terrain::unreal::crestRatioSetting(World.HorizonCrestRatio);
 		return Params;
 	}
 
@@ -61,6 +62,7 @@ namespace
 				static_cast<uint32>(FMath::Clamp(World.HorizonNormalRatio, 2, 8))))
 			: 0;
 		Params.normalJobs = FMath::Max(1, World.HorizonNormalJobs);
+		Params.crestRatio = terrain::unreal::crestRatioSetting(World.HorizonCrestRatio);
 		Params.sea = World.bHorizonSea;
 		Params.planetRadiusMeters = FMath::Max(0.0, World.PlanetRadiusKm) * 1000.0;
 		Params.lod = Lod;

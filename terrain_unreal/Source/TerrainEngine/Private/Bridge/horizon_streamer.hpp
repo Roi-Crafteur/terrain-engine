@@ -29,6 +29,8 @@ struct HorizonMeshParams {
     HorizonLook look;
     double planetRadiusMeters = 0.0; // 0: planetRadiusMeters(world)
     LodParams lod;                   // the tiles: level 0 leaves out the area under them
+    // The crests of the far mountains (HorizonParams::crestRatio): 0 for point samples.
+    int crestRatio = HorizonParams{}.crestRatio;
 };
 
 // A section of the mesh of a level to show, the mesh placed at origin: the low corner of the

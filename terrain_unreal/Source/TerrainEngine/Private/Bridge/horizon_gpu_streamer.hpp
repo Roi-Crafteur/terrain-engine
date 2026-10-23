@@ -33,6 +33,9 @@ struct HorizonGpuParams {
     // none (the normals of the grids only, as before them), and the jobs computing them at once.
     int normalRatio = 4;
     int normalJobs = 2;
+    // The crests of the far mountains (HorizonParams::crestRatio): 0 for point samples, the
+    // horizon before them.
+    int crestRatio = HorizonParams{}.crestRatio;
 };
 
 // Where a level of the GPU horizon stands and how its material reads its textures.

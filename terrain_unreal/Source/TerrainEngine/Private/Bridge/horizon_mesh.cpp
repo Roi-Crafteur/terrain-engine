@@ -90,13 +90,27 @@ void validateTopology(int cells, const CellRect& hole) {
     }
 }
 
-// Each odd sample of the border walk takes the mean altitude of its two neighbors (even, so
-// never stitched themselves): K is even, so the parity along the walk is the one along an edge.
-void stitchBorder(const BodyTopology& topology, std::vector<UnrealVector3f>& positions) {
+// Each even sample of the border walk takes the altitude of the coarser sample there, then each
+// odd one the mean altitude of its two neighbors: K is even, so the parity along the walk is the
+// one along an edge, and the window starts on an even sample (its center is even, K / 2 too).
+void stitchBorder(const HorizonLevel& level, const HorizonLevel& coarser,
+                  const BodyTopology& topology, const HorizonLook& look,
+                  std::vector<UnrealVector3f>& positions) {
     const std::size_t count = topology.border.size();
     const auto vertex = [&](std::size_t j) -> UnrealVector3f& {
         return positions[static_cast<std::size_t>(topology.border[j % count])];
     };
+    const int side = topology.cells + 1;
+    const HorizonRect window = level.window();
+    for (std::size_t j = 0; j < count; j += 2) {
+        const std::int32_t sample = topology.samples[static_cast<std::size_t>(topology.border[j])];
+        const HorizonCell* cell = coarser.find(
+            {(window.x0 + sample % side) / 2, (window.z0 + sample / side) / 2});
+        if (cell == nullptr) {
+            throw std::invalid_argument("fillBody: the coarser level does not surround this one");
+        }
+        vertex(j).z = horizonVertex(*cell, look).z;
+    }
     for (std::size_t j = 1; j < count; j += 2) {
         vertex(j).z = 0.5f * (vertex(j - 1).z + vertex(j + 1).z);
     }
@@ -227,8 +241,8 @@ void fillBody(const HorizonLevel& level, const BodyTopology& topology, const Bod
         mesh.normals[v] = vertex.normal;
         mesh.colors[v] = vertex.color;
     }
-    if (shape.stitch) {
-        stitchBorder(topology, mesh.positions);
+    if (shape.coarser != nullptr) {
+        stitchBorder(level, *shape.coarser, topology, look, mesh.positions);
     }
     fillExtras(topology, shape, pitchCm, mesh);
 }

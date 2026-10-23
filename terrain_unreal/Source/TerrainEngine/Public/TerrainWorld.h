@@ -235,6 +235,14 @@ public:
 			ClampMax = "8"))
 	int32 HorizonNormalJobs = 2;
 
+	// Crests of the far mountains (terrain_core streaming/horizon_crests.hpp): from level 1 on, the
+	// samples rise to the crests of their cells, sought HorizonCrestRatio times finer than each
+	// level (2, 4 or 8), so that the summits and ridges keep their height against the sky.
+	// 0: the point samples, the horizon as before.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon", ClampMin = "0", ClampMax = "8"))
+	int32 HorizonCrestRatio = 4;
+
 	// The sky follows the camera over the curved planet (terrain_unreal/README.md, section 12):
 	// the SkyAtmosphere of the level takes the radius of the planet, its top at the sea level
 	// right under the camera, the ExponentialHeightFog stays under the camera at its height above

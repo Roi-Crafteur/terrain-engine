@@ -3,16 +3,19 @@
 // above it, normal, color), the topology of a body, the bodies filled from the toroidal buffers
 // (every sample at its place, the cells outside the hole drawn by two triangles facing up, the
 // skirt facing inward below the border, the bounds below the curved ground), the borders
-// stitched onto the edges of the coarser level bit for bit, and the trims around the finer
-// windows.
+// stitched onto the edges of the coarser level bit for bit (with point samples, where they are
+// the level's own samples, and with the crests, which lift the coarser samples, in mountains of
+// the default world), and the trims around the finer windows.
 #include "horizon_mesh.hpp"
 
 #include "horizon_test_support.hpp"
+#include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <map>
 #include <stdexcept>
 #include <utility>
@@ -34,23 +37,25 @@ using terrain::unreal::UnrealVector3f;
 constexpr int kCells = 64;
 constexpr int kLevel0Hole = 10;
 
-HorizonParams smallParams() {
+HorizonParams smallParams(int crestRatio) {
     HorizonParams params;
     params.cellsPerSide = kCells;
     params.levels = 4;
+    params.crestRatio = crestRatio;
     return params;
 }
 
 // The levels of a clipmap settled around an observer in the mountains.
 struct Clipmap {
-    Clipmap(double observerX, double observerZ) : x(observerX), z(observerZ) {
+    Clipmap(double observerX, double observerZ, int crestRatio)
+        : x(observerX), z(observerZ), params(smallParams(crestRatio)) {
         horizon_test::settle(clipmap, sampler, x, z);
     }
 
     double x;
     double z;
     horizon_test::World world;
-    HorizonParams params = smallParams();
+    HorizonParams params;
     terrain::HorizonSampler sampler{world.field, world.ecology, params};
     terrain::HorizonClipmap clipmap{params};
 };
@@ -191,8 +196,8 @@ LevelMesh makeBody(const Clipmap& map, int n, const HorizonLook& look) {
     LevelMesh body;
     body.topology = terrain::unreal::bodyTopology(
         kCells, terrain::unreal::bodyHole(map.params, n, kLevel0Hole), n == 0);
-    const BodyShape shape{n + 1 < map.params.levels, terrain::unreal::skirtMeters(level.pitch()),
-                          100.0, 50.0};
+    const HorizonLevel* coarser = n + 1 < map.params.levels ? &map.clipmap.level(n + 1) : nullptr;
+    const BodyShape shape{coarser, terrain::unreal::skirtMeters(level.pitch()), 100.0, 50.0};
     terrain::unreal::fillBody(level, body.topology, shape, look, body.mesh);
     body.mesh.triangles = body.topology.triangles;
     return body;
@@ -209,7 +214,10 @@ void checkBody(const Clipmap& map, int n, const LevelMesh& body, const HorizonLo
         const int k = topology.samples[v] / (kCells + 1);
         const HorizonVertex vertex = terrain::unreal::horizonVertex(level.atWindow(i, k), look);
         const bool edge = i == 0 || k == 0 || i == kCells || k == kCells;
-        const bool stitched = edge && n + 1 < map.params.levels && (i % 2 != 0 || k % 2 != 0);
+        // The border takes the coarser samples: the same bits as its own even samples with
+        // point samples.
+        const bool stitched = edge && n + 1 < map.params.levels &&
+                              (i % 2 != 0 || k % 2 != 0 || map.params.crestRatio != 0);
         samples = samples && mesh.positions[v].x == static_cast<float>(i * pitchCm) &&
                   mesh.positions[v].y == static_cast<float>(k * pitchCm) &&
                   (stitched || mesh.positions[v].z == vertex.z) &&
@@ -269,14 +277,16 @@ void checkSea(const LevelMesh& body, double pitchCm) {
 }
 
 // The border of a level on the edges of the coarser one: its even samples at the altitudes of
-// the coarser samples, bit for bit, and its odd samples halfway between them.
-void checkStitch(const Clipmap& map, int n, const LevelMesh& fine, const HorizonLook& look) {
+// the coarser samples, bit for bit, and its odd samples halfway between them. Returns how many
+// even samples the coarser level lifted (none with point samples).
+int checkStitch(const Clipmap& map, int n, const LevelMesh& fine, const HorizonLook& look) {
     const HorizonLevel& level = map.clipmap.level(n);
     const HorizonLevel& coarse = map.clipmap.level(n + 1);
     const BodyTopology& topology = fine.topology;
     const std::size_t count = topology.border.size();
     bool even = true;
     bool odd = true;
+    int lifted = 0;
     for (std::size_t j = 0; j < count; ++j) {
         const UnrealVector3f vertex =
             fine.mesh.positions[static_cast<std::size_t>(topology.border[j])];
@@ -295,9 +305,14 @@ void checkStitch(const Clipmap& map, int n, const LevelMesh& fine, const Horizon
                vertex.z == terrain::unreal::horizonVertex(
                                coarse.atWindow(static_cast<int>(u), static_cast<int>(v)), look)
                                .z;
+        const int i = static_cast<int>(std::lround(vertex.x / (100.0 * level.pitch())));
+        const int k = static_cast<int>(std::lround(vertex.y / (100.0 * level.pitch())));
+        lifted += vertex.z == terrain::unreal::horizonVertex(level.atWindow(i, k), look).z ? 0 : 1;
     }
     TEST_CHECK(even);
     TEST_CHECK(odd);
+    TEST_CHECK(map.params.crestRatio != 0 || lifted == 0);
+    return lifted;
 }
 
 void checkTrim(const Clipmap& map, int n, const LevelMesh& body, const HorizonLook& look) {
@@ -342,8 +357,9 @@ void checkTrim(const Clipmap& map, int n, const LevelMesh& body, const HorizonLo
     TEST_CHECK(refused);
 }
 
-void testLevels(double x, double z) {
-    const Clipmap map(x, z);
+// Returns how many even border samples the coarser levels lifted.
+int testLevels(double x, double z, int crestRatio = HorizonParams{}.crestRatio) {
+    const Clipmap map(x, z, crestRatio);
     const HorizonLook look{1.0, true};
     std::vector<LevelMesh> bodies;
     for (int n = 0; n < map.params.levels; ++n) {
@@ -354,11 +370,13 @@ void testLevels(double x, double z) {
         }
     }
     checkSea(bodies.front(), map.clipmap.level(0).pitch() * 100.0);
+    int lifted = 0;
     for (int n = 0; n + 1 < map.params.levels; ++n) {
-        checkStitch(map, n, bodies[static_cast<std::size_t>(n)], look);
+        lifted += checkStitch(map, n, bodies[static_cast<std::size_t>(n)], look);
     }
     // Filled again: the same mesh.
     TEST_CHECK(makeBody(map, 2, look).mesh == bodies[2].mesh);
+    return lifted;
 }
 
 } // namespace
@@ -371,5 +389,14 @@ int main() {
     // Across the corner of the world.
     const terrain::WorldSize world;
     testLevels(world.x / 2.0 - 100.0, world.z / 2.0 - 60.0);
+    // In mountains of the default world, with point samples and with the crests.
+    const terrain::ChunkCoord mountain = streaming_test::mountainChunk(horizon_test::World().field);
+    const double x = mountain.x * terrain::kChunkSizeMeters + 4.0;
+    const double z = mountain.z * terrain::kChunkSizeMeters + 4.0;
+    TEST_CHECK(testLevels(x, z, 0) == 0);
+    const int lifted = testLevels(x, z);
+    std::printf("mountains: %d even border samples stitched onto lifted coarser samples\n",
+                lifted);
+    TEST_CHECK(lifted > 0);
     return test::result();
 }

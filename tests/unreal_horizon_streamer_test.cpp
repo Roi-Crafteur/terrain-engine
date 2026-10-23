@@ -269,6 +269,10 @@ void testInvalid() {
     const HorizonMeshStreamer earth(world.field, world.ecology, kWorld, params);
     TEST_CHECK(earth.planetRadiusMeters() == 6'371'000.0);
     TEST_CHECK((earth.tileHole() == terrain::unreal::TileHole{29, 128.0}));
+    TEST_CHECK(earth.params().crestRatio == terrain::HorizonParams{}.crestRatio);
+    params.crestRatio = 0; // the point samples
+    const HorizonMeshStreamer points(world.field, world.ecology, kWorld, params);
+    TEST_CHECK(points.params().crestRatio == 0);
 }
 
 bool contains(const std::vector<std::string>& lines, const std::string& text) {
