@@ -42,9 +42,17 @@
   des 4 pentes autour du sommet, à partir de 35°).
 - **Des plaques dans chaque biome, comme dans Minecraft** (bruit du monde déformé, bords doux
   mais lisibles, de quelques mètres à quelques dizaines de mètres, `PatchAmount`) : dans les
-  prairies, de la terre nue, du gravier, de l'herbe sèche et une herbe plus sombre ; dans le
-  désert, du gravier ; dans la roche, des éboulis et une seconde roche ; dans la neige, des
-  affleurements rocheux.
+  prairies, de l'herbe sèche et une herbe plus sombre ; dans la roche, des éboulis et une seconde
+  roche ; dans la neige, des affleurements rocheux.
+- **La terre nue et le gravier suivent le relief** (rares, au bord déchiqueté, jamais des disques
+  au hasard) : le nuanceur de sommets des tuiles calcule la courbure du sol (laplacien des
+  hauteurs du niveau 0, à ±16 m) ; le gravier se dépose dans les creux et au pied des pentes, la
+  terre nue affleure sur les bosses, les crêtes et les pentes moyennes, où le sol est mince. Le
+  masque mêle ce site (`PatchRelief`) à un bruit doublement déformé de trois échelles, au-dessus
+  d'un seuil haut (`PatchRarity`) : sans site, pas de plaque (une plaine plate n'en a presque
+  pas). `CurvatureGain` règle la courbure qui compte comme un creux ou une bosse pleins. Le désert
+  garde plus de gravier, d'abord dans ses creux. L'horizon n'a pas la courbure : au loin, les
+  plaques ne suivent que la pente.
 - **Les textures**, alignées sur le monde : projection du dessus pour le sol, triplanaire pour la
   roche, une répétition tous les 4 ou 8 m (qui divise 4 096 m, la période des coordonnées
   périodiques du monde, comme les vagues de la mer). **Sans répétition visible** : chaque cellule
@@ -102,10 +110,13 @@ scripts l'appellent jusqu'à ce qu'il n'en reste aucun (`clear_material`).
 Paramètres des matériaux, modifiables sur des instances : la teinte de chaque couche
 (`GrassTint`, `RockTint`, …), `RockStartDeg`, `RockFullDeg`, `SnowHoldDeg`, `SnowShedDeg`,
 `CoreRock`, `DetailNearM`, `DetailFarM`, `Saturation`, `Warmth`, `NormalStrength`, `SnowWhiten`,
-`MacroVariation`, `PatchAmount`, `RockGrey`, `RockAlbedo`, `RockContrast`, `SandMaxAltitudeM` ;
+`MacroVariation`, `PatchAmount`, `PatchRarity`, `PatchRelief`, `CurvatureGain`, `RockGrey`,
+`RockAlbedo`, `RockContrast`, `SandMaxAltitudeM` ;
 `DebugView` 1 montre les couches (vert herbe, jaune herbe sèche, vert foncé forêt, turquoise
 alpin, brun terre, beige sable, orange désert, gris éboulis, rouge roche, blanc neige), 2 la roche
-(rouge), la neige (vert) et le pied des pentes (bleu), 3 la part de sable et de désert (rouge).
+(rouge), la neige (vert) et le pied des pentes (bleu), 3 la part de sable et de désert (rouge),
+4 la courbure des tuiles (rouge les creux, bleu les bosses), 5 la terre nue (rouge) et le gravier
+(vert).
 
 ## Coût
 

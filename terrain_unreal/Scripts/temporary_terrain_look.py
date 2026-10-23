@@ -9,9 +9,12 @@ Rules (kept simple on purpose):
 - the material and the biome of the core (packed in the texels of the horizon,
   Bridge/terrain_surface.hpp) pick the ground layers: grass, dry grass, forest floor, alpine
   grass, dirt, sand, desert, scree, with soft transitions (blended per vertex between samples);
-- patches within a biome, as in Minecraft (world noise, PatchAmount): bare earth, gravel, dry
-  grass and darker grass in the meadows, gravel in the desert, scree and a second rock in the
-  rock, rock outcrops in the snow;
+- patches within a biome, as in Minecraft (world noise, PatchAmount): dry grass and darker grass
+  in the meadows, scree and a second rock in the rock, rock outcrops in the snow;
+- rare bare earth and gravel that follow the relief (the curvature of the ground on the tiles,
+  CurvatureGain): gravel in the hollows and at the foot of slopes, bare earth on bumps, crests and
+  moderate slopes, more gravel in the desert; PatchRelief of the site mixed with a noise, above
+  PatchRarity;
 - rock from about RockStartDeg of slope, fully rock from RockFullDeg, the threshold jittered by
   noise, and wherever the core puts rock (CoreRock of it, at every distance): a cold grey mineral
   (its textures desaturated by RockGrey, brightened by RockAlbedo to about 0.18), never sandy;
@@ -86,7 +89,7 @@ SCALARS = {
     "DetailNearM": 150.0, "DetailFarM": 400.0, "Saturation": 1.2, "NormalStrength": 0.8,
     "SnowWhiten": 0.92, "MacroVariation": 1.0, "PatchAmount": 1.0, "CoreRock": 0.8,
     "RockGrey": 0.85, "RockAlbedo": 1.15, "RockContrast": 1.4, "SandMaxAltitudeM": 1800.0,
-    "DebugView": 0.0,
+    "PatchRarity": 0.6, "PatchRelief": 0.45, "CurvatureGain": 50.0, "DebugView": 0.0,
 }
 WARMTH = (1.03, 1.0, 0.95)
 

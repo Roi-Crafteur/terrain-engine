@@ -31,6 +31,21 @@ struct FTemporaryTerrain
         else if (m == 7) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); }                        // scree
     }
 
+    // The height of the ground (meters) at the sample coordinates ij of the window of level 0,
+    // bilinear between its 4 texels (the tiles: the vertex shader of create_temporary_terrain_
+    // material.py; first, side: the toroidal window).
+    float Height(Texture2D T, float2 ij, int2 first, int side, float cells)
+    {
+        float2 base = clamp(floor(ij), 0.0, cells - 1.0);
+        float2 f = saturate(ij - base);
+        int2 i0 = int2(base);
+        float h00 = T.Load(int3((i0 + first) % side, 0)).r;
+        float h10 = T.Load(int3((i0 + int2(1, 0) + first) % side, 0)).r;
+        float h01 = T.Load(int3((i0 + int2(0, 1) + first) % side, 0)).r;
+        float h11 = T.Load(int3((i0 + int2(1, 1) + first) % side, 0)).r;
+        return lerp(lerp(h00, h10, f.x), lerp(h01, h11, f.x), f.y);
+    }
+
     float2 Hash2(float2 c)
     {
         c = fmod(fmod(c, 4096.0) + 4096.0, 4096.0);
@@ -171,14 +186,35 @@ float snow = cold * hold;
 // Above the snow line nothing grows: where the slope sheds the snow, the rock shows.
 rock = max(rock, cold * (1.0 - hold) * 0.95);
 float g[8] = { W0.x, W0.y, W0.z, W0.w, W1.x, W1.y, W1.z, W1.w };
-// Patches within a biome, as in Minecraft: bare earth, gravel, dry grass and darker grass in the
-// meadows, gravel in the desert, rock outcrops in the snow, scree in the rock; soft but readable
-// edges, from a few meters to tens of meters.
-float pa = Look.Patch(Q, 4.0, 17.0);
+// Patches within a biome, as in Minecraft: dry grass and darker grass in the meadows, rock
+// outcrops in the snow, scree in the rock; soft but readable edges, from a few meters to tens of
+// meters.
 float pb = Look.Patch(Q, 8.0, 93.0);
 float pc = Look.Patch(Q, 8.0, 29.0);
-float bare = PatchAmount * smoothstep(0.66, 0.74, pa);
-float gravel = PatchAmount * (1.0 - smoothstep(0.24, 0.32, pa));
+// Bare earth and gravel: rare ragged patches that follow the relief, not discs at random. Gravel
+// collects in the hollows (CURVATURE > 0: the ground curves up, 1/m) and at the foot of slopes;
+// bare earth shows on bumps and crests (CURVATURE < 0) and on moderate slopes, where the soil is
+// thin. Their masks: the site of each (PatchRelief of it) mixed with a doubly warped noise of
+// three scales, above a high threshold (PatchRarity); ragged edges (a fine noise, faded far away
+// where it would shimmer). Without a site, no patch.
+float curv = CURVATURE * CurvatureGain;
+float hollow = saturate(curv);
+float bump = saturate(-curv);
+float incline = saturate((slope - 6.0) / 16.0);
+float2 R = Q + (float2(Look.Noise(P + 31.0, 64.0), Look.Noise(P - 31.0, 64.0)) - 0.5) * 24.0;
+float rag = (Look.Noise(R, 2.0) - 0.5) * 0.06 * saturate((600.0 - Dist) / 300.0);
+float ma = Look.Patch(R, 8.0, 17.0) * 0.7 + Look.Noise(R + 13.0, 128.0) * 0.2
+         + Look.Noise(R + 3.0, 4.0) * 0.1 + rag;
+float mb = Look.Patch(R, 8.0, 71.0) * 0.7 + Look.Noise(R - 13.0, 128.0) * 0.2
+         + Look.Noise(R - 3.0, 4.0) * 0.1 + rag;
+float bareSite = saturate(bump + 0.6 * incline);
+float gravelSite = saturate(hollow + 0.6 * saturate(W2.z) + 0.25 * incline);
+float bareMask = lerp(ma, bareSite, PatchRelief) - PatchRarity;
+float gravelMask = lerp(mb, gravelSite, PatchRelief) - PatchRarity;
+float bare = PatchAmount * smoothstep(0.0, 0.05, bareMask);
+float gravel = PatchAmount * smoothstep(0.0, 0.05, gravelMask);
+// The desert keeps more of its gravel, still in the hollows first.
+float desertGravel = PatchAmount * smoothstep(0.0, 0.05, gravelMask + 0.12);
 float dryp = PatchAmount * smoothstep(0.60, 0.68, pb);
 float dark = PatchAmount * (1.0 - smoothstep(0.32, 0.40, pb));
 float outcrop = PatchAmount * smoothstep(0.66, 0.74, pc);
@@ -192,8 +228,8 @@ g[0] = meadow * (1.0 - dryp * 0.8 - dark * 0.6);
     g[7] += g[v] * gravel * 0.6;
     g[v] *= 1.0 - bare * 0.75 - gravel * 0.6;
 }
-g[7] += g[6] * gravel * 0.5;
-g[6] *= 1.0 - gravel * 0.5;
+g[7] += g[6] * desertGravel * 0.5;
+g[6] *= 1.0 - desertGravel * 0.5;
 snow *= 1.0 - outcrop * 0.85;
 rock = max(rock * (1.0 - gravel * 0.5), outcrop * cold * 0.9);
 float alt = smoothstep(0.42, 0.58, Look.Patch(Q, 16.0, 61.0));
@@ -300,7 +336,8 @@ if (DebugView > 0.5)
     [unroll] for (int k = 0; k < 8; ++k) { d += (g[k] / sum) * K[k]; }
     d = lerp(lerp(d, float3(0.9, 0.1, 0.1), rock), float3(1.0, 1.0, 1.0), snow);
     color = DebugView < 1.5 ? d : (DebugView < 2.5 ? float3(rock, snow, saturate(W2.z)) :
-            float3(sandShare / max(sum, 1e-3), 0.0, 0.0));
+            (DebugView < 3.5 ? float3(sandShare / max(sum, 1e-3), 0.0, 0.0) :
+            (DebugView < 4.5 ? float3(hollow, 0.15, bump) : float3(bare, gravel, 0.0))));
 }
 NormalOut = normal;
 return color;
@@ -332,7 +369,10 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
     """The pixel code: with detail (tiles), the textures near the camera; without (horizon), only
     the mean color of each texture. layers: (name, albedo, normal, mean, scale); the ground layers
     first, then the snow, the rock and its variant."""
-    code = SHADE_TOP.replace("HAS_DETAIL", "1.0" if detail else "0.0")
+    # The curvature of the ground comes from the vertex shader of the tiles (W3.w); the horizon
+    # has none.
+    code = SHADE_TOP.replace("HAS_DETAIL", "1.0" if detail else "0.0").replace(
+        "CURVATURE", "W3.w" if detail else "0.0")
     for index in range(ground):
         code += ground_layer(index, layers[index][4], detail, saturations.get(layers[index][0]))
     snow, rock, variant = ground, ground + 1, ground + 2
