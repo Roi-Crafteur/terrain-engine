@@ -18,7 +18,8 @@ inline constexpr std::uint32_t kWorldFormatVersion = 1;
 // the same generator version. Every change of the generated values (relief, caves, biomes,
 // plants...) must increment it. Kept here for now; it belongs to generation/.
 // 2: phase 9 (deterministic math, wrapped world).
-inline constexpr std::uint32_t kGeneratorVersion = 2;
+// 3: phase 11R (the planetary geography: continents, plate belts, provinces, drained valleys).
+inline constexpr std::uint32_t kGeneratorVersion = 3;
 
 // Generator of the worlds saved before the world format (TMOD files): the one up to phase 8C-2.
 inline constexpr std::uint32_t kLegacyGeneratorVersion = 1;

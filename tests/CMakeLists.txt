@@ -26,6 +26,7 @@ terrain_add_test(marching_cubes_test terrain_core)
 terrain_add_test(noise_test terrain_core)
 terrain_add_test(noise_periodic_test terrain_core)
 terrain_add_test(noise_octaves_test terrain_core)
+terrain_add_test(noise_slope_test terrain_core)
 terrain_add_test(heightfield_test terrain_core)
 terrain_add_test(heightfield_shortcuts_test terrain_core)
 terrain_add_test(heightfield_batch_test terrain_core)
@@ -37,6 +38,7 @@ terrain_add_test(heightmap_png_test terrain_core)
 terrain_add_test(erosion_test terrain_core)
 terrain_add_test(rivers_test terrain_core)
 terrain_add_test(eroded_region_test terrain_core)
+terrain_add_test(eroded_default_world_test terrain_core)
 terrain_add_test(eroded_png_test terrain_core)
 terrain_add_test(sdf_test terrain_core)
 terrain_add_test(cliffs_test terrain_core)
@@ -46,6 +48,7 @@ terrain_add_test(cliffs_png_test terrain_core)
 terrain_add_test(overhangs_test terrain_core)
 terrain_add_test(arches_test terrain_core)
 terrain_add_test(sculpted_region_test terrain_core)
+terrain_add_test(cliffs_default_world_test terrain_core)
 terrain_add_test(region_wrap_test terrain_core)
 terrain_add_test(world_wrap_streaming_test terrain_core)
 terrain_add_test(world_seams_noise_test terrain_core)
@@ -59,6 +62,7 @@ terrain_add_test(biome_test terrain_core)
 terrain_add_test(surface_material_test terrain_core)
 terrain_add_test(vegetation_test terrain_core)
 terrain_add_test(ecology_test terrain_core)
+terrain_add_test(ecology_default_world_test terrain_core)
 terrain_add_test(ecology_cliffs_test terrain_core)
 terrain_add_test(ecology_png_test terrain_core)
 terrain_add_test(voronoi_layout_test terrain_core)
@@ -70,6 +74,7 @@ terrain_add_test(lod_seams_test terrain_core)
 terrain_add_test(stream_manager_test terrain_core)
 terrain_add_test(modifications_test terrain_core)
 terrain_add_test(terrain_tiles_test terrain_core)
+terrain_add_test(streaming_default_world_test terrain_core)
 terrain_add_test(horizon_levels_test terrain_core)
 terrain_add_test(horizon_sampler_test terrain_core)
 terrain_add_test(horizon_normals_test terrain_core)
@@ -86,6 +91,7 @@ terrain_add_test(world_migration_test terrain_core)
 terrain_add_test(world_directory_test terrain_core)
 terrain_add_test(world_volume_test terrain_core)
 terrain_add_test(caves_test terrain_core)
+terrain_add_test(caves_default_world_test terrain_core)
 terrain_add_test(cave_entrances_test terrain_core)
 terrain_add_test(cave_region_test terrain_core)
 terrain_add_test(cave_tiles_test terrain_core)
@@ -156,8 +162,64 @@ terrain_add_test(planet_level_test terrain_core)
 terrain_add_test(planet_compact_test terrain_core)
 terrain_add_test(planet_golden_test terrain_core)
 terrain_add_test(planet_stats_test terrain_core)
+terrain_add_test(relief_lakes_test terrain_core)
 terrain_add_test(planet_false_passes_test terrain_core)
 terrain_add_test(planet_png_test terrain_core)
+
+# The grid primitives of the planetary geography (internal header).
+terrain_add_test(geography_grid_test terrain_core)
+target_include_directories(geography_grid_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(geography_test terrain_core)
+terrain_add_test(geography_relief_test terrain_core)
+terrain_add_test(ravines_test terrain_core)
+target_include_directories(ravines_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(mountain_forms_test terrain_core)
+target_include_directories(mountain_forms_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(mountain_walls_test terrain_core)
+target_include_directories(mountain_walls_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(mountain_freeze_test terrain_core)
+terrain_add_test(plain_forms_test terrain_core)
+target_include_directories(plain_forms_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(geography_tectonics_test terrain_core)
+target_include_directories(geography_tectonics_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+terrain_add_test(relief_png_test terrain_core)
+terrain_add_test(relief_stats_test terrain_core)
+terrain_add_test(relief_view_test terrain_core)
+
+# Maps and figures of the relief of a small world (64 x 32 cells of 64 km, zooms of 64 px), with
+# the zooms of a place given by --at.
+add_test(NAME export_relief_smoke
+    COMMAND terrain_export_relief ${CMAKE_BINARY_DIR}/relief 20261019 default 65536 64 2 4194304
+            2097152 --at place 1000 -2000)
+set_tests_properties(export_relief_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "relief default, seed 20261019, world 4194 x 2097 km, cells of 65536 m")
+add_dependencies(check terrain_export_relief)
+
+# Invalid arguments of terrain_export_relief are rejected before anything is computed.
+add_test(NAME export_relief_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_relief>
+            -DOUT=${CMAKE_BINARY_DIR}/relief_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_relief_bad_args.cmake)
+
+# Views in perspective of the relief of a small world (64 x 36 pixels).
+add_test(NAME export_view_smoke
+    COMMAND terrain_export_view ${CMAKE_BINARY_DIR}/views 20261019 default 64 65536 2 4194304
+            2097152)
+set_tests_properties(export_view_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "relief default, seed 20261019, world 4194 x 2097 km, views of 64 x 36")
+add_dependencies(check terrain_export_view)
+
+# Invalid arguments of terrain_export_view are rejected before anything is computed.
+add_test(NAME export_view_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_view>
+            -DOUT=${CMAKE_BINARY_DIR}/view_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_view_bad_args.cmake)
 
 # The planet level of a small world (128 x 64 cells of 16 km), its figures and images.
 add_test(NAME export_planet_smoke

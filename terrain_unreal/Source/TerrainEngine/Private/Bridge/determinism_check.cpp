@@ -8,26 +8,28 @@ namespace terrain::unreal {
 
 namespace {
 
-// Produced by the core built by CMake (GCC 13, no optimization) and checked by
+// Produced by the core built by CMake (GCC 13, Release) and checked by
 // unreal_determinism_check_test on every ctest run, on every platform of the CI.
-constexpr std::array<HeightProbe, 9> kHeightProbes{{
-    {0.0, 0.0, 0x00000000U},                           // 0 m: the origin lies on a coast
-    {1234.5, -6789.25, 0x42915897U},                   // 72.67 m
-    {11267.75, -61451.5, 0x44AF2BD0U},                 // 1401.37 m: a mountain
-    {-31740.25, -61451.5, 0xC3FAA320U},                // -501.27 m: the sea floor
-    {3000000.0, -1500000.0, 0x422BD224U},              // 42.96 m
-    {-12345678.9, 7654321.5, 0x44D7860AU},             // 1724.19 m
-    {30015487.5, 17498111.75, 0x44DB8946U},            // 1756.29 m: by the corner of the world
-    {-30015488.0, -17498112.0, 0x44DB9295U},           // 1756.58 m: the corner itself
-    {60032210.5, -35003013.25, 0x42915897U},           // the second probe, one world away
+constexpr std::array<HeightProbe, 10> kHeightProbes{{
+    {0.0, 0.0, 0xBEE06B9EU},                 // -0.44 m: the origin lies on a coast
+    {1234.5, -6789.25, 0xC18162C8U},         // -16.17 m: the shallow sea by that coast
+    {162047.75, 188158.5, 0x42E18292U},      // 112.76 m: a mountain
+    {-147456.25, 57344.5, 0x4208CC98U},      // 34.20 m: a plain
+    {400000.0, 0.25, 0xC3A5C384U},           // -331.53 m: the continental slope
+    {163296.25, -11327312.5, 0x458E76DBU},   // 4558.86 m: the summit of a belt
+    {-12345678.9, 7654321.5, 0x43538849U},   // 211.53 m: far inland
+    {30015487.5, 17498111.75, 0xC58FC1A6U},  // -4600.21 m: by the corner of the world
+    {-30015488.0, -17498112.0, 0xC58FC1AAU}, // -4600.21 m: the corner itself
+    {60032210.5, -35003013.25, 0xC18162C8U}, // the second probe, one world away
 }};
 
 // Produced and checked the same way.
-constexpr std::array<TileProbe, 4> kTileProbes{{
-    {{{{0, 0}, 0}, 0}, 0xDE452DC46BBD895BULL},                        // the origin, a coast
-    {{{{704, -3840}, 0}, 0}, 0x8ED26E191898C6C5ULL},                  // a mountain
-    {{{{77, -424}, 0}, kSeamNegX | kSeamPosZ}, 0xFC60AEF14751408AULL}, // with seams
-    {{{{1875967, 1093631}, 0}, 0}, 0xD80F5970AF506686ULL},            // the corner of the world
+constexpr std::array<TileProbe, 5> kTileProbes{{
+    {{{{0, 0}, 0}, 0}, 0x8971119F3AD3CDF3ULL},                      // the origin, a coast
+    {{{{10128, 11760}, 0}, 0}, 0x4D2E17AC4BC81D24ULL},              // a mountain
+    {{{{-9216, 3584}, 0}, 0}, 0x1D8120CE0F8FA9BEULL},               // a plain
+    {{{{-2, 3}, 0}, kSeamNegX | kSeamPosZ}, 0x90BA93745D9FB9FEULL}, // the coast, with seams
+    {{{{1875967, 1093631}, 0}, 0}, 0x80EC1ABA1F475CA5ULL},          // the corner of the world
 }};
 
 class Fnv1a {

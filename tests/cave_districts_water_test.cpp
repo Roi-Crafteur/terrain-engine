@@ -15,6 +15,7 @@
 #include "cave_districts_carving_support.hpp"
 #include "cave_districts_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -288,7 +289,7 @@ FloodedCells floodedCellsIn(const CaveField& field, const CaveGround& ground,
 // level of its column, and no entrance opens in the square of the core, where the same square of
 // neutral districts holds many.
 void testFloodedCores() {
-    const TerrainTiles tiles(kSeed, {}, {}, defaultCaves());
+    const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, defaultCaves());
     const CaveField& field = *tiles.caves();
     const CaveGround& ground = tiles.caveGround();
     const CaveField neutral(kSeed, uniformCaves(CaveProfile{}));

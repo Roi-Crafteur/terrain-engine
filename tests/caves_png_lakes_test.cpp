@@ -5,6 +5,7 @@
 #include "terrain/io/caves_png.hpp"
 #include "terrain/io/heightmap_png.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -92,13 +93,14 @@ constexpr terrain::HeightmapRegion kArea{.centerX = 10000.0, .centerZ = -20000.0
                                          .metersPerPixel = 32.0, .size = 32};
 
 const CaveRegion& warmSite() {
-    static const CaveRegion region(terrain::kDefaultWorldSeed, kArea);
+    static const CaveRegion region(terrain::kDefaultWorldSeed, kArea,
+                                   test_relief::onLegacyRelief(terrain::CaveRegionParams{}));
     return region;
 }
 
 const CaveRegion& coldSite() {
     static const CaveRegion region(terrain::kDefaultWorldSeed, kArea, [] {
-        terrain::CaveRegionParams params;
+        terrain::CaveRegionParams params = test_relief::onLegacyRelief(terrain::CaveRegionParams{});
         params.ecology.climate.equatorTemperature = -80.0f;
         params.ecology.climate.poleTemperature = -80.0f;
         return params;

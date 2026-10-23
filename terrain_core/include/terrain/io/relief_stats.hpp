@@ -1,0 +1,259 @@
+#pragma once
+
+#include "terrain/generation/heightfield.hpp"
+#include "terrain/io/relief_png.hpp"
+
+#include <array>
+#include <cstdint>
+#include <vector>
+
+namespace terrain {
+
+// Figures of a relief that do not depend on how it is generated, so that two reliefs can be
+// compared: land masses, mountain chains, hypsometry, coasts, plains, mountains. They read a
+// grid of heights of the whole world (sampleReliefWorld), and the Heightfield itself for the
+// figures at the scale of a walk. Lengths and areas in meters and square meters.
+
+struct ReliefStatsParams {
+    // Mountain cells: land at least mountainHeight high whose heights within reliefRadius
+    // span at least mountainRelief. Chains: the mountain cells closed over bridge (dilated
+    // then eroded), so that the valleys inside a range do not cut it.
+    float mountainHeight = 1000.0f;
+    float mountainRelief = 800.0f;
+    double reliefRadius = 20'000.0;
+    double bridge = 32'000.0;
+    // Plains: land at least plainDistance from every chain.
+    double plainDistance = 500'000.0;
+    // A stretch of coast is straight while every point of it lies within
+    // max(straightTolerance, straightRelative * chord) of its chord.
+    double straightTolerance = 10'000.0;
+    double straightRelative = 0.03;
+    // The straight stretches are also measured on the coast at the scale of a map of the
+    // planet: the coast line of the share of land within coastSmoothing (a square of about
+    // twice that side), without its islands and inlets.
+    double coastSmoothing = 80'000.0;
+    // Land masses of at least continentArea are continents (10 million km2).
+    double continentArea = 1.0e13;
+};
+
+struct LandMass {
+    double area = 0.0;
+    double x = 0.0; // a cell of it
+    double z = 0.0;
+};
+
+struct MountainChain {
+    double length = 0.0; // longest shortest path inside the chain
+    double width = 0.0;  // area / length
+    double area = 0.0;
+    float highest = 0.0f;
+    double x = 0.0; // its highest cell
+    double z = 0.0;
+};
+
+struct StraightCoast {
+    double length = 0.0; // of its chord
+    double x0 = 0.0;
+    double z0 = 0.0;
+    double x1 = 0.0;
+    double z1 = 0.0;
+};
+
+// Upper bounds of the altitude bands of the land, meters; the last band has no bound.
+inline constexpr std::array<float, 7> kAltitudeBands = {200.0f,  500.0f,  1000.0f, 2000.0f,
+                                                        3000.0f, 4000.0f, 5000.0f};
+
+// Bits of the class of a cell of the grid.
+inline constexpr unsigned kReliefLand = 1;
+inline constexpr unsigned kReliefMountain = 2; // a mountain cell
+inline constexpr unsigned kReliefChain = 4;    // inside a chain (closed mountain cells)
+inline constexpr unsigned kReliefPlain = 8;    // land far from every chain
+inline constexpr unsigned kReliefCoast = 16;   // land next to the sea (4 neighbors)
+
+// A place to look at closely: a cell of the grid and what it shows.
+struct ReliefSite {
+    bool found = false;
+    double x = 0.0;
+    double z = 0.0;
+};
+
+struct ReliefStats {
+    double landShare = 0.0;
+    std::vector<LandMass> landMasses; // largest first
+    int continents = 0;
+    std::vector<MountainChain> chains; // longest first
+    std::array<double, kAltitudeBands.size() + 1> altitudeShares{}; // of the land area
+    float highest = 0.0f;
+    double highestX = 0.0;
+    double highestZ = 0.0;
+    double coastLength = 0.0; // of every coast line at the grid resolution
+    StraightCoast longestStraightCoast;
+    StraightCoast longestStraightMapCoast; // on the smoothed coast (coastSmoothing)
+    double mountainShare = 0.0;  // of the land, in mountain cells
+    double chainShare = 0.0;     // of the land, in chains
+    double plainShare = 0.0;     // of the land, far from every chain
+    double highPlainShare = 0.0; // of that land, above 1,500 m
+    std::vector<std::uint8_t> cells; // kRelief* bits of each cell of the grid
+    // The highest cell of the longest chain, the cell of a land mass of at least 1,000,000 km2
+    // farthest from both the chains and the sea (a plain when its distance to the chains reaches
+    // plainDistance), a coast
+    // with as much land as sea around it near a chain (else anywhere).
+    ReliefSite mountain;
+    ReliefSite plain;
+    double plainSiteDistance = 0.0; // from the plain site to the nearest chain
+    ReliefSite coast;
+};
+
+// Throws std::invalid_argument unless the grid wraps (the whole world).
+[[nodiscard]] ReliefStats measureRelief(const ReliefGrid& world,
+                                        const ReliefStatsParams& params = {});
+
+// Figures at the scale of a walk, from windows sampled in the Heightfield around up to
+// windowCount cells of each kind (spread evenly over the cells of that kind).
+struct LocalReliefStats {
+    int plainWindows = 0;
+    double plainSlope = 0.0;  // median of the mean slope, 1 km steps over 10 km windows
+    double plainRelief = 0.0; // median of max - min over these windows
+    int mountainWindows = 0;
+    double mountainRelief = 0.0;   // median of max - min, 1 km steps over 10 km windows
+    double mountainRelief90 = 0.0; // 90th percentile
+    // The same in the mountain belts of the planetary geography (belt of at least 0.5 at the
+    // center of the window, on land), when it is enabled.
+    int beltWindows = 0;
+    double beltRelief = 0.0;
+    double beltRelief90 = 0.0;
+    int coastWindows = 0;
+    // Median of the length of the coast walked with 1 km dividers over its length with 10 km
+    // dividers, on 40 km windows sampled every 200 m: 1 for a smooth coast.
+    double coastSinuosity = 0.0;
+};
+
+[[nodiscard]] LocalReliefStats measureLocalRelief(const Heightfield& field,
+                                                  const ReliefGrid& world,
+                                                  const ReliefStats& stats, int windowCount,
+                                                  int threads);
+
+// A zone of cells of the grid: its width (twice the radius of the widest disk inside it, to
+// the cell), its area and the center of that disk.
+struct ReliefZone {
+    double width = 0.0;
+    double area = 0.0;
+    double x = 0.0;
+    double z = 0.0;
+};
+
+// Figures of the shapes of the relief, to judge whether mountains are steep and plains alive.
+// Belts: the mountain belts of the planetary geography (belt of at least 0.5 at the center of a
+// window), the mountain cells without it. Highlands: the belts and the land at least 2,500 m
+// high (high plateaus).
+struct TerrainFigures {
+    int beltWindows = 0;
+    double beltRelief5 = 0.0; // median of max - min over 5 km (11 x 11 samples 500 m apart)
+    double steepShare = 0.0;  // of the slopes above 30 degrees, at 25 m over 2 km windows
+    double cliffShare = 0.0;  // above 45 degrees
+    // Plains (kReliefPlain): max - min over 10 km windows sampled every 1 km.
+    int plainWindows = 0;
+    double plainReliefMin = 0.0;
+    double plainRelief10 = 0.0; // 10th percentile
+    double plainRelief50 = 0.0;
+    double plainRelief90 = 0.0;
+    double plainFlatShare = 0.0; // of the windows below 10 m
+    // The same over 1 km (11 x 11 samples 100 m apart, at the centers of those windows): the
+    // relief at the scale of a walk.
+    double plainNear10 = 0.0;
+    double plainNear50 = 0.0;
+    // The median of max - min over 5 km (11 x 11 samples 500 m apart): next to that over 10 km,
+    // whether the plains have long swells.
+    double plainRelief5k = 0.0;
+    // Standard deviation of the height around its mean over 200 m (21 x 21 samples 10 m apart)
+    // and over 1 km (21 x 21 samples 50 m apart): 10th percentile, median, 90th percentile.
+    std::array<double, 3> plainDeviation200{};
+    std::array<double, 3> plainDeviation1k{};
+    // Points of the land below the mean of the ground within 1 km (a square of 2 km) around
+    // them, 100 m apart over windows of 2 km whose squares hold no sea.
+    int meanWindows = 0;
+    double belowMean = 0.0;       // over the land
+    double belowMeanPlains = 0.0; // over the plains
+    double belowMeanBelts = 0.0;  // over the belts
+    // Every land cell of the grid: max - min over 10 km (6 x 6 samples 2 km apart).
+    double flatShare = 0.0; // of the land cells below 10 m
+    ReliefZone widestFlat;  // the widest zone of them
+    double dullShare = 0.0; // of the highland cells below 300 m
+    ReliefZone widestDull;
+    // Shares of the land cells by the intensity of the relief of the geography at their center
+    // (HeightSample::relief), in the classes bounded by kReliefClasses; all 0 without it.
+    std::array<double, 5> reliefShares{};
+};
+
+// Upper bounds of the classes of the intensity of the relief; the last class has no bound.
+inline constexpr std::array<float, 4> kReliefClasses = {0.06f, 0.2f, 0.45f, 0.7f};
+
+// Thresholds of the flat land and of the dull highlands, meters over 10 km.
+inline constexpr double kFlatRelief = 10.0;
+inline constexpr double kDullRelief = 300.0;
+
+// From windows around up to windowCount cells of each kind (spread evenly), and from every land
+// cell of the grid.
+[[nodiscard]] TerrainFigures measureTerrain(const Heightfield& field, const ReliefGrid& world,
+                                            const ReliefStats& stats, int windowCount,
+                                            int threads);
+
+// The cores of the chains of the geography (land cells of intensity at least kCoreRelief, up to
+// count of them spread evenly over the cells of the belts) and their summits. Slopes: 64 points
+// 250 m apart around the center of each cell, central differences over 2 m. Summits: the highest
+// point within 6 km of the center of each cell, climbed to the top; its dominance over the
+// highest ground 3 to 5 km around it; the mean slope of its faces over their first 1,500 m of
+// drop (the mean horizontal distance at which 16 straight lines from it have dropped that much);
+// the floor 8 to 14 km around (the lowest land, in 64 directions every 2 km, that sees it), the
+// angle at which the summit stands above its horizontal, and its own slope over 25 m. All 0
+// without the geography or without a core.
+struct PeakFigures {
+    int cores = 0;
+    double cliffShare = 0.0;    // of the slopes above 45 degrees
+    double wallShare = 0.0;     // above 70 degrees
+    double dominance50 = 0.0;   // median, meters
+    double dominantShare = 0.0; // of the summits at least kDominant above their ring
+    double faces50 = 0.0;       // median, degrees
+    double steepFaces = 0.0;    // of the summits whose faces are at least kSteepFaces
+    double seen50 = 0.0;        // median angle above the horizontal of the floor, degrees
+    double seenShare = 0.0;     // of the summits at least kSeenAngle above it
+    double floorSlope50 = 0.0;  // median slope of the floors, degrees
+    double highest = 0.0;       // the highest of the summits, meters
+};
+
+inline constexpr float kCoreRelief = 0.7f;
+inline constexpr double kDominant = 1000.0;
+inline constexpr double kSteepFaces = 40.0;
+inline constexpr double kSeenAngle = 15.0;
+
+// The same figures whatever the number of threads (0: the hardware concurrency).
+[[nodiscard]] PeakFigures measurePeaks(const Heightfield& field, const ReliefGrid& world,
+                                       const ReliefStats& stats, int count, int threads);
+
+namespace relief_shapes {
+
+// A polyline in meters.
+struct Line {
+    std::vector<double> x;
+    std::vector<double> z;
+    bool closed = false;
+};
+
+// The coast lines (height 0) of a grid by marching squares, linked into polylines; across the
+// edges of a wrapping grid, each point is the image of its position nearest to the previous
+// one, so that a line crossing the edge stays continuous.
+[[nodiscard]] std::vector<Line> coastLines(const ReliefGrid& grid);
+
+[[nodiscard]] double lineLength(const Line& line);
+
+// The longest straight stretch of the lines (see ReliefStatsParams).
+[[nodiscard]] StraightCoast longestStraight(const std::vector<Line>& lines, double tolerance,
+                                            double relative);
+
+// Length of the line walked with dividers of the given opening: whole steps, plus the
+// remaining distance to its end.
+[[nodiscard]] double dividerLength(const Line& line, double opening);
+
+} // namespace relief_shapes
+
+} // namespace terrain

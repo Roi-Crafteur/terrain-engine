@@ -150,8 +150,11 @@ private:
 
 // Square region centered on a deterministic site of the world with cliffs and rivers: the
 // best site of a coarse search around the origin (inside a cliff province, in highlands
-// below the summit fade).
+// below the summit fade), on the relief of HeightfieldParams{} or of the given parameters.
 [[nodiscard]] HeightmapRegion findCliffRegion(std::uint64_t seed, double metersPerPixel,
                                               int size, const CliffParams& params = {});
+[[nodiscard]] HeightmapRegion findCliffRegion(std::uint64_t seed, double metersPerPixel, int size,
+                                              const CliffParams& params,
+                                              const HeightfieldParams& heightfield);
 
 } // namespace terrain

@@ -2,6 +2,7 @@
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/heightfield.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -28,9 +29,11 @@ HeightGrid makeGrid(int size, double metersPerPixel, const std::function<float(i
     return grid;
 }
 
-// Highest point of a coarse search around the origin: the heart of a mountain range.
-HeightGrid mountainGrid(int size, double metersPerPixel) {
-    const terrain::Heightfield field(terrain::kDefaultWorldSeed);
+// Highest point of a coarse search around the origin: in the relief of generator 2, the heart of a
+// mountain range (in the default world, the highest land near a low coast).
+HeightGrid mountainGrid(int size, double metersPerPixel,
+                        const terrain::HeightfieldParams& params = {}) {
+    const terrain::Heightfield field(terrain::kDefaultWorldSeed, params);
     terrain::HeightmapRegion region{.metersPerPixel = metersPerPixel, .size = size};
     float highest = std::numeric_limits<float>::lowest();
     for (int j = -20; j <= 20; ++j) {
@@ -87,7 +90,7 @@ void testDeterminism() {
 
 // Finite heights, within the range of the relief before erosion.
 void testValidValues() {
-    const HeightGrid raw = mountainGrid(64, 60.0);
+    const HeightGrid raw = mountainGrid(64, 60.0, test_relief::legacyRelief());
     HeightGrid eroded = raw;
     terrain::erodeHeightGrid(eroded, 7);
     const auto [low, high] = std::minmax_element(raw.heights.begin(), raw.heights.end());

@@ -5,6 +5,7 @@
 #include "terrain/generation/sculpted_region.hpp"
 #include "terrain/generation/noise.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -85,7 +86,8 @@ Point samplePoint(const SculptedRegion& region, std::size_t index) {
 
 // Same seed, same region: same arches, grids and densities. Another seed: another world.
 void testDeterminism(const SculptedRegion& a, const HeightmapRegion& site) {
-    const SculptedRegion b(kSeed, site);
+    const SculptedRegion b(kSeed, site,
+                           test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     TEST_CHECK(a.arches() == b.arches());
     TEST_CHECK(a.controlMask() == b.controlMask());
     TEST_CHECK(a.overhangWeight() == b.overhangWeight());
@@ -100,9 +102,12 @@ void testDeterminism(const SculptedRegion& a, const HeightmapRegion& site) {
     }
     TEST_CHECK(same);
 
-    const HeightmapRegion small = terrain::findCliffRegion(kSeed, 100.0, 48);
-    const SculptedRegion c(kSeed, small);
-    const SculptedRegion d(kSeed + 1, small);
+    const HeightmapRegion small =
+        terrain::findCliffRegion(kSeed, 100.0, 48, {}, test_relief::legacyRelief());
+    const SculptedRegion c(kSeed, small,
+                           test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
+    const SculptedRegion d(kSeed + 1, small,
+                           test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     TEST_CHECK(c.controlMask() != d.controlMask() || !(c.arches() == d.arches()));
 }
 
@@ -418,8 +423,10 @@ void testChunkColumns(const SculptedRegion& region) {
 } // namespace
 
 int main() {
-    const HeightmapRegion site = terrain::findCliffRegion(kSeed, 50.0, 129);
-    const SculptedRegion region(kSeed, site);
+    const HeightmapRegion site =
+        terrain::findCliffRegion(kSeed, 50.0, 129, {}, test_relief::legacyRelief());
+    const SculptedRegion region(kSeed, site,
+                                test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     testDeterminism(region, site);
     testOverhangsPresent(region);
     testArchPlacement(region);

@@ -1,7 +1,8 @@
 // Benchmark of the noise and the relief, not a test: the cost of heightAt and sampleAt, of the
 // tiles of LOD 0 to 3 with and without caves and of 1024 x 1024 height grids, on the default world
 // and on the planet (bench_world.cpp), and of each part of a height sample (lattices, seeds,
-// wrapping, each layer of the relief, plates, cave noises). Each
+// wrapping, each layer of the relief, plates, cave noises). The default world is the planetary
+// geography (generator 3); the planet and the legacy cases are the relief of generator 2. Each
 // line gives the median cost per item over the runs, the fastest run, the items per run and an
 // FNV checksum of the results: an optimization of the noise must leave every checksum unchanged.
 // Build in Release and run on a quiet machine:
@@ -19,6 +20,7 @@
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/terrain_surface.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -31,6 +33,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace {
@@ -45,46 +48,64 @@ using bench::kCenterChunkZ;
 using bench::kSeed;
 using bench::record;
 
-// The mixed points lie within this distance of the origin: oceans, plains and mountains.
+// Scale of the inputs of the math profiles: abs(x) / kMixedRange.
 constexpr double kMixedRange = 1'000'000.0;
+// Candidates drawn per point of a kind: a kind that the relief lacks stays short instead of
+// looping.
+constexpr std::size_t kAttemptsPerPoint = 40;
 
+// Points by kind, drawn over the whole world so that two reliefs compare alike. The kinds
+// overlap: a mountain on the coast is in both.
 struct PointSets {
-    std::vector<Point> mixed;
+    std::vector<Point> mixed;    // anywhere
+    std::vector<Point> land;     // above the sea, without mountain mask
+    std::vector<Point> coast;    // within 100 m of sea level
     std::vector<Point> mountain; // mountain mask above 0
-    std::vector<Point> ocean;    // below the coast, without mountains
+    std::vector<Point> ocean;    // deeper than 1,000 m
 };
 
 PointSets pointSets(const Heightfield& field, std::size_t count) {
     PointSets sets;
     bench::Points points;
-    std::size_t landShare = 0;
-    while (sets.mixed.size() < count || sets.mountain.size() < count || sets.ocean.size() < count) {
-        const Point p{points.next(kMixedRange), points.next(kMixedRange)};
+    const terrain::WorldSize& world = field.world();
+    const auto add = [count](std::vector<Point>& set, Point p, bool member) {
+        if (member && set.size() < count) {
+            set.push_back(p);
+        }
+    };
+    for (std::size_t attempt = 0; attempt < kAttemptsPerPoint * count; ++attempt) {
+        const Point p{points.next(0.5 * world.x), points.next(0.5 * world.z)};
         const terrain::HeightSample s = field.sampleAt(p.x, p.z);
-        if (sets.mixed.size() < count) {
-            sets.mixed.push_back(p);
-            if (s.base >= 0.0f) {
-                ++landShare;
+        add(sets.mixed, p, true);
+        add(sets.land, p, s.height >= 0.0f && s.mountainMask == 0.0f);
+        add(sets.coast, p, std::abs(s.height) < 100.0f);
+        add(sets.mountain, p, s.mountainMask > 0.0f);
+        add(sets.ocean, p, s.height < -1000.0f);
+        if (sets.land.size() == count && sets.coast.size() == count &&
+            sets.mountain.size() == count && sets.ocean.size() == count) {
+            break;
+        }
+    }
+    std::printf("points over the whole world: %zu mixed, %zu land, %zu coast, %zu mountain, %zu "
+                "ocean\n",
+                sets.mixed.size(), sets.land.size(), sets.coast.size(), sets.mountain.size(),
+                sets.ocean.size());
+    return sets;
+}
+
+// Patches of 16 x 16 points 4 m apart from the first points of a set, as many points as it has:
+// the way tiles sample the relief, the caches warm.
+std::vector<Point> patches(const std::vector<Point>& points) {
+    constexpr int kSide = 16;
+    std::vector<Point> out;
+    for (std::size_t k = 0; k < points.size() / (kSide * kSide); ++k) {
+        for (int j = 0; j < kSide; ++j) {
+            for (int i = 0; i < kSide; ++i) {
+                out.push_back({points[k].x + 4.0 * i, points[k].z + 4.0 * j});
             }
         }
-        if (s.mountainMask > 0.0f && sets.mountain.size() < count) {
-            sets.mountain.push_back(p);
-        } else if (s.base < 0.0f && s.mountainMask == 0.0f && sets.ocean.size() < count) {
-            sets.ocean.push_back(p);
-        }
     }
-    std::size_t mountains = 0;
-    for (const Point& p : sets.mixed) {
-        if (field.sampleAt(p.x, p.z).mountainMask > 0.0f) {
-            ++mountains;
-        }
-    }
-    const auto share = [count](std::size_t n) {
-        return 100.0 * static_cast<double>(n) / static_cast<double>(count);
-    };
-    std::printf("mixed points within %.0f km: %.0f %% land, %.0f %% under a mountain mask\n",
-                kMixedRange / 1000.0, share(landShare), share(mountains));
-    return sets;
+    return out;
 }
 
 std::uint64_t heights(const Heightfield& field, const std::vector<Point>& points) {
@@ -102,9 +123,19 @@ void pointCases(const Config& c, const Heightfield& field, const Heightfield& pl
     const auto run = [&c](const Heightfield& f, const std::vector<Point>& points) {
         return bench::measure(c.runs, [&f, &points] { return heights(f, points); });
     };
-    record("heightAt, mixed", run(field, sets.mixed), n, "ns");
-    record("heightAt, mountains", run(field, sets.mountain), n, "ns");
-    record("heightAt, ocean", run(field, sets.ocean), n, "ns");
+    const auto kind = [&](const char* name, const std::vector<Point>& points) {
+        record(name, run(field, points), points.size(), "ns");
+    };
+    kind("heightAt, mixed", sets.mixed);
+    kind("heightAt, land", sets.land);
+    kind("heightAt, coast", sets.coast);
+    kind("heightAt, mountains", sets.mountain);
+    kind("heightAt, ocean", sets.ocean);
+    kind("heightAt, mixed, patches", patches(sets.mixed));
+    kind("heightAt, land, patches", patches(sets.land));
+    kind("heightAt, coast, patches", patches(sets.coast));
+    kind("heightAt, mountains, patches", patches(sets.mountain));
+    kind("heightAt, ocean, patches", patches(sets.ocean));
     const auto samples = bench::measure(c.runs, [&field, &sets] {
         Checksum sum;
         for (const Point& p : sets.mixed) {
@@ -118,6 +149,26 @@ void pointCases(const Config& c, const Heightfield& field, const Heightfield& pl
     });
     record("sampleAt, mixed", samples, n, "ns");
     record("heightAt planet (macro, plates), mixed", run(planet, sets.mixed), n, "ns");
+}
+
+// heightAt of the relief of generator 2 (the planetary geography off), on points drawn by kind on
+// its own world: the default world of the earlier runs, for comparison.
+void legacyCases(const Config& c, const Heightfield& legacy, const PointSets& sets) {
+    bench::section("height samples of the legacy relief (generator 2), ns per point");
+    const auto kind = [&](const char* name, const std::vector<Point>& points) {
+        record(name, bench::measure(c.runs, [&] { return heights(legacy, points); }), points.size(),
+               "ns");
+    };
+    kind("legacy heightAt, mixed", sets.mixed);
+    kind("legacy heightAt, land", sets.land);
+    kind("legacy heightAt, coast", sets.coast);
+    kind("legacy heightAt, mountains", sets.mountain);
+    kind("legacy heightAt, ocean", sets.ocean);
+    kind("legacy heightAt, mixed, patches", patches(sets.mixed));
+    kind("legacy heightAt, land, patches", patches(sets.land));
+    kind("legacy heightAt, coast, patches", patches(sets.coast));
+    kind("legacy heightAt, mountains, patches", patches(sets.mountain));
+    kind("legacy heightAt, ocean, patches", patches(sets.ocean));
 }
 
 // Times f(point) over the points; f returns a double, added to the checksum.
@@ -183,6 +234,40 @@ void layerProfile(const Config& c, const Heightfield& field, const std::vector<P
     pointProfile(c, "ridged2D, 7 octaves, sharpness 4", points, [&](Point p) {
         return noise::ridged2D(p.x, p.z, kSeed, ridge, world, h.ridgeSharpness);
     });
+}
+
+// The octave lattices of FbmOctaves (OctaveLattices): the default rotated ones, rotated with
+// 1 / c, unrotated.
+void latticeProfile(const Config& c, const Heightfield& field, const std::vector<Point>& points) {
+    bench::section("octave lattices (FbmOctaves, mixed points), ns per call");
+    namespace noise = terrain::noise;
+    const terrain::HeightfieldParams& h = field.params();
+    struct Mode {
+        const char* name;
+        noise::OctaveLattices lattices;
+    };
+    const Mode modes[] = {{"rotated", noise::OctaveLattices::Rotated},
+                          {"rotated 1/c", noise::OctaveLattices::RotatedFast},
+                          {"unrotated", noise::OctaveLattices::Unrotated}};
+    for (const Mode& mode : modes) {
+        const noise::FbmOctaves fbm(kSeed,
+                                    {.octaves = 4,
+                                     .frequency = 1.0 / h.continentWavelength,
+                                     .lattices = mode.lattices},
+                                    field.world());
+        const noise::FbmOctaves ridged(kSeed,
+                                       {.octaves = h.ridgeOctaves,
+                                        .frequency = 1.0 / h.ridgeWavelength,
+                                        .lattices = mode.lattices},
+                                       field.world());
+        const std::string fbmName = std::string("fbm2D, 4 octaves, ") + mode.name;
+        const std::string ridgedName = std::string("ridged2D, 7 octaves, ") + mode.name;
+        pointProfile(c, fbmName.c_str(), points,
+                     [&fbm](Point p) { return fbm.fbm2D(p.x, p.z); });
+        pointProfile(c, ridgedName.c_str(), points, [&ridged, &h](Point p) {
+            return ridged.ridged2D(p.x, p.z, h.ridgeSharpness);
+        });
+    }
 }
 
 void mathProfile(const Config& c, const Heightfield& planet, const std::vector<Point>& points) {
@@ -259,8 +344,13 @@ int main(int argc, char** argv) {
     const Heightfield planet(kSeed, bench::planetParams());
     const PointSets sets = pointSets(field, 200'000 / c.divisor);
     pointCases(c, field, planet, sets);
+    terrain::HeightfieldParams legacyParams;
+    legacyParams.geography.enabled = false;
+    const Heightfield legacy(kSeed, legacyParams);
+    legacyCases(c, legacy, pointSets(legacy, 200'000 / c.divisor));
     periodicityProfile(c, sets.mixed);
     layerProfile(c, field, sets.mixed);
+    latticeProfile(c, field, sets.mixed);
     mathProfile(c, planet, sets.mixed);
     caveNoiseProfile(c);
     bench::worldCases(c, field, planet);

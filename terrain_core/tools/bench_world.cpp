@@ -32,18 +32,21 @@ namespace {
 using terrain::Heightfield;
 
 // First chunk of a lattice of 1024 m (64 chunks) around the center of the tests, then around
-// the origin, whose sample the predicate accepts; the center otherwise. Around the center
-// first, as streaming_test::mountainChunk.
+// the origin, whose sample the predicate accepts; then the same on a lattice of 16,384 m; the
+// center otherwise. Around the center first, as streaming_test::mountainChunk.
 template <class Accept>
 terrain::ChunkCoord chunkWhere(const Heightfield& field, Accept&& accept) {
     const std::array<terrain::ChunkCoord, 2> centers = {{{kCenterChunkX, kCenterChunkZ}, {0, 0}}};
-    for (const terrain::ChunkCoord& center : centers) {
-        for (int j = -40; j <= 40; ++j) {
-            for (int i = -40; i <= 40; ++i) {
-                const terrain::ChunkCoord chunk{center.x + i * 64, center.z + j * 64};
-                if (accept(field.sampleAt(chunk.x * terrain::kChunkSizeMeters,
-                                          chunk.z * terrain::kChunkSizeMeters))) {
-                    return chunk;
+    for (const int spacing : {64, 1024}) {
+        for (const terrain::ChunkCoord& center : centers) {
+            for (int j = -40; j <= 40; ++j) {
+                for (int i = -40; i <= 40; ++i) {
+                    const terrain::ChunkCoord chunk{center.x + i * spacing,
+                                                    center.z + j * spacing};
+                    if (accept(field.sampleAt(chunk.x * terrain::kChunkSizeMeters,
+                                              chunk.z * terrain::kChunkSizeMeters))) {
+                        return chunk;
+                    }
                 }
             }
         }
@@ -83,18 +86,19 @@ Timing generateTiles(const Config& c, const terrain::TerrainTiles& tiles,
     });
 }
 
-// Tiles of LOD 0 to 3 around a mountain chunk and a plain chunk, and cave tiles of LOD 0 and 1
-// around the plain chunk.
+// Tiles of LOD 0 to 3 around a mountain chunk and a plain chunk, timed apart, and cave tiles of
+// LOD 0 and 1 around the plain chunk.
 void tileCases(const Config& c, const std::string& suffix, const terrain::HeightfieldParams& params,
                terrain::ChunkCoord mountain, terrain::ChunkCoord plainChunk) {
     const terrain::TerrainTiles tiles(kSeed, params);
     const int side = c.divisor == 1 ? 4 : 2;
     for (int lod = 0; lod < terrain::kLodCount; ++lod) {
-        std::vector<terrain::TileKey> keys = tileBlock(mountain, lod, side);
-        const std::vector<terrain::TileKey> plains = tileBlock(plainChunk, lod, side);
-        keys.insert(keys.end(), plains.begin(), plains.end());
-        const std::string name = "tile LOD " + std::to_string(lod) + suffix;
-        record(name.c_str(), generateTiles(c, tiles, keys), keys.size(), "ms");
+        for (const auto& [where, chunk] : {std::pair{", mountain", mountain},
+                                           std::pair{", plain", plainChunk}}) {
+            const std::vector<terrain::TileKey> keys = tileBlock(chunk, lod, side);
+            const std::string name = "tile LOD " + std::to_string(lod) + where + suffix;
+            record(name.c_str(), generateTiles(c, tiles, keys), keys.size(), "ms");
+        }
     }
     const terrain::TerrainTiles caveTiles(kSeed, params, {}, terrain::CaveParams{});
     for (int lod = 0; lod < 2; ++lod) {
@@ -348,14 +352,24 @@ void gridCase(const Config& c, const char* name, const Heightfield& field,
 
 void worldCases(const Config& c, const Heightfield& field, const Heightfield& planet) {
     const terrain::ChunkCoord mountain = chunkWhere(field, mountainous);
+    const terrain::ChunkCoord fieldPlain = chunkWhere(field, plain);
     const terrain::ChunkCoord planetMountain = chunkWhere(planet, mountainous);
     const terrain::ChunkCoord planetPlain = chunkWhere(planet, plain);
+    terrain::HeightfieldParams legacyParams;
+    legacyParams.geography.enabled = false;
+    const Heightfield legacy(kSeed, legacyParams);
+    const terrain::ChunkCoord legacyMountain = chunkWhere(legacy, mountainous);
+    const terrain::ChunkCoord legacyPlain = chunkWhere(legacy, plain);
+    std::printf("\nmountain chunk (%d, %d), plain chunk (%d, %d) of the default world\n",
+                mountain.x, mountain.z, fieldPlain.x, fieldPlain.z);
     section("tiles of the default world (mountains and inland plains), ms per tile");
-    tileCases(c, "", field.params(), mountain, {kCenterChunkX, kCenterChunkZ});
+    tileCases(c, "", field.params(), mountain, fieldPlain);
     section("tiles of the planet (mountains and plains), ms per tile");
     tileCases(c, ", planet", planet.params(), planetMountain, planetPlain);
+    section("tiles of the legacy relief (generator 2, the world of main), ms per tile");
+    tileCases(c, ", legacy", legacyParams, legacyMountain, legacyPlain);
     section("marchingCubes over the levels of the tiles, us per level");
-    meshingCases(c, "", field.params(), mountain, {kCenterChunkX, kCenterChunkZ});
+    meshingCases(c, "", field.params(), mountain, fieldPlain);
     meshingCases(c, ", planet", planet.params(), planetMountain, planetPlain);
     lod0Parts(c, field, mountain);
     const int size = c.divisor == 1 ? 1024 : 256;

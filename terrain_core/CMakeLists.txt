@@ -48,10 +48,19 @@ add_library(terrain_core STATIC
     src/generation/climate.cpp
     src/generation/ecology.cpp
     src/generation/eroded_region.cpp
+    src/generation/geography.cpp
+    src/generation/geography_crust.cpp
+    src/generation/geography_flood.cpp
+    src/generation/geography_grid.cpp
+    src/generation/geography_provinces.cpp
+    src/generation/geography_relief.cpp
+    src/generation/geography_boundaries.cpp
+    src/generation/geography_tectonics.cpp
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
     src/generation/heightfield.cpp
     src/generation/heightfield_density.cpp
+    src/generation/heightfield_geography.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
@@ -72,6 +81,11 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_rivers.cpp
     src/generation/planet/planet_stats.cpp
     src/generation/planet/planet_wind.cpp
+    src/generation/mountain_forms.cpp
+    src/generation/mountain_walls.cpp
+    src/generation/plain_forms.cpp
+    src/generation/ravines.cpp
+    src/generation/relief_local.cpp
     src/generation/rivers.cpp
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
@@ -91,9 +105,18 @@ add_library(terrain_core STATIC
     src/io/heightmap_png.cpp
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
+    src/io/relief_lakes.cpp
+    src/io/relief_rifts.cpp
     src/io/planet_png.cpp
     src/io/planet_png_layers.cpp
     src/io/png.cpp
+    src/io/relief_png.cpp
+    src/io/relief_stats.cpp
+    src/io/relief_stats_local.cpp
+    src/io/relief_stats_shapes.cpp
+    src/io/relief_stats_peaks.cpp
+    src/io/relief_stats_terrain.cpp
+    src/io/relief_view.cpp
     src/io/voronoi_png.cpp
     src/meshing/marching_cubes.cpp
     src/storage/durable_file.cpp
@@ -249,6 +272,34 @@ add_custom_target(export_planet_maps
     COMMAND ${CMAKE_COMMAND} -E make_directory ${planet_maps}
     COMMAND terrain_export_planet ${planet_maps}/planetary 20261019 8192 planetary 1
     COMMAND terrain_export_planet ${planet_maps}/default 20261019 8192 default 1
+    VERBATIM
+    USES_TERMINAL
+)
+
+# Maps and figures of a relief, to compare reliefs (phase 11R): the planet, zooms of 2,048,
+# 200 and 20 km on a chain, a plain and a coast, land masses, chains, hypsometry, coasts:
+# terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
+#                       [zoom-pixels] [threads] [world-x] [world-z] [--at <name> <x> <z>]...
+add_executable(terrain_export_relief tools/export_relief.cpp)
+target_link_libraries(terrain_export_relief PRIVATE terrain_core terrain_warnings)
+
+# Views of a relief in perspective, 70 degrees wide, at the foot of the longest chain, in a
+# plain, from the highest summit, from 300 m above a chain, from the floor of a great valley and at
+# the foot of a wall, with a tower of 330 m 2 km away:
+# terrain_export_view <output-dir> [seed] [default|planetary|legacy|geography] [width]
+#                     [cell-size] [threads] [world-x] [world-z]
+add_executable(terrain_export_view tools/export_view.cpp tools/view_places.cpp)
+target_link_libraries(terrain_export_view PRIVATE terrain_core terrain_warnings)
+
+# The maps of the default world (seed 20261019) with the default and the planetary relief, into
+# <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests
+# (about a minute each in Release):
+#   cmake --build <build-dir> --target export_relief_maps
+set(relief_maps ${CMAKE_BINARY_DIR}/relief_maps)
+add_custom_target(export_relief_maps
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${relief_maps}
+    COMMAND terrain_export_relief ${relief_maps}/default 20261019 default
+    COMMAND terrain_export_relief ${relief_maps}/planetary 20261019 planetary
     VERBATIM
     USES_TERMINAL
 )

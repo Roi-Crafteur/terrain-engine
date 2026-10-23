@@ -82,6 +82,8 @@ struct VoronoiParams {
     // Near a junction of three plates, the effects of a boundary fade out over this distance
     // into the third plate, so that they stop at the junction.
     double junctionFade = 150'000.0;
+
+    friend bool operator==(const VoronoiParams&, const VoronoiParams&) = default;
 };
 
 // One plate: its Voronoi site on the torus, its velocity (arbitrary units) and its kind.

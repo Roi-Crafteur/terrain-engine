@@ -11,6 +11,7 @@
 #include "aquifers_test_support.hpp"
 #include "cave_environment_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -69,7 +70,7 @@ constexpr float kFlatHeight = 300.0f;
 // Same seed, same cells; another seed, other cells. Sites lie in their jittered cell, wet cells
 // have a level at a half meter (never an integer) and dry cells the dry level.
 void testCellsAreDeterministic() {
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveGround ground = heightfieldGround(heightfield);
     const CaveField a(kSeed);
     const CaveField b(kSeed);
@@ -281,7 +282,7 @@ void checkLevels(const CaveField& field, const CaveGround& ground, int half, con
 
 void testLevelsBelowGround() {
     const CaveField field(kSeed);
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     checkLevels(field, withEnvironment(flatGround(kFlatHeight + 0.3f), humidEnvironment()), 40,
                 "flat");
     checkLevels(field, withEnvironment(heightfieldGround(heightfield), humidEnvironment()), 8,
@@ -334,7 +335,7 @@ void checkLakes(const CaveField& field, const CaveGround& ground, const CellRang
 
 void testLakes() {
     const CaveField field(kSeed);
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     checkLakes(field, withEnvironment(flatGround(kFlatHeight), humidEnvironment()), {-6, -6, 12},
                0.0f, "flat");
     checkLakes(field, withEnvironment(heightfieldGround(heightfield), humidEnvironment()),

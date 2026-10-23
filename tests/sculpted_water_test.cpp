@@ -4,6 +4,7 @@
 // the fields, nothing is hard-coded.
 #include "terrain/generation/sculpted_region.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -66,7 +67,7 @@ bool isCoast(const HeightGrid& grid, int index) {
 
 // The cliff region inside is exactly the cliff region built alone: Phase 5A is unchanged.
 void testCliffsUnchanged(const SculptedRegion& region, const HeightmapRegion& site) {
-    const CliffRegion plain(kSeed, site);
+    const CliffRegion plain(kSeed, site, test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
     const CliffRegion& cliffs = region.cliffs();
     TEST_CHECK(cliffs.surface().heights == plain.surface().heights);
     TEST_CHECK(cliffs.mask() == plain.mask());
@@ -177,8 +178,10 @@ void testArchesAwayFromWater(const SculptedRegion& region) {
 } // namespace
 
 int main() {
-    const HeightmapRegion site = terrain::findCliffRegion(kSeed, 50.0, 129);
-    const SculptedRegion region(kSeed, site);
+    const HeightmapRegion site =
+        terrain::findCliffRegion(kSeed, 50.0, 129, {}, test_relief::legacyRelief());
+    const SculptedRegion region(kSeed, site,
+                                test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     testCliffsUnchanged(region, site);
     testRivers(region);
     testCascadesAndCirques(region);
@@ -189,7 +192,8 @@ int main() {
     // untouched, and so are the arches placed there.
     const HeightmapRegion shore{.centerX = 10000.0, .centerZ = 10000.0, .metersPerPixel = 100.0,
                                 .size = 128};
-    const SculptedRegion coast(kSeed, shore);
+    const SculptedRegion coast(kSeed, shore,
+                               test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     std::printf("coast: %zu arches\n", coast.arches().size());
     TEST_CHECK(!coast.arches().empty());
     testCliffsUnchanged(coast, shore);

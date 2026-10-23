@@ -20,7 +20,7 @@ FbmOctaves::FbmOctaves(std::uint64_t seed, const FbmParams& params, const WorldS
     for (int octave = 0; octave < params.octaves; ++octave) {
         octaves_.push_back(
             {deriveSeed(seed, static_cast<std::uint64_t>(octave)),
-             lattice2D(world, frequency, octave), amplitude, frequency,
+             octaveLattice(world, frequency, octave, params.lattices), amplitude, frequency,
              detail::kOffsetsY[static_cast<std::size_t>(octave % kRotationCount)]});
         total_ += amplitude;
         amplitude *= params.gain;
@@ -99,6 +99,92 @@ float FbmOctaves::ridged2D(double x, double z, double sharpness, Memo& memo) con
     return ridged2DWith(x, z, sharpness, throughMemo(memo));
 }
 
+// The sums of ridged2DWith in the same order, plus those of the head octaves with their
+// derivatives: the signal pow(1 - |n|, sharpness) * weight, the weight of the next octave
+// clamp(2 signal, floor, 1). The derivatives take the weights as they are, without their own
+// slope: they turn over only on the creases, not where a weight reaches its bounds.
+template <class Cells>
+FbmOctaves::RidgedSlope FbmOctaves::ridgedSlopeWith(double x, double z, double sharpness,
+                                                    double floor, int head,
+                                                    Cells&& cells) const {
+    RidgedSlope out;
+    if (!(total_ > 0.0)) {
+        return out;
+    }
+    const double cx = wrapCanonical(x, world_.x);
+    const double cz = wrapCanonical(z, world_.z);
+    double weight = 1.0;
+    double sum = 0.0;
+    double headTotal = 0.0;
+    double headSum = 0.0;
+    double headX = 0.0;
+    double headZ = 0.0;
+    for (std::size_t i = 0; i < octaves_.size(); ++i) {
+        const Octave& o = octaves_[i];
+        const detail::CellPosition c = detail::positionOf(detail::toLattice(cx, cz, o.lattice));
+        const CellGradients& g = cells(i, o, c);
+        if (static_cast<int>(i) >= head) {
+            const float n = detail::cellNoise(g, c.fu, c.fv);
+            const double signal =
+                dmath::pow(1.0 - std::abs(static_cast<double>(n)), sharpness) * weight;
+            weight = std::clamp(2.0 * signal, floor, 1.0);
+            sum += o.amplitude * signal;
+            continue;
+        }
+        const detail::NoiseSlope n = detail::cellNoiseSlope(g, c.fu, c.fv);
+        out.crease = std::min(out.crease, std::abs(n.value));
+        const double ridge = 1.0 - std::abs(static_cast<double>(n.value));
+        const double powered = dmath::pow(ridge, sharpness);
+        const double signal = powered * weight;
+        // d signal = d powered * weight, d ridge = -sign(n) d n.
+        const std::array<double, 4> j = detail::latticeJacobian(o.lattice);
+        const double side = n.value > 0.0f ? -1.0 : (n.value < 0.0f ? 1.0 : 0.0);
+        const double rise = ridge > 0.0 ? sharpness * powered / ridge * side * weight : 0.0;
+        const double signalX = rise * (n.du * j[0] + n.dv * j[2]);
+        const double signalZ = rise * (n.du * j[1] + n.dv * j[3]);
+        weight = std::clamp(2.0 * signal, floor, 1.0);
+        sum += o.amplitude * signal;
+        headTotal += o.amplitude;
+        headSum += o.amplitude * signal;
+        headX += o.amplitude * signalX;
+        headZ += o.amplitude * signalZ;
+    }
+    out.value = static_cast<float>(std::clamp(sum / total_, 0.0, 1.0));
+    if (headTotal > 0.0) {
+        const double h = headSum / headTotal;
+        out.head = static_cast<float>(std::clamp(h, 0.0, 1.0));
+        out.headX = headX / headTotal;
+        out.headZ = headZ / headTotal;
+    }
+    return out;
+}
+
+FbmOctaves::RidgedSlope FbmOctaves::ridged2DSlope(double x, double z, double sharpness,
+                                                  double floor, int head) const {
+    CellGradients g{};
+    return ridgedSlopeWith(x, z, sharpness, floor, head,
+                           [&g](std::size_t, const Octave& o, const detail::CellPosition& c)
+                               -> const CellGradients& {
+                               g = detail::gradientsOf(c.iu, c.iv, o.seed, o.lattice);
+                               return g;
+                           });
+}
+
+FbmOctaves::RidgedSlope FbmOctaves::ridged2DSlope(double x, double z, double sharpness,
+                                                  double floor, int head, Memo& memo) const {
+    CellGradients g{};
+    return ridgedSlopeWith(
+        x, z, sharpness, floor, head,
+        [&g, &memo](std::size_t i, const Octave& o,
+                    const detail::CellPosition& c) -> const CellGradients& {
+            if (i < memo.cells.size()) {
+                return detail::gradientsThrough(c, o.seed, o.lattice, memo.cells[i]);
+            }
+            g = detail::gradientsOf(c.iu, c.iv, o.seed, o.lattice);
+            return g;
+        });
+}
+
 bool FbmOctaves::twinOf(const FbmOctaves& twin) const {
     if (octaves_.size() != twin.octaves_.size() || !sameBits(total_, twin.total_) ||
         !(world_ == twin.world_)) {
@@ -113,7 +199,8 @@ bool FbmOctaves::twinOf(const FbmOctaves& twin) const {
             !sameBits(la.scaleZ, lb.scaleZ) || la.a != lb.a || la.b != lb.b || la.c != lb.c ||
             la.periodS != lb.periodS || la.periodT != lb.periodT ||
             !sameBits(la.offsetU, lb.offsetU) || !sameBits(la.offsetV, lb.offsetV) ||
-            !(la.world == lb.world)) {
+            !(la.world == lb.world) || la.reciprocal != lb.reciprocal ||
+            !sameBits(la.inverseC, lb.inverseC)) {
             return false;
         }
     }

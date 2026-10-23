@@ -135,7 +135,9 @@ void checkWorlds() {
         checkRelief(comparison, field,
                     {streaming_test::kCenterChunkX, streaming_test::kCenterChunkZ});
     }
-    TEST_CHECK(comparison.meshed() > 100);
+    // Where the ground is flat (the floors of the valleys in U) the grids above and below it
+    // miss it.
+    TEST_CHECK(comparison.meshed() > 90);
 }
 
 // The carved density of the grid at (x0, y0, z0) + (i, j, k) * spacing with the detail of a

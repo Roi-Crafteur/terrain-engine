@@ -1,7 +1,9 @@
 // Coverage and cost of the far horizon. Asserted: the default levels cover at least 300 km
 // around any observer. Printed only, never asserted: the time of a full computation of every
 // level on one thread and on every hardware thread, of the updates of a walk, the memory, and
-// the same with the slopes of the materials at the pitch of each level and with K = 512.
+// the same with the slopes of the materials at the pitch of each level and with K = 512; the
+// detail slopes around the K2, timed on one piece in kDetailStride and extrapolated (in the
+// mountain cores of the default world, the full computation would take minutes).
 #include "terrain/streaming/horizon_normals.hpp"
 #include "terrain/streaming/horizon_streamer.hpp"
 
@@ -90,19 +92,33 @@ void measureWorkers(const World& world, const terrain::HorizonParams& params, co
                 full.seconds(), static_cast<double>(streamer.clipmap().memoryBytes()) / 1e6);
 }
 
-// The detail slopes of every window around (x, z), in pieces of 16 rows of samples on `threads`
-// threads; the levels whose index is at least `fromLevel` only.
+// The detail slopes are timed on one piece in kDetailStride, taken in order through the levels.
+constexpr std::size_t kDetailStride = 8;
+
+// The time of the detail slopes of every window around (x, z), in pieces of 16 rows of samples on
+// `threads` threads, the levels whose index is at least `fromLevel` only: extrapolated from the
+// pieces timed, by their share of the texels.
 double detailSeconds(const terrain::HorizonNormalSampler& sampler, double x, double z, int threads,
                      int fromLevel) {
     const terrain::HorizonParams& params = sampler.params();
     std::vector<terrain::HorizonRect> pieces;
     std::vector<int> levelOf;
+    double texels = 0.0;
+    double timedTexels = 0.0;
+    std::size_t index = 0;
     for (int level = fromLevel; level < params.levels; ++level) {
         const terrain::HorizonRect window = terrain::windowAround(
             terrain::canonicalCenter(params, level, x, z), params.cellsPerSide);
-        for (std::int64_t k = window.z0; k < window.z1; k += 16) {
-            pieces.push_back({window.x0, k, window.x1, std::min<std::int64_t>(k + 16, window.z1)});
-            levelOf.push_back(level);
+        for (std::int64_t k = window.z0; k < window.z1; k += 16, ++index) {
+            const terrain::HorizonRect piece{window.x0, k, window.x1,
+                                             std::min<std::int64_t>(k + 16, window.z1)};
+            const auto count = static_cast<double>(sampler.texelCount(piece));
+            texels += count;
+            if (index % kDetailStride == 0) {
+                pieces.push_back(piece);
+                levelOf.push_back(level);
+                timedTexels += count;
+            }
         }
     }
     const Stopwatch watch;
@@ -120,7 +136,7 @@ double detailSeconds(const terrain::HorizonNormalSampler& sampler, double x, dou
     for (std::thread& worker : workers) {
         worker.join();
     }
-    return watch.seconds();
+    return watch.seconds() * texels / timedTexels;
 }
 
 void measureDetail(const World& world) {
@@ -134,14 +150,16 @@ void measureDetail(const World& world) {
                               ratio * ratio;
         const double one = detailSeconds(sampler, kK2X, kK2Z, 1, 0);
         std::printf("detail slopes, ratio %d, every level around the K2: %.2f s on 1 thread "
-                    "(%.2f us per texel), %.2f s on 2, %.2f s on %d; %.1f MB as half floats\n",
+                    "(%.2f us per texel), %.2f s on 2, %.2f s on %d; %.1f MB as half floats "
+                    "(times extrapolated from one piece in %zu)\n",
                     ratio, one, 1e6 * one / texels, detailSeconds(sampler, kK2X, kK2Z, 2, 0),
                     detailSeconds(sampler, kK2X, kK2Z, hardwareThreads(), 0), hardwareThreads(),
-                    texels * 4.0 / 1e6);
+                    texels * 4.0 / 1e6, kDetailStride);
     }
     const terrain::HorizonNormalSampler sampler(world.field, params, 4);
-    std::printf("detail slopes, ratio 4, levels 5 and up only, 2 threads: %.2f s\n",
-                detailSeconds(sampler, kK2X, kK2Z, 2, 5));
+    std::printf("detail slopes, ratio 4, levels 5 and up only, 2 threads: %.2f s (extrapolated "
+                "from one piece in %zu)\n",
+                detailSeconds(sampler, kK2X, kK2Z, 2, 5), kDetailStride);
 }
 
 } // namespace

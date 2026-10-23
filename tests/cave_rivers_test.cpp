@@ -12,6 +12,7 @@
 #include "cave_galleries_test_support.hpp"
 #include "cave_environment_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -169,7 +170,7 @@ double bandClearance(const CaveField& field, const terrain::CaveGround& ground,
 void testEntrancesClear() {
     CaveParams params;
     params.districts = terrain::CaveDistrictParams{};
-    const terrain::TerrainTiles tiles(kSeed, {}, {}, params);
+    const terrain::TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, params);
     const CaveField& field = *tiles.caves();
     const terrain::CaveGround& ground = tiles.caveGround();
     CaveParams dry = params;
@@ -221,7 +222,7 @@ void testEntrancesClear() {
 // Without cave regions, and with neutral ones, the band is nowhere: the entrance filter reads the
 // same levels.
 void testInactive() {
-    const terrain::Heightfield heightfield(kSeed);
+    const terrain::Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const terrain::CaveGround ground = caves_test::heightfieldGround(heightfield);
     terrain::CaveDistrictParams neutral;
     neutral.profiles.fill(CaveProfile{});

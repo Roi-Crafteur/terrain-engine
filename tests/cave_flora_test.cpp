@@ -12,6 +12,7 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "cave_flora_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -195,7 +196,7 @@ void testNoPlantsWithoutLushRegions(const TerrainTiles& tiles) {
 void testGeometryUnchanged(const TerrainTiles& tiles) {
     CaveParams quietParams = districtParams();
     quietParams.districts->flora.chance = 0.0f;
-    const TerrainTiles quiet(kSeed, {}, {}, quietParams);
+    const TerrainTiles quiet(kSeed, test_relief::legacyRelief(), {}, quietParams);
     const terrain::ChunkCoord center = terrain::worldToChunk(kLushSites[2].x, kLushSites[2].z);
     const double side = terrain::tileSizeMeters(0);
     std::size_t planted = 0;      // tiles with plants
@@ -418,7 +419,7 @@ void testScaling() {
 } // namespace
 
 int main() {
-    const TerrainTiles tiles(kSeed, {}, {}, districtParams());
+    const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, districtParams());
     testDeterminism(tiles);
     testUnion(tiles);
     testHalfOpenSquares(tiles);

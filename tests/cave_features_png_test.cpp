@@ -14,6 +14,7 @@
 
 #include "cave_galleries_test_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -74,7 +75,7 @@ struct Site {
 };
 
 Site makeSite(const terrain::CaveParams& caves) {
-    terrain::CaveRegionParams params;
+    terrain::CaveRegionParams params = test_relief::onLegacyRelief(terrain::CaveRegionParams{});
     params.caves = caves;
     Site site;
     site.region = std::make_unique<CaveRegion>(kSeed, HeightmapRegion{0.0, 0.0, kPixel, kSize},
@@ -423,7 +424,7 @@ constexpr std::uint64_t kSliceWithoutRegions = 0xa842ef0ccde95339ULL;
 
 void testWithoutRegionsNothingChanges() {
     const HeightmapRegion area{4000.0, -4000.0, 32.0, 64};
-    const CaveRegion region(kSeed, area);
+    const CaveRegion region(kSeed, area, test_relief::onLegacyRelief(terrain::CaveRegionParams{}));
     terrain::CavePreviewStats stats;
     const Image preview = terrain::renderCavePreview(region, &stats);
     std::printf("fingerprints without regions: preview 0x%016llx\n",
@@ -446,7 +447,7 @@ void testWithoutRegionsNothingChanges() {
     terrain::CaveRegionParams params;
     params.caves.districts = terrain::CaveDistrictParams{};
     params.caves.districts->profiles.fill(terrain::CaveProfile{});
-    const CaveRegion neutral(kSeed, area, params);
+    const CaveRegion neutral(kSeed, area, test_relief::onLegacyRelief(params));
     TEST_CHECK(terrain::renderCavePreview(neutral).pixels == preview.pixels);
 }
 

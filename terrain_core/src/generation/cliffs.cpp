@@ -295,7 +295,12 @@ float CliffField::topSurface(const CliffColumn& column) const {
 
 HeightmapRegion findCliffRegion(std::uint64_t seed, double metersPerPixel, int size,
                                 const CliffParams& params) {
-    const Heightfield field(seed);
+    return findCliffRegion(seed, metersPerPixel, size, params, HeightfieldParams{});
+}
+
+HeightmapRegion findCliffRegion(std::uint64_t seed, double metersPerPixel, int size,
+                                const CliffParams& params, const HeightfieldParams& heightfield) {
+    const Heightfield field(seed, heightfield);
     const CliffField cliffs(seed, params);
     const double extent = size * metersPerPixel;
     // Narrow band first, then any highland, then any altitude.

@@ -1,9 +1,11 @@
-// Ecology on the cliffs, overhangs and arches of the cliff site of the default world: bare
+// Ecology on the cliffs, overhangs and arches of the cliff site of the legacy relief (its place
+// and plants, test_relief::legacyRelief, as the other tests of the cliff site): bare
 // rock and no vegetation on the vertical walls, no land plant on rivers or under the sea,
 // plants only on gentle ground of the exact surface, and the sculpted region unchanged.
 #include "terrain/generation/ecology.hpp"
 #include "terrain/generation/sculpted_region.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <array>
@@ -152,7 +154,9 @@ void testPlantsAroundWalls(const SculptedRegion& region, const TerrainSurface& s
 } // namespace
 
 int main() {
-    const SculptedRegion region(kSeed, terrain::findCliffRegion(kSeed, 50.0, 129));
+    const SculptedRegion region(
+        kSeed, terrain::findCliffRegion(kSeed, 50.0, 129, {}, test_relief::legacyRelief()),
+        test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     const std::vector<float> surfaceBefore = region.surface().heights;
     const std::vector<float> cliffsBefore = region.cliffs().surface().heights;
     const std::vector<float> erodedBefore = region.cliffs().eroded().grid().heights;

@@ -32,7 +32,9 @@ inline terrain::LodParams smallLod() {
 }
 
 // First chunk of a lattice of 1024 m (64 chunks) around the center whose mountain layer rises
-// above 1000 m: steep, curved ground.
+// above 1000 m: steep, curved ground. Without one within 40 km, the nearest such chunk of a
+// lattice of 4096 m within 262 km (the first in the order of the rows on a tie): the chains of
+// the planetary geography end in gaps.
 inline terrain::ChunkCoord mountainChunk(const terrain::Heightfield& field) {
     for (int j = -40; j <= 40; ++j) {
         for (int i = -40; i <= 40; ++i) {
@@ -41,7 +43,18 @@ inline terrain::ChunkCoord mountainChunk(const terrain::Heightfield& field) {
             }
         }
     }
-    return {kCenterChunkX, kCenterChunkZ};
+    terrain::ChunkCoord nearest{kCenterChunkX, kCenterChunkZ};
+    int best = -1;
+    for (int j = -64; j <= 64; ++j) {
+        for (int i = -64; i <= 64; ++i) {
+            if ((best < 0 || i * i + j * j < best) &&
+                field.sampleAt(kCenterX + i * 4096.0, kCenterZ + j * 4096.0).mountain > 1000.0f) {
+                nearest = {kCenterChunkX + i * 256, kCenterChunkZ + j * 256};
+                best = i * i + j * j;
+            }
+        }
+    }
+    return nearest;
 }
 
 // First chunk of a lattice of 512 m (32 chunks) around the center, on land, whose LOD 0 tile

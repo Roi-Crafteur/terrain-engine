@@ -2,11 +2,15 @@
 // the Marching Cubes integration (vertices on the carved isosurface, normals toward the air,
 // closed meshes holding the whole cave band, cave surfaces only below the roof), the plants
 // dropped over the entrances and the density of the lattice. Seams: cave_seams_test.cpp.
+// On the legacy relief (legacy_relief_support.hpp): its places, around the center of the tests,
+// were chosen in that world; the caves of the default world are tested by
+// caves_default_world_test.
 #include "terrain/generation/cave_entrances.hpp"
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/streaming/cave_tiles.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -39,9 +43,9 @@ float carvedAt(const TerrainTiles& tiles, double x, double y, double z, int lod 
 // The same tiles from two worlds with caves, LOD 0 to 3; the far LOD 3 is the tile of the
 // world without caves, the others are not where the caves reach the tile.
 void testDeterministic(const TerrainTiles& tiles, ChunkCoord chunk) {
-    const TerrainTiles again(streaming_test::kSeed, {}, {}, kCaves);
-    const TerrainTiles plain(streaming_test::kSeed);
-    const TerrainTiles other(streaming_test::kSeed + 1, {}, {}, kCaves);
+    const TerrainTiles again(streaming_test::kSeed, test_relief::legacyRelief(), {}, kCaves);
+    const TerrainTiles plain(streaming_test::kSeed, test_relief::legacyRelief());
+    const TerrainTiles other(streaming_test::kSeed + 1, test_relief::legacyRelief(), {}, kCaves);
     for (int lod = 0; lod < terrain::kLodCount; ++lod) {
         const terrain::TileRequest request{terrain::tileContaining(chunk, lod),
                                            terrain::kSeamNegX | terrain::kSeamPosZ};
@@ -225,7 +229,7 @@ std::optional<CaveEntrance> entranceWithPlants(const TerrainTiles& plain,
 // The plants of a LOD 0 tile are those of the world without caves, without the ones standing
 // within 2 m of an entrance.
 void testPlants(const TerrainTiles& tiles) {
-    const TerrainTiles plain(streaming_test::kSeed);
+    const TerrainTiles plain(streaming_test::kSeed, test_relief::legacyRelief());
     const std::vector<CaveEntrance> entrances = streaming_test::entrancesNearOrigin(tiles);
     const std::optional<CaveEntrance> entrance = entranceWithPlants(plain, entrances);
     TEST_CHECK(entrance.has_value());
@@ -269,7 +273,7 @@ void testDensityAt(const TerrainTiles& tiles, const CaveEntrance& entrance) {
     }
     TEST_CHECK(matches);
     TEST_CHECK(carvedSamples > 0);
-    const TerrainTiles plain(streaming_test::kSeed);
+    const TerrainTiles plain(streaming_test::kSeed, test_relief::legacyRelief());
     const int x = 4096;
     const int z = -77;
     const auto y = static_cast<int>(std::ceil(tiles.heightfield().heightAt(x, z))) + 2;
@@ -279,7 +283,7 @@ void testDensityAt(const TerrainTiles& tiles, const CaveEntrance& entrance) {
 } // namespace
 
 int main() {
-    const TerrainTiles tiles(streaming_test::kSeed, {}, {}, kCaves);
+    const TerrainTiles tiles(streaming_test::kSeed, test_relief::legacyRelief(), {}, kCaves);
     const std::vector<CaveEntrance> entrances = streaming_test::entrancesNearOrigin(tiles);
     TEST_CHECK(!entrances.empty());
     if (entrances.empty()) {

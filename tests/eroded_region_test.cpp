@@ -1,6 +1,7 @@
 #include "terrain/generation/eroded_region.hpp"
 #include "terrain/generation/noise.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -24,7 +25,7 @@ constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
 
 // Highest point of a coarse search around the origin: the heart of a mountain range.
 HeightmapRegion mountainRegion() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     HeightmapRegion region{.metersPerPixel = 80.0, .size = 128};
     float highest = std::numeric_limits<float>::lowest();
     for (int j = -20; j <= 20; ++j) {
@@ -42,7 +43,7 @@ HeightmapRegion mountainRegion() {
 
 // Coast closest to the origin along a coarse search: ocean to the west, land to the east.
 HeightmapRegion coastRegion() {
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     for (int radius = 0; radius <= 30; ++radius) {
         for (int j = -radius; j <= radius; ++j) {
             for (int i = -radius; i <= radius; ++i) {
@@ -119,8 +120,8 @@ double incision(const HeightGrid& grid, int column, int row) {
 // ---------------------------------------------------------------------------
 
 void testDeterminism(const HeightmapRegion& region) {
-    const ErodedRegion a(kSeed, region);
-    const ErodedRegion b(kSeed, region);
+    const ErodedRegion a(kSeed, region, test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
+    const ErodedRegion b(kSeed, region, test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
     TEST_CHECK(a.grid().heights == b.grid().heights);
     TEST_CHECK(a.rivers().receiver == b.rivers().receiver);
     TEST_CHECK(a.rivers().catchment == b.rivers().catchment);
@@ -130,10 +131,11 @@ void testDeterminism(const HeightmapRegion& region) {
     // Another seed erodes the same relief differently.
     terrain::ErodedRegionParams params;
     params.erosion.dropletsPerCell = 0.5f;
-    const ErodedRegion c(kSeed, region, params);
+    const ErodedRegion c(kSeed, region, test_relief::onLegacyRelief(params));
     TEST_CHECK(c.rawGrid().heights == a.rawGrid().heights);
     TEST_CHECK(c.grid().heights != a.grid().heights);
-    const ErodedRegion other(kSeed + 1, region);
+    const ErodedRegion other(kSeed + 1, region,
+                             test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
     TEST_CHECK(other.grid().heights != a.grid().heights);
 }
 
@@ -329,8 +331,10 @@ void testCascadesOnlyAtSlopeBreaks(const ErodedRegion& eroded) {
 int main() {
     const HeightmapRegion mountain = mountainRegion();
     testDeterminism(mountain);
-    const ErodedRegion mountains(kSeed, mountain);
-    const ErodedRegion coast(kSeed, coastRegion());
+    const ErodedRegion mountains(kSeed, mountain,
+                                 test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
+    const ErodedRegion coast(kSeed, coastRegion(),
+                             test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
     for (const ErodedRegion* eroded : {&mountains, &coast}) {
         testContinuity(*eroded);
         testNoHolesOrInvalidValues(*eroded);

@@ -4,6 +4,7 @@
 // from the field, nothing is hard-coded.
 #include "terrain/generation/cliff_region.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -184,7 +185,8 @@ void testGorgeWalls(const CliffRegion& cliffs) {
 // The cliffs never change the Phase 4 result: relief, drainage, rivers and cascades.
 void testErodedRegionUnchanged(const CliffRegion& cliffs, const HeightmapRegion& site,
                                std::uint64_t seed) {
-    const ErodedRegion plain(seed, site);
+    const ErodedRegion plain(seed, site,
+                             test_relief::onLegacyRelief(terrain::ErodedRegionParams{}));
     const RiverNetwork& rivers = cliffs.eroded().rivers();
     TEST_CHECK(cliffs.eroded().grid().heights == plain.grid().heights);
     TEST_CHECK(rivers.receiver == plain.rivers().receiver);
@@ -389,8 +391,10 @@ void testCascadesAtCliffEdge(const CliffRegion& cliffs) {
 } // namespace
 
 int main() {
-    const HeightmapRegion site = terrain::findCliffRegion(kCascadeSeed, 50.0, 129);
-    const CliffRegion cliffs(kCascadeSeed, site);
+    const HeightmapRegion site =
+        terrain::findCliffRegion(kCascadeSeed, 50.0, 129, {}, test_relief::legacyRelief());
+    const CliffRegion cliffs(kCascadeSeed, site,
+                             test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
     testGorgesAtWater(cliffs);
     testGorgesDugIntoRelief(cliffs);
     testGorgeWalls(cliffs);
@@ -405,7 +409,8 @@ int main() {
     // are untouched (found by a search of the default world).
     const HeightmapRegion shore{
         .centerX = -66800.0, .centerZ = -2800.0, .metersPerPixel = 100.0, .size = 128};
-    const CliffRegion coast(kSeed, shore);
+    const CliffRegion coast(kSeed, shore,
+                            test_relief::onLegacyRelief(terrain::CliffRegionParams{}));
     TEST_CHECK(std::any_of(coast.mask().begin(), coast.mask().end(),
                            [](float mask) { return mask > 0.0f; }));
     testErodedRegionUnchanged(coast, shore, kSeed);

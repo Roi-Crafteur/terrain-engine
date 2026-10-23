@@ -3,6 +3,7 @@
 #include "terrain/io/cliffs_png.hpp"
 #include "terrain/io/png.hpp"
 
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -43,15 +44,18 @@ bool hasColor(Rgb color, const std::uint8_t (&rgb)[3]) {
 const SculptedRegion& cliffSite() {
     static const SculptedRegion region(
         terrain::kDefaultWorldSeed,
-        terrain::findCliffRegion(terrain::kDefaultWorldSeed, 50.0, 65));
+        terrain::findCliffRegion(terrain::kDefaultWorldSeed, 50.0, 65, {},
+                                 test_relief::legacyRelief()),
+        test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     return region;
 }
 
 const SculptedRegion& coast() {
     static const SculptedRegion region(
         terrain::kDefaultWorldSeed,
-        terrain::HeightmapRegion{.centerX = 10000.0, .centerZ = 10000.0,
-                                 .metersPerPixel = 100.0, .size = 128});
+        terrain::HeightmapRegion{
+            .centerX = 10000.0, .centerZ = 10000.0, .metersPerPixel = 100.0, .size = 128},
+        test_relief::onLegacyRelief(terrain::SculptedRegionParams{}));
     return region;
 }
 

@@ -87,9 +87,10 @@ void testLatticeCells() {
     }
 }
 
-// The noises of one world at (x, y, z): every rotated lattice, fbm, ridged and the 3D ones.
-std::array<float, 12> values(const WorldSize& world, double x, double y, double z) {
-    std::array<float, 12> v{};
+// The noises of one world at (x, y, z): every rotated lattice, fbm, ridged and the 3D ones,
+// with each kind of octave lattices.
+std::array<float, 15> values(const WorldSize& world, double x, double y, double z) {
+    std::array<float, 15> v{};
     for (int r = 0; r < noise::kRotationCount; ++r) {
         const noise::Lattice2D l =
             noise::lattice2D(world, (1.0 + 0.3 * r) / 700.0, r, 0.37 * r, 0.61 * r);
@@ -99,6 +100,14 @@ std::array<float, 12> values(const WorldSize& world, double x, double y, double 
     v[9] = noise::ridged2D(x, z, kSeed, kFbm, world, 4.0);
     v[10] = noise::gradient3D(x, y, z, kSeed, noise::lattice2D(world, 1.0 / 50.0, 3), 1.0 / 50.0);
     v[11] = noise::fbm3D(x, y, z, kSeed, kFbm, world);
+    // The lattices of phase 11R: rotated with 1 / c, unrotated with offsets.
+    noise::FbmParams fast = kFbm;
+    fast.lattices = noise::OctaveLattices::RotatedFast;
+    noise::FbmParams unrotated = kFbm;
+    unrotated.lattices = noise::OctaveLattices::Unrotated;
+    v[12] = noise::fbm2D(x, z, kSeed, fast, world);
+    v[13] = noise::ridged2D(x, z, kSeed, fast, world, 4.0);
+    v[14] = noise::fbm2D(x, z, kSeed, unrotated, world);
     return v;
 }
 
@@ -111,10 +120,10 @@ void testBitExactImages() {
             const double x = gridPoint(points, world.x);
             const double z = gridPoint(points, world.z);
             const double y = std::floor(points.next(200.0) * 64.0) / 64.0;
-            const std::array<float, 12> v = values(world, x, y, z);
+            const std::array<float, 15> v = values(world, x, y, z);
             for (const auto& [kx, kz] :
                  {std::array<double, 2>{1.0, 0.0}, {0.0, 1.0}, {-2.0, 3.0}}) {
-                const std::array<float, 12> image =
+                const std::array<float, 15> image =
                     values(world, x + kx * world.x, y, z + kz * world.z);
                 for (std::size_t n = 0; n < v.size(); ++n) {
                     exact = exact && same(v[n], image[n]);
@@ -137,10 +146,10 @@ void testSeamContinuity() {
             const double along = points.next(0.5 * world.z);
             const double across = points.next(0.5 * world.x);
             const double y = points.next(100.0);
-            const std::array<float, 12> east = values(world, 0.5 * world.x - kStep, y, along);
-            const std::array<float, 12> west = values(world, -0.5 * world.x + kStep, y, along);
-            const std::array<float, 12> south = values(world, across, y, 0.5 * world.z - kStep);
-            const std::array<float, 12> north = values(world, across, y, -0.5 * world.z + kStep);
+            const std::array<float, 15> east = values(world, 0.5 * world.x - kStep, y, along);
+            const std::array<float, 15> west = values(world, -0.5 * world.x + kStep, y, along);
+            const std::array<float, 15> south = values(world, across, y, 0.5 * world.z - kStep);
+            const std::array<float, 15> north = values(world, across, y, -0.5 * world.z + kStep);
             for (std::size_t n = 0; n < east.size(); ++n) {
                 worstX = std::max(worstX, std::abs(east[n] - west[n]));
                 worstZ = std::max(worstZ, std::abs(south[n] - north[n]));

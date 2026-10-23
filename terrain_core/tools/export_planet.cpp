@@ -1,16 +1,19 @@
 // Computes the planet level of a world, prints what it measured (time per stage, peak memory
 // during the construction and memory kept afterwards, figures of the land, the basins and the
 // rivers, false passes) and writes its control images. Without the optional arguments: seed
-// 20261019, cells of 8,192 m, the planetary relief (plates 0.5, macro continent 0.25), one
-// relief sample per cell, all the hardware threads, the default world (60,030,976 x
-// 34,996,224 m).
-// Usage: terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary]
+// 20261019, cells of 8,192 m, the planetary preset, one relief sample per cell, all the
+// hardware threads, the default world (60,030,976 x 34,996,224 m). Since generator 3 the default
+// and planetary reliefs are both the planetary geography of phase 11R; the legacy relief is the
+// planetary preset of generator 2 (plates 0.5, macro continent 0.25, geography off), for
+// comparisons with earlier figures; geography is an older name of planetary.
+// Usage: terrain_export_planet <output-dir> [seed] [cell-size] [default|planetary|legacy|geography]
 //        [samples-per-axis] [threads] [world-x] [world-z]
 
 #include "terrain/generation/planet/planet_false_passes.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/planet/planet_stats.hpp"
 #include "terrain/io/planet_png.hpp"
+#include "terrain/io/relief_lakes.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,6 +28,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -46,11 +50,22 @@ template <class T> bool parse(const char* text, T& value) {
 struct Options {
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     double cellSize = 8192.0;
-    bool planetary = true;
+    const char* relief = "planetary";
     int samples = 1;
     int threads = 0;
     terrain::WorldSize world;
 };
+
+terrain::HeightfieldParams reliefParams(const char* relief) {
+    if (std::strcmp(relief, "default") == 0) {
+        return {};
+    }
+    terrain::HeightfieldParams params = terrain::planetaryHeightfieldParams();
+    if (std::strcmp(relief, "legacy") == 0) {
+        params.geography.enabled = false;
+    }
+    return params;
+}
 
 bool fail(const char* what, const char* text, const char* expected) {
     std::fprintf(stderr, "Invalid %s '%s': expected %s\n", what, text, expected);
@@ -93,10 +108,16 @@ bool parseArguments(int argc, char** argv, Options& options) {
         return fail("cell size", argv[3], "a number of meters above 0");
     }
     if (argc > 4) {
-        if (std::strcmp(argv[4], "default") != 0 && std::strcmp(argv[4], "planetary") != 0) {
-            return fail("relief", argv[4], "default or planetary");
+        bool known = false;
+        for (const char* relief : {"default", "planetary", "legacy", "geography"}) {
+            if (std::strcmp(argv[4], relief) == 0) {
+                options.relief = relief;
+                known = true;
+            }
         }
-        options.planetary = std::strcmp(argv[4], "planetary") == 0;
+        if (!known) {
+            return fail("relief", argv[4], "default, planetary, legacy or geography");
+        }
     }
     if (argc > 5 &&
         !(parse(argv[5], options.samples) && options.samples >= 1 && options.samples <= 8)) {
@@ -221,7 +242,8 @@ int main(int argc, char** argv) {
     Options options;
     if (!parseArguments(argc, argv, options)) {
         std::fprintf(stderr,
-                     "Usage: %s <output-dir> [seed] [cell-size] [default|planetary] "
+                     "Usage: %s <output-dir> [seed] [cell-size] "
+                     "[default|planetary|legacy|geography] "
                      "[samples-per-axis] [threads] [world-x] [world-z]\n",
                      argv[0]);
         return EXIT_FAILURE;
@@ -230,14 +252,11 @@ int main(int argc, char** argv) {
     params.cellSize = options.cellSize;
     params.samplesPerAxis = options.samples;
     params.threads = options.threads;
-    const terrain::Heightfield field(options.seed,
-                                     options.planetary ? terrain::planetaryHeightfieldParams()
-                                                       : terrain::HeightfieldParams{},
-                                     options.world);
+    const terrain::Heightfield field(options.seed, reliefParams(options.relief), options.world);
     const terrain::PlanetLevel level(terrain::planet::buildPlanet(field, params), params);
     const std::size_t peak = peakMemory();
     auto start = std::chrono::steady_clock::now();
-    const terrain::PlanetStats stats = terrain::planet::planetStats(level, 5);
+    const terrain::PlanetStats stats = terrain::planet::planetStats(level, 10);
     const double statsTime = seconds(start);
     start = std::chrono::steady_clock::now();
     const terrain::FalsePassStats passes = terrain::planet::measureFalsePasses(
@@ -257,13 +276,16 @@ int main(int argc, char** argv) {
     std::printf("seed %llu, %s relief, %d x %d cells of %.0f m, %d x %d samples, %d threads: "
                 "checksum %016llx, %s/planet_*.png\n",
                 static_cast<unsigned long long>(options.seed),
-                options.planetary ? "planetary" : "default", grid.nx, grid.nz, grid.cellSize,
+                options.relief, grid.nx, grid.nz, grid.cellSize,
                 options.samples, options.samples, threads,
                 static_cast<unsigned long long>(level.checksum()), argv[1]);
     printTimes(level.timings(), statsTime, passesTime, imagesTime);
     std::printf("memory: peak %.0f MB during the construction, %.0f MB kept by the level\n",
                 megabytes(peak), megabytes(level.memoryBytes()));
     printLand(stats);
+    std::printf("lakes at least 500 m deep (level above their lowest cell): %.0f%% of the lake "
+                "area\n",
+                100.0 * terrain::deepLakeShare(level));
     printBasinsAndRivers(stats);
     printFeaturesAndPasses(level, passes);
     return EXIT_SUCCESS;

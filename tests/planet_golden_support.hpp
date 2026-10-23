@@ -5,6 +5,7 @@
 #include "terrain/generation/planet/planet_level.hpp"
 
 #include "golden_support.hpp"
+#include "legacy_relief_support.hpp"
 
 #include <array>
 #include <cstdint>
@@ -18,8 +19,10 @@ inline const terrain::WorldSize kSmallPlanet{32.0 * 65536.0, 16.0 * 65536.0};
 
 // The planetary relief (plates and macro layer) scaled down to the small world: fewer plates,
 // shorter warps and belts, a macro wavelength of 1,000 km.
+// On the legacy relief: the planetary preset is the default world since generator 3.
 inline terrain::HeightfieldParams smallPlanetaryParams() {
-    terrain::HeightfieldParams params = terrain::planetaryHeightfieldParams();
+    terrain::HeightfieldParams params =
+        test_relief::onLegacyRelief(terrain::planetaryHeightfieldParams());
     params.macroContinentWavelength = 1'000'000.0;
     terrain::VoronoiParams& plates = params.plates;
     plates.minPlates = 4;
@@ -101,8 +104,8 @@ inline std::vector<Part> planetGoldenParts() {
     std::vector<Part> parts = planetParts({"planet default relief", "planet default climate",
                                            "planet default hydrology", "planet default level"},
                                           smallBuild(terrain::HeightfieldParams{}, 1, 2),
-                                          {0x48EF02B66C4B66A1ULL, 0xA903B454260FC7D5ULL,
-                                           0xF515111B874A0CBAULL, 0x6DADAC7D383C75F6ULL});
+                                          {0x430509A42180F464ULL, 0x83A20E43627C5BD1ULL,
+                                           0x2F1676B05AA38E02ULL, 0xEE635592526B8CE2ULL});
     const std::vector<Part> planetary =
         planetParts({"planet planetary relief", "planet planetary climate",
                      "planet planetary hydrology", "planet planetary level"},

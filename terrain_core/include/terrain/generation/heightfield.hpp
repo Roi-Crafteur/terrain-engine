@@ -1,9 +1,12 @@
 #pragma once
 
 #include "terrain/det_math.hpp" // also refuses fast math in every unit including it
+#include "terrain/generation/geography.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/voronoi.hpp"
 #include "terrain/world_size.hpp"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -70,6 +73,12 @@ struct HeightfieldParams {
     // the continentalness exactly.
     double detailWavelength = 200.0;
     float detailAmplitude = 3.0f;
+
+    // The planetary geography of phase 11R (GeographyParams), enabled by default since
+    // generator 3: the continents, coasts, ocean floors and regional elevation come from it, and
+    // the local, macro and plate terms of the continentalness above are not used (the plates of
+    // the geography are its own). Disabled: the relief of generator 2.
+    GeographyParams geography;
 };
 
 // Layers of the height at one point: height = base + mountain + detail. In the collision
@@ -80,9 +89,10 @@ struct HeightSample {
     float plateContinentalness = 0.0f; // PlateSample::continentalness, 0 when disabled
     float plateCollision = 0.0f;       // [0, 1], PlateSample::collision, 0 when disabled
     float mountainMask = 0.0f;         // [0, 1]
+    float relief = 0.0f; // [0, 1], the intensity of the relief of the geography on land (else 0)
     float base = 0.0f;                 // continental curve, [kMinBaseHeight, kMaxBaseHeight]
     float mountain = 0.0f;             // [0, mountainMask * mountainHeight * (1 + boost)]
-    float detail = 0.0f;               // [-detailAmplitude, detailAmplitude]
+    float detail = 0.0f; // [-detailAmplitude, detailAmplitude] (with the geography, its own)
     float height = 0.0f;
 };
 
@@ -90,9 +100,10 @@ struct HeightSample {
 // Deterministic: the same seed, parameters and coordinates always give the same height.
 // Periodic on the world (WorldSize): every layer tiles it, and (x, z) is brought back into its
 // canonical range first, so every image of a point gets the same bits.
-// Like every fbm layer, the macro continentalness is exactly 0 at the origin, so without the
-// plates the origin always lies on a macro coast: the local layer alone decides whether it
-// is land or sea.
+// With the geography, the origin lies on a continental coast, near a mountain belt when the
+// equator has one (Geography::anchorX). Without it, like every fbm layer, the macro
+// continentalness is exactly 0 at the origin, so without the plates the origin always lies on a
+// macro coast: the local layer alone decides whether it is land or sea.
 class Heightfield {
 public:
     // Throws std::invalid_argument for an invalid world (validate).
@@ -115,8 +126,11 @@ public:
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
     [[nodiscard]] const WorldSize& world() const { return world_; }
 
-    // The tectonic plates, or nullptr when the layer is disabled (plates.amplitude <= 0).
+    // The tectonic plates of the continentalness, or nullptr when the layer is disabled
+    // (plates.amplitude <= 0, or the geography is enabled).
     [[nodiscard]] const TectonicPlates* plates() const { return plates_.get(); }
+    // The planetary geography, or nullptr when it is disabled.
+    [[nodiscard]] const Geography* geography() const { return geography_.get(); }
 
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
@@ -126,11 +140,60 @@ private:
     [[nodiscard]] HeightSample sampleWith(double x, double z, Memos* memos) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
+    // The warped point of the ridged noise (the warp of the geography when it is enabled).
+    [[nodiscard]] std::array<double, 2> warpedAt(double x, double z, Memos* memos) const;
+    // sampleWith on the planetary geography (heightfield_geography.cpp), at a canonical point:
+    // its regional elevation, the local relief around it and the ridged mountains.
+    [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos) const;
+    // The intensity of the relief at the point: that of the map with the spurs of the chains.
+    [[nodiscard]] float reliefAt(double x, double z, float mapRelief, Memos* memos) const;
+    // The mountains at a point: their height above the base, that of their great forms alone
+    // (without the rock and the ravines) and its gradient (meters per meter, up), how much the
+    // point lies on the floor of a valley, within a valley and on a crest of the massif, in
+    // [0, 1].
+    struct MountainForm {
+        float height = 0.0f;
+        float shape = 0.0f;
+        double gradX = 0.0;
+        double gradZ = 0.0;
+        float floor = 0.0f;
+        float valley = 0.0f;
+        float crest = 0.0f;
+    };
+    // The ridged mountains of this intensity and character under the mask, cut by the valleys in
+    // U, crowned by the dominant summits (mountain_forms), carved by ravines, over ground meters
+    // of regional elevation.
+    [[nodiscard]] MountainForm geographyMountainAt(double x, double z, float ground, float mask,
+                                                   float intensity, float character,
+                                                   Memos* memos) const;
+    // A mountain of height mountain (the great forms of form, warped there, with the rock) carved
+    // by its ravines; crease: that of the massif, which counts onMassif in [0, 1] (0 in the
+    // valleys).
+    [[nodiscard]] float mountainRavinesAt(const std::array<double, 2>& warped,
+                                          const MountainForm& form, float crease, double onMassif,
+                                          float mountain, Memos* memos) const;
+    // The depth of the ravines down the faces of the walls of the rifts at a canonical point,
+    // meters, at most room.
+    [[nodiscard]] float riftRavinesAt(double x, double z, float room, Memos* memos) const;
+    // The local relief of a plain where the mountains are not (plain_forms), weight (0, 1] of
+    // the way from local, at a canonical point.
+    [[nodiscard]] float plainFormsAt(double x, double z, float region, float local, float weight,
+                                     Memos* memos) const;
+    // The hills, vallons, buttes and terraces of the geography (relief_local).
+    [[nodiscard]] float localReliefAt(double x, double z, float amplitude, float buttes,
+                                      float region, float plain, float rough,
+                                      Memos* memos) const;
+    [[nodiscard]] float detailAt(double x, double z, float base, Memos* memos) const;
+    // The top of the rock with the walls of the mountains (mountain_walls) over ground meters
+    // (the base and the great forms of the mountains).
+    [[nodiscard]] float wallsAt(double x, double z, float ground, const MountainForm& form,
+                                float intensity, float character, Memos* memos) const;
 
     HeightfieldParams params_;
     WorldSize world_;
     std::shared_ptr<const Layers> layers_;         // shared by copies, immutable
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
+    std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
 };
 
 } // namespace terrain

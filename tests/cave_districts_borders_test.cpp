@@ -11,6 +11,7 @@
 
 #include "cave_districts_carving_support.hpp"
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -262,7 +263,7 @@ void checkJumps(const CaveGround& ground, const Border& border, const Segment& s
 }
 
 void testBorders() {
-    const TerrainTiles tiles(kSeed, {}, {}, defaultCaves());
+    const TerrainTiles tiles(kSeed, test_relief::legacyRelief(), {}, defaultCaves());
     const CaveField& field = *tiles.caves();
     const CaveGround& ground = tiles.caveGround();
     const CaveParams& params = field.params();

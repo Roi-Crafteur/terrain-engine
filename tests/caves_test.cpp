@@ -8,6 +8,7 @@
 #include "terrain/streaming/cave_tiles.hpp"
 
 #include "caves_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -55,7 +56,7 @@ constexpr float kFlatHeight = 300.0f;
 // Same seed, same caves, from any sampler and from a point alone, whatever cells the sampler
 // skips; another seed, other caves.
 void testDeterminism() {
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveGround ground = heightfieldGround(heightfield);
     Rng rng(1);
     const std::vector<Point> points =
@@ -181,7 +182,7 @@ void checkSurface(const CaveField& field, const CaveGround& ground, std::uint64_
 // No caves above the surface and no rock added, on flat ground and on the heightfield.
 void testNothingAboveSurface() {
     const CaveField field(kSeed);
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     checkSurface(field, flatGround(kFlatHeight), 2, "flat");
     checkSurface(field, heightfieldGround(heightfield), 3, "relief");
 }
@@ -234,7 +235,7 @@ DepthStats scanDepths(const CaveField& field, const CaveGround& ground, const Wi
 // wide open at the top included.
 void testRoofThickness() {
     const CaveField field(kSeed);
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveParams& params = field.params();
     const int bottom = static_cast<int>(params.maxDepth) + 8;
     const CaveGround flat = flatGround(kFlatHeight);
@@ -383,7 +384,7 @@ void checkContinuity(const CaveField& field, const CaveGround& ground, std::uint
 // No jump of the carved density near the carved surfaces.
 void testContinuity() {
     const CaveField field(kSeed);
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     checkContinuity(field, flatGround(kFlatHeight), 5, "flat");
     checkContinuity(field, heightfieldGround(heightfield), 6, "relief");
 }
@@ -407,7 +408,7 @@ void testLodDetails() {
     }
 
     // A detail with no component leaves the density alone, where the full detail carves.
-    const Heightfield heightfield(kSeed);
+    const Heightfield heightfield(kSeed, test_relief::legacyRelief());
     const CaveGround ground = heightfieldGround(heightfield);
     Rng rng(7);
     const std::vector<Point> points =
