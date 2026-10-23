@@ -122,6 +122,7 @@ add_library(terrain_core STATIC
     src/storage/block_section.cpp
     src/storage/chunk_record.cpp
     src/storage/durable_file.cpp
+    src/storage/edit_window.cpp
     src/storage/file_commit.cpp
     src/storage/modifications.cpp
     src/storage/region_file.cpp
