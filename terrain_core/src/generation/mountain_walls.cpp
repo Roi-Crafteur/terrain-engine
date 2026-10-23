@@ -160,8 +160,9 @@ const Cell& detailed(Cell& c, std::size_t s) {
     if (!c.detailed) {
         const double tilt = kTiltLow + (kTiltHigh - kTiltLow) * field(c.hash, 2);
         const double angle = field(c.hash, 3);
-        c.tiltX = tilt * dmath::cosTurns(angle);
-        c.tiltZ = tilt * dmath::sinTurns(angle);
+        const dmath::SineCosine direction = dmath::sinCosTurns(angle);
+        c.tiltX = tilt * direction.cosine;
+        c.tiltZ = tilt * direction.sine;
         const std::uint64_t more = noise::deriveSeed(c.hash, 1);
         c.band = kJointLow[s] + (kJointHigh[s] - kJointLow[s]) * field(more, 0);
         c.offset = c.band * field(more, 1);

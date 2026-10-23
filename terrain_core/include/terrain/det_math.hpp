@@ -25,6 +25,13 @@ namespace terrain::dmath {
 [[nodiscard]] double sinTurns(double turns);
 [[nodiscard]] double cosTurns(double turns);
 
+// sinTurns(turns) and cosTurns(turns), bit for bit, the reduction done once.
+struct SineCosine {
+    double sine;
+    double cosine;
+};
+[[nodiscard]] SineCosine sinCosTurns(double turns);
+
 // Sine and cosine in radians, reduced by three-part pi / 2: accurate to about 1 ulp for
 // |x| < 1e5, less accurate (but still deterministic) beyond.
 [[nodiscard]] double sin(double x);

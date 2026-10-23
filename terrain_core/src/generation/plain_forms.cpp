@@ -210,8 +210,9 @@ Summits summitsOf(std::uint64_t hash, std::uint64_t axis, double u, double v, do
     const auto highest = static_cast<int>(count * field(axis, 3));
     const double spine = radius * (kSpineLow + (kSpineHigh - kSpineLow) * field(axis, 1));
     const double lean = kHillSkewLow + (kHillSkewHigh - kHillSkewLow) * field(hash, 3);
-    const double leanX = dmath::cosTurns(field(hash, 2));
-    const double leanZ = dmath::sinTurns(field(hash, 2));
+    const dmath::SineCosine leaning = dmath::sinCosTurns(field(hash, 2));
+    const double leanX = leaning.cosine;
+    const double leanZ = leaning.sine;
     Summits out;
     for (int k = 0; k < count; ++k) {
         const std::uint64_t own = noise::deriveSeed(axis, static_cast<std::uint64_t>(k) + 1);
@@ -248,8 +249,9 @@ struct HillPart {
 HillPart hillShape(std::uint64_t hash, std::uint64_t more, double dx, double dz, double radius,
                    double wander) {
     const std::uint64_t axis = noise::deriveSeed(hash, 2);
-    const double u = dx * dmath::cosTurns(field(axis, 0)) + dz * dmath::sinTurns(field(axis, 0));
-    const double v = dz * dmath::cosTurns(field(axis, 0)) - dx * dmath::sinTurns(field(axis, 0));
+    const dmath::SineCosine along = dmath::sinCosTurns(field(axis, 0));
+    const double u = dx * along.cosine + dz * along.sine;
+    const double v = dz * along.cosine - dx * along.sine;
     const Summits summits = summitsOf(hash, axis, u, v, radius);
     HillPart part;
     part.around = 1.0 - smooth(1.0, kHillAround, summits.rho);

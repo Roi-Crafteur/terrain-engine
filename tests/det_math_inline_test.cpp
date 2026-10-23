@@ -1,6 +1,7 @@
 // The inline fast paths of det_math give, bit for bit, what the functions they stand for give:
 // powInteger(x, n) is pow(x, n) for every x but NaN and every integer |n| <= 64 (special values,
-// subnormals, signed zeros and infinities included).
+// subnormals, signed zeros and infinities included); sinCosTurns(t) is (sinTurns(t), cosTurns(t))
+// for every t (multiples of an eighth of a turn, angles beyond 2^53 turns, infinities and NaN).
 #include "terrain/det_math.hpp"
 
 #include "test_assert.hpp"
@@ -49,9 +50,31 @@ void testPowInteger() {
     TEST_CHECK(same);
 }
 
+bool sameOrNaN(double a, double b) {
+    return sameBits(a, b) || (std::isnan(a) && std::isnan(b));
+}
+
+void testSinCosTurns() {
+    std::vector<double> turns = sampleValues();
+    for (int k = -64; k <= 64; ++k) {
+        turns.push_back(k / 8.0);
+        turns.push_back(k / 8.0 + 1e9);
+        turns.push_back(std::nextafter(k / 8.0, 1.0));
+    }
+    turns.push_back(std::numeric_limits<double>::quiet_NaN());
+    bool same = true;
+    for (const double t : turns) {
+        const dmath::SineCosine both = dmath::sinCosTurns(t);
+        same = same && sameOrNaN(both.sine, dmath::sinTurns(t)) &&
+               sameOrNaN(both.cosine, dmath::cosTurns(t));
+    }
+    TEST_CHECK(same);
+}
+
 } // namespace
 
 int main() {
     testPowInteger();
+    testSinCosTurns();
     return test::result();
 }

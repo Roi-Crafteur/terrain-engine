@@ -232,6 +232,16 @@ double cosTurns(double turns) {
     return sinQuadrant(modFour(quarters + 1.0), r) + 0.0;
 }
 
+SineCosine sinCosTurns(double turns) {
+    const double quarters = roundHalfEven(4.0 * turns);
+    if (!std::isfinite(quarters)) {
+        return {kNaN, kNaN};
+    }
+    const double r = (turns - 0.25 * quarters) * kTwoPi;
+    return {sinQuadrant(modFour(quarters), r) + 0.0,
+            sinQuadrant(modFour(quarters + 1.0), r) + 0.0};
+}
+
 double sin(double x) {
     if (!std::isfinite(x)) {
         return kNaN;

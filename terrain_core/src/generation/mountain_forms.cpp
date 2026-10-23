@@ -266,8 +266,9 @@ Form lobedDistance(const Summit& s, double dx, double dz, double r) {
     double turn = 0.0; // dL / da
     for (std::size_t k = 0; k < s.lobes.size(); ++k) {
         const double w = static_cast<double>(k + 1);
-        lobe += s.lobes[k] * dmath::cosTurns(w * a - s.phases[k]);
-        turn -= s.lobes[k] * kTwoPi * w * dmath::sinTurns(w * a - s.phases[k]);
+        const dmath::SineCosine harmonic = dmath::sinCosTurns(w * a - s.phases[k]);
+        lobe += s.lobes[k] * harmonic.cosine;
+        turn -= s.lobes[k] * kTwoPi * w * harmonic.sine;
     }
     // d a / dx = -dz / (2 pi r^2), d a / dz = dx / (2 pi r^2).
     const double scale = 1.0 / (s.radius * lobe);
