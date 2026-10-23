@@ -44,6 +44,25 @@ namespace terrain::dmath {
 // |y * log2(x)| * 2e-16 relative.
 [[nodiscard]] double pow(double x, double y);
 
+// x^n for an integer |n| <= 64, by repeated squaring (pow(x, 2) is exactly x * x): the bits of
+// pow(x, n) for every x but NaN. Inline, for the loops that raise many values to one exponent.
+[[nodiscard]] inline double powInteger(double x, int n) {
+    auto k = static_cast<unsigned>(n < 0 ? -n : n);
+    double result = 1.0;
+    double base = x;
+    while (true) {
+        if ((k & 1U) != 0U) {
+            result *= base;
+        }
+        k >>= 1U;
+        if (k == 0U) {
+            break;
+        }
+        base *= base;
+    }
+    return n < 0 ? 1.0 / result : result;
+}
+
 // Hyperbolic tangent. Accurate to about 2 ulp.
 [[nodiscard]] double tanh(double x);
 
