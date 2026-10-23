@@ -16,6 +16,7 @@
 #endif
 
 #include <cmath>
+#include <cstdint>
 
 namespace terrain::dmath {
 
@@ -77,6 +78,29 @@ struct SineCosine {
 // signs of zero handled like std::atan2. Accurate to about 2 ulp.
 [[nodiscard]] double atan(double x);
 [[nodiscard]] double atan2(double y, double x);
+
+// std::floor(x), bit for bit, and its value as an integer (for |x| < 2^63), faster where the
+// compiler calls the library for std::floor (Clang and MSVC on x86-64; the noise lattices take two
+// floors per octave): normal numbers below 2^52 in magnitude are truncated through an integer, one
+// less below a negative number, the integer at hand; zeros (their sign), subnormals (the
+// flush-to-zero modes), larger numbers, infinities and NaN go to std::floor. ARM64 and SSE4.1
+// have a floor instruction: std::floor there.
+struct FloorIndex {
+    double value;
+    std::int64_t index;
+};
+[[nodiscard]] inline FloorIndex floorIndex(double x) {
+#if !defined(__aarch64__) && !defined(_M_ARM64) && !defined(__SSE4_1__)
+    const double magnitude = std::abs(x);
+    if (magnitude >= 0x1p-1022 && magnitude < 0x1p52) {
+        const auto truncated = static_cast<std::int64_t>(x);
+        const bool below = static_cast<double>(truncated) > x;
+        return {static_cast<double>(truncated) - (below ? 1.0 : 0.0), truncated - (below ? 1 : 0)};
+    }
+#endif
+    const double value = std::floor(x);
+    return {value, static_cast<std::int64_t>(value)};
+}
 
 // Euclidean norms, without the overflow protection of std::hypot (useless at the scale of the
 // world, and implemented differently by each standard library).

@@ -4,6 +4,7 @@
 // noise_octaves.cpp (FbmOctaves) share this single definition, so that they always give the
 // same bits.
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 
@@ -121,9 +122,9 @@ struct CellPosition {
 };
 
 inline CellPosition positionOf(LatticePoint p) {
-    const double u0 = std::floor(p.u);
-    const double v0 = std::floor(p.v);
-    return {static_cast<std::int64_t>(u0), static_cast<std::int64_t>(v0), p.u - u0, p.v - v0};
+    const dmath::FloorIndex u0 = dmath::floorIndex(p.u);
+    const dmath::FloorIndex v0 = dmath::floorIndex(p.v);
+    return {u0.index, v0.index, p.u - u0.value, p.v - v0.value};
 }
 
 // Invariants of the 4 corners of the cell (iu, iv): (iu, iv) then (iu + 1, iv), (iu, iv + 1)

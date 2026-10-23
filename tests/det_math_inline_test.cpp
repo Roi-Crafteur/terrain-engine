@@ -12,6 +12,14 @@
 #include <limits>
 #include <vector>
 
+#if defined(__x86_64__) || defined(_M_X64)
+#include <pmmintrin.h>
+#include <xmmintrin.h>
+#define TERRAIN_TEST_FTZ 1
+#else
+#define TERRAIN_TEST_FTZ 0
+#endif
+
 namespace {
 
 namespace dmath = terrain::dmath;
@@ -71,10 +79,54 @@ void testSinCosTurns() {
     TEST_CHECK(same);
 }
 
+// floorIndex on the sample values and around the integers, 2^52 and 2^63: the count of values
+// whose floor or index differs from std::floor.
+int floorMismatches() {
+    std::vector<double> values = sampleValues();
+    for (const double v : {0.5, 1e-300, 0x1p52 - 0.5, 0x1p52, 0x1p62, 0x1p63, 1e19}) {
+        for (const double sign : {1.0, -1.0}) {
+            values.push_back(sign * v);
+        }
+    }
+    for (int k = -40; k <= 40; ++k) {
+        values.push_back(k);
+        values.push_back(std::nextafter(static_cast<double>(k), -1e9));
+        values.push_back(std::nextafter(static_cast<double>(k), 1e9));
+        values.push_back(k + 0.5);
+    }
+    values.push_back(std::numeric_limits<double>::quiet_NaN());
+    int mismatches = 0;
+    for (const double x : values) {
+        const dmath::FloorIndex f = dmath::floorIndex(x);
+        const double expected = std::floor(x);
+        bool same = sameOrNaN(f.value, expected);
+        if (std::abs(expected) < 0x1p63) {
+            same = same && f.index == static_cast<std::int64_t>(expected);
+        }
+        mismatches += same ? 0 : 1;
+    }
+    return mismatches;
+}
+
+void testFloorIndex() {
+    TEST_CHECK(floorMismatches() == 0);
+#if TERRAIN_TEST_FTZ
+    const unsigned int ftz = _MM_GET_FLUSH_ZERO_MODE();
+    const unsigned int daz = _MM_GET_DENORMALS_ZERO_MODE();
+    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+    const int flushed = floorMismatches();
+    _MM_SET_FLUSH_ZERO_MODE(ftz);
+    _MM_SET_DENORMALS_ZERO_MODE(daz);
+    TEST_CHECK(flushed == 0);
+#endif
+}
+
 } // namespace
 
 int main() {
     testPowInteger();
     testSinCosTurns();
+    testFloorIndex();
     return test::result();
 }
