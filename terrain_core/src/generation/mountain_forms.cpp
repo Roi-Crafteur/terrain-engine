@@ -137,12 +137,13 @@ double fbm(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::Me
     return static_cast<double>(memo != nullptr ? n.fbm2D(x, z, *memo) : n.fbm2D(x, z));
 }
 
-// A zero line of a noise of one octave near (x, z): the distance to it (first order) and the
-// direction away from it.
+// A zero line of a noise of one octave near (x, z): the distance to it (first order), the
+// direction away from it and the noise there (fbm2D: on which side of the line).
 struct Line {
     double distance = 0.0;
     double awayX = 1.0;
     double awayZ = 0.0;
+    double side = 0.0;
 };
 
 Line lineOf(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::Memo* memo) {
@@ -151,7 +152,8 @@ Line lineOf(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::M
                         : n.ridged2DSlope(x, z, 1.0, 0.0, 1);
     const double g = std::max(dmath::hypot(r.headX, r.headZ), kLeastGradient);
     // The ridged signal 1 - |n| rises toward the line.
-    return {(1.0 - static_cast<double>(r.head)) / g, -r.headX / g, -r.headZ / g};
+    return {(1.0 - static_cast<double>(r.head)) / g, -r.headX / g, -r.headZ / g,
+            static_cast<double>(r.headFbm)};
 }
 
 // The massif brought down to a valley in U of floor floor, at e meters beyond the half width of
@@ -383,7 +385,7 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
     const double wx = x + kWarp * static_cast<double>(warp[0]);
     const double wz = z + kWarp * static_cast<double>(warp[1]);
     const Line main = lineOf(n.main, wx, wz, memo ? &memo->main : nullptr);
-    const double side = fbm(n.main, wx, wz, memo ? &memo->main : nullptr);
+    const double side = main.side;
     const double presence =
         smooth(kPresenceLow, kPresenceHigh, fbm(n.presence, x, z, memo ? &memo->presence : nullptr));
     const double passes =

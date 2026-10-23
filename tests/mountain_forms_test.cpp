@@ -192,8 +192,10 @@ void testDeterminismAndSeams() {
             const forms::Form m = forms::summits(a, x, p.z, kGround, kHeight, 1.0, &memo);
             const forms::Form o = forms::summits(a, x, p.z, kGround, kHeight, 1.0, nullptr);
             same = same && rise(m) == rise(o) && m.gradZ == o.gradZ;
-            same = same && forms::valleys(a, x, p.z, kHeight, massif, &memo).form.height ==
-                               forms::valleys(a, x, p.z, kHeight, massif, nullptr).form.height;
+            const forms::Carve v = forms::valleys(a, x, p.z, kHeight, massif, &memo);
+            const forms::Carve w = forms::valleys(a, x, p.z, kHeight, massif, nullptr);
+            same = same && v.form.height == w.form.height && v.form.gradX == w.form.gradX &&
+                   v.form.gradZ == w.form.gradZ && v.floor == w.floor;
         }
         const double east = forms::summits(a, 0.5 * world.x - 1e-4, p.z, kGround, kHeight, 1.0,
                                            nullptr).height;

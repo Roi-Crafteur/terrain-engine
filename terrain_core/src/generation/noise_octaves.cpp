@@ -142,6 +142,7 @@ FbmOctaves::RidgedSlope FbmOctaves::ridgedSlopeWith(double x, double z, double s
     double weight = 1.0;
     double sum = 0.0;
     double headTotal = 0.0;
+    double headNoise = 0.0;
     double headSum = 0.0;
     double headX = 0.0;
     double headZ = 0.0;
@@ -158,6 +159,7 @@ FbmOctaves::RidgedSlope FbmOctaves::ridgedSlopeWith(double x, double z, double s
         }
         const detail::NoiseSlope n = detail::cellNoiseSlope(g, c.fu, c.fv);
         out.crease = std::min(out.crease, std::abs(n.value));
+        headNoise += o.amplitude * n.value;
         const double ridge = 1.0 - std::abs(static_cast<double>(n.value));
         const double powered = power(ridge);
         const double signal = powered * weight;
@@ -180,6 +182,7 @@ FbmOctaves::RidgedSlope FbmOctaves::ridgedSlopeWith(double x, double z, double s
         out.head = static_cast<float>(std::clamp(h, 0.0, 1.0));
         out.headX = headX / headTotal;
         out.headZ = headZ / headTotal;
+        out.headFbm = static_cast<float>(std::clamp(headNoise / headTotal, -1.0, 1.0));
     }
     return out;
 }
