@@ -314,6 +314,21 @@ std::size_t ModificationStore::addedPlantCount() const {
     return count;
 }
 
+std::size_t ModificationStore::heapBytes() const {
+    constexpr std::size_t kNode = 4 * sizeof(void*);
+    std::size_t bytes = 0;
+    for (const auto& [coord, chunk] : chunks_) {
+        bytes += kNode + sizeof(std::pair<const ChunkCoord, ChunkModifications>);
+        for (const auto& [y, section] : chunk.sections) {
+            bytes += kNode + sizeof(std::pair<const std::int32_t, BlockSection>) +
+                     section.heapBytes();
+        }
+        bytes += chunk.removedPlants.size() * (kNode + sizeof(PlantSpot)) +
+                 chunk.addedPlants.capacity() * sizeof(Plant);
+    }
+    return bytes;
+}
+
 std::uint32_t fnv1a(std::span<const std::uint8_t> bytes) {
     std::uint32_t hash = 2166136261U;
     for (const std::uint8_t byte : bytes) {

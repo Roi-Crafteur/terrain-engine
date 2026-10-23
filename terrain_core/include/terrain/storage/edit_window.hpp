@@ -45,6 +45,9 @@ public:
     // True if a section of the area meets the blocks [min, max]: false means no edited block
     // among them.
     [[nodiscard]] bool meets(BlockCoord min, BlockCoord max) const;
+    // True if a section of the area meeting the blocks [min, max] holds a block of this edit:
+    // false means none among them.
+    [[nodiscard]] bool holds(BlockEdit edit, BlockCoord min, BlockCoord max) const;
 
     // Bytes the window holds on the heap.
     [[nodiscard]] std::size_t heapBytes() const;
@@ -75,16 +78,21 @@ private:
 };
 
 // The states of the blocks within reach of a cube of lattice samples (x0 + i s, y0 + j s,
-// z0 + k s), i, j and k in [0, count), read once from a window: the edited densities of the
-// samples, as EditWindow::density gives them one by one.
+// z0 + k s), i, j and k in [0, count), count at most 21, read once from a window: the edited
+// densities of the samples, as EditWindow::density gives them one by one. The states are held
+// as bits, one row of blocks along x per word; each sample is classified once: no edited block
+// around it, all of them removed, all added, or a mixture read block by block.
 class EditLattice {
 public:
     EditLattice(const EditWindow& window, int x0, int y0, int z0, int spacing, int count);
 
     // No edited block reaches the samples.
-    [[nodiscard]] bool empty() const { return states_.empty(); }
+    [[nodiscard]] bool empty() const { return kinds_.empty(); }
     [[nodiscard]] float density(float generated, int i, int j, int k) const;
-    [[nodiscard]] std::size_t heapBytes() const { return states_.capacity(); }
+    [[nodiscard]] std::size_t heapBytes() const {
+        return (removed_.capacity() + added_.capacity()) * sizeof(std::uint64_t) +
+               kinds_.capacity();
+    }
 
 private:
     // Along an axis: the block coordinates within reach of the samples, sorted; sample i reaches
@@ -104,14 +112,20 @@ private:
     };
 
     void fill(const EditWindow& window, std::int32_t cx, std::int32_t sy, std::int32_t cz);
-    [[nodiscard]] std::size_t at(int ix, int iy, int iz) const {
-        return static_cast<std::size_t>((iz * y_.size() + iy) * x_.size() + ix);
+    void fillRows(const SectionMask& removed, const SectionMask& added, BlockCoord base,
+                  std::pair<int, int> xs, std::pair<int, int> ys, std::pair<int, int> zs);
+    // The kind of each sample, from the rows.
+    void classify();
+    [[nodiscard]] std::size_t row(int iy, int iz) const {
+        return static_cast<std::size_t>(iz * y_.size() + iy);
     }
 
     Axis x_;
     Axis y_;
     Axis z_;
-    std::vector<std::uint8_t> states_; // 0 generated, 1 removed, 2 added; x fastest, then y
+    std::vector<std::uint64_t> removed_; // per row of blocks along x: bit ix if removed
+    std::vector<std::uint64_t> added_;
+    std::vector<std::uint8_t> kinds_; // per sample, i fastest, then j
 };
 
 // The block under the foot of a plant: the lattice point just below its foot lies at its center.

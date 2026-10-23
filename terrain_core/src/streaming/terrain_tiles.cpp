@@ -59,13 +59,26 @@ void applyBlocks(DensityGrid& grid, const TileLattice& lattice, int originY,
     }
 }
 
-// True if the edits leave no surface in the level whatever the terrain: every block within
-// reach of its samples lies in filled sections of one edit.
-bool filledLevel(const EditWindow& edits, const TileLattice& lattice, int originY) {
+// True if the edits leave no surface in the level: every block within reach of its samples
+// lies in filled sections of one edit, or the level lies above the ground without an added
+// block within reach (all air), or under it without a removed one (all rock). Tiles without
+// caves only: the caves carve the rock.
+bool filledLevel(const EditWindow& edits, const TileLattice& lattice, const TileColumns& columns,
+                 int originY) {
     const int side = lattice.levelHeight;
-    return edits.filled({lattice.x0 - kBlockReach, originY - kBlockReach, lattice.z0 - kBlockReach},
-                        {lattice.x0 + side + kBlockReach, originY + side + kBlockReach,
-                         lattice.z0 + side + kBlockReach});
+    const BlockCoord min{lattice.x0 - kBlockReach, originY - kBlockReach,
+                         lattice.z0 - kBlockReach};
+    const BlockCoord max{lattice.x0 + side + kBlockReach, originY + side + kBlockReach,
+                         lattice.z0 + side + kBlockReach};
+    if (static_cast<double>(originY) > columns.maxHeight &&
+        !edits.holds(BlockEdit::Added, min, max)) {
+        return true;
+    }
+    if (static_cast<double>(originY + side) < columns.minHeight &&
+        !edits.holds(BlockEdit::Removed, min, max)) {
+        return true;
+    }
+    return edits.filled(min, max);
 }
 
 // True if the grid holds solid and air samples: otherwise Marching Cubes gives no triangle.
@@ -242,7 +255,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     const auto scale = static_cast<float>(lattice.spacing);
     for (const int level : levels) {
         const int originY = level * lattice.levelHeight;
-        if (!caveTile && filledLevel(edits, lattice, originY)) {
+        if (!caveTile && filledLevel(edits, lattice, columns, originY)) {
             continue; // inside a filled or emptied volume: no surface
         }
         DensityGrid grid = caveTile ? caveTile->levelDensity(originY)

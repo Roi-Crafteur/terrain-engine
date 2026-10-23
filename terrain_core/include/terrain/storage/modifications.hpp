@@ -135,6 +135,9 @@ public:
     [[nodiscard]] std::size_t blockCount() const;
     [[nodiscard]] std::size_t removedPlantCount() const;
     [[nodiscard]] std::size_t addedPlantCount() const;
+    // Bytes the store holds on the heap: its sections, plants and the nodes of its maps (the
+    // nodes counted as their value and 4 words).
+    [[nodiscard]] std::size_t heapBytes() const;
 
     friend bool operator==(const ModificationStore&, const ModificationStore&) = default;
 

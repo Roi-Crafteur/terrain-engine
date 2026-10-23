@@ -124,9 +124,17 @@ void applyToSection(ModificationStore& store, const VolumeEdit& edit, ChunkCoord
     if (const BlockSection* current = store.section(canonical, sy)) {
         current->toMasks(removed, added);
     }
-    for (int y = 0; y < kSectionSide; ++y) {
-        for (int z = 0; z < kSectionSide; ++z) {
-            for (int x = 0; x < kSectionSide; ++x) {
+    // Only the blocks of the bounds of the edit in the section.
+    const BlockBox bounds = editBounds(edit);
+    const auto from = [](std::int32_t bound, std::int32_t first) {
+        return static_cast<int>(std::max(bound, first) - first);
+    };
+    const auto to = [](std::int32_t bound, std::int32_t first) {
+        return static_cast<int>(std::min(bound, first + kSectionSide - 1) - first);
+    };
+    for (int y = from(bounds.min.y, low.y); y <= to(bounds.max.y, low.y); ++y) {
+        for (int z = from(bounds.min.z, low.z); z <= to(bounds.max.z, low.z); ++z) {
+            for (int x = from(bounds.min.x, low.x); x <= to(bounds.max.x, low.x); ++x) {
                 if (!contains(edit, {low.x + x, low.y + y, low.z + z})) {
                     continue;
                 }
