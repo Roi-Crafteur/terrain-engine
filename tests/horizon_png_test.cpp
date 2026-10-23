@@ -114,7 +114,9 @@ void testPanorama(const Fixture& f) {
     TEST_CHECK(panorama.image.width == 360 && panorama.image.height == 120);
     TEST_CHECK(panorama.image.pixels.size() == 360 * 120 * 3);
     TEST_CHECK(panorama.image.pixels[0] == 70 && panorama.image.pixels[2] == 200); // zenith
-    const double reach = 32.0 * 4096.0 + 4096.0; // the coarsest window with K = 64
+    // The corners of the coarsest window with K = 64 (the crests raise ground there that may
+    // form the silhouette along a diagonal, beyond its sides).
+    const double reach = std::sqrt(2.0) * (32.0 * 4096.0 + 4096.0);
     int groundColumns = 0;
     for (std::size_t c = 0; c < panorama.farthest.size(); ++c) {
         TEST_CHECK(panorama.farthest[c] <= reach);

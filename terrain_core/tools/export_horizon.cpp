@@ -3,10 +3,10 @@
 // panorama.png (360 degrees, 3600 x 480 px, vertical angles x4, curvature of a 6371 km planet).
 // Without a position the viewpoint is a summit found with the grids alone: the highest sample
 // of the coarsest level around the middle of the map, refined by finer levels around it. The
-// eye stands 2 m over the ground. Prints the viewpoint, how far the relief shows, and what the
-// lack of a prefilter costs: how the silhouette drawn from the levels differs from the one of a
-// finer grid computed by the sampler, within 20 km over 10 degrees (8 m samples) and from 20 km
-// to 300 km over 2 degrees (64 m samples).
+// eye stands 2 m over the ground. Prints the viewpoint, how far the relief shows, and how the
+// silhouette drawn from the levels (with their crests) differs from the one of a finer grid of
+// point samples (crestRatio 0), within 20 km over 10 degrees (8 m samples) and from 20 km to
+// 300 km over 2 degrees (64 m samples); terrain_export_silhouette compares it with heightAt.
 // Usage: terrain_export_horizon <output-dir> [seed] [x z] [cells-per-side]
 
 #include "terrain/det_math.hpp"
@@ -235,7 +235,7 @@ struct SilhouetteLoss {
 };
 
 // Elevation angles of the silhouette of the sector from the levels minus those from a grid of
-// the pitch of sector.level, computed by the sampler.
+// point samples at the pitch of sector.level, computed by the sampler (crestRatio 0).
 SilhouetteLoss sectorLoss(const terrain::HorizonSampler& sampler,
                           const terrain::HorizonClipmap& clipmap,
                           const terrain::PanoramaParams& params, const Sector& sector) {
@@ -345,8 +345,11 @@ int main(int argc, char** argv) {
     }
     const Sector nearby = nearSector(streamer.clipmap(), panoramaParams);
     const Sector distant = farSector(streamer.clipmap(), panoramaParams);
-    const SilhouetteLoss nearLoss = sectorLoss(sampler, streamer.clipmap(), panoramaParams, nearby);
-    const SilhouetteLoss farLoss = sectorLoss(sampler, streamer.clipmap(), panoramaParams, distant);
+    terrain::HorizonParams pointParams = params;
+    pointParams.crestRatio = 0;
+    const terrain::HorizonSampler points(field, ecology, pointParams);
+    const SilhouetteLoss nearLoss = sectorLoss(points, streamer.clipmap(), panoramaParams, nearby);
+    const SilhouetteLoss farLoss = sectorLoss(points, streamer.clipmap(), panoramaParams, distant);
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     std::printf("seed %llu, %d levels of %d x %d samples, %d m to %d m, radius %.0f km\n",

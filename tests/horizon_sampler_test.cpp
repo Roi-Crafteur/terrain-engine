@@ -1,6 +1,7 @@
-// Samples of the far horizon: the ground is Heightfield::heightAt bit for bit, the material and
-// the biome are those of Ecology::map(surfaceFromHeightfield(...)) at the same points bit for bit
-// on every level (the oracle that guards the copy of the site in horizon_sampler.cpp), in an
+// Samples of the far horizon: the ground of the point samples (crestRatio 0; horizon_crests_test
+// tests the crests) is Heightfield::heightAt bit for bit, the material and the biome are those
+// of Ecology::map(surfaceFromHeightfield(...)) at the same points bit for bit on every level
+// (the oracle that guards the copy of the site in horizon_sampler.cpp), in an
 // ocean, on a coast, in mountains, in a desert, at a pole and at the corner of the world of the
 // legacy relief, and on a coast of the default world found by search; then
 // the periodicity, the independence from the rectangle, the gradients, the summaries of the
@@ -106,10 +107,18 @@ void compareLevel(const HorizonSampler& sampler, const terrain::EcologyMap& map,
     }
 }
 
+// The point samples (crestRatio 0): with crests, only the heights of the levels 1 and up change
+// (horizon_crests_test).
+HorizonParams pointSamples() {
+    HorizonParams params;
+    params.crestRatio = 0;
+    return params;
+}
+
 void testMaterialOracle() {
     const terrain::Heightfield field(kSeed, test_relief::legacyRelief());
     const terrain::Ecology ecology(kSeed);
-    const HorizonParams params;
+    const HorizonParams params = pointSamples();
     const HorizonSampler sampler(field, ecology, params);
     std::vector<RegionStats> allStats;
     for (const Region& region : oracleRegions(params.world)) {
@@ -155,7 +164,7 @@ void testDefaultWorldCoast() {
         return;
     }
     const terrain::Ecology ecology(kSeed);
-    const HorizonParams params;
+    const HorizonParams params = pointSamples();
     const HorizonSampler sampler(field, ecology, params);
     const Region region{"default world coast", coast->x - 128.0, coast->z - 128.0};
     const terrain::EcologyMap map = oracleMap(field, ecology, region);

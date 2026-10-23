@@ -57,6 +57,12 @@ void validate(const HorizonParams& params) {
         (params.materialSlopeStep != 0 && !powerOfTwo(params.materialSlopeStep))) {
         throw std::invalid_argument("HorizonParams: the pitches must be powers of two");
     }
+    if (params.crestRatio != 0 &&
+        (params.crestRatio < 2 || params.crestRatio > kHorizonCrestRatioMax ||
+         !powerOfTwo(params.crestRatio) || params.crestRatio > 2 * params.basePitch)) {
+        throw std::invalid_argument("HorizonParams: crestRatio must be 0 or a power of two from 2 "
+                                    "to 16 dividing the pitch of level 1");
+    }
     // The coarsest pitch, as a double: no overflow for any level count.
     const double coarsest = std::ldexp(static_cast<double>(params.basePitch), params.levels - 1);
     if (kWorldAlignmentMeters / (2.0 * coarsest) < 1.0) {

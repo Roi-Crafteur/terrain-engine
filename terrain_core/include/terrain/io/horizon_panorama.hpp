@@ -48,9 +48,10 @@ struct Silhouette {
 
 // Silhouette of the columns [firstColumn, firstColumn + columns) of the panorama, over the
 // ground met from params.minDistance to maxDistance (or until the ground is unknown), in steps
-// of 2 m or distance / 256, the larger.
+// of 2 m or distance / stepDivisor, the larger.
 [[nodiscard]] Silhouette traceSilhouette(const GroundHeight& ground, const PanoramaParams& params,
-                                         int firstColumn, int columns, double maxDistance);
+                                         int firstColumn, int columns, double maxDistance,
+                                         double stepDivisor = 256.0);
 
 struct Panorama {
     Image image;           // RGB, width x height

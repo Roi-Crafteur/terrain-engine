@@ -23,6 +23,7 @@ namespace terrain {
 // on each axis) identifies it: its values are computed at its canonical position, so they are
 // the same bits for every image and for every observer.
 inline constexpr int kHorizonMaxLevels = 16;
+inline constexpr int kHorizonCrestRatioMax = 16;
 
 struct HorizonParams {
     int levels = 10;
@@ -33,14 +34,19 @@ struct HorizonParams {
     // surfaceFromHeightfield at that spacing), a power of two: the material of a point is then
     // the same on every level. 0: the pitch of each level (cheaper, coarser slopes far away).
     int materialSlopeStep = static_cast<int>(tileCellMeters(kMaxLod));
+    // Crest prefilter (horizon_crests.hpp): from level 1 on, the samples rise to the crests of
+    // their cells, sought on a lattice crestRatio times finer than the level. 0: every sample is
+    // the point height of the ground (the horizon before the prefilter).
+    int crestRatio = 2;
     WorldSize world;
 };
 
 // Throws std::invalid_argument unless the world is valid, 1 <= levels <= kHorizonMaxLevels,
 // cellsPerSide is a multiple of 4 of at least 16, basePitch and materialSlopeStep (unless 0) are
-// powers of two, twice the coarsest pitch divides kWorldAlignmentMeters (an even number of
-// samples along each side of the world) and the window of the coarsest level holds no sample
-// twice ((K + 1) * pitch <= each side of the world).
+// powers of two, crestRatio is 0 or a power of two from 2 to kHorizonCrestRatioMax dividing the
+// pitch of level 1 (2 * basePitch), twice the coarsest pitch divides kWorldAlignmentMeters (an
+// even number of samples along each side of the world) and the window of the coarsest level
+// holds no sample twice ((K + 1) * pitch <= each side of the world).
 void validate(const HorizonParams& params);
 
 // As validate, and level 0 reaches beyond every tile the LOD parameters select around the

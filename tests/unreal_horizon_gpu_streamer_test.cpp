@@ -4,16 +4,19 @@
 // walk (across the edge of the world too) equal those of a streamer that went straight there, a
 // world turn only moves the levels, the grids, and the geomorphing: its factor (0 inside, 1 on
 // the border wherever the viewer stands, continuous) and its target, the surface of the coarser
-// level at every sample of the finer one; the log line of the texel uploads.
+// level read in its texels at every sample of the finer one, with the crests and with point
+// samples (then as before them, bit for bit); the log line of the texel uploads.
 #include "horizon_gpu_streamer.hpp"
 #include "horizon_morph.hpp"
 #include "horizon_timings.hpp"
 
 #include "horizon_test_support.hpp"
+#include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <set>
@@ -106,9 +109,10 @@ private:
 };
 
 struct Session {
-    Session()
-        : streamer(world.field, world.ecology, kWorld, smallParams(),
-                   [](std::function<void()> job) { job(); }) {}
+    explicit Session(const HorizonGpuParams& params = smallParams(),
+                     const terrain::HeightfieldParams& relief = {})
+        : world(relief), streamer(world.field, world.ecology, kWorld, params,
+                                  [](std::function<void()> job) { job(); }) {}
 
     horizon_test::World world;
     HorizonGpuStreamer streamer;
@@ -269,30 +273,52 @@ double coarseSurface(const Session& session, int fine, int i, int k) {
            (1.0 - t) * (h(ci + 1, ck) - h(ci + 1, ck + 1));
 }
 
-// The morph target of every sample of every finer level lies on the coarser surface: the even
-// samples bit for bit, the others within the rounding of a float mean.
-void testMorphTarget() {
-    Session session;
+// The morph target of every sample of every finer level lies on the coarser surface, read in
+// the coarser texels: the even samples bit for bit, the others within the rounding of a float
+// mean. Around mountains (the legacy relief), with the crests and with point samples: with
+// point samples the target is the mean of the level's own texels as before, bit for bit; with
+// the crests the coarser texels differ from the even texels of the finer level at some samples.
+void testMorphTarget(int crestRatio) {
+    HorizonGpuParams params = smallParams();
+    params.crestRatio = crestRatio;
+    Session session(params, test_relief::legacyRelief());
     session.gpu.apply(session.streamer.update({0.0, 0.0, 0.0}, kFrame));
+    TEST_CHECK(session.streamer.clipmap().params().crestRatio == crestRatio);
     bool exact = true;
+    bool asBefore = true;
+    int lifted = 0;
     double worst = 0.0;
     for (int fine = 0; fine + 1 < 5; ++fine) {
+        const LevelPlacement& placement = session.gpu.placements().at(fine);
+        const auto coarse = [&](int i, int k) {
+            return session.gpu
+                .texel(fine + 1, static_cast<int>(placement.inCoarser.x) + i / 2,
+                       static_cast<int>(placement.inCoarser.z) + k / 2)
+                .height;
+        };
         for (int k = 0; k <= 128; ++k) {
             for (int i = 0; i <= 128; ++i) {
                 const terrain::unreal::MorphSources from = terrain::unreal::morphSources(i, k);
-                const float target = 0.5f * (session.gpu.texel(fine, from.i0, from.k0).height +
-                                             session.gpu.texel(fine, from.i1, from.k1).height);
+                const float target = 0.5f * (coarse(from.i0, from.k0) + coarse(from.i1, from.k1));
+                const float own = 0.5f * (session.gpu.texel(fine, from.i0, from.k0).height +
+                                          session.gpu.texel(fine, from.i1, from.k1).height);
                 const double expected = coarseSurface(session, fine, i, k);
+                asBefore = asBefore && target == own;
                 if (i % 2 == 0 && k % 2 == 0) {
                     exact = exact && static_cast<double>(target) == expected;
+                    lifted += own == target ? 0 : 1;
                 } else {
                     worst = std::max(worst, std::abs(target - expected));
                 }
             }
         }
     }
+    std::printf("morph targets, crest ratio %d: %d even samples morph toward lifted coarser "
+                "texels\n",
+                crestRatio, lifted);
     TEST_CHECK(exact);
     TEST_CHECK(worst < 1e-3);
+    TEST_CHECK(crestRatio == 0 ? asBefore : lifted > 0);
     TEST_CHECK((terrain::unreal::morphSources(3, 5) == terrain::unreal::MorphSources{4, 4, 2, 6}));
     TEST_CHECK((terrain::unreal::morphSources(3, 4) == terrain::unreal::MorphSources{2, 4, 4, 4}));
     TEST_CHECK((terrain::unreal::morphSources(2, 5) == terrain::unreal::MorphSources{2, 4, 2, 6}));
@@ -319,7 +345,8 @@ int main() {
     testEdge();
     testGrids();
     testMorphFactor();
-    testMorphTarget();
+    testMorphTarget(terrain::HorizonParams{}.crestRatio);
+    testMorphTarget(0);
     testTexelsLine();
     return test::result();
 }

@@ -151,6 +151,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
 | `bHorizonShadows` | non | ombres portées par l'horizon |
 | `bHorizonDetailNormals`, `HorizonNormalRatio`, `HorizonNormalJobs` | oui, 4, 2 | GPU : normales de détail, 4 fois plus fines que la grille de chaque niveau, calculées par 2 tâches (TEMPORARY_MATERIAL.md) |
+| `HorizonCrestRatio` | 2 | crêtes des montagnes lointaines : à partir du niveau 1, chaque échantillon monte aux crêtes de ses mailles, cherchées 2, 4 ou 8 fois plus finement que la grille (`terrain_core` `streaming/horizon_crests.hpp`) ; 0 : les points, l'horizon d'avant |
 | `bAtmosphereFollowsCamera` | oui | le ciel, le brouillard et la lumière du ciel suivent la caméra (section 12) |
 | `SkyAtmosphere`, `HeightFog`, `SkyLight` | aucun | ceux qui suivent la caméra ; sinon les premiers du niveau |
 | `FogEndDistanceKm` | 20 | distance où le brouillard cesse d'intégrer ; 0 : son propre réglage |
@@ -304,9 +305,9 @@ mode CPU (`HorizonRenderer` = CPU) ; le mode par défaut, sur le GPU, est en sec
   deux niveaux bouge. Toutes les sections d'une époque sont appliquées dans la même frame : les
   niveaux s'emboîtent toujours, sans trou ni recouvrement (`Bridge/horizon_layout.hpp`).
 - **Raccords** : le bord extérieur de chaque niveau est cousu sur le niveau plus grossier (ses
-  échantillons impairs prennent la moyenne de leurs voisins ; les pairs sont ceux du niveau
-  grossier au bit près), et une jupe tournée vers l'intérieur pend dessous (2 m, ou un seizième du
-  pas). Les bornes de chaque mesh descendent jusqu'au sol courbé (un sommet sans triangle) : aucun
+  échantillons pairs prennent l'altitude de l'échantillon grossier, que les crêtes ont pu relever ;
+  les impairs, la moyenne de leurs voisins), et une jupe tournée vers l'intérieur pend dessous
+  (2 m, ou un seizième du pas). Les bornes de chaque mesh descendent jusqu'au sol courbé (un sommet sans triangle) : aucun
   niveau n'est éliminé à tort.
 - **Sous les tuiles** : le niveau 0 a un trou carré qui contient toutes les tuiles LOD 0 à 2
   (grottes, falaises, surplombs) ; autour, une bande de tuiles LOD 3 (128 m, au moins 64 m)
@@ -380,7 +381,9 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
 - **Géomorphing** (`Bridge/horizon_morph.hpp`) : dans une bande de `HorizonMorphCells` mailles
   (32 par défaut, sans couture visible dans les captures teintées) avant le bord de chaque niveau,
   chaque sommet glisse vers la surface du niveau plus grossier : la moyenne des deux échantillons
-  pairs de l'arête du triangle grossier qui le porte (un échantillon pair n'a pas à bouger).
+  grossiers de l'arête du triangle grossier qui le porte, lus dans sa texture (hauteur et sol). Avec
+  les crêtes (`HorizonCrestRatio`), un échantillon pair glisse vers l'échantillon grossier relevé ;
+  sans elles (0), les deux sont les mêmes au bit près et rien ne change.
   Facteur α = clamp((d − (K/2 − 2 − w)) / w, 0, 1), d la distance de Tchebychev au joueur en
   mailles, K = 256, w la largeur : α vaut 1 au bord, où les deux niveaux coïncident (pas de
   couture), et varie avec le joueur, pas avec l'emplacement du niveau (un déplacement de niveau ne
@@ -438,7 +441,23 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
 
 - Le mode CPU (`HorizonRenderer` = CPU) reste pour comparer ; il sera retiré après la fusion du
   nouveau relief (agent 10).
-- Silhouettes à la maille de chaque niveau ; les normales de détail éclairent le relief 4 fois plus fin.
+- Silhouettes à la maille de chaque niveau, relevées aux crêtes de leurs mailles
+  (`HorizonCrestRatio`) ; les normales de détail éclairent le relief 4 fois plus fin. Seul le coin
+  le plus haut d'une maille monte : les fonds de vallée ne montent jamais. Écart de la silhouette
+  à la vérité (`heightAt`), moyen / moyen absolu, en degrés (`terrain_export_silhouette`, 120°
+  autour du cap) :
+
+  | | vallée du K2 | pied de la plus longue chaîne |
+  |---|---|---|
+  | points (0) | −0,166 / 0,167 | −0,111 / 0,117 |
+  | 2 (défaut) | −0,103 / 0,120 | −0,076 / 0,090 |
+  | 4 | −0,082 / 0,107 | −0,058 / 0,079 |
+
+  Coût au K2 (K = 256, 1 thread) : époque complète 16,6 s sans crêtes, ×1,37 à 2, ×1,97 à 4 ;
+  marche de 2 km 9,3 ms par pas, 11,3 ms à 2, 16,4 ms à 4 ; même mémoire. À 4, 75 à 88 % de ce
+  coût est la lecture du relief des mailles, que les normales de détail font déjà au même pas :
+  une grille fine commune aux deux (après la PR de l'agent 12), calculée en arrière-plan comme
+  les normales (les points d'abord, les crêtes ensuite), rendrait 4 presque gratuit.
 - Matériaux et biomes : dessinés par le matériau temporaire (section 13).
 - Les grilles sont construites sur le thread de jeu au `BeginPlay` (0,2 s, une fois) ; elles
   pourraient l'être hors de ce thread si ce temps gêne au chargement.

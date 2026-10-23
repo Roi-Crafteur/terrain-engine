@@ -97,4 +97,11 @@ double levelReachMeters(const HorizonParams& params, int level) {
     return half * std::numbers::sqrt2;
 }
 
+int crestRatioSetting(int requested) {
+    if (requested < 2) {
+        return 0;
+    }
+    return requested < 4 ? 2 : (requested < 8 ? 4 : 8);
+}
+
 } // namespace terrain::unreal

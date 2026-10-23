@@ -12,6 +12,7 @@ HorizonParams horizonParams(const WorldSize& world, const HorizonMeshParams& par
     HorizonParams horizon;
     horizon.levels = params.levels;
     horizon.cellsPerSide = params.cellsPerSide;
+    horizon.crestRatio = params.crestRatio;
     horizon.world = world;
     return horizon;
 }
@@ -83,7 +84,7 @@ std::size_t HorizonMeshStreamer::memoryBytes() const {
 BodyShape HorizonMeshStreamer::shapeOf(int level) const {
     const int pitch = levelPitch(horizonParams_, level);
     BodyShape shape;
-    shape.stitch = level + 1 < horizonParams_.levels;
+    shape.coarser = level + 1 < horizonParams_.levels ? &streamer_.level(level + 1) : nullptr;
     shape.skirtMeters = skirtMeters(pitch);
     shape.seaHalfMeters = level == 0 ? hole_.halfCells * pitch + hole_.overlapMeters : 0.0;
     shape.curveMeters = curvatureDropMeters(levelReachMeters(horizonParams_, level), radius_);

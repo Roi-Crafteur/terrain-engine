@@ -98,4 +98,8 @@ inline constexpr double kMinTileOverlapMeters = 64.0;
 // corner, its center being within one pitch of the observer.
 [[nodiscard]] double levelReachMeters(const HorizonParams& params, int level);
 
+// The crest ratio (HorizonParams::crestRatio) of a setting of the editor: 0 below 2 (point
+// samples), else the largest of 2, 4 and 8 not above it.
+[[nodiscard]] int crestRatioSetting(int requested);
+
 } // namespace terrain::unreal

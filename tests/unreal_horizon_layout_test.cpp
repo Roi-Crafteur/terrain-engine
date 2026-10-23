@@ -3,7 +3,7 @@
 // world), the hole under the tiles against the tiles selectTiles chooses, every point of the
 // coarsest window drawn by exactly one level outside that hole, the origins of the levels at
 // their images nearest to the player (continuous across an edge, whole worlds for a world turn),
-// and the curvature of the planet.
+// the curvature of the planet, and the crest ratio of the editor setting.
 #include "horizon_layout.hpp"
 
 #include "test_assert.hpp"
@@ -295,6 +295,17 @@ void testCurvature() {
 
 } // namespace
 
+// The crest ratio of the editor setting: 0 below 2, else 2, 4 or 8, the largest not above it;
+// the default setting is the default of the core.
+void testCrestSetting() {
+    for (const auto& [setting, ratio] : {std::pair{-3, 0}, std::pair{0, 0}, std::pair{1, 0},
+                                         std::pair{2, 2}, std::pair{3, 2}, std::pair{4, 4},
+                                         std::pair{7, 4}, std::pair{8, 8}, std::pair{40, 8}}) {
+        TEST_CHECK(terrain::unreal::crestRatioSetting(setting) == ratio);
+    }
+    TEST_CHECK(terrain::unreal::crestRatioSetting(2) == HorizonParams{}.crestRatio);
+}
+
 int main() {
     testBodyHoles();
     testTileHole();
@@ -305,5 +316,6 @@ int main() {
     testPath(HorizonParams{}, LodParams{});
     testWorldTurn();
     testCurvature();
+    testCrestSetting();
     return test::result();
 }

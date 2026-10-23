@@ -83,6 +83,7 @@ target_include_directories(tile_blend_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain
 terrain_add_test(streaming_default_world_test terrain_core)
 terrain_add_test(horizon_levels_test terrain_core)
 terrain_add_test(horizon_sampler_test terrain_core)
+terrain_add_test(horizon_crests_test terrain_core)
 terrain_add_test(horizon_normals_test terrain_core)
 terrain_add_test(horizon_seams_test terrain_core)
 terrain_add_test(horizon_grids_test terrain_core)
@@ -440,3 +441,19 @@ add_test(NAME export_horizon_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_horizon>
             -DOUT=${CMAKE_BINARY_DIR}/horizon_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_horizon_bad_args.cmake)
+
+# Smoke test of the silhouette measure: small windows (64 cells), one column per degree, the
+# default crests, written into <build-dir>/silhouette. Its first line comes once the truth of
+# the first place is traced.
+add_test(NAME export_silhouette_smoke
+    COMMAND terrain_export_silhouette ${CMAKE_BINARY_DIR}/silhouette 64 1)
+add_dependencies(check terrain_export_silhouette)
+set_tests_properties(export_silhouette_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "k2_valley: \\(416857, -11398966\\), ground [0-9.]+ m")
+
+# Invalid arguments of the silhouette measure (windows, columns per degree, crest ratios) are
+# rejected before anything is written.
+add_test(NAME export_silhouette_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_silhouette>
+            -DOUT=${CMAKE_BINARY_DIR}/silhouette_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_silhouette_bad_args.cmake)

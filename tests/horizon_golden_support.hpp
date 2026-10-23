@@ -4,6 +4,10 @@
 // levels (windows of 65 x 65 samples) around mountains of the default world (found by the
 // search of streaming_test::mountainChunk) and of the legacy relief, and across the corner of the
 // wrapped world, where its four edges meet: heights, gradients, materials, biomes and flags.
+// The default levels raise their samples to the crests (horizon_crests.hpp); the mountains are
+// also summed with point samples only (crestRatio 0), which keep the values from before the
+// prefilter: the crests change the heights of the levels 1 and up, nothing else. The corner is
+// deep ocean, where nothing rises.
 
 #include "terrain/streaming/horizon_epoch.hpp"
 
@@ -29,8 +33,10 @@ inline void addCell(Checksum& sum, const terrain::HorizonCell& cell) {
 }
 
 // Every level, from its canonical low corner, sample by sample.
-inline std::uint64_t horizonChecksum(const horizon_test::World& world, double x, double z) {
-    const terrain::HorizonParams params = horizon_test::smallParams();
+inline std::uint64_t horizonChecksum(const horizon_test::World& world, double x, double z,
+                                     int crestRatio = terrain::HorizonParams{}.crestRatio) {
+    terrain::HorizonParams params = horizon_test::smallParams();
+    params.crestRatio = crestRatio;
     const terrain::HorizonSampler sampler(world.field, world.ecology, params);
     terrain::HorizonClipmap clipmap(params);
     horizon_test::settle(clipmap, sampler, x, z);
@@ -62,11 +68,15 @@ inline std::vector<Part> horizonParts() {
     const double z = mountain.z * terrain::kChunkSizeMeters + 4.0;
     const terrain::WorldSize size;
     return {
-        {"horizon around mountains", horizonChecksum(world, x, z), 0x7ABB51040F9F6976ULL},
+        {"horizon around mountains", horizonChecksum(world, x, z), 0xE4AE53AC83AE5B28ULL},
         {"horizon around legacy mountains",
-         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ), 0x11E2BE2F5A504D0CULL},
+         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ), 0x9F5D7BC7B7DEB864ULL},
         {"horizon at the world corner", horizonChecksum(world, size.x / 2.0, size.z / 2.0),
          0xC2F16F1F22D49331ULL},
+        {"horizon around mountains, point samples", horizonChecksum(world, x, z, 0),
+         0x7ABB51040F9F6976ULL},
+        {"horizon around legacy mountains, point samples",
+         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ, 0), 0x11E2BE2F5A504D0CULL},
     };
 }
 
