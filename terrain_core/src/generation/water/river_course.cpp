@@ -2,6 +2,8 @@
 // (river_course.hpp).
 #include "river_course.hpp"
 
+#include "river_join.hpp"
+
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
@@ -102,6 +104,14 @@ void sampleGround(const Heightfield& relief, const ReachInput& in,
         points[i].mountain = std::min(samples[i].mountainMask, kMountainFull) / kMountainFull;
     }
     lowestAcross(relief, in.surface, axis, half, ground);
+    // A tributary flows down into the valley of the river it joins: it never stands above its
+    // floor.
+    for (const ReachInput::Join& j : in.joins) {
+        for (std::size_t i = 0; j.surface && i < points.size(); ++i) {
+            const double floor = j.surface(xs[i], zs[i], static_cast<double>(ground[i]));
+            ground[i] = std::min(ground[i], static_cast<float>(std::min(floor, 1e9)));
+        }
+    }
     for (std::size_t i = 0; i < points.size(); ++i) {
         points[i].ground = ground[i];
     }
@@ -167,40 +177,6 @@ bool refineFalls(const Heightfield& relief, const ReachInput& in,
         sampleGround(relief, in, points);
     }
     return refined;
-}
-
-// A tributary meets the river it joins where its channel first comes within kJoinGap meters of
-// the channel of that river: its course ends there, at the water of that river (beyond, it would
-// run along the other channel at another level). Returns the level of its end.
-constexpr double kJoinGap = 10.0;
-
-float joinEarlier(const ReachInput& in, std::vector<CoursePoint>& points) {
-    if (in.joins == nullptr) {
-        return in.b.level;
-    }
-    const std::vector<CoursePoint>& main = in.joins->points;
-    const double length = std::max(points.back().s, 1.0);
-    for (std::size_t i = 1; i + 1 < points.size(); ++i) {
-        const double x = points[i].x + in.joinsX;
-        const double z = points[i].z + in.joinsZ;
-        const double half = 0.5 * lerp(in.a.width, in.b.width, points[i].s / length);
-        for (std::size_t k = 0; k + 1 < main.size(); ++k) {
-            const CoursePoint& a = main[k];
-            const CoursePoint& b = main[k + 1];
-            const double dx = b.x - a.x;
-            const double dz = b.z - a.z;
-            const double length2 = dx * dx + dz * dz;
-            const double t = length2 > 0.0
-                                 ? std::clamp(((x - a.x) * dx + (z - a.z) * dz) / length2, 0.0, 1.0)
-                                 : 0.0;
-            const double reach = lerp(a.half + a.meander, b.half + b.meander, t) + half + kJoinGap;
-            if (dmath::hypot(x - a.x - t * dx, z - a.z - t * dz) < reach) {
-                points.resize(i + 1);
-                return std::min(in.a.level, static_cast<float>(lerp(a.level, b.level, t)));
-            }
-        }
-    }
-    return in.b.level;
 }
 
 // The axis of the reach: smoothed, its end bent toward where it joins another river.
@@ -370,7 +346,7 @@ void setChunks(Course& c) {
 Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     Course c;
     c.points = axisOf(in);
-    const float levelB = joinEarlier(in, c.points);
+    const float levelB = joinEarlier(relief, in, c.points);
     sampleGround(relief, in, c.points);
     setLevels(c.points, in.a.level, levelB);
     if (refineFalls(relief, in, c.points)) {

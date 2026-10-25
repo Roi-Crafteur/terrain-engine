@@ -204,6 +204,8 @@ struct Hydrology::Impl {
     [[nodiscard]] float startLevel(std::size_t r) const;
     [[nodiscard]] const water::Course& courseOf(std::size_t r) const;
     [[nodiscard]] water::Course makeCourse(std::size_t r) const;
+    [[nodiscard]] water::ReachInput::Join joinOf(const water::Course& c, double x,
+                                                 double z) const;
     [[nodiscard]] water::ReachEnd pointEnd(const RiverSegment& s, std::int32_t segment,
                                            std::int32_t vertex) const;
     [[nodiscard]] bool mayReach(std::size_t r, double x, double z, double radius) const;

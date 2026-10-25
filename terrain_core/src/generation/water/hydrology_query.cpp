@@ -123,7 +123,9 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
     for (std::size_t k = 0; k < count; ++k) {
         const water::Valley& v = found[k].valley;
         const double h = v.wet ? v.height : v.bank;
-        if (h > hold && (!low.wet || v.level > low.level + kHoldAbove)) {
+        // A channel holds only where it lies below the relief (its water there).
+        if (h > hold && (!low.wet || v.level > low.level + kHoldAbove) &&
+            (!v.wet || h < ground + raise)) {
             hold = h;
             holder = k;
         }

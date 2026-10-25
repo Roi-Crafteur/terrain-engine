@@ -3,6 +3,7 @@
 #include "terrain/generation/water/hydrology.hpp"
 
 #include "hydrology_impl.hpp"
+#include "river_profile.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
@@ -260,11 +261,15 @@ float Hydrology::Impl::startLevel(std::size_t r) const {
 }
 
 const water::Course& Hydrology::Impl::courseOf(std::size_t r) const {
-    // A tributary ends at the water of the river it joins: that course first, outside the lock
-    // of this one (it never depends on its tributaries).
+    // A tributary ends at the water of the river it joins: those courses first (before the
+    // confluence and after it), outside the lock of this one (they never depend on their
+    // tributaries).
     const std::size_t after = next(r);
-    if (after != kNone && previous(after) != r && previous(after) != kNone) {
-        (void)courseOf(previous(after));
+    if (after != kNone && previous(after) != r) {
+        if (previous(after) != kNone) {
+            (void)courseOf(previous(after));
+        }
+        (void)courseOf(after);
     }
     return courses.get(r, [&] { return makeCourse(r); });
 }
@@ -299,6 +304,17 @@ water::ReachEnd Hydrology::Impl::pointEnd(const RiverSegment& s, std::int32_t se
             0.0, static_cast<double>(s.vertices[up].elevation - s.vertices[down].elevation) / run));
     }
     return e;
+}
+
+// The river a tributary joins, its images x and z meters from those of the tributary.
+water::ReachInput::Join Hydrology::Impl::joinOf(const water::Course& c, double x, double z) const {
+    return {&c, x, z, [this, &c, x, z](double px, double pz, double ground) {
+                const double cx = px + x;
+                const double cz = pz + z;
+                const double warp = static_cast<double>(wallWarp.fbm2D(
+                    wrapCoordinate(cx, grid.periodX()), wrapCoordinate(cz, grid.periodZ())));
+                return water::valleyAt(c, cx, cz, ground, meanderSeed, warp).height;
+            }};
 }
 
 water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
@@ -336,13 +352,19 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
         joint.x += in.b.x - down.front().x;
         joint.z += in.b.z - down.front().z;
         in.endAt = joint;
+        // Its own river to its end, not the one after the confluence.
+        in.b.width = in.a.width;
+        in.b.depth = in.a.depth;
+        in.b.discharge = in.a.discharge;
+        in.joins[1] = joinOf(courseOf(after), down.front().x - in.b.x, down.front().z - in.b.z);
         if (main != kNone) {
             const water::PathPoint m = startOf(main);
-            in.joins = &courseOf(main);
-            in.joinsX = m.x + wrapCoordinate(in.b.x - m.x, grid.periodX()) - in.b.x;
-            in.joinsZ = m.z + wrapCoordinate(in.b.z - m.z, grid.periodZ()) - in.b.z;
-            in.b.level = std::min(
-                in.a.level, water::levelAt(*in.joins, joint.x + in.joinsX, joint.z + in.joinsZ));
+            in.joins[0] =
+                joinOf(courseOf(main), m.x + wrapCoordinate(in.b.x - m.x, grid.periodX()) - in.b.x,
+                       m.z + wrapCoordinate(in.b.z - m.z, grid.periodZ()) - in.b.z);
+            const water::ReachInput::Join& j = in.joins[0];
+            in.b.level =
+                std::min(in.a.level, water::levelAt(*j.course, joint.x + j.x, joint.z + j.z));
         }
     }
     in.surface = [this](double x, double z, float g) { return surfaceAt(x, z, g); };

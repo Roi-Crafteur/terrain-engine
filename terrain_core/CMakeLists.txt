@@ -105,6 +105,7 @@ add_library(terrain_core STATIC
     src/generation/water/hydrology_lakes.cpp
     src/generation/water/hydrology_query.cpp
     src/generation/water/river_course.cpp
+    src/generation/water/river_join.cpp
     src/generation/water/river_path.cpp
     src/generation/water/river_profile.cpp
     src/generation/voronoi_layout.cpp

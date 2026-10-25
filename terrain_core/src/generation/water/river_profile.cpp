@@ -130,7 +130,7 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     Valley v;
     v.height = floorLevel + walls - cut;
     v.level = static_cast<float>(level);
-    v.wet = channelDistance < half;
+    v.wet = channelDistance < half && channel < level; // not where its surface rises upstream
     v.gorge = static_cast<float>(lerp(a.gorge, b.gorge, t));
     v.mountain = static_cast<float>(lerp(a.mountain, b.mountain, t));
     v.upX = f.upX;

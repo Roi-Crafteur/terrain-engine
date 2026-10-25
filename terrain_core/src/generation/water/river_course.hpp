@@ -19,6 +19,7 @@
 #include "fine_lake.hpp"
 #include "terrain/generation/heightfield.hpp"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -103,12 +104,19 @@ struct ReachInput {
     const std::vector<PathPoint>* before = nullptr; // the way ending at a, or null (a source)
     const std::vector<PathPoint>* after = nullptr;  // the way starting at b, or null (a mouth)
     // A tributary ends on the course of the river it joins, at this point of it, instead of its
-    // own smoothed end; or before, where its channel meets the channel of that course (joins, in
-    // the images of this reach moved by joinsX and joinsZ), at its water there.
+    // own smoothed end; or before, where its channel meets the channel of that river, before the
+    // confluence or after it (joins: their courses, in the images of this reach moved by x and
+    // z), at its water there.
     std::optional<PathPoint> endAt;
-    const Course* joins = nullptr;
-    double joinsX = 0.0;
-    double joinsZ = 0.0;
+    // The surface of its valley at (x, z) of this reach over relief ground there (infinity where
+    // it lies above ground + kLevee): the tributary never stands above it.
+    struct Join {
+        const Course* course = nullptr;
+        double x = 0.0;
+        double z = 0.0;
+        std::function<double(double x, double z, double ground)> surface;
+    };
+    std::array<Join, 2> joins{};
     // The meanders fade out over the first and the last meanderTaper meters of the river segment
     // when it starts or ends at a confluence, a lake or the sea.
     double segmentLength = 0.0;
