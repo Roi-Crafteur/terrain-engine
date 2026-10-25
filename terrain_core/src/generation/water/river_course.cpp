@@ -30,11 +30,13 @@ constexpr double kFallStep = 8.0;
 // The mountains: the mask from 0 to kMountainFull.
 constexpr float kMountainFull = 0.25f;
 // The gorge: as the relief above the water on the axis passes kGorgeLow to kGorgeHigh meters
-// (under the mountains) or kCanyonLow to kCanyonHigh (a canyon in a plateau of the plains).
+// (under the mountains) or kCanyonLow to kCanyonHigh (a canyon in a plateau of the plains; a
+// valley of the plains a hundred meters deep keeps its floodplain, as the valleys of the rivers
+// below their plateaus).
 constexpr float kGorgeLow = 60.0f;
 constexpr float kGorgeHigh = 200.0f;
-constexpr float kCanyonLow = 25.0f;
-constexpr float kCanyonHigh = 80.0f;
+constexpr float kCanyonLow = 120.0f;
+constexpr float kCanyonHigh = 300.0f;
 // The valleys. Plains: a floodplain beyond the belt of the meanders by kPlainMargin widths, rising
 // kPlainFloorSlope across, then banks of kPlainWall rounded over kPlainFoot meters. Mountains: a U,
 // its floor kUFloorBase + kUFloorGrowth log10(Q / 10) meters on each side, rising kUFloorSlope,

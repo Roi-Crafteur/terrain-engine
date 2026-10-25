@@ -224,7 +224,7 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
         sum.add(static_cast<std::uint64_t>(s.water), 1);
         sum.add(s.waterLevel);
     }
-    constexpr std::uint64_t kExpected = 0xC110632FB7E7405CULL;
+    constexpr std::uint64_t kExpected = 0xDDE66FB12B85F984ULL;
     std::printf("{\"hydrology of the small world\", 0x%016llXULL}%s\n",
                 static_cast<unsigned long long>(sum.value()),
                 sum.value() == kExpected ? "" : "  (differs)");

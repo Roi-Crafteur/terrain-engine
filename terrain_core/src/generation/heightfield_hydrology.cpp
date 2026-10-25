@@ -20,13 +20,17 @@ namespace {
 // The rock shows on the walls from their foot to kRockShow meters up them.
 constexpr double kRockShow = 25.0;
 // The rough rock: a ridged noise of kRockPlain meters in the plains to kRockMountain under the
-// mountains, centered.
+// mountains, centered, plus kGorgeRock of the height of the walls of a gorge (as rough as they
+// are high, as the walls of the massifs: no smooth face).
 constexpr double kRockPlain = 6.0;
 constexpr double kRockMountain = 40.0;
+constexpr double kGorgeRock = 0.3;
 constexpr double kRockSharpness = 2.0;
-// The ravines of the relief cut the walls, at most kRavineRoom of their height deep.
+// The ravines of the relief cut the walls, and the couloirs (layers gullies) those of the
+// gorges, at most kRavineRoom of their height deep.
 constexpr double kRavineRoom = 0.6;
 constexpr double kRavineSlope = 1.2; // the slope that orients them, at most
+constexpr double kGullySlope = 2.0;  // and the couloirs of the walls of the gorges
 // The walls of the gorges are rock: strata or crystalline, as the map's walls (character
 // kCharacter), their ledges at most kStrataRoom of the height of the walls deep.
 constexpr float kCharacter = 0.6f;
@@ -68,15 +72,22 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
         const double show =
             smooth(0.0, kRockShow, c.above) * smooth(0.0, kEdgeFade, rim - c.height);
         if (show > 0.0) {
-            const double rock = kRockPlain + (kRockMountain - kRockPlain) * c.mountain;
+            const double rock = kRockPlain + (kRockMountain - kRockPlain) * c.mountain +
+                                kGorgeRock * c.gorge * c.above;
             if (layers_->geographyRock.octaves() > 0) {
                 h += show * rock *
                      (static_cast<double>(layers_->geographyRock.ridged2D(x, z, kRockSharpness)) -
                       0.5);
             }
             const double slope = std::min(c.slope, kRavineSlope);
-            const float cut = ravines::depth(layers_->ravines, x, z, slope * c.upX,
-                                             slope * c.upZ, show);
+            float cut = ravines::depth(layers_->ravines, x, z, slope * c.upX, slope * c.upZ,
+                                       show);
+            if (c.gorge > 0.0f) {
+                // The couloirs of the walls of the gorges, down their slope.
+                const double steep = std::min(c.slope, kGullySlope);
+                cut += ravines::depth(layers_->gullies, x, z, steep * c.upX, steep * c.upZ,
+                                      show * static_cast<double>(c.gorge));
+            }
             h += static_cast<double>(
                 relief_local::boundBelow(-cut, static_cast<float>(kRavineRoom * c.above)));
             if (c.gorge > 0.0f) {

@@ -36,6 +36,7 @@ struct Heightfield::Layers {
     // The spurs of the chains (ridged) and the ravines of the slopes.
     noise::FbmOctaves geographySpurs;
     ravines::Network ravines;
+    ravines::Network gullies; // the couloirs of the walls of the gorges of the rivers (11B)
     // The valleys in U and the dominant summits of the mountains, and their walls.
     mountain_forms::Noises forms;
     mountain_walls::Noises walls;

@@ -18,6 +18,8 @@ constexpr double kFloorRise = 0.6;
 // The walls stand at least kWallMargin meters beyond the channel, bounded softly over kWallSoft.
 constexpr double kWallMargin = 2.0;
 constexpr double kWallSoft = 6.0;
+// The slope of the walls of a gorge swings by up to kGorgeSwing of itself along it.
+constexpr double kGorgeSwing = 0.45;
 
 double lerp(double a, double b, double t) {
     return a + (b - a) * t;
@@ -99,11 +101,14 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     const double least = half + amplitude + kWallMargin;
     const double spur = floorHalf - warp * wallWarpOf(floorHalf) - least;
     const double out = d - least - 0.5 * (spur + std::sqrt(spur * spur + kWallSoft * kWallSoft));
+    // The walls of a gorge are steeper on its spurs and gentler in its bays (the noise of the
+    // walls): no even trench.
+    const double steep = wall * (1.0 + kGorgeSwing * lerp(a.gorge, b.gorge, t) * warp);
     double walls = 0.0;
     double wallSlope = 0.0;
     if (out > 0.0) {
-        walls = out < foot ? wall * out * out / (2.0 * foot) : wall * (out - 0.5 * foot);
-        wallSlope = out < foot ? wall * out / foot : wall;
+        walls = out < foot ? steep * out * out / (2.0 * foot) : steep * (out - 0.5 * foot);
+        wallSlope = out < foot ? steep * out / foot : steep;
     }
     const double floorSlope = lerp(a.floorSlope, b.floorSlope, t);
     const double above = kFloorRise + floorSlope * std::max(0.0, d - half);

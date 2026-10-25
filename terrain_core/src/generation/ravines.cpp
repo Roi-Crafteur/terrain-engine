@@ -161,15 +161,20 @@ float depthWith(const Network& network, double x, double z, double slopeX, doubl
 } // namespace
 
 Network makeNetwork(std::uint64_t seed, const WorldSize& world) {
+    return makeNetwork(seed, world, kSpacings, kDepths);
+}
+
+Network makeNetwork(std::uint64_t seed, const WorldSize& world,
+                    const std::array<double, 2>& spacings, const std::array<float, 2>& depths) {
     Network network;
     network.world = world;
-    for (std::size_t k = 0; k < kSpacings.size(); ++k) {
+    for (std::size_t k = 0; k < spacings.size(); ++k) {
         Octave& o = network.octaves[k];
         o.seed = noise::deriveSeed(seed, k);
-        o.spacing = kSpacings[k];
+        o.spacing = spacings[k];
         o.cellsX = std::max(1, static_cast<int>(std::lround(world.x / o.spacing)));
         o.cellsZ = std::max(1, static_cast<int>(std::lround(world.z / o.spacing)));
-        o.depth = kDepths[k];
+        o.depth = depths[k];
     }
     return network;
 }

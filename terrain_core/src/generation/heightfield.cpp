@@ -113,6 +113,7 @@ enum Layer : std::uint64_t {
     kMountainWalls,
     kPlainForms,
     kDepressions,
+    kGullies,
 };
 
 } // namespace
@@ -165,6 +166,8 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         }
         layers->geographySpurs = fast(kSpurs, 2, params_.geography.spurWavelength, 0.5);
         layers->ravines = ravines::makeNetwork(noise::deriveSeed(seed, kRavines), world);
+        layers->gullies = ravines::makeNetwork(noise::deriveSeed(seed, kGullies), world,
+                                               {512.0, 256.0}, {0.20f, 0.16f});
         // The summits sit on the crests of the first octave of the massif.
         layers->forms =
             mountain_forms::makeNoises(noise::deriveSeed(seed, kMountainForms), world,
