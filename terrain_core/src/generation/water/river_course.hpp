@@ -131,7 +131,8 @@ struct CoursePoint {
     double z = 0.0;
     double s = 0.0;           // meters from the start of the course along the axis
     float level = 0.0f;       // the water surface
-    float ground = 0.0f;      // the relief on the axis
+    float ground = 0.0f;      // the lowest relief across the channel (or the valley it joins)
+    float top = 0.0f;         // the relief on the axis: how deep the valley cuts
     float half = 0.0f;        // half the width of the channel
     float depth = 0.0f;       // of the channel
     float floorHalf = 0.0f;   // half the width of the floor of the valley (floodplain, U floor)

@@ -101,6 +101,7 @@ void sampleGround(const Heightfield& relief, const ReachInput& in,
     std::vector<float> ground(points.size());
     for (std::size_t i = 0; i < points.size(); ++i) {
         ground[i] = in.surface ? in.surface(xs[i], zs[i], samples[i].height) : samples[i].height;
+        points[i].top = ground[i];
         points[i].mountain = std::min(samples[i].mountainMask, kMountainFull) / kMountainFull;
     }
     lowestAcross(relief, in.surface, axis, half, ground);
@@ -210,7 +211,7 @@ void setGorges(std::vector<CoursePoint>& points) {
     std::vector<float> raw(points.size());
     for (std::size_t i = 0; i < points.size(); ++i) {
         const CoursePoint& p = points[i];
-        const double cut = std::max(0.0f, p.ground - p.level);
+        const double cut = std::max(0.0f, p.top - p.level);
         raw[i] = static_cast<float>(lerp(smooth(kCanyonLow, kCanyonHigh, cut),
                                          smooth(kGorgeLow, kGorgeHigh, cut),
                                          static_cast<double>(p.mountain)));
@@ -359,9 +360,9 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     float highest = -std::numeric_limits<float>::infinity();
     for (std::size_t i = 0; i < c.points.size(); ++i) {
         const CoursePoint& p = c.points[i];
-        c.deepestCut = std::max(c.deepestCut, p.ground - p.level);
-        if (p.ground > highest) {
-            highest = p.ground;
+        c.deepestCut = std::max(c.deepestCut, p.top - p.level);
+        if (p.top > highest) {
+            highest = p.top;
             c.crest = p.s;
         }
         if (i > 0) {
