@@ -276,7 +276,8 @@ void setChunks(Course& c) {
             const CoursePoint& p = pts[i];
             k.radius = std::max(k.radius, dmath::hypot(p.x - k.x, p.z - k.z));
             k.flat = std::max({k.flat,
-                               static_cast<double>(p.floorHalf + p.foot) + wallWarpOf(p.floorHalf),
+                               static_cast<double>(p.floorHalf + p.foot) + wallWarpOf(p.floorHalf) +
+                                   kLeveeFade,
                                1.5 * static_cast<double>(p.half + p.meander)});
             k.minLevel = std::min(k.minLevel, p.level);
             k.maxDepth = std::max(k.maxDepth, p.depth);

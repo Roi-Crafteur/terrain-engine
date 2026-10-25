@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/planet/planet_grid.hpp"
+#include "terrain/generation/planet/planet_passes.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -44,12 +45,14 @@ namespace planet {
 // depression shallow enough for the area its outlet drains (PlanetBreachParams) is breached: from
 // each of its pits, the cells on the way to the ocean are lowered below the pit, a millimeter per
 // cell, until the way reaches a cell lower still (never below kSeaLevel). The others stay closed,
-// for the lakes, and so do those below kSeaLevel (the sea would flow in).
-// Single-threaded.
+// for the lakes, and so do those below kSeaLevel (the sea would flow in). With cols
+// (planet_passes.hpp), the water passes an edge held by its col only at its level, and a
+// depression held behind a col stays closed. Single-threaded.
 [[nodiscard]] PlanetBreach breachDepressions(const PlanetGrid& grid, std::vector<float>& height,
                                              const std::vector<std::uint8_t>& ocean,
                                              const std::vector<std::uint8_t>& mountain,
-                                             const PlanetBreachParams& params);
+                                             const PlanetBreachParams& params,
+                                             const PlanetCols* cols = nullptr);
 
 } // namespace planet
 

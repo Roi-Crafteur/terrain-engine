@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/planet/planet_grid.hpp"
+#include "terrain/generation/planet/planet_passes.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -14,11 +15,13 @@ namespace terrain::planet {
 
 // Receiver of every land cell: the direction (index in kPlanetNeighbors) of its steepest descent
 // (drop / distance, sqrt(2) on the diagonals) among its neighbors lower in the total order, the
-// first such neighbor in that order on a tie. kNoNeighbor for the ocean (a sink) and for the
-// pits, the land cells without a lower neighbor. Every receiver is lower: no cycle.
+// first such neighbor in that order on a tie, never across an edge whose col holds the water
+// (cols, planet_passes.hpp, when given). kNoNeighbor for the ocean (a sink) and for the pits,
+// the land cells without such a neighbor. Every receiver is lower: no cycle.
 [[nodiscard]] std::vector<std::uint8_t> computeReceivers(const PlanetGrid& grid,
                                                          const std::vector<float>& height,
                                                          const std::vector<std::uint8_t>& ocean,
-                                                         int threads);
+                                                         int threads,
+                                                         const PlanetCols* cols = nullptr);
 
 } // namespace terrain::planet

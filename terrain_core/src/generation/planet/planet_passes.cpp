@@ -2,8 +2,11 @@
 
 #include "planet_parallel.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/generation/planet/planet_relief.hpp"
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
 #include <limits>
 #include <span>
@@ -13,8 +16,12 @@ namespace terrain::planet {
 
 namespace {
 
-constexpr int kLinkBlock = 256;
-constexpr float kUnknown = std::numeric_limits<float>::quiet_NaN();
+constexpr std::size_t kNoSlot = static_cast<std::size_t>(-1);
+// The direction opposite to each of kPlanetNeighbors.
+constexpr std::array<int, 8> kOpposite = {1, 0, 3, 2, 7, 6, 5, 4};
+// Each edge is measured once, from the cell it leaves toward these directions (east, south and
+// the two diagonals south), or from the only measured cell of the two.
+constexpr std::array<bool, 8> kForward = {true, false, true, false, true, true, false, false};
 
 // The candidates of a ladder from a to b, row by row, and their heights (infinite where neither
 // end can reach them, one aside per section), in buffers kept by each thread.
@@ -71,22 +78,87 @@ float straightHeight(const Heightfield& field, double ax, double az, double bx, 
     return most;
 }
 
-std::uint64_t keyOf(const PlanetGrid& grid, const PlanetLink& link) {
-    int direction = kNoNeighbor;
-    for (int k = 0; k < 8; ++k) {
-        if (grid.neighbor(link.cell, k) == link.next) {
-            direction = k;
-        }
-    }
-    return static_cast<std::uint64_t>(link.cell) * 9U + static_cast<std::uint64_t>(direction);
-}
+// One edge measured: from cell toward its neighbor k, at level.
+struct Measured {
+    std::size_t cell = 0;
+    int k = 0;
+    std::int16_t level = PlanetCols::kNone;
+    bool ladder = false;
+};
 
-// The cut a link may make, under the mountains less the margin of what the ladder does not see.
-float cutOf(const PlanetPassParams& p, std::uint8_t mountain) {
-    return static_cast<float>(mountain != 0 ? p.mountainCut - p.margin : p.plainCut);
+std::int16_t wholeMeters(float level) {
+    const double up = std::ceil(static_cast<double>(level));
+    return static_cast<std::int16_t>(std::clamp(up, -32000.0, 32000.0));
 }
 
 } // namespace
+
+PlanetCols::PlanetCols(const PlanetGrid& grid, const std::vector<std::uint8_t>& measured)
+    : grid_(grid) {
+    words_.assign((grid.cells() + 63) / 64, 0);
+    for (std::size_t c = 0; c < grid.cells(); ++c) {
+        if (measured[c] != 0) {
+            words_[c >> 6] |= std::uint64_t{1} << (c & 63);
+        }
+    }
+    rank_.resize(words_.size());
+    std::uint32_t total = 0;
+    for (std::size_t w = 0; w < words_.size(); ++w) {
+        rank_[w] = total;
+        total += static_cast<std::uint32_t>(std::popcount(words_[w]));
+    }
+    levels_.assign(static_cast<std::size_t>(total) * 8, kNone);
+}
+
+std::size_t PlanetCols::slot(std::size_t cell) const {
+    if (words_.empty() || ((words_[cell >> 6] >> (cell & 63)) & 1U) == 0) {
+        return kNoSlot;
+    }
+    const std::uint64_t below = (std::uint64_t{1} << (cell & 63)) - 1;
+    return rank_[cell >> 6] + static_cast<std::size_t>(std::popcount(words_[cell >> 6] & below));
+}
+
+float PlanetCols::level(std::size_t cell, int k) const {
+    std::size_t s = slot(cell);
+    int side = k;
+    if (s == kNoSlot) {
+        s = slot(grid_.neighbor(cell, k));
+        side = kOpposite[static_cast<std::size_t>(k)];
+    }
+    const std::int16_t l =
+        s == kNoSlot ? kNone : levels_[s * 8 + static_cast<std::size_t>(side)];
+    return l == kNone ? -std::numeric_limits<float>::infinity() : static_cast<float>(l);
+}
+
+bool PlanetCols::held(const std::vector<float>& height, std::size_t cell, int k,
+                      float* at) const {
+    if (levels_.empty()) {
+        return false;
+    }
+    const float l = level(cell, k);
+    const bool held = l > std::max(height[cell], height[grid_.neighbor(cell, k)]);
+    if (held && at != nullptr) {
+        *at = l;
+    }
+    return held;
+}
+
+void PlanetCols::set(std::size_t cell, int k, std::int16_t level) {
+    const std::size_t s = slot(cell);
+    if (s != kNoSlot) {
+        levels_[s * 8 + static_cast<std::size_t>(k)] = level;
+    }
+    const std::size_t n = grid_.neighbor(cell, k);
+    const std::size_t t = slot(n);
+    if (t != kNoSlot) {
+        levels_[t * 8 + static_cast<std::size_t>(kOpposite[static_cast<std::size_t>(k)])] = level;
+    }
+}
+
+std::size_t PlanetCols::bytes() const {
+    return words_.size() * sizeof(std::uint64_t) + rank_.size() * sizeof(std::uint32_t) +
+           levels_.size() * sizeof(std::int16_t);
+}
 
 float crossingHeight(const Heightfield& field, double ax, double az, double bx, double bz,
                      const PlanetPassParams& params) {
@@ -108,55 +180,58 @@ float crossingHeight(const Heightfield& field, double ax, double az, double bx, 
     return best[l.at(l.sections - 1, params.halfWidth)];
 }
 
-std::size_t raiseSills(const Heightfield& field, const PlanetGrid& grid,
-                       const std::vector<PlanetLink>& links,
+PlanetCols measureCols(const Heightfield& field, const PlanetGrid& grid,
+                       const std::vector<float>& height, const std::vector<std::uint8_t>& floor,
+                       int floorSamples, const std::vector<std::uint8_t>& ocean,
                        const std::vector<std::uint8_t>& mountain, const PlanetPassParams& params,
-                       int threads, std::vector<float>& height,
-                       std::vector<std::pair<std::uint64_t, float>>& crossings,
-                       PlanetPasses& out) {
-    std::vector<std::uint64_t> keys(links.size());
-    std::vector<float> crossing(links.size(), kUnknown);
-    for (std::size_t i = 0; i < links.size(); ++i) {
-        keys[i] = keyOf(grid, links[i]);
-        const auto it = std::lower_bound(crossings.begin(), crossings.end(),
-                                         std::pair{keys[i], -std::numeric_limits<float>::infinity()});
-        if (it != crossings.end() && it->first == keys[i]) {
-            crossing[i] = it->second;
-        }
+                       int threads, PlanetPasses& out) {
+    std::vector<std::uint8_t> measured(grid.cells(), 0);
+    for (std::size_t c = 0; c < grid.cells(); ++c) {
+        measured[c] = ocean[c] == kLand && (!params.measured || params.measured(c)) ? 1 : 0;
     }
-    std::vector<std::uint8_t> fresh(links.size(), 0);
-    parallelBlocks(static_cast<int>(links.size()), kLinkBlock, threads, [&](int begin, int end) {
-        for (int i = begin; i < end; ++i) {
-            const auto n = static_cast<std::size_t>(i);
-            if (!std::isnan(crossing[n])) {
+    PlanetCols cols(grid, measured);
+    const int blocks = (grid.nz + kRowBlock - 1) / kRowBlock;
+    std::vector<std::vector<Measured>> found(static_cast<std::size_t>(blocks));
+    parallelRows(grid.nz, threads, [&](int first, int last) {
+        std::vector<Measured>& mine = found[static_cast<std::size_t>(first / kRowBlock)];
+        for (std::size_t c = grid.index(0, first); c < grid.index(0, last); ++c) {
+            if (measured[c] == 0) {
                 continue;
             }
-            const PlanetLink& l = links[n];
-            const float above = height[l.cell] + cutOf(params, mountain[l.cell]);
-            // The straight line first: the ladder is needed only if it rises above the cut.
-            const float straight = straightHeight(field, l.ax, l.az, l.bx, l.bz, params);
-            crossing[n] = straight > above ? crossingHeight(field, l.ax, l.az, l.bx, l.bz, params)
-                                           : straight;
-            fresh[n] = 1;
+            const std::array<double, 2> a = floorPoint(grid, c, floor[c], floorSamples);
+            for (int k = 0; k < 8; ++k) {
+                const std::size_t n = grid.neighbor(c, k);
+                if (ocean[n] != kLand ||
+                    !(kForward[static_cast<std::size_t>(k)] || measured[n] == 0)) {
+                    continue;
+                }
+                const std::array<double, 2> p = floorPoint(grid, n, floor[n], floorSamples);
+                const double bx = a[0] + wrapCoordinate(p[0] - a[0], grid.periodX());
+                const double bz = a[1] + wrapCoordinate(p[1] - a[1], grid.periodZ());
+                const float cut = static_cast<float>(mountain[c] != 0 || mountain[n] != 0
+                                                         ? params.mountainCut - params.margin
+                                                         : params.plainCut);
+                const float straight = straightHeight(field, a[0], a[1], bx, bz, params);
+                const bool ladder = straight - cut > std::min(height[c], height[n]);
+                const float col =
+                    ladder ? crossingHeight(field, a[0], a[1], bx, bz, params) : straight;
+                mine.push_back({c, k, wholeMeters(col - cut), ladder});
+            }
         }
     });
-    std::size_t raised = 0;
-    for (std::size_t i = 0; i < links.size(); ++i) {
-        if (fresh[i] != 0) {
-            crossings.emplace_back(keys[i], crossing[i]);
-            ++out.checked;
-        }
-        const PlanetLink& l = links[i];
-        const float need = crossing[i] - cutOf(params, mountain[l.cell]);
-        if (need > height[l.cell]) {
-            out.highestRaise = std::max(out.highestRaise, need - height[l.cell]);
-            height[l.cell] = need;
-            ++raised;
+    for (const std::vector<Measured>& block : found) {
+        for (const Measured& m : block) {
+            cols.set(m.cell, m.k, m.level);
+            const float higher = std::max(height[m.cell], height[grid.neighbor(m.cell, m.k)]);
+            ++out.edges;
+            out.ladders += m.ladder ? 1U : 0U;
+            if (static_cast<float>(m.level) > higher) {
+                ++out.held;
+                out.highest = std::max(out.highest, static_cast<float>(m.level) - higher);
+            }
         }
     }
-    std::sort(crossings.begin(), crossings.end());
-    out.raised += raised;
-    return raised;
+    return cols;
 }
 
 } // namespace terrain::planet

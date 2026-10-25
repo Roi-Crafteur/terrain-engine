@@ -105,8 +105,8 @@ bool sameBits(const HeightSample& a, const HeightSample& b) {
 
 // The mountains of the small world with their water, 16 km around the sources of 6 of its rivers
 // under the mountains, every 125 m: the points of the corridors of the rivers (where the valley of
-// a river lies below the relief, Hydrology::riversAt) are left out; every other one keeps every
-// bit of the relief alone, the lakes only laying their water over it.
+// a river lies below the relief or its floor fills it, Hydrology::riversAt) are left out; every
+// other one keeps every bit of the relief alone, the lakes only laying their water over it.
 void testWithWater() {
     const terrain::Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
                                       golden::kSmallPlanet);
@@ -138,7 +138,9 @@ void testWithWater() {
                 }
                 ++mountains;
                 const HeightSample s = field.sampleAt(x, z);
-                if (hydrology->riversAt(x, z, static_cast<double>(a.height)).carved) {
+                const terrain::RiverCarve carve =
+                    hydrology->riversAt(x, z, static_cast<double>(a.height));
+                if (carve.carved || carve.raise > 0.0) {
                     ++excluded;
                     continue;
                 }

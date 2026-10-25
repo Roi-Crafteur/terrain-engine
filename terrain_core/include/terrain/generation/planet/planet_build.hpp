@@ -25,7 +25,7 @@ struct PlanetTimings {
     double rivers = 0.0;
     double features = 0.0;
     double breach = 0.0;
-    double passes = 0.0; // the crossings of the links (the stages after them add their times)
+    double passes = 0.0; // the cols between the cells
 
     [[nodiscard]] double total() const {
         return relief + ocean + breach + climate + order + hierarchy + lakes + flow + rivers +

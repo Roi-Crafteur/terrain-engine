@@ -163,7 +163,7 @@ const char* mouthName(terrain::RiverMouth mouth) {
 void printTimes(const terrain::PlanetTimings& t, double stats, double passes, double images) {
     std::printf("time: relief %.1f s, ocean %.1f s, sills %.1f s, climate %.1f s, order %.1f s, "
                 "hierarchy %.1f s, lakes %.1f s, discharge %.1f s, rivers %.1f s, features %.1f s, "
-                "crossings %.1f s; level %.1f s; figures %.1f s, false passes %.1f s, "
+                "cols %.1f s; level %.1f s; figures %.1f s, false passes %.1f s, "
                 "images %.1f s\n",
                 t.relief, t.ocean, t.breach, t.climate, t.order, t.hierarchy, t.lakes, t.flow,
                 t.rivers, t.features, t.passes, t.total(), stats, passes, images);
@@ -177,9 +177,9 @@ void printBreach(const terrain::PlanetBreach& b) {
 }
 
 void printPasses(const terrain::PlanetPasses& p) {
-    std::printf("crossings: %zu links measured, %zu cells raised into the sills of lakes (by %.0f m "
-                "at most), the rivers found again %zu times\n",
-                p.checked, p.raised, static_cast<double>(p.highestRaise), p.rounds);
+    std::printf("cols: %zu edges measured (%zu with their ladder), %zu holding the water above "
+                "both floors (by %.0f m at most)\n",
+                p.edges, p.ladders, p.held, static_cast<double>(p.highest));
 }
 
 void printLand(const terrain::PlanetStats& stats) {

@@ -27,9 +27,12 @@ struct Valley {
     double upZ = 0.0;
     double slope = 0.0;   // of the floor and walls across the valley (meters per meter)
     double above = 0.0;   // of the walls above the floor (meters): where the rock shows
-    // The water held over the floor of the valley by a sill ahead (a pond: the level of the course
-    // above the relief there), or -infinity.
-    double pond = -std::numeric_limits<double>::infinity();
+    // The floor of the valley (its floodplain) and how much the point lies on it: 1 on the floor,
+    // fading to 0 kLeveeFade meters up the walls.
+    double floor = -std::numeric_limits<double>::infinity();
+    double onFloor = 0.0;
+    // valleyAt: the most the floor of the course fills the relief at the point (kLevee at most).
+    double raise = 0.0;
 };
 
 // The rock of the walls of a valley follows its direction, slopes, walls, gorge and mountains:
@@ -56,12 +59,12 @@ private:
     double mountain_ = 0.0;
 };
 
-// The valley of course c at (x, z), in the images of c, wherever its surface is below bound (the
-// relief there): otherwise height stays infinite; and the pond over the floor where the level of
-// the course stands above bound. Its rock attributes are blended over its segments (ValleyBlend).
-// meanderSeed draws the meanders; warp in [-1, 1] (a noise at the point) moves the walls by up to
-// wallWarpOf of the floor.
-[[nodiscard]] Valley valleyAt(const Course& c, double x, double z, double bound,
+// The valley of course c at (x, z), in the images of c, where the relief is ground meters high:
+// its surface wherever it lies below ground + kLevee (otherwise height stays infinite), and the
+// fill of its floor there (raise). Its rock attributes are blended over its segments
+// (ValleyBlend). meanderSeed draws the meanders; warp in [-1, 1] (a noise at the point) moves the
+// walls by up to wallWarpOf of the floor.
+[[nodiscard]] Valley valleyAt(const Course& c, double x, double z, double ground,
                               std::uint64_t meanderSeed, double warp);
 
 // The offset of the channel from the axis (meters, toward the left of the course) at phase, for

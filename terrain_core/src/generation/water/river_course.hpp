@@ -51,6 +51,11 @@ inline constexpr double kBankSlope = 0.3;
 // relief over the kReachFade meters before (river_profile.hpp).
 inline constexpr double kReach = 6'000.0;
 inline constexpr double kReachFade = 1'500.0;
+// Where the relief lies below the floor of a valley, the floodplain is filled up to it, kLevee
+// meters at most (the levees of the rivers), fading out kLeveeFade meters up the walls: the water
+// never stands high above the ground beside its channel (river_profile.hpp).
+inline constexpr double kLevee = 5.0;
+inline constexpr double kLeveeFade = 40.0;
 // The walls of a valley stand up to wallWarpOf(floorHalf) meters nearer or farther than the edge
 // of its floor (a noise: spurs and re-entrants, river_profile.hpp).
 [[nodiscard]] inline double wallWarpOf(double floorHalf) {

@@ -31,6 +31,11 @@ constexpr double kRavineSlope = 1.2; // the slope that orients them, at most
 // kCharacter), their ledges at most kStrataRoom of the height of the walls deep.
 constexpr float kCharacter = 0.6f;
 constexpr double kStrataRoom = 0.4;
+// The levees fill the floodplain up to kLevee meters (river_course.hpp); the water of a channel
+// stands at most kAboveGround meters above the ground beside it.
+constexpr double kLevee = 5.0;
+constexpr double kAboveGround = 2.0;
+constexpr double kFloorRise = 0.6; // the floor of a valley above its water (river_profile.cpp)
 // The rock fades out over the last kEdgeFade meters below the relief, where the walls meet it,
 // and below the valley of another river, where two valleys meet (the crease between them): a
 // valley that comes to carve the relief starts at its height, the rock never jumps.
@@ -52,11 +57,14 @@ Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrolog
 void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
     const float relief = s.height;
     const RiverCarve c = hydrology_->riversAt(x, z, static_cast<double>(s.height));
+    // The levees: the floodplain filled up to the floor of the valley.
+    const double filled = static_cast<double>(relief) + c.raise;
+    s.height = static_cast<float>(filled);
     if (c.carved) {
         double h = c.height;
         // The rock fades out up the walls to where they meet the relief or another valley: no
         // step at the edge of the valley, nor at the crease between two.
-        const double rim = std::min(c.second, static_cast<double>(relief));
+        const double rim = std::min(c.second, filled);
         const double show =
             smooth(0.0, kRockShow, c.above) * smooth(0.0, kEdgeFade, rim - c.height);
         if (show > 0.0) {
@@ -83,11 +91,16 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
                     static_cast<float>(top - h), static_cast<float>(kStrataRoom * c.above)));
             }
         }
+        // The rock never takes the walls below the floor beside the water.
+        h = std::max(h, std::min(c.height, static_cast<double>(c.level) + kFloorRise));
         if (h < static_cast<double>(s.height)) {
             s.height = static_cast<float>(h);
         }
     }
-    if (c.wet && s.water != WaterKind::Ocean && s.height < c.level) {
+    // The water of the channel, never more than kAboveGround meters over the ground beside it:
+    // where the relief lies deeper below it than the levees fill, the bed stays dry.
+    if (c.wet && s.water != WaterKind::Ocean && s.height < c.level &&
+        !(static_cast<double>(relief) < static_cast<double>(c.level) - kLevee - kAboveGround)) {
         s.water = WaterKind::River;
         s.waterLevel = c.level;
     }

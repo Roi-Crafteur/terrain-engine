@@ -50,18 +50,20 @@ void moveToFloors(RiverGraph& graph, const PlanetGrid& grid, const std::vector<s
     }
 }
 
-// Lakes, discharge, rivers and features, once the relief, the ocean and the climate are known.
-void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads, Stopwatch& watch) {
+// Lakes, discharge, rivers and features, once the relief, the ocean and the climate are known,
+// the water passing the edges held by cols only at their levels.
+void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads, Stopwatch& watch,
+                    const PlanetCols* cols) {
     const PlanetGrid& grid = build.grid;
     const WaterOf water =
         climateWater(grid, build.height, build.ocean, build.climate, params.climate);
     const std::vector<std::uint32_t> order = sortCells(build.height, threads);
-    build.receiver = computeReceivers(grid, build.height, build.ocean, threads);
+    build.receiver = computeReceivers(grid, build.height, build.ocean, threads, cols);
     build.timings.order += watch.lap();
     LakeSolution lakes;
     {
         const DepressionHierarchy hierarchy =
-            buildHierarchy(grid, build.height, build.ocean, order, build.receiver);
+            buildHierarchy(grid, build.height, build.ocean, order, build.receiver, cols);
         build.timings.hierarchy += watch.lap();
         lakes = solveLakes(grid, build.height, hierarchy, order, water);
     }
@@ -87,57 +89,6 @@ void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads,
     build.discharge = std::move(flow.discharge);
 }
 
-// The links of the rivers of a build between the floors of their cells (the image of the second
-// next to the first): every river cell to the next point of its segment, every lake spilling into
-// a river from its pass to its partner.
-std::vector<PlanetLink> riverLinks(const PlanetBuild& b, const PlanetParams& params) {
-    const PlanetGrid& g = b.grid;
-    std::vector<PlanetLink> links;
-    const auto add = [&](std::uint32_t from, std::uint32_t to) {
-        const std::array<double, 2> a = floorPoint(g, from, b.floor[from], params.floorSamples);
-        const std::array<double, 2> c = floorPoint(g, to, b.floor[to], params.floorSamples);
-        links.push_back({from, to, a[0], a[1], a[0] + wrapCoordinate(c[0] - a[0], g.periodX()),
-                         a[1] + wrapCoordinate(c[1] - a[1], g.periodZ())});
-    };
-    for (const RiverSegment& s : b.rivers.segments) {
-        for (std::size_t v = 0; v + 1 < s.vertices.size(); ++v) {
-            add(s.vertices[v].cell, s.vertices[v + 1].cell);
-        }
-    }
-    for (const PlanetLake& lake : b.lakes) {
-        if (lake.overflowing && lake.pass != kNoCell && lake.partner != kNoCell) {
-            add(lake.pass, lake.partner);
-        }
-    }
-    return links;
-}
-
-// The sills of the fine relief (planet_passes.hpp): the cells above them raised, then the lakes
-// and the rivers found again, until no link rises above its cut.
-void raisePasses(const Heightfield& field, PlanetBuild& build, const PlanetParams& params,
-                 int threads, Stopwatch& watch) {
-    std::vector<std::pair<std::uint64_t, float>> crossings;
-    for (int round = 0; round < params.passes.iterations; ++round) {
-        const std::vector<PlanetLink> links = riverLinks(build, params);
-        const std::size_t raised = raiseSills(field, build.grid, links, build.mountain,
-                                              params.passes, threads, build.height, crossings,
-                                              build.passes);
-        build.timings.passes += watch.lap();
-        if (raised == 0) {
-            break;
-        }
-        ++build.passes.rounds;
-        // The lakes and rivers of the last round go before the next ones are built.
-        build.receiver = std::vector<std::uint8_t>{};
-        build.lakeOfCell = std::vector<std::int32_t>{};
-        build.discharge = std::vector<float>{};
-        build.lakes = std::vector<PlanetLake>{};
-        build.rivers = RiverGraph{};
-        build.features = std::vector<RiverFeature>{};
-        buildHydrology(build, params, threads, watch);
-    }
-}
-
 } // namespace
 
 PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params) {
@@ -157,17 +108,21 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params) {
         build.ocean = markOcean(build.grid, build.height, cells.sea, params.minOceanArea);
         build.timings.ocean = watch.lap();
     }
+    PlanetCols cols;
+    if (params.passes.enabled && params.floorSamples > 1) {
+        cols = measureCols(field, build.grid, build.height, build.floor, params.floorSamples,
+                           build.ocean, build.mountain, params.passes, threads, build.passes);
+        build.timings.passes = watch.lap();
+    }
+    const PlanetCols* held = cols.empty() ? nullptr : &cols;
     if (params.breachSills) {
-        build.breach =
-            breachDepressions(build.grid, build.height, build.ocean, build.mountain, params.breach);
+        build.breach = breachDepressions(build.grid, build.height, build.ocean, build.mountain,
+                                         params.breach, held);
         build.timings.breach = watch.lap();
     }
     build.climate = computeClimate(build.grid, build.height, build.ocean, params.climate, threads);
     build.timings.climate = watch.lap();
-    buildHydrology(build, params, threads, watch);
-    if (params.passes.enabled && params.floorSamples > 1) {
-        raisePasses(field, build, params, threads, watch);
-    }
+    buildHydrology(build, params, threads, watch, held);
     return build;
 }
 

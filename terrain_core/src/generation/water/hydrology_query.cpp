@@ -79,7 +79,7 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
                 }
                 const water::Valley v =
                     water::valleyAt(m.courseOf(r), px, pz, ground, m.meanderSeed, warp);
-                if (v.height < ground || v.pond > ground) {
+                if (v.height < ground + water::kLevee || v.raise > 0.0) {
                     found[count++] = {r, v};
                 }
             }
@@ -89,18 +89,18 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
         return {};
     }
     std::size_t win = 0;
-    double pond = -std::numeric_limits<double>::infinity();
+    double raise = 0.0;
     for (std::size_t k = 0; k < count; ++k) {
         const Candidate& c = found[k];
         const Candidate& w = found[win];
-        pond = std::max(pond, c.valley.pond);
+        raise = std::max(raise, c.valley.raise);
         if (c.valley.height < w.valley.height ||
             (c.valley.height == w.valley.height && c.reach < w.reach)) {
             win = k;
         }
     }
     RiverCarve out;
-    if (found[win].valley.height < ground) {
+    if (found[win].valley.height < ground + raise) {
         // The reaches just before and after blend their rock with it; the valleys of other
         // rivers fade it out where they meet it.
         water::Valley v = found[win].valley;
@@ -117,10 +117,7 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
         out = carveOf(v);
         out.second = second;
     }
-    if (pond > ground && !(out.wet && static_cast<double>(out.level) >= pond)) {
-        out.wet = true;
-        out.level = static_cast<float>(pond);
-    }
+    out.raise = raise;
     return out;
 }
 

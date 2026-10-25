@@ -131,14 +131,12 @@ void GraphBuilder::computeOrders(const std::vector<std::uint32_t>& order) {
     cellOrders_.assign(grid_.cells(), OrderInputs{});
     lakeOrders_.assign(lakes_.lakes.size(), OrderInputs{});
     graph_.lakeStrahler.assign(lakes_.lakes.size(), 1);
-    const std::vector<std::int32_t> events = outflowsByPass(order, lakes_.lakes);
+    const auto events = outflowsByPass(order, lakes_.lakes);
     std::size_t next = 0;
     for (std::size_t p = order.size(); p-- > 0;) {
         const std::uint32_t cell = order[p];
-        for (; next < events.size() &&
-               lakes_.lakes[static_cast<std::size_t>(events[next])].pass == cell;
-             ++next) {
-            const auto l = static_cast<std::size_t>(events[next]);
+        for (; next < events.size() && events[next].first == cell; ++next) {
+            const auto l = static_cast<std::size_t>(events[next].second);
             graph_.lakeStrahler[l] = lakeOrders_[l].order();
             if (lakes_.lakes[l].outflow > 0) {
                 feed(lakes_.lakes[l].partner, graph_.lakeStrahler[l]);

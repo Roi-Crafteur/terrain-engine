@@ -36,12 +36,12 @@ struct HydrologyParams {
 
 // What the valleys of the rivers make of a point of the relief (Hydrology::riversAt).
 struct RiverCarve {
-    bool carved = false; // a valley lies below the relief
+    bool carved = false; // a valley lies below the relief (raised by raise)
     double height = 0.0; // its surface, before the rock of its walls
     // The surface of the valley of another river (not the reaches just before and after on the
     // same one): where two valleys meet, the rock of their walls fades out.
     double second = std::numeric_limits<double>::infinity();
-    bool wet = false;     // in its channel, or under a pond on its floor held by a sill ahead
+    bool wet = false;     // in its channel
     float level = 0.0f;   // the water there
     float gorge = 0.0f;   // [0, 1], open valley to narrow gorge
     float mountain = 0.0f; // [0, 1], plains to mountains
@@ -49,6 +49,9 @@ struct RiverCarve {
     double upZ = 0.0;
     double slope = 0.0;   // of the surface across the valley (meters per meter)
     double above = 0.0;   // height of the walls above the floor of the valley
+    // The relief filled up to the floor of a valley where it lies below it (the levees of the
+    // rivers), 5 meters at most.
+    double raise = 0.0;
 };
 
 // The lake over a point (Hydrology::lakeAt).

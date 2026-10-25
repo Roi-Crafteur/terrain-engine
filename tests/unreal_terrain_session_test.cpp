@@ -134,7 +134,8 @@ void testDestroyWhileGenerating() {
 
 // With a planet file (on a small world: the level of the whole world takes minutes): the level
 // built and written to it the first time, read from it the next; the heightfield of the tiles
-// and of the horizon is the relief with its water, the valleys of its rivers carved.
+// and of the horizon is the relief with its water, the valleys of its rivers carved (their floors
+// filled by the levees, 5 m at most).
 void testPlanetFile() {
     const std::filesystem::path dir = storage_test::freshDirectory("terrain_session_planet");
     SessionParams params = smallSession();
@@ -155,8 +156,9 @@ void testPlanetFile() {
         std::size_t carved = 0;
         for (std::size_t r = 0; r < hydrology->reachCount(); r += 97) {
             for (const terrain::RiverPoint& p : hydrology->reach(r).points) {
+                // Carved, or filled by the levees 5 m at most.
                 const float relief = hydrology->relief().heightAt(p.x, p.z);
-                never = never && !(field.heightAt(p.x, p.z) > relief);
+                never = never && !(field.heightAt(p.x, p.z) > relief + 5.0f);
                 carved += field.heightAt(p.x, p.z) < relief ? 1u : 0u;
             }
         }

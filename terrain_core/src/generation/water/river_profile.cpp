@@ -117,9 +117,8 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f,
     // of the walls is laid along it.
     v.slope = floorSlope + wallSlope;
     v.above = walls;
-    if (!(out > 0.0)) {
-        v.pond = level; // on the floor: a pond wherever the relief is below the water
-    }
+    v.floor = floorLevel;
+    v.onFloor = 1.0 - smooth(0.0, kLeveeFade, out);
     return v;
 }
 
@@ -184,20 +183,22 @@ void ValleyBlend::applyTo(Valley& v) const {
     v.mountain = static_cast<float>(mountain_ / weight_);
 }
 
-Valley valleyAt(const Course& c, double x, double z, double bound, std::uint64_t meanderSeed,
+Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_t meanderSeed,
                 double warp) {
     Valley best;
     if (x < c.minX || x > c.maxX || z < c.minZ || z > c.maxZ) {
         return best;
     }
+    const double bound = ground + kLevee;
     double lowest = bound;
-    double pond = -std::numeric_limits<double>::infinity();
+    double raise = 0.0;
     ValleyBlend blend;
     for (const CourseChunk& k : c.chunks) {
         const double away = dmath::hypot(x - k.x, z - k.z) - k.radius - k.flat;
         const double floorOf = static_cast<double>(k.minLevel - k.maxDepth) +
                                static_cast<double>(k.minWall) * std::max(0.0, away);
-        // Beyond its floors, a chunk only matters where it may carve below the relief.
+        // Beyond its floors (and their levees), a chunk only matters where it may carve below the
+        // relief.
         if (away > 0.0 && !(floorOf < lowest + kBlend)) {
             continue;
         }
@@ -210,9 +211,7 @@ Valley valleyAt(const Course& c, double x, double z, double bound, std::uint64_t
                 v.height += (bound - v.height) *
                             smooth(kReach - kReachFade - 500.0, kReach - 500.0, f.distance);
             }
-            if (v.pond > bound) {
-                pond = std::max(pond, v.pond);
-            }
+            raise = std::max(raise, std::clamp(v.floor - ground, 0.0, kLevee) * v.onFloor);
             if (v.height < bound + kBlend) {
                 blend.add(v);
             }
@@ -223,7 +222,7 @@ Valley valleyAt(const Course& c, double x, double z, double bound, std::uint64_t
         }
     }
     blend.applyTo(best);
-    best.pond = pond;
+    best.raise = raise;
     return best;
 }
 

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,13 +34,15 @@ void writeParams(ByteWriter& out, const PlanetParams& p) {
         out.f64(v);
     }
     const PlanetPassParams& passes = p.passes;
+    if (passes.measured) {
+        throw std::invalid_argument("planet file: a trial over a part of the world is never written");
+    }
     out.u8(passes.enabled ? 1 : 0);
     for (const double v : {passes.mountainCut, passes.plainCut, passes.margin,
                            passes.sectionStep, passes.lateralStep}) {
         out.f64(v);
     }
     out.i32(passes.halfWidth);
-    out.i32(passes.iterations);
     const PlanetClimateParams& c = p.climate;
     for (const float v : {c.equatorTemperature, c.poleTemperature, c.lapseRate, c.iceTemperature}) {
         out.f32(v);
@@ -301,10 +304,10 @@ void writeTotals(ByteWriter& out, const PlanetLevel& level) {
     out.u64(s.cutCells);
     out.f32(s.deepestCut);
     const PlanetPasses& passes = level.passes();
-    out.u64(passes.checked);
-    out.u64(passes.raised);
-    out.u64(passes.rounds);
-    out.f32(passes.highestRaise);
+    out.u64(passes.edges);
+    out.u64(passes.ladders);
+    out.u64(passes.held);
+    out.f32(passes.highest);
 }
 
 void readTotals(ByteReader& in, PlanetLevel::Parts& p) {
@@ -322,10 +325,10 @@ void readTotals(ByteReader& in, PlanetLevel::Parts& p) {
     s.cutCells = static_cast<std::size_t>(in.u64());
     s.deepestCut = in.f32();
     PlanetPasses& passes = p.passes;
-    passes.checked = static_cast<std::size_t>(in.u64());
-    passes.raised = static_cast<std::size_t>(in.u64());
-    passes.rounds = static_cast<std::size_t>(in.u64());
-    passes.highestRaise = in.f32();
+    passes.edges = static_cast<std::size_t>(in.u64());
+    passes.ladders = static_cast<std::size_t>(in.u64());
+    passes.held = static_cast<std::size_t>(in.u64());
+    passes.highest = in.f32();
 }
 
 // What the file says it holds: the level of seed on world, with these parameters, this
