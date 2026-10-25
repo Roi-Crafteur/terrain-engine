@@ -1,13 +1,14 @@
 // Session of the Unreal plugin on the real world: the frame on the ground of a point, the ground
-// under an Unreal position, the warm-up under a player with its collision tile, the timings of
-// the generations and conversions, invalid parameters, and the destruction of a session while
-// its workers generate tiles.
+// under an Unreal position, the warm-up under a player with its collision tile and its surface
+// blend, the timings of the generations and conversions, invalid parameters, and the destruction
+// of a session while its workers generate tiles.
 #include "terrain_session.hpp"
 
 #include "test_assert.hpp"
 
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <optional>
 #include <stdexcept>
 
@@ -78,6 +79,10 @@ void testWarmUp() {
         const terrain::TileData* data = session.streamer().manager().find(TileKey{player, 0});
         TEST_CHECK(data != nullptr &&
                    ground->origin == terrain::unreal::tileOrigin(frame, *data, TileKey{player, 0}));
+        // The surface blend of the tile goes to the materials as the core made it.
+        TEST_CHECK(data != nullptr && ground->blend == data->surfaceBlend);
+        TEST_CHECK(ground->blend.size() ==
+                   static_cast<std::size_t>(terrain::kTileBlendTexels * terrain::kTileBlendTexels));
     }
     const terrain::unreal::TimingsReport report = session.timings().snapshot();
     TEST_CHECK(report[0].stage(TileStage::Generation).tiles >= 9);

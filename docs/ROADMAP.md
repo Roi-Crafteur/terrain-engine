@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -188,7 +189,10 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   de façon déterministe, fondus de textures et densité de végétation progressive dans
   Unreal ; largeur réaliste selon le couple (quelques km entre forêt et prairie, quelques
   mètres entre plage et roche). Le relief n'en dépend pas : les biomes ne modifient
-  jamais la hauteur
+  jamais la hauteur. Unreal : fondu des textures fait sur les tuiles (matériau temporaire,
+  texels de chaque tuile dans une texture commune) ; l'horizon garde le biome dominant de ses
+  échantillons, les tuiles s'y fondent sur leur bande au-dessus du niveau 0. Reste : les poids
+  dans les échantillons de l'horizon (core), la densité de la végétation
 - matériaux depuis les identifiants de matériau du core ; très haut détail par des
   rochers, falaises et arbres Nanite placés par PCG et du relief fin dans le matériau
   (Nanite ne s'applique pas directement aux tuiles générées en jeu)

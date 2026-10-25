@@ -9,6 +9,8 @@ Rules (kept simple on purpose):
 - the material and the biome of the core (packed in the texels of the horizon,
   Bridge/terrain_surface.hpp) pick the ground layers: grass, dry grass, forest floor, alpine
   grass, dirt, sand, desert, scree, with soft transitions (blended per vertex between samples);
+  on the tiles, the weights of the 2 or 3 dominant biomes and materials of the core
+  (TileData::surfaceBlend) blend them, each weight added to its id, never interpolating ids;
 - patches within a biome, as in Minecraft (world noise, PatchAmount): dry grass and darker grass
   in the meadows, scree and a second rock in the rock, rock outcrops in the snow;
 - rare bare earth and gravel that follow the relief (the curvature of the ground on the tiles,

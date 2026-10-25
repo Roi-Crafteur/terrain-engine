@@ -511,7 +511,8 @@ En attendant les vrais matériaux de la phase 14 : roche grise sur les pentes ra
 sol froid peu pentu, herbe, herbe sèche, forêt, alpage, terre, sable, désert et éboulis selon les
 matériaux et biomes du core, avec des plaques dans chaque biome et des textures sans répétition
 visible, les mêmes de près (tuiles, `M_TemporaryTerrain`) et de loin
-(`M_TerrainHorizonGpu`). Ses textures viennent du pack **Stylescape HD** (licence Fab : jamais
+(`M_TerrainHorizonGpu`). Sur les tuiles, les biomes et matériaux se fondent selon les poids du
+core (`TileData::surfaceBlend`, une texture commune `TileBlendTexels`). Ses textures viennent du pack **Stylescape HD** (licence Fab : jamais
 dans ce dépôt) copié sous `/Game/StylescapeHD` du projet ; sans lui, des couleurs unies. Tout est
 décrit dans [`TEMPORARY_MATERIAL.md`](TEMPORARY_MATERIAL.md) : règles, installation du pack,
 réglages, coût, limites, et trois défauts de rendu (le trait sombre au bord des tuiles, corrigé
