@@ -83,7 +83,6 @@ public:
         PlanetWaterBudget budget;
         PlanetTimings timings;
         PlanetBreach breach;
-        PlanetPasses passes;
     };
     explicit PlanetLevel(Parts&& parts);
 
@@ -106,7 +105,6 @@ public:
     [[nodiscard]] const PlanetWaterBudget& budget() const { return budget_; }
     [[nodiscard]] const PlanetTimings& timings() const { return timings_; }
     [[nodiscard]] const PlanetBreach& breach() const { return breach_; }
-    [[nodiscard]] const PlanetPasses& passes() const { return passes_; }
 
     // Drainage basin of every cell (planet::computeBasins), recomputed on demand.
     [[nodiscard]] std::vector<std::int32_t> basins() const;
@@ -125,7 +123,6 @@ private:
     PlanetWaterBudget budget_;
     PlanetTimings timings_;
     PlanetBreach breach_;
-    PlanetPasses passes_;
 };
 
 namespace planet {

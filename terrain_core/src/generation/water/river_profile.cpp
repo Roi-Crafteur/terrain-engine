@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace terrain::water {
 
@@ -14,6 +15,9 @@ namespace {
 
 // The floor of the valley lies kFloorRise meters above the water at the edge of the channel.
 constexpr double kFloorRise = 0.6;
+// The walls stand at least kWallMargin meters beyond the channel, bounded softly over kWallSoft.
+constexpr double kWallMargin = 2.0;
+constexpr double kWallSoft = 6.0;
 
 double lerp(double a, double b, double t) {
     return a + (b - a) * t;
@@ -33,12 +37,14 @@ double gradientOf(std::int64_t k, std::uint64_t seed) {
 
 // The point of segment a-b nearest to (x, z): the share t along it, the distance and the unit
 // direction from it to the point; and the signed distance to the line of the segment (left of the
-// course positive) with how far the point lies beyond its ends along it (0 alongside).
+// course positive) with how far the point lies beyond its ends along it (0 alongside), upstream of
+// its start or downstream of its end.
 struct Foot {
     double t = 0.0;
     double distance = 0.0;
     double side = 0.0;
     double beyond = 0.0;
+    bool upstream = false;
     double upX = 1.0;
     double upZ = 0.0;
 };
@@ -65,23 +71,34 @@ Foot footOn(const CoursePoint& a, const CoursePoint& b, double x, double z) {
         const double length = std::sqrt(length2);
         f.side = (dx * (z - a.z) - dz * (x - a.x)) / length; // left of a-b: positive
         f.beyond = std::abs(raw - f.t) * length;
+        f.upstream = raw < 0.0;
     }
     return f;
 }
 
-// The surface of the valley of segment a-b at a foot.
-Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f,
+// The surface of the valley of segment a-b at a foot. Upstream of its start, the surface rises
+// rise meters per meter (at least as fast as the water upstream of it): on a steep stretch the floor
+// of the segments below never undercuts the banks of the water above them, while the segments
+// alongside the point set its surface. The fill of the floor drops as fast downstream of its end,
+// for the same reason.
+Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, double rise,
                      std::uint64_t seed, double warp) {
     const double t = f.t;
     const double level = lerp(a.level, b.level, t);
+    const double surfaceLevel = f.upstream ? level + rise * f.beyond : level;
+    const double fillLevel = f.upstream ? level : level - rise * f.beyond;
     const double half = lerp(a.half, b.half, t);
     const double depth = lerp(a.depth, b.depth, t);
     const double floorHalf = lerp(a.floorHalf, b.floorHalf, t);
     const double wall = lerp(a.wall, b.wall, t);
     const double foot = std::max(1.0, lerp(a.foot, b.foot, t));
     const double d = f.distance;
-    // The walls, rounded at their foot, their edge with spurs and re-entrants.
-    const double out = d + warp * wallWarpOf(floorHalf) - floorHalf;
+    // The walls, rounded at their foot, their edge with spurs and re-entrants, but never nearer
+    // to the axis than kWallMargin meters beyond the channel and its meanders (a soft bound).
+    const double amplitude = lerp(a.meander, b.meander, t);
+    const double least = half + amplitude + kWallMargin;
+    const double spur = floorHalf - warp * wallWarpOf(floorHalf) - least;
+    const double out = d - least - 0.5 * (spur + std::sqrt(spur * spur + kWallSoft * kWallSoft));
     double walls = 0.0;
     double wallSlope = 0.0;
     if (out > 0.0) {
@@ -89,9 +106,9 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f,
         wallSlope = out < foot ? wall * out / foot : wall;
     }
     const double floorSlope = lerp(a.floorSlope, b.floorSlope, t);
-    const double floorLevel = level + kFloorRise + floorSlope * std::max(0.0, d - half);
+    const double above = kFloorRise + floorSlope * std::max(0.0, d - half);
+    const double floorLevel = surfaceLevel + above;
     // The channel about its meandering line, cut into the floor (never below it far away).
-    const double amplitude = lerp(a.meander, b.meander, t);
     double channelDistance = d;
     if (amplitude > 0.0) {
         const Meander m = meanderAt(lerp(a.phase, b.phase, t), amplitude, seed);
@@ -102,8 +119,8 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f,
     }
     const double channel =
         channelDistance < half
-            ? level - depth * (1.0 - (channelDistance / half) * (channelDistance / half))
-            : level + kBankSlope * (channelDistance - half);
+            ? surfaceLevel - depth * (1.0 - (channelDistance / half) * (channelDistance / half))
+            : surfaceLevel + kBankSlope * (channelDistance - half);
     const double cut = std::max(0.0, floorLevel - channel);
     Valley v;
     v.height = floorLevel + walls - cut;
@@ -117,9 +134,33 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f,
     // of the walls is laid along it.
     v.slope = floorSlope + wallSlope;
     v.above = walls;
-    v.floor = floorLevel;
+    v.floor = fillLevel + above;
     v.onFloor = 1.0 - smooth(0.0, kLeveeFade, out);
+    const double edge = channelDistance - half;
+    if (edge >= 0.0 && edge < kBankReach) {
+        v.bank = fillLevel + kFloorRise - kBankDrop * std::max(0.0, edge - kBankFlat);
+    }
     return v;
+}
+
+// The rise of the surface of segment i beyond its ends: the steepest fall of the water over it and
+// the segments on each side of it, kLeastRise at least.
+constexpr double kLeastRise = 4.0;
+
+double fallOf(const CoursePoint& a, const CoursePoint& b) {
+    const double run = dmath::hypot(b.x - a.x, b.z - a.z);
+    return run > 0.0 ? std::max(0.0, static_cast<double>(a.level - b.level)) / run : 0.0;
+}
+
+double riseOf(const Course& c, std::uint32_t i) {
+    double rise = std::max(kLeastRise, fallOf(c.points[i], c.points[i + 1]));
+    if (i > 0) {
+        rise = std::max(rise, fallOf(c.points[i - 1], c.points[i]));
+    }
+    if (i + 2 < c.points.size()) {
+        rise = std::max(rise, fallOf(c.points[i + 1], c.points[i + 2]));
+    }
+    return rise;
 }
 
 } // namespace
@@ -192,6 +233,7 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
     const double bound = ground + kLevee;
     double lowest = bound;
     double raise = 0.0;
+    double bank = -std::numeric_limits<double>::infinity();
     ValleyBlend blend;
     for (const CourseChunk& k : c.chunks) {
         const double away = dmath::hypot(x - k.x, z - k.z) - k.radius - k.flat;
@@ -206,12 +248,13 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
             const CoursePoint& a = c.points[i];
             const CoursePoint& b = c.points[i + 1];
             const Foot f = footOn(a, b, x, z);
-            Valley v = segmentValley(a, b, f, meanderSeed, warp);
+            Valley v = segmentValley(a, b, f, riseOf(c, i), meanderSeed, warp);
             if (v.height < bound && f.distance > kReach - kReachFade - 500.0) {
                 v.height += (bound - v.height) *
                             smooth(kReach - kReachFade - 500.0, kReach - 500.0, f.distance);
             }
             raise = std::max(raise, std::clamp(v.floor - ground, 0.0, kLevee) * v.onFloor);
+            bank = std::max(bank, v.bank);
             if (v.height < bound + kBlend) {
                 blend.add(v);
             }
@@ -223,6 +266,7 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
     }
     blend.applyTo(best);
     best.raise = raise;
+    best.bank = bank;
     return best;
 }
 

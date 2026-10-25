@@ -37,7 +37,6 @@ void testRoundTrip(const std::filesystem::path& file, const PlanetLevel& level) 
     TEST_CHECK(again.checksum() == level.checksum());
     TEST_CHECK(again.rivers().segments.size() == level.rivers().segments.size() &&
                again.lakes().size() == level.lakes().size() &&
-               again.passes().held == level.passes().held &&
                again.breach().breached == level.breach().breached);
     bool built = true;
     const PlanetLevel opened =

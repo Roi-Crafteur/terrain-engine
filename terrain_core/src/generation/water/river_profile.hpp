@@ -33,7 +33,16 @@ struct Valley {
     double onFloor = 0.0;
     // valleyAt: the most the floor of the course fills the relief at the point (kLevee at most).
     double raise = 0.0;
+    // The banks of its channel: the ground beside them is held up to this height, kFloorRise above
+    // the water for kBankFlat meters from the edge, then down kBankDrop meters per meter to
+    // kBankReach meters (-infinity in the channel and beyond): no valley of another river, nor of
+    // a stretch below on the same one, leaves the water standing above the ground beside it.
+    double bank = -std::numeric_limits<double>::infinity();
 };
+
+inline constexpr double kBankFlat = 8.0;
+inline constexpr double kBankDrop = 0.5;
+inline constexpr double kBankReach = 60.0;
 
 // The rock of the walls of a valley follows its direction, slopes, walls, gorge and mountains:
 // blended over the valleys near the lowest (a weight halving every kBlendHalving meters above

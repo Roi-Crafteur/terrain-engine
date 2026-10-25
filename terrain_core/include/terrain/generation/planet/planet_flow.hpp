@@ -6,7 +6,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <utility>
 #include <vector>
 
 namespace terrain::planet {
@@ -22,20 +21,17 @@ struct PlanetFlow {
 // land cell passes its runoff and what it received to its receiver, into the sea or into the
 // lake covering it; a dry pit gives it to its playa; a cell under a lake gives its runoff to its
 // lake. Each overflowing lake adds its exact outflow at its partner when the pass reaches its
-// pass cell, or its partner if higher (outflowsByPass), after all its inflows (they all come
-// later in the order than its pass, its partner earlier). Exact integer water: the inflow of
-// every lake equals the one of solveLakes.
+// pass cell, after all its inflows (they all come later in the order than its pass, its partner
+// earlier). Exact integer water: the inflow of every lake equals the one of solveLakes.
 [[nodiscard]] PlanetFlow routeFlow(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
                                    const std::vector<std::uint8_t>& receiver,
                                    const std::vector<std::uint32_t>& order,
                                    const LakeSolution& lakes, const WaterOf& water);
 
-// The overflowing lakes, each with the cell where a pass in decreasing total order hands its
-// outflow to its partner: its pass, or its partner when higher (over a col, planet_passes.hpp),
-// so that the partner always receives it before passing its water on. In the order in which
-// such a pass meets them (decreasing order of those cells, then by index).
-[[nodiscard]] std::vector<std::pair<std::uint32_t, std::int32_t>>
-outflowsByPass(const std::vector<std::uint32_t>& order, const std::vector<PlanetLake>& lakes);
+// The overflowing lakes in decreasing total order of their pass (then by index): the order in
+// which a pass in decreasing order meets them.
+[[nodiscard]] std::vector<std::int32_t> outflowsByPass(const std::vector<std::uint32_t>& order,
+                                                       const std::vector<PlanetLake>& lakes);
 
 // The lake covering a cell, or -1.
 using LakeAt = std::function<std::int32_t(std::size_t cell)>;

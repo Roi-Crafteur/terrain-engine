@@ -33,16 +33,6 @@ void writeParams(ByteWriter& out, const PlanetParams& p) {
                            p.breach.areaHigh, p.breach.mountainDepth}) {
         out.f64(v);
     }
-    const PlanetPassParams& passes = p.passes;
-    if (passes.measured) {
-        throw std::invalid_argument("planet file: a trial over a part of the world is never written");
-    }
-    out.u8(passes.enabled ? 1 : 0);
-    for (const double v : {passes.mountainCut, passes.plainCut, passes.margin,
-                           passes.sectionStep, passes.lateralStep}) {
-        out.f64(v);
-    }
-    out.i32(passes.halfWidth);
     const PlanetClimateParams& c = p.climate;
     for (const float v : {c.equatorTemperature, c.poleTemperature, c.lapseRate, c.iceTemperature}) {
         out.f32(v);
@@ -293,7 +283,7 @@ void writeTotals(ByteWriter& out, const PlanetLevel& level) {
     out.i64(b.lakeEvaporation);
     const PlanetTimings& t = level.timings();
     for (const double v : {t.relief, t.ocean, t.climate, t.order, t.hierarchy, t.lakes, t.flow,
-                           t.rivers, t.features, t.breach, t.passes}) {
+                           t.rivers, t.features, t.breach}) {
         out.f64(v);
     }
     const PlanetBreach& s = level.breach();
@@ -303,18 +293,13 @@ void writeTotals(ByteWriter& out, const PlanetLevel& level) {
     out.f64(s.keptArea);
     out.u64(s.cutCells);
     out.f32(s.deepestCut);
-    const PlanetPasses& passes = level.passes();
-    out.u64(passes.edges);
-    out.u64(passes.ladders);
-    out.u64(passes.held);
-    out.f32(passes.highest);
 }
 
 void readTotals(ByteReader& in, PlanetLevel::Parts& p) {
     p.budget = {in.i64(), in.i64(), in.i64()};
     PlanetTimings& t = p.timings;
     for (double* v : {&t.relief, &t.ocean, &t.climate, &t.order, &t.hierarchy, &t.lakes, &t.flow,
-                      &t.rivers, &t.features, &t.breach, &t.passes}) {
+                      &t.rivers, &t.features, &t.breach}) {
         *v = in.f64();
     }
     PlanetBreach& s = p.breach;
@@ -324,11 +309,6 @@ void readTotals(ByteReader& in, PlanetLevel::Parts& p) {
     s.keptArea = in.f64();
     s.cutCells = static_cast<std::size_t>(in.u64());
     s.deepestCut = in.f32();
-    PlanetPasses& passes = p.passes;
-    passes.edges = static_cast<std::size_t>(in.u64());
-    passes.ladders = static_cast<std::size_t>(in.u64());
-    passes.held = static_cast<std::size_t>(in.u64());
-    passes.highest = in.f32();
 }
 
 // What the file says it holds: the level of seed on world, with these parameters, this

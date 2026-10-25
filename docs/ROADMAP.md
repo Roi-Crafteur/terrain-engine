@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -141,13 +142,22 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   branché sur les biomes ; niveau Planète gardé sur disque (au lieu d'être recalculé) et
   pic de mémoire de sa construction réduit (1 Go aujourd'hui)
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
-- suite de la 11B : refaire les vallées des montagnes en un vrai réseau qui descend vers les
-  plaines (un arbre de vallées qui draine, leurs fonds toujours en pente vers l'aval). Les
+- 11B : sans les cols du relief fin entre les cellules du niveau Planète, les fleuves
+  traversent les crêtes des montagnes en gorges (un tronçon de montagne sur trois creuse plus
+  de 300 m) ; avec eux, l'eau remplit les vallées fermées des montagnes gelées jusqu'à leurs
+  cols (essai du point d'arrêt 3 : 1 à 49 % de lacs dans les fenêtres de haute montagne avec
+  un lit de 300 m, 19 % encore avec 1 000 m). C'est la phase 11C qui règle cela
+
+### Phase 11C — Vallées de montagne qui descendent (prochaine étape, juste après la 11B)
+- dégel des montagnes : `mountain_freeze_test` est levé pour cette phase, puis refait
+- refaire les vallées des montagnes en un vrai réseau qui descend vers les plaines : un arbre
+  de vallées qui draine, leurs fonds toujours en pente vers l'aval, de la crête à la plaine. Les
   vallées de la 11R bis sont des tronçons fermés (boucles des lignes de bruit, fonds qui montent
   et descendent avec les cols, fins en cirques) : l'eau ne peut en sortir qu'en franchissant un
-  col ou une crête. La 11B y creuse la vallée du fleuve (lit jusqu'à 300 m en montagne, sinon un
-  lac de haut bassin) ; ce chantier rendrait ces coupes faibles, au prix d'un dégel des
-  montagnes et d'une nouvelle validation
+  col ou une crête
+- les fleuves de la 11B suivent alors ces vallées : plus de gorges à travers les crêtes, peu
+  de lacs (les lacs de haut bassin seulement), des lits de moins de 300 m
+- nouvelle validation des montagnes à l'œil, dans Unreal, avec le personnage
 
 ### Phase 12 — Monde streamé unifié
 - régions et chunks générés à la volée, mis en cache, contraints par le niveau Planète

@@ -9,6 +9,7 @@
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <bit>
@@ -69,6 +70,9 @@ public:
         for (std::size_t i = 0; i < n; ++i) {
             slots_[i].store(nullptr, std::memory_order_relaxed);
         }
+    }
+    [[nodiscard]] bool has(std::size_t i) const {
+        return slots_[i].load(std::memory_order_acquire) != nullptr;
     }
     template <class Make>
     const T& get(std::size_t i, Make&& make) {
@@ -147,6 +151,14 @@ struct Hydrology::Impl {
     mutable Lazy<water::FineLake> fineLakes; // per lake
     noise::FbmOctaves wallWarp; // the spurs and re-entrants of the walls of the valleys
     mutable Lazy<Path> paths;
+    // The lowest relief on the axis of each reach: all along it, and over its first kStartWindow
+    // meters (hydrology.cpp).
+    struct ReachFloor {
+        float all = 0.0f;
+        float start = 0.0f;
+    };
+    mutable Lazy<ReachFloor> floors;
+    mutable Lazy<float> startLevels; // the water where each reach starts
     mutable Lazy<water::Course> courses;
 
     Impl(std::uint64_t seed, const Heightfield& field, std::shared_ptr<const PlanetLevel> level,
@@ -188,6 +200,8 @@ struct Hydrology::Impl {
     [[nodiscard]] std::size_t next(std::size_t r) const;
     [[nodiscard]] std::size_t previous(std::size_t r) const;
     [[nodiscard]] const Path& pathOf(std::size_t r) const;
+    [[nodiscard]] const ReachFloor& floorOf(std::size_t r) const;
+    [[nodiscard]] float startLevel(std::size_t r) const;
     [[nodiscard]] const water::Course& courseOf(std::size_t r) const;
     [[nodiscard]] water::Course makeCourse(std::size_t r) const;
     [[nodiscard]] water::ReachEnd pointEnd(const RiverSegment& s, std::int32_t segment,
@@ -203,6 +217,12 @@ struct Hydrology::Impl {
     [[nodiscard]] const water::FineLake& fineLakeOf(std::int32_t lake) const;
     [[nodiscard]] water::FineLake makeFineLake(std::int32_t lake) const;
     [[nodiscard]] float levelOf(std::int32_t lake) const { return fineLakeOf(lake).level(); }
+    [[nodiscard]] LakeWater lakeAt(double x, double z, double ground) const;
+    // The relief at a point, or the water of the lake over it: the surface the rivers flow on.
+    [[nodiscard]] float surfaceAt(double x, double z, float ground) const {
+        const LakeWater w = lakeAt(x, z, static_cast<double>(ground));
+        return w.lake >= 0 ? std::max(ground, w.level) : ground;
+    }
     // The reaches of a cell: its river reach and the outlet of its sill, if any.
     struct CellReaches {
         std::array<std::size_t, 2> reach{};

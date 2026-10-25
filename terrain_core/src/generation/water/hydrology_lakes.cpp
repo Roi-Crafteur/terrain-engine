@@ -90,9 +90,13 @@ water::FineLake Hydrology::Impl::makeFineLake(std::int32_t lake) const {
     return {relief, seeds, planet->lakes()[l].level, w, inside, grid.periodX(), grid.periodZ()};
 }
 
-// The lake over a point: the highest of the lakes of the cells around it whose water covers it.
 LakeWater Hydrology::lakeAt(double x, double z, double ground) const {
-    const Impl& m = *impl_;
+    return impl_->lakeAt(x, z, ground);
+}
+
+// The lake over a point: the highest of the lakes of the cells around it whose water covers it.
+LakeWater Hydrology::Impl::lakeAt(double x, double z, double ground) const {
+    const Impl& m = *this;
     const std::size_t cell = planetCellAt(m.grid, x, z);
     const int ci = m.grid.column(cell);
     const int cj = m.grid.row(cell);
@@ -108,6 +112,12 @@ LakeWater Hydrology::lakeAt(double x, double z, double ground) const {
                 continue;
             }
             seen[count++] = id;
+            // The water of a lake never stands above its level on the planet level: no need to
+            // flood it where the relief stands higher.
+            const PlanetLake& planetLake = m.planet->lakes()[static_cast<std::size_t>(id)];
+            if (!(ground < static_cast<double>(planetLake.level))) {
+                continue;
+            }
             const water::FineLake& lake = m.fineLakeOf(id);
             const float level = lake.level();
             if (!(ground < static_cast<double>(level)) ||
@@ -116,10 +126,10 @@ LakeWater Hydrology::lakeAt(double x, double z, double ground) const {
                 !lake.covers(x, z)) {
                 continue;
             }
-            const PlanetLake& p = m.planet->lakes()[static_cast<std::size_t>(id)];
             out.lake = id;
             out.level = level;
-            out.kind = p.overflowing || p.frozen ? WaterKind::Lake : WaterKind::SaltLake;
+            out.kind = planetLake.overflowing || planetLake.frozen ? WaterKind::Lake
+                                                                   : WaterKind::SaltLake;
         }
     }
     return out;

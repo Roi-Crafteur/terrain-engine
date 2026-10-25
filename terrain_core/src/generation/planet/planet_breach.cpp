@@ -37,7 +37,7 @@ struct Front {
 };
 
 Flood priorityFlood(const PlanetGrid& grid, const std::vector<float>& height,
-                    const std::vector<std::uint8_t>& ocean, const PlanetCols* cols) {
+                    const std::vector<std::uint8_t>& ocean) {
     Flood f;
     f.level.assign(grid.cells(), kSeaLevel);
     f.parent.assign(grid.cells(), kNoNeighbor);
@@ -70,11 +70,6 @@ Flood priorityFlood(const PlanetGrid& grid, const std::vector<float>& height,
             seen[n] = 1;
             f.parent[n] = kOpposite[static_cast<std::size_t>(k)];
             f.level[n] = std::max(height[n], top.level);
-            float col = 0.0f;
-            if (cols != nullptr && ocean[top.cell] == kLand && ocean[n] == kLand &&
-                cols->held(height, top.cell, k, &col)) {
-                f.level[n] = std::max(f.level[n], col); // the water passes over the col
-            }
             front.push({f.level[n], static_cast<std::uint32_t>(n)});
         }
     }
@@ -86,7 +81,6 @@ Flood priorityFlood(const PlanetGrid& grid, const std::vector<float>& height,
 struct Depression {
     std::uint32_t outlet = kNone;
     float lowest = 0.0f;
-    float fill = 0.0f; // the highest fill level of its cells: above its outlet behind a col
     std::size_t cells = 0;
     bool mountain = false;
     std::vector<std::uint32_t> pits;
@@ -119,11 +113,10 @@ std::vector<Depression> depressionsOf(const PlanetGrid& grid, const std::vector<
     std::vector<Depression> out;
     for (const auto& [exit, c] : members) {
         if (out.empty() || out.back().outlet != exit) {
-            out.push_back({exit, height[c], f.level[c], 0, mountain[exit] != 0, {}});
+            out.push_back({exit, height[c], 0, mountain[exit] != 0, {}});
         }
         Depression& d = out.back();
         d.lowest = std::min(d.lowest, height[c]);
-        d.fill = std::max(d.fill, f.level[c]);
         ++d.cells;
         d.mountain = d.mountain || mountain[c] != 0;
         if (isPit(grid, height, c)) {
@@ -175,9 +168,9 @@ void carveFrom(const PlanetGrid& grid, std::vector<float>& height,
 PlanetBreach breachDepressions(const PlanetGrid& grid, std::vector<float>& height,
                                const std::vector<std::uint8_t>& ocean,
                                const std::vector<std::uint8_t>& mountain,
-                               const PlanetBreachParams& params, const PlanetCols* cols) {
+                               const PlanetBreachParams& params) {
     PlanetBreach out;
-    const Flood f = priorityFlood(grid, height, ocean, cols);
+    const Flood f = priorityFlood(grid, height, ocean);
     std::vector<Depression> depressions = depressionsOf(grid, height, mountain, f);
     const std::vector<std::uint32_t> drained = drainedCells(grid, f);
     out.depressions = depressions.size();
@@ -185,10 +178,8 @@ PlanetBreach breachDepressions(const PlanetGrid& grid, std::vector<float>& heigh
         const double depth = static_cast<double>(f.level[d.outlet] - d.lowest);
         const double area = static_cast<double>(drained[d.outlet]) * grid.cellArea();
         const double cells = static_cast<double>(d.cells) * grid.cellArea();
-        // A depression below the sea level never drains: the sea would flow in. Nor one held
-        // behind a col: lowering cells never lowers it.
-        if (d.lowest < kSeaLevel || d.fill > f.level[d.outlet] ||
-            depth > allowedDepth(params, area, d.mountain)) {
+        // A depression below the sea level never drains: the sea would flow in.
+        if (d.lowest < kSeaLevel || depth > allowedDepth(params, area, d.mountain)) {
             out.keptArea += cells;
             continue;
         }

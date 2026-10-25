@@ -2,7 +2,6 @@
 
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_breach.hpp"
-#include "terrain/generation/planet/planet_passes.hpp"
 
 namespace terrain {
 
@@ -148,8 +147,6 @@ struct PlanetParams {
     // or none of them without breachSills.
     bool breachSills = true;
     PlanetBreachParams breach;
-    // The sills of the fine relief across the links of the rivers (with floorSamples above 1).
-    PlanetPassParams passes;
 
     PlanetClimateParams climate;
     PlanetRiverParams rivers;

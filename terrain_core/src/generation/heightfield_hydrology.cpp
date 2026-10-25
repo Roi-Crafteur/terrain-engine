@@ -91,8 +91,9 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
                     static_cast<float>(top - h), static_cast<float>(kStrataRoom * c.above)));
             }
         }
-        // The rock never takes the walls below the floor beside the water.
-        h = std::max(h, std::min(c.height, static_cast<double>(c.level) + kFloorRise));
+        // The rock never takes the walls below the floor beside the water, nor below the banks.
+        h = std::max(h, std::min(c.height,
+                                 std::max(static_cast<double>(c.level) + kFloorRise, c.bank)));
         if (h < static_cast<double>(s.height)) {
             s.height = static_cast<float>(h);
         }
@@ -103,6 +104,12 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
         !(static_cast<double>(relief) < static_cast<double>(c.level) - kLevee - kAboveGround)) {
         s.water = WaterKind::River;
         s.waterLevel = c.level;
+    }
+    // The ponds of the rivers, where the relief holds their water.
+    if (s.water != WaterKind::Ocean && s.height < c.pond &&
+        !(s.water == WaterKind::River && !(s.waterLevel < c.pond))) {
+        s.water = WaterKind::River;
+        s.waterLevel = c.pond;
     }
     if (s.water != WaterKind::Ocean) {
         const LakeWater lake = hydrology_->lakeAt(x, z, static_cast<double>(relief));

@@ -163,10 +163,10 @@ const char* mouthName(terrain::RiverMouth mouth) {
 void printTimes(const terrain::PlanetTimings& t, double stats, double passes, double images) {
     std::printf("time: relief %.1f s, ocean %.1f s, sills %.1f s, climate %.1f s, order %.1f s, "
                 "hierarchy %.1f s, lakes %.1f s, discharge %.1f s, rivers %.1f s, features %.1f s, "
-                "cols %.1f s; level %.1f s; figures %.1f s, false passes %.1f s, "
+                "level %.1f s; figures %.1f s, false passes %.1f s, "
                 "images %.1f s\n",
                 t.relief, t.ocean, t.breach, t.climate, t.order, t.hierarchy, t.lakes, t.flow,
-                t.rivers, t.features, t.passes, t.total(), stats, passes, images);
+                t.rivers, t.features, t.total(), stats, passes, images);
 }
 
 void printBreach(const terrain::PlanetBreach& b) {
@@ -174,12 +174,6 @@ void printBreach(const terrain::PlanetBreach& b) {
                 "cells lowered, by %.1f m at most\n",
                 b.depressions, b.breached, b.breachedArea / 1.0e6, b.depressions - b.breached,
                 b.keptArea / 1.0e6, b.cutCells, static_cast<double>(b.deepestCut));
-}
-
-void printPasses(const terrain::PlanetPasses& p) {
-    std::printf("cols: %zu edges measured (%zu with their ladder), %zu holding the water above "
-                "both floors (by %.0f m at most)\n",
-                p.edges, p.ladders, p.held, static_cast<double>(p.highest));
 }
 
 void printLand(const terrain::PlanetStats& stats) {
@@ -295,7 +289,6 @@ int main(int argc, char** argv) {
                 static_cast<unsigned long long>(level.checksum()), argv[1]);
     printTimes(level.timings(), statsTime, passesTime, imagesTime);
     printBreach(level.breach());
-    printPasses(level.passes());
     std::printf("memory: peak %.0f MB during the construction, %.0f MB kept by the level\n",
                 megabytes(peak), megabytes(level.memoryBytes()));
     printLand(stats);

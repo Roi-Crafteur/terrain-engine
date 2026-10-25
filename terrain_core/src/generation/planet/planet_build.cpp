@@ -4,7 +4,6 @@
 #include "terrain/generation/planet/planet_flow.hpp"
 #include "terrain/generation/planet/planet_hierarchy.hpp"
 #include "terrain/generation/planet/planet_order.hpp"
-#include "terrain/generation/planet/planet_passes.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
 #include "terrain/generation/planet/planet_rivers.hpp"
 
@@ -50,20 +49,18 @@ void moveToFloors(RiverGraph& graph, const PlanetGrid& grid, const std::vector<s
     }
 }
 
-// Lakes, discharge, rivers and features, once the relief, the ocean and the climate are known,
-// the water passing the edges held by cols only at their levels.
-void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads, Stopwatch& watch,
-                    const PlanetCols* cols) {
+// Lakes, discharge, rivers and features, once the relief, the ocean and the climate are known.
+void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads, Stopwatch& watch) {
     const PlanetGrid& grid = build.grid;
     const WaterOf water =
         climateWater(grid, build.height, build.ocean, build.climate, params.climate);
     const std::vector<std::uint32_t> order = sortCells(build.height, threads);
-    build.receiver = computeReceivers(grid, build.height, build.ocean, threads, cols);
+    build.receiver = computeReceivers(grid, build.height, build.ocean, threads);
     build.timings.order += watch.lap();
     LakeSolution lakes;
     {
         const DepressionHierarchy hierarchy =
-            buildHierarchy(grid, build.height, build.ocean, order, build.receiver, cols);
+            buildHierarchy(grid, build.height, build.ocean, order, build.receiver);
         build.timings.hierarchy += watch.lap();
         lakes = solveLakes(grid, build.height, hierarchy, order, water);
     }
@@ -108,21 +105,14 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params) {
         build.ocean = markOcean(build.grid, build.height, cells.sea, params.minOceanArea);
         build.timings.ocean = watch.lap();
     }
-    PlanetCols cols;
-    if (params.passes.enabled && params.floorSamples > 1) {
-        cols = measureCols(field, build.grid, build.height, build.floor, params.floorSamples,
-                           build.ocean, build.mountain, params.passes, threads, build.passes);
-        build.timings.passes = watch.lap();
-    }
-    const PlanetCols* held = cols.empty() ? nullptr : &cols;
     if (params.breachSills) {
-        build.breach = breachDepressions(build.grid, build.height, build.ocean, build.mountain,
-                                         params.breach, held);
+        build.breach =
+            breachDepressions(build.grid, build.height, build.ocean, build.mountain, params.breach);
         build.timings.breach = watch.lap();
     }
     build.climate = computeClimate(build.grid, build.height, build.ocean, params.climate, threads);
     build.timings.climate = watch.lap();
-    buildHydrology(build, params, threads, watch, held);
+    buildHydrology(build, params, threads, watch);
     return build;
 }
 

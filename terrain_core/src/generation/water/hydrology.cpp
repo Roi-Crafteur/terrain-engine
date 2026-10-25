@@ -21,6 +21,9 @@ using water_detail::kHalfWave;
 using water_detail::kStray;
 
 constexpr std::size_t kSlopeSpan = 4;
+// Where two reaches of a river meet, the water stands no higher than the relief on the first
+// kStartWindow meters of the second (the valleys of both courses overlap there).
+constexpr double kStartWindow = 1'500.0;
 
 double distanceToSegment(double x, double z, double ax, double az, double bx, double bz) {
     const double dx = bx - ax;
@@ -74,6 +77,8 @@ void Hydrology::Impl::index() {
     indexLakes();
     indexOutlets();
     paths.resize(reachCount());
+    floors.resize(reachCount());
+    startLevels.resize(reachCount());
     courses.resize(reachCount());
 }
 
@@ -178,7 +183,89 @@ const Path& Hydrology::Impl::pathOf(std::size_t r) const {
     });
 }
 
+const Hydrology::Impl::ReachFloor& Hydrology::Impl::floorOf(std::size_t r) const {
+    return floors.get(r, [&] {
+        const std::size_t before = previous(r);
+        const std::size_t after = next(r);
+        const Path axis = water::smoothAxis(before != kNone ? &pathOf(before) : nullptr, pathOf(r),
+                                            after != kNone ? &pathOf(after) : nullptr);
+        // The relief of its course (water::buildCourse): the lowest across its channel.
+        const RiverSegment& s = segmentOf(r);
+        const auto v = static_cast<std::size_t>(vertexIndex(r) + 1);
+        const double widthA = s.vertices[isOutlet(r) ? v : v - 1].width;
+        const double widthB = s.vertices[v].width;
+        std::vector<double> run(axis.size(), 0.0);
+        std::vector<double> xs(axis.size());
+        std::vector<double> zs(axis.size());
+        for (std::size_t i = 0; i < axis.size(); ++i) {
+            xs[i] = axis[i].x;
+            zs[i] = axis[i].z;
+            if (i > 0) {
+                run[i] = run[i - 1] + dmath::hypot(axis[i].x - axis[i - 1].x,
+                                                   axis[i].z - axis[i - 1].z);
+            }
+        }
+        std::vector<double> half(axis.size());
+        for (std::size_t i = 0; i < axis.size(); ++i) {
+            half[i] = 0.5 * (widthA + (widthB - widthA) * run[i] / std::max(run.back(), 1.0));
+        }
+        std::vector<float> ground(axis.size());
+        relief.heightsAt(xs, zs, ground);
+        const water::Surface surface = [this](double x, double z, float g) {
+            return surfaceAt(x, z, g);
+        };
+        for (std::size_t i = 0; i < axis.size(); ++i) {
+            ground[i] = surfaceAt(xs[i], zs[i], ground[i]);
+        }
+        water::lowestAcross(relief, surface, axis, half, ground);
+        ReachFloor f{ground.front(), ground.front()};
+        for (std::size_t i = 1; i < axis.size(); ++i) {
+            f.all = std::min(f.all, ground[i]);
+            if (run[i] <= kStartWindow) {
+                f.start = std::min(f.start, ground[i]);
+            }
+        }
+        return f;
+    });
+}
+
+// The water where a reach starts: the level of the graph there, lowered to the relief at the start
+// of the reach and along the reach before it (the water never rises: it would stand over its
+// hollows), and to the water where the reach before starts; never lowered below the sea. Computed down
+// the river from the first reach whose level is known, outside the locks.
+float Hydrology::Impl::startLevel(std::size_t r) const {
+    std::vector<std::size_t> chain{r};
+    for (std::size_t up = previous(r); up != kNone && !isOutlet(up) && !startLevels.has(up);
+         up = previous(up)) {
+        chain.push_back(up);
+    }
+    float level = 0.0f;
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        const std::size_t k = *it;
+        level = startLevels.get(k, [&] {
+            const float here =
+                segmentOf(k).vertices[static_cast<std::size_t>(vertexIndex(k))].elevation;
+            const std::size_t up = previous(k);
+            float lowest = std::min(here, floorOf(k).start);
+            if (up != kNone) {
+                lowest = std::min(lowest, floorOf(up).all);
+            }
+            if (up != kNone && !isOutlet(up)) {
+                lowest = std::min(lowest, startLevel(up)); // known: computed before
+            }
+            return std::max(lowest, std::min(here, kSeaLevel));
+        });
+    }
+    return level;
+}
+
 const water::Course& Hydrology::Impl::courseOf(std::size_t r) const {
+    // A tributary ends at the water of the river it joins: that course first, outside the lock
+    // of this one (it never depends on its tributaries).
+    const std::size_t after = next(r);
+    if (after != kNone && previous(after) != r && previous(after) != kNone) {
+        (void)courseOf(previous(after));
+    }
     return courses.get(r, [&] { return makeCourse(r); });
 }
 
@@ -216,8 +303,13 @@ water::ReachEnd Hydrology::Impl::pointEnd(const RiverSegment& s, std::int32_t se
 
 water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
     const RiverSegment& s = segmentOf(r);
+    const std::size_t before = previous(r);
+    const std::size_t after = next(r);
     water::ReachInput in;
     in.b = pointEnd(s, segmentIndex(r), vertexIndex(r) + 1);
+    if (after != kNone && previous(after) == r) {
+        in.b.level = startLevel(after);
+    }
     if (isOutlet(r)) {
         // From the sill of the lake, at its level, to the river it feeds.
         const Outlet& o = outletOf(r);
@@ -228,14 +320,15 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
         in.a.distance = -dmath::hypot(in.b.x - o.x, in.b.z - o.z);
     } else {
         in.a = pointEnd(s, segmentIndex(r), vertexIndex(r));
+        in.a.level = startLevel(r);
+        in.b.level = std::min(in.b.level, in.a.level);
     }
     in.own = &pathOf(r);
-    const std::size_t before = previous(r);
-    const std::size_t after = next(r);
     in.before = before != kNone ? &pathOf(before) : nullptr;
     in.after = after != kNone ? &pathOf(after) : nullptr;
     if (after != kNone && previous(after) != r) {
-        // A tributary: it ends where the main river passes, in the images of this reach.
+        // A tributary: it ends where the main river passes, in the images of this reach, at the
+        // water of the main river there.
         const std::size_t main = previous(after);
         const Path& down = pathOf(after);
         water::PathPoint joint =
@@ -243,7 +336,16 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
         joint.x += in.b.x - down.front().x;
         joint.z += in.b.z - down.front().z;
         in.endAt = joint;
+        if (main != kNone) {
+            const water::PathPoint m = startOf(main);
+            in.joins = &courseOf(main);
+            in.joinsX = m.x + wrapCoordinate(in.b.x - m.x, grid.periodX()) - in.b.x;
+            in.joinsZ = m.z + wrapCoordinate(in.b.z - m.z, grid.periodZ()) - in.b.z;
+            in.b.level = std::min(
+                in.a.level, water::levelAt(*in.joins, joint.x + in.joinsX, joint.z + in.joinsZ));
+        }
     }
+    in.surface = [this](double x, double z, float g) { return surfaceAt(x, z, g); };
     in.segmentLength = lengthOf(s);
     in.taperStart = true;
     in.taperEnd = true;

@@ -55,8 +55,7 @@ std::vector<std::uint32_t> sortCells(const std::vector<float>& height, int threa
 }
 
 std::vector<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::vector<float>& height,
-                                           const std::vector<std::uint8_t>& ocean, int threads,
-                                           const PlanetCols* cols) {
+                                           const std::vector<std::uint8_t>& ocean, int threads) {
     std::vector<std::uint8_t> receiver(grid.cells(), kNoNeighbor);
     parallelRows(grid.nz, resolveThreads(threads), [&](int first, int last) {
         for (std::size_t c = grid.index(0, first); c < grid.index(0, last); ++c) {
@@ -66,7 +65,7 @@ std::vector<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::ve
             double best = -1.0;
             for (int k = 0; k < 8; ++k) {
                 const std::size_t n = grid.neighbor(c, k);
-                if (!lowerCell(height, n, c) || (cols != nullptr && cols->held(height, c, k))) {
+                if (!lowerCell(height, n, c)) {
                     continue;
                 }
                 const double drop = static_cast<double>(height[c]) - height[n];

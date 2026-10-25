@@ -25,6 +25,9 @@ using water_detail::kValleyReach;
 // degrees: a cascade down a steep slope is no fall).
 constexpr float kFallMin = 4.0f;
 constexpr double kFallSlope = 0.7;
+// A river holds the ground in the channel of another one whose water lies more than kHoldAbove
+// meters below its own.
+constexpr float kHoldAbove = 2.0f;
 
 struct Candidate {
     std::size_t reach = kNone;
@@ -61,6 +64,7 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
     std::size_t count = 0;
     double warp = 0.0;
     bool warped = false;
+    float pond = -std::numeric_limits<float>::infinity();
     for (int dj = -kSearch; dj <= kSearch; ++dj) {
         for (int di = -kSearch; di <= kSearch; ++di) {
             const Impl::CellReaches here = m.reachesOfCell(
@@ -77,16 +81,26 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
                     warp = static_cast<double>(m.wallWarp.fbm2D(x, z));
                     warped = true;
                 }
+                const water::Course& course = m.courseOf(r);
+                for (const water::FineLake& p : course.ponds) {
+                    if (ground < static_cast<double>(p.level()) && p.level() > pond &&
+                        p.covers(px, pz)) {
+                        pond = p.level();
+                    }
+                }
                 const water::Valley v =
-                    water::valleyAt(m.courseOf(r), px, pz, ground, m.meanderSeed, warp);
-                if (v.height < ground + water::kLevee || v.raise > 0.0) {
+                    water::valleyAt(course, px, pz, ground, m.meanderSeed, warp);
+                if (v.height < ground + water::kLevee || v.raise > 0.0 ||
+                    v.bank > -std::numeric_limits<double>::infinity()) {
                     found[count++] = {r, v};
                 }
             }
         }
     }
     if (count == 0) {
-        return {};
+        RiverCarve out;
+        out.pond = pond;
+        return out;
     }
     std::size_t win = 0;
     double raise = 0.0;
@@ -99,11 +113,35 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
             win = k;
         }
     }
+    // The rivers hold the ground out of the channel of the lowest: beside their water (their
+    // banks) and in their channels (a lower dry valley never takes the water of a river). In the
+    // channel of the lowest, only the rivers whose water stands kHoldAbove meters above its own:
+    // two channels never meet at different levels.
+    const water::Valley& low = found[win].valley;
+    std::size_t holder = win;
+    double hold = low.height;
+    for (std::size_t k = 0; k < count; ++k) {
+        const water::Valley& v = found[k].valley;
+        const double h = v.wet ? v.height : v.bank;
+        if (h > hold && (!low.wet || v.level > low.level + kHoldAbove)) {
+            hold = h;
+            holder = k;
+        }
+    }
+    double bank = -std::numeric_limits<double>::infinity();
+    if (holder != win) {
+        if (found[holder].valley.wet) {
+            win = holder;
+        } else {
+            bank = hold;
+        }
+    }
     RiverCarve out;
-    if (found[win].valley.height < ground + raise) {
+    if (std::max(found[win].valley.height, bank) < ground + raise) {
         // The reaches just before and after blend their rock with it; the valleys of other
         // rivers fade it out where they meet it.
         water::Valley v = found[win].valley;
+        v.height = std::max(v.height, bank);
         water::ValleyBlend blend;
         for (std::size_t k = 0; k < count; ++k) {
             if (k == win || m.adjacent(found[k].reach, found[win].reach)) {
@@ -116,8 +154,11 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
         const double second = out.second;
         out = carveOf(v);
         out.second = second;
+        out.reach = found[win].reach;
+        out.bank = bank;
     }
     out.raise = raise;
+    out.pond = pond;
     return out;
 }
 

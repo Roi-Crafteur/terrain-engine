@@ -95,14 +95,17 @@ void testDeterminism(const World& w, const std::vector<std::array<double, 2>>& p
     std::printf("%zu points near the rivers, %zu carved\n", points.size(), carved);
 }
 
-// Every course: its water never rises, from the level of its first point of the graph to that of
-// the next; consecutive reaches meet; the falls stand where the course is gentle around them.
+// Every course: its water never rises, never stands above the levels of the graph at its ends
+// (but at a confluence), and the next reach on its segment starts at the water where it ends; the falls stand where
+// the course is gentle around them.
 void testCourses(const World& w) {
     const Hydrology& h = *w.hydrology;
     bool down = true;
     bool ends = true;
+    bool meets = true;
     bool breaks = true;
     std::size_t falls = 0;
+    std::size_t joints = 0;
     for (std::size_t r = 0; r < h.reachCount(); r += 27) {
         const RiverReach reach = h.reach(r);
         for (std::size_t i = 1; i < reach.points.size(); ++i) {
@@ -110,16 +113,32 @@ void testCourses(const World& w) {
         }
         const terrain::RiverSegment& s =
             w.planet->rivers().segments[static_cast<std::size_t>(reach.segment)];
-        const terrain::RiverVertex& b = s.vertices[static_cast<std::size_t>(reach.vertex + 1)];
-        ends = ends && reach.points.back().level == b.elevation;
+        const auto v = static_cast<std::size_t>(reach.vertex + 1);
+        // A tributary ends at the water of the river it joins.
+        const bool joins = v + 1 == s.vertices.size() && s.mouth == terrain::RiverMouth::Confluence;
+        ends = ends && (joins || !(reach.points.back().level > s.vertices[v].elevation));
+        if (reach.vertex >= 0) {
+            ends = ends && !(reach.points.front().level >
+                             s.vertices[static_cast<std::size_t>(reach.vertex)].elevation);
+        }
+        const terrain::RiverPoint& last = reach.points.back();
+        for (const std::size_t k : h.reachesNear(last.x, last.z, 1.0)) {
+            const RiverReach after = h.reach(k);
+            if (after.segment == reach.segment && after.vertex == reach.vertex + 1) {
+                meets = meets && after.points.front().level == last.level;
+                ++joints;
+            }
+        }
         for (const terrain::RiverFall& f : reach.falls) {
             ++falls;
             const double drop = static_cast<double>(f.top - f.bottom);
             breaks = breaks && drop > 4.0;
         }
     }
-    TEST_CHECK(down && ends && breaks);
-    std::printf("%zu reaches, %zu falls on one in 27 of them\n", h.reachCount(), falls);
+    TEST_CHECK(down && ends && meets && breaks);
+    TEST_CHECK(joints > 0);
+    std::printf("%zu reaches, %zu falls on one in 27 of them, %zu joints checked\n",
+                h.reachCount(), falls, joints);
 }
 
 // Across a valley, every meter, and where the ground changes most between two points, every 10
@@ -205,7 +224,7 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
         sum.add(static_cast<std::uint64_t>(s.water), 1);
         sum.add(s.waterLevel);
     }
-    constexpr std::uint64_t kExpected = 0xFF8F5C7F20219FE0ULL;
+    constexpr std::uint64_t kExpected = 0xC110632FB7E7405CULL;
     std::printf("{\"hydrology of the small world\", 0x%016llXULL}%s\n",
                 static_cast<unsigned long long>(sum.value()),
                 sum.value() == kExpected ? "" : "  (differs)");

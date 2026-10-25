@@ -52,6 +52,14 @@ struct RiverCarve {
     // The relief filled up to the floor of a valley where it lies below it (the levees of the
     // rivers), 5 meters at most.
     double raise = 0.0;
+    // The water of a pond of a river over the point (where the relief lies below the water of
+    // the river and holds it), or -infinity.
+    float pond = -std::numeric_limits<float>::infinity();
+    // The banks of a channel beside the point hold the ground up to this height, or -infinity:
+    // the water never stands above the ground beside it, whatever valley carves there.
+    double bank = -std::numeric_limits<double>::infinity();
+    // The reach whose valley it is (Hydrology::reach), or -1.
+    std::size_t reach = static_cast<std::size_t>(-1);
 };
 
 // The lake over a point (Hydrology::lakeAt).

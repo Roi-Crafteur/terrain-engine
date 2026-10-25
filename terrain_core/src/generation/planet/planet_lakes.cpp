@@ -138,9 +138,8 @@ void Solver::solveAll() {
     }
     // Highest pass first: a root only ever sends water to a tree attached at a lower pass.
     std::sort(roots.begin(), roots.end(), [this](std::int32_t a, std::int32_t b) {
-        const DepressionNode& na = hierarchy_.nodes[static_cast<std::size_t>(a)];
-        const DepressionNode& nb = hierarchy_.nodes[static_cast<std::size_t>(b)];
-        return na.level != nb.level ? na.level > nb.level : lowerCell(height_, nb.pass, na.pass);
+        return lowerCell(height_, hierarchy_.nodes[static_cast<std::size_t>(b)].pass,
+                         hierarchy_.nodes[static_cast<std::size_t>(a)].pass);
     });
     for (const std::int32_t root : roots) {
         solveTree(root);
@@ -200,7 +199,8 @@ std::uint32_t lowestPit(const DepressionHierarchy& hierarchy, std::size_t n) {
     return hierarchy.nodes[n].pit;
 }
 
-void assignLakes(const DepressionHierarchy& hierarchy, LakeSolution& solution) {
+void assignLakes(const std::vector<float>& height, const DepressionHierarchy& hierarchy,
+                 LakeSolution& solution) {
     const std::size_t nodes = hierarchy.nodes.size();
     const auto wet = [&](std::int32_t n) {
         return n != kOceanNode &&
@@ -219,7 +219,7 @@ void assignLakes(const DepressionHierarchy& hierarchy, LakeSolution& solution) {
         lake.pit = lowestPit(hierarchy, n);
         lake.pass = node.pass;
         lake.partner = node.partner;
-        lake.level = node.level;
+        lake.level = height[node.pass];
         lake.inflow = solution.inflow[n];
         lake.evaporation = lake.overflowing ? solution.capacity[n] : solution.inflow[n];
         lake.outflow = lake.inflow - lake.evaporation;
@@ -304,7 +304,7 @@ LakeSolution solveLakes(const PlanetGrid& grid, const std::vector<float>& height
     Solver solver(height, hierarchy, solution);
     solver.gather(grid, water);
     solver.solveAll();
-    assignLakes(hierarchy, solution);
+    assignLakes(height, hierarchy, solution);
     submerge(grid, height, hierarchy, order, water, solution);
     return solution;
 }

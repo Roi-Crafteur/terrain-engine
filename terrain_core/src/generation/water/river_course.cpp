@@ -6,6 +6,7 @@
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -28,10 +29,6 @@ constexpr double kFallSlope = 0.12;
 constexpr double kFallStep = 8.0;
 // The mountains: the mask from 0 to kMountainFull.
 constexpr float kMountainFull = 0.25f;
-// The deepest the river cuts below the relief: kPlainCut in the plains, kMountainCut under the
-// mountains (PlanetPassParams; deeper, the planet level holds a lake behind the sill).
-constexpr double kPlainCut = 100.0;
-constexpr double kMountainCut = 300.0;
 // The gorge: as the relief above the water on the axis passes kGorgeLow to kGorgeHigh meters
 // (under the mountains) or kCanyonLow to kCanyonHigh (a canyon in a plateau of the plains).
 constexpr float kGorgeLow = 60.0f;
@@ -80,27 +77,38 @@ void measure(std::vector<CoursePoint>& points) {
     }
 }
 
-// The relief on the axis.
-void sampleGround(const Heightfield& relief, std::vector<CoursePoint>& points) {
+// The relief of the course: the lowest across its channel and banks (lowestAcross), and its
+// mountains on the axis.
+void sampleGround(const Heightfield& relief, const ReachInput& in,
+                  std::vector<CoursePoint>& points) {
     std::vector<double> xs(points.size());
     std::vector<double> zs(points.size());
+    std::vector<PathPoint> axis(points.size());
+    std::vector<double> half(points.size());
+    const double length = std::max(points.back().s, 1.0);
     for (std::size_t i = 0; i < points.size(); ++i) {
         xs[i] = points[i].x;
         zs[i] = points[i].z;
+        axis[i] = {points[i].x, points[i].z};
+        half[i] = 0.5 * lerp(in.a.width, in.b.width, points[i].s / length);
     }
     std::vector<HeightSample> samples(points.size());
     relief.samplesAt(xs, zs, samples);
+    std::vector<float> ground(points.size());
     for (std::size_t i = 0; i < points.size(); ++i) {
-        points[i].ground = samples[i].height;
+        ground[i] = in.surface ? in.surface(xs[i], zs[i], samples[i].height) : samples[i].height;
         points[i].mountain = std::min(samples[i].mountainMask, kMountainFull) / kMountainFull;
+    }
+    lowestAcross(relief, in.surface, axis, half, ground);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        points[i].ground = ground[i];
     }
 }
 
-// The water level from a down to b: never rising, at least b's, at most a's. The river cuts the
-// sills it meets, never deeper than kPlainCut below the relief (kMountainCut under the
-// mountains): the water follows the lowest relief met since a, but stands at least that much below
-// the highest relief still ahead of it (a sill holds a pond behind it). Where the bed has to come
-// down below the relief to reach b, it does so on a ramp of at least kRampSlope.
+// The water level from a down to b: never rising, at least b's, at most a's. It follows the lowest
+// relief met since a: the river cuts the sills and the crests it meets (a gorge through a crest,
+// as deep as the crest stands). Where the bed has to come down below the relief to reach b, it
+// does so on a ramp of at least kRampSlope.
 void setLevels(std::vector<CoursePoint>& points, float levelA, float levelB) {
     const double length = points.back().s;
     float lowest = levelA;
@@ -111,13 +119,6 @@ void setLevels(std::vector<CoursePoint>& points, float levelA, float levelB) {
     const double ramp = excess > 0.0 && length > 0.0
                             ? std::max(kRampSlope, static_cast<double>(levelA - levelB) / length)
                             : 0.0;
-    // The highest relief at and ahead of each point, less the cut there.
-    std::vector<float> hold(points.size(), -std::numeric_limits<float>::infinity());
-    for (std::size_t i = points.size() - 1; i > 0; --i) {
-        const double cut = lerp(kPlainCut, kMountainCut, static_cast<double>(points[i].mountain));
-        const float here = static_cast<float>(static_cast<double>(points[i].ground) - cut);
-        hold[i] = i + 1 < points.size() ? std::max(hold[i + 1], here) : here;
-    }
     float running = levelA;
     points.front().level = levelA;
     for (std::size_t i = 1; i < points.size(); ++i) {
@@ -127,14 +128,14 @@ void setLevels(std::vector<CoursePoint>& points, float levelA, float levelB) {
             level = std::min(level, static_cast<float>(static_cast<double>(levelB) +
                                                        ramp * (length - points[i].s)));
         }
-        level = std::max(level, hold[i]);
         points[i].level = std::clamp(level, levelB, levelA);
     }
     points.back().level = levelB;
 }
 
 // The stretches where the water falls, sampled every kFallStep meters.
-bool refineFalls(const Heightfield& relief, std::vector<CoursePoint>& points) {
+bool refineFalls(const Heightfield& relief, const ReachInput& in,
+                 std::vector<CoursePoint>& points) {
     std::vector<CoursePoint> out;
     bool refined = false;
     for (std::size_t i = 0; i + 1 < points.size(); ++i) {
@@ -161,9 +162,43 @@ bool refineFalls(const Heightfield& relief, std::vector<CoursePoint>& points) {
     if (refined) {
         points = std::move(out);
         measure(points);
-        sampleGround(relief, points);
+        sampleGround(relief, in, points);
     }
     return refined;
+}
+
+// A tributary meets the river it joins where its channel first comes within kJoinGap meters of
+// the channel of that river: its course ends there, at the water of that river (beyond, it would
+// run along the other channel at another level). Returns the level of its end.
+constexpr double kJoinGap = 10.0;
+
+float joinEarlier(const ReachInput& in, std::vector<CoursePoint>& points) {
+    if (in.joins == nullptr) {
+        return in.b.level;
+    }
+    const std::vector<CoursePoint>& main = in.joins->points;
+    const double length = std::max(points.back().s, 1.0);
+    for (std::size_t i = 1; i + 1 < points.size(); ++i) {
+        const double x = points[i].x + in.joinsX;
+        const double z = points[i].z + in.joinsZ;
+        const double half = 0.5 * lerp(in.a.width, in.b.width, points[i].s / length);
+        for (std::size_t k = 0; k + 1 < main.size(); ++k) {
+            const CoursePoint& a = main[k];
+            const CoursePoint& b = main[k + 1];
+            const double dx = b.x - a.x;
+            const double dz = b.z - a.z;
+            const double length2 = dx * dx + dz * dz;
+            const double t = length2 > 0.0
+                                 ? std::clamp(((x - a.x) * dx + (z - a.z) * dz) / length2, 0.0, 1.0)
+                                 : 0.0;
+            const double reach = lerp(a.half + a.meander, b.half + b.meander, t) + half + kJoinGap;
+            if (dmath::hypot(x - a.x - t * dx, z - a.z - t * dz) < reach) {
+                points.resize(i + 1);
+                return std::min(in.a.level, static_cast<float>(lerp(a.level, b.level, t)));
+            }
+        }
+    }
+    return in.b.level;
 }
 
 // The axis of the reach: smoothed, its end bent toward where it joins another river.
@@ -254,6 +289,39 @@ void setShapes(const ReachInput& in, std::vector<CoursePoint>& points) {
     }
 }
 
+// The ponds: where the water stands more than kPondDepth above the relief of the axis, the relief
+// flooded from those points at their lowest level, within kPondReach meters of them (a pond the
+// relief does not hold sinks to where it would leave, fine_lake.hpp).
+constexpr float kPondDepth = 0.5f;
+constexpr double kPondReach = 1'500.0;
+
+void findPonds(const Heightfield& relief, Course& c) {
+    const std::vector<CoursePoint>& pts = c.points;
+    const auto under = [&](std::size_t i) { return pts[i].ground < pts[i].level - kPondDepth; };
+    std::size_t i = 0;
+    while (i < pts.size()) {
+        if (!under(i)) {
+            ++i;
+            continue;
+        }
+        std::vector<FineLake::Seed> seeds;
+        float level = std::numeric_limits<float>::infinity();
+        LakeWindow w{pts[i].x, pts[i].z, pts[i].x, pts[i].z};
+        for (; i < pts.size() && under(i); ++i) {
+            seeds.push_back({pts[i].x, pts[i].z});
+            level = std::min(level, pts[i].level);
+            w = {std::min(w.x0, pts[i].x), std::min(w.z0, pts[i].z), std::max(w.x1, pts[i].x),
+                 std::max(w.z1, pts[i].z)};
+        }
+        w = {w.x0 - kPondReach, w.z0 - kPondReach, w.x1 + kPondReach, w.z1 + kPondReach};
+        FineLake pond(relief, seeds, level, w, [](double, double) { return true; },
+                      relief.world().x, relief.world().z);
+        if (pond.level() > -std::numeric_limits<float>::infinity()) {
+            c.ponds.push_back(std::move(pond));
+        }
+    }
+}
+
 // The chunks of 8 segments and the box of the course.
 constexpr std::size_t kChunk = 8;
 
@@ -300,14 +368,16 @@ void setChunks(Course& c) {
 Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     Course c;
     c.points = axisOf(in);
-    sampleGround(relief, c.points);
-    setLevels(c.points, in.a.level, in.b.level);
-    if (refineFalls(relief, c.points)) {
-        setLevels(c.points, in.a.level, in.b.level);
+    const float levelB = joinEarlier(in, c.points);
+    sampleGround(relief, in, c.points);
+    setLevels(c.points, in.a.level, levelB);
+    if (refineFalls(relief, in, c.points)) {
+        setLevels(c.points, in.a.level, levelB);
     }
     setGorges(c.points);
     setShapes(in, c.points);
     setChunks(c);
+    findPonds(relief, c);
     float highest = -std::numeric_limits<float>::infinity();
     for (std::size_t i = 0; i < c.points.size(); ++i) {
         const CoursePoint& p = c.points[i];
@@ -321,6 +391,53 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
         }
     }
     return c;
+}
+
+void lowestAcross(const Heightfield& relief, const Surface& surface,
+                  const std::vector<PathPoint>& axis, const std::vector<double>& half,
+                  std::vector<float>& ground) {
+    constexpr std::array<double, 4> kShares = {-1.0, -0.5, 0.5, 1.0};
+    const std::size_t n = axis.size();
+    std::vector<double> xs(kShares.size() * n);
+    std::vector<double> zs(kShares.size() * n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const PathPoint& a = axis[i > 0 ? i - 1 : i];
+        const PathPoint& b = axis[i + 1 < n ? i + 1 : i];
+        const double length = dmath::hypot(b.x - a.x, b.z - a.z);
+        const double across = half[i] + kBankScan;
+        const double ux = length > 0.0 ? -(b.z - a.z) / length : 0.0;
+        const double uz = length > 0.0 ? (b.x - a.x) / length : 0.0;
+        for (std::size_t k = 0; k < kShares.size(); ++k) {
+            xs[k * n + i] = axis[i].x + kShares[k] * across * ux;
+            zs[k * n + i] = axis[i].z + kShares[k] * across * uz;
+        }
+    }
+    std::vector<float> heights(xs.size());
+    relief.heightsAt(xs, zs, heights);
+    for (std::size_t j = 0; j < heights.size(); ++j) {
+        const float h = surface ? surface(xs[j], zs[j], heights[j]) : heights[j];
+        ground[j % n] = std::min(ground[j % n], h);
+    }
+}
+
+float levelAt(const Course& c, double x, double z) {
+    double nearest = std::numeric_limits<double>::infinity();
+    float level = c.points.front().level;
+    for (std::size_t i = 0; i + 1 < c.points.size(); ++i) {
+        const CoursePoint& a = c.points[i];
+        const CoursePoint& b = c.points[i + 1];
+        const double dx = b.x - a.x;
+        const double dz = b.z - a.z;
+        const double length2 = dx * dx + dz * dz;
+        const double t =
+            length2 > 0.0 ? std::clamp(((x - a.x) * dx + (z - a.z) * dz) / length2, 0.0, 1.0) : 0.0;
+        const double d = dmath::hypot(x - a.x - t * dx, z - a.z - t * dz);
+        if (d < nearest) {
+            nearest = d;
+            level = static_cast<float>(lerp(a.level, b.level, t));
+        }
+    }
+    return level;
 }
 
 } // namespace terrain::water

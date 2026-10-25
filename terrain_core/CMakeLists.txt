@@ -83,7 +83,6 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_level.cpp
     src/generation/planet/planet_moisture.cpp
     src/generation/planet/planet_order.cpp
-    src/generation/planet/planet_passes.cpp
     src/generation/planet/planet_parallel.cpp
     src/generation/planet/planet_relief.cpp
     src/generation/planet/planet_rivers.cpp
