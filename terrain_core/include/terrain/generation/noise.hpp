@@ -6,8 +6,24 @@
 
 namespace terrain::noise {
 
-// Independent seed for a layer or an octave of a generator (splitmix64 mixing).
-[[nodiscard]] std::uint64_t deriveSeed(std::uint64_t seed, std::uint64_t stream);
+namespace detail {
+
+inline constexpr std::uint64_t kGolden = 0x9E3779B97F4A7C15ULL;
+
+// splitmix64 finalizer: every input bit affects every output bit.
+constexpr std::uint64_t mix64(std::uint64_t z) {
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
+} // namespace detail
+
+// Independent seed for a layer or an octave of a generator (splitmix64 mixing). Inline: the cells
+// of the relief (walls, summits, ravines, hills) derive one at every point.
+[[nodiscard]] constexpr std::uint64_t deriveSeed(std::uint64_t seed, std::uint64_t stream) {
+    return detail::mix64(seed + detail::kGolden * (stream + 1));
+}
 
 // wrapCoordinate without its division when v already lies in the canonical range
 // [-period / 2, period / 2), as most sampled coordinates do: there wrapCoordinate gives v itself,

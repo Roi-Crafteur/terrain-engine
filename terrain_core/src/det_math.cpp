@@ -211,24 +211,6 @@ double atanUnit(double t) {
     return kSixthPi + atanKernel((t * kSqrt3 - 1.0) / (t + kSqrt3));
 }
 
-// x^n for an integer 0 < |n| <= 64, by repeated squaring: pow(x, 2) is exactly x * x.
-double powInteger(double x, int n) {
-    auto k = static_cast<unsigned>(n < 0 ? -n : n);
-    double result = 1.0;
-    double base = x;
-    while (true) {
-        if ((k & 1U) != 0U) {
-            result *= base;
-        }
-        k >>= 1U;
-        if (k == 0U) {
-            break;
-        }
-        base *= base;
-    }
-    return n < 0 ? 1.0 / result : result;
-}
-
 } // namespace
 
 double sinTurns(double turns) {
@@ -248,6 +230,16 @@ double cosTurns(double turns) {
     }
     const double r = (turns - 0.25 * quarters) * kTwoPi;
     return sinQuadrant(modFour(quarters + 1.0), r) + 0.0;
+}
+
+SineCosine sinCosTurns(double turns) {
+    const double quarters = roundHalfEven(4.0 * turns);
+    if (!std::isfinite(quarters)) {
+        return {kNaN, kNaN};
+    }
+    const double r = (turns - 0.25 * quarters) * kTwoPi;
+    return {sinQuadrant(modFour(quarters), r) + 0.0,
+            sinQuadrant(modFour(quarters + 1.0), r) + 0.0};
 }
 
 double sin(double x) {

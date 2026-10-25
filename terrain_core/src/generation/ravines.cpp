@@ -140,6 +140,24 @@ Carve carve(const Octave& o, const WorldSize& world, double x, double z, Directi
     return c;
 }
 
+// depth, through the anchors of cells, for a slope above 0.
+float depthWith(const Network& network, double x, double z, double slopeX, double slopeZ,
+                double slope, double strength, Memo& cells) {
+    const Direction down{-slopeX / slope, -slopeZ / slope};
+    Direction u = down;
+    double sum = 0.0;
+    for (std::size_t k = 0; k < network.octaves.size(); ++k) {
+        const Octave& o = network.octaves[k];
+        const Carve c = carve(o, network.world, x, z, u, cells.octaves[k]);
+        const double share = static_cast<double>(o.depth);
+        sum += share * o.spacing * c.depth;
+        // The next octave runs down the walls of these ravines: the slope plus theirs, across.
+        const double turn = share * c.turn;
+        u = normalized(down.x - turn * down.z, down.z + turn * down.x);
+    }
+    return static_cast<float>(strength * slope * sum);
+}
+
 } // namespace
 
 Network makeNetwork(std::uint64_t seed, const WorldSize& world) {
@@ -162,21 +180,11 @@ float depth(const Network& network, double x, double z, double slopeX, double sl
     if (!(strength > 0.0) || !(slope > 0.0)) {
         return 0.0f;
     }
-    Memo local;
-    Memo& cells = memo != nullptr ? *memo : local;
-    const Direction down{-slopeX / slope, -slopeZ / slope};
-    Direction u = down;
-    double sum = 0.0;
-    for (std::size_t k = 0; k < network.octaves.size(); ++k) {
-        const Octave& o = network.octaves[k];
-        const Carve c = carve(o, network.world, x, z, u, cells.octaves[k]);
-        const double share = static_cast<double>(o.depth);
-        sum += share * o.spacing * c.depth;
-        // The next octave runs down the walls of these ravines: the slope plus theirs, across.
-        const double turn = share * c.turn;
-        u = normalized(down.x - turn * down.z, down.z + turn * down.x);
+    if (memo != nullptr) {
+        return depthWith(network, x, z, slopeX, slopeZ, slope, strength, *memo);
     }
-    return static_cast<float>(strength * slope * sum);
+    Memo local;
+    return depthWith(network, x, z, slopeX, slopeZ, slope, strength, local);
 }
 
 } // namespace terrain::ravines

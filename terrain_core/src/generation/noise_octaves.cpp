@@ -12,6 +12,30 @@
 
 namespace terrain::noise {
 
+namespace {
+
+// dmath::pow(ridge, sharpness) for the ridges of one call, finite: an integer sharpness of at most
+// 64 in magnitude goes straight to dmath::powInteger, which pow calls for it (the same bits),
+// without the call and the tests of pow at every octave.
+class RidgePower {
+public:
+    explicit RidgePower(double sharpness)
+        : sharpness_(sharpness),
+          integer_(std::abs(sharpness) <= 64.0 && sharpness == std::floor(sharpness)),
+          exponent_(integer_ ? static_cast<int>(sharpness) : 0) {}
+
+    [[nodiscard]] double operator()(double ridge) const {
+        return integer_ ? dmath::powInteger(ridge, exponent_) : dmath::pow(ridge, sharpness_);
+    }
+
+private:
+    double sharpness_;
+    bool integer_;
+    int exponent_;
+};
+
+} // namespace
+
 // The same sequence as the loops of fbm2D, ridged2D and fbm3D: the same doubles.
 FbmOctaves::FbmOctaves(std::uint64_t seed, const FbmParams& params, const WorldSize& world)
     : world_(world) {
@@ -51,12 +75,13 @@ float FbmOctaves::ridged2DWith(double x, double z, double sharpness, Noise&& noi
     }
     const double cx = wrapCanonical(x, world_.x);
     const double cz = wrapCanonical(z, world_.z);
+    const RidgePower power(sharpness);
     double weight = 1.0;
     double sum = 0.0;
     for (std::size_t i = 0; i < octaves_.size(); ++i) {
         const float n = noise(i, octaves_[i], cx, cz);
         const double ridge = 1.0 - std::abs(static_cast<double>(n));
-        const double signal = dmath::pow(ridge, sharpness) * weight;
+        const double signal = power(ridge) * weight;
         weight = std::clamp(2.0 * signal, 0.0, 1.0);
         sum += octaves_[i].amplitude * signal;
     }
@@ -113,9 +138,11 @@ FbmOctaves::RidgedSlope FbmOctaves::ridgedSlopeWith(double x, double z, double s
     }
     const double cx = wrapCanonical(x, world_.x);
     const double cz = wrapCanonical(z, world_.z);
+    const RidgePower power(sharpness);
     double weight = 1.0;
     double sum = 0.0;
     double headTotal = 0.0;
+    double headNoise = 0.0;
     double headSum = 0.0;
     double headX = 0.0;
     double headZ = 0.0;
@@ -125,16 +152,16 @@ FbmOctaves::RidgedSlope FbmOctaves::ridgedSlopeWith(double x, double z, double s
         const CellGradients& g = cells(i, o, c);
         if (static_cast<int>(i) >= head) {
             const float n = detail::cellNoise(g, c.fu, c.fv);
-            const double signal =
-                dmath::pow(1.0 - std::abs(static_cast<double>(n)), sharpness) * weight;
+            const double signal = power(1.0 - std::abs(static_cast<double>(n))) * weight;
             weight = std::clamp(2.0 * signal, floor, 1.0);
             sum += o.amplitude * signal;
             continue;
         }
         const detail::NoiseSlope n = detail::cellNoiseSlope(g, c.fu, c.fv);
         out.crease = std::min(out.crease, std::abs(n.value));
+        headNoise += o.amplitude * n.value;
         const double ridge = 1.0 - std::abs(static_cast<double>(n.value));
-        const double powered = dmath::pow(ridge, sharpness);
+        const double powered = power(ridge);
         const double signal = powered * weight;
         // d signal = d powered * weight, d ridge = -sign(n) d n.
         const std::array<double, 4> j = detail::latticeJacobian(o.lattice);
@@ -155,6 +182,7 @@ FbmOctaves::RidgedSlope FbmOctaves::ridgedSlopeWith(double x, double z, double s
         out.head = static_cast<float>(std::clamp(h, 0.0, 1.0));
         out.headX = headX / headTotal;
         out.headZ = headZ / headTotal;
+        out.headFbm = static_cast<float>(std::clamp(headNoise / headTotal, -1.0, 1.0));
     }
     return out;
 }

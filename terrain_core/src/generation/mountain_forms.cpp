@@ -137,12 +137,13 @@ double fbm(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::Me
     return static_cast<double>(memo != nullptr ? n.fbm2D(x, z, *memo) : n.fbm2D(x, z));
 }
 
-// A zero line of a noise of one octave near (x, z): the distance to it (first order) and the
-// direction away from it.
+// A zero line of a noise of one octave near (x, z): the distance to it (first order), the
+// direction away from it and the noise there (fbm2D: on which side of the line).
 struct Line {
     double distance = 0.0;
     double awayX = 1.0;
     double awayZ = 0.0;
+    double side = 0.0;
 };
 
 Line lineOf(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::Memo* memo) {
@@ -151,7 +152,8 @@ Line lineOf(const noise::FbmOctaves& n, double x, double z, noise::FbmOctaves::M
                         : n.ridged2DSlope(x, z, 1.0, 0.0, 1);
     const double g = std::max(dmath::hypot(r.headX, r.headZ), kLeastGradient);
     // The ridged signal 1 - |n| rises toward the line.
-    return {(1.0 - static_cast<double>(r.head)) / g, -r.headX / g, -r.headZ / g};
+    return {(1.0 - static_cast<double>(r.head)) / g, -r.headX / g, -r.headZ / g,
+            static_cast<double>(r.headFbm)};
 }
 
 // The massif brought down to a valley in U of floor floor, at e meters beyond the half width of
@@ -266,8 +268,9 @@ Form lobedDistance(const Summit& s, double dx, double dz, double r) {
     double turn = 0.0; // dL / da
     for (std::size_t k = 0; k < s.lobes.size(); ++k) {
         const double w = static_cast<double>(k + 1);
-        lobe += s.lobes[k] * dmath::cosTurns(w * a - s.phases[k]);
-        turn -= s.lobes[k] * kTwoPi * w * dmath::sinTurns(w * a - s.phases[k]);
+        const dmath::SineCosine harmonic = dmath::sinCosTurns(w * a - s.phases[k]);
+        lobe += s.lobes[k] * harmonic.cosine;
+        turn -= s.lobes[k] * kTwoPi * w * harmonic.sine;
     }
     // d a / dx = -dz / (2 pi r^2), d a / dz = dx / (2 pi r^2).
     const double scale = 1.0 / (s.radius * lobe);
@@ -300,6 +303,49 @@ void addSummit(const Summit& s, double dx, double dz, double r, double gain, dou
     Form& m = lifts.moat;
     m = {m.height * factor, m.gradX * factor + m.height * along * rho.gradX,
          m.gradZ * factor + m.height * along * rho.gradZ};
+}
+
+// The summits of the 3 x 3 cells around cell (i, j), on their crests if onCrest.
+void placeSummits(const Noises& n, int i, int j, bool onCrest, std::array<Summit, 9>& summits) {
+    for (std::size_t k = 0; k < summits.size(); ++k) {
+        summits[k] = summitOf(n, i + static_cast<int>(k % 3) - 1, j + static_cast<int>(k / 3) - 1,
+                              i, j, onCrest);
+    }
+}
+
+// The rises of the summits of the 3 x 3 cells around cell (i, j) at (px, pz) meters from its
+// center. Summits not on their crests (onCrest false) are moved onto them only when they may
+// reach the point.
+Lifts liftsOf(const Noises& n, const std::array<Summit, 9>& summits, bool onCrest, int i, int j,
+              double px, double pz, double ground, double height, double core) {
+    Lifts lifts;
+    const auto add = [&](const Summit& s) {
+        const double dx = px - s.x;
+        const double dz = pz - s.z;
+        const double r = dmath::hypot(dx, dz);
+        if (!(r < kMoatEnd * kLobeReach * s.radius)) {
+            return;
+        }
+        // Lower summits where the ground and the massif are already high: the top of the rise,
+        // at most ground + height + core * prominence / kLevel, under kCeiling.
+        const double prominence =
+            std::clamp(kLevel * (kCeiling - ground - height), 0.0, s.prominence);
+        addSummit(s, dx, dz, r, core * prominence / (kLevel * height), core * kMoat, lifts);
+    };
+    for (std::size_t k = 0; k < summits.size(); ++k) {
+        const Summit& s = summits[k];
+        if (!(s.prominence > 0.0)) {
+            continue;
+        }
+        if (onCrest) {
+            add(s);
+        } else if (dmath::hypot(px - s.x, pz - s.z) <
+                   kMoatEnd * kLobeReach * s.radius + kCrestReach) {
+            add(summitOf(n, i + static_cast<int>(k % 3) - 1, j + static_cast<int>(k / 3) - 1, i,
+                         j, true));
+        }
+    }
+    return lifts;
 }
 
 } // namespace
@@ -339,7 +385,7 @@ Carve valleys(const Noises& n, double x, double z, double height, const Form& ma
     const double wx = x + kWarp * static_cast<double>(warp[0]);
     const double wz = z + kWarp * static_cast<double>(warp[1]);
     const Line main = lineOf(n.main, wx, wz, memo ? &memo->main : nullptr);
-    const double side = fbm(n.main, wx, wz, memo ? &memo->main : nullptr);
+    const double side = main.side;
     const double presence =
         smooth(kPresenceLow, kPresenceHigh, fbm(n.presence, x, z, memo ? &memo->presence : nullptr));
     const double passes =
@@ -407,47 +453,24 @@ Form summits(const Noises& n, double x, double z, double ground, double height, 
     const double cz = (z + 0.5 * n.world.z) / sizeZ;
     const auto i = static_cast<int>(std::floor(cx));
     const auto j = static_cast<int>(std::floor(cz));
-    Memo local;
-    Memo& m = memo != nullptr ? *memo : local;
-    // Through a memo the summits of the 3 x 3 cells move onto their crests once per cell;
-    // without one, only those that may reach the point.
-    if (!m.valid || m.cellI != i || m.cellJ != j) {
-        for (std::size_t k = 0; k < m.summits.size(); ++k) {
-            m.summits[k] = summitOf(n, i + static_cast<int>(k % 3) - 1,
-                                    j + static_cast<int>(k / 3) - 1, i, j, memo != nullptr);
-        }
-        m.valid = true;
-        m.cellI = i;
-        m.cellJ = j;
-    }
     // The point in meters from the center of its cell.
     const double px = (cx - i - 0.5) * sizeX;
     const double pz = (cz - j - 0.5) * sizeZ;
+    // Through a memo the summits of the 3 x 3 cells move onto their crests once per cell;
+    // without one, only those that may reach the point.
     Lifts lifts;
-    for (std::size_t k = 0; k < m.summits.size(); ++k) {
-        Summit s = m.summits[k];
-        if (!(s.prominence > 0.0)) {
-            continue;
+    if (memo != nullptr) {
+        if (!memo->valid || memo->cellI != i || memo->cellJ != j) {
+            placeSummits(n, i, j, true, memo->summits);
+            memo->valid = true;
+            memo->cellI = i;
+            memo->cellJ = j;
         }
-        if (memo == nullptr) {
-            if (!(dmath::hypot(px - s.x, pz - s.z) <
-                  kMoatEnd * kLobeReach * s.radius + kCrestReach)) {
-                continue;
-            }
-            s = summitOf(n, i + static_cast<int>(k % 3) - 1, j + static_cast<int>(k / 3) - 1, i,
-                         j, true);
-        }
-        const double dx = px - s.x;
-        const double dz = pz - s.z;
-        const double r = dmath::hypot(dx, dz);
-        if (!(r < kMoatEnd * kLobeReach * s.radius)) {
-            continue;
-        }
-        // Lower summits where the ground and the massif are already high: the top of the rise,
-        // at most ground + height + core * prominence / kLevel, under kCeiling.
-        const double prominence =
-            std::clamp(kLevel * (kCeiling - ground - height), 0.0, s.prominence);
-        addSummit(s, dx, dz, r, core * prominence / (kLevel * height), core * kMoat, lifts);
+        lifts = liftsOf(n, memo->summits, true, i, j, px, pz, ground, height, core);
+    } else {
+        std::array<Summit, 9> summits;
+        placeSummits(n, i, j, false, summits);
+        lifts = liftsOf(n, summits, false, i, j, px, pz, ground, height, core);
     }
     // The highest rise, lowered by the rings: (F f)' = F' f + F f'.
     const Form& f = lifts.rise;

@@ -306,24 +306,21 @@ GeographySample Geography::mapAt(double geoX, double z) const {
         columns[k] = i >= 0 && i < columns_ ? i : (i % columns_ + columns_) % columns_;
         rows[k] = j >= 0 && j < rows_ ? j : (j % rows_ + rows_) % rows_;
     }
-    // The fields of the rifts (the last ones) are 0 on every node read but near the rifts.
+    // The fields of the rifts (the last ones) are 0 on every node read but near the rifts. Their
+    // count is a constant for every compiler but MSVC, which only vectorizes the loop without it.
+    const auto node = [&](std::size_t a, std::size_t b) { return fieldsOf(columns[a], rows[b]); };
     const std::size_t fields =
-        rifts_[static_cast<std::size_t>(rows[1]) * static_cast<std::size_t>(columns_) +
-               static_cast<std::size_t>(columns[1])] != 0
-            ? kFields
-            : kRift;
+        rifts_[static_cast<std::size_t>(rows[1] * columns_ + columns[1])] != 0 ? kFields : kRift;
     std::array<double, kFields> sum{};
-    for (int b = 0; b < 4; ++b) {
-        const int row = rows[static_cast<std::size_t>(b)];
-        for (int a = 0; a < 4; ++a) {
-            const int column = columns[static_cast<std::size_t>(a)];
-            const float* n = fieldsOf(column, row);
-            const double w = wx.w[static_cast<std::size_t>(a)] * wz.w[static_cast<std::size_t>(b)];
-            for (std::size_t f = 0; f < fields; ++f) {
-                sum[f] += w * n[f];
-            }
-        }
+#if defined(_MSC_VER) && !defined(__clang__)
+    geography::sumNodes<0>(node, wx, wz, fields, sum);
+#else
+    if (fields == kFields) {
+        geography::sumNodes<kFields>(node, wx, wz, fields, sum);
+    } else {
+        geography::sumNodes<kRift>(node, wx, wz, fields, sum);
     }
+#endif
     GeographySample s;
     s.mapCoast = static_cast<float>(sum[kCoast]);
     s.coast = sum[kCoast];

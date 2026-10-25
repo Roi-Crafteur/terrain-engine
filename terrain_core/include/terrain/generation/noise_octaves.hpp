@@ -61,6 +61,9 @@ public:
         // The least |noise| of the head octaves: 0 on the creases of one of them, where the
         // gradient turns over.
         float crease = 1.0f;
+        // The fbm of the head octaves alone, as fbm2D of a noise of `head` octaves gives it: the
+        // bits of fbm2D when head is at least octaves().
+        float headFbm = 0.0f;
     };
     [[nodiscard]] RidgedSlope ridged2DSlope(double x, double z, double sharpness, double floor,
                                             int head) const;

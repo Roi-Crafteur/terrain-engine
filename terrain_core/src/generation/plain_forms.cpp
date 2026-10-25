@@ -171,8 +171,14 @@ struct Warp {
 };
 
 Warp warpAt(const Noises& n, double x, double z, Memos* memos) {
-    return {kWarp * fbm(n.warpX, x, z, memos ? &memos->warpX : nullptr),
-            kWarp * fbm(n.warpZ, x, z, memos ? &memos->warpZ : nullptr)};
+    if (!n.twinWarps) {
+        return {kWarp * fbm(n.warpX, x, z, memos ? &memos->warpX : nullptr),
+                kWarp * fbm(n.warpZ, x, z, memos ? &memos->warpZ : nullptr)};
+    }
+    const std::array<float, 2> warp =
+        memos != nullptr ? n.warpX.fbm2DPair(n.warpZ, x, z, memos->warpX, memos->warpZ)
+                         : n.warpX.fbm2DPair(n.warpZ, x, z);
+    return {kWarp * static_cast<double>(warp[0]), kWarp * static_cast<double>(warp[1])};
 }
 
 // The isolated hills at a point: their height (weight 1, their gullies cut), the greatest share
@@ -210,8 +216,9 @@ Summits summitsOf(std::uint64_t hash, std::uint64_t axis, double u, double v, do
     const auto highest = static_cast<int>(count * field(axis, 3));
     const double spine = radius * (kSpineLow + (kSpineHigh - kSpineLow) * field(axis, 1));
     const double lean = kHillSkewLow + (kHillSkewHigh - kHillSkewLow) * field(hash, 3);
-    const double leanX = dmath::cosTurns(field(hash, 2));
-    const double leanZ = dmath::sinTurns(field(hash, 2));
+    const dmath::SineCosine leaning = dmath::sinCosTurns(field(hash, 2));
+    const double leanX = leaning.cosine;
+    const double leanZ = leaning.sine;
     Summits out;
     for (int k = 0; k < count; ++k) {
         const std::uint64_t own = noise::deriveSeed(axis, static_cast<std::uint64_t>(k) + 1);
@@ -248,8 +255,9 @@ struct HillPart {
 HillPart hillShape(std::uint64_t hash, std::uint64_t more, double dx, double dz, double radius,
                    double wander) {
     const std::uint64_t axis = noise::deriveSeed(hash, 2);
-    const double u = dx * dmath::cosTurns(field(axis, 0)) + dz * dmath::sinTurns(field(axis, 0));
-    const double v = dz * dmath::cosTurns(field(axis, 0)) - dx * dmath::sinTurns(field(axis, 0));
+    const dmath::SineCosine along = dmath::sinCosTurns(field(axis, 0));
+    const double u = dx * along.cosine + dz * along.sine;
+    const double v = dz * along.cosine - dx * along.sine;
     const Summits summits = summitsOf(hash, axis, u, v, radius);
     HillPart part;
     part.around = 1.0 - smooth(1.0, kHillAround, summits.rho);
@@ -271,6 +279,60 @@ HillPart hillShape(std::uint64_t hash, std::uint64_t more, double dx, double dz,
     return part;
 }
 
+// The isolated hills of the 3 x 3 cells around cell (i, j), through the memo when it holds them.
+const HillCells& hillCellsAt(const Noises& n, int i, int j, HillCells& cells) {
+    if (cells.valid && cells.i == i && cells.j == j) {
+        return cells;
+    }
+    const double sizeX = n.world.x / n.cellsX;
+    const double sizeZ = n.world.z / n.cellsZ;
+    for (std::size_t k = 0; k < cells.cells.size(); ++k) {
+        const int di = static_cast<int>(k % 3) - 1;
+        const int dj = static_cast<int>(k / 3) - 1;
+        HillCell& c = cells.cells[k];
+        c.hash = noise::deriveSeed(n.hillSeed, cellIndex(i + di, j + dj, n.cellsX, n.cellsZ));
+        c.hill = field(c.hash, 0) < kHillShare;
+        if (!c.hill) {
+            continue;
+        }
+        c.more = noise::deriveSeed(c.hash, 1);
+        c.x = (di + kHillJitter * (2.0 * field(c.hash, 1) - 1.0)) * sizeX;
+        c.z = (dj + kHillJitter * (2.0 * field(c.more, 0) - 1.0)) * sizeZ;
+        c.radius = kHillRadiusLow + (kHillRadiusHigh - kHillRadiusLow) * field(c.more, 1);
+        c.reach = c.radius * (kSpineHigh + kSummitSide +
+                              kSummitRadiusHigh * (1.0 + kHillSkewHigh) * kHillAround);
+    }
+    cells.valid = true;
+    cells.i = i;
+    cells.j = j;
+    return cells;
+}
+
+// The hills of the cells around (x, z), at (px, pz) meters from the center of its cell, warped.
+Hill hillsIn(const Noises& n, const HillCells& cells, double x, double z, double px, double pz,
+             Memos* memos) {
+    Hill out;
+    double knolls = 0.0;
+    bool near = false;
+    for (const HillCell& c : cells.cells) {
+        if (!c.hill || !(dmath::hypot(px - c.x, pz - c.z) < c.reach)) {
+            continue;
+        }
+        if (!near) {
+            knolls = fbm(n.knolls, x, z, memos ? &memos->knolls : nullptr);
+            near = true;
+        }
+        const HillPart part =
+            hillShape(c.hash, c.more, px - c.x, pz - c.z, c.radius, kGullyWander * knolls);
+        out.height +=
+            (kHillHeightLow + (kHillHeightHigh - kHillHeightLow) * field(c.more, 2)) * part.shape;
+        out.share = std::max(out.share, part.share);
+        out.around = std::max(out.around, part.around);
+    }
+    out.height *= 1.0 + kKnolls * knolls;
+    return out;
+}
+
 Hill hillsOf(const Noises& n, double x, double z, const Warp& warp, Memos* memos) {
     const double sizeX = n.world.x / n.cellsX;
     const double sizeZ = n.world.z / n.cellsZ;
@@ -281,42 +343,11 @@ Hill hillsOf(const Noises& n, double x, double z, const Warp& warp, Memos* memos
     // The point in meters from the center of its cell, warped.
     const double px = (cx - i - 0.5) * sizeX + warp.x;
     const double pz = (cz - j - 0.5) * sizeZ + warp.z;
-    Hill out;
-    double knolls = 0.0;
-    bool near = false;
-    for (int dj = -1; dj <= 1; ++dj) {
-        for (int di = -1; di <= 1; ++di) {
-            const std::uint64_t hash =
-                noise::deriveSeed(n.hillSeed, cellIndex(i + di, j + dj, n.cellsX, n.cellsZ));
-            if (!(field(hash, 0) < kHillShare)) {
-                continue;
-            }
-            const std::uint64_t more = noise::deriveSeed(hash, 1);
-            const double hx = (di + kHillJitter * (2.0 * field(hash, 1) - 1.0)) * sizeX;
-            const double hz = (dj + kHillJitter * (2.0 * field(more, 0) - 1.0)) * sizeZ;
-            const double radius =
-                kHillRadiusLow + (kHillRadiusHigh - kHillRadiusLow) * field(more, 1);
-            const double reach =
-                radius * (kSpineHigh + kSummitSide +
-                          kSummitRadiusHigh * (1.0 + kHillSkewHigh) * kHillAround);
-            if (!(dmath::hypot(px - hx, pz - hz) < reach)) {
-                continue;
-            }
-            if (!near) {
-                knolls = fbm(n.knolls, x, z, memos ? &memos->knolls : nullptr);
-                near = true;
-            }
-            const HillPart part =
-                hillShape(hash, more, px - hx, pz - hz, radius, kGullyWander * knolls);
-            out.height +=
-                (kHillHeightLow + (kHillHeightHigh - kHillHeightLow) * field(more, 2)) *
-                part.shape;
-            out.share = std::max(out.share, part.share);
-            out.around = std::max(out.around, part.around);
-        }
+    if (memos != nullptr) {
+        return hillsIn(n, hillCellsAt(n, i, j, memos->hillCells), x, z, px, pz, memos);
     }
-    out.height *= 1.0 + kKnolls * knolls;
-    return out;
+    HillCells local;
+    return hillsIn(n, hillCellsAt(n, i, j, local), x, z, px, pz, memos);
 }
 
 // A trough along a line: 1 on it, 0 from half meters away on.
@@ -392,6 +423,7 @@ Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
     n.cellsX = std::max(1, static_cast<int>(std::lround(world.x / kHillCell)));
     n.cellsZ = std::max(1, static_cast<int>(std::lround(world.z / kHillCell)));
     n.world = world;
+    n.twinWarps = n.warpX.twinOf(n.warpZ);
     return n;
 }
 
