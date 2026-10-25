@@ -4,6 +4,7 @@
 
 #include "fine_lake.hpp"
 #include "river_course.hpp"
+#include "river_profile.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
@@ -15,6 +16,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -115,9 +117,22 @@ private:
 
 using Path = std::vector<water::PathPoint>;
 
+// The valleys of the reaches near a point that may carve it or fill it (Hydrology::riversAt), and
+// the highest pond of their courses over it.
+struct Candidate {
+    std::size_t reach = kNone;
+    water::Valley valley;
+};
+struct Candidates {
+    std::array<Candidate, 2 * (2 * kSearch + 1) * (2 * kSearch + 1)> found{};
+    std::size_t count = 0;
+    float pond = -std::numeric_limits<float>::infinity();
+};
+
 } // namespace water_detail
 
 using water_detail::Bits;
+using water_detail::Candidates;
 using water_detail::kNone;
 using water_detail::Lazy;
 using water_detail::Path;
@@ -209,6 +224,8 @@ struct Hydrology::Impl {
     [[nodiscard]] water::ReachEnd pointEnd(const RiverSegment& s, std::int32_t segment,
                                            std::int32_t vertex) const;
     [[nodiscard]] bool mayReach(std::size_t r, double x, double z, double radius) const;
+    // The valleys near the canonical (x, z) where the relief is ground meters high.
+    [[nodiscard]] Candidates candidatesAt(double x, double z, double ground) const;
     // Whether two reaches follow each other on a river.
     [[nodiscard]] bool adjacent(std::size_t a, std::size_t b) const;
     // The lakes (hydrology_lakes.cpp): their cells, and their levels over the relief.
