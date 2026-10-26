@@ -35,12 +35,23 @@ constexpr int kColumnBlock = 16;     // columns per block on the threads
 // comb of stripes on the faces).
 constexpr double kStepShare = 0.0005; // step along a ray: this share of its depth, at least
 constexpr double kMinStep = 0.25;    // this many meters
+// Where the slope of the rising ground along the ray changes by more than kEdgeShare of kFaceSlope
+// from one step to the next, the ray walks the step again in kFineSteps: the edges of a face fall
+// where the ground turns, not on the steps of the ray (on a face of 6 m per meter, a step of
+// 0.25 m spans 1.5 m of it: teeth along its edges). Even slopes keep their steps.
+constexpr double kEdgeShare = 0.0625;
+constexpr double kFineSteps = 16.0;
 // Where the ground rises more than kFaceSlope meters per meter of the ray between two points (70
 // degrees), the rows between them show the face of a wall, lit as such (not a blend of their
 // colors).
 constexpr double kFaceSlope = 2.75;
+// The face fades in from kFaceSlope - kFaceBlend to kFaceSlope + kFaceBlend: no flip of colors from
+// one column to the next on a wall about that steep.
+constexpr double kFaceBlend = 0.5;
 constexpr double kFaceRead = 4.0;
+constexpr double kFaceGrad = 2.0;
 constexpr Rgb kRock = {128.0, 118.0, 108.0};
+constexpr Rgb kFall = {190.0, 210.0, 230.0}; // the water of a fall down a face: white water
 // The ground turns to bare rock as its slope passes kRockSlopeLow to kRockSlopeHigh.
 constexpr double kRockSlopeLow = 0.7;
 constexpr double kRockSlopeHigh = 1.0;
@@ -130,17 +141,31 @@ Rgb groundColor(const ViewGround& ground, const ViewParams& p, const Camera& c, 
     return mix(color, kHaze, 1.0 - dmath::exp(-distance / p.hazeDistance));
 }
 
-// Color of the face of a wall seen along the ray (unit direction dirX, dirZ): it rises rise
-// meters over run meters away from the eye, facing it; the tint of the rock lit by the sun on
-// that face, then hazed.
-Rgb faceColor(const ViewParams& p, const Camera& c, double dirX, double dirZ, double run,
-              double rise, double distance) {
-    // Read at least as steep as kFaceRead: the walls of a scene are lit alike, not in stripes as
-    // the run between two points of a ray comes and goes.
-    const double g = std::max(rise / run, kFaceRead);
-    const double lambert =
-        (-g * dirX * c.sun[0] + c.sun[1] - g * dirZ * c.sun[2]) / std::sqrt(g * g + 1.0);
-    const Rgb color = scale(kRock, light(lambert));
+// Color of the face of a wall seen along the ray (unit direction dirX, dirZ) at (x, z): the tint of
+// the rock (of the water of a fall where it is wet) lit by the sun through the gradient of the
+// ground over kFaceGrad meters on each side (the rock of the face, the same whatever the steps of
+// the ray, no stripes), read at least as steep as kFaceRead, then hazed.
+Rgb faceColor(const ViewGround& ground, const ViewParams& p, const Camera& c, double x, double z,
+              double dirX, double dirZ, bool wet, double distance) {
+    double gx = (static_cast<double>(ground(x + kFaceGrad, z)) - ground(x - kFaceGrad, z)) /
+                (2.0 * kFaceGrad);
+    double gz = (static_cast<double>(ground(x, z + kFaceGrad)) - ground(x, z - kFaceGrad)) /
+                (2.0 * kFaceGrad);
+    // Facing the eye: up the ray.
+    if (gx * dirX + gz * dirZ < 0.0) {
+        gx = -gx;
+        gz = -gz;
+    }
+    const double g = std::sqrt(gx * gx + gz * gz);
+    if (g < kFaceRead) {
+        const double along = gx * dirX + gz * dirZ;
+        const double fill = std::sqrt(std::max(0.0, kFaceRead * kFaceRead - g * g + along * along));
+        gx += (fill - along) * dirX;
+        gz += (fill - along) * dirZ;
+    }
+    const double lambert = (-gx * c.sun[0] + c.sun[1] - gz * c.sun[2]) /
+                           std::sqrt(gx * gx + gz * gz + 1.0);
+    const Rgb color = scale(wet ? kFall : kRock, light(lambert));
     return mix(color, kHaze, 1.0 - dmath::exp(-distance / p.hazeDistance));
 }
 
@@ -175,57 +200,131 @@ void paintSky(Image& image, const Camera& c, int column, int lowestFree) {
     }
 }
 
+// The step of the ray from depth s: a share of the depth, shorter in the fine steps and by the
+// tower.
+double stepAt(const ViewParams& p, const Tower& tower, double x, double z, double s, bool fine) {
+    double step = std::max(kMinStep, kStepShare * s) / (fine ? kFineSteps : 1.0);
+    if (tower.present && dmath::hypot(x - p.towerX, z - p.towerZ) < 2.0 * p.towerWidth + step) {
+        step = std::min(step, 0.25 * p.towerWidth);
+    }
+    return step;
+}
+
+// The slope along the ray changes at an edge of a face: from gentle to steep, or back.
+bool slopeBreaks(double slope, double next) {
+    const double edge = kEdgeShare * kFaceSlope;
+    return std::abs(next - slope) > edge && std::max(next, slope) > edge;
+}
+
+// A ray of the view: its column and its direction, horizontal.
+struct Ray {
+    int column = 0;
+    double dirX = 0.0;    // per meter of depth along the axis of the view
+    double dirZ = 0.0;
+    double stretch = 1.0; // horizontal meters per meter of depth
+};
+
+// A point of a ray.
+struct RayPoint {
+    double x = 0.0;
+    double z = 0.0;
+    double depth = 0.0;   // along the axis of the view
+    double height = 0.0;  // of the ground
+    double surface = 0.0; // what is drawn there: the ground, or the water over it
+    bool wet = false;
+    int row = 0;          // of the image where it is seen (below it, maybe)
+};
+
+// Paints the rows of the point at from its row down to lowestFree: as much of a face from the
+// point before as the ground between them is one (its colors at both ends of the step, blended
+// down to the row of the point before: the same shading whatever the length of the step), the
+// rest a blend from the color below of the point before where it was painted. Returns the color
+// of the point.
+Rgb paintGround(const ViewGround& ground, const ViewParams& p, const Camera& c, const Ray& ray,
+                const RayPoint& at, const RayPoint& before, double face, bool painted,
+                const Rgb& below, double step, int lowestFree, Image& image) {
+    const double distance = at.depth * ray.stretch;
+    const Rgb color = groundColor(ground, p, c, at.x, at.z, static_cast<float>(at.height), at.wet,
+                                  std::max(1.0, step), distance);
+    const double ux = ray.dirX / ray.stretch;
+    const double uz = ray.dirZ / ray.stretch;
+    Rgb top = color;
+    Rgb foot = painted ? below : color;
+    if (face > 0.0) {
+        top = mix(top, faceColor(ground, p, c, at.x, at.z, ux, uz, at.wet, distance), face);
+        foot = mix(foot, faceColor(ground, p, c, before.x, before.z, ux, uz, at.wet, distance),
+                   face);
+    }
+    const double rows = std::max(before.row, lowestFree) - at.row;
+    for (int r = at.row; r < lowestFree; ++r) {
+        setPixel(image, ray.column, r, mix(top, foot, (r - at.row + 0.5) / rows));
+    }
+    return color;
+}
+
 // Casts the ray of a column front to back: each point of the ground higher on the image than
 // every nearer one covers the rows down to them, in colors going from that of the nearer point
 // when it was seen (the face of ground between them) to its own.
 void castColumn(const ViewGround& ground, const ViewWater& water, const ViewParams& p,
                 const Camera& c, const Tower& tower, int column, Image& image) {
     const double u = (column + 0.5 - 0.5 * p.width) / c.focal;
-    const double dirX = c.forwardX + u * c.rightX;
-    const double dirZ = c.forwardZ + u * c.rightZ;
-    const double stretch = std::sqrt(1.0 + u * u); // horizontal meters per meter of depth
-    int lowestFree = p.height;                     // rows 0 to lowestFree - 1 still free
-    bool seen = false; // the previous point of the ray was seen, in color below
+    const Ray ray{column, c.forwardX + u * c.rightX, c.forwardZ + u * c.rightZ,
+                  std::sqrt(1.0 + u * u)};
+    int lowestFree = p.height; // rows 0 to lowestFree - 1 still free
+    RayPoint before;           // the previous point of the ray
+    before.row = p.height;
+    bool fromGround = false; // it is a point of the ground (not the first, not on the tower)
+    bool seen = false;    // it was seen, or lies below the image
+    bool painted = false; // it was seen, in color below
     Rgb below{};
-    double before = 0.0; // the height of the previous point of the ray
-    double previous = 0.0; // and its depth
+    double slope = 0.0;        // of the ground along the ray up to it
+    double surfaceSlope = 0.0; // and of what is drawn
+    double fineUntil = 0.0;    // the ray walks in fine steps up to this depth
+    bool coarse = false;       // the point was reached by a coarse step
     for (double s = p.minDistance; s <= p.maxDistance && lowestFree > 0;) {
-        const double x = p.eyeX + dirX * s;
-        const double z = p.eyeZ + dirZ * s;
-        const double distance = s * stretch;
-        double step = std::max(kMinStep, kStepShare * s);
-        if (tower.present &&
-            dmath::hypot(x - p.towerX, z - p.towerZ) < 2.0 * p.towerWidth + step) {
-            step = std::min(step, 0.25 * p.towerWidth);
+        RayPoint at{p.eyeX + ray.dirX * s, p.eyeZ + ray.dirZ * s, s, 0.0, 0.0, false, 0};
+        const double distance = s * ray.stretch;
+        const bool fine = s < fineUntil;
+        const double step = stepAt(p, tower, at.x, at.z, s, fine);
+        const bool onTower = tower.covers(p, at.x, at.z);
+        const float h = onTower ? static_cast<float>(tower.top) : ground(at.x, at.z);
+        const float level = onTower ? h : water(at.x, at.z);
+        at.height = static_cast<double>(h);
+        at.wet = level > h;
+        at.surface = static_cast<double>(at.wet ? level : h);
+        at.row = std::max(c.rowOf((at.surface - drop(p, distance) - p.eyeHeight) / s), 0);
+        const bool visible = at.row < lowestFree;
+        const double run = (s - before.depth) * ray.stretch;
+        const double rise = at.height - before.height;
+        // A slope that breaks on a step seen: walked again in fine steps.
+        if (coarse && fromGround && !onTower && (seen || visible) &&
+            (slopeBreaks(slope, rise / run) ||
+             slopeBreaks(surfaceSlope, (at.surface - before.surface) / run))) {
+            fineUntil = s;
+            s = before.depth + (s - before.depth) / kFineSteps;
+            coarse = false;
+            continue;
         }
-        const bool onTower = tower.covers(p, x, z);
-        const float h = onTower ? static_cast<float>(tower.top) : ground(x, z);
-        const float level = onTower ? h : water(x, z);
-        const bool wet = level > h;
-        const double surface = static_cast<double>(wet ? level : h);
-        const int row = std::max(c.rowOf((surface - drop(p, distance) - p.eyeHeight) / s), 0);
-        const bool visible = row < lowestFree;
         if (visible && onTower) {
-            paintTower(image, p, c, tower, column, row, lowestFree, s, distance);
+            paintTower(image, p, c, tower, column, at.row, lowestFree, s, distance);
         } else if (visible) {
-            const Rgb color =
-                groundColor(ground, p, c, x, z, h, wet, std::max(1.0, step), distance);
-            const double rows = lowestFree - row;
-            const double run = (s - previous) * stretch;
-            const double rise = static_cast<double>(h) - before;
-            const bool face = seen && rise > kFaceSlope * run;
-            const Rgb wall =
-                face ? faceColor(p, c, dirX / stretch, dirZ / stretch, run, rise, distance) : color;
-            for (int r = row; r < lowestFree; ++r) {
-                setPixel(image, column, r,
-                         face ? wall : (seen ? mix(color, below, (r - row + 0.5) / rows) : color));
-            }
-            below = color;
+            // A face even from a hidden point: it rises into view above a nearer one.
+            const double face =
+                fromGround ? std::clamp((rise / run - kFaceSlope + kFaceBlend) / (2.0 * kFaceBlend),
+                                        0.0, 1.0)
+                           : 0.0;
+            below = paintGround(ground, p, c, ray, at, before, face, painted, below, step,
+                                lowestFree, image);
         }
-        seen = visible && !onTower;
-        before = static_cast<double>(h);
-        previous = s;
-        lowestFree = visible ? row : lowestFree;
+        // On the row painted last (the fine steps) or below the image before any: seen.
+        seen = (at.row <= lowestFree || lowestFree == p.height) && !onTower;
+        painted = visible && !onTower;
+        fromGround = !onTower;
+        slope = rise / run;
+        surfaceSlope = (at.surface - before.surface) / run;
+        before = at;
+        lowestFree = visible ? at.row : lowestFree;
+        coarse = !fine;
         s += step;
     }
     paintSky(image, c, column, lowestFree);

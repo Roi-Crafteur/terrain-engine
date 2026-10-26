@@ -1,13 +1,17 @@
 // Views of the relief in perspective, on synthetic grounds: the projection puts a wall where its
 // top is seen, a nearer wall hides a farther one, the tower stands where it is placed, the image
-// does not depend on the number of threads, and the sight lines see over the ground or not.
+// does not depend on the number of threads, the edges of a steep face fall where the ground turns
+// (not on the steps of the rays), and the sight lines see over the ground or not.
 #include "terrain/io/relief_view.hpp"
 
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <functional>
 #include <stdexcept>
 
 namespace {
@@ -108,6 +112,65 @@ void testTower() {
     TEST_CHECK(!isTowerRed(image, 140, foot - 2) && !isTowerRed(image, 180, foot - 2));
 }
 
+// The pixels of rows from[column] + 1 to + 4 that differ from those of the column on their left,
+// from column 101 to 539: none along a smooth edge.
+int teethAlong(const Image& image, const std::function<int(int)>& from) {
+    const auto pixel = [&](int column, int row, int channel) {
+        return static_cast<int>(
+            image.pixels[(static_cast<std::size_t>(row) * static_cast<std::size_t>(image.width) +
+                          static_cast<std::size_t>(column)) *
+                             3 +
+                         static_cast<std::size_t>(channel)]);
+    };
+    int teeth = 0;
+    for (int column = 101; column < 540; ++column) {
+        for (int k = 1; k <= 4; ++k) {
+            for (int channel = 0; channel < 3; ++channel) {
+                if (std::abs(pixel(column, from(column) + k, channel) -
+                             pixel(column - 1, from(column - 1) + k, channel)) > 3) {
+                    ++teeth;
+                    break;
+                }
+            }
+        }
+    }
+    return teeth;
+}
+
+// A face of 6 m per meter across the view, oblique to it, from 10 m to a plateau of 22 m 45 m
+// away: its top is the skyline and the rows just below it change smoothly from one column to the
+// next; so do the lowest rows of the image when its foot lies below them. On the steps of the
+// rays alone, the last of them on the face fell anywhere below its top (the first one seen
+// anywhere above its foot), and the rows between took another color in some columns: regular
+// teeth along the edges.
+void testFaceEdges() {
+    ViewParams p = eastView();
+    p.width = 640;
+    p.height = 360;
+    const terrain::ViewGround face = [](double x, double z) {
+        const double u = 0.955 * x + 0.296 * z; // across the face, 0.3 radian off the axis
+        return static_cast<float>(std::clamp(10.0 + 6.0 * (u - 43.0), 10.0, 22.0));
+    };
+    const Image image = terrain::renderReliefView(face, p, 1);
+    const auto skyline = [&](int column) {
+        int top = 0;
+        while (top < p.height && isSky(image, column, top)) {
+            ++top;
+        }
+        return top;
+    };
+    for (int column = 101; column < 540; ++column) {
+        TEST_CHECK(skyline(column) > 40 && skyline(column) < 140);
+        TEST_CHECK(std::abs(skyline(column) - skyline(column - 1)) <= 1);
+    }
+    TEST_CHECK(teethAlong(image, skyline) == 0);
+    // Tilted up by 0.4 radian: the lowest row looks 1.5 degrees up, above the foot of the face.
+    p.tilt = 0.4;
+    const Image raised = terrain::renderReliefView(face, p, 1);
+    TEST_CHECK(!isSky(raised, 320, p.height - 1));
+    TEST_CHECK(teethAlong(raised, [&](int) { return p.height - 5; }) == 0);
+}
+
 void testThreadsAndCurvature() {
     ViewParams p = eastView();
     p.planetRadius = 6'371'000.0;
@@ -166,6 +229,7 @@ int main() {
     testWallProjection();
     testOcclusion();
     testTower();
+    testFaceEdges();
     testThreadsAndCurvature();
     testSightline();
     testInvalid();
