@@ -10,8 +10,7 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projets
-eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -103,6 +102,24 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   personnage
 - coût : montagnes ×2,6 et plaines ×1,9 de l'ancien relief en patchs
 
+### Phase 11B — L'eau suit le relief
+- mer décidée par la géographie (reliée à l'océan) et non plus par l'altitude ; dépressions sous
+  le niveau de la mer, sèches (fond en relief, falaise du côté raide, buttes, croûtes de sel) ou
+  en lacs
+- niveau Planète gardé sur disque (`terrain_make_planet` : 247 Mo, environ 100 s sur 4 cœurs) ;
+  fonds des cellules, petites dépressions percées
+- fleuves creusés après le relief, sans le déformer : lits, vallées ouvertes en plaine (berges à
+  7° en médiane, 13,5° au 90e centile), gorges de roche dans les montagnes, affluents qui
+  descendent dans la vallée qu'ils rejoignent, levées, lacs fins au niveau des lacs de la planète
+- chutes aux seules ruptures de pente : à-pic jusqu'à 400 m ou gradins irréguliers, dans une
+  fente au fond de la vallée
+- sorties pour Unreal : type et niveau de l'eau dans les échantillons, Bridge
+- climat de la planète branché sur les biomes (humidité tirée de la pluie et de l'évaporation)
+- strates et joints des parois de la 11R bis d'épaisseurs irrégulières, plus de motif régulier
+  en peigne : montagnes gelées refaites (`mountain_freeze_test`)
+- coût en patchs, du relief seul au relief avec l'eau : terres ×1,9, montagnes ×1,5, à moins de
+  1 km d'un fleuve ×3,6
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
@@ -134,15 +151,14 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - deltas, estuaires, grands lacs, méandres, bras morts
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
-- 11A, 11R et 11R bis : faits (voir « Réalisé »)
-- 11B : mer décidée par la géographie (reliée à l'océan) et non plus par l'altitude :
-  dépressions sous le niveau de la mer, sèches ou en lacs salés (type mer Morte, vallée de
-  la Mort)
-- 11B : creusement des lits, lacs, canyons et chutes dans le relief, nouveau climat
-  branché sur les biomes ; niveau Planète gardé sur disque (au lieu d'être recalculé) et
-  pic de mémoire de sa construction réduit (1 Go aujourd'hui)
+- 11A, 11R, 11R bis et 11B : faits (voir « Réalisé »)
+- reste de la 11B : pic de mémoire de la construction du niveau Planète (1,07 Go, but 500 Mo ;
+  chargement 535 Mo, en jeu 372 Mo) et coût en patchs près des fleuves (×3,6, but ×1,3)
+- côté Unreal : mer sous les tuiles et mer de l'horizon seulement là où le core met l'océan, et
+  surfaces des lacs et des fleuves à leur niveau (aujourd'hui tout est dessiné à 0 m : une
+  dépression sous 0 m montre une mer carrée)
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
-- 11B : sans les cols du relief fin entre les cellules du niveau Planète, les fleuves
+- sans les cols du relief fin entre les cellules du niveau Planète, les fleuves de la 11B
   traversent les crêtes des montagnes en gorges (un tronçon de montagne sur trois creuse plus
   de 300 m) ; avec eux, l'eau remplit les vallées fermées des montagnes gelées jusqu'à leurs
   cols (essai du point d'arrêt 3 : 1 à 49 % de lacs dans les fenêtres de haute montagne avec
