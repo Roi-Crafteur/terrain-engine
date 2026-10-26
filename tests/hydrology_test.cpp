@@ -1,7 +1,7 @@
 // The hydrology of the small world (phase 11B): the same bits whatever the threads and the order
 // of the points; the water always going down along the courses, which meet at the points of the
-// graph; the lakes flat at their levels; the falls at breaks of slope only; no step across the
-// valleys; a golden checksum.
+// graph; the lakes flat at their levels; the falls at breaks of slope only, wet down their faces;
+// no step across the valleys; a golden checksum.
 #include "terrain/generation/climate.hpp"
 #include "terrain/generation/planet/planet_climate.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
@@ -184,6 +184,48 @@ void testCrossSections(const World& w) {
                 steepest, finest);
 }
 
+// Down the face of a fall the channel is wet from bank to bank: at a quarter, half and three
+// quarters of the drop of the falls of one reach in 3, every meter across the inner 70 % of its
+// channel. The segments below on the same face reach up it beyond their start and hold about the
+// same ground: they must not leave it dry.
+void testFallFaces(const World& w) {
+    const Hydrology& h = *w.hydrology;
+    std::size_t faces = 0;
+    std::size_t points = 0;
+    std::size_t dry = 0;
+    for (std::size_t r = 0; r < h.reachCount(); r += 3) {
+        const RiverReach reach = h.reach(r);
+        for (const terrain::RiverFall& f : reach.falls) {
+            ++faces;
+            for (const float share : {0.25f, 0.5f, 0.75f}) {
+                const float level = f.top - share * (f.top - f.bottom);
+                std::size_t i = 1;
+                while (i < reach.points.size() && !(reach.points[i].level < level)) {
+                    ++i;
+                }
+                if (i == reach.points.size()) {
+                    continue;
+                }
+                const terrain::RiverPoint& a = reach.points[i - 1];
+                const terrain::RiverPoint& b = reach.points[i];
+                const double t = (a.level - level) / (a.level - b.level);
+                const double length = std::max(1e-6, std::hypot(b.x - a.x, b.z - a.z));
+                const double half = 0.35 * (a.width + t * (b.width - a.width));
+                for (double d = -half; d <= half; d += 1.0) {
+                    const double x = a.x + t * (b.x - a.x) - d * (b.z - a.z) / length;
+                    const double z = a.z + t * (b.z - a.z) + d * (b.x - a.x) / length;
+                    ++points;
+                    dry += w.field.sampleAt(x, z).water == terrain::WaterKind::None ? 1 : 0;
+                }
+            }
+        }
+    }
+    TEST_CHECK(faces > 0 && points > 0);
+    TEST_CHECK(dry == 0);
+    std::printf("down %zu faces of falls, %zu points across their channels, %zu dry\n", faces,
+                points, dry);
+}
+
 // The lakes are flat at the level of their lake: 16 km around the lowest cells of a few lakes,
 // every 125 m (outside the corridors of the rivers, mountain_freeze_test keeps every bit of the
 // relief).
@@ -279,6 +321,7 @@ int main() {
     testDeterminism(w, points);
     testCourses(w);
     testCrossSections(w);
+    testFallFaces(w);
     testLakes(w);
     testHumidity(w);
     testGolden(w, points);

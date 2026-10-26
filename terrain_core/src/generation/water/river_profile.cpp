@@ -82,6 +82,10 @@ Foot footOn(const CoursePoint& a, const CoursePoint& b, double x, double z) {
     return f;
 }
 
+// A segment whose water comes down more than kFaceDrop meters per meter is the face of a fall
+// (the steps of river_falls: 4 to 8, the runs of a river never more than 0.12).
+constexpr double kFaceDrop = 1.0;
+
 // The surface of the valley of segment a-b at a foot. Upstream of its start, the surface rises
 // rise meters per meter (risesOf: at least as fast as the level upstream of it comes down to it):
 // on a steep stretch or below a fall the floor of the segments below never undercuts the water
@@ -137,11 +141,15 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
             ? water - depth * (1.0 - (channelDistance / half) * (channelDistance / half))
             : water + bankSlope * (channelDistance - half);
     const double cut = std::max(0.0, floorLevel - channel);
+    // Not wet where its surface rises upstream, but up the face of a fall: there it is the face,
+    // its water rising with it (where the segment above holds about the same ground).
+    const bool face = a.level - b.level > kFaceDrop * (b.s - a.s);
+    const double surface = face ? water : level;
     Valley v;
     v.height = floorLevel + walls - cut;
-    v.level = static_cast<float>(level);
+    v.level = static_cast<float>(surface);
     v.floorLevel = static_cast<float>(surfaceLevel);
-    v.wet = channelDistance < half && channel < level; // not where its surface rises upstream
+    v.wet = channelDistance < half && channel < surface;
     v.gorge = static_cast<float>(lerp(a.gorge, b.gorge, t));
     v.mountain = static_cast<float>(lerp(a.mountain, b.mountain, t));
     v.upX = f.upX;
