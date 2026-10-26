@@ -16,6 +16,7 @@
 // Deterministic: the courses are pure functions of the relief and of the planet level, the same
 // bits whatever the thread or the order in which they are computed. Thread-safe.
 
+#include "terrain/generation/climate.hpp"
 #include "terrain/generation/heightfield.hpp"
 
 #include <cstddef>
@@ -43,6 +44,9 @@ struct RiverCarve {
     double second = std::numeric_limits<double>::infinity();
     bool wet = false;     // in its channel
     float level = 0.0f;   // the water there
+    // The level the floor of the valley is carved from: the water, or beside the steps of a fall
+    // the slope it falls down (continuous along the river where its water falls).
+    float floor = 0.0f;
     float gorge = 0.0f;   // [0, 1], open valley to narrow gorge
     float mountain = 0.0f; // [0, 1], plains to mountains
     double upX = 1.0;     // unit direction away from the river
@@ -143,5 +147,10 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// The humidity of the planet level of hydrology (PlanetLevel::humidityAt) as the climate of the
+// world reads it (ClimateField), hydrology kept alive by it; nullptr without hydrology.
+[[nodiscard]] std::shared_ptr<const HumiditySource>
+planetHumidity(std::shared_ptr<const Hydrology> hydrology);
 
 } // namespace terrain

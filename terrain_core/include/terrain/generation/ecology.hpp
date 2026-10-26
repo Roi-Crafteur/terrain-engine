@@ -64,8 +64,10 @@ class Ecology {
 public:
     // Periodic on the world, as its climate and vegetation. Throws std::invalid_argument for an
     // invalid world (validate).
+    // With a humidity source, its climate reads the humidity there (ClimateField).
     explicit Ecology(std::uint64_t seed, const EcologyParams& params = {},
-                     const WorldSize& world = {});
+                     const WorldSize& world = {},
+                     std::shared_ptr<const HumiditySource> humidity = nullptr);
 
     [[nodiscard]] EcologySample sampleAt(double x, double z, const SurfaceSite& site) const;
     [[nodiscard]] EcologyMap map(const TerrainSurface& surface) const;

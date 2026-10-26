@@ -20,6 +20,10 @@ constexpr double kWallMargin = 2.0;
 constexpr double kWallSoft = 6.0;
 // The slope of the walls of a gorge swings by up to kGorgeSwing of itself along it.
 constexpr double kGorgeSwing = 0.45;
+// The headwall of a fall turns to rock over kHeadFade meters beside its channel; the banks of its
+// slot rise kFallBank meters per meter (76 degrees).
+constexpr double kHeadFade = 10.0;
+constexpr double kFallBank = 4.0;
 
 double lerp(double a, double b, double t) {
     return a + (b - a) * t;
@@ -79,16 +83,21 @@ Foot footOn(const CoursePoint& a, const CoursePoint& b, double x, double z) {
 }
 
 // The surface of the valley of segment a-b at a foot. Upstream of its start, the surface rises
-// rise meters per meter (at least as fast as the water upstream of it): on a steep stretch the floor
-// of the segments below never undercuts the banks of the water above them, while the segments
-// alongside the point set its surface. The fill of the floor drops as fast downstream of its end,
-// for the same reason.
+// rise meters per meter (risesOf: at least as fast as the level upstream of it comes down to it):
+// on a steep stretch or below a fall the floor of the segments below never undercuts the water
+// above them, while the segments alongside the point set its surface. The fill of the floor drops
+// as fast downstream of its end, for the same reason. The valley is carved from its level
+// (CoursePoint::valley, its surface rising valleyRise), the channel from the water (rise): on a
+// fall, its slot cut into the floor of the valley with banks of kFallBank.
 Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, double rise,
-                     std::uint64_t seed, double warp) {
+                     double valleyRise, std::uint64_t seed, double warp) {
     const double t = f.t;
     const double level = lerp(a.level, b.level, t);
-    const double surfaceLevel = f.upstream ? level + rise * f.beyond : level;
-    const double fillLevel = f.upstream ? level : level - rise * f.beyond;
+    const double ground = lerp(a.valley, b.valley, t);
+    const double water = f.upstream ? level + rise * f.beyond : level;
+    const double surfaceLevel = f.upstream ? ground + valleyRise * f.beyond : ground;
+    const double fillLevel = f.upstream ? ground : ground - valleyRise * f.beyond;
+    const double fall = lerp(a.fall ? 1.0 : 0.0, b.fall ? 1.0 : 0.0, t);
     const double half = lerp(a.half, b.half, t);
     const double depth = lerp(a.depth, b.depth, t);
     const double floorHalf = lerp(a.floorHalf, b.floorHalf, t);
@@ -122,14 +131,16 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
         channelDistance =
             dmath::hypot(f.beyond, (f.side - m.offset) / std::sqrt(1.0 + rate * rate));
     }
+    const double bankSlope = kBankSlope + (kFallBank - kBankSlope) * fall;
     const double channel =
         channelDistance < half
-            ? surfaceLevel - depth * (1.0 - (channelDistance / half) * (channelDistance / half))
-            : surfaceLevel + kBankSlope * (channelDistance - half);
+            ? water - depth * (1.0 - (channelDistance / half) * (channelDistance / half))
+            : water + bankSlope * (channelDistance - half);
     const double cut = std::max(0.0, floorLevel - channel);
     Valley v;
     v.height = floorLevel + walls - cut;
     v.level = static_cast<float>(level);
+    v.floorLevel = static_cast<float>(surfaceLevel);
     v.wet = channelDistance < half && channel < level; // not where its surface rises upstream
     v.gorge = static_cast<float>(lerp(a.gorge, b.gorge, t));
     v.mountain = static_cast<float>(lerp(a.mountain, b.mountain, t));
@@ -138,7 +149,12 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     // The slope of the valley across it, continuous (the banks of the channel aside): the rock
     // of the walls is laid along it.
     v.slope = floorSlope + wallSlope;
-    v.above = walls;
+    // The walls above the floor, and beside the channel the rise of the surface upstream of the
+    // segment and the slot of a fall below the floor: the headwall and the slot of a fall are
+    // rock as the walls.
+    const double beside = std::clamp((channelDistance - half) / kHeadFade, 0.0, 1.0);
+    v.above = walls + beside * (surfaceLevel - ground +
+                                fall * std::max(0.0, floorLevel - water - kFloorRise));
     v.floor = fillLevel + above;
     v.onFloor = 1.0 - smooth(0.0, kLeveeFade, out);
     const double edge = channelDistance - half;
@@ -148,24 +164,13 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     return v;
 }
 
-// The rise of the surface of segment i beyond its ends: the steepest fall of the water over it and
-// the segments on each side of it, kLeastRise at least.
-constexpr double kLeastRise = 4.0;
+// The rise of the surface of a segment beyond its ends: kLeastRise at least.
+constexpr double kLeastRise = 2.0;
 
-double fallOf(const CoursePoint& a, const CoursePoint& b) {
-    const double run = dmath::hypot(b.x - a.x, b.z - a.z);
-    return run > 0.0 ? std::max(0.0, static_cast<double>(a.level - b.level)) / run : 0.0;
-}
-
-double riseOf(const Course& c, std::uint32_t i) {
-    double rise = std::max(kLeastRise, fallOf(c.points[i], c.points[i + 1]));
-    if (i > 0) {
-        rise = std::max(rise, fallOf(c.points[i - 1], c.points[i]));
-    }
-    if (i + 2 < c.points.size()) {
-        rise = std::max(rise, fallOf(c.points[i + 1], c.points[i + 2]));
-    }
-    return rise;
+// How fast a level comes down from a to b (meters per meter, 0 if it rises).
+double secant(const CoursePoint& a, const CoursePoint& b, float CoursePoint::*level) {
+    const double run = b.s - a.s;
+    return run > 0.0 ? std::max(0.0, static_cast<double>(a.*level - b.*level)) / run : 0.0;
 }
 
 } // namespace
@@ -229,6 +234,36 @@ void ValleyBlend::applyTo(Valley& v) const {
     v.mountain = static_cast<float>(mountain_ / weight_);
 }
 
+std::vector<float> risesOf(const std::vector<CoursePoint>& points, float CoursePoint::*level) {
+    const std::size_t n = points.size();
+    std::vector<float> rises(n > 0 ? n - 1 : 0);
+    const double highest = n > 0 ? static_cast<double>(points.front().*level) : 0.0;
+    const double lowest = n > 0 ? static_cast<double>(points.back().*level) : 0.0;
+    for (std::size_t i = 0; i + 1 < n; ++i) {
+        double rise = std::max(kLeastRise, secant(points[i], points[i + 1], level));
+        // Upstream of its start: no secant beyond the run where the highest water would rise
+        // more slowly than kLeastRise.
+        const double start = points[i].*level;
+        for (std::size_t j = i; j-- > 0;) {
+            const double run = points[i].s - points[j].s;
+            if (kLeastRise * run >= highest - start) {
+                break;
+            }
+            rise = std::max(rise, secant(points[j], points[i], level));
+        }
+        const double end = points[i + 1].*level;
+        for (std::size_t j = i + 2; j < n; ++j) {
+            const double run = points[j].s - points[i + 1].s;
+            if (kLeastRise * run >= end - lowest) {
+                break;
+            }
+            rise = std::max(rise, secant(points[i + 1], points[j], level));
+        }
+        rises[i] = static_cast<float>(rise);
+    }
+    return rises;
+}
+
 Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_t meanderSeed,
                 double warp) {
     Valley best;
@@ -253,7 +288,7 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
             const CoursePoint& a = c.points[i];
             const CoursePoint& b = c.points[i + 1];
             const Foot f = footOn(a, b, x, z);
-            Valley v = segmentValley(a, b, f, riseOf(c, i), meanderSeed, warp);
+            Valley v = segmentValley(a, b, f, c.rises[i], c.valleyRises[i], meanderSeed, warp);
             if (v.height < bound && f.distance > kReach - kReachFade - 500.0) {
                 v.height += (bound - v.height) *
                             smooth(kReach - kReachFade - 500.0, kReach - 500.0, f.distance);

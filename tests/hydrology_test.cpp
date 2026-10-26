@@ -2,6 +2,8 @@
 // of the points; the water always going down along the courses, which meet at the points of the
 // graph; the lakes flat at their levels; the falls at breaks of slope only; no step across the
 // valleys; a golden checksum.
+#include "terrain/generation/climate.hpp"
+#include "terrain/generation/planet/planet_climate.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
@@ -216,6 +218,44 @@ void testLakes(const World& w) {
     std::printf("%zu points under lakes, each at the level of its lake\n", lake);
 }
 
+// The humidity of the planet level: P / (P + PET) of the cell at its center (PET 300 mm/yr at
+// least), within [0, 1]
+// everywhere, and what the climate of the world reads with it (planetHumidity), the same bits.
+void testHumidity(const World& w) {
+    const terrain::PlanetLevel& level = *w.planet;
+    const terrain::PlanetGrid& grid = level.grid();
+    bool centers = true;
+    bool bounded = true;
+    bool read = true;
+    double dry = 1.0;
+    double wet = 0.0;
+    const terrain::ClimateField own(terrain::kDefaultWorldSeed, {}, golden::kSmallPlanet);
+    const terrain::ClimateField planet(terrain::kDefaultWorldSeed, {}, golden::kSmallPlanet,
+                                       terrain::planetHumidity(w.hydrology));
+    for (std::size_t cell = 0; cell < grid.cells(); cell += 97) {
+        const double x = grid.centerX(grid.column(cell));
+        const double z = grid.centerZ(grid.row(cell));
+        const double p = level.precipitation(cell);
+        const double pet = std::max(terrain::planet::potentialEvapotranspiration(
+                                        level.temperature(cell), level.params().climate),
+                                    300.0);
+        const float h = level.humidityAt(x, z);
+        centers = centers && std::abs(h - static_cast<float>(p / (p + pet))) < 1e-5f;
+        bounded = bounded && h >= 0.0f && h <= 1.0f;
+        read = read && planet.humidityAt(x, z, 0.5f) == h;
+        dry = std::min(dry, static_cast<double>(h));
+        wet = std::max(wet, static_cast<double>(h));
+    }
+    TEST_CHECK(centers);
+    TEST_CHECK(bounded);
+    TEST_CHECK(read);
+    // The planet ranges from deserts to wet lands, unlike the noise of the climate alone.
+    TEST_CHECK(dry < 0.2 && wet > 0.6);
+    TEST_CHECK(own.humidityAt(0.0, 0.0, 0.5f) != planet.humidityAt(0.0, 0.0, 0.5f));
+    TEST_CHECK(terrain::planetHumidity(nullptr) == nullptr);
+    std::printf("humidity of the planet level from %.2f to %.2f\n", dry, wet);
+}
+
 void testGolden(const World& w, const std::vector<std::array<double, 2>>& points) {
     golden::Checksum sum;
     for (const auto& p : points) {
@@ -224,7 +264,7 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
         sum.add(static_cast<std::uint64_t>(s.water), 1);
         sum.add(s.waterLevel);
     }
-    constexpr std::uint64_t kExpected = 0x2605797A861BC081ULL;
+    constexpr std::uint64_t kExpected = 0x3F29B8BF9DA8A0BBULL;
     std::printf("{\"hydrology of the small world\", 0x%016llXULL}%s\n",
                 static_cast<unsigned long long>(sum.value()),
                 sum.value() == kExpected ? "" : "  (differs)");
@@ -240,6 +280,7 @@ int main() {
     testCourses(w);
     testCrossSections(w);
     testLakes(w);
+    testHumidity(w);
     testGolden(w, points);
     return test::result();
 }

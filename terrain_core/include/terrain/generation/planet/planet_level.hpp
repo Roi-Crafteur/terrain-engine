@@ -92,6 +92,11 @@ public:
 
     // Bilinear on the torus for the continuous fields, the cell holding (x, z) for the others.
     [[nodiscard]] PlanetSample sampleAt(double x, double z) const;
+    // The humidity of the climate at (x, z), in [0, 1): the precipitation of each cell over its
+    // precipitation and potential evapotranspiration, P / (P + PET) (0.5 where they balance, PET
+    // read as 300 mm/yr at least), bilinear as sampleAt. What the biomes read of the planet
+    // (HumiditySource).
+    [[nodiscard]] float humidityAt(double x, double z) const;
 
     // The climate of a cell, recomputed from its compact altitude and precipitation.
     [[nodiscard]] float elevation(std::size_t cell) const { return cells_.elevation[cell]; }

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace terrain {
 
@@ -25,9 +26,10 @@ float exposureOf(float gradX, float gradZ) {
     return static_cast<float>(-gradZ / length);
 }
 
-ClimateField::ClimateField(std::uint64_t seed, const ClimateParams& params, const WorldSize& world)
+ClimateField::ClimateField(std::uint64_t seed, const ClimateParams& params, const WorldSize& world,
+                           std::shared_ptr<const HumiditySource> humidity)
     : params_(params), world_(world), temperatureSeed_(noise::deriveSeed(seed, kTemperature)),
-      humiditySeed_(noise::deriveSeed(seed, kHumidity)) {
+      humiditySeed_(noise::deriveSeed(seed, kHumidity)), humidity_(std::move(humidity)) {
     validate(world_);
 }
 
@@ -47,6 +49,11 @@ float ClimateField::baseTemperatureAt(double x, double z) const {
 }
 
 float ClimateField::humidityAt(double x, double z, float continentalness) const {
+    if (humidity_) {
+        return std::clamp(humidity_->humidityAt(wrapCoordinate(x, world_.x),
+                                                wrapCoordinate(z, world_.z)),
+                          0.0f, 1.0f);
+    }
     const noise::FbmParams fbm{.octaves = 4, .frequency = 1.0 / params_.humidityWavelength};
     const float inland = noise::smoothstep(params_.inlandLow, params_.inlandHigh, continentalness);
     const float humidity =

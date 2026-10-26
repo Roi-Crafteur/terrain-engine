@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace terrain::water {
 
@@ -20,6 +21,8 @@ namespace terrain::water {
 struct Valley {
     double height = std::numeric_limits<double>::infinity(); // the carved surface
     float level = 0.0f;   // the water surface of the course there
+    float floorLevel = 0.0f; // the level its floor is carved from (CoursePoint::valley), rising
+                             // upstream of the segment as its surface
     bool wet = false;     // in its channel: under its water
     float gorge = 0.0f;
     float mountain = 0.0f;
@@ -75,6 +78,12 @@ private:
 // walls by up to wallWarpOf of the floor.
 [[nodiscard]] Valley valleyAt(const Course& c, double x, double z, double ground,
                               std::uint64_t meanderSeed, double warp);
+
+// The rise of the surface of each segment of a course beyond its ends (meters per meter): the
+// fastest the level (CoursePoint::level, the water, or CoursePoint::valley) upstream of its start
+// comes down to it, or the level downstream of its end comes down from it, kLeastRise at least.
+[[nodiscard]] std::vector<float> risesOf(const std::vector<CoursePoint>& points,
+                                         float CoursePoint::*level);
 
 // The offset of the channel from the axis (meters, toward the left of the course) at phase, for
 // an amplitude, and its rate per half wave: a gradient noise of one half wave per unit.

@@ -37,6 +37,7 @@ RiverCarve carveOf(const water::Valley& v) {
     c.height = v.height;
     c.wet = v.wet;
     c.level = v.level;
+    c.floor = v.floorLevel;
     c.gorge = v.gorge;
     c.mountain = v.mountain;
     c.upX = v.upX;
@@ -228,6 +229,7 @@ std::size_t Hydrology::coursesComputed() const {
 std::size_t Hydrology::courseBytes() const {
     return impl_->courses.bytes([](const water::Course& c) {
         return sizeof(c) + c.points.capacity() * sizeof(water::CoursePoint) +
+               (c.rises.capacity() + c.valleyRises.capacity()) * sizeof(float) +
                c.chunks.capacity() * sizeof(water::CourseChunk);
     });
 }

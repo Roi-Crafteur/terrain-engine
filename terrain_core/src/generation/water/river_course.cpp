@@ -2,7 +2,9 @@
 // (river_course.hpp).
 #include "river_course.hpp"
 
+#include "river_falls.hpp"
 #include "river_join.hpp"
+#include "river_profile.hpp"
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -205,13 +207,15 @@ std::vector<CoursePoint> axisOf(const ReachInput& in) {
     return points;
 }
 
-// The gorge factor of each point from the relief above its water, smoothed along the course (but
-// at both ends, which other reaches share).
+// The gorge factor of each point from the relief above its valley, smoothed along the course
+// (but at both ends, which other reaches share). A fall cuts a gorge into its slope: the factor
+// rises to 1 over the kFallReach meters before and after its stretch.
+constexpr double kFallReach = 100.0;
 void setGorges(std::vector<CoursePoint>& points) {
     std::vector<float> raw(points.size());
     for (std::size_t i = 0; i < points.size(); ++i) {
         const CoursePoint& p = points[i];
-        const double cut = std::max(0.0f, p.top - p.level);
+        const double cut = std::max(0.0f, p.top - p.valley);
         raw[i] = static_cast<float>(lerp(smooth(kCanyonLow, kCanyonHigh, cut),
                                          smooth(kGorgeLow, kGorgeHigh, cut),
                                          static_cast<double>(p.mountain)));
@@ -224,6 +228,22 @@ void setGorges(std::vector<CoursePoint>& points) {
             most = std::max(most, raw[static_cast<std::size_t>(k)]);
         }
         points[static_cast<std::size_t>(i)].gorge = most;
+    }
+    // Within kFallReach meters of a fall, its gorge (but at both ends).
+    double last = -std::numeric_limits<double>::infinity();
+    std::vector<double> nearest(points.size(), std::numeric_limits<double>::infinity());
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        last = points[i].fall ? points[i].s : last;
+        nearest[i] = points[i].s - last;
+    }
+    double next = std::numeric_limits<double>::infinity();
+    for (std::size_t i = points.size(); i-- > 0;) {
+        next = points[i].fall ? points[i].s : next;
+        nearest[i] = std::min(nearest[i], next - points[i].s);
+    }
+    for (std::size_t i = 1; i + 1 < points.size(); ++i) {
+        const double near = 1.0 - smooth(0.0, kFallReach, nearest[i]);
+        points[i].gorge = std::max(points[i].gorge, static_cast<float>(near));
     }
 }
 
@@ -350,9 +370,18 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     const float levelB = joinEarlier(relief, in, c.points);
     sampleGround(relief, in, c.points);
     setLevels(c.points, in.a.level, levelB);
-    if (refineFalls(relief, in, c.points)) {
+    const bool falls = refineFalls(relief, in, c.points);
+    if (falls) {
         setLevels(c.points, in.a.level, levelB);
     }
+    for (CoursePoint& p : c.points) {
+        p.valley = p.level;
+    }
+    if (falls) {
+        stepFalls(c.points);
+    }
+    c.rises = risesOf(c.points, &CoursePoint::level);
+    c.valleyRises = risesOf(c.points, &CoursePoint::valley);
     setGorges(c.points);
     setShapes(in, c.points);
     setChunks(c);

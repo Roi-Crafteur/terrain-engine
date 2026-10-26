@@ -4,6 +4,7 @@
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/terrain_surface.hpp"
+#include "terrain/generation/water/hydrology.hpp"
 #include "terrain/meshing/density_grid.hpp"
 #include "terrain/meshing/marching_cubes.hpp"
 #include "terrain/storage/edit_window.hpp"
@@ -197,8 +198,8 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
                            const EcologyParams& ecology, const std::optional<CaveParams>& caves,
                            const WorldSize& world, std::shared_ptr<const Hydrology> hydrology)
     : seed_(seed),
-      field_(Heightfield(seed, heightfield, world).withHydrology(std::move(hydrology))),
-      ecology_(seed, ecology, world) {
+      field_(Heightfield(seed, heightfield, world).withHydrology(hydrology)),
+      ecology_(seed, ecology, world, planetHumidity(hydrology)) {
     if (caves) {
         caves_.emplace(seed, *caves, world);
         caveEnvironment_.emplace(field_, ecology_.climate(), ecology_.params().biomes);

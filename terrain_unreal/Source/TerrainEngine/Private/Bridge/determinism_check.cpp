@@ -16,7 +16,7 @@ constexpr std::array<HeightProbe, 10> kHeightProbes{{
     {162047.75, 188158.5, 0x42E18292U},      // 112.76 m: a mountain
     {-147456.25, 57344.5, 0x4208CC98U},      // 34.20 m: a plain
     {400000.0, 0.25, 0xC3A5C384U},           // -331.53 m: the continental slope
-    {163296.25, -11327312.5, 0x458E76DBU},   // 4558.86 m: the summit of a belt
+    {163296.25, -11327312.5, 0x458E65F9U},   // 4556.75 m: the summit of a belt
     {-12345678.9, 7654321.5, 0x43538849U},   // 211.53 m: far inland
     {30015487.5, 17498111.75, 0xC58FC1A6U},  // -4600.21 m: by the corner of the world
     {-30015488.0, -17498112.0, 0xC58FC1AAU}, // -4600.21 m: the corner itself

@@ -37,6 +37,7 @@ struct Heightfield::Layers {
     noise::FbmOctaves geographySpurs;
     ravines::Network ravines;
     ravines::Network gullies; // the couloirs of the walls of the gorges of the rivers (11B)
+    noise::FbmOctaves wallGrain; // and the grain of their rock
     // The valleys in U and the dominant summits of the mountains, and their walls.
     mountain_forms::Noises forms;
     mountain_walls::Noises walls;

@@ -114,7 +114,11 @@ enum Layer : std::uint64_t {
     kPlainForms,
     kDepressions,
     kGullies,
+    kWallGrain,
 };
+
+// The grain of the rock of the walls of the gorges (phase 11B): an fbm from this wavelength.
+constexpr double kWallGrainWavelength = 64.0;
 
 } // namespace
 
@@ -168,6 +172,7 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         layers->ravines = ravines::makeNetwork(noise::deriveSeed(seed, kRavines), world);
         layers->gullies = ravines::makeNetwork(noise::deriveSeed(seed, kGullies), world,
                                                {512.0, 256.0}, {0.20f, 0.16f});
+        layers->wallGrain = fast(kWallGrain, 3, kWallGrainWavelength, 0.5);
         // The summits sit on the crests of the first octave of the massif.
         layers->forms =
             mountain_forms::makeNoises(noise::deriveSeed(seed, kMountainForms), world,

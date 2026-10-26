@@ -31,10 +31,16 @@ constexpr double kRockSharpness = 2.0;
 constexpr double kRavineRoom = 0.6;
 constexpr double kRavineSlope = 1.2; // the slope that orients them, at most
 constexpr double kGullySlope = 2.0;  // and the couloirs of the walls of the gorges
+// The grain of the rock of the walls of the gorges (layers wallGrain): kGrainShare of their
+// height, kGrainMost meters at most, their faces broken at the scale of the rock steps of the
+// walls of the massifs (phase 11R bis).
+constexpr double kGrainShare = 0.1;
+constexpr double kGrainMost = 15.0;
 // The walls of the gorges are rock: strata or crystalline, as the map's walls (character
 // kCharacter), their ledges at most kStrataRoom of the height of the walls deep.
 constexpr float kCharacter = 0.6f;
 constexpr double kStrataRoom = 0.4;
+constexpr double kLedge = 1.0;
 // The levees fill the floodplain up to kLevee meters (river_course.hpp); the water of a channel
 // stands at most kAboveGround meters above the ground beside it.
 constexpr double kLevee = 5.0;
@@ -82,6 +88,11 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
             const double slope = std::min(c.slope, kRavineSlope);
             float cut = ravines::depth(layers_->ravines, x, z, slope * c.upX, slope * c.upZ,
                                        show);
+            if (c.gorge > 0.0f && layers_->wallGrain.octaves() > 0) {
+                h += show * static_cast<double>(c.gorge) *
+                     std::min(kGrainShare * c.above, kGrainMost) *
+                     static_cast<double>(layers_->wallGrain.fbm2D(x, z));
+            }
             if (c.gorge > 0.0f) {
                 // The couloirs of the walls of the gorges, down their slope.
                 const double steep = std::min(c.slope, kGullySlope);
@@ -96,15 +107,16 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
                 const double wall = show * static_cast<double>(c.gorge);
                 const mountain_walls::Masks masks{wall * share, wall * (1.0 - share), 0.0};
                 const double top = mountain_walls::rockTop(layers_->walls, masks, x, z, h,
-                                                           c.slope * c.upX, c.slope * c.upZ,
+                                                           kLedge * c.upX, kLedge * c.upZ,
                                                            nullptr);
                 h += static_cast<double>(relief_local::boundBelow(
                     static_cast<float>(top - h), static_cast<float>(kStrataRoom * c.above)));
             }
         }
-        // The rock never takes the walls below the floor beside the water, nor below the banks.
+        // The rock never takes the walls below the floor beside the water (beside a fall, the
+        // floor of its valley on the slope), nor below the banks.
         h = std::max(h, std::min(c.height,
-                                 std::max(static_cast<double>(c.level) + kFloorRise, c.bank)));
+                                 std::max(static_cast<double>(c.floor) + kFloorRise, c.bank)));
         if (h < static_cast<double>(s.height)) {
             s.height = static_cast<float>(h);
         }

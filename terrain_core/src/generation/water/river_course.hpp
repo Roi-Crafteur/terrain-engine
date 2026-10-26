@@ -131,6 +131,9 @@ struct CoursePoint {
     double z = 0.0;
     double s = 0.0;           // meters from the start of the course along the axis
     float level = 0.0f;       // the water surface
+    // The level the valley is carved from: the water, or above the steps of a fall the slope it
+    // falls down (the valley follows the slope, the water falls in steps in a slot in its floor).
+    float valley = 0.0f;
     float ground = 0.0f;      // the lowest relief across the channel (or the valley it joins)
     float top = 0.0f;         // the relief on the axis: how deep the valley cuts
     float half = 0.0f;        // half the width of the channel
@@ -144,6 +147,7 @@ struct CoursePoint {
     float phaseRate = 0.0f;   // half waves per meter along the axis
     float gorge = 0.0f;       // [0, 1]: from the open valley to the narrow gorge
     float mountain = 0.0f;    // [0, 1]: from the plains to the mountains
+    bool fall = false;        // on a stretch where the water falls in steps (river_falls.hpp)
 };
 
 // Groups of consecutive segments of a course, for the bounds of the search.
@@ -161,6 +165,9 @@ struct CourseChunk {
 
 struct Course {
     std::vector<CoursePoint> points;
+    // The rise of the water and of the valley of each segment beyond its ends (risesOf).
+    std::vector<float> rises;
+    std::vector<float> valleyRises;
     std::vector<CourseChunk> chunks;
     double minX = 0.0; // the box of the points, widened by the reach of the valley
     double minZ = 0.0;

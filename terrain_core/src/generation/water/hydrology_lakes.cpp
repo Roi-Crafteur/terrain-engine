@@ -5,6 +5,7 @@
 #include "terrain/generation/water/hydrology.hpp"
 
 #include "hydrology_impl.hpp"
+#include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
 
 #include <algorithm>
@@ -12,6 +13,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <utility>
 #include <vector>
 
 namespace terrain {
@@ -137,6 +140,30 @@ LakeWater Hydrology::Impl::lakeAt(double x, double z, double ground) const {
 
 float Hydrology::lakeLevel(std::int32_t lake) const {
     return impl_->levelOf(lake);
+}
+
+namespace {
+
+// The humidity of the planet level of a hydrology (planetHumidity).
+class PlanetHumidity final : public HumiditySource {
+public:
+    explicit PlanetHumidity(std::shared_ptr<const Hydrology> hydrology)
+        : hydrology_(std::move(hydrology)) {}
+    [[nodiscard]] float humidityAt(double x, double z) const override {
+        return hydrology_->planet().humidityAt(x, z);
+    }
+
+private:
+    std::shared_ptr<const Hydrology> hydrology_;
+};
+
+} // namespace
+
+std::shared_ptr<const HumiditySource> planetHumidity(std::shared_ptr<const Hydrology> hydrology) {
+    if (!hydrology) {
+        return nullptr;
+    }
+    return std::make_shared<const PlanetHumidity>(std::move(hydrology));
 }
 
 } // namespace terrain

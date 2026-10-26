@@ -166,12 +166,12 @@ void testWithWater() {
 int main() {
     const terrain::Heightfield field(terrain::kDefaultWorldSeed);
     const Window windows[] = {
-        {"k2 scene, 8 km at 25 m", 416'857.0, -11'405'966.0, 25.0, 321, 0x20CC4D545A78840EULL},
-        {"highest wall, 1 km at 4 m", 416'000.0, -11'414'800.0, 4.0, 251, 0x39769451019530F1ULL},
+        {"k2 scene, 8 km at 25 m", 416'857.0, -11'405'966.0, 25.0, 321, 0xF9B398B8FB28A571ULL},
+        {"highest wall, 1 km at 4 m", 416'000.0, -11'414'800.0, 4.0, 251, 0x1D45408B42DF87EEULL},
         {"foot of the fixed chain, 24 km at 100 m", -27'744'000.0, 4'734'000.0, 100.0, 241,
-         0x2B61E18AC6E7B1AFULL},
+         0x03E397534BA52149ULL},
         {"foot of the default chain, 24 km at 100 m", 9'630'245.0, -11'029'895.0, 100.0, 241,
-         0x3FD55F5A4448F4C9ULL},
+         0x923AADA4496FDE08ULL},
     };
     bool same = true;
     for (const Window& w : windows) {
@@ -181,7 +181,7 @@ int main() {
                     value, count, value == w.expected ? "" : "  (differs)");
         same = same && value == w.expected && count > w.side * w.side / 4;
     }
-    constexpr std::uint64_t kDrawn = 0xC6812816A4D90C62ULL;
+    constexpr std::uint64_t kDrawn = 0xB6C1FF0E32307E10ULL;
     int count = 0;
     const std::uint64_t drawn = drawnSum(field, 20'000, count);
     std::printf("{\"drawn points\", 0x%016" PRIX64 "ULL}%s\n", drawn,
