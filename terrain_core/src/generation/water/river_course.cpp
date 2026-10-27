@@ -5,6 +5,7 @@
 #include "river_falls.hpp"
 #include "river_join.hpp"
 #include "river_profile.hpp"
+#include "river_slot.hpp"
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -29,6 +30,7 @@ constexpr double kRampSlope = 0.02;
 // A fall: the water drops more than kFallDrop meters at more than kFallSlope between two points;
 // the stretch is then sampled every kFallStep meters, so that the lip is sharp.
 constexpr float kFallDrop = 4.0f;
+constexpr std::uint64_t kSlotSeed = 0x510751075107ULL; // the slots of the falls (river_slot.hpp)
 constexpr double kFallSlope = 0.12;
 constexpr double kFallStep = 8.0;
 // The mountains: the mask from 0 to kMountainFull.
@@ -384,6 +386,12 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     c.valleyRises = risesOf(c.points, &CoursePoint::valley);
     setGorges(c.points);
     setShapes(in, c.points);
+    if (falls) {
+        c.slotSeed = noise::deriveSeed(
+            noise::deriveSeed(kSlotSeed, static_cast<std::uint64_t>(std::llround(c.points[0].x))),
+            static_cast<std::uint64_t>(std::llround(c.points[0].z)));
+        placeBlocks(c);
+    }
     setChunks(c);
     findPonds(relief, c);
     float highest = -std::numeric_limits<float>::infinity();

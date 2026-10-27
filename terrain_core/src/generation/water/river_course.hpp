@@ -132,7 +132,8 @@ struct CoursePoint {
     double s = 0.0;           // meters from the start of the course along the axis
     float level = 0.0f;       // the water surface
     // The level the valley is carved from: the water, or above the steps of a fall the slope it
-    // falls down (the valley follows the slope, the water falls in steps in a slot in its floor).
+    // falls down (the valley follows the slope, the water falls in steps in a slot in its floor),
+    // raised so that the slot stays cut into the floor at their lips too (stepFalls).
     float valley = 0.0f;
     float ground = 0.0f;      // the lowest relief across the channel (or the valley it joins)
     float top = 0.0f;         // the relief on the axis: how deep the valley cuts
@@ -147,7 +148,20 @@ struct CoursePoint {
     float phaseRate = 0.0f;   // half waves per meter along the axis
     float gorge = 0.0f;       // [0, 1]: from the open valley to the narrow gorge
     float mountain = 0.0f;    // [0, 1]: from the plains to the mountains
+    // On a stretch in steps, the walls of the slot its water falls down in reach about this far
+    // beyond the channel (river_slot.hpp); 0 elsewhere.
+    float slot = 0.0f;
     bool fall = false;        // on a stretch where the water falls in steps (river_falls.hpp)
+};
+
+// A block of rock in a pool of a fall (river_slot.hpp): a dome radius meters wide around (x, z),
+// its top at top, its foot at base (below the bed).
+struct FallBlock {
+    double x = 0.0;
+    double z = 0.0;
+    float radius = 0.0f;
+    float top = 0.0f;
+    float base = 0.0f;
 };
 
 // Groups of consecutive segments of a course, for the bounds of the search.
@@ -179,6 +193,14 @@ struct Course {
     // Where its water stands above the relief of the axis (a hollow before the end of the reach,
     // whose level holds it): the ponds the relief holds there, in the images of the course.
     std::vector<FineLake> ponds;
+    // The noise of the slots of its falls, and the blocks of rock in their pools with their box
+    // (river_slot.hpp).
+    std::uint64_t slotSeed = 0;
+    std::vector<FallBlock> blocks;
+    double blocksMinX = 0.0;
+    double blocksMinZ = 0.0;
+    double blocksMaxX = 0.0;
+    double blocksMaxZ = 0.0;
 };
 
 // The course of a reach.
