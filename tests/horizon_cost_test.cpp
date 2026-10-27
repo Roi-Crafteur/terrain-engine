@@ -2,10 +2,12 @@
 // around any observer. Printed only, never asserted: the time of a full computation of every
 // level of point samples (crestRatio 0) on one thread and on every hardware thread, of the
 // updates of a walk, the memory, and the same with the slopes of the materials at the pitch of
-// each level and with K = 512; the samples around the K2 with and without the crests, timed on
-// one piece in kCrestStride and extrapolated; the detail slopes around the K2, timed on one
-// piece in kDetailStride and extrapolated (in the mountain cores of the default world, the full
-// computation would take minutes).
+// each level and with K = 512; the samples around the K2 with and without the crests (2 and 4),
+// timed on one piece in kCrestStride and extrapolated; the detail slopes around the K2, and the
+// detail computed after the epochs (horizon_detail.hpp: slopes and crest lifts from one fine
+// grid), timed on one piece in a stride and extrapolated (in the mountain cores of the default
+// world, the full computation would take minutes).
+#include "terrain/streaming/horizon_detail.hpp"
 #include "terrain/streaming/horizon_normals.hpp"
 #include "terrain/streaming/horizon_streamer.hpp"
 
@@ -105,19 +107,24 @@ void measureWorkers(const World& world, const terrain::HorizonParams& params, co
                 full.seconds(), static_cast<double>(streamer.clipmap().memoryBytes()) / 1e6);
 }
 
-// The detail slopes are timed on one piece in kDetailStride, taken in order through the levels.
+// The detail is timed on one piece in kDetailStride, taken in order through the levels.
 constexpr std::size_t kDetailStride = 8;
 
-// The time of the detail slopes of every window around (x, z), in pieces of 16 rows of samples on
-// `threads` threads, the levels whose index is at least `fromLevel` only: extrapolated from the
-// pieces timed, by their share of the texels.
-double detailSeconds(const terrain::HorizonNormalSampler& sampler, double x, double z, int threads,
-                     int fromLevel) {
-    const terrain::HorizonParams& params = sampler.params();
-    std::vector<terrain::HorizonRect> pieces;
-    std::vector<int> levelOf;
-    double texels = 0.0;
-    double timedTexels = 0.0;
+// A piece of 16 rows of samples of a level.
+struct Piece {
+    int level = 0;
+    terrain::HorizonRect rect;
+};
+
+// The time of `work` on the pieces of every window around (x, z), the levels whose index is at
+// least `fromLevel` only, on `threads` threads: extrapolated from one piece in `stride`, by their
+// share of the samples.
+template <typename Work>
+double piecesSeconds(const terrain::HorizonParams& params, double x, double z, int threads,
+                     int fromLevel, std::size_t stride, const Work& work) {
+    std::vector<Piece> pieces;
+    double samples = 0.0;
+    double timedSamples = 0.0;
     std::size_t index = 0;
     for (int level = fromLevel; level < params.levels; ++level) {
         const terrain::HorizonRect window = terrain::windowAround(
@@ -125,12 +132,10 @@ double detailSeconds(const terrain::HorizonNormalSampler& sampler, double x, dou
         for (std::int64_t k = window.z0; k < window.z1; k += 16, ++index) {
             const terrain::HorizonRect piece{window.x0, k, window.x1,
                                              std::min<std::int64_t>(k + 16, window.z1)};
-            const auto count = static_cast<double>(sampler.texelCount(piece));
-            texels += count;
-            if (index % kDetailStride == 0) {
-                pieces.push_back(piece);
-                levelOf.push_back(level);
-                timedTexels += count;
+            samples += static_cast<double>(piece.count());
+            if (index % stride == 0) {
+                pieces.push_back({level, piece});
+                timedSamples += static_cast<double>(piece.count());
             }
         }
     }
@@ -138,18 +143,27 @@ double detailSeconds(const terrain::HorizonNormalSampler& sampler, double x, dou
     std::vector<std::thread> workers;
     for (int t = 0; t < threads; ++t) {
         workers.emplace_back([&, t] {
-            std::vector<terrain::DetailSlope> out;
             for (std::size_t n = static_cast<std::size_t>(t); n < pieces.size();
                  n += static_cast<std::size_t>(threads)) {
-                out.resize(static_cast<std::size_t>(sampler.texelCount(pieces[n])));
-                sampler.fill(levelOf[n], pieces[n], out);
+                work(pieces[n].level, pieces[n].rect);
             }
         });
     }
     for (std::thread& worker : workers) {
         worker.join();
     }
-    return watch.seconds() * texels / timedTexels;
+    return watch.seconds() * samples / timedSamples;
+}
+
+// The detail slopes of every window around (x, z) at the ratio of the sampler.
+double detailSeconds(const terrain::HorizonNormalSampler& sampler, double x, double z, int threads,
+                     int fromLevel, std::size_t stride = kDetailStride) {
+    return piecesSeconds(sampler.params(), x, z, threads, fromLevel, stride,
+                         [&](int level, const terrain::HorizonRect& rect) {
+                             std::vector<terrain::DetailSlope> out(
+                                 static_cast<std::size_t>(sampler.texelCount(rect)));
+                             sampler.fill(level, rect, out);
+                         });
 }
 
 // The samples are timed on one piece in kCrestStride, taken in order through the levels.
@@ -188,17 +202,20 @@ double samplesSeconds(const World& world, const terrain::HorizonParams& params, 
 
 void measureCrests(const World& world) {
     const double points = samplesSeconds(world, pointSamples(), kK2X, kK2Z);
-    const terrain::HorizonParams crests;
-    const double raised = samplesSeconds(world, crests, kK2X, kK2Z);
-    std::printf("samples of every level around the K2, 1 thread: %.2f s with the crests (ratio "
-                "%d), %.2f s without (x%.2f); the same memory (extrapolated from one piece in "
-                "%zu)\n",
-                raised, crests.crestRatio, points, raised / points, kCrestStride);
+    for (const int ratio : {2, 4}) {
+        terrain::HorizonParams crests;
+        crests.crestRatio = ratio;
+        const double raised = samplesSeconds(world, crests, kK2X, kK2Z);
+        std::printf("samples of every level around the K2, 1 thread: %.2f s with the crests in "
+                    "the epoch (ratio %d), %.2f s without (x%.2f); the same memory (extrapolated "
+                    "from one piece in %zu)\n",
+                    raised, ratio, points, raised / points, kCrestStride);
+    }
 }
 
 void measureDetail(const World& world) {
     const terrain::HorizonParams params;
-    for (const int ratio : {2, 4, 8}) {
+    for (const int ratio : {2, 4}) {
         const terrain::HorizonNormalSampler sampler(world.field, params, ratio);
         const double texels = static_cast<double>(params.levels) *
                               terrain::samplesPerSide(params) * terrain::samplesPerSide(params) *
@@ -211,10 +228,32 @@ void measureDetail(const World& world) {
                     detailSeconds(sampler, kK2X, kK2Z, hardwareThreads(), 0), hardwareThreads(),
                     texels * 4.0 / 1e6, kDetailStride);
     }
+    const terrain::HorizonNormalSampler finest(world.field, params, 8);
+    std::printf("detail slopes, ratio 8, every level around the K2: %.2f s on 1 thread "
+                "(extrapolated from one piece in %zu)\n",
+                detailSeconds(finest, kK2X, kK2Z, 1, 0, 4 * kDetailStride), 4 * kDetailStride);
     const terrain::HorizonNormalSampler sampler(world.field, params, 4);
     std::printf("detail slopes, ratio 4, levels 5 and up only, 2 threads: %.2f s (extrapolated "
                 "from one piece in %zu)\n",
                 detailSeconds(sampler, kK2X, kK2Z, 2, 5), kDetailStride);
+}
+
+// The detail computed after the epochs: slopes at 4 with the crests at 2 or 4 from one grid, and
+// the crests at 4 alone.
+void measureDeferred(const World& world) {
+    for (const auto& [normalRatio, crestRatio] :
+         {std::pair{4, 2}, std::pair{4, 4}, std::pair{0, 4}}) {
+        terrain::HorizonParams params;
+        params.crestRatio = crestRatio;
+        const terrain::HorizonDetailSampler sampler(world.field, params, normalRatio);
+        const double seconds = piecesSeconds(params, kK2X, kK2Z, 1, 0, kDetailStride,
+                                             [&](int level, const terrain::HorizonRect& rect) {
+                                                 (void)sampler.sample(level, rect);
+                                             });
+        std::printf("detail after the epochs, slopes at %d and crests at %d, every level around "
+                    "the K2: %.2f s on 1 thread (extrapolated from one piece in %zu)\n",
+                    normalRatio, crestRatio, seconds, kDetailStride);
+    }
 }
 
 } // namespace
@@ -233,5 +272,6 @@ int main() {
     measureWorkers(world, wide, "K = 512");
     measureCrests(world);
     measureDetail(world);
+    measureDeferred(world);
     return test::result();
 }
