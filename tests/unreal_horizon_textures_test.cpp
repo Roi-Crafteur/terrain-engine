@@ -47,24 +47,40 @@ void testTexels() {
     HorizonCell ocean;
     ocean.height = -42.0f;
     ocean.gradX = 0.1f;
+    ocean.flags = terrain::kHorizonWater | terrain::kHorizonSea;
     const HorizonTexel sea = terrain::unreal::horizonTexel(ocean, true);
     TEST_CHECK((sea == HorizonTexel{0.0f, 0.0f, 0.0f, -42.0f}));
     TEST_CHECK(terrain::unreal::isSeaTexel(sea) && terrain::unreal::texelGround(sea) == -42.0f);
     // Just below the sea level: still the sea, its ground below 0.
     HorizonCell shallow;
     shallow.height = -0.001f;
+    shallow.flags = ocean.flags;
     const HorizonTexel shore = terrain::unreal::horizonTexel(shallow, true);
     TEST_CHECK(terrain::unreal::isSeaTexel(shore) && terrain::unreal::texelGround(shore) < 0.0f);
     HorizonCell beach;
     beach.height = 0.0f;
+    beach.flags = ocean.flags;
     TEST_CHECK(!terrain::unreal::isSeaTexel(terrain::unreal::horizonTexel(beach, true)));
+    // A dry depression below the sea level, far from the sea: its ground, never the sea.
+    HorizonCell depression = land;
+    depression.height = -120.0f;
+    const HorizonTexel basin = terrain::unreal::horizonTexel(depression, true);
+    TEST_CHECK(!terrain::unreal::isSeaTexel(basin) && basin.height == -120.0f);
     // Without the sea, the ground keeps its height and is never taken for the sea.
     const HorizonTexel dry = terrain::unreal::horizonTexel(ocean, false);
     TEST_CHECK(dry.height == -42.0f && !terrain::unreal::isSeaTexel(dry));
     TEST_CHECK(terrain::unreal::texelGround(dry) == 0.0f);
+    TEST_CHECK(!terrain::unreal::unpackSurface(basin.color).water);
+    // Under a lake or a river: the ground, its surface with the water code.
     HorizonCell lake = land;
     lake.flags = terrain::kHorizonWater;
-    TEST_CHECK(terrain::unreal::horizonTexel(lake, true) == ground);
+    const HorizonTexel inland = terrain::unreal::horizonTexel(lake, true);
+    TEST_CHECK(inland.height == ground.height && !terrain::unreal::isSeaTexel(inland));
+    TEST_CHECK((terrain::unreal::unpackSurface(inland.color) ==
+                terrain::unreal::SurfaceCode{terrain::SurfaceMaterial::Pebbles,
+                                             terrain::Biome::Mountain, true}));
+    TEST_CHECK(inland.color >= static_cast<float>(terrain::unreal::kSurfaceWaterCode));
+    TEST_CHECK(!(ground.color >= static_cast<float>(terrain::unreal::kSurfaceWaterCode)));
 }
 
 // A texture of side x side texels, kTexelFloats floats each.

@@ -73,6 +73,18 @@ public:
                 const PlanetParams& params = {}, const WorldSize& world = {});
     // Keeps a build compact (build is consumed).
     PlanetLevel(PlanetBuild&& build, const PlanetParams& params);
+    // A level kept before (the planet file, storage/planet_file.hpp): everything it keeps.
+    struct Parts {
+        PlanetParams params;
+        PlanetCells cells;
+        std::vector<PlanetLake> lakes;
+        RiverGraph rivers;
+        std::vector<RiverFeature> features;
+        PlanetWaterBudget budget;
+        PlanetTimings timings;
+        PlanetBreach breach;
+    };
+    explicit PlanetLevel(Parts&& parts);
 
     [[nodiscard]] const PlanetGrid& grid() const { return cells_.grid; }
     [[nodiscard]] const PlanetCells& cells() const { return cells_; }
@@ -80,6 +92,11 @@ public:
 
     // Bilinear on the torus for the continuous fields, the cell holding (x, z) for the others.
     [[nodiscard]] PlanetSample sampleAt(double x, double z) const;
+    // The humidity of the climate at (x, z), in [0, 1): the precipitation of each cell over its
+    // precipitation and potential evapotranspiration, P / (P + PET) (0.5 where they balance, PET
+    // read as 300 mm/yr at least), bilinear as sampleAt. What the biomes read of the planet
+    // (HumiditySource).
+    [[nodiscard]] float humidityAt(double x, double z) const;
 
     // The climate of a cell, recomputed from its compact altitude and precipitation.
     [[nodiscard]] float elevation(std::size_t cell) const { return cells_.elevation[cell]; }
@@ -92,6 +109,7 @@ public:
     [[nodiscard]] const std::vector<RiverFeature>& features() const { return features_; }
     [[nodiscard]] const PlanetWaterBudget& budget() const { return budget_; }
     [[nodiscard]] const PlanetTimings& timings() const { return timings_; }
+    [[nodiscard]] const PlanetBreach& breach() const { return breach_; }
 
     // Drainage basin of every cell (planet::computeBasins), recomputed on demand.
     [[nodiscard]] std::vector<std::int32_t> basins() const;
@@ -109,6 +127,7 @@ private:
     std::vector<RiverFeature> features_;
     PlanetWaterBudget budget_;
     PlanetTimings timings_;
+    PlanetBreach breach_;
 };
 
 namespace planet {

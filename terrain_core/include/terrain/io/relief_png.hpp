@@ -25,17 +25,24 @@ struct ReliefGrid {
     double originZ = 0.0;
     bool wraps = false;
     std::vector<float> heights; // row by row
+    // The water of the samples (HeightSample::water and waterLevel), row by row; empty: the sea
+    // below kSeaLevel.
+    std::vector<WaterKind> water;
+    std::vector<float> waterLevels;
 
     [[nodiscard]] std::size_t index(int i, int j) const {
         return static_cast<std::size_t>(j) * static_cast<std::size_t>(columns) +
                static_cast<std::size_t>(i);
     }
     [[nodiscard]] float at(int i, int j) const { return heights[index(i, j)]; }
+    [[nodiscard]] bool sea(int i, int j) const {
+        return water.empty() ? at(i, j) < kSeaLevel : water[index(i, j)] == WaterKind::Ocean;
+    }
     [[nodiscard]] double x(int i) const { return originX + (i + 0.5) * spacing; }
     [[nodiscard]] double z(int j) const { return originZ + (j + 0.5) * spacing; }
 };
 
-// A window of columns x rows samples centered on (centerX, centerZ), sampled by heightsAt with
+// A window of columns x rows samples centered on (centerX, centerZ), sampled by samplesAt with
 // up to threads threads (0: the hardware concurrency) in fixed blocks of rows: the same bits
 // whatever the number of threads. Throws std::invalid_argument for an empty window or a
 // spacing that is not finite and above 0.
@@ -50,7 +57,8 @@ struct ReliefGrid {
                                            int threads);
 
 // The grid averaged over blocks of factor x factor samples (the last partial ones dropped),
-// still wrapping if the grid wraps and factor divides both sides.
+// still wrapping if the grid wraps and factor divides both sides; the sea where most of a block
+// is, its level the mean of theirs.
 [[nodiscard]] ReliefGrid downsampleRelief(const ReliefGrid& grid, int factor);
 
 // Slope exaggeration of the shading for a map of this spacing: 1 at 10 m, growing as the
@@ -60,6 +68,9 @@ struct ReliefGrid {
 // The hypsometric color of a height before the shading, red, green and blue in [0, 255]: the
 // tints of the sea below kSeaLevel, of the land above.
 [[nodiscard]] std::array<float, 3> reliefColor(float height);
+// The color of a sample: the sea and the land as reliefColor, the dry land below the sea level (a
+// depression) in tints of salt and clay.
+[[nodiscard]] std::array<float, 3> reliefColor(float height, bool sea);
 
 // The hypsometric shaded map of the grid, one pixel per sample (RGB).
 [[nodiscard]] Image renderRelief(const ReliefGrid& grid);

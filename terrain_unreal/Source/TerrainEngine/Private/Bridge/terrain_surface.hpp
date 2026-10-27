@@ -14,19 +14,24 @@ namespace terrain::unreal {
 // ground take their layers from the same samples.
 
 // The surface of a sample, its material and its biome, packed as the integer
-// material + kSurfaceBiomeStride * biome: exact in a float, never negative (the texels of the
-// ocean hold a negative ground instead, texelGround).
+// material + kSurfaceBiomeStride * biome, plus kSurfaceWaterCode under inland water (a lake or a
+// river of the hydrology, phase 11B: the water flag of the core off the sea): exact in a float,
+// never negative (the texels of the ocean hold a negative ground instead, texelGround).
 inline constexpr int kSurfaceBiomeStride = 8;
+inline constexpr int kSurfaceWaterCode = 128;
 static_assert(kSurfaceMaterialCount <= kSurfaceBiomeStride, "a material fits below the stride");
+static_assert(kSurfaceBiomeStride * kBiomeCount <= kSurfaceWaterCode,
+              "a material and a biome fit below the water code");
 
 struct SurfaceCode {
     SurfaceMaterial material = SurfaceMaterial::Water;
     Biome biome = Biome::Ocean;
+    bool water = false; // under a lake or a river
 
     friend bool operator==(const SurfaceCode&, const SurfaceCode&) = default;
 };
 
-[[nodiscard]] float packSurface(SurfaceMaterial material, Biome biome);
+[[nodiscard]] float packSurface(SurfaceMaterial material, Biome biome, bool water = false);
 // The surface of a packed code; codes out of range give the ocean.
 [[nodiscard]] SurfaceCode unpackSurface(float code);
 

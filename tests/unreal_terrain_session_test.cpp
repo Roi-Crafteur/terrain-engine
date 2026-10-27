@@ -1,14 +1,20 @@
 // Session of the Unreal plugin on the real world: the frame on the ground of a point, the ground
 // under an Unreal position, the warm-up under a player with its collision tile and its surface
 // blend, the timings of the generations and conversions, invalid parameters, and the destruction
-// of a session while its workers generate tiles.
+// of a session while its workers generate tiles; with a planet file, the water of the world in
+// its tiles.
 #include "terrain_session.hpp"
 
+#include "storage_test_support.hpp"
 #include "test_assert.hpp"
+
+#include "terrain/generation/planet/planet_level.hpp"
+#include "terrain/generation/water/hydrology.hpp"
 
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <stdexcept>
 
@@ -132,6 +138,41 @@ void testDestroyWhileGenerating() {
     }
 }
 
+// With a planet file (on a small world: the level of the whole world takes minutes): the level
+// built and written to it the first time, read from it the next; the heightfield of the tiles
+// and of the horizon is the relief with its water, the valleys of its rivers carved (their floors
+// filled by the levees, 5 m at most).
+void testPlanetFile() {
+    const std::filesystem::path dir = storage_test::freshDirectory("terrain_session_planet");
+    SessionParams params = smallSession();
+    params.world = {32.0 * 65536.0, 16.0 * 65536.0};
+    TEST_CHECK(TerrainSession(params).tiles().heightfield().hydrology() == nullptr);
+    params.planetFile = (dir / "planet.bin").string();
+    const TerrainSession built(params);
+    TEST_CHECK(std::filesystem::exists(dir / "planet.bin"));
+    const terrain::Heightfield& field = built.tiles().heightfield();
+    const terrain::Hydrology* hydrology = field.hydrology();
+    TEST_CHECK(hydrology != nullptr && hydrology->reachCount() > 0);
+    const TerrainSession read(params);
+    const terrain::Hydrology* again = read.tiles().heightfield().hydrology();
+    TEST_CHECK(again != nullptr &&
+               again->planet().checksum() == hydrology->planet().checksum());
+    if (hydrology != nullptr) {
+        bool never = true;
+        std::size_t carved = 0;
+        for (std::size_t r = 0; r < hydrology->reachCount(); r += 97) {
+            for (const terrain::RiverPoint& p : hydrology->reach(r).points) {
+                // Carved, or filled by the levees 5 m at most.
+                const float relief = hydrology->relief().heightAt(p.x, p.z);
+                never = never && !(field.heightAt(p.x, p.z) > relief + 5.0f);
+                carved += field.heightAt(p.x, p.z) < relief ? 1u : 0u;
+            }
+        }
+        TEST_CHECK(never && carved > 0);
+    }
+    std::filesystem::remove_all(dir);
+}
+
 } // namespace
 
 int main() {
@@ -139,5 +180,6 @@ int main() {
     testWarmUp();
     testInvalidParams();
     testDestroyWhileGenerating();
+    testPlanetFile();
     return test::result();
 }

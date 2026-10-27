@@ -12,6 +12,7 @@
 #include "terrain/streaming/stream_manager.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <span>
@@ -38,12 +39,15 @@ inline constexpr int kPlantLod = 0;
 // return canonical chunks. A tile on an edge of the range reads the edits across it too.
 class TerrainTiles {
 public:
-    // Every layer tiles the world (WorldSize). Throws std::invalid_argument for an invalid
-    // world (validate).
+    // Every layer tiles the world (WorldSize). With a hydrology (phase 11B, built over the same
+    // relief), the heightfield is the relief with its water (Heightfield::withHydrology): the
+    // valleys of its rivers carved, its lakes and rivers. Throws std::invalid_argument for an
+    // invalid world (validate).
     explicit TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield = {},
                           const EcologyParams& ecology = {},
                           const std::optional<CaveParams>& caves = std::nullopt,
-                          const WorldSize& world = {});
+                          const WorldSize& world = {},
+                          std::shared_ptr<const Hydrology> hydrology = nullptr);
 
     // Mesh of the canonical image of the tile (wrapTile: data.request holds the canonical key),
     // of the vertical levels holding its ground or a lattice point an edited block reaches: the

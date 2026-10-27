@@ -153,47 +153,63 @@ std::vector<std::uint8_t> sealFrame(ByteWriter out) {
     return out.take();
 }
 
-Frame openFrame(std::span<const std::uint8_t> bytes, const Magic& magic, std::uint32_t current,
-                const std::string& what) {
+FrameHeader frameHeaderOf(std::span<const std::uint8_t> header, const Magic& magic,
+                          const std::string& what) {
+    FrameHeader h;
+    h.ours = std::equal(magic.begin(), magic.end(), header.begin());
+    ByteReader in(header.subspan(4, kFrameHeaderSize - 4), what + ": ");
+    h.version = in.u32();
+    h.size = in.u64();
+    return h;
+}
+
+void checkFrame(const FrameHeader& header, std::uint64_t fileSize, std::uint32_t current,
+                const std::string& what, const std::function<bool()>& checksumHolds) {
     const auto error = [&what](StorageErrorKind kind, const std::string& message) {
         return StorageError(kind, what + ": " + message);
     };
-    if (bytes.size() < kFrameSize) {
-        throw error(StorageErrorKind::Truncated,
-                    "truncated (" + std::to_string(bytes.size()) + " bytes)");
-    }
-    const bool ours = std::equal(magic.begin(), magic.end(), bytes.begin());
-    ByteReader header(bytes.subspan(4, kFrameHeaderSize - 4), what + ": ");
-    const std::uint32_t version = header.u32();
-    const std::uint64_t size = header.u64();
-    ByteReader trailer(bytes.last(4), what + ": ");
-    const auto body = bytes.first(bytes.size() - 4);
     std::optional<StorageError> damage;
-    if (size > bytes.size()) {
-        damage = error(StorageErrorKind::Truncated, "truncated: " + std::to_string(bytes.size()) +
-                                                        " of " + std::to_string(size) + " bytes");
-    } else if (size < bytes.size()) {
+    if (header.size > fileSize) {
+        damage = error(StorageErrorKind::Truncated, "truncated: " + std::to_string(fileSize) +
+                                                        " of " + std::to_string(header.size) +
+                                                        " bytes");
+    } else if (header.size < fileSize) {
         damage = error(StorageErrorKind::Corrupt, "longer than its header announces: damaged");
-    } else if (trailer.u32() != fnv1a(body)) {
+    } else if (!checksumHolds()) {
         damage = error(StorageErrorKind::Corrupt, "checksum mismatch: the file is damaged");
     }
     if (damage) {
-        throw ours ? *damage
-                   : error(StorageErrorKind::Corrupt, "not a " + what + " file, or a damaged one");
+        throw header.ours
+            ? *damage
+            : error(StorageErrorKind::Corrupt, "not a " + what + " file, or a damaged one");
     }
-    if (!ours) {
+    if (!header.ours) {
         throw error(StorageErrorKind::Invalid, "not a " + what + " file");
     }
-    if (version == 0) {
+    if (header.version == 0) {
         throw error(StorageErrorKind::Invalid, "unknown format version 0");
     }
-    if (version > current) {
+    if (header.version > current) {
         throw error(StorageErrorKind::NewerVersion,
-                    "made by a newer version of the game (format " + std::to_string(version) +
-                        ", this one reads up to " + std::to_string(current) +
-                        "): update the game to open it");
+                    "made by a newer version of the game (format " +
+                        std::to_string(header.version) + ", this one reads up to " +
+                        std::to_string(current) + "): update the game to open it");
     }
-    return {version, body.subspan(kFrameHeaderSize)};
+}
+
+Frame openFrame(std::span<const std::uint8_t> bytes, const Magic& magic, std::uint32_t current,
+                const std::string& what) {
+    if (bytes.size() < kFrameSize) {
+        throw StorageError(StorageErrorKind::Truncated,
+                           what + ": truncated (" + std::to_string(bytes.size()) + " bytes)");
+    }
+    const FrameHeader header = frameHeaderOf(bytes.first(kFrameHeaderSize), magic, what);
+    const auto body = bytes.first(bytes.size() - 4);
+    checkFrame(header, bytes.size(), current, what, [&] {
+        ByteReader trailer(bytes.last(4), what + ": ");
+        return trailer.u32() == fnv1a(body);
+    });
+    return {header.version, body.subspan(kFrameHeaderSize)};
 }
 
 } // namespace terrain::storage

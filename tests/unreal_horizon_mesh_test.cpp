@@ -96,7 +96,7 @@ void testVertex() {
     HorizonCell ocean;
     ocean.height = -50.0f;
     ocean.gradX = 0.3f;
-    ocean.flags = terrain::kHorizonWater;
+    ocean.flags = terrain::kHorizonWater | terrain::kHorizonSea;
     const HorizonVertex sea = terrain::unreal::horizonVertex(ocean, look);
     TEST_CHECK(sea.z == -150.0f);
     TEST_CHECK((sea.normal == UnrealVector3f{0.0f, 0.0f, 1.0f}));
@@ -112,6 +112,11 @@ void testVertex() {
     TEST_CHECK(terrain::unreal::horizonVertex(lake, look).z == static_cast<float>(1198.5 * 100.0));
     TEST_CHECK(terrain::unreal::horizonVertex(lake, look).color ==
                terrain::unreal::altitudeColor(1200.0));
+    // A dry depression below the sea level keeps its ground.
+    HorizonCell depression;
+    depression.height = -80.0f;
+    TEST_CHECK(terrain::unreal::horizonVertex(depression, look).z ==
+               static_cast<float>(-81.5 * 100.0));
 }
 
 void testTopology() {

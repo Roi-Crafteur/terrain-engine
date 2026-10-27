@@ -34,8 +34,8 @@ double uniform(bit_exact::Points& points, double low, double high) {
 }
 
 // With every layer hard and vertical faces, the top of the strata is the top of the union of
-// prisms of tops offset + band j, each standing where the ground, receded by its rim, reaches its
-// top: the highest of these levels under the receded ground.
+// prisms of tops offset + band layerBound(j), each standing where the ground, receded by its rim,
+// reaches its top: the highest of these levels under the receded ground.
 void testStrataClosedForm() {
     bit_exact::Points points;
     bool union_ = true;
@@ -52,7 +52,7 @@ void testStrataClosedForm() {
         const double receded = ground - rim * std::max(slope, 0.05);
         double highest = -1.0e300;
         for (int j = -1'200; j <= 1'200; ++j) {
-            const double level = offset + band * j;
+            const double level = offset + band * walls::layerBound(layers, j);
             if (level <= receded + 1e-9) {
                 highest = std::max(highest, level);
             }
@@ -67,8 +67,8 @@ void testStrataClosedForm() {
     TEST_CHECK(soft);
 }
 
-// Never more than a few hundredths of a band above the ground, at most a band and a rim below
-// it; rising with the ground and continuous, the scree at the foot of the walls included; the
+// Never more than a few hundredths of a band above the ground, at most a layer (1.7 bands) and a
+// rim below it; rising with the ground and continuous, the scree at the foot of the walls included; the
 // banks thin out and stop with the share of hard layers, without a step.
 void testStrataBounds() {
     bit_exact::Points points;
@@ -90,7 +90,7 @@ void testStrataBounds() {
         };
         const double t = top(ground, hard);
         bounded = bounded && t <= ground + 0.03 * band &&
-                  t >= ground - rim * std::max(slope, 0.05) - band - 1e-9;
+                  t >= ground - rim * std::max(slope, 0.05) - 1.7 * band - 1e-9;
         // The faces are at most 600 times steeper than the ground below them: no step.
         const double next = top(ground + 1e-3, hard);
         rising = rising && next >= t && next - t <= 600.0 * 1e-3 + 1e-9;
@@ -100,6 +100,33 @@ void testStrataBounds() {
     TEST_CHECK(bounded);
     TEST_CHECK(rising);
     TEST_CHECK(fading);
+}
+
+// The layers of a stack are of uneven thickness, 0.3 to 1.7 bands, spread over that range (no
+// regular comb of ledges), and their bounds increase.
+void testLayersUneven() {
+    bool bounded = true;
+    double sum = 0.0;
+    double sum2 = 0.0;
+    int even = 0;
+    constexpr int kLayers = 20'000;
+    const std::uint64_t layers = 0x2545F4914F6CDD1DULL;
+    double before = walls::layerBound(layers, -1) - walls::layerBound(layers, -2);
+    for (int j = -1; j < kLayers; ++j) {
+        const double thickness = walls::layerBound(layers, j + 1) - walls::layerBound(layers, j);
+        bounded = bounded && thickness >= 0.3 - 1e-12 && thickness <= 1.7 + 1e-12;
+        sum += thickness;
+        sum2 += thickness * thickness;
+        even += std::abs(thickness - before) < 0.02 ? 1 : 0;
+        before = thickness;
+    }
+    const double mean = sum / (kLayers + 1);
+    const double spread = std::sqrt(sum2 / (kLayers + 1) - mean * mean);
+    TEST_CHECK(bounded);
+    TEST_CHECK(std::abs(mean - 1.0) < 0.01);
+    TEST_CHECK(spread > 0.25);
+    // Two layers in a row of the same thickness (within 2 % of a band) are rare.
+    TEST_CHECK(even < kLayers / 20);
 }
 
 // A steep face of a worn core below the crystalline cores of the highest chains (intensity
@@ -219,6 +246,7 @@ void testCrystalRows() {
 int main() {
     testStrataClosedForm();
     testStrataBounds();
+    testLayersUneven();
     testSurface();
     testDeterminismAndSeams();
     testCrystalRows();

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <utility>
 
 namespace terrain {
 
@@ -50,8 +51,10 @@ double EcologyMap::sampleZ(int row) const {
     return sampleCoordinate(region.centerZ, row, region);
 }
 
-Ecology::Ecology(std::uint64_t seed, const EcologyParams& params, const WorldSize& world)
-    : params_(params), climate_(noise::deriveSeed(seed, kClimateStream), params.climate, world),
+Ecology::Ecology(std::uint64_t seed, const EcologyParams& params, const WorldSize& world,
+                 std::shared_ptr<const HumiditySource> humidity)
+    : params_(params),
+      climate_(noise::deriveSeed(seed, kClimateStream), params.climate, world, std::move(humidity)),
       vegetation_(noise::deriveSeed(seed, kVegetationStream), params.vegetation, world),
       blend_(noise::deriveSeed(seed, kBlendStream), params.blend, world) {}
 

@@ -56,6 +56,11 @@ struct Memo {
 
 // Spacings of 2,048 and 1,024 m: whole numbers of them along every side of a world.
 [[nodiscard]] Network makeNetwork(std::uint64_t seed, const WorldSize& world);
+// A network of other spacings (divisors of 65,536 m, the unit of the sides of the worlds) and
+// depths: the couloirs of the walls of the gorges (phase 11B).
+[[nodiscard]] Network makeNetwork(std::uint64_t seed, const WorldSize& world,
+                                  const std::array<double, 2>& spacings,
+                                  const std::array<float, 2>& depths);
 
 // The depth of the ravines at (x, z), meters, any point (the anchors wrap on the world): 0 on
 // the spurs, the most on the axis of the deepest ravines. (slopeX, slopeZ) is the gradient of

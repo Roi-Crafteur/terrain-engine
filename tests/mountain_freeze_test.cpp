@@ -5,14 +5,23 @@
 // chain (view_foot, at the fixed place and with the default arguments), and points drawn over the
 // whole world. A window that changes prints its new value; it must not be pasted back unless the
 // mountains are meant to change.
+// With their water (phase 11B), on the small world whose planet level a test may build: outside
+// the corridors of the rivers, every bit of these samples stays that of the relief alone.
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/planet/planet_level.hpp"
+#include "terrain/generation/water/hydrology.hpp"
 
 #include "golden_support.hpp"
+#include "planet_golden_support.hpp"
 #include "test_assert.hpp"
 
+#include <algorithm>
+#include <array>
+#include <bit>
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -84,17 +93,85 @@ std::uint64_t drawnSum(const terrain::Heightfield& field, int wanted, int& count
     return sum.value();
 }
 
+bool sameBits(const HeightSample& a, const HeightSample& b) {
+    const auto bits = [](const HeightSample& s) {
+        return std::array<std::uint32_t, 6>{
+            std::bit_cast<std::uint32_t>(s.mountainMask), std::bit_cast<std::uint32_t>(s.relief),
+            std::bit_cast<std::uint32_t>(s.base), std::bit_cast<std::uint32_t>(s.mountain),
+            std::bit_cast<std::uint32_t>(s.detail), std::bit_cast<std::uint32_t>(s.height)};
+    };
+    return bits(a) == bits(b);
+}
+
+// The mountains of the small world with their water, 16 km around the sources of 6 of its rivers
+// under the mountains, every 125 m: the points of the corridors of the rivers (where the valley of
+// a river lies below the relief or its floor fills it, Hydrology::riversAt) are left out; every
+// other one keeps every bit of the relief alone, the lakes only laying their water over it.
+void testWithWater() {
+    const terrain::Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
+                                      golden::kSmallPlanet);
+    auto planet = std::make_shared<const terrain::PlanetLevel>(
+        terrain::planet::buildPlanet(relief, golden::smallPlanetParams(2)),
+        golden::smallPlanetParams(2));
+    auto hydrology =
+        std::make_shared<const terrain::Hydrology>(terrain::kDefaultWorldSeed, relief, planet);
+    const terrain::Heightfield field = relief.withHydrology(hydrology);
+    std::vector<std::array<double, 2>> sources;
+    for (const terrain::RiverSegment& s : planet->rivers().segments) {
+        const terrain::RiverVertex& v = s.vertices.front();
+        if (sources.size() < 6 && relief.sampleAt(v.x, v.z).mountainMask > 0.0f) {
+            sources.push_back({v.x, v.z});
+        }
+    }
+    std::size_t mountains = 0;
+    std::size_t excluded = 0;
+    std::size_t lakes = 0;
+    bool frozen = true;
+    for (const auto& c : sources) {
+        for (int j = -64; j < 64; ++j) {
+            for (int i = -64; i < 64; ++i) {
+                const double x = c[0] + 125.0 * i + 0.3;
+                const double z = c[1] + 125.0 * j + 0.7;
+                const HeightSample a = relief.sampleAt(x, z);
+                if (!(a.mountainMask > 0.0f)) {
+                    continue;
+                }
+                ++mountains;
+                const HeightSample s = field.sampleAt(x, z);
+                const terrain::RiverCarve carve =
+                    hydrology->riversAt(x, z, static_cast<double>(a.height));
+                if (carve.carved || carve.raise > 0.0) {
+                    ++excluded;
+                    continue;
+                }
+                frozen = frozen && sameBits(a, s);
+                lakes += s.water == terrain::WaterKind::Lake ||
+                                 s.water == terrain::WaterKind::SaltLake
+                             ? 1u
+                             : 0u;
+            }
+        }
+    }
+    TEST_CHECK(frozen && excluded > 0 && excluded < mountains);
+    std::printf("with the water of the small world: %zu points under the mountains, %zu in the "
+                "corridors of the rivers left out (%.2f%%), every bit of the others kept (%zu of "
+                "them under lakes)\n",
+                mountains, excluded, 100.0 * static_cast<double>(excluded) /
+                                         static_cast<double>(std::max<std::size_t>(mountains, 1)),
+                lakes);
+}
+
 } // namespace
 
 int main() {
     const terrain::Heightfield field(terrain::kDefaultWorldSeed);
     const Window windows[] = {
-        {"k2 scene, 8 km at 25 m", 416'857.0, -11'405'966.0, 25.0, 321, 0x20CC4D545A78840EULL},
-        {"highest wall, 1 km at 4 m", 416'000.0, -11'414'800.0, 4.0, 251, 0x39769451019530F1ULL},
+        {"k2 scene, 8 km at 25 m", 416'857.0, -11'405'966.0, 25.0, 321, 0xF9B398B8FB28A571ULL},
+        {"highest wall, 1 km at 4 m", 416'000.0, -11'414'800.0, 4.0, 251, 0x1D45408B42DF87EEULL},
         {"foot of the fixed chain, 24 km at 100 m", -27'744'000.0, 4'734'000.0, 100.0, 241,
-         0x2B61E18AC6E7B1AFULL},
+         0x03E397534BA52149ULL},
         {"foot of the default chain, 24 km at 100 m", 9'630'245.0, -11'029'895.0, 100.0, 241,
-         0x3FD55F5A4448F4C9ULL},
+         0x923AADA4496FDE08ULL},
     };
     bool same = true;
     for (const Window& w : windows) {
@@ -104,12 +181,13 @@ int main() {
                     value, count, value == w.expected ? "" : "  (differs)");
         same = same && value == w.expected && count > w.side * w.side / 4;
     }
-    constexpr std::uint64_t kDrawn = 0xC6812816A4D90C62ULL;
+    constexpr std::uint64_t kDrawn = 0xB6C1FF0E32307E10ULL;
     int count = 0;
     const std::uint64_t drawn = drawnSum(field, 20'000, count);
     std::printf("{\"drawn points\", 0x%016" PRIX64 "ULL}%s\n", drawn,
                 drawn == kDrawn ? "" : "  (differs)");
     TEST_CHECK(same);
     TEST_CHECK(drawn == kDrawn);
+    testWithWater();
     return test::result();
 }

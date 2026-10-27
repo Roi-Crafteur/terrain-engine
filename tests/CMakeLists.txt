@@ -87,6 +87,10 @@ terrain_add_test(modification_sizes_test terrain_core)
 terrain_add_test(section_codec_test terrain_core)
 target_include_directories(section_codec_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/storage)
+# The frames read in pieces (internal header).
+terrain_add_test(frame_reader_test terrain_core)
+target_include_directories(frame_reader_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/storage)
 terrain_add_test(terrain_tiles_test terrain_core)
 terrain_add_test(tile_blend_test terrain_core)
 target_include_directories(tile_blend_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
@@ -178,7 +182,14 @@ terrain_add_test(planet_lakes_test terrain_core)
 terrain_add_test(planet_flow_test terrain_core)
 terrain_add_test(planet_rivers_test terrain_core)
 terrain_add_test(planet_features_test terrain_core)
+terrain_add_test(planet_breach_test terrain_core)
 terrain_add_test(planet_level_test terrain_core)
+terrain_add_test(planet_file_test terrain_core)
+terrain_add_test(hydrology_test terrain_core)
+terrain_add_test(water_cost_test terrain_core)
+# A measure of time: alone, even under ctest -j.
+set_tests_properties(water_cost_test PROPERTIES RUN_SERIAL TRUE)
+terrain_add_test(river_falls_test terrain_core)
 terrain_add_test(planet_compact_test terrain_core)
 terrain_add_test(planet_golden_test terrain_core)
 terrain_add_test(planet_stats_test terrain_core)
@@ -202,6 +213,7 @@ terrain_add_test(mountain_walls_test terrain_core)
 target_include_directories(mountain_walls_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 terrain_add_test(mountain_freeze_test terrain_core)
+terrain_add_test(depressions_test terrain_core)
 terrain_add_test(plain_forms_test terrain_core)
 target_include_directories(plain_forms_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
@@ -254,6 +266,20 @@ add_test(NAME export_blend_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_blend>
             -DOUT=${CMAKE_BINARY_DIR}/blend_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_blend_bad_args.cmake)
+
+# Maps and views of the water of a small world (maps of 64 px, a view of 64 x 36 pixels).
+add_test(NAME export_water_smoke
+    COMMAND terrain_export_water ${CMAKE_BINARY_DIR}/water --world 4194304 2097152 --threads 2
+            --cell 65536 --width 64 --pixels 64 --map here 1000 -2000 --view here 1000 -2000 90)
+set_tests_properties(export_water_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "water of seed 20261019, world 4194 x 2097 km")
+add_dependencies(check terrain_export_water)
+
+# Invalid arguments of terrain_export_water are rejected before anything is computed.
+add_test(NAME export_water_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_water>
+            -DOUT=${CMAKE_BINARY_DIR}/water_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_water_bad_args.cmake)
 
 # The planet level of a small world (128 x 64 cells of 16 km), its figures and images.
 add_test(NAME export_planet_smoke

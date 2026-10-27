@@ -47,6 +47,13 @@ constexpr std::array<ColorStop, 10> kLand = {{
     {6500.0f, {255.0f, 255.0f, 255.0f}},
 }};
 
+// Dry land below the sea level, from its deepest floors to the sea level: clay to salt.
+constexpr std::array<ColorStop, 3> kBelowSea = {{
+    {-450.0f, {150.0f, 112.0f, 82.0f}},
+    {-100.0f, {196.0f, 168.0f, 128.0f}},
+    {0.0f, {222.0f, 208.0f, 168.0f}},
+}};
+
 template <std::size_t N>
 Rgb tint(const std::array<ColorStop, N>& stops, float height) {
     if (height <= stops.front().height) {
@@ -102,20 +109,29 @@ void requireWindow(double spacing, int columns, int rows) {
     }
 }
 
-// Fills grid.heights row by row, in blocks of rows on the threads.
+// Fills grid.heights and its water row by row, in blocks of rows on the threads.
 void sampleRows(const Heightfield& field, ReliefGrid& grid, int threads) {
-    grid.heights.assign(
-        static_cast<std::size_t>(grid.columns) * static_cast<std::size_t>(grid.rows), 0.0f);
+    const std::size_t count =
+        static_cast<std::size_t>(grid.columns) * static_cast<std::size_t>(grid.rows);
+    grid.heights.assign(count, 0.0f);
+    grid.water.assign(count, WaterKind::None);
+    grid.waterLevels.assign(count, 0.0f);
     planet::parallelRows(grid.rows, planet::resolveThreads(threads), [&](int begin, int end) {
         std::vector<double> xs(static_cast<std::size_t>(grid.columns));
         std::vector<double> zs(xs.size());
+        std::vector<HeightSample> row(xs.size());
         for (int i = 0; i < grid.columns; ++i) {
             xs[static_cast<std::size_t>(i)] = grid.x(i);
         }
         for (int j = begin; j < end; ++j) {
             std::fill(zs.begin(), zs.end(), grid.z(j));
-            const std::span<float> row(grid.heights.data() + grid.index(0, j), xs.size());
-            field.heightsAt(xs, zs, row);
+            field.samplesAt(xs, zs, row);
+            for (std::size_t i = 0; i < row.size(); ++i) {
+                const std::size_t at = grid.index(0, j) + i;
+                grid.heights[at] = row[i].height;
+                grid.water[at] = row[i].water;
+                grid.waterLevels[at] = row[i].waterLevel;
+            }
         }
     });
 }
@@ -163,26 +179,48 @@ ReliefGrid downsampleRelief(const ReliefGrid& grid, int factor) {
     out.originX = grid.originX;
     out.originZ = grid.originZ;
     out.wraps = grid.wraps && grid.columns % factor == 0 && grid.rows % factor == 0;
-    out.heights.resize(static_cast<std::size_t>(out.columns) *
-                       static_cast<std::size_t>(out.rows));
+    const std::size_t cells =
+        static_cast<std::size_t>(out.columns) * static_cast<std::size_t>(out.rows);
+    out.heights.resize(cells);
+    if (!grid.water.empty()) {
+        out.water.resize(cells);
+        out.waterLevels.resize(cells);
+    }
     for (int j = 0; j < out.rows; ++j) {
         for (int i = 0; i < out.columns; ++i) {
             double sum = 0.0;
+            double level = 0.0;
             int count = 0;
+            int sea = 0;
             for (int b = j * factor; b < std::min(grid.rows, (j + 1) * factor); ++b) {
                 for (int a = i * factor; a < std::min(grid.columns, (i + 1) * factor); ++a) {
                     sum += grid.at(a, b);
+                    sea += grid.sea(a, b) ? 1 : 0;
+                    level += grid.water.empty() ? 0.0 : grid.waterLevels[grid.index(a, b)];
                     ++count;
                 }
             }
             out.heights[out.index(i, j)] = static_cast<float>(sum / count);
+            if (!out.water.empty()) {
+                out.water[out.index(i, j)] = 2 * sea > count ? WaterKind::Ocean : WaterKind::None;
+                out.waterLevels[out.index(i, j)] = static_cast<float>(level / count);
+            }
         }
     }
     return out;
 }
 
 std::array<float, 3> reliefColor(float height) {
-    const Rgb color = height < kSeaLevel ? tint(kSea, height) : tint(kLand, height);
+    return reliefColor(height, height < kSeaLevel);
+}
+
+std::array<float, 3> reliefColor(float height, bool sea) {
+    Rgb color = tint(kLand, height);
+    if (sea) {
+        color = tint(kSea, height);
+    } else if (height < kSeaLevel) {
+        color = tint(kBelowSea, height);
+    }
     return {color.r, color.g, color.b};
 }
 
@@ -197,11 +235,19 @@ Image renderRelief(const ReliefGrid& grid) {
     for (int j = 0; j < grid.rows; ++j) {
         for (int i = 0; i < grid.columns; ++i) {
             const float height = grid.at(i, j);
-            const bool sea = height < kSeaLevel;
-            const std::array<float, 3> color = reliefColor(height);
+            const bool sea = grid.sea(i, j);
+            std::array<float, 3> color = reliefColor(height, sea);
+            // The water of the land (phase 11B): rivers and lakes, salt lakes.
+            const WaterKind water = grid.water.empty() ? WaterKind::None : grid.water[grid.index(i, j)];
+            const bool inland = water == WaterKind::River || water == WaterKind::Lake ||
+                                water == WaterKind::SaltLake;
+            if (inland) {
+                color = water == WaterKind::SaltLake ? std::array<float, 3>{170.0f, 205.0f, 210.0f}
+                                                     : std::array<float, 3>{45.0f, 105.0f, 190.0f};
+            }
             // The sea floor is shaded lightly: shelves, ridges and trenches still show.
             const float light = shading(grid, i, j, exaggeration);
-            const float factor = sea ? 0.75f + 0.25f * light : light;
+            const float factor = sea || inland ? 0.75f + 0.25f * light : light;
             image.pixels.insert(image.pixels.end(), {toByte(color[0] * factor),
                                                      toByte(color[1] * factor),
                                                      toByte(color[2] * factor)});

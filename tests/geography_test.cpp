@@ -117,9 +117,10 @@ void testPeriodicAndBatch(const WorldSize& world) {
     }
 }
 
-// Below the sea exactly where the coast signal (and the continentalness) is negative. The ridged
-// mountains only within their mask, which is 0 at sea and where the intensity of the relief is
-// below 0.12. The intensity of the map within [reliefFloor, 1] on land.
+// The sea exactly where the coast signal (and the continentalness) is negative, always below the
+// sea level; the land below it only in the depressions, where the mask of the mountains is 0. The
+// ridged mountains only within their mask, which is 0 at sea and where the intensity of the
+// relief is below 0.12. The intensity of the map within [reliefFloor, 1] on land.
 void testSeaWhereTheCoastIsNegative() {
     // The mountains rise from a few meters in the hills: counted from this height.
     constexpr float kMountainous = 100.0f;
@@ -135,8 +136,10 @@ void testSeaWhereTheCoastIsNegative() {
         const terrain::GeographySample g =
             field.geography()->sampleAt(terrain::wrapCoordinate(p.x, WorldSize{}.x),
                                         terrain::wrapCoordinate(p.z, WorldSize{}.z));
-        consistent = consistent && ((s.height < 0.0f) == (g.coast < 0.0)) &&
-                     ((s.continentalness < 0.0f) == (g.coast < 0.0));
+        const bool atSea = g.coast < 0.0;
+        consistent = consistent && ((s.water == terrain::WaterKind::Ocean) == atSea) &&
+                     ((s.continentalness < 0.0f) == atSea) && (!atSea || s.height < 0.0f) &&
+                     (atSea || s.height >= 0.0f || s.mountainMask == 0.0f);
         // The dominant summits rise the massif up to about 2.4 times its height.
         masked = masked && s.mountain >= 0.0f &&
                  s.mountain <= 2.5f * s.mountainMask * mountainHeight &&
@@ -146,7 +149,7 @@ void testSeaWhereTheCoastIsNegative() {
                   (g.relief >= field.params().geography.reliefFloor - 1e-6f && g.relief <= 1.0f)) &&
                  s.plateCollision == g.belt &&
                  (g.coast > 0.0 || s.mountainMask == 0.0f);
-        ++(s.height < 0.0f ? sea : land);
+        ++(atSea ? sea : land);
         mountains += s.mountain > kMountainous ? 1 : 0;
     }
     TEST_CHECK(consistent);

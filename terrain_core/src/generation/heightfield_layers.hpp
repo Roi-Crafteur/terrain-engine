@@ -12,6 +12,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/voronoi.hpp"
+#include "terrain/generation/water/hydrology.hpp"
 
 namespace terrain {
 
@@ -36,6 +37,8 @@ struct Heightfield::Layers {
     // The spurs of the chains (ridged) and the ravines of the slopes.
     noise::FbmOctaves geographySpurs;
     ravines::Network ravines;
+    ravines::Network gullies; // the couloirs of the walls of the gorges of the rivers (11B)
+    noise::FbmOctaves wallGrain; // and the grain of their rock
     // The valleys in U and the dominant summits of the mountains, and their walls.
     mountain_forms::Noises forms;
     mountain_walls::Noises walls;
@@ -49,7 +52,8 @@ struct Heightfield::Layers {
     bool twinGeographyWarps = false; // so are geographyWarpX and geographyWarpZ
 };
 
-// The memos of the noises of the layers and of the plates during a batch call.
+// The memos of the noises of the layers and of the plates during a batch call, and the region of
+// the hydrology of its points (empty for the relief alone).
 struct Heightfield::Memos {
     noise::FbmOctaves::Memo continent;
     noise::FbmOctaves::Memo macroContinent;
@@ -66,6 +70,9 @@ struct Heightfield::Memos {
     mountain_forms::Memo forms;
     mountain_walls::Memo walls;
     plain_forms::Memos plains;
+    ravines::Memo gullies;           // the couloirs of the gorges (applyHydrology)
+    noise::FbmOctaves::Memo grain;   // and the grain of their rock
+    Hydrology::Region water;
 };
 
 } // namespace terrain

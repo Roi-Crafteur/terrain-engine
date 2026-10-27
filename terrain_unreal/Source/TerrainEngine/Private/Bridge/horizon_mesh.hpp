@@ -18,10 +18,17 @@ struct HorizonLook {
     // Every vertex lies this far below its ground, meters: on the band where the tiles of LOD 3
     // cover level 0 (TileHole), the tiles stay in front of it, without z-fighting.
     double dropMeters = 1.0;
-    // The ocean, every sample below the sea level, flat at the sea level in kSeaColor (a lake
-    // above the sea level keeps its ground); and a sea square at the sea level under the tiles.
+    // The ocean, every sample of the sea (isSeaCell), flat at the sea level in kSeaColor (a lake
+    // keeps its ground, and so does a dry depression below the sea level); and a sea square at
+    // the sea level under the tiles.
     bool sea = true;
 };
+
+// A sample of the sea: flagged so by the core (kHorizonSea: where the geography puts the sea)
+// and below the sea level.
+[[nodiscard]] inline bool isSeaCell(const HorizonCell& cell) {
+    return (cell.flags & kHorizonSea) != 0 && cell.height < kSeaLevel;
+}
 
 inline constexpr VertexColor kSeaColor{28, 66, 102, 255};
 

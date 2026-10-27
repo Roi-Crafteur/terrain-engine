@@ -42,7 +42,8 @@ struct BiomeParams {
     float treelineTemperature = -1.0f;
     float mountainSlope = 0.7f;
 
-    // Beach: land at most beachMaxHeight above sea level, on slopes up to beachMaxSlope.
+    // Beach: land at most beachMaxHeight above sea level (not below it: a depression), on slopes
+    // up to beachMaxSlope.
     float beachMaxHeight = 4.0f;
     float beachMaxSlope = 0.1f;
 

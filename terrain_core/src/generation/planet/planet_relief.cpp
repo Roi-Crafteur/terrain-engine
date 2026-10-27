@@ -12,9 +12,41 @@ namespace {
 
 constexpr int kMaxSamplesPerAxis = 8;
 
-float cellHeight(const Heightfield& field, const PlanetGrid& grid, int i, int j, int samples) {
+// The continentalness of the Heightfield is the coast distance over this scale.
+constexpr double kContinentalScale = 1'500'000.0;
+
+// The floor of a cell: the lowest of its n^2 points of the same water as its center (the land of a
+// cell on the coast, not the bottom of the sea), else its center; its index and whether the
+// mountain mask is above 0 there.
+struct Floor {
+    float height = 0.0f;
+    std::uint8_t index = kCenterFloor;
+    std::uint8_t mountain = 0;
+};
+
+Floor cellFloor(const Heightfield& field, const PlanetGrid& grid, std::size_t cell, int n,
+                const HeightSample& center) {
+    const bool sea = center.water == WaterKind::Ocean;
+    Floor f{center.height, kCenterFloor, center.mountainMask > 0.0f ? std::uint8_t{1}
+                                                                     : std::uint8_t{0}};
+    bool found = false;
+    for (int k = 0; k < n * n; ++k) {
+        const std::array<double, 2> p = floorPoint(grid, cell, static_cast<std::uint8_t>(k), n);
+        const HeightSample s = field.sampleAt(p[0], p[1]);
+        if ((s.water == WaterKind::Ocean) == sea && (!found || s.height < f.height)) {
+            found = true;
+            f = {s.height, static_cast<std::uint8_t>(k), s.mountainMask > 0.0f ? std::uint8_t{1}
+                                                                               : std::uint8_t{0}};
+        }
+    }
+    return f;
+}
+
+// The altitude of a cell; with one sample, center holds the sample of its center.
+float cellHeight(const Heightfield& field, const PlanetGrid& grid, int i, int j, int samples,
+                 const HeightSample& center) {
     if (samples == 1) {
-        return field.heightAt(grid.centerX(i), grid.centerZ(j));
+        return center.height;
     }
     const double x0 = grid.centerX(i) - 0.5 * grid.cellSize;
     const double z0 = grid.centerZ(j) - 0.5 * grid.cellSize;
@@ -35,12 +67,12 @@ struct Components {
     std::vector<std::size_t> size;
 };
 
-Components belowSeaComponents(const PlanetGrid& grid, const std::vector<float>& height) {
+Components belowSeaComponents(const PlanetGrid& grid, const std::vector<std::uint8_t>& below) {
     Components result;
     result.of.assign(grid.cells(), -1);
     std::vector<std::size_t> queue;
     for (std::size_t start = 0; start < grid.cells(); ++start) {
-        if (!(height[start] < kSeaLevel) || result.of[start] >= 0) {
+        if (below[start] == 0 || result.of[start] >= 0) {
             continue;
         }
         const auto id = static_cast<std::int32_t>(result.size.size());
@@ -49,7 +81,7 @@ Components belowSeaComponents(const PlanetGrid& grid, const std::vector<float>& 
         for (std::size_t head = 0; head < queue.size(); ++head) {
             for (int k = 0; k < 8; ++k) {
                 const std::size_t n = grid.neighbor(queue[head], k);
-                if (height[n] < kSeaLevel && result.of[n] < 0) {
+                if (below[n] != 0 && result.of[n] < 0) {
                     result.of[n] = id;
                     queue.push_back(n);
                 }
@@ -64,30 +96,81 @@ Components belowSeaComponents(const PlanetGrid& grid, const std::vector<float>& 
 
 std::vector<float> sampleRelief(const Heightfield& field, const PlanetGrid& grid,
                                 int samplesPerAxis, int threads) {
-    if (samplesPerAxis < 1 || samplesPerAxis > kMaxSamplesPerAxis) {
-        throw std::invalid_argument("sampleRelief: samplesPerAxis must be from 1 to 8");
+    return sampleCells(field, grid, samplesPerAxis, threads).height;
+}
+
+std::uint8_t floorOf(const Heightfield& field, const PlanetGrid& grid, std::size_t cell,
+                     int floorSamples) {
+    if (floorSamples <= 1) {
+        return kCenterFloor;
+    }
+    const HeightSample center =
+        field.sampleAt(grid.centerX(grid.column(cell)), grid.centerZ(grid.row(cell)));
+    return cellFloor(field, grid, cell, floorSamples, center).index;
+}
+
+std::array<double, 2> floorPoint(const PlanetGrid& grid, std::size_t cell, std::uint8_t floor,
+                                 int floorSamples) {
+    const double x = grid.centerX(grid.column(cell));
+    const double z = grid.centerZ(grid.row(cell));
+    if (floor == kCenterFloor) {
+        return {x, z};
+    }
+    const double step = grid.cellSize / floorSamples;
+    return {x - 0.5 * grid.cellSize + (floor % floorSamples + 0.5) * step,
+            z - 0.5 * grid.cellSize + (floor / floorSamples + 0.5) * step};
+}
+
+CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int samplesPerAxis,
+                       int threads, int floorSamples) {
+    if (samplesPerAxis < 1 || samplesPerAxis > kMaxSamplesPerAxis || floorSamples < 1 ||
+        floorSamples > kMaxSamplesPerAxis) {
+        throw std::invalid_argument("sampleRelief: samplesPerAxis and floorSamples must be from 1 "
+                                    "to 8");
     }
     if (field.world().x != grid.periodX() || field.world().z != grid.periodZ()) {
         throw std::invalid_argument("sampleRelief: the field and the grid tile different worlds");
     }
-    std::vector<float> height(grid.cells());
+    CellRelief cells{std::vector<float>(grid.cells()), std::vector<std::uint8_t>(grid.cells()),
+                     std::vector<std::uint8_t>(grid.cells(), kCenterFloor),
+                     std::vector<std::uint8_t>(grid.cells())};
+    const auto nearLand = static_cast<float>(-kFloorCoast / kContinentalScale);
     parallelRows(grid.nz, resolveThreads(threads), [&](int begin, int end) {
         for (int j = begin; j < end; ++j) {
             for (int i = 0; i < grid.nx; ++i) {
-                const float h = cellHeight(field, grid, i, j, samplesPerAxis);
+                const std::size_t c = grid.index(i, j);
+                const HeightSample center = field.sampleAt(grid.centerX(i), grid.centerZ(j));
+                float h = cellHeight(field, grid, i, j, samplesPerAxis, center);
+                cells.mountain[c] = center.mountainMask > 0.0f ? 1 : 0;
+                if (floorSamples > 1 && center.continentalness > nearLand) {
+                    const Floor f = cellFloor(field, grid, c, floorSamples, center);
+                    h = f.height;
+                    cells.floor[c] = f.index;
+                    cells.mountain[c] = f.mountain;
+                }
                 if (!std::isfinite(h)) {
                     throw std::domain_error("sampleRelief: non-finite altitude");
                 }
-                height[grid.index(i, j)] = h;
+                cells.height[c] = h;
+                cells.sea[c] = center.water == WaterKind::Ocean ? 1 : 0;
             }
         }
     });
-    return height;
+    return cells;
 }
 
 std::vector<std::uint8_t> markOcean(const PlanetGrid& grid, const std::vector<float>& height,
                                     double minOceanArea) {
-    const Components components = belowSeaComponents(grid, height);
+    std::vector<std::uint8_t> below(grid.cells());
+    for (std::size_t c = 0; c < grid.cells(); ++c) {
+        below[c] = height[c] < kSeaLevel ? 1 : 0;
+    }
+    return markOcean(grid, height, below, minOceanArea);
+}
+
+std::vector<std::uint8_t> markOcean(const PlanetGrid& grid, const std::vector<float>& height,
+                                    const std::vector<std::uint8_t>& sea, double minOceanArea) {
+    const Components components = belowSeaComponents(grid, sea);
     std::vector<std::uint8_t> ocean(grid.cells(), kLand);
     bool any = false;
     for (std::size_t c = 0; c < grid.cells(); ++c) {
