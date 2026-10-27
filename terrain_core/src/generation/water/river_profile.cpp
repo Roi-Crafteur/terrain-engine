@@ -1,6 +1,7 @@
 // The valley of a course at a point (river_profile.hpp).
 #include "river_profile.hpp"
 
+#include "river_slot.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
@@ -13,10 +14,8 @@ namespace terrain::water {
 
 namespace {
 
-// The headwall of a fall turns to rock over kHeadFade meters beside its channel; the banks of its
-// slot rise kFallBank meters per meter (76 degrees).
+// The headwall of a fall turns to rock over kHeadFade meters beside its channel.
 constexpr double kHeadFade = 10.0;
-constexpr double kFallBank = 4.0;
 
 double lerp(double a, double b, double t) {
     return a + (b - a) * t;
@@ -100,6 +99,9 @@ struct Frame {
     double floorSlope = 0.0;
     double above = 0.0;
     double floorLevel = 0.0;
+    // On a stretch in steps (fall above 0), the walls of its slot (CoursePoint::slot).
+    double fall = 0.0;
+    double slot = 0.0;
 };
 
 Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double rise,
@@ -135,6 +137,10 @@ Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double 
     r.floorSlope = lerp(a.floorSlope, b.floorSlope, t);
     r.above = kFloorRise + r.floorSlope * std::max(0.0, d - r.half);
     r.floorLevel = r.surfaceLevel + r.above;
+    r.fall = lerp(a.fall ? 1.0 : 0.0, b.fall ? 1.0 : 0.0, t);
+    if (r.fall > 0.0) {
+        r.slot = std::max(a.slot, b.slot);
+    }
     return r;
 }
 
@@ -167,11 +173,81 @@ bool mayMatter(const CoursePoint& a, const CoursePoint& b, const Foot& f, const 
     if (std::clamp(r.fillLevel + r.above - ground, 0.0, kLevee) * onFloor > 0.0) {
         return true;
     }
-    if (!(r.amplitude > 0.0)) {
+    if (!(r.amplitude > 0.0) && !(r.fall > 0.0)) {
         const double edge = f.distance - r.half;
         return edge >= 0.0 && edge < kBankReach;
     }
     return !(channelFrom(a, b, f, r) - r.half >= kBankReach);
+}
+
+// The channel of segment a-b at a foot (channelOf).
+struct Channel {
+    double distance = 0.0;
+    double half = 0.0;
+    double height = 0.0;
+};
+
+// The banks of segment a-b, bank meters high out meters beyond its channel, in the slot of a fall
+// drawn along meters along the course. Beyond the walls of the slot at their widest (slotReach),
+// where the banks rise above the floor whatever their width there, the valley is that of the
+// floor: they are only drawn nearer.
+double slotBank(const Frame& r, const Foot& f, std::uint64_t slotSeed, double along, double out,
+                double bank) {
+    const double reach = slotReach(r.slot, r.half);
+    if (out >= reach + kFarMargin &&
+        lerp(bank, r.floorLevel + kBankSlope * (out - reach), r.fall) >=
+            r.floorLevel + kFarMargin) {
+        return r.floorLevel;
+    }
+    const double run = slotRun(slotSeed, along, r.slot, r.half, f.side);
+    const double rise = std::max(0.0, r.floorLevel - r.water);
+    const double wall = out < run ? r.water + slotWall(out, run, rise)
+                                  : r.floorLevel + kBankSlope * (out - run);
+    return bank + (wall - bank) * r.fall;
+}
+
+// The channel of segment a-b at a foot: how far the point lies from its meandering line, its
+// half width and the height of its bed or of its banks there. On a stretch in steps, in the slot of
+// the fall (river_slot.hpp): the channel narrowed, its walls rising from the water to the floor
+// over their own width beyond it, whatever the depth of the steps below the floor.
+Channel channelOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, const Frame& r,
+                  std::uint64_t seed, std::uint64_t slotSeed) {
+    const double t = r.t;
+    Channel c;
+    c.distance = f.distance;
+    c.half = r.half;
+    // The slot is drawn where the point lies along the course, beyond the ends of the segment
+    // too: the segments around it draw the same slot there.
+    const double along = lerp(a.s, b.s, t) + (f.upstream ? -f.beyond : f.beyond);
+    if (r.fall > 0.0) {
+        c.half = slotHalf(slotSeed, along, r.half);
+    }
+    // Beyond its banks (and the rock of a headwall beside it), where they rise above the floor,
+    // the channel changes nothing whatever its meanders: at the least distance to it (as
+    // mayMatter's) the valley is the same. They are only drawn nearer (off the falls).
+    const double nearest =
+        r.amplitude > 0.0 && !(r.fall > 0.0) ? channelFrom(a, b, f, r) - c.half : 0.0;
+    if (nearest >= kBankReach + kFarMargin &&
+        r.floorLevel <= r.water + kBankSlope * nearest - kFarMargin) {
+        c.distance = c.half + nearest;
+    } else if (r.amplitude > 0.0) {
+        const Meander m = meanderAt(lerp(a.phase, b.phase, t), r.amplitude, seed);
+        const double rate = m.rate * lerp(a.phaseRate, b.phaseRate, t);
+        // To the segment moved by the offset: continuous, even beyond its ends.
+        c.distance =
+            dmath::hypot(f.beyond, (f.side - m.offset) / std::sqrt(1.0 + rate * rate));
+    }
+    const double half = c.half;
+    if (c.distance < half) {
+        c.height = r.water - r.depth * (1.0 - (c.distance / half) * (c.distance / half));
+        return c;
+    }
+    const double out = c.distance - half;
+    c.height = r.water + kBankSlope * out;
+    if (r.fall > 0.0) {
+        c.height = slotBank(r, f, slotSeed, along, out, c.height);
+    }
+    return c;
 }
 
 // The rest of the valley of segment a-b at a foot from its frame. Upstream of its start, the
@@ -180,34 +256,15 @@ bool mayMatter(const CoursePoint& a, const CoursePoint& b, const Foot& f, const 
 // undercuts the water above them, while the segments alongside the point set its surface. The
 // fill of the floor drops as fast downstream of its end, for the same reason. The valley is carved
 // from its level (CoursePoint::valley, its surface rising valleyRise), the channel from the water
-// (rise): on a fall, its slot cut into the floor of the valley with banks of kFallBank.
+// (rise): on a fall, in its slot cut into the floor of the valley (channelOf).
 Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, const Frame& r,
-                     std::uint64_t seed) {
+                     std::uint64_t seed, std::uint64_t slotSeed) {
     const double t = r.t;
-    const double fall = lerp(a.fall ? 1.0 : 0.0, b.fall ? 1.0 : 0.0, t);
-    const double half = r.half;
-    const double depth = r.depth;
-    // The channel about its meandering line, cut into the floor (never below it far away).
-    double channelDistance = f.distance;
-    // Beyond its banks (and the rock of a headwall beside it), where they rise above the floor,
-    // the channel changes nothing whatever its meanders: at the least distance to it (as
-    // mayMatter's) the valley is the same. They are only drawn nearer.
-    const double nearest = r.amplitude > 0.0 ? channelFrom(a, b, f, r) - half : 0.0;
-    if (nearest >= kBankReach + kFarMargin &&
-        r.floorLevel <= r.water + kBankSlope * nearest - kFarMargin) {
-        channelDistance = half + nearest;
-    } else if (r.amplitude > 0.0) {
-        const Meander m = meanderAt(lerp(a.phase, b.phase, t), r.amplitude, seed);
-        const double rate = m.rate * lerp(a.phaseRate, b.phaseRate, t);
-        // To the segment moved by the offset: continuous, even beyond its ends.
-        channelDistance =
-            dmath::hypot(f.beyond, (f.side - m.offset) / std::sqrt(1.0 + rate * rate));
-    }
-    const double bankSlope = kBankSlope + (kFallBank - kBankSlope) * fall;
-    const double channel =
-        channelDistance < half
-            ? r.water - depth * (1.0 - (channelDistance / half) * (channelDistance / half))
-            : r.water + bankSlope * (channelDistance - half);
+    const double fall = r.fall;
+    const Channel ch = channelOf(a, b, f, r, seed, slotSeed);
+    const double channelDistance = ch.distance;
+    const double half = ch.half;
+    const double channel = ch.height;
     const double cut = std::max(0.0, r.floorLevel - channel);
     // Not wet where its surface rises upstream, but up the face of a fall: there it is the face,
     // its water rising with it (where the segment above holds about the same ground).
@@ -244,6 +301,19 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
 double secant(const CoursePoint& a, const CoursePoint& b, float CoursePoint::*level) {
     const double run = b.s - a.s;
     return run > 0.0 ? std::max(0.0, static_cast<double>(a.*level - b.*level)) / run : 0.0;
+}
+
+// The blocks of the pools of the falls of c stand over the lowest valley of its segments at (x,
+// z): over every segment alike, so over the lowest as well. The water stands only around them.
+void standBlocks(const Course& c, double x, double z, Valley& v) {
+    if (c.blocks.empty() || !(v.height < std::numeric_limits<double>::infinity())) {
+        return;
+    }
+    const double block = blocksAt(c, x, z);
+    if (block > v.height) {
+        v.height = block;
+        v.wet = v.wet && block < static_cast<double>(v.level);
+    }
 }
 
 } // namespace
@@ -358,7 +428,7 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
         if (!mayMatter(a, b, f, r, lowest + kBlend, ground)) {
             return;
         }
-        Valley v = segmentValley(a, b, f, r, meanderSeed);
+        Valley v = segmentValley(a, b, f, r, meanderSeed, c.slotSeed);
         if (v.height < bound && f.distance > kReach - kReachFade - 500.0) {
             v.height += (bound - v.height) *
                         smooth(kReach - kReachFade - 500.0, kReach - 500.0, f.distance);
@@ -407,6 +477,7 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
             }
         }
     }
+    standBlocks(c, x, z, best);
     blend.applyTo(best);
     best.raise = raise;
     best.bank = bank;

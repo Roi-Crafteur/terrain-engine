@@ -228,7 +228,7 @@ RiverReach Hydrology::reach(std::size_t index) const {
     out.deepestCut = c.deepestCut;
     for (const water::CoursePoint& p : c.points) {
         out.points.push_back({p.x, p.z, p.level, 2.0f * p.half, p.depth, 2.0f * p.floorHalf,
-                              p.gorge, p.mountain, p.meander});
+                              p.gorge, p.mountain, p.meander, p.valley});
     }
     for (std::size_t i = 0; i + 1 < c.points.size();) {
         std::size_t j = i;
@@ -242,6 +242,9 @@ RiverReach Hydrology::reach(std::size_t index) const {
                                  c.points[j].level, 2.0f * c.points[i].half});
         }
         i = j > i ? j : i + 1;
+    }
+    for (const water::FallBlock& b : c.blocks) {
+        out.blocks.push_back({b.x, b.z, b.radius, b.top});
     }
     return out;
 }

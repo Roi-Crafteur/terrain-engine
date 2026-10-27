@@ -84,6 +84,10 @@ struct RiverPoint {
     float gorge = 0.0f;      // [0, 1]: open valley to narrow gorge
     float mountain = 0.0f;   // [0, 1]: plains to mountains
     float meander = 0.0f;    // amplitude of the meanders of the channel about this axis
+    // The level the valley is carved from: the water, or above the steps of a fall the slope they
+    // come down, raised so that their slot stays cut into the floor at their lips too (its floor
+    // stands kFloorRise, 0.6 m, above it).
+    float valley = 0.0f;
 };
 
 // A fall: the stretch of a course where its water drops at once.
@@ -93,6 +97,14 @@ struct RiverFall {
     float top = 0.0f;    // the water above
     float bottom = 0.0f; // the water below
     float width = 0.0f;
+};
+
+// A block of rock in a pool of a fall: a dome radius meters wide around (x, z), its top at top.
+struct RiverBlock {
+    double x = 0.0; // meters, in the images of the reach
+    double z = 0.0;
+    float radius = 0.0f;
+    float top = 0.0f;
 };
 
 // The course of one reach.
@@ -105,6 +117,7 @@ struct RiverReach {
     float deepestCut = 0.0f; // the relief above the water, meters, at most
     std::vector<RiverPoint> points;
     std::vector<RiverFall> falls;
+    std::vector<RiverBlock> blocks;
 };
 
 class Hydrology {

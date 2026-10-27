@@ -111,6 +111,7 @@ add_library(terrain_core STATIC
     src/generation/water/river_join.cpp
     src/generation/water/river_path.cpp
     src/generation/water/river_profile.cpp
+    src/generation/water/river_slot.cpp
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
     src/io/blend_png.cpp

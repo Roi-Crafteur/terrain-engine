@@ -112,8 +112,11 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - fleuves creusés après le relief, sans le déformer : lits, vallées ouvertes en plaine (berges à
   7° en médiane, 13,5° au 90e centile), gorges de roche dans les montagnes, affluents qui
   descendent dans la vallée qu'ils rejoignent, levées, lacs fins au niveau des lacs de la planète
-- chutes aux seules ruptures de pente : à-pic jusqu'à 400 m ou gradins irréguliers, dans une
-  fente au fond de la vallée
+- chutes aux seules ruptures de pente : à-pic jusqu'à 400 m ou gradins irréguliers (hauteurs,
+  espacements, faces de 70 à 88°, marches doubles), dans une fente au fond de la vallée dont la
+  largeur, les bords et l'axe varient, creusée aussi aux lèvres des marches, avec des avancées
+  de roche et des blocs dans les bassins ; plus de dents de scie le long de la fente
+  (`river_falls_test`)
 - sorties pour Unreal : type et niveau de l'eau dans les échantillons, Bridge
 - climat de la planète branché sur les biomes (humidité tirée de la pluie et de l'évaporation)
 - strates et joints des parois de la 11R bis d'épaisseurs irrégulières, plus de motif régulier
@@ -162,6 +165,13 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   Masked / OpacityMask ; de même dans le chemin CPU) : plus de mer carrée sur une dépression
   sous 0 m
 - côté Unreal (7c) : la couleur du fond marin seulement sous le drapeau mer
+- côté Unreal : damier de carrés sombres sur les collines (vu depuis 900 m en aval de la chute
+  de 388 m, à 30 m de haut). Ni la géométrie ni les types de sol du core n'en ont (maillage des
+  tuiles lisse, plaques de sol continues) : c'est le matériau. Cause probable : le tirage `Bomb`
+  du matériau temporaire (`temporary_terrain_hlsl.py`), des cases de 2,8 m (5,6 m pour la roche)
+  tournées au hasard d'un quart de tour et fondues seulement sur leur dernier quart. À vérifier
+  dans Unreal : des carrés de 2,8 m, et le damier qui disparaît avec `DetailNearM = 0` sur
+  l'instance ; des carrés de 8 m viendraient plutôt des texels de l'horizon
 - création du niveau Planète en 500 Mo : phase 11D
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
 - sans les cols du relief fin entre les cellules du niveau Planète, les fleuves de la 11B
