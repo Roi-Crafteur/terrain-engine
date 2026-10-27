@@ -1,7 +1,10 @@
 #include "tile_mesh_conversion.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace terrain::unreal {
 
@@ -24,17 +27,68 @@ void validate(const Mesh& mesh) {
     }
 }
 
+double oceanWeight(BlendTexel texel) {
+    const SurfaceBlend blend = unpackBlend(texel);
+    double weight = 0.0;
+    for (std::size_t s = 0; s < blend.biomes.size(); ++s) {
+        if (blend.biomes[s] == Biome::Ocean) {
+            weight += static_cast<double>(blend.biomeWeights[s]);
+        }
+    }
+    return weight;
+}
+
+constexpr int kSide = kTileBlendTexels;
+
+// The weights of the ocean of the texels of a tile, in their order.
+std::vector<double> oceanWeights(const TileSea& sea) {
+    if (sea.texels == nullptr || sea.texels->size() != static_cast<std::size_t>(kSide * kSide) ||
+        !(sea.pitchMeters > 0.0)) {
+        throw std::invalid_argument("oceanShare: the texels of a tile and their pitch expected");
+    }
+    std::vector<double> weights;
+    weights.reserve(sea.texels->size());
+    for (const BlendTexel texel : *sea.texels) {
+        weights.push_back(oceanWeight(texel));
+    }
+    return weights;
+}
+
+double bilinear(const std::vector<double>& weights, double pitch, double x, double z) {
+    const double u = std::clamp(x / pitch, 0.0, kSide - 1.0);
+    const double v = std::clamp(z / pitch, 0.0, kSide - 1.0);
+    const int i = std::min(static_cast<int>(u), kSide - 2);
+    const int k = std::min(static_cast<int>(v), kSide - 2);
+    const double fu = u - i;
+    const double fv = v - k;
+    const auto at = [&](int di, int dk) {
+        return weights[static_cast<std::size_t>((k + dk) * kSide + i + di)];
+    };
+    return (1.0 - fv) * ((1.0 - fu) * at(0, 0) + fu * at(1, 0)) +
+           fv * ((1.0 - fu) * at(0, 1) + fu * at(1, 1));
+}
+
 } // namespace
 
-UnrealMesh convertMesh(const Mesh& mesh, double originY) {
+double oceanShare(const TileSea& sea, double x, double z) {
+    return bilinear(oceanWeights(sea), sea.pitchMeters, x, z);
+}
+
+UnrealMesh convertMesh(const Mesh& mesh, double originY, const TileSea& sea) {
     validate(mesh);
+    const bool flagged = sea.texels != nullptr && !sea.texels->empty();
+    const std::vector<double> ocean = flagged ? oceanWeights(sea) : std::vector<double>{};
+    const bool anyOcean = std::any_of(ocean.begin(), ocean.end(), [](double w) { return w > 0.0; });
     UnrealMesh out;
     out.positions.reserve(mesh.vertices.size());
     out.normals.reserve(mesh.normals.size());
     out.colors.reserve(mesh.vertices.size());
     for (const Vec3f& vertex : mesh.vertices) {
         out.positions.push_back(toUnrealOffset(vertex));
-        out.colors.push_back(altitudeColor(originY + vertex.y));
+        const double altitude = originY + vertex.y;
+        const bool under =
+            !flagged || (anyOcean && bilinear(ocean, sea.pitchMeters, vertex.x, vertex.z) >= 0.5);
+        out.colors.push_back(groundColor(altitude, under));
     }
     for (const Vec3f& normal : mesh.normals) {
         out.normals.push_back(toUnrealDirection(normal));

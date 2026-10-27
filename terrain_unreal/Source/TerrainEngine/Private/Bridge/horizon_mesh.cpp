@@ -116,9 +116,31 @@ void stitchBorder(const HorizonLevel& level, const HorizonLevel& coarser,
     }
 }
 
-// The skirt, the sea square and the bounds vertex of a filled grid.
+// Whether the core puts the ocean on a sample of the window within half meters of its center:
+// the sea square is drawn only then (the procedural meshes have no per-pixel mask, unlike the
+// GPU horizon: a square with some ocean is still drawn whole).
+bool squareHoldsSea(const WindowReader& reader, int cells, double half, double pitch,
+                    const HorizonLook& look) {
+    if (!look.sea) {
+        return false;
+    }
+    const int reach = static_cast<int>(std::floor(half / pitch));
+    const int low = std::max(cells / 2 - reach, 0);
+    const int high = std::min(cells / 2 + reach, cells);
+    for (int k = low; k <= high; ++k) {
+        for (int i = low; i <= high; ++i) {
+            if (isSeaCell(reader.at(i, k))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// The skirt, the sea square (collapsed to a point at the center without any ocean) and the
+// bounds vertex of a filled grid.
 void fillExtras(const BodyTopology& topology, const BodyShape& shape, double pitchCm,
-                UnrealMesh& mesh) {
+                bool withSea, UnrealMesh& mesh) {
     const auto skirtCm = static_cast<float>(shape.skirtMeters * kCentimetersPerMeter);
     for (std::size_t j = 0; j < topology.border.size(); ++j) {
         const auto top = static_cast<std::size_t>(topology.border[j]);
@@ -131,7 +153,7 @@ void fillExtras(const BodyTopology& topology, const BodyShape& shape, double pit
     const double center = topology.cells / 2 * pitchCm;
     const UnrealVector3f up{0.0f, 0.0f, 1.0f};
     if (topology.seaFirst >= 0) {
-        const double half = shape.seaHalfMeters * kCentimetersPerMeter;
+        const double half = withSea ? shape.seaHalfMeters * kCentimetersPerMeter : 0.0;
         const auto sea = static_cast<float>(kSeaLevel * kCentimetersPerMeter);
         const auto low = static_cast<float>(center - half);
         const auto high = static_cast<float>(center + half);
@@ -174,7 +196,7 @@ HorizonVertex horizonVertex(const HorizonCell& cell, const HorizonLook& look) {
     vertex.normal = toUnrealDirection({static_cast<float>(-gx / length),
                                        static_cast<float>(1.0 / length),
                                        static_cast<float>(-gz / length)});
-    vertex.color = altitudeColor(cell.height);
+    vertex.color = groundColor(cell.height, (cell.flags & kHorizonSea) != 0);
     return vertex;
 }
 
@@ -244,7 +266,9 @@ void fillBody(const HorizonLevel& level, const BodyTopology& topology, const Bod
     if (shape.coarser != nullptr) {
         stitchBorder(level, *shape.coarser, topology, look, mesh.positions);
     }
-    fillExtras(topology, shape, pitchCm, mesh);
+    const bool sea = topology.seaFirst >= 0 &&
+                     squareHoldsSea(reader, topology.cells, shape.seaHalfMeters, level.pitch(), look);
+    fillExtras(topology, shape, pitchCm, sea, mesh);
 }
 
 UnrealMesh levelTrim(const HorizonLevel& level, const CellRect& square, const CellRect& finer,
