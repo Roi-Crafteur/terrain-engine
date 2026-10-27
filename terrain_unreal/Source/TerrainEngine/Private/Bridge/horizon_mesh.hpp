@@ -33,11 +33,14 @@ struct HorizonLook {
 inline constexpr VertexColor kSeaColor{28, 66, 102, 255};
 
 // A vertex of the horizon for a sample: its Unreal altitude (centimeters, relative to the
-// altitude 0 of the core), its normal and its color by altitude (Bridge/altitude_color.hpp).
+// altitude 0 of the core), its normal, its color by altitude (Bridge/altitude_color.hpp) and the
+// water over it (HorizonCell::waterLevel from the ground it shows, before the drop: the water
+// drops with it).
 struct HorizonVertex {
     float z = 0.0f;
     UnrealVector3f normal;
     VertexColor color;
+    VertexWater water;
 };
 
 [[nodiscard]] HorizonVertex horizonVertex(const HorizonCell& cell, const HorizonLook& look);
@@ -89,7 +92,9 @@ struct BodyShape {
 [[nodiscard]] double skirtMeters(int pitch);
 
 // Fills the positions (centimeters from the low corner of the window, at the altitude 0), the
-// normals and the colors of the body of a placed level; the triangles are the topology's.
+// normals, the colors and the water of the body of a placed level (the water of a stitched
+// border vertex from the altitude it takes; the skirt, the sea square and the bounds vertex
+// dry); the triangles are the topology's.
 void fillBody(const HorizonLevel& level, const BodyTopology& topology, const BodyShape& shape,
               const HorizonLook& look, UnrealMesh& mesh);
 
