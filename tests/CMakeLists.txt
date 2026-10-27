@@ -87,6 +87,10 @@ terrain_add_test(modification_sizes_test terrain_core)
 terrain_add_test(section_codec_test terrain_core)
 target_include_directories(section_codec_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/storage)
+# The frames read in pieces (internal header).
+terrain_add_test(frame_reader_test terrain_core)
+target_include_directories(frame_reader_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/storage)
 terrain_add_test(terrain_tiles_test terrain_core)
 terrain_add_test(tile_blend_test terrain_core)
 target_include_directories(tile_blend_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)

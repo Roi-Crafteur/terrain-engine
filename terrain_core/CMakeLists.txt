@@ -146,6 +146,7 @@ add_library(terrain_core STATIC
     src/storage/edit_summary.cpp
     src/storage/edit_window.cpp
     src/storage/file_commit.cpp
+    src/storage/frame_reader.cpp
     src/storage/modifications.cpp
     src/storage/planet_file.cpp
     src/storage/region_file.cpp

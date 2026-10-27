@@ -3,6 +3,7 @@
 
 #include "byte_stream.hpp"
 #include "file_commit.hpp"
+#include "frame_reader.hpp"
 #include "storage_codec.hpp"
 #include "terrain/storage/world_meta.hpp"
 
@@ -17,8 +18,8 @@ namespace terrain {
 
 namespace {
 
-using storage::ByteReader;
 using storage::ByteWriter;
+using storage::FrameReader;
 
 constexpr storage::Magic kMagic = {'T', 'P', 'L', 'N'};
 
@@ -93,7 +94,7 @@ void writeCells(ByteWriter& out, const PlanetCells& c) {
     }
 }
 
-PlanetCells readCells(ByteReader& in) {
+PlanetCells readCells(FrameReader& in) {
     PlanetCells c;
     c.grid.nx = in.i32();
     c.grid.nz = in.i32();
@@ -147,7 +148,7 @@ void writeLakes(ByteWriter& out, const std::vector<PlanetLake>& lakes) {
     }
 }
 
-std::vector<PlanetLake> readLakes(ByteReader& in) {
+std::vector<PlanetLake> readLakes(FrameReader& in) {
     std::vector<PlanetLake> lakes(in.count(57));
     for (PlanetLake& l : lakes) {
         l.node = in.i32();
@@ -175,7 +176,7 @@ void writeIndices(ByteWriter& out, const std::vector<std::int32_t>& v) {
     }
 }
 
-std::vector<std::int32_t> readIndices(ByteReader& in) {
+std::vector<std::int32_t> readIndices(FrameReader& in) {
     std::vector<std::int32_t> v(in.count(4));
     for (std::int32_t& i : v) {
         i = in.i32();
@@ -210,7 +211,7 @@ void writeRivers(ByteWriter& out, const RiverGraph& g) {
     }
 }
 
-RiverGraph readRivers(ByteReader& in) {
+RiverGraph readRivers(FrameReader& in) {
     RiverGraph g;
     g.segments.resize(in.count(30));
     for (RiverSegment& s : g.segments) {
@@ -257,7 +258,7 @@ void writeFeatures(ByteWriter& out, const std::vector<RiverFeature>& features) {
     }
 }
 
-std::vector<RiverFeature> readFeatures(ByteReader& in) {
+std::vector<RiverFeature> readFeatures(FrameReader& in) {
     std::vector<RiverFeature> features(in.count(37));
     for (RiverFeature& f : features) {
         const std::uint8_t kind = in.u8();
@@ -295,7 +296,7 @@ void writeTotals(ByteWriter& out, const PlanetLevel& level) {
     out.f32(s.deepestCut);
 }
 
-void readTotals(ByteReader& in, PlanetLevel::Parts& p) {
+void readTotals(FrameReader& in, PlanetLevel::Parts& p) {
     p.budget = {in.i64(), in.i64(), in.i64()};
     PlanetTimings& t = p.timings;
     for (double* v : {&t.relief, &t.ocean, &t.climate, &t.order, &t.hierarchy, &t.lakes, &t.flow,
@@ -313,7 +314,7 @@ void readTotals(ByteReader& in, PlanetLevel::Parts& p) {
 
 // What the file says it holds: the level of seed on world, with these parameters, this
 // generator; otherwise stale.
-void checkOrigin(ByteReader& in, std::uint64_t seed, const PlanetParams& params,
+void checkOrigin(FrameReader& in, std::uint64_t seed, const PlanetParams& params,
                  const WorldSize& world) {
     const std::uint64_t fileSeed = in.u64();
     const std::uint32_t generator = in.u32();
@@ -353,10 +354,8 @@ void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
 
 PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
                            const PlanetParams& params, const WorldSize& world) {
-    const std::vector<std::uint8_t> bytes = storage::readFileBytes(file);
-    const std::string what = storage::pathText(file);
-    const storage::Frame frame = storage::openFrame(bytes, kMagic, kPlanetFileVersion, what);
-    ByteReader in(frame.body, what + ": ");
+    // Read in pieces: only the level in memory, never the bytes of the file with it.
+    FrameReader in(file, kMagic, kPlanetFileVersion, storage::pathText(file));
     checkOrigin(in, seed, params, world);
     const std::uint64_t checksum = in.u64();
     PlanetLevel::Parts parts;
@@ -367,9 +366,11 @@ PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed
     parts.features = readFeatures(in);
     readTotals(in, parts);
     in.expectEnd("bytes after the level");
+    in.finish();
     PlanetLevel level(std::move(parts));
     if (level.checksum() != checksum) {
-        throw StorageError(StorageErrorKind::Corrupt, what + ": a level unlike its checksum");
+        throw StorageError(StorageErrorKind::Corrupt,
+                           storage::pathText(file) + ": a level unlike its checksum");
     }
     return level;
 }

@@ -1,5 +1,6 @@
 // The planet file: the level of the small world written and read back to the bit, built only
-// when the file does not hold it, refused when it holds another world, damaged or truncated.
+// when the file does not hold it, refused when it holds another world, damaged or truncated (a
+// damage told before what the damaged bytes say).
 #include "terrain/storage/planet_file.hpp"
 
 #include "planet_golden_support.hpp"
@@ -73,6 +74,14 @@ void testDamaged(const std::filesystem::path& file, const PlanetLevel& level) {
                                       golden::kSmallPlanet);
     };
     TEST_CHECK(errorOf(load) == StorageErrorKind::Corrupt);
+    // A damaged seed: the damage, not the level of another world (the file is read in pieces,
+    // its checksum checked before any failure); sealed again, another world.
+    std::vector<std::uint8_t> seed = bytes;
+    seed[16] ^= 0x01; // the first byte after the header of the frame
+    storage_test::writeBytes(file, seed);
+    TEST_CHECK(errorOf(load) == StorageErrorKind::Corrupt);
+    storage_test::writeBytes(file, storage_test::resealed(seed));
+    TEST_CHECK(errorOf(load) == StorageErrorKind::Invalid);
     bytes.resize(bytes.size() / 3);
     storage_test::writeBytes(file, bytes);
     TEST_CHECK(errorOf(load) == StorageErrorKind::Truncated);
