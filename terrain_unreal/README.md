@@ -517,3 +517,11 @@ décrit dans [`TEMPORARY_MATERIAL.md`](TEMPORARY_MATERIAL.md) : règles, install
 réglages, coût, limites, et trois défauts de rendu (le trait sombre au bord des tuiles, corrigé
 par le fondu de `HorizonDropCm` ; les dents de scie sous un soleil bas, corrigées par des
 normales lissées ; la « ligne d'ombre » au pied de la chaîne, une arête du relief).
+
+## 14. Le niveau de l'eau (phase 11, tâche 7b)
+
+Le niveau de l'eau du core (mer, lacs, fleuves, chutes) arrive dans Unreal : aux sommets des
+tuiles et de l'horizon CPU dans le canal UV 0, et dans une texture d'eau par niveau de l'horizon GPU
+(`HorizonWater`, `CoarseWater`). Aucun matériau ne le lit encore : l'image ne change pas. Il faut
+un fichier planète (`PlanetFile`, section 5). Formats, lecture, mémoire et limites :
+[`WATER_LEVEL.md`](WATER_LEVEL.md).
