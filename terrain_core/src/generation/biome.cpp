@@ -24,8 +24,10 @@ bool isMountain(const ClimateSample& climate, const SurfaceSite& site, float alt
             (climate.slope >= params.mountainSlope && !site.cliffWall));
 }
 
+// Dry land below the sea level lies in a depression, far from any sea: never a beach.
 bool isBeach(const ClimateSample& climate, float altitude, const BiomeParams& params) {
-    return altitude <= params.beachMaxHeight && climate.slope <= params.beachMaxSlope;
+    return altitude >= 0.0f && altitude <= params.beachMaxHeight &&
+           climate.slope <= params.beachMaxSlope;
 }
 
 bool isMarsh(const ClimateSample& climate, const SurfaceSite& site, float altitude,

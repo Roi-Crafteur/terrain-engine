@@ -14,6 +14,7 @@
 #include <memory>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace terrain {
 
@@ -112,7 +113,13 @@ enum Layer : std::uint64_t {
     kMountainForms,
     kMountainWalls,
     kPlainForms,
+    kDepressions,
+    kGullies,
+    kWallGrain,
 };
+
+// The grain of the rock of the walls of the gorges (phase 11B): an fbm from this wavelength.
+constexpr double kWallGrainWavelength = 64.0;
 
 } // namespace
 
@@ -164,6 +171,9 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         }
         layers->geographySpurs = fast(kSpurs, 2, params_.geography.spurWavelength, 0.5);
         layers->ravines = ravines::makeNetwork(noise::deriveSeed(seed, kRavines), world);
+        layers->gullies = ravines::makeNetwork(noise::deriveSeed(seed, kGullies), world,
+                                               {512.0, 256.0}, {0.20f, 0.16f});
+        layers->wallGrain = fast(kWallGrain, 3, kWallGrainWavelength, 0.5);
         // The summits sit on the crests of the first octave of the massif.
         layers->forms =
             mountain_forms::makeNoises(noise::deriveSeed(seed, kMountainForms), world,
@@ -182,12 +192,11 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
     if (params_.geography.enabled) {
         geography_ =
             Geography::shared(noise::deriveSeed(seed, kGeography), params_.geography, world_);
-        return;
-    }
-    if (params_.plates.amplitude > 0.0f) {
+    } else if (params_.plates.amplitude > 0.0f) {
         plates_ = std::make_shared<const TectonicPlates>(noise::deriveSeed(seed, kPlates),
                                                          params_.plates, world_);
     }
+    water_ = makeWater(noise::deriveSeed(seed, kDepressions), params_, geography_.get());
 }
 
 
@@ -209,36 +218,56 @@ void requireOneSize(std::size_t xs, std::size_t zs, std::size_t out) {
 } // namespace
 
 float Heightfield::heightAt(double x, double z) const {
-    return sampleWith(x, z, nullptr).height;
+    return sampleAt(x, z).height;
 }
 
 HeightSample Heightfield::sampleAt(double x, double z) const {
-    return sampleWith(x, z, nullptr);
+    HeightSample s = reliefWith(x, z, nullptr);
+    if (hydrology_) {
+        applyHydrology(noise::wrapCanonical(x, world_.x), noise::wrapCanonical(z, world_.z), s,
+                       nullptr);
+    }
+    return s;
 }
 
+// The relief of every point first, then its water: the water of the points of a batch shares what
+// their box holds (Hydrology::Region), and each sample is the same as sampleAt.
 void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> zs,
                             std::span<HeightSample> out) const {
     requireOneSize(xs.size(), zs.size(), out.size());
     Memos memos;
     for (std::size_t i = 0; i < xs.size(); ++i) {
-        out[i] = sampleWith(xs[i], zs[i], &memos);
+        out[i] = reliefWith(xs[i], zs[i], &memos);
+    }
+    if (hydrology_) {
+        waterOf(xs, zs, out, memos);
     }
 }
 
 void Heightfield::heightsAt(std::span<const double> xs, std::span<const double> zs,
                             std::span<float> out) const {
     requireOneSize(xs.size(), zs.size(), out.size());
+    if (hydrology_) {
+        std::vector<HeightSample> samples(xs.size());
+        samplesAt(xs, zs, samples);
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            out[i] = samples[i].height;
+        }
+        return;
+    }
     Memos memos;
     for (std::size_t i = 0; i < xs.size(); ++i) {
-        out[i] = sampleWith(xs[i], zs[i], &memos).height;
+        out[i] = reliefWith(xs[i], zs[i], &memos).height;
     }
 }
 
-HeightSample Heightfield::sampleWith(double worldX, double worldZ, Memos* memos) const {
+HeightSample Heightfield::reliefWith(double worldX, double worldZ, Memos* memos) const {
     const double x = noise::wrapCanonical(worldX, world_.x);
     const double z = noise::wrapCanonical(worldZ, world_.z);
     if (geography_) {
-        return geographySample(x, z, memos);
+        HeightSample s = geographySample(x, z, memos);
+        finishWater(x, z, s);
+        return s;
     }
     HeightSample s;
     continentalnessAt(x, z, s, memos);
@@ -264,6 +293,7 @@ HeightSample Heightfield::sampleWith(double worldX, double worldZ, Memos* memos)
 
     s.detail = detailAt(x, z, s.base, memos);
     s.height = s.base + s.mountain + s.detail;
+    finishWater(x, z, s);
     return s;
 }
 

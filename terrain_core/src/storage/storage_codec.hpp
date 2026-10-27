@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 #include <vector>
@@ -63,6 +64,22 @@ struct Frame {
     std::uint32_t version = 0;
     std::span<const std::uint8_t> body;
 };
+
+// The first kFrameHeaderSize bytes of a frame: its magic is magic (ours), its version and the
+// size it announces.
+struct FrameHeader {
+    bool ours = false;
+    std::uint32_t version = 0;
+    std::uint64_t size = 0;
+};
+[[nodiscard]] FrameHeader frameHeaderOf(std::span<const std::uint8_t> header, const Magic& magic,
+                                        const std::string& what);
+
+// The checks of openFrame on a frame of fileSize bytes (kFrameSize at least) with this header,
+// checksumHolds telling whether its checksum is right (only asked when the sizes agree). Throws
+// as openFrame.
+void checkFrame(const FrameHeader& header, std::uint64_t fileSize, std::uint32_t current,
+                const std::string& what, const std::function<bool()>& checksumHolds);
 
 // Checks a frame, what naming the file in the messages (such as "world.meta"):
 // - shorter than a frame, or shorter than the size it announces: Truncated;

@@ -86,6 +86,10 @@ constexpr double kScreeSlope = 0.7;
 constexpr double kJointTilt = 0.55;
 // The share of a band its face may take at most.
 constexpr double kFaceShare = 0.3;
+// The bounds of the layers move by up to kLayerJitter of a band each (a draw of their own):
+// layers of uneven thickness, 0.3 to 1.7 bands, never the comb of even ones.
+constexpr double kLayerJitter = 0.35;
+constexpr std::uint64_t kBoundSalt = 0x6c61796572626f75ULL;
 // The slope of the ground is read at least as kLeastSlope.
 constexpr double kLeastSlope = 0.05;
 
@@ -287,24 +291,45 @@ Masks masks(const Noises& n, const Column& c, double x, double z, Memo* memo) {
     return out;
 }
 
+double layerBound(std::uint64_t layers, std::int64_t k) {
+    const std::uint64_t draw = noise::deriveSeed(layers ^ kBoundSalt, static_cast<std::uint64_t>(k));
+    return static_cast<double>(k) + kLayerJitter * (2.0 * field(draw, 0) - 1.0);
+}
+
 double strataTop(double ground, double slope, double band, double offset, double rim, double run,
                  const Bedding& b) {
     const double s = std::max(slope, kLeastSlope);
     const double u = (ground - rim * s - offset) / band;
-    const double k = std::floor(u);
-    const double t = u - k;
+    // The layer of u, between its bounds (in bands).
+    auto k = static_cast<std::int64_t>(std::floor(u));
+    double low = layerBound(b.layers, k);
+    double high = 0.0;
+    if (u < low) {
+        --k;
+        high = low;
+        low = layerBound(b.layers, k);
+    } else {
+        high = layerBound(b.layers, k + 1);
+        if (!(u < high)) {
+            ++k;
+            low = high;
+            high = layerBound(b.layers, k + 1);
+        }
+    }
+    const double thickness = high - low;
+    const double t = (u - low) / thickness;
     // A soft layer keeps the slope; a hard one is a ledge, then a wall up to the next layer. Both
-    // meet at the bounds of the band, whatever their blend.
+    // meet at the bounds of the layer, whatever their blend.
     const double soft = offset + band * u;
-    const auto index = static_cast<std::uint64_t>(static_cast<std::int64_t>(k));
+    const auto index = static_cast<std::uint64_t>(k);
     const std::uint64_t draw = noise::deriveSeed(b.layers, index);
     const double hardness = smooth(-kHardEdge, kHardEdge, b.hard - field(draw, 0));
     if (!(hardness > 0.0)) {
         return soft;
     }
     const double tilt = b.tilt + (1.0 - b.tilt) * b.spread * field(draw, 1);
-    // The face takes the share of the band the ground climbs over run meters.
-    const double face = std::clamp(s * run / band, 0.0, kFaceShare);
+    // The face takes the share of the layer the ground climbs over run meters.
+    const double face = std::clamp(s * run / (band * thickness), 0.0, kFaceShare);
     double rise = face > 0.0 ? smooth(1.0 - face, 1.0, t) : (t >= 1.0 ? 1.0 : 0.0);
     if (b.scree > 0.0 && face > 0.0) {
         // The scree: a concave apron from start, at most kScreeSlope steep, up to scree of the
@@ -314,7 +339,7 @@ double strataTop(double ground, double slope, double band, double offset, double
         const double q = std::clamp((t - (1.0 - width)) / width, 0.0, 1.0);
         rise = (1.0 - b.scree) * rise + b.scree * q * q;
     }
-    const double hard = offset + band * (k + tilt * t + (1.0 - tilt) * rise);
+    const double hard = offset + band * (low + thickness * (tilt * t + (1.0 - tilt) * rise));
     return soft + hardness * (hard - soft);
 }
 
@@ -330,10 +355,22 @@ double crystalTop(const Noises& n, double x, double z, double ground, double gra
 
 double surface(const Noises& n, const Column& c, double x, double z, Memo* memo) {
     const Masks m = masks(n, c, x, z, memo);
-    double h = c.ground;
     if (!(m.strata > 0.0) && !(m.crystal > 0.0)) {
-        return h;
+        return c.ground;
     }
+    return rockTop(n, m, x, z, c.ground, c.gradX, c.gradZ, memo);
+}
+
+double strataShare(const Noises& n, double x, double z, float character, Memo* memo) {
+    return smooth(-kCharacterEdge, kCharacterEdge,
+                  fbm(n.character, x, z, memo ? &memo->character : nullptr) +
+                      kWornStrata * (kSharp - static_cast<double>(character)) - kRareStrata);
+}
+
+double rockTop(const Noises& n, const Masks& m, double x, double z, double ground, double gradX,
+               double gradZ, Memo* memo) {
+    const Column c{ground, gradX, gradZ};
+    double h = c.ground;
     // The noise of the rims, once for the strata and the joints.
     const double noise = fbm(n.rims, x, z, memo ? &memo->rims : nullptr);
     if (m.strata > 0.0) {

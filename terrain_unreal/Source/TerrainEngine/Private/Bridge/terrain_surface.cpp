@@ -5,22 +5,24 @@
 
 namespace terrain::unreal {
 
-float packSurface(SurfaceMaterial material, Biome biome) {
+float packSurface(SurfaceMaterial material, Biome biome, bool water) {
     return static_cast<float>(static_cast<int>(material) +
-                              kSurfaceBiomeStride * static_cast<int>(biome));
+                              kSurfaceBiomeStride * static_cast<int>(biome) +
+                              (water ? kSurfaceWaterCode : 0));
 }
 
 SurfaceCode unpackSurface(float code) {
-    if (!(code >= 0.0f) || code >= static_cast<float>(kSurfaceBiomeStride * kBiomeCount)) {
+    if (!(code >= 0.0f) || code >= static_cast<float>(2 * kSurfaceWaterCode)) {
         return {};
     }
-    const int value = static_cast<int>(code);
+    const bool water = code >= static_cast<float>(kSurfaceWaterCode);
+    const int value = static_cast<int>(code) - (water ? kSurfaceWaterCode : 0);
     const int material = value % kSurfaceBiomeStride;
-    if (material >= kSurfaceMaterialCount) {
+    if (value >= kSurfaceBiomeStride * kBiomeCount || material >= kSurfaceMaterialCount) {
         return {};
     }
     return {static_cast<SurfaceMaterial>(material),
-            static_cast<Biome>(value / kSurfaceBiomeStride)};
+            static_cast<Biome>(value / kSurfaceBiomeStride), water};
 }
 
 DropFade dropFade(const TileHole& hole, double level0PitchMeters) {

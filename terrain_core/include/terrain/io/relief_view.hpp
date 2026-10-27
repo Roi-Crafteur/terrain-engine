@@ -13,8 +13,8 @@ namespace terrain {
 // vertical and each column is a vertical plane through the eye. One ray per column over the
 // ground, front to back, with the curvature of the planet (a drop of d^2 / 2R at a distance d),
 // the hypsometric colors of relief_png lit by a low sun on the left of the view, a haze growing
-// with the distance, and the sea surface over the ground below it. A scale mark: a tower of red
-// and white bands of 50 m standing on the ground.
+// with the distance, and the sea surface over the ground below it (or the water given). A scale
+// mark: a tower of red and white bands of 50 m standing on the ground.
 struct ViewParams {
     double eyeX = 0.0;
     double eyeZ = 0.0;
@@ -42,6 +42,9 @@ struct ViewParams {
 
 // Height of the ground at (x, z), meters; called from several threads at once.
 using ViewGround = std::function<float(double x, double z)>;
+// The surface of the water at (x, z), meters: the ground is under water where it is above the
+// ground, dry elsewhere. Called from several threads at once.
+using ViewWater = std::function<float(double x, double z)>;
 
 // Throws std::invalid_argument for an image smaller than 2 x 2 pixels, a field of view outside
 // (0, 0.45) turns, or a non-positive planet radius, haze distance, first depth or tower width,
@@ -49,6 +52,10 @@ using ViewGround = std::function<float(double x, double z)>;
 // hardware concurrency); the image does not depend on their number.
 [[nodiscard]] Image renderReliefView(const ViewGround& ground, const ViewParams& params,
                                      int threads);
+// The same view over the water given: lakes and rivers flat at their levels, and dry ground
+// below the sea level (a depression) colored as land.
+[[nodiscard]] Image renderReliefView(const ViewGround& ground, const ViewWater& water,
+                                     const ViewParams& params, int threads);
 
 // What the eye of params sees of the point (x, z) at altitude height: the tangent of its
 // elevation (the drop of the curvature included), its distance, and whether the ground hides it.
@@ -63,5 +70,9 @@ struct Sightline {
 
 [[nodiscard]] Sightline sightline(const ViewGround& ground, const ViewParams& params, double x,
                                   double z, double height, double margin);
+// The same over the water given (the sea at the sea level for the one above).
+[[nodiscard]] Sightline sightline(const ViewGround& ground, const ViewWater& water,
+                                  const ViewParams& params, double x, double z, double height,
+                                  double margin);
 
 } // namespace terrain

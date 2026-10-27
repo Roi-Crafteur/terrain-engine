@@ -3,6 +3,7 @@
 #include "terrain/generation/planet/planet_flow.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -127,9 +128,14 @@ PlanetLevel::PlanetLevel(std::uint64_t seed, const HeightfieldParams& heightfiel
 PlanetLevel::PlanetLevel(PlanetBuild&& build, const PlanetParams& params)
     : params_(params), cells_(planet::compactCells(build)), lakes_(std::move(build.lakes)),
       rivers_(std::move(build.rivers)), features_(std::move(build.features)), budget_(build.budget),
-      timings_(build.timings) {
+      timings_(build.timings), breach_(build.breach) {
     build = PlanetBuild{}; // the full-precision cells are not kept
 }
+
+PlanetLevel::PlanetLevel(Parts&& parts)
+    : params_(parts.params), cells_(std::move(parts.cells)), lakes_(std::move(parts.lakes)),
+      rivers_(std::move(parts.rivers)), features_(std::move(parts.features)),
+      budget_(parts.budget), timings_(parts.timings), breach_(parts.breach) {}
 
 float PlanetLevel::temperature(std::size_t cell) const {
     return planet::cellTemperature(
@@ -184,6 +190,23 @@ PlanetSample PlanetLevel::sampleAt(double x, double z) const {
     }
     s.wind = planet::rowWind(grid(), grid().row(cell), params_.climate);
     return s;
+}
+
+// The humidity reads the potential evapotranspiration as kLeastPet mm/yr at least: the cold
+// lands (none below 0 degrees) are not soaked for it.
+constexpr double kLeastPet = 300.0;
+
+float PlanetLevel::humidityAt(double x, double z) const {
+    const PlanetBilinear corners = planetBilinear(grid(), x, z);
+    std::array<double, 4> humidity{};
+    for (std::size_t k = 0; k < 4; ++k) {
+        const std::size_t c = corners.cells[k];
+        const double p = precipitation(c);
+        const double pet = std::max(
+            planet::potentialEvapotranspiration(temperature(c), params_.climate), kLeastPet);
+        humidity[k] = p / (p + pet);
+    }
+    return static_cast<float>(corners.blend(humidity[0], humidity[1], humidity[2], humidity[3]));
 }
 
 std::vector<std::int32_t> PlanetLevel::basins() const {

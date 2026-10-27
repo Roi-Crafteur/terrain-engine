@@ -13,7 +13,8 @@
 //     by joints along planes tilted 20 to 50 degrees in a direction of its own: oblique walls
 //     and slabs, dihedrals where the cells meet, without horizontal layers. Cells of 512 m with
 //     joints 60 to 220 m apart, and of 128 m with joints 15 to 55 m apart.
-// The faces rise over a few meters (60 to 88 degrees) and never overhang: the rock has one
+// The layers of a stack (bands, steps, joints) are of uneven thickness, 0.3 to 1.7 of their
+// spacing each (layerBound): no regular comb of ledges or grooves. The faces rise over a few meters (60 to 88 degrees) and never overhang: the rock has one
 // surface, the top of the union of the prisms, computed in closed form. Its density is the
 // vertical distance to that surface. The floors of the valleys, the gentle ground (passes) and
 // the crests keep no wall. Pure arithmetic of doubles, noises and hashes: the same bits on every
@@ -111,12 +112,17 @@ struct Bedding {
     double scree = 0.0;
 };
 
-// The top of a stack of strata over ground of slope slope (meters per meter): bands band meters
-// high from offset, their rims receded by rim meters. A hard layer (blended over the draw of its
-// hardness) is a ledge, then a face rising over run meters (0: a vertical wall) up to the next
-// band, its foot buried in a concave apron of scree at most as steep as the scree at rest; a
-// soft one keeps the slope. Continuous, rising with the ground, at most a few hundredths of a
-// band above it.
+// The lower bound of layer k of a stack (layers the seed of its draws), in bands from its offset:
+// k moved by up to 0.35 of a band, a draw of its own (layers of uneven thickness, 0.3 to 1.7
+// bands: no regular comb of ledges). Increasing with k.
+[[nodiscard]] double layerBound(std::uint64_t layers, std::int64_t k);
+
+// The top of a stack of strata over ground of slope slope (meters per meter): layers about band
+// meters high from offset (layerBound), their rims receded by rim meters. A hard layer (blended
+// over the draw of its hardness) is a ledge, then a face rising over run meters (0: a vertical
+// wall) up to the next layer, its foot buried in a concave apron of scree at most as steep as the
+// scree at rest; a soft one keeps the slope. Continuous, rising with the ground, at most a few
+// hundredths of a band above it.
 [[nodiscard]] double strataTop(double ground, double slope, double band, double offset,
                                double rim, double run, const Bedding& bedding);
 
@@ -132,6 +138,16 @@ struct Bedding {
 // The top of the rock at a column at (x, z), canonical.
 [[nodiscard]] double surface(const Noises& noises, const Column& column, double x, double z,
                              Memo* memo);
+
+// The top of the rock of surface over ground of gradient (gradX, gradZ) with the masks given
+// instead of those of the map: walls cut into the ground by other forms (the gorges of the rivers,
+// phase 11B). surface is rockTop with masks (where they are not 0).
+[[nodiscard]] double rockTop(const Noises& noises, const Masks& masks, double x, double z,
+                             double ground, double gradX, double gradZ, Memo* memo);
+// The share of strata of the walls at (x, z) for a character of the map (the rest crystalline),
+// as surface draws it, without its isolated regions and its crystalline cores.
+[[nodiscard]] double strataShare(const Noises& noises, double x, double z, float character,
+                                 Memo* memo);
 
 // The density of the rock at height y: the vertical distance to its surface (negative inside).
 [[nodiscard]] double density(const Noises& noises, const Column& column, double x, double z,

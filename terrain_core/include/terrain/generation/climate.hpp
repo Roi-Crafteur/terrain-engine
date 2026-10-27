@@ -4,6 +4,7 @@
 #include "terrain/world_size.hpp"
 
 #include <cstdint>
+#include <memory>
 
 namespace terrain {
 
@@ -57,14 +58,25 @@ struct ClimateSample {
 // south, negative on slopes facing the north, within (-1, 1).
 [[nodiscard]] float exposureOf(float gradX, float gradZ);
 
+// The humidity of the world from elsewhere than the noise of the climate: the climate of the
+// planet level (phase 11B), whose winds carry the moisture of the seas over the land.
+class HumiditySource {
+public:
+    virtual ~HumiditySource() = default;
+    // Humidity in [0, 1] at the canonical (x, z).
+    [[nodiscard]] virtual float humidityAt(double x, double z) const = 0;
+};
+
 // Deterministic climate: the same seed, parameters and inputs always give the same climate.
 // The noise layers are continuous, so the climate has no seam between regions or chunks, and
 // periodic on the world (WorldSize): (x, z) is brought back into its canonical range first.
 class ClimateField {
 public:
     // Throws std::invalid_argument for an invalid world (validate).
+    // With a humidity source, the humidity is the source's (humidityAt), the rest unchanged.
     explicit ClimateField(std::uint64_t seed, const ClimateParams& params = {},
-                          const WorldSize& world = {});
+                          const WorldSize& world = {},
+                          std::shared_ptr<const HumiditySource> humidity = nullptr);
 
     // Part of the base temperature given by the latitude of z alone (no fbm).
     [[nodiscard]] float latitudeTemperatureAt(double z) const;
@@ -87,6 +99,7 @@ private:
     WorldSize world_;
     std::uint64_t temperatureSeed_;
     std::uint64_t humiditySeed_;
+    std::shared_ptr<const HumiditySource> humidity_;
 };
 
 } // namespace terrain

@@ -82,6 +82,46 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - mesures du relief actuel : il ne draine pas (lacs sur 27 % des terres du monde
   planétaire, fleuves qui traversent surtout des lacs) : objectifs chiffrés de 11R
 
+### Phase 11R — Relief planétaire
+- la géographie planétaire devient le monde par défaut (version du générateur 3) : carte de
+  toute la planète calculée une fois, identique au bit près quel que soit le nombre de threads
+- continents indépendants des plaques (37 % de terres, 5 à 10 continents), côtes à toutes les
+  échelles, plateaux continentaux, fonds océaniques, altitude régionale qui draine vers la mer
+- chaînes en larges ceintures aux convergences, hauts plateaux derrière, rifts en marches aux
+  divergences, dorsales, arcs insulaires ; provinces (plaines, bassins, vieux massifs, plateaux)
+- outils de cartes et de chiffres du relief (`terrain_export_relief`)
+
+### Phase 11R bis — Relief naturel
+- intensité du relief continue, sans bord ; montagnes ridged aiguës, ravins en V et roche sur
+  les pentes ; frontières de plaques courbées, chaînes coupées, bords de plateaux
+- parois rocheuses, vallées en U et sommets dominants (jusqu'à 8 392 m, vus à plus de 15° du
+  fond des vallées) ; montagnes gelées depuis (`mountain_freeze_test`)
+- plaines plates ou ondulées, collines isolées, réseau de vallons (formes des plaines,
+  seulement hors du masque des montagnes)
+- vues en perspective à hauteur d'homme (`terrain_export_view`), vérifiées dans Unreal avec le
+  personnage
+- coût : montagnes ×2,6 et plaines ×1,9 de l'ancien relief en patchs
+
+### Phase 11B — L'eau suit le relief
+- mer décidée par la géographie (reliée à l'océan) et non plus par l'altitude ; dépressions sous
+  le niveau de la mer, sèches (fond en relief, falaise du côté raide, buttes, croûtes de sel) ou
+  en lacs
+- niveau Planète gardé sur disque (`terrain_make_planet` : 247 Mo, environ 100 s sur 4 cœurs),
+  relu en flux (273 Mo au plus pendant le chargement, 372 Mo en jeu) ; fonds des cellules,
+  petites dépressions percées
+- fleuves creusés après le relief, sans le déformer : lits, vallées ouvertes en plaine (berges à
+  7° en médiane, 13,5° au 90e centile), gorges de roche dans les montagnes, affluents qui
+  descendent dans la vallée qu'ils rejoignent, levées, lacs fins au niveau des lacs de la planète
+- chutes aux seules ruptures de pente : à-pic jusqu'à 400 m ou gradins irréguliers, dans une
+  fente au fond de la vallée
+- sorties pour Unreal : type et niveau de l'eau dans les échantillons, Bridge
+- climat de la planète branché sur les biomes (humidité tirée de la pluie et de l'évaporation)
+- strates et joints des parois de la 11R bis d'épaisseurs irrégulières, plus de motif régulier
+  en peigne : montagnes gelées refaites (`mountain_freeze_test`)
+- coût de l'eau, du relief seul au relief avec l'eau, sans changer un bit : en patchs, terres
+  ×1,08, montagnes ×1,04, à moins de 1 km d'un fleuve ×1,78 ; en tuiles ×1,03, ×1,05 et ×1,71
+  (`water_cost_test` : au plus ×1,3 loin de l'eau, ×2 près des fleuves)
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
@@ -113,24 +153,42 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - deltas, estuaires, grands lacs, méandres, bras morts
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
-- 11A : fait (voir « Réalisé »)
-- 11R : relief planétaire, avant de creuser les fleuves (les cartes de la planète entière
-  montrent un monde par défaut en archipel uniforme, et des continents planétaires qui
-  ont la forme des plaques) :
-  - côtes découpées indépendantes des plaques, plateaux continentaux, mers intérieures
-  - chaînes de montagnes en larges ceintures (centaines de km) aux convergences, piémonts
-    et hauts plateaux derrière (type Himalaya / Tibet, Andes / Altiplano), rifts aux
-    divergences
-  - provinces à l'intérieur des continents : grandes plaines, vieux massifs usés,
-    bassins, plateaux
-  - le monde planétaire devient le monde du jeu (version du générateur 3)
-- 11B : mer décidée par la géographie (reliée à l'océan) et non plus par l'altitude :
-  dépressions sous le niveau de la mer, sèches ou en lacs salés (type mer Morte, vallée de
-  la Mort)
-- 11B : creusement des lits, lacs, canyons et chutes dans le relief, nouveau climat
-  branché sur les biomes ; niveau Planète gardé sur disque (au lieu d'être recalculé) et
-  pic de mémoire de sa construction réduit (1 Go aujourd'hui)
+- 11A, 11R, 11R bis et 11B : faits (voir « Réalisé »)
+- tâche suivante, dès le merge de la 11B (7b) : le niveau de l'eau pour Unreal, `waterLevel` aux
+  sommets des tuiles et dans `HorizonCell`, pour dessiner les lacs et les fleuves à leur niveau
+  (aujourd'hui toute l'eau est dessinée à 0 m)
+- côté Unreal (7a) : la mer sous les tuiles et la mer de l'horizon masquées là où le core ne met
+  pas l'océan (test bilinéaire `t.a < 0` dans la branche `Kind.g` du matériau, en
+  Masked / OpacityMask ; de même dans le chemin CPU) : plus de mer carrée sur une dépression
+  sous 0 m
+- côté Unreal (7c) : la couleur du fond marin seulement sous le drapeau mer
+- création du niveau Planète en 500 Mo : phase 11D
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
+- sans les cols du relief fin entre les cellules du niveau Planète, les fleuves de la 11B
+  traversent les crêtes des montagnes en gorges (un tronçon de montagne sur trois creuse plus
+  de 300 m) ; avec eux, l'eau remplit les vallées fermées des montagnes gelées jusqu'à leurs
+  cols (essai du point d'arrêt 3 : 1 à 49 % de lacs dans les fenêtres de haute montagne avec
+  un lit de 300 m, 19 % encore avec 1 000 m). C'est la phase 11C qui règle cela
+
+### Phase 11C — Vallées de montagne qui descendent (prochaine phase, après la tâche 7b)
+- dégel des montagnes : `mountain_freeze_test` est levé pour cette phase, puis refait
+- refaire les vallées des montagnes en un vrai réseau qui descend vers les plaines : un arbre
+  de vallées qui draine, leurs fonds toujours en pente vers l'aval, de la crête à la plaine. Les
+  vallées de la 11R bis sont des tronçons fermés (boucles des lignes de bruit, fonds qui montent
+  et descendent avec les cols, fins en cirques) : l'eau ne peut en sortir qu'en franchissant un
+  col ou une crête
+- les fleuves de la 11B suivent alors ces vallées : plus de gorges à travers les crêtes, peu
+  de lacs (les lacs de haut bassin seulement), des lits de moins de 300 m
+- nouvelle validation des montagnes à l'œil, dans Unreal, avec le personnage
+
+### Phase 11D — Création du niveau Planète en 500 Mo
+- aujourd'hui la création du monde (`terrain_make_planet`) monte à 1 080 Mo sur 4 cœurs
+  (1 050 Mo sur un cœur), quand le jeu chargé n'en demande que 300 (372 Mo en jeu)
+- mémoire après chaque étape : relief 258 Mo, climat 450, ordre 603, hiérarchie 848,
+  lacs 725, écoulement 848, fleuves 1 022
+- but : 500 Mo au plus, les mêmes bits (somme du niveau et goldens identiques)
+- pistes : libérer les tableaux de chaque étape dès qu'elle est finie, des tableaux plus
+  compacts pour l'ordre et la hiérarchie, le fichier écrit en flux comme il est lu
 
 ### Phase 12 — Monde streamé unifié
 - régions et chunks générés à la volée, mis en cache, contraints par le niveau Planète
