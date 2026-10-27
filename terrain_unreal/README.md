@@ -147,7 +147,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `bHorizonDebugTint` | non | GPU : chaque niveau teinté de sa couleur |
 | `HorizonMaterial` | aucun | matériau de l'horizon CPU (voir 10) |
 | `HorizonDropCm` | 100 | l'horizon est posé ce tant sous son sol là où les tuiles le recouvrent : elles restent devant ; il remonte à son sol vers le bord des tuiles (section 13) |
-| `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles (section 12) |
+| `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles, seulement là où le core met l'océan (section 12) |
 | `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
 | `bHorizonShadows` | non | ombres portées par l'horizon |
 | `bHorizonDetailNormals`, `HorizonNormalRatio`, `HorizonNormalJobs` | oui, 4, 2 | GPU : normales de détail, 4 fois plus fines que la grille de chaque niveau, calculées par 2 tâches (TEMPORARY_MATERIAL.md) |
@@ -312,11 +312,15 @@ mode CPU (`HorizonRenderer` = CPU) ; le mode par défaut, sur le GPU, est en sec
 - **Sous les tuiles** : le niveau 0 a un trou carré qui contient toutes les tuiles LOD 0 à 2
   (grottes, falaises, surplombs) ; autour, une bande de tuiles LOD 3 (128 m, au moins 64 m)
   recouvre l'horizon, posé `HorizonDropCm` plus bas : pas de z-fighting, et pas de trou quand des
-  tuiles du bord arrivent en retard. Les tuiles doivent finir dans le niveau 0 :
+  tuiles du bord arrivent en retard. Là où les tuiles peuvent le couvrir (jusqu'à 128 m au-delà
+  de cette bande, puis en fondu sur 128 m), le sol du niveau 0 est aussi repoussé de 1 m en
+  profondeur (pixel depth offset, `BehindTilesCm`) : sans cela ses mailles de 8 m traversaient
+  les tuiles en damier de carrés sombres sur les pentes. Les tuiles doivent finir dans le niveau 0 :
   `ViewDistanceChunks` de 28 à 55 avec les anneaux par défaut, sinon l'horizon est désactivé avec
   une erreur dans le log.
 - **Mer** : sur l'horizon, tout échantillon sous le niveau de la mer est posé à plat au niveau de
-  la mer (un lac en altitude garde son sol) ; un carré de mer à 0 m s'étend sous les tuiles. Son
+  la mer (un lac en altitude garde son sol) ; un carré de mer à 0 m s'étend sous les tuiles, dessiné
+  seulement là où le core met l'océan (une dépression sèche sous 0 m montre son sol). Son
   aspect : section 12. Le reste de l'eau (rivières, lacs, Water) vient avec la phase 14.
 - **Threads** : `HorizonThreads` threads du core, à part de ceux des tuiles. Tant que rien ne
   bouge, le tick de l'horizon coûte 0,01 ms.
@@ -493,7 +497,9 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
   recentrage), qui s'effacent dans la rugosité selon la taille du pixel (aucune répétition au
   loin, un chemin de soleil plus large), reflet du ciel (Fresnel, ciel lu dans la table de vue de
   la `SkyAtmosphere`) et reflet du soleil (GGX) en émissif, sans spéculaire du moteur (aucun reflet
-  Lumen à tracer). Le carré de mer sous les tuiles lit le sol du niveau 0 : même mer près et loin.
+  Lumen à tracer). Le carré de mer sous les tuiles lit le sol du niveau 0 : même mer près et loin ;
+  il est masqué (matériau Masked) là où moins de la moitié des 4 texels du niveau 0 autour du
+  pixel sont de l'océan. Le fond marin n'a sa couleur que sous le drapeau mer du core.
   Les normales penchent avec la courbure (d / R). Seuls les pixels de mer paient ces calculs.
 - **Mesures** (PIE 2042 × 1752, 3,6 Mpx, autant que le 1440p ; même session, A sans ces
   changements, B avec, GPU saturé à 200 % de résolution) : GPU +0,1 à +0,6 ms à 4 fois les pixels

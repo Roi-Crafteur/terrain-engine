@@ -160,18 +160,13 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - tâche suivante, dès le merge de la 11B (7b) : le niveau de l'eau pour Unreal, `waterLevel` aux
   sommets des tuiles et dans `HorizonCell`, pour dessiner les lacs et les fleuves à leur niveau
   (aujourd'hui toute l'eau est dessinée à 0 m)
-- côté Unreal (7a) : la mer sous les tuiles et la mer de l'horizon masquées là où le core ne met
-  pas l'océan (test bilinéaire `t.a < 0` dans la branche `Kind.g` du matériau, en
-  Masked / OpacityMask ; de même dans le chemin CPU) : plus de mer carrée sur une dépression
-  sous 0 m
-- côté Unreal (7c) : la couleur du fond marin seulement sous le drapeau mer
-- côté Unreal : damier de carrés sombres sur les collines (vu depuis 900 m en aval de la chute
-  de 388 m, à 30 m de haut). Ni la géométrie ni les types de sol du core n'en ont (maillage des
-  tuiles lisse, plaques de sol continues) : c'est le matériau. Cause probable : le tirage `Bomb`
-  du matériau temporaire (`temporary_terrain_hlsl.py`), des cases de 2,8 m (5,6 m pour la roche)
-  tournées au hasard d'un quart de tour et fondues seulement sur leur dernier quart. À vérifier
-  dans Unreal : des carrés de 2,8 m, et le damier qui disparaît avec `DetailNearM = 0` sur
-  l'instance ; des carrés de 8 m viendraient plutôt des texels de l'horizon
+- côté Unreal (7a, 7c) : fait. Le carré de mer sous les tuiles n'est dessiné que là où le core
+  met l'océan (matériau Masked ; chemin CPU : le carré entier, ou rien s'il n'a aucun
+  échantillon de mer), et la couleur du fond marin seulement sous le drapeau mer
+- côté Unreal : damier de carrés sombres sur les collines : fait. Ce n'était pas le tirage `Bomb`
+  (le damier restait avec `DetailNearM = 0`) mais les mailles de 8 m du niveau 0 de l'horizon,
+  qui traversaient les tuiles au-delà de la bande où sa descente s'efface ; le sol du niveau 0
+  est repoussé de 1 m en profondeur là où les tuiles peuvent le couvrir
 - création du niveau Planète en 500 Mo : phase 11D
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
 - sans les cols du relief fin entre les cellules du niveau Planète, les fleuves de la 11B
