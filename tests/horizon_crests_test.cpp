@@ -255,7 +255,8 @@ void testSamplesWithCrests() {
     const double x = mountain.x * terrain::kChunkSizeMeters;
     const double z = mountain.z * terrain::kChunkSizeMeters;
     const terrain::EditSummarySource raise = [](const terrain::CellFootprint&) {
-        return std::optional<terrain::EditSummary>(terrain::EditSummary{12.5f, std::nullopt});
+        return std::optional<terrain::EditSummary>(
+            terrain::EditSummary{12.5f, std::nullopt, std::nullopt});
     };
     const terrain::HorizonSampler before(world.field, world.ecology, points);
     const terrain::HorizonSampler after(world.field, world.ecology, crests);
