@@ -17,8 +17,11 @@ samples lies below the sea level (antialiased on the coast line), the sea: its c
 (turquoise over the sand of the shallows, deep blue offshore), sine waves fixed in the world
 whose normals fade into roughness with the size of a pixel (no tiling far away, a wider sun path),
 the reflection of the sky (Fresnel, from the sky view LUT of the SkyAtmosphere) and the glint of
-the sun in emissive, without the engine's specular: no Lumen reflection to trace. The sea square under the tiles reads its ground
-from the texels of level 0, bilinear, so that the near and far seas match.
+the sun in emissive, without the engine's specular: no Lumen reflection to trace. The sea
+square under the tiles reads its ground from the texels of level 0, bilinear, so that the near
+and far seas match, and is drawn only where the core puts the ocean (masked: the bilinear share
+of the sea texels at least one half). The land under the tiles lies deeper by a pixel depth
+offset, so that the tiles stay in front of it (horizon_sea_hlsl.py).
 The land is lit by the detail normals of its level (horizon_detail_normals.py), finer than its
 grid, where they are ready: DetailNormals 0 gives back the normals of the grid.
 ATerrainWorld (UTerrainHorizonClipmap) sets its parameters per level.
@@ -38,9 +41,11 @@ import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
+import horizon_sea_hlsl as sea_code  # noqa: E402
 import temporary_terrain_look as look  # noqa: E402
 detail = importlib.reload(detail)  # the modules of this checkout, even if run before
 look = importlib.reload(look)
+sea_code = importlib.reload(sea_code)
 
 PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TerrainHorizonGpu"
@@ -61,8 +66,10 @@ SEA_COLORS = {
     "SeaDeepColor": (0.004, 0.024, 0.062), "SeaOpenColor": (0.008, 0.075, 0.11),
     "SeaShallowColor": (0.05, 0.30, 0.28),
 }
-# The ground and the sand at the sea level: altitudeColor(kSeaLevel) (Bridge/altitude_color.cpp).
-SHORE = "float3(194.0, 179.0, 128.0) / 255.0"
+# The land of level 0 lies BehindTilesCm deeper (pixel depth offset) up to BehindBandCm beyond the
+# band the tiles always cover (DropCoveredCm), then less and less across BehindFadeCm: the tiles
+# stay in front where both surfaces cross (horizon_sea_hlsl.py).
+BEHIND_SCALARS = {"BehindTilesCm": 100.0, "BehindBandCm": 12800.0, "BehindFadeCm": 12800.0}
 
 VERTEX_HLSL = r"""
 int side = (int)Cells + 1;
@@ -123,97 +130,6 @@ GroundOut = ground;
 MorphOut = alpha;
 return float3(0.0, 0.0, z);
 """
-
-# Waves: (a, b) whole cycles per period of 4096 m along X and Y (kSeaWavePeriodMeters,
-# Bridge/horizon_atmosphere.hpp), slope amplitude, phase. From 90 m to 1.6 m, spread around the
-# wind (30 degrees), no two alike: no pattern repeats. Each fades out between 16 and 2 pixels
-# per wavelength, its slopes going into the roughness of the glint.
-WAVES = [(39, 23, 0.035, 0.0), (61, -5, 0.035, 1.3), (21, 79, 0.04, 2.9), (109, 19, 0.045, 4.1),
-         (87, 125, 0.05, 0.7), (178, -103, 0.05, 5.3), (216, 181, 0.05, 3.6),
-         (-34, 385, 0.05, 2.2), (500, 182, 0.05, 0.4), (706, -189, 0.045, 4.8),
-         (422, 905, 0.045, 1.9), (1360, 119, 0.04, 3.1), (1317, 1317, 0.04, 5.9),
-         (1961, -1646, 0.035, 2.6)]
-
-SEA_HLSL = r"""
-const float PI2 = 6.28318531;
-const float PERIOD = 409600.0; // kSeaWavePeriodMeters, cm
-float ground = Ground;
-float coast = fwidth(Ground);
-// Waves fixed in the world: the position modulo the period, from the origin of the core; its
-// derivatives, the size of a pixel, outside of any branch.
-float2 w = GetTranslatedWorldPosition(Parameters).xy - GetPeriodicWorldOrigin(float3(PERIOD, PERIOD, PERIOD)).xy - float2(WaveOriginX, WaveOriginY);
-float footprint = max(length(ddx(w)), length(ddy(w))) * 0.01 + 1e-3; // meters per pixel
-BRANCH
-if (Kind.g > 0.5)
-{
-    // The sea square under the tiles: its ground from the texels of level 0, bilinear.
-    int side = (int)Cells + 1;
-    int2 first = int2((int)FirstSlotX, (int)FirstSlotZ);
-    float2 p = clamp(LocalPos.xy, 0.0, Cells - 0.001);
-    int2 i0 = int2(floor(p));
-    float2 f = p - float2(i0);
-    float4 t00 = Tex.Load(int3((i0 + first) % side, 0));
-    float4 t10 = Tex.Load(int3((i0 + int2(1, 0) + first) % side, 0));
-    float4 t01 = Tex.Load(int3((i0 + int2(0, 1) + first) % side, 0));
-    float4 t11 = Tex.Load(int3((i0 + int2(1, 1) + first) % side, 0));
-    float4 g = float4(t00.a < 0.0 ? t00.a : max(t00.r, 0.0), t10.a < 0.0 ? t10.a : max(t10.r, 0.0),
-                      t01.a < 0.0 ? t01.a : max(t01.r, 0.0), t11.a < 0.0 ? t11.a : max(t11.r, 0.0));
-    ground = min(lerp(lerp(g.x, g.y, f.x), lerp(g.z, g.w, f.x), f.y), -0.05);
-}
-// The sea where the ground lies below the sea level, antialiased across the coast line.
-SeaMask = Kind.g > 0.5 ? 1.0 : saturate(0.5 - ground / max(coast, 1e-4));
-SeaBody = float3(0.0, 0.0, 0.0);
-SeaNormal = float3(0.0, 0.0, 1.0);
-Glint = float3(0.0, 0.0, 0.0);
-float3 reflection = float3(0.0, 0.0, 0.0);
-BRANCH
-if (SeaMask > 0.0)
-{
-    float depth = max(-ground, 0.0);
-    float2 uv = frac(w / PERIOD);
-    float2 slopes = float2(0.0, 0.0);
-    float filtered = 0.0;
-WAVE_LOOP
-    float alpha2 = SeaAlpha * SeaAlpha + filtered * SeaWaveScale * SeaWaveScale;
-    float a = sqrt(alpha2);
-    float3 V = normalize(-CameraRel);
-    float3 n = normalize(float3(-slopes * SeaWaveScale + CameraRel.xy / PlanetRadiusCm, 1.0));
-    float NoV = saturate(dot(n, V)) + 1e-4;
-    float Fresnel = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
-    // The sky in the reflected direction, from the sky view LUT of the SkyAtmosphere (the sky
-    // seen from the camera, sharp at the horizon; the blurred cubemap of the sky light would
-    // darken the horizon), its lobe kept above the horizon by part of its width.
-    float3 r = reflect(-V, n);
-    r = normalize(float3(r.xy, max(r.z, 0.003 + 0.15 * a)));
-    reflection = Fresnel * MaterialExpressionSkyAtmosphereViewLuminance(Parameters, r);
-    // The water by its depth: the sand under the shallows, turquoise, then deep blue.
-    float3 body = lerp(SeaDeepColor, SeaOpenColor, exp(-depth / 60.0));
-    body = lerp(body, SeaShallowColor, exp(-depth / 6.0));
-    body = lerp(body, SHORE_COLOR * float3(0.55, 0.75, 0.72), exp(-depth / 1.2));
-    SeaBody = body * (1.0 - Fresnel);
-    SeaNormal = n;
-    // The glint of the sun (GGX, Smith), its light after the atmosphere at this point.
-    float3 L = normalize(SunDir);
-    float3 H = normalize(L + V);
-    float NoL = saturate(dot(n, L));
-    float NoH = saturate(dot(n, H));
-    float VoH = saturate(dot(V, H));
-    float d = (NoH * alpha2 - NoH) * NoH + 1.0;
-    float D = alpha2 / (3.14159265 * d * d);
-    float Vis = 0.5 / (NoL * (NoV * (1.0 - a) + a) + NoV * (NoL * (1.0 - a) + a) + 1e-5);
-    float Fs = 0.02 + 0.98 * pow(1.0 - VoH, 5.0);
-    Glint = min(SunIlluminance * (NoL * D * Vis * Fs), SunIlluminance * 64.0);
-}
-return reflection + 0.0 * SkyView;
-""".replace("SHORE_COLOR", SHORE)
-
-WAVE_TEMPLATE = (
-    "{{ float2 kv = float2({a}.0, {b}.0); float lambda = 4096.0 / length(kv);\n"
-    "  float omega = sqrt(9.81 * PI2 / lambda);\n"
-    "  float phase = PI2 * frac(dot(kv, uv)) - omega * Time + {phase};\n"
-    "  float keep = saturate(log2(lambda / (2.0 * footprint)) * 0.333);\n"
-    "  slopes += keep * {slope} * cos(phase) * normalize(kv);\n"
-    "  filtered += (1.0 - keep * keep) * {slope} * {slope}; }}\n")
 
 SHADE_HLSL = r"""
 float3 sea = SeaBody;
@@ -296,7 +212,8 @@ def parameters(material):
              "HorizonNormals": texture_parameter(material, "HorizonNormals", -1700),
              "CoarseNormals": texture_parameter(material, "CoarseNormals", -1550)}
     nodes.update(detail.scalars(material, detail.HORIZON_SCALARS, -1300, -1900))
-    scalars = list(SCALARS.items()) + list(SEA_SCALARS.items()) + list(SHADE_SCALARS.items())
+    scalars = (list(SCALARS.items()) + list(SEA_SCALARS.items()) + list(SHADE_SCALARS.items())
+               + list(BEHIND_SCALARS.items()))
     for index, (name, value) in enumerate(scalars):
         scalar = expression(material, unreal.MaterialExpressionScalarParameter, -1300,
                             300 + 60 * index)
@@ -347,15 +264,13 @@ def interpolate(material, custom, output, y):
 
 def sea_shader(material, nodes, kind, ground):
     """The sea of the pixel: its mask, normal, body color, glint and reflection direction."""
-    loop = "".join(WAVE_TEMPLATE.format(a=a, b=b, slope=slope, phase=phase)
-                   for a, b, slope, phase in WAVES)
     names = ["Ground", "Kind", "LocalPos", "Tex", "CameraRel", "Time", "SunDir",
              "SunIlluminance", "SkyView", "Cells", "FirstSlotX", "FirstSlotZ", "PlanetRadiusCm"]
     names += list(SEA_SCALARS) + list(SEA_COLORS)
     float1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
     float3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
     custom = custom_node(
-        material, -200, -700, "HorizonSea", SEA_HLSL.replace("WAVE_LOOP", loop), names,
+        material, -200, -700, "HorizonSea", sea_code.sea_hlsl(), names,
         [("SeaMask", float1), ("SeaBody", float3), ("SeaNormal", float3), ("Glint", float3)],
         float3)
     connect(ground, "", custom, "Ground")
@@ -433,11 +348,40 @@ def detail_normal(material, nodes, vertex):
     return node
 
 
+def mask_and_depth(material, nodes, kind, ground, attributes):
+    """The opacity mask (the sea square only where the core puts the ocean) and the depth offset
+    of the land under the tiles (horizon_sea_hlsl.py)."""
+    float1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
+    names = ["Kind", "LocalPos", "Tex", "Cells", "FirstSlotX", "FirstSlotZ"]
+    square = custom_node(material, 400, -500, "HorizonSeaSquare", sea_code.SQUARE_HLSL, names, [],
+                         float1)
+    behind_names = ["Kind", "LocalPos", "Ground", "Cells", "PitchCm", "DropCoveredCm"]
+    behind = custom_node(material, 400, -350, "HorizonBehindTiles", sea_code.BEHIND_HLSL,
+                         behind_names + list(BEHIND_SCALARS), [], float1)
+    local = local_position(material, 200, -450)
+    connect(world_position(material, unreal.WorldPositionIncludedOffsets.WPT_DEFAULT, 0, -450),
+            "", local, "")
+    for node in (square, behind):
+        connect(kind, "", node, "Kind")
+        connect(local, "", node, "LocalPos")
+    connect(nodes["HorizonTexels"], "", square, "Tex")
+    for name in ["Cells", "FirstSlotX", "FirstSlotZ"]:
+        connect(nodes[name], "", square, name)
+    connect(ground, "", behind, "Ground")
+    for name in ["Cells", "PitchCm", "DropCoveredCm"] + list(BEHIND_SCALARS):
+        connect(nodes[name], "", behind, name)
+    connect(square, "", attributes, "OpacityMask")
+    connect(behind, "", attributes, "PixelDepthOffset")
+
+
 def pixel_shader(material, nodes, vertex, kind):
-    editing = unreal.MaterialEditingLibrary
+    # The outputs go through one MakeMaterialAttributes node: Python cannot connect the pixel
+    # depth offset of the material itself.
+    attributes = expression(material, unreal.MaterialExpressionMakeMaterialAttributes, 800, 0)
     normal = detail_normal(material, nodes, vertex)
     ground = interpolate(material, vertex, "GroundOut", 250)
     sea = sea_shader(material, nodes, kind, ground)
+    mask_and_depth(material, nodes, kind, ground, attributes)
     land, position = land_shader(material, vertex, normal)
     for name in ("WaveOriginX", "WaveOriginY"):
         connect(nodes[name], "", position, name)
@@ -462,12 +406,14 @@ def pixel_shader(material, nodes, vertex, kind):
         connect(source, output, shade, name)
     for name in SHADE_SCALARS:
         connect(nodes[name], "", shade, name)
-    editing.connect_material_property(shade, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    editing.connect_material_property(shade, "EmissiveOut", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-    editing.connect_material_property(shade, "NormalOut", unreal.MaterialProperty.MP_NORMAL)
-    editing.connect_material_property(shade, "RoughnessOut", unreal.MaterialProperty.MP_ROUGHNESS)
-    editing.connect_material_property(shade, "SpecularOut", unreal.MaterialProperty.MP_SPECULAR)
-    editing.connect_material_property(vertex, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    for source, output, name in ((shade, "", "BaseColor"), (shade, "EmissiveOut", "EmissiveColor"),
+                                 (shade, "NormalOut", "Normal"),
+                                 (shade, "RoughnessOut", "Roughness"),
+                                 (shade, "SpecularOut", "Specular"),
+                                 (vertex, "", "WorldPositionOffset")):
+        connect(source, output, attributes, name)
+    unreal.MaterialEditingLibrary.connect_material_property(
+        attributes, "", unreal.MaterialProperty.MP_MATERIAL_ATTRIBUTES)
 
 
 def create_horizon_gpu_material():
@@ -482,6 +428,10 @@ def create_horizon_gpu_material():
                                       unreal.MaterialFactoryNew())
     # The normal of the pixel shader is in world space (the grids are flat, the scale is not).
     material.set_editor_property("tangent_space_normal", False)
+    # Masked: the sea square is cut where the core puts no ocean.
+    material.set_editor_property("use_material_attributes", True)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
+    material.set_editor_property("opacity_mask_clip_value", 0.5)
     nodes = parameters(material)
     kind = expression(material, unreal.MaterialExpressionVertexColor, -1600, 0)
     vertex = vertex_shader(material, nodes, kind)
