@@ -93,47 +93,53 @@ water::FineLake Hydrology::Impl::makeFineLake(std::int32_t lake) const {
     return {relief, seeds, planet->lakes()[l].level, w, inside, grid.periodX(), grid.periodZ()};
 }
 
-LakeWater Hydrology::lakeAt(double x, double z, double ground) const {
-    return impl_->lakeAt(x, z, ground);
-}
+
 
 // The lake over a point: the highest of the lakes of the cells around it whose water covers it.
 LakeWater Hydrology::Impl::lakeAt(double x, double z, double ground) const {
-    const Impl& m = *this;
-    const std::size_t cell = planetCellAt(m.grid, x, z);
-    const int ci = m.grid.column(cell);
-    const int cj = m.grid.row(cell);
-    std::array<std::int32_t, (2 * kMargin + 1) * (2 * kMargin + 1)> seen{};
-    std::size_t count = 0;
-    LakeWater out;
+    return lakeIn(lakesAround(planetCellAt(grid, x, z)), x, z, ground);
+}
+
+LakeList Hydrology::Impl::lakesAround(std::size_t cell) const {
+    static_assert(water_detail::kLakeSearch == kMargin, "a lake is searched as far as it reaches");
+    const int ci = grid.column(cell);
+    const int cj = grid.row(cell);
+    LakeList out;
     for (int dj = -kMargin; dj <= kMargin; ++dj) {
         for (int di = -kMargin; di <= kMargin; ++di) {
             const std::int32_t id =
-                m.lakeOf(m.grid.index(m.grid.wrapColumn(ci + di), m.grid.wrapRow(cj + dj)));
-            const auto end = seen.begin() + static_cast<std::ptrdiff_t>(count);
-            if (id < 0 || std::find(seen.begin(), end, id) != end) {
-                continue;
+                lakeOf(grid.index(grid.wrapColumn(ci + di), grid.wrapRow(cj + dj)));
+            const auto end = out.ids.begin() + static_cast<std::ptrdiff_t>(out.count);
+            if (id >= 0 && std::find(out.ids.begin(), end, id) == end) {
+                out.ids[out.count++] = id;
             }
-            seen[count++] = id;
-            // The water of a lake never stands above its level on the planet level: no need to
-            // flood it where the relief stands higher.
-            const PlanetLake& planetLake = m.planet->lakes()[static_cast<std::size_t>(id)];
-            if (!(ground < static_cast<double>(planetLake.level))) {
-                continue;
-            }
-            const water::FineLake& lake = m.fineLakeOf(id);
-            const float level = lake.level();
-            if (!(ground < static_cast<double>(level)) ||
-                (out.lake >= 0 &&
-                 !(level > out.level || (level == out.level && id < out.lake))) ||
-                !lake.covers(x, z)) {
-                continue;
-            }
-            out.lake = id;
-            out.level = level;
-            out.kind = planetLake.overflowing || planetLake.frozen ? WaterKind::Lake
-                                                                   : WaterKind::SaltLake;
         }
+    }
+    return out;
+}
+
+LakeWater Hydrology::Impl::lakeIn(const LakeList& around, double x, double z,
+                                  double ground) const {
+    LakeWater out;
+    for (std::size_t k = 0; k < around.count; ++k) {
+        const std::int32_t id = around.ids[k];
+        // The water of a lake never stands above its level on the planet level: no need to
+        // flood it where the relief stands higher.
+        const PlanetLake& planetLake = planet->lakes()[static_cast<std::size_t>(id)];
+        if (!(ground < static_cast<double>(planetLake.level))) {
+            continue;
+        }
+        const water::FineLake& lake = fineLakeOf(id);
+        const float level = lake.level();
+        if (!(ground < static_cast<double>(level)) ||
+            (out.lake >= 0 && !(level > out.level || (level == out.level && id < out.lake))) ||
+            !lake.covers(x, z)) {
+            continue;
+        }
+        out.lake = id;
+        out.level = level;
+        out.kind = planetLake.overflowing || planetLake.frozen ? WaterKind::Lake
+                                                               : WaterKind::SaltLake;
     }
     return out;
 }

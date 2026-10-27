@@ -7,10 +7,14 @@
 #include "ravines.hpp"
 #include "relief_local.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/generation/noise.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <limits>
 #include <memory>
+#include <span>
 #include <utility>
 
 namespace terrain {
@@ -64,9 +68,53 @@ Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrolog
     return out;
 }
 
-void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
+// The rock of the walls of a valley over its surface h, show of it showing: rough, cut by the
+// ravines of the relief, in a gorge grained, cut by couloirs and laid in strata or crystalline.
+double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve& c, double show,
+                                 Memos* memos) const {
+    const double rock = kRockPlain + (kRockMountain - kRockPlain) * c.mountain +
+                        kGorgeRock * c.gorge * c.above;
+    if (layers_->geographyRock.octaves() > 0) {
+        const float ridged =
+            memos != nullptr ? layers_->geographyRock.ridged2D(x, z, kRockSharpness, memos->rock)
+                             : layers_->geographyRock.ridged2D(x, z, kRockSharpness);
+        h += show * rock * (static_cast<double>(ridged) - 0.5);
+    }
+    const double slope = std::min(c.slope, kRavineSlope);
+    float cut = ravines::depth(layers_->ravines, x, z, slope * c.upX, slope * c.upZ, show,
+                               memos != nullptr ? &memos->ravines : nullptr);
+    if (c.gorge > 0.0f && layers_->wallGrain.octaves() > 0) {
+        const float grain = memos != nullptr ? layers_->wallGrain.fbm2D(x, z, memos->grain)
+                                             : layers_->wallGrain.fbm2D(x, z);
+        h += show * static_cast<double>(c.gorge) * std::min(kGrainShare * c.above, kGrainMost) *
+             static_cast<double>(grain);
+    }
+    if (c.gorge > 0.0f) {
+        // The couloirs of the walls of the gorges, down their slope.
+        const double steep = std::min(c.slope, kGullySlope);
+        cut += ravines::depth(layers_->gullies, x, z, steep * c.upX, steep * c.upZ,
+                              show * static_cast<double>(c.gorge),
+                              memos != nullptr ? &memos->gullies : nullptr);
+    }
+    h += static_cast<double>(
+        relief_local::boundBelow(-cut, static_cast<float>(kRavineRoom * c.above)));
+    if (c.gorge > 0.0f) {
+        mountain_walls::Memo* walls = memos != nullptr ? &memos->walls : nullptr;
+        const double share = mountain_walls::strataShare(layers_->walls, x, z, kCharacter, walls);
+        const double wall = show * static_cast<double>(c.gorge);
+        const mountain_walls::Masks masks{wall * share, wall * (1.0 - share), 0.0};
+        const double top = mountain_walls::rockTop(layers_->walls, masks, x, z, h,
+                                                   kLedge * c.upX, kLedge * c.upZ, walls);
+        h += static_cast<double>(relief_local::boundBelow(
+            static_cast<float>(top - h), static_cast<float>(kStrataRoom * c.above)));
+    }
+    return h;
+}
+
+void Heightfield::applyHydrology(double x, double z, HeightSample& s, Memos* memos) const {
     const float relief = s.height;
-    const RiverCarve c = hydrology_->riversAt(x, z, static_cast<double>(s.height));
+    Hydrology::Region* region = memos != nullptr ? &memos->water : nullptr;
+    const RiverCarve c = hydrology_->riversAt(x, z, static_cast<double>(s.height), region);
     // The levees: the floodplain filled up to the floor of the valley.
     const double filled = static_cast<double>(relief) + c.raise;
     s.height = static_cast<float>(filled);
@@ -78,40 +126,7 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
         const double show =
             smooth(0.0, kRockShow, c.above) * smooth(0.0, kEdgeFade, rim - c.height);
         if (show > 0.0) {
-            const double rock = kRockPlain + (kRockMountain - kRockPlain) * c.mountain +
-                                kGorgeRock * c.gorge * c.above;
-            if (layers_->geographyRock.octaves() > 0) {
-                h += show * rock *
-                     (static_cast<double>(layers_->geographyRock.ridged2D(x, z, kRockSharpness)) -
-                      0.5);
-            }
-            const double slope = std::min(c.slope, kRavineSlope);
-            float cut = ravines::depth(layers_->ravines, x, z, slope * c.upX, slope * c.upZ,
-                                       show);
-            if (c.gorge > 0.0f && layers_->wallGrain.octaves() > 0) {
-                h += show * static_cast<double>(c.gorge) *
-                     std::min(kGrainShare * c.above, kGrainMost) *
-                     static_cast<double>(layers_->wallGrain.fbm2D(x, z));
-            }
-            if (c.gorge > 0.0f) {
-                // The couloirs of the walls of the gorges, down their slope.
-                const double steep = std::min(c.slope, kGullySlope);
-                cut += ravines::depth(layers_->gullies, x, z, steep * c.upX, steep * c.upZ,
-                                      show * static_cast<double>(c.gorge));
-            }
-            h += static_cast<double>(
-                relief_local::boundBelow(-cut, static_cast<float>(kRavineRoom * c.above)));
-            if (c.gorge > 0.0f) {
-                const double share = mountain_walls::strataShare(layers_->walls, x, z, kCharacter,
-                                                                 nullptr);
-                const double wall = show * static_cast<double>(c.gorge);
-                const mountain_walls::Masks masks{wall * share, wall * (1.0 - share), 0.0};
-                const double top = mountain_walls::rockTop(layers_->walls, masks, x, z, h,
-                                                           kLedge * c.upX, kLedge * c.upZ,
-                                                           nullptr);
-                h += static_cast<double>(relief_local::boundBelow(
-                    static_cast<float>(top - h), static_cast<float>(kStrataRoom * c.above)));
-            }
+            h = valleyRockAt(x, z, h, c, show, memos);
         }
         // The rock never takes the walls below the floor beside the water (beside a fall, the
         // floor of its valley on the slope), nor below the banks.
@@ -135,11 +150,38 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s) const {
         s.waterLevel = c.pond;
     }
     if (s.water != WaterKind::Ocean) {
-        const LakeWater lake = hydrology_->lakeAt(x, z, static_cast<double>(relief));
+        const LakeWater lake = hydrology_->lakeAt(x, z, static_cast<double>(relief), region);
         if (lake.lake >= 0 && !(lake.level < s.waterLevel && s.water == WaterKind::River)) {
             s.water = lake.kind;
             s.waterLevel = lake.level;
         }
+    }
+}
+
+void Heightfield::waterOf(std::span<const double> xs, std::span<const double> zs,
+                          std::span<HeightSample> samples, Memos& memos) const {
+    double minX = std::numeric_limits<double>::infinity();
+    double minZ = minX;
+    double maxX = -minX;
+    double maxZ = -minX;
+    double groundMin = minX;
+    double groundMax = -minX;
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        const double x = noise::wrapCanonical(xs[i], world_.x);
+        const double z = noise::wrapCanonical(zs[i], world_.z);
+        minX = std::min(minX, x);
+        maxX = std::max(maxX, x);
+        minZ = std::min(minZ, z);
+        maxZ = std::max(maxZ, z);
+        groundMin = std::min(groundMin, static_cast<double>(samples[i].height));
+        groundMax = std::max(groundMax, static_cast<double>(samples[i].height));
+    }
+    if (!xs.empty()) {
+        memos.water = hydrology_->regionOf(minX, minZ, maxX, maxZ, groundMin, groundMax);
+    }
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        applyHydrology(noise::wrapCanonical(xs[i], world_.x), noise::wrapCanonical(zs[i], world_.z),
+                       samples[i], &memos);
     }
 }
 

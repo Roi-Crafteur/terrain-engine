@@ -129,13 +129,78 @@ struct Candidates {
     float pond = -std::numeric_limits<float>::infinity();
 };
 
+// The lakes of the cells around a point, each once, in the order lakeAt meets them: kLakeSearch
+// cells on each side.
+constexpr int kLakeSearch = 2;
+struct LakeList {
+    std::array<std::int32_t, (2 * kLakeSearch + 1) * (2 * kLakeSearch + 1)> ids{};
+    std::size_t count = 0;
+};
+
 } // namespace water_detail
 
 using water_detail::Bits;
 using water_detail::Candidates;
 using water_detail::kNone;
+using water_detail::LakeList;
 using water_detail::Lazy;
 using water_detail::Path;
+
+// What the queries of the points of a region share (hydrology_region.cpp): its canonical box, the
+// highest relief there, and for each cell of the planet level it meets (at most 2 x 2) the reaches
+// that may carve some point of the box in the order candidatesAt meets them around that cell and
+// the lakes of the cells around it; and the memo of the noise of the walls.
+struct Hydrology::Region::Data {
+    struct Reach {
+        std::size_t reach = kNone;
+        water::PathPoint start; // startOf(reach)
+        // The box in the images of the reach (those of its points: start.x + wrapCanonical(x -
+        // start.x) for the canonical x).
+        double minX = 0.0;
+        double minZ = 0.0;
+        double maxX = 0.0;
+        double maxZ = 0.0;
+        bool everywhere = false; // mayReach holds at every point of the box
+        // Its course and what of it may carve the box (BoxCourse), once a point needs them.
+        const water::Course* course = nullptr;
+        water::BoxCourse box;
+    };
+    struct Part {
+        std::size_t cell = 0;
+        std::vector<Reach> reaches;
+        LakeList lakes;
+    };
+    double minX = 0.0;
+    double minZ = 0.0;
+    double maxX = 0.0;
+    double maxZ = 0.0;
+    double groundMin = 0.0;
+    double groundMax = 0.0;
+    std::vector<Part> parts;
+    noise::FbmOctaves::Memo warp;
+    // The valleys found at the last point (candidatesIn): those of found[0, count) only, the
+    // others left from points before.
+    Candidates candidates;
+
+    // The part of the cell of a canonical point of the box where the relief is ground meters high,
+    // or null.
+    [[nodiscard]] Part* partOf(const PlanetGrid& grid, double x, double z, double ground) {
+        if (!(x >= minX && x <= maxX && z >= minZ && z <= maxZ && ground >= groundMin &&
+              ground <= groundMax)) {
+            return nullptr;
+        }
+        if (parts.size() == 1) {
+            return &parts.front();
+        }
+        const std::size_t cell = planetCellAt(grid, x, z);
+        for (Part& p : parts) {
+            if (p.cell == cell) {
+                return &p;
+            }
+        }
+        return nullptr;
+    }
+};
 
 struct Hydrology::Impl {
     // The outlet of a lake into the river leaving it: from the floor of the cell of its sill (in
@@ -224,8 +289,23 @@ struct Hydrology::Impl {
     [[nodiscard]] water::ReachEnd pointEnd(const RiverSegment& s, std::int32_t segment,
                                            std::int32_t vertex) const;
     [[nodiscard]] bool mayReach(std::size_t r, double x, double z, double radius) const;
-    // The valleys near the canonical (x, z) where the relief is ground meters high.
+    // The valleys near the canonical (x, z) where the relief is ground meters high; or those of a
+    // region holding the point (the same, found through it, in its candidates).
     [[nodiscard]] Candidates candidatesAt(double x, double z, double ground) const;
+    [[nodiscard]] const Candidates& candidatesIn(Region::Data& region, Region::Data::Part& part,
+                                                 double x, double z, double ground) const;
+    // What the valleys found at a point carve there, where the relief is ground meters high
+    // (riversAt).
+    [[nodiscard]] RiverCarve riversOf(const Candidates& near, double ground) const;
+    // The part of a region for the cell (hydrology_region.cpp), or false where the images of a
+    // reach do not follow the canonical points across the box.
+    [[nodiscard]] bool partOf(const Region::Data& region, std::size_t cell,
+                              Region::Data::Part& part) const;
+    // The valley of reach r (start its startOf) at the canonical (x, z): its ponds in out, and the
+    // valley kept in out where it may carve or fill the point (candidatesAt).
+    void takeReach(std::size_t r, const water::PathPoint& start, const water::Course& course,
+                   const water::BoxCourse* box, double x, double z, double ground,
+                   water::WallWarp& warp, Candidates& out) const;
     // Whether two reaches follow each other on a river.
     [[nodiscard]] bool adjacent(std::size_t a, std::size_t b) const;
     // The lakes (hydrology_lakes.cpp): their cells, and their levels over the relief.
@@ -237,6 +317,10 @@ struct Hydrology::Impl {
     [[nodiscard]] water::FineLake makeFineLake(std::int32_t lake) const;
     [[nodiscard]] float levelOf(std::int32_t lake) const { return fineLakeOf(lake).level(); }
     [[nodiscard]] LakeWater lakeAt(double x, double z, double ground) const;
+    // The lakes of the cells around a cell, and the lake of a list over the canonical (x, z).
+    [[nodiscard]] LakeList lakesAround(std::size_t cell) const;
+    [[nodiscard]] LakeWater lakeIn(const LakeList& around, double x, double z,
+                                   double ground) const;
     // The relief at a point, or the water of the lake over it: the surface the rivers flow on.
     [[nodiscard]] float surfaceAt(double x, double z, float ground) const {
         const LakeWater w = lakeAt(x, z, static_cast<double>(ground));

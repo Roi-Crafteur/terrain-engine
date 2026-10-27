@@ -122,11 +122,39 @@ public:
     [[nodiscard]] const Heightfield& relief() const;
     [[nodiscard]] const HydrologyParams& params() const;
 
-    // The valleys at the canonical (x, z) where the relief is ground meters high.
-    [[nodiscard]] RiverCarve riversAt(double x, double z, double ground) const;
+    // What the queries of the points of a box share (a batch of Heightfield::samplesAt or
+    // heightsAt): the reaches and the lakes that may reach it, found once with what of their
+    // courses may carve it, and the memo of the noise of the walls of the valleys. Used by one
+    // thread at a time; the queries give the same bits with it as without it.
+    class Region {
+    public:
+        Region();
+        ~Region();
+        Region(Region&&) noexcept;
+        Region& operator=(Region&&) noexcept;
+        Region(const Region&) = delete;
+        Region& operator=(const Region&) = delete;
+
+        struct Data; // hydrology_impl.hpp
+
+    private:
+        friend class Hydrology;
+        std::unique_ptr<Data> data_;
+    };
+    // The region of the canonical box [minX, maxX] x [minZ, maxZ] where the relief lies between
+    // groundMin and groundMax: empty (the queries go point by point) unless the box lies in one
+    // cell of the planet level.
+    [[nodiscard]] Region regionOf(double minX, double minZ, double maxX, double maxZ,
+                                  double groundMin, double groundMax) const;
+
+    // The valleys at the canonical (x, z) where the relief is ground meters high. region: one
+    // whose box and relief hold the point and its ground, or null.
+    [[nodiscard]] RiverCarve riversAt(double x, double z, double ground,
+                                      Region* region = nullptr) const;
     // The lake over the canonical (x, z) where the relief (before the valleys of the rivers) is
-    // ground meters high.
-    [[nodiscard]] LakeWater lakeAt(double x, double z, double ground) const;
+    // ground meters high. region: as for riversAt.
+    [[nodiscard]] LakeWater lakeAt(double x, double z, double ground,
+                                   const Region* region = nullptr) const;
     // The level of the water of a lake of the planet level over the relief (computed on demand,
     // then kept): its level, lower where the relief lets its water out sooner; -infinity where
     // the relief holds none of it.

@@ -78,40 +78,38 @@ bool Hydrology::Impl::adjacent(std::size_t a, std::size_t b) const {
     return next(a) == b || previous(a) == b || next(b) == a || previous(b) == a;
 }
 
+void Hydrology::Impl::takeReach(std::size_t r, const water::PathPoint& start,
+                                const water::Course& course, const water::BoxCourse* box,
+                                double x, double z, double ground, water::WallWarp& warp,
+                                Candidates& out) const {
+    const double px = start.x + noise::wrapCanonical(x - start.x, grid.periodX());
+    const double pz = start.z + noise::wrapCanonical(z - start.z, grid.periodZ());
+    for (const water::FineLake& p : course.ponds) {
+        if (ground < static_cast<double>(p.level()) && p.level() > out.pond && p.covers(px, pz)) {
+            out.pond = p.level();
+        }
+    }
+    const water::Valley v = water::valleyAt(course, px, pz, ground, meanderSeed, warp, box);
+    if (v.height < ground + water::kLevee || v.raise > 0.0 ||
+        v.bank > -std::numeric_limits<double>::infinity()) {
+        out.found[out.count++] = {r, v};
+    }
+}
+
 Candidates Hydrology::Impl::candidatesAt(double x, double z, double ground) const {
     const std::size_t cell = planetCellAt(grid, x, z);
     const int ci = grid.column(cell);
     const int cj = grid.row(cell);
     Candidates out;
-    double warp = 0.0;
-    bool warped = false;
+    water::WallWarp warp(wallWarp, x, z, nullptr);
     for (int dj = -kSearch; dj <= kSearch; ++dj) {
         for (int di = -kSearch; di <= kSearch; ++di) {
             const CellReaches here =
                 reachesOfCell(grid.index(grid.wrapColumn(ci + di), grid.wrapRow(cj + dj)));
             for (std::size_t k = 0; k < here.count; ++k) {
                 const std::size_t r = here.reach[k];
-                if (!mayReach(r, x, z, kValleyReach)) {
-                    continue;
-                }
-                const water::PathPoint a = startOf(r);
-                const double px = a.x + noise::wrapCanonical(x - a.x, grid.periodX());
-                const double pz = a.z + noise::wrapCanonical(z - a.z, grid.periodZ());
-                if (!warped) {
-                    warp = static_cast<double>(wallWarp.fbm2D(x, z));
-                    warped = true;
-                }
-                const water::Course& course = courseOf(r);
-                for (const water::FineLake& p : course.ponds) {
-                    if (ground < static_cast<double>(p.level()) && p.level() > out.pond &&
-                        p.covers(px, pz)) {
-                        out.pond = p.level();
-                    }
-                }
-                const water::Valley v = water::valleyAt(course, px, pz, ground, meanderSeed, warp);
-                if (v.height < ground + water::kLevee || v.raise > 0.0 ||
-                    v.bank > -std::numeric_limits<double>::infinity()) {
-                    out.found[out.count++] = {r, v};
+                if (mayReach(r, x, z, kValleyReach)) {
+                    takeReach(r, startOf(r), courseOf(r), nullptr, x, z, ground, warp, out);
                 }
             }
         }
@@ -119,9 +117,35 @@ Candidates Hydrology::Impl::candidatesAt(double x, double z, double ground) cons
     return out;
 }
 
-RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
+const Candidates& Hydrology::Impl::candidatesIn(Region::Data& region, Region::Data::Part& part,
+                                                double x, double z, double ground) const {
+    Candidates& out = region.candidates;
+    out.count = 0;
+    out.pond = -std::numeric_limits<float>::infinity();
+    water::WallWarp warp(wallWarp, x, z, &region.warp);
+    for (Region::Data::Reach& e : part.reaches) {
+        if (!e.everywhere && !mayReach(e.reach, x, z, kValleyReach)) {
+            continue;
+        }
+        if (e.course == nullptr) {
+            e.course = &courseOf(e.reach);
+            e.box = water::boxCourse(*e.course, e.minX, e.minZ, e.maxX, e.maxZ, region.groundMin,
+                                     region.groundMax);
+        }
+        takeReach(e.reach, e.start, *e.course, &e.box, x, z, ground, warp, out);
+    }
+    return out;
+}
+
+RiverCarve Hydrology::riversAt(double x, double z, double ground, Region* region) const {
     const Impl& m = *impl_;
-    const Candidates near = m.candidatesAt(x, z, ground);
+    Region::Data* d = region != nullptr ? region->data_.get() : nullptr;
+    Region::Data::Part* part = d != nullptr ? d->partOf(m.grid, x, z, ground) : nullptr;
+    return part != nullptr ? m.riversOf(m.candidatesIn(*d, *part, x, z, ground), ground)
+                           : m.riversOf(m.candidatesAt(x, z, ground), ground);
+}
+
+RiverCarve Hydrology::Impl::riversOf(const Candidates& near, double ground) const {
     const auto& found = near.found;
     const std::size_t count = near.count;
     const float pond = near.pond;
@@ -151,7 +175,7 @@ RiverCarve Hydrology::riversAt(double x, double z, double ground) const {
         v.height = std::max(v.height, bank);
         water::ValleyBlend blend;
         for (std::size_t k = 0; k < count; ++k) {
-            if (k == win || m.adjacent(found[k].reach, found[win].reach)) {
+            if (k == win || adjacent(found[k].reach, found[win].reach)) {
                 blend.add(found[k].valley);
             } else {
                 out.second = std::min(out.second, found[k].valley.height);

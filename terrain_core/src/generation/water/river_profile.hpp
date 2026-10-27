@@ -10,7 +10,11 @@
 // platform.
 
 #include "river_course.hpp"
+#include "terrain/det_math.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -71,11 +75,131 @@ private:
     double mountain_ = 0.0;
 };
 
+// The noise of the walls at a point (the warp of valleyAt, in [-1, 1]): given, or drawn the first
+// time a segment needs it (at the canonical point, through a memo or not: the same bits).
+class WallWarp {
+public:
+    explicit WallWarp(double value) : value_(value), known_(true) {}
+    WallWarp(const noise::FbmOctaves& noise, double x, double z, noise::FbmOctaves::Memo* memo)
+        : noise_(&noise), memo_(memo), x_(x), z_(z) {}
+
+    [[nodiscard]] double value() {
+        if (!known_) {
+            value_ = static_cast<double>(memo_ != nullptr ? noise_->fbm2D(x_, z_, *memo_)
+                                                          : noise_->fbm2D(x_, z_));
+            known_ = true;
+        }
+        return value_;
+    }
+
+private:
+    const noise::FbmOctaves* noise_ = nullptr;
+    noise::FbmOctaves::Memo* memo_ = nullptr;
+    double x_ = 0.0;
+    double z_ = 0.0;
+    double value_ = 0.0;
+    bool known_ = false;
+};
+
+// The distance from (x, z) to the segment a-b.
+[[nodiscard]] inline double distanceToSegment(double x, double z, double ax, double az, double bx,
+                                              double bz) {
+    const double dx = bx - ax;
+    const double dz = bz - az;
+    const double length2 = dx * dx + dz * dz;
+    const double t =
+        length2 > 0.0 ? std::clamp(((x - ax) * dx + (z - az) * dz) / length2, 0.0, 1.0) : 0.0;
+    return dmath::hypot(x - (ax + t * dx), z - (az + t * dz));
+}
+
+// The rise of the surface of a segment beyond its ends (risesOf): kLeastRise at least.
+inline constexpr double kLeastRise = 2.0;
+// The run of segment a-b: across, along, and its length squared and its length.
+struct SegmentSpan {
+    SegmentSpan() = default;
+    SegmentSpan(const CoursePoint& a, const CoursePoint& b)
+        : dx(b.x - a.x), dz(b.z - a.z), length2(dx * dx + dz * dz),
+          length(length2 > 0.0 ? std::sqrt(length2) : 0.0) {}
+    double dx = 0.0;
+    double dz = 0.0;
+    double length2 = 0.0;
+    double length = 0.0;
+};
+
+// The floor of the valley lies kFloorRise meters above the water at the edge of the channel.
+inline constexpr double kFloorRise = 0.6;
+// The walls stand at least kWallMargin meters beyond the channel, bounded softly over kWallSoft.
+inline constexpr double kWallMargin = 2.0;
+inline constexpr double kWallSoft = 6.0;
+// The slope of the walls of a gorge swings by up to kGorgeSwing of itself along it.
+inline constexpr double kGorgeSwing = 0.45;
+// The channel meanders at most kMeanderReach times its amplitude from the axis, its offset
+// changing at most kMeanderRate times its amplitude per half wave (meanderAt: gradients within
+// [-1, 1], 2 (1 + 1.875 + 2) for the rate), both with a margin.
+inline constexpr double kMeanderReach = 2.001;
+inline constexpr double kMeanderRate = 9.76;
+
+// What of a course may change its valley at the points of a box (Hydrology::Region), in the
+// images of the course: its chunks that some point of the box may not skip, each with the least
+// away and floor of valleyAt over the box (where away is positive and floor lies kBlend above
+// the lowest valley found so far, the point skips it), and of their segments those that may
+// change the valley at some point of the box. Every other chunk or segment changes nothing there.
+struct BoxCourse {
+    struct Chunk {
+        std::uint32_t chunk = 0; // in Course::chunks
+        double away = 0.0;
+        double floor = 0.0;
+        std::uint32_t first = 0; // its segments: segments[first, last)
+        std::uint32_t last = 0;
+    };
+    // A segment, with what bounds its valley at any point (river_box.cpp): the widest channel,
+    // meanders and floor, the gentlest walls and the most gorge, the longest foot, the lowest its
+    // surface starts from and the highest its floor and its slope, the narrowest channel; its
+    // banks within bankFrom of its axis (the meanders at most meander away, the channel stretched
+    // by stretch at most). keep: of a shape these bounds do not hold for, always kept.
+    struct Segment {
+        std::uint32_t first = 0; // index of its first point
+        SegmentSpan span;
+        bool keep = false;
+        double least = 0.0;     // the walls never nearer to the axis (channel, meanders, margin)
+        double floorHalf = 0.0;
+        double wall = 0.0;
+        double gorge = 0.0;
+        double foot = 1.0;
+        double low = 0.0;
+        double lowStart = 0.0; // the lowest its surface starts from at its start, at its end
+        double lowEnd = 0.0;
+        double floorTop = 0.0;
+        double floorSlope = 0.0;
+        double half = 0.0;
+        double bankFrom = 0.0;
+        double meander = 0.0;
+        double stretch = 1.0;
+        // Whether its valley may change valleyAt at a point d meters from it, beyond meters
+        // beyond its ends (upstream of its start or not), where the relief lies at least
+        // groundLow high, the noise of the walls warp there (or below, as -1 bounds every point
+        // of a box), and the valley joins the blend below threshold.
+        [[nodiscard]] bool mayMatter(double d, double beyond, bool upstream, double groundLow,
+                                     double threshold, double warp) const;
+    };
+    std::vector<Chunk> chunks;
+    std::vector<Segment> segments;
+};
+// The box [minX, maxX] x [minZ, maxZ] of points of course c (its images) where the relief stands
+// between groundMin and groundMax meters high (river_box.cpp).
+[[nodiscard]] BoxCourse boxCourse(const Course& c, double minX, double minZ, double maxX,
+                                  double maxZ, double groundMin, double groundMax);
+
 // The valley of course c at (x, z), in the images of c, where the relief is ground meters high:
 // its surface wherever it lies below ground + kLevee (otherwise height stays infinite), and the
 // fill of its floor there (raise). Its rock attributes are blended over its segments
 // (ValleyBlend). meanderSeed draws the meanders; warp in [-1, 1] (a noise at the point) moves the
-// walls by up to wallWarpOf of the floor.
+// walls by up to wallWarpOf of the floor. box: what of c may change the valley in a box holding
+// the point and its ground (boxCourse), or null. A segment is only evaluated where it may change
+// the result: the same bits whatever is left out.
+[[nodiscard]] Valley valleyAt(const Course& c, double x, double z, double ground,
+                              std::uint64_t meanderSeed, WallWarp& warp,
+                              const BoxCourse* box = nullptr);
 [[nodiscard]] Valley valleyAt(const Course& c, double x, double z, double ground,
                               std::uint64_t meanderSeed, double warp);
 

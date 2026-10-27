@@ -122,7 +122,8 @@ struct Depression {
 // equator has one (Geography::anchorX). Without it, like every fbm layer, the macro
 // continentalness is exactly 0 at the origin, so without the plates the origin always lies on a
 // macro coast: the local layer alone decides whether it is land or sea.
-class Hydrology; // the water of the world (water/hydrology.hpp)
+class Hydrology;   // the water of the world (water/hydrology.hpp)
+struct RiverCarve; // what its valleys make of a point (water/hydrology.hpp)
 
 class Heightfield {
 public:
@@ -169,18 +170,27 @@ private:
 
     [[nodiscard]] static std::shared_ptr<const Water>
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
-    // The depressions below the sea and the water of a sample at a canonical point, last.
+    // The depressions below the sea and the sea of a sample at a canonical point.
     void finishWater(double x, double z, HeightSample& s) const;
-    // The valleys, rivers and lakes of the hydrology at a canonical point (heightfield_hydrology).
-    void applyHydrology(double x, double z, HeightSample& s) const;
+    // The valleys, rivers and lakes of the hydrology at a canonical point, last
+    // (heightfield_hydrology), through the memos and the region of a batch call (null otherwise).
+    void applyHydrology(double x, double z, HeightSample& s, Memos* memos) const;
+    // The rock of the walls of a valley of the hydrology over its surface h
+    // (heightfield_hydrology).
+    [[nodiscard]] double valleyRockAt(double x, double z, double h, const RiverCarve& c,
+                                      double show, Memos* memos) const;
+    // applyHydrology over the samples of a batch, at the canonical points of (xs[i], zs[i]): the
+    // reaches and the lakes of their box found once (Hydrology::Region).
+    void waterOf(std::span<const double> xs, std::span<const double> zs,
+                 std::span<HeightSample> samples, Memos& memos) const;
 
-    // sampleAt, through the memos during a batch call (null otherwise).
-    [[nodiscard]] HeightSample sampleWith(double x, double z, Memos* memos) const;
+    // sampleAt without the hydrology, through the memos during a batch call (null otherwise).
+    [[nodiscard]] HeightSample reliefWith(double x, double z, Memos* memos) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
     // The warped point of the ridged noise (the warp of the geography when it is enabled).
     [[nodiscard]] std::array<double, 2> warpedAt(double x, double z, Memos* memos) const;
-    // sampleWith on the planetary geography (heightfield_geography.cpp), at a canonical point:
+    // reliefWith on the planetary geography (heightfield_geography.cpp), at a canonical point:
     // its regional elevation, the local relief around it and the ridged mountains.
     [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos) const;
     // The intensity of the relief at the point: that of the map with the spurs of the chains.

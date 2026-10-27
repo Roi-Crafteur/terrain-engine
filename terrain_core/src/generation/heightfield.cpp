@@ -14,6 +14,7 @@
 #include <memory>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace terrain {
 
@@ -217,32 +218,50 @@ void requireOneSize(std::size_t xs, std::size_t zs, std::size_t out) {
 } // namespace
 
 float Heightfield::heightAt(double x, double z) const {
-    return sampleWith(x, z, nullptr).height;
+    return sampleAt(x, z).height;
 }
 
 HeightSample Heightfield::sampleAt(double x, double z) const {
-    return sampleWith(x, z, nullptr);
+    HeightSample s = reliefWith(x, z, nullptr);
+    if (hydrology_) {
+        applyHydrology(noise::wrapCanonical(x, world_.x), noise::wrapCanonical(z, world_.z), s,
+                       nullptr);
+    }
+    return s;
 }
 
+// The relief of every point first, then its water: the water of the points of a batch shares what
+// their box holds (Hydrology::Region), and each sample is the same as sampleAt.
 void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> zs,
                             std::span<HeightSample> out) const {
     requireOneSize(xs.size(), zs.size(), out.size());
     Memos memos;
     for (std::size_t i = 0; i < xs.size(); ++i) {
-        out[i] = sampleWith(xs[i], zs[i], &memos);
+        out[i] = reliefWith(xs[i], zs[i], &memos);
+    }
+    if (hydrology_) {
+        waterOf(xs, zs, out, memos);
     }
 }
 
 void Heightfield::heightsAt(std::span<const double> xs, std::span<const double> zs,
                             std::span<float> out) const {
     requireOneSize(xs.size(), zs.size(), out.size());
+    if (hydrology_) {
+        std::vector<HeightSample> samples(xs.size());
+        samplesAt(xs, zs, samples);
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            out[i] = samples[i].height;
+        }
+        return;
+    }
     Memos memos;
     for (std::size_t i = 0; i < xs.size(); ++i) {
-        out[i] = sampleWith(xs[i], zs[i], &memos).height;
+        out[i] = reliefWith(xs[i], zs[i], &memos).height;
     }
 }
 
-HeightSample Heightfield::sampleWith(double worldX, double worldZ, Memos* memos) const {
+HeightSample Heightfield::reliefWith(double worldX, double worldZ, Memos* memos) const {
     const double x = noise::wrapCanonical(worldX, world_.x);
     const double z = noise::wrapCanonical(worldZ, world_.z);
     if (geography_) {

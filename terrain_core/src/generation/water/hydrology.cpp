@@ -26,15 +26,6 @@ constexpr std::size_t kSlopeSpan = 4;
 // kStartWindow meters of the second (the valleys of both courses overlap there).
 constexpr double kStartWindow = 1'500.0;
 
-double distanceToSegment(double x, double z, double ax, double az, double bx, double bz) {
-    const double dx = bx - ax;
-    const double dz = bz - az;
-    const double length2 = dx * dx + dz * dz;
-    const double t =
-        length2 > 0.0 ? std::clamp(((x - ax) * dx + (z - az) * dz) / length2, 0.0, 1.0) : 0.0;
-    return dmath::hypot(x - (ax + t * dx), z - (az + t * dz));
-}
-
 double lengthOf(const RiverSegment& s) {
     double length = 0.0;
     for (std::size_t i = 1; i < s.vertices.size(); ++i) {
@@ -379,7 +370,7 @@ bool Hydrology::Impl::mayReach(std::size_t r, double x, double z, double radius)
     const water::PathPoint b = endOf(r);
     const double px = a.x + noise::wrapCanonical(x - a.x, grid.periodX());
     const double pz = a.z + noise::wrapCanonical(z - a.z, grid.periodZ());
-    return distanceToSegment(px, pz, a.x, a.z, b.x, b.z) <= radius + kStray;
+    return water::distanceToSegment(px, pz, a.x, a.z, b.x, b.z) <= radius + kStray;
 }
 
 Hydrology::Impl::CellReaches Hydrology::Impl::reachesOfCell(std::size_t cell) const {

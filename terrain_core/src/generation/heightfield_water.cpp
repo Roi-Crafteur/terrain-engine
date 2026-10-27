@@ -102,13 +102,10 @@ std::vector<Depression> Heightfield::depressions() const {
 
 // With the geography the sea is where its coast signal is below 0 (the sign of the
 // continentalness), whatever the height: a depression below the sea level deep inland stays dry
-// land. Without it, the ground below the sea level.
+// land. Without it, the ground below the sea level. The hydrology comes after (applyHydrology).
 void Heightfield::finishWater(double x, double z, HeightSample& s) const {
     if (!geography_) {
         setSea(s, s.height < kSeaLevel);
-        if (hydrology_) {
-            applyHydrology(x, z, s);
-        }
         return;
     }
     if (water_->depressions && s.relief < kDepressionHigh && s.continentalness > 0.0f &&
@@ -132,9 +129,6 @@ void Heightfield::finishWater(double x, double z, HeightSample& s) const {
         }
     }
     setSea(s, s.continentalness < 0.0f);
-    if (hydrology_) {
-        applyHydrology(x, z, s);
-    }
 }
 
 } // namespace terrain
