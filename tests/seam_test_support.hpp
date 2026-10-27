@@ -85,14 +85,16 @@ inline double distanceToOutline(FacePoint p, const std::vector<Segment>& outline
     return nearest;
 }
 
-// Largest distance from a point of `from` on the plane, with u in [uMin, uMax], to the outline
-// of `to` on it. Also counts the points measured.
-inline double largestGap(const terrain::TileData& from, const terrain::TileData& to, Plane plane,
-                         double uMin, double uMax, std::size_t& points) {
-    const std::vector<Segment> outline = faceSegments(to, plane);
+// Largest distance from a point of `from` on fromPlane, with u in [uMin, uMax], to the outline
+// of `to` on toPlane: two images of the same plane of the wrapped world, or the same plane.
+// Also counts the points measured.
+inline double largestGapAcross(const terrain::TileData& from, Plane fromPlane,
+                               const terrain::TileData& to, Plane toPlane, double uMin,
+                               double uMax, std::size_t& points) {
+    const std::vector<Segment> outline = faceSegments(to, toPlane);
     double largest = 0.0;
     points = 0;
-    for (const FacePoint p : facePoints(from, plane)) {
+    for (const FacePoint p : facePoints(from, fromPlane)) {
         if (p.u < uMin || p.u > uMax) {
             continue;
         }
@@ -100,6 +102,13 @@ inline double largestGap(const terrain::TileData& from, const terrain::TileData&
         ++points;
     }
     return largest;
+}
+
+// Largest distance from a point of `from` on the plane, with u in [uMin, uMax], to the outline
+// of `to` on it. Also counts the points measured.
+inline double largestGap(const terrain::TileData& from, const terrain::TileData& to, Plane plane,
+                         double uMin, double uMax, std::size_t& points) {
+    return largestGapAcross(from, plane, to, plane, uMin, uMax, points);
 }
 
 } // namespace seam_test
