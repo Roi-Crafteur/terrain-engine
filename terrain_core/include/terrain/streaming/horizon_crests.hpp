@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/streaming/horizon_fine_grid.hpp"
 #include "terrain/streaming/horizon_levels.hpp"
 
 #include <span>
@@ -32,7 +33,9 @@ namespace terrain {
 // sample (i, k) on node (i * R, k * R); each is read at its canonical position, and a sample
 // shares the sides of its cells with its neighbors: about 2 (R - 1) + 1 heights more per sample
 // on land. A lift is a pure function of the seed, the parameters, the level and the canonical
-// index of its sample: the same bits for every image, rectangle, thread and observer.
+// index of its sample: the same bits for every image, rectangle, thread and observer. The fine
+// lattice may also be read in a HorizonFineGrid (horizon_fine_grid.hpp) of the level at a multiple
+// of the ratio, shared with the detail normals (horizon_detail.hpp): the same nodes, the same bits.
 class HorizonCrestSampler {
 public:
     // field must outlive the sampler and share the world of params. Throws
@@ -54,7 +57,25 @@ public:
     // The same, the point heights computed here.
     [[nodiscard]] std::vector<float> sample(int level, const HorizonRect& rect) const;
 
+    // The nodes of the fine lattice (at the ratio) the lifts of a rectangle may read: those of its
+    // cells, [(x0 - 1) * ratio, x1 * ratio + 1) on each axis; empty where the level does not raise.
+    [[nodiscard]] HorizonRect nodes(int level, const HorizonRect& rect) const;
+    // Reads into a grid of the level, whose ratio is a multiple of this one, what the lifts of a
+    // rectangle need and the grid does not hold yet: the nodes of the samples of the rectangle
+    // grown by one sample, then those of the sides and centers of the cells with a corner that may
+    // rise. The nodes in `held` (indices of the grid) are taken as read. Nothing where the level does not
+    // raise. Throws std::invalid_argument for a level out of range, or a grid of another level or
+    // ratio, or not covering the nodes.
+    void read(int level, const HorizonRect& rect, HorizonFineGrid& grid,
+              const HorizonRect& held = {}) const;
+    // The lifts of a rectangle (into lifts, as fill above) from a grid holding what read reads.
+    void fill(int level, const HorizonRect& rect, const HorizonFineGrid& grid,
+              std::span<float> lifts) const;
+
 private:
+    [[nodiscard]] int strideIn(int level, const HorizonRect& rect,
+                               const HorizonFineGrid& grid) const;
+
     const Heightfield* field_;
     HorizonParams params_;
 };

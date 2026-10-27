@@ -346,6 +346,7 @@ terrain_add_test(unreal_horizon_gpu_streamer_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_normals_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_atmosphere_test terrain_unreal_bridge)
 terrain_add_test(unreal_terrain_surface_test terrain_unreal_bridge)
+include(horizon_detail_tests.cmake)
 
 # Every source of terrain_core outside io/ has its wrapper in the Unreal plugin, which compiles
 # it: a source added to the core without its wrapper fails here.
