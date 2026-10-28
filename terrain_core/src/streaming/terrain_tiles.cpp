@@ -240,7 +240,7 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
 }
 
 TileData TerrainTiles::generate(const TileRequest& asked) const {
-    const TileRequest request{wrapTile(asked.key, world()), asked.seams};
+    const TileRequest request{wrapTile(asked.key, world()), asked.seams, asked.horizon};
     const TileLattice lattice = tile::latticeOf(request.key);
     TileColumns columns = tile::sampleColumns(field_, lattice, rock_);
     std::optional<tile::RockTile> rockTile;

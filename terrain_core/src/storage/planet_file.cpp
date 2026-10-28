@@ -323,7 +323,7 @@ void checkOrigin(FrameReader& in, std::uint64_t seed, const PlanetParams& params
     const std::size_t size = in.count(1);
     const std::span<const std::uint8_t> stored = in.take(size);
     const std::vector<std::uint8_t> wanted = paramsBytes(params);
-    if (fileSeed != seed || generator != kGeneratorVersion || x != world.x || z != world.z ||
+    if (fileSeed != seed || generator != kReliefGeneratorVersion || x != world.x || z != world.z ||
         !std::equal(stored.begin(), stored.end(), wanted.begin(), wanted.end())) {
         in.fail("stale: the planet level of another seed, world, generator or parameters");
     }
@@ -335,7 +335,7 @@ void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
                     std::uint64_t seed, const WorldSize& world) {
     ByteWriter out = storage::beginFrame(kMagic, kPlanetFileVersion, level.memoryBytes());
     out.u64(seed);
-    out.u32(kGeneratorVersion);
+    out.u32(kReliefGeneratorVersion);
     out.f64(world.x);
     out.f64(world.z);
     const std::vector<std::uint8_t> params = paramsBytes(level.params());

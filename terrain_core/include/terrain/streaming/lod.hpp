@@ -104,15 +104,19 @@ enum TileSeam : unsigned {
     kSeamPosXPosZ = 1U << 7,
 };
 
-// A tile to generate, with the sides where it must match a coarser neighbor.
+// A tile to generate, with the sides where it must match a coarser neighbor, and those at the outer
+// edge of the selection, which level 0 of the horizon meets (no tile beyond them): there the tile
+// keeps the relief alone, without the rock in three dimensions (phase 12A).
 struct TileRequest {
     TileKey key;
-    unsigned seams = 0; // TileSeam bits
+    unsigned seams = 0;   // TileSeam bits
+    unsigned horizon = 0; // TileSeam bits of its faces only (kSeamNegX to kSeamPosZ)
 
     friend bool operator==(const TileRequest&, const TileRequest&) = default;
 };
 
-// Requests of a selection (in its order), with the seams of each tile against the others.
+// Requests of a selection (in its order), with the seams of each tile against the others and its
+// faces with no tile beyond them.
 [[nodiscard]] std::vector<TileRequest> tileRequests(const std::vector<TileKey>& selection);
 
 // Seams between LODs (lod_seams.cpp). The samples of a coarser neighbor are the even samples of

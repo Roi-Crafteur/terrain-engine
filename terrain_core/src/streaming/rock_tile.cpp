@@ -28,7 +28,7 @@ float derivative(int index, const Sample& f) {
 
 RockTile::RockTile(const TileColumns& columns, const TileRequest& request,
                    const TileLattice& lattice)
-    : columns_(&columns), lattice_(lattice), seams_(request.seams),
+    : columns_(&columns), lattice_(lattice), seams_(request.seams), horizon_(request.horizon),
       fine_(rockDetailForLod(request.key.lod)), coarse_(fine_) {
     if (request.seams != 0 && request.key.lod < kMaxLod) {
         coarse_ = rockDetailForLod(request.key.lod + 1);
@@ -49,7 +49,7 @@ const RockColumn& RockTile::rockAt(int i, int k) const {
 float RockTile::sample(int i, int j, int k, int originY, bool coarse) const {
     const double sampleY = originY + j * lattice_.spacing;
     const RockColumn& c = rockAt(i, k);
-    if (c.faceCount == 0) {
+    if (c.faceCount == 0 || onHorizonSide(i, k)) {
         // Same expression as tile::levelDensity and TerrainTiles::densityAt.
         return static_cast<float>(sampleY - columns_->at(i, k));
     }
@@ -92,6 +92,11 @@ bool RockTile::onStitchedSide(int i, int k) const {
            (i == kLast && (stitched(kSeamPosX) || (k == 0 && stitched(kSeamPosXNegZ)) ||
                            (k == kLast && stitched(kSeamPosXPosZ)))) ||
            (k == 0 && stitched(kSeamNegZ)) || (k == kLast && stitched(kSeamPosZ));
+}
+
+bool RockTile::onHorizonSide(int i, int k) const {
+    return (i == 0 && (horizon_ & kSeamNegX) != 0) || (i == kLast && (horizon_ & kSeamPosX) != 0) ||
+           (k == 0 && (horizon_ & kSeamNegZ) != 0) || (k == kLast && (horizon_ & kSeamPosZ) != 0);
 }
 
 void RockTile::dropPlants(std::vector<Plant>& plants) const {

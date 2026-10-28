@@ -24,7 +24,8 @@ public:
 
     // The density of sample (i, j, k) of the level whose lowest samples lie at originY, with the
     // detail of the tile, or of its coarser neighbor (the samples it holds on a stitched side):
-    // y - ground bit for bit at the columns without a face, as tile::levelDensity.
+    // y - ground bit for bit at the columns without a face, as tile::levelDensity, and on the
+    // sides the horizon meets (TileRequest::horizon).
     [[nodiscard]] float sample(int i, int j, int k, int originY, bool coarse) const;
 
     // The density of a level, the even samples of its stitched sides with the detail of the
@@ -56,10 +57,12 @@ private:
     [[nodiscard]] Vec3f gradientAt(const DensityGrid& grid, int i, int j, int k,
                                    int originY) const;
     [[nodiscard]] bool onStitchedSide(int i, int k) const;
+    [[nodiscard]] bool onHorizonSide(int i, int k) const;
 
     const TileColumns* columns_;
     TileLattice lattice_;
     unsigned seams_;
+    unsigned horizon_;
     RockDetail fine_;
     RockDetail coarse_;
     bool resample_ = false;

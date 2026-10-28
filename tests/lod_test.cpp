@@ -270,13 +270,15 @@ void testSeamsOfSelection() {
     TEST_CHECK(seamsOf(requests, f) == (terrain::kSeamNegZ | terrain::kSeamNegXNegZ));
 }
 
-// On a real selection, a face is stitched exactly when the tile across it is coarser.
+// On a real selection, a face is stitched exactly when the tile across it is coarser, and meets
+// the horizon exactly when no tile lies across it.
 void testSeamsMatchNeighbors() {
     const ChunkCoord player{5, -3};
     const std::vector<TileKey> tiles = terrain::selectTiles(player, LodParams{});
     const ChunkTiles owners = chunkTiles(tiles);
     bool matches = true;
     std::size_t stitched = 0;
+    std::size_t outer = 0;
     for (const terrain::TileRequest& request : terrain::tileRequests(tiles)) {
         const TileKey& tile = request.key;
         const int size = terrain::tileChunks(tile.lod);
@@ -290,12 +292,14 @@ void testSeamsMatchNeighbors() {
         for (const auto& face : faces) {
             const auto it = owners.find(face.outside);
             const bool coarser = it != owners.end() && it->second.front().lod == tile.lod + 1;
-            matches = matches && coarser == ((request.seams & face.seam) != 0);
+            matches = matches && coarser == ((request.seams & face.seam) != 0) &&
+                      (it == owners.end()) == ((request.horizon & face.seam) != 0);
             stitched += coarser ? 1 : 0;
+            outer += it == owners.end() ? 1 : 0;
         }
     }
     TEST_CHECK(matches);
-    TEST_CHECK(stitched > 0);
+    TEST_CHECK(stitched > 0 && outer > 0);
 }
 
 float pattern(int x, int y, int z) {

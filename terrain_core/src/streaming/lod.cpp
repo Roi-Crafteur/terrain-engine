@@ -75,6 +75,33 @@ unsigned seamsOf(const TileKey& tile, const TileSet& selection) {
     return seams;
 }
 
+// The faces of a tile with no tile of the selection beyond them.
+unsigned horizonOf(const TileKey& tile, const TileSet& selection) {
+    const int size = tileChunks(tile.lod);
+    const int x0 = tile.origin.x;
+    const int z0 = tile.origin.z;
+    const struct {
+        ChunkCoord outside;
+        TileSeam face;
+    } faces[] = {
+        {{x0 - 1, z0}, kSeamNegX},
+        {{x0 + size, z0}, kSeamPosX},
+        {{x0, z0 - 1}, kSeamNegZ},
+        {{x0, z0 + size}, kSeamPosZ},
+    };
+    unsigned horizon = 0;
+    for (const auto& face : faces) {
+        bool covered = false;
+        for (int lod = 0; lod <= kMaxLod && !covered; ++lod) {
+            covered = selection.contains(tileContaining(face.outside, lod));
+        }
+        if (!covered) {
+            horizon |= face.face;
+        }
+    }
+    return horizon;
+}
+
 } // namespace
 
 std::size_t TileKeyHash::operator()(const TileKey& key) const {
@@ -166,7 +193,7 @@ std::vector<TileRequest> tileRequests(const std::vector<TileKey>& selection) {
     std::vector<TileRequest> requests;
     requests.reserve(selection.size());
     for (const TileKey& tile : selection) {
-        requests.push_back({tile, seamsOf(tile, lookup)});
+        requests.push_back({tile, seamsOf(tile, lookup), horizonOf(tile, lookup)});
     }
     return requests;
 }
