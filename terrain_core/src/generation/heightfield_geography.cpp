@@ -354,17 +354,17 @@ float Heightfield::wallsAt(double x, double z, float ground, const MountainForm&
                                         intensity,  character, form.floor,
                                         form.crest, form.shape};
     mountain_walls::Memo* memo = memos != nullptr ? &memos->walls : nullptr;
-    const auto top =
-        static_cast<float>(mountain_walls::surface(layers_->walls, column, x, z, memo));
-    if (rock != nullptr) {
-        // The faces of the walls in three dimensions (phase 12A), over their top here.
-        const mountain_walls::Masks masks =
-            mountain_walls::masks(layers_->walls, column, x, z, memo);
-        if (masks.strata > 0.0 || masks.crystal > 0.0) {
-            wall_faces::addFaces(layers_->walls, masks, column, x, z, memo, *rock);
-        }
+    if (rock == nullptr) {
+        return static_cast<float>(mountain_walls::surface(layers_->walls, column, x, z, memo));
     }
-    return top;
+    // As surface, with the faces of the walls in three dimensions (phase 12A) at the column.
+    const mountain_walls::Masks masks = mountain_walls::masks(layers_->walls, column, x, z, memo);
+    if (!(masks.strata > 0.0) && !(masks.crystal > 0.0)) {
+        return ground;
+    }
+    wall_faces::addFaces(layers_->walls, masks, column, x, z, memo, *rock);
+    return static_cast<float>(mountain_walls::rockTop(layers_->walls, masks, x, z, column.ground,
+                                                      column.gradX, column.gradZ, memo));
 }
 
 // The ravines of the walls of the rifts run down the slope of their land (centered differences

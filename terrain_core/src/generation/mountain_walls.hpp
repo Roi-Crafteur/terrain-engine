@@ -171,6 +171,9 @@ struct StrataPass {
 struct WallPasses {
     std::array<StrataPass, 4> passes{};
     std::array<double, 4> lift{}; // 0 for the strata
+    // How fast lift grows along x and along z, meters per meter.
+    std::array<double, 4> liftX{};
+    std::array<double, 4> liftZ{};
 };
 [[nodiscard]] WallPasses wallPasses(const Noises& noises, const Masks& masks, double x, double z,
                                     double gradX, double gradZ, Memo* memo);

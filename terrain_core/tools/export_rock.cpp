@@ -248,7 +248,8 @@ bool writeShot(const World& w, const Options& o, const Shot& s, Report& r) {
     terrain::ViewParams p;
     p.eyeX = s.x;
     p.eyeZ = s.z;
-    p.eyeHeight = static_cast<double>(wet ? at.waterLevel : at.height) + s.above;
+    // On the ground, the top of its rock (an overhang may stand over the relief there).
+    p.eyeHeight = static_cast<double>(wet ? at.waterLevel : w.tiles.groundAt(s.x, s.z)) + s.above;
     p.heading = s.heading;
     p.tilt = s.tilt;
     p.width = o.width;

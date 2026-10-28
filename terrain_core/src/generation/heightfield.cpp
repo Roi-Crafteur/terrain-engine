@@ -268,11 +268,6 @@ HeightSample Heightfield::reliefWith(double worldX, double worldZ, Memos* memos,
     if (geography_) {
         HeightSample s = geographySample(x, z, memos, rock);
         finishWater(x, z, s);
-        // The faces of the walls, laid over the top of the walls, onto the relief here.
-        for (std::size_t i = 0; rock != nullptr && i < rock->faceCount; ++i) {
-            rock->faces[i].foot += s.height;
-            rock->faces[i].top += s.height;
-        }
         return s;
     }
     HeightSample s;

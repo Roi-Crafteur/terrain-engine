@@ -8,32 +8,37 @@ namespace terrain {
 // The rock of the streamed world in three dimensions (phase 12A). The relief is a height per
 // column (Heightfield::heightAt), whose walls keep a slope; where a generator of walls lays one (the
 // walls of the mountains, the slots of the falls and the gorges, the escarpments), it describes to
-// the columns near it a face: a riser of the relief turned vertical, whose top may jut over the air
-// (an overhang) and whose foot may recede into the rock (an undercut, a niche). The faces are
-// measured in meters across them, on the smooth ground the generator lays the riser on, so that the
-// rock in front of a face or behind it is found without any height of the neighbors. Everywhere
+// the columns of its riser a face: the relief climbs from the foot of the riser to its top over its
+// run, and the face turns that climb into a step, a vertical face at the middle of the run whose
+// top may jut over the air (an overhang) and whose foot may recede into the rock (an undercut, a
+// niche). The heights of the foot and the top are those of the relief at the two edges of the run,
+// so the step meets the relief there; within the run the relief keeps its own detail (what it
+// differs from the line from the foot to the top by), only its climb becomes the step. Everywhere
 // else the density of the rock is y - heightAt(x, z), bit for bit.
 
-// A face seen from a column: the rock lies on the side of negative distances.
+// The face of a riser seen from a column of its run.
 struct RockFace {
-    float foot = 0.0f; // heights of its foot and its top in the column, meters
+    float foot = 0.0f; // heights of the relief at the foot and at the top of the run, meters
     float top = 0.0f;
-    // Horizontal meters from the column to the face: positive in front of it (the side of the air),
-    // negative behind it (the side of the rock).
+    // Horizontal meters from the middle of the run to the column, positive toward the foot (the
+    // side of the air), within run / 2 of it.
     float distance = 0.0f;
+    float run = 0.0f;
     // The top juts over the air by cap meters, from capDepth meters below it up to it; the foot
-    // recedes into the rock by undercut meters, up to undercutHeight meters above it.
+    // recedes into the rock by undercut meters, up to undercutHeight meters above it. Both stay
+    // within the run.
     float cap = 0.0f;
     float capDepth = 0.0f;
     float undercut = 0.0f;
     float undercutHeight = 0.0f;
-    // Where the wall is faint, the face leans back: from run / 2 meters toward the air at its foot
-    // to run / 2 meters into the rock at its top (the slope of the riser of the relief), by
-    // 1 - vertical of it; vertical 1 is a vertical face.
-    float run = 0.0f;
-    float vertical = 1.0f;
-    // A face of the valley of a river (its slot, its gorge, the face of a fall): it shapes the air
-    // the river carves; otherwise a face of the relief before the rivers.
+    // How far the step replaces the climb of the relief, in [0, 1] (0: the relief as it is).
+    float weight = 1.0f;
+    // The horizontal direction of the air from the rock (a unit vector, x and z), along which the
+    // run lies.
+    float airX = 0.0f;
+    float airZ = 0.0f;
+    // A face of the valley of a river (its slot, its gorge, the face of a fall): its step shapes the
+    // floor the river carves; otherwise a face of the relief before the rivers.
     bool carved = false;
 
     friend bool operator==(const RockFace&, const RockFace&) = default;
@@ -48,7 +53,7 @@ struct RockColumn {
     std::uint8_t faceCount = 0;
     std::array<RockFace, kMaxRockFaces> faces{};
 
-    // Appends a face; past kMaxRockFaces, the face nearest to the column is kept.
+    // Appends a face; past kMaxRockFaces, the face of the greatest weight is kept.
     void add(const RockFace& face);
 
     friend bool operator==(const RockColumn&, const RockColumn&) = default;
@@ -67,10 +72,16 @@ struct RockDetail {
 [[nodiscard]] RockDetail rockDetailForLod(int lod);
 
 // Density at height y of a column, meters, negative in the rock: y - ground bit for bit without a
-// face; with faces, the horizontal distance to a face within its heights, the vertical one
-// elsewhere, the air the rivers carve in the relief taken out of it (and the levees they fill
-// added).
+// face; with faces, the relief and the steps of the faces of its run blended by their weights, the
+// air the rivers carve in it taken out (their floor stepped by the faces of their valley) and the
+// levees they fill added.
 [[nodiscard]] float rockDensity(const RockColumn& column, double y, const RockDetail& detail);
+
+// Sets the heights of the foot and the top of a face to those of the relief at the edges of its
+// run, its overhangs scaled with its height (they were measured on a face as high as top - foot).
+// The weight fades out on faces lower than kLeastRockFace to twice that.
+void anchorFace(RockFace& face, float foot, float top);
+inline constexpr float kLeastRockFace = 3.0f;
 
 // The heights between which the surfaces of the rock of a column lie.
 struct RockBounds {
@@ -79,8 +90,9 @@ struct RockBounds {
 };
 [[nodiscard]] RockBounds rockBounds(const RockColumn& column);
 
-// The share of bare rock, in [0, 1], of the surface of a column at height y: 1 on its faces, under
-// their caps and in their undercuts, 0 elsewhere (the material of the ground decides there).
+// The share of bare rock, in [0, 1], of the surface of a column at height y: the weight of its
+// faces on them, under their caps and in their undercuts, 0 elsewhere (the material of the ground
+// decides there).
 [[nodiscard]] float rockShare(const RockColumn& column, double y);
 
 } // namespace terrain

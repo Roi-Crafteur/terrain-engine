@@ -448,6 +448,8 @@ WallPasses wallPasses(const Noises& n, const Masks& m, double x, double z, doubl
             }
             const Cell& c = detailed(cells.cells[first], s);
             out.lift[s + 2] = (c.tiltX * (cx - i - c.x) + c.tiltZ * (cz - j - c.z)) * size;
+            out.liftX[s + 2] = c.tiltX;
+            out.liftZ[s + 2] = c.tiltZ;
             out.passes[s + 2] = {dmath::hypot(gradX + c.tiltX, gradZ + c.tiltZ), c.band,
                                  c.offset + kJointWave * noise * c.band, 0.0,
                                  c.band * (kRunLow + (kRunHigh - kRunLow) * 0.35),

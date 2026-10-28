@@ -192,9 +192,11 @@ private:
                  std::span<HeightSample> samples, Memos& memos) const;
 
     // sampleAt without the hydrology, through the memos during a batch call (null otherwise).
-    // With rock, the faces of the relief at the point too (rock_faces.hpp), on its height.
+    // With rock, the faces of the relief at the point too (rock_faces.hpp), not yet anchored.
     [[nodiscard]] HeightSample reliefWith(double x, double z, Memos* memos,
                                           RockColumn* rock = nullptr) const;
+    // Anchors the faces of the rock of (x, z) on the relief (heightfield_rock.cpp).
+    void anchorFaces(double x, double z, Memos& memos, RockColumn& rock) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
     // The warped point of the ridged noise (the warp of the geography when it is enabled).

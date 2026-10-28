@@ -1,6 +1,8 @@
 // The faces of the walls of the mountains in three dimensions (wall_faces.hpp).
 #include "wall_faces.hpp"
 
+#include "terrain/det_math.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -13,15 +15,17 @@ namespace {
 
 using mountain_walls::StrataPass;
 
+// The passes whose risers stand as faces: the great bands of the strata and the coarse joints of
+// the crystalline rock (the rock steps and the fine joints keep their slope).
+constexpr std::array<std::size_t, 2> kFacePasses = {0, 2};
 // The faces of the walls fade in where their mask times the hardness of their layer runs from
 // kFaintLow (the slope of the relief) to kFaintHigh (vertical).
 constexpr double kFaintLow = 0.3;
 constexpr double kFaintHigh = 0.6;
-// Faces lower than kLeastFace meters keep the slope of the relief.
-constexpr double kLeastFace = 3.0;
 // The cap of a face juts out up to kCapShare of its height, kCapMost meters at most, over the top
 // kCapDepthLow to kCapDepthLow + kCapDepthSpread of it; its undercut recedes up to kCutShare of its
 // height, kCutMost meters at most, up to kCutHeightLow to kCutHeightLow + kCutHeightSpread of it.
+// Both stay within kWithinRun of the run of the face.
 constexpr double kCapShare = 0.12;
 constexpr double kCapMost = 8.0;
 constexpr double kCapDepthLow = 0.12;
@@ -30,6 +34,7 @@ constexpr double kCutShare = 0.1;
 constexpr double kCutMost = 6.0;
 constexpr double kCutHeightLow = 0.1;
 constexpr double kCutHeightSpread = 0.2;
+constexpr double kWithinRun = 0.45;
 // A face has a cap where the draw of its layer and the noise along it (kCapNoise of it) pass
 // kCapFrom to kCapFull, an undercut where they pass kCutFrom to kCutFull (the noise reversed: the
 // rock under a cap is often whole).
@@ -38,8 +43,6 @@ constexpr double kCapFrom = 0.45;
 constexpr double kCapFull = 0.8;
 constexpr double kCutFrom = 0.5;
 constexpr double kCutFull = 0.85;
-// The columns within half the run of a face, its cap or its undercut and kReach more meters see it.
-constexpr double kReach = 3.0;
 // The slope of the ground under a pass is read over kDelta meters of the ground of the walls, at
 // least kLeastSlope meters per meter.
 constexpr double kDelta = 0.5;
@@ -78,8 +81,10 @@ struct PassSite {
     const StrataPass* pass = nullptr;
     double lift = 0.0;
     double ground = 0.0; // under the pass at the column
-    double slope = 0.0;  // of that ground along the gradient, meters per meter
-    double noise = 0.0;  // of the overhangs along the walls
+    double slope = 0.0;  // of that ground lifted, meters per meter
+    double airX = 0.0;   // the direction it falls along
+    double airZ = 0.0;
+    double noise = 0.0; // of the overhangs along the walls
 };
 
 // The height of the top of a pass where its ground is lifted to g, over the top at the column.
@@ -87,48 +92,49 @@ double relative(const PassSite& s, double g) {
     return passTop(*s.pass, s.lift, g - s.lift) - passTop(*s.pass, s.lift, s.ground);
 }
 
-// Adds the face of layer k of a pass, if the column sees it.
+// Adds the face of layer k of a pass, if the column lies within its run.
 void addLayerFace(const PassSite& s, std::int64_t k, RockColumn& rock) {
     const StrataPass& p = *s.pass;
     const mountain_walls::LayerFace layer = mountain_walls::layerFace(p, k);
-    const double vertical = smooth(kFaintLow, kFaintHigh, p.weight * layer.hardness);
-    if (!(vertical > 0.0) || !(layer.end > layer.start)) {
-        return;
-    }
     const double recede = p.rim * std::max(p.slope, kLeastSlope) + p.offset;
     const double start = layer.start * p.band + recede;
     const double end = layer.end * p.band + recede;
+    const double run = (end - start) / s.slope;
+    const double distance = (0.5 * (start + end) - (s.ground + s.lift)) / s.slope;
+    if (!(end > start) || !(std::abs(distance) <= 0.5 * run)) {
+        return;
+    }
     const double foot = relative(s, start);
     const double top = relative(s, end);
     const double height = top - foot;
-    if (!(height >= kLeastFace)) {
+    const double weight = smooth(kFaintLow, kFaintHigh, p.weight * layer.hardness) *
+                          smooth(0.5 * kLeastRockFace, kLeastRockFace, height);
+    if (!(weight > 0.0)) {
         return;
     }
-    const double run = (end - start) / s.slope;
-    const double distance = (0.5 * (start + end) - (s.ground + s.lift)) / s.slope;
-    const double cap = std::min(kCapShare * height, kCapMost) * vertical *
+    const double room = kWithinRun * run;
+    const double cap = std::min({kCapShare * height, kCapMost, room}) * weight *
                        smooth(kCapFrom, kCapFull,
                               (1.0 - kCapNoise) * mountain_walls::layerDraw(p, k, 0) +
                                   kCapNoise * (0.5 + 0.5 * s.noise));
-    const double undercut = std::min(kCutShare * height, kCutMost) * vertical *
+    const double undercut = std::min({kCutShare * height, kCutMost, room}) * weight *
                             smooth(kCutFrom, kCutFull,
                                    (1.0 - kCapNoise) * mountain_walls::layerDraw(p, k, 1) +
                                        kCapNoise * (0.5 - 0.5 * s.noise));
-    if (std::abs(distance) > 0.5 * run + cap + undercut + kReach) {
-        return;
-    }
     RockFace face;
     face.foot = static_cast<float>(foot);
     face.top = static_cast<float>(top);
     face.distance = static_cast<float>(distance);
+    face.run = static_cast<float>(run);
     face.cap = static_cast<float>(cap);
     face.capDepth = static_cast<float>(
         height * (kCapDepthLow + kCapDepthSpread * mountain_walls::layerDraw(p, k, 2)));
     face.undercut = static_cast<float>(undercut);
     face.undercutHeight = static_cast<float>(
         height * (kCutHeightLow + kCutHeightSpread * mountain_walls::layerDraw(p, k, 3)));
-    face.run = static_cast<float>(run);
-    face.vertical = static_cast<float>(vertical);
+    face.weight = static_cast<float>(weight);
+    face.airX = static_cast<float>(s.airX);
+    face.airZ = static_cast<float>(s.airZ);
     rock.add(face);
 }
 
@@ -137,6 +143,10 @@ void addLayerFace(const PassSite& s, std::int64_t k, RockColumn& rock) {
 void addFaces(const mountain_walls::Noises& noises, const mountain_walls::Masks& masks,
               const mountain_walls::Column& column, double x, double z,
               mountain_walls::Memo* memo, RockColumn& rock) {
+    // The weights of the passes are their masks at most, and the hardness of a layer is 1 at most.
+    if (!(std::max(masks.strata, masks.crystal) > kFaintLow)) {
+        return;
+    }
     const mountain_walls::WallPasses w =
         mountain_walls::wallPasses(noises, masks, x, z, column.gradX, column.gradZ, memo);
     const std::array<double, 4> grounds = passGrounds(w, column.ground);
@@ -144,17 +154,21 @@ void addFaces(const mountain_walls::Noises& noises, const mountain_walls::Masks&
     const std::array<double, 4> above = passGrounds(w, column.ground + kDelta);
     const std::array<double, 4> below = passGrounds(w, column.ground - kDelta);
     const double noise = mountain_walls::overhangNoise(noises, x, z, memo);
-    for (std::size_t i = 0; i < w.passes.size(); ++i) {
+    for (const std::size_t i : kFacePasses) {
         const StrataPass& p = w.passes[i];
-        if (!(p.weight > 0.0)) {
+        if (!(p.weight > kFaintLow)) {
             continue;
         }
-        const double rate = (above[i] - below[i]) / (2.0 * kDelta);
-        const PassSite site{&p, w.lift[i], grounds[i],
-                            std::max(p.slope * std::max(rate, 0.0), kLeastSlope), noise};
-        const std::int64_t k = mountain_walls::layerOf(p, grounds[i] + w.lift[i]);
-        addLayerFace(site, k - 1, rock);
-        addLayerFace(site, k, rock);
+        const double rate = std::max(0.0, (above[i] - below[i]) / (2.0 * kDelta));
+        const double riseX = rate * column.gradX + w.liftX[i];
+        const double riseZ = rate * column.gradZ + w.liftZ[i];
+        const double slope = dmath::hypot(riseX, riseZ);
+        if (!(slope > kLeastSlope)) {
+            continue;
+        }
+        const PassSite site{&p, w.lift[i], grounds[i], slope, -riseX / slope, -riseZ / slope,
+                            noise};
+        addLayerFace(site, mountain_walls::layerOf(p, grounds[i] + w.lift[i]), rock);
     }
 }
 
