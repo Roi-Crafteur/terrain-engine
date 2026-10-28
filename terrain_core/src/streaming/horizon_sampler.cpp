@@ -129,8 +129,13 @@ void raiseToCrests(const HorizonCrestSampler& crests, int level, const HorizonRe
 
 } // namespace
 
+float editedHeight(const EditSummary& summary, float height) {
+    const float edited = height + summary.heightChange;
+    return summary.range ? std::clamp(edited, summary.range->low, summary.range->high) : edited;
+}
+
 void applyEditSummary(const EditSummary& summary, HorizonCell& cell) {
-    cell.height += summary.heightChange;
+    cell.height = editedHeight(summary, cell.height);
     if (summary.material) {
         cell.material = *summary.material;
     }
@@ -184,7 +189,7 @@ void HorizonSampler::fill(int level, const HorizonRect& rect, std::span<HorizonC
                     edits_(CellFootprint{level, frame.x(i), frame.z(k), half});
                 if (summary) {
                     applyEditSummary(*summary, cells[grid.index(i, k)]);
-                    ground[grid.index(i, k)] += summary->heightChange;
+                    ground[grid.index(i, k)] = editedHeight(*summary, ground[grid.index(i, k)]);
                 }
             }
         }

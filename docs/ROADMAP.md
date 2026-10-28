@@ -240,8 +240,13 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 ### Phase 13 — Horizon lointain
 - vue jusqu'à l'horizon réel (300 km et plus depuis un sommet)
 - core : fait (voir « Réalisé »)
-- modifications des joueurs visibles de loin : toutes si possible, sinon les grosses
-  (format du résumé à définir avec la phase 15)
+- modifications des joueurs visibles de loin : fait — tirées des masques de la phase 15, à
+  chaque niveau ; le niveau 0 montre sur chaque colonne de 8 m le sommet des tuiles LOD 3 (pas de
+  marche au raccord), les niveaux plus grossiers le changement moyen du sol de leurs mailles,
+  borné par le sol modifié quand toute la maille l'est (un fond rasé reste plat, crêtes
+  comprises) ; appliquées entre deux époques, seules les bandes autour sont recalculées et
+  envoyées, chemins CPU et GPU ; une grosse explosion se voit de loin en quelques millisecondes
+  (`horizon_edits_cost_test`) ; essai dans Unreal : `Terrain.Edit`
 - Unreal : fait — rendu en clipmap (une texture par niveau, envoi des seules bandes
   changées, géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles,
   jupe sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure ; ciel qui suit la
@@ -356,15 +361,20 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
     la même tuile intacte, une tuile au milieu d'une zone rasée 1,2 à 2 fois, une tuile sur la
     falaise qui la borde 4 à 6 fois (4 à 28 fois plus de surface)
   - les plantes générées dont le sol est retiré disparaissent, de près comme de loin
-  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : format
-    seulement, pas encore branché sur l'horizon
+  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : branché sur
+    l'horizon (voir phase 13) ; les cellules de 4 m restent un format d'envoi, l'horizon lit le
+    sol des colonnes LOD 3
   - coutures entre LOD fermées au bord des cratères et dans les grottes : la face fine suit les
     segments droits que Marching Cubes trace sur la face grossière (avant : jusqu'à 0,45 m entre
     LOD 0 et 1, 1,3 m entre 1 et 2, 2,8 m entre 2 et 3, 0,62 m dans les grottes ; après : au
     plus 0,25 mm). Le terrain naturel sans grottes garde ses bits ; toute tuile Marching Cubes en
     profite (`stitchSeams` puis `stitchedMesh`, `lod_seams.cpp`)
-  - reste : casser et poser en jeu dans Unreal, effets de destruction, branchement du résumé
-    sur l'horizon
+  - les modifications se font sur un fil à part (`Bridge/edit_thread`) : le thread de jeu ne fait
+    que reprendre celles qui sont finies (quelques millisecondes pour une montagne rasée), avec
+    les bits du chemin synchrone
+  - reste : casser et poser en jeu dans Unreal (en attendant : `Terrain.Edit`, `Apply Volume
+    Edit`), effets de destruction, normales de détail de l'horizon qui suivent les modifications
+    (aujourd'hui : les pentes de la grille sur les mailles modifiées)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

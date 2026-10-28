@@ -310,6 +310,7 @@ set(unreal_bridge ${PROJECT_SOURCE_DIR}/terrain_unreal/Source/TerrainEngine/Priv
 add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/altitude_color.cpp
     ${unreal_bridge}/determinism_check.cpp
+    ${unreal_bridge}/edit_thread.cpp
     ${unreal_bridge}/horizon_atmosphere.cpp
     ${unreal_bridge}/horizon_epochs.cpp
     ${unreal_bridge}/horizon_gpu_streamer.cpp
@@ -321,6 +322,7 @@ add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/horizon_streamer.cpp
     ${unreal_bridge}/horizon_textures.cpp
     ${unreal_bridge}/horizon_timings.cpp
+    ${unreal_bridge}/terrain_edits.cpp
     ${unreal_bridge}/terrain_session.cpp
     ${unreal_bridge}/terrain_surface.cpp
     ${unreal_bridge}/tile_blend_atlas.cpp
@@ -349,6 +351,9 @@ terrain_add_test(unreal_horizon_normals_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_atmosphere_test terrain_unreal_bridge)
 terrain_add_test(unreal_terrain_surface_test terrain_unreal_bridge)
 terrain_add_test(unreal_tile_blend_atlas_test terrain_unreal_bridge)
+
+# The player edits seen from the far horizon (phases 13 and 15).
+include(${CMAKE_CURRENT_SOURCE_DIR}/horizon_edits_tests.cmake)
 
 # Every source of terrain_core outside io/ has its wrapper in the Unreal plugin, which compiles
 # it: a source added to the core without its wrapper fails here.

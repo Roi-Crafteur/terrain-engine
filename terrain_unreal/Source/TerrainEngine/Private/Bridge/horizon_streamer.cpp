@@ -34,11 +34,13 @@ std::int64_t samplesWritten(const HorizonChanges& changes) {
 } // namespace
 
 HorizonMeshStreamer::HorizonMeshStreamer(const Heightfield& field, const Ecology& ecology,
-                                         const WorldSize& world, const HorizonMeshParams& params)
+                                         const WorldSize& world, const HorizonMeshParams& params,
+                                         HorizonEditMap* edits)
     : horizonParams_(horizonParams(world, params)), look_(params.look),
       hole_(terrain::unreal::tileHole(horizonParams_, params.lod)),
-      radius_(radiusOf(world, params)), sampler_(field, ecology, horizonParams_),
-      streamer_(sampler_, {params.workerThreads, kHorizonPieceSamples}) {
+      radius_(radiusOf(world, params)),
+      sampler_(field, ecology, horizonParams_, edits ? edits->source() : EditSummarySource{}),
+      streamer_(sampler_, {params.workerThreads, kHorizonPieceSamples}, edits) {
     for (int level = 0; level < horizonParams_.levels; ++level) {
         topologies_.push_back(bodyTopology(horizonParams_.cellsPerSide,
                                            bodyHole(horizonParams_, level, hole_.halfCells),
@@ -117,8 +119,28 @@ HorizonUpload HorizonMeshStreamer::trim(int level, const UnrealPoint& origin) co
     return upload;
 }
 
-// The bodies of the levels the epoch changed, the trims of those and of the next coarser levels
-// (around their moved finer windows).
+// Whether the samples a commit wrote in a level meet the window of the next finer one, whose
+// border is stitched to them: an edit may write a level and not the finer one (the samples
+// entering a moved window never meet it).
+bool HorizonMeshStreamer::writesUnderFiner(const HorizonLevelChange& change) const {
+    if (change.level == 0) {
+        return false;
+    }
+    const HorizonLevel& coarse = streamer_.level(change.level);
+    const CellRect finer = finerWindowCells(coarse, streamer_.level(change.level - 1));
+    const HorizonRect window = coarse.window();
+    for (const HorizonRect& rect : change.written) {
+        if (rect.x0 - window.x0 <= finer.i1 && rect.x1 - window.x0 > finer.i0 &&
+            rect.z0 - window.z0 <= finer.k1 && rect.z1 - window.z0 > finer.k0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The bodies of the levels the epoch changed, and of the finer levels stitched to samples it
+// wrote (writesUnderFiner), the trims of those and of the next coarser levels (around their
+// moved finer windows).
 void HorizonMeshStreamer::convertChanges(const HorizonChanges& changes, const CorePoint& observer,
                                          const UnrealFrame& frame, HorizonUpdate& result) {
     const std::size_t levels = topologies_.size();
@@ -127,6 +149,9 @@ void HorizonMeshStreamer::convertChanges(const HorizonChanges& changes, const Co
     for (const HorizonLevelChange& change : changes.levels) {
         const auto level = static_cast<std::size_t>(change.level);
         bodies[level] = true;
+        if (writesUnderFiner(change)) {
+            bodies[level - 1] = true;
+        }
         trims[level] = level > 0;
         if (level + 1 < levels) {
             trims[level + 1] = true;

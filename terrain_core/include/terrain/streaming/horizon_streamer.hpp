@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/streaming/horizon_edits.hpp"
 #include "terrain/streaming/horizon_epoch.hpp"
 
 #include <condition_variable>
@@ -31,18 +32,26 @@ struct HorizonStreamParams {
 // Every method must be called from the thread owning the streamer; only computePiece runs on the
 // workers. An exception thrown while a piece is computed is rethrown by the next update or
 // waitIdle: the epoch is dropped (its invalidations are kept) and the next update plans again.
+//
+// With the map of edits the sampler reads (HorizonEditMap::source), the edits staged in it take
+// effect between two epochs, in the order they were staged: an update with no epoch in flight
+// applies them and invalidates their areas before it plans the next one, so that the epochs only
+// compute again the samples they change and every epoch reads one state of the edits.
 class HorizonStreamer {
 public:
-    // The sampler must outlive the streamer. Throws std::invalid_argument for a negative thread
-    // count or pieceSamples 0.
-    explicit HorizonStreamer(const HorizonSampler& sampler, const HorizonStreamParams& params = {});
+    // The sampler, and the map of edits it reads if any, must outlive the streamer. Throws
+    // std::invalid_argument for a negative thread count, pieceSamples 0 or a map the sampler
+    // cannot read (HorizonEditMap::validate).
+    explicit HorizonStreamer(const HorizonSampler& sampler, const HorizonStreamParams& params = {},
+                             HorizonEditMap* edits = nullptr);
     ~HorizonStreamer(); // stops the workers once their current piece is computed
 
     HorizonStreamer(const HorizonStreamer&) = delete;
     HorizonStreamer& operator=(const HorizonStreamer&) = delete;
 
-    // Commits the epoch in flight if it is computed, then plans the next one if none is in
-    // flight and the levels must move or be computed again. Returns what the commit changed.
+    // Commits the epoch in flight if it is computed, then, if none is in flight, applies the
+    // staged edits and plans the next one if the levels must move or be computed again. Returns
+    // what the commit changed.
     HorizonChanges update(double x, double z);
 
     // Computes up to maxPieces queued pieces, finest levels first, on the calling thread.
@@ -73,6 +82,7 @@ private:
 
     const HorizonSampler& sampler_;
     HorizonStreamParams params_;
+    HorizonEditMap* edits_;
 
     // Owner thread only. The workers write the cells of the pieces of the epoch, which lives
     // until none of them is queued or computed.

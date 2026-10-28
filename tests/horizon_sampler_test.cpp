@@ -245,7 +245,8 @@ void testEditSummaries() {
                           std::abs(footprint.centerX) <= params.world.x / 2.0;
         if (std::abs(footprint.centerX - kX) <= 500.0 &&
             std::abs(footprint.centerZ - kZ) <= 500.0) {
-            return std::optional<terrain::EditSummary>{{50.0f, terrain::SurfaceMaterial::Rock}};
+            return std::optional<terrain::EditSummary>{
+                {50.0f, terrain::SurfaceMaterial::Rock, std::nullopt}};
         }
         return std::optional<terrain::EditSummary>{};
     };
@@ -284,7 +285,7 @@ void testEditSummaries() {
 
     HorizonCell cell;
     cell.height = 10.0f;
-    terrain::applyEditSummary({-4.0f, std::nullopt}, cell);
+    terrain::applyEditSummary({-4.0f, std::nullopt, std::nullopt}, cell);
     TEST_CHECK(cell.height == 6.0f && cell.material == terrain::SurfaceMaterial::Water);
     TEST_CHECK(cell.flags == terrain::kHorizonEdited);
 }

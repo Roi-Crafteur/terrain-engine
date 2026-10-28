@@ -7,6 +7,7 @@
 #include "terrain/generation/ecology.hpp"
 #include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/storage/edit_window.hpp"
 #include "terrain/storage/modifications.hpp"
 #include "terrain/storage/volume_edit.hpp"
 #include "terrain/streaming/stream_manager.hpp"
@@ -88,6 +89,9 @@ public:
 
     [[nodiscard]] std::optional<BlockEdit> blockAt(BlockCoord block) const;
     [[nodiscard]] ModificationStore modifications() const; // a copy
+    // The edited blocks centered in [minX, maxX] x [minZ, maxZ] (any image, narrower than the
+    // world), copied as generate copies those of a tile: read without the lock afterwards.
+    [[nodiscard]] EditWindow editWindow(int minX, int maxX, int minZ, int maxZ) const;
     [[nodiscard]] std::uint64_t seed() const { return seed_; }
     [[nodiscard]] const WorldSize& world() const { return field_.world(); }
     [[nodiscard]] const Heightfield& heightfield() const { return field_; }
