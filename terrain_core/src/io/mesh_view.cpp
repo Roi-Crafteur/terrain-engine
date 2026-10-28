@@ -22,9 +22,6 @@ using Rgb = std::array<double, 3>;
 constexpr Rgb kHaze = {200.0, 215.0, 235.0};
 constexpr Rgb kWater = {55.0, 105.0, 165.0};
 constexpr Rgb kRock = {128.0, 118.0, 108.0};
-// The sun of the perspective views, as relief_view.cpp puts it: low on the left of the view.
-constexpr double kSunLeft = 0.3;
-constexpr double kSunSine = 0.5;
 // The ground turns to bare rock as the tangent of its slope passes kRockLow to kRockHigh (35 to
 // 45 degrees), as the views of the relief paint it.
 constexpr double kRockLow = 0.7;
@@ -101,7 +98,7 @@ struct Camera {
     std::array<double, 3> sun{};
 };
 
-Camera cameraOf(const ViewParams& p) {
+Camera cameraOf(const ViewParams& p, const MeshLight& light) {
     Camera c;
     c.forwardX = dmath::sinTurns(p.heading);
     c.forwardZ = -dmath::cosTurns(p.heading);
@@ -110,9 +107,10 @@ Camera cameraOf(const ViewParams& p) {
     const double half = 0.5 * p.fieldOfView;
     c.focal = 0.5 * p.width * dmath::cosTurns(half) / dmath::sinTurns(half);
     c.centerRow = 0.5 * p.height + c.focal * p.tilt;
-    const double cosine = std::sqrt(1.0 - kSunSine * kSunSine);
-    const double azimuth = p.heading - kSunLeft;
-    c.sun = {dmath::sinTurns(azimuth) * cosine, kSunSine, -dmath::cosTurns(azimuth) * cosine};
+    const double cosine = std::sqrt(1.0 - light.sunSine * light.sunSine);
+    const double azimuth = p.heading - light.sunLeft;
+    c.sun = {dmath::sinTurns(azimuth) * cosine, light.sunSine,
+             -dmath::cosTurns(azimuth) * cosine};
     return c;
 }
 
@@ -366,19 +364,19 @@ std::vector<Projected> projectAll(std::span<const ViewMesh> meshes, int threads,
 } // namespace
 
 Image renderMeshView(std::span<const ViewMesh> meshes, const Image& background,
-                     const ViewParams& params, int threads) {
+                     const ViewParams& params, int threads, const MeshLight& light) {
     if (params.width < 2 || params.height < 2 || !(params.fieldOfView > 0.0) ||
         !(params.fieldOfView < 0.45) || !(params.planetRadius > 0.0) ||
         !(params.hazeDistance > 0.0) || !std::isfinite(params.eyeHeight) ||
-        !std::isfinite(params.tilt)) {
-        throw std::invalid_argument("renderMeshView: invalid image, field of view or distances");
+        !std::isfinite(params.tilt) || !(light.sunSine > 0.0) || !(light.sunSine < 1.0)) {
+        throw std::invalid_argument("renderMeshView: invalid image, field of view, distances or sun");
     }
     if (background.width != params.width || background.height != params.height ||
         background.channels != 3) {
         throw std::invalid_argument("renderMeshView: a background of the size of the view");
     }
     const int workers = planet::resolveThreads(threads);
-    const Camera camera = cameraOf(params);
+    const Camera camera = cameraOf(params, light);
     const std::vector<Projected> projected = projectAll(
         meshes, workers, [&](const ViewMesh& m) { return projectMesh(m, params, camera); });
     Image image = background;

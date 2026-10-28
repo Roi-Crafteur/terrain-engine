@@ -6,7 +6,8 @@
 // rock_<name>.png and top_<name>.png into the output directory, and prints (and writes to
 // rock.txt) where each view stands, the tiles it draws and the time they take.
 // Usage: terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
-//        [--view-distance <chunks>] [--only <name>]...
+//        [--view-distance <chunks>] [--only <name>]... [--no-rock]
+// --no-rock: the tiles of the relief alone (a height per column), the views before phase 12A.
 // The planet level is read from --planet (or <output-dir>/planet.bin), built and written there
 // when it does not hold it (about 100 s on 4 cores).
 
@@ -58,6 +59,7 @@ struct Options {
     int threads = 0;
     int width = 1600;
     int viewDistance = 53; // chunks: the tiles end about 850 m from the eye, as in Unreal
+    bool rock = true;      // --no-rock: the tiles of the relief alone, a height per column
     std::vector<std::string> only;
 };
 
@@ -68,6 +70,10 @@ bool parseOptions(int argc, char** argv, Options& o) {
     o.directory = argv[1];
     for (int i = 2; i < argc; ++i) {
         const std::string flag = argv[i];
+        if (flag == "--no-rock") {
+            o.rock = false;
+            continue;
+        }
         if (i + 1 >= argc) {
             return false;
         }
@@ -263,7 +269,8 @@ bool writeShot(const World& w, const Options& o, const Shot& s, Report& r) {
                                                    : h.waterLevel;
     };
     const terrain::Image background = terrain::renderReliefView(ground, water, far, o.threads);
-    const terrain::Image image = terrain::renderMeshView(d.meshes, background, p, o.threads);
+    const terrain::Image image =
+        terrain::renderMeshView(d.meshes, background, p, o.threads, {s.sunLeft, 0.5});
     const std::string file = "rock_" + s.name + ".png";
     r.add(format("%s: eye at (%.0f, %.0f), %.1f m (%s %.1f m), heading %.1f degrees, tilt %.2f; "
                  "%s; %zu triangles\n  %s\n",
@@ -303,7 +310,7 @@ int main(int argc, char** argv) {
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>] "
-                     "[--view-distance <chunks>] [--only <name>]...\n",
+                     "[--view-distance <chunks>] [--only <name>]... [--no-rock]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -321,13 +328,13 @@ int main(int argc, char** argv) {
     const terrain::Heightfield relief(seed);
     auto hydrology = std::make_shared<const terrain::Hydrology>(seed, relief, planet);
     const World w{relief, hydrology, relief.withHydrology(hydrology),
-                  terrain::TerrainTiles(seed, {}, {}, std::nullopt, {}, hydrology)};
+                  terrain::TerrainTiles(seed, {}, {}, std::nullopt, {}, hydrology, o.rock)};
     Report r;
-    r.add(format("rock of seed %llu: planet level %s %s in %.1f s; tiles to %d chunks\n",
+    r.add(format("rock of seed %llu: planet level %s %s in %.1f s; tiles to %d chunks%s\n",
                  static_cast<unsigned long long>(seed), built ? "built and written to" : "read from",
                  planetFile.string().c_str(),
                  std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(),
-                 o.viewDistance));
+                 o.viewDistance, o.rock ? "" : ", without the rock (--no-rock)"));
     Places places;
     rock_tool::addK2(relief, o.viewDistance * terrain::kChunkSizeMeters, places);
     if (!rock_tool::addFall(*hydrology, kFallX, kFallZ, places)) {

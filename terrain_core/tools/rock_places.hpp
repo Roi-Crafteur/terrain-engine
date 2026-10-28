@@ -23,6 +23,7 @@ struct Shot {
     double heading = 0.0;
     double tilt = 0.0;
     int height = 900;
+    double sunLeft = 0.3; // the sun, turns left of the axis of the view (behind it beyond 0.25)
     std::string note;
 };
 
@@ -46,8 +47,10 @@ struct Places {
 // the distance the tiles cover), and from above.
 void addK2(const terrain::Heightfield& relief, double reach, Places& out);
 
-// The highest fall within 3 km of (x, z): from 120 m and 450 m before its foot, its slot from 40
-// m above 150 m down from its lip, and from above. False without one.
+// The stretch in steps whose lips come nearest to (x, z), within 3 km (its falls one after the
+// other down the course, by the levels of its water): from its water down its foot, whole and its
+// last face, its slot from 40 m above its water 150 m down its highest lip, up and down, and from
+// above. False without one.
 bool addFall(const terrain::Hydrology& hydrology, double x, double z, Places& out);
 
 // The largest river in a gorge (as view_gorge of terrain_export_rivers) within 40 km of (x, z),

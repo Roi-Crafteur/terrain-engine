@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <cstdio>
 #include <limits>
+#include <utility>
+#include <vector>
 
 namespace rock_tool {
 
@@ -19,10 +21,13 @@ namespace {
 constexpr double kK2X = 416'857.0;
 constexpr double kK2Z = -11'405'966.0;
 constexpr double kNear = 120.0;     // meters before the foot of a wall or a fall
-constexpr double kFallFar = 450.0;  // and far enough to see a fall of 388 m whole
 constexpr double kSlotDown = 150.0; // the view of the slot: this far down the lip
 constexpr double kSlotAbove = 40.0; // and this high above the water
 constexpr double kFallSearch = 3'000.0;
+constexpr double kFallNear = 80.0; // the view of the last face of a stretch, down its foot
+constexpr double kStepGap = 250.0; // meters between the lips of the falls of one stretch
+// The sun behind the eye on its right: the faces the eye looks at are lit.
+constexpr double kSunBehind = -0.4;
 constexpr double kGorgeSearch = 40'000.0;
 constexpr double kNoFall = 500.0;
 constexpr int kTall = 1200; // pixels high of the views that look up a wall, for 1600 wide
@@ -102,20 +107,78 @@ std::size_t nearestPoint(const terrain::RiverReach& reach, double x, double z) {
     return best;
 }
 
-struct FallPick {
+// A stretch in steps: the falls of a reach whose lips follow each other within kStepGap meters
+// down the course, from its highest lip (point first) to its lowest foot (point last).
+struct Stretch {
     std::size_t reach = 0;
-    terrain::RiverFall fall;
+    std::size_t first = 0;
+    std::size_t last = 0;
+    int down = 1; // +1 when the course runs down its points in order, -1 otherwise
+    double top = 0.0;
+    double bottom = 0.0;
+    std::size_t falls = 0;
     bool found = false;
 };
 
-FallPick highestFall(const terrain::Hydrology& h, double x, double z) {
-    FallPick pick;
+// Along-course meters between points a and b of a reach.
+double between(const terrain::RiverReach& reach, std::size_t a, std::size_t b) {
+    double meters = 0.0;
+    for (std::size_t i = std::min(a, b); i < std::max(a, b); ++i) {
+        meters += terrain::dmath::hypot(reach.points[i + 1].x - reach.points[i].x,
+                                        reach.points[i + 1].z - reach.points[i].z);
+    }
+    return meters;
+}
+
+// The stretches of a reach, each a run of its falls down the course.
+std::vector<Stretch> stretchesOf(const terrain::RiverReach& reach, std::size_t r) {
+    const int down = reach.points.front().level >= reach.points.back().level ? 1 : -1;
+    std::vector<std::pair<std::size_t, terrain::RiverFall>> lips;
+    for (const terrain::RiverFall& f : reach.falls) {
+        lips.emplace_back(nearestPoint(reach, f.x, f.z), f);
+    }
+    std::sort(lips.begin(), lips.end(), [down](const auto& a, const auto& b) {
+        return down > 0 ? a.first < b.first : a.first > b.first;
+    });
+    std::vector<Stretch> out;
+    for (const auto& [point, f] : lips) {
+        if (out.empty() || between(reach, out.back().last, point) > kStepGap) {
+            out.push_back({r, point, point, down, f.top, f.bottom, 0, true});
+        }
+        Stretch& s = out.back();
+        s.last = point;
+        s.top = std::max(s.top, static_cast<double>(f.top));
+        s.bottom = std::min(s.bottom, static_cast<double>(f.bottom));
+        ++s.falls;
+    }
+    // The foot of each stretch: the first point down from its last lip at its lowest water.
+    for (Stretch& s : out) {
+        std::size_t i = s.last;
+        while (static_cast<double>(reach.points[i].level) > s.bottom + 0.5 &&
+               (s.down > 0 ? i + 1 < reach.points.size() : i > 0)) {
+            i = s.down > 0 ? i + 1 : i - 1;
+        }
+        s.last = i;
+    }
+    return out;
+}
+
+// The stretch whose lips come nearest to (x, z), within kFallSearch meters.
+Stretch stretchNear(const terrain::Hydrology& h, double x, double z) {
+    Stretch pick;
+    double least = kFallSearch;
     for (const std::size_t r : h.reachesNear(x, z, kFallSearch)) {
         const terrain::RiverReach reach = h.reach(r);
-        for (const terrain::RiverFall& f : reach.falls) {
-            const bool near = terrain::dmath::hypot(f.x - x, f.z - z) <= kFallSearch;
-            if (near && (!pick.found || f.top - f.bottom > pick.fall.top - pick.fall.bottom)) {
-                pick = {r, f, true};
+        for (const Stretch& s : stretchesOf(reach, r)) {
+            const auto step = static_cast<std::size_t>(1);
+            for (std::size_t i = std::min(s.first, s.last); i <= std::max(s.first, s.last);
+                 i += step) {
+                const double d = terrain::dmath::hypot(reach.points[i].x - x,
+                                                       reach.points[i].z - z);
+                if (d < least) {
+                    least = d;
+                    pick = s;
+                }
             }
         }
     }
@@ -138,8 +201,9 @@ void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
                                   foot.x, foot.z, wall.height);
     Shot near = shotAt("k2_wall_near", foot.x + away.x * kNear, foot.z + away.z * kNear);
     near.heading = view_places::headingTo(near.x, near.z, foot.x, foot.z);
-    near.tilt = tiltTo(top - static_cast<double>(foot.height), kNear);
+    near.tilt = std::clamp(tiltTo(top - static_cast<double>(foot.height), kNear), 0.0, 0.45);
     near.height = kTall;
+    near.sunLeft = kSunBehind;
     near.note = note + ", seen from 120 m";
     Shot far = shotAt("k2_wall_far", wall.approach.x, wall.approach.z);
     const double distance = terrain::dmath::hypot(foot.x - far.x, foot.z - far.z);
@@ -148,6 +212,7 @@ void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
                                      static_cast<double>(wall.approach.height),
                                  distance),
                           0.0, 0.45);
+    far.sunLeft = kSunBehind;
     far.note = note + ", seen from the end of its approach (view_wall)";
     // Along the wall from 300 m before it, 600 m to its side: it runs from the tiles into the
     // horizon.
@@ -157,6 +222,7 @@ void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
     edge.heading = view_places::headingTo(edge.x, edge.z, foot.x + side.x * 300.0,
                                           foot.z + side.z * 300.0);
     edge.tilt = tiltTo(0.5 * wall.height, offset);
+    edge.sunLeft = kSunBehind;
     edge.note = note + ", along it across the edge of the tiles";
     out.shots.push_back(near);
     out.shots.push_back(far);
@@ -165,38 +231,56 @@ void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
 }
 
 bool addFall(const terrain::Hydrology& h, double x, double z, Places& out) {
-    const FallPick pick = highestFall(h, x, z);
-    if (!pick.found) {
+    const Stretch st = stretchNear(h, x, z);
+    if (!st.found) {
         return false;
     }
-    const terrain::RiverReach reach = h.reach(pick.reach);
-    const terrain::RiverFall& f = pick.fall;
-    const double drop = static_cast<double>(f.top - f.bottom);
-    const std::size_t lip = nearestPoint(reach, f.x, f.z);
-    const Direction down = downAt(reach, alongCourse(reach, lip, 30.0));
-    const Direction left{down.z, -down.x};
-    const double aside = 0.5 * static_cast<double>(f.width) + 15.0;
-    const std::string note =
-        text("the fall of %.0f m whose lip is at (%.0f, %.0f)", drop, f.x, f.z);
-    for (const double back : {kFallFar, kNear}) {
-        Shot s = shotAt(back == kNear ? "fall_foot_near" : "fall_foot",
-                        f.x + down.x * back + left.x * aside, f.z + down.z * back + left.z * aside);
-        s.heading = view_places::headingTo(s.x, s.z, f.x, f.z);
-        s.tilt = back == kNear ? tiltTo(0.35 * drop, back) : tiltTo(0.9 * drop, back);
+    const terrain::RiverReach reach = h.reach(st.reach);
+    const terrain::RiverPoint& lip = reach.points[st.first];
+    const terrain::RiverPoint& foot = reach.points[st.last];
+    const double drop = st.top - st.bottom;
+    const double length = between(reach, st.first, st.last);
+    const std::string note = text("the stretch in steps of %.0f m (%.0f m long) whose highest lip "
+                                  "is at (%.0f, ...)",
+                                  drop, length, lip.x) +
+                             ", " + std::to_string(st.falls) + " falls";
+    const double sign = st.down;
+    // On its water down the foot, looking up the stretch: whole, then its last face.
+    const double far = std::clamp(1.1 * drop, 150.0, 500.0);
+    for (const double back : {far, kFallNear}) {
+        const std::size_t at = alongCourse(reach, st.last, sign * back);
+        const terrain::RiverPoint& p = reach.points[at];
+        Shot s = shotAt(back == kFallNear ? "fall_foot_near" : "fall_foot", p.x, p.z);
+        const terrain::RiverPoint& aim = back == kFallNear ? foot : lip;
+        s.heading = view_places::headingTo(s.x, s.z, aim.x, aim.z);
+        const double distance = terrain::dmath::hypot(aim.x - s.x, aim.z - s.z);
+        s.tilt = std::clamp(tiltTo(static_cast<double>(back == kFallNear ? foot.level + 30.0f
+                                                                          : lip.level) -
+                                       static_cast<double>(p.level),
+                                   distance),
+                            0.0, 0.45);
         s.height = kTall;
-        s.note = note + (back == kNear ? ", from 120 m before it" : ", from 450 m before it");
+        s.sunLeft = kSunBehind;
+        s.note = note + (back == kFallNear ? ", from 80 m down its foot" : ", from down its foot");
         out.shots.push_back(s);
     }
-    const std::size_t below = alongCourse(reach, lip, kSlotDown);
+    // 40 m over its water 150 m down its highest lip, up and down the slot.
+    const std::size_t below = alongCourse(reach, st.first, sign * kSlotDown);
     const terrain::RiverPoint& p = reach.points[below];
-    const Direction on = downAt(reach, below);
-    Shot slot = shotAt("fall_slot", p.x, p.z);
-    slot.above = kSlotAbove;
-    slot.heading = view_places::headingTo(p.x, p.z, p.x + on.x, p.z + on.z);
-    slot.tilt = -0.3;
-    slot.note = note + ", its slot from 40 m above the water 150 m down its lip";
-    out.shots.push_back(slot);
-    out.tops.push_back(topAt("fall_top", f.x + down.x * 100.0, f.z + down.z * 100.0, note));
+    for (const bool up : {true, false}) {
+        const terrain::RiverPoint& to = up ? lip : foot;
+        Shot slot = shotAt(up ? "fall_slot_up" : "fall_slot_down", p.x, p.z);
+        slot.above = kSlotAbove;
+        slot.heading = view_places::headingTo(p.x, p.z, to.x, to.z);
+        slot.tilt = up ? -0.1 : -0.3;
+        slot.sunLeft = kSunBehind;
+        slot.note = note + ", its slot from 40 m above its water 150 m down its highest lip";
+        out.shots.push_back(slot);
+    }
+    const std::size_t middle = alongCourse(reach, st.first, sign * 0.5 * length);
+    TopShot top = topAt("fall_top", reach.points[middle].x, reach.points[middle].z, note);
+    top.side = std::clamp(length + 100.0, 300.0, 600.0);
+    out.tops.push_back(top);
     return true;
 }
 

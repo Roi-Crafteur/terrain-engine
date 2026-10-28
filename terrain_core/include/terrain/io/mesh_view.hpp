@@ -13,9 +13,10 @@ namespace terrain {
 // relief (relief_view.hpp), cast over a height per column, cannot show. Not a renderer: the
 // triangles are drawn with a depth buffer, lit by a low sun on the left of the view through the
 // normals of their vertices, in the hypsometric colors of relief_png turned to bare rock on steep
-// faces (as the material of the tiles in Unreal), hazed with the distance. The rows of the image
-// are drawn in fixed bands on the threads, each band taking every triangle in order: the image
-// never depends on the number of threads.
+// faces (as the material of the tiles in Unreal), hazed with the distance; the sun may be moved
+// (MeshLight) to light the faces a view looks at. The rows of the image are drawn in fixed bands
+// on the threads, each band taking every triangle in order: the image never depends on the number
+// of threads.
 
 // A mesh to draw: its positions are relative to an origin, meters (a tile of the streamed world:
 // TileData::mesh at its origin).
@@ -29,14 +30,22 @@ struct ViewMesh {
     bool water = false; // a water surface, drawn in the color of the water
 };
 
+// The sun of a view: sunLeft turns left of its axis (beyond a quarter turn, behind the eye), at
+// an elevation of sine sunSine.
+struct MeshLight {
+    double sunLeft = 0.3;
+    double sunSine = 0.5;
+};
+
 // The meshes seen from the eye of params, over background: the view of what lies beyond them, of
 // the size of the image and RGB (a renderReliefView of the same params, its first depth beyond
 // the meshes), which shows wherever no triangle is drawn. The curvature of the planet lowers the
 // meshes as it lowers the relief of the views. Throws std::invalid_argument for invalid params
-// (as renderReliefView), a background of another size or not RGB, or a mesh with an index out of
-// range or rock shares of another count than its vertices.
+// (as renderReliefView), a sun at or below the horizon, a background of another size or not RGB,
+// or a mesh with an index out of range or rock shares of another count than its vertices.
 [[nodiscard]] Image renderMeshView(std::span<const ViewMesh> meshes, const Image& background,
-                                   const ViewParams& params, int threads);
+                                   const ViewParams& params, int threads,
+                                   const MeshLight& light = {});
 
 // A view from straight above, without perspective: +X to the right, +Z down, pixel (i, j) the
 // highest surface of the meshes at (centerX + (i + 0.5 - width / 2) metersPerPixel, centerZ +
