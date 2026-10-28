@@ -5,7 +5,8 @@
 > règles, les couches), `Scripts/temporary_terrain_hlsl.py` (le HLSL),
 > `Scripts/create_temporary_terrain_material.py` (les tuiles) et la
 > partie « terre » de `Scripts/create_horizon_gpu_material.py` (l'horizon). Le C++ ne connaît que
-> le paramètre de texture `SurfaceTexels` et la surface empaquetée des texels.
+> le paramètre de texture `SurfaceTexels` et la surface empaquetée des texels, et le paramètre
+> `TileBlendTexels` des fondus des tuiles (`Bridge/tile_blend_atlas.hpp`).
 
 ## Ce qu'il dessine
 
@@ -17,6 +18,21 @@
   tuiles lit les 4 texels du niveau 0 autour de chaque sommet (bilinéaire) ; l'horizon lit le
   texel de son sommet et le fond dans le niveau plus grossier, comme ses hauteurs. Les mêmes
   échantillons de près et de loin : pas de saut de couleur entre les tuiles et l'horizon.
+- **Les fondus entre biomes et matériaux (tuiles)** : chaque tuile porte les poids des 3 biomes et
+  des 3 matériaux dominants (`TileData::surfaceBlend`, 5 × 5 texels de 8 octets : tous les 4 m en
+  LOD 0, puis 8, 16, 32 m ; les mêmes bits sur les bords partagés). Le backend des tuiles
+  (`ProceduralMeshTerrainBackend`) les copie dans une texture commune de flottants
+  (`TileBlendTexels`, 64 × 64 emplacements de 5 × 5 texels, 1,6 Mo ; identifiants et poids exacts
+  dans les flottants) et donne à chaque tuile son emplacement et le pas de ses texels par ses
+  *custom primitive data* (index 0 et 1). Le nuanceur de sommets lit les 4 texels autour du sommet
+  et ajoute la part bilinéaire de chaque poids à son identifiant (`addTexel` du core, jamais
+  d'interpolation d'identifiant), puis prend les couches de chaque biome et les remplacements de
+  chaque matériau, linéaires dans les poids (`BlendLayers` de `temporary_terrain_hlsl.py`). Ces
+  couches remplacent celles des échantillons de l'horizon, sauf sur la bande des tuiles au-dessus
+  du niveau 0 (du bord du trou de l'horizon au bord de la zone couverte, 128 m) où elles s'y
+  fondent : au bord des tuiles, exactement les couches de l'horizon, pas de couture. La roche
+  grise, la neige selon la pente, l'absence de sable au-dessus de 1 800 m et de 30°, les plaques
+  et le texture bombing restent ceux d'avant : seuls les poids des couches changent.
 - **Les couches du sol** selon le biome (table `BIOMES`) : herbe, herbe sèche, sol de forêt,
   herbe alpine, terre, sable, désert, éboulis ; puis selon le matériau du core : lit de rivière,
   sable ou désert, terre et boue, roche, neige, éboulis. Transitions douces : les poids des
@@ -112,7 +128,8 @@ Paramètres des matériaux, modifiables sur des instances : la teinte de chaque 
 (`GrassTint`, `RockTint`, …), `RockStartDeg`, `RockFullDeg`, `SnowHoldDeg`, `SnowShedDeg`,
 `CoreRock`, `DetailNearM`, `DetailFarM`, `Saturation`, `Warmth`, `NormalStrength`, `SnowWhiten`,
 `MacroVariation`, `PatchAmount`, `PatchRarity`, `PatchRelief`, `CurvatureGain`, `RockGrey`,
-`RockAlbedo`, `RockContrast`, `SandMaxAltitudeM` ;
+`RockAlbedo`, `RockContrast`, `SandMaxAltitudeM`, `TileBlend` (1 : les fondus des tuiles, 0 : les
+seuls échantillons de l'horizon, comme avant, pour comparer) ;
 `DebugView` 1 montre les couches (vert herbe, jaune herbe sèche, vert foncé forêt, turquoise
 alpin, brun terre, beige sable, orange désert, gris éboulis, rouge roche, blanc neige), 2 la roche
 (rouge), la neige (vert) et le pied des pentes (bleu), 3 la part de sable et de désert (rouge),
@@ -152,6 +169,12 @@ de textures sur le GPU, rien de gardé sur le CPU. Au ratio 8 : 4 fois tout cela
 35 s), pour un gain visible mais modeste. Les ombres portées de l'horizon (`bHorizonShadows`)
 coûtent +0,45 ms à la vue du K2.
 
+**Fondus des tuiles** (transitions entre biomes, PIE 2027 × 1724, RTX 4090, sessions A B A B : A le matériau de
+`main` avant les fondus, B celui-ci) : Plain_Rolling à 1,7 m +0,03 ms, à 500 m +0,05 ms (base
+3,5 ms) ; lisière forêt ↔ savane à 1,7 m +0,13 ms et K2 à 1,7 m −0,10 ms, dans le bruit de ces
+vues (±0,4 ms d'une session à l'autre). Le coût est dans le nuanceur de sommets (4 lectures de
+plus) ; rien de plus par pixel. CPU : une région de 400 octets envoyée par tuile chargée.
+
 ## Trois défauts de rendu, au passage
 
 - **Fissure sombre sur la plage vue de 300 m** : l'horizon est posé `HorizonDropCm` (1 m) sous son
@@ -179,7 +202,15 @@ coûtent +0,45 ms à la vue du K2.
   table, pas de RVT ; une texture par couche (deux pour la roche).
 - Les plaques et le texture bombing n'existent que sur les tuiles ; l'horizon garde la couleur
   moyenne des couches et sa variation à grande échelle.
-- Les biomes changent tous les 8 m sur le niveau 0 : des transitions douces mais régulières.
+- Les fondus n'existent que sur les tuiles : l'horizon n'a que le biome et le matériau dominants
+  de ses échantillons (les poids n'y sont pas dans les échantillons du core). Les tuiles s'y
+  fondent sur leur bande au-dessus du niveau 0 : vue de haut (500 m), là où deux biomes se
+  partagent le sol sur des kilomètres, la zone des tuiles autour du joueur a la teinte du mélange
+  et sa bordure (environ 380 à 500 m du joueur) revient à celle du biome dominant. Pour l'effacer,
+  le core devra porter les poids dans les échantillons de l'horizon.
+- Le pas des fondus suit le LOD des tuiles (4 m en LOD 0, 32 m en LOD 3) ; aucune couture vue
+  entre LOD, les poids étant continus, mais les bandes étroites (plage, roche du core) sont plus
+  floues au loin.
 - La neige vient du biome du core : une neige plus basse ou plus haute demande de régler le
   climat du core, pas le matériau.
 - La normale des tuiles grossières suit le relief à 2 m (les normales de détail du niveau 0) ;

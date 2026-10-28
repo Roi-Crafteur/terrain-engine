@@ -36,10 +36,9 @@ struct Solved {
 
 Solved solve(const Terrain& t, const Table& table) {
     const std::vector<std::uint32_t> order = terrain::planet::sortCells(t.height, 1);
-    const std::vector<std::uint8_t> receiver =
-        terrain::planet::computeReceivers(t.grid, t.height, t.ocean, 1);
+    const auto receiver = terrain::planet::computeReceivers(t.grid, t.height, t.land, 1);
     Solved s;
-    s.hierarchy = terrain::planet::buildHierarchy(t.grid, t.height, t.ocean, order, receiver);
+    s.hierarchy = terrain::planet::buildHierarchy(t.grid, t.height, t.land, order, receiver);
     const terrain::planet::WaterOf water = [&](std::size_t c) {
         return CellWater{table.runoff[c], table.evaporation[c], table.frozen[c]};
     };
@@ -211,10 +210,9 @@ void testConservation() {
     const terrain::planet::PlanetClimate climate =
         terrain::planet::computeClimate(t.grid, t.height, t.ocean, params, 1);
     const std::vector<std::uint32_t> order = terrain::planet::sortCells(t.height, 1);
-    const std::vector<std::uint8_t> receiver =
-        terrain::planet::computeReceivers(t.grid, t.height, t.ocean, 1);
+    const auto receiver = terrain::planet::computeReceivers(t.grid, t.height, t.land, 1);
     const auto hierarchy =
-        terrain::planet::buildHierarchy(t.grid, t.height, t.ocean, order, receiver);
+        terrain::planet::buildHierarchy(t.grid, t.height, t.land, order, receiver);
     const auto lakes = terrain::planet::solveLakes(
         t.grid, t.height, hierarchy, order,
         terrain::planet::climateWater(t.grid, t.height, t.ocean, climate, params));

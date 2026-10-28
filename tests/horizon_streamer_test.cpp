@@ -157,8 +157,9 @@ terrain::EditSummarySource editSource(const std::shared_ptr<Edits>& edits) {
             throw std::runtime_error("edit summaries unavailable");
         }
         const float raise = edits->raise;
-        return inside && raise != 0.0f ? std::optional<terrain::EditSummary>{{raise, std::nullopt}}
-                                       : std::nullopt;
+        return inside && raise != 0.0f
+                   ? std::optional<terrain::EditSummary>{{raise, std::nullopt, std::nullopt}}
+                   : std::nullopt;
     };
 }
 

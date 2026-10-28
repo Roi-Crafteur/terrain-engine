@@ -67,7 +67,7 @@ TileUpload TileStreamer::convert(const TileKey& key, const TileKey& image,
     const auto start = std::chrono::steady_clock::now();
     TileUpload upload{key, tileOrigin(frame, *data, image),
                       convertMesh(data->mesh, data->originY, data->waterLevels), hasCollision(key),
-                      0.0};
+                      0.0, data->surfaceBlend};
     upload.conversionMilliseconds = millisecondsSince(start);
     if (timings_ != nullptr) {
         timings_->record(TileStage::Conversion, key.lod, upload.conversionMilliseconds);

@@ -1,15 +1,20 @@
 // The crests of the GPU horizon computed after the epochs (HorizonGpuParams::deferCrests), around
 // mountains: no level opens at its border while it, or the next coarser level, waits for its
 // crests (every mix of raised and point textures, the vertex shader of the morph emulated with
-// horizon_morph); with player edits (a fake source in the format of agent 26: the edited share s
-// of a cell and the height E of the edited ground), the cells without edit (s = 0) rise as with the
-// crests in the epochs, bit for bit, and the edited ones (0 < s <= 1) keep the height of their
-// epoch, E where wholly edited, never lifted.
+// horizon_morph); with player edits (the HorizonEditMap of the player edits: a mountain razed to a
+// floor and a crater), the cells without edit rise as with the crests in the epochs, bit for bit,
+// and the edited ones keep the height of their epoch, never lifted: the same as in the epochs on
+// the razed floor, whose summaries bound the ground to the floor.
 #include "horizon_gpu_streamer.hpp"
 #include "horizon_morph.hpp"
 
+#include "terrain/storage/volume_edit.hpp"
+#include "terrain/streaming/horizon_edits.hpp"
+#include "terrain/streaming/terrain_tiles.hpp"
+
 #include "horizon_test_support.hpp"
 #include "legacy_relief_support.hpp"
+#include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 #include "unreal_horizon_gpu_support.hpp"
 
@@ -17,12 +22,12 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
-#include <optional>
-#include <utility>
 
 namespace {
 
 using gpu_test::Gpu;
+using terrain::EditMode;
+using terrain::EditShape;
 using terrain::unreal::HorizonGpuParams;
 using terrain::unreal::HorizonGpuStreamer;
 using terrain::unreal::HorizonTexel;
@@ -134,57 +139,72 @@ void testSeams(const horizon_test::World& world) {
     TEST_CHECK(!points.sameView(raised));
 }
 
-// The format of the edit summaries of agent 26: the share of the cell its edits cover and the
-// height of the edited ground there.
-struct ShareEdit {
-    float share = 0.0f;
-    float height = 0.0f;
-};
+// A mountain of the default world razed to a flat floor over 1 km (the ground of the edited
+// columns there is the floor: the summaries of its wholly edited footprints have the range
+// [floor, floor]) and a crater of 40 m beside it, as the player makes them.
+struct EditedWorld {
+    terrain::TerrainTiles tiles{streaming_test::kSeed};
+    terrain::HorizonEditMap map{tiles.heightfield()};
+    double centerX = 0.0;
+    double centerZ = 0.0;
 
-// Wholly edited within 1.2 km of a point, half edited up to 2.4 km, nothing beyond.
-std::optional<ShareEdit> editAt(double x, double z) {
-    const double dx = x - (horizon_test::kX + 2'000.0);
-    const double dz = z - (horizon_test::kZ - 1'500.0);
-    const double squared = dx * dx + dz * dz;
-    if (squared < 1'200.0 * 1'200.0) {
-        return ShareEdit{1.0f, 1234.5f};
-    }
-    if (squared < 2'400.0 * 2'400.0) {
-        return ShareEdit{0.5f, 1234.5f};
-    }
-    return std::nullopt;
-}
-
-// The edit as the EditSummary of this version applies it (the height changes by the edited share
-// of the way from the ground to E). To adapt when the format of agent 26 is merged.
-terrain::EditSummarySource editSource(const terrain::Heightfield& field) {
-    return [&field](const terrain::CellFootprint& cell) -> std::optional<terrain::EditSummary> {
-        const std::optional<ShareEdit> edit = editAt(cell.centerX, cell.centerZ);
-        if (!edit) {
-            return std::nullopt;
+    EditedWorld() {
+        const terrain::Heightfield& field = tiles.heightfield();
+        const terrain::ChunkCoord mountain = streaming_test::mountainChunk(field);
+        const int x0 = mountain.x * 16 + 5;
+        const int z0 = mountain.z * 16 + 7;
+        float top = field.heightAt(x0, z0);
+        for (int dz = 0; dz <= 999; dz += 25) {
+            for (int dx = 0; dx <= 999; dx += 25) {
+                top = std::max(top, field.heightAt(x0 + dx, z0 + dz));
+            }
         }
-        const float ground = field.heightAt(cell.centerX, cell.centerZ);
-        return terrain::EditSummary{edit->share * (edit->height - ground), std::nullopt};
-    };
-}
+        const int floor = static_cast<int>(std::floor(top)) - 499;
+        edit({EditShape::Box, EditMode::Remove, {x0, floor, z0}, {1000, 500, 1000}, 0});
+        const int cx = x0 + 1800;
+        const int cz = z0 + 600;
+        const int ground = static_cast<int>(std::floor(field.heightAt(cx, cz)));
+        edit({EditShape::Sphere, EditMode::Remove, {cx, ground, cz}, {}, 40 * 16});
+        TEST_CHECK(!map.applyStaged().empty());
+        centerX = x0 + 500.0;
+        centerZ = z0 + 500.0;
+    }
+
+    void edit(const terrain::VolumeEdit& volume) { map.stage(tiles, tiles.applyEdit(volume)); }
+};
 
 struct EditCounts {
-    int plainRaised = 0;  // cells without edit, raised as in the epochs
-    int keptEdited = 0;   // edited cells the epochs would have raised, kept by the deferred crests
-    int whole = 0;        // wholly edited cells, at E
-    int partial = 0;      // partly edited cells
+    int plainRaised = 0; // cells without edit, raised as in the epochs
+    int keptEdited = 0;  // edited cells the epochs would show otherwise, kept by the deferred crests
+    int floor = 0;       // wholly edited cells of the razed floor, as in the epochs
+    int partial = 0;     // the other edited cells
 };
 
-void testEdits(const horizon_test::World& world) {
+// The edits within the footprint of the sample (i, k) of the window of a level.
+terrain::FootprintEdits footprintOf(const terrain::HorizonEditMap& map,
+                                    const terrain::HorizonLevel& level, int n, int i, int k) {
+    const terrain::HorizonIndex c = terrain::canonicalSample(
+        {level.window().x0 + i, level.window().z0 + k}, level.counts());
+    return map.footprint({n, terrain::samplePosition(c.x, level.pitch()),
+                          terrain::samplePosition(c.z, level.pitch()), level.pitch() / 2.0});
+}
+
+// The rule of the deferred crests with the edit map of the player edits: the cells without edit
+// rise as in the epochs, bit for bit; the edited ones keep the height their epoch gave them, never
+// lifted, the same as in the epochs where the range of their summary decides it alone (a floor).
+void testEdits() {
+    EditedWorld world;
+    const UnrealFrame frame{{world.centerX, 0.0, world.centerZ}};
+    const terrain::Heightfield& field = world.tiles.heightfield();
     const auto inPlace = [](std::function<void()> job) { job(); };
-    HorizonGpuStreamer deferred(world.field, world.ecology, kWorld, paramsOf(2, true), inPlace,
-                                editSource(world.field));
-    HorizonGpuStreamer epochs(world.field, world.ecology, kWorld, paramsOf(0, false), inPlace,
-                              editSource(world.field));
+    HorizonGpuStreamer deferred(field, world.tiles.ecology(), world.tiles.world(),
+                                paramsOf(2, true), inPlace, &world.map);
+    HorizonGpuStreamer epochs(field, world.tiles.ecology(), world.tiles.world(), paramsOf(0, false),
+                              inPlace, &world.map);
     Gpu after(129);
     Gpu before(129);
-    after.apply(deferred.update({}, kFrame));
-    before.apply(epochs.update({}, kFrame));
+    after.apply(deferred.update({}, frame));
+    before.apply(epochs.update({}, frame));
     TEST_CHECK(!deferred.busy() && !epochs.busy());
     EditCounts counts;
     bool rule = true;
@@ -194,21 +214,18 @@ void testEdits(const horizon_test::World& world) {
             for (int i = 0; i <= kCells; ++i) {
                 const terrain::HorizonCell& cell = level.atWindow(i, k);
                 const HorizonTexel shown = after.texel(n, i, k);
+                const bool same = shown == before.texel(n, i, k);
                 if ((cell.flags & terrain::kHorizonEdited) == 0) {
-                    rule = rule && shown == before.texel(n, i, k);
+                    rule = rule && same;
                     counts.plainRaised += shown.height > cell.height ? 1 : 0;
                     continue;
                 }
                 rule = rule && shown == terrain::unreal::horizonTexel(cell, true);
-                counts.keptEdited += shown == before.texel(n, i, k) ? 0 : 1;
-                const terrain::HorizonIndex c = terrain::canonicalSample(
-                    {level.window().x0 + i, level.window().z0 + k}, level.counts());
-                const std::optional<ShareEdit> edit =
-                    editAt(terrain::samplePosition(c.x, level.pitch()),
-                           terrain::samplePosition(c.z, level.pitch()));
-                if (edit && edit->share == 1.0f) {
-                    ++counts.whole;
-                    rule = rule && std::abs(shown.height - edit->height) < 1e-2f;
+                counts.keptEdited += same ? 0 : 1;
+                const terrain::FootprintEdits edits = footprintOf(world.map, level, n, i, k);
+                if (edits.edited == edits.columns && edits.low == edits.high) {
+                    ++counts.floor;
+                    rule = rule && same;
                 } else {
                     ++counts.partial;
                 }
@@ -216,10 +233,10 @@ void testEdits(const horizon_test::World& world) {
         }
     }
     std::printf("edits: %d cells without edit raised, %d edited cells kept without their crest, "
-                "%d wholly and %d partly edited\n",
-                counts.plainRaised, counts.keptEdited, counts.whole, counts.partial);
+                "%d of the razed floor and %d other edited cells\n",
+                counts.plainRaised, counts.keptEdited, counts.floor, counts.partial);
     TEST_CHECK(rule);
-    TEST_CHECK(counts.plainRaised > 0 && counts.keptEdited > 0 && counts.whole > 0 &&
+    TEST_CHECK(counts.plainRaised > 0 && counts.keptEdited > 0 && counts.floor > 0 &&
                counts.partial > 0);
 }
 
@@ -229,7 +246,7 @@ int main() {
     try {
         const horizon_test::World world(test_relief::legacyRelief());
         testSeams(world);
-        testEdits(world);
+        testEdits();
     } catch (const std::exception& e) {
         std::fprintf(stderr, "exception: %s\n", e.what());
         TEST_CHECK(false);

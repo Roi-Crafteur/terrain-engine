@@ -3,6 +3,7 @@
 #include "terrain/generation/planet/planet_climate.hpp"
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_hierarchy.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -39,7 +40,7 @@ struct LakeSolution {
     std::vector<std::int64_t> capacity;   // per node: evaporation of its subtree when full
     std::vector<std::int32_t> lakeOfNode; // per node: index of the lake holding it, or -1
     std::vector<PlanetLake> lakes;
-    std::vector<std::int32_t> lakeOfCell; // per cell: the lake covering it, or -1
+    SparseCells<std::int32_t> lakeOfCell; // per cell: the lake covering it, or -1
     std::int64_t runoff = 0;              // total runoff of the land
     std::int64_t toOcean = 0;             // water reaching the ocean
 };
@@ -58,6 +59,24 @@ struct LakeSolution {
                                       const DepressionHierarchy& hierarchy,
                                       const std::vector<std::uint32_t>& order,
                                       const WaterOf& water);
+
+// The water the lakes start from, gathered over the land: the runoff of the basin of each leaf
+// (its label), the extra evaporation of the own cells of each node, the runoff of the land and
+// what its labels send straight to the sea. Exact integer water, in any order.
+struct LakeWater {
+    std::vector<std::int64_t> leafRunoff;     // per node (leaves only)
+    std::vector<std::int64_t> ownEvaporation; // per node
+    std::int64_t runoff = 0;
+    std::int64_t toOcean = 0;
+};
+[[nodiscard]] LakeWater gatherWater(const DepressionHierarchy& hierarchy, const WaterOf& water);
+
+// solveLakes from the water gathered: the labels of the hierarchy are no longer read (the lean
+// build frees them before).
+[[nodiscard]] LakeSolution solveLakes(const PlanetGrid& grid, const std::vector<float>& height,
+                                      const DepressionHierarchy& hierarchy,
+                                      const std::vector<std::uint32_t>& order,
+                                      const WaterOf& water, const LakeWater& gathered);
 
 } // namespace planet
 

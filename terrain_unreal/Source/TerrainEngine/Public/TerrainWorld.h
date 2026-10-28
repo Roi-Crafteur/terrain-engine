@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Templates/PimplPtr.h"
+#include "TerrainEdits.h"
 
 #include "TerrainWorld.generated.h"
 
@@ -283,6 +284,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Atmosphere",
 		meta = (EditCondition = "bAtmosphereFollowsCamera", ClampMin = "0"))
 	float FogEndDistanceKm = 20.0f;
+
+	// Player edits (phase 15), to try them before the gameplay breaks and places blocks: queued on
+	// the edit thread of the session, then the tiles over an edit are generated again and the far
+	// horizon follows it (TerrainWorldEdits.cpp). Each is logged once done, or refused.
+	// An edit of the blocks in Unreal world space: a box of SizeMeters centered on Center, or a
+	// sphere or an explosion of RadiusMeters around it. False outside play.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Edits")
+	bool ApplyVolumeEdit(ETerrainEditShape Shape, ETerrainEditMode Mode, FVector Center,
+		FVector SizeMeters, float RadiusMeters);
+
+	// An edit of the ground DistanceMeters ahead of the camera, as the console command
+	// Terrain.Edit: Kind "raze" (a square of side SizeMeters removed down to DepthMeters under its
+	// lowest ground), "blast" (an explosion of radius SizeMeters) or "heap" (rock added in a
+	// sphere of radius SizeMeters). False if it was not queued (logged).
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Edits")
+	bool EditAhead(const FString& Kind, float DistanceMeters, float SizeMeters,
+		float DepthMeters = 10.0f);
 
 protected:
 	virtual void BeginPlay() override;

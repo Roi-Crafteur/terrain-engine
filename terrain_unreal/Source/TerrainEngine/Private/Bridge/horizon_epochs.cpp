@@ -7,12 +7,16 @@
 namespace terrain::unreal {
 
 HorizonEpochRunner::HorizonEpochRunner(const HorizonSampler& sampler, JobLauncher launch,
-                                       PiecePreparer prepare, const HorizonEpochParams& params)
+                                       PiecePreparer prepare, const HorizonEpochParams& params,
+                                       HorizonEditMap* edits)
     : sampler_(sampler), launch_(std::move(launch)), prepare_(std::move(prepare)),
-      params_(params), clipmap_(sampler.params()) {
+      params_(params), edits_(edits), clipmap_(sampler.params()) {
     if (!launch_ || params_.maxPiecesInFlight < 1 || params_.pieceSamples == 0) {
         throw std::invalid_argument("HorizonEpochRunner: a launcher, at least one piece in flight "
                                     "and pieces of at least one sample expected");
+    }
+    if (edits_ != nullptr) {
+        edits_->validate(sampler.params());
     }
 }
 
@@ -27,6 +31,12 @@ EpochCommit HorizonEpochRunner::update(double x, double z) {
     EpochCommit result;
     commitIfComplete(result);
     if (epoch_ == nullptr) {
+        // No job reads the edits now: the staged ones may take effect.
+        if (edits_ != nullptr && edits_->hasStaged()) {
+            for (const HorizonArea& area : edits_->applyStaged()) {
+                clipmap_.invalidate(area.minX, area.minZ, area.maxX, area.maxZ);
+            }
+        }
         if (std::optional<HorizonEpoch> next = clipmap_.plan(x, z, params_.pieceSamples)) {
             start(std::move(*next));
             commitIfComplete(result); // computed at once (synchronous jobs, nothing to compute)

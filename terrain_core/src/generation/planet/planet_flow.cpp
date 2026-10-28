@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
+#include <unordered_map>
 #include <utility>
 
 namespace terrain::planet {
@@ -18,44 +20,79 @@ std::int32_t playaAt(const PitLakes& pits, std::size_t cell) {
     return it != pits.end() && it->first == cell ? it->second : -1;
 }
 
+// What the land cells have received, then their discharge, by land slot: one float each, which
+// holds the bits of the units received (below kBig) until the cell is routed, then its
+// discharge. A cell that receives kBig units or more keeps them in big_ until routed. The bits
+// are copied as bytes, never read as a float.
+class Received {
+public:
+    explicit Received(std::vector<float>& slots) : slots_(slots) {}
+
+    [[nodiscard]] std::int64_t at(std::size_t slot) const {
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &slots_[slot], sizeof(bits));
+        return bits == kBig ? big_.at(slot) : static_cast<std::int64_t>(bits);
+    }
+    void add(std::size_t slot, std::int64_t amount) {
+        const std::int64_t total = at(slot) + amount;
+        std::uint32_t bits = kBig;
+        if (total < static_cast<std::int64_t>(kBig)) {
+            bits = static_cast<std::uint32_t>(total);
+        } else {
+            big_[slot] = total;
+        }
+        std::memcpy(&slots_[slot], &bits, sizeof(bits));
+    }
+    void route(std::size_t slot, float discharge) {
+        big_.erase(slot);
+        slots_[slot] = discharge;
+    }
+
+private:
+    static constexpr std::uint32_t kBig = 0xFFFFFFFFU;
+    std::vector<float>& slots_;
+    std::unordered_map<std::size_t, std::int64_t> big_;
+};
+
 class Router {
 public:
-    Router(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
-           const LakeSolution& lakes, PlanetFlow& flow)
-        : grid_(grid), ocean_(ocean), lakes_(lakes), flow_(flow), pits_(playaPits(lakes.lakes)),
-          received_(grid.cells(), 0) {}
+    Router(const PlanetGrid& grid, const LandIndex& land, const LakeSolution& lakes,
+           PlanetFlow& flow)
+        : grid_(grid), land_(land), lakes_(lakes), flow_(flow), pits_(playaPits(lakes.lakes)),
+          received_(flow.discharge.values()) {}
 
     // Water arriving at a cell: into the sea, its lake, or what it passes on.
     void give(std::size_t cell, std::int64_t amount) {
-        if (ocean_[cell] != kLand) {
+        if (!land_.land(cell)) {
             flow_.toOcean += amount;
         } else if (const std::int32_t lake = lakes_.lakeOfCell[cell]; lake >= 0) {
             flow_.lakeInflow[static_cast<std::size_t>(lake)] += amount;
         } else {
-            received_[cell] += amount;
+            received_.add(land_.slot(cell), amount);
         }
     }
     void route(std::size_t cell, std::uint8_t direction, std::int64_t runoff);
 
 private:
     const PlanetGrid& grid_;
-    const std::vector<std::uint8_t>& ocean_;
+    const LandIndex& land_;
     const LakeSolution& lakes_;
     PlanetFlow& flow_;
     PitLakes pits_;
-    std::vector<std::int64_t> received_;
+    Received received_;
 };
 
 void Router::route(std::size_t cell, std::uint8_t direction, std::int64_t runoff) {
-    if (ocean_[cell] != kLand) {
+    if (!land_.land(cell)) {
         return;
     }
     if (const std::int32_t lake = lakes_.lakeOfCell[cell]; lake >= 0) {
         flow_.lakeInflow[static_cast<std::size_t>(lake)] += runoff;
         return;
     }
-    const std::int64_t total = received_[cell] + runoff;
-    flow_.discharge[cell] = static_cast<float>(cubicMeters(total));
+    const std::size_t slot = land_.slot(cell);
+    const std::int64_t total = received_.at(slot) + runoff;
+    received_.route(slot, static_cast<float>(cubicMeters(total)));
     if (direction != kNoNeighbor) {
         give(grid_.neighbor(cell, direction), total);
     } else if (const std::int32_t playa = playaAt(pits_, cell); playa >= 0) {
@@ -145,26 +182,19 @@ void BasinTracer::trace(std::size_t start) {
 
 } // namespace
 
-std::vector<std::int32_t> outflowsByPass(const std::vector<std::uint32_t>& order,
+std::vector<std::int32_t> outflowsByPass(const std::vector<float>& height,
                                          const std::vector<PlanetLake>& lakes) {
-    std::vector<std::uint32_t> rank;
     std::vector<std::int32_t> events;
     for (std::size_t l = 0; l < lakes.size(); ++l) {
         if (lakes[l].overflowing) {
             events.push_back(static_cast<std::int32_t>(l));
         }
     }
-    if (events.empty()) {
-        return events;
-    }
-    rank.resize(order.size());
-    for (std::size_t p = 0; p < order.size(); ++p) {
-        rank[order[p]] = static_cast<std::uint32_t>(p);
-    }
+    // The later pass in the total order first; several lakes can share a pass.
     std::sort(events.begin(), events.end(), [&](std::int32_t a, std::int32_t b) {
-        const std::uint32_t ra = rank[lakes[static_cast<std::size_t>(a)].pass];
-        const std::uint32_t rb = rank[lakes[static_cast<std::size_t>(b)].pass];
-        return ra != rb ? ra > rb : a < b;
+        const std::uint32_t pa = lakes[static_cast<std::size_t>(a)].pass;
+        const std::uint32_t pb = lakes[static_cast<std::size_t>(b)].pass;
+        return pa != pb ? lowerCell(height, pb, pa) : a < b;
     });
     return events;
 }
@@ -180,15 +210,16 @@ PitLakes playaPits(const std::vector<PlanetLake>& lakes) {
     return pits;
 }
 
-PlanetFlow routeFlow(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
-                     const std::vector<std::uint8_t>& receiver,
+PlanetFlow routeFlow(const PlanetGrid& grid, const std::vector<float>& height,
+                     const std::shared_ptr<const LandIndex>& land,
+                     const LandValues<std::uint8_t>& receiver,
                      const std::vector<std::uint32_t>& order, const LakeSolution& lakes,
                      const WaterOf& water) {
     PlanetFlow flow;
-    flow.discharge.assign(grid.cells(), 0.0f);
+    flow.discharge = LandValues<float>(land, 0.0f, 0.0f);
     flow.lakeInflow.assign(lakes.lakes.size(), 0);
-    const std::vector<std::int32_t> events = outflowsByPass(order, lakes.lakes);
-    Router router(grid, ocean, lakes, flow);
+    const std::vector<std::int32_t> events = outflowsByPass(height, lakes.lakes);
+    Router router(grid, *land, lakes, flow);
     std::size_t next = 0;
     for (std::size_t p = order.size(); p-- > 0;) {
         const std::uint32_t cell = order[p];
@@ -198,7 +229,9 @@ PlanetFlow routeFlow(const PlanetGrid& grid, const std::vector<std::uint8_t>& oc
             const PlanetLake& lake = lakes.lakes[static_cast<std::size_t>(events[next])];
             router.give(lake.partner, lake.outflow);
         }
-        router.route(cell, receiver[cell], water(cell).runoff);
+        if (land->land(cell)) {
+            router.route(cell, receiver[cell], water(cell).runoff);
+        }
     }
     return flow;
 }

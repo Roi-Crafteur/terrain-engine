@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -24,13 +25,15 @@ inline constexpr int kCollisionLod = 0;
 
 // A tile to show: its mesh placed at its origin, with collision or not. The key is canonical
 // (wrapTile); the origin is the one of its image nearest to the player (nearestTile). A tile
-// already shown under this key is replaced in place.
+// already shown under this key is replaced in place. Its surface blend (TileData::surfaceBlend,
+// tile_blend_atlas.hpp) goes to the materials as it is.
 struct TileUpload {
     TileKey key;
     UnrealPoint origin;
     UnrealMesh mesh;
     bool collision = false;
     double conversionMilliseconds = 0.0;
+    std::vector<BlendTexel> blend;
 };
 
 // A shown tile whose nearest image changed (the player moved by about half a world, a teleport
@@ -89,6 +92,10 @@ public:
     // Generates up to maxTiles queued tiles on the calling thread (StreamManager), for a
     // streaming without workers; the next update loads them.
     std::size_t generatePending(std::size_t maxTiles) { return manager_.generatePending(maxTiles); }
+
+    // The tiles over chunks whose edits changed are generated again (StreamManager::invalidate);
+    // the shown ones stay until their new data is uploaded in place.
+    void invalidate(std::span<const ChunkCoord> chunks) { manager_.invalidate(chunks); }
 
     // Shown tiles: uploaded by an update and not removed since, by canonical key.
     [[nodiscard]] bool shown(const TileKey& key) const { return shown_.contains(key); }

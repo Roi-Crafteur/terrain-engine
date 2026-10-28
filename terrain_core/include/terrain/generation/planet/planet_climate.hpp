@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/planet/planet_grid.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
 
 #include <cstddef>
@@ -20,6 +21,13 @@ namespace terrain::planet {
 [[nodiscard]] inline float cellTemperature(float rowTemperature, float height,
                                            const PlanetClimateParams& params) {
     return rowTemperature - params.lapseRate * (height > 0.0f ? height : 0.0f);
+}
+
+// Whether a land cell is frozen (cellWater): its mean temperature below iceTemperature.
+[[nodiscard]] inline bool cellFrozen(float rowTemperature, float height,
+                                     const PlanetClimateParams& params) {
+    return static_cast<double>(cellTemperature(rowTemperature, height, params)) <
+           params.iceTemperature;
 }
 
 // Potential evapotranspiration (mm/yr) at a mean temperature.
@@ -49,7 +57,7 @@ namespace terrain::planet {
 // orographyRadius (two box passes along each axis, periodic).
 [[nodiscard]] std::vector<float> orographicSurface(const PlanetGrid& grid,
                                                    const std::vector<float>& height,
-                                                   const std::vector<std::uint8_t>& ocean,
+                                                   const LandIndex& land,
                                                    const PlanetClimateParams& params, int threads);
 
 // Climate of the grid: precipitation of every cell (mm/yr) and sea-level temperature of every
@@ -59,6 +67,10 @@ struct PlanetClimate {
     std::vector<float> precipitation;
     std::vector<float> rowTemperature;
 };
+[[nodiscard]] PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
+                                           const LandIndex& land,
+                                           const PlanetClimateParams& params, int threads);
+// The same on the land of an ocean mask.
 [[nodiscard]] PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                                            const std::vector<std::uint8_t>& ocean,
                                            const PlanetClimateParams& params, int threads);
@@ -83,6 +95,13 @@ using WaterOf = std::function<CellWater(std::size_t cell)>;
 [[nodiscard]] WaterOf climateWater(const PlanetGrid& grid, const std::vector<float>& height,
                                    const std::vector<std::uint8_t>& ocean,
                                    const PlanetClimate& climate, const PlanetClimateParams& params);
+
+// The same from the precipitation of the land cells alone, by land slot (the lean build keeps
+// no precipitation of the sea in float).
+[[nodiscard]] WaterOf landWater(const PlanetGrid& grid, const std::vector<float>& height,
+                                const LandValues<float>& precipitation,
+                                const std::vector<float>& rowTemperature,
+                                const PlanetClimateParams& params);
 
 // Water units of a flow of mmPerYear over area square meters, rounded to the nearest unit.
 [[nodiscard]] std::int64_t waterUnits(double mmPerYear, double area);

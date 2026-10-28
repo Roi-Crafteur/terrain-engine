@@ -20,6 +20,7 @@
 #include "TerrainHorizonClipmap.h"
 #include "TerrainHorizonMeshes.h"
 #include "TerrainMeshBackend.h"
+#include "TerrainWorldEdits.h"
 #include "TerrainWorldState.h"
 
 #include <chrono>
@@ -195,6 +196,7 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 	{
 		ReturnFromWorldTurn(*Traveller, Focus);
 	}
+	TickTerrainEdits(*State.Get());
 	try
 	{
 		if (Pawn != nullptr && WarmedPawn.Get() != Pawn)
