@@ -1,5 +1,8 @@
 #include "tile_mesh_conversion.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <limits>
 #include <stdexcept>
 
@@ -26,15 +29,23 @@ void validate(const Mesh& mesh) {
 
 } // namespace
 
-UnrealMesh convertMesh(const Mesh& mesh, double originY) {
+UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> rock) {
     validate(mesh);
+    if (!rock.empty() && rock.size() != mesh.vertices.size()) {
+        throw std::invalid_argument("convertMesh: one share of rock per vertex expected");
+    }
     UnrealMesh out;
     out.positions.reserve(mesh.vertices.size());
     out.normals.reserve(mesh.normals.size());
     out.colors.reserve(mesh.vertices.size());
-    for (const Vec3f& vertex : mesh.vertices) {
+    for (std::size_t i = 0; i < mesh.vertices.size(); ++i) {
+        const Vec3f& vertex = mesh.vertices[i];
         out.positions.push_back(toUnrealOffset(vertex));
         out.colors.push_back(altitudeColor(originY + vertex.y));
+        if (!rock.empty()) {
+            const double share = std::clamp(static_cast<double>(rock[i]), 0.0, 1.0);
+            out.colors.back().a = static_cast<std::uint8_t>(std::lround(255.0 * (1.0 - share)));
+        }
     }
     for (const Vec3f& normal : mesh.normals) {
         out.normals.push_back(toUnrealDirection(normal));

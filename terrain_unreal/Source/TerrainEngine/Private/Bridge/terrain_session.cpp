@@ -58,7 +58,8 @@ UnrealFrame TerrainSession::frameAt(double x, double z) const {
 
 double TerrainSession::groundZ(const UnrealFrame& frame, const UnrealPoint& point) const {
     const CorePoint core = toCore(frame, point);
-    const double ground = tiles_.heightfield().heightAt(core.x, core.z);
+    // The top of the rock (an overhang lies above heightAt there).
+    const double ground = tiles_.groundAt(core.x, core.z);
     return toUnreal(frame, {core.x, ground, core.z}).z;
 }
 

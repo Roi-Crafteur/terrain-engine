@@ -47,7 +47,8 @@ public:
     // The frame that places the ground of the core point (x, z) at the Unreal origin.
     [[nodiscard]] UnrealFrame frameAt(double x, double z) const;
 
-    // Unreal Z of the ground (Heightfield::heightAt) under an Unreal position, centimeters.
+    // Unreal Z of the ground (TerrainTiles::groundAt: heightAt, or the top of the rock where it
+    // overhangs) under an Unreal position, centimeters.
     [[nodiscard]] double groundZ(const UnrealFrame& frame, const UnrealPoint& point) const;
 
 private:

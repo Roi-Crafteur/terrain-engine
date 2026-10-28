@@ -65,7 +65,7 @@ TileUpload TileStreamer::convert(const TileKey& key, const TileKey& image,
         throw std::logic_error("TileStreamer: a loaded tile has no data");
     }
     const auto start = std::chrono::steady_clock::now();
-    TileUpload upload{key, tileOrigin(frame, *data, image), convertMesh(data->mesh, data->originY),
+    TileUpload upload{key, tileOrigin(frame, *data, image), convertMesh(data->mesh, data->originY, data->rock),
                       hasCollision(key), 0.0};
     upload.conversionMilliseconds = millisecondsSince(start);
     if (timings_ != nullptr) {

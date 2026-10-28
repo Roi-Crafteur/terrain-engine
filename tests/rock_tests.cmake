@@ -2,3 +2,7 @@
 # arches, and the views that show them. Included by tests/CMakeLists.txt.
 
 terrain_add_test(mesh_view_test terrain_core)
+terrain_add_test(rock_faces_test terrain_core)
+# The rock of the tiles, with their internals (src/streaming/rock_tile.hpp).
+terrain_add_test(rock_tiles_test terrain_core)
+target_include_directories(rock_tiles_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
