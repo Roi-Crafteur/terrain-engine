@@ -1,6 +1,6 @@
 // The planet file: the level of the small world written and read back to the bit, built only
 // when the file does not hold it, refused when it holds another world, damaged or truncated (a
-// damage told before what the damaged bytes say).
+// damage told before what the damaged bytes say); its bytes those of the writer of phase 11B.
 #include "terrain/storage/planet_file.hpp"
 
 #include "planet_golden_support.hpp"
@@ -9,7 +9,9 @@
 #include "test_assert.hpp"
 
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -44,6 +46,23 @@ void testRoundTrip(const std::filesystem::path& file, const PlanetLevel& level) 
         terrain::openPlanetLevel(file, terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
                                  params(), golden::kSmallPlanet, &built);
     TEST_CHECK(!built && opened.checksum() == level.checksum());
+}
+
+// The bytes of the file, the timings of the level set to 0 (the only bytes that change from a
+// build to the next): those the file had when it was written whole in memory (phase 11B).
+constexpr std::uint32_t kFileBytes = 0x9E95EC76U;
+
+void testBytes(const std::filesystem::path& dir, const PlanetLevel& level) {
+    PlanetLevel::Parts parts{level.params(), level.cells(),    level.lakes(), level.rivers(),
+                             level.features(), level.budget(), {},            level.breach()};
+    const PlanetLevel timeless(std::move(parts));
+    const std::filesystem::path file = dir / "timeless.bin";
+    terrain::savePlanetFile(file, timeless, terrain::kDefaultWorldSeed, golden::kSmallPlanet);
+    const std::uint32_t bytes = terrain::fnv1a(storage_test::fileBytes(file));
+    if (bytes != kFileBytes) {
+        std::printf("planet file bytes: 0x%08XU\n", static_cast<unsigned>(bytes));
+    }
+    TEST_CHECK(bytes == kFileBytes);
 }
 
 void testStale(const std::filesystem::path& file) {
@@ -107,6 +126,7 @@ int main() {
                                  params(), golden::kSmallPlanet, &built);
     TEST_CHECK(built && std::filesystem::exists(file));
     testRoundTrip(file, level);
+    testBytes(dir, level);
     testStale(file);
     testDamaged(file, level);
     std::filesystem::remove_all(dir);

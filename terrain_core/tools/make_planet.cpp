@@ -11,6 +11,7 @@
 
 #include <charconv>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -122,18 +123,23 @@ int main(int argc, char** argv) {
         }
         const auto start = std::chrono::steady_clock::now();
         bool built = false;
-        const terrain::PlanetLevel level = terrain::openPlanetLevel(
-            o.file, o.seed, terrain::HeightfieldParams{}, params, o.world, &built, probe);
+        std::uint64_t checksum = 0;
+        {
+            // Only its checksum is kept: the file is read back without the level in memory.
+            const terrain::PlanetLevel level = terrain::openPlanetLevel(
+                o.file, o.seed, terrain::HeightfieldParams{}, params, o.world, &built, probe);
+            checksum = level.checksum();
+        }
         const double seconds =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         // Read back: the file holds this very level.
-        const terrain::PlanetLevel again =
-            terrain::loadPlanetFile(o.file, o.seed, params, o.world);
+        const std::uint64_t again =
+            terrain::loadPlanetFile(o.file, o.seed, params, o.world).checksum();
         if (meter) {
             (*meter)("read back");
             meter->summary();
         }
-        if (again.checksum() != level.checksum()) {
+        if (again != checksum) {
             std::fprintf(stderr, "%s does not read back\n", o.file.string().c_str());
             return EXIT_FAILURE;
         }
@@ -143,7 +149,7 @@ int main(int argc, char** argv) {
                     o.file.string().c_str(), static_cast<unsigned long long>(o.seed),
                     built ? "built and written" : "already there", seconds,
                     error ? 0.0 : static_cast<double>(bytes) / 1.0e6,
-                    static_cast<unsigned long long>(level.checksum()));
+                    static_cast<unsigned long long>(checksum));
     } catch (const std::exception& e) {
         std::fprintf(stderr, "%s\n", e.what());
         return EXIT_FAILURE;
