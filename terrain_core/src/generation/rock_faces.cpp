@@ -11,23 +11,20 @@ namespace terrain {
 
 namespace {
 
-// The grain octaves a detail draws: the fine one on cells of kFineCell meters at most, the coarse
-// one on cells of kCoarseCell meters at most.
-constexpr float kFineCell = 1.0f;
-constexpr float kCoarseCell = 4.0f;
 // rockShare: the rock reaches this far below the foot of a face (its floor under a cap, the sill
 // of a niche) and above its top, and the face this far in front of and behind its middle.
 constexpr double kShareBelow = 2.0;
 constexpr double kShareAbove = 0.5;
 constexpr double kShareAcross = 3.0;
 
-// The grain of the faces: a value noise along the height, its values kGrainWave meters apart, and
-// a finer one (kGrainFine of it, kGrainFineWave meters) the coarse detail leaves out; the flutes
-// add kGrainFlutes of grainAlong.
-constexpr double kGrainWave = 7.9;
-constexpr double kGrainFineWave = 3.1;
-constexpr double kGrainFine = 0.4;
-constexpr double kGrainFlutes = 0.6;
+// The grain of the faces: beds of rock along the height, kBedWave meters thick on average (from
+// 1 - kBedJitter to 1 + kBedJitter of it), each standing out or receding by up to the grain, the
+// one to the next over kBedEdge meters (a noise along the height would set its features about one
+// lattice apart: a regular row of bands). Cells larger than kGrainCell leave it out.
+constexpr double kBedWave = 6.5;
+constexpr double kBedJitter = 0.42;
+constexpr double kBedEdge = 2.0;
+constexpr float kGrainCell = 2.0f;
 constexpr std::uint64_t kGrainSalt = 0x677261696e5f3132ULL;
 constexpr double kRunFade = 1.5;
 constexpr double kFeatureLow = 1.5;
@@ -41,35 +38,42 @@ double smooth(double edge0, double edge1, double v) {
     return t * t * (3.0 - 2.0 * t);
 }
 
-// The value of octave salt at lattice point i, in [-1, 1).
-double valueAt(std::int64_t i, std::uint64_t salt) {
-    const std::uint64_t hash = noise::deriveSeed(salt, static_cast<std::uint64_t>(i));
-    return static_cast<double>(hash >> 11) * 0x1.0p-52 - 1.0;
+// A share in [0, 1) drawn for bed k, for stream.
+double bedDraw(std::int64_t k, std::uint64_t stream) {
+    const std::uint64_t hash =
+        noise::deriveSeed(kGrainSalt + stream, static_cast<std::uint64_t>(k));
+    return static_cast<double>(hash >> 11) * 0x1.0p-53;
 }
 
-// Value noise along t: the values of the lattice points smoothly joined (no zero at them).
-double valueNoise(double t, std::uint64_t salt) {
-    const double cell = std::floor(t);
-    const auto i = static_cast<std::int64_t>(cell);
-    const double f = t - cell;
-    const double s = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-    const double a = valueAt(i, salt);
-    return a + s * (valueAt(i + 1, salt) - a);
+// The height along t where bed k starts.
+double bedStart(std::int64_t k) {
+    return (static_cast<double>(k) + kBedJitter * (bedDraw(k, 0) - 0.5)) * kBedWave;
+}
+
+// How far bed k stands out, in [-1, 1).
+double bedOut(std::int64_t k) {
+    return 2.0 * bedDraw(k, 1) - 1.0;
 }
 
 double grainAt(const RockFace& f, double y, const RockDetail& detail) {
-    if (!(f.grain > 0.0f)) {
-        return 0.0;
-    }
-    if (!(detail.cell <= kCoarseCell)) {
+    if (!(f.grain > 0.0f) || !(detail.cell <= kGrainCell)) {
         return 0.0;
     }
     const double t = y + static_cast<double>(f.grainShift);
-    double g = valueNoise(t / kGrainWave, kGrainSalt) + kGrainFlutes * f.grainAlong;
-    if (detail.cell <= kFineCell) {
-        g += kGrainFine * valueNoise(t / kGrainFineWave, kGrainSalt + 1);
+    auto k = static_cast<std::int64_t>(std::floor(t / kBedWave));
+    if (t < bedStart(k)) {
+        --k;
+    } else if (t >= bedStart(k + 1)) {
+        ++k;
     }
-    return f.grain * g;
+    // The bed, joined to the one below and to the one above at its edges.
+    const double low = bedStart(k);
+    const double high = bedStart(k + 1);
+    double out = bedOut(k);
+    out += (bedOut(k - 1) - out) * (1.0 - smooth(low - 0.5 * kBedEdge, low + 0.5 * kBedEdge, t));
+    out += (bedOut(k + 1) - bedOut(k)) *
+           smooth(high - 0.5 * kBedEdge, high + 0.5 * kBedEdge, t);
+    return f.grain * out;
 }
 
 // Polynomial smooth maximum and minimum over r (the plain ones beyond it).

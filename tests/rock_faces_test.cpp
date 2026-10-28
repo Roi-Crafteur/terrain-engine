@@ -144,7 +144,6 @@ void testGrain() {
     f.run = 40.0f;
     f.grain = 1.0f;
     f.grainShift = 3.0f;
-    f.grainAlong = 0.5f;
     RockColumn c;
     c.ground = 50.0f + 100.0f * 0.5f / 40.0f;
     c.uncarved = c.ground;

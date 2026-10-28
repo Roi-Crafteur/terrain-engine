@@ -34,12 +34,10 @@ struct RockFace {
     float capDepth = 0.0f;
     float undercut = 0.0f;
     float undercutHeight = 0.0f;
-    // The grain of its rock: the face stands out or recedes by up to about twice grain meters,
-    // by bands whose heights shift by grainShift meters from column to column, and by flutes
-    // down it (grainAlong, about -1 to 1, the same at every height of the column).
+    // The grain of its rock: the face stands out or recedes by up to grain meters, by beds whose
+    // heights shift by grainShift meters from column to column.
     float grain = 0.0f;
     float grainShift = 0.0f;
-    float grainAlong = 0.0f;
     // How far the step replaces the climb of the relief, in [0, 1] (0: the relief as it is).
     float weight = 1.0f;
     // The horizontal direction of the air from the rock (a unit vector, x and z), along which the

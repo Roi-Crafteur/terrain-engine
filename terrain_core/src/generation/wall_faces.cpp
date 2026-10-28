@@ -49,14 +49,12 @@ constexpr double kCutFrom = 0.5;
 constexpr double kCutFull = 0.85;
 // The grain of a face stands out up to kGrainShare of its height, kGrainMost meters at most, and
 // kGrainRun of its run; its bands shift by up to kShiftRange meters along the faces, by a noise of
-// kShiftWavelength meters, and its flutes follow a noise of kFluteWavelength meters.
+// kShiftWavelength meters.
 constexpr double kGrainShare = 0.04;
 constexpr double kGrainMost = 1.5;
 constexpr double kGrainRun = 0.12;
 constexpr double kShiftRange = 12.0;
 constexpr double kShiftWavelength = 45.0;
-constexpr double kFluteWavelength = 7.0;
-constexpr double kFluteGain = 1.6; // the flutes, about -1 to 1
 // The slope of the ground under a pass is read over kDelta meters of the ground of the walls, at
 // least kLeastSlope meters per meter.
 constexpr double kDelta = 0.5;
@@ -121,7 +119,6 @@ struct PassSite {
     double liftZ = 0.0;
     double noise = 0.0; // of the overhangs along the walls
     double shift = 0.0; // of the bands of the grain
-    double flutes = 0.0;
 };
 
 // The height of the top of a pass where its ground is lifted to g, over the top at the column.
@@ -163,7 +160,6 @@ void addRiserFace(const PassSite& s, const Riser& r, Site& site) {
         height * (kCutHeightLow + kCutHeightSpread * mountain_walls::layerDraw(p, k, 3)));
     face.grain = static_cast<float>(std::min(kGrainShare * height, kGrainMost) * weight);
     face.grainShift = static_cast<float>(s.shift);
-    face.grainAlong = static_cast<float>(s.flutes);
     face.weight = static_cast<float>(weight);
     out.level = r.level;
     out.rise = r.end - r.start;
@@ -182,8 +178,7 @@ Grain makeGrain(std::uint64_t seed, const WorldSize& world) {
                                   .lattices = noise::OctaveLattices::RotatedFast},
                                  world);
     };
-    return {octaves(2, kOverhangWavelength), octaves(0, kShiftWavelength),
-            octaves(1, kFluteWavelength)};
+    return {octaves(2, kOverhangWavelength), octaves(0, kShiftWavelength)};
 }
 
 void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
@@ -198,7 +193,6 @@ void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
     bool noisy = false;
     double noise = 0.0;
     double shift = 0.0;
-    double flutes = 0.0;
     for (const std::size_t i : kFacePasses) {
         const StrataPass& p = w.passes[i];
         const double strength = i == 1 ? masks.strata : p.weight;
@@ -218,13 +212,10 @@ void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
         if (!noisy) {
             noise = static_cast<double>(grain.overhangs.fbm2D(x, z));
             shift = kShiftRange * static_cast<double>(grain.shift.fbm2D(x, z));
-            flutes = std::clamp(kFluteGain * static_cast<double>(grain.flutes.fbm2D(x, z)), -1.0,
-                                1.0);
             noisy = true;
         }
         const PassSite pass{&p,         strength,   w.share[i], w.lift[i], ground,
-                            std::max(0.0, rate), w.liftX[i], w.liftZ[i], noise, shift,
-                            flutes};
+                            std::max(0.0, rate), w.liftX[i], w.liftZ[i], noise, shift};
         addRiserFace(pass, riser, site);
     }
 }
