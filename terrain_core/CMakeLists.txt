@@ -168,9 +168,11 @@ add_library(terrain_core STATIC
     src/streaming/horizon_sampler.cpp
     src/streaming/horizon_streamer.cpp
     src/streaming/lod.cpp
+    src/streaming/lod_seams.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
     src/streaming/tile_blend.cpp
+    src/streaming/tile_water.cpp
     src/world_size.cpp
 )
 

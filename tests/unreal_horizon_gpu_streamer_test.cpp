@@ -5,7 +5,8 @@
 // world turn only moves the levels, the grids, and the geomorphing: its factor (0 inside, 1 on
 // the border wherever the viewer stands, continuous) and its target, the surface of the coarser
 // level read in its texels at every sample of the finer one, with the crests and with point
-// samples (then as before them, bit for bit); the log line of the texel uploads.
+// samples (then as before them, bit for bit); the water codes written with the texels; the log
+// line of the texel uploads.
 #include "horizon_gpu_streamer.hpp"
 #include "horizon_morph.hpp"
 #include "horizon_timings.hpp"
@@ -14,8 +15,10 @@
 #include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <map>
@@ -66,9 +69,27 @@ public:
                 }
             }
         }
+        for (const terrain::unreal::WaterRegion& region : update.waterRegions) {
+            std::vector<std::uint16_t>& codes = water_[region.level];
+            codes.resize(static_cast<std::size_t>(side_ * side_), 9);
+            for (int row = 0; row < region.height; ++row) {
+                for (int column = 0; column < region.width; ++column) {
+                    codes[static_cast<std::size_t>((region.z + row) * side_ + region.x + column)] =
+                        region.data[static_cast<std::size_t>(row * region.width + column)];
+                }
+            }
+        }
         for (const LevelPlacement& placement : update.placements) {
             placements_[placement.level] = placement;
         }
+    }
+
+    // The water code the material reads for the sample (i, k) of the window of a level.
+    [[nodiscard]] std::uint16_t water(int level, int i, int k) const {
+        const LevelPlacement& placement = placements_.at(level);
+        const auto x = static_cast<int>((placement.firstSlot.x + i) % side_);
+        const auto z = static_cast<int>((placement.firstSlot.z + k) % side_);
+        return water_.at(level)[static_cast<std::size_t>(z * side_ + x)];
     }
 
     // The texel the material reads for the sample (i, k) of the window of a level.
@@ -105,6 +126,7 @@ public:
 private:
     int side_;
     std::map<int, std::vector<float>> textures_;
+    std::map<int, std::vector<std::uint16_t>> water_;
     std::map<int, LevelPlacement> placements_;
 };
 
@@ -119,14 +141,15 @@ struct Session {
     Gpu gpu{129};
 };
 
-// The texels of every window match the samples of the clipmap.
+// The texels and the water codes of every window match the samples of the clipmap.
 bool texelsMatch(const Session& session) {
     const terrain::HorizonClipmap& clipmap = session.streamer.clipmap();
     for (int n = 0; n < clipmap.levelCount(); ++n) {
         for (int k = 0; k < 129; ++k) {
             for (int i = 0; i < 129; ++i) {
-                if (!(session.gpu.texel(n, i, k) ==
-                      terrain::unreal::horizonTexel(clipmap.level(n).atWindow(i, k), true))) {
+                const terrain::HorizonCell& cell = clipmap.level(n).atWindow(i, k);
+                if (!(session.gpu.texel(n, i, k) == terrain::unreal::horizonTexel(cell, true)) ||
+                    session.gpu.water(n, i, k) != terrain::unreal::waterCode(cell.waterLevel)) {
                     return false;
                 }
             }
@@ -145,6 +168,14 @@ void testFirstAndSteps() {
         texels += region.data.size() / kTexelFloats;
     }
     TEST_CHECK(texels == 5u * 129u * 129u);
+    std::size_t codes = 0;
+    std::size_t sea = 0; // the ocean around the mountains of the default world
+    for (const auto& region : first.waterRegions) {
+        codes += region.data.size();
+        sea += static_cast<std::size_t>(
+            std::count(region.data.begin(), region.data.end(), terrain::unreal::waterCode(0.0f)));
+    }
+    TEST_CHECK(codes == 5u * 129u * 129u && sea > 0);
     session.gpu.apply(first);
     TEST_CHECK(texelsMatch(session));
     TEST_CHECK(session.streamer.update({0.0, 0.0, 0.0}, kFrame).empty());
@@ -166,6 +197,9 @@ void testFirstAndSteps() {
         for (const auto& region : update.regions) {
             bands = bands && moved.contains(region.level) &&
                     region.data.size() < 129u * 129u * kTexelFloats;
+        }
+        for (const auto& region : update.waterRegions) {
+            bands = bands && moved.contains(region.level) && region.data.size() < 129u * 129u;
         }
         for (const LevelPlacement& placement : update.placements) {
             bands = bands && (moved.contains(placement.level) ||

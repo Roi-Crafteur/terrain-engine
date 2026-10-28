@@ -1,9 +1,9 @@
 // Volume edits in the streamed world: a crater across the corner of 4 chunks leaves the same
 // vertices on the sides the LOD 0 tiles share; a crater and a razed area across the edge of two
-// LODs stay stitched; a sphere across the edge x = world.x / 2 digs both sides alike; the
-// generated plants standing on removed ground are dropped, and come back when it is restored,
-// the tiles without edits keeping their bits; the surface blend of an edited tile stays that of
-// the natural ground.
+// LODs stay stitched without a gap; a sphere across the edge x = world.x / 2 digs both sides
+// alike; the generated plants standing on removed ground are dropped, and come back when it is
+// restored, the tiles without edits keeping their bits; the surface blend of an edited tile
+// stays that of the natural ground.
 #include "terrain/storage/edit_window.hpp"
 #include "terrain/storage/volume_edit.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -112,11 +112,9 @@ void checkSeam(const TerrainTiles& tiles, TileKey fine, TileKey coarse, unsigned
 }
 
 // A crater, then a razed area, on the edge between a LOD 0 tile and the LOD 1 tile west of it.
-// The stitching interpolates the fine side bilinearly within each coarse cell of the face, where
-// Marching Cubes draws a straight segment: on smooth ground, flat floors and straight walls they
-// agree, but around the curved edge of a crater, whose density is not bilinear, the fine side
-// leaves the coarse one by up to a few tenths of a meter, as it did block by block before the
-// sections (the same densities, bit for bit).
+// Around the curved edge of the crater the density is not bilinear: the stitched side follows
+// the straight segments Marching Cubes draws on the coarse side all the same (lod_seams.cpp;
+// before it, the fine side left the coarse one by up to 0.26 m there).
 void testAcrossLods() {
     TerrainTiles tiles(streaming_test::kSeed);
     const ChunkCoord m = streaming_test::mountainChunk(tiles.heightfield());
@@ -126,7 +124,7 @@ void testAcrossLods() {
     const Plane plane{true, static_cast<double>(edge)};
     const int z = m.z * 16 + 9;
     tiles.applyEdit(sphere(EditShape::Sphere, {edge, groundAt(tiles, edge, z), z}, 6.0));
-    checkSeam(tiles, fine, coarse, terrain::kSeamNegX, plane, 0.5);
+    checkSeam(tiles, fine, coarse, terrain::kSeamNegX, plane, seam_test::outlineTolerance(0));
     // The mountain razed 30 m below its lowest ground there, over 48 x 32 m across the edge.
     int lowest = groundAt(tiles, edge, z);
     for (int dz = 0; dz < 32; dz += 4) {

@@ -276,7 +276,8 @@ void testErrors() {
     TEST_CHECK(throws([&] { static_cast<void>(clipmap.level(params.levels)); }));
     TEST_CHECK(throws([&] { static_cast<void>(clipmap.level(0).atWindow(-1, 0)); }));
     TEST_CHECK(!clipmap.level(0).heightAt(kX + 1.0e6, kZ).has_value());
-    TEST_CHECK(clipmap.memoryBytes() == static_cast<std::size_t>(fullSamples(params)) * 16);
+    TEST_CHECK(clipmap.memoryBytes() ==
+               static_cast<std::size_t>(fullSamples(params)) * sizeof(terrain::HorizonCell));
 }
 
 } // namespace
