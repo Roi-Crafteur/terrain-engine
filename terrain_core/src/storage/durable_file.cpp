@@ -102,33 +102,49 @@ void syncDirectory(const std::filesystem::path& directory, [[maybe_unused]] bool
 
 } // namespace
 
-void writeFileDurably(const std::filesystem::path& file, std::span<const std::uint8_t> bytes) {
-    const int descriptor = openForWriting(file);
-    if (descriptor < 0) {
+DurableWriter::DurableWriter(const std::filesystem::path& file) : file_(file) {
+    descriptor_ = openForWriting(file);
+    if (descriptor_ < 0) {
         fail("create", file, errno);
     }
+}
+
+DurableWriter::~DurableWriter() {
+    if (descriptor_ >= 0) {
+        closeFile(descriptor_);
+    }
+}
+
+void DurableWriter::write(std::span<const std::uint8_t> bytes) {
     std::size_t written = 0;
     while (written < bytes.size()) {
         const long long count =
-            writeSome(descriptor, bytes.data() + written, bytes.size() - written);
+            writeSome(descriptor_, bytes.data() + written, bytes.size() - written);
         if (count < 0 && errno == EINTR) {
             continue;
         }
         if (count <= 0) {
-            const int error = count < 0 ? errno : EIO;
-            closeFile(descriptor);
-            fail("write", file, error);
+            fail("write", file_, count < 0 ? errno : EIO);
         }
         written += static_cast<std::size_t>(count);
     }
-    if (flushToDisk(descriptor) != 0) {
-        const int error = errno;
-        closeFile(descriptor);
-        fail("flush", file, error);
+}
+
+void DurableWriter::finish() {
+    if (flushToDisk(descriptor_) != 0) {
+        fail("flush", file_, errno);
     }
+    const int descriptor = descriptor_;
+    descriptor_ = -1;
     if (closeFile(descriptor) != 0) {
-        fail("close", file, errno);
+        fail("close", file_, errno);
     }
+}
+
+void writeFileDurably(const std::filesystem::path& file, std::span<const std::uint8_t> bytes) {
+    DurableWriter out(file);
+    out.write(bytes);
+    out.finish();
 }
 
 #ifdef _WIN32

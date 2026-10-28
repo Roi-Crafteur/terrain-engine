@@ -3,16 +3,18 @@
 #include "terrain/generation/planet/planet_climate.hpp"
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_lakes.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace terrain::planet {
 
 // Where the water of the land goes once the lakes are known.
 struct PlanetFlow {
-    std::vector<float> discharge;         // m^3/s leaving each dry land cell, 0 elsewhere
+    LandValues<float> discharge;          // m^3/s leaving each dry land cell, 0 elsewhere
     std::vector<std::int64_t> lakeInflow; // per lake: water routed into it (water units)
     std::int64_t toOcean = 0;             // water reaching the sea
 };
@@ -22,15 +24,18 @@ struct PlanetFlow {
 // lake covering it; a dry pit gives it to its playa; a cell under a lake gives its runoff to its
 // lake. Each overflowing lake adds its exact outflow at its partner when the pass reaches its
 // pass cell, after all its inflows (they all come later in the order than its pass, its partner
-// earlier). Exact integer water: the inflow of every lake equals the one of solveLakes.
-[[nodiscard]] PlanetFlow routeFlow(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
-                                   const std::vector<std::uint8_t>& receiver,
+// earlier). Exact integer water: the inflow of every lake equals the one of solveLakes. What a
+// cell has received and, once routed, its discharge share 4 bytes per land cell (an amount of
+// 2^32 - 1 units or more waits in a small table).
+[[nodiscard]] PlanetFlow routeFlow(const PlanetGrid& grid, const std::vector<float>& height,
+                                   const std::shared_ptr<const LandIndex>& land,
+                                   const LandValues<std::uint8_t>& receiver,
                                    const std::vector<std::uint32_t>& order,
                                    const LakeSolution& lakes, const WaterOf& water);
 
 // The overflowing lakes in decreasing total order of their pass (then by index): the order in
 // which a pass in decreasing order meets them.
-[[nodiscard]] std::vector<std::int32_t> outflowsByPass(const std::vector<std::uint32_t>& order,
+[[nodiscard]] std::vector<std::int32_t> outflowsByPass(const std::vector<float>& height,
                                                        const std::vector<PlanetLake>& lakes);
 
 // The lake covering a cell, or -1.

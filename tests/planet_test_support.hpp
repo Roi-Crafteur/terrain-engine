@@ -4,6 +4,7 @@
 
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/planet/planet_grid.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 #include "terrain/generation/planet/planet_order.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
 #include "terrain/generation/planet/planet_rivers.hpp"
@@ -11,21 +12,25 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <memory>
 #include <utility>
 #include <vector>
 
 namespace planet_test {
 
-// Heights of a grid, row by row, and their ocean mask (below-sea components of any size).
+// Heights of a grid, row by row, and their ocean mask (below-sea components of any size) with
+// its land.
 struct Terrain {
     terrain::PlanetGrid grid;
     std::vector<float> height;
     std::vector<std::uint8_t> ocean;
+    std::shared_ptr<const terrain::planet::LandIndex> land;
 
     float& at(int i, int j) { return height[grid.index(i, j)]; }
     std::size_t cell(int i, int j) const { return grid.index(i, j); }
     void markOcean(double minArea = 0.0) {
         ocean = terrain::planet::markOcean(grid, height, minArea);
+        land = std::make_shared<const terrain::planet::LandIndex>(ocean);
     }
 };
 
@@ -80,7 +85,7 @@ inline Terrain plateau(int nx, int nz, std::initializer_list<Cell> channels,
 // The hydrology of a hand-built terrain from a table of water, down to the river graph (rivers
 // from 100 water units, 1e-4 m^3/s, unless minDischarge says otherwise).
 struct Network {
-    std::vector<std::uint8_t> receiver;
+    terrain::planet::LandValues<std::uint8_t> receiver;
     terrain::planet::LakeSolution lakes;
     terrain::planet::PlanetFlow flow;
     terrain::RiverGraph graph;
@@ -91,14 +96,15 @@ inline Network network(const Terrain& t, const std::vector<terrain::planet::Cell
     const terrain::planet::WaterOf water = [&](std::size_t c) { return table[c]; };
     const std::vector<std::uint32_t> order = terrain::planet::sortCells(t.height, 1);
     Network n;
-    n.receiver = terrain::planet::computeReceivers(t.grid, t.height, t.ocean, 1);
+    n.receiver = terrain::planet::computeReceivers(t.grid, t.height, t.land, 1);
     const auto hierarchy =
-        terrain::planet::buildHierarchy(t.grid, t.height, t.ocean, order, n.receiver);
+        terrain::planet::buildHierarchy(t.grid, t.height, t.land, order, n.receiver);
     n.lakes = terrain::planet::solveLakes(t.grid, t.height, hierarchy, order, water);
-    n.flow = terrain::planet::routeFlow(t.grid, t.ocean, n.receiver, order, n.lakes, water);
+    n.flow =
+        terrain::planet::routeFlow(t.grid, t.height, t.land, n.receiver, order, n.lakes, water);
     terrain::PlanetRiverParams params;
     params.minDischarge = minDischarge;
-    n.graph = terrain::planet::buildRiverGraph(t.grid, t.height, t.ocean, n.receiver, order,
+    n.graph = terrain::planet::buildRiverGraph(t.grid, t.height, t.land, n.receiver, order,
                                                n.lakes, n.flow, water, params);
     return n;
 }
