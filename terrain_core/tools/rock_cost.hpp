@@ -23,4 +23,12 @@ struct CostPlace {
                                  const terrain::TerrainTiles& relief, const CostPlace& place,
                                  int viewDistance, int rounds);
 
+// How much the view from above of a square of side meters around the place changes when its tiles
+// pass from one LOD to the next (all of them at LOD L, then L + 1): the mean difference of the
+// pixels, in levels of 255, with the rock and without it. One line per passage. The views at
+// each LOD are written to directory as lod<L>_<place>.png (with the rock).
+[[nodiscard]] std::string lodJumps(const terrain::TerrainTiles& rock,
+                                   const terrain::TerrainTiles& relief, const CostPlace& place,
+                                   double side, const std::string& directory, int threads);
+
 } // namespace rock_tool

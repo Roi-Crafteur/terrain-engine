@@ -25,9 +25,10 @@
 
 namespace terrain::wall_faces {
 
-// The noises of the grain of the faces: the bands of their rock wander up and down along them
-// (shift), and flutes run down them.
+// The noises of the faces: their overhangs come and go along them, the bands of their rock wander
+// up and down (shift), and flutes run down them.
 struct Grain {
+    noise::FbmOctaves overhangs;
     noise::FbmOctaves shift;
     noise::FbmOctaves flutes;
 };

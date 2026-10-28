@@ -22,6 +22,7 @@ constexpr double kK2X = 416'857.0;
 constexpr double kK2Z = -11'405'966.0;
 constexpr double kNear = 120.0;     // meters before the foot of a wall or a fall
 constexpr double kNearAbove = 25.0; // meters above the ground of the view of the foot of a wall
+constexpr double kEdgeAbove = 60.0; // and of the view along it
 constexpr double kSlotDown = 150.0; // the view of the slot: this far down the lip
 constexpr double kSlotAbove = 40.0; // and this high above the water
 constexpr double kFallSearch = 3'000.0;
@@ -244,7 +245,8 @@ void addK2Face(const terrain::Heightfield& relief, const view_places::Point& foo
     char note[256];
     std::snprintf(note, sizeof note,
                   "the tallest face with a cap within %.0f m of the foot of the wall: %.0f m high "
-                  "at (%.0f, %.0f), cap %.1f m, undercut %.1f m, seen from %.0f m level with its middle",
+                  "at (%.0f, %.0f), cap %.1f m, undercut %.1f m, seen from %.0f m level with "
+                  "its middle",
                   kFaceSearch, static_cast<double>(f.top - f.foot), seen.x, seen.z,
                   static_cast<double>(f.cap), static_cast<double>(f.undercut), kFaceView);
     s.note = note;
@@ -291,11 +293,13 @@ void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
                                           foot.z + side.z * 300.0);
     edge.tilt = tiltTo(0.5 * wall.height, offset);
     edge.sunLeft = kSunBehind;
-    edge.note = note + ", along it across the edge of the tiles";
+    edge.above = kEdgeAbove;
+    edge.note = note + ", along it across the edge of the tiles, 60 m above the ground";
     out.shots.push_back(near);
     out.shots.push_back(far);
     out.shots.push_back(edge);
-    out.tops.push_back(topAt("k2_wall_top", foot.x - away.x * 100.0, foot.z - away.z * 100.0, note));
+    out.tops.push_back(
+        topAt("k2_wall_top", foot.x - away.x * 100.0, foot.z - away.z * 100.0, note));
     addK2Face(relief, foot, out);
 }
 

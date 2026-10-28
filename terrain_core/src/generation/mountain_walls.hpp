@@ -35,7 +35,6 @@ struct Noises {
     noise::FbmOctaves bands;     // the height of the strata
     noise::FbmOctaves dip;       // their offset
     noise::FbmOctaves rims;      // the recession of their rims and the run of their faces
-    noise::FbmOctaves overhangs; // the overhangs of their faces along them (phase 12A)
     std::uint64_t crystal = 0;   // the cells of the crystalline rock
     std::uint64_t layers = 0;    // which great bands are hard
     std::uint64_t steps = 0;     // and which rock steps
@@ -75,7 +74,6 @@ struct Memo {
     noise::FbmOctaves::Memo bands;
     noise::FbmOctaves::Memo dip;
     noise::FbmOctaves::Memo rims;
-    noise::FbmOctaves::Memo overhangs;
     std::array<Cells, 2> crystal{};
 };
 
@@ -174,6 +172,9 @@ struct WallPasses {
     // How fast lift grows along x and along z, meters per meter.
     std::array<double, 4> liftX{};
     std::array<double, 4> liftZ{};
+    // The share of the nearest cell in the top rockTop blends across the fractures (1 for the
+    // strata, 1/2 on a fracture).
+    std::array<double, 4> share{1.0, 1.0, 1.0, 1.0};
 };
 [[nodiscard]] WallPasses wallPasses(const Noises& noises, const Masks& masks, double x, double z,
                                     double gradX, double gradZ, Memo* memo);
@@ -192,9 +193,6 @@ struct LayerFace {
 
 // A share in [0, 1) drawn for layer k of a pass, for stream (its overhangs).
 [[nodiscard]] double layerDraw(const StrataPass& pass, std::int64_t k, int stream);
-
-// The noise of the overhangs along the walls at (x, z), about -1 to 1.
-[[nodiscard]] double overhangNoise(const Noises& noises, double x, double z, Memo* memo);
 
 // The density of the rock at height y: the vertical distance to its surface (negative inside).
 [[nodiscard]] double density(const Noises& noises, const Column& column, double x, double z,

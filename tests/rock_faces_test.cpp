@@ -1,7 +1,7 @@
 // The faces of the rock in three dimensions (phase 12A): without a face the density is y - ground
 // bit for bit; within the run of a face the climb of the relief becomes a step, a vertical face at
-// its middle between the foot and the top, lifted by what the relief differs from the line of the
-// run, and meeting the relief at the edges of the run; its cap juts over the air and its undercut
+// its middle between the ledges of the foot and the top, whatever the relief within the run, and
+// meeting the relief at the edges of the run; its cap juts over the air and its undercut
 // recedes into the rock; its grain moves it by bands; the faces of a valley shape the floor its
 // river carves; the levees fill; a coarse detail fades the narrow runs, overhangs and grain out;
 // the bounds and the share of rock follow the faces; anchoring scales the overhangs.
@@ -80,8 +80,8 @@ void testStep() {
     TEST_CHECK(near(topOf(front), kFoot, 0.6));
     TEST_CHECK(near(terrain::rockDensity(behind, 10.0, {}), -2.0, 1e-3));
     TEST_CHECK(near(terrain::rockDensity(front, 10.0, {}), 2.0, 1e-3));
-    // The relief 3 m above the line of the run lifts the step by 3 m.
-    TEST_CHECK(near(topOf(columnAt(-2.0f, 3.0f)), kTop + 3.0, 0.6));
+    // The relief within the run leaves the step as it is.
+    TEST_CHECK(near(topOf(columnAt(-2.0f, 3.0f)), kTop, 0.6));
     // At the edges of the run the step meets the relief.
     TEST_CHECK(near(topOf(columnAt(-0.5f * kRun)), rampAt(-0.5f * kRun), 0.05));
     TEST_CHECK(near(topOf(columnAt(0.5f * kRun)), rampAt(0.5f * kRun), 0.05));
@@ -193,7 +193,7 @@ void testLevee() {
 void testBoundsShareAndAdd() {
     const RockColumn c = columnAt(1.0f, 2.0f);
     const terrain::RockBounds b = terrain::rockBounds(c);
-    TEST_CHECK(near(b.low, kFoot + 2.0, 1e-4) && near(b.high, kTop + 2.0, 1e-4));
+    TEST_CHECK(b.low == kFoot && b.high == kTop);
     TEST_CHECK(terrain::rockShare(c, 12.0, {}) == 1.0f);
     TEST_CHECK(terrain::rockShare(c, 40.0, {}) == 0.0f);
     // Past kMaxRockFaces, the faces of the greatest weights are kept.

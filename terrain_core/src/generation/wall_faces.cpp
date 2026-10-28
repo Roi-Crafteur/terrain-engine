@@ -23,6 +23,7 @@ constexpr std::array<std::size_t, 4> kFacePasses = {0, 1, 2, 3};
 // steps, which rockTop lays at a share of it only.
 constexpr double kFaintLow = 0.3;
 constexpr double kFaintHigh = 0.6;
+constexpr double kWholeCell = 0.95;
 // The cap of a face juts out up to kCapShare of its height, kCapMost meters at most, over the top
 // kCapDepthLow to kCapDepthLow + kCapDepthSpread of it; its undercut recedes up to kCutShare of its
 // height, kCutMost meters at most, up to kCutHeightLow to kCutHeightLow + kCutHeightSpread of it.
@@ -40,6 +41,8 @@ constexpr double kWithinRun = 0.45;
 // kCapFrom to kCapFull, an undercut where they pass kCutFrom to kCutFull (the noise reversed: the
 // rock under a cap is often whole).
 constexpr double kCapNoise = 0.45;
+// The noise along the walls comes and goes over about kOverhangWavelength meters.
+constexpr double kOverhangWavelength = 90.0;
 constexpr double kCapFrom = 0.45;
 constexpr double kCapFull = 0.8;
 constexpr double kCutFrom = 0.5;
@@ -110,6 +113,7 @@ bool riserAt(const StrataPass& p, double ground, Riser& out) {
 struct PassSite {
     const StrataPass* pass = nullptr;
     double strength = 0.0; // the mask of the walls the pass stands in
+    double share = 1.0;    // of the nearest cell of the joints in the top (1/2 on a fracture)
     double lift = 0.0;
     double ground = 0.0; // under the pass at the column
     double rate = 1.0;   // of that ground with the ground of the walls
@@ -132,8 +136,11 @@ void addRiserFace(const PassSite& s, const Riser& r, Site& site) {
     const double foot = relative(s, r.start);
     const double top = relative(s, r.end);
     const double height = top - foot;
+    // Across a fracture of the crystalline rock the joints of the next cell take over: the face
+    // fades out as its cell gives way (kWholeCell of the top).
     const double weight = smooth(kFaintLow, kFaintHigh, s.strength * r.layer.hardness) *
-                          smooth(0.5 * kLeastRockFace, kLeastRockFace, height);
+                          smooth(0.5 * kLeastRockFace, kLeastRockFace, height) *
+                          smooth(0.5, kWholeCell, s.share);
     if (!(weight > 0.0) || site.count >= site.pending.size()) {
         return;
     }
@@ -175,7 +182,8 @@ Grain makeGrain(std::uint64_t seed, const WorldSize& world) {
                                   .lattices = noise::OctaveLattices::RotatedFast},
                                  world);
     };
-    return {octaves(0, kShiftWavelength), octaves(1, kFluteWavelength)};
+    return {octaves(2, kOverhangWavelength), octaves(0, kShiftWavelength),
+            octaves(1, kFluteWavelength)};
 }
 
 void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
@@ -208,14 +216,15 @@ void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
                                       groundUnder(w, column.ground - kDelta, i)) /
                                          (2.0 * kDelta);
         if (!noisy) {
-            noise = mountain_walls::overhangNoise(noises, x, z, memo);
+            noise = static_cast<double>(grain.overhangs.fbm2D(x, z));
             shift = kShiftRange * static_cast<double>(grain.shift.fbm2D(x, z));
             flutes = std::clamp(kFluteGain * static_cast<double>(grain.flutes.fbm2D(x, z)), -1.0,
                                 1.0);
             noisy = true;
         }
-        const PassSite pass{&p,         strength,   w.lift[i], ground, std::max(0.0, rate),
-                            w.liftX[i], w.liftZ[i], noise,     shift,  flutes};
+        const PassSite pass{&p,         strength,   w.share[i], w.lift[i], ground,
+                            std::max(0.0, rate), w.liftX[i], w.liftZ[i], noise, shift,
+                            flutes};
         addRiserFace(pass, riser, site);
     }
 }

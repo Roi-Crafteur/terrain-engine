@@ -6,15 +6,18 @@
 namespace terrain {
 
 // The rock of the streamed world in three dimensions (phase 12A). The relief is a height per
-// column (Heightfield::heightAt), whose walls keep a slope; where a generator of walls lays one (the
-// walls of the mountains, the slots of the falls and the gorges, the escarpments), it describes to
-// the columns of its riser a face: the relief climbs from the foot of the riser to its top over its
-// run, and the face turns that climb into a step, a vertical face at the middle of the run whose
-// top may jut over the air (an overhang) and whose foot may recede into the rock (an undercut, a
-// niche). The heights of the foot and the top are those of the relief at the two edges of the run,
-// so the step meets the relief there; within the run the relief keeps its own detail (what it
-// differs from the line from the foot to the top by), only its climb becomes the step. Everywhere
-// else the density of the rock is y - heightAt(x, z), bit for bit.
+// column (Heightfield::heightAt), whose walls keep a slope; where a generator of walls lays one
+// (the walls of the mountains, the slots of the falls and the gorges, the escarpments), it
+// describes to the columns of its riser a face: the relief climbs from the foot of the riser to
+// its top over its run, and the face turns that climb into a step, a vertical face at the middle
+// of the run whose top may jut over the air (an overhang) and whose foot may recede into the rock
+// (an undercut, a niche). The heights of the foot and the top are those of the relief at the two
+// edges of the run, so the step meets the relief there: within the run, the rock stands up to the
+// top behind the face and to the foot in front of it, two ledges whose heights follow the relief
+// along the face. (Within the run, the relief steeper than its line would add its own detail to
+// the ledges by as much as its slope times any error on the place of its riser: a lip toothed
+// from column to column.) Everywhere else the density of the rock is y - heightAt(x, z), bit for
+// bit.
 
 // The face of a riser seen from a column of its run.
 struct RockFace {
@@ -43,8 +46,8 @@ struct RockFace {
     // run lies.
     float airX = 0.0f;
     float airZ = 0.0f;
-    // A face of the valley of a river (its slot, its gorge, the face of a fall): its step shapes the
-    // floor the river carves; otherwise a face of the relief before the rivers.
+    // A face of the valley of a river (its slot, its gorge, the face of a fall): its step shapes
+    // the floor the river carves; otherwise a face of the relief before the rivers.
     bool carved = false;
 
     friend bool operator==(const RockFace&, const RockFace&) = default;
@@ -80,9 +83,9 @@ inline constexpr float kRunCells = 3.0f;
 [[nodiscard]] RockDetail rockDetailForLod(int lod);
 
 // Density at height y of a column, meters, negative in the rock: y - ground bit for bit without a
-// face the detail draws; with faces, the relief and the steps of the faces of its run blended by their weights, the
-// air the rivers carve in it taken out (their floor stepped by the faces of their valley) and the
-// levees they fill added.
+// face the detail draws; with faces, the relief and the steps of the faces of its runs blended by
+// their weights, the air the rivers carve in it taken out (their floor stepped by the faces of
+// their valley) and the levees they fill added.
 [[nodiscard]] float rockDensity(const RockColumn& column, double y, const RockDetail& detail);
 
 // How far a detail draws a face: its weight, faded out over runs of kRunCells to 1.5 times that

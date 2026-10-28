@@ -111,18 +111,9 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
     return offset;
 }
 
-// The height of the relief above the line of the run from the foot to the top at the column.
-double residual(const RockFace& f, double relief) {
-    const double line = 0.5 * (static_cast<double>(f.foot) + f.top) -
-                        (static_cast<double>(f.top) - f.foot) * f.distance / f.run;
-    return relief - line;
-}
-
-// The density of the step of a face at height y of a column whose relief is at relief: the rock
-// below its top behind the face and below its foot in front of it, both lifted by the residual,
-// its edges rounded.
-double stepDensity(const RockFace& f, double y, double relief, const RockDetail& detail) {
-    const double v = y - residual(f, relief);
+// The density of the step of a face at height y: the rock below its top behind the face and below
+// its foot in front of it, its edges rounded.
+double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
     const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
     const double round = std::min(kRound, kRoundShare * (static_cast<double>(f.top) - f.foot));
     if (!(round > 0.0)) {
@@ -144,7 +135,7 @@ double blendedDensity(const RockColumn& c, double y, bool carved, double relief,
             continue;
         }
         weights += weight;
-        steps += weight * stepDensity(f, y, relief, detail);
+        steps += weight * stepDensity(f, y, detail);
     }
     if (weights > 1.0) {
         return steps / weights;
@@ -173,7 +164,9 @@ RockDetail rockDetailForLod(int lod) {
 
 float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
     const bool drawn = std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
-                                   [&](const RockFace& f) { return drawnWeight(f, detail) > 0.0f; });
+                                   [&](const RockFace& f) {
+                                       return drawnWeight(f, detail) > 0.0f;
+                                   });
     if (!drawn) {
         return static_cast<float>(y - c.ground);
     }
@@ -214,10 +207,8 @@ void anchorFace(RockFace& face, float foot, float top) {
 RockBounds rockBounds(const RockColumn& c) {
     RockBounds b{std::min(c.ground, c.uncarved), std::max(c.ground, c.uncarved)};
     for (std::size_t i = 0; i < c.faceCount; ++i) {
-        const RockFace& f = c.faces[i];
-        const double lift = residual(f, f.carved ? c.ground : c.uncarved);
-        b.low = std::min(b.low, static_cast<float>(f.foot + lift));
-        b.high = std::max(b.high, static_cast<float>(f.top + lift));
+        b.low = std::min(b.low, c.faces[i].foot);
+        b.high = std::max(b.high, c.faces[i].top);
     }
     return b;
 }
@@ -226,9 +217,8 @@ float rockShare(const RockColumn& c, double y, const RockDetail& detail) {
     float share = 0.0f;
     for (std::size_t i = 0; i < c.faceCount; ++i) {
         const RockFace& f = c.faces[i];
-        const double v = y - residual(f, f.carved ? c.ground : c.uncarved);
         const double distance = f.distance;
-        if (v >= f.foot - kShareBelow && v <= f.top + kShareAbove &&
+        if (y >= f.foot - kShareBelow && y <= f.top + kShareAbove &&
             distance < std::max(0.0f, f.cap) + kShareAcross &&
             distance > -(std::max(0.0f, f.undercut) + kShareAcross)) {
             share = std::max(share, std::min(1.0f, drawnWeight(f, detail)));

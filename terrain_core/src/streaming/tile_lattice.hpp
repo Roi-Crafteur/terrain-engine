@@ -79,7 +79,9 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
         const bool faces =
             std::any_of(columns.rock.begin(), columns.rock.end(), [&](const RockColumn& c) {
                 return std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
-                                   [&](const RockFace& f) { return drawnWeight(f, detail) > 0.0f; });
+                                   [&](const RockFace& f) {
+                                       return drawnWeight(f, detail) > 0.0f;
+                                   });
             });
         if (!faces) {
             columns.rock.clear();

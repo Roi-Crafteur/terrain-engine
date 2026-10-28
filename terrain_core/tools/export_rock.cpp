@@ -342,6 +342,12 @@ void reportCost(const World& w, Options& o, const Places& places, Report& r) {
     for (const rock_tool::CostPlace& p : at) {
         r.add(rock_tool::costAt(w.tiles, relief, p, o.viewDistance, 3));
     }
+    for (const TopShot& s : places.tops) {
+        if (s.name == "k2_face_top" || s.name == "k2_wall_top") {
+            r.add(rock_tool::lodJumps(w.tiles, relief, {s.name, s.x, s.z}, 128.0,
+                                      o.directory.string(), o.threads));
+        }
+    }
     o.only = {"none"};
 }
 
