@@ -153,8 +153,9 @@ void testStorm(int nx, int nz, int radius) {
     std::vector<double> rows(grid.cells(), -1.0);
     int next = 0;
     bool ordered = true;
+    const planet::LandIndex land(ocean);
     planet::stormMoistureRows(
-        grid, ocean, rowMoisture, radius, [&](int j, const std::vector<double>& values) {
+        grid, land, rowMoisture, radius, [&](int j, const std::vector<double>& values) {
             ordered = ordered && j == next++;
             std::copy(values.begin(), values.end(),
                       rows.begin() + static_cast<std::ptrdiff_t>(grid.index(0, j)));

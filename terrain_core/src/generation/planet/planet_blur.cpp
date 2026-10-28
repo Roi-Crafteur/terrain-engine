@@ -147,9 +147,9 @@ private:
 // The two running box passes of the storm moisture, a row at a time (stormMoistureRows).
 class StormSweep {
 public:
-    StormSweep(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
+    StormSweep(const PlanetGrid& grid, const LandIndex& land,
                const std::vector<double>& rowMoisture, int radius)
-        : grid_(grid), ocean_(ocean), moisture_(rowMoisture), r_(radius),
+        : grid_(grid), land_(land), moisture_(rowMoisture), r_(radius),
           nx_(static_cast<std::size_t>(grid.nx)), add_(nx_), sub_(nx_), first_(nx_),
           saved_(static_cast<std::size_t>(2 * radius + 1) * nx_),
           ring_(static_cast<std::size_t>(2 * radius + 2) * nx_) {}
@@ -163,7 +163,7 @@ private:
         const double sea = moisture_[static_cast<std::size_t>(k)];
         runningRow(
             grid_, r_,
-            [&](int i) { return ocean_[start + static_cast<std::size_t>(i)] != kLand ? sea : 0.0; },
+            [&](int i) { return land_.land(start + static_cast<std::size_t>(i)) ? 0.0 : sea; },
             out);
     }
     // The first pass along z: its column sums started, then the row k of its result (first_),
@@ -182,7 +182,7 @@ private:
     }
 
     const PlanetGrid& grid_;
-    const std::vector<std::uint8_t>& ocean_;
+    const LandIndex& land_;
     const std::vector<double>& moisture_;
     int r_;
     std::size_t nx_;
@@ -297,9 +297,9 @@ void blurPassInPlace(const PlanetGrid& grid, std::vector<float>& values, int thr
     zPass(grid, values, 1, threads, along, output);
 }
 
-void stormMoistureRows(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
+void stormMoistureRows(const PlanetGrid& grid, const LandIndex& land,
                        const std::vector<double>& rowMoisture, int radius, const StormRow& row) {
-    StormSweep(grid, ocean, rowMoisture, radius).run(row);
+    StormSweep(grid, land, rowMoisture, radius).run(row);
 }
 
 } // namespace terrain::planet

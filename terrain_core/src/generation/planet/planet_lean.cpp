@@ -65,7 +65,7 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
         sampleCells(field, lean.grid, params.samplesPerAxis, threads, params.floorSamples);
     lean.height = std::move(cells.height);
     parts.timings.relief = watch.lap("relief");
-    const std::vector<std::uint8_t> ocean =
+    std::vector<std::uint8_t> ocean =
         markOcean(lean.grid, lean.height, cells.sea, params.minOceanArea);
     freeVector(cells.sea);
     lean.land = std::make_shared<const LandIndex>(ocean);
@@ -78,7 +78,8 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
         parts.timings.breach = watch.lap("breach");
     }
     freeVector(cells.mountain);
-    keepRain(lean, computeClimate(lean.grid, lean.height, ocean, params.climate, threads));
+    freeVector(ocean); // the land index answers from now on
+    keepRain(lean, computeClimate(lean.grid, lean.height, *lean.land, params.climate, threads));
     parts.timings.climate = watch.lap("climate");
 }
 

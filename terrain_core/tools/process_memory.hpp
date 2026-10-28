@@ -15,6 +15,11 @@ namespace process_memory {
 // The most bytes resident since the process started, 0 if unknown.
 [[nodiscard]] std::size_t peakResident();
 
+// Makes the allocator give each large block back to the system when it is freed, as Windows does:
+// glibc raises its mmap threshold up to 32 MiB after a large block is freed, then keeps the freed
+// blocks below it in the process (nothing on the other systems).
+void returnFreedBlocks();
+
 // Samples resident() every 2 ms on its own thread, from its construction to its destruction,
 // and keeps the most since the last reset: the peak of a stage, which the system does not keep
 // (a short peak between two samples can be missed; peakResident() never misses it).

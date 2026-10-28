@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/planet/planet_grid.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -19,13 +20,13 @@ void boxPassInPlace(const PlanetGrid& grid, std::vector<float>& values, int radi
 // One [1 2 1] / 4 pass along x then along z, periodic, in place.
 void blurPassInPlace(const PlanetGrid& grid, std::vector<float>& values, int threads);
 
-// The moisture of the storms (planet_climate): rowMoisture[j] on the sea cells of row j (ocean
-// not kLand), 0 on the land, blurred by two passes of 2 radius + 1 cells along x then along z with
+// The moisture of the storms (planet_climate): rowMoisture[j] on the sea cells of row j (not in
+// land), 0 on the land, blurred by two passes of 2 radius + 1 cells along x then along z with
 // running sums in double (at least 0), periodic; radius from 1 to (nx - 1) / 2 and (nz - 1) / 2.
 // Each row of the result is handed to row(j, values) in increasing order, never kept: two sweeps
 // of the rows, and about 4 radius rows in memory.
 using StormRow = std::function<void(int row, const std::vector<double>& values)>;
-void stormMoistureRows(const PlanetGrid& grid, const std::vector<std::uint8_t>& ocean,
+void stormMoistureRows(const PlanetGrid& grid, const LandIndex& land,
                        const std::vector<double>& rowMoisture, int radius, const StormRow& row);
 
 } // namespace terrain::planet

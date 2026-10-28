@@ -57,7 +57,7 @@ namespace terrain::planet {
 // orographyRadius (two box passes along each axis, periodic).
 [[nodiscard]] std::vector<float> orographicSurface(const PlanetGrid& grid,
                                                    const std::vector<float>& height,
-                                                   const std::vector<std::uint8_t>& ocean,
+                                                   const LandIndex& land,
                                                    const PlanetClimateParams& params, int threads);
 
 // Climate of the grid: precipitation of every cell (mm/yr) and sea-level temperature of every
@@ -67,6 +67,10 @@ struct PlanetClimate {
     std::vector<float> precipitation;
     std::vector<float> rowTemperature;
 };
+[[nodiscard]] PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
+                                           const LandIndex& land,
+                                           const PlanetClimateParams& params, int threads);
+// The same on the land of an ocean mask.
 [[nodiscard]] PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                                            const std::vector<std::uint8_t>& ocean,
                                            const PlanetClimateParams& params, int threads);

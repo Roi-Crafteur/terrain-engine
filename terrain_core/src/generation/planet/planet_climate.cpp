@@ -21,8 +21,7 @@ namespace {
 // place: values holds the orographic surface, each row replaced by its precipitation once
 // marched (the march of a row reads its own surface only). The surface of the land cells is
 // kept first, by slot, for the rain of the storms.
-void marchInPlace(const PlanetGrid& grid, std::vector<float>& values,
-                  const std::vector<std::uint8_t>& ocean, const LandIndex& land,
+void marchInPlace(const PlanetGrid& grid, std::vector<float>& values, const LandIndex& land,
                   const std::vector<float>& rowTemperature, const PlanetClimateParams& params,
                   int threads, std::vector<float>& landSurface) {
     const MoistureRows rows = moistureRows(grid, params);
@@ -31,13 +30,17 @@ void marchInPlace(const PlanetGrid& grid, std::vector<float>& values,
     parallelBlocks(chainCount, 1, threads, [&](int begin, int end) {
         MoistureOutput previous;
         MoistureOutput out;
+        std::vector<std::uint8_t> ocean(static_cast<std::size_t>(grid.nx)); // of the row
         for (int c = begin; c < end; ++c) {
             for (const int j : rows.chains[static_cast<std::size_t>(c)]) {
                 const bool fed = rows.moistureFrom[static_cast<std::size_t>(j)] >= 0;
                 const std::size_t first = grid.index(0, j);
+                for (std::size_t i = 0; i < ocean.size(); ++i) {
+                    ocean[i] = land.land(first + i) ? kLand : kOcean;
+                }
                 MoistureRow row;
                 row.height = values.data() + first;
-                row.ocean = ocean.data() + first;
+                row.ocean = ocean.data();
                 row.upwindMoisture = fed ? previous.moisture.data() : nullptr;
                 row.upwindAir = fed ? previous.air.data() : nullptr;
                 row.nx = grid.nx;
@@ -48,7 +51,7 @@ void marchInPlace(const PlanetGrid& grid, std::vector<float>& values,
                 marchMoistureRow(row, params, out);
                 for (std::size_t cell = first; cell < first + static_cast<std::size_t>(grid.nx);
                      ++cell) {
-                    if (ocean[cell] == kLand) {
+                    if (land.land(cell)) {
                         landSurface[land.slot(cell)] = values[cell];
                     }
                 }
@@ -63,9 +66,8 @@ void marchInPlace(const PlanetGrid& grid, std::vector<float>& values,
 // Adds the rain of the storms over land: the saturation moisture of the nearby sea cells,
 // blurred (stormMoistureRows), faded with the surface of each land cell (by slot).
 void addEddyRain(const PlanetGrid& grid, const std::vector<float>& landSurface,
-                 const std::vector<std::uint8_t>& ocean, const LandIndex& land,
-                 const std::vector<float>& rowTemperature, const PlanetClimateParams& params,
-                 std::vector<float>& precipitation) {
+                 const LandIndex& land, const std::vector<float>& rowTemperature,
+                 const PlanetClimateParams& params, std::vector<float>& precipitation) {
     const int radius = std::min({static_cast<int>(std::floor(params.eddyRadius / grid.cellSize)),
                                  (grid.nx - 1) / 2, (grid.nz - 1) / 2});
     if (params.eddyShare <= 0.0 || radius <= 0) {
@@ -76,12 +78,12 @@ void addEddyRain(const PlanetGrid& grid, const std::vector<float>& landSurface,
         rowMoisture[static_cast<std::size_t>(j)] =
             saturationMoisture(rowTemperature[static_cast<std::size_t>(j)], params);
     }
-    stormMoistureRows(grid, ocean, rowMoisture, radius, [&](int j, const std::vector<double>& sea) {
+    stormMoistureRows(grid, land, rowMoisture, radius, [&](int j, const std::vector<double>& sea) {
         const double rate =
             params.eddyShare * rainFactor(rowLatitude(grid, j), params) / params.rainLength;
         for (int i = 0; i < grid.nx; ++i) {
             const std::size_t c = grid.index(i, j);
-            if (ocean[c] != kLand) {
+            if (!land.land(c)) {
                 continue; // over the sea the advection already brings the moisture back
             }
             const double fade = dmath::exp(-static_cast<double>(landSurface[land.slot(c)]) /
@@ -133,11 +135,11 @@ double saturationMoisture(double temperature, const PlanetClimateParams& params)
 }
 
 std::vector<float> orographicSurface(const PlanetGrid& grid, const std::vector<float>& height,
-                                     const std::vector<std::uint8_t>& ocean,
-                                     const PlanetClimateParams& params, int threads) {
+                                     const LandIndex& land, const PlanetClimateParams& params,
+                                     int threads) {
     std::vector<float> surface(grid.cells());
     for (std::size_t c = 0; c < grid.cells(); ++c) {
-        surface[c] = ocean[c] != kLand || height[c] < 0.0f ? 0.0f : height[c];
+        surface[c] = !land.land(c) || height[c] < 0.0f ? 0.0f : height[c];
     }
     const int radius = static_cast<int>(std::floor(params.orographyRadius / grid.cellSize));
     if (radius > 0) {
@@ -151,6 +153,12 @@ std::vector<float> orographicSurface(const PlanetGrid& grid, const std::vector<f
 PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                              const std::vector<std::uint8_t>& ocean,
                              const PlanetClimateParams& params, int threads) {
+    return computeClimate(grid, height, LandIndex(ocean), params, threads);
+}
+
+PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
+                             const LandIndex& land, const PlanetClimateParams& params,
+                             int threads) {
     const int workers = resolveThreads(threads);
     PlanetClimate climate;
     climate.rowTemperature.resize(static_cast<std::size_t>(grid.nz));
@@ -159,13 +167,11 @@ PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& h
             latitudeTemperature(grid.centerZ(j), grid.periodZ(), params);
     }
     // One grid: the orographic surface, then the precipitation in its place.
-    const LandIndex land(ocean);
-    climate.precipitation = orographicSurface(grid, height, ocean, params, workers);
+    climate.precipitation = orographicSurface(grid, height, land, params, workers);
     std::vector<float> landSurface;
-    marchInPlace(grid, climate.precipitation, ocean, land, climate.rowTemperature, params, workers,
+    marchInPlace(grid, climate.precipitation, land, climate.rowTemperature, params, workers,
                  landSurface);
-    addEddyRain(grid, landSurface, ocean, land, climate.rowTemperature, params,
-                climate.precipitation);
+    addEddyRain(grid, landSurface, land, climate.rowTemperature, params, climate.precipitation);
     freeVector(landSurface);
     for (int pass = 0; pass < params.blurPasses; ++pass) {
         blurPassInPlace(grid, climate.precipitation, workers);

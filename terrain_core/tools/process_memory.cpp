@@ -18,6 +18,10 @@
 #include <unistd.h>
 #endif
 
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
 namespace process_memory {
 
 std::size_t resident() {
@@ -67,6 +71,13 @@ std::size_t peakResident() {
 #else
     return static_cast<std::size_t>(usage.ru_maxrss) * 1024; // kilobytes
 #endif
+#endif
+}
+
+void returnFreedBlocks() {
+#if defined(__GLIBC__)
+    // A fixed threshold stops the dynamic one: every block from 1 MiB is mapped on its own.
+    mallopt(M_MMAP_THRESHOLD, 1 << 20);
 #endif
 }
 

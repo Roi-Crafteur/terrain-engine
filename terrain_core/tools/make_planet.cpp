@@ -111,6 +111,7 @@ int main(int argc, char** argv) {
                      argv[0]);
         return EXIT_FAILURE;
     }
+    process_memory::returnFreedBlocks();
     try {
         terrain::validate(o.world);
         terrain::PlanetParams params;

@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <queue>
+#include <unordered_map>
 #include <utility>
 
 namespace terrain::planet {
@@ -90,8 +91,15 @@ struct Depression {
     std::uint32_t outlet = kNone;
     float fill = 0.0f;
     float lowest = 0.0f;
-    std::size_t cells = 0;
+    std::uint32_t cells = 0;
     bool mountain = false;
+};
+
+// The depressions in the order the flood meets them, and their pits: those of depression d at
+// pits[pitStart[d], pitStart[d + 1]).
+struct Depressions {
+    std::vector<Depression> list;
+    std::vector<std::uint32_t> pitStart;
     std::vector<std::uint32_t> pits;
 };
 
@@ -104,49 +112,48 @@ bool isPit(const PlanetGrid& grid, const std::vector<float>& height, std::size_t
     return true;
 }
 
-// The cells below their fill level with their outlet, the first cell at its fill level on their
-// way to the ocean, sorted by outlet then cell.
-std::vector<std::pair<std::uint32_t, std::uint32_t>> membersOf(const PlanetGrid& grid,
-                                                              const LandIndex& land,
-                                                              const Flood& f) {
-    std::size_t count = 0;
-    for (const std::uint32_t c : f.order) {
-        count += f.below(c) ? 1U : 0U;
-    }
-    std::vector<std::pair<std::uint32_t, std::uint32_t>> members; // outlet, cell
-    members.reserve(count);
-    std::vector<std::uint32_t> outlet(land.landCells(), kNone);
+// The depressions: the cells below their fill level, each attached to the first cell at its fill
+// level on its way to the ocean. The slot of a land cell holds its depression: the one it lies in
+// when below its fill level, else the one it is the outlet of (a sea outlet in a small table). No
+// list of the cells of the depressions.
+Depressions depressionsOf(const PlanetGrid& grid, const std::vector<float>& height,
+                          const std::vector<std::uint8_t>& mountain, const LandIndex& land,
+                          const Flood& f) {
+    Depressions out;
+    std::vector<std::uint32_t> depression(land.landCells(), kNone);
+    std::unordered_map<std::uint32_t, std::uint32_t> seaOutlets;
+    std::vector<std::uint32_t> pitCount;
     for (const std::uint32_t c : f.order) {
         if (!f.below(c)) {
             continue;
         }
-        const std::size_t up = f.up(grid, c);
-        const std::uint32_t above = land.land(up) ? outlet[land.slot(up)] : kNone;
-        const std::uint32_t exit = above != kNone ? above : static_cast<std::uint32_t>(up);
-        outlet[land.slot(c)] = exit;
-        members.emplace_back(exit, c);
-    }
-    std::sort(members.begin(), members.end());
-    return members;
-}
-
-// The depressions, by outlet.
-std::vector<Depression> depressionsOf(const PlanetGrid& grid, const std::vector<float>& height,
-                                      const std::vector<std::uint8_t>& mountain,
-                                      const LandIndex& land, const Flood& f) {
-    std::vector<Depression> out;
-    for (const auto& [exit, c] : membersOf(grid, land, f)) {
-        if (out.empty() || out.back().outlet != exit) {
+        const auto up = static_cast<std::uint32_t>(f.up(grid, c));
+        std::uint32_t& owner = land.land(up) ? depression[land.slot(up)]
+                                             : seaOutlets.try_emplace(up, kNone).first->second;
+        if (owner == kNone) {
             // A land outlet is at its own height; the sea at the sea level.
-            const float fill = land.land(exit) ? height[exit] : kSeaLevel;
-            out.push_back({exit, fill, height[c], 0, mountain[exit] != 0, {}});
+            owner = static_cast<std::uint32_t>(out.list.size());
+            const float fill = land.land(up) ? height[up] : kSeaLevel;
+            out.list.push_back({up, fill, height[c], 0, mountain[up] != 0});
+            pitCount.push_back(0);
         }
-        Depression& d = out.back();
+        const std::uint32_t k = owner;
+        depression[land.slot(c)] = k;
+        Depression& d = out.list[k];
         d.lowest = std::min(d.lowest, height[c]);
         ++d.cells;
         d.mountain = d.mountain || mountain[c] != 0;
-        if (isPit(grid, height, c)) {
-            d.pits.push_back(c);
+        pitCount[k] += isPit(grid, height, c) ? 1U : 0U;
+    }
+    out.pitStart.assign(out.list.size() + 1, 0);
+    for (std::size_t k = 0; k < out.list.size(); ++k) {
+        out.pitStart[k + 1] = out.pitStart[k] + pitCount[k];
+        pitCount[k] = out.pitStart[k]; // where its next pit goes
+    }
+    out.pits.resize(out.pitStart.back());
+    for (const std::uint32_t c : f.order) {
+        if (f.below(c) && isPit(grid, height, c)) {
+            out.pits[pitCount[depression[land.slot(c)]]++] = c;
         }
     }
     return out;
@@ -201,10 +208,20 @@ PlanetBreach breachDepressions(const PlanetGrid& grid, std::vector<float>& heigh
     PlanetBreach out;
     const LandIndex land(ocean);
     const Flood f = priorityFlood(grid, height, ocean, land);
-    std::vector<Depression> depressions = depressionsOf(grid, height, mountain, land, f);
+    const Depressions depressions = depressionsOf(grid, height, mountain, land, f);
     const std::vector<std::uint32_t> drained = drainedCells(grid, land, f);
-    out.depressions = depressions.size();
-    for (Depression& d : depressions) {
+    out.depressions = depressions.list.size();
+    // By outlet, as the outlets are carved one after the other.
+    std::vector<std::uint32_t> byOutlet(depressions.list.size());
+    for (std::size_t k = 0; k < byOutlet.size(); ++k) {
+        byOutlet[k] = static_cast<std::uint32_t>(k);
+    }
+    std::sort(byOutlet.begin(), byOutlet.end(), [&](std::uint32_t a, std::uint32_t b) {
+        return depressions.list[a].outlet < depressions.list[b].outlet;
+    });
+    std::vector<std::uint32_t> pits;
+    for (const std::uint32_t k : byOutlet) {
+        const Depression& d = depressions.list[k];
         const double depth = static_cast<double>(d.fill - d.lowest);
         const double cells = static_cast<double>(d.cells) * grid.cellArea();
         // A depression below the sea level never drains: the sea would flow in. Every depression
@@ -220,10 +237,12 @@ PlanetBreach breachDepressions(const PlanetGrid& grid, std::vector<float>& heigh
         }
         ++out.breached;
         out.breachedArea += cells;
-        std::sort(d.pits.begin(), d.pits.end(), [&](std::uint32_t a, std::uint32_t b) {
+        pits.assign(depressions.pits.begin() + depressions.pitStart[k],
+                    depressions.pits.begin() + depressions.pitStart[k + 1]);
+        std::sort(pits.begin(), pits.end(), [&](std::uint32_t a, std::uint32_t b) {
             return lowerCell(height, a, b);
         });
-        for (const std::uint32_t pit : d.pits) {
+        for (const std::uint32_t pit : pits) {
             carveFrom(grid, height, ocean, f, pit, out);
         }
     }
