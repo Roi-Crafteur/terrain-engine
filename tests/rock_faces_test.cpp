@@ -115,7 +115,8 @@ void testCapAndUndercut() {
     TEST_CHECK(terrain::rockDensity(front, 19.0, terrain::rockDetailForLod(2)) > 0.0f);
     TEST_CHECK(terrain::rockDensity(behind, 1.0, terrain::rockDetailForLod(1)) <
                terrain::rockDensity(behind, 1.0, {}));
-    TEST_CHECK(terrain::rockDetailForLod(0).cell == 1.0f && terrain::rockDetailForLod(3).cell == 8.0f);
+    TEST_CHECK(terrain::rockDetailForLod(0).cell == 1.0f &&
+               terrain::rockDetailForLod(3).cell == 8.0f);
 }
 
 // A run of less than 3 cells fades out (the columns would alternate in and out of it), weights

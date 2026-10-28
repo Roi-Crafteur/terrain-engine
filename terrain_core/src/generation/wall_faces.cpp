@@ -142,16 +142,16 @@ void addRiserFace(const PassSite& s, const Riser& r, Site& site) {
     RockFace& face = out.face;
     face.foot = static_cast<float>(foot);
     face.top = static_cast<float>(top);
+    const double capDraw = (1.0 - kCapNoise) * mountain_walls::layerDraw(p, k, 0) +
+                           kCapNoise * (0.5 + 0.5 * s.noise);
+    const double cutDraw = (1.0 - kCapNoise) * mountain_walls::layerDraw(p, k, 1) +
+                           kCapNoise * (0.5 - 0.5 * s.noise);
     face.cap = static_cast<float>(std::min(kCapShare * height, kCapMost) * weight *
-                                  smooth(kCapFrom, kCapFull,
-                                         (1.0 - kCapNoise) * mountain_walls::layerDraw(p, k, 0) +
-                                             kCapNoise * (0.5 + 0.5 * s.noise)));
+                                  smooth(kCapFrom, kCapFull, capDraw));
     face.capDepth = static_cast<float>(
         height * (kCapDepthLow + kCapDepthSpread * mountain_walls::layerDraw(p, k, 2)));
     face.undercut = static_cast<float>(std::min(kCutShare * height, kCutMost) * weight *
-                                       smooth(kCutFrom, kCutFull,
-                                              (1.0 - kCapNoise) * mountain_walls::layerDraw(p, k, 1) +
-                                                  kCapNoise * (0.5 - 0.5 * s.noise)));
+                                       smooth(kCutFrom, kCutFull, cutDraw));
     face.undercutHeight = static_cast<float>(
         height * (kCutHeightLow + kCutHeightSpread * mountain_walls::layerDraw(p, k, 3)));
     face.grain = static_cast<float>(std::min(kGrainShare * height, kGrainMost) * weight);
@@ -233,7 +233,8 @@ RockFace placeFace(const PendingFace& pending, double gradX, double gradZ) {
     face.airX = static_cast<float>(length > 0.0 ? -riseX / length : 1.0);
     face.airZ = static_cast<float>(length > 0.0 ? -riseZ / length : 0.0);
     // The grain stands out twice its amplitude at most, the overhangs within the rest of the run.
-    face.grain = static_cast<float>(std::min(static_cast<double>(face.grain), kGrainRun * face.run));
+    face.grain =
+        static_cast<float>(std::min(static_cast<double>(face.grain), kGrainRun * face.run));
     const double room = std::max(0.0, kWithinRun * face.run - 2.0 * face.grain);
     face.cap = static_cast<float>(std::min(static_cast<double>(face.cap), room));
     face.undercut = static_cast<float>(std::min(static_cast<double>(face.undercut), room));

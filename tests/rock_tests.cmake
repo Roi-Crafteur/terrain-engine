@@ -13,3 +13,5 @@ target_include_directories(wall_faces_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain
 terrain_add_test(rock_walls_test terrain_core)
 # The outer sides of the tiles against the horizon.
 terrain_add_test(rock_horizon_test terrain_core)
+# The seams between the tiles of the walls (lod_seams.cpp with the rock).
+terrain_add_test(rock_seams_test terrain_core)
