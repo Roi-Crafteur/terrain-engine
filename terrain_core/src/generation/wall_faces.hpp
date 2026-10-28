@@ -26,12 +26,28 @@
 namespace terrain::wall_faces {
 
 // The noises of the faces: their overhangs come and go along them, and the beds of their rock
-// wander up and down (shift).
+// wander up and down (shift); the vertical joints of their rock, the edges of cellsX by cellsZ
+// cells over the world drawn by cellSeed, open by the noise joints.
 struct Grain {
     noise::FbmOctaves overhangs;
     noise::FbmOctaves shift;
+    noise::FbmOctaves joints;
+    std::uint64_t cellSeed = 0;
+    std::int64_t cellsX = 1;
+    std::int64_t cellsZ = 1;
+    WorldSize world;
 };
 [[nodiscard]] Grain makeGrain(std::uint64_t seed, const WorldSize& world);
+
+// The vertical joint of the rock at the canonical column (x, z): how far it recedes a face there
+// (0 away from one) and how wide it is. The joints are the edges of jittered cells about 17 m
+// wide (not on the lattice of the tiles), open over about two thirds of their length, 2 to 6 m
+// wide and 0.3 to 2.5 m deep by noises along them: never a regular row of grooves.
+struct Joint {
+    double depth = 0.0;
+    double width = 0.0;
+};
+[[nodiscard]] Joint jointAt(const Grain& grain, double x, double z);
 
 // A face of the walls found at a column, before the Heightfield places it.
 struct PendingFace {

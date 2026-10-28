@@ -1,6 +1,8 @@
 // The rock of the Heightfield in three dimensions (rock_faces.hpp, phase 12A): the samples of
 // samplesAt with the faces the walls lay at their points (the walls of the mountains:
-// heightfield_geography.cpp, wall_faces.hpp), anchored on the relief at the edges of their runs.
+// heightfield_geography.cpp, wall_faces.hpp), anchored on the relief at the column (their foot
+// and top as the walls give them there, over its relief: the relief at the edges of their run
+// would follow the next risers along the face).
 #include "terrain/generation/heightfield.hpp"
 
 #include "heightfield_layers.hpp"
@@ -78,7 +80,8 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
         const std::size_t alongX = neighbors.alongX(i);
         const std::size_t alongZ = neighbors.alongZ(i);
         placeFaces(xs[i], zs[i], memos, site, alongX < xs.size() ? &grounds[alongX] : nullptr,
-                   alongZ < xs.size() ? &grounds[alongZ] : nullptr, leastRun, rock[i]);
+                   alongZ < xs.size() ? &grounds[alongZ] : nullptr, out[i].height, leastRun,
+                   rock[i]);
     }
     if (hydrology_) {
         waterOf(xs, zs, out, memos);
@@ -90,7 +93,7 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
 
 void Heightfield::placeFaces(double x, double z, Memos& memos, const wall_faces::Site& site,
                              const wall_faces::Site* alongX, const wall_faces::Site* alongZ,
-                             float leastRun, RockColumn& rock) const {
+                             float relief, float leastRun, RockColumn& rock) const {
     // The slope of the ground of the walls, from kProbe meters away along x and along z (that of
     // the great forms where the walls end there).
     wall_faces::Site probeX;
@@ -114,14 +117,7 @@ void Heightfield::placeFaces(double x, double z, Memos& memos, const wall_faces:
         if (!(face.run >= leastRun)) {
             continue;
         }
-        const double half = 0.5 * static_cast<double>(face.run);
-        const double toTop = half + face.distance;
-        const double toFoot = half - face.distance;
-        const float top =
-            reliefWith(x - toTop * face.airX, z - toTop * face.airZ, &memos).height;
-        const float foot =
-            reliefWith(x + toFoot * face.airX, z + toFoot * face.airZ, &memos).height;
-        anchorFace(face, foot, top);
+        anchorFace(face, relief + face.foot, std::max(relief + face.foot, relief + face.top));
         if (face.weight > 0.0f) {
             rock.add(face);
         }

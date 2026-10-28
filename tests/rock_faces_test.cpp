@@ -2,9 +2,10 @@
 // bit for bit; within the run of a face the climb of the relief becomes a step, a vertical face at
 // its middle between the ledges of the foot and the top, whatever the relief within the run, and
 // meeting the relief at the edges of the run; its cap juts over the air and its undercut
-// recedes into the rock; its grain moves it by bands; the faces of a valley shape the floor its
-// river carves; the levees fill; a coarse detail fades the narrow runs, overhangs and grain out;
-// the bounds and the share of rock follow the faces; anchoring scales the overhangs.
+// recedes into the rock; its grain moves it by bands, its joints recede it; below full weight it
+// leans toward the relief, a single surface; the faces of a valley shape the floor its river
+// carves; the levees fill; a coarse detail fades the narrow runs, thin lips, overhangs, joints and
+// grain out; the bounds and the share of rock follow the faces; anchoring scales the overhangs.
 #include "terrain/generation/rock_faces.hpp"
 
 #include "test_assert.hpp"
@@ -119,19 +120,84 @@ void testCapAndUndercut() {
                terrain::rockDetailForLod(3).cell == 8.0f);
 }
 
-// A run of less than 3 cells fades out (the columns would alternate in and out of it), weights
-// below 1 blend the step with the relief.
+// A run of less than 3 cells fades out (the columns would alternate in and out of it); a face of
+// weight below 1 leans toward the relief: its top and its foot drawn to the relief of the column
+// by its weight, a lower step.
 void testFades() {
     RockColumn narrow = columnAt(-1.0f);
     narrow.faces[0].run = 2.0f;
     for (const double y : {-4.0, 3.5, 11.25}) {
         TEST_CHECK(terrain::rockDensity(narrow, y, {}) == static_cast<float>(y - narrow.ground));
     }
-    RockColumn half = columnAt(-2.0f);
-    half.faces[0].weight = 0.5f;
-    const double full = terrain::rockDensity(columnAt(-2.0f), 16.0, {});
-    const double relief = 16.0 - static_cast<double>(half.ground);
-    TEST_CHECK(near(terrain::rockDensity(half, 16.0, {}), 0.5 * (full + relief), 1e-4));
+    RockColumn behind = columnAt(-2.0f); // the relief at 14 m
+    behind.faces[0].weight = 0.5f;
+    TEST_CHECK(near(topOf(behind), 0.5 * (14.0 + kTop), 0.6));
+    RockColumn front = columnAt(2.0f); // the relief at 6 m
+    front.faces[0].weight = 0.5f;
+    TEST_CHECK(near(topOf(front), 0.5 * (6.0 + kFoot), 0.6));
+    behind.faces[0].weight = 0.0f;
+    TEST_CHECK(terrain::rockDensity(behind, 16.0, {}) == static_cast<float>(16.0 - behind.ground));
+}
+
+// Below full weight a face leaves out its grain and its overhangs (from 0.75 of its weight they
+// come in): the density of the column rises with the height, a single surface, never a slit of
+// air under a ghost of a lip.
+void testSingleSurfaceBelowFullWeight() {
+    bool rising = true;
+    for (const float distance : {-3.0f, -1.0f, 0.5f, 2.0f, 4.0f}) {
+        for (const float weight : {0.2f, 0.5f, 0.74f}) {
+            RockColumn c = columnAt(distance, 1.5f);
+            RockFace& f = c.faces[0];
+            f.cap = 3.0f;
+            f.capDepth = 6.0f;
+            f.undercut = 2.0f;
+            f.undercutHeight = 5.0f;
+            f.grain = 1.0f;
+            f.joint = 1.5f;
+            f.jointWidth = 4.0f;
+            f.weight = weight;
+            double last = -1e9;
+            for (double y = -10.0; y < 40.0; y += 0.05) {
+                const double d = terrain::rockDensity(c, y, {});
+                rising = rising && d >= last - 1e-5;
+                last = d;
+            }
+        }
+    }
+    TEST_CHECK(rising);
+}
+
+// A vertical joint recedes the face by its depth from its foot to its top, at full weight only;
+// one narrower than 3 cells fades out (4 m cells leave out a joint 4 m wide).
+void testJoint() {
+    RockColumn c = columnAt(-1.0f); // 1 m into the rock
+    c.faces[0].joint = 1.5f;
+    c.faces[0].jointWidth = 4.0f;
+    for (const double y : {6.0, 10.0, 14.0}) {
+        TEST_CHECK(near(terrain::rockDensity(c, y, {}), 0.5, 1e-3));
+    }
+    TEST_CHECK(terrain::rockDensity(c, 10.0, terrain::rockDetailForLod(2)) < 0.0f);
+    c.faces[0].weight = 0.6f;
+    TEST_CHECK(terrain::rockDensity(c, 10.0, {}) < 0.0f);
+}
+
+// A cap thinner than 3 cells at its tip (half its depth) fades out: 2 m deep, 1 m cells leave it
+// out; 6 m deep, they draw it.
+void testThinLip() {
+    RockFace f = faceAt(1.0f); // 1 m into the air
+    f.cap = 3.0f;
+    f.capDepth = 2.0f;
+    RockColumn thin;
+    thin.ground = rampAt(1.0f);
+    thin.uncarved = thin.ground;
+    thin.add(f);
+    TEST_CHECK(terrain::rockDensity(thin, 18.0, {}) > 0.0f);
+    f.capDepth = 6.0f;
+    RockColumn thick;
+    thick.ground = thin.ground;
+    thick.uncarved = thin.ground;
+    thick.add(f);
+    TEST_CHECK(terrain::rockDensity(thick, 18.0, {}) < 0.0f);
 }
 
 // The grain moves the face by bands up to twice its amplitude; cells of 8 m leave it out.
@@ -241,6 +307,9 @@ int main() {
     testStep();
     testCapAndUndercut();
     testFades();
+    testSingleSurfaceBelowFullWeight();
+    testJoint();
+    testThinLip();
     testGrain();
     testCarvedFace();
     testLevee();

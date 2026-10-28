@@ -1,7 +1,8 @@
 // The walls of the mountains in three dimensions in the streamed world (phase 12A): by the K2 the
 // faces stand on many columns, tall ones among them, some with caps and undercuts; on the LOD 0
-// tiles around the tallest face the near-vertical triangles (85 degrees and more) cover far more
-// than on the tiles of the relief alone; and no rock floats there.
+// tiles around the tallest face the near-vertical triangles (85 degrees and more) cover more than
+// 1,000 m2 and twice as much as on the tiles of the relief alone (whose risers may already stand
+// steep there); and no rock floats there.
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/rock_faces.hpp"
 #include "terrain/streaming/lod.hpp"
@@ -116,7 +117,7 @@ void testVerticalTriangles(const Found& found) {
     std::printf("triangles of 85 degrees and more around the tallest face: %.0f m2 (%.0f m2 on "
                 "the relief alone)\n",
                 withRock, alone);
-    TEST_CHECK(withRock > 300.0 && withRock > 5.0 * alone);
+    TEST_CHECK(withRock > 1'000.0 && withRock > 2.0 * alone);
 }
 
 // The solid samples of a box of columns every meter and heights every half meter around the

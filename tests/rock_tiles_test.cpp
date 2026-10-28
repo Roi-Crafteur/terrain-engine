@@ -75,10 +75,11 @@ void testDensityAndGround() {
     TEST_CHECK(ground);
 }
 
-// A tile whose relief climbs from 0 m to 12 m across a riser of run meters along x, its middle at
-// the columns i = 8 (meters per column apart), the rock beyond it (i > 8), and a face from 0 m to
-// 12 m standing at its middle, with a cap of cap meters over its top 6 m.
-TileColumns faceColumns(float run, float metersPerColumn, float cap) {
+// A tile whose relief climbs from 0 m to top meters across a riser of run meters along x, its
+// middle at the columns i = 8 (meters per column apart), the rock beyond it (i > 8), and a face
+// from 0 m to top standing at its middle, with a cap of cap meters over its top capDepth meters.
+TileColumns faceColumns(float run, float metersPerColumn, float cap, float top = 12.0f,
+                        float capDepth = 6.0f) {
     TileColumns columns;
     constexpr auto kCount = static_cast<std::size_t>(terrain::kGridSamples * terrain::kGridSamples);
     columns.continentalness.assign(kCount, 0.5f);
@@ -88,23 +89,23 @@ TileColumns faceColumns(float run, float metersPerColumn, float cap) {
             const auto n = static_cast<std::size_t>(k * terrain::kGridSamples + i);
             RockColumn& c = columns.rock[n];
             const float distance = static_cast<float>(8 - i) * metersPerColumn;
-            c.ground = std::clamp(6.0f - 12.0f * distance / run, 0.0f, 12.0f);
+            c.ground = std::clamp(0.5f * top - top * distance / run, 0.0f, top);
             c.uncarved = c.ground;
             columns.heights.push_back(c.ground);
             if (std::abs(distance) <= 0.5f * run) {
                 terrain::RockFace f;
                 f.foot = 0.0f;
-                f.top = 12.0f;
+                f.top = top;
                 f.distance = distance;
                 f.run = run;
                 f.cap = cap;
-                f.capDepth = 6.0f;
+                f.capDepth = capDepth;
                 c.add(f);
             }
         }
     }
     columns.minHeight = 0.0f;
-    columns.maxHeight = 12.0f;
+    columns.maxHeight = top;
     return columns;
 }
 
@@ -134,23 +135,24 @@ void testSyntheticTile() {
 }
 
 // On a LOD 2 tile stitched to a LOD 3 one, the even samples of the stitched side leave out the cap
-// the coarser tile cannot hold; elsewhere they keep it.
+// the coarser tile cannot hold; elsewhere they keep it. The face is 40 m high, its cap 11.5 m deep
+// over its top 30 m (as thick as 4 m cells draw it, not 8 m ones).
 void testStitchedDetail() {
-    const TileColumns columns = faceColumns(40.0f, 4.0f, 11.5f);
+    const TileColumns columns = faceColumns(40.0f, 4.0f, 11.5f, 40.0f, 30.0f);
     const TileKey key{{0, 0}, 2};
     const terrain::tile::RockTile stitched(columns, {key, terrain::kSeamNegZ},
                                            terrain::tile::latticeOf(key));
     const terrain::tile::RockTile alone(columns, {key, 0}, terrain::tile::latticeOf(key));
     TEST_CHECK(stitched.resamplesSeams() && !alone.resamplesSeams());
-    // Sample (6, 2, 0) of the side: 8 m up, under the cap, 8 m in front of the face; the coarse
+    // Sample (6, 6, 0) of the side: 24 m up, under the cap, 8 m in front of the face; the coarse
     // detail leaves the cap out.
     const int originY = 0;
-    const float coarse = terrain::rockDensity(columns.rock[6], 8.0, terrain::rockDetailForLod(3));
-    TEST_CHECK(stitched.sample(6, 2, 0, originY, false) < 0.0f && coarse > 0.0f);
-    TEST_CHECK(stitched.sample(6, 2, 0, originY, true) == coarse);
-    TEST_CHECK(stitched.levelDensity(originY).at(6, 2, 0) == coarse);
-    TEST_CHECK(stitched.levelDensity(originY).at(6, 2, 1) < 0.0f); // off the side
-    TEST_CHECK(alone.levelDensity(originY).at(6, 2, 0) < 0.0f);
+    const float coarse = terrain::rockDensity(columns.rock[6], 24.0, terrain::rockDetailForLod(3));
+    TEST_CHECK(stitched.sample(6, 6, 0, originY, false) < 0.0f && coarse > 0.0f);
+    TEST_CHECK(stitched.sample(6, 6, 0, originY, true) == coarse);
+    TEST_CHECK(stitched.levelDensity(originY).at(6, 6, 0) == coarse);
+    TEST_CHECK(stitched.levelDensity(originY).at(6, 6, 1) < 0.0f); // off the side
+    TEST_CHECK(alone.levelDensity(originY).at(6, 6, 0) < 0.0f);
 }
 
 } // namespace

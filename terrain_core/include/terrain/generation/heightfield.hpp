@@ -202,11 +202,12 @@ private:
     [[nodiscard]] HeightSample reliefWith(double x, double z, Memos* memos,
                                           wall_faces::Site* site = nullptr) const;
     // Places the faces the walls found at (x, z) along the slope of their ground (what the walls
-    // report 1 m along x and along z: alongX and alongZ, or probes when null) and anchors on the
-    // relief, into rock, those whose run is leastRun meters at least (heightfield_rock.cpp).
+    // report 1 m along x and along z: alongX and alongZ, or probes when null) and anchors them on
+    // relief, the relief at the column, into rock, those whose run is leastRun meters at least
+    // (heightfield_rock.cpp).
     void placeFaces(double x, double z, Memos& memos, const wall_faces::Site& site,
                     const wall_faces::Site* alongX, const wall_faces::Site* alongZ,
-                    float leastRun, RockColumn& rock) const;
+                    float relief, float leastRun, RockColumn& rock) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
     // The warped point of the ridged noise (the warp of the geography when it is enabled).

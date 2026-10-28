@@ -15,3 +15,10 @@ terrain_add_test(rock_walls_test terrain_core)
 terrain_add_test(rock_horizon_test terrain_core)
 # The seams between the tiles of the walls (lod_seams.cpp with the rock).
 terrain_add_test(rock_seams_test terrain_core)
+# The meshes of the tiles of the walls: no opening, no triangle turned against its normals, the
+# same normals across the sides of the tiles.
+terrain_add_test(rock_mesh_test terrain_core)
+# No regular pattern in the rock of the walls: its vertical joints and the light of its faces,
+# with the internals of the faces (src/generation/wall_faces.hpp).
+terrain_add_test(rock_patterns_test terrain_core)
+target_include_directories(rock_patterns_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

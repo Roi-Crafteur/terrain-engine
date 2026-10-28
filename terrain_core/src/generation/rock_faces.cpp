@@ -29,9 +29,12 @@ constexpr std::uint64_t kGrainSalt = 0x677261696e5f3132ULL;
 constexpr double kRunFade = 1.5;
 constexpr double kFeatureLow = 1.5;
 constexpr double kFeatureHigh = 3.0;
+constexpr double kThickness = 0.5;
 // The edges of a step are rounded over kRound meters, kRoundShare of its height at most.
 constexpr double kRound = 3.0;
 constexpr double kRoundShare = 0.25;
+// The grain and the overhangs of a face come in as its drawn weight runs from kFullLow to 1.
+constexpr double kFullLow = 0.75;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -86,19 +89,28 @@ double smoothMin(double a, double b, double r) {
     return -smoothMax(-a, -b, r);
 }
 
-// How much of an overhang of feature meters a detail draws: none under kFeatureLow cells, all of
-// it from kFeatureHigh cells (narrower, the cells would catch it at one column out of two).
+// How much of an overhang of feature meters over extent meters of the height of its face a detail
+// draws: none under kFeatureLow cells, all of it from kFeatureHigh cells, of its reach and of its
+// thickness, kThickness of its extent at its tip (narrower or thinner, the cells would catch it at
+// one column or one height out of two).
 double drawnFeature(float feature, float extent, const RockDetail& detail) {
     if (!(feature > 0.0f) || !(extent > 0.0f)) {
         return 0.0;
     }
-    return feature * smooth(kFeatureLow * detail.cell, kFeatureHigh * detail.cell, feature);
+    const double low = kFeatureLow * detail.cell;
+    const double high = kFeatureHigh * detail.cell;
+    return feature * smooth(low, high, feature) * smooth(low, high, kThickness * extent);
 }
 
 // How far the face lies toward the air at height y of its step: its grain, its cap, full over the
 // top two fifths of its depth and nothing at its bottom (a ceiling rising to the lip), less its
-// undercut, an arch deepest at the foot.
+// undercut, an arch deepest at the foot, and its joint; all of them at full weight only
+// (kFullLow).
 double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
+    const double full = smooth(kFullLow, 1.0, static_cast<double>(drawnWeight(f, detail)));
+    if (!(full > 0.0)) {
+        return 0.0;
+    }
     double offset = grainAt(f, y, detail);
     const double cap = drawnFeature(f.cap, f.capDepth, detail);
     if (cap > 0.0) {
@@ -112,7 +124,11 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
             offset -= undercut * std::sqrt(1.0 - t * t);
         }
     }
-    return offset;
+    // A joint narrower than kFeatureHigh cells fades out (the cells would catch its groove at one
+    // column out of two); a shallow one is drawn: it only moves the face.
+    offset -= static_cast<double>(f.joint) *
+              smooth(kFeatureLow * detail.cell, kFeatureHigh * detail.cell, f.jointWidth);
+    return full * offset;
 }
 
 // The density of the step of a face at height y: the rock below its top behind the face and below
@@ -126,8 +142,21 @@ double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
     return smoothMin(v - f.foot, smoothMax(v - f.top, across, round), round);
 }
 
-// The relief at height y (density y - relief) and the steps of the faces of one kind (carved or
-// not) blended by their weights.
+// A face of weight below 1 leans toward the relief: its foot and top drawn to it by their weight
+// (a lower step, flat at the relief without weight), its overhangs shallower. Blending its
+// density with that of the relief instead would leave a ghost of the step in front of the face,
+// a slit of air where its grain moves it.
+RockFace leaned(const RockFace& f, double relief, double weight) {
+    RockFace out = f;
+    out.foot = static_cast<float>(relief + weight * (static_cast<double>(f.foot) - relief));
+    out.top = static_cast<float>(relief + weight * (static_cast<double>(f.top) - relief));
+    out.capDepth = static_cast<float>(weight * f.capDepth);
+    out.undercutHeight = static_cast<float>(weight * f.undercutHeight);
+    return out;
+}
+
+// The steps of the faces of one kind (carved or not) leaned on the relief by their weights,
+// blended by them; the relief at height y (density y - relief) without them.
 double blendedDensity(const RockColumn& c, double y, bool carved, double relief,
                       const RockDetail& detail) {
     double weights = 0.0;
@@ -139,12 +168,9 @@ double blendedDensity(const RockColumn& c, double y, bool carved, double relief,
             continue;
         }
         weights += weight;
-        steps += weight * stepDensity(f, y, detail);
+        steps += weight * stepDensity(leaned(f, relief, std::min(1.0, weight)), y, detail);
     }
-    if (weights > 1.0) {
-        return steps / weights;
-    }
-    return (1.0 - weights) * (y - relief) + steps;
+    return weights > 0.0 ? steps / weights : y - relief;
 }
 
 } // namespace
