@@ -148,10 +148,13 @@ public:
     void heightsAt(std::span<const double> xs, std::span<const double> zs,
                    std::span<float> out) const;
     // samplesAt with the rock of each point in three dimensions (rock_faces.hpp, phase 12A): the
-    // same samples, bit for bit, and the faces the walls lay at each point. rockAt: one point.
-    // Throws std::invalid_argument unless the spans have one size.
+    // same samples, bit for bit, and the faces the walls lay at each point, but those whose run
+    // is shorter than leastRun meters (a detail that would not draw them: kRunCells of its cells;
+    // the others the same whatever leastRun). rockAt: one point, every face. Throws
+    // std::invalid_argument unless the spans have one size.
     void samplesAt(std::span<const double> xs, std::span<const double> zs,
-                   std::span<HeightSample> out, std::span<RockColumn> rock) const;
+                   std::span<HeightSample> out, std::span<RockColumn> rock,
+                   float leastRun = 0.0f) const;
     [[nodiscard]] RockColumn rockAt(double x, double z) const;
 
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
@@ -198,10 +201,12 @@ private:
     // With a site, what the walls of the mountains report at the point (their faces, phase 12A).
     [[nodiscard]] HeightSample reliefWith(double x, double z, Memos* memos,
                                           wall_faces::Site* site = nullptr) const;
-    // Places the faces the walls found at (x, z) along the slope of their ground and anchors them
-    // on the relief (heightfield_rock.cpp), into rock.
+    // Places the faces the walls found at (x, z) along the slope of their ground (what the walls
+    // report 1 m along x and along z: alongX and alongZ, or probes when null) and anchors on the
+    // relief, into rock, those whose run is leastRun meters at least (heightfield_rock.cpp).
     void placeFaces(double x, double z, Memos& memos, const wall_faces::Site& site,
-                    RockColumn& rock) const;
+                    const wall_faces::Site* alongX, const wall_faces::Site* alongZ,
+                    float leastRun, RockColumn& rock) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
     // The warped point of the ridged noise (the warp of the geography when it is enabled).

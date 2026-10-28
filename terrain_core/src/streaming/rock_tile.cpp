@@ -104,7 +104,9 @@ void RockTile::dropPlants(std::vector<Plant>& plants) const {
     std::erase_if(plants, [&](const Plant& plant) {
         const auto i = static_cast<int>(std::lround((plant.x - lattice_.x0) / spacing));
         const auto k = static_cast<int>(std::lround((plant.z - lattice_.z0) / spacing));
-        return rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast)).faceCount > 0;
+        const RockColumn& c = rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast));
+        return std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
+                           [this](const RockFace& f) { return drawnWeight(f, fine_) > 0.0f; });
     });
 }
 
@@ -158,7 +160,7 @@ std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const 
         const auto i = static_cast<int>(std::lround(v.x / spacing));
         const auto k = static_cast<int>(std::lround(v.z / spacing));
         rock.push_back(rockShare(rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast)),
-                                 originY + static_cast<double>(v.y)));
+                                 originY + static_cast<double>(v.y), fine_));
     }
     return rock;
 }

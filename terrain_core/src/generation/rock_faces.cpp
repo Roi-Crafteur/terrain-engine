@@ -118,13 +118,6 @@ double residual(const RockFace& f, double relief) {
     return relief - line;
 }
 
-// The weight of a face at a detail: faded out over kRunCells to kRunFade times that many cells of
-// run.
-double drawnWeight(const RockFace& f, const RockDetail& detail) {
-    const double least = static_cast<double>(kRunCells) * detail.cell;
-    return f.weight * smooth(least, kRunFade * least, f.run);
-}
-
 // The density of the step of a face at height y of a column whose relief is at relief: the rock
 // below its top behind the face and below its foot in front of it, both lifted by the residual,
 // its edges rounded.
@@ -179,7 +172,9 @@ RockDetail rockDetailForLod(int lod) {
 }
 
 float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
-    if (c.faceCount == 0) {
+    const bool drawn = std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
+                                   [&](const RockFace& f) { return drawnWeight(f, detail) > 0.0f; });
+    if (!drawn) {
         return static_cast<float>(y - c.ground);
     }
     // The relief before the rivers, then the air of their valleys taken out of it (below the
@@ -195,6 +190,11 @@ float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
         density = std::min(density, y - static_cast<double>(c.ground));
     }
     return static_cast<float>(density);
+}
+
+float drawnWeight(const RockFace& f, const RockDetail& detail) {
+    const double least = static_cast<double>(kRunCells) * detail.cell;
+    return static_cast<float>(f.weight * smooth(least, kRunFade * least, f.run));
 }
 
 void anchorFace(RockFace& face, float foot, float top) {
@@ -222,7 +222,7 @@ RockBounds rockBounds(const RockColumn& c) {
     return b;
 }
 
-float rockShare(const RockColumn& c, double y) {
+float rockShare(const RockColumn& c, double y, const RockDetail& detail) {
     float share = 0.0f;
     for (std::size_t i = 0; i < c.faceCount; ++i) {
         const RockFace& f = c.faces[i];
@@ -231,7 +231,7 @@ float rockShare(const RockColumn& c, double y) {
         if (v >= f.foot - kShareBelow && v <= f.top + kShareAbove &&
             distance < std::max(0.0f, f.cap) + kShareAcross &&
             distance > -(std::max(0.0f, f.undercut) + kShareAcross)) {
-            share = std::max(share, std::min(1.0f, f.weight));
+            share = std::max(share, std::min(1.0f, drawnWeight(f, detail)));
         }
     }
     return share;

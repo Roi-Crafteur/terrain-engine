@@ -80,10 +80,14 @@ inline constexpr float kRunCells = 3.0f;
 [[nodiscard]] RockDetail rockDetailForLod(int lod);
 
 // Density at height y of a column, meters, negative in the rock: y - ground bit for bit without a
-// face; with faces, the relief and the steps of the faces of its run blended by their weights, the
+// face the detail draws; with faces, the relief and the steps of the faces of its run blended by their weights, the
 // air the rivers carve in it taken out (their floor stepped by the faces of their valley) and the
 // levees they fill added.
 [[nodiscard]] float rockDensity(const RockColumn& column, double y, const RockDetail& detail);
+
+// How far a detail draws a face: its weight, faded out over runs of kRunCells to 1.5 times that
+// many cells. A column whose faces a detail does not draw is the relief alone there.
+[[nodiscard]] float drawnWeight(const RockFace& face, const RockDetail& detail);
 
 // Sets the heights of the foot and the top of a face to those of the relief at the edges of its
 // run, its overhangs scaled with its height (they were measured on a face as high as top - foot).
@@ -98,9 +102,9 @@ struct RockBounds {
 };
 [[nodiscard]] RockBounds rockBounds(const RockColumn& column);
 
-// The share of bare rock, in [0, 1], of the surface of a column at height y: the weight of its
-// faces on them, under their caps and in their undercuts, 0 elsewhere (the material of the ground
-// decides there).
-[[nodiscard]] float rockShare(const RockColumn& column, double y);
+// The share of bare rock, in [0, 1], of the surface of a column at height y: the weight the
+// detail draws of its faces on them, under their caps and in their undercuts, 0 elsewhere (the
+// material of the ground decides there).
+[[nodiscard]] float rockShare(const RockColumn& column, double y, const RockDetail& detail);
 
 } // namespace terrain

@@ -54,7 +54,9 @@ struct TileColumns {
 };
 
 // The heights in one batch (Heightfield::samplesAt, the bits of heightsAt): neighboring columns
-// share noise cells. With rock, the rock of the columns too (kept only when a face lies there).
+// share noise cells. With rock, the rock of the columns too, kept only when the detail of the
+// tile (cells of lattice.spacing meters, rockDetailForLod) draws a face at one of them: otherwise
+// every column is the relief alone, and so is the tile.
 inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& lattice,
                                  bool rock = false) {
     constexpr auto kCount = static_cast<std::size_t>(kGridSamples * kGridSamples);
@@ -71,10 +73,14 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     std::vector<HeightSample> samples(kCount);
     TileColumns columns;
     if (rock) {
+        const RockDetail detail{static_cast<float>(lattice.spacing)};
         columns.rock.resize(kCount);
-        field.samplesAt(xs, zs, samples, columns.rock);
-        const bool faces = std::any_of(columns.rock.begin(), columns.rock.end(),
-                                       [](const RockColumn& c) { return c.faceCount > 0; });
+        field.samplesAt(xs, zs, samples, columns.rock, kRunCells * detail.cell);
+        const bool faces =
+            std::any_of(columns.rock.begin(), columns.rock.end(), [&](const RockColumn& c) {
+                return std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
+                                   [&](const RockFace& f) { return drawnWeight(f, detail) > 0.0f; });
+            });
         if (!faces) {
             columns.rock.clear();
         }

@@ -68,7 +68,7 @@ void testWithoutFace() {
     TEST_CHECK(exact);
     const terrain::RockBounds b = terrain::rockBounds(c);
     TEST_CHECK(b.low == 12.375f && b.high == 40.0f);
-    TEST_CHECK(terrain::rockShare(c, 12.0) == 0.0f);
+    TEST_CHECK(terrain::rockShare(c, 12.0, {}) == 0.0f);
 }
 
 // Behind the face the rock rises to its top, in front of it the air goes down to its foot; across
@@ -194,8 +194,8 @@ void testBoundsShareAndAdd() {
     const RockColumn c = columnAt(1.0f, 2.0f);
     const terrain::RockBounds b = terrain::rockBounds(c);
     TEST_CHECK(near(b.low, kFoot + 2.0, 1e-4) && near(b.high, kTop + 2.0, 1e-4));
-    TEST_CHECK(terrain::rockShare(c, 12.0) == 1.0f);
-    TEST_CHECK(terrain::rockShare(c, 40.0) == 0.0f);
+    TEST_CHECK(terrain::rockShare(c, 12.0, {}) == 1.0f);
+    TEST_CHECK(terrain::rockShare(c, 40.0, {}) == 0.0f);
     // Past kMaxRockFaces, the faces of the greatest weights are kept.
     RockColumn full;
     for (const float w : {0.9f, 0.2f, 0.7f, 0.6f, 0.1f, 1.0f}) {

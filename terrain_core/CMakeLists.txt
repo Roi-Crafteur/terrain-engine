@@ -360,9 +360,9 @@ target_link_libraries(terrain_export_rivers PRIVATE terrain_core terrain_warning
 # the relief beyond them, and views of the LOD 0 tiles from straight above, at the highest wall by
 # the K2, the fall of 388 m and a gorge near it (see the comment at the top of the tool):
 # terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
-#                     [--view-distance <chunks>] [--only <name>]...
+#                     [--view-distance <chunks>] [--only <name>]... [--no-rock] [--cost]
 add_executable(terrain_export_rock tools/export_rock.cpp tools/rock_places.cpp
-                                   tools/view_places.cpp)
+                                   tools/rock_cost.cpp tools/view_places.cpp)
 target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
 
 # The planet level of a world written to its file, as the game reads it (phase 11B):

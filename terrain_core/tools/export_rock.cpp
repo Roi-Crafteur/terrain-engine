@@ -7,11 +7,13 @@
 // rock.txt) where each view stands, the tiles it draws and the time they take.
 // Usage: terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
 //        [--view-distance <chunks>] [--only <name>]... [--no-rock]
-//        [--at <x> <z> <heading degrees> <tilt> <meters above the ground>]
+//        [--at <x> <z> <heading degrees> <tilt> <meters above the ground>] [--cost]
+// --cost: the cost of the rock in the tiles around a wall, the rivers, the plains and crests.
 // --no-rock: the tiles of the relief alone (a height per column), the views before phase 12A.
 // The planet level is read from --planet (or <output-dir>/planet.bin), built and written there
 // when it does not hold it (about 100 s on 4 cores).
 
+#include "rock_cost.hpp"
 #include "rock_places.hpp"
 
 #include "terrain/generation/planet/planet_level.hpp"
@@ -62,6 +64,7 @@ struct Options {
     int width = 1600;
     int viewDistance = 53; // chunks: the tiles end about 850 m from the eye, as in Unreal
     bool rock = true;      // --no-rock: the tiles of the relief alone, a height per column
+    bool cost = false;     // --cost: the cost of the rock at the places instead of the views
     std::vector<std::string> only;
     // --at <x> <z> <heading degrees> <tilt> <meters above the ground>: a view "at" there, and
     // "at_top" from above, 100 m wide.
@@ -77,6 +80,10 @@ bool parseOptions(int argc, char** argv, Options& o) {
         const std::string flag = argv[i];
         if (flag == "--no-rock") {
             o.rock = false;
+            continue;
+        }
+        if (flag == "--cost") {
+            o.cost = true;
             continue;
         }
         if (flag == "--at") {
@@ -320,6 +327,24 @@ bool writeTop(const World& w, const Options& o, const TopShot& s, Report& r) {
     return terrain::writePng(o.directory / file, terrain::renderTopView(d.meshes, p, o.threads));
 }
 
+// The cost of the rock around the places: a wall (the K2), the foot of the falls (the rivers),
+// the plains of the center of the tests and the crests by the K2; then no view.
+void reportCost(const World& w, Options& o, const Places& places, Report& r) {
+    const terrain::TerrainTiles relief(terrain::kDefaultWorldSeed, {}, {}, std::nullopt, {},
+                                       w.hydrology, false);
+    std::vector<rock_tool::CostPlace> at = {{"plains", -1'245'184.0, -8'500'224.0},
+                                            {"crests", 416'857.0, -11'405'966.0}};
+    for (const Shot& s : places.shots) {
+        if (s.name == "k2_wall_near" || s.name == "fall_foot") {
+            at.push_back({s.name == "k2_wall_near" ? "wall" : "rivers", s.x, s.z});
+        }
+    }
+    for (const rock_tool::CostPlace& p : at) {
+        r.add(rock_tool::costAt(w.tiles, relief, p, o.viewDistance, 3));
+    }
+    o.only = {"none"};
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -328,7 +353,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>] "
                      "[--view-distance <chunks>] [--only <name>]... [--no-rock] "
-                     "[--at <x> <z> <heading> <tilt> <above>]\n",
+                     "[--at <x> <z> <heading> <tilt> <above>] [--cost]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -360,6 +385,9 @@ int main(int argc, char** argv) {
     }
     if (!rock_tool::addGorge(*hydrology, kFallX, kFallZ, places)) {
         r.add("no gorge near the fall of 388 m\n");
+    }
+    if (o.cost) {
+        reportCost(w, o, places, r);
     }
     if (o.at) {
         const std::array<double, 5>& a = *o.at;
