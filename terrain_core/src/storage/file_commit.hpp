@@ -51,6 +51,15 @@ struct CommitOptions {
 void commitFiles(std::span<const FileWrite> writes,
                  std::span<const std::filesystem::path> removals, const CommitOptions& options);
 
+class DurableWriter;
+
+// commitFiles of one file whose new content write writes in pieces into <file>.tmp (a content
+// too large to hold in memory): the same steps, the same guarantees. Whatever write throws
+// leaves file as it was, removes <file>.tmp and is thrown again.
+void commitStreamedFile(const std::filesystem::path& file,
+                        const std::function<void(DurableWriter&)>& write,
+                        const CommitOptions& options);
+
 // Decodes the bytes of file with decode, which throws a StorageError if they are invalid. If
 // file is damaged (Truncated or Corrupt) or missing, decodes <file>.bak instead and returns true.
 // Throws the StorageError of file, with its path in the message (and the error of the backup if

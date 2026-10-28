@@ -363,6 +363,11 @@ ModificationStore TerrainTiles::modifications() const {
     return modifications_;
 }
 
+EditWindow TerrainTiles::editWindow(int minX, int maxX, int minZ, int maxZ) const {
+    const std::shared_lock lock(mutex_);
+    return blocksAround(modifications_, minX, maxX, minZ, maxZ, world());
+}
+
 TileGenerator tileGenerator(const TerrainTiles& tiles) {
     return [&tiles](const TileRequest& request) { return tiles.generate(request); };
 }

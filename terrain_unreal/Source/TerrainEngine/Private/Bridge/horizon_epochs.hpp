@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/streaming/horizon_edits.hpp"
 #include "terrain/streaming/horizon_epoch.hpp"
 #include "terrain/streaming/horizon_levels.hpp"
 #include "terrain/streaming/horizon_sampler.hpp"
@@ -51,20 +52,27 @@ struct EpochCommit {
 // One epoch at a time; its levels move at once when it is committed. Every method must be called
 // from the thread owning the runner; only the jobs run elsewhere. Once idle, the samples only
 // depend on the last position and the sampler, as with HorizonStreamer.
+//
+// With the map of edits the sampler reads, an update with no epoch in flight applies the staged
+// edits and invalidates their areas before it plans (as HorizonStreamer): the next epoch
+// computes again the samples around them, and its commit sends only those bands.
 class HorizonEpochRunner {
 public:
-    // The sampler must outlive the runner. Throws std::invalid_argument without a launcher, or
-    // for maxPiecesInFlight below 1 or pieceSamples 0.
+    // The sampler, and the map of edits it reads if any, must outlive the runner. Throws
+    // std::invalid_argument without a launcher, for maxPiecesInFlight below 1, pieceSamples 0 or
+    // a map the sampler cannot read (HorizonEditMap::validate).
     HorizonEpochRunner(const HorizonSampler& sampler, JobLauncher launch,
-                       PiecePreparer prepare = {}, const HorizonEpochParams& params = {});
+                       PiecePreparer prepare = {}, const HorizonEpochParams& params = {},
+                       HorizonEditMap* edits = nullptr);
     ~HorizonEpochRunner(); // waits for the jobs in flight
 
     HorizonEpochRunner(const HorizonEpochRunner&) = delete;
     HorizonEpochRunner& operator=(const HorizonEpochRunner&) = delete;
 
-    // Commits the epoch in flight once every piece is computed, then plans the next one around
-    // (x, z) when none is in flight and launches its first pieces. Rethrows the error of a job:
-    // the epoch is dropped and planned again by the next update.
+    // Commits the epoch in flight once every piece is computed, then, when none is in flight,
+    // applies the staged edits and plans the next one around (x, z) and launches its first
+    // pieces. Rethrows the error of a job: the epoch is dropped and planned again by the next
+    // update.
     EpochCommit update(double x, double z);
 
     // Waits until every piece of the epoch in flight is computed (or an error).
@@ -86,6 +94,7 @@ private:
     JobLauncher launch_;
     PiecePreparer prepare_;
     HorizonEpochParams params_;
+    HorizonEditMap* edits_;
     HorizonClipmap clipmap_; // owner thread only
 
     // The epoch in flight: the jobs write its pieces and their prepared data, each its own.

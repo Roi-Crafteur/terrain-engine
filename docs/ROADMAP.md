@@ -140,6 +140,24 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - mémoire : échantillons de l'horizon de 16 à 20 octets (10,1 → 12,6 Mo), textures d'eau 1,26 Mo
   sur le GPU (+12,5 % d'octets par bande envoyée), rien de plus aux sommets dans Unreal
 
+### Phase 11D — Niveau Planète créé en 500 Mo
+- création du monde (`terrain_make_planet`, monde par défaut, mesuré sous Linux) : pic de
+  1 084 Mo à 412 Mo sur 4 cœurs (1 053 Mo à 411 Mo sur un cœur), pour les mêmes bits (somme du
+  niveau `26626564570b0d9e`, goldens, montagnes gelées) et le même temps (environ 130 s ici sur
+  4 cœurs) ; tas au plus 390 Mo
+- l'hydrologie n'a plus de tableaux sur toutes les cases : des tableaux par case de terre (37 %
+  des cases, `LandIndex`) ou des listes des seules cases qui ont une valeur (dépressions, lacs,
+  fleuves : quelques %) ; chaque tableau libéré après son dernier usage, les cases compactes du
+  niveau faites au fil de l'eau (`planet::buildLevelParts`, que suivent `openPlanetLevel` et le
+  jeu ; `buildPlanet` garde tout pour les tests)
+- climat sur une seule grille : la pluie remplace la surface ligne par ligne, la pluie des
+  tempêtes calculée en flux (17 Mo au lieu de 500), les flous sur place
+- mer et seuils sans tableau de composantes ni liste triée des cases des dépressions
+- fichier du niveau écrit en flux (mêmes octets), relu sans garder le niveau construit ;
+  l'outil rend au système, sous Linux, chaque grand bloc libéré, comme Windows
+- `terrain_make_planet --memory` : temps, tas et mémoire du processus de chaque étape ;
+  `planet_memory_test` (petit monde : au plus 32 octets par case, contre 40 à 46 avant)
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
@@ -171,7 +189,7 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - deltas, estuaires, grands lacs, méandres, bras morts
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
-- 11A, 11R, 11R bis et 11B : faits (voir « Réalisé »)
+- 11A, 11R, 11R bis, 11B et 11D : faits (voir « Réalisé »)
 - tâche 7b, le niveau de l'eau pour Unreal : faite (voir « Réalisé ») ; reste côté Unreal le
   matériau qui le lit, pour dessiner les lacs et les fleuves à leur niveau (aujourd'hui toute
   l'eau est encore dessinée à 0 m)
@@ -182,7 +200,6 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   (le damier restait avec `DetailNearM = 0`) mais les mailles de 8 m du niveau 0 de l'horizon,
   qui traversaient les tuiles au-delà de la bande où sa descente s'efface ; le sol du niveau 0
   est repoussé de 1 m en profondeur là où les tuiles peuvent le couvrir
-- création du niveau Planète en 500 Mo : phase 11D
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
 - sans les cols du relief fin entre les cellules du niveau Planète, les fleuves de la 11B
   traversent les crêtes des montagnes en gorges (un tronçon de montagne sur trois creuse plus
@@ -200,15 +217,6 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - les fleuves de la 11B suivent alors ces vallées : plus de gorges à travers les crêtes, peu
   de lacs (les lacs de haut bassin seulement), des lits de moins de 300 m
 - nouvelle validation des montagnes à l'œil, dans Unreal, avec le personnage
-
-### Phase 11D — Création du niveau Planète en 500 Mo
-- aujourd'hui la création du monde (`terrain_make_planet`) monte à 1 080 Mo sur 4 cœurs
-  (1 050 Mo sur un cœur), quand le jeu chargé n'en demande que 300 (372 Mo en jeu)
-- mémoire après chaque étape : relief 258 Mo, climat 450, ordre 603, hiérarchie 848,
-  lacs 725, écoulement 848, fleuves 1 022
-- but : 500 Mo au plus, les mêmes bits (somme du niveau et goldens identiques)
-- pistes : libérer les tableaux de chaque étape dès qu'elle est finie, des tableaux plus
-  compacts pour l'ordre et la hiérarchie, le fichier écrit en flux comme il est lu
 
 ### Phase 12 — Monde streamé unifié
 - régions et chunks générés à la volée, mis en cache, contraints par le niveau Planète
@@ -235,8 +243,13 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 ### Phase 13 — Horizon lointain
 - vue jusqu'à l'horizon réel (300 km et plus depuis un sommet)
 - core : fait (voir « Réalisé »)
-- modifications des joueurs visibles de loin : toutes si possible, sinon les grosses
-  (format du résumé à définir avec la phase 15)
+- modifications des joueurs visibles de loin : fait — tirées des masques de la phase 15, à
+  chaque niveau ; le niveau 0 montre sur chaque colonne de 8 m le sommet des tuiles LOD 3 (pas de
+  marche au raccord), les niveaux plus grossiers le changement moyen du sol de leurs mailles,
+  borné par le sol modifié quand toute la maille l'est (un fond rasé reste plat, crêtes
+  comprises) ; appliquées entre deux époques, seules les bandes autour sont recalculées et
+  envoyées, chemins CPU et GPU ; une grosse explosion se voit de loin en quelques millisecondes
+  (`horizon_edits_cost_test`) ; essai dans Unreal : `Terrain.Edit`
 - Unreal : fait — rendu en clipmap (une texture par niveau, envoi des seules bandes
   changées, géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles,
   jupe sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure ; ciel qui suit la
@@ -351,15 +364,20 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
     la même tuile intacte, une tuile au milieu d'une zone rasée 1,2 à 2 fois, une tuile sur la
     falaise qui la borde 4 à 6 fois (4 à 28 fois plus de surface)
   - les plantes générées dont le sol est retiré disparaissent, de près comme de loin
-  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : format
-    seulement, pas encore branché sur l'horizon
+  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : branché sur
+    l'horizon (voir phase 13) ; les cellules de 4 m restent un format d'envoi, l'horizon lit le
+    sol des colonnes LOD 3
   - coutures entre LOD fermées au bord des cratères et dans les grottes : la face fine suit les
     segments droits que Marching Cubes trace sur la face grossière (avant : jusqu'à 0,45 m entre
     LOD 0 et 1, 1,3 m entre 1 et 2, 2,8 m entre 2 et 3, 0,62 m dans les grottes ; après : au
     plus 0,25 mm). Le terrain naturel sans grottes garde ses bits ; toute tuile Marching Cubes en
     profite (`stitchSeams` puis `stitchedMesh`, `lod_seams.cpp`)
-  - reste : casser et poser en jeu dans Unreal, effets de destruction, branchement du résumé
-    sur l'horizon
+  - les modifications se font sur un fil à part (`Bridge/edit_thread`) : le thread de jeu ne fait
+    que reprendre celles qui sont finies (quelques millisecondes pour une montagne rasée), avec
+    les bits du chemin synchrone
+  - reste : casser et poser en jeu dans Unreal (en attendant : `Terrain.Edit`, `Apply Volume
+    Edit`), effets de destruction, normales de détail de l'horizon qui suivent les modifications
+    (aujourd'hui : les pentes de la grille sur les mailles modifiées)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

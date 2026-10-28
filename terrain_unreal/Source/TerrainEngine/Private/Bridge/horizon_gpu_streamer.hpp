@@ -78,12 +78,19 @@ struct HorizonGpuUpdate {
 // window, their trim or their image nearest to the player changes (a world turn, the origin
 // rebasing). The fixed grids, the textures and the material belong to the renderer. Every method
 // must be called from the thread owning the streamer.
+//
+// With the edits of the session (TerrainSession::horizonEdits), the samples show the edited
+// ground: the epochs apply the staged edits between them and send the bands they change. The
+// detail normals are those of the generated relief: where at least half of a sample is edited,
+// its detail texels hold the slopes of the grid, which the edits shape (followEditedGrid).
 class HorizonGpuStreamer {
 public:
-    // field and ecology (those of the tiles) must outlive the streamer and share the world. Throws
-    // std::invalid_argument for invalid parameters, or tiles that do not end inside level 0.
+    // field and ecology (those of the tiles) and the edits must outlive the streamer and share the
+    // world. Throws std::invalid_argument for invalid parameters, or tiles that do not end inside
+    // level 0.
     HorizonGpuStreamer(const Heightfield& field, const Ecology& ecology, const WorldSize& world,
-                       const HorizonGpuParams& params, JobLauncher launch);
+                       const HorizonGpuParams& params, JobLauncher launch,
+                       HorizonEditMap* edits = nullptr);
 
     HorizonGpuStreamer(const HorizonGpuStreamer&) = delete;
     HorizonGpuStreamer& operator=(const HorizonGpuStreamer&) = delete;
@@ -115,11 +122,18 @@ private:
     [[nodiscard]] LevelPlacement placementOf(int level, const CorePoint& observer,
                                              const UnrealFrame& frame) const;
     void placeLevels(const CorePoint& observer, const UnrealFrame& frame, HorizonGpuUpdate& result);
+    [[nodiscard]] bool followsGrid(int level, int i, int k) const;
+    void writeGridSlopes(const HorizonLevel& level, int i, int k, NormalRegion& region, int x,
+                         int z) const;
+    void followEditedGrid(std::vector<NormalRegion>& regions) const;
+    void refreshEditedNeighbors(const HorizonChanges& changes,
+                                std::vector<NormalRegion>& regions) const;
 
     HorizonParams horizonParams_;
     HorizonGpuParams params_;
     TileHole hole_;
     double radius_;
+    HorizonEditMap* edits_;
     HorizonSampler sampler_;
     std::vector<std::optional<LevelPlacement>> shown_;
     std::optional<std::chrono::steady_clock::time_point> epochStart_;

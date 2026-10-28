@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <deque>
 #include <stdexcept>
 
 namespace terrain::planet {
@@ -60,36 +61,30 @@ float cellHeight(const Heightfield& field, const PlanetGrid& grid, int i, int j,
     return static_cast<float>(sum / (samples * samples));
 }
 
-// Sizes of the 8-connected below-sea components, by their first cell (lowest index), and the
-// component of each below-sea cell (-1 elsewhere).
-struct Components {
-    std::vector<std::int32_t> of;
-    std::vector<std::size_t> size;
-};
+// Marks of markOcean during its floods, in its result: kLand and kOcean are final.
+constexpr std::uint8_t kUnvisited = 3;
+constexpr std::uint8_t kVisited = 4;
 
-Components belowSeaComponents(const PlanetGrid& grid, const std::vector<std::uint8_t>& below) {
-    Components result;
-    result.of.assign(grid.cells(), -1);
-    std::vector<std::size_t> queue;
-    for (std::size_t start = 0; start < grid.cells(); ++start) {
-        if (below[start] == 0 || result.of[start] >= 0) {
-            continue;
-        }
-        const auto id = static_cast<std::int32_t>(result.size.size());
-        queue.assign(1, start);
-        result.of[start] = id;
-        for (std::size_t head = 0; head < queue.size(); ++head) {
-            for (int k = 0; k < 8; ++k) {
-                const std::size_t n = grid.neighbor(queue[head], k);
-                if (below[n] != 0 && result.of[n] < 0) {
-                    result.of[n] = id;
-                    queue.push_back(n);
-                }
+// Floods the 8-connected component of start whose cells are marked from, marking them to; its
+// size. The queue frees what it has passed: it holds the front of the flood, not the component.
+std::size_t floodComponent(const PlanetGrid& grid, std::vector<std::uint8_t>& mark,
+                           std::size_t start, std::uint8_t from, std::uint8_t to) {
+    std::deque<std::uint32_t> queue{static_cast<std::uint32_t>(start)};
+    mark[start] = to;
+    std::size_t size = 0;
+    while (!queue.empty()) {
+        const std::size_t cell = queue.front();
+        queue.pop_front();
+        ++size;
+        for (int k = 0; k < 8; ++k) {
+            const std::size_t n = grid.neighbor(cell, k);
+            if (mark[n] == from) {
+                mark[n] = to;
+                queue.push_back(static_cast<std::uint32_t>(n));
             }
         }
-        result.size.push_back(queue.size());
     }
-    return result;
+    return size;
 }
 
 } // namespace
@@ -170,17 +165,21 @@ std::vector<std::uint8_t> markOcean(const PlanetGrid& grid, const std::vector<fl
 
 std::vector<std::uint8_t> markOcean(const PlanetGrid& grid, const std::vector<float>& height,
                                     const std::vector<std::uint8_t>& sea, double minOceanArea) {
-    const Components components = belowSeaComponents(grid, sea);
-    std::vector<std::uint8_t> ocean(grid.cells(), kLand);
-    bool any = false;
+    // Each component is flooded once to count it, then again to mark it ocean or land.
+    std::vector<std::uint8_t> ocean(grid.cells());
     for (std::size_t c = 0; c < grid.cells(); ++c) {
-        const std::int32_t id = components.of[c];
-        if (id >= 0 &&
-            static_cast<double>(components.size[static_cast<std::size_t>(id)]) * grid.cellArea() >=
-                minOceanArea) {
-            ocean[c] = kOcean;
-            any = true;
+        ocean[c] = sea[c] != 0 ? kUnvisited : std::uint8_t{kLand};
+    }
+    bool any = false;
+    for (std::size_t start = 0; start < grid.cells(); ++start) {
+        if (ocean[start] != kUnvisited) {
+            continue;
         }
+        const std::size_t size = floodComponent(grid, ocean, start, kUnvisited, kVisited);
+        const bool big = static_cast<double>(size) * grid.cellArea() >= minOceanArea;
+        const std::uint8_t kind = big ? std::uint8_t{kOcean} : std::uint8_t{kLand};
+        floodComponent(grid, ocean, start, kVisited, kind);
+        any = any || big;
     }
     if (!any && grid.cells() > 0) {
         std::size_t lowest = 0;

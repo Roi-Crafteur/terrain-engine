@@ -182,6 +182,27 @@ void commitFiles(std::span<const FileWrite> writes, std::span<const fs::path> re
     syncDirectories(directories);
 }
 
+void commitStreamedFile(const fs::path& file, const std::function<void(DurableWriter&)>& write,
+                        const CommitOptions& options) {
+    const std::array<FileWrite, 1> writes = {FileWrite{file, {}}};
+    std::set<fs::path> touched;
+    try {
+        if (options.createDirectories) {
+            createMissing(directoryOf(file), touched);
+        }
+        DurableWriter out(withSuffix(file, kTemporarySuffix));
+        write(out);
+        out.finish();
+    } catch (...) {
+        removeTemporaries(writes);
+        throw;
+    }
+    touched.insert(directoryOf(file));
+    replaceFiles(writes, {}, options.keepBackups, touched);
+    const std::vector<fs::path> directories(touched.begin(), touched.end());
+    syncDirectories(directories);
+}
+
 bool decodeWithBackup(const fs::path& file,
                       const std::function<void(std::span<const std::uint8_t>)>& decode) {
     const fs::path backup = withSuffix(file, kBackupSuffix);

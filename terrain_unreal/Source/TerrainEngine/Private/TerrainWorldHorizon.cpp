@@ -124,7 +124,8 @@ bool ATerrainWorld::StartGpuHorizon()
 	{
 		State->HorizonGpu = std::make_unique<terrain::unreal::HorizonGpuStreamer>(
 			Session.tiles().heightfield(), Session.tiles().ecology(), Stream.world,
-			MakeHorizonGpuParams(*this, Stream.lod), LowPriorityTasks());
+			MakeHorizonGpuParams(*this, Stream.lod), LowPriorityTasks(),
+			&Session.horizonEdits());
 	}
 	catch (const std::exception& Exception)
 	{
@@ -171,7 +172,7 @@ void ATerrainWorld::StartCpuHorizon()
 	{
 		State->Horizon = std::make_unique<terrain::unreal::HorizonMeshStreamer>(
 			Session.tiles().heightfield(), Session.tiles().ecology(), Stream.world,
-			MakeHorizonParams(*this, Stream.lod));
+			MakeHorizonParams(*this, Stream.lod), &Session.horizonEdits());
 	}
 	catch (const std::exception& Exception)
 	{

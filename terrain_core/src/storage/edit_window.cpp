@@ -100,6 +100,39 @@ std::vector<std::pair<int, int>> EditWindow::editedSpans() const {
     return spans;
 }
 
+std::optional<std::pair<int, int>> EditWindow::editedSpan(int minX, int maxX, int minZ,
+                                                          int maxZ) const {
+    minX = std::max(minX, minX_);
+    maxX = std::min(maxX, maxX_);
+    minZ = std::max(minZ, minZ_);
+    maxZ = std::min(maxZ, maxZ_);
+    std::optional<std::pair<int, int>> span;
+    for (std::int32_t cz = minZ >> kSectionShift; cz <= maxZ >> kSectionShift; ++cz) {
+        for (std::int32_t cx = minX >> kSectionShift; cx <= maxX >> kSectionShift; ++cx) {
+            const Column* found = column(cx, cz);
+            if (found == nullptr) {
+                continue;
+            }
+            const int x0 = cx * kSectionSide;
+            const int z0 = cz * kSectionSide;
+            const int lx0 = std::max(minX, x0) - x0;
+            const int lx1 = std::min(maxX, x0 + kSectionSide - 1) - x0;
+            const int lz0 = std::max(minZ, z0) - z0;
+            const int lz1 = std::min(maxZ, z0 + kSectionSide - 1) - z0;
+            for (std::size_t s = 0; s < found->ys.size(); ++s) {
+                if (const auto layers = found->sections[s].editedLayers(lx0, lx1, lz0, lz1)) {
+                    const int base = found->ys[s] * kSectionSide;
+                    const int low = base + layers->first;
+                    const int high = base + layers->second;
+                    span = std::pair{span ? std::min(span->first, low) : low,
+                                     span ? std::max(span->second, high) : high};
+                }
+            }
+        }
+    }
+    return span;
+}
+
 bool EditWindow::filled(BlockCoord min, BlockCoord max) const {
     if (!inArea(min.x, min.z) || !inArea(max.x, max.z)) {
         return false;

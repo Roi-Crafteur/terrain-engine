@@ -15,7 +15,10 @@ namespace terrain {
 // columns of blocks), what a far view can show of them. The footprint of a sample of the
 // horizon (horizon_sampler.hpp: CellFootprint) is the square of its pitch (8 m << level)
 // centered on a multiple of the pitch: its edges fall on multiples of 4 m, so the cells it
-// covers make it up exactly, on every level. Format only: the horizon does not read it yet.
+// covers make it up exactly, on every level. The horizon does not read it: it shows what the
+// coarsest tiles show, which only see the blocks within 1 m of their lattice of 8 m
+// (horizon_edits.hpp); this summary of the masks themselves is a format to send them where they
+// are not.
 inline constexpr int kSummaryCellBlocks = 4;
 inline constexpr int kSummaryCellsPerChunk = kSectionSide / kSummaryCellBlocks;
 inline constexpr int kSummaryCellsPerRegion = kRegionChunks * kSummaryCellsPerChunk;

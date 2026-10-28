@@ -218,7 +218,7 @@ void testInvalidations() {
         const bool inside =
             std::abs(footprint.centerX - kX) < 300.0 && std::abs(footprint.centerZ - kZ) < 300.0;
         return inside && edits->raise != 0.0f
-                   ? std::optional<terrain::EditSummary>{{edits->raise, std::nullopt}}
+                   ? std::optional<terrain::EditSummary>{{edits->raise, std::nullopt, std::nullopt}}
                    : std::nullopt;
     };
     const HorizonSampler sampler(world.field, world.ecology, params, source);

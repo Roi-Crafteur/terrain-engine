@@ -10,6 +10,37 @@ namespace terrain {
 
 namespace {
 
+template <class T> std::size_t bytesOf(const std::vector<T>& v) {
+    return v.capacity() * sizeof(T);
+}
+
+} // namespace
+
+std::int32_t PlanetCells::lakeAt(std::size_t cell) const {
+    if ((bits[cell] & kLakeBit) == 0) {
+        return -1;
+    }
+    const auto it = std::lower_bound(lakeCells.begin(), lakeCells.end(), cell,
+                                     [](const LakeCell& a, std::size_t c) { return a.cell < c; });
+    return it->lake;
+}
+
+const PlanetCells::RiverCell* PlanetCells::riverAt(std::size_t cell) const {
+    if ((bits[cell] & kRiverBit) == 0) {
+        return nullptr;
+    }
+    const auto it = std::lower_bound(riverCells.begin(), riverCells.end(), cell,
+                                     [](const RiverCell& a, std::size_t c) { return a.cell < c; });
+    return &*it;
+}
+
+std::size_t PlanetCells::memoryBytes() const {
+    return bytesOf(rowTemperature) + bytesOf(elevation) + bytesOf(precipitation) + bytesOf(bits) +
+           bytesOf(lakeCells) + bytesOf(riverCells);
+}
+
+namespace planet {
+
 std::int16_t roundedElevation(float height) {
     const double rounded = std::floor(static_cast<double>(height) + 0.5);
     return static_cast<std::int16_t>(std::clamp(rounded, -32768.0, 32767.0));
@@ -42,37 +73,6 @@ std::vector<PlanetCells::RiverCell> riverCellsOf(const RiverGraph& graph) {
     cells.shrink_to_fit();
     return cells;
 }
-
-template <class T> std::size_t bytesOf(const std::vector<T>& v) {
-    return v.capacity() * sizeof(T);
-}
-
-} // namespace
-
-std::int32_t PlanetCells::lakeAt(std::size_t cell) const {
-    if ((bits[cell] & kLakeBit) == 0) {
-        return -1;
-    }
-    const auto it = std::lower_bound(lakeCells.begin(), lakeCells.end(), cell,
-                                     [](const LakeCell& a, std::size_t c) { return a.cell < c; });
-    return it->lake;
-}
-
-const PlanetCells::RiverCell* PlanetCells::riverAt(std::size_t cell) const {
-    if ((bits[cell] & kRiverBit) == 0) {
-        return nullptr;
-    }
-    const auto it = std::lower_bound(riverCells.begin(), riverCells.end(), cell,
-                                     [](const RiverCell& a, std::size_t c) { return a.cell < c; });
-    return &*it;
-}
-
-std::size_t PlanetCells::memoryBytes() const {
-    return bytesOf(rowTemperature) + bytesOf(elevation) + bytesOf(precipitation) + bytesOf(bits) +
-           bytesOf(lakeCells) + bytesOf(riverCells);
-}
-
-namespace planet {
 
 PlanetCells compactCells(const PlanetBuild& build) {
     PlanetCells cells;

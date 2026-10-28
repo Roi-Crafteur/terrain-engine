@@ -78,11 +78,12 @@ struct HorizonUpdate {
 // its image nearest to it, and only moves when that image changes.
 class HorizonMeshStreamer {
 public:
-    // field and ecology (those of the tiles) must outlive the streamer and share the world.
+    // field and ecology (those of the tiles) and the edits (TerrainSession::horizonEdits, whose
+    // staged edits the epochs apply between them) must outlive the streamer and share the world.
     // Throws std::invalid_argument for invalid parameters, or tiles that do not end inside level
     // 0 (tileHole).
     HorizonMeshStreamer(const Heightfield& field, const Ecology& ecology, const WorldSize& world,
-                        const HorizonMeshParams& params);
+                        const HorizonMeshParams& params, HorizonEditMap* edits = nullptr);
 
     HorizonMeshStreamer(const HorizonMeshStreamer&) = delete;
     HorizonMeshStreamer& operator=(const HorizonMeshStreamer&) = delete;
@@ -108,6 +109,7 @@ private:
     [[nodiscard]] BodyShape shapeOf(int level) const;
     [[nodiscard]] HorizonUpload body(int level, const UnrealPoint& origin);
     [[nodiscard]] HorizonUpload trim(int level, const UnrealPoint& origin) const;
+    [[nodiscard]] bool writesUnderFiner(const HorizonLevelChange& change) const;
     void convertChanges(const HorizonChanges& changes, const CorePoint& observer,
                         const UnrealFrame& frame, HorizonUpdate& result);
     void placeLevels(const CorePoint& observer, const UnrealFrame& frame, HorizonUpdate& result);

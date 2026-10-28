@@ -46,7 +46,7 @@ template <class Bed> Terrain riverTerrain(float seaFloor, Bed bed, float ground 
 std::vector<RiverFeature> featuresOf(const Terrain& t,
                                      const terrain::PlanetFeatureParams& p = params()) {
     const planet_test::Network n = planet_test::network(t, planet_test::sources(t, {{25, 3}}));
-    return terrain::planet::findRiverFeatures(t.grid, t.height, t.ocean, n.graph, p);
+    return terrain::planet::findRiverFeatures(t.grid, t.height, *t.land, n.graph, p);
 }
 
 std::size_t count(const std::vector<RiverFeature>& features, RiverFeatureKind kind) {

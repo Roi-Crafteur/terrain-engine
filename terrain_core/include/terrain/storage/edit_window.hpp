@@ -34,6 +34,10 @@ public:
 
     // The lowest and highest y of the edited blocks of each section of the area, by section.
     [[nodiscard]] std::vector<std::pair<int, int>> editedSpans() const;
+    // The lowest and highest y of the edited blocks centered in [minX, maxX] x [minZ, maxZ] and
+    // in the area, or nullopt if there are none.
+    [[nodiscard]] std::optional<std::pair<int, int>> editedSpan(int minX, int maxX, int minZ,
+                                                                int maxZ) const;
 
     // True if every block of [min, max] lies in a filled section, all filled with one edit: then
     // no lattice point among them but on the edge of the box changes sign whatever the terrain.

@@ -12,14 +12,9 @@ namespace {
 
 constexpr std::size_t kMinBlock = 1u << 16; // cells per sorted block, at least
 
-} // namespace
-
-std::vector<std::uint32_t> sortCells(const std::vector<float>& height, int threads) {
-    const std::size_t count = height.size();
-    std::vector<std::uint32_t> order(count);
-    for (std::size_t c = 0; c < count; ++c) {
-        order[c] = static_cast<std::uint32_t>(c);
-    }
+// Sorts cells in the total order: in blocks on up to threads threads, then merged.
+void sortInOrder(std::vector<std::uint32_t>& order, const std::vector<float>& height, int threads) {
+    const std::size_t count = order.size();
     const auto less = [&height](std::uint32_t a, std::uint32_t b) {
         return lowerCell(height, a, b);
     };
@@ -51,18 +46,41 @@ std::vector<std::uint32_t> sortCells(const std::vector<float>& height, int threa
             }
         });
     }
+}
+
+} // namespace
+
+std::vector<std::uint32_t> sortCells(const std::vector<float>& height, int threads) {
+    std::vector<std::uint32_t> order(height.size());
+    for (std::size_t c = 0; c < order.size(); ++c) {
+        order[c] = static_cast<std::uint32_t>(c);
+    }
+    sortInOrder(order, height, threads);
     return order;
 }
 
-std::vector<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::vector<float>& height,
-                                           const std::vector<std::uint8_t>& ocean, int threads) {
-    std::vector<std::uint8_t> receiver(grid.cells(), kNoNeighbor);
+std::vector<std::uint32_t> sortLandCells(const std::vector<float>& height, const LandIndex& land,
+                                         int threads) {
+    std::vector<std::uint32_t> order(land.landCells());
+    land.forEachLand([&order](std::size_t cell, std::size_t slot) {
+        order[slot] = static_cast<std::uint32_t>(cell);
+    });
+    sortInOrder(order, height, threads);
+    return order;
+}
+
+LandValues<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::vector<float>& height,
+                                          const std::shared_ptr<const LandIndex>& land,
+                                          int threads) {
+    LandValues<std::uint8_t> receiver(land, kNoNeighbor, kNoNeighbor);
+    std::vector<std::uint8_t>& values = receiver.values();
     parallelRows(grid.nz, resolveThreads(threads), [&](int first, int last) {
         for (std::size_t c = grid.index(0, first); c < grid.index(0, last); ++c) {
-            if (ocean[c] != kLand) {
+            if (!land->land(c)) {
                 continue;
             }
             double best = -1.0;
+            std::uint8_t to = kNoNeighbor;
             for (int k = 0; k < 8; ++k) {
                 const std::size_t n = grid.neighbor(c, k);
                 if (!lowerCell(height, n, c)) {
@@ -74,9 +92,10 @@ std::vector<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::ve
                                          : drop;
                 if (slope > best) {
                     best = slope;
-                    receiver[c] = static_cast<std::uint8_t>(k);
+                    to = static_cast<std::uint8_t>(k);
                 }
             }
+            values[land->slot(c)] = to;
         }
     });
     return receiver;

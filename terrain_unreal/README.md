@@ -170,9 +170,11 @@ terrain_unreal/
   Source/TerrainEngine/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
+    Public/TerrainEdits.h      ETerrainEditShape, ETerrainEditMode
     Private/
       TerrainWorld.cpp         cycle de vie, tick, démarrage d'un pion, mesures
       TerrainWorldHorizon.cpp  l'horizon lointain d'ATerrainWorld
+      TerrainWorldEdits.cpp    les modifications pour essayer (section 15), Terrain.Edit
       TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
       TerrainHorizonClipmap.*  l'horizon GPU : textures, grilles fixes, placements
       TerrainWorldAtmosphere.cpp, TerrainAtmosphereFollower.*  le ciel qui suit la caméra
@@ -533,3 +535,54 @@ tuiles et de l'horizon CPU dans le canal UV 0, et dans une texture d'eau par niv
 (`HorizonWater`, `CoarseWater`). Aucun matériau ne le lit encore : l'image ne change pas. Il faut
 un fichier planète (`PlanetFile`, section 5). Formats, lecture, mémoire et limites :
 [`WATER_LEVEL.md`](WATER_LEVEL.md).
+
+## 15. Les modifications vues de loin (phase 15)
+
+En attendant « casser et poser » en jeu, des modifications pour essayer : les tuiles au-dessus sont
+générées à nouveau (elles restent montrées jusqu'à leur nouvelle version), et l'horizon lointain les
+montre, en GPU comme en CPU.
+
+- **Console** (en jeu, `²` ou `` ` ``) : `Terrain.Edit` modifie le sol devant la caméra, à une
+  distance comptée à l'horizontale le long de sa direction, en mètres :
+  - `Terrain.Edit raze 5000 1000 500` : un carré de 1 000 m de côté à 5 km, rasé jusqu'à 500 m
+    sous son point le plus bas (sans profondeur : 10 m) ;
+  - `Terrain.Edit blast 2000 32` : une explosion de 32 m de rayon sur le sol, à 2 km ;
+  - `Terrain.Edit heap 2000 60` : un tas de roche, une sphère de 60 m de rayon posée un tiers sous
+    le sol.
+  La commande rend la main tout de suite : la modification part sur le fil de modifications de
+  la session (`Bridge/edit_thread.hpp`), qui calcule son volume, l'écrit dans les masques des
+  tuiles puis lit le sol modifié pour l'horizon. À chaque image, le thread de jeu reprend les
+  modifications finies, dans leur ordre : il fait générer à nouveau leurs tuiles et les passe à
+  l'horizon (`TickTerrainEdits`). Les bits sont ceux du chemin synchrone. Le log
+  (`LogTerrainEngine`) note la mise en file, puis, une fois finie, les chunks à générer, le
+  temps passé sur le fil de modifications et celui passé sur le thread de jeu.
+- **Blueprint** : `Apply Volume Edit` (boîte, sphère ou explosion, retirer, ajouter ou rendre le
+  sol d'origine, en coordonnées du monde Unreal) et `Edit Ahead` (comme la console). Elles
+  renvoient vrai quand la modification est en file ; un refus arrive dans le log.
+- **L'horizon** (`terrain_core` `streaming/horizon_edits.hpp`) : le niveau 0 montre sur chaque
+  colonne de 8 m le sommet de la tuile LOD 3 (au raccord : pas de marche ; un fond rasé paraît 0,5 à
+  7,5 m plus haut que le vrai, comme sur les tuiles) ; chaque niveau plus grossier, le changement
+  moyen du sol de ses mailles, borné par le sol modifié quand toute la maille l'est (un fond rasé
+  reste plat, crêtes comprises). La modification est appliquée entre deux époques : l'époque
+  suivante ne recalcule et n'envoie que les bandes autour d'elle. Le matériau ne change pas (le sol
+  d'origine, comme les tuiles).
+- **Normales de détail** (GPU) : elles sont calculées sans les modifications ; là où au moins la
+  moitié d'une maille est modifiée, ses texels prennent les pentes de la grille, qui suit les
+  modifications (interpolées entre les 4 échantillons de sa maille, comme la pente lissée des
+  tuiles). Jamais « en attente » : le filtre bilinéaire du matériau mêlerait un texel en attente
+  aux texels voisins, et un faible poids donnerait une pente prise pour vraie, une normale
+  couchée éclairée par le ciel seul (une ligne couleur ciel le long des coins d'un bloc rasé).
+- **Coût mesuré** (Linux, `horizon_edits_cost_test`) : une explosion de 64 m se voit de loin 3 à
+  4 ms après elle (sans époque en vol ; sinon après la fin de celle-ci) ; une montagne rasée
+  (1 km × 1 km × 500 m) : environ 0,25 s pour lire son sol, 0,1 à 0,2 s pour son époque si le
+  niveau 0 la contient, 1 Mo de résumé. Le rasage du K2 (`Terrain.Edit raze 11300 1000 500`
+  depuis sa vallée, `unreal_horizon_edits_cost_test`) : la commande prend 0,03 ms sur le thread
+  de jeu, puis au plus 6,4 ms par image (reprendre la modification : 1,5 ms) ; il se voit de loin
+  20 ms après la fin du fil de modifications.
+- **Limites** : entre deux colonnes, un mur de modification coupe le bord des tuiles plus raide
+  que la grille de 8 m de l'horizon : un écart de quelques mètres au plus, sur une maille (pas de
+  trou : l'horizon passe sous les tuiles) ; sous la bande des tuiles LOD 3, l'horizon peut
+  dépasser de la paroi d'un cratère de plus de `HorizonDropCm` ; un tas sorti de la mer reste
+  dessiné en mer ; une très grosse modification met quelques centaines de millisecondes à
+  sortir du fil de modifications (sans bloquer le jeu), et les modifications suivantes
+  attendent leur tour.
