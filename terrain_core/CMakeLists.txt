@@ -126,6 +126,7 @@ add_library(terrain_core STATIC
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
     src/io/horizon_silhouette.cpp
+    src/io/mesh_view.cpp
     src/io/relief_lakes.cpp
     src/io/relief_rifts.cpp
     src/io/planet_png.cpp
@@ -348,6 +349,15 @@ target_link_libraries(terrain_export_water PRIVATE terrain_core terrain_warnings
 add_executable(terrain_export_rivers tools/export_rivers.cpp tools/rivers_places.cpp
                                      tools/rivers_report.cpp)
 target_link_libraries(terrain_export_rivers PRIVATE terrain_core terrain_warnings)
+
+# Views of the rock of the streamed world (phase 12A): the tiles around an eye drawn as meshes over
+# the relief beyond them, and views of the LOD 0 tiles from straight above, at the highest wall by
+# the K2, the fall of 388 m and a gorge near it (see the comment at the top of the tool):
+# terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
+#                     [--view-distance <chunks>] [--only <name>]...
+add_executable(terrain_export_rock tools/export_rock.cpp tools/rock_places.cpp
+                                   tools/view_places.cpp)
+target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
 
 # The planet level of a world written to its file, as the game reads it (phase 11B):
 # terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>]

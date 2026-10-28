@@ -1,0 +1,58 @@
+#pragma once
+
+// The places of terrain_export_rock (export_rock.cpp): the highest wall by the K2 seen near, far
+// and where the tiles hand over to the horizon; the fall of 388 m (x -6,185,408, z 156,215) from
+// its foot, its slot from above and its niche; a gorge near it; and views from straight above.
+
+#include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/water/hydrology.hpp"
+
+#include <string>
+#include <vector>
+
+namespace rock_tool {
+
+// A view in perspective: the eye above meters over the ground (or the water) at (x, z), heading
+// in turns clockwise from the north (-Z), tilted (the tangent of the elevation of the center row),
+// height pixels high for a width of 1600 (scaled with the width).
+struct Shot {
+    std::string name;
+    double x = 0.0;
+    double z = 0.0;
+    double above = 1.8;
+    double heading = 0.0;
+    double tilt = 0.0;
+    int height = 900;
+    std::string note;
+};
+
+// A view from straight above, side meters wide, centered on (x, z).
+struct TopShot {
+    std::string name;
+    double x = 0.0;
+    double z = 0.0;
+    double side = 300.0;
+    double metersPerPixel = 0.25;
+    std::string note;
+};
+
+struct Places {
+    std::vector<Shot> shots;
+    std::vector<TopShot> tops;
+};
+
+// The highest wall within 4 km of the K2 (view_places::highestWall on the relief): seen from 120
+// m and from the end of its approach (view_wall), along it across the edge of the tiles (reach:
+// the distance the tiles cover), and from above.
+void addK2(const terrain::Heightfield& relief, double reach, Places& out);
+
+// The highest fall within 3 km of (x, z): from 120 m and 450 m before its foot, its slot from 40
+// m above 150 m down from its lip, and from above. False without one.
+bool addFall(const terrain::Hydrology& hydrology, double x, double z, Places& out);
+
+// The largest river in a gorge (as view_gorge of terrain_export_rivers) within 40 km of (x, z),
+// no fall within 500 m: from beside its channel, looking down it, and from above. False without
+// one.
+bool addGorge(const terrain::Hydrology& hydrology, double x, double z, Places& out);
+
+} // namespace rock_tool
