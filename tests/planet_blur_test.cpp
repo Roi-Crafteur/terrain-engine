@@ -139,8 +139,9 @@ void testStorm(int nx, int nz, int radius) {
         ocean[c] = (terrain::noise::deriveSeed(7, c) & 3U) != 0 ? planet::kOcean : planet::kLand;
     }
     for (int j = 0; j < nz; ++j) {
+        const std::uint64_t bits = terrain::noise::deriveSeed(9, static_cast<std::uint64_t>(j));
         rowMoisture[static_cast<std::size_t>(j)] =
-            1.0e9 * (1.0 + 0.37 * static_cast<double>(terrain::noise::deriveSeed(9, j) >> 44));
+            1.0e9 * (1.0 + 0.37 * static_cast<double>(bits >> 44));
     }
     std::vector<double> dense(grid.cells(), 0.0);
     for (std::size_t c = 0; c < dense.size(); ++c) {

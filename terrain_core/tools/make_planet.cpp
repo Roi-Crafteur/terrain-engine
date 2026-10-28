@@ -53,7 +53,8 @@ bool parseOptions(int argc, char** argv, Options& o) {
         } else if (flag == "--threads" && i + 1 < argc) {
             ok = parse(argv[++i], o.threads) && o.threads >= 0;
         } else if (flag == "--memory") {
-            ok = o.memory = true;
+            o.memory = true;
+            ok = true;
         }
         if (!ok) {
             std::fprintf(stderr, "Invalid option '%s'\n", argv[i]);
