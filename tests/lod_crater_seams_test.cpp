@@ -3,7 +3,9 @@
 // a coarse tile, on a mountain and in the forests of the center of the tests, in the world with
 // caves, and across the edge x = world.x / 2 of the wrapped world. On each side, every vertex of
 // the coarse tile lies on the outline of the stitched fine tile, and every vertex of the fine
-// tile within kFineTolerance of the outline of the coarse one.
+// tile on the outline of the coarse one (seam_test::outlineTolerance: at most 0.5 mm). Before
+// lod_seams.cpp the fine side left the coarse one by up to 0.45 m (LOD 0 / 1), 1.3 m (1 / 2) and
+// 2.8 m (2 / 3). The stitched tiles are the same bits generated again, and on 4 threads.
 #include "terrain/storage/volume_edit.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -18,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -34,12 +37,6 @@ using terrain::VolumeEdit;
 
 // Coarse vertices on the fine outline: float rounding only, as in lod_seams_test.cpp.
 constexpr double kCoarseTolerance = 1e-5;
-
-// The known limit: the stitching interpolates the fine side bilinearly where Marching Cubes
-// draws a straight segment on the coarse side, a gap of a fraction of a coarse cell.
-double fineTolerance(int coarseLod) {
-    return terrain::tileCellMeters(coarseLod);
-}
 
 // Pseudo-random draws (SplitMix64), the same on every platform.
 class Draws {
@@ -176,7 +173,7 @@ void report(const char* where, const std::vector<Tally>& tallies) {
                     where, t.coarseLod - 1, t.coarseLod, t.craters, t.meshed, t.fineGap,
                     t.coarseGap);
         TEST_CHECK(t.meshed * 4 >= t.craters * 3);
-        TEST_CHECK(t.fineGap <= fineTolerance(t.coarseLod));
+        TEST_CHECK(t.fineGap <= seam_test::outlineTolerance(t.coarseLod - 1));
         TEST_CHECK(t.coarseGap <= kCoarseTolerance);
     }
 }
@@ -233,6 +230,46 @@ void testAcrossTheEdge(TerrainTiles& tiles) {
     report("across the edge of the world", tallies);
 }
 
+// Craters of every shape across the sides of every LOD at once, then their stitched fine tiles
+// (and the coarse ones) generated twice in turn, then all together by 4 threads: the same bits.
+void testDeterminism(TerrainTiles& tiles, ChunkCoord c) {
+    Draws draws(0xDE7E);
+    std::vector<terrain::TileRequest> requests;
+    for (int lod = 0; lod < terrain::kMaxLod; ++lod) {
+        for (int side = 0; side < 4; ++side) {
+            const SeamCase seam = seamCase(c, lod, side, side % 2);
+            const EditShape shape = kShapes[static_cast<std::size_t>(side % 3)];
+            tiles.applyEdit(crater(tiles, seam, shape, draws));
+            requests.push_back({seam.fine, seam.seam});
+            requests.push_back({seam.coarse, 0});
+        }
+    }
+    std::vector<TileData> first;
+    for (const terrain::TileRequest& request : requests) {
+        first.push_back(tiles.generate(request));
+    }
+    bool same = true;
+    for (std::size_t i = 0; i < requests.size(); ++i) {
+        same = same && tiles.generate(requests[i]) == first[i];
+    }
+    std::vector<TileData> parallel(requests.size());
+    std::vector<std::thread> workers;
+    for (std::size_t w = 0; w < 4; ++w) {
+        workers.emplace_back([&, w] {
+            for (std::size_t i = w; i < requests.size(); i += 4) {
+                parallel[i] = tiles.generate(requests[i]);
+            }
+        });
+    }
+    for (std::thread& worker : workers) {
+        worker.join();
+    }
+    std::printf("determinism: %zu tiles over craters, the same bits again and on 4 threads: %s\n",
+                requests.size(), same && parallel == first ? "yes" : "no");
+    TEST_CHECK(same && parallel == first);
+    tiles.replaceModifications({});
+}
+
 } // namespace
 
 int main() {
@@ -242,6 +279,7 @@ int main() {
     testAround(tiles, {streaming_test::kCenterChunkX, streaming_test::kCenterChunkZ}, {0, 3}, 2,
                0xF0E5, "forests");
     testAcrossTheEdge(tiles);
+    testDeterminism(tiles, mountain);
     TerrainTiles caves(streaming_test::kSeed, {}, {}, terrain::CaveParams{});
     testAround(caves, mountain, {1, 2}, 2, 0xCA7E, "mountain with caves");
     return test::result();

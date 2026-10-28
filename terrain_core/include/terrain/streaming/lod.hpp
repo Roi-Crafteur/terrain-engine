@@ -2,6 +2,7 @@
 
 #include "terrain/chunk_coord.hpp"
 #include "terrain/meshing/density_grid.hpp"
+#include "terrain/meshing/mesh.hpp"
 
 #include <array>
 #include <cstddef>
@@ -114,13 +115,24 @@ struct TileRequest {
 // Requests of a selection (in its order), with the seams of each tile against the others.
 [[nodiscard]] std::vector<TileRequest> tileRequests(const std::vector<TileKey>& selection);
 
-// Seams between LODs. The samples of a coarser neighbor are the even samples of the grid on the
-// shared side (tiles are aligned on their size). On each face of the mask, every sample at an
-// odd index takes the bilinear interpolation of the even samples around it; on each corner
-// column, every odd sample takes the mean of the two even samples above and below. The side
-// then holds the density the coarser tile interpolates there, so the two meshes meet: for a
-// density linear along y such as y - height(x, z), every vertex of the fine side lies on the
-// coarse side (no crack, only T-junctions). Even samples are never changed.
+// Seams between LODs (lod_seams.cpp). The samples of a coarser neighbor are the even samples of
+// the grid on the shared side (tiles are aligned on their size): the grid must hold there the
+// values the coarser tile samples. On each face of the mask, every sample at an odd index takes
+// the bilinear interpolation of the even samples around it, then the center of each coarse cell
+// of the face (2 x 2 cells) takes the side of the outline Marching Cubes draws on the coarse
+// cell, a straight chord between the vertices on its sides, when it lies farther than 2^-14
+// cell from it. On each corner column, every odd sample takes the mean of the two even samples
+// above and below. Even samples are never changed. Mesh the grid with stitchedMesh.
 void stitchSeams(DensityGrid& grid, unsigned seams);
+
+// The mesh of a grid stitched by stitchSeams with the same mask, in grid units as marchingCubes:
+// every vertex of a stitched face inside a coarse cell, on an edge from the middle of a side of
+// the cell to its center, slides along its edge onto the coarse chord crossing it, when it lies
+// farther than 2^-14 cell from it, keeping its normal; the vertices on the sides of the coarse
+// cells are those of the coarse mesh. The stitched side then meets the side of the coarser tile
+// with any density (caves, edits, overhangs; no crack, only T-junctions). The natural ground,
+// linear along y, already met it within float rounding: there the mesh is that of
+// marchingCubes, bit for bit. Without a face in the mask, it is the mesh of marchingCubes.
+[[nodiscard]] Mesh stitchedMesh(const DensityGrid& grid, unsigned seams);
 
 } // namespace terrain
