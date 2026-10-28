@@ -7,16 +7,25 @@
 // rock.txt) where each view stands, the tiles it draws and the time they take.
 // Usage: terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
 //        [--view-distance <chunks>] [--only <name>]... [--no-rock]
-//        [--at <x> <z> <heading degrees> <tilt> <meters above the ground>] [--cost]
+//        [--at <x> <z> <heading degrees> <tilt> <meters above the ground>] [--sun <turns>]
+//        [--cost] [--check] [--face <x> <z>] [--walk <x> <z>]
 // --cost: the cost of the rock in the tiles around a wall, the rivers, the plains and crests.
+// --check: also check_<name>.png, the same view with the openings of the tiles in yellow, their
+// inverted triangles in red and the triangles seen from behind in cyan (mesh_checks.hpp), and
+// their counts.
+// --face: face_side, the tallest face near (x, z) under a sun across it (rock_spots.hpp).
+// --walk: where to walk from straight to a face and under an overhang near (x, z), and the views
+// from there (walk_face, walk_under).
 // --no-rock: the tiles of the relief alone (a height per column), the views before phase 12A.
 // The planet level is read from --planet (or <output-dir>/planet.bin), built and written there
 // when it does not hold it (about 100 s on 4 cores).
 
 #include "rock_cost.hpp"
 #include "rock_places.hpp"
+#include "rock_spots.hpp"
 
 #include "terrain/generation/planet/planet_level.hpp"
+#include "terrain/io/mesh_checks.hpp"
 #include "terrain/io/mesh_view.hpp"
 #include "terrain/io/png.hpp"
 #include "terrain/io/relief_view.hpp"
@@ -65,10 +74,14 @@ struct Options {
     int viewDistance = 53; // chunks: the tiles end about 850 m from the eye, as in Unreal
     bool rock = true;      // --no-rock: the tiles of the relief alone, a height per column
     bool cost = false;     // --cost: the cost of the rock at the places instead of the views
+    bool check = false;    // --check: the views of the checks of the meshes too
     std::vector<std::string> only;
     // --at <x> <z> <heading degrees> <tilt> <meters above the ground>: a view "at" there, and
     // "at_top" from above, 100 m wide.
     std::optional<std::array<double, 5>> at;
+    double sunLeft = 0.3; // --sun <turns>: of the sun of the view --at, left of its axis
+    std::optional<std::array<double, 2>> face; // --face <x> <z>
+    std::optional<std::array<double, 2>> walk; // --walk <x> <z>
 };
 
 bool parseOptions(int argc, char** argv, Options& o) {
@@ -82,8 +95,8 @@ bool parseOptions(int argc, char** argv, Options& o) {
             o.rock = false;
             continue;
         }
-        if (flag == "--cost") {
-            o.cost = true;
+        if (flag == "--cost" || flag == "--check") {
+            (flag == "--cost" ? o.cost : o.check) = true;
             continue;
         }
         if (flag == "--at") {
@@ -95,6 +108,15 @@ bool parseOptions(int argc, char** argv, Options& o) {
                 v = std::atof(argv[++i]);
             }
             o.at = at;
+            continue;
+        }
+        if (flag == "--face" || flag == "--walk") {
+            if (i + 2 >= argc) {
+                return false;
+            }
+            const std::array<double, 2> at{std::atof(argv[i + 1]), std::atof(argv[i + 2])};
+            (flag == "--face" ? o.face : o.walk) = at;
+            i += 2;
             continue;
         }
         if (i + 1 >= argc) {
@@ -109,6 +131,8 @@ bool parseOptions(int argc, char** argv, Options& o) {
             o.width = std::atoi(value);
         } else if (flag == "--view-distance") {
             o.viewDistance = std::atoi(value);
+        } else if (flag == "--sun") {
+            o.sunLeft = std::atof(value);
         } else if (flag == "--only") {
             o.only.emplace_back(value);
         } else {
@@ -236,23 +260,53 @@ terrain::Mesh waterOf(const terrain::Heightfield& field, const TileData& tile) {
 
 struct Drawn {
     std::vector<terrain::Mesh> water;
+    std::vector<terrain::MeshCheck> checks; // with --check, of each tile
     std::vector<terrain::ViewMesh> meshes;
     std::size_t triangles = 0;
 };
 
-Drawn drawn(const World& w, const std::vector<TileData>& tiles) {
+Drawn drawn(const World& w, const std::vector<TileData>& tiles, bool check) {
     Drawn d;
     d.water.reserve(tiles.size());
     for (const TileData& t : tiles) {
         d.water.push_back(waterOf(w.field, t));
+        if (check) {
+            d.checks.push_back(terrain::checkTileMesh(
+                t.mesh, static_cast<float>(terrain::tileSizeMeters(t.request.key.lod))));
+        }
     }
     for (std::size_t i = 0; i < tiles.size(); ++i) {
         const TileData& t = tiles[i];
-        d.meshes.push_back({&t.mesh, t.originX, t.originY, t.originZ, {}, false});
-        d.meshes.push_back({&d.water[i], t.originX, t.originY, t.originZ, {}, true});
+        d.meshes.push_back({&t.mesh, t.originX, t.originY, t.originZ, {}, false, {}});
+        d.meshes.push_back({&d.water[i], t.originX, t.originY, t.originZ, {}, true, {}});
         d.triangles += t.mesh.indices.size() / 3;
     }
     return d;
+}
+
+// The view of the checks of the meshes of a shot, and their counts by LOD.
+bool writeCheck(Drawn& d, const std::vector<TileData>& tiles, const terrain::Image& background,
+                const terrain::ViewParams& p, const Options& o, const Shot& s, Report& r) {
+    std::array<terrain::MeshCheck, terrain::kLodCount> sums{};
+    for (std::size_t i = 0; i < tiles.size(); ++i) {
+        const terrain::MeshCheck& c = d.checks[i];
+        d.meshes[2 * i].marks = c.marks;
+        terrain::MeshCheck& sum = sums[static_cast<std::size_t>(tiles[i].request.key.lod)];
+        sum.triangles += c.triangles;
+        sum.degenerate += c.degenerate;
+        sum.openEdges += c.openEdges;
+        sum.nonManifoldEdges += c.nonManifoldEdges;
+        sum.inverted += c.inverted;
+    }
+    for (int lod = 0; lod < terrain::kLodCount; ++lod) {
+        const terrain::MeshCheck& c = sums[static_cast<std::size_t>(lod)];
+        r.add(format("  check LOD %d: %zu triangles, %zu degenerate, %zu open edges, %zu not "
+                     "manifold, %zu inverted\n",
+                     lod, c.triangles, c.degenerate, c.openEdges, c.nonManifoldEdges, c.inverted));
+    }
+    const terrain::Image image = terrain::renderMeshView(d.meshes, background, p, o.threads,
+                                                         {s.sunLeft, s.sunSine, true});
+    return terrain::writePng(o.directory / ("check_" + s.name + ".png"), image);
 }
 
 std::string timings(const Generated& g) {
@@ -282,7 +336,7 @@ bool writeShot(const World& w, const Options& o, const Shot& s, Report& r) {
     const std::vector<TileRequest> requests =
         terrain::tileRequests(terrain::selectTiles(terrain::worldToChunk(s.x, s.z), lod));
     const Generated g = generate(w, requests, o.threads);
-    const Drawn d = drawn(w, g.tiles);
+    Drawn d = drawn(w, g.tiles, o.check);
     // The relief beyond the tiles: from well inside them, which they cover where they are.
     terrain::ViewParams far = p;
     far.minDistance = 0.7 * o.viewDistance * terrain::kChunkSizeMeters;
@@ -294,13 +348,14 @@ bool writeShot(const World& w, const Options& o, const Shot& s, Report& r) {
     };
     const terrain::Image background = terrain::renderReliefView(ground, water, far, o.threads);
     const terrain::Image image =
-        terrain::renderMeshView(d.meshes, background, p, o.threads, {s.sunLeft, 0.5});
+        terrain::renderMeshView(d.meshes, background, p, o.threads, {s.sunLeft, s.sunSine});
     const std::string file = "rock_" + s.name + ".png";
     r.add(format("%s: eye at (%.0f, %.0f), %.1f m (%s %.1f m), heading %.1f degrees, tilt %.2f; "
                  "%s; %zu triangles\n  %s\n",
                  file.c_str(), s.x, s.z, p.eyeHeight, wet ? "water" : "ground", s.above,
                  360.0 * s.heading, s.tilt, timings(g).c_str(), d.triangles, s.note.c_str()));
-    return terrain::writePng(o.directory / file, image);
+    return terrain::writePng(o.directory / file, image) &&
+           (!o.check || writeCheck(d, g.tiles, background, p, o, s, r));
 }
 
 bool writeTop(const World& w, const Options& o, const TopShot& s, Report& r) {
@@ -313,7 +368,7 @@ bool writeTop(const World& w, const Options& o, const TopShot& s, Report& r) {
         }
     }
     const Generated g = generate(w, requests, o.threads);
-    const Drawn d = drawn(w, g.tiles);
+    const Drawn d = drawn(w, g.tiles, false);
     terrain::TopViewParams p;
     p.centerX = s.x;
     p.centerZ = s.z;
@@ -359,7 +414,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>] "
                      "[--view-distance <chunks>] [--only <name>]... [--no-rock] "
-                     "[--at <x> <z> <heading> <tilt> <above>] [--cost]\n",
+                     "[--at <x> <z> <heading> <tilt> <above>] [--sun <turns>] [--cost] [--check] "
+                     "[--face <x> <z>] [--walk <x> <z>]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -397,8 +453,22 @@ int main(int argc, char** argv) {
     }
     if (o.at) {
         const std::array<double, 5>& a = *o.at;
-        places.shots.push_back({"at", a[0], a[1], a[4], a[2] / 360.0, a[3], 900, 0.3, "--at"});
+        places.shots.push_back(
+            {"at", a[0], a[1], a[4], a[2] / 360.0, a[3], 900, o.sunLeft, "--at", 0.5});
         places.tops.push_back({"at_top", a[0], a[1], 4.0 * a[4] + 4.0, (4.0 * a[4] + 4.0) / 1000.0, "--at"});
+    }
+    if (o.face && !rock_tool::addFaceSide(w.field, (*o.face)[0], (*o.face)[1], places)) {
+        r.add("no face near --face\n");
+    }
+    if (o.walk) {
+        for (const bool under : {false, true}) {
+            const rock_tool::WalkSpot spot =
+                rock_tool::walkToFace(w.tiles, (*o.walk)[0], (*o.walk)[1], under);
+            r.add(rock_tool::describe(spot, under) + "\n");
+            if (spot.found) {
+                places.shots.push_back(rock_tool::walkShot(spot, under ? "walk_under" : "walk_face"));
+            }
+        }
     }
     bool written = true;
     for (const Shot& s : places.shots) {

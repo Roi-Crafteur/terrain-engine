@@ -2,6 +2,7 @@
 
 #include "../generation/planet/planet_parallel.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/io/mesh_checks.hpp"
 #include "terrain/io/relief_png.hpp"
 
 #include <algorithm>
@@ -22,6 +23,10 @@ using Rgb = std::array<double, 3>;
 constexpr Rgb kHaze = {200.0, 215.0, 235.0};
 constexpr Rgb kWater = {55.0, 105.0, 165.0};
 constexpr Rgb kRock = {128.0, 118.0, 108.0};
+// The colors of the marks: an opening, an inverted triangle, a triangle seen from behind.
+constexpr std::uint8_t kMarkBack = 3;
+constexpr std::array<Rgb, 4> kMarkColors = {
+    {{0.0, 0.0, 0.0}, {245.0, 215.0, 0.0}, {225.0, 25.0, 25.0}, {0.0, 205.0, 225.0}}};
 // The ground turns to bare rock as the tangent of its slope passes kRockLow to kRockHigh (35 to
 // 45 degrees), as the views of the relief paint it.
 constexpr double kRockLow = 0.7;
@@ -51,6 +56,7 @@ struct ScreenVertex {
 struct Projected {
     std::vector<ScreenVertex> vertices;
     std::vector<std::array<std::uint32_t, 3>> triangles;
+    std::vector<std::uint8_t> marks; // per triangle
     bool water = false;
 };
 
@@ -145,7 +151,7 @@ ScreenVertex projectPerspective(const ViewParams& p, const Camera& c, const Worl
 
 // Appends the triangle (a, b, c) of the world, cut at the near plane, to out.
 void addClipped(const ViewParams& p, const Camera& c, const std::array<WorldVertex, 3>& t,
-                Projected& out) {
+                std::uint8_t mark, Projected& out) {
     std::array<WorldVertex, 4> kept{};
     std::size_t count = 0;
     for (std::size_t i = 0; i < 3; ++i) {
@@ -169,14 +175,17 @@ void addClipped(const ViewParams& p, const Camera& c, const std::array<WorldVert
     }
     for (std::uint32_t i = 2; i < count; ++i) {
         out.triangles.push_back({first, first + i - 1, first + i});
+        out.marks.push_back(mark);
     }
 }
 
 void validateMesh(const ViewMesh& m) {
     if (m.mesh == nullptr || m.mesh->normals.size() != m.mesh->vertices.size() ||
         m.mesh->indices.size() % 3 != 0 ||
-        (!m.rock.empty() && m.rock.size() != m.mesh->vertices.size())) {
-        throw std::invalid_argument("ViewMesh: a mesh, its normals and its rock shares expected");
+        (!m.rock.empty() && m.rock.size() != m.mesh->vertices.size()) ||
+        (!m.marks.empty() && m.marks.size() != m.mesh->indices.size() / 3)) {
+        throw std::invalid_argument(
+            "ViewMesh: a mesh, its normals, its rock shares and its marks expected");
     }
     for (const std::uint32_t index : m.mesh->indices) {
         if (index >= m.mesh->vertices.size()) {
@@ -185,7 +194,30 @@ void validateMesh(const ViewMesh& m) {
     }
 }
 
-Projected projectMesh(const ViewMesh& m, const ViewParams& p, const Camera& c) {
+// The mark of triangle t of a mesh: its own, else kMarkBack when backFaces asks for it and the
+// eye sees it against its winding (toward: from a vertex to the eye).
+template <typename Toward>
+std::uint8_t markOf(const ViewMesh& m, std::size_t t, bool backFaces, const Toward& toward) {
+    const std::uint8_t mark = m.marks.empty() ? kMarkSound : m.marks[t];
+    if (mark != kMarkSound || !backFaces) {
+        return mark;
+    }
+    const Vec3f& a = m.mesh->vertices[m.mesh->indices[3 * t]];
+    const Vec3f& b = m.mesh->vertices[m.mesh->indices[3 * t + 1]];
+    const Vec3f& c = m.mesh->vertices[m.mesh->indices[3 * t + 2]];
+    const double ux = static_cast<double>(b.x) - a.x;
+    const double uy = static_cast<double>(b.y) - a.y;
+    const double uz = static_cast<double>(b.z) - a.z;
+    const double vx = static_cast<double>(c.x) - a.x;
+    const double vy = static_cast<double>(c.y) - a.y;
+    const double vz = static_cast<double>(c.z) - a.z;
+    const std::array<double, 3> eye = toward(a);
+    const double facing = (uy * vz - uz * vy) * eye[0] + (uz * vx - ux * vz) * eye[1] +
+                          (ux * vy - uy * vx) * eye[2];
+    return facing < 0.0 ? kMarkBack : kMarkSound;
+}
+
+Projected projectMesh(const ViewMesh& m, const ViewParams& p, const Camera& c, bool backFaces) {
     Projected out;
     out.water = m.water;
     const std::size_t count = m.mesh->vertices.size();
@@ -197,16 +229,25 @@ Projected projectMesh(const ViewMesh& m, const ViewParams& p, const Camera& c) {
         out.vertices.push_back(front[i] ? projectPerspective(p, c, v) : ScreenVertex{});
     }
     const std::vector<std::uint32_t>& indices = m.mesh->indices;
+    const auto toward = [&](const Vec3f& a) {
+        return std::array<double, 3>{p.eyeX - m.originX - a.x, p.eyeHeight - m.originY - a.y,
+                                     p.eyeZ - m.originZ - a.z};
+    };
     for (std::size_t t = 0; t + 2 < indices.size(); t += 3) {
         const std::array<std::uint32_t, 3> tri{indices[t], indices[t + 1], indices[t + 2]};
         const int inFront = static_cast<int>(front[tri[0]]) + static_cast<int>(front[tri[1]]) +
                             static_cast<int>(front[tri[2]]);
+        if (inFront == 0) {
+            continue;
+        }
+        const std::uint8_t mark = markOf(m, t / 3, backFaces, toward);
         if (inFront == 3) {
             out.triangles.push_back(tri);
-        } else if (inFront > 0) {
+            out.marks.push_back(mark);
+        } else {
             addClipped(p, c, {worldVertex(m, tri[0]), worldVertex(m, tri[1]),
                               worldVertex(m, tri[2])},
-                       out);
+                       mark, out);
         }
     }
     return out;
@@ -233,6 +274,7 @@ Projected projectTop(const ViewMesh& m, const TopViewParams& p) {
     for (std::size_t t = 0; t + 2 < m.mesh->indices.size(); t += 3) {
         out.triangles.push_back(
             {m.mesh->indices[t], m.mesh->indices[t + 1], m.mesh->indices[t + 2]});
+        out.marks.push_back(m.marks.empty() ? kMarkSound : m.marks[t / 3]);
     }
     return out;
 }
@@ -254,7 +296,10 @@ Rgb mix(const Rgb& a, const Rgb& b, double t) {
 }
 
 // The color of a pixel of a mesh from what it interpolates.
-Rgb shade(const Canvas& canvas, const ScreenVertex& v, bool water) {
+Rgb shade(const Canvas& canvas, const ScreenVertex& v, bool water, std::uint8_t mark) {
+    if (mark != kMarkSound) {
+        return kMarkColors[mark];
+    }
     const double length = std::max(1e-12, std::sqrt(static_cast<double>(v.nx) * v.nx +
                                                     static_cast<double>(v.ny) * v.ny +
                                                     static_cast<double>(v.nz) * v.nz));
@@ -302,8 +347,8 @@ ScreenVertex interpolate(const std::array<const ScreenVertex*, 3>& t, double l0,
 }
 
 // Draws a triangle within rows [first, last) of the canvas.
-void drawTriangle(const std::array<const ScreenVertex*, 3>& t, bool water, int first, int last,
-                  Canvas& canvas) {
+void drawTriangle(const std::array<const ScreenVertex*, 3>& t, bool water, std::uint8_t mark,
+                  int first, int last, Canvas& canvas) {
     const double area = edge(*t[0], *t[1], t[2]->x, t[2]->y);
     if (!(std::abs(area) > 0.0)) {
         return;
@@ -332,7 +377,7 @@ void drawTriangle(const std::array<const ScreenVertex*, 3>& t, bool water, int f
                 continue;
             }
             canvas.keys[at] = v.key;
-            const Rgb color = shade(canvas, v, water);
+            const Rgb color = shade(canvas, v, water, mark);
             for (std::size_t k = 0; k < 3; ++k) {
                 canvas.image.pixels[at * 3 + k] = toByte(color[k]);
             }
@@ -343,9 +388,10 @@ void drawTriangle(const std::array<const ScreenVertex*, 3>& t, bool water, int f
 void drawAll(const std::vector<Projected>& meshes, int threads, Canvas& canvas) {
     planet::parallelRows(canvas.image.height, threads, [&](int first, int last) {
         for (const Projected& m : meshes) {
-            for (const auto& tri : m.triangles) {
+            for (std::size_t t = 0; t < m.triangles.size(); ++t) {
+                const auto& tri = m.triangles[t];
                 drawTriangle({&m.vertices[tri[0]], &m.vertices[tri[1]], &m.vertices[tri[2]]},
-                             m.water, first, last, canvas);
+                             m.water, m.marks[t], first, last, canvas);
             }
         }
     });
@@ -383,7 +429,8 @@ Image renderMeshView(std::span<const ViewMesh> meshes, const Image& background,
     const int workers = planet::resolveThreads(threads);
     const Camera camera = cameraOf(params, light);
     const std::vector<Projected> projected = projectAll(
-        meshes, workers, [&](const ViewMesh& m) { return projectMesh(m, params, camera); });
+        meshes, workers,
+        [&](const ViewMesh& m) { return projectMesh(m, params, camera, light.backFaces); });
     Image image = background;
     std::vector<float> keys(static_cast<std::size_t>(params.width) *
                                 static_cast<std::size_t>(params.height),

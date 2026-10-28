@@ -72,8 +72,8 @@ void testNearerHides() {
     const Mesh near = wallAt(50.0f, 5.0f);
     const Mesh far = wallAt(100.0f, 50.0f);
     // The far wall drawn last: the near one still shows in front of it.
-    const std::array<ViewMesh, 2> meshes{ViewMesh{&near, 0.0, 0.0, 0.0, {}, true},
-                                         ViewMesh{&far, 0.0, 0.0, 0.0, {}, false}};
+    const std::array<ViewMesh, 2> meshes{ViewMesh{&near, 0.0, 0.0, 0.0, {}, true, {}},
+                                         ViewMesh{&far, 0.0, 0.0, 0.0, {}, false, {}}};
     const Image image = terrain::renderMeshView(meshes, background(p), p, 1);
     const auto center = pixel(image, p.width / 2, p.height / 2);
     // Water hazed by 50 m of distance: still nearer the water than anything else.
@@ -90,7 +90,7 @@ void testBackgroundAroundAnOverhang() {
     addQuad(slab, {-20.0f, 3.0f, -40.0f}, {20.0f, 3.0f, -40.0f}, {20.0f, 3.0f, -20.0f},
             {-20.0f, 3.0f, -20.0f}, {0.0f, -1.0f, 0.0f});
     p.eyeHeight = 0.0;
-    const std::array<ViewMesh, 1> meshes{ViewMesh{&slab, 0.0, 0.0, 0.0, {}, false}};
+    const std::array<ViewMesh, 1> meshes{ViewMesh{&slab, 0.0, 0.0, 0.0, {}, false, {}}};
     const Image image = terrain::renderMeshView(meshes, background(p), p, 1);
     TEST_CHECK(pixel(image, p.width / 2, p.height / 2 + 5) == kBackground);
     TEST_CHECK(pixel(image, p.width / 2, p.height / 2 - 12) != kBackground);
@@ -106,8 +106,8 @@ void testClippedAndThreads() {
     addQuad(floor, {-100.0f, 0.0f, 50.0f}, {100.0f, 0.0f, 50.0f}, {100.0f, 0.0f, -500.0f},
             {-100.0f, 0.0f, -500.0f}, {0.0f, 1.0f, 0.0f});
     const Mesh wall = wallAt(80.0f, 10.0f);
-    const std::array<ViewMesh, 2> meshes{ViewMesh{&floor, 0.0, 0.0, 0.0, {}, false},
-                                         ViewMesh{&wall, 0.0, 0.0, 0.0, {}, false}};
+    const std::array<ViewMesh, 2> meshes{ViewMesh{&floor, 0.0, 0.0, 0.0, {}, false, {}},
+                                         ViewMesh{&wall, 0.0, 0.0, 0.0, {}, false, {}}};
     const Image one = terrain::renderMeshView(meshes, background(p), p, 1);
     const Image four = terrain::renderMeshView(meshes, background(p), p, 4);
     TEST_CHECK(one.pixels == four.pixels);
@@ -128,8 +128,8 @@ void testTopViewShowsTheHighest() {
     p.height = 40;
     p.metersPerPixel = 1.0;
     // The low quad drawn last: the high one still shows.
-    const std::array<ViewMesh, 2> meshes{ViewMesh{&high, 0.0, 0.0, 0.0, {}, true},
-                                         ViewMesh{&low, 0.0, 0.0, 0.0, {}, false}};
+    const std::array<ViewMesh, 2> meshes{ViewMesh{&high, 0.0, 0.0, 0.0, {}, true, {}},
+                                         ViewMesh{&low, 0.0, 0.0, 0.0, {}, false, {}}};
     const Image one = terrain::renderTopView(meshes, p, 1);
     TEST_CHECK(pixel(one, 20, 20) == kWater);
     TEST_CHECK(pixel(one, 25, 20) != kWater);
@@ -143,10 +143,10 @@ void testInvalid() {
     const Mesh wall = wallAt(10.0f, 1.0f);
     Mesh broken = wall;
     broken.indices.push_back(99);
-    const std::array<ViewMesh, 1> bad{ViewMesh{&broken, 0.0, 0.0, 0.0, {}, false}};
-    const std::array<ViewMesh, 1> good{ViewMesh{&wall, 0.0, 0.0, 0.0, {}, false}};
+    const std::array<ViewMesh, 1> bad{ViewMesh{&broken, 0.0, 0.0, 0.0, {}, false, {}}};
+    const std::array<ViewMesh, 1> good{ViewMesh{&wall, 0.0, 0.0, 0.0, {}, false, {}}};
     const std::array<float, 1> shares{0.5f};
-    const std::array<ViewMesh, 1> rock{ViewMesh{&wall, 0.0, 0.0, 0.0, shares, false}};
+    const std::array<ViewMesh, 1> rock{ViewMesh{&wall, 0.0, 0.0, 0.0, shares, false, {}}};
     const auto throws = [](const auto& call) {
         try {
             call();

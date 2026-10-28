@@ -129,6 +129,7 @@ add_library(terrain_core STATIC
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
     src/io/horizon_silhouette.cpp
+    src/io/mesh_checks.cpp
     src/io/mesh_view.cpp
     src/io/relief_lakes.cpp
     src/io/relief_rifts.cpp
@@ -361,8 +362,10 @@ target_link_libraries(terrain_export_rivers PRIVATE terrain_core terrain_warning
 # the K2, the fall of 388 m and a gorge near it (see the comment at the top of the tool):
 # terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
 #                     [--view-distance <chunks>] [--only <name>]... [--no-rock] [--cost]
+#                     [--at <x> <z> <heading> <tilt> <above>] [--sun <turns>] [--check]
+#                     [--face <x> <z>] [--walk <x> <z>]
 add_executable(terrain_export_rock tools/export_rock.cpp tools/rock_places.cpp
-                                   tools/rock_cost.cpp tools/view_places.cpp)
+                                   tools/rock_cost.cpp tools/rock_spots.cpp tools/view_places.cpp)
 target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
 
 # The planet level of a world written to its file, as the game reads it (phase 11B):

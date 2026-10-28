@@ -25,6 +25,7 @@ struct Shot {
     int height = 900;
     double sunLeft = 0.3; // the sun, turns left of the axis of the view (behind it beyond 0.25)
     std::string note;
+    double sunSine = 0.5; // the sine of the elevation of the sun
 };
 
 // A view from straight above, side meters wide, centered on (x, z).

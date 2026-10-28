@@ -68,7 +68,7 @@ terrain::Image topAtLod(const terrain::TerrainTiles& tiles, double x, double z, 
     }
     std::vector<terrain::ViewMesh> meshes;
     for (const terrain::TileData& t : data) {
-        meshes.push_back({&t.mesh, t.originX, t.originY, t.originZ, {}, false});
+        meshes.push_back({&t.mesh, t.originX, t.originY, t.originZ, {}, false, {}});
     }
     terrain::TopViewParams p;
     p.centerX = x;

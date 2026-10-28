@@ -4,6 +4,7 @@
 #include "terrain/io/relief_view.hpp"
 #include "terrain/meshing/mesh.hpp"
 
+#include <cstdint>
 #include <span>
 
 namespace terrain {
@@ -28,13 +29,18 @@ struct ViewMesh {
     // The share of bare rock of each vertex, in [0, 1]; empty: from the slope of its normal.
     std::span<const float> rock;
     bool water = false; // a water surface, drawn in the color of the water
+    // Optional, one per triangle: its mark of mesh_checks.hpp (kMarkOpen in yellow,
+    // kMarkInverted in red), the triangles kMarkSound drawn as usual.
+    std::span<const std::uint8_t> marks;
 };
 
 // The sun of a view: sunLeft turns left of its axis (beyond a quarter turn, behind the eye), at
-// an elevation of sine sunSine.
+// an elevation of sine sunSine. backFaces: the triangles the eye sees from behind (against their
+// winding: what a client culls) drawn in cyan, unless marked.
 struct MeshLight {
     double sunLeft = 0.3;
     double sunSine = 0.5;
+    bool backFaces = false;
 };
 
 // The meshes seen from the eye of params, over background: the view of what lies beyond them, of
@@ -42,7 +48,8 @@ struct MeshLight {
 // the meshes), which shows wherever no triangle is drawn. The curvature of the planet lowers the
 // meshes as it lowers the relief of the views. Throws std::invalid_argument for invalid params
 // (as renderReliefView), a sun at or below the horizon, a background of another size or not RGB,
-// or a mesh with an index out of range or rock shares of another count than its vertices.
+// or a mesh with an index out of range, rock shares of another count than its vertices or marks of
+// another count than its triangles.
 [[nodiscard]] Image renderMeshView(std::span<const ViewMesh> meshes, const Image& background,
                                    const ViewParams& params, int threads,
                                    const MeshLight& light = {});
