@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/planet/planet_grid.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
 #include "terrain/generation/planet/planet_rivers.hpp"
 
@@ -39,7 +40,7 @@ namespace planet {
 // joined.
 [[nodiscard]] std::vector<RiverFeature> findRiverFeatures(const PlanetGrid& grid,
                                                           const std::vector<float>& height,
-                                                          const std::vector<std::uint8_t>& ocean,
+                                                          const LandIndex& land,
                                                           const RiverGraph& graph,
                                                           const PlanetFeatureParams& params);
 

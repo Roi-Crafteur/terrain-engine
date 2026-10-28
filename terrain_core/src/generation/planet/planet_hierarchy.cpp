@@ -10,27 +10,28 @@ namespace terrain::planet {
 
 namespace {
 
-// Union-find over the cells: a root holds -(node + 1), any other cell its parent cell.
+// Union-find over the land cells (by slot) and one more slot, the whole ocean: a root holds
+// -(node + 1), any other slot its parent slot.
 class FloodSets {
 public:
-    explicit FloodSets(std::size_t cells) : parent_(cells, 0) {}
+    explicit FloodSets(std::size_t slots) : parent_(slots, 0) {}
 
-    std::int32_t root(std::int32_t cell) {
-        while (parent_[static_cast<std::size_t>(cell)] >= 0) {
-            const std::int32_t up = parent_[static_cast<std::size_t>(cell)];
+    std::int32_t root(std::int32_t slot) {
+        while (parent_[static_cast<std::size_t>(slot)] >= 0) {
+            const std::int32_t up = parent_[static_cast<std::size_t>(slot)];
             const std::int32_t grand = parent_[static_cast<std::size_t>(up)];
             if (grand >= 0) {
-                parent_[static_cast<std::size_t>(cell)] = grand; // path halving
+                parent_[static_cast<std::size_t>(slot)] = grand; // path halving
             }
-            cell = parent_[static_cast<std::size_t>(cell)];
+            slot = parent_[static_cast<std::size_t>(slot)];
         }
-        return cell;
+        return slot;
     }
     std::int32_t node(std::int32_t root) const {
         return -parent_[static_cast<std::size_t>(root)] - 1;
     }
-    void makeRoot(std::size_t cell, std::int32_t node) { parent_[cell] = -(node + 1); }
-    void link(std::size_t cell, std::int32_t parent) { parent_[cell] = parent; }
+    void makeRoot(std::size_t slot, std::int32_t node) { parent_[slot] = -(node + 1); }
+    void link(std::size_t slot, std::int32_t parent) { parent_[slot] = parent; }
     std::vector<std::int32_t> release() { return std::move(parent_); }
 
 private:
@@ -45,15 +46,47 @@ struct Around {
     int count = 0;
 };
 
-Around floodedAround(const PlanetGrid& grid, const std::vector<float>& height,
-                     const std::vector<std::uint8_t>& ocean, std::size_t cell, FloodSets& sets) {
+class Sweep {
+public:
+    Sweep(const PlanetGrid& grid, const std::vector<float>& height, const LandIndex& land,
+          DepressionHierarchy& result)
+        : grid_(grid), height_(height), land_(land), result_(result),
+          sets_(land.landCells() + 1), oceanRoot_(static_cast<std::int32_t>(land.landCells())) {}
+
+    void joinOcean();
+    void flood(std::size_t cell);
+    std::vector<std::int32_t> release() { return sets_.release(); }
+
+private:
+    [[nodiscard]] std::int32_t slotOf(std::size_t cell) const {
+        return static_cast<std::int32_t>(land_.slot(cell));
+    }
+    Around floodedAround(std::size_t cell);
+    void mergeAll(std::size_t cell, const Around& around);
+    void attachToOcean(std::size_t cell, const Around& around, int oceanSlot);
+
+    const PlanetGrid& grid_;
+    const std::vector<float>& height_;
+    const LandIndex& land_;
+    DepressionHierarchy& result_;
+    FloodSets sets_;
+    std::int32_t oceanRoot_; // the slot of the whole ocean, after the land
+};
+
+void Sweep::joinOcean() {
+    result_.nodes.assign(1, DepressionNode{}); // the ocean
+    sets_.makeRoot(static_cast<std::size_t>(oceanRoot_), kOceanNode);
+}
+
+Around Sweep::floodedAround(std::size_t cell) {
     Around around;
     for (int k = 0; k < 8; ++k) {
-        const std::size_t n = grid.neighbor(cell, k);
-        if (ocean[n] == kLand && !lowerCell(height, n, cell)) {
+        const std::size_t n = grid_.neighbor(cell, k);
+        const bool land = land_.land(n);
+        if (land && !lowerCell(height_, n, cell)) {
             continue; // not flooded yet (the ocean always is, being lower)
         }
-        const std::int32_t root = sets.root(static_cast<std::int32_t>(n));
+        const std::int32_t root = land ? sets_.root(slotOf(n)) : oceanRoot_;
         int slot = 0;
         while (slot < around.count && around.roots[static_cast<std::size_t>(slot)] != root) {
             ++slot;
@@ -63,65 +96,31 @@ Around floodedAround(const PlanetGrid& grid, const std::vector<float>& height,
             around.roots[s] = root;
             around.lowest[s] = static_cast<std::uint32_t>(n);
             ++around.count;
-        } else if (lowerCell(height, n, around.lowest[s])) {
+        } else if (lowerCell(height_, n, around.lowest[s])) {
             around.lowest[s] = static_cast<std::uint32_t>(n);
         }
     }
     return around;
 }
 
-class Sweep {
-public:
-    Sweep(const PlanetGrid& grid, const std::vector<float>& height,
-          const std::vector<std::uint8_t>& ocean, DepressionHierarchy& result)
-        : grid_(grid), height_(height), ocean_(ocean), result_(result), sets_(grid.cells()) {}
-
-    void joinOcean();
-    void flood(std::size_t cell);
-    std::vector<std::int32_t> release() { return sets_.release(); }
-
-private:
-    void mergeAll(std::size_t cell, const Around& around);
-    void attachToOcean(std::size_t cell, const Around& around, int oceanSlot);
-
-    const PlanetGrid& grid_;
-    const std::vector<float>& height_;
-    const std::vector<std::uint8_t>& ocean_;
-    DepressionHierarchy& result_;
-    FloodSets sets_;
-    std::int32_t oceanRoot_ = -1;
-};
-
-void Sweep::joinOcean() {
-    result_.nodes.assign(1, DepressionNode{}); // the ocean
-    for (std::size_t c = 0; c < grid_.cells(); ++c) {
-        if (ocean_[c] == kLand) {
-            continue;
-        }
-        result_.own[c] = kOceanNode;
-        if (oceanRoot_ < 0) {
-            oceanRoot_ = static_cast<std::int32_t>(c);
-            sets_.makeRoot(c, kOceanNode);
-        } else {
-            sets_.link(c, oceanRoot_);
-        }
-    }
-}
-
 void Sweep::flood(std::size_t cell) {
-    const Around around = floodedAround(grid_, height_, ocean_, cell, sets_);
+    const Around around = floodedAround(cell);
+    const auto slot = static_cast<std::size_t>(slotOf(cell));
     if (around.count == 0) {
         const auto leaf = static_cast<std::int32_t>(result_.nodes.size());
         DepressionNode node;
         node.pit = static_cast<std::uint32_t>(cell);
         result_.nodes.push_back(node);
-        sets_.makeRoot(cell, leaf);
-        result_.own[cell] = leaf;
+        sets_.makeRoot(slot, leaf);
+        result_.own.add(cell, leaf);
         return;
     }
     if (around.count == 1) {
-        sets_.link(cell, around.roots[0]);
-        result_.own[cell] = sets_.node(around.roots[0]);
+        sets_.link(slot, around.roots[0]);
+        const std::int32_t node = sets_.node(around.roots[0]);
+        if (node != kOceanNode) {
+            result_.own.add(cell, node);
+        }
         return;
     }
     for (int s = 0; s < around.count; ++s) {
@@ -146,8 +145,7 @@ void Sweep::attachToOcean(std::size_t cell, const Around& around, int oceanSlot)
         node.partner = partner;
         sets_.link(static_cast<std::size_t>(root), oceanRoot_);
     }
-    sets_.link(cell, oceanRoot_);
-    result_.own[cell] = kOceanNode;
+    sets_.link(static_cast<std::size_t>(slotOf(cell)), oceanRoot_); // own: the ocean
 }
 
 void Sweep::mergeAll(std::size_t cell, const Around& around) {
@@ -176,37 +174,43 @@ void Sweep::mergeAll(std::size_t cell, const Around& around) {
             currentLowest = otherLowest;
         }
     }
-    sets_.link(cell, keep);
-    result_.own[cell] = current;
+    sets_.link(static_cast<std::size_t>(slotOf(cell)), keep);
+    result_.own.add(cell, current);
 }
 
 } // namespace
 
 DepressionHierarchy buildHierarchy(const PlanetGrid& grid, const std::vector<float>& height,
-                                   const std::vector<std::uint8_t>& ocean,
+                                   const std::shared_ptr<const LandIndex>& land,
                                    const std::vector<std::uint32_t>& order,
-                                   const std::vector<std::uint8_t>& receiver) {
+                                   const LandValues<std::uint8_t>& receiver) {
     DepressionHierarchy result;
-    result.own.assign(grid.cells(), kOceanNode);
-    Sweep sweep(grid, height, ocean, result);
+    result.own = SparseCells<std::int32_t>(grid.cells(), kOceanNode);
+    Sweep sweep(grid, height, *land, result);
     sweep.joinOcean();
     for (const std::uint32_t cell : order) {
-        if (ocean[cell] == kLand) {
+        if (land->land(cell)) {
             sweep.flood(cell);
         }
     }
+    result.own.finish();
     // The union-find becomes the labels: in the total order, every receiver comes first.
-    result.label = sweep.release();
+    std::vector<std::int32_t> labels = sweep.release();
+    labels.resize(land->landCells()); // without the ocean
     for (const std::uint32_t cell : order) {
-        std::int32_t& label = result.label[cell];
-        if (ocean[cell] != kLand) {
-            label = kOceanNode;
-        } else if (receiver[cell] == kNoNeighbor) {
+        if (!land->land(cell)) {
+            continue;
+        }
+        const std::uint8_t to = receiver[cell];
+        std::int32_t& label = labels[land->slot(cell)];
+        if (to == kNoNeighbor) {
             label = result.own[cell]; // a pit started its leaf
         } else {
-            label = result.label[grid.neighbor(cell, receiver[cell])];
+            const std::size_t next = grid.neighbor(cell, to);
+            label = land->land(next) ? labels[land->slot(next)] : kOceanNode;
         }
     }
+    result.label = LandValues<std::int32_t>(land, std::move(labels), kOceanNode);
     for (std::size_t n = 1; n < result.nodes.size(); ++n) {
         DepressionNode& node = result.nodes[n];
         if (node.parent < 0) {

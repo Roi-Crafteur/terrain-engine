@@ -18,10 +18,10 @@ struct Point {
 
 class FeatureFinder {
 public:
-    FeatureFinder(const PlanetGrid& grid, const std::vector<float>& height,
-                  const std::vector<std::uint8_t>& ocean, const RiverGraph& graph,
-                  const PlanetFeatureParams& params, std::vector<RiverFeature>& out)
-        : grid_(grid), height_(height), ocean_(ocean), graph_(graph), params_(params), out_(out) {}
+    FeatureFinder(const PlanetGrid& grid, const std::vector<float>& height, const LandIndex& land,
+                  const RiverGraph& graph, const PlanetFeatureParams& params,
+                  std::vector<RiverFeature>& out)
+        : grid_(grid), height_(height), land_(land), graph_(graph), params_(params), out_(out) {}
 
     void mouth(std::int32_t s);
     void waterfalls(std::int32_t s);
@@ -42,7 +42,7 @@ private:
 
     const PlanetGrid& grid_;
     const std::vector<float>& height_;
-    const std::vector<std::uint8_t>& ocean_;
+    const LandIndex& land_;
     const RiverGraph& graph_;
     const PlanetFeatureParams& params_;
     std::vector<RiverFeature>& out_;
@@ -144,7 +144,7 @@ void FeatureFinder::mouth(std::int32_t s) {
     int count = 1;
     for (int k = 0; k < 8; ++k) {
         const std::size_t n = grid_.neighbor(sea, k);
-        if (ocean_[n] != kLand) {
+        if (!land_.land(n)) {
             depth -= height_[n];
             ++count;
         }
@@ -245,12 +245,11 @@ void FeatureFinder::gorges(std::int32_t s) {
 } // namespace
 
 std::vector<RiverFeature> findRiverFeatures(const PlanetGrid& grid,
-                                            const std::vector<float>& height,
-                                            const std::vector<std::uint8_t>& ocean,
+                                            const std::vector<float>& height, const LandIndex& land,
                                             const RiverGraph& graph,
                                             const PlanetFeatureParams& params) {
     std::vector<RiverFeature> features;
-    FeatureFinder finder(grid, height, ocean, graph, params, features);
+    FeatureFinder finder(grid, height, land, graph, params, features);
     for (std::size_t s = 0; s < graph.segments.size(); ++s) {
         const auto segment = static_cast<std::int32_t>(s);
         finder.mouth(segment);

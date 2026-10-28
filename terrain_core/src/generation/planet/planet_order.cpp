@@ -69,15 +69,18 @@ std::vector<std::uint32_t> sortLandCells(const std::vector<float>& height, const
     return order;
 }
 
-std::vector<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::vector<float>& height,
-                                           const std::vector<std::uint8_t>& ocean, int threads) {
-    std::vector<std::uint8_t> receiver(grid.cells(), kNoNeighbor);
+LandValues<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::vector<float>& height,
+                                          const std::shared_ptr<const LandIndex>& land,
+                                          int threads) {
+    LandValues<std::uint8_t> receiver(land, kNoNeighbor, kNoNeighbor);
+    std::vector<std::uint8_t>& values = receiver.values();
     parallelRows(grid.nz, resolveThreads(threads), [&](int first, int last) {
         for (std::size_t c = grid.index(0, first); c < grid.index(0, last); ++c) {
-            if (ocean[c] != kLand) {
+            if (!land->land(c)) {
                 continue;
             }
             double best = -1.0;
+            std::uint8_t to = kNoNeighbor;
             for (int k = 0; k < 8; ++k) {
                 const std::size_t n = grid.neighbor(c, k);
                 if (!lowerCell(height, n, c)) {
@@ -89,9 +92,10 @@ std::vector<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::ve
                                          : drop;
                 if (slope > best) {
                     best = slope;
-                    receiver[c] = static_cast<std::uint8_t>(k);
+                    to = static_cast<std::uint8_t>(k);
                 }
             }
+            values[land->slot(c)] = to;
         }
     });
     return receiver;

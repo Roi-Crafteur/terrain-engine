@@ -19,12 +19,18 @@ using terrain::planet::kOceanNode;
 
 DepressionHierarchy hierarchyOf(const Terrain& t, std::vector<std::uint8_t>* receivers = nullptr) {
     const std::vector<std::uint32_t> order = terrain::planet::sortCells(t.height, 1);
-    const std::vector<std::uint8_t> receiver =
-        terrain::planet::computeReceivers(t.grid, t.height, t.ocean, 1);
+    const auto receiver = terrain::planet::computeReceivers(t.grid, t.height, t.land, 1);
     if (receivers != nullptr) {
-        *receivers = receiver;
+        *receivers = receiver.expand();
     }
-    return terrain::planet::buildHierarchy(t.grid, t.height, t.ocean, order, receiver);
+    // The land alone in the order gives the same hierarchy.
+    const DepressionHierarchy h =
+        terrain::planet::buildHierarchy(t.grid, t.height, t.land, order, receiver);
+    const DepressionHierarchy onLand = terrain::planet::buildHierarchy(
+        t.grid, t.height, t.land, terrain::planet::sortLandCells(t.height, *t.land, 1), receiver);
+    TEST_CHECK(onLand.nodes.size() == h.nodes.size() && onLand.label.values() == h.label.values() &&
+               onLand.own.expand() == h.own.expand());
+    return h;
 }
 
 void testSortCells() {
@@ -57,9 +63,9 @@ void testSortCells() {
 void testReceivers() {
     Terrain t = planet_test::noisyTerrain(40, 30, 3, -300.0f, 700.0f, 2);
     t.markOcean();
-    std::vector<std::uint8_t> receiver =
-        terrain::planet::computeReceivers(t.grid, t.height, t.ocean, 1);
-    TEST_CHECK(receiver == terrain::planet::computeReceivers(t.grid, t.height, t.ocean, 4));
+    const std::vector<std::uint8_t> receiver =
+        terrain::planet::computeReceivers(t.grid, t.height, t.land, 1).expand();
+    TEST_CHECK(receiver == terrain::planet::computeReceivers(t.grid, t.height, t.land, 4).expand());
     for (std::size_t c = 0; c < t.grid.cells(); ++c) {
         if (t.ocean[c] != terrain::planet::kLand) {
             TEST_CHECK(receiver[c] == terrain::kNoNeighbor);
@@ -84,7 +90,7 @@ void testReceivers() {
     Terrain flat = planet_test::flatTerrain(6, 6, 10.0f);
     flat.markOcean();
     const std::vector<std::uint8_t> flatReceiver =
-        terrain::planet::computeReceivers(flat.grid, flat.height, flat.ocean, 1);
+        terrain::planet::computeReceivers(flat.grid, flat.height, flat.land, 1).expand();
     TEST_CHECK(flatReceiver[flat.cell(3, 3)] == 1);
     TEST_CHECK(flat.ocean[0] == terrain::planet::kForcedOutlet &&
                flatReceiver[0] == terrain::kNoNeighbor);

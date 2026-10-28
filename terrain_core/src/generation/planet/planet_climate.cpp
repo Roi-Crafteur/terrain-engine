@@ -166,7 +166,7 @@ PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& h
                  landSurface);
     addEddyRain(grid, landSurface, ocean, land, climate.rowTemperature, params,
                 climate.precipitation);
-    landSurface = {};
+    freeVector(landSurface);
     for (int pass = 0; pass < params.blurPasses; ++pass) {
         blurPassInPlace(grid, climate.precipitation, workers);
     }
@@ -185,7 +185,7 @@ CellWater cellWater(const PlanetGrid& grid, float rowTemperature, float height, 
         return water;
     }
     const double temperature = cellTemperature(rowTemperature, height, params);
-    water.frozen = temperature < params.iceTemperature;
+    water.frozen = cellFrozen(rowTemperature, height, params);
     if (water.frozen) {
         water.runoff = waterUnits(precipitation, grid.cellArea());
         return water;
@@ -205,6 +205,20 @@ WaterOf climateWater(const PlanetGrid& grid, const std::vector<float>& height,
         const auto row = static_cast<std::size_t>(grid.row(cell));
         return cellWater(grid, climate.rowTemperature[row], height[cell],
                          climate.precipitation[cell], ocean[cell], params);
+    };
+}
+
+WaterOf landWater(const PlanetGrid& grid, const std::vector<float>& height,
+                  const LandValues<float>& precipitation, const std::vector<float>& rowTemperature,
+                  const PlanetClimateParams& params) {
+    return [&grid, &height, &precipitation, &rowTemperature, &params](std::size_t cell) {
+        const LandIndex& land = precipitation.index();
+        if (!land.land(cell)) {
+            return CellWater{};
+        }
+        const auto row = static_cast<std::size_t>(grid.row(cell));
+        return cellWater(grid, rowTemperature[row], height[cell],
+                         precipitation.values()[land.slot(cell)], kLand, params);
     };
 }
 

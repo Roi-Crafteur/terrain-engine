@@ -14,6 +14,11 @@
 // the memory of the game.
 namespace terrain::planet {
 
+// Frees the memory of a vector (v = {} would only empty it, its capacity kept).
+template <class T> void freeVector(std::vector<T>& v) {
+    std::vector<T>().swap(v);
+}
+
 // The land cells of a grid (kLand in an ocean mask), numbered in the order of the cells: a bit
 // per cell and the count of land cells before each word of 64 bits, so that the number of a land
 // cell among them (its slot) costs a popcount. 12 bytes per 64 cells.
@@ -22,6 +27,9 @@ public:
     LandIndex() = default;
     // The land of an ocean mask (OceanKind): its cells kLand.
     explicit LandIndex(const std::vector<std::uint8_t>& ocean);
+    // The cells of a sorted list (each once) taken as the land: the numbering of any set of cells.
+    [[nodiscard]] static LandIndex ofCells(std::size_t cells,
+                                           const std::vector<std::uint32_t>& sorted);
 
     [[nodiscard]] std::size_t cells() const { return cells_; }
     [[nodiscard]] std::size_t landCells() const { return land_; }
@@ -65,6 +73,9 @@ public:
     LandValues() = default;
     LandValues(std::shared_ptr<const LandIndex> index, T value, T outside)
         : index_(std::move(index)), values_(index_->landCells(), value), outside_(outside) {}
+    // values: one per land cell, by slot.
+    LandValues(std::shared_ptr<const LandIndex> index, std::vector<T> values, T outside)
+        : index_(std::move(index)), values_(std::move(values)), outside_(outside) {}
 
     // The value of a cell: its own on land, outside at sea.
     [[nodiscard]] T operator[](std::size_t cell) const {
@@ -81,7 +92,7 @@ public:
     [[nodiscard]] T outside() const { return outside_; }
     [[nodiscard]] bool empty() const { return values_.empty(); }
     // Frees the values.
-    void release() { values_ = {}; }
+    void release() { freeVector(values_); }
 
     // The value of every cell, the sea included.
     [[nodiscard]] std::vector<T> expand() const {
@@ -136,8 +147,8 @@ public:
     [[nodiscard]] const std::vector<Entry>& entries() const { return entries_; }
     [[nodiscard]] T outside() const { return outside_; }
     void release() {
-        bits_ = {};
-        entries_ = {};
+        freeVector(bits_);
+        freeVector(entries_);
     }
 
     // The value of every cell.
