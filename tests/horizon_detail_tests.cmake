@@ -9,3 +9,6 @@ target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/horizon_crest_texe
 terrain_add_test(unreal_horizon_detail_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_crests_test terrain_unreal_bridge)
 
+# Measures of the GPU horizon, run by hand (not a test): see the header of the source.
+add_executable(unreal_horizon_bench unreal_horizon_bench.cpp)
+target_link_libraries(unreal_horizon_bench PRIVATE terrain_unreal_bridge terrain_warnings)
