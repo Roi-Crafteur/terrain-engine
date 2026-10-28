@@ -10,11 +10,86 @@ namespace terrain::tile {
 namespace {
 
 constexpr int kLast = kGridSamples - 1;
+// A normal of the density keeps its vertex where it agrees with the triangles around it (its
+// cosine with their normal at least kAgree): on a feature of the rock as thin as a cell, the
+// differences over two cells may point it into the rock.
+constexpr float kAgree = 0.3f;
+
+// The normal of a triangle of a mesh (indices first..first + 2), its length twice its area.
+Vec3f windingOf(const Mesh& mesh, std::size_t first) {
+    const Vec3f& a = mesh.vertices[mesh.indices[first]];
+    const Vec3f& b = mesh.vertices[mesh.indices[first + 1]];
+    const Vec3f& c = mesh.vertices[mesh.indices[first + 2]];
+    const Vec3f u{b.x - a.x, b.y - a.y, b.z - a.z};
+    const Vec3f v{c.x - a.x, c.y - a.y, c.z - a.z};
+    return {u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x};
+}
+
+float dot(const Vec3f& a, const Vec3f& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+Vec3f unit(const Vec3f& v) {
+    const float length = std::sqrt(dot(v, v));
+    return length > 0.0f ? Vec3f{v.x / length, v.y / length, v.z / length} : v;
+}
+
+// Turns the normals of the vertices of the triangles whose normals point against their winding
+// (a fold of the surface as thin as a cell) just in front of them (kFront), a few times over:
+// their neighbors share vertices with them.
+void unfold(Mesh& mesh) {
+    constexpr int kRounds = 8;
+    constexpr float kFront = 0.1f;
+    for (int round = 0; round < kRounds; ++round) {
+        bool folded = false;
+        for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+            const Vec3f winding = windingOf(mesh, t);
+            Vec3f sum{};
+            for (std::size_t k = 0; k < 3; ++k) {
+                const Vec3f& n = mesh.normals[mesh.indices[t + k]];
+                sum = {sum.x + n.x, sum.y + n.y, sum.z + n.z};
+            }
+            if (!(dot(sum, winding) < 0.0f)) {
+                continue;
+            }
+            folded = true;
+            const Vec3f w = unit(winding);
+            for (std::size_t k = 0; k < 3; ++k) {
+                Vec3f& n = mesh.normals[mesh.indices[t + k]];
+                const float facing = dot(n, w);
+                if (facing < kFront) {
+                    const float lift = kFront - facing;
+                    n = unit({n.x + lift * w.x, n.y + lift * w.y, n.z + lift * w.z});
+                }
+            }
+        }
+        if (!folded) {
+            return;
+        }
+    }
+}
+
+// The normals of the triangles of a mesh summed at their vertices, weighted by their areas.
+std::vector<Vec3f> triangleNormals(const Mesh& mesh) {
+    std::vector<Vec3f> sums(mesh.vertices.size());
+    for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+        const Vec3f n = windingOf(mesh, t);
+        for (std::size_t k = 0; k < 3; ++k) {
+            Vec3f& sum = sums[mesh.indices[t + k]];
+            sum = {sum.x + n.x, sum.y + n.y, sum.z + n.z};
+        }
+    }
+    return sums;
+}
 
 // The derivative at index of samples f(index) along a side of kGridSamples of them: centered
-// within, second order differences at both ends.
+// within and, with samples one step beyond the side (ring), at its ends too; second order
+// differences there otherwise.
 template <typename Sample>
-float derivative(int index, const Sample& f) {
+float derivative(int index, bool ring, const Sample& f) {
+    if (ring) {
+        return 0.5f * (f(index + 1) - f(index - 1));
+    }
     if (index == 0) {
         return 0.5f * (-3.0f * f(0) + 4.0f * f(1) - f(2));
     }
@@ -46,12 +121,34 @@ const RockColumn& RockTile::rockAt(int i, int k) const {
     return columns_->rock[static_cast<std::size_t>(k * kGridSamples + i)];
 }
 
+namespace {
+
+// The index of column (i, k) one step beyond a side in the ring (tile::sampleRing).
+std::size_t ringIndex(int i, int k) {
+    const int side = i < 0 ? 0 : (i > kLast ? 1 : (k < 0 ? 2 : 3));
+    return static_cast<std::size_t>(side * kGridSamples + (side < 2 ? k : i));
+}
+
+bool inside(int i, int k) {
+    return i >= 0 && i <= kLast && k >= 0 && k <= kLast;
+}
+
+} // namespace
+
+const RockColumn& RockTile::columnAt(int i, int k) const {
+    return inside(i, k) ? rockAt(i, k) : columns_->ring[ringIndex(i, k)];
+}
+
+float RockTile::groundAt(int i, int k) const {
+    return inside(i, k) ? columns_->at(i, k) : columns_->ringHeights[ringIndex(i, k)];
+}
+
 float RockTile::sample(int i, int j, int k, int originY, bool coarse) const {
     const double sampleY = originY + j * lattice_.spacing;
-    const RockColumn& c = rockAt(i, k);
+    const RockColumn& c = columnAt(i, k);
     if (c.faceCount == 0 || onHorizonSide(i, k)) {
         // Same expression as tile::levelDensity and TerrainTiles::densityAt.
-        return static_cast<float>(sampleY - columns_->at(i, k));
+        return static_cast<float>(sampleY - groundAt(i, k));
     }
     return rockDensity(c, sampleY, coarse ? coarse_ : fine_);
 }
@@ -95,8 +192,8 @@ bool RockTile::onStitchedSide(int i, int k) const {
 }
 
 bool RockTile::onHorizonSide(int i, int k) const {
-    return (i == 0 && (horizon_ & kSeamNegX) != 0) || (i == kLast && (horizon_ & kSeamPosX) != 0) ||
-           (k == 0 && (horizon_ & kSeamNegZ) != 0) || (k == kLast && (horizon_ & kSeamPosZ) != 0);
+    return (i <= 0 && (horizon_ & kSeamNegX) != 0) || (i >= kLast && (horizon_ & kSeamPosX) != 0) ||
+           (k <= 0 && (horizon_ & kSeamNegZ) != 0) || (k >= kLast && (horizon_ & kSeamPosZ) != 0);
 }
 
 void RockTile::dropPlants(std::vector<Plant>& plants) const {
@@ -111,8 +208,13 @@ void RockTile::dropPlants(std::vector<Plant>& plants) const {
 }
 
 Vec3f RockTile::gradientAt(const DensityGrid& grid, int i, int j, int k, int originY) const {
-    const float gx = derivative(i, [&](int n) { return grid.at(n, j, k); });
-    const float gz = derivative(k, [&](int n) { return grid.at(i, j, n); });
+    const bool ring = hasRing();
+    const float gx = derivative(i, ring, [&](int n) {
+        return n >= 0 && n <= kLast ? grid.at(n, j, k) : sample(n, j, k, originY, false);
+    });
+    const float gz = derivative(k, ring, [&](int n) {
+        return n >= 0 && n <= kLast ? grid.at(i, j, n) : sample(i, j, n, originY, false);
+    });
     // Along y, centered through the rock beyond the level on its borders.
     const float below = j > 0 ? grid.at(i, j - 1, k) : sample(i, -1, k, originY, false);
     const float above =
@@ -150,6 +252,16 @@ void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) con
             level.normals[n] = {g.x / length, g.y / length, g.z / length};
         }
     }
+    const std::vector<Vec3f> around = triangleNormals(level);
+    for (std::size_t n = 0; n < level.vertices.size(); ++n) {
+        const Vec3f& a = around[n];
+        const float length = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+        const Vec3f& g = level.normals[n];
+        if (length > 0.0f && g.x * a.x + g.y * a.y + g.z * a.z < kAgree * length) {
+            level.normals[n] = {a.x / length, a.y / length, a.z / length};
+        }
+    }
+    unfold(level);
 }
 
 std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const {

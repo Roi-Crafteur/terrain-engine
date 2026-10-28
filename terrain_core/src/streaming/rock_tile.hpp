@@ -25,7 +25,8 @@ public:
     // The density of sample (i, j, k) of the level whose lowest samples lie at originY, with the
     // detail of the tile, or of its coarser neighbor (the samples it holds on a stitched side):
     // y - ground bit for bit at the columns without a face, as tile::levelDensity, and on the
-    // sides the horizon meets (TileRequest::horizon).
+    // sides the horizon meets (TileRequest::horizon) and beyond them. With the ring of the
+    // columns (TileColumns::ring), i or k may lie one step beyond the tile.
     [[nodiscard]] float sample(int i, int j, int k, int originY, bool coarse) const;
 
     // The density of a level, the even samples of its stitched sides with the detail of the
@@ -43,9 +44,11 @@ public:
     void dropPlants(std::vector<Plant>& plants) const;
 
     // Sets the normals of the mesh of a level (in cells, as Marching Cubes gives it) whose density
-    // is grid and lowest samples lie at originY: those of Marching Cubes within the level, and on
-    // its borders the density of the rock above and below it, second order differences across the
-    // sides of the tile, so that a face of rock keeps its light across the levels and the tiles.
+    // is grid and lowest samples lie at originY: centered differences of the density everywhere,
+    // through the rock above and below the level and, with the ring of the columns, beyond the
+    // sides of the tile (the normals the neighboring tile of the same LOD gives there, so that a
+    // face of rock keeps its light across the levels and the tiles); without it (the tiles of the
+    // caves), second order differences across the sides.
     void lightLevel(Mesh& level, const DensityGrid& grid, int originY) const;
 
     // The share of rock of each vertex of a mesh of the tile whose origin lies at originY: that of
@@ -54,6 +57,10 @@ public:
 
 private:
     [[nodiscard]] const RockColumn& rockAt(int i, int k) const;
+    [[nodiscard]] bool hasRing() const { return !columns_->ring.empty(); }
+    // The column (i, k), i or k one step beyond the tile on the ring; its ground.
+    [[nodiscard]] const RockColumn& columnAt(int i, int k) const;
+    [[nodiscard]] float groundAt(int i, int k) const;
     [[nodiscard]] Vec3f gradientAt(const DensityGrid& grid, int i, int j, int k,
                                    int originY) const;
     [[nodiscard]] bool onStitchedSide(int i, int k) const;

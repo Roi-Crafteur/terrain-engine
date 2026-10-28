@@ -243,15 +243,19 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     const TileRequest request{wrapTile(asked.key, world()), asked.seams, asked.horizon};
     const TileLattice lattice = tile::latticeOf(request.key);
     TileColumns columns = tile::sampleColumns(field_, lattice, rock_);
+    // The far tiles carve nothing: they are those of the world without caves.
+    const bool carved = caves_ && caveDetailForLod(request.key.lod).components != 0;
     std::optional<tile::RockTile> rockTile;
     if (!columns.rock.empty()) {
+        // The normals of the sides from the columns beyond them (not those of the caves).
+        if (!carved) {
+            tile::sampleRing(field_, lattice, columns);
+        }
         // The levels and the heights of the tile reach its rock.
         rockTile.emplace(columns, request, lattice);
         columns.minHeight = rockTile->bounds().low;
         columns.maxHeight = rockTile->bounds().high;
     }
-    // The far tiles carve nothing: they are those of the world without caves.
-    const bool carved = caves_ && caveDetailForLod(request.key.lod).components != 0;
     TileData data;
     data.request = request;
     data.originX = lattice.x0;

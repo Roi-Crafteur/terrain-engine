@@ -39,6 +39,10 @@ struct TileColumns {
     // The rock of each column in three dimensions (phase 12A), only when a face lies at one of
     // them: empty otherwise, and the tile is that of the relief alone.
     std::vector<RockColumn> rock;
+    // With rock, optionally: the ring of the columns one step beyond each side of the tile
+    // (sampleRing), for the normals of its sides.
+    std::vector<float> ringHeights;
+    std::vector<RockColumn> ring;
     float minHeight = 0.0f;
     float maxHeight = 0.0f;
 
@@ -102,6 +106,35 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     columns.minHeight = *low;
     columns.maxHeight = *high;
     return columns;
+}
+
+// The columns one step beyond the sides of a tile, kGridSamples on each: side 0 at i = -1, 1 at
+// i = kGridSamples, 2 at k = -1, 3 at k = kGridSamples, column p of a side at index
+// side * kGridSamples + p (k along the sides 0 and 1, i along 2 and 3). Each holds the bits the
+// neighboring tile of the same LOD holds there (Heightfield::samplesAt gives a column the same
+// bits in any batch).
+inline void sampleRing(const Heightfield& field, const TileLattice& lattice,
+                       TileColumns& columns) {
+    constexpr auto kCount = static_cast<std::size_t>(4 * kGridSamples);
+    std::vector<double> xs;
+    std::vector<double> zs;
+    xs.reserve(kCount);
+    zs.reserve(kCount);
+    const int s = lattice.spacing;
+    for (int side = 0; side < 4; ++side) {
+        for (int p = 0; p < kGridSamples; ++p) {
+            const int across = side % 2 == 0 ? -1 : kGridSamples;
+            xs.push_back(lattice.x0 + (side < 2 ? across : p) * s);
+            zs.push_back(lattice.z0 + (side < 2 ? p : across) * s);
+        }
+    }
+    std::vector<HeightSample> samples(kCount);
+    columns.ring.resize(kCount);
+    field.samplesAt(xs, zs, samples, columns.ring, kRunCells * static_cast<float>(s));
+    columns.ringHeights.clear();
+    for (const HeightSample& sample : samples) {
+        columns.ringHeights.push_back(sample.height);
+    }
 }
 
 // Levels n whose samples [n * height, (n + 1) * height] meet [low, high].
