@@ -7,10 +7,14 @@
 
 namespace terrain {
 
-HorizonStreamer::HorizonStreamer(const HorizonSampler& sampler, const HorizonStreamParams& params)
-    : sampler_(sampler), params_(params), clipmap_(sampler.params()) {
+HorizonStreamer::HorizonStreamer(const HorizonSampler& sampler, const HorizonStreamParams& params,
+                                 HorizonEditMap* edits)
+    : sampler_(sampler), params_(params), edits_(edits), clipmap_(sampler.params()) {
     if (params_.workerThreads < 0 || params_.pieceSamples == 0) {
         throw std::invalid_argument("HorizonStreamParams: invalid thread count or piece size");
+    }
+    if (edits_ != nullptr) {
+        edits_->validate(sampler.params());
     }
     for (int i = 0; i < params_.workerThreads; ++i) {
         workers_.emplace_back([this] { workerLoop(); });
@@ -31,6 +35,12 @@ HorizonChanges HorizonStreamer::update(double x, double z) {
     HorizonChanges changes;
     commitIfComplete(changes);
     if (epoch_ == nullptr) {
+        // No worker reads the edits now: the staged ones may take effect.
+        if (edits_ != nullptr && edits_->hasStaged()) {
+            for (const HorizonArea& area : edits_->applyStaged()) {
+                clipmap_.invalidate(area.minX, area.minZ, area.maxX, area.maxZ);
+            }
+        }
         if (std::optional<HorizonEpoch> next = clipmap_.plan(x, z, params_.pieceSamples)) {
             startEpoch(std::move(*next));
             commitIfComplete(changes); // an epoch with nothing to compute

@@ -32,6 +32,11 @@ float generatedDensity(std::int64_t j, float ground) {
     return static_cast<float>(static_cast<double>(j * kSpacing) - ground);
 }
 
+// The density of a point among removed (added) blocks only: the cube of the block centered on it
+// (blockDistance -0.5), as editDensity applies it.
+constexpr float kAllRemoved = 0.5f;
+constexpr float kAllAdded = -0.5f;
+
 // The highest lattice point under the generated ground (rock: density below the iso level).
 std::int64_t generatedTop(float ground) {
     std::int64_t top = static_cast<std::int64_t>(ground) / kSpacing;
@@ -125,9 +130,18 @@ std::optional<float> editedColumnGround(const EditWindow& window, float ground, 
     const std::int64_t high = floorDiv(std::int64_t{span->second} + kBlockReach, kSpacing);
     const auto density = [&](std::int64_t j) {
         const float generated = generatedDensity(j, ground);
-        return j < low || j > high
-                   ? generated
-                   : window.density(generated, x, static_cast<int>(j * kSpacing), z);
+        if (j < low || j > high) {
+            return generated;
+        }
+        const int y = static_cast<int>(j * kSpacing);
+        // Within sections filled with one edit (a razed volume, a heap), the 27 blocks around
+        // the point share it: EditWindow::density there, without reading them one by one.
+        if (window.filled({x - kBlockReach, y - kBlockReach, z - kBlockReach},
+                          {x + kBlockReach, y + kBlockReach, z + kBlockReach})) {
+            return window.blockAt(x, y, z) == BlockEdit::Removed ? std::max(generated, kAllRemoved)
+                                                                 : std::min(generated, kAllAdded);
+        }
+        return window.density(generated, x, y, z);
     };
     // From the air over the generated rock and over every edited point, down to the first rock:
     // under the lowest edited point, the generated rock at the latest.
