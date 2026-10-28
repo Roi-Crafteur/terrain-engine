@@ -19,17 +19,21 @@ constexpr double kShareAcross = 3.0;
 
 // The grain of the faces: beds of rock along the height, kBedWave meters thick on average (from
 // 1 - kBedJitter to 1 + kBedJitter of it), each standing out or receding by up to the grain, the
-// one to the next over kBedEdge meters (a noise along the height would set its features about one
-// lattice apart: a regular row of bands). Cells larger than kGrainCell leave it out.
+// one to the next over kBedEdge meters, kBedEdgeCells cells at least (a noise along the height
+// would set its features about one lattice apart: a regular row of bands; an edge sharper than
+// the cells, wandering along the face, would step at each of them). Cells larger than kGrainCell
+// leave it out.
 constexpr double kBedWave = 6.5;
 constexpr double kBedJitter = 0.42;
 constexpr double kBedEdge = 2.0;
+constexpr double kBedEdgeCells = 1.5;
 constexpr float kGrainCell = 2.0f;
 constexpr std::uint64_t kGrainSalt = 0x677261696e5f3132ULL;
 constexpr double kRunFade = 1.5;
 constexpr double kFeatureLow = 1.5;
 constexpr double kFeatureHigh = 3.0;
 constexpr double kThickness = 0.5;
+constexpr double kJointCells = 4.0;
 // The edges of a step are rounded over kRound meters, kRoundShare of its height at most.
 constexpr double kRound = 3.0;
 constexpr double kRoundShare = 0.25;
@@ -72,10 +76,10 @@ double grainAt(const RockFace& f, double y, const RockDetail& detail) {
     // The bed, joined to the one below and to the one above at its edges.
     const double low = bedStart(k);
     const double high = bedStart(k + 1);
+    const double edge = std::max(kBedEdge, kBedEdgeCells * static_cast<double>(detail.cell));
     double out = bedOut(k);
-    out += (bedOut(k - 1) - out) * (1.0 - smooth(low - 0.5 * kBedEdge, low + 0.5 * kBedEdge, t));
-    out += (bedOut(k + 1) - bedOut(k)) *
-           smooth(high - 0.5 * kBedEdge, high + 0.5 * kBedEdge, t);
+    out += (bedOut(k - 1) - out) * (1.0 - smooth(low - 0.5 * edge, low + 0.5 * edge, t));
+    out += (bedOut(k + 1) - bedOut(k)) * smooth(high - 0.5 * edge, high + 0.5 * edge, t);
     return f.grain * out;
 }
 
@@ -102,6 +106,11 @@ double drawnFeature(float feature, float extent, const RockDetail& detail) {
     return feature * smooth(low, high, feature) * smooth(low, high, kThickness * extent);
 }
 
+// The edges of the step of a face are rounded over this many meters.
+double roundOf(const RockFace& f) {
+    return std::min(kRound, kRoundShare * (static_cast<double>(f.top) - f.foot));
+}
+
 // How far the face lies toward the air at height y of its step: its grain, its cap, full over the
 // top two fifths of its depth and nothing at its bottom (a ceiling rising to the lip), less its
 // undercut, an arch deepest at the foot, and its joint; all of them at full weight only
@@ -111,7 +120,12 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
     if (!(full > 0.0)) {
         return 0.0;
     }
-    double offset = grainAt(f, y, detail);
+    // The grain leaves the rounded edges of the step alone (a bed standing out there would be a
+    // blade of rock thinner than a cell).
+    const double round = roundOf(f);
+    double offset = grainAt(f, y, detail) *
+                    smooth(static_cast<double>(f.foot), static_cast<double>(f.foot) + round, y) *
+                    (1.0 - smooth(static_cast<double>(f.top) - round, static_cast<double>(f.top), y));
     const double cap = drawnFeature(f.cap, f.capDepth, detail);
     if (cap > 0.0) {
         offset += cap * smooth(static_cast<double>(f.top) - f.capDepth,
@@ -124,10 +138,11 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
             offset -= undercut * std::sqrt(1.0 - t * t);
         }
     }
-    // A joint narrower than kFeatureHigh cells fades out (the cells would catch its groove at one
-    // column out of two); a shallow one is drawn: it only moves the face.
-    offset -= static_cast<double>(f.joint) *
-              smooth(kFeatureLow * detail.cell, kFeatureHigh * detail.cell, f.jointWidth);
+    // A joint narrower than kJointCells cells fades out, gone at half that width (the cells would
+    // catch its groove at one column out of two: a slit); a shallow one is drawn: it only moves
+    // the face.
+    offset -= static_cast<double>(f.joint) * smooth(0.5 * kJointCells * detail.cell,
+                                                    kJointCells * detail.cell, f.jointWidth);
     return full * offset;
 }
 
@@ -135,7 +150,7 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
 // its foot in front of it, its edges rounded.
 double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
     const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
-    const double round = std::min(kRound, kRoundShare * (static_cast<double>(f.top) - f.foot));
+    const double round = roundOf(f);
     if (!(round > 0.0)) {
         return std::min(v - f.foot, std::max(v - f.top, across));
     }

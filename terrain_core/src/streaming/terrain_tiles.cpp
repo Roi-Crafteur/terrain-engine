@@ -2,6 +2,7 @@
 
 #include "cave_tile.hpp"
 #include "rock_tile.hpp"
+#include "tile_normals.hpp"
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/terrain_surface.hpp"
@@ -111,13 +112,15 @@ void appendLevel(Mesh& target, const Mesh& part, float scale, float offsetY) {
     }
 }
 
-// The mesh of a level of a tile: lit by the rock of the tile, if it has some.
+// The mesh of a level of a tile: lit by the rock of the tile, if it has some, its normals never
+// against its triangles.
 Mesh levelMesh(const DensityGrid& grid, unsigned seams, const std::optional<tile::RockTile>& rock,
                int originY) {
     Mesh mesh = stitchedMesh(grid, seams);
     if (rock) {
         rock->lightLevel(mesh, grid, originY);
     }
+    tile::agreeWithTriangles(mesh);
     return mesh;
 }
 

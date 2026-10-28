@@ -23,7 +23,7 @@ constexpr std::array<std::size_t, 4> kFacePasses = {0, 1, 2, 3};
 // steps, which rockTop lays at a share of it only.
 constexpr double kFaintLow = 0.3;
 constexpr double kFaintHigh = 0.6;
-constexpr double kWholeCell = 0.95;
+constexpr double kWholeCell = 1.0;
 // The cap of a face juts out up to kCapShare of its height, kCapMost meters at most, over the top
 // kCapDepthLow to kCapDepthLow + kCapDepthSpread of it; its undercut recedes up to kCutShare of its
 // height, kCutMost meters at most, up to kCutHeightLow to kCutHeightLow + kCutHeightSpread of it.
@@ -55,23 +55,33 @@ constexpr double kCutFull = 0.85;
 constexpr double kGrainShare = 0.04;
 constexpr double kGrainMost = 1.5;
 constexpr double kGrainRun = 0.12;
-constexpr double kShiftRange = 12.0;
-constexpr double kShiftWavelength = 45.0;
+constexpr double kShiftRange = 6.0;
+constexpr double kShiftWavelength = 90.0;
 // The vertical joints: the edges of cells of about kJointCell meters (as many as fit along each
 // side of the world: never on the lattice of the tiles, 16 m), their sites jittered by up to
 // kJointJitter of a cell; open where the noise of the joints (kJointWavelength) passes kJointOpen
 // (about two thirds of their length), kJointWidthLow to kJointWidthLow + kJointWidthSpread meters
-// wide by the noise of the overhangs, kJointDepthLow to kJointDepthLow + kJointDepthSpread deep
-// by the noise of the shifts (both read across: (z, x)).
+// wide by the noise of the overhangs, kJointDepthLow to kJointDepthLow + kJointDepthSpread deep by
+// the noise of the shifts (both read across: (z, x)), kJointDeepest of their width at most: a
+// groove with a floor, flat over the middle half of its width, never a slit.
 constexpr double kJointCell = 17.3;
 constexpr double kJointJitter = 0.45;
 constexpr double kJointWavelength = 70.0;
 constexpr double kJointOpen = -0.25;
 constexpr double kJointFade = 0.1;
-constexpr double kJointWidthLow = 2.0;
-constexpr double kJointWidthSpread = 4.0;
+constexpr double kJointWidthLow = 3.0;
+constexpr double kJointWidthSpread = 5.0;
 constexpr double kJointDepthLow = 0.3;
 constexpr double kJointDepthSpread = 2.2;
+constexpr double kJointDeepest = 0.4;
+// The walls of a groove of a joint climb kJointWall times its depth over its width at their
+// steepest (smooth over a quarter of its width). Where it runs along a face, they would fold the
+// face (it would recede faster than it stands back across the groove: a blade of rock between the
+// groove and the air): its depth keeps the face receding kJointFold as fast at most, where it runs
+// alone (kJointAlone meters from where another joint meets it, its direction changing there).
+constexpr double kJointWall = 6.0;
+constexpr double kJointFold = 0.6;
+constexpr double kJointAlone = 2.0;
 // The slope of the ground under a pass is read over kDelta meters of the ground of the walls, at
 // least kLeastSlope meters per meter.
 constexpr double kDelta = 0.5;
@@ -246,6 +256,10 @@ void addRiserFace(const PassSite& s, const Riser& r, Site& site) {
     out.rate = s.rate;
     out.liftX = s.liftX;
     out.liftZ = s.liftZ;
+    out.jointFloor = s.joint.floor * weight;
+    out.jointX = s.joint.acrossX;
+    out.jointZ = s.joint.acrossZ;
+    out.jointAlone = s.joint.alone;
 }
 
 } // namespace
@@ -278,6 +292,9 @@ Joint jointAt(const Grain& grain, double x, double z) {
     const auto j = static_cast<std::int64_t>(std::floor(cz));
     double first = 1.0e300;
     double second = 1.0e300;
+    double third = 1.0e300;
+    std::array<double, 2> toFirst{};
+    std::array<double, 2> toSecond{};
     for (std::int64_t dj = -1; dj <= 1; ++dj) {
         for (std::int64_t di = -1; di <= 1; ++di) {
             const std::int64_t ci = ((i + di) % grain.cellsX + grain.cellsX) % grain.cellsX;
@@ -290,18 +307,33 @@ Joint jointAt(const Grain& grain, double x, double z) {
                               kJointJitter *
                                   (2.0 * static_cast<double>((hash >> 16U) & 0xFF'FFFFU) * 0x1.0p-24 -
                                    1.0);
-            const double d = dmath::hypot((cx - static_cast<double>(i) - sx) * sizeX,
-                                          (cz - static_cast<double>(j) - sz) * sizeZ);
+            const std::array<double, 2> to = {(cx - static_cast<double>(i) - sx) * sizeX,
+                                              (cz - static_cast<double>(j) - sz) * sizeZ};
+            const double d = dmath::hypot(to[0], to[1]);
             if (d < first) {
+                third = second;
                 second = first;
+                toSecond = toFirst;
                 first = d;
+                toFirst = to;
             } else if (d < second) {
+                third = second;
                 second = d;
+                toSecond = to;
+            } else if (d < third) {
+                third = d;
             }
         }
     }
     const double edge = 0.5 * (second - first);
     Joint out;
+    // The gradient of the distance to the edge: half the difference of the directions from the
+    // two sites.
+    if (first > 0.0 && second > 0.0) {
+        out.acrossX = 0.5 * (toSecond[0] / second - toFirst[0] / first);
+        out.acrossZ = 0.5 * (toSecond[1] / second - toFirst[1] / first);
+    }
+    out.alone = smooth(0.0, kJointAlone, third - second);
     out.width = kJointWidthLow +
                 kJointWidthSpread * smooth(-0.5, 0.5, static_cast<double>(grain.overhangs.fbm2D(z, x)));
     const double half = 0.5 * out.width;
@@ -313,9 +345,10 @@ Joint jointAt(const Grain& grain, double x, double z) {
         return out;
     }
     const double deep = static_cast<double>(grain.shift.fbm2D(z, x));
-    out.depth = (kJointDepthLow + kJointDepthSpread * smooth(-0.5, 0.5, deep)) *
-                smooth(kJointOpen - kJointFade, kJointOpen + kJointFade, open) *
-                (1.0 - smooth(0.0, half, edge));
+    out.floor = std::min(kJointDepthLow + kJointDepthSpread * smooth(-0.5, 0.5, deep),
+                         kJointDeepest * out.width) *
+                smooth(kJointOpen - kJointFade, kJointOpen + kJointFade, open);
+    out.depth = out.floor * (1.0 - smooth(0.5 * half, half, edge));
     return out;
 }
 
@@ -380,8 +413,15 @@ RockFace placeFace(const PendingFace& pending, double gradX, double gradZ) {
     const double room = std::max(0.0, kWithinRun * face.run - 2.0 * face.grain);
     face.cap = static_cast<float>(std::min(static_cast<double>(face.cap), room));
     face.undercut = static_cast<float>(std::min(static_cast<double>(face.undercut), room));
-    face.joint = static_cast<float>(
-        std::min(static_cast<double>(face.joint), std::max(0.0, room - face.undercut)));
+    // The groove of the joint shallower as a whole: its floor within what its walls allow.
+    const double joint = face.joint;
+    const double along = std::abs(pending.jointX * face.airX + pending.jointZ * face.airZ);
+    const double allowed = kJointFold * face.jointWidth / kJointWall;
+    const double unfolded = along * pending.jointFloor > allowed
+                                ? joint * allowed / (along * pending.jointFloor)
+                                : joint;
+    face.joint = static_cast<float>(std::min(joint + pending.jointAlone * (unfolded - joint),
+                                             std::max(0.0, room - face.undercut)));
     // A lip as thick as it juts out at least, a niche as high as it is deep, within the face.
     const double height = static_cast<double>(face.top) - face.foot;
     face.capDepth = static_cast<float>(

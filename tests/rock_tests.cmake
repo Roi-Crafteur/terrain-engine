@@ -22,3 +22,8 @@ terrain_add_test(rock_mesh_test terrain_core)
 # with the internals of the faces (src/generation/wall_faces.hpp).
 terrain_add_test(rock_patterns_test terrain_core)
 target_include_directories(rock_patterns_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+# No blade of rock nor slot of air one column wide added by the faces of the walls.
+terrain_add_test(rock_thin_test terrain_core)
+# The normals of the meshes of the tiles against their triangles (src/streaming/tile_normals.hpp).
+terrain_add_test(tile_normals_test terrain_core)
+target_include_directories(tile_normals_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)

@@ -10,76 +10,14 @@ namespace terrain::tile {
 namespace {
 
 constexpr int kLast = kGridSamples - 1;
-// A normal of the density keeps its vertex where it agrees with the triangles around it (its
-// cosine with their normal at least kAgree): on a feature of the rock as thin as a cell, the
-// differences over two cells may point it into the rock.
-constexpr float kAgree = 0.3f;
+// On a side stitched to a coarser tile, the detail of the rock turns from the tile's to the
+// coarser one's over kSeamBlend cells (the faces the coarser tile does not draw fade out, not cut
+// short at the side).
+constexpr double kSeamBlend = 4.0;
 
-// The normal of a triangle of a mesh (indices first..first + 2), its length twice its area.
-Vec3f windingOf(const Mesh& mesh, std::size_t first) {
-    const Vec3f& a = mesh.vertices[mesh.indices[first]];
-    const Vec3f& b = mesh.vertices[mesh.indices[first + 1]];
-    const Vec3f& c = mesh.vertices[mesh.indices[first + 2]];
-    const Vec3f u{b.x - a.x, b.y - a.y, b.z - a.z};
-    const Vec3f v{c.x - a.x, c.y - a.y, c.z - a.z};
-    return {u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x};
-}
-
-float dot(const Vec3f& a, const Vec3f& b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-Vec3f unit(const Vec3f& v) {
-    const float length = std::sqrt(dot(v, v));
-    return length > 0.0f ? Vec3f{v.x / length, v.y / length, v.z / length} : v;
-}
-
-// Turns the normals of the vertices of the triangles whose normals point against their winding
-// (a fold of the surface as thin as a cell) just in front of them (kFront), a few times over:
-// their neighbors share vertices with them.
-void unfold(Mesh& mesh) {
-    constexpr int kRounds = 8;
-    constexpr float kFront = 0.1f;
-    for (int round = 0; round < kRounds; ++round) {
-        bool folded = false;
-        for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
-            const Vec3f winding = windingOf(mesh, t);
-            Vec3f sum{};
-            for (std::size_t k = 0; k < 3; ++k) {
-                const Vec3f& n = mesh.normals[mesh.indices[t + k]];
-                sum = {sum.x + n.x, sum.y + n.y, sum.z + n.z};
-            }
-            if (!(dot(sum, winding) < 0.0f)) {
-                continue;
-            }
-            folded = true;
-            const Vec3f w = unit(winding);
-            for (std::size_t k = 0; k < 3; ++k) {
-                Vec3f& n = mesh.normals[mesh.indices[t + k]];
-                const float facing = dot(n, w);
-                if (facing < kFront) {
-                    const float lift = kFront - facing;
-                    n = unit({n.x + lift * w.x, n.y + lift * w.y, n.z + lift * w.z});
-                }
-            }
-        }
-        if (!folded) {
-            return;
-        }
-    }
-}
-
-// The normals of the triangles of a mesh summed at their vertices, weighted by their areas.
-std::vector<Vec3f> triangleNormals(const Mesh& mesh) {
-    std::vector<Vec3f> sums(mesh.vertices.size());
-    for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
-        const Vec3f n = windingOf(mesh, t);
-        for (std::size_t k = 0; k < 3; ++k) {
-            Vec3f& sum = sums[mesh.indices[t + k]];
-            sum = {sum.x + n.x, sum.y + n.y, sum.z + n.z};
-        }
-    }
-    return sums;
+double smooth(double edge0, double edge1, double v) {
+    const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
 }
 
 // The derivative at index of samples f(index) along a side of kGridSamples of them: centered
@@ -144,51 +82,57 @@ float RockTile::groundAt(int i, int k) const {
 }
 
 float RockTile::sample(int i, int j, int k, int originY, bool coarse) const {
+    return sampleWith(i, j, k, originY, coarse ? coarse_ : fine_);
+}
+
+float RockTile::sampleWith(int i, int j, int k, int originY, const RockDetail& detail) const {
     const double sampleY = originY + j * lattice_.spacing;
     const RockColumn& c = columnAt(i, k);
     if (c.faceCount == 0 || onHorizonSide(i, k)) {
         // Same expression as tile::levelDensity and TerrainTiles::densityAt.
         return static_cast<float>(sampleY - groundAt(i, k));
     }
-    return rockDensity(c, sampleY, coarse ? coarse_ : fine_);
+    return rockDensity(c, sampleY, detail);
+}
+
+RockDetail RockTile::detailAt(int i, int k) const {
+    if (!resample_) {
+        return fine_;
+    }
+    i = std::clamp(i, 0, kLast);
+    k = std::clamp(k, 0, kLast);
+    const auto stitched = [this](unsigned seam) { return (seams_ & seam) != 0; };
+    // Cells to the nearest stitched side (a corner: to the corner column).
+    int cells = kGridSamples;
+    const int toX[2] = {i, kLast - i};
+    const int toZ[2] = {k, kLast - k};
+    const unsigned sideX[2] = {kSeamNegX, kSeamPosX};
+    const unsigned sideZ[2] = {kSeamNegZ, kSeamPosZ};
+    const unsigned corner[2][2] = {{kSeamNegXNegZ, kSeamNegXPosZ}, {kSeamPosXNegZ, kSeamPosXPosZ}};
+    for (int a = 0; a < 2; ++a) {
+        cells = stitched(sideX[a]) ? std::min(cells, toX[a]) : cells;
+        cells = stitched(sideZ[a]) ? std::min(cells, toZ[a]) : cells;
+        for (int b = 0; b < 2; ++b) {
+            cells = stitched(corner[a][b]) ? std::min(cells, std::max(toX[a], toZ[b])) : cells;
+        }
+    }
+    const double share = smooth(0.0, kSeamBlend, static_cast<double>(cells));
+    return {static_cast<float>(static_cast<double>(coarse_.cell) +
+                               share * static_cast<double>(fine_.cell - coarse_.cell))};
 }
 
 DensityGrid RockTile::levelDensity(int originY) const {
+    // On the stitched sides the coarser tile samples the same points with its own detail.
     DensityGrid grid(0.0f);
     for (int k = 0; k < kGridSamples; ++k) {
-        for (int j = 0; j < kGridSamples; ++j) {
-            for (int i = 0; i < kGridSamples; ++i) {
-                grid.set(i, j, k, sample(i, j, k, originY, false));
-            }
-        }
-    }
-    if (!resample_) {
-        return grid;
-    }
-    // The coarser tile samples the even lattice points of the side (as CaveTile::resampleSeams).
-    for (int k = 0; k < kGridSamples; ++k) {
         for (int i = 0; i < kGridSamples; ++i) {
-            const bool cornerColumn = (i == 0 || i == kLast) && (k == 0 || k == kLast);
-            const bool alongZ = i == 0 || i == kLast;
-            const bool even = cornerColumn || (alongZ ? k % 2 == 0 : i % 2 == 0);
-            if (!even || !onStitchedSide(i, k)) {
-                continue;
-            }
-            for (int j = 0; j < kGridSamples; j += 2) {
-                grid.set(i, j, k, sample(i, j, k, originY, true));
+            const RockDetail detail = detailAt(i, k);
+            for (int j = 0; j < kGridSamples; ++j) {
+                grid.set(i, j, k, sampleWith(i, j, k, originY, detail));
             }
         }
     }
     return grid;
-}
-
-bool RockTile::onStitchedSide(int i, int k) const {
-    const auto stitched = [this](unsigned seam) { return (seams_ & seam) != 0; };
-    return (i == 0 && (stitched(kSeamNegX) || (k == 0 && stitched(kSeamNegXNegZ)) ||
-                       (k == kLast && stitched(kSeamNegXPosZ)))) ||
-           (i == kLast && (stitched(kSeamPosX) || (k == 0 && stitched(kSeamPosXNegZ)) ||
-                           (k == kLast && stitched(kSeamPosXPosZ)))) ||
-           (k == 0 && stitched(kSeamNegZ)) || (k == kLast && stitched(kSeamPosZ));
 }
 
 bool RockTile::onHorizonSide(int i, int k) const {
@@ -209,16 +153,17 @@ void RockTile::dropPlants(std::vector<Plant>& plants) const {
 
 Vec3f RockTile::gradientAt(const DensityGrid& grid, int i, int j, int k, int originY) const {
     const bool ring = hasRing();
+    const RockDetail detail = detailAt(i, k);
     const float gx = derivative(i, ring, [&](int n) {
-        return n >= 0 && n <= kLast ? grid.at(n, j, k) : sample(n, j, k, originY, false);
+        return n >= 0 && n <= kLast ? grid.at(n, j, k) : sampleWith(n, j, k, originY, detail);
     });
     const float gz = derivative(k, ring, [&](int n) {
-        return n >= 0 && n <= kLast ? grid.at(i, j, n) : sample(i, j, n, originY, false);
+        return n >= 0 && n <= kLast ? grid.at(i, j, n) : sampleWith(i, j, n, originY, detail);
     });
     // Along y, centered through the rock beyond the level on its borders.
-    const float below = j > 0 ? grid.at(i, j - 1, k) : sample(i, -1, k, originY, false);
+    const float below = j > 0 ? grid.at(i, j - 1, k) : sampleWith(i, -1, k, originY, detail);
     const float above =
-        j < kLast ? grid.at(i, j + 1, k) : sample(i, kGridSamples, k, originY, false);
+        j < kLast ? grid.at(i, j + 1, k) : sampleWith(i, kGridSamples, k, originY, detail);
     return {gx, 0.5f * (above - below), gz};
 }
 
@@ -252,16 +197,6 @@ void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) con
             level.normals[n] = {g.x / length, g.y / length, g.z / length};
         }
     }
-    const std::vector<Vec3f> around = triangleNormals(level);
-    for (std::size_t n = 0; n < level.vertices.size(); ++n) {
-        const Vec3f& a = around[n];
-        const float length = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
-        const Vec3f& g = level.normals[n];
-        if (length > 0.0f && g.x * a.x + g.y * a.y + g.z * a.z < kAgree * length) {
-            level.normals[n] = {a.x / length, a.y / length, a.z / length};
-        }
-    }
-    unfold(level);
 }
 
 std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const {
@@ -272,7 +207,7 @@ std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const 
         const auto i = static_cast<int>(std::lround(v.x / spacing));
         const auto k = static_cast<int>(std::lround(v.z / spacing));
         rock.push_back(rockShare(rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast)),
-                                 originY + static_cast<double>(v.y), fine_));
+                                 originY + static_cast<double>(v.y), detailAt(i, k)));
     }
     return rock;
 }

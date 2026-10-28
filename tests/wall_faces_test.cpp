@@ -157,11 +157,78 @@ void testMemoAndSeams() {
     TEST_CHECK(same);
 }
 
+// The groove of a joint as a face of air (airX, airZ) draws it at (x, z), by placeFace.
+double placedJoint(double x, double z, double airX, double airZ) {
+    const terrain::wall_faces::Joint j = terrain::wall_faces::jointAt(grain(), x, z);
+    terrain::wall_faces::PendingFace pending;
+    pending.face.top = 30.0f;
+    pending.face.joint = static_cast<float>(j.depth);
+    pending.face.jointWidth = static_cast<float>(j.width);
+    pending.jointFloor = j.floor;
+    pending.rise = 30.0;
+    pending.jointX = j.acrossX;
+    pending.jointZ = j.acrossZ;
+    pending.jointAlone = j.alone;
+    return terrain::wall_faces::placeFace(pending, -airX, -airZ).joint;
+}
+
+// The vertical joints are U-shaped grooves within kJointDeepest (0.4) of their width, with a
+// floor; where one runs along a face (the worst case: the air across it), the face recedes into
+// it slower than it stands back along its air (by kJointFold of it at most) where the joint runs
+// alone: it never folds into a blade of rock between the groove and the air, which their own
+// grooves would. Where another joint meets it, it goes on with the other's groove as it is, with
+// no step.
+void testJointsNeverFold() {
+    std::size_t grooves = 0;
+    double steepest = 0.0;
+    double steepestAlone = 0.0;
+    double steepestRaw = 0.0;
+    bool shallow = true;
+    for (int i = 0; i < 4'000; ++i) {
+        const double x = kWallX + 0.37 * i;
+        const double z = kWallZ + 0.53 * (i % 97);
+        const terrain::wall_faces::Joint j = terrain::wall_faces::jointAt(grain(), x, z);
+        shallow = shallow && j.depth <= j.floor && j.floor <= 0.4 * j.width + 1e-9;
+        if (!(j.depth > 0.3)) {
+            continue;
+        }
+        ++grooves;
+        constexpr double kStep = 0.1;
+        const double length = std::hypot(j.acrossX, j.acrossZ);
+        const double airX = j.acrossX / length;
+        const double airZ = j.acrossZ / length;
+        const auto at = [&](double u) {
+            return terrain::wall_faces::jointAt(grain(), x + u * airX, z + u * airZ);
+        };
+        for (double t = -4.0; t < 4.0; t += kStep) {
+            const auto placed = [&](double u) {
+                return placedJoint(x + u * airX, z + u * airZ, airX, airZ);
+            };
+            const double slope = std::abs(placed(t + kStep) - placed(t)) / kStep;
+            steepest = std::max(steepest, slope);
+            if (at(t).alone == 1.0 && at(t + kStep).alone == 1.0) {
+                steepestAlone = std::max(steepestAlone, slope);
+            }
+            steepestRaw =
+                std::max(steepestRaw, std::abs(at(t + kStep).depth - at(t).depth) / kStep);
+        }
+    }
+    std::printf("joints: %zu points in a groove; across them a face along it recedes %.2f m per "
+                "meter at most where they run alone, %.2f anywhere (%.2f without the limit)\n",
+                grooves, steepestAlone, steepest, steepestRaw);
+    TEST_CHECK(grooves > 100);
+    TEST_CHECK(shallow);
+    TEST_CHECK(steepestAlone < 0.9);
+    TEST_CHECK(steepest <= steepestRaw + 0.1);
+    TEST_CHECK(steepestRaw > 1.0);
+}
+
 } // namespace
 
 int main() {
     testPassesAreRockTop();
     testSyntheticWall();
     testMemoAndSeams();
+    testJointsNeverFold();
     return test::result();
 }

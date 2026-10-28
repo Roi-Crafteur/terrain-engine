@@ -168,7 +168,8 @@ void testSingleSurfaceBelowFullWeight() {
 }
 
 // A vertical joint recedes the face by its depth from its foot to its top, at full weight only;
-// one narrower than 3 cells fades out (4 m cells leave out a joint 4 m wide).
+// one narrower than 4 cells fades out, gone at 2 cells (the cells would catch its groove at one
+// column out of two: a slit): 2 m cells leave out a joint 4 m wide.
 void testJoint() {
     RockColumn c = columnAt(-1.0f); // 1 m into the rock
     c.faces[0].joint = 1.5f;
@@ -176,6 +177,7 @@ void testJoint() {
     for (const double y : {6.0, 10.0, 14.0}) {
         TEST_CHECK(near(terrain::rockDensity(c, y, {}), 0.5, 1e-3));
     }
+    TEST_CHECK(terrain::rockDensity(c, 10.0, terrain::rockDetailForLod(1)) < 0.0f);
     TEST_CHECK(terrain::rockDensity(c, 10.0, terrain::rockDetailForLod(2)) < 0.0f);
     c.faces[0].weight = 0.6f;
     TEST_CHECK(terrain::rockDensity(c, 10.0, {}) < 0.0f);

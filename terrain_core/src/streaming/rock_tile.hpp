@@ -28,9 +28,17 @@ public:
     // sides the horizon meets (TileRequest::horizon) and beyond them. With the ring of the
     // columns (TileColumns::ring), i or k may lie one step beyond the tile.
     [[nodiscard]] float sample(int i, int j, int k, int originY, bool coarse) const;
+    // The same with a detail given.
+    [[nodiscard]] float sampleWith(int i, int j, int k, int originY,
+                                   const RockDetail& detail) const;
 
-    // The density of a level, the even samples of its stitched sides with the detail of the
-    // coarser neighbor, before the block edits and the stitching.
+    // The detail of the rock at column (i, k): the tile's, turning to its coarser neighbor's
+    // over a few cells toward a stitched side, that one's on the side (the samples the coarser
+    // tile holds there).
+    [[nodiscard]] RockDetail detailAt(int i, int k) const;
+
+    // The density of a level, each column with its detail (detailAt), before the block edits and
+    // the stitching.
     [[nodiscard]] DensityGrid levelDensity(int originY) const;
 
     // True if the detail of the coarser neighbor differs from the tile's on a stitched side.
@@ -48,7 +56,8 @@ public:
     // through the rock above and below the level and, with the ring of the columns, beyond the
     // sides of the tile (the normals the neighboring tile of the same LOD gives there, so that a
     // face of rock keeps its light across the levels and the tiles); without it (the tiles of the
-    // caves), second order differences across the sides.
+    // caves), second order differences across the sides. Then agreeWithTriangles
+    // (tile_normals.hpp) is left to the caller, as for every tile.
     void lightLevel(Mesh& level, const DensityGrid& grid, int originY) const;
 
     // The share of rock of each vertex of a mesh of the tile whose origin lies at originY: that of
@@ -63,7 +72,6 @@ private:
     [[nodiscard]] float groundAt(int i, int k) const;
     [[nodiscard]] Vec3f gradientAt(const DensityGrid& grid, int i, int j, int k,
                                    int originY) const;
-    [[nodiscard]] bool onStitchedSide(int i, int k) const;
     [[nodiscard]] bool onHorizonSide(int i, int k) const;
 
     const TileColumns* columns_;
