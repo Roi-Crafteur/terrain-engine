@@ -93,7 +93,8 @@
   (et celles du niveau plus grossier dans la bande de géomorphing) : crêtes, faces, ravines et
   murs restent lisibles à 2-16 km, sous un soleil rasant comme à midi. Elles arrivent après les
   échantillons (`HorizonNormalJobs` tâches de basse priorité, environ 10 s pour un horizon neuf,
-  quelques millisecondes par pas de marche) ; en attendant, la normale de la grille. Le détail
+  quelques millisecondes par pas de marche), avec les crêtes des montagnes lointaines, lues dans
+  la même grille fine (README, section 11) ; en attendant, la normale de la grille. Le détail
   s'efface là où un pixel couvre plus d'un texel (pas de scintillement au loin ni en vue
   rasante). `DetailNormals` 0 sur les instances (ou `bHorizonDetailNormals` faux) rend les
   normales d'avant, pour comparer. Les pentes de détail suivent le relief du core, pas les

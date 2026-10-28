@@ -152,7 +152,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
 | `bHorizonShadows` | non | ombres portées par l'horizon |
 | `bHorizonDetailNormals`, `HorizonNormalRatio`, `HorizonNormalJobs` | oui, 4, 2 | GPU : normales de détail, 4 fois plus fines que la grille de chaque niveau, calculées par 2 tâches (TEMPORARY_MATERIAL.md) |
-| `HorizonCrestRatio` | 2 | crêtes des montagnes lointaines : à partir du niveau 1, chaque échantillon monte aux crêtes de ses mailles, cherchées 2, 4 ou 8 fois plus finement que la grille (`terrain_core` `streaming/horizon_crests.hpp`) ; 0 : les points, l'horizon d'avant |
+| `HorizonCrestRatio` | 4 | crêtes des montagnes lointaines : à partir du niveau 1, chaque échantillon monte aux crêtes de ses mailles, cherchées 2, 4 ou 8 fois plus finement que la grille (`terrain_core` `streaming/horizon_crests.hpp`) ; en GPU, calculées après l'époque avec les normales de détail, par les mêmes `HorizonNormalJobs` tâches (section 11) ; 0 : les points, l'horizon d'avant |
 | `bAtmosphereFollowsCamera` | oui | le ciel, le brouillard et la lumière du ciel suivent la caméra (section 12) |
 | `SkyAtmosphere`, `HeightFog`, `SkyLight` | aucun | ceux qui suivent la caméra ; sinon les premiers du niveau |
 | `FogEndDistanceKm` | 20 | distance où le brouillard cesse d'intégrer ; 0 : son propre réglage |
@@ -242,8 +242,10 @@ Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_fr
 `unreal_tile_streamer_test`, `unreal_terrain_session_test`, `unreal_determinism_check_test`,
 `unreal_horizon_layout_test`, `unreal_horizon_mesh_test`, `unreal_horizon_streamer_test`,
 `unreal_horizon_epochs_test`, `unreal_horizon_textures_test`, `unreal_horizon_gpu_streamer_test`,
+`unreal_horizon_normals_test`, `unreal_horizon_detail_test`, `unreal_horizon_crests_test`,
 `unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`,
-`unreal_core_sources`.
+`unreal_core_sources`. Mesures à la main : `unreal_horizon_bench` (temps de l'horizon GPU, crêtes
+dans l'époque ou après, voir l'en-tête de `tests/unreal_horizon_bench.cpp`).
 
 ## 7. Linux et Mac (non essayés)
 
@@ -399,6 +401,15 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   époque sont calculés par `UE::Tasks` en `BackgroundLow`, au plus `HorizonThreads` à la fois ;
   les workers des tuiles passent devant. Une époque est appliquée en une frame (bandes et
   placements de tous ses niveaux), comme à l'étape 1.
+- **Crêtes après l'époque** (`HorizonGpuParams::deferCrests`, `Bridge/horizon_crest_texels.hpp`) :
+  l'époque ne calcule que les points ; les crêtes viennent ensuite, des tâches des normales de
+  détail, lues dans la même grille fine (`terrain_core` `streaming/horizon_detail.hpp`) ; les
+  texels des échantillons qui montent sont réécrits par bandes (les seules lignes qui montent),
+  au bit près ceux des crêtes calculées dans l'époque. L'horizon s'affiche donc au coût d'une
+  époque sans crêtes, en points, puis ses crêtes arrivent, les niveaux fins d'abord. Pas de
+  fissure entre un niveau relevé et un voisin pas encore relevé : au bord, le géomorphing ne lit
+  que les texels du niveau plus grossier (`unreal_horizon_crests_test`). Une maille retouchée par
+  le joueur garde la hauteur de son époque, sans crête (E si elle l'est entièrement).
 - **Inchangé** : le monde bouclé (image la plus proche, tour du monde sans rien reconstruire), la
   mer à 0 m, le raccord sous les tuiles, l'autocontrôle bit à bit.
 - **Teinte de débogage** : `bHorizonDebugTint` colore chaque niveau de sa teinte.
@@ -406,7 +417,9 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   (standalone) : les grilles se construisent (250 ms) et l'horizon s'affiche. Build empaqueté :
   non essayé (assigner `HorizonGpuMaterial`, section 9).
 - **Log** : en plus de la section 10, `horizon texels` (envoi des bandes : ticks, ms, texels par
-  tick) et, toujours, `frames` : thread de jeu, thread de rendu et GPU, comme `stat unit`.
+  tick, crêtes comprises), `horizon detail` (du commit d'une époque à l'arrivée de toutes ses
+  crêtes et normales) et, toujours, `frames` : thread de jeu, thread de rendu et GPU, comme
+  `stat unit`.
 
 ### Mesures, GPU contre CPU (UE 5.8, éditeur en PIE, Ryzen 9 9950X3D, `ViewDistanceChunks` 32)
 
@@ -456,15 +469,24 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
 
   | | vallée du K2 | pied de la plus longue chaîne |
   |---|---|---|
-  | points (0) | −0,166 / 0,167 | −0,111 / 0,117 |
-  | 2 (défaut) | −0,103 / 0,120 | −0,076 / 0,090 |
-  | 4 | −0,082 / 0,107 | −0,058 / 0,079 |
+  | points (0) | −0,175 / 0,180 | −0,112 / 0,118 |
+  | 2 | −0,110 / 0,133 | −0,075 / 0,091 |
+  | 4 (défaut) | −0,090 / 0,118 | −0,057 / 0,080 |
 
-  Coût au K2 (K = 256, 1 thread) : époque complète 16,6 s sans crêtes, ×1,37 à 2, ×1,97 à 4 ;
-  marche de 2 km 9,3 ms par pas, 11,3 ms à 2, 16,4 ms à 4 ; même mémoire. À 4, 75 à 88 % de ce
-  coût est la lecture du relief des mailles, que les normales de détail font déjà au même pas :
-  une grille fine commune aux deux (après la PR de l'agent 12), calculée en arrière-plan comme
-  les normales (les points d'abord, les crêtes ensuite), rendrait 4 presque gratuit.
+  (relief d'après la 11B ; mêmes chiffres et mêmes images, au bit près, avant et après les crêtes
+  différées.) Coût en GPU (`unreal_horizon_bench`, 4 cœurs, GCC, normales à 4), affichage /
+  crêtes et normales complètes :
+
+  | | K2, 1 thread | K2, 2 threads | chaîne, 1 thread | chaîne, 2 threads |
+  |---|---|---|---|---|
+  | crêtes à 2 dans l'époque (avant) | 17,2 / 45,5 s | 8,2 / 21,2 s | 15,7 / 40,2 s | 8,0 / 20,9 s |
+  | sans crêtes | 11,8 / 39,1 s | 5,6 / 19,2 s | 11,0 / 35,1 s | 5,7 / 19,6 s |
+  | crêtes à 4 après l'époque (défaut) | 11,3 / 36,0 s | 6,5 / 19,1 s | 10,9 / 34,5 s | 5,8 / 17,8 s |
+
+  Marche de 2 km par pas de 8 m, du pas jusqu'au détail complet : 20 à 21 ms par pas au K2, 34 à
+  43 ms au pied de la chaîne, avant comme après (à la dispersion près). Même mémoire (10,6 Mo
+  d'échantillons). Les crêtes arrivent avec les normales : celles des niveaux lointains (les
+  silhouettes) les dernières, environ 25 s après l'affichage sur un thread, 13 s sur deux.
 - Matériaux et biomes : dessinés par le matériau temporaire (section 13).
 - Les grilles sont construites sur le thread de jeu au `BeginPlay` (0,2 s, une fois) ; elles
   pourraient l'être hors de ce thread si ce temps gêne au chargement.

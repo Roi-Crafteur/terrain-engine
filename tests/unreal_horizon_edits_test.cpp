@@ -2,10 +2,10 @@
 // horizon_gpu_streamer, horizon_streamer): the console command and the edits it places ahead of
 // the camera; the session regenerates the tiles of an edit and stages it for the horizon, the
 // edits queued on its edit thread with the bits of the synchronous ones; on the GPU path the next
-// epoch sends only the texels around it, which then match the edited samples, and the detail
-// normals of the samples edited over half of their footprint follow the grid; on the CPU path an
-// edit far away rebuilds the bodies of the levels it writes, and of a finer level whose border is
-// stitched to samples it wrote.
+// epoch sends only the texels around it, which then match the edited samples (raised to their
+// crests after it where no edit changed them), and the detail normals of the samples edited over
+// half of their footprint follow the grid; on the CPU path an edit far away rebuilds the bodies of
+// the levels it writes, and of a finer level whose border is stitched to samples it wrote.
 #include "horizon_gpu_streamer.hpp"
 #include "horizon_streamer.hpp"
 #include "terrain_edits.hpp"
@@ -165,6 +165,39 @@ int slotOf(std::int64_t first, int i, int side) {
     return static_cast<int>((first + i) % side);
 }
 
+// Whether every texel the material reads is the sample of the clipmap, raised to its crests where
+// no edit changed it (the crests come after the epochs; the rule of the edited samples:
+// unreal_horizon_crests_test), as a sampler with the crests in its epochs and the edits gives them.
+bool texelsShowSamples(const terrain::unreal::HorizonGpuStreamer& streamer,
+                       const horizon_test::TextureMirror& textures, TerrainSession& session) {
+    const terrain::HorizonSampler raised(session.tiles().heightfield(), session.tiles().ecology(),
+                                         streamer.params(), session.horizonEdits().source());
+    const terrain::HorizonClipmap& clipmap = streamer.clipmap();
+    bool match = true;
+    for (int n = 0; n < clipmap.levelCount(); ++n) {
+        const terrain::HorizonLevel& level = clipmap.level(n);
+        const terrain::HorizonIndex first = level.firstSlot();
+        const std::vector<terrain::HorizonCell> cells = raised.sample(n, level.window());
+        for (int k = 0; k < level.side(); ++k) {
+            for (int i = 0; i < level.side(); ++i) {
+                const terrain::HorizonCell& cell = level.atWindow(i, k);
+                const terrain::unreal::HorizonTexel expected = terrain::unreal::horizonTexel(
+                    (cell.flags & terrain::kHorizonEdited) != 0
+                        ? cell
+                        : cells[static_cast<std::size_t>(k * level.side() + i)],
+                    true);
+                const auto at = static_cast<std::size_t>(
+                    (slotOf(first.z, k, 129) * 129 + slotOf(first.x, i, 129)) *
+                    terrain::unreal::kTexelFloats);
+                const std::vector<float>& t = textures.texels.at(n);
+                match = match && t[at] == expected.height && t[at + 1] == expected.gradX &&
+                        t[at + 2] == expected.gradZ && t[at + 3] == expected.color;
+            }
+        }
+    }
+    return match;
+}
+
 void testGpuPath() {
     TerrainSession session(sessionParams());
     const UnrealFrame frame = session.frameAt(kX, kZ);
@@ -188,28 +221,13 @@ void testGpuPath() {
         "normals\n",
         static_cast<long long>(update.samples), update.regions.size(), update.normalRegions.size());
     TEST_CHECK(update.committed && update.coarsestMoved == -1 && update.placements.empty());
-    TEST_CHECK(texels == update.samples && update.samples > 100 && update.samples < 2'000);
-    // Every texel the material reads is the sample of the clipmap; the middle of the square has
-    // pending detail normals, the player's sample its detail.
+    // The texels of the epoch, then those its crests raised (computed after it).
+    TEST_CHECK(texels >= update.samples && update.samples > 100 && update.samples < 2'000);
+    // Every texel the material reads is the sample of the clipmap, raised to its crests where no
+    // edit changed it; the middle of the square has pending detail normals, the player's sample
+    // its detail.
+    TEST_CHECK(texelsShowSamples(streamer, textures, session));
     const terrain::HorizonClipmap& clipmap = streamer.clipmap();
-    bool match = true;
-    for (int n = 0; n < clipmap.levelCount(); ++n) {
-        const terrain::HorizonLevel& level = clipmap.level(n);
-        const terrain::HorizonIndex first = level.firstSlot();
-        for (int k = 0; k < level.side(); ++k) {
-            for (int i = 0; i < level.side(); ++i) {
-                const terrain::unreal::HorizonTexel expected =
-                    terrain::unreal::horizonTexel(level.atWindow(i, k), true);
-                const auto at = static_cast<std::size_t>(
-                    (slotOf(first.z, k, 129) * 129 + slotOf(first.x, i, 129)) *
-                    terrain::unreal::kTexelFloats);
-                const std::vector<float>& t = textures.texels[n];
-                match = match && t[at] == expected.height && t[at + 1] == expected.gradX &&
-                        t[at + 2] == expected.gradZ && t[at + 3] == expected.color;
-            }
-        }
-    }
-    TEST_CHECK(match);
     const terrain::HorizonLevel& level0 = clipmap.level(0);
     // The first detail texel of the sample nearest to (x, z), and its cell.
     const auto detail = [&](double x, double z) {

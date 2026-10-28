@@ -352,6 +352,7 @@ terrain_add_test(unreal_horizon_normals_test terrain_unreal_bridge)
 terrain_add_test(unreal_horizon_atmosphere_test terrain_unreal_bridge)
 terrain_add_test(unreal_terrain_surface_test terrain_unreal_bridge)
 terrain_add_test(unreal_tile_blend_atlas_test terrain_unreal_bridge)
+include(horizon_detail_tests.cmake)
 
 # The player edits seen from the far horizon (phases 13 and 15).
 include(${CMAKE_CURRENT_SOURCE_DIR}/horizon_edits_tests.cmake)

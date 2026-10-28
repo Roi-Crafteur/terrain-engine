@@ -245,12 +245,14 @@ public:
 
 	// Crests of the far mountains (terrain_core streaming/horizon_crests.hpp): from level 1 on, the
 	// samples rise to the crests of their cells, sought HorizonCrestRatio times finer than each
-	// level, so that the summits and ridges keep their height against the sky. 2 by default; 4
-	// or 8 seek them finer, at a higher cost of the epochs. 0: the point samples, the horizon as
+	// level, so that the summits and ridges keep their height against the sky. 4 by default: the
+	// GPU horizon computes them after its epochs, from the grid of the detail normals, and shows
+	// the point samples until they arrive (the CPU horizon computes them in its epochs, twice
+	// their cost at 4). 2 or 8 seek them coarser or finer. 0: the point samples, the horizon as
 	// before.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
 		meta = (EditCondition = "bHorizon", ClampMin = "0", ClampMax = "8"))
-	int32 HorizonCrestRatio = 2;
+	int32 HorizonCrestRatio = 4;
 
 	// The sky follows the camera over the curved planet (terrain_unreal/README.md, section 12):
 	// the SkyAtmosphere of the level takes the radius of the planet, its top at the sea level
