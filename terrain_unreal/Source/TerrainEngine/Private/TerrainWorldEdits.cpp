@@ -1,7 +1,11 @@
 // Player edits of ATerrainWorld (phase 15), to try them before the gameplay breaks and places
-// blocks: ApplyVolumeEdit and EditAhead, and the console command Terrain.Edit. The session
-// regenerates the tiles over an edit and stages it for the far horizon, whose next epoch sends
-// the bands around it (Bridge/terrain_session.hpp, terrain_core streaming/horizon_edits.hpp).
+// blocks: ApplyVolumeEdit and EditAhead, and the console command Terrain.Edit. They are queued on
+// the edit thread of the session, which writes them into the masks of the tiles and reads the
+// ground they give to the far horizon; each frame, TickTerrainEdits regenerates the tiles of the
+// edits done and stages them for the horizon, whose next epoch sends the bands around them
+// (Bridge/terrain_session.hpp, terrain_core streaming/horizon_edits.hpp).
+#include "TerrainWorldEdits.h"
+
 #include "TerrainWorld.h"
 
 #include "Bridge/terrain_edits.hpp"
@@ -28,33 +32,28 @@ namespace
 	using TerrainWorldConversions::ToFString;
 	using TerrainWorldConversions::ToUnrealPoint;
 
-	// Applies an edit to the session, logged with its cost: the chunks it changed, 0 on failure.
-	int32 ApplyToSession(FTerrainWorldState* State, const terrain::VolumeEdit& Edit,
-		const TCHAR* What)
+	// Why an edit was refused.
+	FString Reason(const std::exception_ptr& Error)
 	{
-		if (State == nullptr)
-		{
-			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain World: no edit (%s) outside play"),
-				What);
-			return 0;
-		}
-		const double Start = FPlatformTime::Seconds();
 		try
 		{
-			const std::vector<terrain::ChunkCoord> Chunks = State->Session.applyEdit(Edit);
-			UE_LOG(LogTerrainEngine, Log,
-				TEXT("Terrain World: %s at (%d, %d, %d): %d chunks to generate again, staged for "
-					 "the far horizon in %.1f ms"),
-				What, Edit.anchor.x, Edit.anchor.y, Edit.anchor.z,
-				static_cast<int32>(Chunks.size()), (FPlatformTime::Seconds() - Start) * 1000.0);
-			return static_cast<int32>(Chunks.size());
+			std::rethrow_exception(Error);
 		}
 		catch (const std::exception& Exception)
 		{
-			UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: %s refused: %s"), What,
-				*ToFString(Exception.what()));
-			return 0;
+			return ToFString(Exception.what());
 		}
+		catch (...)
+		{
+			return TEXT("unknown error");
+		}
+	}
+
+	// Logs an edit queued on the edit thread of the session.
+	void LogQueued(FTerrainWorldState& State, const FString& What)
+	{
+		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: %s queued (%d edits in progress)"),
+			*What, static_cast<int32>(State.Session.editsPending()));
 	}
 
 	constexpr int64 MaxUint16 = 65535;
@@ -96,12 +95,46 @@ namespace
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainEdit));
 } // namespace
 
-int32 ATerrainWorld::ApplyVolumeEdit(ETerrainEditShape Shape, ETerrainEditMode Mode,
+void TickTerrainEdits(FTerrainWorldState& State)
+{
+	std::vector<terrain::unreal::EditOutcome> Done;
+	try
+	{
+		Done = State.Session.takeEdits();
+	}
+	catch (const std::exception& Exception)
+	{
+		UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: edits not staged: %s"),
+			*ToFString(Exception.what()));
+		return;
+	}
+	for (const terrain::unreal::EditOutcome& Outcome : Done)
+	{
+		const FString What = ToFString(Outcome.label);
+		if (Outcome.error != nullptr)
+		{
+			UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: %s refused: %s"), *What,
+				*Reason(Outcome.error));
+			continue;
+		}
+		UE_LOG(LogTerrainEngine, Log,
+			TEXT("Terrain World: %s at (%d, %d, %d): %d chunks to generate again; %.1f ms on the "
+				 "edit thread (%.1f ms reading the ground for the far horizon), staged in %.1f ms "
+				 "on the game thread"),
+			*What, Outcome.volume.anchor.x, Outcome.volume.anchor.y, Outcome.volume.anchor.z,
+			static_cast<int32>(Outcome.chunks.size()),
+			Outcome.editMilliseconds + Outcome.columnMilliseconds, Outcome.columnMilliseconds,
+			Outcome.stageMilliseconds);
+	}
+}
+
+bool ATerrainWorld::ApplyVolumeEdit(ETerrainEditShape Shape, ETerrainEditMode Mode,
 	FVector Center, FVector SizeMeters, float RadiusMeters)
 {
 	if (!State.IsValid())
 	{
-		return ApplyToSession(nullptr, {}, TEXT("ApplyVolumeEdit"));
+		UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain World: no edit outside play"));
+		return false;
 	}
 	const terrain::unreal::CorePoint Core = terrain::unreal::toCore(State->Frame,
 		ToUnrealPoint(Center));
@@ -128,7 +161,9 @@ int32 ATerrainWorld::ApplyVolumeEdit(ETerrainEditShape Shape, ETerrainEditMode M
 		Edit.radius = ToBlocks(RadiusMeters * 16.0, MaxUint16);
 		Edit.anchor = {FloorToBlock(Core.x), FloorToBlock(Core.y), FloorToBlock(Core.z)};
 	}
-	return ApplyToSession(State.Get(), Edit, TEXT("ApplyVolumeEdit"));
+	State->Session.queueEdit(Edit, "ApplyVolumeEdit");
+	LogQueued(*State, TEXT("ApplyVolumeEdit"));
+	return true;
 }
 
 bool ATerrainWorld::EditAhead(const FString& Kind, float DistanceMeters, float SizeMeters,
@@ -155,9 +190,10 @@ bool ATerrainWorld::EditAhead(const FString& Kind, float DistanceMeters, float S
 	const FVector Forward = Controller->PlayerCameraManager->GetCameraRotation().Vector();
 	const terrain::unreal::CorePoint Target = terrain::unreal::pointAhead(State->Frame,
 		ToUnrealPoint(Camera), Forward.X, Forward.Y, Command->distance);
-	const terrain::VolumeEdit Edit = terrain::unreal::groundEditAt(
-		State->Session.tiles().heightfield(), *Command, Target.x, Target.z);
 	const FString What = FString::Printf(TEXT("%s of %.0f m %.0f m ahead"), *Kind.ToLower(),
 		Command->size, Command->distance);
-	return ApplyToSession(State.Get(), Edit, *What) > 0;
+	// Its volume too is computed on the edit thread, from the heights under it.
+	State->Session.queueGroundEdit(*Command, Target.x, Target.z, TCHAR_TO_UTF8(*What));
+	LogQueued(*State, What);
+	return true;
 }

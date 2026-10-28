@@ -310,6 +310,7 @@ set(unreal_bridge ${PROJECT_SOURCE_DIR}/terrain_unreal/Source/TerrainEngine/Priv
 add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/altitude_color.cpp
     ${unreal_bridge}/determinism_check.cpp
+    ${unreal_bridge}/edit_thread.cpp
     ${unreal_bridge}/horizon_atmosphere.cpp
     ${unreal_bridge}/horizon_epochs.cpp
     ${unreal_bridge}/horizon_gpu_streamer.cpp

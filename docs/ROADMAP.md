@@ -366,10 +366,12 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
     LOD 0 et 1, 1,3 m entre 1 et 2, 2,8 m entre 2 et 3, 0,62 m dans les grottes ; après : au
     plus 0,25 mm). Le terrain naturel sans grottes garde ses bits ; toute tuile Marching Cubes en
     profite (`stitchSeams` puis `stitchedMesh`, `lod_seams.cpp`)
+  - les modifications se font sur un fil à part (`Bridge/edit_thread`) : le thread de jeu ne fait
+    que reprendre celles qui sont finies (quelques millisecondes pour une montagne rasée), avec
+    les bits du chemin synchrone
   - reste : casser et poser en jeu dans Unreal (en attendant : `Terrain.Edit`, `Apply Volume
     Edit`), effets de destruction, normales de détail de l'horizon qui suivent les modifications
-    (aujourd'hui : la normale de la grille sur les mailles modifiées), lecture du sol d'une très
-    grosse modification hors du thread de jeu
+    (aujourd'hui : les pentes de la grille sur les mailles modifiées)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

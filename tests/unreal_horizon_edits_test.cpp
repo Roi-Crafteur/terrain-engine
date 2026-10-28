@@ -1,10 +1,11 @@
 // Player edits on the Unreal side (Bridge/terrain_session, terrain_edits, horizon_epochs,
 // horizon_gpu_streamer, horizon_streamer): the console command and the edits it places ahead of
-// the camera; the session regenerates the tiles of an edit and stages it for the horizon; on the
-// GPU path the next epoch sends only the texels around it, which then match the edited samples,
-// and the detail normals of the samples edited over half of their footprint follow the grid; on the
-// CPU path an edit far away rebuilds the bodies of the levels it writes, and of a finer level
-// whose border is stitched to samples it wrote.
+// the camera; the session regenerates the tiles of an edit and stages it for the horizon, the
+// edits queued on its edit thread with the bits of the synchronous ones; on the GPU path the next
+// epoch sends only the texels around it, which then match the edited samples, and the detail
+// normals of the samples edited over half of their footprint follow the grid; on the CPU path an
+// edit far away rebuilds the bodies of the levels it writes, and of a finer level whose border is
+// stitched to samples it wrote.
 #include "horizon_gpu_streamer.hpp"
 #include "horizon_streamer.hpp"
 #include "terrain_edits.hpp"
@@ -12,9 +13,11 @@
 
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
+#include "unreal_edit_support.hpp"
 #include "unreal_texture_mirror.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
@@ -101,6 +104,52 @@ void testSession() {
     TEST_CHECK(!session.replaceModifications({}).empty());
     session.horizonEdits().applyStaged();
     TEST_CHECK(session.horizonEdits().empty()); // the edits gone, the horizon as generated
+}
+
+// The edits queued on the edit thread give the bits of the synchronous ones, in their order: their
+// chunks, the ground of their columns, the masks of the tiles, the staged map; a refused edit
+// changes nothing; an edit on the owning thread waits for the queued ones.
+void testEditThread() {
+    TerrainSession async(sessionParams());
+    TerrainSession sync(sessionParams());
+    const std::vector<edit_test::Edit> edits =
+        edit_test::someEdits(sync.tiles().heightfield(), kX, kZ);
+    for (const edit_test::Edit& edit : edits) {
+        edit_test::queue(async, edit);
+    }
+    async.waitEdits();
+    TEST_CHECK(async.editsPending() == 0 && !async.horizonEdits().hasStaged());
+    const std::vector<terrain::unreal::EditOutcome> outcomes = async.takeEdits();
+    TEST_CHECK(outcomes.size() == edits.size() && async.takeEdits().empty());
+    bool same = outcomes.size() == edits.size();
+    std::set<terrain::EditColumn> columns;
+    for (std::size_t n = 0; same && n < edits.size(); ++n) {
+        const edit_test::SyncEdit expected = edit_test::applySync(sync, edits[n]);
+        const terrain::unreal::EditOutcome& outcome = outcomes[n];
+        same = outcome.label == edits[n].label && (outcome.error != nullptr) == expected.refused &&
+               outcome.chunks == expected.chunks &&
+               edit_test::sameColumns(outcome.columns, expected.columns);
+        for (const terrain::EditedColumn& column : outcome.columns) {
+            columns.insert(column.column);
+        }
+    }
+    TEST_CHECK(same && outcomes[1].error != nullptr && columns.size() > 100);
+    TEST_CHECK(async.tiles().modifications() == sync.tiles().modifications());
+    TEST_CHECK(async.horizonEdits().applyStaged() == sync.horizonEdits().applyStaged());
+    bool staged = async.horizonEdits().columnCount() == sync.horizonEdits().columnCount();
+    for (const terrain::EditColumn& column : columns) {
+        staged = staged && async.horizonEdits().columnGround(column) ==
+                               sync.horizonEdits().columnGround(column);
+    }
+    TEST_CHECK(staged && !async.horizonEdits().empty());
+
+    // A block set on the owning thread after a queued edit: after it, its outcome kept.
+    async.queueEdit(edits[4].volume, "again");
+    const terrain::BlockCoord block{static_cast<int>(kX) - 300, 2000, static_cast<int>(kZ)};
+    TEST_CHECK(!async.setBlock(block, terrain::BlockEdit::Removed).empty());
+    const std::vector<terrain::unreal::EditOutcome> later = async.takeEdits();
+    TEST_CHECK(later.size() == 1 && later[0].label == "again" && later[0].error == nullptr);
+    TEST_CHECK(async.tiles().blockAt(block) == terrain::BlockEdit::Removed);
 }
 
 terrain::unreal::HorizonGpuParams gpuParams() {
@@ -245,6 +294,7 @@ void testCpuPath() {
 int main() {
     testCommands();
     testSession();
+    testEditThread();
     testGpuPath();
     testCpuPath();
     return test::result();

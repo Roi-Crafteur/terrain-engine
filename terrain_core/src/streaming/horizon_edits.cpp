@@ -65,7 +65,11 @@ void HorizonEditMap::stage(const ModificationStore& store, std::span<const Chunk
 }
 
 void HorizonEditMap::stage(std::span<const ChunkCoord> chunks, const EditWindowSource& windows) {
-    for (const EditedColumn& column : editedColumns(*field_, chunks, windows)) {
+    stage(editedColumns(*field_, chunks, windows));
+}
+
+void HorizonEditMap::stage(std::span<const EditedColumn> columns) {
+    for (const EditedColumn& column : columns) {
         staged_[column.column] = column.edited
                                      ? std::optional<Column>(Column{*column.edited, column.ground})
                                      : std::nullopt;

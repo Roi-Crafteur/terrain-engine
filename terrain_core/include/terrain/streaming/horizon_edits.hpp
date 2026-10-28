@@ -33,11 +33,12 @@ class TerrainTiles;
 // fixed order whenever one of them changes, so the order of the edits never changes a bit.
 //
 // The edits take effect in two steps, both on the thread owning the map: stage reads the edited
-// ground of the columns of chunks at once (from the edits as they are then), applyStaged makes
-// what was staged visible to the samplers, which may only be done while no sample is computed:
-// the drivers of the horizon (HorizonStreamer, the Unreal bridge) call it between two epochs,
-// then invalidate the areas it returns. Reading (footprint, summary, the source) is thread-safe
-// between two applyStaged.
+// ground of the columns of chunks at once, from the edits as they are then (or takes it read
+// beforehand on another thread: the edit thread of the Unreal bridge, terrain_session.hpp);
+// applyStaged makes what was staged visible to the samplers, which may only be done while no
+// sample is computed: the drivers of the horizon (HorizonStreamer, the Unreal bridge) call it
+// between two epochs, then invalidate the areas it returns. Reading (footprint, summary, the
+// source) is thread-safe between two applyStaged.
 struct FootprintEdits {
     std::int64_t columns = 0; // of the footprint
     std::int64_t edited = 0;  // of them, whose ground the edits changed
@@ -70,6 +71,9 @@ public:
     void stage(const TerrainTiles& tiles, std::span<const ChunkCoord> chunks);
     void stage(const ModificationStore& store, std::span<const ChunkCoord> chunks);
     void stage(std::span<const ChunkCoord> chunks, const EditWindowSource& windows);
+    // The same with columns editedColumns read beforehand, on any thread, from the edits as they
+    // were right after the edit returning their chunks: the same bits.
+    void stage(std::span<const EditedColumn> columns);
     [[nodiscard]] bool hasStaged() const { return !staged_.empty(); }
 
     // The staged columns take effect: returns the areas around the columns whose ground changed
