@@ -196,6 +196,7 @@ terrain_add_test(planet_stats_test terrain_core)
 terrain_add_test(relief_lakes_test terrain_core)
 terrain_add_test(planet_false_passes_test terrain_core)
 terrain_add_test(planet_png_test terrain_core)
+include(${CMAKE_CURRENT_SOURCE_DIR}/planet_memory_tests.cmake)
 
 # The grid primitives of the planetary geography (internal header).
 terrain_add_test(geography_grid_test terrain_core)
