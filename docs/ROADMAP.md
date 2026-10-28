@@ -167,6 +167,20 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 
 ## À venir
 
+### Ordre des prochains travaux (octobre 2026)
+Un seul chantier à la fois change la forme du monde ; les autres prouvent qu'ils ne la changent
+pas (golden du monde, montagnes gelées, somme du niveau Planète).
+- en cours, change le monde : phase 12A, vrais murs verticaux, surplombs, arches et chutes en
+  roche 3D dans le monde streamé
+- en parallèle, sans changer le monde : l'eau dans Unreal à son vrai niveau (lacs, fleuves,
+  chutes), casser et poser en jeu, poids des biomes dans l'horizon lointain, tests de coût
+  stables sur une machine lente
+- en pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game
+  design
+- ensuite, l'un après l'autre (chacun change le monde) : réseau hydrographique complet avec la
+  11C, versants convexes / droits / concaves et cirques, relief côtier et falaises marines,
+  mers de dunes
+
 ### Phase 10 — suite
 - Character qui marche, saute et tombe sur le terrain : vérifié avec le Character du
   moteur (0 passage sous le sol sur 1,7 km à 108 km/h) ; reste le pack Third Person
@@ -212,7 +226,19 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   cols (essai du point d'arrêt 3 : 1 à 49 % de lacs dans les fenêtres de haute montagne avec
   un lit de 300 m, 19 % encore avec 1 000 m). C'est la phase 11C qui règle cela
 
-### Phase 11C — Vallées de montagne qui descendent (prochaine phase)
+### Phase 11C — Réseau hydrographique complet et vallées qui descendent (après la 12A)
+- aujourd'hui une rivière n'existe qu'à partir de 10 m³/s et naît d'un coup avec 22 m de large ;
+  le ruissellement est la pluie moins l'évaporation, sans la roche, le sol, les plantes ni la
+  pente ; le delta n'a pas de bras
+- ruissellement : l'eau qui ne s'infiltre pas (pluie trop forte, sol saturé, gelé ou
+  imperméable) s'écoule d'abord en nappe sur les pentes, puis se concentre en rigoles, ravines,
+  sources et ruisseaux ; la densité de ces petits cours d'eau dépend de la perméabilité de la
+  roche et du sol, de la pente, des plantes et du climat
+- hiérarchie : source → ruisseau → rivière → fleuve, largeur et profondeur qui grandissent depuis
+  presque rien vers l'aval ; affluents et confluents, rive droite et rive gauche
+- une ou plusieurs fins : mer (estuaire, delta à plusieurs bras), lac, autre cours d'eau,
+  assèchement en climat sec (oueds), pertes dans le calcaire
+- le réseau fin et les vallées sont la même chose, creusée par l'eau à toutes les tailles
 - dégel des montagnes : `mountain_freeze_test` est levé pour cette phase, puis refait
 - refaire les vallées des montagnes en un vrai réseau qui descend vers les plaines : un arbre
   de vallées qui draine, leurs fonds toujours en pente vers l'aval, de la crête à la plaine. Les
@@ -231,7 +257,18 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   karst et pitons, volcans
 - mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
   province du relief au cœur des continents secs, jamais placée par le biome
-- falaises, surplombs et arches dans le monde infini
+- falaises, surplombs et arches dans le monde infini : phase 12A en cours. Une couche de roche 3D
+  autour de la surface, là où la géologie fait des parois (couches dures des montagnes, fentes
+  des chutes et gorges, escarpements, arches et ponts de roche) ; le reste du monde garde ses
+  bits ; tuiles LOD 0 à 3, raccord exact avec l'horizon. Parois de montagne faites (faces
+  verticales, bancs, surplombs, niches) ; à suivre : chutes et gorges, escarpements, arches
+- formes convexes, droites et concaves partout, en profil et en plan, jamais un seul profil :
+  sommets et épaules arrondis, pieds de versant concaves, cirques et amphithéâtres, éperons ;
+  parois droites, bombées ou creusées en grands abris ; chutes devant une paroi droite ou un
+  amphithéâtre ; placées par la roche et le climat, jamais par le biome
+- relief côtier (aujourd'hui toutes les côtes sont des plaines de 20 m au plus) : falaises
+  marines, montagnes qui plongent dans la mer, fjords, rias, calanques, grottes marines, arches
+  et stacks
 - érosion par ondes alignées sur la pente (sillons et ravins ramifiés à toutes les tailles,
   de 4 m à 256 m, type Big Globe) si elle n'est pas déjà venue avec la 11R bis
 - reliefs fantastiques, rares et spectaculaires (médiéval-fantasy), placés par le niveau
