@@ -67,8 +67,8 @@ struct PlanetCells {
 // 11B carves. Deterministic to the bit on every platform, whatever the number of threads.
 class PlanetLevel {
 public:
-    // Builds the level of the relief of seed and heightfield on world (planet::buildPlanet),
-    // then keeps it compact. probe, if set, hears of each stage, then of "level".
+    // Builds the level of the relief of seed and heightfield on world in little memory
+    // (planet::buildLevelParts). probe, if set, hears of each stage, then of "level".
     PlanetLevel(std::uint64_t seed, const HeightfieldParams& heightfield,
                 const PlanetParams& params = {}, const WorldSize& world = {},
                 const PlanetStageProbe& probe = {});
@@ -135,6 +135,20 @@ namespace planet {
 
 // The compact cells of a build.
 [[nodiscard]] PlanetCells compactCells(const PlanetBuild& build);
+
+// The values of the compact cells: the altitude rounded to the meter, the precipitation to the
+// mm/yr (at most 65,535); the cells owned by the segments of a graph, sorted by cell.
+[[nodiscard]] std::int16_t roundedElevation(float height);
+[[nodiscard]] std::uint16_t roundedPrecipitation(float precipitation);
+[[nodiscard]] std::vector<PlanetCells::RiverCell> riverCellsOf(const RiverGraph& graph);
+
+// The level of the relief of field built in little memory (phase 11D): the stages of buildPlanet
+// with each array freed after its last use, the arrays of the hydrology on the land or on a few
+// cells only, the compact cells made as the full ones end. The same bits as
+// PlanetLevel(buildPlanet(field, params), params), the same stages told to probe, then "level".
+[[nodiscard]] PlanetLevel::Parts buildLevelParts(const Heightfield& field,
+                                                 const PlanetParams& params,
+                                                 const PlanetStageProbe& probe = {});
 
 } // namespace planet
 

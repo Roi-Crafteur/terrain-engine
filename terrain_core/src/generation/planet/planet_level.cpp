@@ -124,12 +124,7 @@ template <class T> std::size_t bytesOf(const std::vector<T>& v) {
 PlanetLevel::PlanetLevel(std::uint64_t seed, const HeightfieldParams& heightfield,
                          const PlanetParams& params, const WorldSize& world,
                          const PlanetStageProbe& probe)
-    : PlanetLevel(planet::buildPlanet(Heightfield(seed, heightfield, world), params, probe),
-                  params) {
-    if (probe) {
-        probe("level");
-    }
-}
+    : PlanetLevel(planet::buildLevelParts(Heightfield(seed, heightfield, world), params, probe)) {}
 
 PlanetLevel::PlanetLevel(PlanetBuild&& build, const PlanetParams& params)
     : params_(params), cells_(planet::compactCells(build)), lakes_(std::move(build.lakes)),

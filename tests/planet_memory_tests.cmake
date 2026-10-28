@@ -8,3 +8,9 @@ terrain_add_test(planet_land_test terrain_core)
 terrain_add_test(planet_blur_test terrain_core)
 target_include_directories(planet_blur_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation/planet)
+
+# The lean build of the planet level on the small world: its level the golden one, its heap at
+# the peak within a bound proportional to the grid (its own operator new counts the heap).
+terrain_add_test(planet_memory_test terrain_core)
+target_sources(planet_memory_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/tools/heap_counter.cpp)
+target_include_directories(planet_memory_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/tools)
