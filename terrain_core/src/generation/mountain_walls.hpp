@@ -35,6 +35,7 @@ struct Noises {
     noise::FbmOctaves bands;     // the height of the strata
     noise::FbmOctaves dip;       // their offset
     noise::FbmOctaves rims;      // the recession of their rims and the run of their faces
+    noise::FbmOctaves overhangs; // the overhangs of their faces along them (phase 12A)
     std::uint64_t crystal = 0;   // the cells of the crystalline rock
     std::uint64_t layers = 0;    // which great bands are hard
     std::uint64_t steps = 0;     // and which rock steps
@@ -74,6 +75,7 @@ struct Memo {
     noise::FbmOctaves::Memo bands;
     noise::FbmOctaves::Memo dip;
     noise::FbmOctaves::Memo rims;
+    noise::FbmOctaves::Memo overhangs;
     std::array<Cells, 2> crystal{};
 };
 
@@ -148,6 +150,48 @@ struct Bedding {
 // as surface draws it, without its isolated regions and its crystalline cores.
 [[nodiscard]] double strataShare(const Noises& noises, double x, double z, float character,
                                  Memo* memo);
+
+// The passes of rockTop, for the faces of the walls in three dimensions (phase 12A,
+// wall_faces.hpp). A pass of strata over a ground: the arguments of strataTop, and the share of
+// the top it takes (0: none).
+struct StrataPass {
+    double slope = 0.0; // of the ground, meters per meter: the recession of the rims
+    double band = 1.0;
+    double offset = 0.0;
+    double rim = 0.0;
+    double run = 0.0; // meters
+    Bedding bedding;
+    double weight = 0.0;
+};
+
+// The passes of rockTop at (x, z) with masks, in its order: the great bands of the strata, their
+// rock steps over the ground the bands leave; the joints of the nearest cell of each scale of the
+// crystalline rock, over the ground lifted by lift meters along their planes (their top is then
+// lowered by it).
+struct WallPasses {
+    std::array<StrataPass, 4> passes{};
+    std::array<double, 4> lift{}; // 0 for the strata
+};
+[[nodiscard]] WallPasses wallPasses(const Noises& noises, const Masks& masks, double x, double z,
+                                    double gradX, double gradZ, Memo* memo);
+
+// The layer of a pass holding ground: its index, as strataTop finds it.
+[[nodiscard]] std::int64_t layerOf(const StrataPass& pass, double ground);
+
+// The face of layer k of a pass (strataTop): where it starts and ends in bands from its offset
+// (the rims receded), and how hard the layer is (0: soft, no face).
+struct LayerFace {
+    double start = 0.0;
+    double end = 0.0;
+    double hardness = 0.0;
+};
+[[nodiscard]] LayerFace layerFace(const StrataPass& pass, std::int64_t k);
+
+// A share in [0, 1) drawn for layer k of a pass, for stream (its overhangs).
+[[nodiscard]] double layerDraw(const StrataPass& pass, std::int64_t k, int stream);
+
+// The noise of the overhangs along the walls at (x, z), about -1 to 1.
+[[nodiscard]] double overhangNoise(const Noises& noises, double x, double z, Memo* memo);
 
 // The density of the rock at height y: the vertical distance to its surface (negative inside).
 [[nodiscard]] double density(const Noises& noises, const Column& column, double x, double z,

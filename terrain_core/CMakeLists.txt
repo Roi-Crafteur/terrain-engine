@@ -102,6 +102,7 @@ add_library(terrain_core STATIC
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
     src/generation/voronoi.cpp
+    src/generation/wall_faces.cpp
     src/generation/water/fine_lake.cpp
     src/generation/water/hydrology.cpp
     src/generation/water/hydrology_lakes.cpp

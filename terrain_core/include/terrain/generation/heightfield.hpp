@@ -192,14 +192,18 @@ private:
                  std::span<HeightSample> samples, Memos& memos) const;
 
     // sampleAt without the hydrology, through the memos during a batch call (null otherwise).
-    [[nodiscard]] HeightSample reliefWith(double x, double z, Memos* memos) const;
+    // With rock, the faces of the relief at the point too (rock_faces.hpp), on its height.
+    [[nodiscard]] HeightSample reliefWith(double x, double z, Memos* memos,
+                                          RockColumn* rock = nullptr) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
     // The warped point of the ridged noise (the warp of the geography when it is enabled).
     [[nodiscard]] std::array<double, 2> warpedAt(double x, double z, Memos* memos) const;
     // reliefWith on the planetary geography (heightfield_geography.cpp), at a canonical point:
     // its regional elevation, the local relief around it and the ridged mountains.
-    [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos) const;
+    // With rock, the faces of its walls, their heights over the top of the walls.
+    [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos,
+                                               RockColumn* rock = nullptr) const;
     // The intensity of the relief at the point: that of the map with the spurs of the chains.
     [[nodiscard]] float reliefAt(double x, double z, float mapRelief, Memos* memos) const;
     // The mountains at a point: their height above the base, that of their great forms alone
@@ -242,7 +246,8 @@ private:
     // The top of the rock with the walls of the mountains (mountain_walls) over ground meters
     // (the base and the great forms of the mountains).
     [[nodiscard]] float wallsAt(double x, double z, float ground, const MountainForm& form,
-                                float intensity, float character, Memos* memos) const;
+                                float intensity, float character, Memos* memos,
+                                RockColumn* rock = nullptr) const;
 
     HeightfieldParams params_;
     WorldSize world_;

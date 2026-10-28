@@ -26,11 +26,15 @@ bool kept(float feature, float extent, const RockDetail& detail) {
     return feature > 0.0f && extent > 0.0f && feature >= detail.leastFeature;
 }
 
-// How far the face lies toward the air at height y: its cap, full over the top two fifths of its
-// depth and nothing at its bottom (a ceiling rising to the lip), less its undercut, an arch deepest
-// at the foot.
+// How far the face lies toward the air at height y: its lean, its cap, full over the top two
+// fifths of its depth and nothing at its bottom (a ceiling rising to the lip), less its undercut,
+// an arch deepest at the foot.
 double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
     double offset = 0.0;
+    if (f.vertical < 1.0f && f.top > f.foot) {
+        const double t = (y - static_cast<double>(f.foot)) / (f.top - f.foot);
+        offset += (1.0 - static_cast<double>(f.vertical)) * f.run * (0.5 - t);
+    }
     if (kept(f.cap, f.capDepth, detail)) {
         offset += f.cap * smooth(static_cast<double>(f.top) - f.capDepth,
                                  static_cast<double>(f.top) - 0.6 * f.capDepth, y);

@@ -1,5 +1,6 @@
 // The rock of the Heightfield in three dimensions (rock_faces.hpp, phase 12A): the samples of
-// samplesAt with the faces the walls lay at their points.
+// samplesAt with the faces the walls lay at their points (the walls of the mountains:
+// heightfield_geography.cpp, wall_faces.hpp).
 #include "terrain/generation/heightfield.hpp"
 
 #include "heightfield_layers.hpp"
@@ -17,8 +18,8 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
     // As samplesAt: the relief of every point first, then its water.
     Memos memos;
     for (std::size_t i = 0; i < xs.size(); ++i) {
-        out[i] = reliefWith(xs[i], zs[i], &memos);
         rock[i] = RockColumn{};
+        out[i] = reliefWith(xs[i], zs[i], &memos, &rock[i]);
         rock[i].uncarved = out[i].height;
     }
     if (hydrology_) {

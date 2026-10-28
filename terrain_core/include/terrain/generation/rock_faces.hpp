@@ -27,6 +27,11 @@ struct RockFace {
     float capDepth = 0.0f;
     float undercut = 0.0f;
     float undercutHeight = 0.0f;
+    // Where the wall is faint, the face leans back: from run / 2 meters toward the air at its foot
+    // to run / 2 meters into the rock at its top (the slope of the riser of the relief), by
+    // 1 - vertical of it; vertical 1 is a vertical face.
+    float run = 0.0f;
+    float vertical = 1.0f;
     // A face of the valley of a river (its slot, its gorge, the face of a fall): it shapes the air
     // the river carves; otherwise a face of the relief before the rivers.
     bool carved = false;

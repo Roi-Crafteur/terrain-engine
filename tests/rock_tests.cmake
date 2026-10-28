@@ -6,3 +6,6 @@ terrain_add_test(rock_faces_test terrain_core)
 # The rock of the tiles, with their internals (src/streaming/rock_tile.hpp).
 terrain_add_test(rock_tiles_test terrain_core)
 target_include_directories(rock_tiles_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
+# The faces of the walls of the mountains, with their internals (src/generation/wall_faces.hpp).
+terrain_add_test(wall_faces_test terrain_core)
+target_include_directories(wall_faces_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

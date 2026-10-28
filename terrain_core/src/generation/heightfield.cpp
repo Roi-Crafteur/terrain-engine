@@ -261,12 +261,18 @@ void Heightfield::heightsAt(std::span<const double> xs, std::span<const double> 
     }
 }
 
-HeightSample Heightfield::reliefWith(double worldX, double worldZ, Memos* memos) const {
+HeightSample Heightfield::reliefWith(double worldX, double worldZ, Memos* memos,
+                                     RockColumn* rock) const {
     const double x = noise::wrapCanonical(worldX, world_.x);
     const double z = noise::wrapCanonical(worldZ, world_.z);
     if (geography_) {
-        HeightSample s = geographySample(x, z, memos);
+        HeightSample s = geographySample(x, z, memos, rock);
         finishWater(x, z, s);
+        // The faces of the walls, laid over the top of the walls, onto the relief here.
+        for (std::size_t i = 0; rock != nullptr && i < rock->faceCount; ++i) {
+            rock->faces[i].foot += s.height;
+            rock->faces[i].top += s.height;
+        }
         return s;
     }
     HeightSample s;
