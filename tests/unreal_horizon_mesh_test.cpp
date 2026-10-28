@@ -1,8 +1,9 @@
 // Meshes of the far horizon of the Unreal plugin, on the levels of a real clipmap with small
 // windows: the vertex of a sample (altitude, the ocean flat at the sea level but never a lake
-// above it, normal, color), the topology of a body, the bodies filled from the toroidal buffers
-// (every sample at its place, the cells outside the hole drawn by two triangles facing up, the
-// skirt facing inward below the border, the bounds below the curved ground), the borders
+// above it, normal, color, the water over it), the topology of a body, the bodies filled from
+// the toroidal buffers (every sample at its place with its water, the cells outside the hole
+// drawn by two triangles facing up, the skirt facing inward below the border, dry as the sea
+// square and the bounds vertex, the bounds below the curved ground), the borders
 // stitched onto the edges of the coarser level bit for bit (with point samples, where they are
 // the level's own samples, and with the crests, which lift the coarser samples, in mountains of
 // the default world), and the trims around the finer windows.
@@ -34,6 +35,7 @@ using terrain::unreal::HorizonLook;
 using terrain::unreal::HorizonVertex;
 using terrain::unreal::UnrealMesh;
 using terrain::unreal::UnrealVector3f;
+using terrain::unreal::VertexWater;
 
 constexpr int kCells = 64;
 constexpr int kLevel0Hole = 10;
@@ -94,25 +96,31 @@ void testVertex() {
     TEST_CHECK(std::abs(ground.normal.y - static_cast<float>(0.25 / length)) < 1e-6f);
     TEST_CHECK(std::abs(ground.normal.z - static_cast<float>(1.0 / length)) < 1e-6f);
     TEST_CHECK(ground.color == terrain::unreal::altitudeColor(100.0));
+    TEST_CHECK(ground.water == VertexWater{}); // dry
     HorizonCell ocean;
     ocean.height = -50.0f;
     ocean.gradX = 0.3f;
     ocean.flags = terrain::kHorizonWater | terrain::kHorizonSea;
+    ocean.waterLevel = 0.0f;
     const HorizonVertex sea = terrain::unreal::horizonVertex(ocean, look);
     TEST_CHECK(sea.z == -150.0f);
     TEST_CHECK((sea.normal == UnrealVector3f{0.0f, 0.0f, 1.0f}));
     TEST_CHECK(sea.color == terrain::unreal::kSeaColor);
+    TEST_CHECK((sea.water == VertexWater{0.0f, 1.0f})); // flat at its level
     const HorizonVertex seabed = terrain::unreal::horizonVertex(ocean, {1.5, false});
     TEST_CHECK(seabed.z == -5150.0f);
     TEST_CHECK(seabed.color == terrain::unreal::altitudeColor(-50.0));
-    // A lake in the mountains keeps its ground.
+    TEST_CHECK((seabed.water == VertexWater{50.0f, 1.0f}));
+    // A lake in the mountains keeps its ground, its level above it.
     HorizonCell lake;
     lake.height = 1200.0f;
     lake.material = terrain::SurfaceMaterial::Water;
     lake.flags = terrain::kHorizonWater;
+    lake.waterLevel = 1203.5f;
     TEST_CHECK(terrain::unreal::horizonVertex(lake, look).z == static_cast<float>(1198.5 * 100.0));
     TEST_CHECK(terrain::unreal::horizonVertex(lake, look).color ==
                terrain::unreal::altitudeColor(1200.0));
+    TEST_CHECK((terrain::unreal::horizonVertex(lake, look).water == VertexWater{3.5f, 1.0f}));
     // A dry depression below the sea level keeps its ground.
     HorizonCell depression;
     depression.height = -80.0f;
@@ -234,8 +242,20 @@ void checkBody(const Clipmap& map, int n, const LevelMesh& body, const HorizonLo
                   (stitched || mesh.positions[v].z == vertex.z) &&
                   mesh.normals[v] == vertex.normal && mesh.colors[v] == vertex.color &&
                   unit(mesh.normals[v]);
+        // The water of its sample, from the altitude the vertex shows once stitched.
+        const VertexWater water = mesh.water[v];
+        const double shown = mesh.positions[v].z / 100.0 + look.dropMeters + water.depth;
+        const bool same = stitched ? water.wet == vertex.water.wet &&
+                                         (water.wet == 0.0f ||
+                                          std::abs(shown - level.atWindow(i, k).waterLevel) < 1e-3)
+                                   : water == vertex.water;
+        samples = samples && same;
     }
-    TEST_CHECK(samples);
+    TEST_CHECK(samples && mesh.water.size() == mesh.positions.size());
+    // The skirt, the sea square and the bounds vertex: dry.
+    const auto extras = mesh.water.begin() + static_cast<std::ptrdiff_t>(topology.samples.size());
+    TEST_CHECK(std::all_of(extras, mesh.water.end(),
+                           [](const VertexWater& w) { return w == VertexWater{}; }));
     const CellRect& hole = topology.hole;
     const int holeCells = hole.empty() ? 0 : (hole.i1 - hole.i0) * (hole.k1 - hole.k0);
     const auto gridTriangles = static_cast<std::size_t>(2 * (kCells * kCells - holeCells));
@@ -353,6 +373,7 @@ void checkTrim(const Clipmap& map, int n, const LevelMesh& body, const HorizonLo
     const CellRect square = terrain::unreal::bodyHole(map.params, n, kLevel0Hole);
     const CellRect finer = terrain::unreal::finerWindowCells(level, map.clipmap.level(n - 1));
     const UnrealMesh trim = terrain::unreal::levelTrim(level, square, finer, look);
+    TEST_CHECK(trim.water.size() == trim.positions.size());
     const double pitchCm = level.pitch() * 100.0;
     TEST_CHECK(drawsExactly(cellsOf(trim, trim.triangleCount(), pitchCm), square, finer));
     bool up = true;

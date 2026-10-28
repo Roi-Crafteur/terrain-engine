@@ -164,6 +164,9 @@ inline std::uint64_t speleothemsChecksum(const terrain::CaveField& field,
     return sum.value();
 }
 
+// Three tiles over the bottom of an entrance: LOD 0 stitched on every side, LOD 1 stitched on
+// one, LOD 2. Pinned again when the stitched sides followed the coarse outline (lod_seams.cpp):
+// 86 vertices of the stitched sides of the LOD 0 tile moved along their edges, nothing else.
 inline std::uint64_t tilesChecksum(const terrain::CaveEntrance& entrance) {
     const terrain::TerrainTiles tiles(kSeed, {}, {}, terrain::CaveParams{});
     const terrain::ChunkCoord chunk = terrain::worldToChunk(entrance.bottomX, entrance.bottomZ);
@@ -233,7 +236,7 @@ inline std::vector<Part> caveParts() {
          0xB821874392C85859ULL},
         {"entrances", entrancesChecksum(entrances), 0x2877E36872FEE072ULL},
         {"speleothems", speleothemsChecksum(field, ground), 0x3F5133B8CDCF2C4AULL},
-        {"cave tiles", tiles, 0x4B5C5F8F87309F47ULL},
+        {"cave tiles", tiles, 0x15C48ABC55BA30B0ULL},
         {"cave materials", materialsChecksum(), 0xD9C5568AB1EF9B55ULL},
         {"caves at the corner", cornerChecksum(field, ground), 0x98E6B32188631A0CULL},
     };

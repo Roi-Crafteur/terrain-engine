@@ -1,6 +1,7 @@
 // Textures and grids of the GPU horizon (Bridge/horizon_textures): the texel of a sample (the
 // ocean flat at the sea level with its ground under the sea, a mountain lake kept, the surface
-// of the land packed), the regions of a rectangle split where the slots wrap, simulated textures
+// of the land packed), the water codes (none on dry land, the level within a quarter step, the
+// sea at 0 exactly), the regions of a rectangle split where the slots wrap, simulated textures
 // written by the epochs along a walk across the edge of the world holding the texel of every
 // sample of every window at its slot, and the grids: the body without its bounds vertex, the 9
 // trims and their variants.
@@ -10,6 +11,7 @@
 #include "horizon_test_support.hpp"
 #include "test_assert.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -145,6 +147,72 @@ void testRegions() {
     TEST_CHECK(refused);
 }
 
+// The water codes: 0 on dry land, the level within half a step, exactly at the sea level and on
+// every step, never decreasing with the level, clamped to the range of the codes.
+void testWaterCodes() {
+    using terrain::unreal::waterCode;
+    using terrain::unreal::waterCodeLevel;
+    TEST_CHECK(waterCode(terrain::kNoWaterLevel) == 0);
+    TEST_CHECK(waterCodeLevel(0) == terrain::kNoWaterLevel);
+    TEST_CHECK(waterCodeLevel(waterCode(0.0f)) == 0.0f && waterCode(0.0f) == 16385);
+    TEST_CHECK(waterCodeLevel(waterCode(1725.25f)) == 1725.25f);
+    TEST_CHECK(waterCode(-9000.0f) == 1 && waterCodeLevel(1) == terrain::unreal::kWaterLevelLowest);
+    TEST_CHECK(waterCode(20000.0f) == 65535 &&
+               waterCodeLevel(65535) == terrain::unreal::kWaterLevelHighest);
+    bool near = true;
+    bool rising = true;
+    std::uint16_t last = 1;
+    for (float level = -4096.0f; level <= 12287.5f; level += 0.37f) {
+        const std::uint16_t code = waterCode(level);
+        near = near && std::abs(waterCodeLevel(code) - level) <= 0.125f + 1e-3f;
+        rising = rising && code >= last;
+        last = code;
+    }
+    TEST_CHECK(near && rising);
+}
+
+// The water regions of rectangles across the wrap: every code at the slot of its sample. What
+// the GPU horizon uploads for a piece: its texels, then the code of each cell.
+void testWaterRegions() {
+    constexpr int kSide = 17;
+    for (const HorizonRect rect : {HorizonRect{3, 4, 9, 6}, HorizonRect{-5, 14, 6, 22}}) {
+        std::vector<float> codes;
+        for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
+            for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
+                codes.push_back(static_cast<float>((i + 64) * 100 + (k + 64)));
+            }
+        }
+        std::vector<std::uint16_t> texture(kSide * kSide, 0);
+        for (const auto& region : terrain::unreal::waterRegions(2, kSide, rect, codes)) {
+            TEST_CHECK(region.level == 2);
+            for (int row = 0; row < region.height; ++row) {
+                for (int column = 0; column < region.width; ++column) {
+                    texture[static_cast<std::size_t>((region.z + row) * kSide + region.x +
+                                                     column)] =
+                        region.data[static_cast<std::size_t>(row * region.width + column)];
+                }
+            }
+        }
+        bool placed = true;
+        for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
+            for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
+                const terrain::HorizonIndex slot = terrain::slotOf({i, k}, kSide);
+                placed = placed && texture[static_cast<std::size_t>(slot.z * kSide + slot.x)] ==
+                                       (i + 64) * 100 + (k + 64);
+            }
+        }
+        TEST_CHECK(placed);
+    }
+    terrain::HorizonPiece piece{0, {0, 0, 2, 1}, std::vector<HorizonCell>(2)};
+    piece.cells[0].height = 1720.0f;
+    piece.cells[0].waterLevel = 1725.25f;
+    const std::vector<float> uploads = terrain::unreal::pieceUploads(piece, true);
+    std::vector<float> expected = terrain::unreal::pieceTexels(piece, true);
+    const auto code = static_cast<float>(terrain::unreal::waterCode(1725.25f));
+    expected.insert(expected.end(), {code, 0.0f});
+    TEST_CHECK(uploads == expected);
+}
+
 // The textures written by the epochs hold the texel of every sample of every window at its slot.
 bool texturesMatch(const std::vector<Texture>& textures, const terrain::HorizonClipmap& clipmap) {
     for (int n = 0; n < clipmap.levelCount(); ++n) {
@@ -268,6 +336,8 @@ void testGrids() {
 int main() {
     testTexels();
     testRegions();
+    testWaterCodes();
+    testWaterRegions();
     testWalk();
     testGrids();
     return test::result();

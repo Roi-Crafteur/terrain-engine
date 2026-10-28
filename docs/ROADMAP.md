@@ -125,6 +125,21 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   ×1,08, montagnes ×1,04, à moins de 1 km d'un fleuve ×1,78 ; en tuiles ×1,03, ×1,05 et ×1,71
   (`water_cost_test` : au plus ×1,3 loin de l'eau, ×2 près des fleuves)
 
+### Phase 11, tâche 7b — Le niveau de l'eau pour Unreal
+- le niveau de l'eau du core (`waterLevel` : la mer à 0 m, un lac à son niveau, un fleuve à sa
+  surface, en marches aux chutes) aux sommets des tuiles (`TileData::waterLevels`) et dans les
+  échantillons de l'horizon (`HorizonCell::waterLevel`) : au bit près sur les colonnes et les
+  échantillons, absent au sec et sur les parois des grottes (`water_level_test`)
+- envoyé à Unreal : canal UV 0 des sommets des tuiles et de l'horizon CPU (la hauteur de l'eau
+  au-dessus du sommet, et sous l'eau ou non), une texture d'eau par niveau de l'horizon GPU
+  (16 bits, pas de 0,25 m) ; aucun matériau ne le lit encore (`terrain_unreal/WATER_LEVEL.md`)
+- `PlanetFile` dans `Terrain World` : le fichier planète, ses fleuves et ses lacs en jeu
+- coût, monde par défaut avec son fichier planète, un thread, avant / après : tuiles ×1,02 sur
+  les terres, ×1,01 en montagne, ×1,00 près des fleuves ; époque de l'horizon ×0,97, dans le
+  bruit de la mesure ; sans changer un bit (goldens, montagnes gelées, somme du niveau Planète)
+- mémoire : échantillons de l'horizon de 16 à 20 octets (10,1 → 12,6 Mo), textures d'eau 1,26 Mo
+  sur le GPU (+12,5 % d'octets par bande envoyée), rien de plus aux sommets dans Unreal
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
@@ -157,9 +172,9 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
 - 11A, 11R, 11R bis et 11B : faits (voir « Réalisé »)
-- tâche suivante, dès le merge de la 11B (7b) : le niveau de l'eau pour Unreal, `waterLevel` aux
-  sommets des tuiles et dans `HorizonCell`, pour dessiner les lacs et les fleuves à leur niveau
-  (aujourd'hui toute l'eau est dessinée à 0 m)
+- tâche 7b, le niveau de l'eau pour Unreal : faite (voir « Réalisé ») ; reste côté Unreal le
+  matériau qui le lit, pour dessiner les lacs et les fleuves à leur niveau (aujourd'hui toute
+  l'eau est encore dessinée à 0 m)
 - côté Unreal (7a, 7c) : fait. Le carré de mer sous les tuiles n'est dessiné que là où le core
   met l'océan (matériau Masked ; chemin CPU : le carré entier, ou rien s'il n'a aucun
   échantillon de mer), et la couleur du fond marin seulement sous le drapeau mer
@@ -175,7 +190,7 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   cols (essai du point d'arrêt 3 : 1 à 49 % de lacs dans les fenêtres de haute montagne avec
   un lit de 300 m, 19 % encore avec 1 000 m). C'est la phase 11C qui règle cela
 
-### Phase 11C — Vallées de montagne qui descendent (prochaine phase, après la tâche 7b)
+### Phase 11C — Vallées de montagne qui descendent (prochaine phase)
 - dégel des montagnes : `mountain_freeze_test` est levé pour cette phase, puis refait
 - refaire les vallées des montagnes en un vrai réseau qui descend vers les plaines : un arbre
   de vallées qui draine, leurs fonds toujours en pente vers l'aval, de la crête à la plaine. Les
@@ -338,9 +353,13 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   - les plantes générées dont le sol est retiré disparaissent, de près comme de loin
   - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : format
     seulement, pas encore branché sur l'horizon
+  - coutures entre LOD fermées au bord des cratères et dans les grottes : la face fine suit les
+    segments droits que Marching Cubes trace sur la face grossière (avant : jusqu'à 0,45 m entre
+    LOD 0 et 1, 1,3 m entre 1 et 2, 2,8 m entre 2 et 3, 0,62 m dans les grottes ; après : au
+    plus 0,25 mm). Le terrain naturel sans grottes garde ses bits ; toute tuile Marching Cubes en
+    profite (`stitchSeams` puis `stitchedMesh`, `lod_seams.cpp`)
   - reste : casser et poser en jeu dans Unreal, effets de destruction, branchement du résumé
-    sur l'horizon, coutures entre LOD au bord des cratères (jusqu'à 0,26 m, le recousage
-    interpole la face fine là où la face grossière est droite)
+    sur l'horizon
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

@@ -1,5 +1,7 @@
 #include "tile_mesh_conversion.hpp"
 
+#include "terrain/generation/water_kind.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <limits>
@@ -10,9 +12,12 @@ namespace terrain::unreal {
 
 namespace {
 
-void validate(const Mesh& mesh) {
+void validate(const Mesh& mesh, std::span<const float> waterLevels) {
     if (mesh.normals.size() != mesh.vertices.size()) {
         throw std::invalid_argument("convertMesh: one normal per vertex expected");
+    }
+    if (!waterLevels.empty() && waterLevels.size() != mesh.vertices.size()) {
+        throw std::invalid_argument("convertMesh: no water level or one per vertex expected");
     }
     if (mesh.indices.size() % 3 != 0) {
         throw std::invalid_argument("convertMesh: three indices per triangle expected");
@@ -74,8 +79,16 @@ double oceanShare(const TileSea& sea, double x, double z) {
     return bilinear(oceanWeights(sea), sea.pitchMeters, x, z);
 }
 
-UnrealMesh convertMesh(const Mesh& mesh, double originY, const TileSea& sea) {
-    validate(mesh);
+VertexWater vertexWater(float level, double altitude) {
+    if (!(level > kNoWaterLevel)) {
+        return {};
+    }
+    return {static_cast<float>(static_cast<double>(level) - altitude), 1.0f};
+}
+
+UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> waterLevels,
+                       const TileSea& sea) {
+    validate(mesh, waterLevels);
     const bool flagged = sea.texels != nullptr && !sea.texels->empty();
     const std::vector<double> ocean = flagged ? oceanWeights(sea) : std::vector<double>{};
     const bool anyOcean = std::any_of(ocean.begin(), ocean.end(), [](double w) { return w > 0.0; });
@@ -83,12 +96,16 @@ UnrealMesh convertMesh(const Mesh& mesh, double originY, const TileSea& sea) {
     out.positions.reserve(mesh.vertices.size());
     out.normals.reserve(mesh.normals.size());
     out.colors.reserve(mesh.vertices.size());
-    for (const Vec3f& vertex : mesh.vertices) {
+    out.water.reserve(mesh.vertices.size());
+    for (std::size_t n = 0; n < mesh.vertices.size(); ++n) {
+        const Vec3f& vertex = mesh.vertices[n];
         out.positions.push_back(toUnrealOffset(vertex));
         const double altitude = originY + vertex.y;
         const bool under =
             !flagged || (anyOcean && bilinear(ocean, sea.pitchMeters, vertex.x, vertex.z) >= 0.5);
         out.colors.push_back(groundColor(altitude, under));
+        out.water.push_back(waterLevels.empty() ? VertexWater{}
+                                                : vertexWater(waterLevels[n], altitude));
     }
     for (const Vec3f& normal : mesh.normals) {
         out.normals.push_back(toUnrealDirection(normal));

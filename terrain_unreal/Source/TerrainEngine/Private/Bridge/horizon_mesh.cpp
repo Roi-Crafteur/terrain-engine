@@ -34,6 +34,19 @@ private:
     HorizonIndex first_;
 };
 
+// The water of the vertices of the stitched border, from the altitude they took: the level of
+// their own sample, its depth from the coarser ground.
+void stitchWater(const WindowReader& reader, const BodyTopology& topology, const HorizonLook& look,
+                 UnrealMesh& mesh) {
+    const int side = topology.cells + 1;
+    for (const std::int32_t v : topology.border) {
+        const auto at = static_cast<std::size_t>(v);
+        const std::int32_t sample = topology.samples[at];
+        const double altitude = mesh.positions[at].z / kCentimetersPerMeter + look.dropMeters;
+        mesh.water[at] = vertexWater(reader.at(sample % side, sample / side).waterLevel, altitude);
+    }
+}
+
 bool strictlyInside(const CellRect& rect, int i, int k) {
     return i > rect.i0 && i < rect.i1 && k > rect.k0 && k < rect.k1;
 }
@@ -184,6 +197,7 @@ HorizonVertex horizonVertex(const HorizonCell& cell, const HorizonLook& look) {
     const double ground = ocean ? static_cast<double>(kSeaLevel) : static_cast<double>(cell.height);
     HorizonVertex vertex;
     vertex.z = static_cast<float>((ground - look.dropMeters) * kCentimetersPerMeter);
+    vertex.water = vertexWater(cell.waterLevel, ground);
     if (ocean) {
         vertex.normal = {0.0f, 0.0f, 1.0f};
         vertex.color = kSeaColor;
@@ -251,6 +265,7 @@ void fillBody(const HorizonLevel& level, const BodyTopology& topology, const Bod
     mesh.positions.resize(count);
     mesh.normals.resize(count);
     mesh.colors.resize(count);
+    mesh.water.assign(count, VertexWater{});
     const WindowReader reader(level);
     const int side = topology.cells + 1;
     const double pitchCm = level.pitch() * kCentimetersPerMeter;
@@ -262,9 +277,11 @@ void fillBody(const HorizonLevel& level, const BodyTopology& topology, const Bod
                              vertex.z};
         mesh.normals[v] = vertex.normal;
         mesh.colors[v] = vertex.color;
+        mesh.water[v] = vertex.water;
     }
     if (shape.coarser != nullptr) {
         stitchBorder(level, *shape.coarser, topology, look, mesh.positions);
+        stitchWater(reader, topology, look, mesh);
     }
     const bool sea = topology.seaFirst >= 0 &&
                      squareHoldsSea(reader, topology.cells, shape.seaHalfMeters, level.pitch(), look);
@@ -293,6 +310,7 @@ UnrealMesh levelTrim(const HorizonLevel& level, const CellRect& square, const Ce
                 {static_cast<float>(i * pitchCm), static_cast<float>(k * pitchCm), vertex.z});
             mesh.normals.push_back(vertex.normal);
             mesh.colors.push_back(vertex.color);
+            mesh.water.push_back(vertex.water);
         }
         return slot;
     };

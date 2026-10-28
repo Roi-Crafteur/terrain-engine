@@ -114,7 +114,7 @@ void testOceanShare() {
     mesh.vertices = {{0.0f, 0.0f, 0.0f}, {16.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 16.0f}};
     mesh.normals.assign(3, {0.0f, 1.0f, 0.0f});
     mesh.indices = {0, 1, 2};
-    const terrain::unreal::UnrealMesh out = terrain::unreal::convertMesh(mesh, -40.0, sea);
+    const terrain::unreal::UnrealMesh out = terrain::unreal::convertMesh(mesh, -40.0, {}, sea);
     TEST_CHECK(out.colors[0] == altitudeColor(-40.0) && out.colors[2] == altitudeColor(-40.0));
     TEST_CHECK(out.colors[1] == altitudeColor(0.0));
     TEST_CHECK(terrain::unreal::convertMesh(mesh, -40.0).colors[1] == altitudeColor(-40.0));
@@ -141,7 +141,7 @@ void testTileColors() {
     // With the sea of the tile, in the mountains: no ocean, the same colors above the sea level.
     const TileSea sea{&data.surfaceBlend, terrain::unreal::blendPitchMeters(data.request.key.lod)};
     const terrain::unreal::UnrealMesh flagged =
-        terrain::unreal::convertMesh(data.mesh, data.originY, sea);
+        terrain::unreal::convertMesh(data.mesh, data.originY, {}, sea);
     bool dry = true;
     for (std::size_t i = 0; i < flagged.colors.size(); ++i) {
         const double altitude = data.originY + data.mesh.vertices[i].y;

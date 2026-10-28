@@ -5,6 +5,7 @@
 // that only moves the meshes, the return of a far player by whole worlds, a warm-up at its
 // corner), the warm-up under a new player with busy
 // workers and its timeout, the errors of the generator, and determinism.
+#include "tile_blend_atlas.hpp"
 #include "tile_streamer.hpp"
 
 #include "streaming_test_support.hpp"
@@ -121,7 +122,10 @@ bool matchesLoaded(const Shown& shown, const TileStreamer& streamer, ChunkCoord 
         if (it == shown.end() || data == nullptr || !streamer.shown(key) ||
             key != terrain::wrapTile(key, streamer.manager().params().world) ||
             !shownNear(streamer, key, player) ||
-            it->second.mesh != terrain::unreal::convertMesh(data->mesh, data->originY) ||
+            it->second.mesh != terrain::unreal::convertMesh(
+                                   data->mesh, data->originY, data->waterLevels,
+                                   {&data->surfaceBlend,
+                                    terrain::unreal::blendPitchMeters(key.lod)}) ||
             it->second.origin !=
                 terrain::unreal::tileOrigin(kFrame, *data, streamer.shownImage(key)) ||
             it->second.collision != (key.lod == 0)) {

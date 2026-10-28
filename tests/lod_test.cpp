@@ -336,7 +336,12 @@ void testStitchFace() {
             } else if (oddZ) {
                 expected = (pattern(0, y, z - 1) + pattern(0, y, z + 1)) / 2.0f;
             }
-            stitched = stitched && std::abs(value - expected) <= 1e-6f;
+            // The center of a coarse cell keeps the magnitude of its bilinear value, its sign
+            // that of the side of the coarse outline it lies on (lod_seams_grid_test).
+            const bool center = oddY && oddZ;
+            const float actual = center ? std::abs(value) : value;
+            stitched = stitched && std::abs(actual - (center ? std::abs(expected) : expected)) <=
+                                       1e-6f;
         }
     }
     TEST_CHECK(stitched);
