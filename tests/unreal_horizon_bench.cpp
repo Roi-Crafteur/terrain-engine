@@ -180,12 +180,14 @@ struct Arrivals {
     }
 };
 
-// Updates around the player until its epoch is committed and its detail is in.
+// Updates around the player until its epoch, if it needs one (a level moves), is committed and
+// its detail is in.
 Arrivals settle(HorizonGpuStreamer& streamer, const terrain::unreal::UnrealFrame& frame,
                 const terrain::unreal::UnrealPoint& player, std::chrono::microseconds poll) {
     const auto start = Clock::now();
     Arrivals arrivals;
-    bool committed = false;
+    const terrain::unreal::CorePoint observer = terrain::unreal::toCore(frame, player);
+    bool committed = streamer.shown() && !streamer.clipmap().plan(observer.x, observer.z);
     while (true) {
         const HorizonGpuUpdate update = streamer.update(player, frame);
         committed = committed || update.committed;
