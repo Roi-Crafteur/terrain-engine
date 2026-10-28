@@ -54,4 +54,9 @@ VertexColor altitudeColor(double altitude) {
     return colorOf(kKeys.back().r, kKeys.back().g, kKeys.back().b);
 }
 
+VertexColor groundColor(double altitude, bool sea) {
+    const bool dryBelow = !sea && altitude < kSeaLevel;
+    return altitudeColor(dryBelow ? static_cast<double>(kSeaLevel) : altitude);
+}
+
 } // namespace terrain::unreal

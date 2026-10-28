@@ -126,6 +126,11 @@ void testVertex() {
     depression.height = -80.0f;
     TEST_CHECK(terrain::unreal::horizonVertex(depression, look).z ==
                static_cast<float>(-81.5 * 100.0));
+    // Its color is the dry one: the sea floor is for the sea.
+    TEST_CHECK(terrain::unreal::horizonVertex(depression, look).color ==
+               terrain::unreal::groundColor(-80.0, false));
+    TEST_CHECK(terrain::unreal::horizonVertex(depression, look).color !=
+               terrain::unreal::altitudeColor(-80.0));
 }
 
 void testTopology() {
@@ -258,13 +263,18 @@ void checkBody(const Clipmap& map, int n, const LevelMesh& body, const HorizonLo
                             topology.hole));
     const std::size_t skirtTriangles = 2 * topology.border.size();
     const double center = kCells / 2 * pitchCm;
+    // A sea square left out is a point: its two triangles have no front.
+    const auto seaFirst = static_cast<std::size_t>(std::max(topology.seaFirst, 0));
+    const bool noSea = topology.seaFirst >= 0 &&
+                       mesh.positions[seaFirst] == mesh.positions[seaFirst + 3];
     bool up = true;
     bool inward = true;
     for (std::size_t t = 0; t < mesh.triangleCount(); ++t) {
         const UnrealVector3f front = frontOf(mesh, t);
         const bool skirt = t >= gridTriangles && t < gridTriangles + skirtTriangles;
         if (!skirt) {
-            up = up && front.z > 0.0f;
+            const bool point = noSea && t >= gridTriangles + skirtTriangles;
+            up = up && (point ? front.z == 0.0f : front.z > 0.0f);
             continue;
         }
         const UnrealVector3f a = mesh.positions[static_cast<std::size_t>(mesh.triangles[3 * t])];
@@ -289,15 +299,32 @@ void checkBody(const Clipmap& map, int n, const LevelMesh& body, const HorizonLo
     TEST_CHECK(bounds.x == static_cast<float>(center) && bounds.y == static_cast<float>(center));
 }
 
-void checkSea(const LevelMesh& body, double pitchCm) {
+// How many sea squares checkSea saw drawn and left out.
+int drawnSeas = 0;
+int droppedSeas = 0;
+
+// The sea square, 100 m around the center: drawn when one of its samples is of the sea, a point
+// at the center otherwise.
+void checkSea(const HorizonLevel& level, const LevelMesh& body) {
     const BodyTopology& topology = body.topology;
     TEST_CHECK(topology.seaFirst >= 0);
     const UnrealVector3f low = body.mesh.positions[static_cast<std::size_t>(topology.seaFirst)];
     const UnrealVector3f high =
         body.mesh.positions[static_cast<std::size_t>(topology.seaFirst) + 3];
+    const double pitchCm = level.pitch() * 100.0;
     const auto center = static_cast<float>(kCells / 2 * pitchCm);
+    const int reach = static_cast<int>(std::floor(100.0 / level.pitch()));
+    bool sea = false;
+    for (int k = kCells / 2 - reach; k <= kCells / 2 + reach; ++k) {
+        for (int i = kCells / 2 - reach; i <= kCells / 2 + reach; ++i) {
+            const HorizonCell* cell = level.find({level.window().x0 + i, level.window().z0 + k});
+            sea = sea || (cell != nullptr && terrain::unreal::isSeaCell(*cell));
+        }
+    }
+    const float half = sea ? 10'000.0f : 0.0f;
+    ++(sea ? drawnSeas : droppedSeas);
     TEST_CHECK(low.z == 0.0f && high.z == 0.0f);
-    TEST_CHECK(low.x == center - 10'000.0f && high.y == center + 10'000.0f);
+    TEST_CHECK(low.x == center - half && high.y == center + half);
     TEST_CHECK(body.mesh.colors[static_cast<std::size_t>(topology.seaFirst)] ==
                terrain::unreal::kSeaColor);
 }
@@ -396,7 +423,7 @@ int testLevels(double x, double z, int crestRatio = HorizonParams{}.crestRatio) 
             checkTrim(map, n, bodies.back(), look);
         }
     }
-    checkSea(bodies.front(), map.clipmap.level(0).pitch() * 100.0);
+    checkSea(map.clipmap.level(0), bodies.front());
     int lifted = 0;
     for (int n = 0; n + 1 < map.params.levels; ++n) {
         lifted += checkStitch(map, n, bodies[static_cast<std::size_t>(n)], look);
@@ -425,5 +452,6 @@ int main() {
     std::printf("mountains: %d even border samples stitched onto lifted coarser samples\n",
                 lifted);
     TEST_CHECK(lifted > 0);
+    std::printf("sea squares: %d drawn, %d left out\n", drawnSeas, droppedSeas);
     return test::result();
 }
