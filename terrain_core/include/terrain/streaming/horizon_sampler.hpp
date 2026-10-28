@@ -22,7 +22,7 @@ inline constexpr std::uint8_t kHorizonEdited = 1U << 1; // changed by a summary 
 // depression below the sea level is not the sea.
 inline constexpr std::uint8_t kHorizonSea = 1U << 2;
 
-// What the far horizon holds at a sample of a level: 16 bytes, for compact level buffers.
+// What the far horizon holds at a sample of a level: 20 bytes, for compact level buffers.
 struct HorizonCell {
     // Top of the ground, meters: Heightfield::heightAt at the sample, bit for bit, plus its
     // lift to the crests of its cells from level 1 on (HorizonCrestSampler, when it rises), then
@@ -40,10 +40,15 @@ struct HorizonCell {
     Biome biome = Biome::Ocean;
     std::uint8_t flags = 0; // kHorizonWater, kHorizonEdited, kHorizonSea
     std::uint8_t reserved = 0;
+    // The level of the water over the sample (HeightSample::waterLevel, bit for bit: the sea at
+    // kSeaLevel, a lake at its level, a river at its surface), kNoWaterLevel where it is dry:
+    // present exactly where kHorizonWater is. Neither the lifts of the crests nor the edits change
+    // it, so a lifted ground may stand above its water.
+    float waterLevel = kNoWaterLevel;
 
     friend bool operator==(const HorizonCell&, const HorizonCell&) = default;
 };
-static_assert(sizeof(HorizonCell) == 16, "a horizon cell holds 16 bytes");
+static_assert(sizeof(HorizonCell) == 20, "a horizon cell holds 20 bytes");
 
 // Square of the world a sample stands for: its canonical position (the center) and half the
 // pitch of its level. A footprint on an edge of the world reaches across it.

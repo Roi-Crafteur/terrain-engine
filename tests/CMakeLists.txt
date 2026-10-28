@@ -495,3 +495,4 @@ add_test(NAME export_silhouette_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_silhouette>
             -DOUT=${CMAKE_BINARY_DIR}/silhouette_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_silhouette_bad_args.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/water_level_tests.cmake) # task 7b: the water level
