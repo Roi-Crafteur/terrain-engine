@@ -36,6 +36,13 @@ struct HorizonGpuParams {
     // The crests of the far mountains (HorizonParams::crestRatio): 0 for point samples, the
     // horizon before them.
     int crestRatio = HorizonParams{}.crestRatio;
+    // The crests computed after the epochs, with the detail normals, from the fine grid they read
+    // (HorizonDetailSampler): the levels show as soon as their point samples are ready, the epochs
+    // cost what they cost without crests, and the texels of the samples that rise are written
+    // again when their crests arrive (horizon_crest_texels.hpp), the same bits as crests computed
+    // in the epochs wherever no player edit lies. A sample with an edit keeps the height of its
+    // epoch, without crest. False: the crests in the epochs (the horizon of #41).
+    bool deferCrests = true;
 };
 
 // Where a level of the GPU horizon stands and how its material reads its textures.
@@ -64,6 +71,9 @@ struct HorizonGpuUpdate {
     bool first = false;
     double epochMilliseconds = 0.0;
     std::int64_t samples = 0;
+    // On the update where the detail (crests and normals) of every committed epoch is in: the
+    // time since the commit of the oldest of them; 0 otherwise.
+    double detailMilliseconds = 0.0;
 
     [[nodiscard]] bool empty() const {
         return regions.empty() && normalRegions.empty() && placements.empty();
@@ -74,32 +84,46 @@ struct HorizonGpuUpdate {
 // run as jobs (HorizonEpochRunner), their texels prepared on the jobs; each commit writes the
 // texels of the samples entering the windows, and the levels are placed again whenever their
 // window, their trim or their image nearest to the player changes (a world turn, the origin
-// rebasing). The fixed grids, the textures and the material belong to the renderer. Every method
-// must be called from the thread owning the streamer.
+// rebasing). The detail (normals, and the crests when deferred) follows each commit as jobs of a
+// HorizonNormalStream. The fixed grids, the textures and the material belong to the renderer.
+// Every method must be called from the thread owning the streamer.
 class HorizonGpuStreamer {
 public:
-    // field and ecology (those of the tiles) must outlive the streamer and share the world. Throws
+    // field and ecology (those of the tiles) must outlive the streamer and share the world; edits
+    // summarize the player edits for the epochs (HorizonSampler), none by default. Throws
     // std::invalid_argument for invalid parameters, or tiles that do not end inside level 0.
     HorizonGpuStreamer(const Heightfield& field, const Ecology& ecology, const WorldSize& world,
-                       const HorizonGpuParams& params, JobLauncher launch);
+                       const HorizonGpuParams& params, JobLauncher launch,
+                       EditSummarySource edits = {});
 
     HorizonGpuStreamer(const HorizonGpuStreamer&) = delete;
     HorizonGpuStreamer& operator=(const HorizonGpuStreamer&) = delete;
 
     // One update around the player (unwrapped Unreal position). Rethrows the errors of the jobs.
     HorizonGpuUpdate update(const UnrealPoint& player, const UnrealFrame& frame);
+    // Waits for the epoch in flight and the detail queued; an epoch computed is only committed,
+    // and its detail queued, by the next update.
     void waitIdle();
+    // Whether an epoch is in flight or some detail is queued, computed or not collected yet.
+    [[nodiscard]] bool busy();
 
+    // The parameters of the levels (their crest ratio, even when the crests are deferred).
     [[nodiscard]] const HorizonParams& params() const { return horizonParams_; }
     [[nodiscard]] const HorizonGpuParams& gpuParams() const { return params_; }
     [[nodiscard]] const TileHole& tileHole() const { return hole_; }
     [[nodiscard]] double planetRadiusMeters() const { return radius_; }
     [[nodiscard]] int side() const { return horizonParams_.cellsPerSide + 1; }
     [[nodiscard]] bool shown() const { return runner_.clipmap().placed(); }
+    // The samples of the epochs: with deferred crests, their point heights on every level (the
+    // texels show the samples raised to their crests once these arrive).
     [[nodiscard]] const HorizonClipmap& clipmap() const { return runner_.clipmap(); }
     [[nodiscard]] std::size_t memoryBytes() const { return runner_.clipmap().memoryBytes(); }
     // The detail normals, or nullptr without them (normalRatio 0).
-    [[nodiscard]] HorizonNormalStream* normals() const { return normals_.get(); }
+    [[nodiscard]] HorizonNormalStream* normals() const {
+        return detail_ != nullptr && detail_->ratio() > 0 ? detail_.get() : nullptr;
+    }
+    // The stream of the detail (normals, deferred crests), or nullptr without any.
+    [[nodiscard]] HorizonNormalStream* detail() const { return detail_.get(); }
 
     // The fixed grids: the body of level 0 (with the sea square), the body shared by the levels
     // 1 and up, and the trims (trimGrid).
@@ -113,15 +137,17 @@ private:
     [[nodiscard]] LevelPlacement placementOf(int level, const CorePoint& observer,
                                              const UnrealFrame& frame) const;
     void placeLevels(const CorePoint& observer, const UnrealFrame& frame, HorizonGpuUpdate& result);
+    void collectDetail(HorizonGpuUpdate& result);
 
     HorizonParams horizonParams_;
     HorizonGpuParams params_;
     TileHole hole_;
     double radius_;
-    HorizonSampler sampler_;
+    HorizonSampler sampler_; // of the epochs: crests only when they are not deferred
     std::vector<std::optional<LevelPlacement>> shown_;
     std::optional<std::chrono::steady_clock::time_point> epochStart_;
-    std::unique_ptr<HorizonNormalStream> normals_;
+    std::optional<std::chrono::steady_clock::time_point> detailStart_;
+    std::unique_ptr<HorizonNormalStream> detail_; // before runner_: it takes the launcher
     HorizonEpochRunner runner_; // last: its jobs end before the sampler goes away
 };
 

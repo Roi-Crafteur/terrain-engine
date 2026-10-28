@@ -13,6 +13,7 @@
 #include "horizon_test_support.hpp"
 #include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
+#include "unreal_horizon_gpu_support.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -29,7 +30,6 @@ using terrain::HorizonIndex;
 using terrain::unreal::HorizonGpuParams;
 using terrain::unreal::HorizonGpuStreamer;
 using terrain::unreal::HorizonGpuUpdate;
-using terrain::unreal::HorizonTexel;
 using terrain::unreal::kTexelFloats;
 using terrain::unreal::LevelPlacement;
 using terrain::unreal::UnrealFrame;
@@ -47,66 +47,7 @@ HorizonGpuParams smallParams() {
     return params;
 }
 
-// What the GPU of Unreal holds: a texture and a placement per level.
-class Gpu {
-public:
-    explicit Gpu(int side) : side_(side) {}
-
-    void apply(const HorizonGpuUpdate& update) {
-        for (const terrain::unreal::TexelRegion& region : update.regions) {
-            std::vector<float>& texels = textures_[region.level];
-            texels.resize(static_cast<std::size_t>(side_ * side_ * kTexelFloats), -9.0f);
-            for (int row = 0; row < region.height; ++row) {
-                for (int column = 0; column < region.width * kTexelFloats; ++column) {
-                    texels[static_cast<std::size_t>(((region.z + row) * side_ + region.x) *
-                                                        kTexelFloats +
-                                                    column)] =
-                        region.data[static_cast<std::size_t>(row * region.width * kTexelFloats +
-                                                             column)];
-                }
-            }
-        }
-        for (const LevelPlacement& placement : update.placements) {
-            placements_[placement.level] = placement;
-        }
-    }
-
-    // The texel the material reads for the sample (i, k) of the window of a level.
-    [[nodiscard]] HorizonTexel texel(int level, int i, int k) const {
-        const LevelPlacement& placement = placements_.at(level);
-        const auto x = static_cast<int>((placement.firstSlot.x + i) % side_);
-        const auto z = static_cast<int>((placement.firstSlot.z + k) % side_);
-        const std::vector<float>& texels = textures_.at(level);
-        const auto first = static_cast<std::size_t>((z * side_ + x) * kTexelFloats);
-        return {texels[first], texels[first + 1], texels[first + 2], texels[first + 3]};
-    }
-
-    // The same windows read by the material, the same origins and trims.
-    [[nodiscard]] bool sameView(const Gpu& other) const {
-        for (const auto& [level, placement] : placements_) {
-            const LevelPlacement& theirs = other.placements_.at(level);
-            if (!(placement.origin == theirs.origin) || placement.trim != theirs.trim ||
-                !(placement.inCoarser == theirs.inCoarser)) {
-                return false;
-            }
-            for (int k = 0; k < side_; ++k) {
-                for (int i = 0; i < side_; ++i) {
-                    if (!(texel(level, i, k) == other.texel(level, i, k))) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return placements_.size() == other.placements_.size();
-    }
-
-    [[nodiscard]] const std::map<int, LevelPlacement>& placements() const { return placements_; }
-
-private:
-    int side_;
-    std::map<int, std::vector<float>> textures_;
-    std::map<int, LevelPlacement> placements_;
-};
+using gpu_test::Gpu;
 
 struct Session {
     explicit Session(const HorizonGpuParams& params = smallParams(),
@@ -119,20 +60,12 @@ struct Session {
     Gpu gpu{129};
 };
 
-// The texels of every window match the samples of the clipmap.
+// The texels of every window are those of the samples of the clipmap raised to their crests: the
+// samples of a sampler with the crests in the epochs.
 bool texelsMatch(const Session& session) {
-    const terrain::HorizonClipmap& clipmap = session.streamer.clipmap();
-    for (int n = 0; n < clipmap.levelCount(); ++n) {
-        for (int k = 0; k < 129; ++k) {
-            for (int i = 0; i < 129; ++i) {
-                if (!(session.gpu.texel(n, i, k) ==
-                      terrain::unreal::horizonTexel(clipmap.level(n).atWindow(i, k), true))) {
-                    return false;
-                }
-            }
-        }
-    }
-    return true;
+    const terrain::HorizonSampler reference(session.world.field, session.world.ecology,
+                                            session.streamer.params());
+    return gpu_test::texelsMatch(session.gpu, session.streamer.clipmap(), reference);
 }
 
 void testFirstAndSteps() {
@@ -144,7 +77,9 @@ void testFirstAndSteps() {
     for (const auto& region : first.regions) {
         texels += region.data.size() / kTexelFloats;
     }
-    TEST_CHECK(texels == 5u * 129u * 129u);
+    // Every texel, and those of the samples that rise to their crests again (the jobs run within
+    // the update here).
+    TEST_CHECK(texels >= 5u * 129u * 129u);
     session.gpu.apply(first);
     TEST_CHECK(texelsMatch(session));
     TEST_CHECK(session.streamer.update({0.0, 0.0, 0.0}, kFrame).empty());
@@ -283,7 +218,7 @@ void testMorphTarget(int crestRatio) {
     params.crestRatio = crestRatio;
     Session session(params, test_relief::legacyRelief());
     session.gpu.apply(session.streamer.update({0.0, 0.0, 0.0}, kFrame));
-    TEST_CHECK(session.streamer.clipmap().params().crestRatio == crestRatio);
+    TEST_CHECK(session.streamer.params().crestRatio == crestRatio);
     bool exact = true;
     bool asBefore = true;
     int lifted = 0;
@@ -335,6 +270,13 @@ void testTexelsLine() {
     TEST_CHECK(lines.back() ==
                "horizon texels: upload 2 ticks 0.50 ms (max 0.75), 1500 texels per tick");
     TEST_CHECK(terrain::unreal::describe(timings.take()).empty());
+    // The detail after the epochs has its own line, last.
+    timings.recordDetail(30.0);
+    timings.recordDetail(90.0);
+    const std::vector<std::string> detail = terrain::unreal::describe(timings.take());
+    TEST_CHECK(detail.size() == 1 &&
+               detail.front() == "horizon detail: 2 epochs 60.00 ms (max 90.00) from commit to "
+                                 "crests and normals in");
 }
 
 } // namespace

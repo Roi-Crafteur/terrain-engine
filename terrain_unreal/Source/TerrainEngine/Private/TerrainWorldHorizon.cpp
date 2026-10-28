@@ -236,6 +236,11 @@ void ATerrainWorld::TickHorizon(const FVector& Focus)
 			terrain::unreal::HorizonGpuUpdate Update =
 				State->HorizonGpu->update(ToUnrealPoint(Focus), State->Frame);
 			HorizonClipmap->Apply(Update, State->HorizonTimings);
+			if (Update.detailMilliseconds > 0.0)
+			{
+				// The crests and the detail normals of the epochs all in.
+				State->HorizonTimings.recordDetail(Update.detailMilliseconds);
+			}
 			CoarsestMoved = Update.coarsestMoved;
 			bFirst = Update.first;
 			bCommitted = Update.committed;

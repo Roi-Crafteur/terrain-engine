@@ -32,16 +32,18 @@ void HorizonNormalStream::written(const HorizonClipmap& clipmap, const HorizonCh
                                   std::vector<NormalRegion>& out) {
     std::vector<Task> tasks;
     for (const HorizonLevelChange& change : changes.levels) {
+        if (!sampler_.hasDetail(change.level)) {
+            continue;
+        }
         for (const HorizonRect& rect : change.written) {
             // The textures are created pending: nothing to mark before the first commit.
-            for (NormalRegion& region :
-                 placed_ ? pendingRegions(change.level, side_, ratio(), rect)
-                         : std::vector<NormalRegion>{}) {
+            for (NormalRegion& region : placed_ && ratio() > 0
+                                            ? pendingRegions(change.level, side_, ratio(), rect)
+                                            : std::vector<NormalRegion>{}) {
                 out.push_back(std::move(region));
             }
-            const std::int64_t rows = std::max<std::int64_t>(1, params_.jobSamples / rect.width());
-            for (std::int64_t z = rect.z0; z < rect.z1; z += rows) {
-                tasks.push_back({change.level, {rect.x0, z, rect.x1, std::min(z + rows, rect.z1)}});
+            for (const HorizonRect& tile : detailTiles(rect, params_.jobSamples)) {
+                tasks.push_back({change.level, tile});
             }
         }
     }
@@ -97,10 +99,10 @@ void HorizonNormalStream::runJob() {
                 return;
             }
         }
-        Result result{task.level, task.rect, {}};
+        Result result;
         std::exception_ptr error;
         try {
-            result.texels = normalTexels(sampler_.sample(task.level, task.rect));
+            result = compute(task);
         } catch (...) {
             error = std::current_exception();
         }
@@ -116,7 +118,23 @@ void HorizonNormalStream::runJob() {
     }
 }
 
-void HorizonNormalStream::collect(std::vector<NormalRegion>& out) {
+// The detail of a task: the texels of its normals, the point and raised heights of its samples.
+HorizonNormalStream::Result HorizonNormalStream::compute(const Task& task) const {
+    const HorizonDetail detail = sampler_.sample(task.level, task.rect);
+    Result result{task.level, task.rect, {}, detail.points, detail.points};
+    if (ratio() > 0) {
+        result.texels = normalTexels(detail.slopes);
+    }
+    for (std::size_t n = 0; n < detail.lifts.size(); ++n) {
+        if (detail.lifts[n] > 0.0f) {
+            result.raised[n] = detail.points[n] + detail.lifts[n]; // as HorizonSampler raises
+        }
+    }
+    return result;
+}
+
+void HorizonNormalStream::collect(std::vector<NormalRegion>& normals,
+                                  std::vector<CrestBand>& crests) {
     std::vector<Result> results;
     std::exception_ptr error;
     std::vector<HorizonRect> windows;
@@ -136,15 +154,31 @@ void HorizonNormalStream::collect(std::vector<NormalRegion>& out) {
             continue;
         }
         samplesComputed_ += result.rect.count();
-        const std::vector<std::uint16_t> part =
-            inside == result.rect ? std::vector<std::uint16_t>{}
-                                  : partTexels(result.rect, ratio(), result.texels, inside);
-        for (NormalRegion& region : normalRegions(result.level, side_, ratio(), inside,
-                                                  part.empty() ? result.texels : part)) {
-            out.push_back(std::move(region));
-        }
+        collectResult(result, inside, normals, crests);
     }
     launchJobs(); // queued while every job was busy
+}
+
+// The normals of a result and its crests where some sample rises, for its samples `inside`.
+void HorizonNormalStream::collectResult(const Result& result, const HorizonRect& inside,
+                                        std::vector<NormalRegion>& normals,
+                                        std::vector<CrestBand>& crests) const {
+    const bool whole = inside == result.rect;
+    if (!result.texels.empty()) {
+        const std::vector<std::uint16_t> part =
+            whole ? std::vector<std::uint16_t>{}
+                  : partTexels(result.rect, ratio(), result.texels, inside);
+        for (NormalRegion& region :
+             normalRegions(result.level, side_, ratio(), inside, whole ? result.texels : part)) {
+            normals.push_back(std::move(region));
+        }
+    }
+    if (result.points == result.raised) {
+        return; // nothing rises, or no crest at this level
+    }
+    crests.push_back({result.level, inside,
+                      whole ? result.points : partValues(result.rect, result.points, inside),
+                      whole ? result.raised : partValues(result.rect, result.raised, inside)});
 }
 
 void HorizonNormalStream::waitIdle() {
@@ -170,6 +204,37 @@ std::vector<std::uint16_t> partTexels(const HorizonRect& rect, int ratio,
         out.insert(out.end(), begin, begin + static_cast<std::ptrdiff_t>(partWidth));
     }
     return out;
+}
+
+std::vector<HorizonRect> detailTiles(const HorizonRect& rect, std::int64_t samples) {
+    if (rect.empty()) {
+        return {};
+    }
+    std::int64_t side = 1;
+    while ((side + 1) * (side + 1) <= samples) {
+        ++side;
+    }
+    // A band thinner than a tile keeps its whole thin side.
+    std::int64_t tileWidth = side;
+    if (rect.width() <= side) {
+        tileWidth = rect.width();
+    } else if (rect.height() < side) {
+        tileWidth = std::min(rect.width(), std::max<std::int64_t>(1, samples / rect.height()));
+    }
+    const std::int64_t tileHeight =
+        std::min(rect.height(), std::max<std::int64_t>(1, samples / tileWidth));
+    const std::int64_t columns = (rect.width() + tileWidth - 1) / tileWidth;
+    const std::int64_t rows = (rect.height() + tileHeight - 1) / tileHeight;
+    std::vector<HorizonRect> tiles;
+    for (std::int64_t r = 0; r < rows; ++r) {
+        const std::int64_t z0 = rect.z0 + rect.height() * r / rows;
+        const std::int64_t z1 = rect.z0 + rect.height() * (r + 1) / rows;
+        for (std::int64_t c = 0; c < columns; ++c) {
+            tiles.push_back({rect.x0 + rect.width() * c / columns, z0,
+                             rect.x0 + rect.width() * (c + 1) / columns, z1});
+        }
+    }
+    return tiles;
 }
 
 } // namespace terrain::unreal

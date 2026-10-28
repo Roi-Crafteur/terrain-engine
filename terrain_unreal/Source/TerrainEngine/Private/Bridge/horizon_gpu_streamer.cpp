@@ -18,17 +18,26 @@ HorizonParams horizonParams(const WorldSize& world, const HorizonGpuParams& para
     return horizon;
 }
 
-std::unique_ptr<HorizonNormalStream> normalStream(const Heightfield& field,
+// Exactly one of them raises the samples to their crests: the epochs, or the detail after them.
+HorizonParams epochParams(const HorizonParams& horizon, const HorizonGpuParams& params) {
+    HorizonParams epochs = horizon;
+    epochs.crestRatio = params.deferCrests ? 0 : horizon.crestRatio;
+    return epochs;
+}
+
+std::unique_ptr<HorizonNormalStream> detailStream(const Heightfield& field,
                                                   const HorizonParams& horizon,
                                                   const HorizonGpuParams& params,
                                                   const JobLauncher& launch) {
-    if (params.normalRatio == 0) {
+    HorizonParams detail = horizon;
+    detail.crestRatio = params.deferCrests ? horizon.crestRatio : 0;
+    if (params.normalRatio == 0 && detail.crestRatio == 0) {
         return nullptr;
     }
     HorizonNormalParams normals;
     normals.ratio = params.normalRatio;
     normals.maxJobsInFlight = params.normalJobs;
-    return std::make_unique<HorizonNormalStream>(field, horizon, normals, launch);
+    return std::make_unique<HorizonNormalStream>(field, detail, normals, launch);
 }
 
 std::int64_t samplesWritten(const HorizonChanges& changes) {
@@ -45,14 +54,14 @@ std::int64_t samplesWritten(const HorizonChanges& changes) {
 
 HorizonGpuStreamer::HorizonGpuStreamer(const Heightfield& field, const Ecology& ecology,
                                        const WorldSize& world, const HorizonGpuParams& params,
-                                       JobLauncher launch)
+                                       JobLauncher launch, EditSummarySource edits)
     : horizonParams_(horizonParams(world, params)), params_(params),
       hole_(terrain::unreal::tileHole(horizonParams_, params.lod)),
       radius_(params.planetRadiusMeters > 0.0 ? params.planetRadiusMeters
                                               : terrain::unreal::planetRadiusMeters(world)),
-      sampler_(field, ecology, horizonParams_),
+      sampler_(field, ecology, epochParams(horizonParams_, params), std::move(edits)),
       shown_(static_cast<std::size_t>(horizonParams_.levels)),
-      normals_(normalStream(field, horizonParams_, params, launch)),
+      detail_(detailStream(field, horizonParams_, params, launch)),
       runner_(sampler_, std::move(launch),
               [sea = params.sea](const HorizonPiece& piece) { return pieceTexels(piece, sea); },
               HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples}) {}
@@ -82,13 +91,12 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
                 result.regions.push_back(std::move(region));
             }
         }
-        if (normals_) {
-            normals_->written(runner_.clipmap(), commit.changes, result.normalRegions);
+        if (detail_) {
+            detail_->written(runner_.clipmap(), commit.changes, result.normalRegions);
+            detailStart_ = detailStart_.value_or(now);
         }
     }
-    if (normals_) {
-        normals_->collect(result.normalRegions);
-    }
+    collectDetail(result);
     if (runner_.busy() && !epochStart_) {
         epochStart_ = now; // planned by this update
     }
@@ -96,11 +104,37 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
     return result;
 }
 
+// The detail computed since the last update: the normals, and the texels of the samples whose
+// crests rise, after those of the commit.
+void HorizonGpuStreamer::collectDetail(HorizonGpuUpdate& result) {
+    if (!detail_) {
+        return;
+    }
+    std::vector<CrestBand> crests;
+    detail_->collect(result.normalRegions, crests);
+    for (const CrestBand& band : crests) {
+        for (TexelRegion& region :
+             crestRegions(runner_.clipmap().level(band.level), side(), band, params_.sea)) {
+            result.regions.push_back(std::move(region));
+        }
+    }
+    if (detailStart_ && !detail_->busy()) {
+        const std::chrono::duration<double, std::milli> elapsed =
+            std::chrono::steady_clock::now() - *detailStart_;
+        result.detailMilliseconds = std::max(elapsed.count(), 1e-6);
+        detailStart_.reset();
+    }
+}
+
 void HorizonGpuStreamer::waitIdle() {
     runner_.waitIdle();
-    if (normals_) {
-        normals_->waitIdle();
+    if (detail_) {
+        detail_->waitIdle();
     }
+}
+
+bool HorizonGpuStreamer::busy() {
+    return runner_.busy() || (detail_ != nullptr && detail_->busy());
 }
 
 GridMesh HorizonGpuStreamer::level0Grid() const {
