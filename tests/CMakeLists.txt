@@ -320,6 +320,7 @@ add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/horizon_streamer.cpp
     ${unreal_bridge}/horizon_textures.cpp
     ${unreal_bridge}/horizon_timings.cpp
+    ${unreal_bridge}/terrain_edits.cpp
     ${unreal_bridge}/terrain_session.cpp
     ${unreal_bridge}/terrain_surface.cpp
     ${unreal_bridge}/tile_mesh_conversion.cpp

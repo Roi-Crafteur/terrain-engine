@@ -139,13 +139,13 @@ HorizonEditMap::Square HorizonEditMap::squareAt(int level, std::int64_t x, std::
     return it == squares.end() ? Square{} : it->second;
 }
 
-FootprintEdits HorizonEditMap::footprint(const CellFootprint& footprint) const {
-    const double side = 2.0 * footprint.halfSide / kSpacing; // columns per side
+FootprintEdits HorizonEditMap::footprint(const CellFootprint& sample) const {
+    const double side = 2.0 * sample.halfSide / kSpacing; // columns per side
     const auto columns = static_cast<std::int64_t>(side);
     if (!(side >= 1.0) || static_cast<double>(columns) != side ||
         !std::has_single_bit(static_cast<std::uint64_t>(columns)) ||
-        columns > (std::int64_t{1} << (kSquareLevels - 1)) || !std::isfinite(footprint.centerX) ||
-        !std::isfinite(footprint.centerZ)) {
+        columns > (std::int64_t{1} << (kSquareLevels - 1)) || !std::isfinite(sample.centerX) ||
+        !std::isfinite(sample.centerZ)) {
         throw std::invalid_argument("HorizonEditMap: the footprint is not a sample of a horizon "
                                     "of 8 m columns");
     }
@@ -154,8 +154,8 @@ FootprintEdits HorizonEditMap::footprint(const CellFootprint& footprint) const {
     if (leaves_.empty()) {
         return result;
     }
-    const auto cx = static_cast<std::int64_t>(std::floor(footprint.centerX / kSpacing));
-    const auto cz = static_cast<std::int64_t>(std::floor(footprint.centerZ / kSpacing));
+    const auto cx = static_cast<std::int64_t>(std::floor(sample.centerX / kSpacing));
+    const auto cz = static_cast<std::int64_t>(std::floor(sample.centerZ / kSpacing));
     Sum sum;
     if (columns == 1) {
         const Square square = squareAt(0, wrapIndex(cx, countX_), wrapIndex(cz, countZ_));
@@ -180,8 +180,8 @@ FootprintEdits HorizonEditMap::footprint(const CellFootprint& footprint) const {
     return result;
 }
 
-std::optional<EditSummary> HorizonEditMap::summary(const CellFootprint& footprint) const {
-    const FootprintEdits edits = this->footprint(footprint);
+std::optional<EditSummary> HorizonEditMap::summary(const CellFootprint& sample) const {
+    const FootprintEdits edits = footprint(sample);
     if (edits.edited == 0) {
         return std::nullopt;
     }
@@ -194,7 +194,7 @@ std::optional<EditSummary> HorizonEditMap::summary(const CellFootprint& footprin
 }
 
 EditSummarySource HorizonEditMap::source() const {
-    return [this](const CellFootprint& footprint) { return summary(footprint); };
+    return [this](const CellFootprint& sample) { return summary(sample); };
 }
 
 std::optional<float> HorizonEditMap::columnGround(EditColumn column) const {

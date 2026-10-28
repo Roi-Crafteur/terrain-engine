@@ -48,8 +48,34 @@ StreamParams streamParams(const SessionParams& params) {
 TerrainSession::TerrainSession(const SessionParams& params)
     : tiles_(params.seed, HeightfieldParams{}, EcologyParams{}, caveParams(params), params.world,
              hydrology(params)),
-      timings_(std::make_shared<TileTimings>()),
+      timings_(std::make_shared<TileTimings>()), horizonEdits_(tiles_.heightfield()),
       streamer_(timedGenerator(tileGenerator(tiles_), timings_), streamParams(params), timings_) {
+}
+
+std::vector<ChunkCoord> TerrainSession::applyEdit(const VolumeEdit& edit) {
+    return edited(tiles_.applyEdit(edit));
+}
+
+std::vector<ChunkCoord> TerrainSession::applyInSequence(std::span<const SequencedEdit> edits) {
+    return edited(tiles_.applyInSequence(edits));
+}
+
+std::vector<ChunkCoord> TerrainSession::setBlock(BlockCoord block, BlockEdit edit) {
+    return edited(tiles_.setBlock(block, edit));
+}
+
+std::vector<ChunkCoord> TerrainSession::clearBlock(BlockCoord block) {
+    return edited(tiles_.clearBlock(block));
+}
+
+std::vector<ChunkCoord> TerrainSession::replaceModifications(ModificationStore store) {
+    return edited(tiles_.replaceModifications(std::move(store)));
+}
+
+std::vector<ChunkCoord> TerrainSession::edited(std::vector<ChunkCoord> chunks) {
+    streamer_.invalidate(chunks);
+    horizonEdits_.stage(tiles_, chunks);
+    return chunks;
 }
 
 UnrealFrame TerrainSession::frameAt(double x, double z) const {

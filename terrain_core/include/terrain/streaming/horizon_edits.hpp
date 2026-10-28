@@ -79,8 +79,8 @@ public:
     // The edits within the footprint of a sample (HorizonSampler: canonical center, half a pitch
     // of a multiple of 8 m), and its summary: nullopt without an edited column. Throws
     // std::invalid_argument for another footprint.
-    [[nodiscard]] FootprintEdits footprint(const CellFootprint& footprint) const;
-    [[nodiscard]] std::optional<EditSummary> summary(const CellFootprint& footprint) const;
+    [[nodiscard]] FootprintEdits footprint(const CellFootprint& sample) const;
+    [[nodiscard]] std::optional<EditSummary> summary(const CellFootprint& sample) const;
     // summary as an EditSummarySource; the map must outlive it.
     [[nodiscard]] EditSummarySource source() const;
 

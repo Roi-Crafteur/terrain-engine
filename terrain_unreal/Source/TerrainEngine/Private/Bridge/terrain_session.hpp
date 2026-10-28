@@ -5,13 +5,18 @@
 #include "unreal_frame.hpp"
 
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/storage/modifications.hpp"
+#include "terrain/storage/volume_edit.hpp"
+#include "terrain/streaming/horizon_edits.hpp"
 #include "terrain/streaming/stream_manager.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 #include "terrain/world_size.hpp"
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace terrain::unreal {
 
@@ -44,6 +49,19 @@ public:
     [[nodiscard]] TileTimings& timings() { return *timings_; }
     [[nodiscard]] TileStreamer& streamer() { return streamer_; }
 
+    // Edits of the world (TerrainTiles): the tiles over the chunks they change are generated
+    // again, and their ground is staged for the far horizon, which applies it between two of
+    // its epochs. Each returns the chunks it changed; the edits throw as TerrainTiles, before
+    // any change.
+    std::vector<ChunkCoord> applyEdit(const VolumeEdit& edit);
+    std::vector<ChunkCoord> applyInSequence(std::span<const SequencedEdit> edits);
+    std::vector<ChunkCoord> setBlock(BlockCoord block, BlockEdit edit);
+    std::vector<ChunkCoord> clearBlock(BlockCoord block);
+    std::vector<ChunkCoord> replaceModifications(ModificationStore store);
+    // The edits as the far horizon sees them, for its streamer (HorizonMeshStreamer,
+    // HorizonGpuStreamer): it outlives every horizon of the session.
+    [[nodiscard]] HorizonEditMap& horizonEdits() { return horizonEdits_; }
+
     // The frame that places the ground of the core point (x, z) at the Unreal origin.
     [[nodiscard]] UnrealFrame frameAt(double x, double z) const;
 
@@ -51,9 +69,12 @@ public:
     [[nodiscard]] double groundZ(const UnrealFrame& frame, const UnrealPoint& point) const;
 
 private:
+    std::vector<ChunkCoord> edited(std::vector<ChunkCoord> chunks);
+
     TerrainTiles tiles_;
     std::shared_ptr<TileTimings> timings_;
-    TileStreamer streamer_; // last: destroyed first
+    HorizonEditMap horizonEdits_; // reads the relief of the tiles
+    TileStreamer streamer_;       // last: destroyed first
 };
 
 } // namespace terrain::unreal

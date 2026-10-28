@@ -45,17 +45,18 @@ std::int64_t samplesWritten(const HorizonChanges& changes) {
 
 HorizonGpuStreamer::HorizonGpuStreamer(const Heightfield& field, const Ecology& ecology,
                                        const WorldSize& world, const HorizonGpuParams& params,
-                                       JobLauncher launch)
+                                       JobLauncher launch, HorizonEditMap* edits)
     : horizonParams_(horizonParams(world, params)), params_(params),
       hole_(terrain::unreal::tileHole(horizonParams_, params.lod)),
       radius_(params.planetRadiusMeters > 0.0 ? params.planetRadiusMeters
                                               : terrain::unreal::planetRadiusMeters(world)),
-      sampler_(field, ecology, horizonParams_),
+      edits_(edits),
+      sampler_(field, ecology, horizonParams_, edits ? edits->source() : EditSummarySource{}),
       shown_(static_cast<std::size_t>(horizonParams_.levels)),
       normals_(normalStream(field, horizonParams_, params, launch)),
       runner_(sampler_, std::move(launch),
               [sea = params.sea](const HorizonPiece& piece) { return pieceTexels(piece, sea); },
-              HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples}) {}
+              HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples}, edits) {}
 
 HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const UnrealFrame& frame) {
     // Unwrapped: the images near the player are taken around where it stands in Unreal.
@@ -88,12 +89,51 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
     }
     if (normals_) {
         normals_->collect(result.normalRegions);
+        keepEditedPending(result.normalRegions);
     }
     if (runner_.busy() && !epochStart_) {
         epochStart_ = now; // planned by this update
     }
     placeLevels(observer, frame, result);
     return result;
+}
+
+// The detail texels of the samples edited over at least half of their footprint, pending.
+void HorizonGpuStreamer::keepEditedPending(std::vector<NormalRegion>& regions) const {
+    if (edits_ == nullptr || edits_->empty()) {
+        return;
+    }
+    const HorizonClipmap& clipmap = runner_.clipmap();
+    const int ratio = normals_->ratio();
+    for (NormalRegion& region : regions) {
+        const HorizonLevel& level = clipmap.level(region.level);
+        const HorizonRect window = level.window();
+        const HorizonIndex first = level.firstSlot();
+        const double half = level.pitch() / 2.0;
+        for (int b = 0; b < region.height; ++b) {
+            for (int a = 0; a < region.width; ++a) {
+                // The sample of the texel, from its slot.
+                const auto i =
+                    static_cast<int>(((region.x + a) / ratio - first.x + side()) % side());
+                const auto k =
+                    static_cast<int>(((region.z + b) / ratio - first.z + side()) % side());
+                if ((level.atWindow(i, k).flags & kHorizonEdited) == 0) {
+                    continue;
+                }
+                const HorizonIndex sample =
+                    canonicalSample({window.x0 + i, window.z0 + k}, level.counts());
+                const FootprintEdits edited =
+                    edits_->footprint({region.level, samplePosition(sample.x, level.pitch()),
+                                       samplePosition(sample.z, level.pitch()), half});
+                if (2 * edited.edited >= edited.columns) {
+                    const auto at =
+                        static_cast<std::size_t>((b * region.width + a) * kNormalHalves);
+                    region.data[at] = kNormalPendingHalf;
+                    region.data[at + 1] = kNormalPendingHalf;
+                }
+            }
+        }
+    }
 }
 
 void HorizonGpuStreamer::waitIdle() {

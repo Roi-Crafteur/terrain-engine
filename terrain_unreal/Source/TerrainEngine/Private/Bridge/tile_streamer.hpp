@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -89,6 +90,10 @@ public:
     // Generates up to maxTiles queued tiles on the calling thread (StreamManager), for a
     // streaming without workers; the next update loads them.
     std::size_t generatePending(std::size_t maxTiles) { return manager_.generatePending(maxTiles); }
+
+    // The tiles over chunks whose edits changed are generated again (StreamManager::invalidate);
+    // the shown ones stay until their new data is uploaded in place.
+    void invalidate(std::span<const ChunkCoord> chunks) { manager_.invalidate(chunks); }
 
     // Shown tiles: uploaded by an update and not removed since, by canonical key.
     [[nodiscard]] bool shown(const TileKey& key) const { return shown_.contains(key); }
