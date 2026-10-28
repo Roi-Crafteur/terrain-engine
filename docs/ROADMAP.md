@@ -340,9 +340,13 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   - les plantes générées dont le sol est retiré disparaissent, de près comme de loin
   - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : format
     seulement, pas encore branché sur l'horizon
+  - coutures entre LOD fermées au bord des cratères et dans les grottes : la face fine suit les
+    segments droits que Marching Cubes trace sur la face grossière (avant : jusqu'à 0,45 m entre
+    LOD 0 et 1, 1,3 m entre 1 et 2, 2,8 m entre 2 et 3, 0,62 m dans les grottes ; après : au
+    plus 0,25 mm). Le terrain naturel sans grottes garde ses bits ; toute tuile Marching Cubes en
+    profite (`stitchSeams` puis `stitchedMesh`, `lod_seams.cpp`)
   - reste : casser et poser en jeu dans Unreal, effets de destruction, branchement du résumé
-    sur l'horizon, coutures entre LOD au bord des cratères (jusqu'à 0,26 m, le recousage
-    interpole la face fine là où la face grossière est droite)
+    sur l'horizon
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels
