@@ -1,6 +1,7 @@
 #include "rock_tile.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 
@@ -9,6 +10,19 @@ namespace terrain::tile {
 namespace {
 
 constexpr int kLast = kGridSamples - 1;
+
+// The derivative at index of samples f(index) along a side of kGridSamples of them: centered
+// within, second order differences at both ends.
+template <typename Sample>
+float derivative(int index, const Sample& f) {
+    if (index == 0) {
+        return 0.5f * (-3.0f * f(0) + 4.0f * f(1) - f(2));
+    }
+    if (index == kLast) {
+        return 0.5f * (3.0f * f(kLast) - 4.0f * f(kLast - 1) + f(kLast - 2));
+    }
+    return 0.5f * (f(index + 1) - f(index - 1));
+}
 
 } // namespace
 
@@ -87,6 +101,48 @@ void RockTile::dropPlants(std::vector<Plant>& plants) const {
         const auto k = static_cast<int>(std::lround((plant.z - lattice_.z0) / spacing));
         return rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast)).faceCount > 0;
     });
+}
+
+Vec3f RockTile::gradientAt(const DensityGrid& grid, int i, int j, int k, int originY) const {
+    const float gx = derivative(i, [&](int n) { return grid.at(n, j, k); });
+    const float gz = derivative(k, [&](int n) { return grid.at(i, j, n); });
+    // Along y, centered through the rock beyond the level on its borders.
+    const float below = j > 0 ? grid.at(i, j - 1, k) : sample(i, -1, k, originY, false);
+    const float above =
+        j < kLast ? grid.at(i, j + 1, k) : sample(i, kGridSamples, k, originY, false);
+    return {gx, 0.5f * (above - below), gz};
+}
+
+void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) const {
+    for (std::size_t n = 0; n < level.vertices.size(); ++n) {
+        const Vec3f& v = level.vertices[n];
+        // The grid edge the vertex lies on: two of its coordinates are whole.
+        const std::array<float, 3> p{v.x, v.y, v.z};
+        std::array<int, 3> low{};
+        int axis = -1;
+        float t = 0.0f;
+        for (int a = 0; a < 3; ++a) {
+            const auto u = static_cast<std::size_t>(a);
+            const float whole = std::round(p[u]);
+            low[u] = std::clamp(static_cast<int>(whole), 0, kLast);
+            if (std::abs(p[u] - whole) > 1e-4f && axis < 0) {
+                axis = a;
+                low[u] = std::clamp(static_cast<int>(std::floor(p[u])), 0, kLast - 1);
+                t = p[u] - static_cast<float>(low[u]);
+            }
+        }
+        Vec3f g = gradientAt(grid, low[0], low[1], low[2], originY);
+        if (axis >= 0) {
+            std::array<int, 3> high = low;
+            ++high[static_cast<std::size_t>(axis)];
+            const Vec3f h = gradientAt(grid, high[0], high[1], high[2], originY);
+            g = {g.x + t * (h.x - g.x), g.y + t * (h.y - g.y), g.z + t * (h.z - g.z)};
+        }
+        const float length = std::sqrt(g.x * g.x + g.y * g.y + g.z * g.z);
+        if (length > 1e-12f) {
+            level.normals[n] = {g.x / length, g.y / length, g.z / length};
+        }
+    }
 }
 
 std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const {

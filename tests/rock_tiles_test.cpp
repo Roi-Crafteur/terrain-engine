@@ -11,6 +11,7 @@
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <optional>
@@ -74,46 +75,53 @@ void testDensityAndGround() {
     TEST_CHECK(ground);
 }
 
-// A tile of flat ground at 5 m with a face from 0 to 12 m along the columns i = 8, the rock beyond
-// it (i > 8), seen from the columns i >= 6, its distances 1 m per column; with a cap of cap meters
-// over the top 6 m.
-TileColumns faceColumns(float cap) {
+// A tile whose relief climbs from 0 m to 12 m across a riser of run meters along x, its middle at
+// the columns i = 8 (meters per column apart), the rock beyond it (i > 8), and a face from 0 m to
+// 12 m standing at its middle, with a cap of cap meters over its top 6 m.
+TileColumns faceColumns(float run, float metersPerColumn, float cap) {
     TileColumns columns;
     constexpr auto kCount = static_cast<std::size_t>(terrain::kGridSamples * terrain::kGridSamples);
-    columns.heights.assign(kCount, 5.0f);
     columns.continentalness.assign(kCount, 0.5f);
     columns.rock.resize(kCount);
     for (int k = 0; k < terrain::kGridSamples; ++k) {
         for (int i = 0; i < terrain::kGridSamples; ++i) {
-            RockColumn& c = columns.rock[static_cast<std::size_t>(k * terrain::kGridSamples + i)];
-            c.ground = 5.0f;
-            c.uncarved = 5.0f;
-            if (i >= 6) {
+            const auto n = static_cast<std::size_t>(k * terrain::kGridSamples + i);
+            RockColumn& c = columns.rock[n];
+            const float distance = static_cast<float>(8 - i) * metersPerColumn;
+            c.ground = std::clamp(6.0f - 12.0f * distance / run, 0.0f, 12.0f);
+            c.uncarved = c.ground;
+            columns.heights.push_back(c.ground);
+            if (std::abs(distance) <= 0.5f * run) {
                 terrain::RockFace f;
                 f.foot = 0.0f;
                 f.top = 12.0f;
-                f.distance = static_cast<float>(8 - i);
+                f.distance = distance;
+                f.run = run;
                 f.cap = cap;
                 f.capDepth = 6.0f;
                 c.add(f);
             }
         }
     }
-    columns.minHeight = 5.0f;
-    columns.maxHeight = 5.0f;
+    columns.minHeight = 0.0f;
+    columns.maxHeight = 12.0f;
     return columns;
 }
 
+bool near(double a, double b) {
+    return std::abs(a - b) < 1e-3;
+}
+
 void testSyntheticTile() {
-    const TileColumns columns = faceColumns(0.0f);
+    const TileColumns columns = faceColumns(8.0f, 1.0f, 0.0f);
     const TileKey key{{0, 0}, 0};
     const terrain::tile::RockTile tile(columns, {key, 0}, terrain::tile::latticeOf(key));
-    TEST_CHECK(tile.bounds().low == 0.0f && tile.bounds().high == 12.0f);
+    TEST_CHECK(near(tile.bounds().low, 0.0) && near(tile.bounds().high, 12.0));
     TEST_CHECK(!tile.resamplesSeams());
     const terrain::DensityGrid grid = tile.levelDensity(0);
-    TEST_CHECK(grid.at(10, 8, 3) == -2.0f);                 // behind the face
-    TEST_CHECK(grid.at(7, 8, 3) == 1.0f);                   // 1 m in front of it
-    TEST_CHECK(grid.at(2, 8, 3) == static_cast<float>(8.0 - 5.0)); // no face: y - ground
+    TEST_CHECK(grid.at(10, 8, 3) < -1.5f && grid.at(10, 8, 3) > -2.5f); // 2 m behind the face
+    TEST_CHECK(near(grid.at(7, 8, 3), 1.0));                           // 1 m in front of it
+    TEST_CHECK(grid.at(2, 8, 3) == 8.0f); // no face: y - ground
     std::vector<terrain::Plant> plants(2);
     plants[0].x = 2.0;
     plants[1].x = 10.0;
@@ -128,17 +136,19 @@ void testSyntheticTile() {
 // On a LOD 2 tile stitched to a LOD 3 one, the even samples of the stitched side leave out the cap
 // the coarser tile cannot hold; elsewhere they keep it.
 void testStitchedDetail() {
-    const TileColumns columns = faceColumns(3.0f);
+    const TileColumns columns = faceColumns(40.0f, 4.0f, 11.5f);
     const TileKey key{{0, 0}, 2};
     const terrain::tile::RockTile stitched(columns, {key, terrain::kSeamNegZ},
                                            terrain::tile::latticeOf(key));
     const terrain::tile::RockTile alone(columns, {key, 0}, terrain::tile::latticeOf(key));
     TEST_CHECK(stitched.resamplesSeams() && !alone.resamplesSeams());
-    // Sample (6, 2, 0): 8 m up, under the cap, 2 m in front of the face.
+    // Sample (6, 2, 0) of the side: 8 m up, under the cap, 8 m in front of the face; the coarse
+    // detail leaves the cap out.
     const int originY = 0;
-    TEST_CHECK(stitched.sample(6, 2, 0, originY, false) < 0.0f);
-    TEST_CHECK(stitched.sample(6, 2, 0, originY, true) == 2.0f);
-    TEST_CHECK(stitched.levelDensity(originY).at(6, 2, 0) == 2.0f);
+    const float coarse = terrain::rockDensity(columns.rock[6], 8.0, terrain::rockDetailForLod(3));
+    TEST_CHECK(stitched.sample(6, 2, 0, originY, false) < 0.0f && coarse > 0.0f);
+    TEST_CHECK(stitched.sample(6, 2, 0, originY, true) == coarse);
+    TEST_CHECK(stitched.levelDensity(originY).at(6, 2, 0) == coarse);
     TEST_CHECK(stitched.levelDensity(originY).at(6, 2, 1) < 0.0f); // off the side
     TEST_CHECK(alone.levelDensity(originY).at(6, 2, 0) < 0.0f);
 }

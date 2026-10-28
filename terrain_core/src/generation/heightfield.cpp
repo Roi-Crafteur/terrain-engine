@@ -116,6 +116,7 @@ enum Layer : std::uint64_t {
     kDepressions,
     kGullies,
     kWallGrain,
+    kFaceGrain, // the grain of the faces of the rock in three dimensions (phase 12A)
 };
 
 // The grain of the rock of the walls of the gorges (phase 11B): an fbm from this wavelength.
@@ -180,6 +181,7 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
                                        fast(kRidge, 1, params_.geography.mountainWavelength,
                                             params_.geography.mountainGain));
         layers->walls = mountain_walls::makeNoises(noise::deriveSeed(seed, kMountainWalls), world);
+        layers->faceGrain = wall_faces::makeGrain(noise::deriveSeed(seed, kFaceGrain), world);
         layers->plains = plain_forms::makeNoises(noise::deriveSeed(seed, kPlainForms), world);
         layers->local = relief_local::makeNoises(noise::deriveSeed(seed, kLocalRelief), world,
                                                  params_.geography.livelyPlains);

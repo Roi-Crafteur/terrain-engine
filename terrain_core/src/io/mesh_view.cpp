@@ -26,6 +26,8 @@ constexpr Rgb kRock = {128.0, 118.0, 108.0};
 // 45 degrees), as the views of the relief paint it.
 constexpr double kRockLow = 0.7;
 constexpr double kRockHigh = 1.0;
+// The share of rock of a vertex without one: from the slope of each pixel.
+constexpr double kFromSlope = -1.0;
 // Triangles are cut at kNear meters before the eye, along the axis of the view.
 constexpr double kNear = 0.25;
 
@@ -82,7 +84,9 @@ WorldVertex worldVertex(const ViewMesh& m, std::size_t i) {
     const Vec3f& p = m.mesh->vertices[i];
     const Vec3f& n = m.mesh->normals[i];
     WorldVertex v{m.originX + p.x, m.originY + p.y, m.originZ + p.z, n.x, n.y, n.z, 0.0};
-    v.rock = m.rock.empty() ? rockOfSlope(v.ny) : static_cast<double>(m.rock[i]);
+    // Without shares, the slope decides at each pixel (kFromSlope), as the material of a client
+    // does from its interpolated normal.
+    v.rock = m.rock.empty() ? kFromSlope : static_cast<double>(m.rock[i]);
     return v;
 }
 
@@ -260,7 +264,8 @@ Rgb shade(const Canvas& canvas, const ScreenVertex& v, bool water) {
     Rgb color = kWater;
     if (!water) {
         const std::array<float, 3> tint = reliefColor(v.height, false);
-        color = mix({tint[0], tint[1], tint[2]}, kRock, std::clamp<double>(v.rock, 0.0, 1.0));
+        const double rock = v.rock < 0.0f ? rockOfSlope(v.ny / length) : v.rock;
+        color = mix({tint[0], tint[1], tint[2]}, kRock, std::clamp(rock, 0.0, 1.0));
         color = {color[0] * light, color[1] * light, color[2] * light};
     }
     if (canvas.hazeDistance > 0.0) {

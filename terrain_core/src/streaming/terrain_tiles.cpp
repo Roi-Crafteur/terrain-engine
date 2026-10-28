@@ -111,6 +111,16 @@ void appendLevel(Mesh& target, const Mesh& part, float scale, float offsetY) {
     }
 }
 
+// The mesh of a level of a tile: lit by the rock of the tile, if it has some.
+Mesh levelMesh(const DensityGrid& grid, unsigned seams, const std::optional<tile::RockTile>& rock,
+               int originY) {
+    Mesh mesh = stitchedMesh(grid, seams);
+    if (rock) {
+        rock->lightLevel(mesh, grid, originY);
+    }
+    return mesh;
+}
+
 // Plants of the chunk at (x0, z0). The ecology map samples every 4 m at x0 - 2 + 4 i, a lattice
 // shared by every chunk, one sample beyond each side so that every plant has the 4 samples
 // around it: the plants never depend on the tile, and chunks join without a seam.
@@ -292,7 +302,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
         if (caveTile && !crossesSurface(grid)) {
             continue; // a level of rock under the ground, between the caves
         }
-        appendLevel(data.mesh, stitchedMesh(grid, request.seams), scale, offsetY);
+        appendLevel(data.mesh, levelMesh(grid, request.seams, rockTile, originY), scale, offsetY);
     }
     if (caveTile) {
         const bool objects = request.key.lod == kPlantLod;

@@ -7,6 +7,7 @@
 // rock.txt) where each view stands, the tiles it draws and the time they take.
 // Usage: terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
 //        [--view-distance <chunks>] [--only <name>]... [--no-rock]
+//        [--at <x> <z> <heading degrees> <tilt> <meters above the ground>]
 // --no-rock: the tiles of the relief alone (a height per column), the views before phase 12A.
 // The planet level is read from --planet (or <output-dir>/planet.bin), built and written there
 // when it does not hold it (about 100 s on 4 cores).
@@ -28,6 +29,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -61,6 +63,9 @@ struct Options {
     int viewDistance = 53; // chunks: the tiles end about 850 m from the eye, as in Unreal
     bool rock = true;      // --no-rock: the tiles of the relief alone, a height per column
     std::vector<std::string> only;
+    // --at <x> <z> <heading degrees> <tilt> <meters above the ground>: a view "at" there, and
+    // "at_top" from above, 100 m wide.
+    std::optional<std::array<double, 5>> at;
 };
 
 bool parseOptions(int argc, char** argv, Options& o) {
@@ -72,6 +77,17 @@ bool parseOptions(int argc, char** argv, Options& o) {
         const std::string flag = argv[i];
         if (flag == "--no-rock") {
             o.rock = false;
+            continue;
+        }
+        if (flag == "--at") {
+            if (i + 5 >= argc) {
+                return false;
+            }
+            std::array<double, 5> at{};
+            for (double& v : at) {
+                v = std::atof(argv[++i]);
+            }
+            o.at = at;
             continue;
         }
         if (i + 1 >= argc) {
@@ -311,7 +327,8 @@ int main(int argc, char** argv) {
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>] "
-                     "[--view-distance <chunks>] [--only <name>]... [--no-rock]\n",
+                     "[--view-distance <chunks>] [--only <name>]... [--no-rock] "
+                     "[--at <x> <z> <heading> <tilt> <above>]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -343,6 +360,11 @@ int main(int argc, char** argv) {
     }
     if (!rock_tool::addGorge(*hydrology, kFallX, kFallZ, places)) {
         r.add("no gorge near the fall of 388 m\n");
+    }
+    if (o.at) {
+        const std::array<double, 5>& a = *o.at;
+        places.shots.push_back({"at", a[0], a[1], a[4], a[2] / 360.0, a[3], 900, 0.3, "--at"});
+        places.tops.push_back({"at_top", a[0], a[1], 4.0 * a[4] + 4.0, (4.0 * a[4] + 4.0) / 1000.0, "--at"});
     }
     bool written = true;
     for (const Shot& s : places.shots) {

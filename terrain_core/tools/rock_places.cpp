@@ -21,6 +21,7 @@ namespace {
 constexpr double kK2X = 416'857.0;
 constexpr double kK2Z = -11'405'966.0;
 constexpr double kNear = 120.0;     // meters before the foot of a wall or a fall
+constexpr double kNearAbove = 25.0; // meters above the ground of the view of the foot of a wall
 constexpr double kSlotDown = 150.0; // the view of the slot: this far down the lip
 constexpr double kSlotAbove = 40.0; // and this high above the water
 constexpr double kFallSearch = 3'000.0;
@@ -185,6 +186,72 @@ Stretch stretchNear(const terrain::Hydrology& h, double x, double z) {
     return pick;
 }
 
+// The face of the rock at a column, its middle and how high it stands.
+struct FaceSeen {
+    double x = 0.0;
+    double z = 0.0;
+    terrain::RockFace face;
+    double score = -1.0;
+};
+
+// The tallest face within radius meters of (x, z) whose top juts out (kLeastCap meters at least),
+// searched on a lattice of kFaceStep meters: where its middle lies.
+FaceSeen tallestFace(const terrain::Heightfield& relief, double x, double z, double radius) {
+    constexpr double kFaceStep = 4.0;
+    constexpr float kLeastCap = 1.5f;
+    std::vector<double> xs;
+    std::vector<double> zs;
+    for (double dz = -radius; dz <= radius; dz += kFaceStep) {
+        for (double dx = -radius; dx <= radius; dx += kFaceStep) {
+            xs.push_back(x + dx);
+            zs.push_back(z + dz);
+        }
+    }
+    std::vector<terrain::HeightSample> samples(xs.size());
+    std::vector<terrain::RockColumn> rock(xs.size());
+    relief.samplesAt(xs, zs, samples, rock);
+    FaceSeen best;
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        for (std::size_t k = 0; k < rock[i].faceCount; ++k) {
+            const terrain::RockFace& f = rock[i].faces[k];
+            const double score = static_cast<double>(f.top - f.foot) * f.weight;
+            if (f.cap >= kLeastCap && score > best.score) {
+                best = {xs[i] - f.distance * f.airX, zs[i] - f.distance * f.airZ, f, score};
+            }
+        }
+    }
+    return best;
+}
+
+// The tallest face with a cap near the foot of the wall, seen from kFaceView meters before it.
+void addK2Face(const terrain::Heightfield& relief, const view_places::Point& foot, Places& out) {
+    constexpr double kFaceSearch = 400.0;
+    constexpr double kFaceView = 50.0;
+    const FaceSeen seen = tallestFace(relief, foot.x, foot.z, kFaceSearch);
+    if (seen.score < 0.0) {
+        return;
+    }
+    const terrain::RockFace& f = seen.face;
+    Shot s = shotAt("k2_face", seen.x + f.airX * kFaceView, seen.z + f.airZ * kFaceView);
+    s.heading = view_places::headingTo(s.x, s.z, seen.x, seen.z);
+    // Level with the middle of the face: at the eye height of a walker the slope before it hides
+    // it.
+    const double middle = 0.5 * static_cast<double>(f.foot + f.top);
+    s.above = std::max(s.above, middle - static_cast<double>(relief.heightAt(s.x, s.z)));
+    s.tilt = 0.0;
+    s.height = kTall;
+    s.sunLeft = kSunBehind;
+    char note[256];
+    std::snprintf(note, sizeof note,
+                  "the tallest face with a cap within %.0f m of the foot of the wall: %.0f m high "
+                  "at (%.0f, %.0f), cap %.1f m, undercut %.1f m, seen from %.0f m level with its middle",
+                  kFaceSearch, static_cast<double>(f.top - f.foot), seen.x, seen.z,
+                  static_cast<double>(f.cap), static_cast<double>(f.undercut), kFaceView);
+    s.note = note;
+    out.shots.push_back(s);
+    out.tops.push_back(topAt("k2_face_top", seen.x, seen.z, s.note));
+}
+
 } // namespace
 
 void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
@@ -204,7 +271,8 @@ void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
     near.tilt = std::clamp(tiltTo(top - static_cast<double>(foot.height), kNear), 0.0, 0.45);
     near.height = kTall;
     near.sunLeft = kSunBehind;
-    near.note = note + ", seen from 120 m";
+    near.above = kNearAbove;
+    near.note = note + ", seen from 120 m, 25 m above the ground (the slope hides it lower)";
     Shot far = shotAt("k2_wall_far", wall.approach.x, wall.approach.z);
     const double distance = terrain::dmath::hypot(foot.x - far.x, foot.z - far.z);
     far.heading = view_places::headingTo(far.x, far.z, foot.x, foot.z);
@@ -228,6 +296,7 @@ void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
     out.shots.push_back(far);
     out.shots.push_back(edge);
     out.tops.push_back(topAt("k2_wall_top", foot.x - away.x * 100.0, foot.z - away.z * 100.0, note));
+    addK2Face(relief, foot, out);
 }
 
 bool addFall(const terrain::Hydrology& h, double x, double z, Places& out) {

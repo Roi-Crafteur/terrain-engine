@@ -66,6 +66,11 @@ void testPassesAreRockTop() {
     TEST_CHECK(compared > 100 && same);
 }
 
+const terrain::wall_faces::Grain& grain() {
+    static const terrain::wall_faces::Grain g = terrain::wall_faces::makeGrain(kSeed, {});
+    return g;
+}
+
 // The faces of a column of a synthetic wall at x (ground rising slope meters per meter along x),
 // placed along that slope, their heights over the top of the walls there.
 struct WallColumn {
@@ -80,7 +85,7 @@ WallColumn columnAt(const walls::Noises& n, double x, double z, double slope) {
     const walls::Masks m = walls::masks(n, c, x, z, nullptr);
     terrain::wall_faces::Site site;
     site.faces = true;
-    terrain::wall_faces::addFaces(n, m, c, x, z, nullptr, site);
+    terrain::wall_faces::addFaces(n, grain(), m, c, x, z, nullptr, site);
     for (std::size_t i = 0; i < site.count; ++i) {
         RockFace f = terrain::wall_faces::placeFace(site.pending[i], slope, 0.0);
         f.foot += static_cast<float>(out.top);

@@ -31,6 +31,12 @@ struct RockFace {
     float capDepth = 0.0f;
     float undercut = 0.0f;
     float undercutHeight = 0.0f;
+    // The grain of its rock: the face stands out or recedes by up to about twice grain meters,
+    // by bands whose heights shift by grainShift meters from column to column, and by flutes
+    // down it (grainAlong, about -1 to 1, the same at every height of the column).
+    float grain = 0.0f;
+    float grainShift = 0.0f;
+    float grainAlong = 0.0f;
     // How far the step replaces the climb of the relief, in [0, 1] (0: the relief as it is).
     float weight = 1.0f;
     // The horizontal direction of the air from the rock (a unit vector, x and z), along which the
@@ -59,16 +65,18 @@ struct RockColumn {
     friend bool operator==(const RockColumn&, const RockColumn&) = default;
 };
 
-// The rock a level of detail draws: the caps and the undercuts narrower than leastFeature meters
-// are left out (the cells of a coarse tile cannot hold them).
+// The rock a level of detail draws on cells of cell meters: the faces whose run spans less than
+// kRunCells cells fade out, and the caps and the undercuts narrower than 3 cells (the columns
+// would alternate in and out of them along the face, a regular row of teeth), and the grain finer
+// than its cells.
 struct RockDetail {
-    float leastFeature = 0.0f;
+    float cell = 1.0f;
 
     friend bool operator==(const RockDetail&, const RockDetail&) = default;
 };
+inline constexpr float kRunCells = 3.0f;
 
-// The detail of the tiles of a LOD (lod.hpp): everything up to LOD 2, the features of half a cell
-// at least on LOD 3.
+// The detail of the tiles of a LOD (lod.hpp): cells of 2^lod meters.
 [[nodiscard]] RockDetail rockDetailForLod(int lod);
 
 // Density at height y of a column, meters, negative in the rock: y - ground bit for bit without a

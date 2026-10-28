@@ -1,8 +1,8 @@
 #pragma once
 
 // The faces of the walls of the mountains in three dimensions (phase 12A), internal to
-// terrain_core. Where a great pass of the walls (mountain_walls.hpp: the bands of the strata, the
-// coarse joints of the crystalline rock) climbs the riser of a hard layer, the columns of its run
+// terrain_core. Where a pass of the walls (mountain_walls.hpp: the bands of the strata and their
+// rock steps, the joints of the crystalline rock) climbs the riser of a hard layer, the columns of its run
 // see a face (rock_faces.hpp) standing at its middle: vertical, its top jutting out over the air
 // (a hard bank) and its foot receding (the rock under it worn away) by draws of its layer and a
 // noise along the wall, never a regular row of overhangs. Where the wall is faint (its mask times
@@ -16,10 +16,22 @@
 #include "mountain_walls.hpp"
 #include "terrain/generation/rock_faces.hpp"
 
+#include "terrain/generation/noise_octaves.hpp"
+#include "terrain/world_size.hpp"
+
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace terrain::wall_faces {
+
+// The noises of the grain of the faces: the bands of their rock wander up and down along them
+// (shift), and flutes run down them.
+struct Grain {
+    noise::FbmOctaves shift;
+    noise::FbmOctaves flutes;
+};
+[[nodiscard]] Grain makeGrain(std::uint64_t seed, const WorldSize& world);
 
 // A face of the walls found at a column, before the Heightfield places it.
 struct PendingFace {
@@ -40,19 +52,19 @@ struct Site {
     double ground = 0.0; // the ground they lay their layers on there
     double gradX = 0.0;  // the gradient of the great forms there
     double gradZ = 0.0;
-    std::array<PendingFace, 2> pending{};
+    std::array<PendingFace, kMaxRockFaces> pending{};
     std::size_t count = 0;
 };
 
 // Adds to site the faces of the walls at the canonical column (x, z), of masks the masks of the
 // walls there and column what they depend on (mountain_walls::Column).
-void addFaces(const mountain_walls::Noises& noises, const mountain_walls::Masks& masks,
-              const mountain_walls::Column& column, double x, double z,
-              mountain_walls::Memo* memo, Site& site);
+void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
+              const mountain_walls::Masks& masks, const mountain_walls::Column& column, double x,
+              double z, mountain_walls::Memo* memo, Site& site);
 
 // The face of pending over a ground of the walls of gradient (gradX, gradZ) at the column: its
-// distance and run in meters, the direction of the air, its overhangs within its run. Its heights
-// stay relative, to anchor (anchorFace).
+// distance and run in meters, the direction of the air, its overhangs and its grain within its
+// run. Its heights stay relative, to anchor (anchorFace).
 [[nodiscard]] RockFace placeFace(const PendingFace& pending, double gradX, double gradZ);
 
 } // namespace terrain::wall_faces

@@ -357,18 +357,20 @@ float Heightfield::wallsAt(double x, double z, float ground, const MountainForm&
     if (site == nullptr) {
         return static_cast<float>(mountain_walls::surface(layers_->walls, column, x, z, memo));
     }
-    // As surface, with what the walls report at the column (phase 12A).
+    // As surface, with what the walls report at the column (phase 12A): their ground alone when
+    // the faces are not wanted (the top is then of no use).
     site->walls = true;
     site->ground = column.ground;
     site->gradX = column.gradX;
     site->gradZ = column.gradZ;
+    if (!site->faces) {
+        return ground;
+    }
     const mountain_walls::Masks masks = mountain_walls::masks(layers_->walls, column, x, z, memo);
     if (!(masks.strata > 0.0) && !(masks.crystal > 0.0)) {
         return ground;
     }
-    if (site->faces) {
-        wall_faces::addFaces(layers_->walls, masks, column, x, z, memo, *site);
-    }
+    wall_faces::addFaces(layers_->walls, layers_->faceGrain, masks, column, x, z, memo, *site);
     return static_cast<float>(mountain_walls::rockTop(layers_->walls, masks, x, z, column.ground,
                                                       column.gradX, column.gradZ, memo));
 }

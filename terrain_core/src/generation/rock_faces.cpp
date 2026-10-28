@@ -1,43 +1,111 @@
 #include "terrain/generation/rock_faces.hpp"
 
+#include "terrain/generation/noise.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 
 namespace terrain {
 
 namespace {
 
-// The features a LOD 3 tile draws: half of its cells of 8 m.
-constexpr float kCoarseFeature = 4.0f;
+// The grain octaves a detail draws: the fine one on cells of kFineCell meters at most, the coarse
+// one on cells of kCoarseCell meters at most.
+constexpr float kFineCell = 1.0f;
+constexpr float kCoarseCell = 4.0f;
 // rockShare: the rock reaches this far below the foot of a face (its floor under a cap, the sill
 // of a niche) and above its top, and the face this far in front of and behind its middle.
 constexpr double kShareBelow = 2.0;
 constexpr double kShareAbove = 0.5;
 constexpr double kShareAcross = 3.0;
 
+// The grain of the faces: a value noise along the height, its values kGrainWave meters apart, and
+// a finer one (kGrainFine of it, kGrainFineWave meters) the coarse detail leaves out; the flutes
+// add kGrainFlutes of grainAlong.
+constexpr double kGrainWave = 7.9;
+constexpr double kGrainFineWave = 3.1;
+constexpr double kGrainFine = 0.4;
+constexpr double kGrainFlutes = 0.6;
+constexpr std::uint64_t kGrainSalt = 0x677261696e5f3132ULL;
+constexpr double kRunFade = 1.5;
+constexpr double kFeatureLow = 1.5;
+constexpr double kFeatureHigh = 3.0;
+// The edges of a step are rounded over kRound meters, kRoundShare of its height at most.
+constexpr double kRound = 3.0;
+constexpr double kRoundShare = 0.25;
+
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
 }
 
-bool kept(float feature, float extent, const RockDetail& detail) {
-    return feature > 0.0f && extent > 0.0f && feature >= detail.leastFeature;
+// The value of octave salt at lattice point i, in [-1, 1).
+double valueAt(std::int64_t i, std::uint64_t salt) {
+    const std::uint64_t hash = noise::deriveSeed(salt, static_cast<std::uint64_t>(i));
+    return static_cast<double>(hash >> 11) * 0x1.0p-52 - 1.0;
 }
 
-// How far the face lies toward the air at height y of its step: its cap, full over the top two
-// fifths of its depth and nothing at its bottom (a ceiling rising to the lip), less its undercut,
-// an arch deepest at the foot.
-double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
-    double offset = 0.0;
-    if (kept(f.cap, f.capDepth, detail)) {
-        offset += f.cap * smooth(static_cast<double>(f.top) - f.capDepth,
-                                 static_cast<double>(f.top) - 0.6 * f.capDepth, y);
+// Value noise along t: the values of the lattice points smoothly joined (no zero at them).
+double valueNoise(double t, std::uint64_t salt) {
+    const double cell = std::floor(t);
+    const auto i = static_cast<std::int64_t>(cell);
+    const double f = t - cell;
+    const double s = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    const double a = valueAt(i, salt);
+    return a + s * (valueAt(i + 1, salt) - a);
+}
+
+double grainAt(const RockFace& f, double y, const RockDetail& detail) {
+    if (!(f.grain > 0.0f)) {
+        return 0.0;
     }
-    if (kept(f.undercut, f.undercutHeight, detail)) {
+    if (!(detail.cell <= kCoarseCell)) {
+        return 0.0;
+    }
+    const double t = y + static_cast<double>(f.grainShift);
+    double g = valueNoise(t / kGrainWave, kGrainSalt) + kGrainFlutes * f.grainAlong;
+    if (detail.cell <= kFineCell) {
+        g += kGrainFine * valueNoise(t / kGrainFineWave, kGrainSalt + 1);
+    }
+    return f.grain * g;
+}
+
+// Polynomial smooth maximum and minimum over r (the plain ones beyond it).
+double smoothMax(double a, double b, double r) {
+    const double h = std::max(r - std::abs(a - b), 0.0) / r;
+    return std::max(a, b) + 0.25 * h * h * r;
+}
+
+double smoothMin(double a, double b, double r) {
+    return -smoothMax(-a, -b, r);
+}
+
+// How much of an overhang of feature meters a detail draws: none under kFeatureLow cells, all of
+// it from kFeatureHigh cells (narrower, the cells would catch it at one column out of two).
+double drawnFeature(float feature, float extent, const RockDetail& detail) {
+    if (!(feature > 0.0f) || !(extent > 0.0f)) {
+        return 0.0;
+    }
+    return feature * smooth(kFeatureLow * detail.cell, kFeatureHigh * detail.cell, feature);
+}
+
+// How far the face lies toward the air at height y of its step: its grain, its cap, full over the
+// top two fifths of its depth and nothing at its bottom (a ceiling rising to the lip), less its
+// undercut, an arch deepest at the foot.
+double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
+    double offset = grainAt(f, y, detail);
+    const double cap = drawnFeature(f.cap, f.capDepth, detail);
+    if (cap > 0.0) {
+        offset += cap * smooth(static_cast<double>(f.top) - f.capDepth,
+                               static_cast<double>(f.top) - 0.6 * f.capDepth, y);
+    }
+    const double undercut = drawnFeature(f.undercut, f.undercutHeight, detail);
+    if (undercut > 0.0) {
         const double t = (y - static_cast<double>(f.foot)) / f.undercutHeight;
         if (t >= 0.0 && t < 1.0) {
-            offset -= f.undercut * std::sqrt(1.0 - t * t);
+            offset -= undercut * std::sqrt(1.0 - t * t);
         }
     }
     return offset;
@@ -50,12 +118,24 @@ double residual(const RockFace& f, double relief) {
     return relief - line;
 }
 
+// The weight of a face at a detail: faded out over kRunCells to kRunFade times that many cells of
+// run.
+double drawnWeight(const RockFace& f, const RockDetail& detail) {
+    const double least = static_cast<double>(kRunCells) * detail.cell;
+    return f.weight * smooth(least, kRunFade * least, f.run);
+}
+
 // The density of the step of a face at height y of a column whose relief is at relief: the rock
-// below its top behind the face and below its foot in front of it, both lifted by the residual.
+// below its top behind the face and below its foot in front of it, both lifted by the residual,
+// its edges rounded.
 double stepDensity(const RockFace& f, double y, double relief, const RockDetail& detail) {
     const double v = y - residual(f, relief);
     const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
-    return std::min(v - f.foot, std::max(v - f.top, across));
+    const double round = std::min(kRound, kRoundShare * (static_cast<double>(f.top) - f.foot));
+    if (!(round > 0.0)) {
+        return std::min(v - f.foot, std::max(v - f.top, across));
+    }
+    return smoothMin(v - f.foot, smoothMax(v - f.top, across, round), round);
 }
 
 // The relief at height y (density y - relief) and the steps of the faces of one kind (carved or
@@ -66,11 +146,12 @@ double blendedDensity(const RockColumn& c, double y, bool carved, double relief,
     double steps = 0.0;
     for (std::size_t i = 0; i < c.faceCount; ++i) {
         const RockFace& f = c.faces[i];
-        if (f.carved != carved || !(f.weight > 0.0f) || !(f.run > 0.0f)) {
+        const double weight = drawnWeight(f, detail);
+        if (f.carved != carved || !(weight > 0.0)) {
             continue;
         }
-        weights += f.weight;
-        steps += f.weight * stepDensity(f, y, relief, detail);
+        weights += weight;
+        steps += weight * stepDensity(f, y, relief, detail);
     }
     if (weights > 1.0) {
         return steps / weights;
@@ -94,7 +175,7 @@ void RockColumn::add(const RockFace& face) {
 }
 
 RockDetail rockDetailForLod(int lod) {
-    return {lod >= 3 ? kCoarseFeature : 0.0f};
+    return {static_cast<float>(1 << std::clamp(lod, 0, 16))};
 }
 
 float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
