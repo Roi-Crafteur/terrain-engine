@@ -68,6 +68,8 @@ namespace
 	const FName SurfaceNormalsParameter(TEXT("SurfaceNormals"));
 	const FName SurfaceNormalRatioParameter(TEXT("SurfaceNormalRatio"));
 	const FName SurfaceHasNormalsParameter(TEXT("SurfaceHasNormals"));
+	const FName SurfaceCoveredParameter(TEXT("SurfaceCoveredCm"));
+	const FName SurfaceBandParameter(TEXT("SurfaceBandCm"));
 	constexpr int32 NormalTexelBytes = terrain::unreal::kNormalHalves * 2;
 
 	FVector ToFVector(const terrain::unreal::UnrealPoint& Point)
@@ -426,6 +428,12 @@ void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
 	SurfaceLook->SetTextureParameterValue(SurfaceTexelsParameter, Textures[0]);
 	SurfaceLook->SetScalarParameterValue(SurfaceCellsParameter, static_cast<float>(Side - 1));
 	SurfaceLook->SetScalarParameterValue(SurfacePitchParameter, static_cast<float>(Level0PitchCm));
+	// The band of the tiles over level 0, where the surface blend of the tiles fades into the
+	// samples of the horizon: from the edge of the hole to the edge of the area the tiles cover.
+	SurfaceLook->SetScalarParameterValue(SurfaceCoveredParameter,
+		static_cast<float>(Fade.coveredMeters * 100.0));
+	SurfaceLook->SetScalarParameterValue(SurfaceBandParameter,
+		static_cast<float>(2.0 * Fade.fadeMeters * 100.0));
 	SurfaceLook->SetScalarParameterValue(SurfaceHasNormalsParameter,
 		NormalTextures.IsEmpty() ? 0.0f : 1.0f);
 	if (!NormalTextures.IsEmpty())

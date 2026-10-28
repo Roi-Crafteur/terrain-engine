@@ -24,13 +24,15 @@ inline constexpr int kCollisionLod = 0;
 
 // A tile to show: its mesh placed at its origin, with collision or not. The key is canonical
 // (wrapTile); the origin is the one of its image nearest to the player (nearestTile). A tile
-// already shown under this key is replaced in place.
+// already shown under this key is replaced in place. Its surface blend (TileData::surfaceBlend,
+// tile_blend_atlas.hpp) goes to the materials as it is.
 struct TileUpload {
     TileKey key;
     UnrealPoint origin;
     UnrealMesh mesh;
     bool collision = false;
     double conversionMilliseconds = 0.0;
+    std::vector<BlendTexel> blend;
 };
 
 // A shown tile whose nearest image changed (the player moved by about half a world, a teleport
