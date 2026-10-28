@@ -66,6 +66,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield_density.cpp
     src/generation/heightfield_geography.cpp
     src/generation/heightfield_hydrology.cpp
+    src/generation/heightfield_rock.cpp
     src/generation/heightfield_water.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
@@ -94,6 +95,7 @@ add_library(terrain_core STATIC
     src/generation/ravines.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
+    src/generation/rock_faces.cpp
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp
@@ -167,6 +169,7 @@ add_library(terrain_core STATIC
     src/streaming/horizon_sampler.cpp
     src/streaming/horizon_streamer.cpp
     src/streaming/lod.cpp
+    src/streaming/rock_tile.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
     src/streaming/tile_blend.cpp

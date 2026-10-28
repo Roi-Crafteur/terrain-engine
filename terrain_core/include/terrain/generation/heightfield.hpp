@@ -3,6 +3,7 @@
 #include "terrain/det_math.hpp" // also refuses fast math in every unit including it
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/noise_octaves.hpp"
+#include "terrain/generation/rock_faces.hpp"
 #include "terrain/generation/voronoi.hpp"
 #include "terrain/generation/water_kind.hpp"
 #include "terrain/world_size.hpp"
@@ -143,6 +144,12 @@ public:
                    std::span<HeightSample> out) const;
     void heightsAt(std::span<const double> xs, std::span<const double> zs,
                    std::span<float> out) const;
+    // samplesAt with the rock of each point in three dimensions (rock_faces.hpp, phase 12A): the
+    // same samples, bit for bit, and the faces the walls lay at each point. rockAt: one point.
+    // Throws std::invalid_argument unless the spans have one size.
+    void samplesAt(std::span<const double> xs, std::span<const double> zs,
+                   std::span<HeightSample> out, std::span<RockColumn> rock) const;
+    [[nodiscard]] RockColumn rockAt(double x, double z) const;
 
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
     [[nodiscard]] const WorldSize& world() const { return world_; }

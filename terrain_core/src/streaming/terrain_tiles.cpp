@@ -1,6 +1,7 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "cave_tile.hpp"
+#include "rock_tile.hpp"
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/terrain_surface.hpp"
@@ -124,6 +125,17 @@ std::vector<Plant> placeChunkPlants(const Heightfield& field, const Ecology& eco
                                {x0, z0, x0 + kChunkSizeMeters, z0 + kChunkSizeMeters});
 }
 
+// Drops the plants of a tile standing over an entrance of the caves or on a face of the rock.
+void dropPlants(const CaveField* caves, const CaveGround& ground, const TileLattice& lattice,
+                const tile::RockTile* rock, std::vector<Plant>& plants) {
+    if (caves != nullptr) {
+        tile::dropPlantsOverEntrances(*caves, ground, lattice, plants);
+    }
+    if (rock != nullptr) {
+        rock->dropPlants(plants);
+    }
+}
+
 // Where a level is meshed: its scale to meters, its height over the mesh origin, its lowest
 // samples.
 struct LevelPlace {
@@ -196,8 +208,9 @@ void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& c
 
 TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield,
                            const EcologyParams& ecology, const std::optional<CaveParams>& caves,
-                           const WorldSize& world, std::shared_ptr<const Hydrology> hydrology)
-    : seed_(seed),
+                           const WorldSize& world, std::shared_ptr<const Hydrology> hydrology,
+                           bool rock)
+    : seed_(seed), rock_(rock),
       field_(Heightfield(seed, heightfield, world).withHydrology(hydrology)),
       ecology_(seed, ecology, world, planetHumidity(hydrology)) {
     if (caves) {
@@ -217,16 +230,23 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
 TileData TerrainTiles::generate(const TileRequest& asked) const {
     const TileRequest request{wrapTile(asked.key, world()), asked.seams};
     const TileLattice lattice = tile::latticeOf(request.key);
-    const TileColumns columns = tile::sampleColumns(field_, lattice);
+    TileColumns columns = tile::sampleColumns(field_, lattice, rock_);
+    std::optional<tile::RockTile> rockTile;
+    if (!columns.rock.empty()) {
+        // The levels and the heights of the tile reach its rock.
+        rockTile.emplace(columns, request, lattice);
+        columns.minHeight = rockTile->bounds().low;
+        columns.maxHeight = rockTile->bounds().high;
+    }
     // The far tiles carve nothing: they are those of the world without caves.
     const bool carved = caves_ && caveDetailForLod(request.key.lod).components != 0;
-    std::vector<Plant> plants;
-    if (request.key.lod == kPlantLod) {
-        plants = placeChunkPlants(field_, ecology_, lattice.x0, lattice.z0);
-        if (carved) {
-            tile::dropPlantsOverEntrances(*caves_, caveGround_, lattice, plants);
-        }
-    }
+    TileData data;
+    data.request = request;
+    data.originX = lattice.x0;
+    data.originZ = lattice.z0;
+    data.minHeight = columns.minHeight;
+    data.maxHeight = columns.maxHeight;
+    data.surfaceBlend = tile::blendTexels(field_, ecology_, lattice, columns);
     EditWindow edits;
     {
         const std::shared_lock lock(mutex_);
@@ -235,19 +255,13 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
                          lattice.x0 + lattice.levelHeight + kBlockReach, lattice.z0 - kBlockReach,
                          lattice.z0 + lattice.levelHeight + kBlockReach, world());
         if (request.key.lod == kPlantLod) {
-            dropPlantsOnRemovedGround(edits, plants);
-            modifications_.applyPlantEdits(request.key.origin, plants);
+            data.plants = placeChunkPlants(field_, ecology_, lattice.x0, lattice.z0);
+            dropPlants(carved ? &*caves_ : nullptr, caveGround_, lattice,
+                       rockTile ? &*rockTile : nullptr, data.plants);
+            dropPlantsOnRemovedGround(edits, data.plants);
+            modifications_.applyPlantEdits(request.key.origin, data.plants);
         }
     }
-
-    TileData data;
-    data.request = request;
-    data.originX = lattice.x0;
-    data.originZ = lattice.z0;
-    data.minHeight = columns.minHeight;
-    data.maxHeight = columns.maxHeight;
-    data.surfaceBlend = tile::blendTexels(field_, ecology_, lattice, columns);
-    data.plants = std::move(plants);
     const double caveDepth = carved ? tile::caveDepthReach(*caves_, lattice) : 0.0;
     const std::vector<int> levels =
         levelsToMesh(columns, edits, lattice.levelHeight, caveDepth);
@@ -255,7 +269,8 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     data.originY = bottom;
     std::optional<tile::CaveTile> caveTile;
     if (carved) {
-        caveTile.emplace(*caves_, caveGround_, request, lattice, columns, levels);
+        caveTile.emplace(*caves_, caveGround_, request, lattice, columns, levels,
+                         rockTile ? &*rockTile : nullptr);
     }
     const auto scale = static_cast<float>(lattice.spacing);
     for (const int level : levels) {
@@ -263,8 +278,9 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
         if (!caveTile && filledLevel(edits, lattice, columns, originY)) {
             continue; // inside a filled or emptied volume: no surface
         }
-        DensityGrid grid = caveTile ? caveTile->levelDensity(originY)
-                                    : tile::levelDensity(columns, lattice, originY);
+        DensityGrid grid = caveTile   ? caveTile->levelDensity(originY)
+                           : rockTile ? rockTile->levelDensity(originY)
+                                      : tile::levelDensity(columns, lattice, originY);
         applyBlocks(grid, lattice, originY, edits);
         stitchSeams(grid, request.seams);
         const auto offsetY = static_cast<float>(originY - bottom);
@@ -282,6 +298,9 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
                            objects ? &*speleothems_ : nullptr,
                            objects && flora_ ? &*flora_ : nullptr);
     }
+    if (rockTile) {
+        data.rock = rockTile->vertexRock(data.mesh, data.originY);
+    }
     return data;
 }
 
@@ -289,8 +308,17 @@ float TerrainTiles::densityAt(int worldX, int y, int worldZ) const {
     const int x = canonicalMeter(worldX, world().x);
     const int z = canonicalMeter(worldZ, world().z);
     auto density = static_cast<float>(static_cast<double>(y) - field_.heightAt(x, z));
+    if (rock_) {
+        density = rockDensity(field_.rockAt(x, z), y, rockDetailForLod(0));
+    }
     if (caves_) {
-        density = caveDensityAt(*caves_, caveGround_, caveDetailForLod(0), x, y, z);
+        // As caveDensityAt, over the rock.
+        const double px = x;
+        const double py = y;
+        const double pz = z;
+        const float height = caveGround_.height(px, pz);
+        CaveSampler sampler(*caves_, caveGround_, caveDetailForLod(0), {px, py, pz, px, py, pz});
+        density = sampler.density(sampler.column(px, pz, height), py, density);
     }
     EditWindow edits;
     {
@@ -300,6 +328,32 @@ float TerrainTiles::densityAt(int worldX, int y, int worldZ) const {
     }
     // As ModificationStore::editedDensity: every added block first, then every removed one.
     return edits.density(density, x, y, z);
+}
+
+float TerrainTiles::groundAt(double x, double z) const {
+    const RockColumn column = rock_ ? field_.rockAt(x, z) : RockColumn{};
+    if (!rock_ || column.faceCount == 0) {
+        return field_.heightAt(x, z);
+    }
+    // Down from above the rock in steps, then the last step halved to the surface.
+    constexpr double kStep = 0.25;
+    constexpr int kHalvings = 24;
+    const RockDetail detail = rockDetailForLod(0);
+    const RockBounds bounds = rockBounds(column);
+    double above = static_cast<double>(bounds.high) + kStep;
+    double below = above;
+    while (below > static_cast<double>(bounds.low) - kStep) {
+        below = above - kStep;
+        if (rockDensity(column, below, detail) < kIsoLevel) {
+            break;
+        }
+        above = below;
+    }
+    for (int i = 0; i < kHalvings; ++i) {
+        const double middle = 0.5 * (above + below);
+        (rockDensity(column, middle, detail) < kIsoLevel ? below : above) = middle;
+    }
+    return static_cast<float>(below);
 }
 
 std::vector<ChunkCoord> TerrainTiles::setBlock(BlockCoord block, BlockEdit edit) {

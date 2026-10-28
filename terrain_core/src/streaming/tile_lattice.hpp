@@ -3,6 +3,7 @@
 // Lattice of a streamed tile, shared by terrain_tiles.cpp and cave_tiles.cpp (internal).
 
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/rock_faces.hpp"
 #include "terrain/meshing/density_grid.hpp"
 #include "terrain/streaming/lod.hpp"
 
@@ -33,6 +34,9 @@ inline TileLattice latticeOf(const TileKey& key) {
 struct TileColumns {
     std::vector<float> heights;         // x varies fastest
     std::vector<float> continentalness; // of each column, for the climate
+    // The rock of each column in three dimensions (phase 12A), only when a face lies at one of
+    // them: empty otherwise, and the tile is that of the relief alone.
+    std::vector<RockColumn> rock;
     float minHeight = 0.0f;
     float maxHeight = 0.0f;
 
@@ -45,8 +49,9 @@ struct TileColumns {
 };
 
 // The heights in one batch (Heightfield::samplesAt, the bits of heightsAt): neighboring columns
-// share noise cells.
-inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& lattice) {
+// share noise cells. With rock, the rock of the columns too (kept only when a face lies there).
+inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& lattice,
+                                 bool rock = false) {
     constexpr auto kCount = static_cast<std::size_t>(kGridSamples * kGridSamples);
     std::vector<double> xs;
     std::vector<double> zs;
@@ -59,8 +64,18 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
         }
     }
     std::vector<HeightSample> samples(kCount);
-    field.samplesAt(xs, zs, samples);
     TileColumns columns;
+    if (rock) {
+        columns.rock.resize(kCount);
+        field.samplesAt(xs, zs, samples, columns.rock);
+        const bool faces = std::any_of(columns.rock.begin(), columns.rock.end(),
+                                       [](const RockColumn& c) { return c.faceCount > 0; });
+        if (!faces) {
+            columns.rock.clear();
+        }
+    } else {
+        field.samplesAt(xs, zs, samples);
+    }
     columns.heights.reserve(kCount);
     columns.continentalness.reserve(kCount);
     for (const HeightSample& sample : samples) {

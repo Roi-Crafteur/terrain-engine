@@ -10,6 +10,7 @@
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/stream_manager.hpp"
 
+#include "rock_tile.hpp"
 #include "tile_lattice.hpp"
 
 #include <optional>
@@ -33,9 +34,11 @@ void dropPlantsOverEntrances(const CaveField& field, const CaveGround& ground,
 // the detail of that LOD, so that they hold the values the coarser tile samples there.
 class CaveTile {
 public:
+    // rock: the rock of the tile in three dimensions under which the caves are carved, or null
+    // for the relief alone (y - ground); it must outlive the tile.
     CaveTile(const CaveField& field, const CaveGround& ground, const TileRequest& request,
              const TileLattice& lattice, const TileColumns& columns,
-             const std::vector<int>& levels);
+             const std::vector<int>& levels, const RockTile* rock = nullptr);
 
     // Carved density of the level whose lowest samples lie at originY, before the block edits
     // and the stitching.
@@ -66,7 +69,7 @@ private:
     [[nodiscard]] Carving carving(const CaveField& field, const CaveGround& ground,
                                   const CaveDetail& detail, const CaveBox& box) const;
     void resampleSeams(DensityGrid& grid, int originY);
-    [[nodiscard]] float sample(Carving& carving, int i, int j, int k, int originY) const;
+    [[nodiscard]] float sample(Carving& carving, int i, int j, int k, int originY);
     // True if the sample (i, k) of a level lies on a side stitched to a coarser tile.
     [[nodiscard]] bool onStitchedSide(int i, int k) const;
     // Ground of the tile at (x, z), bilinear between its columns.
@@ -80,6 +83,7 @@ private:
 
     TileLattice lattice_;
     const TileColumns* columns_;
+    const RockTile* rock_;
     unsigned seams_;
     Carving fine_;
     std::optional<Carving> coarse_; // only when a stitched side carves another detail

@@ -60,8 +60,8 @@ void dropPlantsOverEntrances(const CaveField& field, const CaveGround& ground,
 
 CaveTile::CaveTile(const CaveField& field, const CaveGround& ground, const TileRequest& request,
                    const TileLattice& lattice, const TileColumns& columns,
-                   const std::vector<int>& levels)
-    : lattice_(lattice), columns_(&columns), seams_(request.seams),
+                   const std::vector<int>& levels, const RockTile* rock)
+    : lattice_(lattice), columns_(&columns), rock_(rock), seams_(request.seams),
       fine_(carving(field, ground, caveDetailForLod(request.key.lod), boxOf(lattice, levels))) {
     const int lod = request.key.lod;
     if (request.seams != 0 && lod < kMaxLod) {
@@ -86,10 +86,13 @@ CaveTile::Carving CaveTile::carving(const CaveField& field, const CaveGround& gr
     return result;
 }
 
-float CaveTile::sample(Carving& carving, int i, int j, int k, int originY) const {
+float CaveTile::sample(Carving& carving, int i, int j, int k, int originY) {
     const double sampleY = originY + j * lattice_.spacing;
-    // Same terrain density as tile::levelDensity and TerrainTiles::densityAt.
-    const auto terrain = static_cast<float>(sampleY - columns_->at(i, k));
+    // Same terrain density as tile::levelDensity and TerrainTiles::densityAt; under the rock of
+    // the tile, with the detail of the carving (the coarser one on a stitched side).
+    const auto terrain = rock_ != nullptr
+                             ? rock_->sample(i, j, k, originY, &carving != &fine_)
+                             : static_cast<float>(sampleY - columns_->at(i, k));
     const CaveColumn& column = carving.columns[static_cast<std::size_t>(k * kGridSamples + i)];
     return carving.sampler.density(column, sampleY, terrain);
 }

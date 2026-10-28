@@ -64,6 +64,10 @@ struct TileData {
     std::vector<Speleothem> speleothems;
     std::vector<CaveFlora> caveFlora;
     Mesh lava;
+    // With rock in three dimensions only (phase 12A, rock_faces.hpp), empty otherwise: the share
+    // of bare rock of each vertex of mesh, in [0, 1] (its faces, under their caps, in their
+    // niches), for the material.
+    std::vector<float> rock;
 
     friend bool operator==(const TileData&, const TileData&) = default;
 };

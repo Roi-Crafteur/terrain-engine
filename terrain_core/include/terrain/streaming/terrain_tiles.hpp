@@ -27,6 +27,10 @@ inline constexpr int kPlantLod = 0;
 // of its modifications, meshed tile by tile for a StreamManager. Its relief, rivers and biomes
 // are never changed: the modifications only edit blocks and plants.
 //
+// With rock (phase 12A), where faces lie at the columns of a tile (rock_faces.hpp) its density
+// is the rock in three dimensions there (vertical walls, overhangs, undercuts), y - heightAt
+// elsewhere, bit for bit.
+//
 // Caves are optional (none by default, and then every tile is the one of the world without
 // caves): with CaveParams, the caves of a CaveField under the heightfield (no river) are carved
 // out of the density before the block edits, with the detail of the LOD of each tile
@@ -41,13 +45,15 @@ class TerrainTiles {
 public:
     // Every layer tiles the world (WorldSize). With a hydrology (phase 11B, built over the same
     // relief), the heightfield is the relief with its water (Heightfield::withHydrology): the
-    // valleys of its rivers carved, its lakes and rivers. Throws std::invalid_argument for an
+    // valleys of its rivers carved, its lakes and rivers. With rock (phase 12A, the default), the
+    // faces the walls lay (rock_faces.hpp) shape the tiles where they lie; without it every tile
+    // is that of the relief alone, a height per column. Throws std::invalid_argument for an
     // invalid world (validate).
     explicit TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield = {},
                           const EcologyParams& ecology = {},
                           const std::optional<CaveParams>& caves = std::nullopt,
                           const WorldSize& world = {},
-                          std::shared_ptr<const Hydrology> hydrology = nullptr);
+                          std::shared_ptr<const Hydrology> hydrology = nullptr, bool rock = true);
 
     // Mesh of the canonical image of the tile (wrapTile: data.request holds the canonical key),
     // of the vertical levels holding its ground or a lattice point an edited block reaches: the
@@ -69,9 +75,14 @@ public:
     [[nodiscard]] TileData generate(const TileRequest& request) const;
 
     // Density at the lattice point (x, y, z), meters: the generated density with the block
-    // edits, the value every tile sampling this point holds before stitching (with caves, every
-    // LOD 0 tile). Thread-safe.
+    // edits, the value every tile sampling this point holds before stitching (with caves or rock,
+    // every LOD 0 tile). Thread-safe.
     [[nodiscard]] float densityAt(int x, int y, int z) const;
+
+    // The top of the generated rock at (x, z), meters, the edits aside: heightAt where no face
+    // lies, else the highest height where the density of the LOD 0 tiles turns from air to rock
+    // (on an overhang, its top; in front of a cap, the ground under it). Thread-safe.
+    [[nodiscard]] float groundAt(double x, double z) const;
 
     // Edits, thread-safe with generate. Each returns the chunks whose tiles must be generated
     // again (StreamManager::invalidate).
@@ -95,9 +106,11 @@ public:
     // The caves, or nullptr without caves, and the ground they are carved under.
     [[nodiscard]] const CaveField* caves() const { return caves_ ? &*caves_ : nullptr; }
     [[nodiscard]] const CaveGround& caveGround() const { return caveGround_; }
+    [[nodiscard]] bool rock() const { return rock_; }
 
 private:
     std::uint64_t seed_;
+    bool rock_;
     Heightfield field_;
     Ecology ecology_;
     std::optional<CaveField> caves_;
