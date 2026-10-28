@@ -134,9 +134,9 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   au-dessus du sommet, et sous l'eau ou non), une texture d'eau par niveau de l'horizon GPU
   (16 bits, pas de 0,25 m) ; aucun matériau ne le lit encore (`terrain_unreal/WATER_LEVEL.md`)
 - `PlanetFile` dans `Terrain World` : le fichier planète, ses fleuves et ses lacs en jeu
-- coût, monde par défaut avec son fichier planète, un thread, avant / après : tuiles ×0,94 à
-  ×1,01 (terres, montagnes, près des fleuves), époque de l'horizon ×0,97, dans le bruit de la
-  mesure ; sans changer un bit (goldens, montagnes gelées, somme du niveau Planète)
+- coût, monde par défaut avec son fichier planète, un thread, avant / après : tuiles ×1,02 sur
+  les terres, ×1,01 en montagne, ×1,00 près des fleuves ; époque de l'horizon ×0,97, dans le
+  bruit de la mesure ; sans changer un bit (goldens, montagnes gelées, somme du niveau Planète)
 - mémoire : échantillons de l'horizon de 16 à 20 octets (10,1 → 12,6 Mo), textures d'eau 1,26 Mo
   sur le GPU (+12,5 % d'octets par bande envoyée), rien de plus aux sommets dans Unreal
 
