@@ -75,7 +75,7 @@ struct RockDetail {
 
     friend bool operator==(const RockDetail&, const RockDetail&) = default;
 };
-inline constexpr float kRunCells = 3.0f;
+inline constexpr float kRunCells = 4.0f;
 
 // The detail of the tiles of a LOD (lod.hpp): cells of 2^lod meters.
 [[nodiscard]] RockDetail rockDetailForLod(int lod);

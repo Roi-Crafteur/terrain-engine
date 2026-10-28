@@ -136,16 +136,16 @@ void testFades() {
 
 // The grain moves the face by bands up to twice its amplitude; cells of 8 m leave it out.
 void testGrain() {
-    // A face of 100 m over a run of 40 m, the column 0.5 m behind it on the line of the run.
+    // A face of 100 m over a run of 60 m, the column 0.5 m behind it on the line of the run.
     RockFace f;
     f.foot = 0.0f;
     f.top = 100.0f;
     f.distance = -0.5f;
-    f.run = 40.0f;
+    f.run = 60.0f;
     f.grain = 1.0f;
     f.grainShift = 3.0f;
     RockColumn c;
-    c.ground = 50.0f + 100.0f * 0.5f / 40.0f;
+    c.ground = 50.0f + 100.0f * 0.5f / 60.0f;
     c.uncarved = c.ground;
     c.add(f);
     double least = 1e9;

@@ -22,7 +22,7 @@ constexpr double kK2X = 416'857.0;
 constexpr double kK2Z = -11'405'966.0;
 constexpr double kNear = 120.0;     // meters before the foot of a wall or a fall
 constexpr double kNearAbove = 25.0; // meters above the ground of the view of the foot of a wall
-constexpr double kEdgeAbove = 60.0; // and of the view along it
+constexpr double kEdgeAbove = 150.0; // and of the view along it
 constexpr double kSlotDown = 150.0; // the view of the slot: this far down the lip
 constexpr double kSlotAbove = 40.0; // and this high above the water
 constexpr double kFallSearch = 3'000.0;
@@ -294,7 +294,7 @@ void addK2(const terrain::Heightfield& relief, double reach, Places& out) {
     edge.tilt = tiltTo(0.5 * wall.height, offset);
     edge.sunLeft = kSunBehind;
     edge.above = kEdgeAbove;
-    edge.note = note + ", along it across the edge of the tiles, 60 m above the ground";
+    edge.note = note + ", along it across the edge of the tiles, 150 m above the ground";
     out.shots.push_back(near);
     out.shots.push_back(far);
     out.shots.push_back(edge);
