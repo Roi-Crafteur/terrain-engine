@@ -34,6 +34,19 @@ private:
     HorizonIndex first_;
 };
 
+// The water of the vertices of the stitched border, from the altitude they took: the level of
+// their own sample, its depth from the coarser ground.
+void stitchWater(const WindowReader& reader, const BodyTopology& topology, const HorizonLook& look,
+                 UnrealMesh& mesh) {
+    const int side = topology.cells + 1;
+    for (const std::int32_t v : topology.border) {
+        const auto at = static_cast<std::size_t>(v);
+        const std::int32_t sample = topology.samples[at];
+        const double altitude = mesh.positions[at].z / kCentimetersPerMeter + look.dropMeters;
+        mesh.water[at] = vertexWater(reader.at(sample % side, sample / side).waterLevel, altitude);
+    }
+}
+
 bool strictlyInside(const CellRect& rect, int i, int k) {
     return i > rect.i0 && i < rect.i1 && k > rect.k0 && k < rect.k1;
 }
@@ -113,19 +126,6 @@ void stitchBorder(const HorizonLevel& level, const HorizonLevel& coarser,
     }
     for (std::size_t j = 1; j < count; j += 2) {
         vertex(j).z = 0.5f * (vertex(j - 1).z + vertex(j + 1).z);
-    }
-}
-
-// The water of the vertices of the stitched border, from the altitude they took: the level of
-// their own sample, its depth from the coarser ground.
-void stitchWater(const WindowReader& reader, const BodyTopology& topology, const HorizonLook& look,
-                 UnrealMesh& mesh) {
-    const int side = topology.cells + 1;
-    for (const std::int32_t v : topology.border) {
-        const auto at = static_cast<std::size_t>(v);
-        const std::int32_t sample = topology.samples[at];
-        const double altitude = mesh.positions[at].z / kCentimetersPerMeter + look.dropMeters;
-        mesh.water[at] = vertexWater(reader.at(sample % side, sample / side).waterLevel, altitude);
     }
 }
 
