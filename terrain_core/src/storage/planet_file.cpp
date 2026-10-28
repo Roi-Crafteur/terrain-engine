@@ -377,25 +377,32 @@ PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed
 
 PlanetLevel openPlanetLevel(const std::filesystem::path& file, std::uint64_t seed,
                             const HeightfieldParams& heightfield, const PlanetParams& params,
-                            const WorldSize& world, bool* built) {
+                            const WorldSize& world, bool* built, const PlanetStageProbe& probe) {
+    const auto tell = [&probe](const char* stage) {
+        if (probe) {
+            probe(stage);
+        }
+    };
     bool newer = false;
     try {
         PlanetLevel level = loadPlanetFile(file, seed, params, world);
         if (built != nullptr) {
             *built = false;
         }
+        tell("load");
         return level;
     } catch (const StorageError& e) {
         // Missing, damaged or stale: built again. A file of a newer version is never replaced.
         newer = e.kind() == StorageErrorKind::NewerVersion;
     }
-    PlanetLevel level(seed, heightfield, params, world);
+    PlanetLevel level(seed, heightfield, params, world, probe);
     if (!newer) {
         try {
             savePlanetFile(file, level, seed, world);
         } catch (const StorageError&) {
             // Kept in memory only.
         }
+        tell("save");
     }
     if (built != nullptr) {
         *built = true;

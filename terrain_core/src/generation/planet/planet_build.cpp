@@ -16,16 +16,27 @@ namespace terrain::planet {
 
 namespace {
 
+// The seconds of each stage, each stage told to the probe.
 class Stopwatch {
 public:
-    double lap() {
+    explicit Stopwatch(const PlanetStageProbe& probe) : probe_(probe) { tell("field"); }
+
+    double lap(const char* stage) {
         const auto now = std::chrono::steady_clock::now();
         const double seconds = std::chrono::duration<double>(now - start_).count();
-        start_ = now;
+        tell(stage);
+        start_ = std::chrono::steady_clock::now();
         return seconds;
     }
 
 private:
+    void tell(const char* stage) const {
+        if (probe_) {
+            probe_(stage);
+        }
+    }
+
+    const PlanetStageProbe& probe_;
     std::chrono::steady_clock::time_point start_ = std::chrono::steady_clock::now();
 };
 
@@ -56,31 +67,31 @@ void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads,
         climateWater(grid, build.height, build.ocean, build.climate, params.climate);
     const std::vector<std::uint32_t> order = sortCells(build.height, threads);
     build.receiver = computeReceivers(grid, build.height, build.ocean, threads);
-    build.timings.order += watch.lap();
+    build.timings.order += watch.lap("order");
     LakeSolution lakes;
     {
         const DepressionHierarchy hierarchy =
             buildHierarchy(grid, build.height, build.ocean, order, build.receiver);
-        build.timings.hierarchy += watch.lap();
+        build.timings.hierarchy += watch.lap("hierarchy");
         lakes = solveLakes(grid, build.height, hierarchy, order, water);
     }
-    build.timings.lakes += watch.lap();
+    build.timings.lakes += watch.lap("lakes");
     PlanetFlow flow = routeFlow(grid, build.ocean, build.receiver, order, lakes, water);
     build.budget.runoff = lakes.runoff;
     build.budget.toOcean = flow.toOcean;
     for (const PlanetLake& lake : lakes.lakes) {
         build.budget.lakeEvaporation += lake.evaporation;
     }
-    build.timings.flow += watch.lap();
+    build.timings.flow += watch.lap("flow");
     build.rivers = buildRiverGraph(grid, build.height, build.ocean, build.receiver, order, lakes,
                                    flow, water, params.rivers);
     if (!build.floor.empty()) {
         moveToFloors(build.rivers, grid, build.floor, params.floorSamples);
     }
-    build.timings.rivers += watch.lap();
+    build.timings.rivers += watch.lap("rivers");
     build.features =
         findRiverFeatures(grid, build.height, build.ocean, build.rivers, params.features);
-    build.timings.features += watch.lap();
+    build.timings.features += watch.lap("features");
     build.lakes = std::move(lakes.lakes);
     build.lakeOfCell = std::move(lakes.lakeOfCell);
     build.discharge = std::move(flow.discharge);
@@ -88,9 +99,10 @@ void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads,
 
 } // namespace
 
-PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params) {
+PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params,
+                        const PlanetStageProbe& probe) {
     const int threads = resolveThreads(params.threads);
-    Stopwatch watch;
+    Stopwatch watch(probe);
     PlanetBuild build;
     build.grid = makePlanetGrid(field.world(), params.cellSize);
     {
@@ -99,19 +111,19 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params) {
         build.height = std::move(cells.height);
         build.floor = std::move(cells.floor);
         build.mountain = std::move(cells.mountain);
-        build.timings.relief = watch.lap();
+        build.timings.relief = watch.lap("relief");
         // The sea where the field puts it: with the geography, a dry depression below the sea
         // level is land.
         build.ocean = markOcean(build.grid, build.height, cells.sea, params.minOceanArea);
-        build.timings.ocean = watch.lap();
+        build.timings.ocean = watch.lap("ocean");
     }
     if (params.breachSills) {
         build.breach =
             breachDepressions(build.grid, build.height, build.ocean, build.mountain, params.breach);
-        build.timings.breach = watch.lap();
+        build.timings.breach = watch.lap("breach");
     }
     build.climate = computeClimate(build.grid, build.height, build.ocean, params.climate, threads);
-    build.timings.climate = watch.lap();
+    build.timings.climate = watch.lap("climate");
     buildHydrology(build, params, threads, watch);
     return build;
 }

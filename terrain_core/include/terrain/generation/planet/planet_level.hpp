@@ -68,9 +68,10 @@ struct PlanetCells {
 class PlanetLevel {
 public:
     // Builds the level of the relief of seed and heightfield on world (planet::buildPlanet),
-    // then keeps it compact.
+    // then keeps it compact. probe, if set, hears of each stage, then of "level".
     PlanetLevel(std::uint64_t seed, const HeightfieldParams& heightfield,
-                const PlanetParams& params = {}, const WorldSize& world = {});
+                const PlanetParams& params = {}, const WorldSize& world = {},
+                const PlanetStageProbe& probe = {});
     // Keeps a build compact (build is consumed).
     PlanetLevel(PlanetBuild&& build, const PlanetParams& params);
     // A level kept before (the planet file, storage/planet_file.hpp): everything it keeps.

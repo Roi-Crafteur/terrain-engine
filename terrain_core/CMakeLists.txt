@@ -349,9 +349,11 @@ add_executable(terrain_export_rivers tools/export_rivers.cpp tools/rivers_places
                                      tools/rivers_report.cpp)
 target_link_libraries(terrain_export_rivers PRIVATE terrain_core terrain_warnings)
 
-# The planet level of a world written to its file, as the game reads it (phase 11B):
-# terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>]
-add_executable(terrain_make_planet tools/make_planet.cpp)
+# The planet level of a world written to its file, as the game reads it (phase 11B); --memory
+# prints the time and memory of each stage (its own operator new counts the heap):
+# terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>] [--memory]
+add_executable(terrain_make_planet tools/make_planet.cpp tools/heap_counter.cpp
+                                   tools/process_memory.cpp)
 target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into

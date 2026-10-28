@@ -30,10 +30,12 @@ void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
 
 // The level of seed on world: read from file when it holds it, otherwise built from its relief
 // (Heightfield(seed, heightfield, world)) and written to file. A file that cannot be written
-// leaves the level built all the same. built, when not null, says whether it was built.
+// leaves the level built all the same. built, when not null, says whether it was built. probe,
+// if set, hears of "load", or of the stages of the build, "level" and "save".
 [[nodiscard]] PlanetLevel openPlanetLevel(const std::filesystem::path& file, std::uint64_t seed,
                                           const HeightfieldParams& heightfield,
                                           const PlanetParams& params, const WorldSize& world,
-                                          bool* built = nullptr);
+                                          bool* built = nullptr,
+                                          const PlanetStageProbe& probe = {});
 
 } // namespace terrain
