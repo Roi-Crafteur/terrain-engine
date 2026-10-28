@@ -3,8 +3,10 @@
 #include "terrain/generation/heightfield.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <stdexcept>
+#include <utility>
 
 namespace terrain::unreal {
 
@@ -149,6 +151,60 @@ int trimVariant(const CellRect& finer, int cells) {
         throw std::invalid_argument("trimVariant: the finer window is off center");
     }
     return (dx + 1) + 3 * (dz + 1);
+}
+
+std::uint16_t waterCode(float level) {
+    if (!(level > kNoWaterLevel)) {
+        return 0;
+    }
+    const double clamped = std::clamp(static_cast<double>(level), double{kWaterLevelLowest},
+                                      double{kWaterLevelHighest});
+    const double steps = std::floor((clamped - kWaterLevelLowest) / kWaterLevelStep + 0.5);
+    return static_cast<std::uint16_t>(1 + static_cast<int>(steps));
+}
+
+float waterCodeLevel(std::uint16_t code) {
+    return code == 0 ? kNoWaterLevel
+                     : kWaterLevelLowest + static_cast<float>(code - 1) * kWaterLevelStep;
+}
+
+std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea) {
+    std::vector<float> data;
+    data.reserve(piece.cells.size() * (kTexelFloats + 1));
+    for (const HorizonCell& cell : piece.cells) {
+        const HorizonTexel texel = horizonTexel(cell, sea);
+        data.insert(data.end(), {texel.height, texel.gradX, texel.gradZ, texel.color});
+    }
+    for (const HorizonCell& cell : piece.cells) {
+        data.push_back(static_cast<float>(waterCode(cell.waterLevel)));
+    }
+    return data;
+}
+
+std::vector<WaterRegion> waterRegions(int level, int side, const HorizonRect& rect,
+                                      std::span<const float> codes) {
+    if (rect.width() > side || rect.height() > side ||
+        codes.size() != static_cast<std::size_t>(rect.count())) {
+        throw std::invalid_argument("waterRegions: the codes do not fit the rectangle");
+    }
+    std::vector<WaterRegion> regions;
+    for (const SlotSpan& z : slotSpans(rect.z0, rect.z1, side)) {
+        for (const SlotSpan& x : slotSpans(rect.x0, rect.x1, side)) {
+            WaterRegion region{level, x.slot, z.slot, x.length, z.length, {}};
+            region.data.reserve(static_cast<std::size_t>(x.length) *
+                                static_cast<std::size_t>(z.length));
+            for (int row = 0; row < z.length; ++row) {
+                const std::int64_t first =
+                    (z.sample - rect.z0 + row) * rect.width() + (x.sample - rect.x0);
+                for (int column = 0; column < x.length; ++column) {
+                    region.data.push_back(static_cast<std::uint16_t>(
+                        codes[static_cast<std::size_t>(first + column)]));
+                }
+            }
+            regions.push_back(std::move(region));
+        }
+    }
+    return regions;
 }
 
 } // namespace terrain::unreal

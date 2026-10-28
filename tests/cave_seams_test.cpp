@@ -1,10 +1,10 @@
 // Seams between streamed tiles where a cave crosses their shared side: the tube of an entrance
 // of the world with caves. Tiles of the same LOD share their side exactly. Between LODs, the
 // fine side holds the coarse samples carved with the coarser detail: every coarse vertex lies
-// on the fine outline and every fine vertex on the coarse lattice lines on the coarse outline;
-// in between, the density is not linear in y inside the caves and stitching leaves gaps of at
-// most half a coarse cell (a known limit; the ground away from the caves stays exact, see
-// lod_seams_test.cpp).
+// on the fine outline and every fine vertex on the coarse outline, inside the caves too, where
+// the density is not linear in y (lod_seams.cpp: before it, the stitched side left gaps of up to
+// half a coarse cell there). The stitching changes the tile on its stitched side only: beyond
+// two cells of it, the vertices are those of the same tile without seams, bit for bit.
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
@@ -13,6 +13,7 @@
 #include "test_assert.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -128,6 +129,26 @@ void checkSameLod(const TerrainTiles& tiles, const Crossing& c, int lod) {
     TEST_CHECK(cave > 0);
 }
 
+// Beyond two cells of the stitched side (NegX or NegZ), the vertices of the stitched tile and of
+// the same tile without seams: positions and normals, bit for bit.
+void checkLocal(const TileData& stitched, const TileData& raw, unsigned seam, int lod) {
+    const double reach = 2.0 * terrain::tileCellMeters(lod);
+    const auto beyond = [&](const TileData& data) {
+        std::vector<std::array<float, 6>> kept;
+        for (std::size_t i = 0; i < data.mesh.vertices.size(); ++i) {
+            const terrain::Vec3f v = data.mesh.vertices[i];
+            const terrain::Vec3f n = data.mesh.normals[i];
+            if ((seam == terrain::kSeamNegX ? v.x : v.z) > reach) {
+                kept.push_back({v.x, v.y, v.z, n.x, n.y, n.z});
+            }
+        }
+        std::sort(kept.begin(), kept.end());
+        return kept;
+    };
+    const std::vector<std::array<float, 6>> kept = beyond(stitched);
+    TEST_CHECK(!kept.empty() && stitched.originY == raw.originY && kept == beyond(raw));
+}
+
 bool onCoarseLattice(FacePoint p, double coarseCell) {
     return std::fmod(p.u, coarseCell) == 0.0 || std::fmod(p.y, coarseCell) == 0.0;
 }
@@ -162,13 +183,14 @@ void checkStitched(const TerrainTiles& tiles, const Crossing& c, int lod) {
     const std::size_t fineCave = deeperThan(tiles, fine, c.plane, minRoof);
     const std::size_t rawCave = deeperThan(
         tiles, inRange(seam_test::facePoints(raw, c.plane), uMin, uMax), c.plane, minRoof);
-    std::printf("LOD %d | LOD %d: coarse gap %.2g, fine gap %.2g on the coarse lattice, %.3f "
+    std::printf("LOD %d | LOD %d: coarse gap %.2g, fine gap %.2g on the coarse lattice, %.2g "
                 "elsewhere (%.1f m cells); %zu fine vertices in the cave (%zu unstitched)\n",
                 lod, lod + 1, coarseGap, latticeGap, otherGap, coarseCell, fineCave, rawCave);
     TEST_CHECK(fine.size() >= 2);
     TEST_CHECK(coarseGap <= kSeamTolerance);
     TEST_CHECK(latticeGap <= kSeamTolerance);
-    TEST_CHECK(otherGap <= 0.5 * coarseCell);
+    TEST_CHECK(otherGap <= seam_test::outlineTolerance(lod));
+    checkLocal(stitched, raw, pair.farSeam, lod);
     TEST_CHECK(rawCave > 0);
     // The far LOD 3 carves nothing: its stitched neighbor closes the cave on their side.
     TEST_CHECK(lod + 1 == terrain::kMaxLod ? fineCave == 0 : fineCave > 0);

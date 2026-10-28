@@ -53,6 +53,12 @@ struct TileData {
     // A pure function of the world position at each LOD: two tiles of a LOD hold the same bits
     // on the side they share. The ground of the natural relief, without the caves and the edits.
     std::vector<BlendTexel> surfaceBlend;
+    // The level of the water over each vertex of mesh: HeightSample::waterLevel of its column
+    // (the sea at kSeaLevel, a lake at its level, a river at its surface), on an edge between two
+    // columns their interpolated level or that of the wet one, kNoWaterLevel on dry ground and,
+    // with caves, on their walls. Taken from the columns of the natural relief, as surfaceBlend:
+    // the edits only change the vertices it is given at (a block of a player in a lake has it).
+    std::vector<float> waterLevels;
     // With caves only, empty otherwise: the material of each vertex of mesh, the lakes of the
     // caves (relative to the same origin) with the material of each of their vertices (water or
     // ice), and the speleothems (world positions, LOD 0 tiles only); with cave regions only, the
