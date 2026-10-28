@@ -66,10 +66,10 @@ void testPassesAreRockTop() {
     TEST_CHECK(compared > 100 && same);
 }
 
-// The rock of a column of a synthetic wall at x (ground rising slope meters per meter along x),
-// its faces lifted onto its top.
+// The faces of a column of a synthetic wall at x (ground rising slope meters per meter along x),
+// placed along that slope, their heights over the top of the walls there.
 struct WallColumn {
-    RockColumn rock;
+    std::vector<RockFace> faces;
     double top = 0.0;
 };
 
@@ -78,18 +78,21 @@ WallColumn columnAt(const walls::Noises& n, double x, double z, double slope) {
     WallColumn out;
     out.top = walls::surface(n, c, x, z, nullptr);
     const walls::Masks m = walls::masks(n, c, x, z, nullptr);
-    terrain::wall_faces::addFaces(n, m, c, x, z, nullptr, out.rock);
-    out.rock.ground = static_cast<float>(out.top);
-    out.rock.uncarved = out.rock.ground;
-    for (std::size_t i = 0; i < out.rock.faceCount; ++i) {
-        out.rock.faces[i].foot += out.rock.ground;
-        out.rock.faces[i].top += out.rock.ground;
+    terrain::wall_faces::Site site;
+    site.faces = true;
+    terrain::wall_faces::addFaces(n, m, c, x, z, nullptr, site);
+    for (std::size_t i = 0; i < site.count; ++i) {
+        RockFace f = terrain::wall_faces::placeFace(site.pending[i], slope, 0.0);
+        f.foot += static_cast<float>(out.top);
+        f.top += static_cast<float>(out.top);
+        out.faces.push_back(f);
     }
     return out;
 }
 
-// A row of strata across which faces stand: the relief climbing a face lies within its heights,
-// and where a face stands vertical the rock meets the air at one x whatever the height.
+// A row of strata across which faces stand: each column lies within the run of its faces, the
+// relief within their heights, the air downhill; the faces of one riser agree from column to
+// column on where it stands.
 void testSyntheticWall() {
     const walls::Noises n = walls::makeNoises(kSeed, {});
     // A place of strong strata.
@@ -101,24 +104,31 @@ void testSyntheticWall() {
             break;
         }
     }
-    std::vector<WallColumn> row;
-    for (int i = -300; i <= 300; ++i) {
-        row.push_back(columnAt(n, i, z, 0.8));
-    }
     std::size_t faces = 0;
     bool within = true;
-    for (const WallColumn& c : row) {
-        faces += c.rock.faceCount > 0 ? 1 : 0;
-        for (std::size_t i = 0; i < c.rock.faceCount; ++i) {
-            const RockFace& f = c.rock.faces[i];
-            if (std::abs(f.distance) < 0.5f * f.run) {
-                within = within && c.top >= f.foot - 0.5 && c.top <= f.top + 0.5;
+    double spread = 0.0;
+    for (int i = -300; i <= 300; ++i) {
+        const WallColumn c = columnAt(n, i, z, 0.8);
+        faces += c.faces.empty() ? 0 : 1;
+        for (const RockFace& f : c.faces) {
+            within = within && std::abs(f.distance) <= 0.5f * f.run + 1e-3f &&
+                     c.top >= f.foot - 0.5 && c.top <= f.top + 0.5 && f.airX < -0.99f;
+            // The middle of the riser, x - distance along the air (-x): the same for its columns.
+            const double middle = i + static_cast<double>(f.distance);
+            const WallColumn next = columnAt(n, i + 1, z, 0.8);
+            for (const RockFace& g : next.faces) {
+                if (std::abs(g.top - g.foot - (f.top - f.foot)) < 0.5f) {
+                    spread = std::max(spread, std::abs(i + 1 + static_cast<double>(g.distance) -
+                                                       middle));
+                }
             }
         }
     }
-    std::printf("synthetic strata: %zu of %zu columns see a face\n", faces, row.size());
+    std::printf("synthetic strata: %zu of 601 columns within a face, middles %.2f m apart\n",
+                faces, spread);
     TEST_CHECK(faces > 20);
     TEST_CHECK(within);
+    TEST_CHECK(spread < 1.0);
 }
 
 void testMemoAndSeams() {

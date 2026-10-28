@@ -75,55 +75,6 @@ unsigned seamsOf(const TileKey& tile, const TileSet& selection) {
     return seams;
 }
 
-struct GridPoint {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-};
-
-// A vertical face of the grid: a is the sample index along y, b along the horizontal axis.
-struct Face {
-    bool alongZ = false; // b runs along z (the face is at a fixed x), else along x
-    int fixed = 0;       // index of the face on the other horizontal axis
-
-    [[nodiscard]] GridPoint at(int a, int b) const {
-        return alongZ ? GridPoint{fixed, a, b} : GridPoint{b, a, fixed};
-    }
-};
-
-float read(const DensityGrid& grid, GridPoint p) {
-    return grid.at(p.x, p.y, p.z);
-}
-
-void stitchFace(DensityGrid& grid, Face face) {
-    for (int b = 0; b < kGridSamples; ++b) {
-        for (int a = 0; a < kGridSamples; ++a) {
-            const bool oddA = a % 2 != 0;
-            const bool oddB = b % 2 != 0;
-            float value = 0.0f;
-            if (oddA && oddB) {
-                value = (read(grid, face.at(a - 1, b - 1)) + read(grid, face.at(a + 1, b - 1)) +
-                         read(grid, face.at(a - 1, b + 1)) + read(grid, face.at(a + 1, b + 1))) /
-                        4.0f;
-            } else if (oddA) {
-                value = (read(grid, face.at(a - 1, b)) + read(grid, face.at(a + 1, b))) / 2.0f;
-            } else if (oddB) {
-                value = (read(grid, face.at(a, b - 1)) + read(grid, face.at(a, b + 1))) / 2.0f;
-            } else {
-                continue;
-            }
-            const GridPoint p = face.at(a, b);
-            grid.set(p.x, p.y, p.z, value);
-        }
-    }
-}
-
-void stitchColumn(DensityGrid& grid, int x, int z) {
-    for (int y = 1; y < kGridSamples; y += 2) {
-        grid.set(x, y, z, (grid.at(x, y - 1, z) + grid.at(x, y + 1, z)) / 2.0f);
-    }
-}
-
 } // namespace
 
 std::size_t TileKeyHash::operator()(const TileKey& key) const {
@@ -218,35 +169,6 @@ std::vector<TileRequest> tileRequests(const std::vector<TileKey>& selection) {
         requests.push_back({tile, seamsOf(tile, lookup)});
     }
     return requests;
-}
-
-void stitchSeams(DensityGrid& grid, unsigned seams) {
-    constexpr int kLast = kGridSamples - 1;
-    if ((seams & kSeamNegX) != 0) {
-        stitchFace(grid, {true, 0});
-    }
-    if ((seams & kSeamPosX) != 0) {
-        stitchFace(grid, {true, kLast});
-    }
-    if ((seams & kSeamNegZ) != 0) {
-        stitchFace(grid, {false, 0});
-    }
-    if ((seams & kSeamPosZ) != 0) {
-        stitchFace(grid, {false, kLast});
-    }
-    // A corner column on a stitched face is already stitched the same way: no harm in redoing it.
-    if ((seams & kSeamNegXNegZ) != 0) {
-        stitchColumn(grid, 0, 0);
-    }
-    if ((seams & kSeamPosXNegZ) != 0) {
-        stitchColumn(grid, kLast, 0);
-    }
-    if ((seams & kSeamNegXPosZ) != 0) {
-        stitchColumn(grid, 0, kLast);
-    }
-    if ((seams & kSeamPosXPosZ) != 0) {
-        stitchColumn(grid, kLast, kLast);
-    }
 }
 
 } // namespace terrain

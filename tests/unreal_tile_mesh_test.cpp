@@ -1,7 +1,7 @@
 // Conversion of tile meshes for Unreal: vertex and triangle counts, centimeters and Z up, unit
-// normals, the triangle order Unreal expects ((c - a) x (b - a) toward the air), the world
-// position of the vertices, a tile of the wrapped world shown at another image, empty and
-// malformed meshes, and the same arrays for the same tile.
+// normals, the triangle order Unreal expects ((c - a) x (b - a) toward the air), the water over
+// the vertices, the world position of the vertices, a tile of the wrapped world shown at another
+// image, empty and malformed meshes, and the same arrays for the same tile.
 #include "tile_mesh_conversion.hpp"
 
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 
@@ -179,6 +180,34 @@ bool throwsInvalid(const Mesh& mesh) {
     return false;
 }
 
+// The water of the vertices: the level of each above it, wet where a level is given (below 0
+// where the vertex stands above it); no level given: every vertex dry. A count of levels other
+// than the vertices is rejected.
+void testVertexWater() {
+    using terrain::unreal::VertexWater;
+    Mesh mesh;
+    mesh.vertices = {{0.0f, 0.0f, 0.0f}, {0.0f, 2.0f, 1.0f}, {1.0f, 5.0f, 0.0f}};
+    mesh.normals.assign(3, {0.0f, 1.0f, 0.0f});
+    mesh.indices = {0, 1, 2};
+    const std::vector<float> levels{1725.375f, terrain::kNoWaterLevel, 1721.0f};
+    const UnrealMesh out = terrain::unreal::convertMesh(mesh, 1720.0, levels);
+    TEST_CHECK(out.water.size() == 3);
+    TEST_CHECK(out.water[0] == (VertexWater{5.375f, 1.0f}));
+    TEST_CHECK(out.water[1] == (VertexWater{0.0f, 0.0f}));
+    TEST_CHECK(out.water[2] == (VertexWater{-4.0f, 1.0f})); // a bank above its level
+    const UnrealMesh dry = terrain::unreal::convertMesh(mesh, 1720.0);
+    TEST_CHECK(dry.water == std::vector<VertexWater>(3));
+    TEST_CHECK(terrain::unreal::vertexWater(0.0f, -35.5) == (VertexWater{35.5f, 1.0f})); // the sea
+    bool threw = false;
+    try {
+        static_cast<void>(
+            terrain::unreal::convertMesh(mesh, 0.0, std::vector<float>{0.0f, 0.0f}));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    TEST_CHECK(threw);
+}
+
 void testEmptyAndMalformed() {
     const UnrealMesh empty = terrain::unreal::convertMesh({}, 0.0);
     TEST_CHECK(empty.empty() && empty.positions.empty() && empty.colors.empty());
@@ -207,9 +236,11 @@ void testDeterministic() {
     for (const unsigned seams : {0U, terrain::kSeamNegX | terrain::kSeamPosZ}) {
         const TileData first = a.generate({{m, 0}, seams});
         const TileData second = b.generate({{m, 0}, seams});
-        const UnrealMesh converted = terrain::unreal::convertMesh(first.mesh, first.originY);
-        TEST_CHECK(!converted.empty());
-        TEST_CHECK(converted == terrain::unreal::convertMesh(second.mesh, second.originY));
+        const UnrealMesh converted =
+            terrain::unreal::convertMesh(first.mesh, first.originY, first.waterLevels);
+        TEST_CHECK(!converted.empty() && converted.water.size() == converted.positions.size());
+        TEST_CHECK(converted == terrain::unreal::convertMesh(second.mesh, second.originY,
+                                                             second.waterLevels));
         TEST_CHECK(terrain::unreal::tileOrigin(frame, first, first.request.key) ==
                    terrain::unreal::tileOrigin(frame, second, second.request.key));
     }
@@ -222,13 +253,13 @@ void testRockAlpha() {
     mesh.normals.assign(3, {0.0f, 1.0f, 0.0f});
     mesh.indices = {0, 1, 2};
     const std::vector<float> rock = {0.0f, 0.5f, 1.0f};
-    const UnrealMesh out = terrain::unreal::convertMesh(mesh, 10.0, rock);
+    const UnrealMesh out = terrain::unreal::convertMesh(mesh, 10.0, {}, rock);
     TEST_CHECK(out.colors[0].a == 255 && out.colors[1].a == 128 && out.colors[2].a == 0);
     TEST_CHECK(out.colors[2].r == terrain::unreal::altitudeColor(10.0).r);
     TEST_CHECK(terrain::unreal::convertMesh(mesh, 10.0).colors[2].a == 255);
     bool thrown = false;
     try {
-        static_cast<void>(terrain::unreal::convertMesh(mesh, 10.0, std::vector<float>{0.5f}));
+        static_cast<void>(terrain::unreal::convertMesh(mesh, 10.0, {}, std::vector<float>{0.5f}));
     } catch (const std::invalid_argument&) {
         thrown = true;
     }
@@ -243,6 +274,7 @@ int main() {
     testMountainTile();
     testWorldPositions();
     testImages();
+    testVertexWater();
     testEmptyAndMalformed();
     testDeterministic();
     return test::result();

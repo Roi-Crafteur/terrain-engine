@@ -4,7 +4,8 @@
 // chunks of Minecraft (written to <output-dir>/<case>.chunks, compressed by
 // scripts/minecraft_chunk_sizes.py), the encoding and decoding times, the memory of the store
 // and of the windows of the tiles, and the generation of the tiles of LOD 0 to 3 over the edits
-// against the same tiles unmodified (the reload of a modified tile). Not a test:
+// against the same tiles unmodified (the reload of a modified tile), without seams and stitched
+// on every side. Not a test:
 //   terrain_modification_sizes <output-dir> [runs]
 #include "bench_support.hpp"
 
@@ -279,32 +280,44 @@ double median(std::vector<double> values) {
     return values[values.size() / 2];
 }
 
+// The tiles of LOD 0 to 3 over the chunk, unmodified and edited, with the seams given.
+void timeChunkTiles(const TerrainTiles& edited, const TerrainTiles& plain, ChunkCoord chunk,
+                    unsigned seams, int runs) {
+    for (int lod = 0; lod < terrain::kLodCount; ++lod) {
+        const terrain::TileRequest request{terrain::tileContaining(chunk, lod), seams};
+        std::vector<double> before;
+        std::vector<double> after;
+        std::size_t plainVertices = 0;
+        std::size_t editedVertices = 0;
+        for (int run = 0; run < runs; ++run) {
+            auto start = std::chrono::steady_clock::now();
+            plainVertices = plain.generate(request).mesh.vertices.size();
+            before.push_back(elapsedMs(start));
+            start = std::chrono::steady_clock::now();
+            editedVertices = edited.generate(request).mesh.vertices.size();
+            after.push_back(elapsedMs(start));
+        }
+        std::printf("    tile LOD %d over chunk (%d, %d): %.3f ms unmodified (%zu vertices), "
+                    "%.3f ms edited (%zu vertices), x%.2f\n",
+                    lod, chunk.x, chunk.z, median(before), plainVertices, median(after),
+                    editedVertices, median(after) / median(before));
+    }
+}
+
 // The median time to generate the tile of each LOD over a chunk, edited and not, in turn so
-// that both see the same load of the machine; with the vertices of each.
+// that both see the same load of the machine; with the vertices of each. Then the same tiles
+// with every side stitched to a coarser neighbor (the seams between LODs).
 void timeTiles(const Case& c, const TerrainTiles& plain, int runs) {
     TerrainTiles edited(bench::kSeed);
     edited.replaceModifications(c.store);
     std::vector<ChunkCoord> chunks = {c.center};
     chunks.insert(chunks.end(), c.others.begin(), c.others.end());
-    for (const ChunkCoord chunk : chunks) {
-        for (int lod = 0; lod < terrain::kLodCount; ++lod) {
-            const terrain::TileRequest request{terrain::tileContaining(chunk, lod), 0};
-            std::vector<double> before;
-            std::vector<double> after;
-            std::size_t plainVertices = 0;
-            std::size_t editedVertices = 0;
-            for (int run = 0; run < runs; ++run) {
-                auto start = std::chrono::steady_clock::now();
-                plainVertices = plain.generate(request).mesh.vertices.size();
-                before.push_back(elapsedMs(start));
-                start = std::chrono::steady_clock::now();
-                editedVertices = edited.generate(request).mesh.vertices.size();
-                after.push_back(elapsedMs(start));
-            }
-            std::printf("    tile LOD %d over chunk (%d, %d): %.3f ms unmodified (%zu vertices), "
-                        "%.3f ms edited (%zu vertices), x%.2f\n",
-                        lod, chunk.x, chunk.z, median(before), plainVertices, median(after),
-                        editedVertices, median(after) / median(before));
+    for (const unsigned seams : {0U, 0xFFU}) {
+        if (seams != 0) {
+            std::printf("    stitched on every side:\n");
+        }
+        for (const ChunkCoord chunk : chunks) {
+            timeChunkTiles(edited, plain, chunk, seams, runs);
         }
     }
 }

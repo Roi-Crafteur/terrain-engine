@@ -12,6 +12,7 @@
 #include "terrain/streaming/cave_tiles.hpp"
 #include "tile_blend.hpp"
 #include "tile_lattice.hpp"
+#include "tile_water.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -137,11 +138,12 @@ void dropPlants(const CaveField* caves, const CaveGround& ground, const TileLatt
 }
 
 // Where a level is meshed: its scale to meters, its height over the mesh origin, its lowest
-// samples.
+// samples, and the seams of its tile.
 struct LevelPlace {
     float scale;
     float offsetY;
     int originY;
+    unsigned seams;
 };
 
 // The water (lakes and rivers) and the lava of a level of a tile with caves, each meshed over the
@@ -150,11 +152,11 @@ void appendFluids(TileData& data, tile::CaveTile& caveTile, const DensityGrid& c
                   const LevelPlace& place) {
     const DensityGrid water = caveTile.fluidDensity(tile::CaveFluid::Water, carved, place.originY);
     if (crossesSurface(water)) {
-        appendLevel(data.water, marchingCubes(water), place.scale, place.offsetY);
+        appendLevel(data.water, stitchedMesh(water, place.seams), place.scale, place.offsetY);
     }
     const DensityGrid lava = caveTile.fluidDensity(tile::CaveFluid::Lava, carved, place.originY);
     if (crossesSurface(lava)) {
-        appendLevel(data.lava, marchingCubes(lava), place.scale, place.offsetY);
+        appendLevel(data.lava, stitchedMesh(lava, place.seams), place.scale, place.offsetY);
     }
 }
 
@@ -285,12 +287,12 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
         stitchSeams(grid, request.seams);
         const auto offsetY = static_cast<float>(originY - bottom);
         if (caveTile && caveTile->holdsWater()) {
-            appendFluids(data, *caveTile, grid, {scale, offsetY, originY});
+            appendFluids(data, *caveTile, grid, {scale, offsetY, originY, request.seams});
         }
         if (caveTile && !crossesSurface(grid)) {
             continue; // a level of rock under the ground, between the caves
         }
-        appendLevel(data.mesh, marchingCubes(grid), scale, offsetY);
+        appendLevel(data.mesh, stitchedMesh(grid, request.seams), scale, offsetY);
     }
     if (caveTile) {
         const bool objects = request.key.lod == kPlantLod;
@@ -301,6 +303,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     if (rockTile) {
         data.rock = rockTile->vertexRock(data.mesh, data.originY);
     }
+    data.waterLevels = tile::vertexWaterLevels(columns, lattice, data.mesh, data.materials);
     return data;
 }
 

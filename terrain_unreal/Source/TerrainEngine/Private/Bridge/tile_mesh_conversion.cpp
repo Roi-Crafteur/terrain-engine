@@ -1,5 +1,7 @@
 #include "tile_mesh_conversion.hpp"
 
+#include "terrain/generation/water_kind.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -10,9 +12,12 @@ namespace terrain::unreal {
 
 namespace {
 
-void validate(const Mesh& mesh) {
+void validate(const Mesh& mesh, std::span<const float> waterLevels) {
     if (mesh.normals.size() != mesh.vertices.size()) {
         throw std::invalid_argument("convertMesh: one normal per vertex expected");
+    }
+    if (!waterLevels.empty() && waterLevels.size() != mesh.vertices.size()) {
+        throw std::invalid_argument("convertMesh: no water level or one per vertex expected");
     }
     if (mesh.indices.size() % 3 != 0) {
         throw std::invalid_argument("convertMesh: three indices per triangle expected");
@@ -29,8 +34,16 @@ void validate(const Mesh& mesh) {
 
 } // namespace
 
-UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> rock) {
-    validate(mesh);
+VertexWater vertexWater(float level, double altitude) {
+    if (!(level > kNoWaterLevel)) {
+        return {};
+    }
+    return {static_cast<float>(static_cast<double>(level) - altitude), 1.0f};
+}
+
+UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> waterLevels,
+                       std::span<const float> rock) {
+    validate(mesh, waterLevels);
     if (!rock.empty() && rock.size() != mesh.vertices.size()) {
         throw std::invalid_argument("convertMesh: one share of rock per vertex expected");
     }
@@ -38,12 +51,15 @@ UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> 
     out.positions.reserve(mesh.vertices.size());
     out.normals.reserve(mesh.normals.size());
     out.colors.reserve(mesh.vertices.size());
-    for (std::size_t i = 0; i < mesh.vertices.size(); ++i) {
-        const Vec3f& vertex = mesh.vertices[i];
+    out.water.reserve(mesh.vertices.size());
+    for (std::size_t n = 0; n < mesh.vertices.size(); ++n) {
+        const Vec3f& vertex = mesh.vertices[n];
         out.positions.push_back(toUnrealOffset(vertex));
         out.colors.push_back(altitudeColor(originY + vertex.y));
+        out.water.push_back(waterLevels.empty() ? VertexWater{}
+                                                : vertexWater(waterLevels[n], originY + vertex.y));
         if (!rock.empty()) {
-            const double share = std::clamp(static_cast<double>(rock[i]), 0.0, 1.0);
+            const double share = std::clamp(static_cast<double>(rock[n]), 0.0, 1.0);
             out.colors.back().a = static_cast<std::uint8_t>(std::lround(255.0 * (1.0 - share)));
         }
     }

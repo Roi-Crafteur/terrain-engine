@@ -34,6 +34,8 @@ inline TileLattice latticeOf(const TileKey& key) {
 struct TileColumns {
     std::vector<float> heights;         // x varies fastest
     std::vector<float> continentalness; // of each column, for the climate
+    // The water over each column (HeightSample::waterLevel), kNoWaterLevel on dry land.
+    std::vector<float> waterLevels;
     // The rock of each column in three dimensions (phase 12A), only when a face lies at one of
     // them: empty otherwise, and the tile is that of the relief alone.
     std::vector<RockColumn> rock;
@@ -45,6 +47,9 @@ struct TileColumns {
     }
     [[nodiscard]] float continentalnessAt(int i, int k) const {
         return continentalness[static_cast<std::size_t>(k * kGridSamples + i)];
+    }
+    [[nodiscard]] float waterAt(int i, int k) const {
+        return waterLevels[static_cast<std::size_t>(k * kGridSamples + i)];
     }
 };
 
@@ -78,9 +83,12 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     }
     columns.heights.reserve(kCount);
     columns.continentalness.reserve(kCount);
+    columns.waterLevels.reserve(kCount);
     for (const HeightSample& sample : samples) {
         columns.heights.push_back(sample.height);
         columns.continentalness.push_back(sample.continentalness);
+        columns.waterLevels.push_back(sample.water == WaterKind::None ? kNoWaterLevel
+                                                                      : sample.waterLevel);
     }
     const auto [low, high] = std::minmax_element(columns.heights.begin(), columns.heights.end());
     columns.minHeight = *low;
