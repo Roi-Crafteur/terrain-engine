@@ -35,6 +35,9 @@ struct HorizonTimingsReport {
     // samples they computed.
     StageStats epochs;
     std::int64_t samples = 0;
+    // The detail after the epochs (crests and normals of the GPU horizon), from the commit of the
+    // oldest epoch waiting for it until all of it is in.
+    StageStats detail;
 };
 
 // Measures of the far horizon, recorded by the thread owning it (not thread-safe).
@@ -47,6 +50,7 @@ public:
     void recordUpload(HorizonSection section, double conversionMilliseconds,
                       double uploadMilliseconds, std::size_t vertices);
     void recordEpoch(double milliseconds, std::int64_t samples);
+    void recordDetail(double milliseconds);
 
     [[nodiscard]] const HorizonTimingsReport& snapshot() const { return report_; }
     // The measures since the previous take (or the start), then starts again from zero.
@@ -63,6 +67,7 @@ private:
 //   horizon texels: upload 12 ticks 0.02 ms (max 0.05), 514 texels per tick
 //   horizon normals: upload 30 ticks 0.04 ms (max 0.30), 8224 texels per tick
 //   horizon epochs: 12 epochs 9.30 ms (max 21.00) from plan to commit, 9252 samples
+//   horizon detail: 12 epochs 31.20 ms (max 9800.00) from commit to crests and normals in
 [[nodiscard]] std::vector<std::string> describe(const HorizonTimingsReport& report);
 
 } // namespace terrain::unreal

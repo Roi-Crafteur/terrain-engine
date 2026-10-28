@@ -88,6 +88,10 @@ void HorizonTimings::recordEpoch(double milliseconds, std::int64_t samples) {
     report_.samples += samples;
 }
 
+void HorizonTimings::recordDetail(double milliseconds) {
+    add(report_.detail, milliseconds);
+}
+
 HorizonTimingsReport HorizonTimings::take() {
     return std::exchange(report_, HorizonTimingsReport{});
 }
@@ -106,6 +110,10 @@ std::vector<std::string> describe(const HorizonTimingsReport& report) {
     if (report.epochs.tiles > 0) {
         lines.push_back(describeStats("horizon epochs:", report.epochs, "epochs") +
                         " from plan to commit, " + std::to_string(report.samples) + " samples");
+    }
+    if (report.detail.tiles > 0) {
+        lines.push_back(describeStats("horizon detail:", report.detail, "epochs") +
+                        " from commit to crests and normals in");
     }
     return lines;
 }

@@ -22,17 +22,26 @@ HorizonParams horizonParams(const WorldSize& world, const HorizonGpuParams& para
     return horizon;
 }
 
-std::unique_ptr<HorizonNormalStream> normalStream(const Heightfield& field,
+// Exactly one of them raises the samples to their crests: the epochs, or the detail after them.
+HorizonParams epochParams(const HorizonParams& horizon, const HorizonGpuParams& params) {
+    HorizonParams epochs = horizon;
+    epochs.crestRatio = params.deferCrests ? 0 : horizon.crestRatio;
+    return epochs;
+}
+
+std::unique_ptr<HorizonNormalStream> detailStream(const Heightfield& field,
                                                   const HorizonParams& horizon,
                                                   const HorizonGpuParams& params,
                                                   const JobLauncher& launch) {
-    if (params.normalRatio == 0) {
+    HorizonParams detail = horizon;
+    detail.crestRatio = params.deferCrests ? horizon.crestRatio : 0;
+    if (params.normalRatio == 0 && detail.crestRatio == 0) {
         return nullptr;
     }
     HorizonNormalParams normals;
     normals.ratio = params.normalRatio;
     normals.maxJobsInFlight = params.normalJobs;
-    return std::make_unique<HorizonNormalStream>(field, horizon, normals, launch);
+    return std::make_unique<HorizonNormalStream>(field, detail, normals, launch);
 }
 
 std::int64_t samplesWritten(const HorizonChanges& changes) {
@@ -55,9 +64,10 @@ HorizonGpuStreamer::HorizonGpuStreamer(const Heightfield& field, const Ecology& 
       radius_(params.planetRadiusMeters > 0.0 ? params.planetRadiusMeters
                                               : terrain::unreal::planetRadiusMeters(world)),
       edits_(edits),
-      sampler_(field, ecology, horizonParams_, edits ? edits->source() : EditSummarySource{}),
+      sampler_(field, ecology, epochParams(horizonParams_, params),
+               edits ? edits->source() : EditSummarySource{}),
       shown_(static_cast<std::size_t>(horizonParams_.levels)),
-      normals_(normalStream(field, horizonParams_, params, launch)),
+      detail_(detailStream(field, horizonParams_, params, launch)),
       runner_(sampler_, std::move(launch),
               [sea = params.sea](const HorizonPiece& piece) { return pieceUploads(piece, sea); },
               HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples}, edits) {}
@@ -96,13 +106,17 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
                 result.waterRegions.push_back(std::move(region));
             }
         }
-        if (normals_) {
-            normals_->written(runner_.clipmap(), commit.changes, result.normalRegions);
+        if (detail_) {
+            detail_->written(runner_.clipmap(), commit.changes, result.normalRegions);
+            detailStart_ = detailStart_.value_or(now);
+        }
+        if (normals() != nullptr) {
             refreshEditedNeighbors(commit.changes, result.normalRegions);
         }
     }
-    if (normals_) {
-        normals_->collect(result.normalRegions);
+    collectDetail(result);
+    if (normals() != nullptr) {
+        // After the detail of the jobs: the edited samples take the slopes of the grid.
         followEditedGrid(result.normalRegions);
     }
     if (runner_.busy() && !epochStart_) {
@@ -110,6 +124,28 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
     }
     placeLevels(observer, frame, result);
     return result;
+}
+
+// The detail computed since the last update: the normals, and the texels of the samples whose
+// crests rise, after those of the commit.
+void HorizonGpuStreamer::collectDetail(HorizonGpuUpdate& result) {
+    if (!detail_) {
+        return;
+    }
+    std::vector<CrestBand> crests;
+    detail_->collect(result.normalRegions, crests);
+    for (const CrestBand& band : crests) {
+        for (TexelRegion& region :
+             crestRegions(runner_.clipmap().level(band.level), side(), band, params_.sea)) {
+            result.regions.push_back(std::move(region));
+        }
+    }
+    if (detailStart_ && !detail_->busy()) {
+        const std::chrono::duration<double, std::milli> elapsed =
+            std::chrono::steady_clock::now() - *detailStart_;
+        result.detailMilliseconds = std::max(elapsed.count(), 1e-6);
+        detailStart_.reset();
+    }
 }
 
 // Whether the detail texels of the sample (i, k) of the window of a level follow the grid: the
@@ -133,7 +169,7 @@ bool HorizonGpuStreamer::followsGrid(int level, int i, int k) const {
 // cells no material reads, take their own slopes.
 void HorizonGpuStreamer::writeGridSlopes(const HorizonLevel& level, int i, int k,
                                          NormalRegion& region, int x, int z) const {
-    const int ratio = normals_->ratio();
+    const int ratio = normals()->ratio();
     const int last = side() - 1;
     std::array<HorizonTexel, 4> corners; // (i, k), (i + 1, k), (i, k + 1), (i + 1, k + 1)
     for (std::size_t c = 0; c < corners.size(); ++c) {
@@ -175,7 +211,7 @@ void HorizonGpuStreamer::followEditedGrid(std::vector<NormalRegion>& regions) co
         return;
     }
     const HorizonClipmap& clipmap = runner_.clipmap();
-    const int ratio = normals_->ratio();
+    const int ratio = normals()->ratio();
     for (NormalRegion& region : regions) {
         const HorizonLevel& level = clipmap.level(region.level);
         const HorizonIndex first = level.firstSlot();
@@ -224,7 +260,7 @@ void HorizonGpuStreamer::refreshEditedNeighbors(const HorizonChanges& changes,
                 continue;
             }
             for (NormalRegion& region :
-                 pendingRegions(change.level, side(), normals_->ratio(), {x, z, x + 1, z + 1})) {
+                 pendingRegions(change.level, side(), normals()->ratio(), {x, z, x + 1, z + 1})) {
                 regions.push_back(std::move(region));
             }
         }
@@ -233,9 +269,13 @@ void HorizonGpuStreamer::refreshEditedNeighbors(const HorizonChanges& changes,
 
 void HorizonGpuStreamer::waitIdle() {
     runner_.waitIdle();
-    if (normals_) {
-        normals_->waitIdle();
+    if (detail_) {
+        detail_->waitIdle();
     }
+}
+
+bool HorizonGpuStreamer::busy() {
+    return runner_.busy() || (detail_ != nullptr && detail_->busy());
 }
 
 GridMesh HorizonGpuStreamer::level0Grid() const {

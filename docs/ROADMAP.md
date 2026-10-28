@@ -261,10 +261,12 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   caméra partout sur la planète (perspective aérienne jusqu'au bout de l'horizon), mer
   colorée selon la profondeur avec vagues, reflet du ciel et du soleil
 - préfiltrage des crêtes lointaines : fait — à partir du niveau 1, le coin le plus haut de
-  chaque maille monte au sommet de la maille, cherché 2 fois plus finement (les fonds de vallée
-  ne montent jamais) ; silhouette trop basse de 0,10° au lieu de 0,17° en moyenne depuis la
-  vallée du K2, pour ×1,4 sur l'époque. Plus tard : 4 fois plus finement (0,08°), presque
-  gratuit avec une grille commune aux normales de détail, calculée en arrière-plan
+  chaque maille monte au sommet de la maille, cherché 4 fois plus finement (les fonds de vallée
+  ne montent jamais) ; silhouette trop basse de 0,09° au lieu de 0,18° en moyenne depuis la
+  vallée du K2. En GPU, les crêtes sont calculées après l'époque, avec les normales de détail et
+  dans la même grille fine : l'horizon s'affiche au coût d'une époque sans crêtes, puis ses
+  crêtes arrivent ; crêtes et normales complètes plus tôt qu'avant avec les crêtes à 2 dans
+  l'époque (36 s au lieu de 45 s au K2 sur un thread)
 
 ### Phase 14 — Rendu Unreal
 - références : Enshrouded, shaders Minecraft (Complementary, BSL, SEUS),
