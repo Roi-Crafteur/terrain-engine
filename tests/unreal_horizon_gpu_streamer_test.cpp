@@ -5,7 +5,8 @@
 // world turn only moves the levels, the grids, and the geomorphing: its factor (0 inside, 1 on
 // the border wherever the viewer stands, continuous) and its target, the surface of the coarser
 // level read in its texels at every sample of the finer one, with the crests and with point
-// samples (then as before them, bit for bit); the log line of the texel uploads.
+// samples (then as before them, bit for bit); the water codes written with the texels; the log
+// line of the texel uploads.
 #include "horizon_gpu_streamer.hpp"
 #include "horizon_morph.hpp"
 #include "horizon_timings.hpp"
@@ -15,8 +16,10 @@
 #include "test_assert.hpp"
 #include "unreal_horizon_gpu_support.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <map>
@@ -60,8 +63,8 @@ struct Session {
     Gpu gpu{129};
 };
 
-// The texels of every window are those of the samples of the clipmap raised to their crests: the
-// samples of a sampler with the crests in the epochs.
+// The texels and the water codes of every window are those of the samples of the clipmap raised
+// to their crests: the samples of a sampler with the crests in the epochs.
 bool texelsMatch(const Session& session) {
     const terrain::HorizonSampler reference(session.world.field, session.world.ecology,
                                             session.streamer.params());
@@ -80,6 +83,14 @@ void testFirstAndSteps() {
     // Every texel, and those of the samples that rise to their crests again (the jobs run within
     // the update here).
     TEST_CHECK(texels >= 5u * 129u * 129u);
+    std::size_t codes = 0;
+    std::size_t sea = 0; // the ocean around the mountains of the default world
+    for (const auto& region : first.waterRegions) {
+        codes += region.data.size();
+        sea += static_cast<std::size_t>(
+            std::count(region.data.begin(), region.data.end(), terrain::unreal::waterCode(0.0f)));
+    }
+    TEST_CHECK(codes == 5u * 129u * 129u && sea > 0);
     session.gpu.apply(first);
     TEST_CHECK(texelsMatch(session));
     TEST_CHECK(session.streamer.update({0.0, 0.0, 0.0}, kFrame).empty());
@@ -101,6 +112,9 @@ void testFirstAndSteps() {
         for (const auto& region : update.regions) {
             bands = bands && moved.contains(region.level) &&
                     region.data.size() < 129u * 129u * kTexelFloats;
+        }
+        for (const auto& region : update.waterRegions) {
+            bands = bands && moved.contains(region.level) && region.data.size() < 129u * 129u;
         }
         for (const LevelPlacement& placement : update.placements) {
             bands = bands && (moved.contains(placement.level) ||

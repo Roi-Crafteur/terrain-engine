@@ -63,6 +63,8 @@ struct LevelPlacement {
 // levels of an epoch move together, so they always nest without gap or overlap.
 struct HorizonGpuUpdate {
     std::vector<TexelRegion> regions;
+    // The water codes of the samples the epochs wrote (the crests rewrite texels only).
+    std::vector<WaterRegion> waterRegions;
     std::vector<NormalRegion> normalRegions; // detail normals: pending, then computed
     std::vector<LevelPlacement> placements;  // the levels whose placement changed
     // With an epoch committed: the coarsest level it moved (-1: none), whether it showed the
@@ -77,7 +79,8 @@ struct HorizonGpuUpdate {
     double detailMilliseconds = 0.0;
 
     [[nodiscard]] bool empty() const {
-        return regions.empty() && normalRegions.empty() && placements.empty();
+        return regions.empty() && waterRegions.empty() && normalRegions.empty() &&
+               placements.empty();
     }
 };
 

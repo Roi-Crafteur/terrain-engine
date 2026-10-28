@@ -51,6 +51,10 @@ namespace
 	const FName CoarseNormalsParameter(TEXT("CoarseNormals"));
 	const FName NormalRatioParameter(TEXT("NormalRatio"));
 	const FName HasNormalsParameter(TEXT("HasNormals"));
+	// The water codes of the level and of the next coarser one (task 7b), read by no material yet.
+	const FName WaterParameter(TEXT("HorizonWater"));
+	const FName CoarseWaterParameter(TEXT("CoarseWater"));
+	constexpr int32 WaterTexelBytes = static_cast<int32>(sizeof(uint16));
 
 	// Parameters of the materials of the tiles that read the surface of level 0
 	// (Scripts/temporary_terrain_look.py).
@@ -110,6 +114,28 @@ namespace
 		return Texture;
 	}
 
+	// The water codes of a level (Bridge/horizon_textures.hpp): R16 UNORM, nearest, wrapped as
+	// the slots, every texel 0 (no water) until the epochs write it. A material reads the code of
+	// a texel as round(Load(...).r * 65535): the level is kWaterLevelLowest + (code - 1) *
+	// kWaterLevelStep meters, none for 0.
+	UTexture2D* CreateWater(int32 Side, int32 Level)
+	{
+		UTexture2D* Texture = UTexture2D::CreateTransient(Side, Side, PF_G16,
+			FName(*FString::Printf(TEXT("HorizonWater%d"), Level)));
+		Texture->Filter = TF_Nearest;
+		Texture->SRGB = false;
+		Texture->AddressX = TA_Wrap;
+		Texture->AddressY = TA_Wrap;
+		Texture->NeverStream = true;
+		Texture->CompressionSettings = TC_HDR;
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		FMemory::Memzero(Mip.BulkData.Lock(LOCK_READ_WRITE),
+			static_cast<SIZE_T>(Side) * static_cast<SIZE_T>(Side) * WaterTexelBytes);
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+		return Texture;
+	}
+
 	FLinearColor DebugTint(int32 Level)
 	{
 		FLinearColor Tint =
@@ -160,9 +186,11 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 	{
 		Looks[Level]->SetTextureParameterValue(CoarseTexelsParameter,
 			Textures[FMath::Min(Level + 1, Levels - 1)]);
+		Looks[Level]->SetTextureParameterValue(CoarseWaterParameter,
+			WaterTextures[FMath::Min(Level + 1, Levels - 1)]);
 		BindNormals(Level);
 	}
-	GpuBytes += static_cast<int64>(Levels) * Side * Side * TexelBytes;
+	GpuBytes += static_cast<int64>(Levels) * Side * Side * (TexelBytes + WaterTexelBytes);
 	if (Streamer.normals() != nullptr)
 	{
 		GpuBytes += Streamer.normals()->textureBytes();
@@ -190,6 +218,8 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 {
 	UTexture2D* Texture = CreateTexels(Side, Level);
 	Textures.Add(Texture);
+	UTexture2D* Water = CreateWater(Side, Level);
+	WaterTextures.Add(Water);
 	if (NormalRatio > 0)
 	{
 		NormalTextures.Add(CreateNormals(Side * NormalRatio, Level));
@@ -198,6 +228,7 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	Looks.Add(Look);
 	const double PitchCm = terrain::levelPitch(Streamer.params(), Level) * 100.0;
 	Look->SetTextureParameterValue(TexelsParameter, Texture);
+	Look->SetTextureParameterValue(WaterParameter, Water);
 	Look->SetScalarParameterValue(CellsParameter,
 		static_cast<float>(Streamer.params().cellsPerSide));
 	Look->SetScalarParameterValue(HasCoarserParameter,
@@ -253,7 +284,7 @@ UStaticMeshComponent* UTerrainHorizonClipmap::CreateGridComponent(UStaticMesh* M
 void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 	terrain::unreal::HorizonTimings& Timings)
 {
-	if (!Update.regions.empty())
+	if (!Update.regions.empty() || !Update.waterRegions.empty())
 	{
 		const double Start = FPlatformTime::Seconds();
 		std::size_t Texels = 0;
@@ -262,6 +293,10 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 			Texels += static_cast<std::size_t>(Region.width) *
 				static_cast<std::size_t>(Region.height);
 			UploadRegion(Region);
+		}
+		for (terrain::unreal::WaterRegion& Region : Update.waterRegions)
+		{
+			UploadWater(Region);
 		}
 		Timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0,
 			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
@@ -312,6 +347,23 @@ void UTerrainHorizonClipmap::UploadRegion(terrain::unreal::TexelRegion& Region)
 		[Texels](uint8*, const FUpdateTextureRegion2D* Regions)
 		{
 			delete Texels;
+			delete Regions;
+		});
+}
+
+// The water codes of a region, handed over to the render thread without a copy.
+void UTerrainHorizonClipmap::UploadWater(terrain::unreal::WaterRegion& Region)
+{
+	auto* Codes = new std::vector<uint16_t>(std::move(Region.data));
+	auto* Rect = new FUpdateTextureRegion2D(static_cast<uint32>(Region.x),
+		static_cast<uint32>(Region.z), 0, 0, static_cast<uint32>(Region.width),
+		static_cast<uint32>(Region.height));
+	WaterTextures[Region.level]->UpdateTextureRegions(0, 1, Rect,
+		static_cast<uint32>(Region.width * WaterTexelBytes), static_cast<uint32>(WaterTexelBytes),
+		reinterpret_cast<uint8*>(Codes->data()),
+		[Codes](uint8*, const FUpdateTextureRegion2D* Regions)
+		{
+			delete Codes;
 			delete Regions;
 		});
 }

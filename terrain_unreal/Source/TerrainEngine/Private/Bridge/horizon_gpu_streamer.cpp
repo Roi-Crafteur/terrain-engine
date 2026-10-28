@@ -3,6 +3,8 @@
 #include "horizon_mesh.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <span>
 #include <utility>
 
 namespace terrain::unreal {
@@ -63,7 +65,7 @@ HorizonGpuStreamer::HorizonGpuStreamer(const Heightfield& field, const Ecology& 
       shown_(static_cast<std::size_t>(horizonParams_.levels)),
       detail_(detailStream(field, horizonParams_, params, launch)),
       runner_(sampler_, std::move(launch),
-              [sea = params.sea](const HorizonPiece& piece) { return pieceTexels(piece, sea); },
+              [sea = params.sea](const HorizonPiece& piece) { return pieceUploads(piece, sea); },
               HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples}) {}
 
 HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const UnrealFrame& frame) {
@@ -87,8 +89,17 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
             epochStart_.reset();
         }
         for (const PreparedPiece& piece : commit.pieces) {
-            for (TexelRegion& region : texelRegions(piece.level, side(), piece.rect, piece.data)) {
+            // pieceUploads: the texels, then the water codes.
+            const std::span<const float> data(piece.data);
+            const std::size_t texels = std::min(
+                data.size(), static_cast<std::size_t>(piece.rect.count()) * kTexelFloats);
+            for (TexelRegion& region :
+                 texelRegions(piece.level, side(), piece.rect, data.first(texels))) {
                 result.regions.push_back(std::move(region));
+            }
+            for (WaterRegion& region :
+                 waterRegions(piece.level, side(), piece.rect, data.subspan(texels))) {
+                result.waterRegions.push_back(std::move(region));
             }
         }
         if (detail_) {

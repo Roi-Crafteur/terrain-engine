@@ -77,6 +77,13 @@ public:
 		meta = (EditCondition = "bCaves"))
 	bool bCaveRegions = false;
 
+	// The planet level of the seed (phase 11B), written by terrain_make_planet: its hydrology
+	// carves the rivers and fills the lakes of the tiles and of the horizon. Built and written
+	// there when the file does not hold it (minutes for the whole planet). Empty: the relief alone,
+	// without rivers or lakes. A relative path is relative to the working directory of the process.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|World")
+	FString PlanetFile;
+
 	// The point of terrain_core (meters, x east, z south) whose ground lies at the Unreal origin.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|World")
 	double CoreOriginX = 0.0;

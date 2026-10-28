@@ -48,11 +48,19 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 	{
 		Colors.Emplace(Color.r, Color.g, Color.b, Color.a);
 	}
+	// The water over each vertex in UV channel 0: (depth in meters, 1 under water / 0 dry), its
+	// level at Z + 100 depth (Bridge/tile_mesh_conversion.hpp).
+	TArray<FVector2D> Water;
+	Water.Reserve(static_cast<int32>(Mesh.water.size()));
+	for (const terrain::unreal::VertexWater& Over : Mesh.water)
+	{
+		Water.Emplace(Over.depth, Over.wet);
+	}
 	TArray<int32> Triangles;
 	Triangles.Append(Mesh.triangles.data(), static_cast<int32>(Mesh.triangles.size()));
 
 	Component->SetWorldLocation(FVector(Tile.origin.x, Tile.origin.y, Tile.origin.z));
-	Component->CreateMeshSection(0, Vertices, Triangles, Normals, TArray<FVector2D>(), Colors,
+	Component->CreateMeshSection(0, Vertices, Triangles, Normals, Water, Colors,
 		TArray<FProcMeshTangent>(), Tile.collision);
 	Component->SetCollisionEnabled(
 		Tile.collision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);

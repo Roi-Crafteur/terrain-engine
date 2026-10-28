@@ -5,8 +5,8 @@
 // small districts. Tiles of the same LOD share their side exactly. A tile stitched to a coarser one
 // holds the samples of that tile, carved with its detail (cave_seams_test.cpp, without
 // districts): every coarse vertex lies on the fine outline, every fine vertex on the coarse
-// lattice lines on the coarse outline, and the others within half a coarse cell, the known limit
-// of the coarse caves.
+// lattice lines on the coarse outline, and the others on it too (lod_seams.cpp: before it, they
+// lay up to half a coarse cell away).
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
@@ -137,8 +137,7 @@ bool onCoarseLattice(FacePoint p, double coarseCell) {
 constexpr double kSeamTolerance = 1e-5;
 
 // A tile of LOD lod stitched to a coarser neighbor across a plane crossing the tube: every coarse
-// vertex lies on the fine outline, every fine vertex of the coarse lattice lines on the coarse
-// outline, and the others within half a coarse cell (the known limit of the coarse caves).
+// vertex lies on the fine outline, every fine vertex on the coarse outline.
 void checkStitched(const TerrainTiles& tiles, const Crossing& c, int lod) {
     const TilePair pair = tilesAround(c, lod, lod + 1);
     const TileData coarse = tiles.generate({pair.near, 0});
@@ -167,12 +166,12 @@ void checkStitched(const TerrainTiles& tiles, const Crossing& c, int lod) {
     const std::size_t rawCave = deeperThan(
         tiles, inRange(seam_test::facePoints(raw, c.plane), uMin, uMax), c.plane, minRoof);
     std::printf(
-        "    LOD %d | LOD %d: coarse gap %.2g, fine gap %.2g on the lattice, %.3f elsewhere "
+        "    LOD %d | LOD %d: coarse gap %.2g, fine gap %.2g on the lattice, %.2g elsewhere "
         "(%.0f m cells), %zu fine vertices in the cave\n",
         lod, lod + 1, coarseGap, latticeGap, otherGap, coarseCell, fineCave);
     TEST_CHECK(fine.size() >= 2 && rawCave > 0);
     TEST_CHECK(coarseGap <= kSeamTolerance && latticeGap <= kSeamTolerance);
-    TEST_CHECK(otherGap <= 0.5 * coarseCell);
+    TEST_CHECK(otherGap <= seam_test::outlineTolerance(lod));
     // The far LOD 3 carves nothing: its stitched neighbor closes the cave on their side.
     TEST_CHECK(lod + 1 == terrain::kMaxLod ? fineCave == 0 : fineCave > 0);
 }

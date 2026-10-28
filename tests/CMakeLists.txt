@@ -76,6 +76,7 @@ terrain_add_test(voronoi_boundaries_test terrain_core)
 terrain_add_test(voronoi_png_test terrain_core)
 terrain_add_test(lod_test terrain_core)
 terrain_add_test(lod_seams_test terrain_core)
+include(${CMAKE_CURRENT_LIST_DIR}/lod_seams_tests.cmake)
 terrain_add_test(stream_manager_test terrain_core)
 terrain_add_test(modifications_test terrain_core)
 terrain_add_test(block_section_test terrain_core)
@@ -496,3 +497,4 @@ add_test(NAME export_silhouette_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_silhouette>
             -DOUT=${CMAKE_BINARY_DIR}/silhouette_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_silhouette_bad_args.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/water_level_tests.cmake) # task 7b: the water level

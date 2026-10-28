@@ -10,6 +10,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <map>
@@ -24,7 +25,8 @@ using terrain::unreal::HorizonTexel;
 using terrain::unreal::kTexelFloats;
 using terrain::unreal::LevelPlacement;
 
-// What the GPU of Unreal holds: a texture and a placement per level, the regions written in order.
+// What the GPU of Unreal holds: a texture of texels, one of water codes and a placement per level,
+// the regions written in order.
 class Gpu {
 public:
     explicit Gpu(int side) : side_(side) {}
@@ -43,9 +45,27 @@ public:
                 }
             }
         }
+        for (const terrain::unreal::WaterRegion& region : update.waterRegions) {
+            std::vector<std::uint16_t>& codes = water_[region.level];
+            codes.resize(static_cast<std::size_t>(side_ * side_), 9);
+            for (int row = 0; row < region.height; ++row) {
+                for (int column = 0; column < region.width; ++column) {
+                    codes[static_cast<std::size_t>((region.z + row) * side_ + region.x + column)] =
+                        region.data[static_cast<std::size_t>(row * region.width + column)];
+                }
+            }
+        }
         for (const LevelPlacement& placement : update.placements) {
             placements_[placement.level] = placement;
         }
+    }
+
+    // The water code the material reads for the sample (i, k) of the window of a level.
+    [[nodiscard]] std::uint16_t water(int level, int i, int k) const {
+        const LevelPlacement& placement = placements_.at(level);
+        const auto x = static_cast<int>((placement.firstSlot.x + i) % side_);
+        const auto z = static_cast<int>((placement.firstSlot.z + k) % side_);
+        return water_.at(level)[static_cast<std::size_t>(z * side_ + x)];
     }
 
     // The texel the material reads for the sample (i, k) of the window of a level.
@@ -85,11 +105,12 @@ public:
 private:
     int side_;
     std::map<int, std::vector<float>> textures_;
+    std::map<int, std::vector<std::uint16_t>> water_;
     std::map<int, LevelPlacement> placements_;
 };
 
-// The texels of every window of a clipmap as a sampler computes their samples (with the crests in
-// the epochs: the reference of what the GPU shows once the detail is in).
+// The texels and the water codes of every window of a clipmap as a sampler computes their samples
+// (with the crests in the epochs: the reference of what the GPU shows once the detail is in).
 inline bool texelsMatch(const Gpu& gpu, const terrain::HorizonClipmap& clipmap,
                         const terrain::HorizonSampler& reference) {
     for (int n = 0; n < clipmap.levelCount(); ++n) {
@@ -99,7 +120,8 @@ inline bool texelsMatch(const Gpu& gpu, const terrain::HorizonClipmap& clipmap,
             for (int i = 0; i < level.side(); ++i) {
                 const terrain::HorizonCell& cell =
                     cells[static_cast<std::size_t>(k * level.side() + i)];
-                if (!(gpu.texel(n, i, k) == terrain::unreal::horizonTexel(cell, true))) {
+                if (!(gpu.texel(n, i, k) == terrain::unreal::horizonTexel(cell, true)) ||
+                    gpu.water(n, i, k) != terrain::unreal::waterCode(cell.waterLevel)) {
                     return false;
                 }
             }

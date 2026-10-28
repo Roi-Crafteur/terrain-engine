@@ -127,6 +127,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 |---|---|---|
 | `Seed` | 20261019 | seed du monde |
 | `bCaves`, `bCaveRegions` | non | grottes, et leurs régions (galeries, rivières, lave) |
+| `PlanetFile` | vide | fichier du niveau Planète de la seed (`terrain_make_planet`) : fleuves et lacs des tuiles et de l'horizon, et leur niveau (section 14) ; construit et écrit là s'il manque (quelques minutes) ; vide : le relief seul, sans fleuves ni lacs |
 | `CoreOriginX`, `CoreOriginZ` | 0, 0 | point du core (m) dont le sol est à l'origine d'Unreal |
 | `Lod0/1/2DistanceChunks`, `ViewDistanceChunks` | 4, 8, 16, 32 | anneaux de LOD en chunks de 16 m ; Lod1 − Lod0 ≥ 2, Lod2 − Lod1 ≥ 4 |
 | `WorkerThreads` | 2 | threads de génération |
@@ -539,3 +540,11 @@ décrit dans [`TEMPORARY_MATERIAL.md`](TEMPORARY_MATERIAL.md) : règles, install
 réglages, coût, limites, et trois défauts de rendu (le trait sombre au bord des tuiles, corrigé
 par le fondu de `HorizonDropCm` ; les dents de scie sous un soleil bas, corrigées par des
 normales lissées ; la « ligne d'ombre » au pied de la chaîne, une arête du relief).
+
+## 14. Le niveau de l'eau (phase 11, tâche 7b)
+
+Le niveau de l'eau du core (mer, lacs, fleuves, chutes) arrive dans Unreal : aux sommets des
+tuiles et de l'horizon CPU dans le canal UV 0, et dans une texture d'eau par niveau de l'horizon GPU
+(`HorizonWater`, `CoarseWater`). Aucun matériau ne le lit encore : l'image ne change pas. Il faut
+un fichier planète (`PlanetFile`, section 5). Formats, lecture, mémoire et limites :
+[`WATER_LEVEL.md`](WATER_LEVEL.md).

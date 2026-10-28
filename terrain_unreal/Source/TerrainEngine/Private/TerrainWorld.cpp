@@ -51,6 +51,7 @@ namespace
 		Params.seed = static_cast<std::uint64_t>(World.Seed);
 		Params.caves = World.bCaves;
 		Params.caveRegions = World.bCaves && World.bCaveRegions;
+		Params.planetFile = TCHAR_TO_UTF8(*World.PlanetFile);
 		Params.stream.lod.splitDistance = {
 			World.Lod0DistanceChunks, World.Lod1DistanceChunks, World.Lod2DistanceChunks};
 		Params.stream.lod.viewDistance = World.ViewDistanceChunks;
