@@ -125,6 +125,9 @@ struct Depression {
 // macro coast: the local layer alone decides whether it is land or sea.
 class Hydrology;   // the water of the world (water/hydrology.hpp)
 struct RiverCarve; // what its valleys make of a point (water/hydrology.hpp)
+namespace wall_faces {
+struct Site; // what the walls report at a point (internal, wall_faces.hpp)
+} // namespace wall_faces
 
 class Heightfield {
 public:
@@ -192,20 +195,22 @@ private:
                  std::span<HeightSample> samples, Memos& memos) const;
 
     // sampleAt without the hydrology, through the memos during a batch call (null otherwise).
-    // With rock, the faces of the relief at the point too (rock_faces.hpp), not yet anchored.
+    // With a site, what the walls of the mountains report at the point (their faces, phase 12A).
     [[nodiscard]] HeightSample reliefWith(double x, double z, Memos* memos,
-                                          RockColumn* rock = nullptr) const;
-    // Anchors the faces of the rock of (x, z) on the relief (heightfield_rock.cpp).
-    void anchorFaces(double x, double z, Memos& memos, RockColumn& rock) const;
+                                          wall_faces::Site* site = nullptr) const;
+    // Places the faces the walls found at (x, z) along the slope of their ground and anchors them
+    // on the relief (heightfield_rock.cpp), into rock.
+    void placeFaces(double x, double z, Memos& memos, const wall_faces::Site& site,
+                    RockColumn& rock) const;
     void continentalnessAt(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] float mountainAt(double x, double z, float mask, Memos* memos) const;
     // The warped point of the ridged noise (the warp of the geography when it is enabled).
     [[nodiscard]] std::array<double, 2> warpedAt(double x, double z, Memos* memos) const;
     // reliefWith on the planetary geography (heightfield_geography.cpp), at a canonical point:
     // its regional elevation, the local relief around it and the ridged mountains.
-    // With rock, the faces of its walls, their heights over the top of the walls.
+    // With a site, what its walls report.
     [[nodiscard]] HeightSample geographySample(double x, double z, Memos* memos,
-                                               RockColumn* rock = nullptr) const;
+                                               wall_faces::Site* site = nullptr) const;
     // The intensity of the relief at the point: that of the map with the spurs of the chains.
     [[nodiscard]] float reliefAt(double x, double z, float mapRelief, Memos* memos) const;
     // The mountains at a point: their height above the base, that of their great forms alone
@@ -249,7 +254,7 @@ private:
     // (the base and the great forms of the mountains).
     [[nodiscard]] float wallsAt(double x, double z, float ground, const MountainForm& form,
                                 float intensity, float character, Memos* memos,
-                                RockColumn* rock = nullptr) const;
+                                wall_faces::Site* site = nullptr) const;
 
     HeightfieldParams params_;
     WorldSize world_;

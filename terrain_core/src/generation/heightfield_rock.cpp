@@ -4,11 +4,19 @@
 #include "terrain/generation/heightfield.hpp"
 
 #include "heightfield_layers.hpp"
+#include "wall_faces.hpp"
 
 #include <cstddef>
 #include <stdexcept>
 
 namespace terrain {
+
+namespace {
+
+// The slope of the ground of the walls at a column is measured kProbe meters away.
+constexpr double kProbe = 1.0;
+
+} // namespace
 
 void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> zs,
                             std::span<HeightSample> out, std::span<RockColumn> rock) const {
@@ -19,9 +27,11 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
     Memos memos;
     for (std::size_t i = 0; i < xs.size(); ++i) {
         rock[i] = RockColumn{};
-        out[i] = reliefWith(xs[i], zs[i], &memos, &rock[i]);
+        wall_faces::Site site;
+        site.faces = true;
+        out[i] = reliefWith(xs[i], zs[i], &memos, &site);
         rock[i].uncarved = out[i].height;
-        anchorFaces(xs[i], zs[i], memos, rock[i]);
+        placeFaces(xs[i], zs[i], memos, site, rock[i]);
     }
     if (hydrology_) {
         waterOf(xs, zs, out, memos);
@@ -31,12 +41,25 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
     }
 }
 
-// The faces the walls lay at (x, z), their heights relative to the column, anchored on the relief
-// at the edges of their runs; the faces that fade out are dropped.
-void Heightfield::anchorFaces(double x, double z, Memos& memos, RockColumn& rock) const {
-    RockColumn anchored;
-    for (std::size_t i = 0; i < rock.faceCount; ++i) {
-        RockFace face = rock.faces[i];
+void Heightfield::placeFaces(double x, double z, Memos& memos, const wall_faces::Site& site,
+                             RockColumn& rock) const {
+    if (site.count == 0) {
+        return;
+    }
+    // The slope of the ground of the walls, from kProbe meters away along x and along z (that of
+    // the great forms where the walls end there).
+    double gradX = site.gradX;
+    double gradZ = site.gradZ;
+    wall_faces::Site alongX;
+    wall_faces::Site alongZ;
+    static_cast<void>(reliefWith(x + kProbe, z, &memos, &alongX));
+    static_cast<void>(reliefWith(x, z + kProbe, &memos, &alongZ));
+    if (alongX.walls && alongZ.walls) {
+        gradX = (alongX.ground - site.ground) / kProbe;
+        gradZ = (alongZ.ground - site.ground) / kProbe;
+    }
+    for (std::size_t i = 0; i < site.count; ++i) {
+        RockFace face = wall_faces::placeFace(site.pending[i], gradX, gradZ);
         const double half = 0.5 * static_cast<double>(face.run);
         const double toTop = half + face.distance;
         const double toFoot = half - face.distance;
@@ -46,11 +69,9 @@ void Heightfield::anchorFaces(double x, double z, Memos& memos, RockColumn& rock
             reliefWith(x + toFoot * face.airX, z + toFoot * face.airZ, &memos).height;
         anchorFace(face, foot, top);
         if (face.weight > 0.0f) {
-            anchored.add(face);
+            rock.add(face);
         }
     }
-    anchored.uncarved = rock.uncarved;
-    rock = anchored;
 }
 
 RockColumn Heightfield::rockAt(double x, double z) const {

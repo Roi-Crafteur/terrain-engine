@@ -172,7 +172,7 @@ Raised raiseProfile(double full, double profile) {
 } // namespace
 
 HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
-                                          RockColumn* rock) const {
+                                          wall_faces::Site* site) const {
     const GeographySample g = geography_->sampleAt(x, z);
     HeightSample s;
     s.continentalness = static_cast<float>(std::clamp(g.coast / kContinentalScale, -1.0, 1.0));
@@ -219,7 +219,7 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
         // them afterward.
         const float top = std::max(
             s.base,
-            wallsAt(x, z, s.base + mountain.shape, mountain, intensity, g.character, memos, rock));
+            wallsAt(x, z, s.base + mountain.shape, mountain, intensity, g.character, memos, site));
         s.mountain = std::max(0.0f, s.mountain + (top - (s.base + mountain.shape)));
     }
     s.detail = detailAt(x, z, s.base, memos);
@@ -349,20 +349,26 @@ float Heightfield::mountainRavinesAt(const std::array<double, 2>& warped,
 
 float Heightfield::wallsAt(double x, double z, float ground, const MountainForm& form,
                            float intensity, float character, Memos* memos,
-                           RockColumn* rock) const {
+                           wall_faces::Site* site) const {
     const mountain_walls::Column column{static_cast<double>(ground), form.gradX, form.gradZ,
                                         intensity,  character, form.floor,
                                         form.crest, form.shape};
     mountain_walls::Memo* memo = memos != nullptr ? &memos->walls : nullptr;
-    if (rock == nullptr) {
+    if (site == nullptr) {
         return static_cast<float>(mountain_walls::surface(layers_->walls, column, x, z, memo));
     }
-    // As surface, with the faces of the walls in three dimensions (phase 12A) at the column.
+    // As surface, with what the walls report at the column (phase 12A).
+    site->walls = true;
+    site->ground = column.ground;
+    site->gradX = column.gradX;
+    site->gradZ = column.gradZ;
     const mountain_walls::Masks masks = mountain_walls::masks(layers_->walls, column, x, z, memo);
     if (!(masks.strata > 0.0) && !(masks.crystal > 0.0)) {
         return ground;
     }
-    wall_faces::addFaces(layers_->walls, masks, column, x, z, memo, *rock);
+    if (site->faces) {
+        wall_faces::addFaces(layers_->walls, masks, column, x, z, memo, *site);
+    }
     return static_cast<float>(mountain_walls::rockTop(layers_->walls, masks, x, z, column.ground,
                                                       column.gradX, column.gradZ, memo));
 }
