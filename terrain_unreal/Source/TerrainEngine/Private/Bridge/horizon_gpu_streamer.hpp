@@ -34,8 +34,9 @@ struct HorizonGpuParams {
     int normalRatio = 4;
     int normalJobs = 2;
     // The crests of the far mountains (HorizonParams::crestRatio): 0 for point samples, the
-    // horizon before them.
-    int crestRatio = HorizonParams{}.crestRatio;
+    // horizon before them. 4 by default: computed after the epochs from the grid of the detail
+    // normals (deferCrests), they cost little more than the normals.
+    int crestRatio = 4;
     // The crests computed after the epochs, with the detail normals, from the fine grid they read
     // (HorizonDetailSampler): the levels show as soon as their point samples are ready, the epochs
     // cost what they cost without crests, and the texels of the samples that rise are written
