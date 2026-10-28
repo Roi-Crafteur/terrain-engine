@@ -82,8 +82,7 @@ struct HorizonGpuUpdate {
 // With the edits of the session (TerrainSession::horizonEdits), the samples show the edited
 // ground: the epochs apply the staged edits between them and send the bands they change. The
 // detail normals are those of the generated relief: where at least half of a sample is edited,
-// its detail texels stay pending, and the material lights it with the normal of the grid, which
-// the edits shape.
+// its detail texels hold the slopes of the grid, which the edits shape (followEditedGrid).
 class HorizonGpuStreamer {
 public:
     // field and ecology (those of the tiles) and the edits must outlive the streamer and share the
@@ -123,7 +122,12 @@ private:
     [[nodiscard]] LevelPlacement placementOf(int level, const CorePoint& observer,
                                              const UnrealFrame& frame) const;
     void placeLevels(const CorePoint& observer, const UnrealFrame& frame, HorizonGpuUpdate& result);
-    void keepEditedPending(std::vector<NormalRegion>& regions) const;
+    [[nodiscard]] bool followsGrid(int level, int i, int k) const;
+    void writeGridSlopes(const HorizonLevel& level, int i, int k, NormalRegion& region, int x,
+                         int z) const;
+    void followEditedGrid(std::vector<NormalRegion>& regions) const;
+    void refreshEditedNeighbors(const HorizonChanges& changes,
+                                std::vector<NormalRegion>& regions) const;
 
     HorizonParams horizonParams_;
     HorizonGpuParams params_;

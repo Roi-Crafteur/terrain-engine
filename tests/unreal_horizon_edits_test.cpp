@@ -2,7 +2,7 @@
 // horizon_gpu_streamer, horizon_streamer): the console command and the edits it places ahead of
 // the camera; the session regenerates the tiles of an edit and stages it for the horizon; on the
 // GPU path the next epoch sends only the texels around it, which then match the edited samples,
-// and the detail normals of the samples edited over half of their footprint stay pending; on the
+// and the detail normals of the samples edited over half of their footprint follow the grid; on the
 // CPU path an edit far away rebuilds the bodies of the levels it writes, and of a finer level
 // whose border is stitched to samples it wrote.
 #include "horizon_gpu_streamer.hpp"
@@ -12,11 +12,12 @@
 
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
+#include "unreal_texture_mirror.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
-#include <map>
 #include <set>
 #include <string>
 #include <utility>
@@ -110,43 +111,6 @@ terrain::unreal::HorizonGpuParams gpuParams() {
     return params;
 }
 
-// The textures of Unreal: the samples and the detail normals of every level, by slot.
-struct Textures {
-    std::map<int, std::vector<float>> texels;
-    std::map<int, std::vector<std::uint16_t>> normals;
-    int side = 129;
-    int ratio = 4;
-
-    void apply(const terrain::unreal::HorizonGpuUpdate& update) {
-        for (const terrain::unreal::TexelRegion& r : update.regions) {
-            std::vector<float>& t = texels[r.level];
-            t.resize(static_cast<std::size_t>(side * side * terrain::unreal::kTexelFloats));
-            for (int row = 0; row < r.height; ++row) {
-                for (int c = 0; c < r.width * terrain::unreal::kTexelFloats; ++c) {
-                    t[static_cast<std::size_t>(
-                        ((r.z + row) * side + r.x) * terrain::unreal::kTexelFloats + c)] =
-                        r.data[static_cast<std::size_t>(
-                            row * r.width * terrain::unreal::kTexelFloats + c)];
-                }
-            }
-        }
-        const int texture = side * ratio;
-        for (const terrain::unreal::NormalRegion& r : update.normalRegions) {
-            std::vector<std::uint16_t>& t = normals[r.level];
-            t.resize(static_cast<std::size_t>(texture * texture * terrain::unreal::kNormalHalves),
-                     terrain::unreal::kNormalPendingHalf);
-            for (int row = 0; row < r.height; ++row) {
-                for (int c = 0; c < r.width * terrain::unreal::kNormalHalves; ++c) {
-                    t[static_cast<std::size_t>(
-                        ((r.z + row) * texture + r.x) * terrain::unreal::kNormalHalves + c)] =
-                        r.data[static_cast<std::size_t>(
-                            row * r.width * terrain::unreal::kNormalHalves + c)];
-                }
-            }
-        }
-    }
-};
-
 // The slot along an axis of the sample i of a window from its low corner, first slot first.
 int slotOf(std::int64_t first, int i, int side) {
     return static_cast<int>((first + i) % side);
@@ -158,7 +122,7 @@ void testGpuPath() {
     terrain::unreal::HorizonGpuStreamer streamer(
         session.tiles().heightfield(), session.tiles().ecology(), session.tiles().world(),
         gpuParams(), [](std::function<void()> job) { job(); }, &session.horizonEdits());
-    Textures textures;
+    horizon_test::TextureMirror textures;
     textures.apply(streamer.update({0.0, 0.0, 0.0}, frame));
     // A square of 160 m razed 300 m north of the player, in the window of level 0.
     const terrain::VolumeEdit razed = terrain::unreal::groundEditAt(
@@ -198,20 +162,24 @@ void testGpuPath() {
     }
     TEST_CHECK(match);
     const terrain::HorizonLevel& level0 = clipmap.level(0);
-    const auto pending = [&](double x, double z) {
+    // The first detail texel of the sample nearest to (x, z), and its cell.
+    const auto detail = [&](double x, double z) {
         const terrain::HorizonIndex sample = terrain::canonicalCenter(clipmap.params(), 0, x, z);
         const terrain::HorizonRect window = level0.window();
         const auto i =
             static_cast<int>(terrain::wrapIndex(sample.x - window.x0, level0.counts().x));
         const auto k =
             static_cast<int>(terrain::wrapIndex(sample.z - window.z0, level0.counts().z));
-        const int tx = slotOf(level0.firstSlot().x, i, 129) * textures.ratio;
-        const int tz = slotOf(level0.firstSlot().z, k, 129) * textures.ratio;
-        const auto at = static_cast<std::size_t>((tz * 129 * textures.ratio + tx) *
-                                                 terrain::unreal::kNormalHalves);
-        return textures.normals[0][at] == terrain::unreal::kNormalPendingHalf;
+        const std::uint16_t* texel =
+            textures.normalAt(0, slotOf(level0.firstSlot().x, i, 129) * textures.ratio,
+                              slotOf(level0.firstSlot().z, k, 129) * textures.ratio);
+        return std::pair{texel, level0.atWindow(i, k)};
     };
-    TEST_CHECK(pending(kX, kZ - 300.0) && !pending(kX, kZ));
+    // Computed at the player; in the middle of the square, the slope of the grid at the sample.
+    TEST_CHECK(detail(kX, kZ).first[0] != terrain::unreal::kNormalPendingHalf);
+    const auto [middle, cell] = detail(kX, kZ - 300.0);
+    TEST_CHECK(middle[0] == terrain::unreal::halfFromFloat(cell.gradX) &&
+               middle[1] == terrain::unreal::halfFromFloat(cell.gradZ));
     TEST_CHECK(clipmap.level(0)
                    .find(terrain::canonicalCenter(clipmap.params(), 0, kX, kZ - 300.0))
                    ->height < session.tiles().heightfield().heightAt(kX, kZ - 300.0));

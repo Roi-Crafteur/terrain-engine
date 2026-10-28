@@ -554,8 +554,11 @@ montre, en GPU comme en CPU.
   suivante ne recalcule et n'envoie que les bandes autour d'elle. Le matériau ne change pas (le sol
   d'origine, comme les tuiles).
 - **Normales de détail** (GPU) : elles sont calculées sans les modifications ; là où au moins la
-  moitié d'une maille est modifiée, ses texels restent « en attente » et le matériau l'éclaire
-  avec la normale de la grille, qui suit les modifications.
+  moitié d'une maille est modifiée, ses texels prennent les pentes de la grille, qui suit les
+  modifications (interpolées entre les 4 échantillons de sa maille, comme la pente lissée des
+  tuiles). Jamais « en attente » : le filtre bilinéaire du matériau mêlerait un texel en attente
+  aux texels voisins, et un faible poids donnerait une pente prise pour vraie, une normale
+  couchée éclairée par le ciel seul (une ligne couleur ciel le long des coins d'un bloc rasé).
 - **Coût mesuré** (Linux, `horizon_edits_cost_test`) : une explosion de 64 m se voit de loin 3 à
   4 ms après elle (sans époque en vol ; sinon après la fin de celle-ci) ; une montagne rasée
   (1 km × 1 km × 500 m) : environ 0,25 s pour lire son sol, 0,1 à 0,2 s pour son époque si le
