@@ -127,6 +127,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 |---|---|---|
 | `Seed` | 20261019 | seed du monde |
 | `bCaves`, `bCaveRegions` | non | grottes, et leurs régions (galeries, rivières, lave) |
+| `PlanetFile` | vide | fichier du niveau Planète de la seed (`terrain_make_planet`) : fleuves et lacs des tuiles et de l'horizon, et leur niveau (section 14) ; construit et écrit là s'il manque (quelques minutes) ; vide : le relief seul, sans fleuves ni lacs |
 | `CoreOriginX`, `CoreOriginZ` | 0, 0 | point du core (m) dont le sol est à l'origine d'Unreal |
 | `Lod0/1/2DistanceChunks`, `ViewDistanceChunks` | 4, 8, 16, 32 | anneaux de LOD en chunks de 16 m ; Lod1 − Lod0 ≥ 2, Lod2 − Lod1 ≥ 4 |
 | `WorkerThreads` | 2 | threads de génération |
