@@ -39,6 +39,9 @@ struct FTerrainHorizonLook
  * With the detail normals (Bridge/horizon_normal_stream.hpp), a second texture per level of
  * (257 * ratio)^2 texels (half floats: the slopes) lights the levels and the tiles finer than
  * their grids; its texels arrive after the samples, pending until then.
+ * The water (task 7b): a texture of 257 x 257 water codes per level (R16 UNORM, the level of the
+ * water over each sample, Bridge/horizon_textures.hpp), written with the texels and bound as
+ * HorizonWater and CoarseWater, read by no material yet.
  */
 UCLASS(Transient)
 class UTerrainHorizonClipmap : public UObject
@@ -76,6 +79,7 @@ private:
 	void CreateLevel(int32 Level, const terrain::unreal::HorizonGpuStreamer& Streamer,
 		UMaterialInterface* Material);
 	void UploadRegion(terrain::unreal::TexelRegion& Region);
+	void UploadWater(terrain::unreal::WaterRegion& Region);
 	void UploadNormals(terrain::unreal::NormalRegion& Region);
 	void BindNormals(int32 Level);
 	void Place(const terrain::unreal::LevelPlacement& Placement);
@@ -89,6 +93,9 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> Textures;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UTexture2D>> WaterTextures; // the water codes, one per level
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them

@@ -1,5 +1,7 @@
 #include "tile_mesh_conversion.hpp"
 
+#include "terrain/generation/water_kind.hpp"
+
 #include <limits>
 #include <stdexcept>
 
@@ -7,9 +9,12 @@ namespace terrain::unreal {
 
 namespace {
 
-void validate(const Mesh& mesh) {
+void validate(const Mesh& mesh, std::span<const float> waterLevels) {
     if (mesh.normals.size() != mesh.vertices.size()) {
         throw std::invalid_argument("convertMesh: one normal per vertex expected");
+    }
+    if (!waterLevels.empty() && waterLevels.size() != mesh.vertices.size()) {
+        throw std::invalid_argument("convertMesh: no water level or one per vertex expected");
     }
     if (mesh.indices.size() % 3 != 0) {
         throw std::invalid_argument("convertMesh: three indices per triangle expected");
@@ -26,15 +31,26 @@ void validate(const Mesh& mesh) {
 
 } // namespace
 
-UnrealMesh convertMesh(const Mesh& mesh, double originY) {
-    validate(mesh);
+VertexWater vertexWater(float level, double altitude) {
+    if (!(level > kNoWaterLevel)) {
+        return {};
+    }
+    return {static_cast<float>(static_cast<double>(level) - altitude), 1.0f};
+}
+
+UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> waterLevels) {
+    validate(mesh, waterLevels);
     UnrealMesh out;
     out.positions.reserve(mesh.vertices.size());
     out.normals.reserve(mesh.normals.size());
     out.colors.reserve(mesh.vertices.size());
-    for (const Vec3f& vertex : mesh.vertices) {
+    out.water.reserve(mesh.vertices.size());
+    for (std::size_t n = 0; n < mesh.vertices.size(); ++n) {
+        const Vec3f& vertex = mesh.vertices[n];
         out.positions.push_back(toUnrealOffset(vertex));
         out.colors.push_back(altitudeColor(originY + vertex.y));
+        out.water.push_back(waterLevels.empty() ? VertexWater{}
+                                                : vertexWater(waterLevels[n], originY + vertex.y));
     }
     for (const Vec3f& normal : mesh.normals) {
         out.normals.push_back(toUnrealDirection(normal));

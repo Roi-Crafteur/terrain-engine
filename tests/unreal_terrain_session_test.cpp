@@ -1,8 +1,8 @@
 // Session of the Unreal plugin on the real world: the frame on the ground of a point, the ground
 // under an Unreal position, the warm-up under a player with its collision tile and its surface
 // blend, the timings of the generations and conversions, invalid parameters, and the destruction
-// of a session while its workers generate tiles; with a planet file, the water of the world in
-// its tiles.
+// of a session while its workers generate tiles; with a planet file (in a folder whose name is
+// not ASCII), the water of the world in its tiles and its level at their vertices.
 #include "terrain_session.hpp"
 
 #include "storage_test_support.hpp"
@@ -14,9 +14,11 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
+#include <string>
 
 namespace {
 
@@ -138,18 +140,60 @@ void testDestroyWhileGenerating() {
     }
 }
 
-// With a planet file (on a small world: the level of the whole world takes minutes): the level
-// built and written to it the first time, read from it the next; the heightfield of the tiles
-// and of the horizon is the relief with its water, the valleys of its rivers carved (their floors
-// filled by the levees, 5 m at most).
+// The water of the tiles uploaded around a point under a river: at each vertex on a column of
+// the core, the Unreal Z of the vertex plus its depth is the level of the water of the core
+// there (the vertex water, UV channel 0); returns the vertices checked, -1 on a mismatch.
+long long checkUploadedWater(TerrainSession& session, double x, double z) {
+    const UnrealFrame frame = session.frameAt(x, z);
+    const terrain::unreal::WarmUpResult warm =
+        session.streamer().warmUp({0.0, 0.0, 0.0}, frame, 1, std::chrono::seconds(60));
+    long long checked = 0;
+    for (const terrain::unreal::StreamerUpdate& update : warm.updates) {
+        for (const TileUpload& upload : update.uploads) {
+            const terrain::TileData* data = session.streamer().manager().find(upload.key);
+            if (data == nullptr || upload.key.lod != 0 ||
+                upload.mesh.water.size() != data->mesh.vertices.size()) {
+                continue;
+            }
+            for (std::size_t v = 0; v < data->mesh.vertices.size(); ++v) {
+                const terrain::Vec3f p = data->mesh.vertices[v];
+                if (upload.mesh.water[v].wet == 0.0f || p.x != std::floor(p.x) ||
+                    p.z != std::floor(p.z)) {
+                    continue;
+                }
+                const double cx = data->originX + p.x;
+                const double cz = data->originZ + p.z;
+                const float level = session.tiles().heightfield().sampleAt(cx, cz).waterLevel;
+                const double expected = terrain::unreal::toUnreal(frame, {cx, level, cz}).z;
+                const double shown = upload.origin.z + upload.mesh.positions[v].z +
+                                     100.0 * upload.mesh.water[v].depth;
+                if (std::abs(shown - expected) > 0.1) {
+                    return -1;
+                }
+                ++checked;
+            }
+        }
+    }
+    return checked;
+}
+
+// With a planet file (on a small world: the level of the whole world takes minutes), in a folder
+// whose name is not ASCII (UTF-8, as ATerrainWorld::PlanetFile hands it over): the level built
+// and written to it the first time, read from it the next; the heightfield of the tiles and of
+// the horizon is the relief with its water, the valleys of its rivers carved (their floors
+// filled by the levees, 5 m at most), and the tiles uploaded near a river carry its level.
 void testPlanetFile() {
     const std::filesystem::path dir = storage_test::freshDirectory("terrain_session_planet");
+    const std::filesystem::path folder =
+        dir / std::filesystem::path(u8"Plan\u00e8te \u00e9t\u00e9"); // accented, in UTF-8
+    std::filesystem::create_directories(folder);
     SessionParams params = smallSession();
     params.world = {32.0 * 65536.0, 16.0 * 65536.0};
     TEST_CHECK(TerrainSession(params).tiles().heightfield().hydrology() == nullptr);
-    params.planetFile = (dir / "planet.bin").string();
-    const TerrainSession built(params);
-    TEST_CHECK(std::filesystem::exists(dir / "planet.bin"));
+    const std::u8string utf8 = (folder / "planet.bin").u8string();
+    params.planetFile.assign(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+    TerrainSession built(params);
+    TEST_CHECK(std::filesystem::exists(folder / "planet.bin"));
     const terrain::Heightfield& field = built.tiles().heightfield();
     const terrain::Hydrology* hydrology = field.hydrology();
     TEST_CHECK(hydrology != nullptr && hydrology->reachCount() > 0);
@@ -169,6 +213,17 @@ void testPlanetFile() {
             }
         }
         TEST_CHECK(never && carved > 0);
+        long long checked = 0;
+        for (std::size_t r = 0; r < hydrology->reachCount() && checked == 0; r += 97) {
+            const terrain::RiverReach reach = hydrology->reach(r);
+            const terrain::RiverPoint& p = reach.points[reach.points.size() / 2];
+            if (field.sampleAt(p.x, p.z).water == terrain::WaterKind::River) {
+                checked = checkUploadedWater(built, p.x, p.z);
+            }
+        }
+        TEST_CHECK(checked > 0);
+        std::printf("planet file: %lld wet vertices of the tiles at the level of their river\n",
+                    checked);
     }
     std::filesystem::remove_all(dir);
 }

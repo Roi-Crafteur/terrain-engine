@@ -23,8 +23,10 @@ namespace
 		return FVector(Point.x, Point.y, Point.z);
 	}
 
+	// The water over each vertex goes in UV channel 0: (depth in meters, 1 under water / 0 dry),
+	// its level at Z + 100 depth (Bridge/tile_mesh_conversion.hpp).
 	void ToUnrealArrays(const terrain::unreal::UnrealMesh& Mesh, TArray<FVector>& Vertices,
-		TArray<FVector>& Normals, TArray<FColor>& Colors)
+		TArray<FVector>& Normals, TArray<FColor>& Colors, TArray<FVector2D>& Water)
 	{
 		Vertices.Reserve(static_cast<int32>(Mesh.positions.size()));
 		for (const terrain::unreal::UnrealVector3f& Position : Mesh.positions)
@@ -40,6 +42,11 @@ namespace
 		for (const terrain::unreal::VertexColor& Color : Mesh.colors)
 		{
 			Colors.Emplace(Color.r, Color.g, Color.b, Color.a);
+		}
+		Water.Reserve(static_cast<int32>(Mesh.water.size()));
+		for (const terrain::unreal::VertexWater& Over : Mesh.water)
+		{
+			Water.Emplace(Over.depth, Over.wet);
 		}
 	}
 } // namespace
@@ -81,7 +88,8 @@ void UTerrainHorizonMeshes::Upload(const terrain::unreal::HorizonUpload& Section
 	TArray<FVector> Vertices;
 	TArray<FVector> Normals;
 	TArray<FColor> Colors;
-	ToUnrealArrays(Section.mesh, Vertices, Normals, Colors);
+	TArray<FVector2D> Water;
+	ToUnrealArrays(Section.mesh, Vertices, Normals, Colors, Water);
 	const int32 Index = SectionIndex(Section.section);
 	FIntPoint& Size = SectionSizes[Section.level * SectionCount + Index];
 	Component->SetWorldLocation(ToFVector(Section.origin));
@@ -90,13 +98,13 @@ void UTerrainHorizonMeshes::Upload(const terrain::unreal::HorizonUpload& Section
 		TArray<int32> Triangles;
 		Triangles.Append(Section.mesh.triangles.data(),
 			static_cast<int32>(Section.mesh.triangles.size()));
-		Component->CreateMeshSection(Index, Vertices, Triangles, Normals, TArray<FVector2D>(),
-			Colors, TArray<FProcMeshTangent>(), false);
+		Component->CreateMeshSection(Index, Vertices, Triangles, Normals, Water, Colors,
+			TArray<FProcMeshTangent>(), false);
 		Size = FIntPoint(Vertices.Num(), Triangles.Num() / 3);
 	}
 	else
 	{
-		Component->UpdateMeshSection(Index, Vertices, Normals, TArray<FVector2D>(), Colors,
+		Component->UpdateMeshSection(Index, Vertices, Normals, Water, Colors,
 			TArray<FProcMeshTangent>());
 		Size.X = Vertices.Num();
 	}

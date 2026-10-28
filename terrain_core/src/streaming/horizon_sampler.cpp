@@ -106,6 +106,7 @@ void classify(const Heightfield& field, const Ecology& ecology, const LevelFrame
     cell.material = surfaceMaterial(cell.biome, climate, site, params.materials);
     cell.flags = static_cast<std::uint8_t>((site.dry() ? 0U : kHorizonWater) |
                                            (site.water == WaterKind::Ocean ? kHorizonSea : 0U));
+    cell.waterLevel = site.dry() ? kNoWaterLevel : site.waterLevel;
 }
 
 // Raises the samples of the rectangle to the crests of their cells (their natural ground).

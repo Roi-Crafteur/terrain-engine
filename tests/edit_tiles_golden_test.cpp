@@ -3,7 +3,10 @@
 // density and their levels must give the same tiles bit for bit. The edits dig and build
 // around a corner of 4 chunks, across a level boundary and on the edge x = world.x / 2 of the
 // wrapped world; the tiles cover LOD 0 to 3, with and without stitched seams, with and without
-// caves. The plants are left out: phase 15 drops the generated plants over removed ground.
+// caves. The plants are left out: phase 15 drops the generated plants over removed ground. The
+// parts holding a tile stitched over the edits ("lod 0 stitched", "lod 1", "lod 2", "caves lod
+// 0") were pinned again when the stitched sides followed the coarse outline (lod_seams.cpp):
+// their vertices moved on the seams only, every other part kept its value.
 #include "terrain/storage/modifications.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
@@ -124,8 +127,8 @@ void testWithoutCaves() {
     editCorner(tiles, c.x * 16, c.z * 16);
     std::vector<golden::Part> parts = cornerParts(tiles, c);
     checkEdited(parts, unedited);
-    setExpected(parts, {0xFA759A4827F8081AULL, 0x08A255B225282CF1ULL, 0x80A1E15CE7C8C0E5ULL,
-                        0xC6A1E60D2BC49E27ULL, 0xC3F45C7C65977905ULL});
+    setExpected(parts, {0xFA759A4827F8081AULL, 0x9DB6444E4434856EULL, 0x502A0E5C2E991D56ULL,
+                        0xD0707F45E9888BF0ULL, 0xC3F45C7C65977905ULL});
     golden::report("tiles edited block by block, without caves", parts);
 }
 
@@ -141,7 +144,7 @@ void testWithCaves() {
     std::vector<golden::Part> parts = {{"caves lod 0", tilesChecksum(tiles, lod0), 0},
                                        {"caves lod 1", tilesChecksum(tiles, lod1), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x74FD1DCEDE1D8E70ULL, 0x9FF94D3DD008D9B2ULL});
+    setExpected(parts, {0x88816AE634FAF0F8ULL, 0x9FF94D3DD008D9B2ULL});
     golden::report("tiles edited block by block, with caves", parts);
 }
 
