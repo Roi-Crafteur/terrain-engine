@@ -11,9 +11,9 @@ namespace {
 
 constexpr int kLast = kGridSamples - 1;
 // On a side stitched to a coarser tile, the density of the rock turns from the tile's detail to
-// the coarser one's over kSeamBlend cells (the faces the coarser tile does not draw fade out, not
-// cut short at the side).
-constexpr double kSeamBlend = 4.0;
+// the coarser one's over kSeamBlend cells: the faces the coarser tile does not draw fade out, not
+// cut short at the side (over half as many cells, such a face ends there in a narrow dark flank).
+constexpr double kSeamBlend = 8.0;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -161,23 +161,44 @@ void RockTile::dropPlants(std::vector<Plant>& plants) const {
     });
 }
 
+float RockTile::valueAt(const DensityGrid& grid, int i, int j, int k, int originY) const {
+    if (i >= 0 && i <= kLast && j >= 0 && j <= kLast && k >= 0 && k <= kLast) {
+        return grid.at(i, j, k);
+    }
+    return sampleBlended(i, j, k, originY, fineShare(i, k));
+}
+
 Vec3f RockTile::gradientAt(const DensityGrid& grid, int i, int j, int k, int originY) const {
     const bool ring = hasRing();
-    const double share = fineShare(i, k);
-    const float gx = derivative(i, ring, [&](int n) {
-        return n >= 0 && n <= kLast ? grid.at(n, j, k) : sampleBlended(n, j, k, originY, share);
-    });
-    const float gz = derivative(k, ring, [&](int n) {
-        return n >= 0 && n <= kLast ? grid.at(i, j, n) : sampleBlended(i, j, n, originY, share);
-    });
+    const float gx = derivative(i, ring, [&](int n) { return valueAt(grid, n, j, k, originY); });
+    const float gz = derivative(k, ring, [&](int n) { return valueAt(grid, i, j, n, originY); });
     // Along y, centered through the rock beyond the level on its borders.
-    const float below = j > 0 ? grid.at(i, j - 1, k) : sampleBlended(i, -1, k, originY, share);
-    const float above =
-        j < kLast ? grid.at(i, j + 1, k) : sampleBlended(i, kGridSamples, k, originY, share);
+    const float below = valueAt(grid, i, j - 1, k, originY);
+    const float above = valueAt(grid, i, j + 1, k, originY);
     return {gx, 0.5f * (above - below), gz};
 }
 
 void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) const {
+    // The gradients of the lattice points from one row under the level to one over it, each found
+    // once, and averaged with those above and below.
+    constexpr int kRows = kGridSamples + 2;
+    std::vector<Vec3f> gradients(static_cast<std::size_t>(kGridSamples * kRows * kGridSamples));
+    std::vector<bool> found(gradients.size(), false);
+    const auto gradient = [&](int i, int j, int k) {
+        const auto at = static_cast<std::size_t>((k * kRows + j + 1) * kGridSamples + i);
+        if (!found[at]) {
+            gradients[at] = gradientAt(grid, i, j, k, originY);
+            found[at] = true;
+        }
+        return gradients[at];
+    };
+    const auto smoothed = [&](int i, int j, int k) {
+        const Vec3f below = gradient(i, j - 1, k);
+        const Vec3f here = gradient(i, j, k);
+        const Vec3f above = gradient(i, j + 1, k);
+        return Vec3f{(below.x + here.x + above.x) / 3.0f, (below.y + here.y + above.y) / 3.0f,
+                     (below.z + here.z + above.z) / 3.0f};
+    };
     for (std::size_t n = 0; n < level.vertices.size(); ++n) {
         const Vec3f& v = level.vertices[n];
         // The grid edge the vertex lies on: two of its coordinates are whole.
@@ -195,11 +216,11 @@ void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) con
                 t = p[u] - static_cast<float>(low[u]);
             }
         }
-        Vec3f g = gradientAt(grid, low[0], low[1], low[2], originY);
+        Vec3f g = smoothed(low[0], low[1], low[2]);
         if (axis >= 0) {
             std::array<int, 3> high = low;
             ++high[static_cast<std::size_t>(axis)];
-            const Vec3f h = gradientAt(grid, high[0], high[1], high[2], originY);
+            const Vec3f h = smoothed(high[0], high[1], high[2]);
             g = {g.x + t * (h.x - g.x), g.y + t * (h.y - g.y), g.z + t * (h.z - g.z)};
         }
         const float length = std::sqrt(g.x * g.x + g.y * g.y + g.z * g.z);

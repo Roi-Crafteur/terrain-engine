@@ -10,7 +10,11 @@
 
 #include "test_assert.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
+#include <vector>
 
 namespace {
 
@@ -167,44 +171,122 @@ void testSingleSurfaceBelowFullWeight() {
     TEST_CHECK(rising);
 }
 
-// A vertical joint recedes the face by its depth between its foot and its top, at full weight only;
-// one narrower than 4 cells fades out, gone at 2 cells (the cells would catch its groove at one
-// column out of two: a slit): 2 m cells leave out a joint 4 m wide.
+// How far the joint of the face of a column recedes it at height y (LOD 0).
+double recessAt(const RockColumn& c, double y) {
+    RockColumn plain = c;
+    plain.faces[0].joint = 0.0f;
+    return terrain::rockDensity(c, y, {}) - terrain::rockDensity(plain, y, {});
+}
+
+// The joint seed of 256 tried under which the face of a column recedes most at height y.
+float deepestSeedAt(RockColumn c, double y) {
+    float best = 0.0f;
+    double deepest = -1.0;
+    for (int k = 0; k < 256; ++k) {
+        c.faces[0].jointSeed = static_cast<float>(k) / 256.0f;
+        const double recess = recessAt(c, y);
+        best = recess > deepest ? c.faces[0].jointSeed : best;
+        deepest = std::max(deepest, recess);
+    }
+    return best;
+}
+
+// A vertical joint recedes the face by its depth within the stretches of its height, at full
+// weight only; one narrower than 4 cells fades out, gone at 2 cells (the cells would catch its
+// groove at one column out of two: a slit): 2 m cells leave out a joint 4 m wide.
 void testJoint() {
     RockColumn c = columnAt(-1.0f); // 1 m into the rock
     c.faces[0].joint = 1.5f;
     c.faces[0].jointWidth = 4.0f;
-    for (const double y : {6.0, 10.0, 14.0}) {
-        TEST_CHECK(near(terrain::rockDensity(c, y, {}), 0.5, 1e-3));
-    }
+    c.faces[0].jointSeed = deepestSeedAt(c, 10.0);
+    TEST_CHECK(near(terrain::rockDensity(c, 10.0, {}), 0.5, 1e-3));
     TEST_CHECK(terrain::rockDensity(c, 10.0, terrain::rockDetailForLod(1)) < 0.0f);
     TEST_CHECK(terrain::rockDensity(c, 10.0, terrain::rockDetailForLod(2)) < 0.0f);
     c.faces[0].weight = 0.6f;
     TEST_CHECK(terrain::rockDensity(c, 10.0, {}) < 0.0f);
+    // On a face 8 m high, its ends fading as the ends of the face, a joint 1.5 m deep is drawn
+    // 2/3 m deep at most.
+    c.faces[0].weight = 1.0f;
+    c.faces[0].top = 8.0f;
+    c.faces[0].jointSeed = deepestSeedAt(c, 4.0);
+    TEST_CHECK(near(recessAt(c, 4.0), 1.0 / 1.5, 1e-3));
 }
 
-// A joint comes in over 4 m over the foot of its face and goes out under its top over 3 times its
-// depth (the roof over its end leans 0.5 m per meter at most), a quarter of the height of the face
-// at most, its depth within what fits there: never a groove cut short. On a face 8 m high, a joint
-// 1.5 m deep is drawn 2/3 m deep.
-void testJointEnds() {
-    const auto recess = [](const RockColumn& c, double y) {
-        RockColumn plain = c;
-        plain.faces[0].joint = 0.0f;
-        return terrain::rockDensity(c, y, {}) - terrain::rockDensity(plain, y, {});
-    };
+// The open stretches of a joint along heights 10 to 290 m of a face (the heights where it recedes
+// the face by 1 cm at least), every kStepUp meters.
+constexpr double kStepUp = 0.05;
+std::vector<std::array<double, 2>> openStretches(const RockColumn& c) {
+    std::vector<std::array<double, 2>> out;
+    double start = -1.0;
+    for (double y = 10.0; y <= 290.0; y += kStepUp) {
+        const bool open = recessAt(c, y) > 0.01;
+        if (open && start < 0.0) {
+            start = y;
+        } else if (!open && start >= 0.0) {
+            if (start > 10.0) {
+                out.push_back({start, y});
+            }
+            start = -1.0;
+        }
+    }
+    return out;
+}
+
+// A joint opens over stretches of 8 to 30 m of the height of its face, never all of it, with
+// gaps of 6 m at least between them, of lengths drawn joint by joint (not all alike); each comes
+// in over 4 m at most over its bottom (never cut short) and goes out under its top as a roof
+// leaning 0.5 m per meter at most. A joint keeps its stretches from one column to the next.
+void testJointStretches() {
     RockColumn c = columnAt(-1.0f);
-    c.faces[0].joint = 1.5f;
-    c.faces[0].jointWidth = 4.0f;
-    const double low = recess(c, 1.0);
-    const double lower = recess(c, 3.0);
-    const double middle = recess(c, 10.0);
-    const double upper = recess(c, 16.0);
-    const double high = recess(c, 19.5);
-    TEST_CHECK(near(middle, 1.5, 1e-3));
-    TEST_CHECK(low < lower && lower < middle && high < upper && upper < middle && high < 0.3);
-    c.faces[0].top = 8.0f;
-    TEST_CHECK(near(recess(c, 4.0), 1.0 / 1.5, 1e-3));
+    RockFace& f = c.faces[0];
+    f.top = 300.0f;
+    f.joint = 1.0f;
+    f.jointWidth = 6.0f;
+    std::vector<double> lengths;
+    double open = 0.0;
+    bool spaced = true;
+    double rising = 0.0;
+    double falling = 0.0;
+    for (int k = 0; k < 40; ++k) {
+        f.jointSeed = static_cast<float>(k) / 40.0f;
+        const std::vector<std::array<double, 2>> stretches = openStretches(c);
+        for (std::size_t s = 0; s < stretches.size(); ++s) {
+            lengths.push_back(stretches[s][1] - stretches[s][0]);
+            open += lengths.back();
+            spaced = spaced && (s == 0 || stretches[s][0] - stretches[s - 1][1] >= 6.0);
+        }
+        for (double y = 10.0; y < 290.0; y += kStepUp) {
+            const double slope = (recessAt(c, y + kStepUp) - recessAt(c, y)) / kStepUp;
+            rising = std::max(rising, slope);
+            falling = std::max(falling, -slope);
+        }
+    }
+    double mean = 0.0;
+    for (const double l : lengths) {
+        mean += l / static_cast<double>(lengths.size());
+    }
+    double spread = 0.0;
+    for (const double l : lengths) {
+        spread += (l - mean) * (l - mean) / static_cast<double>(lengths.size());
+    }
+    const auto [shortest, longest] = std::minmax_element(lengths.begin(), lengths.end());
+    const double share = open / (40.0 * 280.0);
+    std::printf("joint stretches: %zu over 40 joints, %.1f to %.1f m long (%.1f on average, varying "
+                "by %.2f), %.0f%% of the height open; slopes up to %.2f rising, %.2f falling\n",
+                lengths.size(), *shortest, *longest, mean, std::sqrt(spread) / mean, 100.0 * share,
+                rising, falling);
+    TEST_CHECK(lengths.size() > 100);
+    TEST_CHECK(*shortest >= 7.0 && *longest <= 30.0 && spaced);
+    TEST_CHECK(std::sqrt(spread) / mean > 0.25 && share > 0.25 && share < 0.75);
+    TEST_CHECK(rising < 0.4 && falling < 0.505);
+    RockColumn deeper = columnAt(-2.5f);
+    deeper.faces[0] = f;
+    deeper.faces[0].distance = -2.5f;
+    bool same = true;
+    for (double y = 10.0; y < 290.0; y += 0.5) {
+        same = same && near(recessAt(deeper, y), recessAt(c, y), 1e-4);
+    }
+    TEST_CHECK(same);
 }
 
 // A cap thinner than 3 cells at its tip (half its depth) fades out: 2 m deep, 1 m cells leave it
@@ -335,7 +417,7 @@ int main() {
     testFades();
     testSingleSurfaceBelowFullWeight();
     testJoint();
-    testJointEnds();
+    testJointStretches();
     testThinLip();
     testGrain();
     testCarvedFace();

@@ -253,13 +253,16 @@ double litShare(const std::vector<double>& depth, double floor, int side) {
 // alone: about one in five tight (0.4 of its width deep at most), the others open (a quarter of
 // it at most). Under a sun grazing the face (20 degrees) from either side, no open groove is black
 // (less than a tenth of its width lit), its far side lit over 30% of it at least, and the tight
-// ones are darker: never a wall of identical grooves.
+// ones are darker: never a wall of identical grooves. Each joint keeps its seed along it (its
+// stretches along the height, RockFace), one of its own (as many seeds as joints crossed, about).
 void testGrooveKinds() {
     std::size_t crossed = 0;
     std::size_t tight = 0;
     std::size_t black = 0;
     std::size_t blackOpen = 0;
     double leastOpenLit = 1.0;
+    std::vector<double> seeds;
+    bool sameAlong = true; // the seed of a joint, up to 1 m along it either way in its groove
     std::array<double, 2> litSum{}; // open, tight
     bool shallow = true;
     double previous = 0.0;
@@ -301,6 +304,14 @@ void testGrooveKinds() {
             leastOpenLit = std::min(leastOpenLit, lit);
         }
         shallow = shallow && j.floor <= (isTight ? 0.4 : 0.25) * j.width + 1e-9;
+        seeds.push_back(j.seed);
+        for (const double v : {-1.0, -0.5, 0.5, 1.0}) {
+            const terrain::wall_faces::Joint o = terrain::wall_faces::jointAt(
+                grain(), at[0] - v * j.acrossZ / length, at[1] + v * j.acrossX / length);
+            // Within its groove (past a corner of its cells, another joint).
+            const bool along = o.alone == 1.0 && o.depth > 0.5 * j.depth;
+            sameAlong = sameAlong && (!along || o.seed == j.seed);
+        }
     }
     const double tightShare = static_cast<double>(tight) / static_cast<double>(crossed);
     const double blackShare = static_cast<double>(black) / static_cast<double>(crossed);
@@ -316,6 +327,11 @@ void testGrooveKinds() {
     TEST_CHECK(tightShare > 0.1 && tightShare < 0.35);
     TEST_CHECK(blackOpen == 0 && leastOpenLit > 0.3);
     TEST_CHECK(tightLit < openLit - 0.1);
+    std::sort(seeds.begin(), seeds.end());
+    const auto distinct = static_cast<std::size_t>(
+        std::unique(seeds.begin(), seeds.end()) - seeds.begin());
+    std::printf("their seeds: %zu distinct of %zu, the same along each\n", distinct, crossed);
+    TEST_CHECK(sameAlong && distinct * 10 >= crossed * 9);
 }
 
 } // namespace

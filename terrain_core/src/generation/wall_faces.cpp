@@ -67,7 +67,8 @@ constexpr double kShiftWavelength = 90.0;
 // shifts), flat over a share of its width over its spread (smooth walls over the rest). An open
 // groove is a quarter of its width deep at most: under a grazing light its far side stays lit.
 // Within kJointAlone meters of where another joint meets it, its groove turns to the middle open
-// one: no step where the joints change.
+// one and closes (the stretches of each along the height are its own): no step where the joints
+// change.
 constexpr double kJointCell = 17.3;
 constexpr double kJointJitter = 0.45;
 constexpr double kJointWavelength = 70.0;
@@ -257,8 +258,10 @@ void addRiserFace(const PassSite& s, const Riser& r, Site& site) {
         height * (kCutHeightLow + kCutHeightSpread * mountain_walls::layerDraw(p, k, 3)));
     face.grain = static_cast<float>(std::min(kGrainShare * height, kGrainMost) * weight);
     face.grainShift = static_cast<float>(s.shift);
-    face.joint = static_cast<float>(s.joint.depth * weight);
+    // A joint closes where another one meets it: their stretches along the height are their own.
+    face.joint = static_cast<float>(s.joint.depth * s.joint.alone * weight);
     face.jointWidth = static_cast<float>(s.joint.width);
+    face.jointSeed = static_cast<float>(s.joint.seed);
     face.weight = static_cast<float>(weight);
     out.level = r.level;
     out.rise = r.end - r.start;
@@ -294,12 +297,13 @@ Grain makeGrain(std::uint64_t seed, const WorldSize& world) {
 namespace {
 
 // The groove of a joint: its width (and how much the noise along it adds), its depth by its width
-// and the share of its width its floor lies flat over.
+// and the share of its width its floor lies flat over; the draw of its stretches.
 struct Groove {
     double width = 0.0;
     double widthNoise = 0.0;
     double ratio = 0.0;
     double flat = 0.0;
+    double seed = 0.0;
 };
 
 // The groove of a kind by draws in [0, 1) of its width, depth and floor.
@@ -320,8 +324,10 @@ Groove grooveOf(const Grain& grain, std::uint64_t a, std::uint64_t b, double alo
     const Groove drawn = grooveOf(kind, draw(1), draw(2), draw(3));
     const Groove middle = grooveOf(kJointOpenKind, 0.5, 0.5, 0.5);
     const auto mix = [&](double v, double m) { return m + alone * (v - m); };
+    const double seed =
+        static_cast<double>(noise::deriveSeed(hash, kJointSalt) >> 40U) * 0x1.0p-24;
     return {mix(drawn.width, middle.width), mix(drawn.widthNoise, middle.widthNoise),
-            mix(drawn.ratio, middle.ratio), mix(drawn.flat, middle.flat)};
+            mix(drawn.ratio, middle.ratio), mix(drawn.flat, middle.flat), seed};
 }
 
 // The two nearest sites of the cells around (x, z): their distances, directions and cells, and
@@ -392,6 +398,7 @@ Joint jointAt(const Grain& grain, double x, double z) {
     const double noise = static_cast<double>(grain.overhangs.fbm2D(z, x));
     out.width = groove.width + groove.widthNoise * smooth(-0.5, 0.5, noise);
     out.wall = 3.0 / (1.0 - groove.flat);
+    out.seed = groove.seed;
     const double half = 0.5 * out.width;
     if (!(edge < half)) {
         return out;

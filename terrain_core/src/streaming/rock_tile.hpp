@@ -60,7 +60,11 @@ public:
     // through the rock above and below the level and, with the ring of the columns, beyond the
     // sides of the tile (the normals the neighboring tile of the same LOD gives there, so that a
     // face of rock keeps its light across the levels and the tiles); without it (the tiles of the
-    // caves), second order differences across the sides. Then agreeWithTriangles
+    // caves), second order differences across the sides. Each averaged with those of the lattice
+    // points just above and below (beyond the level through the rock, as the level next to it
+    // takes them): a feature of the rock a few cells high (the lip of a cap) crossing the rows of
+    // the lattice along a face whose top climbs steeply changes shape from one column to the next,
+    // and its light would break into teeth along the fold. Then agreeWithTriangles
     // (tile_normals.hpp) is left to the caller, as for every tile.
     void lightLevel(Mesh& level, const DensityGrid& grid, int originY) const;
 
@@ -74,6 +78,11 @@ private:
     // The column (i, k), i or k one step beyond the tile on the ring; its ground.
     [[nodiscard]] const RockColumn& columnAt(int i, int k) const;
     [[nodiscard]] float groundAt(int i, int k) const;
+    // The density of sample (i, j, k) of a level: the grid's within it (with its edits), the
+    // rock's beyond it (above, below and, with the ring, beyond its sides).
+    [[nodiscard]] float valueAt(const DensityGrid& grid, int i, int j, int k, int originY) const;
+    // The gradient of the density at lattice point (i, j, k) of a level, j one row beyond it at
+    // most.
     [[nodiscard]] Vec3f gradientAt(const DensityGrid& grid, int i, int j, int k,
                                    int originY) const;
     [[nodiscard]] bool onHorizonSide(int i, int k) const;

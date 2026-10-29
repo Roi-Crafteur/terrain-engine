@@ -135,10 +135,10 @@ void testSyntheticTile() {
 }
 
 // On a LOD 2 tile stitched to a LOD 3 one, the even samples of the stitched side leave out the cap
-// the coarser tile cannot hold; the density turns to that of the tile's own detail over 4 cells
+// the coarser tile cannot hold; the density turns to that of the tile's own detail over 8 cells
 // from the side, the densities of both details blended (a detail changing at once would leave a
-// blade of rock along the side, a detail between them a cap neither tile draws); farther, and on
-// a tile alone, they keep it. The face is 40 m high, its cap 11.5 m deep over its top 30 m (as
+// blade of rock along the side, a detail between them a cap neither tile draws, a turn over 4
+// cells a narrow dark flank where the face ends); farther, and on a tile alone, they keep it. The face is 40 m high, its cap 11.5 m deep over its top 30 m (as
 // thick as 4 m cells draw it, not 8 m ones).
 void testStitchedDetail() {
     const TileColumns columns = faceColumns(40.0f, 4.0f, 11.5f, 40.0f, 30.0f);
@@ -156,8 +156,8 @@ void testStitchedDetail() {
     TEST_CHECK(stitched.levelDensity(originY).at(6, 6, 0) == coarse);
     // Off the side, the densities of both details blended, the share of the tile's growing.
     const terrain::DensityGrid level = stitched.levelDensity(originY);
-    bool turning = stitched.fineShare(6, 0) == 0.0 && stitched.fineShare(6, 4) == 1.0;
-    for (int k = 1; k <= 4; ++k) {
+    bool turning = stitched.fineShare(6, 0) == 0.0 && stitched.fineShare(6, 8) == 1.0;
+    for (int k = 1; k <= 8; ++k) {
         const double share = stitched.fineShare(6, k);
         const float fine = stitched.sample(6, 6, k, originY, false);
         const float coarser = stitched.sample(6, 6, k, originY, true);
@@ -166,7 +166,7 @@ void testStitchedDetail() {
                   std::abs(level.at(6, 6, k) - (coarser + share * (fine - coarser))) < 1e-4f;
     }
     TEST_CHECK(turning);
-    TEST_CHECK(level.at(6, 6, 4) < 0.0f); // 4 cells off the side
+    TEST_CHECK(level.at(6, 6, 8) < 0.0f); // 8 cells off the side
     TEST_CHECK(alone.levelDensity(originY).at(6, 6, 0) < 0.0f);
     TEST_CHECK(alone.fineShare(6, 0) == 1.0);
 }

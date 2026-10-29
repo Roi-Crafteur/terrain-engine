@@ -38,10 +38,12 @@ struct RockFace {
     // heights shift by grainShift meters from column to column.
     float grain = 0.0f;
     float grainShift = 0.0f;
-    // A vertical joint of the rock crossing the face: it recedes by joint meters at the column,
-    // from its foot to its top, in a groove jointWidth meters wide.
+    // A vertical joint of the rock crossing the face: it recedes by joint meters at the column, in
+    // a groove jointWidth meters wide, over stretches of its height drawn by jointSeed (in [0, 1),
+    // the same all along the joint).
     float joint = 0.0f;
     float jointWidth = 0.0f;
+    float jointSeed = 0.0f;
     // How far the step replaces the climb of the relief, in [0, 1] (0: the relief as it is).
     float weight = 1.0f;
     // The horizontal direction of the air from the rock (a unit vector, x and z), along which the

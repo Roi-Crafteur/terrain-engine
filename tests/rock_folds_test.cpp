@@ -9,7 +9,10 @@
 // - The fold of the view of the black slits (from (416 080, -11 414 957), its lip by
 //   (416 086, -11 414 913)), its LOD 0 tiles drawn as the zoom of the review drew them: along the
 //   band of shadow, the light changes by kRoughest (of 255) on average over 4 pixels at most (0.56
-//   with the saw teeth; now 0.41).
+//   with the saw teeth, 0.41 with the faces whole again, 0.29 with the normals smoothed along the
+//   height). Along its lower half (the crease of the review), where the top of its face climbs
+//   1.4 m per meter, by kRoughestLower over 3 pixels at most in a zoom of 40 degrees (0.87 before
+//   the normals were smoothed along the height, as 7a978f9 without its grain; now 0.50).
 // - Lips across a synthetic tile at 0 to 45 degrees from its lattice, with grain and a joint,
 //   whole and fading along: the width of their ceiling (the triangles facing down) never falls
 //   to nothing along them.
@@ -51,6 +54,7 @@ constexpr double kMostPartial = 0.2;
 constexpr float kFullLow = 0.75f;
 constexpr float kCapCells = 1.5f;
 constexpr double kRoughest = 0.5;
+constexpr double kRoughestLower = 0.72;
 // A ceiling faces down by kDown at least (cosine with -y); its width falls to nothing under kEmpty
 // of its median, sampled every kAlong meters.
 constexpr double kDown = 0.5;
@@ -119,18 +123,19 @@ double lightAt(const terrain::Image& image, double x, double y) {
            fy * ((1.0 - fx) * at(i, j + 1) + fx * at(i + 1, j + 1));
 }
 
-// How much the light of the dark pixels (under 80) of a part of an image changes over 4 pixels
-// along (dx, dy), on average.
-double roughness(const terrain::Image& image, const std::array<int, 4>& part, double dx,
-                 double dy) {
+// How much the light of the dark pixels (under dark) of a part of an image changes over step
+// pixels along (dx, dy), on average.
+double roughness(const terrain::Image& image, const std::array<int, 4>& part, double dx, double dy,
+                 double step, double dark) {
     const double length = std::hypot(dx, dy);
     double sum = 0.0;
     std::size_t count = 0;
     for (int y = part[1]; y < part[3]; ++y) {
         for (int x = part[0]; x < part[2]; ++x) {
             const double here = lightAt(image, x, y);
-            if (here < 80.0) {
-                const double there = lightAt(image, x + 4.0 * dx / length, y + 4.0 * dy / length);
+            if (here < dark) {
+                const double there =
+                    lightAt(image, x + step * dx / length, y + step * dy / length);
                 sum += std::abs(there - here);
                 ++count;
             }
@@ -139,11 +144,12 @@ double roughness(const terrain::Image& image, const std::array<int, 4>& part, do
     return count > 0 ? sum / static_cast<double>(count) : 0.0;
 }
 
-void testFoldOfTheView() {
-    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed);
+// The fold of the view of the black slits as its LOD 0 tiles draw it, from the eye of the zoom of
+// the review, fieldOfView degrees wide, 1 000 x 700 pixels.
+terrain::Image foldView(const terrain::TerrainTiles& tiles, double fieldOfView) {
     std::vector<terrain::TileData> data;
     for (std::int32_t z = -713'435; z <= -713'430; ++z) {
-        for (std::int32_t x = 26'003; x <= 26'007; ++x) {
+        for (std::int32_t x = 26'002; x <= 26'007; ++x) {
             data.push_back(tiles.generate({{{x, z}, 0}, 0}));
         }
     }
@@ -157,18 +163,27 @@ void testFoldOfTheView() {
     view.eyeHeight = tiles.groundAt(view.eyeX, view.eyeZ) + 22.0;
     view.heading = 171.04 / 360.0;
     view.tilt = 0.727;
-    view.fieldOfView = 15.0 / 360.0;
+    view.fieldOfView = fieldOfView / 360.0;
     view.width = 1'000;
     view.height = 700;
     const auto pixels = static_cast<std::size_t>(view.width * view.height);
     const terrain::Image sky{view.width, view.height, 3, std::vector<std::uint8_t>(3 * pixels, 255)};
-    const terrain::Image image = terrain::renderMeshView(meshes, sky, view, 4, {0.42, 0.8, false});
-    // The band of shadow of the fold runs down to the right, (0.57, 0.82) across the image.
-    const double rough = roughness(image, {150, 0, 850, 500}, 0.57, 0.82);
+    return terrain::renderMeshView(meshes, sky, view, 4, {0.42, 0.8, false});
+}
+
+void testFoldOfTheView() {
+    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed);
+    // The band of shadow of the fold runs down to the right, (0.57, 0.82) across the zoom of 15
+    // degrees, (0.58, 0.81) across that of 40 degrees.
+    const double rough =
+        roughness(foldView(tiles, 15.0), {150, 0, 850, 500}, 0.57, 0.82, 4.0, 80.0);
+    const double lower =
+        roughness(foldView(tiles, 40.0), {500, 430, 860, 700}, 0.58, 0.81, 3.0, 85.0);
     std::printf("the fold of the view: the light of its band of shadow changes by %.3f over 4 "
-                "pixels along it\n",
-                rough);
+                "pixels along it; along its lower half (the crease), by %.3f over 3\n",
+                rough, lower);
     TEST_CHECK(rough > 0.0 && rough <= kRoughest);
+    TEST_CHECK(lower > 0.0 && lower <= kRoughestLower);
 }
 
 // The width across (tangentX, tangentZ) of the ceiling of a fold (the triangles of a mesh facing

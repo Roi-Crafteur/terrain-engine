@@ -49,6 +49,7 @@ struct Joint {
     double depth = 0.0;
     double width = 0.0;
     double floor = 0.0; // the depth of its floor (the most it recedes the face)
+    double seed = 0.0;  // its draw, in [0, 1): where along the height it opens (RockFace)
     // How steep its walls are at their steepest: their depth over the width of the groove, times
     // this.
     double wall = 3.0;

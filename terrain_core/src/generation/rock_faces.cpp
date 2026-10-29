@@ -3,6 +3,7 @@
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -47,6 +48,19 @@ constexpr double kFullLow = 0.75;
 constexpr double kJointEnds = 4.0;
 constexpr double kJointRoof = 0.5;
 constexpr double kJointEndShare = 0.25;
+// A joint opens over stretches of its height, never all of it: along the height, cells of
+// kStretchCell to kStretchCell + kStretchCellSpread meters (by the draw of the joint, shifted by
+// it) each hold a stretch kStretchOpen of the time, kStretchLow to kStretchHigh meters long, at a
+// drawn place within it half kStretchGap from its ends at least (two stretches kStretchGap apart
+// at least). Each end of a stretch fades as the ends of the face do, over half the stretch at most
+// (its depth within what fits).
+constexpr double kStretchCell = 22.0;
+constexpr double kStretchCellSpread = 14.0;
+constexpr double kStretchOpen = 0.7;
+constexpr double kStretchLow = 8.0;
+constexpr double kStretchHigh = 30.0;
+constexpr double kStretchGap = 6.0;
+constexpr std::uint64_t kStretchSalt = 0x73747265746368ULL;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -119,18 +133,55 @@ double roundOf(const RockFace& f) {
     return std::min(kRound, kRoundShare * (static_cast<double>(f.top) - f.foot));
 }
 
-// How far the joint of a face recedes it at height y.
+// Draw k (0, 1 or 2) in [0, 1) of 21 bits of a hash.
+double drawOf(std::uint64_t hash, unsigned k) {
+    return static_cast<double>((hash >> (21U * k)) & 0x1F'FFFFU) * 0x1.0p-21;
+}
+
+// The stretch of the joint of a face whose cell holds height y: its lowest and highest heights
+// (low >= high: none there).
+std::array<double, 2> stretchAt(const RockFace& f, double y) {
+    const std::uint64_t joint = noise::deriveSeed(
+        kStretchSalt, static_cast<std::uint64_t>(static_cast<double>(f.jointSeed) * 0x1.0p24));
+    const double cell = kStretchCell + kStretchCellSpread * drawOf(joint, 0);
+    const double shift = cell * drawOf(joint, 1);
+    const auto n = static_cast<std::int64_t>(std::floor((y + shift) / cell));
+    const std::uint64_t hash = noise::deriveSeed(joint, static_cast<std::uint64_t>(n));
+    if (!(drawOf(hash, 0) < kStretchOpen)) {
+        return {0.0, 0.0};
+    }
+    const double longest = std::min(kStretchHigh, cell - kStretchGap);
+    const double length = kStretchLow + (longest - kStretchLow) * drawOf(hash, 1);
+    const double low = static_cast<double>(n) * cell - shift + 0.5 * kStretchGap +
+                       (cell - kStretchGap - length) * drawOf(hash, 2);
+    return {low, low + length};
+}
+
+// How far the joint of a face recedes it at height y: within a stretch, both of its ends and
+// those of the face faded.
 double jointAt(const RockFace& f, double y) {
+    if (!(f.joint > 0.0f)) {
+        return 0.0;
+    }
     const double foot = f.foot;
     const double top = f.top;
+    const std::array<double, 2> stretch = stretchAt(f, y);
+    if (!(stretch[1] > stretch[0])) {
+        return 0.0;
+    }
     const double most = kJointEndShare * (top - foot);
-    const double depth = std::min(static_cast<double>(f.joint), kJointRoof * most / 1.5);
+    const double half = 0.5 * (stretch[1] - stretch[0]);
+    const double depth = std::min({static_cast<double>(f.joint), kJointRoof * most / 1.5,
+                                   kJointRoof * half / 1.5});
     if (!(depth > 0.0)) {
         return 0.0;
     }
-    const double low = std::min(kJointEnds, most);
-    const double high = std::min(std::max(kJointEnds, 1.5 * depth / kJointRoof), most);
-    return depth * smooth(foot, foot + low, y) * (1.0 - smooth(top - high, top, y));
+    const double roof = std::max(kJointEnds, 1.5 * depth / kJointRoof);
+    const double face = smooth(foot, foot + std::min(kJointEnds, most), y) *
+                        (1.0 - smooth(top - std::min(roof, most), top, y));
+    const double open = smooth(stretch[0], stretch[0] + std::min(kJointEnds, half), y) *
+                        (1.0 - smooth(stretch[1] - std::min(roof, half), stretch[1], y));
+    return depth * std::min(face, open);
 }
 
 // How far the face lies toward the air at height y of its step: its grain, its cap, full over the

@@ -31,3 +31,5 @@ target_include_directories(tile_normals_test PRIVATE ${PROJECT_SOURCE_DIR}/terra
 # internals of the tiles (src/streaming/rock_tile.hpp) for the synthetic lips.
 terrain_add_test(rock_folds_test terrain_core)
 target_include_directories(rock_folds_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
+# The walk to the foot of the K2 on the collision of the tiles: no hole, no step.
+terrain_add_test(rock_walk_test terrain_core)
