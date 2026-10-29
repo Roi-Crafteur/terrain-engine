@@ -108,10 +108,12 @@ add_library(terrain_core STATIC
     src/generation/water/hydrology_lakes.cpp
     src/generation/water/hydrology_query.cpp
     src/generation/water/hydrology_region.cpp
+    src/generation/water/river_blend.cpp
     src/generation/water/river_box.cpp
     src/generation/water/river_course.cpp
     src/generation/water/river_falls.cpp
     src/generation/water/river_join.cpp
+    src/generation/water/river_lips.cpp
     src/generation/water/river_path.cpp
     src/generation/water/river_profile.cpp
     src/generation/water/river_slot.cpp

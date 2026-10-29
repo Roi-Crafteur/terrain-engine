@@ -4,6 +4,7 @@
 
 #include "river_falls.hpp"
 #include "river_join.hpp"
+#include "river_lips.hpp"
 #include "river_profile.hpp"
 #include "river_slot.hpp"
 
@@ -150,11 +151,11 @@ void setLevels(std::vector<CoursePoint>& points, float levelA, float levelB) {
     points.back().level = levelB;
 }
 
-// The stretches where the water falls, sampled every kFallStep meters.
-bool refineFalls(const Heightfield& relief, const ReachInput& in,
-                 std::vector<CoursePoint>& points) {
+// The stretches where the water falls, sampled every kFallStep meters; runs: from the first point
+// of each run of such segments to its last, meters along the course.
+bool refineFalls(const Heightfield& relief, const ReachInput& in, std::vector<CoursePoint>& points,
+                 std::vector<std::array<double, 2>>& runs) {
     std::vector<CoursePoint> out;
-    bool refined = false;
     for (std::size_t i = 0; i + 1 < points.size(); ++i) {
         out.push_back(points[i]);
         const CoursePoint& a = points[i];
@@ -165,6 +166,10 @@ bool refineFalls(const Heightfield& relief, const ReachInput& in,
             !(run > 2.0 * kFallStep)) {
             continue;
         }
+        if (runs.empty() || runs.back()[1] != a.s) {
+            runs.push_back({a.s, a.s});
+        }
+        runs.back()[1] = b.s;
         const auto steps = static_cast<int>(std::ceil(run / kFallStep));
         for (int k = 1; k < steps; ++k) {
             const double t = static_cast<double>(k) / steps;
@@ -173,15 +178,39 @@ bool refineFalls(const Heightfield& relief, const ReachInput& in,
             p.z = lerp(a.z, b.z, t);
             out.push_back(p);
         }
-        refined = true;
     }
     out.push_back(points.back());
-    if (refined) {
-        points = std::move(out);
-        measure(points);
-        sampleGround(relief, in, points);
+    if (runs.empty()) {
+        return false;
     }
-    return refined;
+    points = std::move(out);
+    measure(points);
+    sampleGround(relief, in, points);
+    return true;
+}
+
+// The runs where the water falls wind (windFalls), their levels kept, with kWindApron meters of
+// the course before and after them (the room of a few waves, the ends of the reach unmoved): in
+// the channel of the reach there, the axis then measured anew.
+constexpr double kWindApron = 128.0;
+void windRuns(const ReachInput& in, const std::vector<std::array<double, 2>>& runs,
+              std::vector<CoursePoint>& points) {
+    const double length = std::max(points.back().s, 1.0);
+    std::vector<std::array<double, 2>> wide;
+    for (const auto& [from, to] : runs) {
+        const double a = std::max(0.0, from - kWindApron);
+        const double b = std::min(points.back().s, to + kWindApron);
+        if (!wide.empty() && a <= wide.back()[1]) {
+            wide.back()[1] = b;
+        } else {
+            wide.push_back({a, b});
+        }
+    }
+    for (std::size_t r = wide.size(); r-- > 0;) {
+        const double middle = 0.5 * (wide[r][0] + wide[r][1]) / length;
+        windFalls(points, wide[r][0], wide[r][1], 0.5 * lerp(in.a.width, in.b.width, middle));
+    }
+    measure(points);
 }
 
 // The axis of the reach: smoothed, its end bent toward where it joins another river.
@@ -372,7 +401,8 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     const float levelB = joinEarlier(relief, in, c.points);
     sampleGround(relief, in, c.points);
     setLevels(c.points, in.a.level, levelB);
-    const bool falls = refineFalls(relief, in, c.points);
+    std::vector<std::array<double, 2>> runs;
+    const bool falls = refineFalls(relief, in, c.points, runs);
     if (falls) {
         setLevels(c.points, in.a.level, levelB);
     }
@@ -381,6 +411,7 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     }
     if (falls) {
         stepFalls(c.points);
+        windRuns(in, runs, c.points);
     }
     c.rises = risesOf(c.points, &CoursePoint::level);
     c.valleyRises = risesOf(c.points, &CoursePoint::valley);
@@ -391,6 +422,7 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
             noise::deriveSeed(kSlotSeed, static_cast<std::uint64_t>(std::llround(c.points[0].x))),
             static_cast<std::uint64_t>(std::llround(c.points[0].z)));
         placeBlocks(c);
+        placeLips(c, relief, in.a.discharge);
     }
     setChunks(c);
     findPonds(relief, c);

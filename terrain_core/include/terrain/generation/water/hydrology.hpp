@@ -99,7 +99,8 @@ struct RiverFall {
     float width = 0.0f;
 };
 
-// A block of rock in a pool of a fall: a dome radius meters wide around (x, z), its top at top.
+// A block of rock in a pool of a fall: radius meters wide around (x, z), its top at top (flatter
+// there and steeper at its sides than a dome).
 struct RiverBlock {
     double x = 0.0; // meters, in the images of the reach
     double z = 0.0;

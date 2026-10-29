@@ -1,6 +1,7 @@
 // The valley of a course at a point (river_profile.hpp).
 #include "river_profile.hpp"
 
+#include "river_lips.hpp"
 #include "river_slot.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -297,12 +298,6 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     return v;
 }
 
-// How fast a level comes down from a to b (meters per meter, 0 if it rises).
-double secant(const CoursePoint& a, const CoursePoint& b, float CoursePoint::*level) {
-    const double run = b.s - a.s;
-    return run > 0.0 ? std::max(0.0, static_cast<double>(a.*level - b.*level)) / run : 0.0;
-}
-
 // The blocks of the pools of the falls of c stand over the lowest valley of its segments at (x,
 // z): over every segment alike, so over the lowest as well. The water stands only around them.
 void standBlocks(const Course& c, double x, double z, Valley& v) {
@@ -314,6 +309,35 @@ void standBlocks(const Course& c, double x, double z, Valley& v) {
         v.height = block;
         v.wet = v.wet && block < static_cast<double>(v.level);
     }
+}
+
+// The lowest valley of the segments of c around lip l at (x, z) (river_lips.hpp): those from
+// kNearLip meters above where it moves the valley to as far below (the others lie higher there:
+// their water upstream rising with its slot walls, or beyond their ends); neither blended nor
+// filled.
+constexpr double kNearLip = 4.0;
+Valley valleyNear(const Course& c, const FallLip& l, double x, double z, std::uint64_t meanderSeed,
+                  double warp) {
+    const double from = l.s - 4.0 * static_cast<double>(l.recess + l.edge) - kNearLip;
+    const double to = l.s + static_cast<double>(l.reach) + kNearLip;
+    std::size_t first = l.point;
+    while (first > 0 && c.points[first].s > from) {
+        --first;
+    }
+    Valley best;
+    for (std::size_t i = first; i + 1 < c.points.size() && c.points[i].s < to; ++i) {
+        const CoursePoint& a = c.points[i];
+        const CoursePoint& b = c.points[i + 1];
+        const SegmentSpan span(a, b);
+        Foot f = footOn(a, span, x, z);
+        sideOf(a, span, x, z, f);
+        const Frame r = frameOf(a, b, f, c.rises[i], c.valleyRises[i], warp);
+        const Valley v = segmentValley(a, b, f, r, meanderSeed, c.slotSeed);
+        if (v.height < best.height) {
+            best = v;
+        }
+    }
+    return best;
 }
 
 } // namespace
@@ -331,80 +355,6 @@ Meander meanderAt(double phase, double amplitude, std::uint64_t seed) {
     // At most about a half of g: scaled to about 1.
     return {2.0 * amplitude * (a + w * (b - a)),
             2.0 * amplitude * (g0 + dw * (b - a) + w * (g1 - g0))};
-}
-
-void ValleyBlend::add(const Valley& v) {
-    if (!(v.height < lowest_ + kBlend)) {
-        return;
-    }
-    double w = 1.0;
-    if (v.height < lowest_) {
-        // A new lowest: the weights of the others halve with their height above it.
-        const double scale =
-            weight_ > 0.0 ? dmath::exp2((v.height - lowest_) / kBlendHalving) : 0.0;
-        weight_ *= scale;
-        upX_ *= scale;
-        upZ_ *= scale;
-        slope_ *= scale;
-        above_ *= scale;
-        gorge_ *= scale;
-        mountain_ *= scale;
-        lowest_ = v.height;
-    } else {
-        w = dmath::exp2((lowest_ - v.height) / kBlendHalving);
-    }
-    weight_ += w;
-    upX_ += w * v.upX;
-    upZ_ += w * v.upZ;
-    slope_ += w * v.slope;
-    above_ += w * v.above;
-    gorge_ += w * static_cast<double>(v.gorge);
-    mountain_ += w * static_cast<double>(v.mountain);
-}
-
-void ValleyBlend::applyTo(Valley& v) const {
-    if (!(weight_ > 0.0)) {
-        return;
-    }
-    const double length = dmath::hypot(upX_, upZ_);
-    if (length > 1e-9) {
-        v.upX = upX_ / length;
-        v.upZ = upZ_ / length;
-    }
-    v.slope = slope_ / weight_;
-    v.above = above_ / weight_;
-    v.gorge = static_cast<float>(gorge_ / weight_);
-    v.mountain = static_cast<float>(mountain_ / weight_);
-}
-
-std::vector<float> risesOf(const std::vector<CoursePoint>& points, float CoursePoint::*level) {
-    const std::size_t n = points.size();
-    std::vector<float> rises(n > 0 ? n - 1 : 0);
-    const double highest = n > 0 ? static_cast<double>(points.front().*level) : 0.0;
-    const double lowest = n > 0 ? static_cast<double>(points.back().*level) : 0.0;
-    for (std::size_t i = 0; i + 1 < n; ++i) {
-        double rise = std::max(kLeastRise, secant(points[i], points[i + 1], level));
-        // Upstream of its start: no secant beyond the run where the highest water would rise
-        // more slowly than kLeastRise.
-        const double start = points[i].*level;
-        for (std::size_t j = i; j-- > 0;) {
-            const double run = points[i].s - points[j].s;
-            if (kLeastRise * run >= highest - start) {
-                break;
-            }
-            rise = std::max(rise, secant(points[j], points[i], level));
-        }
-        const double end = points[i + 1].*level;
-        for (std::size_t j = i + 2; j < n; ++j) {
-            const double run = points[j].s - points[i + 1].s;
-            if (kLeastRise * run >= end - lowest) {
-                break;
-            }
-            rise = std::max(rise, secant(points[i + 1], points[j], level));
-        }
-        rises[i] = static_cast<float>(rise);
-    }
-    return rises;
 }
 
 Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_t meanderSeed,
@@ -477,6 +427,11 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
             }
         }
     }
+    cutLips(c, x, z,
+            [&](double sx, double sz, const FallLip& l) {
+                return valleyNear(c, l, sx, sz, meanderSeed, warp.value());
+            },
+            best);
     standBlocks(c, x, z, best);
     blend.applyTo(best);
     best.raise = raise;

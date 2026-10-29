@@ -448,6 +448,7 @@ int main(int argc, char** argv) {
     if (!rock_tool::addGorge(*hydrology, kFallX, kFallZ, places)) {
         r.add("no gorge near the fall of 388 m\n");
     }
+    rock_tool::addFallViews(places);
     if (o.cost) {
         reportCost(w, o, places, r);
     }

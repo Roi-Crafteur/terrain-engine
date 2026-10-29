@@ -398,3 +398,32 @@ bool addGorge(const terrain::Hydrology& h, double x, double z, Places& out) {
 }
 
 } // namespace rock_tool
+
+namespace rock_tool {
+
+void addFallViews(Places& out) {
+    const std::string note = "the fall of 388 m, from where its views stood before its slot wound";
+    Shot basin = shotAt("fall_basin", -6'184'173.0, 155'515.0);
+    basin.heading = -119.6 / 360.0;
+    basin.tilt = 0.20;
+    basin.height = kTall;
+    basin.sunLeft = kSunBehind;
+    basin.note = note + ", from its basin";
+    out.shots.push_back(basin);
+    for (const bool up : {true, false}) {
+        Shot slot = shotAt(up ? "fall_up" : "fall_down", -6'185'302.0, 156'112.0);
+        slot.above = kSlotAbove;
+        slot.heading = (up ? -134.1 : 49.6) / 360.0;
+        slot.tilt = up ? -0.1 : -0.3;
+        slot.sunLeft = kSunBehind;
+        slot.note = note + (up ? ", up its slot" : ", down its slot");
+        out.shots.push_back(slot);
+    }
+    TopShot top = topAt("fall_above", -6'185'302.0, 156'112.0, note + ", its highest falls");
+    out.tops.push_back(top);
+    top = topAt("fall_above600", -6'185'102.0, 155'922.0, note + ", its whole stretch");
+    top.side = 600.0;
+    out.tops.push_back(top);
+}
+
+} // namespace rock_tool

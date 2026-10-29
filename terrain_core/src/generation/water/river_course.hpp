@@ -154,14 +154,38 @@ struct CoursePoint {
     bool fall = false;        // on a stretch where the water falls in steps (river_falls.hpp)
 };
 
-// A block of rock in a pool of a fall (river_slot.hpp): a dome radius meters wide around (x, z),
-// its top at top, its foot at base (below the bed).
+// A block of rock in a pool of a fall (river_slot.hpp): radius meters wide around (x, z), its top
+// at top, flatter there and steeper at its sides than a dome (falling with the cube of the
+// distance), its foot at base (below the bed).
 struct FallBlock {
     double x = 0.0;
     double z = 0.0;
     float radius = 0.0f;
     float top = 0.0f;
     float base = 0.0f;
+};
+
+// The lip of a drop of a stretch in steps (river_lips.hpp): where its face starts on the axis
+// (point of the course, s along it), the course going down (dirX, dirZ) there; the water above and
+// below it; how much harder the rock of the lip is than that under it (contrast, in [0, 1]); and
+// its edge across the slot: its middle recedes upstream by recess meters, over width meters on
+// each side of the axis, never by less than edge meters there (an irregular edge, drawn by seed),
+// the valley moved downstream by as much and back over reach meters below the lip.
+struct FallLip {
+    double x = 0.0;
+    double z = 0.0;
+    double dirX = 1.0;
+    double dirZ = 0.0;
+    double s = 0.0;
+    std::uint32_t point = 0;
+    float top = 0.0f;
+    float bottom = 0.0f;
+    float contrast = 0.0f;
+    float recess = 0.0f;
+    float edge = 0.0f;
+    float width = 0.0f;
+    float reach = 0.0f;
+    std::uint64_t seed = 0;
 };
 
 // Groups of consecutive segments of a course, for the bounds of the search.
@@ -201,6 +225,12 @@ struct Course {
     double blocksMinZ = 0.0;
     double blocksMaxX = 0.0;
     double blocksMaxZ = 0.0;
+    // The lips of the drops of its falls and the box of what they move (river_lips.hpp).
+    std::vector<FallLip> lips;
+    double lipsMinX = 0.0;
+    double lipsMinZ = 0.0;
+    double lipsMaxX = 0.0;
+    double lipsMaxZ = 0.0;
 };
 
 // The course of a reach.

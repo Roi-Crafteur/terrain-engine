@@ -156,6 +156,12 @@ public:
                    std::span<HeightSample> out, std::span<RockColumn> rock,
                    float leastRun = 0.0f) const;
     [[nodiscard]] RockColumn rockAt(double x, double z) const;
+    // How hard the rock is at height y under (x, z), in [0, 1] (0: soft): the layers the walls of
+    // the gorges of the rivers cut there (mountain_walls: the hard and soft great bands of the
+    // strata and of their rock steps, the soft ones made of beds a few meters thick, hard and
+    // soft), the crystalline rock hard. The forms of the falls follow it (phase 12A), never the
+    // biomes.
+    [[nodiscard]] float rockHardness(double x, double z, double y) const;
 
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
     [[nodiscard]] const WorldSize& world() const { return world_; }

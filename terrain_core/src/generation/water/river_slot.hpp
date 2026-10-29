@@ -3,11 +3,11 @@
 // The slot of a fall in steps (phase 11B), internal to terrain_core: the ravine its water falls
 // down in, cut into the floor of its valley (river_profile.cpp), and the blocks of rock in its
 // pools. The walls of the slot reach beyond its channel by a width of their own on each side,
-// drawn along the course (a gradient noise of kSlotWave meters, its edges broken over kEdgeWave,
-// with spurs of rock jutting into it): never by how deep the steps lie below the floor, so that its
-// rim never jumps at the foot of a step (the teeth of a slot as wide as its depth). Below a tall
-// step its walls are only higher and steeper. Pure arithmetic of doubles and hashes: the same bits
-// on every platform.
+// drawn along the course (noises of kSlotWave meters without zeros at regular intervals, their
+// edges broken over kEdgeWave, with rare spurs of rock of all sizes jutting into it): never by how
+// deep the steps lie below the floor, so that its rim never jumps at the foot of a step (the teeth
+// of a slot as wide as its depth). Below a tall step its walls are only higher and steeper. Pure
+// arithmetic of doubles and hashes: the same bits on every platform.
 
 #include "river_course.hpp"
 
@@ -18,6 +18,11 @@ namespace terrain::water {
 // The walls of the slot of a stretch whose steps drop mean meters on average reach about
 // slotBase(mean) meters beyond its channel (CoursePoint::slot).
 [[nodiscard]] float slotBase(double mean);
+
+// A noise of s within [-1, 1] (about a half at most) over waves of about wave meters, for stream
+// of seed: a gradient noise plus a value noise on its lattice, shifted by a draw, so that it never
+// comes back to 0 at regular intervals.
+[[nodiscard]] double slotNoise(std::uint64_t seed, std::uint64_t stream, double s, double wave);
 
 // The slot at s meters along a course of slots seed, half its channel there: its channel, on the
 // axis of the course, narrowed (never wider than half).
@@ -38,9 +43,10 @@ namespace terrain::water {
 // whatever the depth of the steps, the rim stands where the cliff meets the floor.
 [[nodiscard]] double slotWall(double out, double run, double rise);
 
-// The blocks of rock in the pools of the stretches in steps of c (its levels, shapes and slots
-// set): domes kBlockLeast to kBlockMost meters wide, their tops from kBlockSunk below its water to
-// kBlockOut above it, never within kBlockLip of the level of the step above them; and their box.
+// The blocks of rock of the stretches in steps of c (its levels, shapes and slots set): heaps at
+// the foot of their drops, a block per few meters of the drop, of 1.5 to 7 meters (mostly small),
+// nearly a half of them 1 to 4 meters out of their water, the others sunk, never within
+// kBlockLip of the level of the step above them; and their box.
 void placeBlocks(Course& c);
 
 // The surface of the blocks of course c at (x, z), in its images: -infinity off them.
