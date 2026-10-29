@@ -219,6 +219,11 @@ void placeHeap(Course& c, std::size_t lip, std::size_t foot, double next, std::u
     }
 }
 
+// A gradient in [-1, -0.4] or [0.4, 1] from a share in [0, 1): no flat half wave (meanderAt).
+double gradientOf(double share) {
+    return share < 0.5 ? -(0.4 + 1.2 * share) : 0.4 + 1.2 * (share - 0.5);
+}
+
 } // namespace
 
 float slotBase(double mean) {
@@ -235,8 +240,8 @@ double slotNoise(std::uint64_t seed, std::uint64_t stream, double s, double wave
     const std::uint64_t h1 = noise::deriveSeed(key, static_cast<std::uint64_t>(k + 1));
     const double w = f * f * f * (f * (6.0 * f - 15.0) + 10.0);
     // A gradient noise (0 at the lattice) plus a value noise (a draw there), from the same draws.
-    const double g0 = 2.0 * shareOf(h0, 0) - 1.0;
-    const double g1 = 2.0 * shareOf(h1, 0) - 1.0;
+    const double g0 = gradientOf(shareOf(h0, 0));
+    const double g1 = gradientOf(shareOf(h1, 0));
     const double gradient = g0 * f + w * (g1 * (f - 1.0) - g0 * f);
     const double v0 = 2.0 * shareOf(h0, 24) - 1.0;
     const double value = v0 + w * (2.0 * shareOf(h1, 24) - 1.0 - v0);

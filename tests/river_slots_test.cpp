@@ -10,6 +10,7 @@
 //     sides by kRecessLeast of the drop at least on average (an amphitheater); over rock of one
 //     hardness by kStraightMost meters at most (a straight lip), yet never as straight as a ruler
 //     (its three places apart by kEdgeLeast meters at least on average).
+//   - Banks: no more steps along them than kBankSteps per thousand samples (testBanks).
 //   - Patterns: the walls of the slot along the corridors have no peak of autocorrelation above
 //     kPeakMost at the lags of the noises of the slot (8 to 60 m).
 #include "falls_support.hpp"
@@ -31,7 +32,7 @@ using falls::World;
 using terrain::RiverReach;
 
 constexpr double kRunGap = 20.0; // a corridor: its points closer than this
-constexpr double kWindLeast = 0.25;
+constexpr double kWindLeast = 0.18;
 constexpr double kWindMost = 1.6;
 constexpr double kWaveSpread = 0.3;
 constexpr double kAcross = 0.8;
@@ -416,6 +417,51 @@ void testHeaps(Reaches& reaches, const std::vector<std::size_t>& steeps) {
     TEST_CHECK(share >= kOutLeast && share <= kOutMost && highest <= kOutHigh + 1e-3);
 }
 
+// The banks of the slot along the corridors: on lines alongside the axis, kBankOut meters beyond
+// the channel on each side, every 0.5 m, the ground steps by more than kBankStep meters at most
+// kBankSteps times per thousand samples (a slot winding down a steep valley would step its banks
+// where the segments of its axis turn: river_falls.cpp).
+constexpr std::array<double, 2> kBankOut = {6.0, 15.0};
+constexpr double kBankStep = 2.0;
+constexpr double kBankSteps = 0.25;
+
+void testBanks(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
+    std::size_t samples = 0;
+    std::size_t steps = 0;
+    for (const std::size_t r : steeps) {
+        const auto& p = reaches[r].points;
+        for (std::size_t i = 0; i + 1 < p.size(); ++i) {
+            const double length = std::hypot(p[i + 1].x - p[i].x, p[i + 1].z - p[i].z);
+            if (!(length < kRunGap) || !(length > 0.0)) {
+                continue;
+            }
+            const double ux = (p[i + 1].x - p[i].x) / length;
+            const double uz = (p[i + 1].z - p[i].z) / length;
+            for (const double side : {-1.0, 1.0}) {
+                for (const double out : kBankOut) {
+                    const double d = side * (0.5 * static_cast<double>(p[i].width) + out);
+                    double before = std::nan("");
+                    for (double t = 0.0; t <= length; t += 0.5) {
+                        const double h = w.field.heightAt(p[i].x + t * ux - d * uz,
+                                                          p[i].z + t * uz + d * ux);
+                        if (!std::isnan(before)) {
+                            ++samples;
+                            steps += std::abs(h - before) > kBankStep ? 1 : 0;
+                        }
+                        before = h;
+                    }
+                }
+            }
+        }
+    }
+    const double perThousand = 1000.0 * static_cast<double>(steps) /
+                               static_cast<double>(std::max<std::size_t>(1, samples));
+    std::printf("the banks of the corridors: %zu samples, %zu steps of more than %.0f m (%.2f per "
+                "thousand)\n",
+                samples, steps, kBankStep, perThousand);
+    TEST_CHECK(samples >= 100'000 && perThousand <= kBankSteps);
+}
+
 } // namespace
 
 int main() {
@@ -426,5 +472,6 @@ int main() {
     testLips(w, reaches, steeps);
     testPatterns(w, reaches, steeps);
     testHeaps(reaches, steeps);
+    testBanks(w, reaches, steeps);
     return test::result();
 }

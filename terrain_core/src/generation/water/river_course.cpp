@@ -7,6 +7,7 @@
 #include "river_lips.hpp"
 #include "river_profile.hpp"
 #include "river_slot.hpp"
+#include "river_winding.hpp"
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
