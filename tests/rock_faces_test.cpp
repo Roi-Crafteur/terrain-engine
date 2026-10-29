@@ -167,7 +167,7 @@ void testSingleSurfaceBelowFullWeight() {
     TEST_CHECK(rising);
 }
 
-// A vertical joint recedes the face by its depth from its foot to its top, at full weight only;
+// A vertical joint recedes the face by its depth between its foot and its top, at full weight only;
 // one narrower than 4 cells fades out, gone at 2 cells (the cells would catch its groove at one
 // column out of two: a slit): 2 m cells leave out a joint 4 m wide.
 void testJoint() {
@@ -181,6 +181,30 @@ void testJoint() {
     TEST_CHECK(terrain::rockDensity(c, 10.0, terrain::rockDetailForLod(2)) < 0.0f);
     c.faces[0].weight = 0.6f;
     TEST_CHECK(terrain::rockDensity(c, 10.0, {}) < 0.0f);
+}
+
+// A joint comes in over 4 m over the foot of its face and goes out under its top over 3 times its
+// depth (the roof over its end leans 0.5 m per meter at most), a quarter of the height of the face
+// at most, its depth within what fits there: never a groove cut short. On a face 8 m high, a joint
+// 1.5 m deep is drawn 2/3 m deep.
+void testJointEnds() {
+    const auto recess = [](const RockColumn& c, double y) {
+        RockColumn plain = c;
+        plain.faces[0].joint = 0.0f;
+        return terrain::rockDensity(c, y, {}) - terrain::rockDensity(plain, y, {});
+    };
+    RockColumn c = columnAt(-1.0f);
+    c.faces[0].joint = 1.5f;
+    c.faces[0].jointWidth = 4.0f;
+    const double low = recess(c, 1.0);
+    const double lower = recess(c, 3.0);
+    const double middle = recess(c, 10.0);
+    const double upper = recess(c, 16.0);
+    const double high = recess(c, 19.5);
+    TEST_CHECK(near(middle, 1.5, 1e-3));
+    TEST_CHECK(low < lower && lower < middle && high < upper && upper < middle && high < 0.3);
+    c.faces[0].top = 8.0f;
+    TEST_CHECK(near(recess(c, 4.0), 1.0 / 1.5, 1e-3));
 }
 
 // A cap thinner than 3 cells at its tip (half its depth) fades out: 2 m deep, 1 m cells leave it
@@ -311,6 +335,7 @@ int main() {
     testFades();
     testSingleSurfaceBelowFullWeight();
     testJoint();
+    testJointEnds();
     testThinLip();
     testGrain();
     testCarvedFace();

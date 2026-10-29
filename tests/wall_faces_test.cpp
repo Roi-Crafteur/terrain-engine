@@ -3,7 +3,8 @@
 // vertical at the middle of the run of its faces, the relief lying within their heights where it
 // climbs them; the same faces through a memo and across the seams of the world; on the highest
 // wall by the K2 the faces stand, some with caps or niches, the rock overhangs the air, and no rock
-// floats.
+// floats; the joints never fold a face, and their grooves come in two kinds, most open and lit,
+// some tight and dark.
 #include "wall_faces.hpp"
 
 #include "terrain/generation/heightfield.hpp"
@@ -169,15 +170,15 @@ double placedJoint(double x, double z, double airX, double airZ) {
     pending.jointX = j.acrossX;
     pending.jointZ = j.acrossZ;
     pending.jointAlone = j.alone;
+    pending.jointWall = j.wall;
     return terrain::wall_faces::placeFace(pending, -airX, -airZ).joint;
 }
 
-// The vertical joints are U-shaped grooves within kJointDeepest (0.4) of their width, with a
-// floor; where one runs along a face (the worst case: the air across it), the face recedes into
-// it slower than it stands back along its air (by kJointFold of it at most) where the joint runs
-// alone: it never folds into a blade of rock between the groove and the air, which their own
-// grooves would. Where another joint meets it, it goes on with the other's groove as it is, with
-// no step.
+// The vertical joints are grooves within 0.4 of their width, with a floor; where one runs along a
+// face (the worst case: the air across it), the face recedes into it slower than it stands back
+// along its air (by kJointFold of it at most) where the joint runs alone: it never folds into a
+// blade of rock between the groove and the air, which their own grooves would. Where another
+// joint meets it, it goes on with the other's groove as it is, with no step.
 void testJointsNeverFold() {
     std::size_t grooves = 0;
     double steepest = 0.0;
@@ -223,6 +224,100 @@ void testJointsNeverFold() {
     TEST_CHECK(steepestRaw > 1.0);
 }
 
+// The share of the width of a groove (depth every kAcross meters across it, where it passes a
+// twentieth of its floor) lit by a sun across it at kGrazing radians from the face, from the side
+// of the samples after (side 1) or before (-1): not shaded by the rock of another sample.
+constexpr double kAcross = 0.05;
+constexpr double kGrazing = 20.0 * 3.14159265358979323846 / 180.0;
+double litShare(const std::vector<double>& depth, double floor, int side) {
+    const double rise = std::tan(kGrazing) * kAcross;
+    const auto n = static_cast<int>(depth.size());
+    std::size_t lit = 0;
+    std::size_t count = 0;
+    for (int u = 0; u < n; ++u) {
+        if (!(depth[static_cast<std::size_t>(u)] > 0.05 * floor)) {
+            continue;
+        }
+        ++count;
+        bool shaded = false;
+        for (int v = u + side; v >= 0 && v < n && !shaded; v += side) {
+            shaded = depth[static_cast<std::size_t>(u)] - depth[static_cast<std::size_t>(v)] >
+                     std::abs(v - u) * rise;
+        }
+        lit += shaded ? 0 : 1;
+    }
+    return count > 0 ? static_cast<double>(lit) / static_cast<double>(count) : 1.0;
+}
+
+// The grooves a line along the wall crosses, each across itself at its deepest where it runs
+// alone: about one in five tight (0.4 of its width deep at most), the others open (a quarter of
+// it at most). Under a sun grazing the face (20 degrees) from either side, no open groove is black
+// (less than a tenth of its width lit), its far side lit over 30% of it at least, and the tight
+// ones are darker: never a wall of identical grooves.
+void testGrooveKinds() {
+    std::size_t crossed = 0;
+    std::size_t tight = 0;
+    std::size_t black = 0;
+    std::size_t blackOpen = 0;
+    double leastOpenLit = 1.0;
+    std::array<double, 2> litSum{}; // open, tight
+    bool shallow = true;
+    double previous = 0.0;
+    double deepest = 0.0;
+    std::array<double, 2> at{};
+    for (double t = 0.0; t < 4'000.0; t += 0.25) {
+        const double x = kWallX + 0.955 * t;
+        const double z = kWallZ + 0.296 * t;
+        const double d = terrain::wall_faces::jointAt(grain(), x, z).depth;
+        if (d > deepest) {
+            deepest = d;
+            at = {x, z};
+        }
+        if (d > 0.0 || !(previous > 0.0)) {
+            previous = d;
+            continue;
+        }
+        previous = d;
+        const terrain::wall_faces::Joint j = terrain::wall_faces::jointAt(grain(), at[0], at[1]);
+        deepest = 0.0;
+        if (j.alone < 1.0 || !(j.floor > 0.1)) {
+            continue;
+        }
+        const double length = std::hypot(j.acrossX, j.acrossZ);
+        std::vector<double> profile;
+        for (double u = -j.width; u <= j.width; u += kAcross) {
+            profile.push_back(terrain::wall_faces::jointAt(grain(), at[0] + u * j.acrossX / length,
+                                                           at[1] + u * j.acrossZ / length)
+                                  .depth);
+        }
+        const double lit = std::min(litShare(profile, j.floor, 1), litShare(profile, j.floor, -1));
+        const bool isTight = j.wall > 5.0;
+        ++crossed;
+        tight += isTight ? 1 : 0;
+        black += lit < 0.1 ? 1 : 0;
+        litSum[isTight ? 1 : 0] += lit;
+        if (!isTight) {
+            blackOpen += lit < 0.1 ? 1 : 0;
+            leastOpenLit = std::min(leastOpenLit, lit);
+        }
+        shallow = shallow && j.floor <= (isTight ? 0.4 : 0.25) * j.width + 1e-9;
+    }
+    const double tightShare = static_cast<double>(tight) / static_cast<double>(crossed);
+    const double blackShare = static_cast<double>(black) / static_cast<double>(crossed);
+    const double openLit = litSum[0] / static_cast<double>(crossed - tight);
+    const double tightLit = litSum[1] / static_cast<double>(std::max<std::size_t>(1, tight));
+    std::printf("grooves: %zu crossed, %.0f%% of them tight; under a grazing sun %.0f%% black (%zu "
+                "open ones); lit over %.0f%% of their width on average (open), %.0f%% (tight), an "
+                "open one over %.0f%% at least\n",
+                crossed, 100.0 * tightShare, 100.0 * blackShare, blackOpen, 100.0 * openLit,
+                100.0 * tightLit, 100.0 * leastOpenLit);
+    TEST_CHECK(crossed > 50);
+    TEST_CHECK(shallow);
+    TEST_CHECK(tightShare > 0.1 && tightShare < 0.35);
+    TEST_CHECK(blackOpen == 0 && leastOpenLit > 0.3);
+    TEST_CHECK(tightLit < openLit - 0.1);
+}
+
 } // namespace
 
 int main() {
@@ -230,5 +325,6 @@ int main() {
     testSyntheticWall();
     testMemoAndSeams();
     testJointsNeverFold();
+    testGrooveKinds();
     return test::result();
 }

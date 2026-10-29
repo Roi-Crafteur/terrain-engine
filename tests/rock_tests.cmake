@@ -27,3 +27,7 @@ terrain_add_test(rock_thin_test terrain_core)
 # The normals of the meshes of the tiles against their triangles (src/streaming/tile_normals.hpp).
 terrain_add_test(tile_normals_test terrain_core)
 target_include_directories(tile_normals_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
+# The overhanging folds: lips as slabs, their ceilings unbroken along the folds, with the
+# internals of the tiles (src/streaming/rock_tile.hpp) for the synthetic lips.
+terrain_add_test(rock_folds_test terrain_core)
+target_include_directories(rock_folds_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)

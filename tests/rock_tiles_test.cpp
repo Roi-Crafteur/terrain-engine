@@ -135,10 +135,11 @@ void testSyntheticTile() {
 }
 
 // On a LOD 2 tile stitched to a LOD 3 one, the even samples of the stitched side leave out the cap
-// the coarser tile cannot hold; the detail turns to the tile's own over 4 cells from the side (a
-// detail changing at once would leave a blade of rock along the side); farther, and on a tile
-// alone, they keep it. The face is 40 m high, its cap 11.5 m deep over its top 30 m (as thick as
-// 4 m cells draw it, not 8 m ones).
+// the coarser tile cannot hold; the density turns to that of the tile's own detail over 4 cells
+// from the side, the densities of both details blended (a detail changing at once would leave a
+// blade of rock along the side, a detail between them a cap neither tile draws); farther, and on
+// a tile alone, they keep it. The face is 40 m high, its cap 11.5 m deep over its top 30 m (as
+// thick as 4 m cells draw it, not 8 m ones).
 void testStitchedDetail() {
     const TileColumns columns = faceColumns(40.0f, 4.0f, 11.5f, 40.0f, 30.0f);
     const TileKey key{{0, 0}, 2};
@@ -153,15 +154,21 @@ void testStitchedDetail() {
     TEST_CHECK(stitched.sample(6, 6, 0, originY, false) < 0.0f && coarse > 0.0f);
     TEST_CHECK(stitched.sample(6, 6, 0, originY, true) == coarse);
     TEST_CHECK(stitched.levelDensity(originY).at(6, 6, 0) == coarse);
-    bool turning = stitched.detailAt(6, 0).cell == 8.0f && stitched.detailAt(6, 4).cell == 4.0f;
+    // Off the side, the densities of both details blended, the share of the tile's growing.
+    const terrain::DensityGrid level = stitched.levelDensity(originY);
+    bool turning = stitched.fineShare(6, 0) == 0.0 && stitched.fineShare(6, 4) == 1.0;
     for (int k = 1; k <= 4; ++k) {
-        turning = turning && stitched.detailAt(6, k).cell < stitched.detailAt(6, k - 1).cell &&
-                  stitched.detailAt(3, k) == stitched.detailAt(6, k);
+        const double share = stitched.fineShare(6, k);
+        const float fine = stitched.sample(6, 6, k, originY, false);
+        const float coarser = stitched.sample(6, 6, k, originY, true);
+        turning = turning && share > stitched.fineShare(6, k - 1) &&
+                  stitched.fineShare(3, k) == share &&
+                  std::abs(level.at(6, 6, k) - (coarser + share * (fine - coarser))) < 1e-4f;
     }
     TEST_CHECK(turning);
-    TEST_CHECK(stitched.levelDensity(originY).at(6, 6, 4) < 0.0f); // 4 cells off the side
+    TEST_CHECK(level.at(6, 6, 4) < 0.0f); // 4 cells off the side
     TEST_CHECK(alone.levelDensity(originY).at(6, 6, 0) < 0.0f);
-    TEST_CHECK(alone.detailAt(6, 0).cell == 4.0f);
+    TEST_CHECK(alone.fineShare(6, 0) == 1.0);
 }
 
 } // namespace

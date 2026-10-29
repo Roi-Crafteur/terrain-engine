@@ -10,9 +10,9 @@ namespace terrain::tile {
 namespace {
 
 constexpr int kLast = kGridSamples - 1;
-// On a side stitched to a coarser tile, the detail of the rock turns from the tile's to the
-// coarser one's over kSeamBlend cells (the faces the coarser tile does not draw fade out, not cut
-// short at the side).
+// On a side stitched to a coarser tile, the density of the rock turns from the tile's detail to
+// the coarser one's over kSeamBlend cells (the faces the coarser tile does not draw fade out, not
+// cut short at the side).
 constexpr double kSeamBlend = 4.0;
 
 double smooth(double edge0, double edge1, double v) {
@@ -95,9 +95,21 @@ float RockTile::sampleWith(int i, int j, int k, int originY, const RockDetail& d
     return rockDensity(c, sampleY, detail);
 }
 
-RockDetail RockTile::detailAt(int i, int k) const {
+float RockTile::sampleBlended(int i, int j, int k, int originY, double share) const {
+    if (share >= 1.0) {
+        return sampleWith(i, j, k, originY, fine_);
+    }
+    const float coarse = sampleWith(i, j, k, originY, coarse_);
+    if (share <= 0.0) {
+        return coarse;
+    }
+    const float fine = sampleWith(i, j, k, originY, fine_);
+    return static_cast<float>(coarse + share * (fine - coarse));
+}
+
+double RockTile::fineShare(int i, int k) const {
     if (!resample_) {
-        return fine_;
+        return 1.0;
     }
     i = std::clamp(i, 0, kLast);
     k = std::clamp(k, 0, kLast);
@@ -116,9 +128,7 @@ RockDetail RockTile::detailAt(int i, int k) const {
             cells = stitched(corner[a][b]) ? std::min(cells, std::max(toX[a], toZ[b])) : cells;
         }
     }
-    const double share = smooth(0.0, kSeamBlend, static_cast<double>(cells));
-    return {static_cast<float>(static_cast<double>(coarse_.cell) +
-                               share * static_cast<double>(fine_.cell - coarse_.cell))};
+    return smooth(0.0, kSeamBlend, static_cast<double>(cells));
 }
 
 DensityGrid RockTile::levelDensity(int originY) const {
@@ -126,9 +136,9 @@ DensityGrid RockTile::levelDensity(int originY) const {
     DensityGrid grid(0.0f);
     for (int k = 0; k < kGridSamples; ++k) {
         for (int i = 0; i < kGridSamples; ++i) {
-            const RockDetail detail = detailAt(i, k);
+            const double share = fineShare(i, k);
             for (int j = 0; j < kGridSamples; ++j) {
-                grid.set(i, j, k, sampleWith(i, j, k, originY, detail));
+                grid.set(i, j, k, sampleBlended(i, j, k, originY, share));
             }
         }
     }
@@ -153,17 +163,17 @@ void RockTile::dropPlants(std::vector<Plant>& plants) const {
 
 Vec3f RockTile::gradientAt(const DensityGrid& grid, int i, int j, int k, int originY) const {
     const bool ring = hasRing();
-    const RockDetail detail = detailAt(i, k);
+    const double share = fineShare(i, k);
     const float gx = derivative(i, ring, [&](int n) {
-        return n >= 0 && n <= kLast ? grid.at(n, j, k) : sampleWith(n, j, k, originY, detail);
+        return n >= 0 && n <= kLast ? grid.at(n, j, k) : sampleBlended(n, j, k, originY, share);
     });
     const float gz = derivative(k, ring, [&](int n) {
-        return n >= 0 && n <= kLast ? grid.at(i, j, n) : sampleWith(i, j, n, originY, detail);
+        return n >= 0 && n <= kLast ? grid.at(i, j, n) : sampleBlended(i, j, n, originY, share);
     });
     // Along y, centered through the rock beyond the level on its borders.
-    const float below = j > 0 ? grid.at(i, j - 1, k) : sampleWith(i, -1, k, originY, detail);
+    const float below = j > 0 ? grid.at(i, j - 1, k) : sampleBlended(i, -1, k, originY, share);
     const float above =
-        j < kLast ? grid.at(i, j + 1, k) : sampleWith(i, kGridSamples, k, originY, detail);
+        j < kLast ? grid.at(i, j + 1, k) : sampleBlended(i, kGridSamples, k, originY, share);
     return {gx, 0.5f * (above - below), gz};
 }
 
@@ -206,8 +216,16 @@ std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const 
     for (const Vec3f& v : mesh.vertices) {
         const auto i = static_cast<int>(std::lround(v.x / spacing));
         const auto k = static_cast<int>(std::lround(v.z / spacing));
-        rock.push_back(rockShare(rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast)),
-                                 originY + static_cast<double>(v.y), detailAt(i, k)));
+        const RockColumn& c = rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast));
+        const double y = originY + static_cast<double>(v.y);
+        const double share = fineShare(i, k);
+        const float fine = rockShare(c, y, fine_);
+        if (share >= 1.0) {
+            rock.push_back(fine);
+            continue;
+        }
+        const float coarse = rockShare(c, y, coarse_);
+        rock.push_back(static_cast<float>(coarse + share * (fine - coarse)));
     }
     return rock;
 }

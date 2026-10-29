@@ -41,13 +41,17 @@ struct Grain {
 
 // The vertical joint of the rock at the canonical column (x, z): how far it recedes a face there
 // (0 away from one) and how wide it is. The joints are the edges of jittered cells about 17 m
-// wide (not on the lattice of the tiles), open over about two thirds of their length, U-shaped
-// grooves 3 to 8 m wide and 0.3 to 2.5 m deep (0.4 of their width at most) by noises along them:
-// never a regular row of grooves.
+// wide (not on the lattice of the tiles), open over about two thirds of their length. Each draws
+// its own groove: most open, 4 to 8 m wide and 0.12 to 0.25 of that deep (its far side stays lit
+// under a grazing light), about one in five tight and dark, 3 to 4.5 m wide and 0.3 to 0.4 of that
+// deep; their depth and width wander along them by noises: never a regular row of grooves.
 struct Joint {
     double depth = 0.0;
     double width = 0.0;
     double floor = 0.0; // the depth of its floor (the most it recedes the face)
+    // How steep its walls are at their steepest: their depth over the width of the groove, times
+    // this.
+    double wall = 3.0;
     // How fast the distance to it grows along x and z (1 at most, across it), and how far it runs
     // alone there: 1 away from the corners of its cells, 0 where another joint meets it (its
     // direction gives way to the other's).
@@ -67,12 +71,13 @@ struct PendingFace {
     double rate = 1.0;  // how fast the ground of its pass rises with the ground of the walls
     double liftX = 0.0; // how fast the ground of its pass is lifted along x and z (the joints)
     double liftZ = 0.0;
-    // The floor of its joint (by its weight, as its depth), the gradient of the distance to it and
-    // how far it runs alone (Joint).
+    // The floor of its joint (by its weight, as its depth), the gradient of the distance to it, how
+    // far it runs alone and how steep its walls are (Joint).
     double jointFloor = 0.0;
     double jointX = 1.0;
     double jointZ = 0.0;
     double jointAlone = 1.0;
+    double jointWall = 3.0;
 };
 
 // What the walls report at a point of the Heightfield.

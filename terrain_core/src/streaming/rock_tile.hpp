@@ -31,14 +31,18 @@ public:
     // The same with a detail given.
     [[nodiscard]] float sampleWith(int i, int j, int k, int originY,
                                    const RockDetail& detail) const;
+    // The same with share of the detail of the tile, the rest of its coarser neighbor's.
+    [[nodiscard]] float sampleBlended(int i, int j, int k, int originY, double share) const;
 
-    // The detail of the rock at column (i, k): the tile's, turning to its coarser neighbor's
-    // over a few cells toward a stitched side, that one's on the side (the samples the coarser
-    // tile holds there).
-    [[nodiscard]] RockDetail detailAt(int i, int k) const;
+    // How much of the detail of the tile the rock takes at column (i, k): all of it, but over a
+    // few cells toward a stitched side, where it turns to the coarser neighbor's, none on the side
+    // (the samples the coarser tile holds there). The densities of both details are blended
+    // there: a detail between them would draw features neither tile draws (a blade of rock along
+    // the side, where a cap fades out).
+    [[nodiscard]] double fineShare(int i, int k) const;
 
-    // The density of a level, each column with its detail (detailAt), before the block edits and
-    // the stitching.
+    // The density of a level, each column blending the densities of both details by its share
+    // (fineShare), before the block edits and the stitching.
     [[nodiscard]] DensityGrid levelDensity(int originY) const;
 
     // True if the detail of the coarser neighbor differs from the tile's on a stitched side.
@@ -61,7 +65,7 @@ public:
     void lightLevel(Mesh& level, const DensityGrid& grid, int originY) const;
 
     // The share of rock of each vertex of a mesh of the tile whose origin lies at originY: that of
-    // the nearest column (rockShare).
+    // the nearest column (rockShare), its details blended as its density (fineShare).
     [[nodiscard]] std::vector<float> vertexRock(const Mesh& mesh, double originY) const;
 
 private:

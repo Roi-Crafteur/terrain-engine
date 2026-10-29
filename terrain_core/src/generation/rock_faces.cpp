@@ -39,6 +39,14 @@ constexpr double kRound = 3.0;
 constexpr double kRoundShare = 0.25;
 // The grain and the overhangs of a face come in as its drawn weight runs from kFullLow to 1.
 constexpr double kFullLow = 0.75;
+// The joints come in over kJointEnds meters over the foot of a face (their floor rising out of
+// it) and go out under its top over 1.5 / kJointRoof times their depth at least: the rock closing
+// over a groove is a roof, and steeper it would turn its face down, black under the light. Both
+// ends take kJointEndShare of the height of the face at most, the depth of the joint within what
+// fits there: a groove never ends cut short at the foot or the top of its face.
+constexpr double kJointEnds = 4.0;
+constexpr double kJointRoof = 0.5;
+constexpr double kJointEndShare = 0.25;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -111,10 +119,24 @@ double roundOf(const RockFace& f) {
     return std::min(kRound, kRoundShare * (static_cast<double>(f.top) - f.foot));
 }
 
+// How far the joint of a face recedes it at height y.
+double jointAt(const RockFace& f, double y) {
+    const double foot = f.foot;
+    const double top = f.top;
+    const double most = kJointEndShare * (top - foot);
+    const double depth = std::min(static_cast<double>(f.joint), kJointRoof * most / 1.5);
+    if (!(depth > 0.0)) {
+        return 0.0;
+    }
+    const double low = std::min(kJointEnds, most);
+    const double high = std::min(std::max(kJointEnds, 1.5 * depth / kJointRoof), most);
+    return depth * smooth(foot, foot + low, y) * (1.0 - smooth(top - high, top, y));
+}
+
 // How far the face lies toward the air at height y of its step: its grain, its cap, full over the
 // top two fifths of its depth and nothing at its bottom (a ceiling rising to the lip), less its
-// undercut, an arch deepest at the foot, and its joint; all of them at full weight only
-// (kFullLow).
+// undercut, an arch deepest at the foot, and its joint (jointAt); all of them at full weight
+// only (kFullLow).
 double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
     const double full = smooth(kFullLow, 1.0, static_cast<double>(drawnWeight(f, detail)));
     if (!(full > 0.0)) {
@@ -141,8 +163,8 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
     // A joint narrower than kJointCells cells fades out, gone at half that width (the cells would
     // catch its groove at one column out of two: a slit); a shallow one is drawn: it only moves
     // the face.
-    offset -= static_cast<double>(f.joint) * smooth(0.5 * kJointCells * detail.cell,
-                                                    kJointCells * detail.cell, f.jointWidth);
+    offset -= jointAt(f, y) * smooth(0.5 * kJointCells * detail.cell, kJointCells * detail.cell,
+                                     f.jointWidth);
     return full * offset;
 }
 
