@@ -371,6 +371,47 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   4. capitale : château sur une hauteur, remparts et portes, cathédrale, marché, port,
      faubourgs
   5. cultures et archétypes supplémentaires (désert, montagne, côte, marais, toundra, jungle)
+- cartes du niveau Planète pour le monde peuplé (proposition d'octobre 2026, à affiner avec
+  l'utilisateur avant l'agent 25) ; pour chaque case :
+  | carte | utilité | état |
+  |---|---|---|
+  | elevation | montagnes, plaines, océans | fait |
+  | temperature | climat, déserts, glaces | fait |
+  | rainfall | forêts, prairies, déserts | fait (précipitations) |
+  | biome | type de terrain final | partiel : calculé au point, pas en carte Planète |
+  | river | villes, agriculture, frontières | fait (réseau complet : agent 31) |
+  | coast | ports, commerce, peuples marins | partiel : mer et côte, pas de type de côte |
+  | resources | mines, agriculture, magie | à faire |
+  | danger | monstres, zones interdites | à faire |
+  | magic | zones magiques, portails, anomalies | à faire |
+  | habitability | score global pour la vie civile | à faire |
+  | raceSuitability[race] | score séparé pour chaque peuple | à faire |
+- conception détaillée (deux passes Planète / site, presets de monde, énergies Prana, Aura et
+  Mana, lignes telluriques, danger magique, format JSON des peuples, calendrier par rapport
+  aux agents 31, 33 et 34) : `docs/PEUPLEMENT.md`
+- pipeline du monde peuplé (validé avec l'utilisateur, octobre 2026), tout sur le niveau
+  Planète, déterministe :
+  1. génération physique : elevation, temperature, rainfall, river, biome, coast basique
+     (fait, sauf le type de côte ; les biomes ne modifient jamais la hauteur)
+  2. cartes d'analyse : slope (rugosité dans la case de 8 km, pas une pente moyenne),
+     waterDistance, arableLand, resources (par la géologie, jamais le biome ; minerais rares
+     sur la seed secrète), danger naturel, magic, habitability. Données dérivées, recalculées
+     depuis le niveau Planète (les fleuves changeront avec la 11C), rangées à part : la somme
+     du niveau Planète ne change pas, aucune forme du monde modifiée
+  3. peuples : races (liste et préférences fixées par l'utilisateur), raceSuitability[race],
+     graines et capitales potentielles
+  4. expansion et frontières naturelles : expansion pondérée par un coût (terrain, pente,
+     fleuve, désert), frontières qui en émergent (jamais tracées après coup), nettoyage
+     minimal des seuls artefacts (les enclaves réalistes restent : îles, vallées isolées,
+     peuples réfugiés)
+  5. guerres et alliances : gouvernements et relations entre peuples, puis une histoire
+     courte et déterministe (nombre fixe de tours) : déplacement de frontières, zones
+     disputées, ruines et forts, monde politique final
+  6. villes, villages et routes : capitales confirmées, villes selon le monde d'après-guerre,
+     routes selon les frontières et le relief, ports et réseaux commerciaux
+  7. plans parallèles : plan céleste, plan infernal, portails selon la magie et les
+     royaumes. Bien plus tard : chaque plan est un monde à part, après la validation du
+     relief, de l'eau et des côtes du monde principal
 - décisions de game design :
   - monde sauvage, royaumes rares ; par royaume : rayon de 2 000 à 5 000 km, 1 capitale,
     3 à 8 villes, 10 à 30 bourgs, 30 à 120 villages
