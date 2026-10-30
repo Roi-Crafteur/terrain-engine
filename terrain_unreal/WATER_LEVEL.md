@@ -240,6 +240,20 @@ rives et des montagnes) sans toucher au reste. Il faudra alors régler au raccor
 
 ## Limites
 
+**À reprendre en phase 14 (belle eau)**, vus dans Unreal sur `351aa38` (validé) :
+- **Bord droit de l'écume au pied du rideau.** Le disque d'écume est coupé net là où il passe sous
+  le rideau ou contre la face : il ne lit que la profondeur derrière lui, pas la forme du rideau.
+- **Traînée du reflet du soleil en taches carrées**, en regardant vers le soleil à 3 m de l'eau.
+  Le reflet GGX suit les mailles du bruit de valeur des rides (réseaux tournés, mais des cellules
+  carrées) : de près et à contre-jour, elles se lisent.
+- **Petit amas de points brillants vu de dessus à 600 m**, sous la caméra. Le reflet du soleil
+  garde un peu de scintillement malgré l'antialiasing spéculaire analytique des rides.
+- **Bord haut du rideau en escalier vu de côté.** Le rideau part de l'eau de la lèvre, mais la
+  surface des tuiles s'arrête à la dernière maille non coupée (0,7) avant la face, effacée sur
+  une maille : vu de profil, ce bord suit les mailles (1 à 8 m selon la LOD).
+- **Rive en escalier** (le sol, le matériau temporaire), détaillée plus bas.
+
+**Autres limites :**
 - Pas de rideau sur l'horizon : une chute vue de plus de 850 m n'a que ses marches d'eau.
 - Les fleuves étroits ne sont que des points sur les niveaux grossiers de l'horizon (un
   échantillon tous les 16, 32 m…).
