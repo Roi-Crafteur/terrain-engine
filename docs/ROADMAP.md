@@ -176,6 +176,16 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - `terrain_make_planet --memory` : temps, tas et mémoire du processus de chaque étape ;
   `planet_memory_test` (petit monde : au plus 32 octets par case, contre 40 à 46 avant)
 
+### Tests de coût stables sur une machine lente
+- `water_cost_test` mesure ses rapports paire par paire (`tests/cost_ratio_support.hpp`) : à
+  chaque tour, chaque morceau ou tuile sans l'eau puis avec (ou l'inverse, en alternance), le
+  meilleur temps de chacun gardé de chaque côté ; nouvelle mesure (5 tours de plus, 2 fois au
+  plus) seulement au-delà de la limite. Mêmes limites, mêmes lieux, même durée
+- mesuré sous Linux (4 cœurs), 18 exécutions dont 8 sous une charge en rafales : morceaux près
+  des fleuves ×1,42 à ×1,50 au lieu de ×0,99 à ×1,90 ; un faux échec de l'ancienne mesure
+  sous la charge, aucun de la nouvelle ; une régression forcée de l'eau (fleuves calculés 3 ou 5
+  fois, attente sur chaque échantillon) toujours détectée
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
@@ -191,8 +201,7 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
 - en cours, change le monde : phase 12A, vrais murs verticaux, surplombs, arches et chutes en
   roche 3D dans le monde streamé
 - en parallèle, sans changer le monde : l'eau dans Unreal à son vrai niveau (lacs, fleuves,
-  chutes), casser et poser en jeu, poids des biomes dans l'horizon lointain, tests de coût
-  stables sur une machine lente
+  chutes), casser et poser en jeu, poids des biomes dans l'horizon lointain
 - en pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game
   design
 - ensuite, l'un après l'autre (chacun change le monde) : réseau hydrographique complet avec la
