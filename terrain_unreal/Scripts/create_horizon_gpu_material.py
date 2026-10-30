@@ -38,6 +38,7 @@ import importlib
 import math
 import os
 import sys
+import types
 
 import unreal
 
@@ -211,6 +212,15 @@ def local_position(material, x, y):
     return node
 
 
+def helpers():
+    """The helpers of this script that horizon_water_nodes.py builds its nodes with, handed over
+    explicitly: Unreal runs a script in globals of its own, not as the module __main__."""
+    return types.SimpleNamespace(expression=expression, connect=connect, custom_node=custom_node,
+                                 texture_parameter=texture_parameter, mask=mask,
+                                 world_position=world_position, local_position=local_position,
+                                 interpolate=interpolate)
+
+
 def parameters(material):
     """The textures and the scalar and vector parameters, shared by both shaders."""
     nodes = {"HorizonTexels": texture_parameter(material, "HorizonTexels", -400),
@@ -232,7 +242,7 @@ def parameters(material):
         color.set_editor_property("parameter_name", name)
         color.set_editor_property("default_value", unreal.LinearColor(*value, 1.0))
         nodes[name] = color
-    nodes.update(water_nodes.parameters(material, sys.modules[__name__]))
+    nodes.update(water_nodes.parameters(material, helpers()))
     return nodes
 
 
@@ -415,16 +425,16 @@ def pixel_shader(material, nodes, vertex, kind):
     for name in SHADE_SCALARS:
         connect(nodes[name], "", shade, name)
     # The lakes and rivers at their level over the shaded ground (horizon_water_nodes.py).
-    this = sys.modules[__name__]
-    water = water_nodes.vertex(material, this, nodes, kind)
-    inland = water_nodes.pixel(material, this, nodes, shade, water)
-    water_nodes.opacity_mask(material, this, square, inland, attributes)
+    g = helpers()
+    water = water_nodes.vertex(material, g, nodes, kind)
+    inland = water_nodes.pixel(material, g, nodes, shade, water)
+    water_nodes.opacity_mask(material, g, square, inland, attributes)
     for source, output, name in ((inland, "", "BaseColor"),
                                  (inland, "EmissiveOut", "EmissiveColor"),
                                  (inland, "NormalOut", "Normal"),
                                  (inland, "RoughnessOut", "Roughness"),
                                  (inland, "SpecularOut", "Specular"),
-                                 (water_nodes.world_offset(material, this, vertex, water), "",
+                                 (water_nodes.world_offset(material, g, vertex, water), "",
                                   "WorldPositionOffset")):
         connect(source, output, attributes, name)
     unreal.MaterialEditingLibrary.connect_material_property(

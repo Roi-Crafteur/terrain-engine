@@ -7,6 +7,10 @@ the Unreal Editor, so this checks what can be checked here.
   output it writes declared among its outputs.
 - The scripts that rebuild a material in place reset every setting first
   (material_settings.reset_material), and set none of them by hand.
+- Each script that creates a material runs to its end as Unreal runs it (Tools > Execute Python
+  Script, `py <file>`): executed in globals of its own, not as the module __main__, against a
+  fake module unreal that records the calls, for a new asset and for one rebuilt in place; the
+  parameters it must declare are there.
 Usage: python3 unreal_water_scripts_test.py <terrain_unreal/Scripts>
 """
 
@@ -57,9 +61,78 @@ def check_node(label, code, inputs, outputs):
         check(bare.count(opening) == bare.count(closing), f"{label}: {opening}{closing} unbalanced")
     used = names(code) - KNOWN
     written = {name for name in used if name.endswith("Out")}
-    check(written <= set(outputs), f"{label}: outputs not declared: {sorted(written - set(outputs))}")
+    check(written <= set(outputs),
+          f"{label}: outputs not declared: {sorted(written - set(outputs))}")
     missing = used - written - set(inputs)
     check(not missing, f"{label}: inputs not declared: {sorted(missing)}")
+
+
+class FakeUnreal:
+    """The module unreal of the editor, as far as the scripts call it: any attribute is another
+    fake, any call is recorded and gives a fake back, except the few answers the scripts read."""
+
+    def __init__(self, record, path="unreal"):
+        self._record = record
+        self._path = path
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return FakeUnreal(self._record, f"{self._path}.{name}")
+
+    def __call__(self, *args, **kwargs):
+        leaf = self._path.rsplit(".", 1)[-1]
+        self._record["calls"].append((leaf, args))
+        if leaf == "get_num_material_expressions":
+            return 0
+        if leaf == "does_asset_exist":
+            return self._record["exists"]
+        if leaf == "set_editor_property" and args and args[0] == "parameter_name":
+            self._record["parameters"].add(args[1])
+        return FakeUnreal(self._record, f"{self._path}()")
+
+
+# The parameters a script must declare (the C++ of the plugin and the instances set them).
+NEEDED = {
+    "create_horizon_gpu_material.py": {"HorizonTexels", "CoarseTexels", "HorizonWater",
+                                       "CoarseWater", "InlandWater", "DropCoveredCm",
+                                       "LakeWaterColor", "FlowSpeed"},
+    "create_water_materials.py": {"LakeWaterColor", "RiverAbsorption", "FlowSpeed",
+                                  "CurtainColor", "FoamColor"},
+    "create_temporary_terrain_material.py": {"SurfaceTexels", "TileBlendTexels"},
+}
+
+
+def run_as_unreal(folder, script, exists):
+    """Runs a script as the editor does, its own globals; the calls it made to unreal."""
+    record = {"calls": [], "parameters": set(), "exists": exists}
+    sys.modules["unreal"] = FakeUnreal(record)
+    path = folder / script
+    scope = {"__name__": "__main__", "__file__": str(path), "__builtins__": __builtins__}
+    try:
+        exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), scope)
+    except Exception as error:  # noqa: BLE001  (any failure of the script is the finding)
+        check(False, f"{script} ({'rebuilt' if exists else 'new'}): {type(error).__name__}: "
+                     f"{error}")
+    return record
+
+
+# Settings UE 5.8 no longer has: set_editor_property fails on them (a warning on every material).
+GONE_IN_UE58 = {"cast_shadow_as_masked", "num_customized_uvs"}
+
+
+def check_runs(folder):
+    for script, needed in NEEDED.items():
+        for exists in (False, True):
+            record = run_as_unreal(folder, script, exists)
+            missing = needed - record["parameters"]
+            check(not missing, f"{script}: parameters missing: {sorted(missing)}")
+            saved = sum(1 for leaf, _ in record["calls"] if leaf == "save_asset")
+            check(saved >= 1, f"{script}: nothing saved")
+            reset = {args[0] for leaf, args in record["calls"]
+                     if leaf == "set_editor_property" and args and isinstance(args[0], str)}
+            check(not reset & GONE_IN_UE58,
+                  f"{script}: settings UE 5.8 lacks: {sorted(reset & GONE_IN_UE58)}")
 
 
 def main(folder):
@@ -93,6 +166,7 @@ def main(folder):
         check(not re.search(r'material\.set_editor_property\("(blend_mode|shading_model|'
                             r'use_material_attributes|tangent_space_normal|two_sided)"', source),
               f"{script}: a setting of the material set by hand")
+    check_runs(folder)
     print(f"water scripts: {len(failures)} failure(s), "
           f"{len(look.RIPPLES)} ripples, {len(look.look_inputs())} look parameters")
     return 1 if failures else 0

@@ -10,7 +10,8 @@ A setting this version of Unreal does not have is reported and skipped.
 
 import unreal
 
-# The value of each setting in a new material (UMaterial defaults, UE 5.8).
+# The value of each setting in a new material (UMaterial defaults, UE 5.8, which no longer has
+# cast_shadow_as_masked nor num_customized_uvs).
 DEFAULTS = {
     "material_domain": unreal.MaterialDomain.MD_SURFACE,
     "blend_mode": unreal.BlendMode.BLEND_OPAQUE,
@@ -21,10 +22,8 @@ DEFAULTS = {
     "opacity_mask_clip_value": 0.3333,
     "dithered_lod_transition": False,
     "fully_rough": False,
-    "cast_shadow_as_masked": False,
     "translucency_lighting_mode":
         unreal.TranslucencyLightingMode.TLM_VOLUMETRIC_NON_DIRECTIONAL,
-    "num_customized_uvs": 0,
     "is_sky": False,
     "disable_depth_test": False,
 }

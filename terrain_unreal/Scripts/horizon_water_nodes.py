@@ -1,9 +1,9 @@
 """The nodes of the lakes and rivers of the GPU horizon (agent 27), for
 create_horizon_gpu_material.py: its water parameters, the vertex node that raises the water to its
 level (HorizonWaterVertex), the pixel node that draws it over the ground (HorizonInlandWater), the
-world position offset and the opacity mask they change. g: the module of the material script, for
-its helpers (expression, connect, custom_node, texture_parameter, local_position, world_position,
-mask, interpolate). The code: horizon_water_hlsl.py and water_look_hlsl.py.
+world position offset and the opacity mask they change. g: the helpers of the material script,
+handed over by it (expression, connect, custom_node, texture_parameter, local_position,
+world_position, mask, interpolate). The code: horizon_water_hlsl.py and water_look_hlsl.py.
 """
 
 import importlib
