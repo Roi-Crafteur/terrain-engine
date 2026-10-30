@@ -377,6 +377,11 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> TileSurfaceLook;
 
+	// The instance of the material of the water of the tiles, which fades into the water of the GPU
+	// horizon over the outer band of the tiles (TerrainWorldWater.cpp).
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> TileWaterLook;
+
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor).
 	TPimplPtr<FTerrainWorldState> State;

@@ -11,6 +11,7 @@
 #include "tile_water_mesh.hpp"
 #include "water_level_support.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <vector>
@@ -83,9 +84,27 @@ void testLake() {
                 m.triangleCount(), flat ? "flat at its level" : "NOT FLAT", up ? "up" : "DOWN");
 }
 
-// A river down z, falling 10 m between the rows 8 and 9: no cell across the fall; on the side
-// stitched to a coarser tile (+x), the odd columns at the mean level of their even neighbors,
-// on the straight edge of its cells, while the side not stitched (-x) keeps its levels.
+// Whether no drawn cell is steeper than the cut between two of its corners (a diagonal: twice).
+bool noSteepCell(const UnrealWaterMesh& m) {
+    bool gentle = true;
+    for (std::size_t n = 0; n < m.triangleCount(); ++n) {
+        for (std::size_t a = 0; a < 3; ++a) {
+            const UnrealVector3f& p = m.positions[static_cast<std::size_t>(m.triangles[3 * n + a])];
+            const UnrealVector3f& q =
+                m.positions[static_cast<std::size_t>(m.triangles[3 * n + (a + 1) % 3])];
+            const double run = std::abs(double{p.x} - q.x) + std::abs(double{p.y} - q.y);
+            gentle = gentle && std::abs(double{p.z} - q.z) <= terrain::unreal::kWaterCutSlope * run +
+                                                               1e-2;
+        }
+    }
+    return gentle;
+}
+
+// A river down z, falling 10 m between the rows 8 and 9: no cell across the fall, the 16 cells
+// there cut and the last one of the next row (on the side stitched to a coarser tile, +x, the
+// column of row 9 stands halfway down the fall), the edge 0 on their corners and 1 elsewhere; on
+// that side, the odd columns at the mean level of their even neighbors, on the straight edge of
+// its cells, while the side not stitched (-x) keeps its levels.
 void testFallAndSeam() {
     TileData t = madeUp(1, terrain::kSeamPosX);
     const auto level = [](int k) {
@@ -110,9 +129,12 @@ void testFallAndSeam() {
     }
     bool stitched = true;
     bool kept = true;
+    bool edges = m.cutCells == 17 && noSteepCell(m);
     for (std::size_t n = 0; n < m.positions.size(); ++n) {
         const UnrealVector3f& p = m.positions[n];
         const int k = static_cast<int>(std::lround(p.y / 200.0f));
+        const bool rim = k == 8 || k == 9 || (k == 10 && p.x >= 3000.0f);
+        edges = edges && m.uv2[n].v == (rim ? 0.0f : 1.0f);
         const bool side = p.x == 3200.0f;
         const double expected =
             side && k % 2 == 1 ? 0.5 * (double{level(k - 1)} + level(k + 1)) : level(k);
@@ -120,9 +142,11 @@ void testFallAndSeam() {
         stitched = stitched && (!side || at) && m.uv0[n].v == 1.0f;
         kept = kept && (side || at);
     }
-    TEST_CHECK(cut && stitched && kept && !m.empty());
-    std::printf("river: %zu triangles, %s, side stitched to the coarser tile %s, other sides %s\n",
+    TEST_CHECK(cut && stitched && kept && edges && !m.empty());
+    std::printf("river: %zu triangles, %s (%d cells cut, %s), side stitched to the coarser tile "
+                "%s, other sides %s\n",
                 m.triangleCount(), cut ? "no cell across the fall" : "A CELL ACROSS THE FALL",
+                m.cutCells, edges ? "their corners faded" : "WRONG EDGES",
                 stitched ? "on its edge" : "OFF ITS EDGE", kept ? "at their levels" : "MOVED");
 }
 
@@ -201,59 +225,96 @@ void testSides(const World& w, const std::vector<terrain::RiverFall>& falls) {
                 exact ? "the levels of its water texels" : "NOT THE LEVELS OF ITS WATER TEXELS");
 }
 
-// The curtains of the falls in the tiles of their lips, and a made-up one: from the water at the
-// lip across kCurtainWidthShare of the width, down to below the water at the foot, facing
-// downstream; the foam on the water below.
-void testCurtains(const World& w, const std::vector<terrain::RiverFall>& falls) {
-    std::vector<TileData> tiles;
-    for (const terrain::RiverFall& f : falls) {
-        tiles.push_back(tileAt(w.tiles, f.x, f.z, 0));
-    }
-    TileData madeUpFall = madeUp(0, 0);
-    madeUpFall.falls.push_back({4.0, 5.0, 10.0, 5.0, 150.0f, 96.5f, 20.0f});
-    tiles.push_back(madeUpFall);
-    std::size_t curtains = 0;
-    bool right = true;
-    for (const TileData& t : tiles) {
-        const UnrealWaterMesh m = terrain::unreal::buildFallCurtains(t);
+// Whether every fall of a tile has its curtain and its foam, their sizes in uv2.v: the width of
+// the curtain (kCurtainWidthShare of the fall), the radius of the foam.
+bool everyFallDrawn(const TileData& t, const UnrealWaterMesh& m) {
+    std::size_t foam = 0;
+    bool sized = true;
+    for (std::size_t n = 0; n < m.positions.size(); ++n) {
+        const bool curtain = m.uv1[n].u == terrain::unreal::kWaterCurtain;
+        foam += curtain ? 0u : 1u;
+        bool known = false;
         for (const terrain::TileFall& f : t.falls) {
-            const double run = std::hypot(f.footX - f.x, f.footZ - f.z);
-            const double drop = static_cast<double>(f.top) - f.bottom;
-            curtains += drop >= terrain::unreal::kWaterCutSlope * run ? 1u : 0u;
+            const double width = static_cast<double>(f.width);
+            const double size = curtain ? terrain::unreal::kCurtainWidthShare * width
+                                        : std::max(terrain::unreal::kFoamLeastRadius,
+                                                   terrain::unreal::kFoamRadiusShare * width);
+            known = known || std::abs(m.uv2[n].v - size) < 1e-3;
         }
-        double top = -1e9;
-        double bottom = 1e9;
-        for (std::size_t n = 0; n < m.positions.size(); ++n) {
-            const double z = t.originY + m.positions[n].z / 100.0;
-            if (m.uv1[n].u == terrain::unreal::kWaterCurtain) {
-                top = std::max(top, z);
-                bottom = std::min(bottom, z);
-                right = right && m.normals[n].z >= 0.0f;
-            }
-        }
-        for (std::size_t n = 0; n < m.triangleCount(); ++n) {
-            const UnrealVector3f& normal =
-                m.normals[static_cast<std::size_t>(m.triangles[3 * n])];
-            const UnrealVector3f& a = m.positions[static_cast<std::size_t>(m.triangles[3 * n])];
-            const UnrealVector3f& b = m.positions[static_cast<std::size_t>(m.triangles[3 * n + 1])];
-            const UnrealVector3f& c = m.positions[static_cast<std::size_t>(m.triangles[3 * n + 2])];
-            const double ux = c.x - a.x, uy = c.y - a.y, uz = c.z - a.z;
-            const double vx = b.x - a.x, vy = b.y - a.y, vz = b.z - a.z;
-            const double facing = (uy * vz - uz * vy) * normal.x + (uz * vx - ux * vz) * normal.y +
-                                  (ux * vy - uy * vx) * normal.z;
-            right = right && facing >= 0.0;
-        }
-        if (&t == &tiles.back()) {
-            right = right && std::abs(top - 150.0) < 1e-3 && std::abs(bottom - 96.0) < 1e-3 &&
-                    std::abs(m.positions[0].y - m.positions[1].y) > 0.0f;
-            const double across = std::hypot(m.positions[1].x - m.positions[0].x,
-                                             m.positions[1].y - m.positions[0].y);
-            right = right && std::abs(across - 1800.0) < 1e-2 && m.normals[0].x > 0.0f;
+        sized = sized && known;
+    }
+    return sized && foam == 17u * t.falls.size();
+}
+
+// Whether every triangle faces the side of the normal of its first vertex, and the normals of the
+// curtains point up (downstream).
+bool facing(const UnrealWaterMesh& m) {
+    bool right = true;
+    for (std::size_t n = 0; n < m.positions.size(); ++n) {
+        right = right && (m.uv1[n].u != terrain::unreal::kWaterCurtain || m.normals[n].z >= 0.0f);
+    }
+    for (std::size_t n = 0; n < m.triangleCount(); ++n) {
+        const UnrealVector3f& normal = m.normals[static_cast<std::size_t>(m.triangles[3 * n])];
+        const UnrealVector3f& a = m.positions[static_cast<std::size_t>(m.triangles[3 * n])];
+        const UnrealVector3f& b = m.positions[static_cast<std::size_t>(m.triangles[3 * n + 1])];
+        const UnrealVector3f& c = m.positions[static_cast<std::size_t>(m.triangles[3 * n + 2])];
+        const double ux = c.x - a.x, uy = c.y - a.y, uz = c.z - a.z;
+        const double vx = b.x - a.x, vy = b.y - a.y, vz = b.z - a.z;
+        right = right && (uy * vz - uz * vy) * normal.x + (uz * vx - ux * vz) * normal.y +
+                                 (ux * vy - uy * vx) * normal.z >= 0.0;
+    }
+    return right;
+}
+
+// Made-up falls: a steep one (54 m over 6 m), curved, from the water at its lip across
+// kCurtainWidthShare of its width down to below the water at its foot, facing downstream; a
+// chute (20 m over 20 m), straight from its lip to its foot.
+bool madeUpCurtains() {
+    TileData steep = madeUp(0, 0);
+    steep.falls.push_back({4.0, 5.0, 10.0, 5.0, 150.0f, 96.5f, 20.0f});
+    const UnrealWaterMesh m = terrain::unreal::buildFallCurtains(steep);
+    double top = -1e9;
+    double bottom = 1e9;
+    for (std::size_t n = 0; n < m.positions.size(); ++n) {
+        if (m.uv1[n].u == terrain::unreal::kWaterCurtain) {
+            top = std::max(top, steep.originY + m.positions[n].z / 100.0);
+            bottom = std::min(bottom, steep.originY + m.positions[n].z / 100.0);
         }
     }
-    TEST_CHECK(right && curtains > 1);
-    std::printf("curtains: %zu falls steep enough, %s\n", curtains,
-                right ? "from the lip to below the foot, facing downstream"
+    const double across = std::hypot(m.positions[1].x - m.positions[0].x,
+                                     m.positions[1].y - m.positions[0].y);
+    bool right = std::abs(top - 150.0) < 1e-3 && std::abs(bottom - 96.0) < 1e-3 &&
+                 std::abs(across - 1800.0) < 1e-2 && m.normals[0].x > 0.0f && facing(m) &&
+                 everyFallDrawn(steep, m);
+    TileData chute = madeUp(0, 0);
+    chute.falls.push_back({4.0, 5.0, 24.0, 5.0, 120.0f, 100.0f, 6.0f});
+    const UnrealWaterMesh c = terrain::unreal::buildFallCurtains(chute);
+    for (std::size_t n = 0; n < c.positions.size(); ++n) {
+        const double y = chute.originY + c.positions[n].z / 100.0;
+        if (c.uv1[n].u == terrain::unreal::kWaterCurtain && y > 100.0 - 1e-3) {
+            const double ahead = c.positions[n].x / 100.0 - 4.0 - terrain::unreal::kCurtainAhead;
+            right = right && std::abs(ahead / 20.0 - (120.0 - y) / 20.0) < 1e-4;
+        }
+    }
+    return right && facing(c) && everyFallDrawn(chute, c);
+}
+
+// The curtains of the falls in the tiles of their lips at every LOD, and made-up ones: every fall
+// has its curtain and its foam, facing downstream.
+void testCurtains(const World& w, const std::vector<terrain::RiverFall>& falls) {
+    std::size_t drawn = 0;
+    bool right = madeUpCurtains();
+    for (const terrain::RiverFall& f : falls) {
+        for (int lod = 0; lod < terrain::kLodCount; ++lod) {
+            const TileData t = tileAt(w.tiles, f.x, f.z, lod);
+            const UnrealWaterMesh m = terrain::unreal::buildFallCurtains(t);
+            right = right && everyFallDrawn(t, m) && facing(m);
+            drawn += t.falls.size();
+        }
+    }
+    TEST_CHECK(right && drawn >= falls.size());
+    std::printf("curtains: %zu falls in the tiles of their lips (LOD 0 to 3), %s\n", drawn,
+                right ? "each with its curtain and its foam, sized, facing downstream"
                       : "WRONG CURTAINS");
 }
 

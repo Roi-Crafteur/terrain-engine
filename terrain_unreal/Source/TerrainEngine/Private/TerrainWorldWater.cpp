@@ -1,5 +1,6 @@
 // The water of ATerrainWorld (agent 27): the materials of the water of the tiles (the surface of
-// their lakes and rivers, the curtains and foam of their falls), the lakes and rivers of the GPU
+// their lakes and rivers, an instance that the GPU horizon fades into its own water at the edge
+// of the tiles; the curtains and foam of their falls), the lakes and rivers of the GPU
 // horizon, the console command Terrain.Water 0|1 that shows or hides them all to compare their
 // cost, and the line of the log about the planet level (read from its file, or built and why).
 #include "TerrainWorldWater.h"
@@ -9,6 +10,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "TerrainEngineLog.h"
 #include "TerrainHorizonClipmap.h"
@@ -99,11 +101,16 @@ void ATerrainWorld::StartWater()
 	}
 	if (bWater)
 	{
-		Backend->SetWaterMaterials(Resolve(WaterMaterial, WaterMaterialPath, TEXT("water")),
+		// An instance of its own: the GPU horizon places the band where the water of the tiles
+		// fades into its own (the same parameters as the material of the ground of the tiles).
+		UMaterialInterface* Water = Resolve(WaterMaterial, WaterMaterialPath, TEXT("water"));
+		TileWaterLook = Water != nullptr ? UMaterialInstanceDynamic::Create(Water, this) : nullptr;
+		Backend->SetWaterMaterials(TileWaterLook,
 			Resolve(FallsMaterial, FallsMaterialPath, TEXT("falls")));
 	}
 	if (HorizonClipmap != nullptr)
 	{
+		HorizonClipmap->BindSurfaceLook(TileWaterLook);
 		HorizonClipmap->SetInlandWater(bWater);
 	}
 }

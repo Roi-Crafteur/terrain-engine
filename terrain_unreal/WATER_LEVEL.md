@@ -38,7 +38,12 @@ seulement la mer.
 Rien de tout cela ne change le monde : golden du monde, montagnes gelées, somme du niveau Planète
 identiques. Sonde : `terrain_probe_water --planet <fichier> <x> <z>…` imprime, pour chaque
 point, la colonne, les vallées et le lac du core, les niveaux des sommets des tuiles LOD 0 à 3,
-l'échantillon de l'horizon et les chutes autour.
+l'échantillon de l'horizon et les chutes autour. Côté Bridge, `unreal_water_probe --planet
+<fichier> <x> <z>…` (exécutable des tests, lancé à la main) imprime pour la tuile de chaque LOD qui
+tient le point : colonnes mouillées, chutes dont la lèvre est dans la tuile (lèvre, pied, chute,
+course, pente moyenne, rideau courbe ou droit), triangles de la surface, mailles coupées et sommets
+effacés, triangles des rideaux et de l'écume (ou pourquoi il n'y a pas de rideau) ; pour chaque
+chute de la tuile LOD 0, trois vues vérifiées contre le sol (du bassin, de côté, de dessus).
 
 ## Ce qu'Unreal en fait
 
@@ -49,36 +54,51 @@ tuile, matériau `M_TerrainWater`)
   sous un lac ou un fleuve ; la mer est laissée à l'horizon.
 - Coin mouillé : le niveau de sa colonne. Coin sec : le niveau moyen des coins mouillés de sa
   maille, l'eau passe sous la rive et le sol la cache. Lacs plats, fleuves en pente avec leur lit.
-- Une maille plus raide que 1,5 (56°) est coupée : c'est la face d'une chute, que son rideau
-  dessine.
+- Une maille plus raide que 0,7 (35°, la pente des marches d'une chute dans le core) est coupée :
+  c'est la face d'une chute, que son rideau dessine ; les rapides restent dessinés. Les coins des
+  mailles coupées ont un bord à 0 (UV2.y), les autres 1 : l'eau s'efface sur la maille avant la
+  coupe, sans dents de scie ni écume de pente au bord de la face. La pente de l'eau (normale,
+  écume) n'est jamais mesurée à travers une coupe.
 - Raccords : deux tuiles d'un même LOD ont les mêmes colonnes au bit près sur leur bord ; du côté
   d'une tuile plus grossière, les colonnes impaires prennent la moyenne de leurs voisines paires,
   sur l'arête droite de la maille grossière ; le bord d'une tuile LOD 3 a exactement les niveaux
   des texels d'eau de l'horizon (`unreal_tile_water_test`).
 - Canaux UV : UV0 le sens du courant (X, Y d'Unreal, 0 sur un lac), UV1 (type : 1 fleuve, 2 lac,
-  3 lac salé ; pente de l'eau en m/m), UV2 (altitude de l'eau en m).
+  3 lac salé ; pente de l'eau en m/m), UV2 (altitude de l'eau en m ; bord : 0 au coin d'une maille
+  coupée, 1 ailleurs).
 - Coût : environ 0,01 ms par tuile avec de l'eau sur le thread de jeu (conversion).
 
 **Les chutes** (`Bridge/fall_curtains.hpp`, section 2, matériau `M_TerrainFalls`)
-- Pour chaque chute dont la pente moyenne dépasse 1,5 : un rideau large de 0,9 fois la largeur du
-  chenal, de l'eau à la lèvre jusqu'à 0,5 m sous l'eau du pied, 0,5 m devant la ligne lèvre-pied
-  et bombé comme l'eau qui quitte la lèvre (une part √t du chemin après une part t de la chute) ;
-  un disque d'écume au pied, sur l'eau du bassin.
+- Pour chaque chute de `TileData::falls` : un rideau large de 0,9 fois la largeur du chenal, de
+  l'eau à la lèvre jusqu'à 0,5 m sous l'eau du pied, 0,5 m devant la ligne lèvre-pied ; bombé
+  comme l'eau qui quitte la lèvre (une part √t du chemin après une part t de la chute) si la pente
+  moyenne dépasse 1,5, droit de la lèvre au pied en dessous ; un disque d'écume au pied, sur l'eau
+  du bassin.
 - Il ne lit que la lèvre, le pied, les niveaux et la largeur de la chute, jamais la forme de la
   roche : une fente refaite (agent 20, lèvre en surplomb, niche derrière) le garde devant la lèvre ;
   une cuvette plus profonde au pied ne change rien.
 - Canaux UV : UV0 (mètres en travers, mètres depuis la lèvre ; sur l'écume, mètres depuis son
   centre), UV1 (4 rideau ou 5 écume, hauteur de la chute), UV2 (altitude, largeur du rideau ou
-  rayon de l'écume).
+  rayon de l'écume). Jusqu'à `9db1286`, UV2.y valait 0 : le matériau prenait une largeur de 10 cm,
+  le rideau était transparent et l'écume réduite à 10 cm.
+- La chute de 388 m (`unreal_water_probe`) : aux LOD 0 à 3, chaque tuile qui tient une lèvre a son
+  rideau (faces de 80,89 et 73,51 m : 21 et 19 rangs, 42 et 38 triangles, plus 16 d'écume) ; les
+  petites marches de 7 à 13 m ont 2 rangs.
 
 **L'horizon GPU** (`Scripts/horizon_water_hlsl.py`, `horizon_water_nodes.py`)
 - Un nœud de sommets à côté de `HorizonVertex` lit le niveau d'eau du niveau et du niveau plus
   grossier, avec le même géomorphing ; sur un lac ou un fleuve, il monte le sommet au niveau de
   l'eau (jamais sous le sol), avec la même descente et la même courbure que le sol.
-- Sous les tuiles (dans `DropCoveredCm` du centre du niveau 0), rien ne monte : les tuiles y
-  dessinent leur eau, l'horizon garde son sol dessous ; les mailles à cheval sur le bord des tuiles
-  sont coupées (masque). Au bord des tuiles, l'eau de l'horizon commence exactement au niveau de
-  la leur.
+- Sous les tuiles, rien ne monte : les tuiles y dessinent leur eau, l'horizon garde son sol
+  dessous, ses pixels d'eau sont coupés (masque). Sur les derniers `DropFadeCm` (64 m) avant le
+  bord de la zone des tuiles (`DropCoveredCm` du centre du niveau 0), l'eau de l'horizon monte
+  déjà (une maille de plus, pour qu'aucune maille de la bande ne soit à demi montée) et ses pixels
+  sont gardés avec une part qui va de 0 à 1 (tramage dans l'espace et le temps, lissé par TSR),
+  pendant que l'eau des tuiles s'efface de 1 à 0 sur la même distance : un fondu, sans bande où les
+  deux reflètent le ciel. Au-delà, l'horizon seul, au niveau exact de l'eau des tuiles.
+- Rives : un échantillon sec voisin de l'eau prend pour profondeur le niveau de son voisin le plus
+  haut moins son sol (au lieu de −1 m) ; la rive passe là où le sol de l'horizon rencontre l'eau,
+  plus sur les diagonales des mailles.
 - Type pour la couleur : fleuve là où le core dit que le sol est de l'eau, lac salé dans un désert,
   lac ailleurs.
 
@@ -91,17 +111,30 @@ l'horizon : pas de saut d'aspect au bord des tuiles)
   Tuiles : l'épaisseur derrière chaque pixel (profondeur de la scène moins celle du pixel) ;
   horizon : la profondeur divisée par le cosinus de la vue.
 - Translucide sur les tuiles (Surface ForwardShading), opaque sur l'horizon (comme la mer).
-- Rides : 8 sinusoïdes fixes dans le monde (période 4 096 m, rien ne bouge après un tour du monde),
-  de 5,6 à 0,35 m, qui s'effacent dans la rugosité selon la taille du pixel ; sur les fleuves,
-  entraînées dans le sens du courant (`FlowSpeed`, deux phases décalées d'un demi-cycle).
-- Reflet du ciel (Fresnel, table de vue de la `SkyAtmosphere`) et du soleil (GGX), comme la mer.
+- Rides : trois octaves de bruit de valeur (mailles de 3,1, 1,3 et 0,55 m) sur des réseaux
+  tournés (0,59, 1,89 et 3,68 rad : ni rayures ni grille), chacune dérivant le long de son axe ;
+  périodiques sur 4 096 m en X et Y (rien ne bouge après un tour du monde ni au recentrage
+  d'Unreal par périodes entières), gradient exact ; chacune s'efface dans la rugosité quand un
+  pixel couvre plus de la moitié de sa maille. Sur les fleuves, entraînées dans le sens du courant
+  (`FlowSpeed`, deux phases décalées d'un demi-cycle). Avant : 8 sinusoïdes, lues en rayures
+  régulières vues de 150 à 600 m.
+- Reflet du ciel (Fresnel, table de vue de la `SkyAtmosphere`, × `SkyReflection` = 0,6) et du soleil
+  (GGX), comme la mer ; le soleil n'est pas réduit. Un lac reste bleu-vert vu de loin.
+- Rives : l'eau des tuiles s'efface (opacité, donc reflet) sur `ShoreFadeM` = 1,5 m d'eau le long
+  de la vue ; l'horizon de même. Le bord de l'eau ne suit plus les triangles du sol.
+- Bord des tuiles : l'eau des tuiles s'efface sur la moitié extérieure de leur bande au-dessus du
+  niveau 0, là où l'horizon fait entrer la sienne (ci-dessus). Le matériau des tuiles est une
+  instance que l'horizon place (`SurfaceOrigin`, `SurfaceCells`, `SurfacePitchCm`,
+  `SurfaceCoveredCm`, `SurfaceBandCm`, `HasSurface`, comme le matériau du sol) ; sans horizon,
+  pas de fondu.
 - Écume des rapides selon la pente de l'eau (`FoamFromSlope`, `FoamFullSlope`).
 - Rideaux : traînées qui tombent avec l'eau (décalées du temps de chute, jamais étirées), douces
   contre la roche et l'eau.
 - Aucune texture : rien à licencier.
-- Réglages (instances) : `RiverWaterColor`, `LakeWaterColor`, `GlacierWaterColor`,
-  `SaltWaterColor` et leurs `…Absorption`, `FoamColor`, `CurtainColor`, `GlacierFromM`,
-  `GlacierFullM`, `RippleStrength`, `WaterAlpha`, `FlowSpeed`, `FoamFromSlope`, `FoamFullSlope`.
+- Réglages (instances) : `RiverWaterColor`, `LakeWaterColor` (0,018 ; 0,060 ; 0,052),
+  `GlacierWaterColor` (0,012 ; 0,150 ; 0,160), `SaltWaterColor` et leurs `…Absorption`,
+  `FoamColor`, `CurtainColor`, `GlacierFromM`, `GlacierFullM`, `RippleStrength`, `WaterAlpha`,
+  `FlowSpeed`, `FoamFromSlope`, `FoamFullSlope`, `SkyReflection`, `ShoreFadeM`.
 
 **Pour comparer** : la commande `Terrain.Water 0|1` (ou `SetWaterShown`) cache ou montre l'eau des
 tuiles et des chutes et les lacs et fleuves de l'horizon ; `bWater` faux sur l'acteur : comme avant.
@@ -110,27 +143,33 @@ tuiles et des chutes et les lacs et fleuves de l'horizon ; `bWater` faux sur l'a
 
 Coordonnées du core (x, z en m) ; en posant `CoreOriginX/Z` sur le point, l'œil est en (0, 0) dans
 Unreal, à 100 × (altitude de l'œil − sol du point) cm. Cap en degrés dans le sens des aiguilles
-d'une montre depuis le nord (−z du core, −Y d'Unreal) : le yaw d'Unreal vaut cap − 90.
+d'une montre depuis le nord (−z du core, −Y d'Unreal) : le yaw d'Unreal vaut cap − 90. Chaque
+point est vérifié avec `terrain_probe_water` (eau, niveau, sol) ; les vues de la chute viennent de
+`unreal_water_probe` (œil dans l'air, vue dégagée au-dessus du sol du core).
 
-| Vue | Point (x ; z) | Sol | Œil (altitude) | Cap | Inclinaison | Ce qu'on doit voir |
-|---|---|---|---|---|---|---|
-| Grand fleuve de plaine | −241 933 ; −90 181 (rive) | 3,98 m | 5,7 m | 290° | −2° | fleuve de 305 m (1 887 m³/s) à 3,28 m, plaine de 2,4 km ; rides vers l'aval (337°) |
-| Lac de montagne, 500 m | 7 369 622 ; −7 087 959 | 1 865,5 m | 1 867,2 m | 337,5° | −12° | lac à 1 725,26 m, plat, tuiles translucides |
-| Lac de montagne, 5 km | 7 371 344 ; −7 083 802 | 3 572,4 m | 3 574 m | 337,5° | −20° | le même lac sur l'horizon, au même niveau, turquoise |
-| Chute de 388 m | −6 185 104 ; 155 924 (bassin) | 178,8 m | 182 m | 227° | +30° | bassin en eau à 180,03 m, rideau de la face de 73 m, bassin à 253,54 m au-dessus, écume |
-| Côte | −6 184 762 ; 155 681 | 9,6 m | 11,3 m | 50° | −2° | la mer de l'horizon, le fleuve qui la rejoint |
+| Vue | Point (x ; z) | Sol | Eau | Œil (altitude) | Cap | Inclinaison | Ce qu'on doit voir |
+|---|---|---|---|---|---|---|---|
+| Fleuve de plaine | −241 631 ; −86 277 | −2,84 m | fleuve à 3,28 m | 5,28 m (2 m au-dessus de l'eau) | 0,5° | −2° | au milieu du fleuve (rives à 150 et 160 m), vers l'aval ; eau à 3,28 m à 50, 100, 200 et 300 m devant ; rides qui dérivent vers l'aval |
+| Lac de montagne, 500 m | 7 369 228 ; −7 088 911 | 1 708,47 m | lac à 1 725,26 m | 1 745,26 m (20 m) | 157,5° | −2° | le lac jusqu'à sa rive (7 369 420 ; −7 088 449) à 500 m : bleu-vert, pas blanc |
+| Lac de montagne, 5 km | 7 367 506 ; −7 093 068 | 1 712,03 m | lac à 1 725,26 m | 1 755,26 m (30 m) | 157,5° | −1° | la même rive à 5 km : l'eau des tuiles qui se fond dans celle de l'horizon vers 500 à 850 m, sans bande claire |
+| Chute, de face | −6 185 080 ; 155 902 | 178,82 m | bassin à 180,03 m | 182,03 m (2 m) | 226,9° | +21,5° | la face de 73,51 m à 95 m : rideau du pied (180,03 m) à la lèvre (253,54 m), écume sur le bassin |
+| Chute, de côté | −6 185 124 ; 155 984 | 259,90 m | sec | 266,78 m (6,9 m) | 316,9° | −59° | la même face de profil à 58 m : le rideau courbe, décollé de la paroi |
+| Chute, de dessus | −6 185 144 ; 155 962 | 212,57 m | dans la face (213,78 m) | 373,54 m (120 m au-dessus de la lèvre) | 46,9° (vers l'aval) | −90° | la lèvre, le rideau, son pied et l'écume, sans triangles blancs autour |
+| Côte | −6 184 762 ; 155 681 | 9,6 m | — | 11,3 m | 50° | −2° | la mer de l'horizon, le fleuve qui la rejoint |
 
-Les niveaux du core en ces points : `terrain_probe_water --planet <fichier> <x> <z>`. Sur la
-chute : lèvre (−6 185 411 ; 156 218) à 568,99 m, bassins au pied des faces de 90 et 73 m à 253,54
-et 180,03 m (−174,5 et −248 m dans Unreal, origine à 428 m), en eau aux LOD 0 à 3.
+La chute : lèvre de la face de 73,51 m en (−6 185 149,5 ; 155 966,8), pied en (−6 185 139,9 ;
+155 957,9), course 13,1 m, pente moyenne 5,6 (rideau courbe), 40 m de large ; la face de 80,89 m
+au-dessus : lèvre (−6 185 378,1 ; 156 185,8), bassin à 463,48 m. Ses vues :
+`unreal_water_probe --planet <fichier> -6185378.1 156185.8`.
 
 ## Coût GPU (à mesurer dans Unreal)
 
 Comme pour le matériau temporaire : même résolution (PIE 2042 × 1752 ou 1440p), même session de
 l'éditeur, `Terrain.Water 0` puis `Terrain.Water 1`, A B A B, temps GPU moyen par frame (profil
 CSV ou `stat unit`), sur quatre vues : le fleuve de plaine, le lac de montagne à 500 m, la côte, la
-chute. Le surcoût attendu vient des pixels d'eau des tuiles (translucides, 8 sinusoïdes, deux
-phases sur les fleuves) et des pixels de l'horizon sous l'eau ; rien sur la terre sèche.
+chute. Le surcoût attendu vient des pixels d'eau des tuiles (translucides, 3 octaves de bruit,
+deux phases sur les fleuves) et des pixels de l'horizon sous l'eau ; rien sur la terre sèche.
+Mesuré sur `9db1286` (8 sinusoïdes) : fleuve +0,21 ms, lac +0,10, chute +0,42, côte +0,47.
 
 ## Formats (inchangés pour le sol)
 
@@ -181,6 +220,11 @@ rives et des montagnes) sans toucher au reste. Il faudra alors régler au raccor
 - L'eau est statique : les modifications des joueurs ne changent pas son niveau (un trou au bord
   d'un lac reste sec, un bloc posé dans un lac est sous l'eau).
 - À l'embouchure, le fleuve translucide rejoint la mer opaque de l'horizon : changement d'aspect.
+- Une maille coupée sans chute du core (un échelon de plus de 0,7 entre un fleuve et un lac, par
+  exemple) laisse un trou d'eau effacé sur ses bords, sans rideau.
+- Le fondu tuiles / horizon est un tramage : il peut scintiller sans antialiasing temporel (TSR
+  ou TAA) ; dans la bande, l'eau de l'horizon est jusqu'à 1 m (`HorizonDropCm`) sous celle des
+  tuiles, couverte par elle.
 - Les rides des tuiles ne suivent pas le recentrage d'origine d'Unreal (`WaveOrigin`) : elles
   peuvent sauter à un recentrage, rare.
 - Sur l'horizon, les crêtes relevées (`HorizonCrestRatio`) peuvent poser un sol au-dessus de son

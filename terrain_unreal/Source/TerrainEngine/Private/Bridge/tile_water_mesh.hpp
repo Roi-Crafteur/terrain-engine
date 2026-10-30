@@ -36,7 +36,10 @@ inline constexpr float kWaterFoam = 5.0f;
 //   on a lake); on a curtain or the foam, meters across and down the fall from its lip.
 // - uv1: (what the vertex is, kWater*; on the surface the slope of the water, meters per meter,
 //   on a curtain or the foam the height of the fall, meters).
-// - uv2: (the altitude of the water, meters, 0).
+// - uv2: (the altitude of the water, meters; on the surface its edge: 0 at a corner of a cell cut
+//   at the face of a fall, 1 elsewhere, the material fading the water out toward the cut; on a
+//   curtain its width, on the foam its radius, meters).
+// cutCells: the cells of the surface cut at the faces of falls (none on the curtains).
 struct UnrealWaterMesh {
     std::vector<UnrealVector3f> positions;
     std::vector<UnrealVector3f> normals;
@@ -44,6 +47,7 @@ struct UnrealWaterMesh {
     std::vector<UnrealUV> uv1;
     std::vector<UnrealUV> uv2;
     std::vector<std::int32_t> triangles;
+    std::int32_t cutCells = 0;
 
     [[nodiscard]] std::size_t triangleCount() const { return triangles.size() / 3; }
     [[nodiscard]] bool empty() const { return triangles.empty(); }
@@ -52,8 +56,9 @@ struct UnrealWaterMesh {
 };
 
 // Above this slope (meters per meter) between two corners of a cell, the water of a tile is cut:
-// the face of a fall, which its curtain draws (buildFallCurtains).
-inline constexpr double kWaterCutSlope = 1.5;
+// the face of a fall, which its curtain draws (buildFallCurtains). The slope of the steps of a
+// fall in the core (RiverFall, hydrology_query.cpp): the rapids below it stay drawn.
+inline constexpr double kWaterCutSlope = 0.7;
 
 // The surface of the lakes and rivers of a tile (TileData::waterColumns; empty without them), a
 // grid of cells on its columns:
@@ -63,7 +68,10 @@ inline constexpr double kWaterCutSlope = 1.5;
 //   meters) and is shared by its cells; a dry corner of a drawn cell stands at the mean level of
 //   the wet corners of that cell (its own vertex): the water goes on under the bank, whose ground
 //   hides it;
-// - a cell steeper than kWaterCutSlope between two corners is cut;
+// - a cell steeper than kWaterCutSlope between two corners is cut; the corners of the cut cells
+//   have an edge of 0 (uv2.v), the others 1: the water fades out over the cell before the cut,
+//   whatever the shape of the cut, and the slope of the water (its normal, the foam of the
+//   rapids) is never measured across a cut;
 // - on a side stitched to a coarser tile (TileRequest::seams), an odd column between two wet
 //   even ones stands at their mean level: on the straight edge of the coarser cell, no crack
 //   between the LODs. Two tiles of a LOD share the columns of their common side: the same

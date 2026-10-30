@@ -9,65 +9,105 @@ Custom nodes cannot declare functions: the helpers live in a struct (FTerrainWat
   from GlacierFromM to GlacierFullM of altitude), a salt lake pale turquoise. Through a thickness
   of water the bed fades by exp(-absorption * thickness) into that color (Beer-Lambert): the
   shallows show their bed, deep water its color.
-- Waves: ripples, sine waves fixed in the world (whole cycles per 4,096 m, the period of the waves
-  of the sea and of the coordinates of the world, so that nothing moves after a turn of the world),
-  each fading into the roughness when a pixel covers less than 2 of its wavelengths.
+- Waves: ripples, three octaves of value noise (3.1, 1.3 and 0.55 m) on lattices turned apart (no
+  stripes, no grid), each drifting along its own axis; periodic every 4,096 m in X and Y (the
+  period of the waves of the sea and of the coordinates of the world: nothing moves after a turn
+  of the world), the gradient exact (no finite difference), each octave fading into the roughness
+  when a pixel covers more than half of its cell.
 - Ripples: the waves carried downstream by the flow of a river in two phases half a cycle apart,
   faded in and out (the pattern never pulses nor stretches); still on a lake.
 - Noise: value noise for the foam of the rapids.
-The reflection of the sky (Fresnel, from the sky view LUT of the SkyAtmosphere, as the sea) and the
-glint of the sun (GGX) are written in the nodes (SKY_HLSL): they need the parameters of the pixel.
+- HorizonShare: over the outer band of the tiles, the share of the water the GPU horizon draws
+  (0 inside, 1 at the edge of the tiles): the water of the tiles fades out as the horizon dithers
+  its water in, with the same share (horizon_water_hlsl.py): no band where both reflect the sky.
+The reflection of the sky (Fresnel, from the sky view LUT of the SkyAtmosphere, as the sea, scaled
+by SkyReflection) and the glint of the sun (GGX) are written in the nodes (SKY_HLSL): they need the
+parameters of the pixel. Near a shore the water fades out over ShoreFadeM of water along the view.
 No texture: nothing to license.
 """
 
+import math
+
 # The look, tunable on the instances. Colors of deep water (linear) and absorptions (1/m).
 WATER_COLORS = {
-    "RiverWaterColor": (0.050, 0.044, 0.022), "LakeWaterColor": (0.014, 0.046, 0.040),
-    "GlacierWaterColor": (0.010, 0.120, 0.125), "SaltWaterColor": (0.060, 0.170, 0.160),
+    "RiverWaterColor": (0.050, 0.044, 0.022), "LakeWaterColor": (0.018, 0.060, 0.052),
+    "GlacierWaterColor": (0.012, 0.150, 0.160), "SaltWaterColor": (0.060, 0.170, 0.160),
     "RiverAbsorption": (0.40, 0.45, 0.62), "LakeAbsorption": (0.42, 0.13, 0.17),
     "GlacierAbsorption": (0.46, 0.075, 0.065), "SaltAbsorption": (0.32, 0.065, 0.055),
     "FoamColor": (0.80, 0.85, 0.86), "CurtainColor": (0.55, 0.66, 0.70),
 }
 # Altitudes of the turquoise of the mountain lakes, the strength of the ripples, the roughness of
 # the water between them (GGX alpha), the speed of the flow of the rivers (m/s), the slopes of the
-# water where the foam of the rapids starts and is full.
+# water where the foam of the rapids starts and is full, the share of the sky the water reflects
+# (on top of Fresnel: a lake stays blue-green at a grazing view), the water along the view over
+# which it fades out at a shore (m).
 WATER_SCALARS = {
     "GlacierFromM": 1400.0, "GlacierFullM": 2600.0, "RippleStrength": 1.0, "WaterAlpha": 0.03,
-    "FlowSpeed": 1.2, "FoamFromSlope": 0.04, "FoamFullSlope": 0.20,
+    "FlowSpeed": 1.2, "FoamFromSlope": 0.04, "FoamFullSlope": 0.20, "SkyReflection": 0.6,
+    "ShoreFadeM": 1.5,
 }
 
-# Ripples: (a, b) whole cycles per 4,096 m along X and Y, slope amplitude, phase; from 5.6 m to
-# 0.35 m, spread around the wind, no two alike.
-RIPPLES = [(730, 103, 0.05, 0.3), (-311, 1187, 0.05, 2.1), (1693, 571, 0.055, 4.4),
-           (2390, -1406, 0.055, 1.2), (607, 3611, 0.05, 5.0), (4997, 1290, 0.045, 3.3),
-           (-3305, 5866, 0.04, 0.8), (9871, 6207, 0.035, 2.6)]
+# The octaves of the ripples: the lattice turned by the integer vector (a, b) (by atan2(b, a): 0.59,
+# 1.89 and 3.68 rad), k cells per 4,096 m along it times |(a, b)| (cells of 3.10, 1.30 and 0.55 m:
+# the noise repeats every 4,096 m), the slope it gives, its drift (m/s).
+OCTAVES = [(3, 2, 366, 0.10, 0.45), (-1, 3, 996, 0.09, 0.32), (-5, -3, 1277, 0.08, 0.22)]
 
 STRUCT_HLSL = r"""
 struct FTerrainWater
 {
-    // The deep color and the absorption of water of a kind (1 river, 2 lake, 3 salt lake) at
-    // altitude (meters).
-    void Body(float kind, float altitude, float3 river, float3 lake, float3 glacier, float3 salt,
-              float3 riverK, float3 lakeK, float3 glacierK, float3 saltK, float glacierFrom,
-              float glacierFull, out float3 color, out float3 absorb)
+    // A hash of a cell in [0, 1) without sine (precise for large cells on every GPU).
+    float Hash(float2 c)
     {
-        float g = saturate((altitude - glacierFrom) / max(glacierFull - glacierFrom, 1.0));
-        bool isRiver = kind < 1.5;
-        g *= isRiver ? 0.5 : 1.0;
-        color = lerp(isRiver ? river : lake, glacier, g);
-        absorb = lerp(isRiver ? riverK : lakeK, glacierK, g);
-        if (kind > 2.5) { color = salt; absorb = saltK; }
+        float3 h = frac(float3(c.xyx) * 0.1031);
+        h += dot(h, h.yzx + 33.33);
+        return frac((h.x + h.y) * h.z);
+    }
+
+    // Value noise of cells of size meters at p, in [0, 1].
+    float Noise(float2 p, float size)
+    {
+        float2 q = p / size;
+        float2 i = floor(q);
+        float2 f = q - i;
+        f = f * f * (3.0 - 2.0 * f);
+        return lerp(lerp(Hash(i), Hash(i + float2(1.0, 0.0)), f.x),
+                    lerp(Hash(i + float2(0.0, 1.0)), Hash(i + float2(1.0, 1.0)), f.x), f.y);
+    }
+
+    // A hash of the cell c of a lattice that repeats by the Gaussian integer g (and i g): the
+    // same for c and c + g z, z any Gaussian integer (c reduced to c - g round(c / g)).
+    float PeriodicHash(float2 c, float2 g)
+    {
+        float2 q = round(float2(c.x * g.x + c.y * g.y, c.y * g.x - c.x * g.y) / dot(g, g));
+        return Hash(c - float2(g.x * q.x - g.y * q.y, g.x * q.y + g.y * q.x));
+    }
+
+    // The gradient (per cell) of value noise on the lattice turned by (a, b), k cells per 4096 m
+    // times |(a, b)| along it, shifted by drift cells along its first axis: the same every 4096 m
+    // of p in X and Y.
+    float2 Octave(float2 p, float a, float b, float k, float drift)
+    {
+        float2 u = float2(a * p.x + b * p.y, a * p.y - b * p.x) * (k / 4096.0) + float2(drift, 0.0);
+        float2 i = floor(u);
+        float2 f = u - i;
+        float2 g = float2(k * a, -k * b);
+        float h00 = PeriodicHash(i, g);
+        float h10 = PeriodicHash(i + float2(1.0, 0.0), g);
+        float h01 = PeriodicHash(i + float2(0.0, 1.0), g);
+        float h11 = PeriodicHash(i + float2(1.0, 1.0), g);
+        float2 s = f * f * (3.0 - 2.0 * f);
+        float2 ds = 6.0 * f * (1.0 - f);
+        float corner = h00 - h10 - h01 + h11;
+        return float2((h10 - h00 + corner * s.y) * ds.x, (h01 - h00 + corner * s.x) * ds.y);
     }
 
     // The slopes of the ripples at p (meters, modulo 4096 m), at time (s), a pixel covering
     // footprint meters; filtered: the variance of the slopes faded into the roughness.
     float2 Waves(float2 p, float time, float footprint, out float filtered)
     {
-        const float PI2 = 6.28318531;
-        float2 uv = frac(p / 4096.0);
         float2 slopes = float2(0.0, 0.0);
         filtered = 0.0;
-RIPPLE_LOOP
+OCTAVE_LOOP
         return slopes;
     }
 
@@ -89,35 +129,39 @@ RIPPLE_LOOP
         return w0 * s0 + (1.0 - w0) * s1;
     }
 
-    // A hash of a cell in [0, 1) without sine (precise for large cells on every GPU).
-    float Hash(float2 c)
+    // The deep color and the absorption of water of a kind (1 river, 2 lake, 3 salt lake) at
+    // altitude (meters).
+    void Body(float kind, float altitude, float3 river, float3 lake, float3 glacier, float3 salt,
+              float3 riverK, float3 lakeK, float3 glacierK, float3 saltK, float glacierFrom,
+              float glacierFull, out float3 color, out float3 absorb)
     {
-        float3 h = frac(float3(c.xyx) * 0.1031);
-        h += dot(h, h.yzx + 33.33);
-        return frac((h.x + h.y) * h.z);
+        float g = saturate((altitude - glacierFrom) / max(glacierFull - glacierFrom, 1.0));
+        bool isRiver = kind < 1.5;
+        g *= isRiver ? 0.5 : 1.0;
+        color = lerp(isRiver ? river : lake, glacier, g);
+        absorb = lerp(isRiver ? riverK : lakeK, glacierK, g);
+        if (kind > 2.5) { color = salt; absorb = saltK; }
     }
 
-    // Value noise of cells of size meters at p, in [0, 1].
-    float Noise(float2 p, float size)
+    // The share of the water of the GPU horizon at rel (cm from the corner of its level 0, cells
+    // of pitch cm, covered cm from its center by the tiles, the band of the tiles over it band
+    // cm): 0 inside, from 0 to 1 over the last half of the band, as its water dithers in.
+    float HorizonShare(float3 rel, float cells, float pitch, float covered, float band)
     {
-        float2 q = p / size;
-        float2 i = floor(q);
-        float2 f = q - i;
-        f = f * f * (3.0 - 2.0 * f);
-        return lerp(lerp(Hash(i), Hash(i + float2(1.0, 0.0)), f.x),
-                    lerp(Hash(i + float2(0.0, 1.0)), Hash(i + float2(1.0, 1.0)), f.x), f.y);
+        float2 fromCenter = abs(rel.xy / pitch - cells * 0.5) * pitch;
+        float fade = max(0.5 * band, 1.0);
+        return saturate((max(fromCenter.x, fromCenter.y) - (covered - fade)) / fade);
     }
 };
 FTerrainWater Water;
 """
 
-RIPPLE_TEMPLATE = (
-    "        {{ float2 kv = float2({a}.0, {b}.0); float lambda = 4096.0 / length(kv);\n"
-    "          float omega = sqrt(9.81 * PI2 / lambda + 0.074 * PI2 * PI2 * PI2 / (1000.0 * lambda * lambda * lambda));\n"
-    "          float phase = PI2 * frac(dot(kv, uv)) - omega * time + {phase};\n"
-    "          float keep = saturate(log2(lambda / (2.0 * footprint)) * 0.333);\n"
-    "          slopes += keep * {slope} * cos(phase) * normalize(kv);\n"
-    "          filtered += (1.0 - keep * keep) * {slope} * {slope}; }}\n")
+OCTAVE_TEMPLATE = (
+    "        {{ float2 gu = Octave(p, {a:.1f}, {b:.1f}, {k:.1f}, time * {cells:.6f});\n"
+    "          float keep = saturate(log2({size:.6f} / (2.0 * footprint)) * 0.5);\n"
+    "          slopes += keep * {amp} * float2({c:.6f} * gu.x - {s:.6f} * gu.y, "
+    "{s:.6f} * gu.x + {c:.6f} * gu.y);\n"
+    "          filtered += (1.0 - keep * keep) * {amp} * {amp} * 0.25; }}\n")
 
 # The sky in the reflected direction and the glint of the sun, for a pixel of normal n seen along
 # V (toward the camera), the roughness alpha2 (GGX alpha squared): reflection (radiance), Glint
@@ -128,7 +172,7 @@ SKY_HLSL = r"""
     Fresnel = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
     float3 r = reflect(-V, n);
     r = normalize(float3(r.xy, max(r.z, 0.003 + 0.15 * a)));
-    reflection = Fresnel * MaterialExpressionSkyAtmosphereViewLuminance(Parameters, r);
+    reflection = SkyReflection * Fresnel * MaterialExpressionSkyAtmosphereViewLuminance(Parameters, r);
     float3 L = normalize(SunDir);
     float3 H = normalize(L + V);
     float NoL = saturate(dot(n, L));
@@ -149,10 +193,15 @@ BODY_CALL = ("Water.Body(Kind, Altitude, RiverWaterColor, LakeWaterColor, Glacie
 
 
 # The pixel of the surface of a lake or a river of a tile (M_TerrainWater, translucent): inputs Flow
-# (UV0), KindSlope (UV1), Altitude (UV2.x), CameraRel, Time, SunDir, SunIlluminance, SkyView (binds
-# the sky view LUT), SceneDepth and PixelDepth (cm), VertexNormal, the look parameters; returns the
-# base color, with EmissiveOut, OpacityOut, NormalOut (world space) and RoughnessOut. The color the
-# water lets through is one share for the three channels: the same as the horizon draws it.
+# (UV0), KindSlope (UV1), Altitude (UV2.x), Edge (UV2.y: 0 at the corners of the cells cut at a
+# fall), Rel (cm from the corner of level 0 of the horizon) with SurfaceCells, SurfacePitchCm,
+# SurfaceCoveredCm, SurfaceBandCm and HasSurface (placed by the horizon, 0 without it), CameraRel,
+# Time, SunDir, SunIlluminance, SkyView (binds the sky view LUT), SceneDepth and PixelDepth (cm),
+# VertexNormal, the look parameters; returns the base color, with EmissiveOut, OpacityOut,
+# NormalOut (world space) and RoughnessOut. The color the water lets through is one share for the
+# three channels: the same as the horizon draws it. The water fades out (its opacity, so its
+# reflection too) toward a cut, at a shore, and over the outer band of the tiles where the water
+# of the horizon comes in.
 TILE_WATER_HLSL = r"""
 const float PERIOD = 409600.0; // 4096 m, cm
 float2 p = (GetTranslatedWorldPosition(Parameters).xy - GetPeriodicWorldOrigin(float3(PERIOD, PERIOD, PERIOD)).xy) * 0.01;
@@ -181,8 +230,11 @@ foam *= smoothstep(0.35, 0.75, 0.6 * Water.Noise(q, 0.7) + 0.4 * Water.Noise(q *
 // Translucent: what the water keeps of the light behind it, the foam opaque.
 float opacity = max(saturate(1.0 - through * (1.0 - Fresnel)), foam);
 float keep = max(opacity, 0.05);
+// Faded out toward a cut, at a shore, and where the water of the horizon comes in.
+float horizon = HasSurface > 0.5 ? Water.HorizonShare(Rel, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm, SurfaceBandCm) : 0.0;
+float shown = saturate(Edge) * saturate(thickness / max(ShoreFadeM, 0.01)) * (1.0 - horizon);
 EmissiveOut = (reflection + Glint) * (1.0 - foam) / keep;
-OpacityOut = opacity;
+OpacityOut = opacity * shown;
 NormalOut = n;
 RoughnessOut = lerp(1.0, 0.8, foam);
 return lerp(deep * (1.0 - through) * (1.0 - Fresnel) / keep, FoamColor, foam);
@@ -209,7 +261,7 @@ if (KindDrop.x < 4.5)
     float s = 0.55 * Water.Noise(float2(u * 1.3, y), 1.0)
             + 0.30 * Water.Noise(float2(u * 3.1, y * 2.0) + 17.0, 1.0)
             + 0.15 * Water.Noise(float2(u * 0.4, y * 0.5) + 5.0, 1.0);
-    float edge = saturate(min(u, size - u) / 1.5);
+    float edge = saturate(min(u, size - u) / min(1.5, 0.25 * size));
     float top = saturate(Fall.y + 0.2);
     opacity = saturate(0.35 + 0.6 * s) * edge * top;
     color = lerp(CurtainColor, FoamColor, saturate(0.8 * s + 0.3 * Fall.y / max(KindDrop.y, 1.0)));
@@ -234,11 +286,18 @@ def tile_water_hlsl():
             .replace("BODY_CODE", BODY_CALL))
 
 
+def octave_hlsl(a, b, k, amp, speed):
+    """The code of an octave of the ripples: its gradient turned back to the world, in slopes."""
+    length = math.hypot(a, b)
+    size = 4096.0 / (k * length)
+    return OCTAVE_TEMPLATE.format(a=a, b=b, k=k, cells=speed / size, size=size, amp=amp,
+                                  c=a / length, s=b / length)
+
+
 def struct_hlsl():
-    """The helper struct, its ripples unrolled."""
-    loop = "".join(RIPPLE_TEMPLATE.format(a=a, b=b, slope=slope, phase=phase)
-                   for a, b, slope, phase in RIPPLES)
-    return STRUCT_HLSL.replace("RIPPLE_LOOP", loop)
+    """The helper struct, its octaves unrolled."""
+    loop = "".join(octave_hlsl(*octave) for octave in OCTAVES)
+    return STRUCT_HLSL.replace("OCTAVE_LOOP", loop)
 
 
 def look_inputs():

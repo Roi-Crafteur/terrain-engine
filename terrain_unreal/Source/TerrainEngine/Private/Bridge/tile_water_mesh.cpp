@@ -78,12 +78,18 @@ void stitch(std::vector<Column>& columns, unsigned seams) {
     }
 }
 
-// The slope of the water at each wet column, from its wet neighbors (centered, or one-sided).
+// The slope of the water at each wet column, from its wet neighbors (centered, or one-sided),
+// never across the face of a fall (a step steeper than kWaterCutSlope).
 void slopes(std::vector<Column>& columns, double spacing) {
+    const double limit = kWaterCutSlope * spacing;
+    const auto near = [&](int i, int k, double here) {
+        const Column& c = columns[at(i, k)];
+        return c.wet && std::abs(c.level - here) <= limit;
+    };
     const auto slope = [&](int i, int k, int di, int dk) {
-        const bool before = i - di >= 0 && k - dk >= 0 && columns[at(i - di, k - dk)].wet;
-        const bool after = i + di <= kCells && k + dk <= kCells && columns[at(i + di, k + dk)].wet;
         const double here = columns[at(i, k)].level;
+        const bool before = i - di >= 0 && k - dk >= 0 && near(i - di, k - dk, here);
+        const bool after = i + di <= kCells && k + dk <= kCells && near(i + di, k + dk, here);
         const double low = before ? columns[at(i - di, k - dk)].level : here;
         const double high = after ? columns[at(i + di, k + dk)].level : here;
         const int steps = (before ? 1 : 0) + (after ? 1 : 0);
@@ -114,43 +120,45 @@ std::vector<Column> columnsOf(const TileData& data, double spacing) {
     return columns;
 }
 
+// A cell with a wet corner: the levels of its corners (the dry ones at the mean level of the wet
+// ones), that mean, and whether it is cut (the face of a fall).
+struct Cell {
+    bool drawn = false;
+    bool cut = false;
+    Column mean;
+    std::array<double, 4> levels{};
+};
+
+constexpr std::array<std::array<int, 2>, 4> kCorners{{{0, 0}, {1, 0}, {0, 1}, {1, 1}}};
+
 // Builds the vertices and triangles of the cells.
 class Builder {
 public:
     Builder(const TileData& data, std::vector<Column> columns, double spacing)
         : columns_(std::move(columns)), spacing_(spacing), originY_(data.originY),
-          shared_(columns_.size(), -1) {}
-
-    void cell(int i, int k) {
-        const std::array<std::size_t, 4> corners{at(i, k), at(i + 1, k), at(i, k + 1),
-                                                 at(i + 1, k + 1)};
-        Column mean;
-        int wet = 0;
-        for (const std::size_t c : corners) {
-            if (columns_[c].wet) {
-                add(mean, columns_[c], wet == 0);
-                ++wet;
+          shared_(columns_.size(), -1), rim_(columns_.size(), false) {
+        for (int k = 0; k < kCells; ++k) {
+            for (int i = 0; i < kCells; ++i) {
+                if (describe(i, k).cut) {
+                    ++mesh.cutCells;
+                    for (const auto& o : kCorners) {
+                        rim_[at(i + o[0], k + o[1])] = true;
+                    }
+                }
             }
         }
-        if (wet == 0) {
+    }
+
+    void cell(int i, int k) {
+        const Cell c = describe(i, k);
+        if (!c.drawn || c.cut) {
             return;
         }
-        scale(mean, 1.0 / wet);
-        std::array<double, 4> levels{};
-        for (std::size_t n = 0; n < corners.size(); ++n) {
-            levels[n] = columns_[corners[n]].wet ? columns_[corners[n]].level : mean.level;
-        }
-        const double limit = kWaterCutSlope * spacing_;
-        if (std::abs(levels[0] - levels[1]) > limit || std::abs(levels[2] - levels[3]) > limit ||
-            std::abs(levels[0] - levels[2]) > limit || std::abs(levels[1] - levels[3]) > limit) {
-            return; // the face of a fall
-        }
         std::array<std::int32_t, 4> v{};
-        const std::array<std::array<int, 2>, 4> offsets{{{0, 0}, {1, 0}, {0, 1}, {1, 1}}};
-        for (std::size_t n = 0; n < corners.size(); ++n) {
-            const int ci = i + offsets[n][0];
-            const int ck = k + offsets[n][1];
-            v[n] = columns_[corners[n]].wet ? sharedVertex(ci, ck) : vertex(ci, ck, mean);
+        for (std::size_t n = 0; n < kCorners.size(); ++n) {
+            const int ci = i + kCorners[n][0];
+            const int ck = k + kCorners[n][1];
+            v[n] = columns_[at(ci, ck)].wet ? sharedVertex(ci, ck) : vertex(ci, ck, c.mean);
         }
         // Front faces up (Unreal: the side of (c - a) x (b - a)).
         for (const std::int32_t index : {v[0], v[3], v[1], v[0], v[2], v[3]}) {
@@ -161,6 +169,32 @@ public:
     UnrealWaterMesh mesh;
 
 private:
+    [[nodiscard]] Cell describe(int i, int k) const {
+        Cell cell;
+        int wet = 0;
+        for (const auto& o : kCorners) {
+            const Column& c = columns_[at(i + o[0], k + o[1])];
+            if (c.wet) {
+                add(cell.mean, c, wet == 0);
+                ++wet;
+            }
+        }
+        if (wet == 0) {
+            return cell;
+        }
+        scale(cell.mean, 1.0 / wet);
+        for (std::size_t n = 0; n < kCorners.size(); ++n) {
+            const Column& c = columns_[at(i + kCorners[n][0], k + kCorners[n][1])];
+            cell.levels[n] = c.wet ? c.level : cell.mean.level;
+        }
+        const std::array<double, 4>& l = cell.levels;
+        const double limit = kWaterCutSlope * spacing_;
+        cell.drawn = true;
+        cell.cut = std::abs(l[0] - l[1]) > limit || std::abs(l[2] - l[3]) > limit ||
+                   std::abs(l[0] - l[2]) > limit || std::abs(l[1] - l[3]) > limit;
+        return cell;
+    }
+
     static void add(Column& sum, const Column& c, bool first) {
         sum.level += c.level;
         sum.flowX += c.flowX;
@@ -200,7 +234,7 @@ private:
                                 static_cast<float>(1.0 / length)});
         mesh.uv0.push_back({c.flowX, c.flowZ});
         mesh.uv1.push_back({c.kind, static_cast<float>(dmath::hypot(c.slopeX, c.slopeZ))});
-        mesh.uv2.push_back({static_cast<float>(c.level), 0.0f});
+        mesh.uv2.push_back({static_cast<float>(c.level), rim_[at(i, k)] ? 0.0f : 1.0f});
         return index;
     }
 
@@ -208,6 +242,7 @@ private:
     double spacing_;
     double originY_;
     std::vector<std::int32_t> shared_;
+    std::vector<bool> rim_; // the columns at a corner of a cut cell
 };
 
 } // namespace

@@ -61,15 +61,18 @@ public:
 	void RemoveAll();
 
 	// Where the waves of the sea are measured from (Bridge/horizon_atmosphere.hpp), every level and
-	// the surface look of the tiles.
+	// the surface looks of the tiles.
 	void SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin);
 
 	// The lakes and rivers drawn at their level, or not (the ground under them), every level.
 	void SetInlandWater(bool bShown);
 
-	// The material of the tiles reads the surface of the ground (material and biome) from the
-	// texels of level 0 (the temporary terrain material, Bridge/terrain_surface.hpp): its
-	// parameters follow level 0 from now on.
+	// A material of the tiles that follows level 0 from now on: the material of their ground reads
+	// the surface of the ground (material and biome) from the texels of level 0 (the temporary
+	// terrain material, Bridge/terrain_surface.hpp); the material of their water fades into the
+	// water of the horizon over the outer band of the tiles (Scripts/water_look_hlsl.py). Both
+	// read the same parameters (SurfaceOrigin, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm,
+	// SurfaceBandCm, HasSurface...); nothing without a look.
 	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
 
 	// Time spent building the grids, and the bytes of the textures and of the grids on the GPU.
@@ -111,7 +114,7 @@ private:
 	TArray<TObjectPtr<UStaticMeshComponent>> Trims; // none for level 0
 
 	UPROPERTY()
-	TObjectPtr<UMaterialInstanceDynamic> SurfaceLook; // of the tiles, none without it
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> SurfaceLooks; // of the tiles: ground, water
 
 	TArray<int32> TrimShown;
 	TArray<TOptional<terrain::unreal::LevelPlacement>> Placed;

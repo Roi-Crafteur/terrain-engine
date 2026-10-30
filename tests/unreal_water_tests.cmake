@@ -29,3 +29,10 @@ if(Python_Interpreter_FOUND)
         COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_water_scripts_test.py
                 ${PROJECT_SOURCE_DIR}/terrain_unreal/Scripts)
 endif()
+
+# The probe of the water of the tiles as Unreal takes it, run by hand (not a test: it reads a
+# planet file): per LOD, the falls, the triangles of their curtains and foam, the cells cut, and
+# three views of each fall checked against the ground.
+add_executable(unreal_water_probe unreal_water_probe.cpp)
+target_link_libraries(unreal_water_probe PRIVATE terrain_unreal_bridge terrain_warnings)
+add_dependencies(check unreal_water_probe)

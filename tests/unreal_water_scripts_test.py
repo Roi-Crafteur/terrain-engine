@@ -4,7 +4,8 @@ the Unreal Editor, so this checks what can be checked here.
 - Every script of terrain_unreal/Scripts compiles.
 - The HLSL of the water (water_look_hlsl.py, horizon_water_hlsl.py): no placeholder left, braces
   and parentheses balanced, every name of an input a node reads declared among its inputs, every
-  output it writes declared among its outputs.
+  output it writes declared among its outputs; the noise of the ripples, run here, repeats every
+  4,096 m.
 - The scripts that rebuild a material in place reset every setting first
   (material_settings.reset_material), and set none of them by hand.
 - Each script that creates a material runs to its end as Unreal runs it (Tools > Execute Python
@@ -16,6 +17,7 @@ Usage: python3 unreal_water_scripts_test.py <terrain_unreal/Scripts>
 
 import ast
 import importlib
+import math
 import pathlib
 import re
 import sys
@@ -41,11 +43,11 @@ def constant(source, name):
 
 
 # Names a node uses that are not its inputs: HLSL, Unreal, the helpers and the locals of the code.
-KNOWN = {"BRANCH", "Parameters", "Water", "FTerrainWater", "PERIOD", "PI2", "K", "Kind",
+KNOWN = {"BRANCH", "Parameters", "Water", "FTerrainWater", "PERIOD", "K", "Kind",
          "Fresnel", "Glint", "GetTranslatedWorldPosition", "GetPeriodicWorldOrigin",
          "MaterialExpressionSkyAtmosphereViewLuminance", "Load", "Body", "Waves", "Ripples",
-         "Noise", "Hash", "INLAND", "SURFACE", "DEPTH", "D", "H", "L", "V", "Vis", "Fs", "NoV",
-         "NoL", "NoH", "VoH"}
+         "Noise", "Hash", "PeriodicHash", "Octave", "HorizonShare", "SvPosition", "INLAND",
+         "SURFACE", "DEPTH", "D", "H", "L", "V", "Vis", "Fs", "NoV", "NoL", "NoH", "VoH"}
 
 
 def names(code):
@@ -54,7 +56,7 @@ def names(code):
 
 
 def check_node(label, code, inputs, outputs):
-    check("RIPPLE_LOOP" not in code and "SKY_CODE" not in code and "BODY_CODE" not in code,
+    check("OCTAVE_LOOP" not in code and "SKY_CODE" not in code and "BODY_CODE" not in code,
           f"{label}: a placeholder is left")
     bare = re.sub(r"//[^\n]*", "", code)  # comments may hold "[0, 1)"
     for opening, closing in ("{}", "()"):
@@ -65,6 +67,52 @@ def check_node(label, code, inputs, outputs):
           f"{label}: outputs not declared: {sorted(written - set(outputs))}")
     missing = used - written - set(inputs)
     check(not missing, f"{label}: inputs not declared: {sorted(missing)}")
+
+
+def frac(x):
+    return x - math.floor(x)
+
+
+def octave(p, a, b, k, drift):
+    """FTerrainWater::Octave (water_look_hlsl.py), in Python: the gradient of the noise at p."""
+    def hash_of(c):
+        h = [frac(v * 0.1031) for v in (c[0], c[1], c[0])]
+        d = h[0] * (h[1] + 33.33) + h[1] * (h[2] + 33.33) + h[2] * (h[0] + 33.33)
+        h = [v + d for v in h]
+        return frac((h[0] + h[1]) * h[2])
+
+    def periodic(c, g):
+        n = g[0] * g[0] + g[1] * g[1]
+        q = (round((c[0] * g[0] + c[1] * g[1]) / n), round((c[1] * g[0] - c[0] * g[1]) / n))
+        return hash_of((c[0] - (g[0] * q[0] - g[1] * q[1]), c[1] - (g[0] * q[1] + g[1] * q[0])))
+
+    u = ((a * p[0] + b * p[1]) * k / 4096.0 + drift, (a * p[1] - b * p[0]) * k / 4096.0)
+    i = (math.floor(u[0]), math.floor(u[1]))
+    f = (u[0] - i[0], u[1] - i[1])
+    g = (k * a, -k * b)
+    h00, h10 = periodic(i, g), periodic((i[0] + 1, i[1]), g)
+    h01, h11 = periodic((i[0], i[1] + 1), g), periodic((i[0] + 1, i[1] + 1), g)
+    s = [v * v * (3.0 - 2.0 * v) for v in f]
+    corner = h00 - h10 - h01 + h11
+    return ((h10 - h00 + corner * s[1]) * 6.0 * f[0] * (1.0 - f[0]),
+            (h01 - h00 + corner * s[0]) * 6.0 * f[1] * (1.0 - f[1]))
+
+
+def check_ripples(look):
+    """The octaves of the ripples repeat every 4,096 m in X and Y (nothing moves after a turn of
+    the world, nor when the origin of Unreal moves by whole periods), and are not flat."""
+    worst = 0.0
+    spread = 0.0
+    for a, b, k, _, _ in look.OCTAVES:
+        for n in range(200):
+            p = (37.3 * n % 4096.0, 91.7 * n % 4096.0)
+            here = octave(p, a, b, k, 0.37 * n)
+            spread = max(spread, abs(here[0]) + abs(here[1]))
+            for shift in ((4096.0, 0.0), (0.0, 4096.0), (-8192.0, 4096.0)):
+                there = octave((p[0] + shift[0], p[1] + shift[1]), a, b, k, 0.37 * n)
+                worst = max(worst, abs(here[0] - there[0]), abs(here[1] - there[1]))
+    check(worst < 1e-4 and spread > 0.5, f"ripples: {worst:g} apart after 4096 m, spread {spread:g}")
+    return worst
 
 
 class FakeUnreal:
@@ -96,9 +144,13 @@ class FakeUnreal:
 NEEDED = {
     "create_horizon_gpu_material.py": {"HorizonTexels", "CoarseTexels", "HorizonWater",
                                        "CoarseWater", "InlandWater", "DropCoveredCm",
-                                       "LakeWaterColor", "FlowSpeed"},
+                                       "DropFadeCm", "LakeWaterColor", "FlowSpeed",
+                                       "SkyReflection", "ShoreFadeM"},
+    # The band of the tiles over the horizon, placed by TerrainHorizonClipmap.cpp as on the ground.
     "create_water_materials.py": {"LakeWaterColor", "RiverAbsorption", "FlowSpeed",
-                                  "CurtainColor", "FoamColor"},
+                                  "CurtainColor", "FoamColor", "SkyReflection", "ShoreFadeM",
+                                  "SurfaceOrigin", "SurfaceCells", "SurfacePitchCm",
+                                  "SurfaceCoveredCm", "SurfaceBandCm", "HasSurface"},
     "create_temporary_terrain_material.py": {"SurfaceTexels", "TileBlendTexels"},
 }
 
@@ -151,7 +203,8 @@ def main(folder):
     materials = (folder / "create_water_materials.py").read_text(encoding="utf-8")
     struct = look.struct_hlsl()
     check_node("TerrainWater", struct + look.tile_water_hlsl(),
-               constant(materials, "WATER_INPUTS") + look.look_inputs(),
+               constant(materials, "WATER_INPUTS") + list(constant(materials, "SURFACE_SCALARS"))
+               + look.look_inputs(),
                ["EmissiveOut", "OpacityOut", "NormalOut", "RoughnessOut"])
     check_node("TerrainFalls", struct + look.FALLS_HLSL, constant(materials, "FALLS_INPUTS"),
                ["OpacityOut"])
@@ -167,8 +220,9 @@ def main(folder):
                             r'use_material_attributes|tangent_space_normal|two_sided)"', source),
               f"{script}: a setting of the material set by hand")
     check_runs(folder)
-    print(f"water scripts: {len(failures)} failure(s), "
-          f"{len(look.RIPPLES)} ripples, {len(look.look_inputs())} look parameters")
+    worst = check_ripples(look)
+    print(f"water scripts: {len(failures)} failure(s), {len(look.OCTAVES)} octaves of ripples "
+          f"({worst:.1e} apart after 4,096 m), {len(look.look_inputs())} look parameters")
     return 1 if failures else 0
 
 

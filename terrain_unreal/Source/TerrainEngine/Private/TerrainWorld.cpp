@@ -136,6 +136,7 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		HorizonClipmap = nullptr;
 	}
 	TileSurfaceLook = nullptr;
+	TileWaterLook = nullptr;
 	StopAtmosphere();
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();

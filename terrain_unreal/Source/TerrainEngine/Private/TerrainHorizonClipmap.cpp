@@ -308,27 +308,27 @@ void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placem
 
 void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
 {
-	SurfaceLook = Look;
-	if (SurfaceLook == nullptr || Textures.IsEmpty())
+	if (Look == nullptr || Textures.IsEmpty())
 	{
 		return;
 	}
-	SurfaceLook->SetTextureParameterValue(SurfaceTexelsParameter, Textures[0]);
-	SurfaceLook->SetScalarParameterValue(SurfaceCellsParameter, static_cast<float>(Side - 1));
-	SurfaceLook->SetScalarParameterValue(SurfacePitchParameter, static_cast<float>(Level0PitchCm));
+	SurfaceLooks.AddUnique(Look);
+	Look->SetTextureParameterValue(SurfaceTexelsParameter, Textures[0]);
+	Look->SetScalarParameterValue(SurfaceCellsParameter, static_cast<float>(Side - 1));
+	Look->SetScalarParameterValue(SurfacePitchParameter, static_cast<float>(Level0PitchCm));
 	// The band of the tiles over level 0, where the surface blend of the tiles fades into the
-	// samples of the horizon: from the edge of the hole to the edge of the area the tiles cover.
-	SurfaceLook->SetScalarParameterValue(SurfaceCoveredParameter,
+	// samples of the horizon, and the water of the tiles into the water of the horizon: from the
+	// edge of the hole to the edge of the area the tiles cover.
+	Look->SetScalarParameterValue(SurfaceCoveredParameter,
 		static_cast<float>(Fade.coveredMeters * 100.0));
-	SurfaceLook->SetScalarParameterValue(SurfaceBandParameter,
+	Look->SetScalarParameterValue(SurfaceBandParameter,
 		static_cast<float>(2.0 * Fade.fadeMeters * 100.0));
-	SurfaceLook->SetScalarParameterValue(SurfaceHasNormalsParameter,
+	Look->SetScalarParameterValue(SurfaceHasNormalsParameter,
 		NormalTextures.IsEmpty() ? 0.0f : 1.0f);
 	if (!NormalTextures.IsEmpty())
 	{
-		SurfaceLook->SetTextureParameterValue(SurfaceNormalsParameter, NormalTextures[0]);
-		SurfaceLook->SetScalarParameterValue(SurfaceNormalRatioParameter,
-			static_cast<float>(NormalRatio));
+		Look->SetTextureParameterValue(SurfaceNormalsParameter, NormalTextures[0]);
+		Look->SetScalarParameterValue(SurfaceNormalRatioParameter, static_cast<float>(NormalRatio));
 	}
 	if (!Placed.IsEmpty() && Placed[0].IsSet())
 	{
@@ -340,30 +340,27 @@ void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
 // window, which holds every tile.
 void UTerrainHorizonClipmap::PlaceSurface(const terrain::unreal::LevelPlacement& Placement)
 {
-	if (SurfaceLook == nullptr)
+	for (UMaterialInstanceDynamic* Look : SurfaceLooks)
 	{
-		return;
+		Look->SetScalarParameterValue(SurfaceFirstXParameter,
+			static_cast<float>(Placement.firstSlot.x));
+		Look->SetScalarParameterValue(SurfaceFirstZParameter,
+			static_cast<float>(Placement.firstSlot.z));
+		Look->SetDoubleVectorParameterValue(SurfaceOriginParameter,
+			FVector4(Placement.origin.x, Placement.origin.y, Placement.origin.z, 0.0));
+		Look->SetScalarParameterValue(HasSurfaceParameter, 1.0f);
 	}
-	SurfaceLook->SetScalarParameterValue(SurfaceFirstXParameter,
-		static_cast<float>(Placement.firstSlot.x));
-	SurfaceLook->SetScalarParameterValue(SurfaceFirstZParameter,
-		static_cast<float>(Placement.firstSlot.z));
-	SurfaceLook->SetDoubleVectorParameterValue(SurfaceOriginParameter,
-		FVector4(Placement.origin.x, Placement.origin.y, Placement.origin.z, 0.0));
-	SurfaceLook->SetScalarParameterValue(HasSurfaceParameter, 1.0f);
 }
 
 void UTerrainHorizonClipmap::SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin)
 {
-	for (UMaterialInstanceDynamic* Look : Looks)
+	for (TArray<TObjectPtr<UMaterialInstanceDynamic>>* Instances : {&Looks, &SurfaceLooks})
 	{
-		Look->SetScalarParameterValue(WaveOriginXParameter, static_cast<float>(Origin.x));
-		Look->SetScalarParameterValue(WaveOriginYParameter, static_cast<float>(Origin.y));
-	}
-	if (SurfaceLook != nullptr)
-	{
-		SurfaceLook->SetScalarParameterValue(WaveOriginXParameter, static_cast<float>(Origin.x));
-		SurfaceLook->SetScalarParameterValue(WaveOriginYParameter, static_cast<float>(Origin.y));
+		for (UMaterialInstanceDynamic* Look : *Instances)
+		{
+			Look->SetScalarParameterValue(WaveOriginXParameter, static_cast<float>(Origin.x));
+			Look->SetScalarParameterValue(WaveOriginYParameter, static_cast<float>(Origin.y));
+		}
 	}
 }
 
@@ -390,10 +387,10 @@ void UTerrainHorizonClipmap::RemoveAll()
 	}
 	Placed.Empty();
 	TrimShown.Empty();
-	if (SurfaceLook != nullptr)
+	for (UMaterialInstanceDynamic* Look : SurfaceLooks)
 	{
-		SurfaceLook->SetScalarParameterValue(HasSurfaceParameter, 0.0f);
-		SurfaceLook->SetScalarParameterValue(SurfaceHasNormalsParameter, 0.0f);
-		SurfaceLook = nullptr;
+		Look->SetScalarParameterValue(HasSurfaceParameter, 0.0f);
+		Look->SetScalarParameterValue(SurfaceHasNormalsParameter, 0.0f);
 	}
+	SurfaceLooks.Empty();
 }

@@ -20,12 +20,12 @@ FLOAT3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
 VERTEX_INPUTS = ["Tex", "Coarse", "Levels", "CoarseLevels", "Local", "Kind", "Viewer"]
 VERTEX_SCALARS = ["Cells", "FirstSlotX", "FirstSlotZ", "CoarseX", "CoarseZ", "CoarseFirstX",
                   "CoarseFirstZ", "HasCoarser", "MorphCells", "PitchCm", "DropCoveredCm",
-                  "InlandWater"]
-VERTEX_OUTPUTS = ["InlandDepthOut", "InlandOpenOut", "InlandKindOut", "InlandAltitudeOut"]
+                  "DropFadeCm", "InlandWater"]
+VERTEX_OUTPUTS = ["InlandDepthOut", "InlandFromCenterOut", "InlandKindOut", "InlandAltitudeOut"]
 PIXEL_OUTPUTS = ["EmissiveOut", "NormalOut", "RoughnessOut", "SpecularOut", "KeepOut"]
-PIXEL_INPUTS = ["Color", "Emissive", "Normal", "Roughness", "Specular", "Depth", "Open",
+PIXEL_INPUTS = ["Color", "Emissive", "Normal", "Roughness", "Specular", "Depth", "FromCenter",
                 "KindCode", "Altitude", "CameraRel", "Time", "SunDir", "SunIlluminance", "SkyView",
-                "PlanetRadiusCm", "WaveOriginX", "WaveOriginY"]
+                "PlanetRadiusCm", "WaveOriginX", "WaveOriginY", "DropCoveredCm", "DropFadeCm"]
 
 
 def parameters(material, g):
@@ -94,7 +94,8 @@ def pixel(material, g, nodes, shade, water):
     for output, name in (("", "Color"), ("EmissiveOut", "Emissive"), ("NormalOut", "Normal"),
                          ("RoughnessOut", "Roughness"), ("SpecularOut", "Specular")):
         g.connect(shade, output, custom, name)
-    for index, (output, name) in enumerate((("InlandDepthOut", "Depth"), ("InlandOpenOut", "Open"),
+    for index, (output, name) in enumerate((("InlandDepthOut", "Depth"),
+                                            ("InlandFromCenterOut", "FromCenter"),
                                             ("InlandKindOut", "KindCode"),
                                             ("InlandAltitudeOut", "Altitude"))):
         g.connect(g.interpolate(material, water, output, -2900 + 100 * index), "", custom, name)
@@ -106,14 +107,15 @@ def pixel(material, g, nodes, shade, water):
                           -1800),
                          (sky_view, "SkyView", -1900)):  # SkyView binds the LUT the code samples
         g.connect(g.expression(material, cls, 300, y), "", custom, name)
-    for name in ["PlanetRadiusCm", "WaveOriginX", "WaveOriginY"] + look.look_inputs():
+    for name in ["PlanetRadiusCm", "WaveOriginX", "WaveOriginY", "DropCoveredCm",
+                 "DropFadeCm"] + look.look_inputs():
         g.connect(nodes[name], "", custom, name)
     return custom
 
 
 def opacity_mask(material, g, square, inland, attributes):
-    """The sea square cut where the core puts no ocean, and the cells of water across the edge of
-    the tiles."""
+    """The sea square cut where the core puts no ocean, and the water under the tiles but the share
+    the horizon draws over their outer band."""
     keep = g.expression(material, unreal.MaterialExpressionMultiply, 650, -500)
     g.connect(square, "", keep, "A")
     g.connect(inland, "KeepOut", keep, "B")

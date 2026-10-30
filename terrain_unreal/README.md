@@ -565,13 +565,13 @@ Les lacs et fleuves sont dessinés à leur niveau : sur les tuiles, une surface 
 colonnes d'eau du core (`TileData::waterColumns`), en pente avec les fleuves, plate sur les lacs,
 sans fente entre tuiles ni entre LOD ; aux chutes, un rideau de la lèvre au pied et de l'écume
 (`TileData::falls`) ; sur l'horizon GPU, l'eau montée au niveau de ses textures d'eau (R32F, le
-niveau du core au bit près), qui rejoint celle des tuiles à leur bord. Même aspect de près et de
-loin : couleur et transparence selon l'épaisseur d'eau et le lieu, rides dans le sens du courant,
-reflet du ciel et du soleil, écume des rapides. Il faut un fichier planète (`PlanetFile`, section 5,
+niveau du core au bit près), qui se fond dans celle des tuiles sur leur bande extérieure. Même
+aspect de près et de loin : couleur et transparence selon l'épaisseur d'eau et le lieu, rides de
+bruit dans le sens du courant, reflet du ciel et du soleil, écume des rapides, rives fondues. Il faut un fichier planète (`PlanetFile`, section 5,
 par défaut dans `Saved/TerrainEngine`) et les matériaux de `Scripts/create_water_materials.py`.
 Données, formats, aspect, coût, évolution vers Single Layer Water et limites :
 [`WATER_LEVEL.md`](WATER_LEVEL.md). La sonde `terrain_probe_water` dit ce que le core met en un
-point.
+point, `unreal_water_probe` ce que le Bridge en fait (chutes, rideaux, mailles coupées par LOD).
 
 ## 15. Les modifications vues de loin (phase 15)
 

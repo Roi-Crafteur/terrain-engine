@@ -6,9 +6,12 @@ Bridge/tile_water_mesh.hpp), already at the level of the water: translucent, lit
 (Surface ForwardShading), its color and transparency by the thickness of water behind each pixel
 (scene depth minus pixel depth) and by its kind and place, ripples carried by the flow of the
 rivers, the reflection of the sky and the glint of the sun, foam on the rapids
-(water_look_hlsl.py: the same look as the lakes and rivers of the far horizon). Its own material
-and parameters: it can become a Single Layer Water material later (phase 14, WATER_LEVEL.md)
-without touching the rest.
+(water_look_hlsl.py: the same look as the lakes and rivers of the far horizon), faded out toward
+the cuts at the falls, at the shores, and over the outer band of the tiles where the GPU horizon
+dithers its own water in (it places that band: SurfaceOrigin, SurfaceCells, SurfacePitchCm,
+SurfaceCoveredCm, SurfaceBandCm, HasSurface, as on the material of the ground of the tiles). Its
+own material and parameters: it can become a Single Layer Water material later (phase 14,
+WATER_LEVEL.md) without touching the rest.
 
 M_TerrainFalls draws the curtains of the falls and the foam at their feet (section 2,
 Bridge/fall_curtains.hpp): translucent, two sided, streaks falling with the water, soft where they
@@ -16,8 +19,9 @@ meet the rock or the water.
 
 The UV channels of the meshes: UV0 the flow (or meters across and down a curtain), UV1 what the
 water is (1 river, 2 lake, 3 salt lake, 4 curtain, 5 foam) and its slope (or the height of the
-fall), UV2 its altitude (and the width of a curtain or the radius of the foam). ATerrainWorld finds
-the materials by these paths (WaterMaterial, FallsMaterial).
+fall), UV2 its altitude and, on the surface, its edge (0 at the corners of the cells cut at a fall),
+on a curtain its width, on the foam its radius. ATerrainWorld finds the materials by these paths
+(WaterMaterial, FallsMaterial) and makes an instance of M_TerrainWater for the horizon to place.
 
 The assets belong to the game project, not to this repository. Run the script once per project,
 and again after updating the plugin, in the Unreal Editor (the Python Editor Script Plugin must be
@@ -45,8 +49,12 @@ FLOAT1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
 FLOAT2 = unreal.CustomMaterialOutputType.CMOT_FLOAT2
 FLOAT3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
 # The inputs of the nodes of the two materials, besides the look of the water.
-WATER_INPUTS = ["Flow", "KindSlope", "Altitude", "CameraRel", "Time", "SunDir", "SunIlluminance",
-                "SkyView", "SceneDepth", "PixelDepth", "VertexNormal"]
+WATER_INPUTS = ["Flow", "KindSlope", "Altitude", "Edge", "CameraRel", "Time", "SunDir",
+                "SunIlluminance", "SkyView", "SceneDepth", "PixelDepth", "VertexNormal", "Rel"]
+# The band of the tiles over level 0 of the GPU horizon, set by it (TerrainHorizonClipmap.cpp);
+# HasSurface 0 without the horizon: no fade.
+SURFACE_SCALARS = {"SurfaceCells": 256.0, "SurfacePitchCm": 800.0, "SurfaceCoveredCm": 0.0,
+                   "SurfaceBandCm": 0.0, "HasSurface": 0.0}
 FALLS_INPUTS = ["Fall", "KindDrop", "AltitudeSize", "Time", "SceneDepth", "PixelDepth",
                 "CurtainColor", "FoamColor"]
 
@@ -134,9 +142,30 @@ def sky(material, custom, x, y):
         connect(expression(material, cls, x, y + dy), "", custom, name)
 
 
+def surface_band(material, custom, x, y):
+    """Where the pixel stands from the corner of level 0 of the horizon (Rel, cm) and the band of
+    the tiles over it, placed by the horizon."""
+    origin = expression(material, unreal.MaterialExpressionDoubleVectorParameter, x - 300, y)
+    origin.set_editor_property("parameter_name", "SurfaceOrigin")
+    position = expression(material, unreal.MaterialExpressionWorldPosition, x - 300, y + 150)
+    relative = expression(material, unreal.MaterialExpressionSubtract, x, y + 50)
+    connect(position, "", relative, "A")
+    connect(origin, "", relative, "B")
+    to_float = expression(material, unreal.MaterialExpressionComponentMask, x + 150, y + 50)
+    for channel in "rgba":
+        to_float.set_editor_property(channel, channel != "a")
+    connect(relative, "", to_float, "")
+    connect(to_float, "", custom, "Rel")
+    for index, (name, value) in enumerate(SURFACE_SCALARS.items()):
+        node = expression(material, unreal.MaterialExpressionScalarParameter, x, y + 250 + 60 * index)
+        node.set_editor_property("parameter_name", name)
+        node.set_editor_property("default_value", value)
+        connect(node, "", custom, name)
+
+
 def water_graph(material):
     """M_TerrainWater: the surface of the lakes and rivers of the tiles."""
-    inputs = WATER_INPUTS + water.look_inputs()
+    inputs = WATER_INPUTS + list(SURFACE_SCALARS) + water.look_inputs()
     custom = custom_node(material, -300, 0, "TerrainWater",
                          water.struct_hlsl() + water.tile_water_hlsl(), inputs,
                          [("EmissiveOut", FLOAT3), ("OpacityOut", FLOAT1), ("NormalOut", FLOAT3),
@@ -144,6 +173,7 @@ def water_graph(material):
     connect(uv(material, 0, "rg", -900, -400), "", custom, "Flow")
     connect(uv(material, 1, "rg", -900, -300), "", custom, "KindSlope")
     connect(uv(material, 2, "r", -900, -200), "", custom, "Altitude")
+    connect(uv(material, 2, "g", -900, -150), "", custom, "Edge")
     camera = expression(material, unreal.MaterialExpressionWorldPosition, -900, -100)
     camera.set_editor_property("world_position_shader_offset",
                                unreal.WorldPositionIncludedOffsets.WPT_CAMERA_RELATIVE)
@@ -152,6 +182,7 @@ def water_graph(material):
     depths(material, custom, -900, 400)
     connect(expression(material, unreal.MaterialExpressionVertexNormalWS, -900, 600), "", custom,
             "VertexNormal")
+    surface_band(material, custom, -900, 800)
     for name, node in look_parameters(material, water.look_inputs(), -1300, -400).items():
         connect(node, "", custom, name)
     specular = expression(material, unreal.MaterialExpressionConstant, 0, 400)
