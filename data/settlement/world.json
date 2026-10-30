@@ -117,6 +117,10 @@
     "coastDistance": { "min": 0, "idealMin": 0, "idealMax": 20, "max": 150, "floor": 0 },
     "riverMinDischarge": 100
   },
+  "suitability": {
+    "noiseAmplitude": 0.2,
+    "noiseScaleKm": 400
+  },
   "terrainModels": {
     "glacier": {
       "expansionCost": 20,

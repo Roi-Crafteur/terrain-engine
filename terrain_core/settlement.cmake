@@ -12,12 +12,14 @@ target_sources(terrain_core PRIVATE
     src/generation/settlement/geology_points.cpp
     src/generation/settlement/map_influences.cpp
     src/generation/settlement/map_inputs.cpp
+    src/generation/settlement/people.cpp
     src/generation/settlement/preference.cpp
     src/generation/settlement/resource_def.cpp
     src/generation/settlement/settlement_config.cpp
     src/generation/settlement/settlement_config_parts.cpp
     src/generation/settlement/settlement_data.cpp
     src/generation/settlement/settlement_maps.cpp
+    src/generation/settlement/suitability.cpp
     src/generation/settlement/telluric.cpp
 )
 # The PNG control images of the maps (io/: no Unreal wrapper).

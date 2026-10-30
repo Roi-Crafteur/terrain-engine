@@ -1,5 +1,5 @@
 // The data files of the settlement (generation/settlement/settlement_data.hpp): the files of the
-// repository read whole, the copy of a world read back the same, and every invalid file refused
+// repository read whole (the peoples are tested in settlement_peoples_test), the copy of a world read back the same, and every invalid file refused
 // with a clear message (the file, the path in it, the reason).
 
 #include "terrain/generation/settlement/settlement_data.hpp"
@@ -92,6 +92,8 @@ void testRepositoryData() {
     const st::SettlementData back = st::settlementDataOf(data.document(), "copy");
     TEST_CHECK(back.fingerprint() == data.fingerprint());
     TEST_CHECK(back.resources.size() == 6 && back.config.terrainModels.size() == 8);
+    TEST_CHECK(data.peoples.size() == 13 && back.peoples.size() == 13);
+    TEST_CHECK(data.config.suitability.noiseAmplitude == 0.2);
 }
 
 void testInvalidWorld() {

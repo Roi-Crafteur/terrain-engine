@@ -201,6 +201,13 @@ struct HabitabilityRule {
     double riverMinDischarge = 100.0;
 };
 
+// raceSuitability (section 6): the smooth noise of the seed added to the score of each people,
+// its own field for each, of this amplitude (a share of the theoretical maximum) and scale.
+struct SuitabilityRule {
+    double noiseAmplitude = 0.2;
+    double noiseScaleKm = 400.0;
+};
+
 // A terrain model (section 6): physical preferences that a people takes as its base, and the base
 // cost of the expansion over a cell whose nearest model it is.
 struct TerrainModel {
@@ -224,6 +231,7 @@ struct SettlementConfig {
     MagicRule magic;
     GeologyRule geology;
     HabitabilityRule habitability;
+    SuitabilityRule suitability;
     std::vector<TerrainModel> terrainModels; // in the order of the file
     // The document read, kept whole for the copy of the world.
     json::Value document;

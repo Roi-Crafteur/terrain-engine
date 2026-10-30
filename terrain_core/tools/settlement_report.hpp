@@ -5,6 +5,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/settlement/settlement_data.hpp"
 #include "terrain/generation/settlement/settlement_maps.hpp"
+#include "terrain/generation/settlement/suitability.hpp"
 
 #include <cstdint>
 #include <string>
@@ -38,5 +39,10 @@ void reportRoughness(const terrain::Heightfield& field, const terrain::settlemen
 void reportEquitySeeds(const terrain::settlement::SettlementMaps& m,
                        const terrain::settlement::SettlementData& data, std::uint64_t seed,
                        int count, Report& r);
+
+// The time and the memory of raceSuitability, and for each people its mean and the share of the
+// land where it is at least 0.5.
+void reportSuitability(const terrain::settlement::SuitabilityMaps& s,
+                       const terrain::settlement::SettlementData& data, Report& r);
 
 } // namespace settlement_tool

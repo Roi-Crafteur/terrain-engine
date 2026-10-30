@@ -48,6 +48,29 @@ void checkUnique(const std::vector<ResourceDef>& resources,
     }
 }
 
+// The ids of the resources, for the needs of the peoples.
+std::vector<std::string> resourceIds(const std::vector<ResourceDef>& resources) {
+    std::vector<std::string> ids;
+    for (const ResourceDef& r : resources) {
+        ids.push_back(r.id);
+    }
+    return ids;
+}
+
+// An array of a copy, read item by item.
+template <class Read>
+void readList(const Fields& f, std::string_view key, std::vector<std::string>& sources,
+              Read&& read) {
+    const json::Value& list = f.member(key);
+    if (!list.isArray()) {
+        f.fail(list, key, "expected an array");
+    }
+    for (std::size_t k = 0; k < list.size(); ++k) {
+        sources.push_back(f.source() + ": " + std::string(key) + "[" + std::to_string(k) + "]");
+        read(list.items()[k], sources.back());
+    }
+}
+
 } // namespace
 
 json::Value SettlementData::document() const {
@@ -58,6 +81,11 @@ json::Value SettlementData::document() const {
         list.push(r.document);
     }
     d.set("resources", std::move(list));
+    json::Value peopleList = json::Value::array();
+    for (const People& p : peoples) {
+        peopleList.push(p.document);
+    }
+    d.set("peoples", std::move(peopleList));
     return d;
 }
 
@@ -74,6 +102,15 @@ const ResourceDef* SettlementData::resource(std::string_view id) const {
     return nullptr;
 }
 
+int SettlementData::people(std::string_view id) const {
+    for (std::size_t k = 0; k < peoples.size(); ++k) {
+        if (peoples[k].id == id) {
+            return static_cast<int>(k);
+        }
+    }
+    return -1;
+}
+
 SettlementData loadSettlementData(const std::filesystem::path& folder) {
     SettlementData data;
     const std::filesystem::path world = folder / std::string(kWorldConfigFile);
@@ -84,24 +121,30 @@ SettlementData loadSettlementData(const std::filesystem::path& folder) {
         sources.push_back(file.generic_string());
     }
     checkUnique(data.resources, sources);
+    sources.clear();
+    for (const std::filesystem::path& file : jsonFiles(folder / std::string(kPeoplesFolder))) {
+        data.peoples.push_back(readPeople(json::parseFile(file), file.generic_string(), data.config));
+        sources.push_back(file.generic_string());
+    }
+    checkPeoples(data.peoples, sources, resourceIds(data.resources));
     return data;
 }
 
 SettlementData settlementDataOf(const json::Value& copy, std::string_view source) {
     const Fields f(copy, std::string(source), "");
-    f.only({"world", "resources"});
+    f.only({"world", "resources", "peoples"});
     SettlementData data;
     data.config = readSettlementConfig(f.member("world"), std::string(source) + ": world");
-    const json::Value& list = f.member("resources");
-    if (!list.isArray()) {
-        f.fail(list, "resources", "expected an array");
-    }
     std::vector<std::string> sources;
-    for (std::size_t k = 0; k < list.size(); ++k) {
-        sources.push_back(std::string(source) + ": resources[" + std::to_string(k) + "]");
-        data.resources.push_back(readResourceDef(list.items()[k], sources.back()));
-    }
+    readList(f, "resources", sources, [&](const json::Value& v, const std::string& at) {
+        data.resources.push_back(readResourceDef(v, at));
+    });
     checkUnique(data.resources, sources);
+    sources.clear();
+    readList(f, "peoples", sources, [&](const json::Value& v, const std::string& at) {
+        data.peoples.push_back(readPeople(v, at, data.config));
+    });
+    checkPeoples(data.peoples, sources, resourceIds(data.resources));
     return data;
 }
 

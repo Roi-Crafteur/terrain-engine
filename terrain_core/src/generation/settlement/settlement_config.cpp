@@ -191,7 +191,7 @@ SettlementConfig readSettlementConfig(const json::Value& document, std::string_v
     const Fields f(document, std::string(source), "");
     f.only({"configVersion", "referencePlanetAreaKm2", "physicalScore", "roughness",
             "vegetation", "rivers", "arable", "food", "danger", "prana", "mana", "magic",
-            "geology", "habitability", "terrainModels"});
+            "geology", "habitability", "suitability", "terrainModels"});
     SettlementConfig c;
     c.version = f.text("configVersion");
     c.referenceAreaKm2 = f.numberIn("referencePlanetAreaKm2", 1.0, 1.0e12);
@@ -210,6 +210,10 @@ SettlementConfig readSettlementConfig(const json::Value& document, std::string_v
     c.magic = readMagic(f.object("magic"));
     c.geology = readGeology(f.object("geology"));
     c.habitability = readHabitability(f.object("habitability"));
+    const Fields suitability = f.object("suitability");
+    suitability.only({"noiseAmplitude", "noiseScaleKm"});
+    c.suitability.noiseAmplitude = suitability.numberIn("noiseAmplitude", 0.0, 1.0);
+    c.suitability.noiseScaleKm = suitability.numberIn("noiseScaleKm", 1.0, 1.0e5);
     c.terrainModels = readTerrainModels(f.object("terrainModels"));
     c.document = document;
     return c;

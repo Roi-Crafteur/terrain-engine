@@ -241,4 +241,13 @@ void reportEquitySeeds(const st::SettlementMaps& m, const st::SettlementData& da
     r.add("  %d model(s) of at least 5 %% of the land beyond 3 points\n", strays);
 }
 
+void reportSuitability(const st::SuitabilityMaps& s, const st::SettlementData& data, Report& r) {
+    r.add("raceSuitability of %zu peoples in %.1f s, %.0f MiB, checksum %016llx:\n",
+          s.byPeople.size(), s.seconds, mebibytes(s.memoryBytes()),
+          static_cast<unsigned long long>(s.checksum()));
+    for (std::size_t k = 0; k < s.byPeople.size(); ++k) {
+        reportMap(data.peoples[k].id.c_str(), s.byPeople[k], r);
+    }
+}
+
 } // namespace settlement_tool

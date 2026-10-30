@@ -1,7 +1,9 @@
 // The settlement V1 of a world (docs/PEUPLEMENT.md): its analysis maps on the planet level,
 // written as PNG control images (settlement_*.png, resource_*.png), with a report
 // (settlement.txt, also printed): the seconds of each stage, the memory, the counts of the
-// geology and of the magic, the statistics of each map, the fidelity of the roughness, and with
+// geology and of the magic, the statistics of each map and of the raceSuitability of each people
+// (suitability_<people>.png for the humans, the dwarves and the elves), the fidelity of the
+// roughness, and with
 // --equity-seeds the share of the telluric lines and nodes of several networks on each terrain
 // model against its share of the land.
 // The planet level is built in memory, or read from --planet <file>, which is never written in
@@ -17,6 +19,9 @@
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/settlement/settlement_data.hpp"
 #include "terrain/generation/settlement/settlement_maps.hpp"
+#include "terrain/generation/settlement/suitability.hpp"
+#include "terrain/io/planet_png.hpp"
+#include "terrain/io/png.hpp"
 #include "terrain/io/settlement_png.hpp"
 #include "terrain/storage/planet_file.hpp"
 #include "terrain/storage/storage_error.hpp"
@@ -179,6 +184,25 @@ terrain::PlanetLevel openLevel(const Options& o, const terrain::PlanetParams& pa
     }
 }
 
+// The images of the analysis maps, and suitability_<people>.png for the peoples of section 4.
+bool writeImages(const Options& o, const terrain::PlanetLevel& level, const st::SettlementMaps& maps,
+                 const st::SettlementData& data, const st::SuitabilityMaps& s) {
+    if (!terrain::exportSettlementMapPngs(level, maps, data, o.directory, o.width)) {
+        return false;
+    }
+    const int scale = terrain::planetImageScale(level.grid(), o.width);
+    for (const char* id : {"humains", "nains", "elfes"}) {
+        const int k = data.people(id);
+        if (k >= 0 && !terrain::writePng(o.directory / (std::string("suitability_") + id + ".png"),
+                                         terrain::renderSettlementMap(
+                                             level, maps, s.byPeople[static_cast<std::size_t>(k)],
+                                             terrain::SettlementPalette::Habitability, scale))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool writeReport(const Options& o, const Report& r) {
     std::ofstream out(o.directory / "settlement.txt", std::ios::binary | std::ios::trunc);
     out << r.text();
@@ -213,8 +237,11 @@ int run(const Options& o) {
     if (o.equitySeeds > 0) {
         settlement_tool::reportEquitySeeds(maps, data, o.seed, o.equitySeeds, r);
     }
+    const st::SuitabilityMaps suitability =
+        st::computeSuitability(level, maps, data, o.seed, o.threads);
+    settlement_tool::reportSuitability(suitability, data, r);
     start = std::chrono::steady_clock::now();
-    if (!terrain::exportSettlementMapPngs(level, maps, data, o.directory, o.width)) {
+    if (!writeImages(o, level, maps, data, suitability)) {
         std::fprintf(stderr, "Cannot write the images into %s\n", o.directory.string().c_str());
         return EXIT_FAILURE;
     }

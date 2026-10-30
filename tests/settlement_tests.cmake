@@ -54,3 +54,11 @@ add_test(NAME export_settlement_planet_file
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_settlement>
             -DDIR=${CMAKE_BINARY_DIR}/settlement_planet_file
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_settlement_planet_file.cmake)
+
+# The peoples: the 13 files of the repository, the merge over the base terrain model, the
+# relations, invalid files refused with a clear message; raceSuitability (its maximum, the hard
+# limits) on the default world in cells of 65,536 m, the same bits whatever the threads.
+terrain_add_test(settlement_peoples_test terrain_core)
+target_compile_definitions(settlement_peoples_test PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement"
+    TERRAIN_TEST_SCRATCH="${CMAKE_CURRENT_BINARY_DIR}/settlement_peoples_scratch")
