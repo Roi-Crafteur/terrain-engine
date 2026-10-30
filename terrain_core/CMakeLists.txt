@@ -188,6 +188,7 @@ find_package(Threads REQUIRED)
 target_link_libraries(terrain_core
     PUBLIC Threads::Threads terrain_fp_strict
     PRIVATE terrain_warnings)
+include(${CMAKE_CURRENT_SOURCE_DIR}/settlement.cmake) # the settlement V1: data files, maps, peoples, kingdoms
 
 # Heightmap PNG export for visual checks:
 # terrain_export_heightmap <output-dir> [seed] [m/px] [size] [center-x] [center-z]
