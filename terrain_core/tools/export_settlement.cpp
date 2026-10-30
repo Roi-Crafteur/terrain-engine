@@ -11,15 +11,17 @@
 // builds it again into <file>.new, reads it back, then replaces <file> with it.
 // Usage: terrain_export_settlement <output-dir> [--planet <file>] [--rebuild-planet]
 //        [--seed <seed>] [--world <x> <z>] [--cell <meters>] [--threads <n>] [--data <dir>]
-//        [--width <pixels>] [--equity-seeds <n>]
+//        [--width <pixels>] [--equity-seeds <n>] [--preset <id>|all]
 
 #include "process_memory.hpp"
+#include "settlement_kingdoms.hpp"
 #include "settlement_report.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/settlement/settlement_data.hpp"
 #include "terrain/generation/settlement/settlement_maps.hpp"
 #include "terrain/generation/settlement/suitability.hpp"
+#include "terrain/generation/settlement/world_preset.hpp"
 #include "terrain/io/planet_png.hpp"
 #include "terrain/io/png.hpp"
 #include "terrain/io/settlement_png.hpp"
@@ -39,6 +41,7 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace st = terrain::settlement;
 using settlement_tool::mebibytes;
@@ -63,6 +66,7 @@ struct Options {
     std::filesystem::path data = TERRAIN_SETTLEMENT_DATA;
     int width = 2048;
     int equitySeeds = 0;
+    std::string preset; // empty: the default of the data; "all": every preset
 };
 
 bool parseFlag(int argc, char** argv, int& i, Options& o) {
@@ -74,6 +78,10 @@ bool parseFlag(int argc, char** argv, int& i, Options& o) {
     }
     if (flag == "--rebuild-planet") {
         o.rebuildPlanet = true;
+        return true;
+    }
+    if (flag == "--preset" && one) {
+        o.preset = argv[++i];
         return true;
     }
     if (flag == "--data" && one) {
@@ -214,6 +222,9 @@ int run(const Options& o) {
     process_memory::returnFreedBlocks();
     Report r;
     const st::SettlementData data = st::loadSettlementData(o.data);
+    if (!o.preset.empty() && o.preset != "all") {
+        static_cast<void>(st::resolvePreset(data.config, {o.preset, {}, {}, {}}, o.seed, 1.0));
+    }
     terrain::PlanetParams params;
     params.cellSize = static_cast<double>(o.cell);
     params.threads = o.threads;
@@ -245,8 +256,23 @@ int run(const Options& o) {
         std::fprintf(stderr, "Cannot write the images into %s\n", o.directory.string().c_str());
         return EXIT_FAILURE;
     }
-    r.add("images in %.1f s; peak resident %.0f MiB\n", since(start),
-          mebibytes(process_memory::peakResident()));
+    r.add("images in %.1f s\n", since(start));
+    std::vector<std::string> presets{o.preset.empty() ? data.config.defaultPreset : o.preset};
+    if (o.preset == "all") {
+        presets.clear();
+        for (const st::WorldPreset& p : data.config.presets) {
+            presets.push_back(p.id);
+        }
+    }
+    for (const std::string& preset : presets) {
+        if (!settlement_tool::runPreset(maps, suitability, data,
+                                        {preset, o.seed, o.threads, o.directory}, r)) {
+            std::fprintf(stderr, "Cannot write the files of %s into %s\n", preset.c_str(),
+                         o.directory.string().c_str());
+            return EXIT_FAILURE;
+        }
+    }
+    r.add("peak resident %.0f MiB\n", mebibytes(process_memory::peakResident()));
     return writeReport(o, r) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
@@ -254,7 +280,7 @@ void printUsage(const char* program) {
     std::fprintf(stderr,
                  "Usage: %s <output-dir> [--planet <file>] [--rebuild-planet] [--seed <seed>] "
                  "[--world <x> <z>] [--cell <meters>] [--threads <n>] [--data <dir>] "
-                 "[--width <pixels>] [--equity-seeds <n>]\n",
+                 "[--width <pixels>] [--equity-seeds <n>] [--preset <id>|all]\n",
                  program);
 }
 

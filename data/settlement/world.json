@@ -180,5 +180,36 @@
         "temperature": { "min": -8, "idealMin": 0, "idealMax": 30, "max": 36 }
       }
     }
+  },
+  "worldPresets": {
+    "wild": {
+      "civilizedShare": { "mode": "range", "min": 0.10, "max": 0.20 },
+      "majorKingdoms": { "mode": "range", "min": 10, "max": 20 },
+      "minorStates": { "mode": "range", "min": 50, "max": 150 }
+    },
+    "balanced": {
+      "civilizedShare": { "mode": "range", "min": 0.25, "max": 0.40 },
+      "majorKingdoms": { "mode": "range", "min": 30, "max": 60 },
+      "minorStates": { "mode": "range", "min": 200, "max": 500 }
+    },
+    "civilized": {
+      "civilizedShare": { "mode": "range", "min": 0.50, "max": 0.70 },
+      "majorKingdoms": { "mode": "range", "min": 80, "max": 150 },
+      "minorStates": { "mode": "range", "min": 500, "max": 1000 }
+    }
+  },
+  "defaultPreset": "wild",
+  "states": {
+    "majorAreaShare": 0.7,
+    "areaSpread": 0.3,
+    "maxLandShare": 0.15
+  },
+  "capitals": {
+    "topHabitability": 0.2,
+    "maxFreshWaterKm": 10,
+    "seedRadius": 2,
+    "spacing": 1.0,
+    "relax": 0.75,
+    "relaxSteps": 4
   }
 }

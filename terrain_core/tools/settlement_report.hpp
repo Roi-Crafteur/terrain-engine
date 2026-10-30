@@ -12,9 +12,16 @@
 
 namespace settlement_tool {
 
+#if defined(__GNUC__)
+#define SETTLEMENT_PRINTF(f, a) __attribute__((format(printf, f, a)))
+#else
+#define SETTLEMENT_PRINTF(f, a)
+#endif
+
 class Report {
 public:
-    void add(const char* format, ...);
+    // printf of format and the arguments (checked by GCC and Clang).
+    void add(const char* format, ...) SETTLEMENT_PRINTF(2, 3);
     [[nodiscard]] const std::string& text() const { return text_; }
 
 private:

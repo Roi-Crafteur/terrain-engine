@@ -187,11 +187,21 @@ const TerrainModel* SettlementConfig::model(std::string_view id) const {
     return nullptr;
 }
 
+const WorldPreset* SettlementConfig::preset(std::string_view id) const {
+    for (const WorldPreset& p : presets) {
+        if (p.id == id) {
+            return &p;
+        }
+    }
+    return nullptr;
+}
+
 SettlementConfig readSettlementConfig(const json::Value& document, std::string_view source) {
     const Fields f(document, std::string(source), "");
     f.only({"configVersion", "referencePlanetAreaKm2", "physicalScore", "roughness",
             "vegetation", "rivers", "arable", "food", "danger", "prana", "mana", "magic",
-            "geology", "habitability", "suitability", "terrainModels"});
+            "geology", "habitability", "suitability", "terrainModels", "worldPresets",
+            "defaultPreset", "states", "capitals"});
     SettlementConfig c;
     c.version = f.text("configVersion");
     c.referenceAreaKm2 = f.numberIn("referencePlanetAreaKm2", 1.0, 1.0e12);
@@ -215,6 +225,14 @@ SettlementConfig readSettlementConfig(const json::Value& document, std::string_v
     c.suitability.noiseAmplitude = suitability.numberIn("noiseAmplitude", 0.0, 1.0);
     c.suitability.noiseScaleKm = suitability.numberIn("noiseScaleKm", 1.0, 1.0e5);
     c.terrainModels = readTerrainModels(f.object("terrainModels"));
+    c.presets = readPresets(f.object("worldPresets"));
+    c.defaultPreset = f.text("defaultPreset");
+    if (c.preset(c.defaultPreset) == nullptr) {
+        f.fail(f.member("defaultPreset"), "defaultPreset",
+               "unknown preset '" + c.defaultPreset + "'");
+    }
+    c.states = readStates(f.object("states"));
+    c.capitals = readCapitals(f.object("capitals"));
     c.document = document;
     return c;
 }

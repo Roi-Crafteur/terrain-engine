@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/generation/settlement/kingdom_rules.hpp"
 #include "terrain/generation/settlement/preference.hpp"
 #include "terrain/json/json.hpp"
 
@@ -10,7 +11,7 @@
 
 // The configuration of the settlement of a world (docs/PEUPLEMENT.md, section 6 bis): every
 // weight of the analysis maps, of the energies and of the habitability, the counts of the
-// geology and of the magic, the terrain models. Read from data/settlement/world.json, never
+// geology and of the magic, the terrain models, the presets and the rules of the kingdoms. Read from data/settlement/world.json, never
 // coded: changing a weight needs no agent. Lengths in km, altitudes in m, temperatures in degrees
 // Celsius, rainfall in mm/yr, discharges in m^3/s.
 namespace terrain::settlement {
@@ -233,11 +234,17 @@ struct SettlementConfig {
     HabitabilityRule habitability;
     SuitabilityRule suitability;
     std::vector<TerrainModel> terrainModels; // in the order of the file
+    std::vector<WorldPreset> presets;        // in the order of the file
+    std::string defaultPreset;               // one of presets
+    StateRule states;
+    CapitalRule capitals;
     // The document read, kept whole for the copy of the world.
     json::Value document;
 
     // The model of that id, or nullptr.
     [[nodiscard]] const TerrainModel* model(std::string_view id) const;
+    // The preset of that id, or nullptr.
+    [[nodiscard]] const WorldPreset* preset(std::string_view id) const;
 };
 
 // The configuration of a document (the world.json of a data folder, or the copy kept with a

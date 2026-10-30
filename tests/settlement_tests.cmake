@@ -62,3 +62,10 @@ terrain_add_test(settlement_peoples_test terrain_core)
 target_compile_definitions(settlement_peoples_test PRIVATE
     TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement"
     TERRAIN_TEST_SCRATCH="${CMAKE_CURRENT_BINARY_DIR}/settlement_peoples_scratch")
+
+# The world presets and the states: draws in the ranges of the preset from the seed, forced
+# values, the rounding of the shares of the peoples, the target areas; the capitals of the
+# default world in cells of 65,536 m, in the most habitable fifth and near fresh water.
+terrain_add_test(settlement_presets_test terrain_core)
+target_compile_definitions(settlement_presets_test PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
