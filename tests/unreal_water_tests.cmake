@@ -13,3 +13,9 @@ add_dependencies(check terrain_probe_water)
 # The water of the columns of the tiles and their falls (core): the columns of the core bit for
 # bit, the same on common sides, the flow down the rivers, the falls in the tile of their lip.
 terrain_add_test(tile_rivers_test terrain_core)
+
+# The water of the tiles as Unreal draws it (Bridge): the surface of the lakes and rivers, the
+# curtains of the falls; their sides against another tile, a coarser one and the horizon.
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/fall_curtains.cpp
+                                             ${unreal_bridge}/tile_water_mesh.cpp)
+terrain_add_test(unreal_tile_water_test terrain_unreal_bridge)
