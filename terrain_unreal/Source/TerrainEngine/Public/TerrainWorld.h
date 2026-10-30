@@ -80,10 +80,13 @@ public:
 
 	// The planet level of the seed (phase 11B), written by terrain_make_planet: its hydrology
 	// carves the rivers and fills the lakes of the tiles and of the horizon. Built and written
-	// there when the file does not hold it (minutes for the whole planet). Empty: the relief alone,
-	// without rivers or lakes. A relative path is relative to the working directory of the process.
+	// there when the file does not hold it — missing, or stale (another seed, world, version of
+	// the relief or parameters), or damaged —, the reason told in the log (minutes for the whole
+	// planet, the game waiting). "{Seed}" stands for the seed; a relative path is relative to the
+	// folder of the project, an absolute one is taken as it is. Empty: the relief alone, without
+	// rivers or lakes.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|World")
-	FString PlanetFile;
+	FString PlanetFile = TEXT("Saved/TerrainEngine/planet_{Seed}.bin");
 
 	// The point of terrain_core (meters, x east, z south) whose ground lies at the Unreal origin.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|World")
@@ -131,6 +134,26 @@ public:
 	// the material and the biome of the ground from the texels of the GPU horizon.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Meshes")
 	TObjectPtr<UMaterialInterface> Material;
+
+	// The lakes and rivers of the tiles drawn at their level, the curtains and foam of their falls,
+	// and the lakes and rivers of the GPU horizon (agent 27, terrain_unreal/WATER_LEVEL.md). Off:
+	// the ground under them, as before. The console command Terrain.Water 0|1 switches them while
+	// playing.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Water")
+	bool bWater = true;
+
+	// Material of the surface of the lakes and rivers of the tiles. None:
+	// /Game/TerrainEngine/M_TerrainWater (Scripts/create_water_materials.py); without it, the tiles
+	// draw no water (a warning in the log).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Water",
+		meta = (EditCondition = "bWater"))
+	TObjectPtr<UMaterialInterface> WaterMaterial;
+
+	// Material of the curtains and foam of the falls. None: /Game/TerrainEngine/M_TerrainFalls
+	// (Scripts/create_water_materials.py); without it, no curtains.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Water",
+		meta = (EditCondition = "bWater"))
+	TObjectPtr<UMaterialInterface> FallsMaterial;
 
 	// Cooks the collision of the LOD 0 tiles off the game thread. Off: the ground exists as soon
 	// as its tile is shown, at the cost of the cooking in the frame.
@@ -302,6 +325,12 @@ public:
 	bool EditAhead(const FString& Kind, float DistanceMeters, float SizeMeters,
 		float DepthMeters = 10.0f);
 
+	// Shows or hides the water of the tiles (lakes, rivers, falls) and the lakes and rivers of the
+	// horizon, as the console command Terrain.Water 0|1: to compare the cost of the water. False
+	// outside play or with bWater off.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Water")
+	bool SetWaterShown(bool bShown);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -330,6 +359,7 @@ private:
 	void LogTimings(float DeltaSeconds);
 	UMaterialInterface* ResolveMaterial() const;
 	UMaterialInterface* MakeTileLook();
+	void StartWater();
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainMeshBackend> Backend;

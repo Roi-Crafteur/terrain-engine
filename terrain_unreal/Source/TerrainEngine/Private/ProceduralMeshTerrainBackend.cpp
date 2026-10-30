@@ -22,6 +22,31 @@ namespace
 	// The custom primitive data of a tile: its slot, and the centimeters between its texels.
 	constexpr int32 BlendSlotData = 0;
 	constexpr int32 BlendPitchData = 1;
+	// The sections of the water of a tile.
+	constexpr int32 WaterSection = 1;
+	constexpr int32 FallsSection = 2;
+
+	TArray<FVector2D> ToUVs(const std::vector<terrain::unreal::UnrealUV>& UVs)
+	{
+		TArray<FVector2D> Out;
+		Out.Reserve(static_cast<int32>(UVs.size()));
+		for (const terrain::unreal::UnrealUV& UV : UVs)
+		{
+			Out.Emplace(UV.u, UV.v);
+		}
+		return Out;
+	}
+
+	TArray<FVector> ToVectors(const std::vector<terrain::unreal::UnrealVector3f>& Vectors)
+	{
+		TArray<FVector> Out;
+		Out.Reserve(static_cast<int32>(Vectors.size()));
+		for (const terrain::unreal::UnrealVector3f& Vector : Vectors)
+		{
+			Out.Emplace(Vector.x, Vector.y, Vector.z);
+		}
+		return Out;
+	}
 } // namespace
 
 void UProceduralMeshTerrainBackend::Initialize(AActor& Owner, UMaterialInterface* Material,
@@ -115,18 +140,8 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 	}
 
 	const terrain::unreal::UnrealMesh& Mesh = Tile.mesh;
-	TArray<FVector> Vertices;
-	Vertices.Reserve(static_cast<int32>(Mesh.positions.size()));
-	for (const terrain::unreal::UnrealVector3f& Position : Mesh.positions)
-	{
-		Vertices.Emplace(Position.x, Position.y, Position.z);
-	}
-	TArray<FVector> Normals;
-	Normals.Reserve(static_cast<int32>(Mesh.normals.size()));
-	for (const terrain::unreal::UnrealVector3f& Normal : Mesh.normals)
-	{
-		Normals.Emplace(Normal.x, Normal.y, Normal.z);
-	}
+	const TArray<FVector> Vertices = ToVectors(Mesh.positions);
+	const TArray<FVector> Normals = ToVectors(Mesh.normals);
 	TArray<FColor> Colors;
 	Colors.Reserve(static_cast<int32>(Mesh.colors.size()));
 	for (const terrain::unreal::VertexColor& Color : Mesh.colors)
@@ -149,7 +164,54 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 		TArray<FProcMeshTangent>(), Tile.collision);
 	Component->SetCollisionEnabled(
 		Tile.collision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+	SetWaterSection(*Component, WaterSection, Tile.water, WaterMaterial);
+	SetWaterSection(*Component, FallsSection, Tile.falls, FallsMaterial);
 	UploadBlend(*Component, Tile);
+}
+
+// A section of the water of a tile, without collision; cleared when the tile has none of it (a
+// tile set again after an edit) or without its material.
+void UProceduralMeshTerrainBackend::SetWaterSection(UProceduralMeshComponent& Component,
+	int32 Section, const terrain::unreal::UnrealWaterMesh& Water, UMaterialInterface* Material) const
+{
+	if (Water.empty() || Material == nullptr)
+	{
+		if (Section < Component.GetNumSections())
+		{
+			Component.ClearMeshSection(Section);
+		}
+		return;
+	}
+	TArray<int32> Triangles;
+	Triangles.Append(Water.triangles.data(), static_cast<int32>(Water.triangles.size()));
+	Component.CreateMeshSection(Section, ToVectors(Water.positions), Triangles,
+		ToVectors(Water.normals), ToUVs(Water.uv0), ToUVs(Water.uv1), ToUVs(Water.uv2),
+		TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+	Component.SetMaterial(Section, Material);
+	Component.SetMeshSectionVisible(Section, bWaterVisible);
+}
+
+void UProceduralMeshTerrainBackend::SetWaterMaterials(UMaterialInterface* Water,
+	UMaterialInterface* Falls)
+{
+	WaterMaterial = Water;
+	FallsMaterial = Falls;
+}
+
+void UProceduralMeshTerrainBackend::SetWaterVisible(bool bVisible)
+{
+	bWaterVisible = bVisible;
+	for (const TPair<FIntVector, TObjectPtr<UProceduralMeshComponent>>& Tile : Tiles)
+	{
+		UProceduralMeshComponent* Component = Tile.Value.Get();
+		for (const int32 Section : {WaterSection, FallsSection})
+		{
+			if (Component != nullptr && Section < Component->GetNumSections())
+			{
+				Component->SetMeshSectionVisible(Section, bVisible);
+			}
+		}
+	}
 }
 
 void UProceduralMeshTerrainBackend::MoveTile(const terrain::TileKey& Key,

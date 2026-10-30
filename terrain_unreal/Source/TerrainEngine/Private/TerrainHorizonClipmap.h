@@ -39,9 +39,10 @@ struct FTerrainHorizonLook
  * With the detail normals (Bridge/horizon_normal_stream.hpp), a second texture per level of
  * (257 * ratio)^2 texels (half floats: the slopes) lights the levels and the tiles finer than
  * their grids; its texels arrive after the samples, pending until then.
- * The water (task 7b): a texture of 257 x 257 water codes per level (R16 UNORM, the level of the
- * water over each sample, Bridge/horizon_textures.hpp), written with the texels and bound as
- * HorizonWater and CoarseWater, read by no material yet.
+ * The water (task 7b): a texture of 257 x 257 floats per level (R32F, the level of the core over
+ * each sample, Bridge/horizon_textures.hpp), written with the texels and bound as HorizonWater and
+ * CoarseWater: the material raises the lakes and rivers to their level (agent 27,
+ * Scripts/horizon_water_hlsl.py). The textures: TerrainHorizonTextures.h.
  */
 UCLASS(Transient)
 class UTerrainHorizonClipmap : public UObject
@@ -63,6 +64,9 @@ public:
 	// the surface look of the tiles.
 	void SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin);
 
+	// The lakes and rivers drawn at their level, or not (the ground under them), every level.
+	void SetInlandWater(bool bShown);
+
 	// The material of the tiles reads the surface of the ground (material and biome) from the
 	// texels of level 0 (the temporary terrain material, Bridge/terrain_surface.hpp): its
 	// parameters follow level 0 from now on.
@@ -78,9 +82,6 @@ private:
 	UStaticMeshComponent* CreateGridComponent(UStaticMesh* Mesh, UMaterialInstanceDynamic* Look);
 	void CreateLevel(int32 Level, const terrain::unreal::HorizonGpuStreamer& Streamer,
 		UMaterialInterface* Material);
-	void UploadRegion(terrain::unreal::TexelRegion& Region);
-	void UploadWater(terrain::unreal::WaterRegion& Region);
-	void UploadNormals(terrain::unreal::NormalRegion& Region);
 	void BindNormals(int32 Level);
 	void Place(const terrain::unreal::LevelPlacement& Placement);
 	void PlaceSurface(const terrain::unreal::LevelPlacement& Placement);
@@ -95,7 +96,7 @@ private:
 	TArray<TObjectPtr<UTexture2D>> Textures;
 
 	UPROPERTY()
-	TArray<TObjectPtr<UTexture2D>> WaterTextures; // the water codes, one per level
+	TArray<TObjectPtr<UTexture2D>> WaterTextures; // the water levels, one per level
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them
