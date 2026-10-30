@@ -60,10 +60,9 @@ constexpr double kBenchLow = 0.4;
 constexpr double kBenchRise = 1.1;
 constexpr double kBenchFoot = 1.5;
 // The top of a face gives way to the ground of its hinterland from kTopLow to kTopHigh meters of
-// signal; the floor comes back to the shelf from kSeaBack to kCoastSeaBand of signal at sea.
+// signal.
 constexpr double kTopLow = 5'000.0;
 constexpr double kTopHigh = 25'000.0;
-constexpr double kSeaBack = 10'000.0;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -160,13 +159,15 @@ Ground landOf(const GeographyParams& p, CoastKind kind, const GeographySample& g
     return {static_cast<float>(smooth(0.0, k.hills, coast)), static_cast<float>(ground)};
 }
 
-// The floor of a kind at sea (coast < 0): the shelf, deepened at the foot of the shore.
+// The floor of a kind at sea (coast < 0): the shelf, deepened at the foot of the shore, never
+// below the shelf at the outer edge of the band: the floor only goes down out to sea, and meets the
+// shelf there (no ridge along the coast).
 double seaOf(const GeographyParams& p, CoastKind kind, const GeographySample& g, double coast,
              double d) {
     const Profile& k = kProfiles[static_cast<std::size_t>(kind)];
-    const double deepen = static_cast<double>(k.deepen) * smooth(0.0, k.foot, -d) *
-                          (1.0 - smooth(kSeaBack, kCoastSeaBand, -coast));
-    return std::max(static_cast<double>(g.sea), shelf(p, coast) - deepen);
+    const double deepen = static_cast<double>(k.deepen) * smooth(0.0, k.foot, -d);
+    const double floor = std::max(shelf(p, coast) - deepen, shelf(p, -kCoastSeaBand));
+    return std::max(static_cast<double>(g.sea), floor);
 }
 
 } // namespace
