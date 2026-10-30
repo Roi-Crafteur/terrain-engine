@@ -1,0 +1,11 @@
+{
+  "id": "metaux_precieux",
+  "name": "Métaux précieux (or, argent)",
+  "hidden": true,
+  "hiddenShare": 0.5,
+  "sources": [
+    { "kind": "volcano", "type": "arc", "weight": 1.0 },
+    { "kind": "fault", "type": "major", "weight": 0.6 }
+  ],
+  "depositNoise": { "scaleKm": 60, "threshold": 0.68, "softness": 0.12 }
+}

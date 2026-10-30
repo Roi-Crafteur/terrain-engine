@@ -1,0 +1,183 @@
+{
+  "configVersion": "1.0",
+  "referencePlanetAreaKm2": 2101000000,
+  "physicalScore": { "meanShare": 0.7, "minShare": 0.3 },
+  "roughness": {
+    "reliefWeight": 0.75, "reliefLow": 0.03, "reliefHigh": 0.8,
+    "rangeWeight": 0.35, "rangeScaleM": 1500
+  },
+  "vegetation": {
+    "humidity": { "min": 0.3, "idealMin": 0.55, "idealMax": 1, "max": 1, "floor": 0 },
+    "temperature": { "min": -8, "idealMin": 4, "idealMax": 30, "max": 36, "floor": 0 }
+  },
+  "rivers": { "riverMin": 10, "largeMin": 100, "majorMin": 1000, "impassableMin": 10000 },
+  "arable": {
+    "temperature": { "min": 0, "idealMin": 10, "idealMax": 22, "max": 35, "floor": 0 },
+    "rainfall": { "min": 200, "idealMin": 500, "idealMax": 1500, "max": 5000, "floor": 0 },
+    "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.15, "max": 0.6, "floor": 0 },
+    "alluvialBonus": 0.2,
+    "alluvialMinDischarge": 100,
+    "frozenSoil": 0,
+    "lakeSoil": 0,
+    "saltSoil": 0.1
+  },
+  "food": {
+    "weights": { "arable": 1.0, "fishing": 0.4, "herding": 0.4, "hunting": 0.3 },
+    "fishing": {
+      "coastDistance": { "min": 0, "idealMin": 0, "idealMax": 10, "max": 40, "floor": 0 },
+      "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 5, "max": 25, "floor": 0 },
+      "freshShare": 0.7
+    },
+    "herding": {
+      "rainfall": { "min": 150, "idealMin": 300, "idealMax": 900, "max": 1800, "floor": 0 },
+      "roughness": { "min": 0, "idealMin": 0.05, "idealMax": 0.45, "max": 0.75, "floor": 0 },
+      "temperature": { "min": -8, "idealMin": 0, "idealMax": 24, "max": 32, "floor": 0 }
+    }
+  },
+  "danger": {
+    "factors": [
+      { "name": "steep", "weight": 0.45, "ramps": { "roughness": { "from": 0.45, "to": 1.0 } } },
+      { "name": "highAltitude", "weight": 0.6,
+        "ramps": { "altitude": { "from": 3500, "to": 6500 } } },
+      { "name": "cold", "weight": 0.5, "ramps": { "temperature": { "from": -4, "to": -20 } } },
+      { "name": "heat", "weight": 0.3, "ramps": { "temperature": { "from": 27, "to": 34 } } },
+      { "name": "drought", "weight": 0.45, "ramps": { "rainfall": { "from": 250, "to": 60 } } },
+      { "name": "swamp", "weight": 0.3,
+        "ramps": { "humidity": { "from": 0.72, "to": 0.85 },
+                   "roughness": { "from": 0.15, "to": 0.05 },
+                   "altitude": { "from": 400, "to": 100 } } }
+    ],
+    "volcano": { "radiusKm": 50, "weight": 0.6 },
+    "flood": { "minDischarge": 1000, "altitude": { "from": 300, "to": 50 }, "weight": 0.3 }
+  },
+  "prana": {
+    "vegetation": { "weight": 0.35 },
+    "freshWater": { "weight": 0.15,
+      "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 10, "max": 60, "floor": 0 } },
+    "biodiversity": { "weight": 0.2,
+      "temperature": { "min": 5, "idealMin": 18, "idealMax": 28, "max": 34, "floor": 0 } },
+    "temperate": { "weight": 0.15,
+      "temperature": { "min": 0, "idealMin": 10, "idealMax": 22, "max": 30, "floor": 0 } },
+    "sun": { "weight": 0.15,
+      "latitude": { "min": 0, "idealMin": 0, "idealMax": 35, "max": 75, "floor": 0 } },
+    "aridity": { "weight": -0.25, "humidity": { "from": 0.3, "to": 0.1 } },
+    "cold": { "weight": -0.25, "temperature": { "from": -5, "to": -20 } }
+  },
+  "mana": {
+    "lines": 1.0, "nodes": 1.0, "craters": 0.8, "faults": 0.2, "volcanoes": 0.15, "deadZones": 1.0
+  },
+  "magic": {
+    "majorLines": {
+      "count": { "min": 10, "max": 30 },
+      "lengthKm": { "min": 15000, "max": 45000 },
+      "widthKm": { "min": 60, "max": 140 },
+      "intensity": { "min": 0.55, "max": 0.85 }
+    },
+    "minorLines": {
+      "count": { "min": 40, "max": 90 },
+      "lengthKm": { "min": 2500, "max": 9000 },
+      "widthKm": { "min": 25, "max": 60 },
+      "intensity": { "min": 0.25, "max": 0.5 }
+    },
+    "turnKm": 2500,
+    "turnDegrees": 50,
+    "nodes": { "min": 420, "max": 1050 },
+    "nodeRadiusKm": { "min": 40, "max": 120 },
+    "nodeIntensity": { "min": 0.6, "max": 1.0 },
+    "deadZones": { "min": 42, "max": 105 },
+    "deadZoneRadiusKm": { "min": 100, "max": 300 }
+  },
+  "geology": {
+    "faultWidthKm": 40,
+    "majorFaultWidthKm": 80,
+    "volcanoes": { "min": 3000, "max": 6000 },
+    "activeVolcanoes": { "min": 300, "max": 800 },
+    "largeVolcanoes": { "min": 50, "max": 150 },
+    "arcDistanceKm": { "min": 120, "max": 320 },
+    "riftShare": 0.15,
+    "hotspotShare": 0.05,
+    "volcanoSpacingKm": 25,
+    "volcanoInfluenceKm": 60,
+    "arcaneCraters": { "min": 30, "max": 80 },
+    "majorCraters": { "min": 5, "max": 15 },
+    "craterRadiusKm": { "min": 15, "max": 60 },
+    "majorCraterRadiusKm": { "min": 80, "max": 250 }
+  },
+  "habitability": {
+    "weights": {
+      "water": 1.0, "food": 1.0, "climate": 0.8, "terrain": 0.6, "prana": 0.3, "aura": 0.2,
+      "mana": 0.4, "danger": -1.0, "coast": 0.2, "river": 0.5
+    },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 15, "max": 100, "floor": 0.05 },
+    "climate": {
+      "temperature": { "min": -5, "idealMin": 8, "idealMax": 24, "max": 32, "floor": 0.05 },
+      "rainfall": { "min": 200, "idealMin": 450, "idealMax": 2000, "max": 4000, "floor": 0.05 }
+    },
+    "terrain": {
+      "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.3, "max": 0.85, "floor": 0.05 },
+      "altitude": { "min": -100, "idealMin": 0, "idealMax": 1500, "max": 4000, "floor": 0.05 }
+    },
+    "coastDistance": { "min": 0, "idealMin": 0, "idealMax": 20, "max": 150, "floor": 0 },
+    "riverMinDischarge": 100
+  },
+  "terrainModels": {
+    "glacier": {
+      "expansionCost": 20,
+      "physicalPreferences": {
+        "temperature": { "min": -60, "idealMin": -60, "idealMax": -12, "max": -8 }
+      }
+    },
+    "mountain": {
+      "expansionCost": 10,
+      "physicalPreferences": {
+        "roughness": { "min": 0.5, "idealMin": 0.7, "idealMax": 1, "max": 1 }
+      }
+    },
+    "swamp": {
+      "expansionCost": 5,
+      "physicalPreferences": {
+        "humidity": { "min": 0.7, "idealMin": 0.8, "idealMax": 1, "max": 1 },
+        "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.06, "max": 0.15 },
+        "altitude": { "min": -100, "idealMin": -100, "idealMax": 150, "max": 400 },
+        "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 8, "max": 25 }
+      }
+    },
+    "desert": {
+      "expansionCost": 6,
+      "physicalPreferences": {
+        "rainfall": { "min": 0, "idealMin": 0, "idealMax": 150, "max": 300 },
+        "temperature": { "min": 0, "idealMin": 10, "idealMax": 45, "max": 50 }
+      }
+    },
+    "tundra": {
+      "expansionCost": 4,
+      "physicalPreferences": {
+        "temperature": { "min": -14, "idealMin": -11, "idealMax": -3, "max": 2 },
+        "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.45, "max": 0.65 }
+      }
+    },
+    "hills": {
+      "expansionCost": 2,
+      "physicalPreferences": {
+        "roughness": { "min": 0.15, "idealMin": 0.3, "idealMax": 0.5, "max": 0.65 },
+        "temperature": { "min": -8, "idealMin": -2, "idealMax": 32, "max": 40 }
+      }
+    },
+    "forest": {
+      "expansionCost": 2,
+      "physicalPreferences": {
+        "humidity": { "min": 0.5, "idealMin": 0.62, "idealMax": 1, "max": 1 },
+        "temperature": { "min": -6, "idealMin": 0, "idealMax": 30, "max": 34 },
+        "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.5, "max": 0.7 }
+      }
+    },
+    "plains": {
+      "expansionCost": 1,
+      "physicalPreferences": {
+        "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.15, "max": 0.35 },
+        "humidity": { "min": 0.15, "idealMin": 0.28, "idealMax": 0.6, "max": 0.7 },
+        "temperature": { "min": -8, "idealMin": 0, "idealMax": 30, "max": 36 }
+      }
+    }
+  }
+}
