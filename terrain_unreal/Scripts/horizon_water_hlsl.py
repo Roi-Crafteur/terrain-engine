@@ -14,17 +14,19 @@
   the depth crosses 0, on the line where the ground of the horizon meets the water, not on the
   diagonals of its cells. Where the tiles cover level 0 nothing rises (they draw their own water,
   and the horizon keeps its ground under them) but over the last DropFadeCm before the edge of
-  the area they cover (DropCoveredCm from the center of level 0), where their water fades out:
-  the water rises there (one cell more, so that no cell of the band is half raised), and the
-  node hands the pixels how far from the center of level 0 they stand.
+  the area they cover (DropCoveredCm from the center of level 0), where the two waters share the
+  pixels: the water rises there (one cell more, so that no cell of the band is half raised) to
+  its true level, the drop of the ground under the tiles (DropCm, as HorizonVertex) taken back,
+  where the water of the tiles stands; the node hands the pixels where they lie in the grid.
 - INLAND_HLSL (HorizonInlandWater, after HorizonShade): the water over the ground of the pixel,
   the same look as the water of the tiles (water_look_hlsl.py) — the bed seen through its depth
   along the view, the color of deep water by its kind and place, ripples, the reflection of the
   sky and the glint of the sun — antialiased on the shore, faded over ShoreFadeM of water along the
   view as on the tiles. Over the outer band of the tiles, a pixel of water is kept (KeepOut, the
-  opacity mask) with the share the water of the tiles loses there (FTerrainWater::HorizonShare),
-  dithered in space and time (resolved by the temporal antialiasing); inside, it is cut: the
-  tiles draw their water alone.
+  opacity mask) where the threshold of FTerrainWater::Dither is under the share of the horizon
+  (FTerrainWater::HorizonShare, computed from the same place as on the tiles): the water of the
+  tiles keeps the other pixels, each pixel shows one water with its whole look, the temporal
+  antialiasing blends them. Inside, the horizon cuts its water: the tiles draw theirs alone.
 """
 
 WATER_VERTEX_HLSL = r"""
@@ -76,11 +78,13 @@ int packed = (int)(code + 0.5) % 128;
 InlandKindOut = packed % 8 == 0 ? 1.0 : (packed / 8 == 2 ? 3.0 : 2.0);
 float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;
 float open = fromCenter >= DropCoveredCm - DropFadeCm - PitchCm - 1.0 ? 1.0 : 0.0;
+// The drop of the ground under the tiles (HorizonVertex), taken back on the water.
+float lift = depth > 0.0 ? DropCm * saturate((DropCoveredCm - fromCenter) / max(DropFadeCm, 1.0)) : 0.0;
 bool drawn = InlandWater > 0.5 && Kind.r < 0.5 && Kind.g < 0.5;
-InlandFromCenterOut = fromCenter;
+InlandLocalOut = Local.xy;
 InlandDepthOut = drawn ? depth : -1.0;
 InlandAltitudeOut = surface;
-return float3(0.0, 0.0, drawn ? (surface - height) * 100.0 * open : 0.0);
+return float3(0.0, 0.0, drawn ? ((surface - height) * 100.0 + lift) * open : 0.0);
 """
 
 INLAND_HLSL = r"""
@@ -90,13 +94,11 @@ RoughnessOut = Roughness;
 SpecularOut = Specular;
 // The shore, where the depth interpolated between a wet and a dry sample crosses 0.
 float mask = saturate(0.5 + Depth / max(fwidth(Depth), 1e-3));
-// Over the outer band of the tiles, the share of the water the horizon draws (the tiles draw the
-// rest, water_look_hlsl.py), a pixel kept with that share: interleaved gradient noise, moved every
-// 1/60 s.
-float share = saturate((FromCenter - (DropCoveredCm - DropFadeCm)) / max(DropFadeCm, 1.0));
-float2 pixel = Parameters.SvPosition.xy + 5.588238 * fmod(floor(Time * 60.0), 64.0);
-float dither = frac(52.9829189 * frac(dot(pixel, float2(0.06711056, 0.00583715))));
-KeepOut = mask > 0.0 && share <= dither ? 0.0 : 1.0;
+// Over the outer band of the tiles, the share of the water the horizon draws, from where the
+// pixel lies in the grid (as the tiles from where they lie over level 0): its pixels of water
+// those under the threshold of Dither, the tiles keep the others (water_look_hlsl.py).
+float share = Water.HorizonShare(float3(Local * PitchCm, 0.0), Cells, PitchCm, DropCoveredCm, 2.0 * DropFadeCm);
+KeepOut = mask > 0.0 && Water.Dither(Parameters.SvPosition.xy, Time) >= share ? 0.0 : 1.0;
 // The ripples fixed in the world, from the origin of the core; the size of a pixel, outside of
 // any branch.
 const float PERIOD = 409600.0; // 4096 m, cm

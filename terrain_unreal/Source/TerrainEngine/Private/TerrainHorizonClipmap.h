@@ -67,6 +67,11 @@ public:
 	// The lakes and rivers drawn at their level, or not (the ground under them), every level.
 	void SetInlandWater(bool bShown);
 
+	// The parameters of the look of the water that Source has, among Scalars and Vectors, set on
+	// every level: the lakes and rivers of the horizon look as those of the tiles (one tuning).
+	void CopyLook(const UMaterialInterface& Source, TConstArrayView<FName> Scalars,
+		TConstArrayView<FName> Vectors);
+
 	// A material of the tiles that follows level 0 from now on: the material of their ground reads
 	// the surface of the ground (material and biome) from the texels of level 0 (the temporary
 	// terrain material, Bridge/terrain_surface.hpp); the material of their water fades into the

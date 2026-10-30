@@ -1,8 +1,9 @@
 // The water of ATerrainWorld (agent 27): the materials of the water of the tiles (the surface of
-// their lakes and rivers, an instance that the GPU horizon fades into its own water at the edge
-// of the tiles; the curtains and foam of their falls), the lakes and rivers of the GPU
-// horizon, the console command Terrain.Water 0|1 that shows or hides them all to compare their
-// cost, and the line of the log about the planet level (read from its file, or built and why).
+// their lakes and rivers, an instance that the GPU horizon shares the pixels of the edge of the
+// tiles with and copies its look from; the curtains and foam of their falls), the lakes and
+// rivers of the GPU horizon, the console command Terrain.Water 0|1 that shows or hides them all
+// to compare their cost, and the line of the log about the planet level (read from its file, or
+// built and why).
 #include "TerrainWorldWater.h"
 
 #include "TerrainWorld.h"
@@ -42,6 +43,17 @@ namespace
 		}
 		return Created;
 	}
+
+	// The look of the water (Scripts/water_look_hlsl.py: WATER_COLORS, WATER_SCALARS), copied from
+	// the material of the water of the tiles to the lakes and rivers of the GPU horizon: one tuning
+	// for both (unreal_water_scripts_test checks these names against the script).
+	const FName WaterLookVectors[] = {TEXT("RiverWaterColor"), TEXT("LakeWaterColor"),
+		TEXT("GlacierWaterColor"), TEXT("SaltWaterColor"), TEXT("RiverAbsorption"),
+		TEXT("LakeAbsorption"), TEXT("GlacierAbsorption"), TEXT("SaltAbsorption"),
+		TEXT("FoamColor"), TEXT("CurtainColor")};
+	const FName WaterLookScalars[] = {TEXT("GlacierFromM"), TEXT("GlacierFullM"),
+		TEXT("RippleStrength"), TEXT("WaterAlpha"), TEXT("FlowSpeed"), TEXT("FoamFromSlope"),
+		TEXT("FoamFullSlope"), TEXT("SkyReflection"), TEXT("ShoreFadeM"), TEXT("FoamDepthM")};
 
 	double Megabytes(uint64 Bytes)
 	{
@@ -111,6 +123,10 @@ void ATerrainWorld::StartWater()
 	if (HorizonClipmap != nullptr)
 	{
 		HorizonClipmap->BindSurfaceLook(TileWaterLook);
+		if (TileWaterLook != nullptr)
+		{
+			HorizonClipmap->CopyLook(*TileWaterLook, WaterLookScalars, WaterLookVectors);
+		}
 		HorizonClipmap->SetInlandWater(bWater);
 	}
 }

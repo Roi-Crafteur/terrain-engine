@@ -15,7 +15,8 @@ WATER_LEVEL.md) without touching the rest.
 
 M_TerrainFalls draws the curtains of the falls and the foam at their feet (section 2,
 Bridge/fall_curtains.hpp): translucent, two sided, streaks falling with the water, soft where they
-meet the rock or the water.
+meet the rock or the water; the foam full, its rim ragged and soft, thinner where the pool under it
+gets shallow (FoamDepthM), so that it takes the shape of the pool.
 
 The UV channels of the meshes: UV0 the flow (or meters across and down a curtain), UV1 what the
 water is (1 river, 2 lake, 3 salt lake, 4 curtain, 5 foam) and its slope (or the height of the
@@ -56,7 +57,7 @@ WATER_INPUTS = ["Flow", "KindSlope", "Altitude", "Edge", "CameraRel", "Time", "S
 SURFACE_SCALARS = {"SurfaceCells": 256.0, "SurfacePitchCm": 800.0, "SurfaceCoveredCm": 0.0,
                    "SurfaceBandCm": 0.0, "HasSurface": 0.0}
 FALLS_INPUTS = ["Fall", "KindDrop", "AltitudeSize", "Time", "SceneDepth", "PixelDepth",
-                "CurtainColor", "FoamColor"]
+                "CurtainColor", "FoamColor", "FoamDepthM"]
 
 
 def expression(material, cls, x, y):
@@ -157,7 +158,8 @@ def surface_band(material, custom, x, y):
     connect(relative, "", to_float, "")
     connect(to_float, "", custom, "Rel")
     for index, (name, value) in enumerate(SURFACE_SCALARS.items()):
-        node = expression(material, unreal.MaterialExpressionScalarParameter, x, y + 250 + 60 * index)
+        node = expression(material, unreal.MaterialExpressionScalarParameter, x,
+                          y + 250 + 60 * index)
         node.set_editor_property("parameter_name", name)
         node.set_editor_property("default_value", value)
         connect(node, "", custom, name)

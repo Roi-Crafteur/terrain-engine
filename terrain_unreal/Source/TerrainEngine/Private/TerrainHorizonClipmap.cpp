@@ -372,6 +372,33 @@ void UTerrainHorizonClipmap::SetInlandWater(bool bShown)
 	}
 }
 
+void UTerrainHorizonClipmap::CopyLook(const UMaterialInterface& Source,
+	TConstArrayView<FName> Scalars, TConstArrayView<FName> Vectors)
+{
+	for (const FName& Name : Scalars)
+	{
+		float Value = 0.0f;
+		if (Source.GetScalarParameterValue(FHashedMaterialParameterInfo(Name), Value))
+		{
+			for (UMaterialInstanceDynamic* Look : Looks)
+			{
+				Look->SetScalarParameterValue(Name, Value);
+			}
+		}
+	}
+	for (const FName& Name : Vectors)
+	{
+		FLinearColor Value;
+		if (Source.GetVectorParameterValue(FHashedMaterialParameterInfo(Name), Value))
+		{
+			for (UMaterialInstanceDynamic* Look : Looks)
+			{
+				Look->SetVectorParameterValue(Name, Value);
+			}
+		}
+	}
+}
+
 void UTerrainHorizonClipmap::RemoveAll()
 {
 	for (TArray<TObjectPtr<UStaticMeshComponent>>* Components : {&Bodies, &Trims})

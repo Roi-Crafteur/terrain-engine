@@ -16,16 +16,18 @@ code = importlib.reload(code)  # the modules of this checkout, even if run befor
 look = importlib.reload(look)
 
 FLOAT1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
+FLOAT2 = unreal.CustomMaterialOutputType.CMOT_FLOAT2
 FLOAT3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
 VERTEX_INPUTS = ["Tex", "Coarse", "Levels", "CoarseLevels", "Local", "Kind", "Viewer"]
 VERTEX_SCALARS = ["Cells", "FirstSlotX", "FirstSlotZ", "CoarseX", "CoarseZ", "CoarseFirstX",
                   "CoarseFirstZ", "HasCoarser", "MorphCells", "PitchCm", "DropCoveredCm",
-                  "DropFadeCm", "InlandWater"]
-VERTEX_OUTPUTS = ["InlandDepthOut", "InlandFromCenterOut", "InlandKindOut", "InlandAltitudeOut"]
+                  "DropFadeCm", "DropCm", "InlandWater"]
+VERTEX_OUTPUTS = ["InlandDepthOut", "InlandLocalOut", "InlandKindOut", "InlandAltitudeOut"]
 PIXEL_OUTPUTS = ["EmissiveOut", "NormalOut", "RoughnessOut", "SpecularOut", "KeepOut"]
-PIXEL_INPUTS = ["Color", "Emissive", "Normal", "Roughness", "Specular", "Depth", "FromCenter",
+PIXEL_INPUTS = ["Color", "Emissive", "Normal", "Roughness", "Specular", "Depth", "Local",
                 "KindCode", "Altitude", "CameraRel", "Time", "SunDir", "SunIlluminance", "SkyView",
-                "PlanetRadiusCm", "WaveOriginX", "WaveOriginY", "DropCoveredCm", "DropFadeCm"]
+                "PlanetRadiusCm", "WaveOriginX", "WaveOriginY", "DropCoveredCm", "DropFadeCm",
+                "Cells", "PitchCm"]
 
 
 def parameters(material, g):
@@ -58,7 +60,8 @@ def vertex(material, g, nodes, kind):
     custom = g.custom_node(
         material, -900, -2600, "HorizonWaterVertex", code.WATER_VERTEX_HLSL,
         VERTEX_INPUTS + VERTEX_SCALARS,
-        [(name, FLOAT1) for name in VERTEX_OUTPUTS], FLOAT3)
+        [(name, FLOAT2 if name == "InlandLocalOut" else FLOAT1) for name in VERTEX_OUTPUTS],
+        FLOAT3)
     for source, name in (("HorizonTexels", "Tex"), ("CoarseTexels", "Coarse"),
                          ("HorizonWater", "Levels"), ("CoarseWater", "CoarseLevels")):
         g.connect(nodes[source], "", custom, name)
@@ -95,7 +98,7 @@ def pixel(material, g, nodes, shade, water):
                          ("RoughnessOut", "Roughness"), ("SpecularOut", "Specular")):
         g.connect(shade, output, custom, name)
     for index, (output, name) in enumerate((("InlandDepthOut", "Depth"),
-                                            ("InlandFromCenterOut", "FromCenter"),
+                                            ("InlandLocalOut", "Local"),
                                             ("InlandKindOut", "KindCode"),
                                             ("InlandAltitudeOut", "Altitude"))):
         g.connect(g.interpolate(material, water, output, -2900 + 100 * index), "", custom, name)
@@ -107,8 +110,8 @@ def pixel(material, g, nodes, shade, water):
                           -1800),
                          (sky_view, "SkyView", -1900)):  # SkyView binds the LUT the code samples
         g.connect(g.expression(material, cls, 300, y), "", custom, name)
-    for name in ["PlanetRadiusCm", "WaveOriginX", "WaveOriginY", "DropCoveredCm",
-                 "DropFadeCm"] + look.look_inputs():
+    for name in ["PlanetRadiusCm", "WaveOriginX", "WaveOriginY", "DropCoveredCm", "DropFadeCm",
+                 "Cells", "PitchCm"] + look.look_inputs():
         g.connect(nodes[name], "", custom, name)
     return custom
 

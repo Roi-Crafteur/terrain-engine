@@ -104,11 +104,14 @@ void curtain(Writer& out, const TileFall& f, const Point& lip, double dirX, doub
     }
 }
 
-// The foam on the water below a fall, around where its curtain meets it.
+double foamRadius(const TileFall& f) {
+    return std::max(kFoamLeastRadius, kFoamRadiusShare * static_cast<double>(f.width));
+}
+
+// The foam on the water below a fall, from where its curtain meets it downstream.
 void foam(Writer& out, const TileFall& f, const Point& center) {
     const double drop = static_cast<double>(f.top) - static_cast<double>(f.bottom);
-    const double radius =
-        std::max(kFoamLeastRadius, kFoamRadiusShare * static_cast<double>(f.width));
+    const double radius = foamRadius(f);
     const Point up{0.0, 1.0, 0.0};
     const UnrealUV kind{kWaterFoam, static_cast<float>(drop)};
     const std::int32_t middle = out.vertex(center, up, {0.0f, 0.0f}, kind, radius);
@@ -148,7 +151,7 @@ UnrealWaterMesh buildFallCurtains(const TileData& data) {
         const Point lip{f.x - data.originX, static_cast<double>(f.top) - data.originY,
                         f.z - data.originZ};
         curtain(out, f, lip, dx / run, dz / run, run);
-        const double ahead = kCurtainAhead + run;
+        const double ahead = kCurtainAhead + run + kFoamAheadShare * foamRadius(f);
         foam(out, f,
              {lip.x + dx / run * ahead, static_cast<double>(f.bottom) - data.originY + kFoamAbove,
               lip.z + dz / run * ahead});

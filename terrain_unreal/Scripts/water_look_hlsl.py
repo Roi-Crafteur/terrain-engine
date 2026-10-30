@@ -13,13 +13,15 @@ Custom nodes cannot declare functions: the helpers live in a struct (FTerrainWat
   stripes, no grid), each drifting along its own axis; periodic every 4,096 m in X and Y (the
   period of the waves of the sea and of the coordinates of the world: nothing moves after a turn
   of the world), the gradient exact (no finite difference), each octave fading into the roughness
-  when a pixel covers more than half of its cell.
+  when a pixel covers more than half of its cell; what an octave kept still varies across a pixel
+  goes into the roughness too (specular antialiasing: no sparkles of the sun far below).
 - Ripples: the waves carried downstream by the flow of a river in two phases half a cycle apart,
   faded in and out (the pattern never pulses nor stretches); still on a lake.
 - Noise: value noise for the foam of the rapids.
-- HorizonShare: over the outer band of the tiles, the share of the water the GPU horizon draws
-  (0 inside, 1 at the edge of the tiles): the water of the tiles fades out as the horizon dithers
-  its water in, with the same share (horizon_water_hlsl.py): no band where both reflect the sky.
+- HorizonShare and Dither: over the outer band of the tiles, the share of the water the GPU
+  horizon draws (0 inside, 1 at the edge of the tiles) and a threshold per pixel: the horizon
+  keeps its pixels under the threshold, the tiles theirs above (horizon_water_hlsl.py), each with
+  its whole look. One water per pixel: no bed seen through a faded water, no two reflections.
 The reflection of the sky (Fresnel, from the sky view LUT of the SkyAtmosphere, as the sea, scaled
 by SkyReflection) and the glint of the sun (GGX) are written in the nodes (SKY_HLSL): they need the
 parameters of the pixel. Near a shore the water fades out over ShoreFadeM of water along the view.
@@ -40,11 +42,12 @@ WATER_COLORS = {
 # the water between them (GGX alpha), the speed of the flow of the rivers (m/s), the slopes of the
 # water where the foam of the rapids starts and is full, the share of the sky the water reflects
 # (on top of Fresnel: a lake stays blue-green at a grazing view), the water along the view over
-# which it fades out at a shore (m).
+# which it fades out at a shore (m), the water under the foam of a fall over which it thickens
+# (m).
 WATER_SCALARS = {
     "GlacierFromM": 1400.0, "GlacierFullM": 2600.0, "RippleStrength": 1.0, "WaterAlpha": 0.03,
     "FlowSpeed": 1.2, "FoamFromSlope": 0.04, "FoamFullSlope": 0.20, "SkyReflection": 0.6,
-    "ShoreFadeM": 1.5,
+    "ShoreFadeM": 1.5, "FoamDepthM": 0.8,
 }
 
 # The octaves of the ripples: the lattice turned by the integer vector (a, b) (by atan2(b, a): 0.59,
@@ -152,6 +155,15 @@ OCTAVE_LOOP
         float fade = max(0.5 * band, 1.0);
         return saturate((max(fromCenter.x, fromCenter.y) - (covered - fade)) / fade);
     }
+
+    // A threshold in [0, 1) for the pixel at the screen position pixel, moved every 1/60 s
+    // (interleaved gradient noise): the same in every material of the water, so that the tiles
+    // keep the pixels the horizon leaves (threshold >= its share) and the horizon the others.
+    float Dither(float2 pixel, float time)
+    {
+        float2 q = floor(pixel) + 5.588238 * fmod(floor(time * 60.0), 64.0);
+        return frac(52.9829189 * frac(dot(q, float2(0.06711056, 0.00583715))));
+    }
 };
 FTerrainWater Water;
 """
@@ -161,7 +173,9 @@ OCTAVE_TEMPLATE = (
     "          float keep = saturate(log2({size:.6f} / (2.0 * footprint)) * 0.5);\n"
     "          slopes += keep * {amp} * float2({c:.6f} * gu.x - {s:.6f} * gu.y, "
     "{s:.6f} * gu.x + {c:.6f} * gu.y);\n"
-    "          filtered += (1.0 - keep * keep) * {amp} * {amp} * 0.25; }}\n")
+    "          filtered += (1.0 - keep * keep) * {amp} * {amp} * 0.25\n"
+    "                    + keep * keep * {amp} * {amp} * min(4.0 * footprint * footprint / "
+    "({size:.6f} * {size:.6f}), 1.0); }}\n")
 
 # The sky in the reflected direction and the glint of the sun, for a pixel of normal n seen along
 # V (toward the camera), the roughness alpha2 (GGX alpha squared): reflection (radiance), Glint
@@ -172,7 +186,8 @@ SKY_HLSL = r"""
     Fresnel = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
     float3 r = reflect(-V, n);
     r = normalize(float3(r.xy, max(r.z, 0.003 + 0.15 * a)));
-    reflection = SkyReflection * Fresnel * MaterialExpressionSkyAtmosphereViewLuminance(Parameters, r);
+    float3 sky = MaterialExpressionSkyAtmosphereViewLuminance(Parameters, r);
+    reflection = SkyReflection * Fresnel * sky;
     float3 L = normalize(SunDir);
     float3 H = normalize(L + V);
     float NoL = saturate(dot(n, L));
@@ -200,8 +215,8 @@ BODY_CALL = ("Water.Body(Kind, Altitude, RiverWaterColor, LakeWaterColor, Glacie
 # VertexNormal, the look parameters; returns the base color, with EmissiveOut, OpacityOut,
 # NormalOut (world space) and RoughnessOut. The color the water lets through is one share for the
 # three channels: the same as the horizon draws it. The water fades out (its opacity, so its
-# reflection too) toward a cut, at a shore, and over the outer band of the tiles where the water
-# of the horizon comes in.
+# reflection too) toward a cut and at a shore; over the outer band of the tiles, it keeps the
+# pixels the water of the horizon leaves (FTerrainWater::Dither).
 TILE_WATER_HLSL = r"""
 const float PERIOD = 409600.0; // 4096 m, cm
 float2 p = (GetTranslatedWorldPosition(Parameters).xy - GetPeriodicWorldOrigin(float3(PERIOD, PERIOD, PERIOD)).xy) * 0.01;
@@ -218,8 +233,9 @@ float Fresnel;
 float3 reflection;
 float3 Glint;
 SKY_CODE
-// The water between the surface and what lies behind it (the bed, a bank, a block), meters.
-float thickness = max(SceneDepth - PixelDepth, 0.0) * 0.01;
+// The water between the surface and what lies behind it (the bed, a bank, a block), meters along
+// the ray (the depths are along the axis of the view), as the horizon measures it.
+float thickness = max(SceneDepth - PixelDepth, 0.0) * 0.01 * length(CameraRel) / max(PixelDepth, 1.0);
 float3 deep, absorb;
 BODY_CODE
 float through = dot(exp(-absorb * thickness), float3(0.3333, 0.3333, 0.3334));
@@ -230,9 +246,10 @@ foam *= smoothstep(0.35, 0.75, 0.6 * Water.Noise(q, 0.7) + 0.4 * Water.Noise(q *
 // Translucent: what the water keeps of the light behind it, the foam opaque.
 float opacity = max(saturate(1.0 - through * (1.0 - Fresnel)), foam);
 float keep = max(opacity, 0.05);
-// Faded out toward a cut, at a shore, and where the water of the horizon comes in.
+// Faded out toward a cut and at a shore; left to the water of the horizon on its pixels.
 float horizon = HasSurface > 0.5 ? Water.HorizonShare(Rel, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm, SurfaceBandCm) : 0.0;
-float shown = saturate(Edge) * saturate(thickness / max(ShoreFadeM, 0.01)) * (1.0 - horizon);
+float shown = saturate(Edge) * saturate(thickness / max(ShoreFadeM, 0.01));
+shown *= Water.Dither(Parameters.SvPosition.xy, Time) >= horizon ? 1.0 : 0.0;
 EmissiveOut = (reflection + Glint) * (1.0 - foam) / keep;
 OpacityOut = opacity * shown;
 NormalOut = n;
@@ -243,12 +260,12 @@ return lerp(deep * (1.0 - through) * (1.0 - Fresnel) / keep, FoamColor, foam);
 # The pixel of the curtain of a fall or of the foam at its foot (M_TerrainFalls, translucent, two
 # sided): inputs Fall (UV0: across and down the fall in meters; on the foam, meters from its
 # center), KindDrop (UV1), AltitudeSize (UV2: altitude, width of the curtain or radius of the
-# foam), Time, SceneDepth, PixelDepth, CurtainColor, FoamColor; returns the base color, with
-# OpacityOut.
+# foam), Time, SceneDepth, PixelDepth, CurtainColor, FoamColor, FoamDepthM; returns the base
+# color, with OpacityOut.
 FALLS_HLSL = r"""
 float size = max(AltitudeSize.y, 0.1);
-// Soft where it meets the rock or the water behind it.
-float soft = saturate((SceneDepth - PixelDepth) * 0.01 / 1.5);
+// What lies behind the pixel (the rock, the bed of the pool), meters along the depth.
+float behind = max(SceneDepth - PixelDepth, 0.0) * 0.01;
 float opacity;
 float3 color;
 BRANCH
@@ -263,19 +280,24 @@ if (KindDrop.x < 4.5)
             + 0.15 * Water.Noise(float2(u * 0.4, y * 0.5) + 5.0, 1.0);
     float edge = saturate(min(u, size - u) / min(1.5, 0.25 * size));
     float top = saturate(Fall.y + 0.2);
-    opacity = saturate(0.35 + 0.6 * s) * edge * top;
+    // Soft where it meets the rock or the water behind it.
+    opacity = saturate(0.35 + 0.6 * s) * edge * top * saturate(behind / 1.5);
     color = lerp(CurtainColor, FoamColor, saturate(0.8 * s + 0.3 * Fall.y / max(KindDrop.y, 1.0)));
 }
 else
 {
-    // The foam at the foot, churning, thinner away from the curtain.
+    // The foam at the foot, churning: full near its center, fading out to a ragged rim, never a
+    // hole (the dark pool would show through it), thinner where the water under it gets shallow
+    // (toward the banks of the pool and its rock): it takes the shape of the pool.
     float r = length(Fall) / size;
     float n = 0.6 * Water.Noise(Fall + float2(Time * 0.7, -Time * 0.4), 0.9)
             + 0.4 * Water.Noise(Fall * 1.7 - float2(Time * 0.5, Time * 0.9), 0.9);
-    opacity = saturate(1.0 - r) * smoothstep(0.25, 0.7, n + 0.3 * (1.0 - r));
-    color = FoamColor;
+    float rim = 1.0 - smoothstep(0.3, 1.0, r + 0.25 * (n - 0.5));
+    float pool = smoothstep(0.0, 1.0, behind / max(FoamDepthM, 0.01));
+    opacity = rim * lerp(0.6, 0.95, n) * pool;
+    color = FoamColor * lerp(0.82, 1.0, n);
 }
-OpacityOut = opacity * soft;
+OpacityOut = opacity;
 return color;
 """
 

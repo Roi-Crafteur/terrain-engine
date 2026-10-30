@@ -6,6 +6,9 @@ the Unreal Editor, so this checks what can be checked here.
   and parentheses balanced, every name of an input a node reads declared among its inputs, every
   output it writes declared among its outputs; the noise of the ripples, run here, repeats every
   4,096 m.
+- At the edge of the tiles, the water of the tiles and the water of the horizon keep complementary
+  pixels with the same share and threshold; the plugin copies the whole look of the water to the
+  horizon (its lists of names are the parameters of water_look_hlsl.py).
 - The scripts that rebuild a material in place reset every setting first
   (material_settings.reset_material), and set none of them by hand.
 - Each script that creates a material runs to its end as Unreal runs it (Tools > Execute Python
@@ -46,7 +49,8 @@ def constant(source, name):
 KNOWN = {"BRANCH", "Parameters", "Water", "FTerrainWater", "PERIOD", "K", "Kind",
          "Fresnel", "Glint", "GetTranslatedWorldPosition", "GetPeriodicWorldOrigin",
          "MaterialExpressionSkyAtmosphereViewLuminance", "Load", "Body", "Waves", "Ripples",
-         "Noise", "Hash", "PeriodicHash", "Octave", "HorizonShare", "SvPosition", "INLAND",
+         "Noise", "Hash", "PeriodicHash", "Octave", "HorizonShare", "Dither", "SvPosition",
+         "INLAND",
          "SURFACE", "DEPTH", "D", "H", "L", "V", "Vis", "Fs", "NoV", "NoL", "NoH", "VoH"}
 
 
@@ -111,7 +115,8 @@ def check_ripples(look):
             for shift in ((4096.0, 0.0), (0.0, 4096.0), (-8192.0, 4096.0)):
                 there = octave((p[0] + shift[0], p[1] + shift[1]), a, b, k, 0.37 * n)
                 worst = max(worst, abs(here[0] - there[0]), abs(here[1] - there[1]))
-    check(worst < 1e-4 and spread > 0.5, f"ripples: {worst:g} apart after 4096 m, spread {spread:g}")
+    check(worst < 1e-4 and spread > 0.5,
+          f"ripples: {worst:g} apart after 4096 m, spread {spread:g}")
     return worst
 
 
@@ -148,7 +153,8 @@ NEEDED = {
                                        "SkyReflection", "ShoreFadeM"},
     # The band of the tiles over the horizon, placed by TerrainHorizonClipmap.cpp as on the ground.
     "create_water_materials.py": {"LakeWaterColor", "RiverAbsorption", "FlowSpeed",
-                                  "CurtainColor", "FoamColor", "SkyReflection", "ShoreFadeM",
+                                  "CurtainColor", "FoamColor", "FoamDepthM", "SkyReflection",
+                                  "ShoreFadeM",
                                   "SurfaceOrigin", "SurfaceCells", "SurfacePitchCm",
                                   "SurfaceCoveredCm", "SurfaceBandCm", "HasSurface"},
     "create_temporary_terrain_material.py": {"SurfaceTexels", "TileBlendTexels"},
@@ -171,6 +177,29 @@ def run_as_unreal(folder, script, exists):
 
 # Settings UE 5.8 no longer has: set_editor_property fails on them (a warning on every material).
 GONE_IN_UE58 = {"cast_shadow_as_masked", "num_customized_uvs"}
+
+
+def check_junction(look, horizon_code, plugin):
+    """At the edge of the tiles one water per pixel: both nodes take the share of the horizon and
+    the same threshold, the tiles keep the pixels at or above it, the horizon those under it, and
+    no water is faded by the share any more. The plugin copies the whole look of the water of the
+    tiles to the horizon: its lists of names are the parameters of water_look_hlsl.py."""
+    tile = look.tile_water_hlsl()
+    for label, code in (("TerrainWater", tile), ("HorizonInlandWater", horizon_code)):
+        shared = "Water.HorizonShare(" in code
+        shared = shared and "Water.Dither(Parameters.SvPosition.xy, Time)" in code
+        check(shared, f"{label}: not the shared share and threshold of the edge of the tiles")
+    check(">= horizon ? 1.0 : 0.0" in tile and ">= share ? 0.0 : 1.0" in horizon_code,
+          "the tiles and the horizon do not keep complementary pixels")
+    check("1.0 - horizon" not in tile, "the water of the tiles still faded by the share")
+    source = (plugin / "TerrainWorldWater.cpp").read_text(encoding="utf-8")
+    copied = {}
+    for kind in ("Vectors", "Scalars"):
+        block = re.search(r"WaterLook" + kind + r"\[\] = \{(.*?)\};", source, re.S)
+        copied[kind] = set(re.findall(r'TEXT\("(\w+)"\)', block.group(1))) if block else set()
+    check(copied["Vectors"] == set(look.WATER_COLORS) and
+          copied["Scalars"] == set(look.WATER_SCALARS),
+          f"the look copied to the horizon is not the look of the water: {copied}")
 
 
 def check_runs(folder):
@@ -196,7 +225,7 @@ def main(folder):
             check(False, f"{path.name}: {error}")
     sys.path.insert(0, str(folder))
     sys.modules["unreal"] = types.SimpleNamespace(
-        CustomMaterialOutputType=types.SimpleNamespace(CMOT_FLOAT1=1, CMOT_FLOAT3=3))
+        CustomMaterialOutputType=types.SimpleNamespace(CMOT_FLOAT1=1, CMOT_FLOAT2=2, CMOT_FLOAT3=3))
     look = importlib.import_module("water_look_hlsl")
     horizon = importlib.import_module("horizon_water_hlsl")
     nodes = importlib.import_module("horizon_water_nodes")
@@ -220,6 +249,8 @@ def main(folder):
                             r'use_material_attributes|tangent_space_normal|two_sided)"', source),
               f"{script}: a setting of the material set by hand")
     check_runs(folder)
+    check_junction(look, horizon.inland_hlsl(look.SKY_HLSL, look.BODY_CALL),
+                   folder.parent / "Source" / "TerrainEngine" / "Private")
     worst = check_ripples(look)
     print(f"water scripts: {len(failures)} failure(s), {len(look.OCTAVES)} octaves of ripples "
           f"({worst:.1e} apart after 4,096 m), {len(look.look_inputs())} look parameters")

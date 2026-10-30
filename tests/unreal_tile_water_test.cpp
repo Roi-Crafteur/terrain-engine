@@ -267,8 +267,8 @@ bool facing(const UnrealWaterMesh& m) {
 }
 
 // Made-up falls: a steep one (54 m over 6 m), curved, from the water at its lip across
-// kCurtainWidthShare of its width down to below the water at its foot, facing downstream; a
-// chute (20 m over 20 m), straight from its lip to its foot.
+// kCurtainWidthShare of its width down to below the water at its foot, facing downstream, its foam
+// centered downstream of the foot; a chute (20 m over 20 m), straight from its lip to its foot.
 bool madeUpCurtains() {
     TileData steep = madeUp(0, 0);
     steep.falls.push_back({4.0, 5.0, 10.0, 5.0, 150.0f, 96.5f, 20.0f});
@@ -286,6 +286,15 @@ bool madeUpCurtains() {
     bool right = std::abs(top - 150.0) < 1e-3 && std::abs(bottom - 96.0) < 1e-3 &&
                  std::abs(across - 1800.0) < 1e-2 && m.normals[0].x > 0.0f && facing(m) &&
                  everyFallDrawn(steep, m);
+    // The center of the foam: kFoamAheadShare of its radius (15 m) downstream of the curtain foot.
+    const double foamAt = 4.0 + terrain::unreal::kCurtainAhead + 6.0 +
+                          terrain::unreal::kFoamAheadShare * 15.0;
+    for (std::size_t n = 0; n < m.positions.size(); ++n) {
+        if (m.uv1[n].u == terrain::unreal::kWaterFoam && m.uv0[n] == terrain::unreal::UnrealUV{}) {
+            right = right && std::abs(m.positions[n].x / 100.0 - foamAt) < 1e-3 &&
+                    std::abs(m.positions[n].y - 500.0f) < 1e-3f;
+        }
+    }
     TileData chute = madeUp(0, 0);
     chute.falls.push_back({4.0, 5.0, 24.0, 5.0, 120.0f, 100.0f, 6.0f});
     const UnrealWaterMesh c = terrain::unreal::buildFallCurtains(chute);
