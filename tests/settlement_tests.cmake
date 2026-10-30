@@ -69,3 +69,15 @@ target_compile_definitions(settlement_peoples_test PRIVATE
 terrain_add_test(settlement_presets_test terrain_core)
 target_compile_definitions(settlement_presets_test PRIVATE
     TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
+
+# The kingdoms of the default world in cells of 65,536 m for the three presets: the tests of a good
+# world (a state for each people, at most 15 % of the land a kingdom and 40 % of the land held a
+# people, at least half of the land borders natural, the capitals, the hostile land nearly empty),
+# the same bits whatever the threads.
+terrain_add_test(settlement_kingdoms_test terrain_core)
+target_compile_definitions(settlement_kingdoms_test PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
+
+# The expansion and the borders on hand-made grids: borders on a river and on a ridge, the coast,
+# the target area and its barriers, an unlivable land, the straits, the cleanup of the artifacts.
+terrain_add_test(settlement_expansion_test terrain_core)

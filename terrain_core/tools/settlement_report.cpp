@@ -18,12 +18,17 @@ namespace st = terrain::settlement;
 namespace settlement_tool {
 
 void Report::add(const char* format, ...) {
-    char line[512];
     va_list args;
     va_start(args, format);
-    std::vsnprintf(line, sizeof line, format, args);
+    va_list again;
+    va_copy(again, args);
+    const int size = std::vsnprintf(nullptr, 0, format, args);
     va_end(args);
-    std::fputs(line, stdout);
+    std::string line(static_cast<std::size_t>(std::max(size, 0)) + 1, '\0');
+    std::vsnprintf(line.data(), line.size(), format, again);
+    va_end(again);
+    line.pop_back();
+    std::fputs(line.c_str(), stdout);
     std::fflush(stdout);
     text_ += line;
 }
@@ -248,6 +253,37 @@ void reportSuitability(const st::SuitabilityMaps& s, const st::SettlementData& d
     for (std::size_t k = 0; k < s.byPeople.size(); ++k) {
         reportMap(data.peoples[k].id.c_str(), s.byPeople[k], r);
     }
+}
+
+void reportTerrain(const st::ExpansionTerrain& t, double seconds, Report& r) {
+    double classes[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    double lakes = 0.0;
+    double barriers = 0.0;
+    double ridges = 0.0;
+    for (const std::uint8_t m : t.mask) {
+        classes[m & st::kRiverBits] += 1.0;
+        lakes += (m & st::kLakeBit) != 0 ? 1.0 : 0.0;
+        barriers += (m & st::kMountainBit) != 0 ? 1.0 : 0.0;
+        ridges += ((m & st::kRidgeEastBit) != 0 ? 1.0 : 0.0) + ((m & st::kRidgeSouthBit) != 0 ? 1.0 : 0.0);
+    }
+    const auto n = static_cast<double>(t.mask.size()) / 100.0;
+    r.add("terrain of the expansion in %.1f s, %.0f MiB: rivers on %.2f %% of the land (%.2f, %.2f, "
+          "%.2f, %.2f %% by class), lakes %.2f %%, barrier models %.1f %%, %.0f ridge edges, %zu sea "
+          "cells of straits\n",
+          seconds, mebibytes(t.memoryBytes()), (classes[1] + classes[2] + classes[3] + classes[4]) / n,
+          classes[1] / n, classes[2] / n, classes[3] / n, classes[4] / n, lakes / n, barriers / n,
+          ridges, t.straits->landCells());
+}
+
+void reportCuts(const std::vector<st::ClimateCut>& cuts, Report& r) {
+    std::string list;
+    for (const st::ClimateCut& c : cuts) {
+        char part[64];
+        std::snprintf(part, sizeof part, " %+.2f (%.0f mm)", c.latitude, c.meanJumpMm);
+        list += part;
+    }
+    r.add("climate cuts found on the rainfall of the land: %zu, at latitudes%s\n", cuts.size(),
+          list.c_str());
 }
 
 } // namespace settlement_tool

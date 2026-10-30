@@ -238,6 +238,9 @@ struct SettlementConfig {
     std::string defaultPreset;               // one of presets
     StateRule states;
     CapitalRule capitals;
+    ExpansionRule expansion;
+    BorderRule borders;
+    GoodWorldRule goodWorld;
     // The document read, kept whole for the copy of the world.
     json::Value document;
 

@@ -18,6 +18,8 @@
 #include "settlement_report.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
+#include "terrain/generation/settlement/borders.hpp"
+#include "terrain/generation/settlement/expansion.hpp"
 #include "terrain/generation/settlement/settlement_data.hpp"
 #include "terrain/generation/settlement/settlement_maps.hpp"
 #include "terrain/generation/settlement/suitability.hpp"
@@ -264,9 +266,13 @@ int run(const Options& o) {
             presets.push_back(p.id);
         }
     }
+    start = std::chrono::steady_clock::now();
+    const st::ExpansionTerrain terrain = st::buildExpansionTerrain(level, maps, data.config, o.threads);
+    settlement_tool::reportTerrain(terrain, since(start), r);
+    settlement_tool::reportCuts(st::climateCuts(level, *maps.land, data.config.borders), r);
     for (const std::string& preset : presets) {
-        if (!settlement_tool::runPreset(maps, suitability, data,
-                                        {preset, o.seed, o.threads, o.directory}, r)) {
+        if (!settlement_tool::runPreset(level, maps, suitability, terrain, data,
+                                        {preset, o.seed, o.threads, o.directory, o.width}, r)) {
             std::fprintf(stderr, "Cannot write the files of %s into %s\n", preset.c_str(),
                          o.directory.string().c_str());
             return EXIT_FAILURE;

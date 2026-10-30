@@ -1,5 +1,6 @@
 #include "settlement_config_parts.hpp"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -36,6 +37,18 @@ PresetValue readPresetValue(const Fields& parent, std::string_view key, double l
         f.fail(f.member("mode"), "mode", "expected \"range\" or \"exact\"");
     }
     return v;
+}
+
+CostPenalty readPenalty(const Fields& parent, std::string_view key) {
+    const Fields f = parent.object(key);
+    f.only({"from", "to", "cost"});
+    CostPenalty p;
+    p.ramp = Ramp{f.number("from"), f.number("to")};
+    p.cost = f.numberIn("cost", 0.0, 1000.0);
+    if (p.ramp.from == p.ramp.to) {
+        f.fail("from equals to");
+    }
+    return p;
 }
 
 } // namespace
@@ -78,6 +91,77 @@ CapitalRule readCapitals(const Fields& f) {
     r.spacing = f.numberIn("spacing", 0.0, 10.0);
     r.relax = f.numberIn("relax", 0.0, 1.0);
     r.relaxSteps = f.integer("relaxSteps", 0, 16);
+    return r;
+}
+
+ExpansionRule readExpansion(const Fields& f) {
+    f.only({"preferenceWeight", "minCost", "penalties", "riverCrossing", "barrierRiverClass",
+            "barrierModels", "fordBonus", "fordMaxRoughness", "confluenceBonus", "lakeCost", "ridgeCost", "sea",
+            "seaCost", "straitCells", "minSuitability", "maxCost", "overflow", "maxPeopleShare",
+            "peopleReruns"});
+    ExpansionRule r;
+    r.preferenceWeight = f.numberIn("preferenceWeight", 0.0, 0.6);
+    r.minCost = f.numberIn("minCost", 0.01, 100.0);
+    const Fields penalties = f.object("penalties");
+    penalties.only({"altitude", "roughness", "aridity", "danger"});
+    r.altitude = readPenalty(penalties, "altitude");
+    r.roughness = readPenalty(penalties, "roughness");
+    r.aridity = readPenalty(penalties, "aridity");
+    r.danger = penalties.numberIn("danger", 0.0, 1000.0);
+    const Fields crossing = f.object("riverCrossing");
+    crossing.only({"river", "largeRiver", "majorRiver", "impassableRiver"});
+    r.riverCrossing = {crossing.numberIn("river", 0.0, 1000.0),
+                       crossing.numberIn("largeRiver", 0.0, 1000.0),
+                       crossing.numberIn("majorRiver", 0.0, 1000.0),
+                       crossing.numberIn("impassableRiver", 0.0, 1000.0)};
+    r.barrierRiverClass = f.integer("barrierRiverClass", 1, 5);
+    r.barrierModels = f.strings("barrierModels");
+    r.fordBonus = f.numberIn("fordBonus", 0.0, 1.0);
+    r.fordMaxRoughness = f.numberIn("fordMaxRoughness", 0.01, 1.0);
+    r.confluenceBonus = f.numberIn("confluenceBonus", 0.0, 1000.0);
+    r.lakeCost = f.numberIn("lakeCost", 0.0, 1000.0);
+    r.ridgeCost = f.numberIn("ridgeCost", 0.0, 1000.0);
+    const std::string sea = f.text("sea");
+    if (sea != "straits" && sea != "forbidden") {
+        f.fail(f.member("sea"), "sea", "expected \"straits\" or \"forbidden\"");
+    }
+    r.sea = sea == "straits" ? SeaCrossing::Straits : SeaCrossing::Forbidden;
+    r.seaCost = f.numberIn("seaCost", 0.0, 10'000.0);
+    r.straitCells = f.integer("straitCells", 0, 16);
+    r.minSuitability = f.numberIn("minSuitability", 0.0, 1.0);
+    r.maxCost = f.numberIn("maxCost", 1.0, 1.0e7);
+    r.overflow = f.numberIn("overflow", 1.0, 10.0);
+    r.maxPeopleShare = f.numberIn("maxPeopleShare", 0.0, 1.0);
+    r.peopleReruns = f.integer("peopleReruns", 0, 16);
+    return r;
+}
+
+BorderRule readBorders(const Fields& f) {
+    f.only({"ridgeHeightM", "ridgeWindow", "ridgeRelief", "coastKm", "holeCells", "cutFactor",
+            "cutMinMm"});
+    BorderRule r;
+    r.ridgeHeightM = f.numberIn("ridgeHeightM", 0.0, 10'000.0);
+    r.ridgeWindow = f.integer("ridgeWindow", 1, 8);
+    r.ridgeRelief = f.numberIn("ridgeRelief", 0.0, 1.0);
+    r.coastKm = f.numberIn("coastKm", 0.0, 255.0);
+    r.holeCells = f.integer("holeCells", 0, 10'000);
+    r.cutFactor = f.numberIn("cutFactor", 1.0, 1000.0);
+    r.cutMinMm = f.numberIn("cutMinMm", 0.0, 10'000.0);
+    return r;
+}
+
+GoodWorldRule readGoodWorld(const Fields& f, const std::vector<TerrainModel>& models) {
+    f.only({"hostileModels", "highMountainM", "likedSuitability"});
+    GoodWorldRule r;
+    r.hostileModels = f.strings("hostileModels");
+    for (const std::string& id : r.hostileModels) {
+        if (std::none_of(models.begin(), models.end(),
+                         [&](const TerrainModel& m) { return m.id == id; })) {
+            f.fail(f.member("hostileModels"), "hostileModels", "unknown terrain model '" + id + "'");
+        }
+    }
+    r.highMountainM = f.numberIn("highMountainM", 0.0, 20'000.0);
+    r.likedSuitability = f.numberIn("likedSuitability", 0.0, 1.0);
     return r;
 }
 

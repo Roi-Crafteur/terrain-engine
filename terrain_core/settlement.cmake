@@ -6,11 +6,15 @@ target_sources(terrain_core PRIVATE
     src/json/json_write.cpp
     src/generation/settlement/analysis_cell.cpp
     src/generation/settlement/analysis_distance.cpp
+    src/generation/settlement/borders.cpp
     src/generation/settlement/capitals.cpp
     src/generation/settlement/data_fields.cpp
+    src/generation/settlement/expansion.cpp
+    src/generation/settlement/expansion_terrain.cpp
     src/generation/settlement/geology.cpp
     src/generation/settlement/geology_plates.cpp
     src/generation/settlement/geology_points.cpp
+    src/generation/settlement/kingdoms.cpp
     src/generation/settlement/map_influences.cpp
     src/generation/settlement/map_inputs.cpp
     src/generation/settlement/people.cpp
@@ -26,7 +30,7 @@ target_sources(terrain_core PRIVATE
     src/generation/settlement/world_preset.cpp
 )
 # The PNG control images of the maps (io/: no Unreal wrapper).
-target_sources(terrain_core PRIVATE src/io/settlement_png.cpp)
+target_sources(terrain_core PRIVATE src/io/settlement_png.cpp src/io/settlement_png_kingdoms.cpp)
 
 # terrain_export_settlement <output-dir> [--planet <file>] [--rebuild-planet] [--seed <seed>]
 #     [--world <x> <z>] [--cell <meters>] [--threads <n>] [--data <dir>] [--width <pixels>]

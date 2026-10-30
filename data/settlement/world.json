@@ -211,5 +211,45 @@
     "spacing": 1.0,
     "relax": 0.75,
     "relaxSteps": 4
+  },
+  "expansion": {
+    "preferenceWeight": 0.5,
+    "minCost": 0.1,
+    "penalties": {
+      "altitude": { "from": 1500, "to": 5000, "cost": 6 },
+      "roughness": { "from": 0.3, "to": 1.0, "cost": 4 },
+      "aridity": { "from": 0.3, "to": 0.08, "cost": 3 },
+      "danger": 4
+    },
+    "riverCrossing": { "river": 3, "largeRiver": 6.5, "majorRiver": 11.5, "impassableRiver": 25 },
+    "barrierRiverClass": 1,
+    "barrierModels": [ "mountain", "glacier" ],
+    "fordBonus": 0.6,
+    "fordMaxRoughness": 0.25,
+    "confluenceBonus": 1.5,
+    "lakeCost": 15,
+    "ridgeCost": 4,
+    "sea": "straits",
+    "seaCost": 50,
+    "straitCells": 2,
+    "minSuitability": 0.25,
+    "maxCost": 3000,
+    "overflow": 1.3,
+    "maxPeopleShare": 0.4,
+    "peopleReruns": 3
+  },
+  "borders": {
+    "ridgeHeightM": 300,
+    "ridgeWindow": 2,
+    "ridgeRelief": 0.12,
+    "coastKm": 16,
+    "holeCells": 4,
+    "cutFactor": 6,
+    "cutMinMm": 100
+  },
+  "goodWorld": {
+    "hostileModels": [ "desert", "glacier" ],
+    "highMountainM": 3500,
+    "likedSuitability": 0.5
   }
 }

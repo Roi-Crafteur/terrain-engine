@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/planet/planet_level.hpp"
+#include "terrain/generation/settlement/kingdoms.hpp"
 #include "terrain/generation/settlement/settlement_data.hpp"
 #include "terrain/generation/settlement/settlement_maps.hpp"
 #include "terrain/io/png.hpp"
@@ -39,6 +40,15 @@ enum class SettlementPalette : std::uint8_t {
 // arcane craters (magenta rings), the volcanoes (red dots, bright when active).
 [[nodiscard]] Image renderManaNetwork(const PlanetLevel& level,
                                       const settlement::SettlementMaps& maps, int scale);
+
+// The kingdoms of a preset over the gray relief: one color per state (the major kingdoms
+// saturated, the minor states paler), the wild land in its grays; the land borders, by the kind
+// most of the edges of the pixel follow: river blue, ridge white, coast cyan, none dark red; the
+// capitals in white squares, larger for the major kingdoms (settlement_png_kingdoms.cpp).
+[[nodiscard]] Image renderKingdoms(const PlanetLevel& level,
+                                   const settlement::ExpansionTerrain& terrain,
+                                   const settlement::Kingdoms& kingdoms,
+                                   const settlement::BorderRule& rule, int scale);
 
 // Writes settlement_<map>.png for roughness, water_km, terrain_models, arable, food, danger,
 // prana, mana, mana_network, habitability, and resource_<id>.png for each resource, into

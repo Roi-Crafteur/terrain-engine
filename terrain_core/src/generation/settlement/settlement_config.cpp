@@ -201,7 +201,7 @@ SettlementConfig readSettlementConfig(const json::Value& document, std::string_v
     f.only({"configVersion", "referencePlanetAreaKm2", "physicalScore", "roughness",
             "vegetation", "rivers", "arable", "food", "danger", "prana", "mana", "magic",
             "geology", "habitability", "suitability", "terrainModels", "worldPresets",
-            "defaultPreset", "states", "capitals"});
+            "defaultPreset", "states", "capitals", "expansion", "borders", "goodWorld"});
     SettlementConfig c;
     c.version = f.text("configVersion");
     c.referenceAreaKm2 = f.numberIn("referencePlanetAreaKm2", 1.0, 1.0e12);
@@ -233,6 +233,15 @@ SettlementConfig readSettlementConfig(const json::Value& document, std::string_v
     }
     c.states = readStates(f.object("states"));
     c.capitals = readCapitals(f.object("capitals"));
+    c.expansion = readExpansion(f.object("expansion"));
+    for (const std::string& id : c.expansion.barrierModels) {
+        if (c.model(id) == nullptr) {
+            const Fields e = f.object("expansion");
+            e.fail(e.member("barrierModels"), "barrierModels", "unknown terrain model '" + id + "'");
+        }
+    }
+    c.borders = readBorders(f.object("borders"));
+    c.goodWorld = readGoodWorld(f.object("goodWorld"), c.terrainModels);
     c.document = document;
     return c;
 }

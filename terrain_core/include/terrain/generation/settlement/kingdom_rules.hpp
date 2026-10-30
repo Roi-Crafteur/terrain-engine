@@ -1,10 +1,15 @@
 #pragma once
 
+#include "terrain/generation/settlement/preference.hpp"
+
+#include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 // The rules of the kingdoms in the configuration of the world (docs/PEUPLEMENT.md, sections 3
-// and 4 quater): the world presets, the target area of the states, the choice of the capitals.
+// and 4 quater): the world presets, the target area of the states, the choice of the capitals, the
+// costs of the expansion, the borders.
 // Part of SettlementConfig, read from the same world.json.
 namespace terrain::settlement {
 
@@ -47,6 +52,82 @@ struct CapitalRule {
     double spacing = 1.0;
     double relax = 0.75;
     int relaxSteps = 4;
+};
+
+// A penalty of the cost of a cell: cost times a ramp of one of its values.
+struct CostPenalty {
+    Ramp ramp;
+    double cost = 0.0;
+};
+
+enum class SeaCrossing : std::uint8_t { Straits, Forbidden };
+
+// The expansion (section 6 bis): the cost of entering a cell for a state is the cost of its
+// nearest terrain model plus the penalties of its altitude, roughness, aridity (humidity) and
+// danger, lowered by the suitability of the people (times preferenceWeight, at most 0.6: a liked
+// terrain is cheaper, never free), at least minCost. Crossing a river costs the crossing of its
+// class (river, large, major, impassable) less the probable ford (classes 1 and 2, flat ground:
+// fordBonus of it at roughness 0, nothing from fordMaxRoughness) or less confluenceBonus at a
+// confluence (never below 0), half on entering the river from a bank and half on leaving it to a
+// bank; following a river costs no crossing. A lake costs lakeCost, a ridge ridgeCost more. The
+// sea: with "straits", a sea cell at most straitCells from the land costs seaCost and is only
+// crossed, never held; with "forbidden", never entered. A state takes no cell where its people's
+// suitability is below minSuitability, nor farther than maxCost. At its target area it only fills
+// up to the next barrier, up to overflow times its target: it may still take the rivers and the
+// lakes along its land, but not leave a river of barrierRiverClass or more nor a lake for the
+// land beyond, nor cross a ridge, enter a cell of one of barrierModels from outside them, or the
+// sea. A people holding
+// more than maxPeopleShare of the land held has the targets of its states lowered and the
+// expansion run again, at most peopleReruns times.
+struct ExpansionRule {
+    double preferenceWeight = 0.5;
+    double minCost = 0.1;
+    CostPenalty altitude;
+    CostPenalty roughness;
+    CostPenalty aridity;
+    double danger = 4.0;
+    std::array<double, 4> riverCrossing{3.0, 6.5, 11.5, 25.0}; // classes 1 to 4
+    int barrierRiverClass = 1;
+    std::vector<std::string> barrierModels; // ids of terrain models
+    double fordBonus = 0.6;
+    double fordMaxRoughness = 0.25;
+    double confluenceBonus = 1.5;
+    double lakeCost = 15.0;
+    double ridgeCost = 4.0;
+    SeaCrossing sea = SeaCrossing::Straits;
+    double seaCost = 50.0;
+    int straitCells = 2;
+    double minSuitability = 0.25;
+    double maxCost = 3000.0;
+    double overflow = 1.3;
+    double maxPeopleShare = 0.4;
+    int peopleReruns = 3;
+};
+
+// The borders: a ridge is an edge between two dry cells of different catchments (each cell drains
+// to the first river segment, lake or sea down its receivers) at least ridgeHeightM above the
+// lowest land within ridgeWindow cells, where the relief of the geography is at least
+// ridgeRelief; a border follows the coast when one of its cells is at most coastKm from the sea
+// and the two are at different distances from it. The cleanup gives the enclaves of at most
+// holeCells cells to the one owner around them. The cuts of the climate are the limits between two rows where
+// the mean difference of the rainfall of the land is above cutFactor times the median of all the
+// limits and at least cutMinMm.
+struct BorderRule {
+    double ridgeHeightM = 300.0;
+    int ridgeWindow = 2;
+    double ridgeRelief = 0.12;
+    double coastKm = 16.0;
+    int holeCells = 4;
+    double cutFactor = 6.0;
+    double cutMinMm = 100.0;
+};
+
+// What the tests of a good world call the hostile land (section 4 quater): the cells of
+// hostileModels or at least highMountainM high; a people likes a cell from likedSuitability.
+struct GoodWorldRule {
+    std::vector<std::string> hostileModels; // ids of terrain models
+    double highMountainM = 3500.0;
+    double likedSuitability = 0.5;
 };
 
 } // namespace terrain::settlement

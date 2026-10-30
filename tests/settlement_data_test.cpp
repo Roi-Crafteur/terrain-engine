@@ -94,6 +94,10 @@ void testRepositoryData() {
     TEST_CHECK(back.resources.size() == 6 && back.config.terrainModels.size() == 8);
     TEST_CHECK(data.peoples.size() == 13 && back.peoples.size() == 13);
     TEST_CHECK(data.config.suitability.noiseAmplitude == 0.2);
+    TEST_CHECK(data.config.presets.size() == 3 && data.config.defaultPreset == "wild");
+    TEST_CHECK(data.config.preset("civilized")->majorKingdoms.max == 150.0);
+    TEST_CHECK(data.config.expansion.sea == st::SeaCrossing::Straits &&
+               data.config.expansion.seaCost == 50.0 && data.config.expansion.straitCells == 2);
 }
 
 void testInvalidWorld() {
@@ -127,6 +131,30 @@ void testInvalidWorld() {
     edit(world, "\"weight\": 0.45, \"ramps\": { \"roughness\"",
          "\"weight\": \"high\", \"ramps\": { \"roughness\"");
     TEST_CHECK(refused({"danger.factors[0].weight", "expected a number, found a string"}));
+}
+
+void testInvalidKingdoms() {
+    const fs::path world = freshCopy() / "world.json";
+    edit(world, "\"defaultPreset\": \"wild\"", "\"defaultPreset\": \"medieval\"");
+    TEST_CHECK(refused({"world.json", "defaultPreset", "unknown preset 'medieval'"}));
+    freshCopy();
+    edit(world, "\"mode\": \"range\", \"min\": 10, \"max\": 20",
+         "\"mode\": \"random\", \"min\": 10, \"max\": 20");
+    TEST_CHECK(refused({"worldPresets.wild.majorKingdoms.mode", "\"range\" or \"exact\""}));
+    freshCopy();
+    edit(world, "\"mode\": \"range\", \"min\": 10, \"max\": 20",
+         "\"mode\": \"range\", \"min\": 30, \"max\": 20");
+    TEST_CHECK(refused({"worldPresets.wild.majorKingdoms", "min is above max"}));
+    freshCopy();
+    edit(world, "\"barrierModels\": [ \"mountain\", \"glacier\" ]",
+         "\"barrierModels\": [ \"volcano\" ]");
+    TEST_CHECK(refused({"expansion.barrierModels", "unknown terrain model 'volcano'"}));
+    freshCopy();
+    edit(world, "\"sea\": \"straits\"", "\"sea\": \"bridges\"");
+    TEST_CHECK(refused({"expansion.sea", "\"straits\" or \"forbidden\""}));
+    freshCopy();
+    edit(world, "\"preferenceWeight\": 0.5", "\"preferenceWeight\": 0.9");
+    TEST_CHECK(refused({"expansion.preferenceWeight", "out of [0, 0.6]"}));
 }
 
 void testInvalidResources() {
@@ -164,6 +192,7 @@ void testNewResourceFile() {
 int main() {
     testRepositoryData();
     testInvalidWorld();
+    testInvalidKingdoms();
     testInvalidResources();
     testNewResourceFile();
     return test::result();

@@ -21,5 +21,9 @@ namespace terrain::settlement {
 [[nodiscard]] std::vector<WorldPreset> readPresets(const Fields& f);
 [[nodiscard]] StateRule readStates(const Fields& f);
 [[nodiscard]] CapitalRule readCapitals(const Fields& f);
+[[nodiscard]] ExpansionRule readExpansion(const Fields& f);
+[[nodiscard]] BorderRule readBorders(const Fields& f);
+// The terrain models it names must be among models.
+[[nodiscard]] GoodWorldRule readGoodWorld(const Fields& f, const std::vector<TerrainModel>& models);
 
 } // namespace terrain::settlement

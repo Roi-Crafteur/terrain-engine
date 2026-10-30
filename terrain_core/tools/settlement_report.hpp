@@ -3,12 +3,15 @@
 // The report of terrain_export_settlement: printed as it goes and kept for settlement.txt.
 
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/settlement/borders.hpp"
+#include "terrain/generation/settlement/expansion.hpp"
 #include "terrain/generation/settlement/settlement_data.hpp"
 #include "terrain/generation/settlement/settlement_maps.hpp"
 #include "terrain/generation/settlement/suitability.hpp"
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace settlement_tool {
 
@@ -51,5 +54,12 @@ void reportEquitySeeds(const terrain::settlement::SettlementMaps& m,
 // land where it is at least 0.5.
 void reportSuitability(const terrain::settlement::SuitabilityMaps& s,
                        const terrain::settlement::SettlementData& data, Report& r);
+
+// The terrain of the expansion: its time, its memory, the share of the land under rivers (by
+// class), lakes, barrier models, the ridge edges, the sea cells of the straits.
+void reportTerrain(const terrain::settlement::ExpansionTerrain& t, double seconds, Report& r);
+
+// The cuts of the climate found on the rainfall, their latitudes and jumps.
+void reportCuts(const std::vector<terrain::settlement::ClimateCut>& cuts, Report& r);
 
 } // namespace settlement_tool
