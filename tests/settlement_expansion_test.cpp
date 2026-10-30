@@ -3,7 +3,7 @@
 // the target area and the filling up to the next barrier, a land the people cannot live on never
 // taken, a strait of 3 cells crossed but an arm of the sea of 6 never, nothing crossed when the sea
 // is forbidden, the sea never held, the cleanup of the artifacts only, the compartments and the
-// capital of a minor state in one of its size, the same result twice.
+// capital of a minor state in one of its size, the massifs of mountains, the same result twice.
 
 #include "terrain/generation/settlement/borders.hpp"
 #include "terrain/generation/settlement/capitals.hpp"
@@ -353,6 +353,31 @@ void testCompartmentCapital() {
     TEST_CHECK(both.capitals[0].compartment && !both.capitals[1].compartment);
 }
 
+// The massifs: a block of mountains of 10 x 10 cells held by two states meeting on a ridge in its
+// middle, another held by no one with a state along its foot.
+void testMassifs() {
+    st::ExpansionTerrain t = grid(60, 20, strip);
+    std::vector<std::uint16_t> owner(t.mask.size(), 0);
+    for (int j = 5; j < 15; ++j) {
+        for (int i = 10; i < 20; ++i) {
+            t.mask[slotAt(t, i, j)] |= st::kMountainBit;
+            owner[slotAt(t, i, j)] = i < 15 ? 1 : 2;
+        }
+        t.mask[slotAt(t, 14, j)] |= st::kRidgeEastBit;
+        for (int i = 30; i < 40; ++i) {
+            t.mask[slotAt(t, i, j)] |= st::kMountainBit;
+        }
+        owner[slotAt(t, 29, j)] = 3; // along the foot of the second massif
+    }
+    t.hostile[slotAt(t, 35, 10)] = 1; // a summit of the second massif, hostile
+    const st::MassifStats m = st::massifStats(t, owner, st::BorderRule{});
+    TEST_CHECK(m.massifs == 2 && m.cells == 199 && m.held == 100);
+    TEST_CHECK(m.shared == 1 && m.sharedCells == 100 && m.ridgeMeet == 1);
+    TEST_CHECK(m.footEdges == 10 && m.footNatural == 0);
+    // Below 25 cells a block is no massif.
+    TEST_CHECK(st::massifStats(t, owner, st::BorderRule{}, 101).massifs == 0);
+}
+
 void testDeterminism() {
     st::ExpansionTerrain t = grid(50, 40, [](int i, int j) { return (i * 7 + j * 3) % 23 != 0; });
     for (std::size_t k = 0; k < t.cost.size(); ++k) {
@@ -381,6 +406,7 @@ int main() {
     testCleanup();
     testCompartments();
     testCompartmentCapital();
+    testMassifs();
     testDeterminism();
     return test::result();
 }

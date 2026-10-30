@@ -76,6 +76,26 @@ struct BorderStats {
     [[nodiscard]] double naturalShareBetweenStates() const;
 };
 
+// The massifs of mountains: the connected regions (by the 4 sides) of at least leastCells cells of
+// a barrier model (kMountainBit) outside the hostile land. Who holds them, whether two states
+// meet in them on a ridge (one on each slope), and the borders that only run along the foot of a
+// massif held by no one: between a state outside the mountains and a wild cell of a massif.
+struct MassifStats {
+    std::size_t massifs = 0;
+    std::size_t cells = 0;
+    std::size_t held = 0;          // cells of the massifs held by a state
+    std::size_t shared = 0;        // massifs holding cells of two states or more
+    std::size_t sharedCells = 0;
+    std::size_t ridgeMeet = 0;     // of those, the massifs where two states meet on a ridge
+    std::size_t ridgeMeetCells = 0;
+    std::size_t footEdges = 0;     // land border edges along the foot of a massif held by no one
+    std::size_t footNatural = 0;   // of those, the natural ones
+};
+
+[[nodiscard]] MassifStats massifStats(const ExpansionTerrain& t,
+                                      const std::vector<std::uint16_t>& owner,
+                                      const BorderRule& rule, int leastCells = 25);
+
 [[nodiscard]] BorderStats borderStats(const ExpansionTerrain& t,
                                       const std::vector<std::uint16_t>& owner,
                                       const std::vector<ClimateCut>& cuts, const BorderRule& rule);

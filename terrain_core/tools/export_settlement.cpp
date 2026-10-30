@@ -12,6 +12,7 @@
 // Usage: terrain_export_settlement <output-dir> [--planet <file>] [--rebuild-planet]
 //        [--seed <seed>] [--world <x> <z>] [--cell <meters>] [--threads <n>] [--data <dir>]
 //        [--width <pixels>] [--equity-seeds <n>] [--preset <id>|all]
+//        [--zoom <x> <z> <width-km> <height-km>]
 
 #include "process_memory.hpp"
 #include "settlement_kingdoms.hpp"
@@ -32,6 +33,7 @@
 #include "terrain/storage/world_meta.hpp"
 
 #include <charconv>
+#include <cmath>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -51,6 +53,13 @@ using settlement_tool::Report;
 
 namespace {
 
+// A finite number (std::strtod: the floating from_chars is missing on some compilers).
+bool parseReal(const char* text, double& value) {
+    char* end = nullptr;
+    value = std::strtod(text, &end);
+    return end != text && *end == '\0' && std::isfinite(value);
+}
+
 template <class T> bool parse(const char* text, T& value) {
     const char* end = text + std::strlen(text);
     const auto [last, error] = std::from_chars(text, end, value);
@@ -69,6 +78,11 @@ struct Options {
     int width = 2048;
     int equitySeeds = 0;
     std::string preset; // empty: the default of the data; "all": every preset
+    bool zoom = false;
+    double zoomX = 0.0;
+    double zoomZ = 0.0;
+    double zoomWidthKm = 0.0;
+    double zoomHeightKm = 0.0;
 };
 
 bool parseFlag(int argc, char** argv, int& i, Options& o) {
@@ -104,6 +118,13 @@ bool parseFlag(int argc, char** argv, int& i, Options& o) {
     }
     if (flag == "--equity-seeds" && one) {
         return parse(argv[++i], o.equitySeeds) && o.equitySeeds >= 0 && o.equitySeeds <= 64;
+    }
+    if (flag == "--zoom" && i + 4 < argc) {
+        o.zoom = parseReal(argv[i + 1], o.zoomX) && parseReal(argv[i + 2], o.zoomZ) &&
+                 parseReal(argv[i + 3], o.zoomWidthKm) && parseReal(argv[i + 4], o.zoomHeightKm) &&
+                 o.zoomWidthKm > 0.0 && o.zoomHeightKm > 0.0;
+        i += 4;
+        return o.zoom;
     }
     if (flag == "--world" && i + 2 < argc) {
         const bool ok = parse(argv[i + 1], o.world.x) && parse(argv[i + 2], o.world.z);
@@ -214,6 +235,16 @@ bool writeImages(const Options& o, const terrain::PlanetLevel& level,
     return true;
 }
 
+// ridges_zoom.png and compartments_zoom.png of the window.
+bool writeZoom(const Options& o, const terrain::PlanetLevel& level,
+               const st::ExpansionTerrain& terrain, const terrain::PlanetWindow& w, Report& r) {
+    r.add("zoom: %d x %d cells from the column %d and the row %d\n", w.width, w.height, w.i0, w.j0);
+    return terrain::writePng(o.directory / "ridges_zoom.png",
+                             terrain::renderRidgesZoom(level, terrain, w)) &&
+           terrain::writePng(o.directory / "compartments_zoom.png",
+                             terrain::renderCompartmentsZoom(level, terrain, w));
+}
+
 bool writeReport(const Options& o, const Report& r) {
     std::ofstream out(o.directory / "settlement.txt", std::ios::binary | std::ios::trunc);
     out << r.text();
@@ -272,10 +303,18 @@ int run(const Options& o) {
     const st::ExpansionTerrain terrain =
         st::buildExpansionTerrain(level, maps, data.config, o.seed, o.threads);
     settlement_tool::reportTerrain(terrain, since(start), r);
+    settlement_tool::reportRidges(level, terrain, r);
     settlement_tool::reportCuts(st::climateCuts(level, *maps.land, data.config.borders), r);
+    const terrain::PlanetWindow window =
+        terrain::planetWindow(level.grid(), o.zoomX, o.zoomZ, o.zoomWidthKm, o.zoomHeightKm);
+    if (o.zoom && !writeZoom(o, level, terrain, window, r)) {
+        return EXIT_FAILURE;
+    }
     for (const std::string& preset : presets) {
         if (!settlement_tool::runPreset(level, maps, suitability, terrain, data,
-                                        {preset, o.seed, o.threads, o.directory, o.width}, r)) {
+                                        {preset, o.seed, o.threads, o.directory, o.width,
+                                         o.zoom ? &window : nullptr},
+                                        r)) {
             std::fprintf(stderr, "Cannot write the files of %s into %s\n", preset.c_str(),
                          o.directory.string().c_str());
             return EXIT_FAILURE;
@@ -289,7 +328,8 @@ void printUsage(const char* program) {
     std::fprintf(stderr,
                  "Usage: %s <output-dir> [--planet <file>] [--rebuild-planet] [--seed <seed>] "
                  "[--world <x> <z>] [--cell <meters>] [--threads <n>] [--data <dir>] "
-                 "[--width <pixels>] [--equity-seeds <n>] [--preset <id>|all]\n",
+                 "[--width <pixels>] [--equity-seeds <n>] [--preset <id>|all] "
+                 "[--zoom <x> <z> <width-km> <height-km>]\n",
                  program);
 }
 

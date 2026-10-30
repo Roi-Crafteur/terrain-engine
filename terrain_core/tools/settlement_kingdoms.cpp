@@ -74,6 +74,15 @@ void reportGoodWorld(const st::SettlementData& data, const st::Kingdoms& k, Repo
           "land (%zu cells): %.1f %% held, %.1f %% by peoples that do not like it\n",
           s.capitalFails, verdict(s.capitalFails == 0), s.hostileCells, 100.0 * s.hostileHeld,
           100.0 * s.hostileUnliked);
+    const st::MassifStats& m = s.massifs;
+    r.add("  mountains: %zu massifs of at least 25 cells (%zu cells): %.1f %% of their land held; "
+          "%zu massifs (%.1f %% of their land) held by two states or more, %zu of them (%.1f %%) "
+          "with two states meeting on a ridge; borders along the foot of a massif held by no one: "
+          "%.1f %% of the land borders, %.1f %% of them natural\n",
+          m.massifs, m.cells, 100.0 * share(m.held, m.cells), m.shared,
+          100.0 * share(m.sharedCells, m.cells), m.ridgeMeet,
+          100.0 * share(m.ridgeMeetCells, m.cells),
+          100.0 * share(m.footEdges, b.edges), 100.0 * share(m.footNatural, m.footEdges));
     r.add("  climate cuts: %.2f %% of the border edges within a cell of a cut (%.2f %% of all the "
           "land edges), %zu border edges on a cut\n",
           100.0 * share(b.nearCuts, b.edges), 100.0 * share(b.landEdgesNearCuts, b.landEdges),
@@ -126,6 +135,12 @@ bool runPreset(const terrain::PlanetLevel& level, const st::SettlementMaps& maps
     reportStates(data, k, r);
     reportGoodWorld(data, k, r);
     const int scale = terrain::planetImageScale(level.grid(), run.width);
+    if (run.zoom != nullptr &&
+        !terrain::writePng(run.directory / ("kingdoms_" + run.preset + "_zoom.png"),
+                           terrain::renderKingdomsZoom(level, terrain, k, data.config.borders,
+                                                       *run.zoom))) {
+        return false;
+    }
     return writeCapitals(run, maps, data, k) &&
            terrain::writePng(
                run.directory / ("kingdoms_" + run.preset + ".png"),

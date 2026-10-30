@@ -18,6 +18,7 @@ target_sources(terrain_core PRIVATE
     src/generation/settlement/kingdoms.cpp
     src/generation/settlement/map_influences.cpp
     src/generation/settlement/map_inputs.cpp
+    src/generation/settlement/massifs.cpp
     src/generation/settlement/people.cpp
     src/generation/settlement/preference.cpp
     src/generation/settlement/resource_def.cpp
@@ -31,11 +32,12 @@ target_sources(terrain_core PRIVATE
     src/generation/settlement/world_preset.cpp
 )
 # The PNG control images of the maps (io/: no Unreal wrapper).
-target_sources(terrain_core PRIVATE src/io/settlement_png.cpp src/io/settlement_png_kingdoms.cpp)
+target_sources(terrain_core PRIVATE src/io/settlement_png.cpp src/io/settlement_png_kingdoms.cpp
+                                    src/io/settlement_png_zoom.cpp)
 
 # terrain_export_settlement <output-dir> [--planet <file>] [--rebuild-planet] [--seed <seed>]
 #     [--world <x> <z>] [--cell <meters>] [--threads <n>] [--data <dir>] [--width <pixels>]
-#     [--equity-seeds <n>] [--preset <id>|all]
+#     [--equity-seeds <n>] [--preset <id>|all] [--zoom <x> <z> <width-km> <height-km>]
 add_executable(terrain_export_settlement tools/export_settlement.cpp tools/settlement_kingdoms.cpp
                                          tools/settlement_report.cpp
                                          tools/process_memory.cpp)

@@ -108,6 +108,7 @@ KingdomStats kingdomStats(const ExpansionTerrain& terrain,
     st.hostileHeld = heldHostile / n;
     st.hostileUnliked = unliked / n;
     st.borders = borderStats(terrain, owner, cuts, data.config.borders);
+    st.massifs = massifStats(terrain, owner, data.config.borders);
     return st;
 }
 

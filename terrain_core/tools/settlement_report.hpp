@@ -3,6 +3,7 @@
 // The report of terrain_export_settlement: printed as it goes and kept for settlement.txt.
 
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/settlement/borders.hpp"
 #include "terrain/generation/settlement/expansion.hpp"
 #include "terrain/generation/settlement/settlement_data.hpp"
@@ -40,8 +41,8 @@ void reportMaps(const terrain::settlement::SettlementMaps& m,
 
 // The roughness of about 2,000 land cells against the spread of the real heights of 6 x 6 points
 // in each (Spearman).
-void reportRoughness(const terrain::Heightfield& field, const terrain::settlement::SettlementMaps& m,
-                     Report& r);
+void reportRoughness(const terrain::Heightfield& field,
+                     const terrain::settlement::SettlementMaps& m, Report& r);
 
 // The networks of seeds seed .. seed + count - 1 over the terrain models of the maps: the share
 // of their land nodes and of their line points on each model against its share of the land, and
@@ -58,6 +59,11 @@ void reportSuitability(const terrain::settlement::SuitabilityMaps& s,
 // The terrain of the expansion: its time, its memory, the share of the land under rivers (by
 // class), lakes, barrier models, the ridge edges, the sea cells of the straits.
 void reportTerrain(const terrain::settlement::ExpansionTerrain& t, double seconds, Report& r);
+
+// The ridge edges: how many lie on a crest line (the land falls on both sides) and how many on a
+// slope, and the share of the massifs of mountains touching a ridge edge, a crest one.
+void reportRidges(const terrain::PlanetLevel& level,
+                  const terrain::settlement::ExpansionTerrain& t, Report& r);
 
 // The cuts of the climate found on the rainfall, their latitudes and jumps.
 void reportCuts(const std::vector<terrain::settlement::ClimateCut>& cuts, Report& r);

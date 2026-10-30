@@ -37,6 +37,7 @@ struct KingdomStats {
     double hostileHeld = 0.0;
     double hostileUnliked = 0.0;
     BorderStats borders;
+    MassifStats massifs;
 };
 
 struct KingdomTimings {

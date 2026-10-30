@@ -51,6 +51,41 @@ enum class SettlementPalette : std::uint8_t {
                                    const settlement::Kingdoms& kingdoms,
                                    const settlement::BorderRule& rule, int scale);
 
+// Whether the land falls on both sides of the edge between the land cell and its neighbor east
+// (or south): the cell before it lower than it, the cell after the neighbor lower than the
+// neighbor. A crest line, not a slope.
+[[nodiscard]] bool crestEdge(const PlanetLevel& level, std::size_t cell, bool east);
+
+// A window of the planet grid drawn at one cell per pixel: the columns i0 .. i0 + width - 1 and
+// the rows j0 .. j0 + height - 1, wrapped (settlement_png_zoom.cpp).
+struct PlanetWindow {
+    int i0 = 0;
+    int j0 = 0;
+    int width = 0;
+    int height = 0;
+};
+
+// The window of about widthKm x heightKm around the point (x, z) of the engine.
+[[nodiscard]] PlanetWindow planetWindow(const PlanetGrid& grid, double x, double z,
+                                        double widthKm, double heightKm);
+// The kingdoms of a window, as renderKingdoms draws the whole world, at one cell per pixel.
+[[nodiscard]] Image renderKingdomsZoom(const PlanetLevel& level,
+                                       const settlement::ExpansionTerrain& terrain,
+                                       const settlement::Kingdoms& kingdoms,
+                                       const settlement::BorderRule& rule,
+                                       const PlanetWindow& window);
+// The ridges of a window: the shaded relief, the rivers (blue, brighter by class), the lakes, the
+// massifs of barrier models (brown) and the hostile land (orange) tinted, the cells with a ridge
+// edge east or south: white where the land falls on both sides of the edge (a crest line), pink
+// where it does not (on a slope).
+[[nodiscard]] Image renderRidgesZoom(const PlanetLevel& level,
+                                     const settlement::ExpansionTerrain& terrain,
+                                     const PlanetWindow& window);
+// The compartments of a window, one color each, over the limits drawn as renderRidgesZoom does.
+[[nodiscard]] Image renderCompartmentsZoom(const PlanetLevel& level,
+                                           const settlement::ExpansionTerrain& terrain,
+                                           const PlanetWindow& window);
+
 // Writes settlement_<map>.png for roughness, water_km, terrain_models, arable, food, danger,
 // prana, mana, mana_network, habitability, and resource_<id>.png for each resource, into
 // directory (created if needed), at most maxWidth pixels wide. Returns false if a file cannot be

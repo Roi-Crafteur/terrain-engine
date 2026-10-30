@@ -42,9 +42,10 @@ target_compile_definitions(settlement_world_test PRIVATE
 # The tool on a small world: the maps, the report and the images.
 add_test(NAME export_settlement_smoke
     COMMAND terrain_export_settlement ${CMAKE_BINARY_DIR}/settlement_smoke --world 2097152 1048576
-            --cell 16384 --threads 2 --width 128)
+            --cell 16384 --threads 2 --width 128 --preset all --zoom 0 0 800 400)
 set_tests_properties(export_settlement_smoke PROPERTIES
-    PASS_REGULAR_EXPRESSION "settlement maps in .*Spearman .*images in")
+    PASS_REGULAR_EXPRESSION
+    "Spearman .*images in .*zoom: 49 x 24 cells.*preset civilized.*peak resident")
 add_test(NAME export_settlement_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_settlement>
             -DOUT=${CMAKE_BINARY_DIR}/settlement_bad_args
