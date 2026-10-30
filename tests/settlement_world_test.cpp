@@ -229,9 +229,11 @@ void testEquity(const World& w, const st::SettlementMaps& m) {
         std::printf("  %-10s land %5.1f %%, lines %5.1f %%, nodes %5.1f %%\n",
                     w.data.config.terrainModels[k].id.c_str(), 100.0 * land[k], 100.0 * l,
                     100.0 * n);
+        // At most 3 points away on every terrain of at least 5 % of the land: the magic
+        // favours no terrain, hence no people (docs/PEUPLEMENT.md, section 4).
         if (land[k] >= 0.05) {
-            TEST_CHECK(std::abs(l - land[k]) <= std::max(0.03, 0.3 * land[k]));
-            TEST_CHECK(std::abs(n - land[k]) <= std::max(0.03, 0.3 * land[k]));
+            TEST_CHECK(std::abs(l - land[k]) <= 0.03);
+            TEST_CHECK(std::abs(n - land[k]) <= 0.03);
         }
     }
     TEST_CHECK(allLines > 10000.0 && allNodes > 1000.0);

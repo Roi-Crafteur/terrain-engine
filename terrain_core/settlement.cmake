@@ -23,9 +23,11 @@ target_sources(terrain_core PRIVATE
 # The PNG control images of the maps (io/: no Unreal wrapper).
 target_sources(terrain_core PRIVATE src/io/settlement_png.cpp)
 
-# terrain_export_settlement <output-dir> [--planet <file>] [--seed <seed>] [--world <x> <z>]
-#     [--cell <meters>] [--threads <n>] [--data <dir>] [--width <pixels>]
-add_executable(terrain_export_settlement tools/export_settlement.cpp tools/process_memory.cpp)
+# terrain_export_settlement <output-dir> [--planet <file>] [--rebuild-planet] [--seed <seed>]
+#     [--world <x> <z>] [--cell <meters>] [--threads <n>] [--data <dir>] [--width <pixels>]
+#     [--equity-seeds <n>]
+add_executable(terrain_export_settlement tools/export_settlement.cpp tools/settlement_report.cpp
+                                         tools/process_memory.cpp)
 target_link_libraries(terrain_export_settlement PRIVATE terrain_core terrain_warnings)
 target_compile_definitions(terrain_export_settlement PRIVATE
     TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")

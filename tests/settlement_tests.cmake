@@ -49,3 +49,8 @@ add_test(NAME export_settlement_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_settlement>
             -DOUT=${CMAKE_BINARY_DIR}/settlement_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_settlement_bad_args.cmake)
+# A planet file given with --planet is never written in silence.
+add_test(NAME export_settlement_planet_file
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_settlement>
+            -DDIR=${CMAKE_BINARY_DIR}/settlement_planet_file
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_settlement_planet_file.cmake)
