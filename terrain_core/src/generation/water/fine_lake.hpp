@@ -45,6 +45,16 @@ public:
     // Whether (x, z), at any image, lies in a square of the raster with a node under the lake.
     [[nodiscard]] bool covers(double x, double z) const;
     [[nodiscard]] std::size_t bytes() const { return wet_.size() * sizeof(std::uint64_t); }
+    // The box of the squares it may cover (covers is false out of it), at the images nearest to
+    // its first node; empty (x1 < x0) when it holds no water.
+    [[nodiscard]] LakeWindow window() const {
+        if (wet_.empty()) {
+            return {0.0, 0.0, -1.0, -1.0};
+        }
+        return {x0_ - step_, z0_ - step_, x0_ + nx_ * step_, z0_ + nz_ * step_};
+    }
+    [[nodiscard]] double periodX() const { return periodX_; }
+    [[nodiscard]] double periodZ() const { return periodZ_; }
 
 private:
     [[nodiscard]] bool wet(int i, int j) const;

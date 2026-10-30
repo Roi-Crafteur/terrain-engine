@@ -73,6 +73,8 @@ struct Heightfield::Memos {
     ravines::Memo gullies;           // the couloirs of the gorges (applyHydrology)
     noise::FbmOctaves::Memo grain;   // and the grain of their rock
     Hydrology::Region water;
+    // The relief without the coasts (Heightfield::leaveValleys reads both).
+    bool bare = false;
 };
 
 } // namespace terrain

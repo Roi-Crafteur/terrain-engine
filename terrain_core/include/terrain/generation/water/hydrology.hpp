@@ -9,7 +9,9 @@
 // valley under the mountains (its bed at most PlanetBreachParams::mountainDepth below the relief,
 // else a lake held by the sill: the planet level keeps those), a narrow gorge where it cuts deep
 // into high ground, its falls where the relief drops at once. Outside the valleys nothing moves:
-// the Heightfield of the world (Heightfield::withHydrology) keeps every bit of the relief there.
+// the Heightfield of the world (Heightfield::withHydrology) keeps every bit of the relief there,
+// but in the band of the coasts (agent 33), where the coastal relief fades out toward the relief
+// without the coasts as the valleys come near (Hydrology::clearance).
 // The lakes are flat at the levels of the planet level (their spill level, or lower where the
 // climate dries them: salt lakes), over their cells and those around them.
 //
@@ -166,6 +168,15 @@ public:
     // whose box and relief hold the point and its ground, or null.
     [[nodiscard]] RiverCarve riversAt(double x, double z, double ground,
                                       Region* region = nullptr) const;
+    // How far the valleys, ponds and lakes keep from the canonical (x, z) where the relief is
+    // ground meters high, meters (horizontal or vertical, the least of them): where it is above 0,
+    // riversAt(x, z, ground) neither carves nor fills nor holds a bank or a pond, and lakeAt holds
+    // no water; it falls continuously to 0 toward them (river_clearance.cpp). The coasts (agent 33)
+    // fade out with it: the corridors of the rivers keep the relief they were found over.
+    [[nodiscard]] double clearance(double x, double z, double ground) const;
+    // Whether a reach or a lake may reach the canonical (x, z): where it is false, clearance is
+    // infinite whatever the relief (a cheap test of the reaches near and of the lakes around).
+    [[nodiscard]] bool mayMatter(double x, double z) const;
     // The lake over the canonical (x, z) where the relief (before the valleys of the rivers) is
     // ground meters high. region: as for riversAt.
     [[nodiscard]] LakeWater lakeAt(double x, double z, double ground,

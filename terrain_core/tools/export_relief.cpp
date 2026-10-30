@@ -3,13 +3,13 @@
 // chain, a plain and a coast found on the planet (zoom_<site>_<km>km.png) and on the places
 // given by --at (fixed places, to compare reliefs at the same points), and the figures of
 // terrain::measureRelief, measureLocalRelief, measureTerrain and measurePeaks (printed, and
-// written to stats.txt). --without ravines or --without lively switches off a step of the relief of the
-// geography (GeographyParams::ravines, livelyPlains), to compare them. Without the optional
-// arguments: seed 20261019, the default relief, cells of 16,384 m for the planet, zooms of
-// 2,048 px, all the hardware threads, the default world.
+// written to stats.txt). --without ravines, --without lively or --without coasts switches off a
+// step of the relief of the geography (GeographyParams::ravines, livelyPlains, coasts), to compare
+// them. Without the optional arguments: seed 20261019, the default relief, cells of 16,384 m for
+// the planet, zooms of 2,048 px, all the hardware threads, the default world.
 // Usage: terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
 //        [zoom-pixels] [threads] [world-x] [world-z] [--at <name> <x> <z>]...
-//        [--without ravines|lively]...
+//        [--without ravines|lively|coasts]...
 
 #include "terrain/generation/planet/planet_params.hpp"
 #include "terrain/io/relief_png.hpp"
@@ -54,6 +54,7 @@ struct Options {
     std::vector<Place> places;
     bool ravines = true; // GeographyParams::ravines, livelyPlains
     bool lively = true;
+    bool coasts = true; // GeographyParams::coasts
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     std::string relief = "default";
     double cellSize = 16384.0;
@@ -79,6 +80,7 @@ terrain::HeightfieldParams reliefParams(const Options& options) {
     }
     params.geography.ravines = options.ravines;
     params.geography.livelyPlains = options.lively;
+    params.geography.coasts = options.coasts;
     return params;
 }
 
@@ -114,12 +116,14 @@ bool validName(const std::string& name) {
 bool parseWithout(int argc, char** argv, int k, Options& options) {
     const bool ravines = k + 1 < argc && std::strcmp(argv[k + 1], "ravines") == 0;
     const bool lively = k + 1 < argc && std::strcmp(argv[k + 1], "lively") == 0;
-    if (!ravines && !lively) {
-        std::fprintf(stderr, "Invalid step: expected --without ravines or lively\n");
+    const bool coasts = k + 1 < argc && std::strcmp(argv[k + 1], "coasts") == 0;
+    if (!ravines && !lively && !coasts) {
+        std::fprintf(stderr, "Invalid step: expected --without ravines, lively or coasts\n");
         return false;
     }
     options.ravines = options.ravines && !ravines;
     options.lively = options.lively && !lively;
+    options.coasts = options.coasts && !coasts;
     return true;
 }
 
@@ -396,7 +400,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [seed] [default|planetary|legacy|geography] "
                      "[cell-size] [zoom-pixels] [threads] [world-x] [world-z] "
-                     "[--at <name> <x> <z>]... [--without ravines|lively]...\n",
+                     "[--at <name> <x> <z>]... [--without ravines|lively|coasts]...\n",
                      argv[0]);
         return EXIT_FAILURE;
     }

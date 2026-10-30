@@ -159,7 +159,8 @@ public:
 
     // The Heightfield of the world (phase 11B): this relief with the water of hydrology, built
     // over it: the valleys of its rivers carved, the water of its rivers and lakes. The same bits
-    // as this relief wherever no valley lies.
+    // as this relief wherever no valley lies, but in the band of the coasts near the valleys,
+    // where its coasts fade out to the relief without them (leaveValleys).
     [[nodiscard]] Heightfield withHydrology(std::shared_ptr<const Hydrology> hydrology) const;
     // The water of the world, or nullptr for the relief alone.
     [[nodiscard]] const Hydrology* hydrology() const { return hydrology_.get(); }
@@ -187,6 +188,14 @@ private:
     };
     [[nodiscard]] CoastPoint coastPointAt(double x, double z, const GeographySample& g,
                                           Memos* memos) const;
+    // The weights of the kinds of coast at a canonical point of the band (coast_kinds).
+    [[nodiscard]] std::array<float, kCoastKindCount>
+    coastKindsAt(double x, double z, const GeographySample& g, Memos* memos) const;
+    // Near the rivers, in the band of the coasts: the relief s of the canonical (x, z) faded from
+    // its coasts to the relief without them as the valleys, ponds and lakes come near
+    // (Hydrology::clearance), before their water: their corridors keep the relief they were found
+    // over, bit for bit (heightfield_coast.cpp).
+    void leaveValleys(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] static std::shared_ptr<const Coasts> makeCoasts(std::uint64_t seed,
                                                                   const WorldSize& world);
 

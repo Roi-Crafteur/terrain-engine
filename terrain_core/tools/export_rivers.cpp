@@ -8,9 +8,13 @@
 // mountains at (7,340,032, -7,143,424) (map_high_256km.png) and a lake of a high basin there;
 // around (-6,291,456, 196,608) a river at the bottom of a carved valley, a gorge through a crest
 // and a waterfall; and a lowland river with its meanders.
+// --tilted-view gives the tilt of the view too (the tangent of the elevation of its middle row);
+// --without coasts draws the world without the coasts of agent 33 (the same planet level).
 // Usage: terrain_export_rivers <output-dir> [--planet <file>] [--seed <seed>] [--world <x> <z>]
 //        [--threads <n>] [--width <pixels>] [--pixels <map-pixels>] [--map <name> <x> <z>]...
 //        [--view <name> <x> <z> <heading-degrees> <above-meters>]...
+//        [--tilted-view <name> <x> <z> <heading-degrees> <above-meters> <tilt>]...
+//        [--without coasts]
 
 #include "rivers_places.hpp"
 
@@ -118,7 +122,9 @@ int main(int argc, char** argv) {
                      "Usage: %s <output-dir> [--planet <file>] [--seed <seed>] [--world <x> <z>] "
                      "[--threads <n>] [--width <pixels>] [--pixels <map-pixels>] "
                      "[--map <name> <x> <z>]... "
-                     "[--view <name> <x> <z> <heading-degrees> <above-meters>]...\n",
+                     "[--view <name> <x> <z> <heading-degrees> <above-meters>]... "
+                     "[--tilted-view <name> <x> <z> <heading-degrees> <above-meters> <tilt>]... "
+                     "[--without coasts]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -132,7 +138,9 @@ int main(int argc, char** argv) {
         o.planet.empty() ? o.directory / terrain::kPlanetFileName : o.planet;
     auto planet = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
         planetFile, o.seed, terrain::HeightfieldParams{}, params, o.world, &built));
-    const terrain::Heightfield relief(o.seed, terrain::HeightfieldParams{}, o.world);
+    terrain::HeightfieldParams reliefParams;
+    reliefParams.geography.coasts = o.coasts;
+    const terrain::Heightfield relief(o.seed, reliefParams, o.world);
     auto hydrology = std::make_shared<const terrain::Hydrology>(o.seed, relief, planet);
     const terrain::Heightfield field = relief.withHydrology(hydrology);
     Report r;

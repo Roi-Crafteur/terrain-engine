@@ -227,8 +227,10 @@ float Heightfield::heightAt(double x, double z) const {
 HeightSample Heightfield::sampleAt(double x, double z) const {
     HeightSample s = reliefWith(x, z, nullptr);
     if (hydrology_) {
-        applyHydrology(noise::wrapCanonical(x, world_.x), noise::wrapCanonical(z, world_.z), s,
-                       nullptr);
+        const double cx = noise::wrapCanonical(x, world_.x);
+        const double cz = noise::wrapCanonical(z, world_.z);
+        leaveValleys(cx, cz, s, nullptr);
+        applyHydrology(cx, cz, s, nullptr);
     }
     return s;
 }

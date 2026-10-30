@@ -249,8 +249,10 @@ void testLakes(const World& w) {
                 if (s.water == terrain::WaterKind::Lake ||
                     s.water == terrain::WaterKind::SaltLake) {
                     ++lake;
+                    // Over the relief the lakes were found over (without its coasts, which keep
+                    // off them: Hydrology::clearance).
                     const terrain::LakeWater l =
-                        w.hydrology->lakeAt(x, z, w.relief.heightAt(x, z));
+                        w.hydrology->lakeAt(x, z, w.hydrology->relief().heightAt(x, z));
                     flat = flat && l.lake >= 0 && s.waterLevel == l.level;
                 }
             }
@@ -306,7 +308,9 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
         sum.add(static_cast<std::uint64_t>(s.water), 1);
         sum.add(s.waterLevel);
     }
-    constexpr std::uint64_t kExpected = 0x3F29B8BF9DA8A0BBULL;
+    // The coasts (agent 33) change 1,702 of its 19,208 points, all in their band, out of the
+    // corridors of the rivers (0x3F29B8BF9DA8A0BB without them).
+    constexpr std::uint64_t kExpected = 0x453FF9099A0DA9AFULL;
     std::printf("{\"hydrology of the small world\", 0x%016llXULL}%s\n",
                 static_cast<unsigned long long>(sum.value()),
                 sum.value() == kExpected ? "" : "  (differs)");

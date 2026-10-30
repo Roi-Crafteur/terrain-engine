@@ -4,12 +4,15 @@
 // x1.3 on land and in mountains, at most x2 near the rivers. Timed on one thread after a first
 // pass that builds the courses of the reaches (their cost apart), the least of kRuns runs of
 // each, alternated. (The small world has smaller valleys than the default one, with fewer gorges:
-// its ratios near the rivers are lower.)
+// its ratios near the rivers are lower.) The places keep out of the band of the coasts (agent 33):
+// there the coasts fade out to the relief without them near the rivers, a cost of their own
+// (coast_cost_test).
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include "coast_zone_support.hpp"
 #include "planet_golden_support.hpp"
 #include "test_assert.hpp"
 
@@ -75,9 +78,16 @@ double shareOf(std::uint64_t stream, std::uint64_t k) {
     return static_cast<double>(bits >> 11) * 0x1.0p-53;
 }
 
-// kPatches places of each kind: on land (no water on the relief), in mountains (their mask above
-// one half), and within kNearRiver meters of a point of a reach near a place on land or in
-// mountains, where the water carves the relief.
+// Out of the band of the coasts by kOffCoast meters of coast signal (with the reach of a tile).
+constexpr double kOffCoast = 5'000.0;
+
+bool offCoast(const World& w, const Place& p) {
+    return coast_zone::coastSignal(w.relief, p.x, p.z) >= coast_zone::kBandLand + kOffCoast;
+}
+
+// kPatches places of each kind out of the band of the coasts: on land (no water on the relief), in
+// mountains (their mask above one half), and within kNearRiver meters of a point of a reach near
+// a place on land or in mountains, where the water carves the relief.
 std::array<Kind, 3> placesOf(const World& w) {
     std::array<Kind, 3> kinds{Kind{"land", 1.3, {}}, Kind{"mountains", 1.3, {}},
                               Kind{"within 1 km of a river", 2.0, {}}};
@@ -87,7 +97,7 @@ std::array<Kind, 3> placesOf(const World& w) {
          ++k) {
         const Place p{(shareOf(0, k) - 0.5) * width, (shareOf(1, k) - 0.5) * height};
         const terrain::HeightSample s = w.relief.sampleAt(p.x, p.z);
-        if (s.water != terrain::WaterKind::None) {
+        if (s.water != terrain::WaterKind::None || !offCoast(w, p)) {
             continue;
         }
         if (kinds[0].at.size() < kPatches) {
@@ -115,8 +125,8 @@ std::array<Kind, 3> placesOf(const World& w) {
             const double r = kNearRiver * shareOf(5, k * 16 + n);
             const Place at{terrain::wrapCoordinate(p.x + r * std::cos(angle), width),
                            terrain::wrapCoordinate(p.z + r * std::sin(angle), height)};
-            if (!(w.field.sampleAt(at.x, at.z).height <
-                  w.relief.sampleAt(at.x, at.z).height - 0.01f)) {
+            if (!offCoast(w, at) || !(w.field.sampleAt(at.x, at.z).height <
+                                      w.relief.sampleAt(at.x, at.z).height - 0.01f)) {
                 continue;
             }
             kinds[2].at.push_back(at);

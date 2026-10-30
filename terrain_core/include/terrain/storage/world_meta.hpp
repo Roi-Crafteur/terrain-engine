@@ -27,7 +27,8 @@ inline constexpr std::uint32_t kSectionFormatVersion = 2;
 // 3: phase 11R (the planetary geography: continents, plate belts, provinces, drained valleys).
 // 4: phase 11B (the sea decided by the geography, depressions below the sea level, the water:
 // rivers carved, lakes, falls).
-inline constexpr std::uint32_t kGeneratorVersion = 4;
+// 5: the coasts of agent 33 (cliffs, mountains plunging into the sea, near sea floors).
+inline constexpr std::uint32_t kGeneratorVersion = 5;
 
 // Generator of the worlds saved before the world format (TMOD files): the one up to phase 8C-2.
 inline constexpr std::uint32_t kLegacyGeneratorVersion = 1;
