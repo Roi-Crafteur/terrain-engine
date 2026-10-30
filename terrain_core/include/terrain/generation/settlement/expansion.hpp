@@ -38,6 +38,7 @@ struct ExpansionTerrain {
     std::vector<std::uint8_t> mask;    // by land slot: the bits above
     std::vector<std::uint8_t> ford;    // by land slot: the probable ford, 0 to 255
     std::vector<std::uint8_t> coastKm; // by land slot: to the sea (255: far)
+    std::vector<std::uint8_t> hostile; // by land slot: 1 on hostile land (GoodWorldRule)
     // The sea cells a state may cross (none when the sea is forbidden), numbered as land.
     std::shared_ptr<const planet::LandIndex> straits;
 
@@ -45,10 +46,12 @@ struct ExpansionTerrain {
     [[nodiscard]] std::size_t memoryBytes() const;
 };
 
-// The terrain of the expansion of the maps of a level. The same bits whatever threads.
+// The terrain of the expansion of the maps of a level, its costs made irregular by the noise of
+// worldSeed (ExpansionRule::costNoise). The same bits whatever threads.
 [[nodiscard]] ExpansionTerrain buildExpansionTerrain(const PlanetLevel& level,
                                                      const SettlementMaps& maps,
-                                                     const SettlementConfig& config, int threads);
+                                                     const SettlementConfig& config,
+                                                     std::uint64_t worldSeed, int threads);
 
 struct ExpansionResult {
     std::vector<std::uint16_t> owner;   // by land slot: 0 wild, s + 1 for the state s

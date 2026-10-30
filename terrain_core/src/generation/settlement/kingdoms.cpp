@@ -61,17 +61,9 @@ bool lowerTargets(std::vector<StatePlan>& states, const std::vector<std::size_t>
     return over;
 }
 
-bool hostile(const PlanetLevel& level, const SettlementMaps& maps, const SettlementConfig& c,
-             std::size_t cell, std::size_t slot) {
-    const std::string& model = c.terrainModels[maps.terrainModel.values()[slot]].id;
-    const auto& list = c.goodWorld.hostileModels;
-    return std::find(list.begin(), list.end(), model) != list.end() ||
-           level.elevation(cell) >= c.goodWorld.highMountainM;
-}
-
 } // namespace
 
-KingdomStats kingdomStats(const PlanetLevel& level, const ExpansionTerrain& terrain,
+KingdomStats kingdomStats(const ExpansionTerrain& terrain,
                           const SettlementMaps& maps, const SuitabilityMaps& suitability,
                           const SettlementData& data, const std::vector<StatePlan>& states,
                           const std::vector<std::uint16_t>& owner,
@@ -98,9 +90,9 @@ KingdomStats kingdomStats(const PlanetLevel& level, const ExpansionTerrain& terr
     }
     double heldHostile = 0.0;
     double unliked = 0.0;
-    maps.land->forEachLand([&](std::size_t cell, std::size_t slot) {
-        if (!hostile(level, maps, data.config, cell, slot)) {
-            return;
+    for (std::size_t slot = 0; slot < owner.size(); ++slot) {
+        if (terrain.hostile[slot] == 0) {
+            continue;
         }
         ++st.hostileCells;
         if (owner[slot] != 0) {
@@ -111,7 +103,7 @@ KingdomStats kingdomStats(const PlanetLevel& level, const ExpansionTerrain& terr
                            ? 1.0
                            : 0.0;
         }
-    });
+    }
     const double n = std::max<double>(1.0, static_cast<double>(st.hostileCells));
     st.hostileHeld = heldHostile / n;
     st.hostileUnliked = unliked / n;
@@ -176,7 +168,7 @@ Kingdoms buildKingdoms(const PlanetLevel& level, const SettlementMaps& maps,
     k.timings.cleanup = since(start);
     start = Clock::now();
     k.cuts = climateCuts(level, *maps.land, c.borders);
-    k.stats = kingdomStats(level, terrain, maps, suitability, data, k.states, k.owner, k.cuts);
+    k.stats = kingdomStats(terrain, maps, suitability, data, k.states, k.owner, k.cuts);
     for (const Capital& capital : k.capitals.capitals) {
         k.stats.capitalFails += capital.topHabitability && capital.nearFreshWater ? 0 : 1;
     }

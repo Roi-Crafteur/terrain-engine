@@ -51,6 +51,7 @@ st::ExpansionTerrain grid(int nx, int nz, Land land) {
     t.mask.assign(cells.size(), 0);
     t.ford.assign(cells.size(), 0);
     t.coastKm.assign(cells.size(), 255);
+    t.hostile.assign(cells.size(), 0);
     return t;
 }
 
@@ -77,6 +78,12 @@ std::vector<st::StatePlan> plans(std::initializer_list<double> targets) {
         out.push_back({0, st::StateRank::Major, t});
     }
     return out;
+}
+
+// One state of that target from the cell (i, j).
+st::ExpansionResult alone(const st::ExpansionTerrain& t, const st::SuitabilityMaps& s,
+                          double target, int i, int j, double landCap = 1e9) {
+    return st::expand(t, s, rule(), plans({target}), {t.grid.index(i, j)}, landCap);
 }
 
 std::uint16_t ownerAt(const st::ExpansionTerrain& t, const st::ExpansionResult& r, int i, int j) {
@@ -142,6 +149,17 @@ void testCoastEdges() {
     TEST_CHECK(st::edgeKinds(t, slotAt(t, 13, 5), slotAt(t, 14, 5), true, rule) == st::kAlongCoast);
     TEST_CHECK(st::edgeKinds(t, slotAt(t, 14, 5), slotAt(t, 14, 6), false, rule) == 0);
     TEST_CHECK(st::edgeKinds(t, slotAt(t, 5, 5), slotAt(t, 6, 5), true, rule) == 0);
+    // The edge of a hostile land is natural; inside it, or between two lands merely less liked,
+    // it is not.
+    t.hostile[slotAt(t, 5, 10)] = 1;
+    t.hostile[slotAt(t, 6, 10)] = 1;
+    const auto kinds = [&](int i, int j, bool east) {
+        return st::edgeKinds(t, slotAt(t, i, j), slotAt(t, east ? i + 1 : i, east ? j : j + 1),
+                             east, rule);
+    };
+    TEST_CHECK(kinds(4, 10, true) == st::kAlongHostile);
+    TEST_CHECK(kinds(5, 10, true) == 0);
+    TEST_CHECK(kinds(5, 9, false) == st::kAlongHostile);
     std::vector<std::uint16_t> owner(t.mask.size(), 1); // one state up to the shore
     const st::BorderStats b = st::borderStats(t, owner, {}, rule);
     TEST_CHECK(b.edges == 0 && b.landEdges > 0);
@@ -152,7 +170,7 @@ void testCoastEdges() {
 void testTargetAndBarrier() {
     st::ExpansionTerrain open = grid(60, 60, [](int, int) { return true; });
     const st::SuitabilityMaps s = liked(open);
-    const st::ExpansionResult a = st::expand(open, s, rule(), plans({100}), {open.grid.index(30, 30)}, 1e9);
+    const st::ExpansionResult a = alone(open, s, 100, 30, 30);
     TEST_CHECK(a.cells[0] == 130);
     st::ExpansionTerrain ring = grid(60, 60, [](int, int) { return true; });
     for (int j = 24; j <= 36; ++j) {
@@ -162,13 +180,41 @@ void testTargetAndBarrier() {
             }
         }
     }
-    const st::ExpansionResult b = st::expand(ring, s, rule(), plans({100}), {ring.grid.index(30, 30)}, 1e9);
+    const st::ExpansionResult b = alone(ring, s, 100, 30, 30);
     std::printf("ring: %zu cells\n", b.cells[0]);
     TEST_CHECK(b.cells[0] >= 121 && b.cells[0] <= 130);
     TEST_CHECK(ownerAt(ring, b, 30, 37) == 0 && ownerAt(ring, b, 30, 36) == 1);
     // The landCap holds a state below its target.
-    const st::ExpansionResult c = st::expand(open, s, rule(), plans({100}), {open.grid.index(30, 30)}, 40.0);
+    const st::ExpansionResult c = alone(open, s, 100, 30, 30, 40.0);
     TEST_CHECK(c.cells[0] == 40);
+}
+
+// From 0.7 times its target a state crosses no barrier, and keeps the rivers along its land but
+// does not follow them: in a ring of rivers around 7 x 7 cells (49, and the 28 ring cells along
+// them, not the 4 corners: 77, at least 70 of a target of 100) it stops on the ring, below its
+// target; around 5 x 5 cells (25 + 20) it must cross to reach 70.
+st::ExpansionResult inRing(int inner) {
+    st::ExpansionTerrain t = grid(60, 60, [](int, int) { return true; });
+    const int low = 30 - inner / 2 - 1;
+    const int high = 30 + inner / 2 + 1;
+    for (int j = low; j <= high; ++j) {
+        for (int i = low; i <= high; ++i) {
+            if (i == low || i == high || j == low || j == high) {
+                t.mask[slotAt(t, i, j)] = 1;
+            }
+        }
+    }
+    return alone(t, liked(t), 100, 30, 30);
+}
+
+void testBarrierStop() {
+    const st::ExpansionTerrain open = grid(60, 60, [](int, int) { return true; });
+    const st::ExpansionResult seven = inRing(7);
+    std::printf("barrier stop: %zu cells in a ring around 7 x 7\n", seven.cells[0]);
+    TEST_CHECK(seven.cells[0] == 77);
+    TEST_CHECK(ownerAt(open, seven, 30, 35) == 0 && ownerAt(open, seven, 30, 34) == 1);
+    const st::ExpansionResult five = inRing(5);
+    TEST_CHECK(five.cells[0] >= 70 && ownerAt(open, five, 30, 34) == 1);
 }
 
 // A land the people cannot live on (below minSuitability) is never taken, even on the way.
@@ -180,7 +226,7 @@ void testUnlivable() {
             s.byPeople[0].values()[slotAt(t, i, j)] = 30; // about 0.12
         }
     }
-    const st::ExpansionResult r = st::expand(t, s, rule(), plans({600}), {t.grid.index(13, 10)}, 1e9);
+    const st::ExpansionResult r = alone(t, s, 600, 13, 10);
     bool beyond = false;
     for (int j = 0; j < 20; ++j) {
         for (int i = 23; i < 45; ++i) {
@@ -193,7 +239,9 @@ void testUnlivable() {
 // Two islands across a channel of width sea cells: the second is reached only over a strait.
 std::uint16_t across(int width, st::SeaCrossing sea, std::size_t& passages) {
     const st::ExpansionTerrain t =
-        grid(60, 20, [&](int i, int) { return (i >= 5 && i < 20) || (i >= 20 + width && i < 40 + width); });
+        grid(60, 20, [&](int i, int) {
+            return (i >= 5 && i < 20) || (i >= 20 + width && i < 40 + width);
+        });
     const st::SuitabilityMaps s = liked(t);
     st::ExpansionRule r = rule();
     r.sea = sea;
@@ -267,6 +315,7 @@ int main() {
     testRidgeBorder();
     testCoastEdges();
     testTargetAndBarrier();
+    testBarrierStop();
     testUnlivable();
     testStraits();
     testCleanup();

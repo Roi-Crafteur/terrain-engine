@@ -163,6 +163,9 @@ std::uint8_t edgeKinds(const ExpansionTerrain& t, std::size_t a, std::size_t b, 
     if (std::min(ca, cb) <= rule.coastKm && ca != cb) {
         kinds |= kAlongCoast;
     }
+    if (t.hostile[a] != t.hostile[b]) {
+        kinds |= kAlongHostile;
+    }
     return kinds;
 }
 
@@ -207,9 +210,11 @@ BorderStats borderStats(const ExpansionTerrain& t, const std::vector<std::uint16
             const bool states = owner[a] != 0 && owner[s] != 0;
             ++b.edges;
             b.natural += kinds != 0 ? 1 : 0;
-            b.river += (kinds & kAlongRiver) != 0 ? 1 : 0;
-            b.ridge += kinds == kAlongRidge || kinds == (kAlongRidge | kAlongCoast) ? 1 : 0;
-            b.coast += kinds == kAlongCoast ? 1 : 0;
+            const std::uint8_t first = kinds & static_cast<std::uint8_t>(-kinds); // lowest bit
+            b.river += first == kAlongRiver ? 1 : 0;
+            b.ridge += first == kAlongRidge ? 1 : 0;
+            b.coast += first == kAlongCoast ? 1 : 0;
+            b.hostile += first == kAlongHostile ? 1 : 0;
             b.betweenStates += states ? 1 : 0;
             b.naturalBetweenStates += states && kinds != 0 ? 1 : 0;
             b.nearCuts += near ? 1 : 0;

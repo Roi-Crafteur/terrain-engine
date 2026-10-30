@@ -31,8 +31,8 @@ struct KingdomStats {
     double largestPeople = 0.0;  // of the land held
     int largestPeopleIndex = -1;
     int capitalFails = 0; // outside the most habitable fifth, or far from fresh water
-    // The hostile land (GoodWorldRule): its cells, the share of them held, and held by a people
-    // that does not like them.
+    // The hostile land (ExpansionTerrain::hostile): its cells, the share of them held, and held by
+    // a people that does not like them.
     std::size_t hostileCells = 0;
     double hostileHeld = 0.0;
     double hostileUnliked = 0.0;
@@ -73,7 +73,7 @@ struct Kingdoms {
 
 // The figures of a good world for owners (by land slot) over the terrain, the people of each
 // state in states (all but capitalFails, which the capitals give).
-[[nodiscard]] KingdomStats kingdomStats(const PlanetLevel& level, const ExpansionTerrain& terrain,
+[[nodiscard]] KingdomStats kingdomStats(const ExpansionTerrain& terrain,
                                         const SettlementMaps& maps,
                                         const SuitabilityMaps& suitability,
                                         const SettlementData& data,

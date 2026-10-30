@@ -69,7 +69,7 @@ public:
             const std::size_t node = nodeOf(e.cell);
             const double held = static_cast<double>(out_.cells[e.state]);
             if (claimed(node) || held >= cap[e.state] ||
-                (e.barrier && held >= states_[e.state].targetCells)) {
+                (e.barrier && held >= rule_.barrierStop * states_[e.state].targetCells)) {
                 continue;
             }
             claim(node, e.state);
@@ -209,8 +209,8 @@ bool Expansion::stepTo(std::size_t from, int dx, int dz, int people, Step& step)
                   (diagonal ? kDiagonal : 1.0);
     // Half of the crossing of a river on entering it from a bank, half on leaving it to a bank:
     // a state on the river pays again to spill over the other bank. A state filling up to its
-    // barriers may take the rivers and the lakes along its land, never leave them for the land
-    // beyond: the water stays in it and the border runs along it.
+    // barriers may take the rivers and the lakes along its land, but neither leave them for the
+    // land beyond nor follow them away: the water along it stays in it, the border runs along it.
     bool barrier = false;
     const int into = is & kRiverBits;
     const int outOf = was & kRiverBits;
@@ -219,11 +219,13 @@ bool Expansion::stepTo(std::size_t from, int dx, int dz, int people, Step& step)
     } else if (outOf > 0 && into == 0) {
         cost += 0.5 * crossing(t_.land->slot(from), outOf);
         barrier = outOf >= rule_.barrierRiverClass;
+    } else if (outOf > 0) {
+        barrier = true; // following the river
     }
     if ((is & kLakeBit) != 0 && (was & kLakeBit) == 0) {
         cost += rule_.lakeCost;
     }
-    barrier = barrier || ((was & kLakeBit) != 0 && (is & kLakeBit) == 0);
+    barrier = barrier || (was & kLakeBit) != 0; // leaving or crossing a lake
     if (!diagonal && fromLand && ridge(from, dx, dz)) {
         cost += rule_.ridgeCost;
         barrier = true;

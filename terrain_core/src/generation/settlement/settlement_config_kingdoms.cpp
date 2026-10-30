@@ -95,9 +95,10 @@ CapitalRule readCapitals(const Fields& f) {
 }
 
 ExpansionRule readExpansion(const Fields& f) {
-    f.only({"preferenceWeight", "minCost", "penalties", "riverCrossing", "barrierRiverClass",
-            "barrierModels", "fordBonus", "fordMaxRoughness", "confluenceBonus", "lakeCost", "ridgeCost", "sea",
-            "seaCost", "straitCells", "minSuitability", "maxCost", "overflow", "maxPeopleShare",
+    f.only({"preferenceWeight", "minCost", "penalties", "costNoise", "riverCrossing",
+            "barrierRiverClass", "barrierModels", "fordBonus", "fordMaxRoughness",
+            "confluenceBonus", "lakeCost", "ridgeCost", "sea", "seaCost", "straitCells",
+            "minSuitability", "maxCost", "barrierStop", "overflow", "maxPeopleShare",
             "peopleReruns"});
     ExpansionRule r;
     r.preferenceWeight = f.numberIn("preferenceWeight", 0.0, 0.6);
@@ -108,6 +109,11 @@ ExpansionRule readExpansion(const Fields& f) {
     r.roughness = readPenalty(penalties, "roughness");
     r.aridity = readPenalty(penalties, "aridity");
     r.danger = penalties.numberIn("danger", 0.0, 1000.0);
+    const Fields noise = f.object("costNoise");
+    noise.only({"scaleKm", "octaves", "amplitude"});
+    r.costNoise.scaleKm = noise.numberIn("scaleKm", 8.0, 1000.0);
+    r.costNoise.octaves = noise.integer("octaves", 1, 4);
+    r.costNoise.amplitude = noise.numberIn("amplitude", 0.0, 0.9);
     const Fields crossing = f.object("riverCrossing");
     crossing.only({"river", "largeRiver", "majorRiver", "impassableRiver"});
     r.riverCrossing = {crossing.numberIn("river", 0.0, 1000.0),
@@ -130,6 +136,7 @@ ExpansionRule readExpansion(const Fields& f) {
     r.straitCells = f.integer("straitCells", 0, 16);
     r.minSuitability = f.numberIn("minSuitability", 0.0, 1.0);
     r.maxCost = f.numberIn("maxCost", 1.0, 1.0e7);
+    r.barrierStop = f.numberIn("barrierStop", 0.1, 1.0);
     r.overflow = f.numberIn("overflow", 1.0, 10.0);
     r.maxPeopleShare = f.numberIn("maxPeopleShare", 0.0, 1.0);
     r.peopleReruns = f.integer("peopleReruns", 0, 16);
@@ -157,7 +164,8 @@ GoodWorldRule readGoodWorld(const Fields& f, const std::vector<TerrainModel>& mo
     for (const std::string& id : r.hostileModels) {
         if (std::none_of(models.begin(), models.end(),
                          [&](const TerrainModel& m) { return m.id == id; })) {
-            f.fail(f.member("hostileModels"), "hostileModels", "unknown terrain model '" + id + "'");
+            f.fail(f.member("hostileModels"), "hostileModels",
+                   "unknown terrain model '" + id + "'");
         }
     }
     r.highMountainM = f.numberIn("highMountainM", 0.0, 20'000.0);

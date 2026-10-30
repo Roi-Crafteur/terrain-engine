@@ -10,6 +10,7 @@
 
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <string>
@@ -61,6 +62,30 @@ void checkGoodWorld(const st::Kingdoms& k) {
     TEST_CHECK(s.hostileUnliked <= 0.10);
 }
 
+// The noise of the cost: each cost within 1 +- amplitude of the cost without it, never 0, and
+// the bits of the terrain (rivers, lakes, ridges, hostile land) untouched.
+void testCostNoise(const settlement_test::World& w, const st::SettlementMaps& m,
+                   const st::ExpansionTerrain& t) {
+    st::SettlementConfig flat = w.data.config;
+    flat.expansion.costNoise.amplitude = 0.0;
+    const st::ExpansionTerrain plain =
+        st::buildExpansionTerrain(w.level, m, flat, settlement_test::kSeed, 0);
+    const double a = w.data.config.expansion.costNoise.amplitude;
+    double low = 10.0;
+    double high = 0.0;
+    for (std::size_t k = 0; k < t.cost.size(); ++k) {
+        const double ratio = static_cast<double>(t.cost[k]) / static_cast<double>(plain.cost[k]);
+        low = std::min(low, ratio);
+        high = std::max(high, ratio);
+    }
+    std::printf("cost noise: the costs between %.3f and %.3f times the plain ones (amplitude "
+                "%.2f)\n",
+                low, high, a);
+    TEST_CHECK(low >= 1.0 - a - 1e-5 && high <= 1.0 + a + 1e-5 && low > 0.0);
+    TEST_CHECK(high - low > a); // the noise does vary
+    TEST_CHECK(plain.mask == t.mask && plain.hostile == t.hostile && plain.ford == t.ford);
+}
+
 } // namespace
 
 int main() {
@@ -68,8 +93,11 @@ int main() {
     const settlement_test::World w;
     const st::SettlementMaps m =
         st::computeSettlementMaps(w.level, &w.field, w.data, settlement_test::kSeed, 0);
-    const st::SuitabilityMaps s = st::computeSuitability(w.level, m, w.data, settlement_test::kSeed, 0);
-    const st::ExpansionTerrain t = st::buildExpansionTerrain(w.level, m, w.data.config, 0);
+    const st::SuitabilityMaps s =
+        st::computeSuitability(w.level, m, w.data, settlement_test::kSeed, 0);
+    const st::ExpansionTerrain t =
+        st::buildExpansionTerrain(w.level, m, w.data.config, settlement_test::kSeed, 0);
+    testCostNoise(w, m, t);
     std::printf("world, maps, suitability and terrain in %.2f s\n",
                 settlement_test::secondsSince(start));
     for (const st::WorldPreset& preset : w.data.config.presets) {
@@ -79,7 +107,8 @@ int main() {
         checkGoodWorld(k);
         if (preset.id == w.data.config.defaultPreset) {
             // The same bits whatever the threads, the terrain of the expansion included.
-            const st::ExpansionTerrain one = st::buildExpansionTerrain(w.level, m, w.data.config, 1);
+            const st::ExpansionTerrain one =
+                st::buildExpansionTerrain(w.level, m, w.data.config, settlement_test::kSeed, 1);
             TEST_CHECK(one.mask == t.mask && one.cost == t.cost && one.ford == t.ford);
             const st::Kingdoms again = st::buildKingdoms(w.level, m, s, one, w.data,
                                                          {preset.id, {}, {}, {}},

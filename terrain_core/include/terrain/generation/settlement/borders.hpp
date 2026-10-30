@@ -15,7 +15,8 @@ class PlanetLevel;
 // of the expansion, and the analysis of the land borders, the edges between two land cells of
 // different owners, at least one of them a state (the shore is not a border). A border edge is
 // natural when it follows a river (one of its cells is a river or a lake), a ridge
-// (ExpansionTerrain's bits) or the coast (BorderRule).
+// (ExpansionTerrain's bits), the coast (BorderRule) or the edge of a hostile land (one of its
+// cells is hostile, the other not: never the edge of a land merely less liked).
 namespace terrain::settlement {
 
 // The owners (by land slot, 0 wild) cleaned of the artifacts only, each pass read from the owners
@@ -46,6 +47,7 @@ struct ClimateCut {
 inline constexpr std::uint8_t kAlongRiver = 1;
 inline constexpr std::uint8_t kAlongRidge = 2;
 inline constexpr std::uint8_t kAlongCoast = 4;
+inline constexpr std::uint8_t kAlongHostile = 8;
 
 // The kinds of the edge between the land cell a and its neighbor b (slots), east (dx = 1) or
 // south (dz = 1) of it.
@@ -55,10 +57,11 @@ inline constexpr std::uint8_t kAlongCoast = 4;
 struct BorderStats {
     std::size_t edges = 0;   // land border edges
     std::size_t natural = 0; // along a river, a ridge or the coast
-    // By the first kind among river, ridge, coast.
+    // By the first kind among river, ridge, coast, hostile land.
     std::size_t river = 0;
     std::size_t ridge = 0;
     std::size_t coast = 0;
+    std::size_t hostile = 0;
     std::size_t betweenStates = 0;
     std::size_t naturalBetweenStates = 0;
     // The cuts of the climate: the border edges and all the edges between two land cells with a

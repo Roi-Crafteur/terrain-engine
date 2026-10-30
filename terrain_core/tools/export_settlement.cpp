@@ -195,7 +195,8 @@ terrain::PlanetLevel openLevel(const Options& o, const terrain::PlanetParams& pa
 }
 
 // The images of the analysis maps, and suitability_<people>.png for the peoples of section 4.
-bool writeImages(const Options& o, const terrain::PlanetLevel& level, const st::SettlementMaps& maps,
+bool writeImages(const Options& o, const terrain::PlanetLevel& level,
+                 const st::SettlementMaps& maps,
                  const st::SettlementData& data, const st::SuitabilityMaps& s) {
     if (!terrain::exportSettlementMapPngs(level, maps, data, o.directory, o.width)) {
         return false;
@@ -238,7 +239,8 @@ int run(const Options& o) {
           static_cast<unsigned long long>(level.checksum()),
           mebibytes(process_memory::resident()));
     start = std::chrono::steady_clock::now();
-    const st::SettlementMaps maps = st::computeSettlementMaps(level, &field, data, o.seed, o.threads);
+    const st::SettlementMaps maps =
+        st::computeSettlementMaps(level, &field, data, o.seed, o.threads);
     const st::SettlementMapTimings& t = maps.timings;
     r.add("settlement maps in %.1f s (inputs %.1f, distances %.1f, geology %.1f, network %.1f, "
           "cells %.1f), %.0f MiB of maps, %.0f MiB resident, checksum %016llx\n",
@@ -267,7 +269,8 @@ int run(const Options& o) {
         }
     }
     start = std::chrono::steady_clock::now();
-    const st::ExpansionTerrain terrain = st::buildExpansionTerrain(level, maps, data.config, o.threads);
+    const st::ExpansionTerrain terrain =
+        st::buildExpansionTerrain(level, maps, data.config, o.seed, o.threads);
     settlement_tool::reportTerrain(terrain, since(start), r);
     settlement_tool::reportCuts(st::climateCuts(level, *maps.land, data.config.borders), r);
     for (const std::string& preset : presets) {

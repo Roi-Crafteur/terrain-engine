@@ -1,6 +1,8 @@
 #include "terrain/generation/settlement/expansion.hpp"
 
 #include "../planet/planet_parallel.hpp"
+#include "settlement_random.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 
 #include <algorithm>
@@ -17,15 +19,46 @@ namespace {
 constexpr std::uint32_t kSea = std::numeric_limits<std::uint32_t>::max();
 constexpr std::uint32_t kUnknown = kSea - 1;
 
-// The cost of each land cell and its bits but the ridges: river class, lake, barrier model, ford.
-void costsAndBits(const PlanetLevel& level, const SettlementMaps& maps,
-                  const SettlementConfig& config, ExpansionTerrain& t, int threads) {
-    const ExpansionRule& r = config.expansion;
-    std::vector<bool> barrier(config.terrainModels.size(), false);
-    for (const std::string& id : r.barrierModels) {
-        barrier[static_cast<std::size_t>(config.model(id) - config.terrainModels.data())] = true;
+// The noise (2 octaves: standard deviation about 0.23) spread over [-1, 1], as the deposits.
+constexpr double kNoiseSpread = 2.0;
+
+// Whether each terrain model is among ids.
+std::vector<bool> modelsAmong(const SettlementConfig& config, const std::vector<std::string>& ids) {
+    std::vector<bool> among(config.terrainModels.size(), false);
+    for (const std::string& id : ids) {
+        among[static_cast<std::size_t>(config.model(id) - config.terrainModels.data())] = true;
     }
+    return among;
+}
+
+// The cost of a land cell before the noise: its nearest model and the penalties.
+double baseCost(const PlanetLevel& level, const SettlementMaps& maps,
+                const SettlementConfig& config, std::size_t cell, std::size_t slot) {
+    const ExpansionRule& r = config.expansion;
+    return config.terrainModels[maps.terrainModel.values()[slot]].expansionCost +
+           r.altitude.cost * rampScore(level.elevation(cell), r.altitude.ramp) +
+           r.roughness.cost *
+               rampScore(unquantize(maps.roughness.values()[slot]), r.roughness.ramp) +
+           r.aridity.cost * rampScore(cellHumidity(level, cell), r.aridity.ramp) +
+           r.danger * unquantize(maps.danger.values()[slot]);
+}
+
+// The cost of each land cell and its bits but the ridges: river class, lake, barrier model, ford;
+// the hostile land.
+void costsAndBits(const PlanetLevel& level, const SettlementMaps& maps,
+                  const SettlementConfig& config, std::uint64_t worldSeed, ExpansionTerrain& t,
+                  int threads) {
+    const ExpansionRule& r = config.expansion;
+    const std::vector<bool> barrier = modelsAmong(config, r.barrierModels);
+    const std::vector<bool> hostile = modelsAmong(config, config.goodWorld.hostileModels);
     const PlanetGrid& g = t.grid;
+    const noise::FbmOctaves noise(
+        streamOf(worldSeed, "expansionCost"),
+        noise::FbmParams{.octaves = r.costNoise.octaves,
+                         .frequency = 1.0 / (r.costNoise.scaleKm * 1000.0),
+                         .gain = 0.5,
+                         .lattices = noise::OctaveLattices::Unrotated},
+        WorldSize{g.periodX(), g.periodZ()});
     planet::parallelRows(g.nz, threads, [&](int begin, int end) {
         for (int j = begin; j < end; ++j) {
             for (int i = 0; i < g.nx; ++i) {
@@ -34,20 +67,19 @@ void costsAndBits(const PlanetLevel& level, const SettlementMaps& maps,
                     continue;
                 }
                 const std::size_t slot = t.land->slot(cell);
+                const double n =
+                    std::clamp(kNoiseSpread * noise.fbm2D(g.centerX(i), g.centerZ(j)), -1.0, 1.0);
+                t.cost[slot] = static_cast<float>(baseCost(level, maps, config, cell, slot) *
+                                                  (1.0 + r.costNoise.amplitude * n));
                 const std::uint8_t model = maps.terrainModel.values()[slot];
-                const double rough = unquantize(maps.roughness.values()[slot]);
-                const double cost =
-                    config.terrainModels[model].expansionCost +
-                    r.altitude.cost * rampScore(level.elevation(cell), r.altitude.ramp) +
-                    r.roughness.cost * rampScore(rough, r.roughness.ramp) +
-                    r.aridity.cost * rampScore(cellHumidity(level, cell), r.aridity.ramp) +
-                    r.danger * unquantize(maps.danger.values()[slot]);
-                t.cost[slot] = static_cast<float>(cost);
                 const int river = maps.water.values()[slot] & kRiverClassMask;
                 const bool lake = (level.cells().bits[cell] & PlanetCells::kLakeBit) != 0;
                 t.mask[slot] = static_cast<std::uint8_t>(river | (lake ? kLakeBit : 0) |
                                                          (barrier[model] ? kMountainBit : 0));
+                const bool high = level.elevation(cell) >= config.goodWorld.highMountainM;
+                t.hostile[slot] = hostile[model] || high ? 1 : 0;
                 if (river >= 1 && river <= 2) {
+                    const double rough = unquantize(maps.roughness.values()[slot]);
                     t.ford[slot] = quantize(std::clamp(1.0 - rough / r.fordMaxRoughness, 0.0, 1.0));
                 }
             }
@@ -161,7 +193,8 @@ void ridges(const PlanetLevel& level, const SettlementMaps& maps, const BorderRu
         }
         const int i = g.column(cell);
         const int j = g.row(cell);
-        const std::size_t sides[2] = {g.index(g.wrapColumn(i + 1), j), g.index(i, g.wrapRow(j + 1))};
+        const std::size_t sides[2] = {g.index(g.wrapColumn(i + 1), j),
+                                      g.index(i, g.wrapRow(j + 1))};
         for (int k = 0; k < 2; ++k) {
             if (!t.land->land(sides[k])) {
                 continue;
@@ -213,11 +246,12 @@ std::shared_ptr<const planet::LandIndex> straitsOf(const ExpansionTerrain& t, in
 
 std::size_t ExpansionTerrain::memoryBytes() const {
     return land->memoryBytes() + straits->memoryBytes() + cost.capacity() * sizeof(float) +
-           mask.capacity() + ford.capacity() + coastKm.capacity();
+           mask.capacity() + ford.capacity() + coastKm.capacity() + hostile.capacity();
 }
 
 ExpansionTerrain buildExpansionTerrain(const PlanetLevel& level, const SettlementMaps& maps,
-                                       const SettlementConfig& config, int threads) {
+                                       const SettlementConfig& config, std::uint64_t worldSeed,
+                                       int threads) {
     const int workers = planet::resolveThreads(threads);
     ExpansionTerrain t;
     t.grid = maps.grid;
@@ -226,8 +260,9 @@ ExpansionTerrain buildExpansionTerrain(const PlanetLevel& level, const Settlemen
     t.cost.assign(n, 0.0f);
     t.mask.assign(n, 0);
     t.ford.assign(n, 0);
+    t.hostile.assign(n, 0);
     t.coastKm = maps.coastKm.values();
-    costsAndBits(level, maps, config, t, workers);
+    costsAndBits(level, maps, config, worldSeed, t, workers);
     confluences(level, t);
     ridges(level, maps, config.borders, t, workers);
     t.straits = config.expansion.sea == SeaCrossing::Straits

@@ -43,8 +43,9 @@ enum class SettlementPalette : std::uint8_t {
 
 // The kingdoms of a preset over the gray relief: one color per state (the major kingdoms
 // saturated, the minor states paler), the wild land in its grays; the land borders, by the kind
-// most of the edges of the pixel follow: river blue, ridge white, coast cyan, none dark red; the
-// capitals in white squares, larger for the major kingdoms (settlement_png_kingdoms.cpp).
+// most of the edges of the pixel follow: river blue, ridge white, coast cyan, hostile land orange,
+// none dark red; the capitals in white squares, larger for the major kingdoms
+// (settlement_png_kingdoms.cpp).
 [[nodiscard]] Image renderKingdoms(const PlanetLevel& level,
                                    const settlement::ExpansionTerrain& terrain,
                                    const settlement::Kingdoms& kingdoms,

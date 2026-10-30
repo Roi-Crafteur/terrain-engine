@@ -24,7 +24,8 @@ Rgb hsv(double hue, double saturation, double value) {
     const auto p = static_cast<float>(255.0 * value * (1.0 - saturation));
     const auto q = static_cast<float>(255.0 * value * (1.0 - saturation * f));
     const auto t = static_cast<float>(255.0 * value * (1.0 - saturation * (1.0 - f)));
-    const std::array<Rgb, 6> colors = {{{v, t, p}, {q, v, p}, {p, v, t}, {p, q, v}, {t, p, v}, {v, p, q}}};
+    const std::array<Rgb, 6> colors = {
+        {{v, t, p}, {q, v, p}, {p, v, t}, {p, q, v}, {t, p, v}, {v, p, q}}};
     return colors[static_cast<std::size_t>(sector)];
 }
 
@@ -42,14 +43,14 @@ std::size_t pixelOf(const PlanetGrid& grid, const Image& image, int scale, std::
            static_cast<std::size_t>(x);
 }
 
-// The land border edges of each pixel, by kind: river, ridge, coast, other.
-std::vector<std::array<std::uint16_t, 4>> borderPixels(const settlement::ExpansionTerrain& t,
+// The land border edges of each pixel, by kind: river, ridge, coast, hostile land, other.
+std::vector<std::array<std::uint16_t, 5>> borderPixels(const settlement::ExpansionTerrain& t,
                                                         const settlement::Kingdoms& k,
                                                         const settlement::BorderRule& rule,
                                                         const Image& image, int scale) {
-    std::vector<std::array<std::uint16_t, 4>> counts(
+    std::vector<std::array<std::uint16_t, 5>> counts(
         static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height),
-        std::array<std::uint16_t, 4>{});
+        std::array<std::uint16_t, 5>{});
     const PlanetGrid& g = t.grid;
     t.land->forEachLand([&](std::size_t cell, std::size_t a) {
         for (const bool east : {true, false}) {
@@ -63,11 +64,13 @@ std::vector<std::array<std::uint16_t, 4>> borderPixels(const settlement::Expansi
                 continue;
             }
             const std::uint8_t kinds = settlement::edgeKinds(t, a, b, east, rule);
-            const int kind = (kinds & settlement::kAlongRiver) != 0   ? 0
-                             : (kinds & settlement::kAlongRidge) != 0 ? 1
-                             : (kinds & settlement::kAlongCoast) != 0 ? 2
-                                                                      : 3;
-            std::uint16_t& c = counts[pixelOf(g, image, scale, cell)][static_cast<std::size_t>(kind)];
+            const int kind = (kinds & settlement::kAlongRiver) != 0     ? 0
+                             : (kinds & settlement::kAlongRidge) != 0   ? 1
+                             : (kinds & settlement::kAlongCoast) != 0   ? 2
+                             : (kinds & settlement::kAlongHostile) != 0 ? 3
+                                                                        : 4;
+            std::uint16_t& c =
+                counts[pixelOf(g, image, scale, cell)][static_cast<std::size_t>(kind)];
             c = static_cast<std::uint16_t>(std::min(c + 1, 0xFFFF));
         }
     });
@@ -105,9 +108,10 @@ Image renderKingdoms(const PlanetLevel& level, const settlement::ExpansionTerrai
             }
         }
     }
-    constexpr std::array<Rgb, 4> kBorder = {{{40.0f, 110.0f, 255.0f},
+    constexpr std::array<Rgb, 5> kBorder = {{{40.0f, 110.0f, 255.0f},
                                              {255.0f, 255.0f, 255.0f},
                                              {0.0f, 230.0f, 230.0f},
+                                             {255.0f, 150.0f, 0.0f},
                                              {110.0f, 0.0f, 0.0f}}};
     const auto counts = borderPixels(terrain, kingdoms, rule, image, scale);
     for (std::size_t p = 0; p < counts.size(); ++p) {

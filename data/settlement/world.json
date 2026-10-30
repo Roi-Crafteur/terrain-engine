@@ -221,6 +221,7 @@
       "aridity": { "from": 0.3, "to": 0.08, "cost": 3 },
       "danger": 4
     },
+    "costNoise": { "scaleKm": 50, "octaves": 2, "amplitude": 0.5 },
     "riverCrossing": { "river": 3, "largeRiver": 6.5, "majorRiver": 11.5, "impassableRiver": 25 },
     "barrierRiverClass": 1,
     "barrierModels": [ "mountain", "glacier" ],
@@ -234,6 +235,7 @@
     "straitCells": 2,
     "minSuitability": 0.25,
     "maxCost": 3000,
+    "barrierStop": 0.7,
     "overflow": 1.3,
     "maxPeopleShare": 0.4,
     "peopleReruns": 3

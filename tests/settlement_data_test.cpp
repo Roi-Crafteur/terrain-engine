@@ -1,6 +1,7 @@
 // The data files of the settlement (generation/settlement/settlement_data.hpp): the files of the
-// repository read whole (the peoples are tested in settlement_peoples_test), the copy of a world read back the same, and every invalid file refused
-// with a clear message (the file, the path in it, the reason).
+// repository read whole (the peoples are tested in settlement_peoples_test), the copy of a world
+// read back the same, and every invalid file refused with a clear message (the file, the path in
+// it, the reason).
 
 #include "terrain/generation/settlement/settlement_data.hpp"
 
@@ -155,6 +156,12 @@ void testInvalidKingdoms() {
     freshCopy();
     edit(world, "\"preferenceWeight\": 0.5", "\"preferenceWeight\": 0.9");
     TEST_CHECK(refused({"expansion.preferenceWeight", "out of [0, 0.6]"}));
+    freshCopy();
+    edit(world, "\"amplitude\": 0.5", "\"amplitude\": 0.95");
+    TEST_CHECK(refused({"expansion.costNoise.amplitude", "out of [0, 0.9]"}));
+    freshCopy();
+    edit(world, "\"barrierStop\": 0.7", "\"barrierStop\": 0.05");
+    TEST_CHECK(refused({"expansion.barrierStop", "out of [0.1, 1]"}));
 }
 
 void testInvalidResources() {

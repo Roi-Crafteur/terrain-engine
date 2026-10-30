@@ -57,11 +57,12 @@ void reportGoodWorld(const st::SettlementData& data, const st::Kingdoms& k, Repo
               : "-",
           100.0 * s.largestPeople, verdict(s.largestPeople <= 0.40));
     r.add("  land borders: %zu edges, natural %.1f %% [%s] (river or lake %.1f %%, ridge %.1f %%, "
-          "coast %.1f %%); between two states %zu edges, natural %.1f %%; of all the land edges "
-          "%.1f %% natural\n",
+          "coast %.1f %%, hostile land %.1f %%); between two states %zu edges, natural %.1f %%; of "
+          "all the land edges %.1f %% natural\n",
           b.edges, 100.0 * b.naturalShare(), verdict(b.naturalShare() >= 0.5),
           100.0 * share(b.river, b.edges), 100.0 * share(b.ridge, b.edges),
-          100.0 * share(b.coast, b.edges), b.betweenStates, 100.0 * b.naturalShareBetweenStates(),
+          100.0 * share(b.coast, b.edges), 100.0 * share(b.hostile, b.edges), b.betweenStates,
+          100.0 * b.naturalShareBetweenStates(),
           100.0 * share(b.landEdgesNatural, b.landEdges));
     r.add("  capitals outside the most habitable fifth or far from fresh water: %d [%s]; hostile "
           "land (%zu cells): %.1f %% held, %.1f %% by peoples that do not like it\n",
@@ -120,8 +121,9 @@ bool runPreset(const terrain::PlanetLevel& level, const st::SettlementMaps& maps
     reportGoodWorld(data, k, r);
     const int scale = terrain::planetImageScale(level.grid(), run.width);
     return writeCapitals(run, maps, data, k) &&
-           terrain::writePng(run.directory / ("kingdoms_" + run.preset + ".png"),
-                             terrain::renderKingdoms(level, terrain, k, data.config.borders, scale));
+           terrain::writePng(
+               run.directory / ("kingdoms_" + run.preset + ".png"),
+               terrain::renderKingdoms(level, terrain, k, data.config.borders, scale));
 }
 
 } // namespace settlement_tool
