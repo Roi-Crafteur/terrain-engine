@@ -86,8 +86,9 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params,
     PlanetBuild build;
     build.grid = makePlanetGrid(field.world(), params.cellSize);
     {
-        CellRelief cells = sampleCells(field, build.grid, params.samplesPerAxis, threads,
-                                       params.floorSamples);
+        // The relief without the coasts (agent 33): they never move the planet level.
+        CellRelief cells = sampleCells(field.withoutCoasts(), build.grid, params.samplesPerAxis,
+                                       threads, params.floorSamples);
         build.height = std::move(cells.height);
         build.floor = std::move(cells.floor);
         build.mountain = std::move(cells.mountain);

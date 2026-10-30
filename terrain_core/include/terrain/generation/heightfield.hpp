@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/det_math.hpp" // also refuses fast math in every unit including it
+#include "terrain/generation/coast.hpp"
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/voronoi.hpp"
@@ -163,10 +164,31 @@ public:
     // The water of the world, or nullptr for the relief alone.
     [[nodiscard]] const Hydrology* hydrology() const { return hydrology_.get(); }
 
+    // The coasts (agent 33, coast.hpp): what they make of the point (x, z), any image of it.
+    [[nodiscard]] CoastSample coastAt(double x, double z) const;
+    // This relief without the coasts (the coastal plains of phase 11R, bit for bit): the relief the
+    // planet level and the rivers are built over. A cheap copy sharing the layers and the map.
+    [[nodiscard]] Heightfield withoutCoasts() const;
+    [[nodiscard]] bool hasCoasts() const { return coasts_ != nullptr; }
+
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
     struct Memos;  // the memos of the noises during a batch call (heightfield.cpp)
     struct Water;  // the depressions and the water (heightfield_water.cpp)
+    struct Coasts; // the noises of the coasts (heightfield_coast.cpp)
+    // What the coasts make of a canonical point of the geography g in reliefWith: its coast
+    // signal, the factor of the land (mountains, hills, forms of the plains) and the ground before
+    // the local relief; those of the geography out of the band or without the coasts.
+    struct CoastPoint {
+        bool active = false; // in the band, with the coasts
+        double signal = 0.0;
+        float land = 0.0f;
+        float ground = 0.0f;
+    };
+    [[nodiscard]] CoastPoint coastPointAt(double x, double z, const GeographySample& g,
+                                          Memos* memos) const;
+    [[nodiscard]] static std::shared_ptr<const Coasts> makeCoasts(std::uint64_t seed,
+                                                                  const WorldSize& world);
 
     [[nodiscard]] static std::shared_ptr<const Water>
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
@@ -244,6 +266,7 @@ private:
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
+    std::shared_ptr<const Coasts> coasts_;         // the coasts, or null without them
 };
 
 } // namespace terrain

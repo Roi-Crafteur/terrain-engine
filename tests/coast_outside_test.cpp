@@ -247,7 +247,8 @@ Sums worldSums(const char* name, const terrain::TerrainTiles& tiles, std::uint64
             ++patches;
         }
         for (int lod = 0; lod < terrain::kLodCount; ++lod) {
-            for (const Place& p : drawPlaces(field, draws, side, 4, tileSnap(lod), tileReach(lod))) {
+            const Reach reach = tileReach(lod);
+            for (const Place& p : drawPlaces(field, draws, side, 4, tileSnap(lod), reach)) {
                 addTiles(sums.tiles, tiles, p, lod);
                 ++tileCount;
             }
@@ -285,7 +286,8 @@ Sums riverSums(const terrain::TerrainTiles& tiles, const terrain::PlanetLevel& p
     const auto& segments = planet.rivers().segments;
     for (std::size_t k = 0; k < 2 * segments.size() && places < kRiverPlaces; k += kRiverStride) {
         const auto& vertices = segments[k / 2].vertices;
-        const terrain::RiverVertex& v = k % 2 == 0 ? vertices.front() : vertices[vertices.size() / 2];
+        const terrain::RiverVertex& v =
+            k % 2 == 0 ? vertices.front() : vertices[vertices.size() / 2];
         const Place p{v.x, v.z};
         const Reach wide = horizonReach(params, 2);
         if (!ofSide(Side::Land, coast_zone::coastSignal(field, p.x, p.z)) ||

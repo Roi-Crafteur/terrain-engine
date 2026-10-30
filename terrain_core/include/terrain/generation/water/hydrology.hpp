@@ -124,7 +124,9 @@ class Hydrology {
 public:
     // The water of the planet level over relief (a Heightfield without hydrology, the one the
     // planet level was built from), seed drawing its meanders. Throws std::invalid_argument if
-    // they do not tile the same world.
+    // they do not tile the same world. The courses, the falls and the lakes are found over the
+    // relief without its coasts (Heightfield::withoutCoasts, as the planet level): relief()
+    // returns that one.
     Hydrology(std::uint64_t seed, const Heightfield& relief,
               std::shared_ptr<const PlanetLevel> planet, const HydrologyParams& params = {});
     ~Hydrology();

@@ -243,7 +243,8 @@ struct Hydrology::Impl {
 
     Impl(std::uint64_t seed, const Heightfield& field, std::shared_ptr<const PlanetLevel> level,
          const HydrologyParams& p)
-        : meanderSeed(noise::deriveSeed(seed, 0x11B0)), relief(field), planet(std::move(level)),
+        : meanderSeed(noise::deriveSeed(seed, 0x11B0)), relief(field.withoutCoasts()),
+          planet(std::move(level)),
           params(p), grid(planet->grid()),
           wallWarp(noise::deriveSeed(seed, 0x11B1),
                    {.octaves = 3, .frequency = 1.0 / 1'600.0,

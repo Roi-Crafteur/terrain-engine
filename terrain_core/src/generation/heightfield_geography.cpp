@@ -1,5 +1,6 @@
 #include "terrain/generation/heightfield.hpp"
 
+#include "coast_shape.hpp"
 #include "heightfield_layers.hpp"
 #include "mountain_forms.hpp"
 #include "mountain_walls.hpp"
@@ -121,33 +122,6 @@ constexpr double kRiftRun = 50.0;
 constexpr float kRiftFaceLow = 0.15f;
 constexpr float kRiftFaceHigh = 0.35f;
 
-// The coastal plain rises this many meters per meter from the shore, up to kCoastPlainTop,
-// before the regional elevation takes over over GeographyParams::coastRamp.
-constexpr double kCoastPlainRise = 0.002;
-constexpr double kCoastPlainTop = 20.0;
-
-// The sea floor near the coast, from the signed distance coast < 0: down to the shelf depth
-// over the shelf width, then the slope.
-double shelf(const GeographyParams& p, double coast) {
-    const double d = -coast;
-    const double depth = static_cast<double>(p.shelfDepth);
-    return d <= p.shelfWidth ? depth * d / p.shelfWidth
-                             : depth - (d - p.shelfWidth) * p.shelfSlope;
-}
-
-// Ground of the geography before the local relief: the shelf and the ocean floor below the
-// coast, the coastal plain then the regional elevation above it. Below sea level exactly where
-// the coast is negative: both sides are strictly of their sign, 0 on the coast.
-float groundBase(const GeographyParams& p, const GeographySample& g) {
-    if (g.coast < 0.0) {
-        return std::max(g.sea, static_cast<float>(shelf(p, g.coast)));
-    }
-    const double plain = std::min(kCoastPlainRise * g.coast, kCoastPlainTop);
-    const double t =
-        noise::smoothstep(0.0f, static_cast<float>(p.coastRamp), static_cast<float>(g.coast));
-    return static_cast<float>(plain + (static_cast<double>(g.land) - plain) * t);
-}
-
 // The great forms of a massif full meters high at its profile in [0, 1] (flat below kFlatten, its
 // foot softened over kFoot, raised to the power kRise), and their rise per unit of profile.
 struct Raised {
@@ -173,16 +147,18 @@ Raised raiseProfile(double full, double profile) {
 HeightSample Heightfield::geographySample(double x, double z, Memos* memos) const {
     const GeographySample g = geography_->sampleAt(x, z);
     HeightSample s;
-    s.continentalness = static_cast<float>(std::clamp(g.coast / kContinentalScale, -1.0, 1.0));
+    // The coast signal, the factor of the land and the ground of the coasts in their band (agent
+    // 33); out of it, or without the coasts, those of the geography.
+    const CoastPoint coast = coastPointAt(x, z, g, memos);
+    s.continentalness = static_cast<float>(std::clamp(coast.signal / kContinentalScale, -1.0, 1.0));
     // The local relief and the mountains, faded in from the coast: none at sea.
-    const float land = noise::smoothstep(0.0f, static_cast<float>(params_.geography.coastRamp),
-                                         static_cast<float>(g.coast));
+    const float land = coast.land;
     s.plateCollision = g.belt;
     const float intensity = land > 0.0f ? reliefAt(x, z, g.relief, memos) : 0.0f;
     s.relief = intensity; // 0 at sea
     s.mountainMask = land * noise::smoothstep(kMountainLow, kMountainHigh, intensity);
     // Around the regional elevation, the local relief rises and falls.
-    const float ground = groundBase(params_.geography, g);
+    const float ground = coast.ground;
     const MountainForm mountain =
         geographyMountainAt(x, z, ground, s.mountainMask, intensity, g.character, memos);
     // Under the massifs the hills give way to the ridged mountains: no smooth swell of hundreds
