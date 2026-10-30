@@ -9,3 +9,7 @@ add_test(NAME probe_water_bad_args
             -DOUT=${CMAKE_BINARY_DIR}/probe_water_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/probe_water_bad_args.cmake)
 add_dependencies(check terrain_probe_water)
+
+# The water of the columns of the tiles and their falls (core): the columns of the core bit for
+# bit, the same on common sides, the flow down the rivers, the falls in the tile of their lip.
+terrain_add_test(tile_rivers_test terrain_core)
