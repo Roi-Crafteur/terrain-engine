@@ -5,9 +5,13 @@ target_sources(terrain_core PRIVATE
     src/json/json_parse.cpp
     src/json/json_write.cpp
     src/generation/settlement/data_fields.cpp
+    src/generation/settlement/geology.cpp
+    src/generation/settlement/geology_plates.cpp
+    src/generation/settlement/geology_points.cpp
     src/generation/settlement/preference.cpp
     src/generation/settlement/resource_def.cpp
     src/generation/settlement/settlement_config.cpp
     src/generation/settlement/settlement_config_parts.cpp
     src/generation/settlement/settlement_data.cpp
+    src/generation/settlement/telluric.cpp
 )
