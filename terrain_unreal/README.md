@@ -80,7 +80,8 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
    `/Game/TerrainEngine/M_TerrainAltitude`, un matériau éclairé qui affiche la couleur des sommets
    (sable au bord de la mer, vert, gris en altitude, blanc sur les sommets). Sans aucun des deux,
    l'acteur prend le matériau de debug d'Unreal qui affiche les couleurs de sommet, et le dit dans
-   le log.
+   le log. Pour l'eau des lacs, des fleuves et des chutes : `Scripts/create_water_materials.py`
+   (section 14).
 3. Niveau : File → New Level → **Basic** (ciel, lumière, un Player Start), puis supprime le sol
    (`Floor`), qui cacherait le terrain. Le mode de jeu du gabarit Third Person
    (`BP_ThirdPersonGameMode`) donne le Character qui marche. Ou bien, dans `ThirdPersonMap`,
@@ -127,7 +128,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 |---|---|---|
 | `Seed` | 20261019 | seed du monde |
 | `bCaves`, `bCaveRegions` | non | grottes, et leurs régions (galeries, rivières, lave) |
-| `PlanetFile` | vide | fichier du niveau Planète de la seed (`terrain_make_planet`) : fleuves et lacs des tuiles et de l'horizon, et leur niveau (section 14) ; construit et écrit là s'il manque (quelques minutes) ; vide : le relief seul, sans fleuves ni lacs |
+| `PlanetFile` | `Saved/TerrainEngine/planet_{Seed}.bin` | fichier du niveau Planète de la seed (`terrain_make_planet`) : fleuves, lacs et chutes des tuiles et de l'horizon, et leur niveau (section 14) ; `{Seed}` remplacé par la seed, un chemin relatif part du dossier du projet, un chemin absolu est pris tel quel ; construit et écrit là s'il manque, s'il est périmé ou abîmé (quelques minutes, la raison dans le log) ; vide : le relief seul, sans fleuves ni lacs |
 | `CoreOriginX`, `CoreOriginZ` | 0, 0 | point du core (m) dont le sol est à l'origine d'Unreal |
 | `Lod0/1/2DistanceChunks`, `ViewDistanceChunks` | 4, 8, 16, 32 | anneaux de LOD en chunks de 16 m ; Lod1 − Lod0 ≥ 2, Lod2 − Lod1 ≥ 4 |
 | `WorkerThreads` | 2 | threads de génération |
@@ -135,6 +136,8 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `MeshType` | Procedural Mesh | type de mesh (Dynamic Mesh, Realtime Mesh : emplacements) |
 | `Material` | aucun | matériau des tuiles (voir 4.2) ; aucun : `M_TemporaryTerrain`, sinon `M_TerrainAltitude` |
 | `bAsyncCollisionCooking` | non | cuisson des collisions hors du thread de jeu |
+| `bWater` | oui | lacs et fleuves des tuiles à leur niveau, rideaux et écume des chutes, lacs et fleuves de l'horizon GPU (section 14) ; `Terrain.Water 0\|1` les cache ou les montre en jeu |
+| `WaterMaterial`, `FallsMaterial` | aucun | matériaux de la surface de l'eau des tuiles et des chutes ; aucun : `M_TerrainWater`, `M_TerrainFalls` (`Scripts/create_water_materials.py`) |
 | `FocusActor` | aucun | acteur suivi ; sinon le pion du premier joueur, ou sa caméra |
 | `bSnapPawnToGround` | oui | pose sur le sol un nouveau pion qui est dessous |
 | `WarmUpRadiusChunks`, `WarmUpTimeoutSeconds` | 1, 10 | tuiles LOD 0 générées avant qu'un nouveau pion bouge |
@@ -167,6 +170,9 @@ terrain_unreal/
   Scripts/create_horizon_gpu_material.py
   Scripts/create_temporary_terrain_material.py, temporary_terrain_look.py,
     temporary_terrain_hlsl.py  le matériau temporaire
+  Scripts/create_water_materials.py, water_look_hlsl.py, horizon_water_hlsl.py,
+    horizon_water_nodes.py     l'eau des tuiles, des chutes et de l'horizon
+  Scripts/material_settings.py  la remise à zéro des réglages des matériaux reconstruits
   Source/TerrainEngine/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
@@ -175,8 +181,10 @@ terrain_unreal/
       TerrainWorld.cpp         cycle de vie, tick, démarrage d'un pion, mesures
       TerrainWorldHorizon.cpp  l'horizon lointain d'ATerrainWorld
       TerrainWorldEdits.cpp    les modifications pour essayer (section 15), Terrain.Edit
+      TerrainWorldWater.cpp    l'eau (section 14), Terrain.Water, la ligne du fichier planète
       TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
-      TerrainHorizonClipmap.*  l'horizon GPU : textures, grilles fixes, placements
+      TerrainHorizonClipmap.*  l'horizon GPU : grilles fixes, placements
+      TerrainHorizonTextures.* ses textures (texels, normales, eau) et leurs envois
       TerrainWorldAtmosphere.cpp, TerrainAtmosphereFollower.*  le ciel qui suit la caméra
       TerrainHorizonGrids.*    les grilles fixes, des UStaticMesh construits en jeu
       TerrainHorizonMeshes.*   l'horizon CPU : un ProceduralMeshComponent par niveau
@@ -243,7 +251,8 @@ Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_fr
 `unreal_horizon_layout_test`, `unreal_horizon_mesh_test`, `unreal_horizon_streamer_test`,
 `unreal_horizon_epochs_test`, `unreal_horizon_textures_test`, `unreal_horizon_gpu_streamer_test`,
 `unreal_horizon_normals_test`, `unreal_horizon_detail_test`, `unreal_horizon_crests_test`,
-`unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`,
+`unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`, `unreal_tile_water_test`,
+`unreal_water_scripts_test` (les scripts de l'eau, sans Unreal), `unreal_planet_file`,
 `unreal_core_sources`. Mesures à la main : `unreal_horizon_bench` (temps de l'horizon GPU, crêtes
 dans l'époque ou après, voir l'en-tête de `tests/unreal_horizon_bench.cpp`).
 
@@ -283,10 +292,10 @@ devra passer à `std::thread` (petit changement dans `terrain_core`, par l'agent
 ## 9. Pas encore fait
 
 Type de mesh autre que le Procedural Mesh Component (emplacements Dynamic Mesh et Realtime Mesh),
-eau, lave, plantes, vrais matériaux de la phase 14 (un matériau temporaire en tient lieu,
+eau des grottes, lave, plantes, vrais matériaux de la phase 14 (un matériau temporaire en tient lieu,
 section 13). En build empaqueté, assigne les matériaux explicitement dans `Material`,
-`HorizonGpuMaterial` et `HorizonMaterial` : le chemin chargé par défaut n'est cuit que s'il est
-référencé.
+`HorizonGpuMaterial`, `HorizonMaterial`, `WaterMaterial` et `FallsMaterial` : le chemin chargé par
+défaut n'est cuit que s'il est référencé.
 
 ## 10. L'horizon lointain (phase 13, étape 1)
 
@@ -326,7 +335,7 @@ mode CPU (`HorizonRenderer` = CPU) ; le mode par défaut, sur le GPU, est en sec
 - **Mer** : sur l'horizon, tout échantillon sous le niveau de la mer est posé à plat au niveau de
   la mer (un lac en altitude garde son sol) ; un carré de mer à 0 m s'étend sous les tuiles, dessiné
   seulement là où le core met l'océan (une dépression sèche sous 0 m montre son sol). Son
-  aspect : section 12. Le reste de l'eau (rivières, lacs, Water) vient avec la phase 14.
+  aspect : section 12. Les lacs et fleuves : section 14 (horizon GPU seulement).
 - **Threads** : `HorizonThreads` threads du core, à part de ceux des tuiles. Tant que rien ne
   bouge, le tick de l'horizon coûte 0,01 ms.
 - **Log** : toutes les `TimingLogIntervalSeconds`, le coût de l'horizon sur le thread de jeu (le
@@ -550,13 +559,19 @@ réglages, coût, limites, et trois défauts de rendu (le trait sombre au bord d
 par le fondu de `HorizonDropCm` ; les dents de scie sous un soleil bas, corrigées par des
 normales lissées ; la « ligne d'ombre » au pied de la chaîne, une arête du relief).
 
-## 14. Le niveau de l'eau (phase 11, tâche 7b)
+## 14. L'eau à son niveau (phase 11, tâche 7b ; agent 27)
 
-Le niveau de l'eau du core (mer, lacs, fleuves, chutes) arrive dans Unreal : aux sommets des
-tuiles et de l'horizon CPU dans le canal UV 0, et dans une texture d'eau par niveau de l'horizon GPU
-(`HorizonWater`, `CoarseWater`). Aucun matériau ne le lit encore : l'image ne change pas. Il faut
-un fichier planète (`PlanetFile`, section 5). Formats, lecture, mémoire et limites :
-[`WATER_LEVEL.md`](WATER_LEVEL.md).
+Les lacs et fleuves sont dessinés à leur niveau : sur les tuiles, une surface translucide tirée des
+colonnes d'eau du core (`TileData::waterColumns`), en pente avec les fleuves, plate sur les lacs,
+sans fente entre tuiles ni entre LOD ; aux chutes, un rideau de la lèvre au pied et de l'écume
+(`TileData::falls`) ; sur l'horizon GPU, l'eau montée au niveau de ses textures d'eau (R32F, le
+niveau du core au bit près), qui rejoint celle des tuiles à leur bord. Même aspect de près et de
+loin : couleur et transparence selon l'épaisseur d'eau et le lieu, rides dans le sens du courant,
+reflet du ciel et du soleil, écume des rapides. Il faut un fichier planète (`PlanetFile`, section 5,
+par défaut dans `Saved/TerrainEngine`) et les matériaux de `Scripts/create_water_materials.py`.
+Données, formats, aspect, coût, évolution vers Single Layer Water et limites :
+[`WATER_LEVEL.md`](WATER_LEVEL.md). La sonde `terrain_probe_water` dit ce que le core met en un
+point.
 
 ## 15. Les modifications vues de loin (phase 15)
 
