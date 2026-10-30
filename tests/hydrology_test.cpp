@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -186,8 +187,39 @@ void testCrossSections(const World& w) {
 
 // Down the face of a fall the channel is wet from bank to bank: at a quarter, half and three
 // quarters of the drop of the falls of one reach in 3, every meter across the inner 70 % of its
-// channel. The segments below on the same face reach up it beyond their start and hold about the
-// same ground: they must not leave it dry.
+// channel, where the surface first comes down through that height along the water (from
+// kFaceSearch meters upstream to as far downstream, every kFaceStep: the edge of a lip may recede
+// or turn, its slot wind) it is water. The segments below on the same face reach up it beyond
+// their start and hold about the same ground: they must not leave it dry.
+constexpr double kFaceSearch = 20.0;
+constexpr double kFaceStep = 0.1;
+
+// Where the surface first comes down below level along the points of a reach, side meters left of
+// them, from kFaceSearch meters upstream of along meters along them: dry or not (nullopt: never).
+std::optional<bool> dryBelow(const World& w, const RiverReach& reach,
+                             const std::vector<double>& s, double along, double side,
+                             float level) {
+    const auto& p = reach.points;
+    std::size_t k = 0;
+    for (double u = along - kFaceSearch; u < along + kFaceSearch; u += kFaceStep) {
+        while (k + 2 < p.size() && s[k + 1] < u) {
+            ++k;
+        }
+        const double length = std::max(1e-6, s[k + 1] - s[k]);
+        const double t = std::clamp((u - s[k]) / length, 0.0, 1.0);
+        const double dx = p[k + 1].x - p[k].x;
+        const double dz = p[k + 1].z - p[k].z;
+        const double x = p[k].x + t * dx - side * dz / length;
+        const double z = p[k].z + t * dz + side * dx / length;
+        const terrain::HeightSample h = w.field.sampleAt(x, z);
+        const bool wet = h.water != terrain::WaterKind::None;
+        if ((wet ? std::max(h.waterLevel, h.height) : h.height) < level) {
+            return !wet;
+        }
+    }
+    return std::nullopt;
+}
+
 void testFallFaces(const World& w) {
     const Hydrology& h = *w.hydrology;
     std::size_t faces = 0;
@@ -195,6 +227,11 @@ void testFallFaces(const World& w) {
     std::size_t dry = 0;
     for (std::size_t r = 0; r < h.reachCount(); r += 3) {
         const RiverReach reach = h.reach(r);
+        std::vector<double> s(reach.points.size(), 0.0);
+        for (std::size_t i = 1; i < s.size(); ++i) {
+            s[i] = s[i - 1] + std::hypot(reach.points[i].x - reach.points[i - 1].x,
+                                         reach.points[i].z - reach.points[i - 1].z);
+        }
         for (const terrain::RiverFall& f : reach.falls) {
             ++faces;
             for (const float share : {0.25f, 0.5f, 0.75f}) {
@@ -209,13 +246,12 @@ void testFallFaces(const World& w) {
                 const terrain::RiverPoint& a = reach.points[i - 1];
                 const terrain::RiverPoint& b = reach.points[i];
                 const double t = (a.level - level) / (a.level - b.level);
-                const double length = std::max(1e-6, std::hypot(b.x - a.x, b.z - a.z));
                 const double half = 0.35 * (a.width + t * (b.width - a.width));
                 for (double d = -half; d <= half; d += 1.0) {
-                    const double x = a.x + t * (b.x - a.x) - d * (b.z - a.z) / length;
-                    const double z = a.z + t * (b.z - a.z) + d * (b.x - a.x) / length;
+                    const std::optional<bool> below =
+                        dryBelow(w, reach, s, s[i - 1] + t * (s[i] - s[i - 1]), d, level);
                     ++points;
-                    dry += w.field.sampleAt(x, z).water == terrain::WaterKind::None ? 1 : 0;
+                    dry += below.value_or(true) ? 1 : 0;
                 }
             }
         }

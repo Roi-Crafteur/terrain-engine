@@ -345,8 +345,8 @@ void testBlocks(const World& w, Reaches& reaches, const std::vector<std::size_t>
     TEST_CHECK(c.wrong == 0);
 }
 
-// The ends of the corridors of the falls: where a run of points every few meters (refined where
-// the water falls, its axis winding) meets the course every 128 m before or after it. Along the
+// The ends of the corridors of the falls: where a run of points every few meters (along the water
+// where the slot of the falls winds) meets the course every 128 m before or after it. Along the
 // axis kEndSpan meters on each side of each end, every kEndStep meters, within the valley of the
 // river (riversAt: another may cross the axis), the water and the ground never jump: kWaterJump
 // and kBedJump meters at most from a sample to the next (a slope of 0.4: the water comes down to

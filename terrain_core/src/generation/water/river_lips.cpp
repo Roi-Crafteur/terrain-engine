@@ -2,6 +2,7 @@
 #include "river_lips.hpp"
 
 #include "river_slot.hpp"
+#include "river_winding.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
@@ -49,6 +50,11 @@ constexpr double kRecessMost = 1.0 + 0.5 * kRoughShare; // lipRecess within it
 constexpr double kRoughWave = 7.0;
 // Without a pool around it (the first or the last lip of a course), kOpenPool meters.
 constexpr double kOpenPool = 40.0;
+// Its edge turns from across the slot by up to kTurnMost (35 degrees, drawn), as far as the pools
+// leave room for (in the frame of the slot: river_winding.hpp); the line of its turn bends back
+// to the line of its middle over the outer kTurnFade of its width (the walls of its slot).
+constexpr double kTurnMost = 35.0 / 360.0;
+constexpr double kTurnFade = 0.4;
 constexpr std::uint64_t kLipSalt = 0x6c6970735f313241ULL;
 
 double smooth(double edge0, double edge1, double v) {
@@ -90,6 +96,17 @@ void shapeLip(FallLip& l, const Course& c, double above, double below, double di
         std::clamp(std::min(kEdgeBase + kEdgeShare * drop, kEdgeMost), 0.0, std::max(0.0, room)));
     l.recess = std::min(l.recess, static_cast<float>(std::max(0.0, room)) - l.edge);
     l.recess = std::max(l.recess, 0.0f);
+    // The turn of its edge: an angle to the slot drawn, the slot itself at an angle to the axis
+    // where it winds (rate: its tangent), within the room the pools leave on its farther side.
+    const double angle =
+        kTurnMost * (2.0 * static_cast<double>(noise::deriveSeed(l.seed, 3) >> 40) * 0x1.0p-24 -
+                     1.0);
+    const double rate = shiftAt(c, l.s).rate;
+    const double turn = (rate + dmath::sinTurns(angle) / dmath::cosTurns(angle)) /
+                        std::sqrt(1.0 + rate * rate);
+    const double free = std::max(0.0, room - static_cast<double>(l.recess + l.edge)) /
+                        (2.0 * static_cast<double>(l.width));
+    l.turn = static_cast<float>(std::clamp(turn, -free, free));
 }
 
 } // namespace
@@ -132,15 +149,18 @@ void placeLips(Course& c, const Heightfield& relief, double discharge) {
         const double below =
             (k + 1 < drops.size() ? p[drops[k + 1][0]].s : foot.s + kOpenPool) - foot.s;
         shapeLip(l, c, above, below, discharge);
-        l.reach = static_cast<float>(2.0 * (l.recess + l.edge) + (foot.s - a.s));
-        if (l.recess + l.edge > 0.0f) {
+        const double turned = 2.0 * std::abs(static_cast<double>(l.turn)) * l.width;
+        l.reach = static_cast<float>(2.0 * (l.recess + l.edge + turned) + (foot.s - a.s));
+        if (l.recess + l.edge > 0.0f || l.turn != 0.0f) {
             c.lips.push_back(l);
         }
     }
     c.lipsMinX = c.lipsMinZ = std::numeric_limits<double>::infinity();
     c.lipsMaxX = c.lipsMaxZ = -std::numeric_limits<double>::infinity();
     for (const FallLip& l : c.lips) {
-        const double r = 4.0 * static_cast<double>(l.recess + l.edge) + l.reach + l.width;
+        // Its slot as far aside and stretched as it winds (river_winding.hpp).
+        const double r = 4.0 * static_cast<double>(l.recess + l.edge) + l.reach +
+                         kStretchMost * l.width + c.points[l.point].windMost;
         c.lipsMinX = std::min(c.lipsMinX, l.x - r);
         c.lipsMinZ = std::min(c.lipsMinZ, l.z - r);
         c.lipsMaxX = std::max(c.lipsMaxX, l.x + r);
@@ -156,8 +176,11 @@ double lipRecess(const FallLip& l, double side) {
     const double across = 1.0 - u * u;
     const double rough = slotNoise(l.seed, 1, side, kRoughWave);
     const double edge = slotNoise(l.seed, 2, side, kEdgeWave);
+    const double turn = static_cast<double>(l.turn);
+    const double turned = (turn > 0.0 ? turn * (side + l.width) : -turn * (l.width - side)) *
+                          (1.0 - smooth(1.0 - kTurnFade, 1.0, std::abs(u)));
     return static_cast<double>(l.recess) * across * across * (1.0 + kRoughShare * rough) +
-           static_cast<double>(l.edge) * across * (0.5 + edge);
+           static_cast<double>(l.edge) * across * (0.5 + edge) + turned;
 }
 
 void cutLips(const Course& c, double x, double z, const LipValley& near, Valley& v) {
@@ -170,14 +193,19 @@ void cutLips(const Course& c, double x, double z, const LipValley& near, Valley&
         const double dx = x - l.x;
         const double dz = z - l.z;
         const double along = dx * l.dirX + dz * l.dirZ;
-        const double side = l.dirX * dz - l.dirZ * dx;
         // The valley moved downstream by the recess from twice it upstream of the edge (in the
         // pool above: the water coming down to the first lip of a stretch at most 1.75 times as
         // steep there) to the lip, back over reach below it: the course in order still, from the
         // pool above to the pool below. The recess is kRecessMost of that of the lip at most.
         const double reach = l.reach;
-        const double most = kRecessMost * static_cast<double>(l.recess + l.edge);
-        if (!(std::abs(side) < l.width) || along < -3.0 * most || along > reach) {
+        const double most = kRecessMost * static_cast<double>(l.recess + l.edge) +
+                            2.0 * std::abs(static_cast<double>(l.turn)) * l.width;
+        if (along < -3.0 * most || along > reach) {
+            continue;
+        }
+        // Across the slot where it winds (river_winding.hpp).
+        const double side = slotFrame(c, l.s + along, l.dirX * dz - l.dirZ * dx).side;
+        if (!(std::abs(side) < l.width)) {
             continue;
         }
         const double recess = lipRecess(l, side);
@@ -189,9 +217,12 @@ void cutLips(const Course& c, double x, double z, const LipValley& near, Valley&
         if (!(shift > 0.0)) {
             continue;
         }
-        // In the channel, only where the water stands there too (the pool below may turn away
-        // from the line of the lip: its banks never cut across the falling water).
-        const Valley moved = near(x + shift * l.dirX, z + shift * l.dirZ, l);
+        // Along the slot, where it winds: the point keeps its side of it. In the channel, only
+        // where the water stands there too (the pool below may turn away from the line of the
+        // lip: its banks never cut across the falling water).
+        const double aside = shiftAt(c, l.s + along).rate;
+        const Valley moved = near(x + shift * (l.dirX - aside * l.dirZ),
+                                  z + shift * (l.dirZ + aside * l.dirX), l);
         if (moved.height < v.height && (moved.wet || !v.wet)) {
             v.height = moved.height;
             v.level = moved.level;

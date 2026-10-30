@@ -419,6 +419,15 @@ void addFallViews(Places& out) {
         slot.note = note + (up ? ", up its slot" : ", down its slot");
         out.shots.push_back(slot);
     }
+    // At 45 degrees down onto its slot, from 250 m down it, looking up it (the height of the eye
+    // set from the ground before its slot wound).
+    Shot oblique = shotAt("fall_oblique", -6'185'113.5, 155'947.6);
+    oblique.above = 479.8;
+    oblique.heading = -131.1 / 360.0;
+    oblique.tilt = -1.0;
+    oblique.sunLeft = kSunBehind;
+    oblique.note = note + ", its slot at 45 degrees";
+    out.shots.push_back(oblique);
     TopShot top = topAt("fall_above", -6'185'302.0, 156'112.0, note + ", its highest falls");
     out.tops.push_back(top);
     top = topAt("fall_above600", -6'185'102.0, 155'922.0, note + ", its whole stretch");

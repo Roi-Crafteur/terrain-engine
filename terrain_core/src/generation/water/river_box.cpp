@@ -1,6 +1,7 @@
 // What of a course may change its valley at the points of a box (river_profile.hpp).
 #include "river_profile.hpp"
 
+#include "river_winding.hpp"
 #include "terrain/det_math.hpp"
 
 #include <algorithm>
@@ -31,24 +32,31 @@ BoxCourse::Segment segmentOf(const CoursePoint& a, const CoursePoint& b, std::ui
     s.keep = !(s.wall >= 0.0 && std::min(a.floorSlope, b.floorSlope) >= 0.0 && s.gorge >= 0.0 &&
                s.gorge <= 1.0 &&
                std::min({a.half, a.meander, a.floorHalf, b.half, b.meander, b.floorHalf}) >= 0.0);
-    const double half = std::max(a.half, b.half);
+    // A bowl widens the channel and deepens its bed (river_slot.hpp).
+    const double half = std::max(a.half, b.half) * (1.0 + static_cast<double>(a.bowlWide));
+    const double bowl = a.bowlDeep;
     const double amplitude = std::max(a.meander, b.meander);
     s.half = std::min(a.half, b.half);
     s.floorHalf = std::max(a.floorHalf, b.floorHalf);
     s.least = half + amplitude + kWallMargin;
+    s.windMost = std::max(a.windMost, b.windMost);
     s.foot = std::max({1.0, static_cast<double>(a.foot), static_cast<double>(b.foot)});
     const double rate =
         kMeanderRate * amplitude * std::max(std::abs(a.phaseRate), std::abs(b.phaseRate));
     s.meander = kMeanderReach * amplitude;
     s.stretch = std::sqrt(1.0 + rate * rate);
     s.bankFrom = half + kBankReach + kMargin;
-    const auto lowOf = [](const CoursePoint& p) {
+    s.widest = half;
+    // Its banks above its fill, never above its floor (segmentValley).
+    s.bankTop = static_cast<double>(std::max(a.valley, b.valley)) + kFloorRise;
+    const auto lowOf = [bowl](const CoursePoint& p) {
         return std::min(static_cast<double>(p.valley) + kFloorRise,
-                        static_cast<double>(p.level) - std::max(0.0, static_cast<double>(p.depth)));
+                        static_cast<double>(p.level) -
+                            std::max(0.0, static_cast<double>(p.depth)) - bowl);
     };
     s.low = std::min(static_cast<double>(std::min(a.valley, b.valley)) + kFloorRise,
                      static_cast<double>(std::min(a.level, b.level)) -
-                         std::max(0.0, static_cast<double>(std::max(a.depth, b.depth))));
+                         std::max(0.0, static_cast<double>(std::max(a.depth, b.depth))) - bowl);
     s.lowStart = lowOf(a);
     s.lowEnd = lowOf(b);
     s.floorTop = static_cast<double>(std::max(a.valley, b.valley)) + kFloorRise;
@@ -65,21 +73,19 @@ BoxCourse::Segment segmentOf(const CoursePoint& a, const CoursePoint& b, std::ui
 // which it is the wider the floor, and steeper the more gorge where warp is negative. Beyond its
 // ends it starts from their own, rising kLeastRise meters per meter at least upstream of its
 // start.
-bool BoxCourse::Segment::mayMatter(double d, double beyond, bool upstream, double groundLow,
-                                   double threshold, double warp) const {
+Matters BoxCourse::Segment::mayMatter(double d, double beyond, bool upstream, double groundLow,
+                                      double threshold, double warp) const {
     if (keep) {
-        return true;
+        return Matters::Valley;
     }
     const double channel = meander > 0.0 ? (d - meander) / stretch : d;
-    if (!(channel * (1.0 - 1e-9) >= bankFrom)) {
-        return true;
-    }
+    const Matters banks = channel * (1.0 - 1e-9) >= bankFrom ? Matters::Nothing : Matters::Banks;
     const double spur = floorHalf - warp * wallWarpOf(floorHalf) - least;
     const double out =
         d - least - 0.5 * (spur + std::sqrt(spur * spur + kWallSoft * kWallSoft)) - kMargin;
     if (!(out >= kLeveeFade + kMargin) &&
         !(floorTop + floorSlope * std::max(0.0, d - half) + kMargin <= groundLow)) {
-        return true;
+        return Matters::Valley;
     }
     const double steep = wall * (1.0 + kGorgeSwing * gorge * std::min(0.0, warp) * 1.01);
     double walls = 0.0;
@@ -90,7 +96,15 @@ bool BoxCourse::Segment::mayMatter(double d, double beyond, bool upstream, doubl
     if (beyond > 0.0) {
         from = upstream ? lowStart + kLeastRise * beyond : lowEnd;
     }
-    return !(from + std::max(0.0, walls) - kMargin >= threshold);
+    return from + std::max(0.0, walls) - kMargin >= threshold ? banks : Matters::Valley;
+}
+
+// The edge of its channel never nearer than its least distance (as mayMatter's) less its widest
+// half width.
+double BoxCourse::Segment::bankAt(double d) const {
+    const double channel = meander > 0.0 ? (d - meander) / stretch : d;
+    const double edge = channel * (1.0 - 1e-9) - widest;
+    return bankTop - kBankDrop * std::max(0.0, edge - kBankFlat) + kMargin;
 }
 
 BoxCourse boxCourse(const Course& c, double minX, double minZ, double maxX, double maxZ,
@@ -123,11 +137,23 @@ BoxCourse boxCourse(const Course& c, double minX, double minZ, double maxX, doub
             const double raw = span.length2 > 0.0
                                    ? ((cx - a.x) * span.dx + (cz - a.z) * span.dz) / span.length2
                                    : 0.0;
-            const double beyond = std::max(
-                0.0, std::abs(raw - std::clamp(raw, 0.0, 1.0)) * span.length - reach - kMargin);
-            if (segment.mayMatter(
-                    std::max(0.0, distanceToSegment(cx, cz, a.x, a.z, b.x, b.z) - reach),
-                    beyond, raw < 0.0, groundMin, threshold, kLowestWarp)) {
+            const double past = std::abs(raw - std::clamp(raw, 0.0, 1.0)) * span.length;
+            const double beyond = std::max(0.0, past - reach - kMargin);
+            // The side of the points of the box: that of its center, within reach.
+            const double side =
+                span.length > 0.0 ? (span.dx * (cz - a.z) - span.dz * (cx - a.x)) / span.length
+                                  : 0.0;
+            // Near a corridor, the points of the box within reach of its center along the course
+            // too (along the line of the segment).
+            const double along = a.s + raw * span.length;
+            const double d = segment.windMost > 0.0
+                                 ? windDistance(windBounds(c, along - reach - kMargin,
+                                                           along + reach + kMargin),
+                                                beyond, side - reach, side + reach)
+                                 : std::max(0.0, distanceToSegment(cx, cz, a.x, a.z, b.x, b.z) -
+                                                     reach);
+            if (segment.mayMatter(d, beyond, raw < 0.0, groundMin, threshold, kLowestWarp) !=
+                Matters::Nothing) {
                 out.segments.push_back(segment);
             }
         }

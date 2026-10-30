@@ -85,9 +85,15 @@ struct RiverPoint {
     float mountain = 0.0f;   // [0, 1]: plains to mountains
     float meander = 0.0f;    // amplitude of the meanders of the channel about this axis
     // The level the valley is carved from: the water, or above the steps of a fall the slope they
-    // come down, raised so that their slot stays cut into the floor at their lips too (its floor
-    // stands kFloorRise, 0.6 m, above it).
+    // come down, their water under it enough for their slot to stay cut into the floor at their
+    // lips too (its floor stands kFloorRise, 0.6 m, above it).
     float valley = 0.0f;
+    // Where the slot of a fall winds: (x, z) lies on the middle of the slot, shift meters left of
+    // the axis of the course (axisX, axisZ: the levels lie along it); elsewhere shift is 0 and
+    // the axis is (x, z).
+    float shift = 0.0f;
+    double axisX = 0.0;
+    double axisZ = 0.0;
 };
 
 // A fall: the stretch of a course where its water drops at once.

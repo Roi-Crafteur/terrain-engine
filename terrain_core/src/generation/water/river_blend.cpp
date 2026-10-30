@@ -1,11 +1,14 @@
-// The blend of the attributes of the valleys of a course, and the rises of its segments beyond
-// their ends (river_profile.hpp).
+// The blend of the attributes of the valleys of a course, the rises of its segments beyond their
+// ends and the meanders of its channel (river_profile.hpp).
 #include "river_profile.hpp"
 
 #include "terrain/det_math.hpp"
+#include "terrain/generation/noise.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 namespace terrain::water {
@@ -16,6 +19,13 @@ namespace {
 double secant(const CoursePoint& a, const CoursePoint& b, float CoursePoint::*level) {
     const double run = b.s - a.s;
     return run > 0.0 ? std::max(0.0, static_cast<double>(a.*level - b.*level)) / run : 0.0;
+}
+
+// A gradient in [-1, -0.4] or [0.4, 1] for the lattice point k: no flat half wave.
+double gradientOf(std::int64_t k, std::uint64_t seed) {
+    const std::uint64_t bits = noise::deriveSeed(seed, static_cast<std::uint64_t>(k));
+    const double u = static_cast<double>(bits >> 11) * 0x1.0p-53;
+    return u < 0.5 ? -(0.4 + 1.2 * u) : 0.4 + 1.2 * (u - 0.5);
 }
 
 } // namespace
@@ -92,6 +102,21 @@ std::vector<float> risesOf(const std::vector<CoursePoint>& points, float CourseP
         rises[i] = static_cast<float>(rise);
     }
     return rises;
+}
+
+Meander meanderAt(double phase, double amplitude, std::uint64_t seed) {
+    const double i = std::floor(phase);
+    const double f = phase - i;
+    const auto k = static_cast<std::int64_t>(i);
+    const double g0 = gradientOf(k, seed);
+    const double g1 = gradientOf(k + 1, seed);
+    const double a = g0 * f;
+    const double b = g1 * (f - 1.0);
+    const double w = f * f * f * (f * (6.0 * f - 15.0) + 10.0);
+    const double dw = 30.0 * f * f * (f - 1.0) * (f - 1.0);
+    // At most about a half of g: scaled to about 1.
+    return {2.0 * amplitude * (a + w * (b - a)),
+            2.0 * amplitude * (g0 + dw * (b - a) + w * (g1 - g0))};
 }
 
 } // namespace terrain::water

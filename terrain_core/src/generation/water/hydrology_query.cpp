@@ -4,6 +4,7 @@
 
 #include "hydrology_impl.hpp"
 #include "river_profile.hpp"
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -226,10 +227,23 @@ RiverReach Hydrology::reach(std::size_t index) const {
     out.discharge =
         m.segmentOf(index).vertices[static_cast<std::size_t>(std::max(0, out.vertex))].discharge;
     out.deepestCut = c.deepestCut;
-    for (const water::CoursePoint& p : c.points) {
+    // Along its water: where its slots wind, on their middle (water::Course::line).
+    const bool wound = !c.line.empty();
+    const std::vector<water::CoursePoint>& line = wound ? c.line : c.points;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        const water::CoursePoint& p = line[i];
         out.points.push_back({p.x, p.z, p.level, 2.0f * p.half, p.depth, 2.0f * p.floorHalf,
-                              p.gorge, p.mountain, p.meander, p.valley});
+                              p.gorge, p.mountain, p.meander, p.valley, p.shift,
+                              wound ? c.lineAxis[i].x : p.x, wound ? c.lineAxis[i].z : p.z});
     }
+    // A lip on the middle of its slot.
+    const auto onSlot = [&c](std::size_t i) {
+        const water::CoursePoint& a = c.points[i];
+        const water::CoursePoint& b = c.points[std::min(i + 1, c.points.size() - 1)];
+        const double length = dmath::hypot(b.x - a.x, b.z - a.z);
+        const double shift = length > 0.0 ? static_cast<double>(a.shift) / length : 0.0;
+        return std::array<double, 2>{a.x - shift * (b.z - a.z), a.z + shift * (b.x - a.x)};
+    };
     for (std::size_t i = 0; i + 1 < c.points.size();) {
         std::size_t j = i;
         while (j + 1 < c.points.size() &&
@@ -238,8 +252,9 @@ RiverReach Hydrology::reach(std::size_t index) const {
             ++j;
         }
         if (j > i && c.points[i].level - c.points[j].level > kFallMin) {
-            out.falls.push_back({c.points[i].x, c.points[i].z, c.points[i].level,
-                                 c.points[j].level, 2.0f * c.points[i].half});
+            const std::array<double, 2> lip = onSlot(i);
+            out.falls.push_back(
+                {lip[0], lip[1], c.points[i].level, c.points[j].level, 2.0f * c.points[i].half});
         }
         i = j > i ? j : i + 1;
     }
@@ -255,7 +270,11 @@ std::size_t Hydrology::coursesComputed() const {
 
 std::size_t Hydrology::courseBytes() const {
     return impl_->courses.bytes([](const water::Course& c) {
-        return sizeof(c) + c.points.capacity() * sizeof(water::CoursePoint) +
+        return sizeof(c) +
+               (c.points.capacity() + c.line.capacity()) * sizeof(water::CoursePoint) +
+               c.lineAxis.capacity() * sizeof(water::PathPoint) +
+               c.windings.capacity() * sizeof(water::SlotWinding) +
+               c.pools.capacity() * sizeof(water::FallPool) +
                (c.rises.capacity() + c.valleyRises.capacity()) * sizeof(float) +
                c.chunks.capacity() * sizeof(water::CourseChunk);
     });

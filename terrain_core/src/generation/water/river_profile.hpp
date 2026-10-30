@@ -6,8 +6,9 @@
 // (a floodplain, the floor of a U, nothing in a gorge) rises gently from just above the water; then
 // the walls, rounded at their foot. The surface of a course is the lowest over its segments (the
 // point nearest to each, its attributes interpolated there): continuous everywhere, smooth along
-// the course, never a step. Pure arithmetic of doubles and hashes: the same bits on every
-// platform.
+// the course, never a step. In a corridor of falls, the valley is drawn in the frame of its slot
+// (river_winding.hpp): aside of the axis where the slot winds, its levels along the axis. Pure
+// arithmetic of doubles and hashes: the same bits on every platform.
 
 #include "river_course.hpp"
 #include "terrain/det_math.hpp"
@@ -144,6 +145,10 @@ inline constexpr double kMeanderRate = 9.76;
 // away and floor of valleyAt over the box (where away is positive and floor lies kBlend above
 // the lowest valley found so far, the point skips it), and of their segments those that may
 // change the valley at some point of the box. Every other chunk or segment changes nothing there.
+// What of the valley of a segment may change valleyAt at a point: all of it (its surface joining
+// the blend, its floor filling the relief), only its banks (Valley::bank), or nothing.
+enum class Matters { Nothing, Banks, Valley };
+
 struct BoxCourse {
     struct Chunk {
         std::uint32_t chunk = 0; // in Course::chunks
@@ -156,7 +161,10 @@ struct BoxCourse {
     // meanders and floor, the gentlest walls and the most gorge, the longest foot, the lowest its
     // surface starts from and the highest its floor and its slope, the narrowest channel; its
     // banks within bankFrom of its axis (the meanders at most meander away, the channel stretched
-    // by stretch at most). keep: of a shape these bounds do not hold for, always kept.
+    // by stretch at most, widest at most), never above bankTop. keep: of a shape these bounds do
+    // not hold for, always kept. Near a
+    // corridor of falls (windMost above 0), its valley is drawn in the frame of the slot
+    // (river_winding.hpp): its points are as far as windDistance from it there.
     struct Segment {
         std::uint32_t first = 0; // index of its first point
         SegmentSpan span;
@@ -173,14 +181,19 @@ struct BoxCourse {
         double floorSlope = 0.0;
         double half = 0.0;
         double bankFrom = 0.0;
+        double widest = 0.0;
+        double bankTop = 0.0;
         double meander = 0.0;
         double stretch = 1.0;
-        // Whether its valley may change valleyAt at a point d meters from it, beyond meters
-        // beyond its ends (upstream of its start or not), where the relief lies at least
-        // groundLow high, the noise of the walls warp there (or below, as -1 bounds every point
-        // of a box), and the valley joins the blend below threshold.
-        [[nodiscard]] bool mayMatter(double d, double beyond, bool upstream, double groundLow,
-                                     double threshold, double warp) const;
+        double windMost = 0.0;
+        // What of its valley may change valleyAt at a point d meters from it, beyond meters
+        // beyond its ends (upstream of its start or not), where the relief lies at least groundLow
+        // high, the noise of the walls warp there (or below, as -1 bounds every point of a box),
+        // and the valley joins the blend below threshold.
+        [[nodiscard]] Matters mayMatter(double d, double beyond, bool upstream, double groundLow,
+                                        double threshold, double warp) const;
+        // The highest its banks may stand at a point d meters from it (Valley::bank).
+        [[nodiscard]] double bankAt(double d) const;
     };
     std::vector<Chunk> chunks;
     std::vector<Segment> segments;

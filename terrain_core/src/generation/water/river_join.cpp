@@ -33,8 +33,9 @@ constexpr double kJoinGap = 10.0;
 constexpr double kJoinCarve = 5.0;
 constexpr double kJoinStep = 16.0;
 
-// The point of the axis of course c nearest to (x, z): its distance, where it lies, the water
-// there and how far its channel and meanders reach from the axis.
+// The point of the axis of course c nearest to (x, z) (of the middle of its slots where they
+// wind): its distance, where it lies, the water there and how far its channel and meanders reach
+// from the axis.
 struct Nearest {
     double distance = std::numeric_limits<double>::infinity();
     double x = 0.0;
@@ -45,9 +46,11 @@ struct Nearest {
 
 Nearest nearestOn(const Course& c, double x, double z) {
     Nearest n;
-    for (std::size_t k = 0; k + 1 < c.points.size(); ++k) {
-        const CoursePoint& a = c.points[k];
-        const CoursePoint& b = c.points[k + 1];
+    // Along its water: where its slots wind, on their middle (Course::line).
+    const std::vector<CoursePoint>& line = c.line.empty() ? c.points : c.line;
+    for (std::size_t k = 0; k + 1 < line.size(); ++k) {
+        const CoursePoint& a = line[k];
+        const CoursePoint& b = line[k + 1];
         const double dx = b.x - a.x;
         const double dz = b.z - a.z;
         const double length2 = dx * dx + dz * dz;

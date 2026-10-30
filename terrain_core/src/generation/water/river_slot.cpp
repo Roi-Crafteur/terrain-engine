@@ -3,6 +3,7 @@
 
 #include "river_lips.hpp"
 #include "river_profile.hpp"
+#include "river_winding.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
@@ -86,9 +87,20 @@ constexpr double kPoolTail = 0.3;
 constexpr double kBlockBelow = 2.0; // their foot below the bed
 constexpr double kBlockAbove = 0.5; // their top above it at least
 // A block stands kBlockTall times its width above the bed at most, kBlockOutWidth times it out of
-// the water: the finest meshes (cells of 1 m) reach its top.
-constexpr double kBlockTall = 1.2;
+// the water: the finest meshes (cells of 1 m) reach its top and follow its sides.
+constexpr double kBlockTall = 0.9;
 constexpr double kBlockOutWidth = 0.6;
+// The bowls: kBowlShare of the drop deep, from kBowlLeast meters; full at the foot of the face
+// and kBowlHold of their length below it, kBowlRun times the drop long (kBowlRunLeast meters at
+// least, kBowlPool of the pool at most); their bed never rising faster than kBowlSteep meters per
+// meter below it (shallower where the pool is too short: between the drops of a cascade).
+constexpr double kBowlShare = 0.1;
+constexpr double kBowlLeast = 2.0;
+constexpr double kBowlRun = 1.0;
+constexpr double kBowlRunLeast = 12.0;
+constexpr double kBowlPool = 0.6;
+constexpr double kBowlHold = 0.3;
+constexpr double kBowlSteep = 0.38;
 
 constexpr std::uint64_t kWidthLeft = 1;
 constexpr std::uint64_t kWidthRight = 2;
@@ -102,6 +114,11 @@ constexpr std::uint64_t kBlocks = 9;
 
 double lerp(double a, double b, double t) {
     return a + (b - a) * t;
+}
+
+double smoothOf(double t) {
+    t = std::clamp(t, 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
 }
 
 // A share in [0, 1) from 24 bits of bits, from the bit shift.
@@ -135,6 +152,17 @@ double spurAt(std::uint64_t seed, double s) {
 bool faceAt(const std::vector<CoursePoint>& p, std::size_t i) {
     return p[i].fall && p[i + 1].fall &&
            p[i].level - p[i + 1].level > kLipSlope * (p[i + 1].s - p[i].s);
+}
+
+// The top of a block width meters wide over a bed in a pool at level, the lip above it at cap: out
+// of the water in kBlockOutShare of them (more drawing it), sunk in the others.
+double topOf(std::uint64_t more, double level, double bed, double cap, double width) {
+    const double top = shareOf(more, 0) < kBlockOutShare
+                           ? level + kBlockOutLeast + kBlockOutSpread * shareOf(more, 24)
+                           : level - kBlockSunk * shareOf(more, 24);
+    const double highest =
+        std::min({cap, bed + kBlockTall * width, level + kBlockOutWidth * width});
+    return std::min(std::max(top, bed + kBlockAbove), highest);
 }
 
 // The heap of blocks at the foot of the drop of c from point lip to point foot, the next lip at
@@ -181,7 +209,8 @@ void placeHeap(Course& c, std::size_t lip, std::size_t foot, double next, std::u
         const double dx = b.x - a.x;
         const double dz = b.z - a.z;
         const double along = dmath::hypot(dx, dz);
-        const double half = slotHalf(c.slotSeed, s, lerp(a.half, b.half, t));
+        const Bowl bowl = bowlAt(c, s);
+        const double half = slotHalf(c.slotSeed, s, lerp(a.half, b.half, t)) * (1.0 + bowl.wider);
         if (!(along > 0.0) || half < kBlockHalfLeast) {
             continue;
         }
@@ -192,19 +221,16 @@ void placeHeap(Course& c, std::size_t lip, std::size_t foot, double next, std::u
             std::clamp(0.5 * across * half + spread * (2.0 * shareOf(bits, 40) - 1.0), -free, free);
         // The bed of the channel there (river_profile.cpp): the block stands above it.
         const double off = aside / half;
-        const double bed =
-            level - static_cast<double>(lerp(a.depth, b.depth, t)) * (1.0 - off * off);
-        const std::uint64_t more = noise::deriveSeed(bits, 1);
-        const double top =
-            shareOf(more, 0) < kBlockOutShare
-                ? level + kBlockOutLeast + kBlockOutSpread * shareOf(more, 24)
-                : level - kBlockSunk * shareOf(more, 24);
+        const double bed = level - (static_cast<double>(lerp(a.depth, b.depth, t)) + bowl.deeper) *
+                                       (1.0 - off * off);
         const double base = bed - kBlockBelow;
-        const double highest =
-            std::min({cap, bed + kBlockTall * width, level + kBlockOutWidth * width});
-        const double placed = std::min(std::max(top, bed + kBlockAbove), highest);
-        const double x = lerp(a.x, b.x, t) - aside * dz / along;
-        const double z = lerp(a.z, b.z, t) + aside * dx / along;
+        const double placed = topOf(noise::deriveSeed(bits, 1), level, bed, cap, width);
+        // In the slot where it winds: aside of its middle, across it (river_winding.hpp).
+        const SlotShift shift = shiftAt(c, s);
+        const double rate = std::min(std::abs(shift.rate), kRateCap);
+        const double sideways = shift.offset + aside * std::sqrt(1.0 + rate * rate);
+        const double x = lerp(a.x, b.x, t) - sideways * dz / along;
+        const double z = lerp(a.z, b.z, t) + sideways * dx / along;
         // Never on another block of the heap: each stands on the bed, its top its own.
         const bool apart = std::all_of(c.blocks.begin() + static_cast<std::ptrdiff_t>(first),
                                        c.blocks.end(), [&](const FallBlock& o) {
@@ -222,6 +248,64 @@ void placeHeap(Course& c, std::size_t lip, std::size_t foot, double next, std::u
 // A gradient in [-1, -0.4] or [0.4, 1] from a share in [0, 1): no flat half wave (meanderAt).
 double gradientOf(double share) {
     return share < 0.5 ? -(0.4 + 1.2 * share) : 0.4 + 1.2 * (share - 0.5);
+}
+
+// How far the bowl of pool q reaches below the foot of its face.
+double bowlLength(const FallPool& q) {
+    return std::min(std::max(kBowlRun * static_cast<double>(q.drop), kBowlRunLeast),
+                    kBowlPool * (q.next - q.foot));
+}
+
+// How deep the bowl of pool q is at most, length its reach.
+double bowlDepth(const FallPool& q, double length) {
+    // The steepest of a smooth step is 1.5 times its mean.
+    return std::min(std::clamp(kBowlShare * q.drop, kBowlLeast, kBowlMost),
+                    kBowlSteep * (1.0 - kBowlHold) * length / 1.5);
+}
+
+// The bowl of pool q s meters along the course.
+Bowl bowlOf(const FallPool& q, double s) {
+    const double length = q.length;
+    if (!(length > 0.0)) {
+        return {}; // no pool below the face: no bowl
+    }
+    // Deeper down the face, full at its foot and kBowlHold of the bowl below it; wider from the
+    // lip to there (the walls of the slot giving way gradually), then both back to nothing.
+    const double hold = q.foot + kBowlHold * length;
+    const double back = s > hold ? 1.0 - smoothOf((s - hold) / ((1.0 - kBowlHold) * length)) : 1.0;
+    const double deeper =
+        s < q.foot ? (q.foot > q.lip ? smoothOf((s - q.lip) / (q.foot - q.lip)) : 1.0) : back;
+    const double wider = s < hold ? smoothOf((s - q.lip) / (hold - q.lip)) : back;
+    if (!(deeper > 0.0) && !(wider > 0.0)) {
+        return {};
+    }
+    return {deeper * q.deep, wider * kBowlWiden};
+}
+
+// The most the bowls of c deepen and widen each of its segments, kBowlBeyond meters beyond its
+// ends too (CoursePoint::bowlDeep, bowlWide): a bowl from the lip of its pool to its length below
+// its foot (bowlOf), as deep as its depth there at most, rounded up.
+void boundBowls(Course& c) {
+    std::vector<CoursePoint>& p = c.points;
+    for (const FallPool& q : c.pools) {
+        if (!(q.length > 0.0)) {
+            continue;
+        }
+        const double from = q.lip - kBowlBeyond;
+        const double end = q.foot + q.length + kBowlBeyond;
+        const auto deep = static_cast<float>((1.0 + 1e-6) * q.deep);
+        const auto wide = static_cast<float>((1.0 + 1e-6) * kBowlWiden);
+        // The segments from the one that ends at from or beyond it to the last that starts
+        // before end.
+        auto i = static_cast<std::size_t>(
+            std::lower_bound(p.begin(), p.end(), from,
+                             [](const CoursePoint& a, double s) { return a.s < s; }) -
+            p.begin());
+        for (i = i > 0 ? i - 1 : 0; i + 1 < p.size() && !(p[i].s > end); ++i) {
+            p[i].bowlDeep = std::max(p[i].bowlDeep, deep);
+            p[i].bowlWide = std::max(p[i].bowlWide, wide);
+        }
+    }
 }
 
 } // namespace
@@ -252,7 +336,8 @@ double slotHalf(std::uint64_t seed, double s, double half) {
     return half * (1.0 - kNarrowMost * 0.5 * (1.0 + slotNoise(seed, kNarrow, s, kNarrowWave)));
 }
 
-double slotRun(std::uint64_t seed, double s, double base, double half, double side) {
+double slotRun(std::uint64_t seed, double s, double base, double half, double side,
+               double bowl) {
     const bool left = side >= 0.0;
     const double width = base * (1.0 + kSlotSwing * slotNoise(seed, left ? kWidthLeft : kWidthRight,
                                                             s, kSlotWave) +
@@ -261,7 +346,7 @@ double slotRun(std::uint64_t seed, double s, double base, double half, double si
     const double spur = spurAt(noise::deriveSeed(seed, left ? kSpurLeft : kSpurRight), s);
     // The ravine wanders about its channel: one wall nearer as the other recedes.
     const double wander = kSlotWander * (base + half) * slotNoise(seed, kWander, s, kWanderWave);
-    return std::max(width * (1.0 - spur) + (left ? wander : -wander), kRunLeast * base);
+    return std::max(width * (1.0 - spur) + (left ? wander : -wander) - bowl, kRunLeast * base);
 }
 
 double slotReach(double base, double half) {
@@ -276,6 +361,67 @@ double slotWall(double out, double run, double rise) {
         return low;
     }
     return low + (rise - low) * std::min(1.0, (out - ledge) / (run - ledge));
+}
+
+void placePools(Course& c) {
+    c.pools.clear();
+    const std::vector<CoursePoint>& p = c.points;
+    for (std::size_t i = 0; i + 1 < p.size(); ++i) {
+        if (!faceAt(p, i)) {
+            continue;
+        }
+        std::size_t j = i + 1;
+        while (j + 1 < p.size() && faceAt(p, j)) {
+            ++j;
+        }
+        const float drop = p[i].level - p[j].level;
+        if (static_cast<double>(drop) >= kLipLeast) {
+            // To the next lip, or to the end of the stretch.
+            std::size_t k = j;
+            while (k + 1 < p.size() && p[k + 1].fall && !faceAt(p, k)) {
+                ++k;
+            }
+            FallPool q{p[i].s, p[j].s, p[k].s, drop, 0.0, 0.0};
+            q.length = bowlLength(q);
+            q.deep = bowlDepth(q, q.length);
+            c.pools.push_back(q);
+        }
+        i = j - 1;
+    }
+    c.poolOf.assign(p.size(), -1);
+    std::int32_t k = -1;
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        while (static_cast<std::size_t>(k + 1) < c.pools.size() &&
+               !(p[i].s < c.pools[static_cast<std::size_t>(k + 1)].lip)) {
+            ++k;
+        }
+        c.poolOf[i] = k;
+    }
+    boundBowls(c);
+}
+
+Bowl bowlAt(const Course& c, double s) {
+    const auto after = std::upper_bound(c.pools.begin(), c.pools.end(), s,
+                                        [](double v, const FallPool& q) { return v < q.lip; });
+    return after == c.pools.begin() ? Bowl{} : bowlOf(*(after - 1), s);
+}
+
+Bowl bowlAt(const Course& c, double s, std::size_t i) {
+    const CoursePoint& a = c.points[i];
+    if (!(a.bowlWide > 0.0f)) {
+        return {}; // no bowl near the segment (boundBowls)
+    }
+    s = std::clamp(s, a.s - kBowlBeyond, c.points[i + 1].s + kBowlBeyond);
+    // The last pool whose lip lies at s or before it, from that of point i.
+    auto k = static_cast<std::ptrdiff_t>(c.poolOf[i]);
+    const auto n = static_cast<std::ptrdiff_t>(c.pools.size());
+    while (k + 1 < n && !(s < c.pools[static_cast<std::size_t>(k + 1)].lip)) {
+        ++k;
+    }
+    while (k >= 0 && s < c.pools[static_cast<std::size_t>(k)].lip) {
+        --k;
+    }
+    return k < 0 ? Bowl{} : bowlOf(c.pools[static_cast<std::size_t>(k)], s);
 }
 
 void placeBlocks(Course& c) {
@@ -333,6 +479,17 @@ double blocksAt(const Course& c, double x, double z) {
         }
     }
     return top;
+}
+
+void standBlocks(const Course& c, double x, double z, Valley& v) {
+    if (c.blocks.empty() || !(v.height < std::numeric_limits<double>::infinity())) {
+        return;
+    }
+    const double block = blocksAt(c, x, z);
+    if (block > v.height) {
+        v.height = block;
+        v.wet = v.wet && block < static_cast<double>(v.level);
+    }
 }
 
 } // namespace terrain::water

@@ -132,8 +132,9 @@ struct CoursePoint {
     double s = 0.0;           // meters from the start of the course along the axis
     float level = 0.0f;       // the water surface
     // The level the valley is carved from: the water, or above the steps of a fall the slope it
-    // falls down (the valley follows the slope, the water falls in steps in a slot in its floor),
-    // raised so that the slot stays cut into the floor at their lips too (stepFalls).
+    // falls down (the valley follows the slope, the water falls in steps in a slot in its floor,
+    // under the slope enough for the slot to stay cut into the floor at their lips too,
+    // stepFalls).
     float valley = 0.0f;
     float ground = 0.0f;      // the lowest relief across the channel (or the valley it joins)
     float top = 0.0f;         // the relief on the axis: how deep the valley cuts
@@ -152,6 +153,56 @@ struct CoursePoint {
     // beyond the channel (river_slot.hpp); 0 elsewhere.
     float slot = 0.0f;
     bool fall = false;        // on a stretch where the water falls in steps (river_falls.hpp)
+    // In a corridor of falls (river_winding.hpp), or within kWindWindow meters of the segments
+    // around the point: the middle of its slot lies shift meters left of the axis at the point,
+    // never more than windMost meters aside anywhere in its corridor; 0 elsewhere.
+    float shift = 0.0f;
+    float windMost = 0.0f;
+    // Below a drop (river_slot.hpp): the bowls deepen the channel of the segment from the point to
+    // the next by bowlDeep meters at most and widen it by bowlWide of itself, kBowlBeyond meters
+    // beyond its ends too; 0 elsewhere.
+    float bowlDeep = 0.0f;
+    float bowlWide = 0.0f;
+};
+
+// The winding of the slot of a corridor of falls (river_winding.hpp), from to to meters along the
+// course: two noises of waves meters (wave, phase, amplitude and seed each), faded in and out over
+// fade meters at its ends, a share of it kept toward each side (the water kept in the rock),
+// never more than most meters aside (as measured, with a margin). Drawn from table: its offset and
+// rate every step meters from from (interleaved), cubic between them.
+struct SlotWinding {
+    double from = 0.0;
+    double to = 0.0;
+    double fade = 1.0;
+    std::array<double, 2> wave{1.0, 1.0};
+    std::array<double, 2> phase{};
+    std::array<double, 2> amplitude{};
+    std::array<std::uint64_t, 2> seed{};
+    double left = 1.0;
+    double right = 1.0;
+    double most = 0.0;
+    double step = 1.0;
+    std::vector<double> table;
+};
+
+// What bounds the windings of a course (river_winding.cpp: windBounds), every kBoundBin meters
+// from from: the least and the most its slot lies left of its axis and the most its frame
+// stretches (interleaved, with a margin), in levels[0]; the same over 2, 4, 8... bins from each
+// in the next levels.
+struct WindTable {
+    double from = 0.0;
+    std::vector<std::vector<float>> levels;
+};
+
+// A pool of a stretch in steps (river_slot.hpp): below the drop of drop meters whose face comes
+// down from lip to foot meters along the course, up to the next lip at next.
+struct FallPool {
+    double lip = 0.0;
+    double foot = 0.0;
+    double next = 0.0;
+    float drop = 0.0f;
+    double length = 0.0; // its bowl reaches length meters below the foot, deep meters deep at most
+    double deep = 0.0;
 };
 
 // A block of rock in a pool of a fall (river_slot.hpp): radius meters wide around (x, z), its top
@@ -170,7 +221,10 @@ struct FallBlock {
 // below it; how much harder the rock of the lip is than that under it (contrast, in [0, 1]); and
 // its edge across the slot: its middle recedes upstream by recess meters, over width meters on
 // each side of the axis, never by less than edge meters there (an irregular edge, drawn by seed),
-// the valley moved downstream by as much and back over reach meters below the lip.
+// and turn meters more per meter across it (an edge at an angle to the slot), the valley moved
+// downstream by as much and back over reach meters below the lip. Its point is on the axis of the
+// course (the middle of the slot lies aside of it where it winds); its side in the frame of the
+// slot (river_winding.hpp).
 struct FallLip {
     double x = 0.0;
     double z = 0.0;
@@ -185,6 +239,7 @@ struct FallLip {
     float edge = 0.0f;
     float width = 0.0f;
     float reach = 0.0f;
+    float turn = 0.0f;
     std::uint64_t seed = 0;
 };
 
@@ -231,6 +286,17 @@ struct Course {
     double lipsMinZ = 0.0;
     double lipsMaxX = 0.0;
     double lipsMaxZ = 0.0;
+    // The windings of the slots of its corridors (in order along it) and the pools of its falls
+    // (river_winding.hpp, river_slot.hpp).
+    std::vector<SlotWinding> windings;
+    WindTable windTable;
+    std::vector<FallPool> pools;
+    // For each of its points, the last pool whose lip lies at it or before it (-1: none).
+    std::vector<std::int32_t> poolOf;
+    // Where its slots wind, the points of its water: those of the course, its corridors every few
+    // meters, at the middle of the slot; lineAxis where each lies on the axis. Empty without them.
+    std::vector<CoursePoint> line;
+    std::vector<PathPoint> lineAxis;
 };
 
 // The course of a reach.

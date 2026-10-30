@@ -60,8 +60,9 @@ bool addFall(const terrain::Hydrology& hydrology, double x, double z, Places& ou
 bool addGorge(const terrain::Hydrology& hydrology, double x, double z, Places& out);
 
 // The views of the fall of 388 m from where addFall set them before its slot wound (phase 12A,
-// PA3 step 2): from its basin, its slot up and down from 40 m above its water, and from above, 300
-// m and 600 m wide; the same eyes whatever the course does there since.
+// PA3 step 2): from its basin, its slot up and down from 40 m above its water, at 45 degrees down
+// onto it, and from above, 300 m and 600 m wide; the same eyes whatever the course does there
+// since.
 void addFallViews(Places& out);
 
 } // namespace rock_tool

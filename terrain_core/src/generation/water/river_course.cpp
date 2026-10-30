@@ -190,30 +190,6 @@ bool refineFalls(const Heightfield& relief, const ReachInput& in, std::vector<Co
     return true;
 }
 
-// The runs where the water falls wind (windFalls), their levels kept, with kWindApron meters of
-// the course before and after them (the room of a few waves, the ends of the reach unmoved): in
-// the channel of the reach there, the axis then measured anew.
-constexpr double kWindApron = 128.0;
-void windRuns(const ReachInput& in, const std::vector<std::array<double, 2>>& runs,
-              std::vector<CoursePoint>& points) {
-    const double length = std::max(points.back().s, 1.0);
-    std::vector<std::array<double, 2>> wide;
-    for (const auto& [from, to] : runs) {
-        const double a = std::max(0.0, from - kWindApron);
-        const double b = std::min(points.back().s, to + kWindApron);
-        if (!wide.empty() && a <= wide.back()[1]) {
-            wide.back()[1] = b;
-        } else {
-            wide.push_back({a, b});
-        }
-    }
-    for (std::size_t r = wide.size(); r-- > 0;) {
-        const double middle = 0.5 * (wide[r][0] + wide[r][1]) / length;
-        windFalls(points, wide[r][0], wide[r][1], 0.5 * lerp(in.a.width, in.b.width, middle));
-    }
-    measure(points);
-}
-
 // The axis of the reach: smoothed, its end bent toward where it joins another river.
 std::vector<CoursePoint> axisOf(const ReachInput& in) {
     const std::vector<PathPoint> axis = smoothAxis(in.before, *in.own, in.after);
@@ -363,6 +339,7 @@ void setChunks(Course& c) {
     for (std::size_t first = 0; first + 1 < pts.size(); first += kChunk) {
         const std::size_t last = std::min(first + kChunk, pts.size() - 1);
         CourseChunk k;
+        double wind = 0.0;
         k.first = static_cast<std::uint32_t>(first);
         k.last = static_cast<std::uint32_t>(last);
         k.minLevel = std::numeric_limits<float>::infinity();
@@ -374,17 +351,27 @@ void setChunks(Course& c) {
         for (std::size_t i = first; i <= last; ++i) {
             const CoursePoint& p = pts[i];
             k.radius = std::max(k.radius, dmath::hypot(p.x - k.x, p.z - k.z));
+            // A bowl widens and deepens the channel of the segments around it (river_slot.hpp).
+            const CoursePoint& before = pts[i > 0 ? i - 1 : i];
+            const double bowl = 1.0 + static_cast<double>(std::max(p.bowlWide, before.bowlWide));
             k.flat = std::max({k.flat,
                                static_cast<double>(p.floorHalf + p.foot) + wallWarpOf(p.floorHalf) +
                                    kLeveeFade,
-                               1.5 * static_cast<double>(p.half + p.meander)});
+                               1.5 * bowl * static_cast<double>(p.half + p.meander)});
             k.minLevel = std::min(k.minLevel, p.level);
-            k.maxDepth = std::max(k.maxDepth, p.depth);
+            k.maxDepth = std::max(k.maxDepth, p.depth + std::max(p.bowlDeep, before.bowlDeep));
+            wind = std::max(wind, static_cast<double>(p.windMost));
             k.minWall = std::min({k.minWall, p.wall, static_cast<float>(0.5 * kBankSlope)});
             c.minX = std::min(c.minX, p.x);
             c.maxX = std::max(c.maxX, p.x);
             c.minZ = std::min(c.minZ, p.z);
             c.maxZ = std::max(c.maxZ, p.z);
+        }
+        // In the frame of the slot of a corridor (river_winding.hpp): as far again, its walls as
+        // gentle as the frame stretches.
+        if (wind > 0.0) {
+            k.flat = kStretchMost * k.flat + wind;
+            k.minWall = static_cast<float>(k.minWall / kStretchMost);
         }
         c.chunks.push_back(k);
     }
@@ -412,7 +399,6 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     }
     if (falls) {
         stepFalls(c.points);
-        windRuns(in, runs, c.points);
     }
     c.rises = risesOf(c.points, &CoursePoint::level);
     c.valleyRises = risesOf(c.points, &CoursePoint::valley);
@@ -422,6 +408,8 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
         c.slotSeed = noise::deriveSeed(
             noise::deriveSeed(kSlotSeed, static_cast<std::uint64_t>(std::llround(c.points[0].x))),
             static_cast<std::uint64_t>(std::llround(c.points[0].z)));
+        placePools(c);
+        windCorridors(c, relief, in.surface, runs);
         placeBlocks(c);
         placeLips(c, relief, in.a.discharge);
     }

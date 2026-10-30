@@ -33,6 +33,9 @@ terrain_add_test(rock_folds_test terrain_core)
 target_include_directories(rock_folds_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
 # The walk to the foot of the K2 on the collision of the tiles: no hole, no step.
 terrain_add_test(rock_walk_test terrain_core)
-# The slots of the falls: they wind, their lips follow the hardness of the rock, no pattern
-# repeats along them.
+# The slots of the falls: they wind whatever the slope, their banks never step nor rise on a
+# levee, no pattern repeats along them.
 terrain_add_test(river_slots_test terrain_core)
+# The steps of the falls: of all heights and spacings, in cascades too, their lips turned and
+# shaped by the hardness of the rock, a bowl at their foot, heaps of blocks below them.
+terrain_add_test(river_steps_test terrain_core)

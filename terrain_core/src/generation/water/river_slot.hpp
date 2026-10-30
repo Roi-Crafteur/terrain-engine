@@ -29,9 +29,10 @@ namespace terrain::water {
 [[nodiscard]] double slotHalf(std::uint64_t seed, double s, double half);
 
 // How far the walls of the slot there reach beyond its channel, base its walls, on the side of a
-// point side meters to the left of the axis of the course (right: negative), the ravine wandering
-// about the channel.
-[[nodiscard]] double slotRun(std::uint64_t seed, double s, double base, double half, double side);
+// point side meters to the left of the slot (right: negative), the ravine wandering about the
+// channel; less by bowl meters where a bowl widens the channel (bowlAt), as far as they reach.
+[[nodiscard]] double slotRun(std::uint64_t seed, double s, double base, double half, double side,
+                             double bowl = 0.0);
 
 // The farthest the walls of a slot of base its walls and half its channel reach beyond it
 // (slotRun), at any s and on either side.
@@ -43,13 +44,42 @@ namespace terrain::water {
 // whatever the depth of the steps, the rim stands where the cliff meets the floor.
 [[nodiscard]] double slotWall(double out, double run, double rise);
 
+// The pools of the stretches in steps of c (its levels set, Course::pools): below each drop of
+// kLipLeast meters at least (river_lips.hpp), up to the next lip or the end of the stretch.
+void placePools(Course& c);
+
+// The bowl of a pool at the foot of its drop, s meters along course c: its bed deeper by deeper
+// meters in the middle of its channel (kBowlShare of the drop, kBowlLeast to kBowlMost meters),
+// its channel wider by wider of itself (kBowlWiden at most), the walls of its slot giving way to
+// it. Full at the foot of the face (from nothing at its lip) and for a while below it, then
+// shallower down to nothing within kBowlPool of its pool; nothing elsewhere.
+struct Bowl {
+    double deeper = 0.0;
+    double wider = 0.0;
+};
+[[nodiscard]] Bowl bowlAt(const Course& c, double s);
+// The same for the valley of segment i of the course (from its point i to the next, found from
+// there), s meters along it read no farther than kBowlBeyond meters beyond its ends: where
+// CoursePoint::bowlDeep and bowlWide bound it.
+[[nodiscard]] Bowl bowlAt(const Course& c, double s, std::size_t i);
+inline constexpr double kBowlMost = 8.0;
+inline constexpr double kBowlWiden = 0.3;
+inline constexpr double kBowlBeyond = 16.0;
+
 // The blocks of rock of the stretches in steps of c (its levels, shapes and slots set): heaps at
 // the foot of their drops, a block per few meters of the drop, of 1.5 to 7 meters (mostly small),
 // nearly a half of them 1 to 4 meters out of their water, the others sunk, never within
-// kBlockLip of the level of the step above them; and their box.
+// kBlockLip of the level of the step above them; in the slot where it winds (its windings set,
+// river_winding.hpp), on the bed of its bowls; and their box.
 void placeBlocks(Course& c);
 
 // The surface of the blocks of course c at (x, z), in its images: -infinity off them.
 [[nodiscard]] double blocksAt(const Course& c, double x, double z);
+
+// The blocks of course c stand over the lowest valley v of its segments at (x, z): over every
+// segment alike, so over the lowest as well (river_profile.hpp). The water stands only around
+// them.
+struct Valley;
+void standBlocks(const Course& c, double x, double z, Valley& v);
 
 } // namespace terrain::water
