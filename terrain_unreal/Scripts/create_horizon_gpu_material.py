@@ -17,7 +17,9 @@ samples lies below the sea level (antialiased on the coast line), the sea: its c
 (turquoise over the sand of the shallows, deep blue offshore), sine waves fixed in the world
 whose normals fade into roughness with the size of a pixel (no tiling far away, a wider sun path),
 the reflection of the sky (Fresnel, from the sky view LUT of the SkyAtmosphere) and the glint of
-the sun in emissive, without the engine's specular: no Lumen reflection to trace. The sea
+the sun in emissive, without the engine's specular: no Lumen reflection to trace. The lakes
+and rivers stand at their level (HorizonWater, CoarseWater) with the look of the water of the tiles
+(horizon_water_nodes.py), except under the tiles, which draw their own. The sea
 square under the tiles reads its ground from the texels of level 0, bilinear, so that the near
 and far seas match, and is drawn only where the core puts the ocean (masked: the bilinear share
 of the sea texels at least one half). The land under the tiles lies deeper by a pixel depth
@@ -42,10 +44,14 @@ import unreal
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
 import horizon_sea_hlsl as sea_code  # noqa: E402
+import horizon_water_nodes as water_nodes  # noqa: E402
+import material_settings as settings  # noqa: E402
 import temporary_terrain_look as look  # noqa: E402
 detail = importlib.reload(detail)  # the modules of this checkout, even if run before
 look = importlib.reload(look)
 sea_code = importlib.reload(sea_code)
+settings = importlib.reload(settings)
+water_nodes = importlib.reload(water_nodes)
 
 PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TerrainHorizonGpu"
@@ -226,6 +232,7 @@ def parameters(material):
         color.set_editor_property("parameter_name", name)
         color.set_editor_property("default_value", unreal.LinearColor(*value, 1.0))
         nodes[name] = color
+    nodes.update(water_nodes.parameters(material, sys.modules[__name__]))
     return nodes
 
 
@@ -372,6 +379,7 @@ def mask_and_depth(material, nodes, kind, ground, attributes):
         connect(nodes[name], "", behind, name)
     connect(square, "", attributes, "OpacityMask")
     connect(behind, "", attributes, "PixelDepthOffset")
+    return square
 
 
 def pixel_shader(material, nodes, vertex, kind):
@@ -381,7 +389,7 @@ def pixel_shader(material, nodes, vertex, kind):
     normal = detail_normal(material, nodes, vertex)
     ground = interpolate(material, vertex, "GroundOut", 250)
     sea = sea_shader(material, nodes, kind, ground)
-    mask_and_depth(material, nodes, kind, ground, attributes)
+    square = mask_and_depth(material, nodes, kind, ground, attributes)
     land, position = land_shader(material, vertex, normal)
     for name in ("WaveOriginX", "WaveOriginY"):
         connect(nodes[name], "", position, name)
@@ -406,11 +414,18 @@ def pixel_shader(material, nodes, vertex, kind):
         connect(source, output, shade, name)
     for name in SHADE_SCALARS:
         connect(nodes[name], "", shade, name)
-    for source, output, name in ((shade, "", "BaseColor"), (shade, "EmissiveOut", "EmissiveColor"),
-                                 (shade, "NormalOut", "Normal"),
-                                 (shade, "RoughnessOut", "Roughness"),
-                                 (shade, "SpecularOut", "Specular"),
-                                 (vertex, "", "WorldPositionOffset")):
+    # The lakes and rivers at their level over the shaded ground (horizon_water_nodes.py).
+    this = sys.modules[__name__]
+    water = water_nodes.vertex(material, this, nodes, kind)
+    inland = water_nodes.pixel(material, this, nodes, shade, water)
+    water_nodes.opacity_mask(material, this, square, inland, attributes)
+    for source, output, name in ((inland, "", "BaseColor"),
+                                 (inland, "EmissiveOut", "EmissiveColor"),
+                                 (inland, "NormalOut", "Normal"),
+                                 (inland, "RoughnessOut", "Roughness"),
+                                 (inland, "SpecularOut", "Specular"),
+                                 (water_nodes.world_offset(material, this, vertex, water), "",
+                                  "WorldPositionOffset")):
         connect(source, output, attributes, name)
     unreal.MaterialEditingLibrary.connect_material_property(
         attributes, "", unreal.MaterialProperty.MP_MATERIAL_ATTRIBUTES)
@@ -426,12 +441,11 @@ def create_horizon_gpu_material():
         tools = unreal.AssetToolsHelpers.get_asset_tools()
         material = tools.create_asset(ASSET_NAME, PACKAGE_PATH, unreal.Material,
                                       unreal.MaterialFactoryNew())
-    # The normal of the pixel shader is in world space (the grids are flat, the scale is not).
-    material.set_editor_property("tangent_space_normal", False)
-    # Masked: the sea square is cut where the core puts no ocean.
-    material.set_editor_property("use_material_attributes", True)
-    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
-    material.set_editor_property("opacity_mask_clip_value", 0.5)
+    # Every setting reset (material_settings.py), then: the normal of the pixel shader in world
+    # space (the grids are flat, the scale is not); masked, the sea square cut where the core puts
+    # no ocean.
+    settings.reset_material(material, tangent_space_normal=False, use_material_attributes=True,
+                            blend_mode=unreal.BlendMode.BLEND_MASKED, opacity_mask_clip_value=0.5)
     nodes = parameters(material)
     kind = expression(material, unreal.MaterialExpressionVertexColor, -1600, 0)
     vertex = vertex_shader(material, nodes, kind)

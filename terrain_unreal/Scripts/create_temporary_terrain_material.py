@@ -36,9 +36,11 @@ import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
+import material_settings as settings  # noqa: E402
 import temporary_terrain_look as look  # noqa: E402
 detail = importlib.reload(detail)  # the modules of this checkout, even if run before
 look = importlib.reload(look)
+settings = importlib.reload(settings)
 
 PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TemporaryTerrain"
@@ -316,8 +318,9 @@ def create_temporary_terrain_material():
         tools = unreal.AssetToolsHelpers.get_asset_tools()
         material = tools.create_asset(ASSET_NAME, PACKAGE_PATH, unreal.Material,
                                       unreal.MaterialFactoryNew())
-    # The normal of the pixel shader is in world space.
-    material.set_editor_property("tangent_space_normal", False)
+    # Every setting reset (material_settings.py), then the normal of the pixel shader in world
+    # space.
+    settings.reset_material(material, tangent_space_normal=False)
     scalars = {name: scalar(material, name, value, -2200, -900 + 60 * index)
                for index, (name, value) in enumerate(SURFACE_SCALARS.items())}
     weights = vertex_shader(material, scalars)

@@ -20,3 +20,12 @@ target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/fall_curtains.cpp
                                              ${unreal_bridge}/planet_source.cpp
                                              ${unreal_bridge}/tile_water_mesh.cpp)
 terrain_add_test(unreal_tile_water_test terrain_unreal_bridge)
+
+# The scripts of the materials of the water, without Unreal: they compile, their HLSL declares
+# what it reads and writes, the materials they rebuild get every setting reset.
+find_package(Python COMPONENTS Interpreter QUIET)
+if(Python_Interpreter_FOUND)
+    add_test(NAME unreal_water_scripts_test
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_water_scripts_test.py
+                ${PROJECT_SOURCE_DIR}/terrain_unreal/Scripts)
+endif()
