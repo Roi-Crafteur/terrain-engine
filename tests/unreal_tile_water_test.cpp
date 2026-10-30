@@ -101,7 +101,7 @@ void testFallAndSeam() {
     for (std::size_t n = 0; n < m.triangleCount(); ++n) {
         float low = 1e9f;
         float high = -1e9f;
-        for (int c = 0; c < 3; ++c) {
+        for (std::size_t c = 0; c < 3; ++c) {
             const float z = m.positions[static_cast<std::size_t>(m.triangles[3 * n + c])].z;
             low = std::min(low, z);
             high = std::max(high, z);
