@@ -3,7 +3,8 @@
 // same values), the forced values, the validated rounding of the shares of the peoples (the
 // example of the document, at least one state in all, never the only state taken, ties by id),
 // the target areas, and the capitals of the default world in cells of 65,536 m: in the most
-// habitable fifth of the land and near fresh water, far enough apart, the same whatever threads.
+// habitable fifth of the land and near fresh water, far enough apart, the same whatever threads,
+// with or without the compartments.
 
 #include "settlement_world_support.hpp"
 #include "terrain/generation/settlement/capitals.hpp"
@@ -53,7 +54,8 @@ void testResolve(const st::SettlementConfig& config) {
                again.civilizedShare == wild.civilizedShare);
     std::set<int> majors;
     for (std::uint64_t seed = 0; seed < 40; ++seed) {
-        const st::ResolvedPreset c = st::resolvePreset(config, {"civilized", {}, {}, {}}, seed, 1.0);
+        const st::ResolvedPreset c =
+            st::resolvePreset(config, {"civilized", {}, {}, {}}, seed, 1.0);
         TEST_CHECK(c.majorKingdoms >= 80 && c.majorKingdoms <= 150);
         TEST_CHECK(c.minorStates >= 500 && c.minorStates <= 1000);
         TEST_CHECK(c.civilizedShare >= 0.5 && c.civilizedShare <= 0.7);
@@ -124,7 +126,8 @@ void testPlans(const st::SettlementData& data) {
     const std::vector<st::StateCount> counts = st::allocateStates(data.peoples, 14, 90);
     TEST_CHECK(total(counts, true) == 14 && total(counts, false) == 90);
     const std::size_t land = 1'000'000;
-    const std::vector<st::StatePlan> plans = st::planStates(config, preset, data.peoples, counts, land, 5);
+    const std::vector<st::StatePlan> plans =
+        st::planStates(config, preset, data.peoples, counts, land, 5);
     TEST_CHECK(plans.size() == 104);
     double major = 0.0;
     double all = 0.0;
@@ -192,26 +195,63 @@ void checkCapitals(const st::SettlementMaps& m, const st::CapitalChoice& choice,
     TEST_CHECK(fails == 0);
 }
 
+// With the compartments, the minor states placed in one take a free compartment of their size,
+// one capital each, and keep the other rules.
+void checkCompartments(const st::CapitalChoice& choice, const std::vector<st::StatePlan>& plans,
+                       const st::SettlementMaps& m, const st::CompartmentFit& fit) {
+    std::set<std::uint32_t> used;
+    int fitted = 0;
+    int minors = 0;
+    for (std::size_t s = 0; s < plans.size(); ++s) {
+        minors += plans[s].rank == st::StateRank::Minor ? 1 : 0;
+        if (!choice.capitals[s].compartment) {
+            continue;
+        }
+        ++fitted;
+        const std::uint32_t id = fit.compartments->of(m.land->slot(choice.capitals[s].cell));
+        const double cells = fit.compartments->cells[id];
+        TEST_CHECK(plans[s].rank == st::StateRank::Minor);
+        TEST_CHECK(cells >= fit.low * plans[s].targetCells &&
+                   cells <= fit.high * plans[s].targetCells);
+        TEST_CHECK(used.insert(id).second);
+    }
+    std::printf("  %d of the %d minor states in a compartment of %.1f to %.1f times their target\n",
+                fitted, minors, fit.low, fit.high);
+}
+
 void testCapitals(const settlement_test::World& w) {
     const st::SettlementMaps m =
         st::computeSettlementMaps(w.level, &w.field, w.data, settlement_test::kSeed, 0);
-    const st::SuitabilityMaps s = st::computeSuitability(w.level, m, w.data, settlement_test::kSeed, 0);
+    const st::SuitabilityMaps s =
+        st::computeSuitability(w.level, m, w.data, settlement_test::kSeed, 0);
+    const st::ExpansionTerrain t =
+        st::buildExpansionTerrain(w.level, m, w.data.config, settlement_test::kSeed, 0);
+    // In cells of 65 km fresh water within 10 km is a river or a lake in the cell itself: the seeds
+    // are never in a compartment here (settlement_expansion_test places one on a hand-made map);
+    // the other rules must hold all the same.
+    const st::CompartmentFit fit{&t.compartments, w.data.config.expansion.barrierStop,
+                                 w.data.config.expansion.overflow};
     for (const char* id : {"wild", "civilized"}) {
         const st::ResolvedPreset preset =
             st::resolvePreset(w.data.config, {id, {}, {}, {}}, settlement_test::kSeed, 1.0);
-        const std::vector<st::StatePlan> plans =
-            st::planStates(w.data.config, preset, w.data.peoples,
-                           st::allocateStates(w.data.peoples, preset.majorKingdoms, preset.minorStates),
-                           m.land->landCells(), settlement_test::kSeed);
+        const std::vector<st::StatePlan> plans = st::planStates(
+            w.data.config, preset, w.data.peoples,
+            st::allocateStates(w.data.peoples, preset.majorKingdoms, preset.minorStates),
+            m.land->landCells(), settlement_test::kSeed);
         std::printf("%s: %d major kingdoms, %d minor states, civilized share %.3f\n", id,
                     preset.majorKingdoms, preset.minorStates, preset.civilizedShare);
         const st::CapitalChoice choice = st::placeCapitals(m, s, w.data.config.capitals, plans, 0);
         checkCapitals(m, choice, plans, w.data.config.capitals);
+        const st::CapitalChoice inside =
+            st::placeCapitals(m, s, w.data.config.capitals, plans, 0, fit);
+        checkCapitals(m, inside, plans, w.data.config.capitals);
+        checkCompartments(inside, plans, m, fit);
         // The same capitals whatever the threads.
-        const st::CapitalChoice one = st::placeCapitals(m, s, w.data.config.capitals, plans, 1);
-        bool same = one.capitals.size() == choice.capitals.size();
+        const st::CapitalChoice one =
+            st::placeCapitals(m, s, w.data.config.capitals, plans, 1, fit);
+        bool same = one.capitals.size() == inside.capitals.size();
         for (std::size_t k = 0; same && k < one.capitals.size(); ++k) {
-            same = one.capitals[k].cell == choice.capitals[k].cell;
+            same = one.capitals[k].cell == inside.capitals[k].cell;
         }
         TEST_CHECK(same);
     }

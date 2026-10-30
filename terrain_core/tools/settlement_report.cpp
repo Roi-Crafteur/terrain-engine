@@ -102,7 +102,8 @@ std::vector<double> landShares(const st::SettlementMaps& m, std::size_t models) 
 std::vector<double> ranks(const std::vector<double>& v) {
     std::vector<std::size_t> order(v.size());
     std::iota(order.begin(), order.end(), std::size_t{0});
-    std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return v[a] < v[b]; });
+    std::sort(order.begin(), order.end(),
+              [&](std::size_t a, std::size_t b) { return v[a] < v[b]; });
     std::vector<double> r(v.size());
     for (std::size_t i = 0; i < order.size();) {
         std::size_t j = i;
@@ -237,7 +238,8 @@ void reportEquitySeeds(const st::SettlementMaps& m, const st::SettlementData& da
         const double n = nodes[k] / std::max(1.0, total(nodes));
         const double l = lines[k] / std::max(1.0, total(lines));
         const bool counted = land[k] >= 0.05;
-        const bool stray = counted && (std::abs(n - land[k]) > 0.03 || std::abs(l - land[k]) > 0.03);
+        const bool stray =
+            counted && (std::abs(n - land[k]) > 0.03 || std::abs(l - land[k]) > 0.03);
         strays += stray ? 1 : 0;
         r.add("  %-10s %6.1f%% %6.1f%% %6.1f%% %+8.1f %+9.1f%s\n",
               data.config.terrainModels[k].id.c_str(), 100.0 * land[k], 100.0 * n, 100.0 * l,
@@ -264,15 +266,38 @@ void reportTerrain(const st::ExpansionTerrain& t, double seconds, Report& r) {
         classes[m & st::kRiverBits] += 1.0;
         lakes += (m & st::kLakeBit) != 0 ? 1.0 : 0.0;
         barriers += (m & st::kMountainBit) != 0 ? 1.0 : 0.0;
-        ridges += ((m & st::kRidgeEastBit) != 0 ? 1.0 : 0.0) + ((m & st::kRidgeSouthBit) != 0 ? 1.0 : 0.0);
+        ridges += (m & st::kRidgeEastBit) != 0 ? 1.0 : 0.0;
+        ridges += (m & st::kRidgeSouthBit) != 0 ? 1.0 : 0.0;
     }
     const auto n = static_cast<double>(t.mask.size()) / 100.0;
-    r.add("terrain of the expansion in %.1f s, %.0f MiB: rivers on %.2f %% of the land (%.2f, %.2f, "
-          "%.2f, %.2f %% by class), lakes %.2f %%, barrier models %.1f %%, %.0f ridge edges, %zu sea "
-          "cells of straits\n",
-          seconds, mebibytes(t.memoryBytes()), (classes[1] + classes[2] + classes[3] + classes[4]) / n,
+    r.add("terrain of the expansion in %.1f s, %.0f MiB: rivers on %.2f %% of the land (%.2f, "
+          "%.2f, %.2f, %.2f %% by class), lakes %.2f %%, barrier models %.1f %%, %.0f ridge edges, "
+          "%zu sea cells of straits\n",
+          seconds, mebibytes(t.memoryBytes()),
+          (classes[1] + classes[2] + classes[3] + classes[4]) / n,
           classes[1] / n, classes[2] / n, classes[3] / n, classes[4] / n, lakes / n, barriers / n,
           ridges, t.straits->landCells());
+    // The compartments by size: their count and their land, in powers of 10 cells.
+    double count[7] = {0, 0, 0, 0, 0, 0, 0};
+    double cells[7] = {0, 0, 0, 0, 0, 0, 0};
+    for (const std::uint32_t c : t.compartments.cells) {
+        std::size_t bin = 0;
+        for (std::uint32_t v = c; v >= 10 && bin < 6; v /= 10) {
+            ++bin;
+        }
+        count[bin] += 1.0;
+        cells[bin] += c;
+    }
+    std::string bins;
+    for (std::size_t b = 0; b < 7; ++b) {
+        char part[96];
+        std::snprintf(part, sizeof part, " %s%.0f cells: %.0f (%.1f %% of the land);",
+                      b == 6 ? "from " : "below ",
+                      b == 6 ? 1e6 : std::pow(10.0, static_cast<double>(b + 1)), count[b],
+                      cells[b] / n);
+        bins += part;
+    }
+    r.add("compartments %zu:%s\n", t.compartments.cells.size(), bins.c_str());
 }
 
 void reportCuts(const std::vector<st::ClimateCut>& cuts, Report& r) {

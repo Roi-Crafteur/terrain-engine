@@ -35,13 +35,19 @@ void reportStates(const st::SettlementData& data, const st::Kingdoms& k, Report&
     const st::CapitalChoice& c = k.capitals;
     int relaxed = 0;
     int fallbacks = 0;
-    for (const st::Capital& capital : c.capitals) {
-        relaxed += capital.relaxations > 0 ? 1 : 0;
-        fallbacks += capital.seed ? 0 : 1;
+    int minors = 0;
+    int fitted = 0;
+    for (std::size_t s = 0; s < c.capitals.size(); ++s) {
+        relaxed += c.capitals[s].relaxations > 0 ? 1 : 0;
+        fallbacks += c.capitals[s].seed ? 0 : 1;
+        minors += k.states[s].rank == st::StateRank::Minor ? 1 : 0;
+        fitted += c.capitals[s].compartment ? 1 : 0;
     }
     r.add("  capitals: %zu candidates (habitability at least %d/255, fresh water at most 10 km), "
-          "%zu seeds; %d relaxed, %d not on a seed\n",
-          c.candidates, static_cast<int>(c.habitabilityThreshold), c.seeds, relaxed, fallbacks);
+          "%zu seeds; %d relaxed, %d not on a seed; %d of the %d minor states in a compartment of "
+          "their size\n",
+          c.candidates, static_cast<int>(c.habitabilityThreshold), c.seeds, relaxed, fallbacks,
+          fitted, minors);
 }
 
 void reportGoodWorld(const st::SettlementData& data, const st::Kingdoms& k, Report& r) {

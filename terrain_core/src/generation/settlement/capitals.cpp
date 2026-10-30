@@ -28,8 +28,13 @@ int thresholdOf(const SettlementMaps& m, double share) {
     const double limit = share * static_cast<double>(m.land->landCells());
     std::size_t above = 0;
     int t = 256;
-    while (t > 0 && static_cast<double>(above + histogram[static_cast<std::size_t>(t - 1)]) <= limit) {
-        above += histogram[static_cast<std::size_t>(--t)];
+    while (t > 0) {
+        const std::size_t next = above + histogram[static_cast<std::size_t>(t - 1)];
+        if (static_cast<double>(next) > limit) {
+            break;
+        }
+        above = next;
+        --t;
     }
     return t;
 }
@@ -146,6 +151,7 @@ struct Inputs {
     const SettlementMaps& m;
     const SuitabilityMaps& s;
     const CapitalRule& rule;
+    const CompartmentFit& fit;
     std::vector<std::uint8_t> candidate; // by slot
 };
 
@@ -202,7 +208,10 @@ class Placer {
 public:
     Placer(const Inputs& in, const std::vector<StatePlan>& states, CapitalChoice& out)
         : in_(in), states_(states), out_(out), index_(in.m.grid),
-          taken_(in.m.land->landCells(), 0), lists_(in.s.byPeople.size()) {}
+          taken_(in.m.land->landCells(), 0), lists_(in.s.byPeople.size()),
+          takenCompartment_(in.fit.compartments != nullptr ? in.fit.compartments->cells.size() : 0,
+                            0),
+          fitting_(in.s.byPeople.size()) {}
 
     std::array<Ranked, 3>& lists(int people) { return lists_[static_cast<std::size_t>(people)]; }
 
@@ -211,13 +220,17 @@ public:
         const StatePlan& state = states_[s];
         const double r = stateRadius(state.targetCells, in_.m.grid.cellSize);
         std::array<Ranked, 3>& ranked = lists(state.people);
+        if (state.rank == StateRank::Minor && in_.fit.compartments != nullptr &&
+            placeInCompartment(s, r, rMin)) {
+            return;
+        }
         for (std::size_t kind = 0; kind < ranked.size(); ++kind) {
             if (!ranked[kind].built) {
                 ranked[kind] = cellsOf(in_, state.people, kind == 1);
             }
             for (int level = 0; level <= in_.rule.relaxSteps; ++level) {
                 const double factor = in_.rule.spacing * dmath::powInteger(in_.rule.relax, level);
-                if (const std::size_t cell = scan(ranked[kind], level, r, rMin, factor);
+                if (const std::size_t cell = scan(ranked[kind], level, r, rMin, factor, anyCell);
                     cell != kNone) {
                     settle(s, cell, r, kind == 0, level);
                     return;
@@ -248,15 +261,69 @@ public:
                 std::fill(r.minLevel.begin(), r.minLevel.end(), std::uint8_t{0});
             }
         }
+        for (Ranked& r : fitting_) {
+            std::fill(r.minLevel.begin(), r.minLevel.end(), std::uint8_t{0});
+        }
     }
 
 private:
     static constexpr std::size_t kNone = ~std::size_t{0};
+    static constexpr auto anyCell = [](std::size_t) { return true; };
 
-    std::size_t scan(Ranked& ranked, int level, double r, double rMin, double factor) {
+    // The best seed of the people of the minor state s in a free compartment of its size, far
+    // enough from the capitals (the spacing relaxed as for any seed).
+    bool placeInCompartment(std::size_t s, double r, double rMin) {
+        const Compartments& c = *in_.fit.compartments;
+        const double target = states_[s].targetCells;
+        const auto fits = [&](std::size_t cell) {
+            const std::uint32_t id = c.of(in_.m.land->slot(cell));
+            return takenCompartment_[id] == 0 && c.cells[id] >= in_.fit.low * target &&
+                   c.cells[id] <= in_.fit.high * target;
+        };
+        Ranked& seeds = fitting(states_[s].people);
+        for (int level = 0; level <= in_.rule.relaxSteps; ++level) {
+            const double factor = in_.rule.spacing * dmath::powInteger(in_.rule.relax, level);
+            if (const std::size_t cell = scan(seeds, level, r, rMin, factor, fits); cell != kNone) {
+                settle(s, cell, r, true, level);
+                out_.capitals[s].compartment = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // The seeds of a people in a compartment the size of one of the minor states, built once.
+    Ranked& fitting(int people) {
+        Ranked& f = fitting_[static_cast<std::size_t>(people)];
+        if (f.built) {
+            return f;
+        }
+        double low = 0.0;
+        double high = 0.0;
+        for (const StatePlan& p : states_) {
+            if (p.rank == StateRank::Minor) {
+                low = low == 0.0 ? p.targetCells : std::min(low, p.targetCells);
+                high = std::max(high, p.targetCells);
+            }
+        }
+        const Compartments& c = *in_.fit.compartments;
+        for (const std::uint32_t cell : lists(people)[0].cells) {
+            const std::uint32_t id = c.of(in_.m.land->slot(cell));
+            if (id != kNoCompartment && c.cells[id] >= in_.fit.low * low &&
+                c.cells[id] <= in_.fit.high * high) {
+                f.cells.push_back(cell);
+            }
+        }
+        f.minLevel.assign(f.cells.size(), 0);
+        f.built = true;
+        return f;
+    }
+
+    template <class Keep>
+    std::size_t scan(Ranked& ranked, int level, double r, double rMin, double factor, Keep keep) {
         for (std::size_t k = 0; k < ranked.cells.size(); ++k) {
             const std::size_t cell = ranked.cells[k];
-            if (ranked.minLevel[k] > level || taken_[in_.m.land->slot(cell)] != 0) {
+            if (ranked.minLevel[k] > level || taken_[in_.m.land->slot(cell)] != 0 || !keep(cell)) {
                 continue;
             }
             const Verdict v = index_.check(cell, r, rMin, factor);
@@ -283,6 +350,12 @@ private:
         c.relaxations = level;
         taken_[slot] = 1;
         index_.add(cell, r);
+        if (in_.fit.compartments != nullptr) {
+            const std::uint32_t id = in_.fit.compartments->of(slot);
+            if (id != kNoCompartment) {
+                takenCompartment_[id] = 1;
+            }
+        }
     }
 
     const Inputs& in_;
@@ -291,6 +364,8 @@ private:
     CapitalIndex index_;
     std::vector<std::uint8_t> taken_; // by slot
     std::vector<std::array<Ranked, 3>> lists_; // by people: seeds, candidates, land
+    std::vector<std::uint8_t> takenCompartment_; // by compartment: holds a capital
+    std::vector<Ranked> fitting_;                // by people: its seeds in a compartment to fill
 };
 
 // The states of a rank in the order they are served: one state of each people in turn, the
@@ -332,13 +407,14 @@ double stateRadius(double cells, double cellSize) {
 
 CapitalChoice placeCapitals(const SettlementMaps& maps, const SuitabilityMaps& suitability,
                             const CapitalRule& rule, const std::vector<StatePlan>& states,
-                            int threads) {
+                            int threads, const CompartmentFit& fit) {
     const auto start = std::chrono::steady_clock::now();
     CapitalChoice out;
     out.capitals.resize(states.size());
     const int threshold = thresholdOf(maps, rule.topHabitability);
     out.habitabilityThreshold = static_cast<std::uint8_t>(std::min(threshold, 255));
-    Inputs in{maps, suitability, rule, std::vector<std::uint8_t>(maps.land->landCells(), 0)};
+    Inputs in{maps, suitability, rule, fit,
+              std::vector<std::uint8_t>(maps.land->landCells(), 0)};
     maps.land->forEachLand([&](std::size_t, std::size_t slot) {
         const bool top = maps.habitability.values()[slot] >= threshold;
         const bool water = maps.waterKm.values()[slot] <= rule.maxFreshWaterKm;

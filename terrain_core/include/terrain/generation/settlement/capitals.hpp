@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/generation/settlement/expansion.hpp"
 #include "terrain/generation/settlement/settlement_config.hpp"
 #include "terrain/generation/settlement/settlement_maps.hpp"
 #include "terrain/generation/settlement/suitability.hpp"
@@ -17,7 +18,10 @@
 // major kingdoms first, then the minor states, the peoples in the order of their ids: each takes
 // the best seed of its people far enough from the capitals already placed, the spacing relaxed
 // step by step when none is; then any candidate, then any land cell its people can live on (a
-// capital outside the candidates fails the test of a good world).
+// capital outside the candidates fails the test of a good world). Given compartments, a minor
+// state first tries the seeds of its people in a compartment not yet holding a capital whose land
+// is between low and high times its target, the size it can fill whole: a valley, an island, a
+// bank between two rivers.
 namespace terrain::settlement {
 
 struct Capital {
@@ -27,6 +31,7 @@ struct Capital {
     bool topHabitability = false; // in the most habitable share
     bool nearFreshWater = false;  // at most CapitalRule::maxFreshWaterKm
     bool seed = false;            // a seed of its people (not a fallback)
+    bool compartment = false;     // in a compartment of the size of its state
     int relaxations = 0;          // how many times the spacing was relaxed for it
 };
 
@@ -41,9 +46,18 @@ struct CapitalChoice {
 // The radius of a disc of that many cells, in meters.
 [[nodiscard]] double stateRadius(double cells, double cellSize);
 
+// The compartments a minor state prefers, by their land against its target.
+struct CompartmentFit {
+    const Compartments* compartments = nullptr; // none: no preference
+    double low = 0.7;
+    double high = 1.3;
+};
+
 // The capital of every state. The same result whatever threads.
-[[nodiscard]] CapitalChoice placeCapitals(const SettlementMaps& maps, const SuitabilityMaps& suitability,
+[[nodiscard]] CapitalChoice placeCapitals(const SettlementMaps& maps,
+                                          const SuitabilityMaps& suitability,
                                           const CapitalRule& rule,
-                                          const std::vector<StatePlan>& states, int threads);
+                                          const std::vector<StatePlan>& states, int threads,
+                                          const CompartmentFit& fit = {});
 
 } // namespace terrain::settlement

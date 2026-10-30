@@ -8,6 +8,7 @@ target_sources(terrain_core PRIVATE
     src/generation/settlement/analysis_distance.cpp
     src/generation/settlement/borders.cpp
     src/generation/settlement/capitals.cpp
+    src/generation/settlement/compartments.cpp
     src/generation/settlement/data_fields.cpp
     src/generation/settlement/expansion.cpp
     src/generation/settlement/expansion_terrain.cpp

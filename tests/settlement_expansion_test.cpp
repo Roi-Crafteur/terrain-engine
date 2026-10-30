@@ -2,14 +2,17 @@
 // borders.hpp): the border on a river, on a ridge, the edges along the coast and never the shore,
 // the target area and the filling up to the next barrier, a land the people cannot live on never
 // taken, a strait of 3 cells crossed but an arm of the sea of 6 never, nothing crossed when the sea
-// is forbidden, the sea never held, the cleanup of the artifacts only, the same result twice.
+// is forbidden, the sea never held, the cleanup of the artifacts only, the compartments and the
+// capital of a minor state in one of its size, the same result twice.
 
 #include "terrain/generation/settlement/borders.hpp"
+#include "terrain/generation/settlement/capitals.hpp"
 #include "terrain/generation/settlement/expansion.hpp"
 
 #include "test_assert.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <vector>
 
@@ -293,6 +296,63 @@ void testCleanup() {
     TEST_CHECK(clean[slotAt(t, 25, 5)] == 4);
 }
 
+// The compartments: the dry land that is not hostile, cut by the rivers, the ridges, the hostile
+// land and the sea.
+void testCompartments() {
+    st::ExpansionTerrain t = grid(60, 20, strip);
+    for (int j = 0; j < 20; ++j) {
+        t.mask[slotAt(t, 25, j)] = 1;                  // a river
+        t.mask[slotAt(t, 35, j)] |= st::kRidgeEastBit; // a ridge between 35 and 36
+        t.hostile[slotAt(t, 10, j)] = 1;               // a strip of desert
+    }
+    const st::Compartments c = st::computeCompartments(t);
+    TEST_CHECK(c.cells.size() == 4);
+    const auto size = [&](int i) { return c.cells[c.of(slotAt(t, i, 3))]; };
+    TEST_CHECK(size(7) == 5 * 20 && size(15) == 14 * 20 && size(30) == 10 * 20 &&
+               size(40) == 9 * 20);
+    TEST_CHECK(c.of(slotAt(t, 25, 3)) == st::kNoCompartment &&
+               c.of(slotAt(t, 10, 3)) == st::kNoCompartment);
+    TEST_CHECK(c.of(slotAt(t, 30, 3)) != c.of(slotAt(t, 40, 3)));
+}
+
+// A minor state takes the best seed in a free compartment of its size, not the best seed of all:
+// rivers at the columns 25 and 30 cut the strip into compartments of 400, 80 and 280 cells; the
+// best seed is in the first, the state aims at 280.
+void testCompartmentCapital() {
+    st::ExpansionTerrain t = grid(60, 20, strip);
+    for (int j = 0; j < 20; ++j) {
+        t.mask[slotAt(t, 25, j)] = 1;
+        t.mask[slotAt(t, 30, j)] = 1;
+    }
+    const st::Compartments c = st::computeCompartments(t);
+    st::SettlementMaps m;
+    m.grid = t.grid;
+    m.land = t.land;
+    m.habitability = terrain::planet::LandValues<std::uint8_t>(t.land, 100, 0);
+    m.waterKm = terrain::planet::LandValues<std::uint8_t>(t.land, 0, 255);
+    m.water = terrain::planet::LandValues<std::uint8_t>(t.land, 0, 0);
+    st::SuitabilityMaps s = liked(t);
+    for (int j = 0; j < 20; ++j) {
+        for (int i = 5; i < 45; ++i) {
+            m.habitability.at(t.grid.index(i, j)) = j == 9 ? 255 : 100; // the candidates
+            const int peak = i < 25 ? 250 - 5 * std::abs(i - 15) : 200 - 5 * std::abs(i - 38);
+            s.byPeople[0].at(t.grid.index(i, j)) =
+                static_cast<std::uint8_t>(i == 25 || i == 30 ? 10 : (i < 30 && i > 25 ? 50 : peak));
+        }
+    }
+    const std::vector<st::StatePlan> minor = {{0, st::StateRank::Minor, 280.0}};
+    const st::CapitalRule rule;
+    const st::CapitalChoice plain = st::placeCapitals(m, s, rule, minor, 1);
+    const st::CapitalChoice fitted = st::placeCapitals(m, s, rule, minor, 1, {&c, 0.7, 1.3});
+    TEST_CHECK(plain.capitals[0].cell == t.grid.index(15, 9) && !plain.capitals[0].compartment);
+    TEST_CHECK(fitted.capitals[0].cell == t.grid.index(38, 9) && fitted.capitals[0].compartment);
+    // A second minor state of that size finds the compartment taken: the usual rule.
+    const std::vector<st::StatePlan> two = {{0, st::StateRank::Minor, 280.0},
+                                            {0, st::StateRank::Minor, 280.0}};
+    const st::CapitalChoice both = st::placeCapitals(m, s, rule, two, 1, {&c, 0.7, 1.3});
+    TEST_CHECK(both.capitals[0].compartment && !both.capitals[1].compartment);
+}
+
 void testDeterminism() {
     st::ExpansionTerrain t = grid(50, 40, [](int i, int j) { return (i * 7 + j * 3) % 23 != 0; });
     for (std::size_t k = 0; k < t.cost.size(); ++k) {
@@ -319,6 +379,8 @@ int main() {
     testUnlivable();
     testStraits();
     testCleanup();
+    testCompartments();
+    testCompartmentCapital();
     testDeterminism();
     return test::result();
 }

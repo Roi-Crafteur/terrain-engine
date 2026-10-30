@@ -31,6 +31,19 @@ inline constexpr std::uint8_t kRidgeSouthBit = 0x20;  // the edge to the cell j 
 inline constexpr std::uint8_t kConfluenceBit = 0x40;  // two rivers or more meet here
 inline constexpr std::uint8_t kMountainBit = 0x80;    // its nearest model is a barrier model
 
+inline constexpr std::uint32_t kNoCompartment = 0xFFFFFFFF;
+
+// The compartments of the land: the connected regions (by the 4 sides) of the dry land that is not
+// hostile, bounded exactly by what makes a natural border: the rivers and the lakes, the ridges,
+// the sea, the hostile land. A state filling one exactly has natural borders only.
+struct Compartments {
+    std::vector<std::uint32_t> id;    // by land slot: its compartment, or kNoCompartment on a limit
+    std::vector<std::uint32_t> cells; // by compartment: its land cells
+
+    [[nodiscard]] std::uint32_t of(std::size_t slot) const { return id[slot]; }
+    [[nodiscard]] std::size_t memoryBytes() const;
+};
+
 struct ExpansionTerrain {
     PlanetGrid grid;
     std::shared_ptr<const planet::LandIndex> land;
@@ -41,6 +54,7 @@ struct ExpansionTerrain {
     std::vector<std::uint8_t> hostile; // by land slot: 1 on hostile land (GoodWorldRule)
     // The sea cells a state may cross (none when the sea is forbidden), numbered as land.
     std::shared_ptr<const planet::LandIndex> straits;
+    Compartments compartments;
 
     [[nodiscard]] int riverClass(std::size_t slot) const { return mask[slot] & kRiverBits; }
     [[nodiscard]] std::size_t memoryBytes() const;
@@ -52,6 +66,10 @@ struct ExpansionTerrain {
                                                      const SettlementMaps& maps,
                                                      const SettlementConfig& config,
                                                      std::uint64_t worldSeed, int threads);
+
+// The compartments of a terrain (its bits and its hostile land), labeled in the order of the cells:
+// the same on every machine (compartments.cpp).
+[[nodiscard]] Compartments computeCompartments(const ExpansionTerrain& t);
 
 struct ExpansionResult {
     std::vector<std::uint16_t> owner;   // by land slot: 0 wild, s + 1 for the state s

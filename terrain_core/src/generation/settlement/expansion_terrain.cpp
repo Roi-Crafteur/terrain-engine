@@ -246,7 +246,8 @@ std::shared_ptr<const planet::LandIndex> straitsOf(const ExpansionTerrain& t, in
 
 std::size_t ExpansionTerrain::memoryBytes() const {
     return land->memoryBytes() + straits->memoryBytes() + cost.capacity() * sizeof(float) +
-           mask.capacity() + ford.capacity() + coastKm.capacity() + hostile.capacity();
+           mask.capacity() + ford.capacity() + coastKm.capacity() + hostile.capacity() +
+           compartments.memoryBytes();
 }
 
 ExpansionTerrain buildExpansionTerrain(const PlanetLevel& level, const SettlementMaps& maps,
@@ -269,6 +270,7 @@ ExpansionTerrain buildExpansionTerrain(const PlanetLevel& level, const Settlemen
                     ? straitsOf(t, config.expansion.straitCells, workers)
                     : std::make_shared<const planet::LandIndex>(
                           planet::LandIndex::ofCells(t.grid.cells(), {}));
+    t.compartments = computeCompartments(t);
     return t;
 }
 

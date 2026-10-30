@@ -145,7 +145,9 @@ Kingdoms buildKingdoms(const PlanetLevel& level, const SettlementMaps& maps,
     k.counts = allocateStates(data.peoples, k.preset.majorKingdoms, k.preset.minorStates);
     k.states = planStates(c, k.preset, data.peoples, k.counts, maps.land->landCells(), worldSeed);
     Clock::time_point start = Clock::now();
-    k.capitals = placeCapitals(maps, suitability, c.capitals, k.states, threads);
+    k.capitals = placeCapitals(maps, suitability, c.capitals, k.states, threads,
+                               {&terrain.compartments, c.expansion.barrierStop,
+                                c.expansion.overflow});
     k.timings.capitals = since(start);
     std::vector<std::size_t> capitals;
     for (const Capital& capital : k.capitals.capitals) {
