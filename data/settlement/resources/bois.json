@@ -5,5 +5,5 @@
   "sources": [
     { "kind": "forestCover", "weight": 1.0 }
   ],
-  "depositNoise": { "scaleKm": 300, "threshold": 0.25, "softness": 0.3 }
+  "depositNoise": { "scaleKm": 300, "threshold": 0.3, "softness": 0.3 }
 }

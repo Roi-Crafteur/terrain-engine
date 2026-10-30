@@ -4,8 +4,9 @@
   "hidden": false,
   "sources": [
     { "kind": "plateBoundary", "type": "collision", "weight": 1.0 },
-    { "kind": "fault", "weight": 0.5 },
-    { "kind": "relief", "type": "oldMountain", "weight": 0.6 }
+    { "kind": "relief", "type": "mountain", "weight": 0.5 },
+    { "kind": "relief", "type": "oldMountain", "weight": 0.8 },
+    { "kind": "fault", "weight": 0.6 }
   ],
-  "depositNoise": { "scaleKm": 80, "threshold": 0.55, "softness": 0.15 }
+  "depositNoise": { "scaleKm": 150, "threshold": 0.55, "softness": 0.2 }
 }

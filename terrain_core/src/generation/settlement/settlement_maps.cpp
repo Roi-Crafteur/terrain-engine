@@ -31,6 +31,9 @@ constexpr double kLeastPet = 300.0;
 // the others in part.
 constexpr double kMinorCrater = 0.7;
 constexpr double kSmallVolcano = 0.6;
+// The noise of the deposits (2 octaves, standard deviation about 0.23) spread over [0, 1]: a
+// threshold of 0.5 keeps about half of the land, 0.7 about a fifth.
+constexpr double kDepositSpread = 2.0;
 
 using Clock = std::chrono::steady_clock;
 
@@ -190,7 +193,8 @@ void scoreRow(const Context& ctx, SettlementMaps& m, int j) {
         const double x = m.grid.centerX(i);
         const double z = m.grid.centerZ(j);
         for (std::size_t r = 0; r < ctx.data.resources.size(); ++r) {
-            const double deposit = 0.5 * (ctx.deposits[r].fbm2D(x, z) + 1.0);
+            const double deposit =
+                std::clamp(0.5 + kDepositSpread * ctx.deposits[r].fbm2D(x, z), 0.0, 1.0);
             m.resources[r].at(cell) =
                 quantize(resourceValue(ctx.data.resources[r], in, s, deposit));
         }

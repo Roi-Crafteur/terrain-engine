@@ -41,7 +41,8 @@ struct ResourceSource {
 };
 
 // The value of a resource on a cell: the weighted sum of its sources, at most 1, times its
-// deposits: a periodic noise of wavelength depositScaleKm, in [0, 1], through a smoothstep from
+// deposits: a periodic noise of wavelength depositScaleKm spread over [0, 1] (0.5 + 2 n, clamped:
+// a threshold of 0.5 keeps about half of the land, 0.7 about a fifth), through a smoothstep from
 // depositThreshold to depositThreshold + depositSoftness (patches, never a uniform layer).
 struct ResourceDef {
     std::string id;

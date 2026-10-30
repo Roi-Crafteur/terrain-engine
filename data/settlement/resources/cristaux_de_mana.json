@@ -7,5 +7,5 @@
     { "kind": "manaNode", "weight": 1.0 },
     { "kind": "crater", "weight": 1.0 }
   ],
-  "depositNoise": { "scaleKm": 40, "threshold": 0.5, "softness": 0.2 }
+  "depositNoise": { "scaleKm": 80, "threshold": 0.45, "softness": 0.2 }
 }

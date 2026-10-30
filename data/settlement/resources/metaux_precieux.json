@@ -5,7 +5,8 @@
   "hiddenShare": 0.5,
   "sources": [
     { "kind": "volcano", "type": "arc", "weight": 1.0 },
-    { "kind": "fault", "type": "major", "weight": 0.6 }
+    { "kind": "fault", "type": "major", "weight": 0.6 },
+    { "kind": "plateBoundary", "type": "collision", "weight": 0.3 }
   ],
-  "depositNoise": { "scaleKm": 60, "threshold": 0.68, "softness": 0.12 }
+  "depositNoise": { "scaleKm": 120, "threshold": 0.6, "softness": 0.2 }
 }
