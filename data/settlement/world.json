@@ -2,10 +2,7 @@
   "configVersion": "1.0",
   "referencePlanetAreaKm2": 2101000000,
   "physicalScore": { "meanShare": 0.7, "minShare": 0.3 },
-  "roughness": {
-    "reliefWeight": 0.75, "reliefLow": 0.03, "reliefHigh": 0.8,
-    "rangeWeight": 0.35, "rangeScaleM": 1500
-  },
+  "roughness": { "sampleWeight": 0.8, "sampleScaleM": 800, "rangeWeight": 0.2, "rangeScaleM": 1500 },
   "vegetation": {
     "humidity": { "min": 0.3, "idealMin": 0.55, "idealMax": 1, "max": 1, "floor": 0 },
     "temperature": { "min": -8, "idealMin": 4, "idealMax": 30, "max": 36, "floor": 0 }
@@ -136,10 +133,10 @@
     "swamp": {
       "expansionCost": 5,
       "physicalPreferences": {
-        "humidity": { "min": 0.7, "idealMin": 0.8, "idealMax": 1, "max": 1 },
-        "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.06, "max": 0.15 },
-        "altitude": { "min": -100, "idealMin": -100, "idealMax": 150, "max": 400 },
-        "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 8, "max": 25 }
+        "humidity": { "min": 0.62, "idealMin": 0.72, "idealMax": 1, "max": 1 },
+        "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.08, "max": 0.18 },
+        "altitude": { "min": -100, "idealMin": -100, "idealMax": 200, "max": 500 },
+        "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 15, "max": 40 }
       }
     },
     "desert": {
@@ -166,7 +163,7 @@
     "forest": {
       "expansionCost": 2,
       "physicalPreferences": {
-        "humidity": { "min": 0.5, "idealMin": 0.62, "idealMax": 1, "max": 1 },
+        "humidity": { "min": 0.42, "idealMin": 0.52, "idealMax": 1, "max": 1 },
         "temperature": { "min": -6, "idealMin": 0, "idealMax": 30, "max": 34 },
         "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.5, "max": 0.7 }
       }
@@ -175,7 +172,7 @@
       "expansionCost": 1,
       "physicalPreferences": {
         "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.15, "max": 0.35 },
-        "humidity": { "min": 0.15, "idealMin": 0.28, "idealMax": 0.6, "max": 0.7 },
+        "humidity": { "min": 0.12, "idealMin": 0.25, "idealMax": 0.5, "max": 0.6 },
         "temperature": { "min": -8, "idealMin": 0, "idealMax": 30, "max": 36 }
       }
     }

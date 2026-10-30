@@ -106,7 +106,10 @@ void testInvalidWorld() {
     edit(world, "\"rangeWeight\"", "\"rangeWieght\"");
     TEST_CHECK(refused({"world.json", "roughness.rangeWieght", "unknown key"}));
     freshCopy();
-    edit(world, "\"humidity\": { \"min\": 0.15", "\"slope\": { \"min\": 0.15");
+    edit(world, "\"sampleWeight\": 0.8", "\"sampleWeight\": 0.9");
+    TEST_CHECK(refused({"world.json", "roughness", "sampleWeight + rangeWeight above 1"}));
+    freshCopy();
+    edit(world, "\"humidity\": { \"min\": 0.12", "\"slope\": { \"min\": 0.12");
     TEST_CHECK(refused({"terrainModels.plains.physicalPreferences.slope", "unknown criterion"}));
     freshCopy();
     edit(world, "\"alluvialBonus\": 0.2", "\"alluvialBonus\": 2");

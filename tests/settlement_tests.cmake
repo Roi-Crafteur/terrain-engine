@@ -23,3 +23,29 @@ target_include_directories(settlement_geology_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 target_compile_definitions(settlement_geology_test PRIVATE
     TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
+
+# The pieces of the analysis maps on hand-made inputs: distances exact on the torus, the scores of
+# a cell, the habitability over its theoretical maximum, the resources in deposits.
+terrain_add_test(settlement_maps_test terrain_core)
+target_include_directories(settlement_maps_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation/settlement)
+target_compile_definitions(settlement_maps_test PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
+
+# The settlement on the default world in cells of 65,536 m: variety of the world, roughness
+# against the real relief, maps and resources where their rules put them, a magic network fair to
+# every terrain, the same bits whatever the threads.
+terrain_add_test(settlement_world_test terrain_core)
+target_compile_definitions(settlement_world_test PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
+
+# The tool on a small world: the maps, the report and the images.
+add_test(NAME export_settlement_smoke
+    COMMAND terrain_export_settlement ${CMAKE_BINARY_DIR}/settlement_smoke --world 2097152 1048576
+            --cell 16384 --threads 2 --width 128)
+set_tests_properties(export_settlement_smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "settlement maps in .*Spearman .*images in")
+add_test(NAME export_settlement_bad_args
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_settlement>
+            -DOUT=${CMAKE_BINARY_DIR}/settlement_bad_args
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_settlement_bad_args.cmake)

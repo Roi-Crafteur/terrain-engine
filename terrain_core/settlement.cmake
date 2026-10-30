@@ -4,14 +4,28 @@
 target_sources(terrain_core PRIVATE
     src/json/json_parse.cpp
     src/json/json_write.cpp
+    src/generation/settlement/analysis_cell.cpp
+    src/generation/settlement/analysis_distance.cpp
     src/generation/settlement/data_fields.cpp
     src/generation/settlement/geology.cpp
     src/generation/settlement/geology_plates.cpp
     src/generation/settlement/geology_points.cpp
+    src/generation/settlement/map_influences.cpp
+    src/generation/settlement/map_inputs.cpp
     src/generation/settlement/preference.cpp
     src/generation/settlement/resource_def.cpp
     src/generation/settlement/settlement_config.cpp
     src/generation/settlement/settlement_config_parts.cpp
     src/generation/settlement/settlement_data.cpp
+    src/generation/settlement/settlement_maps.cpp
     src/generation/settlement/telluric.cpp
 )
+# The PNG control images of the maps (io/: no Unreal wrapper).
+target_sources(terrain_core PRIVATE src/io/settlement_png.cpp)
+
+# terrain_export_settlement <output-dir> [--planet <file>] [--seed <seed>] [--world <x> <z>]
+#     [--cell <meters>] [--threads <n>] [--data <dir>] [--width <pixels>]
+add_executable(terrain_export_settlement tools/export_settlement.cpp tools/process_memory.cpp)
+target_link_libraries(terrain_export_settlement PRIVATE terrain_core terrain_warnings)
+target_compile_definitions(terrain_export_settlement PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")

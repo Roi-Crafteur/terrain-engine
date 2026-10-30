@@ -17,15 +17,14 @@ Trapezoid trapezoid(const Fields& f, std::string_view key) {
 }
 
 RoughnessRule readRoughness(const Fields& f) {
-    f.only({"reliefWeight", "reliefLow", "reliefHigh", "rangeWeight", "rangeScaleM"});
+    f.only({"sampleWeight", "sampleScaleM", "rangeWeight", "rangeScaleM"});
     RoughnessRule r;
-    r.reliefWeight = f.numberIn("reliefWeight", 0.0, 10.0);
-    r.reliefLow = f.numberIn("reliefLow", 0.0, 1.0);
-    r.reliefHigh = f.numberIn("reliefHigh", 0.0, 1.0);
-    r.rangeWeight = f.numberIn("rangeWeight", 0.0, 10.0);
+    r.sampleWeight = f.numberIn("sampleWeight", 0.0, 1.0);
+    r.sampleScale = f.numberIn("sampleScaleM", 1.0, 1.0e5);
+    r.rangeWeight = f.numberIn("rangeWeight", 0.0, 1.0);
     r.rangeScale = f.numberIn("rangeScaleM", 1.0, 1.0e5);
-    if (r.reliefLow >= r.reliefHigh) {
-        f.fail("reliefLow must be below reliefHigh");
+    if (r.sampleWeight + r.rangeWeight > 1.0) {
+        f.fail("sampleWeight + rangeWeight above 1");
     }
     return r;
 }
