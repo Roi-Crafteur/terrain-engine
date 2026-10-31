@@ -1,12 +1,13 @@
-// The start of ATerrainWorld off the game thread (agent 38): the session (the planetary map, the
-// planet level, the hydrology, the tiles and their workers) built on a thread behind a black
-// screen, the pawn held, "Chargement du monde…" on the black after a delay; then the rest of the
-// start on the game thread (ATerrainWorld::TickStart, FinishStreamingStart). The world is the
+// The start of ATerrainWorld off the game thread (agent 38): the screen black from the first frame
+// of Play; the session (the planetary map, the planet level, the hydrology, the tiles and their
+// workers) built on a thread behind it, the pawn held, "Chargement du monde…" on the black after
+// a delay; then the rest of the start on the game thread (ATerrainWorld::TickStart, FinishStreamingStart). The world is the
 // same: the session is built as before, only on another thread.
 #include "TerrainWorldStart.h"
 
 #include "TerrainWorld.h"
 
+#include "Brushes/SlateColorBrush.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
@@ -20,6 +21,7 @@
 #include "TerrainEngineLog.h"
 #include "TerrainWorldState.h"
 #include "TerrainWorldWater.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -30,19 +32,37 @@ namespace
 {
 	using TerrainWorldConversions::ToFString;
 
-	// Above the black of the camera fade and every other widget of the viewport.
+	// Above every other widget of the viewport: the black, the message over it.
+	constexpr int32 StartCoverZOrder = 999;
 	constexpr int32 StartMessageZOrder = 1000;
+
+	APlayerCameraManager* StartCamera(const ATerrainWorld& World)
+	{
+		APlayerController* Controller = UGameplayStatics::GetPlayerController(&World, 0);
+		return Controller != nullptr ? Controller->PlayerCameraManager.Get() : nullptr;
+	}
+
+	UGameViewportClient* StartViewport(const ATerrainWorld& World)
+	{
+		UWorld* Level = World.GetWorld();
+		return Level != nullptr ? Level->GetGameViewport() : nullptr;
+	}
 
 	void StartBlackScreen(const ATerrainWorld& World, FTerrainWorldStart& Start)
 	{
-		APlayerController* Controller = UGameplayStatics::GetPlayerController(&World, 0);
-		APlayerCameraManager* Camera =
-			Controller != nullptr ? Controller->PlayerCameraManager.Get() : nullptr;
+		APlayerCameraManager* Camera = StartCamera(World);
 		if (!Start.bBlack && Camera != nullptr && World.LoadingSettings.bFade)
 		{
 			Camera->SetManualCameraFade(1.0f, FLinearColor::Black, false);
 			Start.bBlack = true;
 		}
+	}
+
+	// The brush of the black widget: alive as long as the module.
+	const FSlateBrush* StartCoverBrush()
+	{
+		static const FSlateColorBrush Brush(FLinearColor::Black);
+		return &Brush;
 	}
 
 	void HoldStartPawn(FTerrainWorldStart& Start, APawn* Pawn)
@@ -61,8 +81,7 @@ namespace
 
 	void ShowStartMessage(const ATerrainWorld& World, FTerrainWorldStart& Start)
 	{
-		UWorld* Level = World.GetWorld();
-		UGameViewportClient* Viewport = Level != nullptr ? Level->GetGameViewport() : nullptr;
+		UGameViewportClient* Viewport = StartViewport(World);
 		if (Start.Message.IsValid() || Viewport == nullptr)
 		{
 			return;
@@ -78,18 +97,32 @@ namespace
 			];
 		Viewport->AddViewportWidgetContent(Start.Message.ToSharedRef(), StartMessageZOrder);
 	}
-
-	void RemoveStartMessage(const ATerrainWorld& World, FTerrainWorldStart& Start)
-	{
-		UWorld* Level = World.GetWorld();
-		UGameViewportClient* Viewport = Level != nullptr ? Level->GetGameViewport() : nullptr;
-		if (Start.Message.IsValid() && Viewport != nullptr)
-		{
-			Viewport->RemoveViewportWidgetContent(Start.Message.ToSharedRef());
-		}
-		Start.Message.Reset();
-	}
 } // namespace
+
+void BeginTerrainBlack(const ATerrainWorld& World, FTerrainWorldStart& Start)
+{
+	if (!World.LoadingSettings.bFade)
+	{
+		return;
+	}
+	UGameViewportClient* Viewport = StartViewport(World);
+	if (!Start.Cover.IsValid() && Viewport != nullptr)
+	{
+		Start.Cover = SNew(SImage).Image(StartCoverBrush()).Visibility(EVisibility::HitTestInvisible);
+		Viewport->AddViewportWidgetContent(Start.Cover.ToSharedRef(), StartCoverZOrder);
+	}
+	StartBlackScreen(World, Start);
+}
+
+void RemoveTerrainWidget(const ATerrainWorld& World, TSharedPtr<SWidget>& Widget)
+{
+	UGameViewportClient* Viewport = StartViewport(World);
+	if (Widget.IsValid() && Viewport != nullptr)
+	{
+		Viewport->RemoveViewportWidgetContent(Widget.ToSharedRef());
+	}
+	Widget.Reset();
+}
 
 void BeginTerrainStart(FTerrainWorldStart& Start, const terrain::unreal::SessionParams& Params,
 	double CoreOriginX, double CoreOriginZ)
@@ -127,9 +160,10 @@ TPimplPtr<FTerrainWorldState> TickTerrainStart(ATerrainWorld& World, FTerrainWor
 		}
 		return TPimplPtr<FTerrainWorldState>();
 	}
-	RemoveStartMessage(World, Start);
+	RemoveTerrainWidget(World, Start.Message);
 	TPimplPtr<FTerrainWorldState> State = Start.Build.get(); // rethrows the error of the build
 	State->Loading.bScreenBlack = Start.bBlack;
+	State->Loading.Cover = MoveTemp(Start.Cover);
 	State->Loading.HeldPawn = Start.HeldPawn;
 	LogPlanet(State->Session.planet(), Start.PlanetFile, Start.Before);
 	UE_LOG(LogTerrainEngine, Log,
@@ -141,7 +175,14 @@ TPimplPtr<FTerrainWorldState> TickTerrainStart(ATerrainWorld& World, FTerrainWor
 
 void EndTerrainStart(ATerrainWorld& World, FTerrainWorldStart& Start)
 {
-	RemoveStartMessage(World, Start);
+	RemoveTerrainWidget(World, Start.Message);
+	RemoveTerrainWidget(World, Start.Cover);
+	APlayerCameraManager* Camera = StartCamera(World);
+	if (Start.bBlack && Camera != nullptr)
+	{
+		Camera->StopCameraFade();
+	}
+	Start.bBlack = false;
 	if (APawn* Held = Start.HeldPawn.Get())
 	{
 		if (UPawnMovementComponent* Movement = Held->GetMovementComponent())

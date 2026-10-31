@@ -89,6 +89,7 @@ namespace
 			const double UploadMs = (FPlatformTime::Seconds() - Start) * 1000.0;
 			Session.timings().record(terrain::unreal::TileStage::Upload, Upload.key.lod, UploadMs);
 			Uploads.Milliseconds += UploadMs;
+			Uploads.Vertices += Upload.mesh.positions.size();
 			Timeline.recordShown(Upload.key, terrain::unreal::LoadClock::now(), UploadMs,
 				Upload.collision);
 			UE_LOG(LogTerrainEngine, Verbose,
@@ -126,9 +127,14 @@ ATerrainWorld::ATerrainWorld()
 
 void ATerrainWorld::BeginPlay()
 {
+	// Black from the first frame of Play, before anything else: the world builds behind it.
+	Starting = MakePimpl<FTerrainWorldStart>();
+	BeginTerrainBlack(*this, *Starting.Get());
 	Super::BeginPlay();
 	if (!StartStreaming())
 	{
+		EndTerrainStart(*this, *Starting.Get());
+		Starting.Reset();
 		SetActorTickEnabled(false);
 	}
 }
@@ -158,6 +164,10 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		EndTerrainStart(*this, *Starting.Get());
 		Starting.Reset(); // waits for the build of the session in flight
 	}
+	if (State.IsValid())
+	{
+		RemoveTerrainWidget(*this, State->Loading.Cover);
+	}
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
 	Super::EndPlay(EndPlayReason);
@@ -185,8 +195,7 @@ bool ATerrainWorld::StartStreaming()
 			"in %s (built there if missing or stale: minutes, the screen black meanwhile)"),
 			Seed, *ToFString(Params.planetFile));
 	}
-	Starting = MakePimpl<FTerrainWorldStart>();
-	BeginTerrainStart(*Starting.Get(), Params, CoreOriginX, CoreOriginZ);
+	BeginTerrainStart(*Starting.Get(), Params, CoreOriginX, CoreOriginZ); // Starting: BeginPlay
 	Backend = CreateTerrainMeshBackend(MeshType, *this, MakeTileLook(), bAsyncCollisionCooking);
 	return true;
 }
@@ -217,6 +226,10 @@ void ATerrainWorld::FinishStreamingStart(double StartSeconds)
 void ATerrainWorld::StopStreaming(const FString& Reason)
 {
 	UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: streaming stopped: %s"), *Reason);
+	if (State.IsValid())
+	{
+		EndTerrainLoading(*this, *State.Get()); // the screen and the pawn given back
+	}
 	SetActorTickEnabled(false);
 }
 

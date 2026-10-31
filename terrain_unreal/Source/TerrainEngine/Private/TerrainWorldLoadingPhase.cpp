@@ -18,6 +18,7 @@
 #include "HAL/PlatformTime.h"
 #include "Kismet/GameplayStatics.h"
 #include "TerrainEngineLog.h"
+#include "TerrainWorldStart.h"
 #include "TerrainWorldState.h"
 
 #include <string>
@@ -62,9 +63,14 @@ namespace
 		return Controller != nullptr ? Controller->PlayerCameraManager.Get() : nullptr;
 	}
 
-	// The screen black, or coming back from black.
+	// The screen black, or coming back from black: then without the black widget of the start,
+	// the camera fade black still for this frame.
 	void SetLoadBlack(const ATerrainWorld& World, FTerrainWorldState& State, bool bBlack)
 	{
+		if (!bBlack)
+		{
+			RemoveTerrainWidget(World, State.Loading.Cover);
+		}
 		APlayerCameraManager* Camera = LoadCamera(World);
 		if (State.Loading.bScreenBlack == bBlack || Camera == nullptr)
 		{
@@ -123,14 +129,20 @@ namespace
 			return;
 		}
 		const bool bPending = State.Session.streamer().manager().pendingCount() > 0;
-		const terrain::unreal::LoadBudget Budget =
-			Loading.Phase->budget(bPending, Loading.MeanUploadMilliseconds);
+		const terrain::unreal::LoadBudget Budget = Loading.Phase->budget(bPending);
 		if (Budget == Loading.Applied)
 		{
 			return;
 		}
-		State.Session.streamer().setWorkerLimit(Budget.workers);
-		State.Session.streamer().setMaxLoadsPerUpdate(Budget.uploadsPerFrame);
+		terrain::unreal::TileStreamer& Streamer = State.Session.streamer();
+		Streamer.setWorkerLimit(Budget.workers);
+		Streamer.setMaxLoadsPerUpdate(Budget.uploadsPerFrame);
+		// The uploads of a frame stop before their estimated time goes beyond the budget, one at
+		// least: the costs read on the game thread, where the uploads are measured.
+		const terrain::unreal::UploadCostModel* Costs = &Loading.UploadCosts;
+		Streamer.setLoadBudget([Costs](const terrain::TileData& Data)
+			{ return Costs->estimate(Data.mesh.vertices.size()); },
+			Budget.uploadMilliseconds);
 		if (State.HorizonGpu != nullptr)
 		{
 			State.HorizonGpu->setMaxPiecesInFlight(Budget.pieces);
@@ -244,11 +256,7 @@ void UpdateTerrainPhase(ATerrainWorld& World, FTerrainWorldState& State, APawn* 
 	{
 		return;
 	}
-	if (Uploads.Count > 0)
-	{
-		Loading.MeanUploadMilliseconds =
-			0.8 * Loading.MeanUploadMilliseconds + 0.2 * Uploads.Milliseconds / Uploads.Count;
-	}
+	Loading.UploadCosts.record(Uploads.Vertices, Uploads.Milliseconds);
 	terrain::unreal::LoadPhase& Phase = *Loading.Phase;
 	const double Now = FPlatformTime::Seconds();
 	Phase.update(Status, Now);
@@ -272,6 +280,12 @@ void UpdateTerrainPhase(ATerrainWorld& World, FTerrainWorldState& State, APawn* 
 	}
 }
 
+void EndTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State)
+{
+	SetLoadBlack(World, State, false);
+	HoldLoadPawn(State, nullptr, false);
+}
+
 bool ATerrainWorld::TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ,
 	float HeadingDegrees, float PitchDegrees)
 {
@@ -287,10 +301,14 @@ bool ATerrainWorld::TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ,
 	}
 	// Black at once: nothing of the new place shows before its ground.
 	SetLoadBlack(*this, Terrain, LoadingSettings.bFade);
+	// Each step timed: the frame of a teleport is long (253 ms measured), outside the tick.
+	const double Begin = FPlatformTime::Seconds();
 	const double AboveCm = Pawn->GetSimpleCollisionHalfHeight() + LoadClearanceCm;
 	const FVector Location = LoadGroundPoint(Terrain, CoreX, CoreZ, AboveCm);
+	const double Grounded = FPlatformTime::Seconds();
 	Pawn->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
 	HoldLoadPawn(Terrain, Pawn, true);
+	const double Moved = FPlatformTime::Seconds();
 	const terrain::unreal::ViewAngles Angles =
 		terrain::unreal::viewAngles(HeadingDegrees, PitchDegrees);
 	if (AController* Controller = Pawn->GetController())
@@ -302,6 +320,13 @@ bool ATerrainWorld::TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ,
 			 "%.1f; held until the world around is shown"),
 		*Pawn->GetName(), CoreX, CoreZ, HeadingDegrees, Angles.yaw, Angles.pitch);
 	BeginTerrainLoad(Terrain, Location, terrain::unreal::LoadReason::Teleport);
+	const double End = FPlatformTime::Seconds();
+	UE_LOG(LogTerrainEngine, Log,
+		TEXT("Terrain World: the teleport took %.1f ms on the game thread: the ground of the "
+			 "point %.1f ms, the move of the pawn %.1f ms, the report of the previous load and the "
+			 "start of this one %.1f ms"),
+		(End - Begin) * 1000.0, (Grounded - Begin) * 1000.0, (Moved - Grounded) * 1000.0,
+		(End - Moved) * 1000.0);
 	return true;
 }
 

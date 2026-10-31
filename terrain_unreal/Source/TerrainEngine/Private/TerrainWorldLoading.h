@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Misc/Optional.h"
+#include "Templates/SharedPointer.h"
 #include "UObject/WeakObjectPtr.h"
 
 #include "Bridge/determinism_check.hpp"
@@ -10,10 +11,12 @@
 
 #include "terrain/chunk_coord.hpp"
 
+#include <cstddef>
 #include <future>
 
 class APawn;
 class ATerrainWorld;
+class SWidget;
 struct FTerrainWorldState;
 
 // The loads of ATerrainWorld (agent 38, TerrainWorldLoading.cpp). When the player appears (the
@@ -40,11 +43,12 @@ struct FTerrainLoadingState
 	// The loads measured since the start, and whether the report of the current one is written.
 	int32 Loads = 0;
 	bool bReported = true;
-	// The phase of the loads, its budget applied last, the mean cost of an upload (ms).
+	// The phase of the loads, its budget applied last, the cost of an upload (from its vertices).
 	TOptional<terrain::unreal::LoadPhase> Phase;
 	terrain::unreal::LoadBudget Applied;
-	double MeanUploadMilliseconds = 0.1;
+	terrain::unreal::UploadCostModel UploadCosts;
 	bool bScreenBlack = false;      // the fade holds the screen black
+	TSharedPtr<SWidget> Cover;      // the black widget of the start, until its fade ends
 	bool bBoosted = false;          // the boost of the current load is on
 	// The parts of the current frame (FrameTrace), milliseconds: its tick from TickStartSeconds,
 	// the update of the streamer, the update of the horizon, the textures sent.
@@ -55,10 +59,11 @@ struct FTerrainLoadingState
 	TWeakObjectPtr<APawn> HeldPawn; // the pawn whose movement the hold stopped
 };
 
-// The uploads of a frame and their time on the game thread.
+// The uploads of a frame, their vertices and their time on the game thread.
 struct FTerrainUploads
 {
 	int32 Count = 0;
+	std::size_t Vertices = 0;
 	double Milliseconds = 0.0;
 };
 
@@ -88,6 +93,9 @@ void BeginTerrainLoad(FTerrainWorldState& State, const FVector& Focus,
 // report and CSV.
 void TickTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State, const FVector& Focus,
 	APawn* Pawn, const FTerrainUploads& Uploads);
+
+// The streaming stops (an error): the screen given back from black and the pawn released.
+void EndTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State);
 
 // Between TerrainWorldLoading.cpp (the measures) and TerrainWorldLoadingPhase.cpp (the phase).
 void StartDeterminismCheck(FTerrainWorldState& State);

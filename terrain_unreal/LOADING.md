@@ -11,9 +11,11 @@ montrer tout de suite et du plus proche au plus loin, sans jamais le laisser tom
    gravité) jusqu'à ce qu'un tracé vers le bas touche une tuile, aussi longtemps qu'il le faut.
 2. **Le renfort.** Pendant le chargement, il y a plus de fils de tuiles et plus de morceaux
    d'horizon. Ensemble, ils ne dépassent pas un plafond : `min(fils matériels − 4, 12)` par défaut,
-   soit 12 sur un Ryzen 9 9950X3D. Les envois par image suivent un budget de 6 ms au coût moyen d'un
-   envoi (de 8 à 32 tuiles). Ensuite, retour au régime normal (`WorkerThreads`, `HorizonThreads`,
-   `MaxTileUploadsPerFrame`).
+   soit 12 sur un Ryzen 9 9950X3D, et jusqu'à 32 envois par image. Ensuite, retour au régime normal
+   (`WorkerThreads`, `HorizonThreads`, `MaxTileUploadsPerFrame`). Toujours, les envois d'une image
+   s'arrêtent avant de dépasser 6 ms : le coût de chaque tuile est estimé d'après ses sommets (un
+   temps par sommet appris sur les images), et l'image s'arrête à la première tuile qui ferait
+   dépasser le budget, avec au moins un envoi par image pour ne jamais bloquer.
 3. **L'horizon niveau par niveau.** Le niveau 0 (jusqu'à 1 km) vient d'abord, puis les niveaux 1
    à 3 (jusqu'à 8 km), puis les autres. Chaque niveau apparaît en fondu tramé en 0,6 s. Tant que
    des niveaux plus lointains manquent, le bord extérieur du dernier niveau visible se dissout dans
@@ -23,9 +25,12 @@ montrer tout de suite et du plus proche au plus loin, sans jamais le laisser tom
    collision), l'anneau de 64 m, toutes les tuiles et les niveaux 0 à 3 de l'horizon, **2 s au
    plus**. Si le plafond est atteint, le log dit ce qui manquait, avec les temps. Le retour à
    l'image dure 0,25 s.
-5. **Le monde se construit sur un fil au démarrage.** La carte planétaire, le niveau Planète,
-   l'hydrologie, les tuiles et leurs fils sont construits hors du fil du jeu, comme avant mais
-   ailleurs. Pendant ce temps, l'écran est noir, le pion tenu, l'éditeur ne gèle plus, et
+5. **Le monde se construit sur un fil au démarrage.** L'écran est noir dès la première image du
+   Play : un voile noir couvre la fenêtre de jeu dès `BeginPlay`, avant toute autre chose, et
+   reste jusqu'à la fin du fondu du spawn (le fondu de la caméra prend le relais pour le retour à
+   l'image). La carte planétaire, le niveau Planète, l'hydrologie, les tuiles et leurs fils sont
+   construits hors du fil du jeu, comme avant mais ailleurs. Pendant ce temps, le pion est tenu,
+   l'éditeur ne gèle plus, et
    « Chargement du monde… » s'affiche sur le noir après `MessageDelaySeconds` (0,5 s). Ensuite,
    l'horizon, l'eau et le ciel démarrent sur le fil du jeu (environ 0,2 s pour les grilles de
    l'horizon), puis le chargement du spawn commence : son fondu et son plafond de 2 s comptent à
@@ -55,7 +60,10 @@ thread`.
 | Premier Play (9950X3D, planète) | Fil du jeu gelé | Pire image pendant la construction |
 |---|---|---|
 | avant | environ 2,3 s | 2 495 ms (l'image du démarrage) |
-| après | à mesurer (attendu : environ 0,2 s, les grilles de l'horizon) | à mesurer |
+| après | aucun gel : session prête en 2,16 s (1,04 s aux Play suivants), puis une image de 271,7 ms (horizon, eau, ciel, et 32 envois en 11,2 ms) | 128 ms |
+
+Au premier Play, une image de ciel vide passait encore avant le noir (vers 0,43 s) : le noir
+n'était posé qu'au premier tick du terrain. Le voile noir posé dans `BeginPlay` la supprime.
 
 ## Réglages (`Terrain World` → `Loading Settings`)
 
@@ -63,7 +71,8 @@ thread`.
 |---|---|---|
 | `bBoost` | oui | renfort pendant le chargement |
 | `ThreadCap` | 0 | plafond des fils de tuiles et des morceaux d'horizon ensemble ; 0 : `min(fils − 4, 12)` |
-| `UploadMillisecondsPerFrame`, `MaxUploadsPerFrame` | 6 ms, 32 | envois d'une image pendant le chargement |
+| `UploadMillisecondsPerFrame` | 6 ms | les envois d'une image s'arrêtent avant ce temps (au moins 1), toujours ; 0 : le nombre seul |
+| `MaxUploadsPerFrame` | 32 | envois d'une image au plus pendant le chargement |
 | `bFade`, `FadeMaxSeconds` | oui, 2 s | fondu au noir et son plafond |
 | `TimeoutSeconds` | 30 s | fin du renfort, quoi qu'il reste à charger |
 | `MessageDelaySeconds` | 0,5 s | « Chargement du monde… » sur le noir si le monde se construit encore |
@@ -136,6 +145,10 @@ image), 9 ms au plus (au K2). La collision est donc gardée synchrone : elle ne 
 le budget en ms par image amortit les tuiles lourdes. Les pires images (299 ms au pied de la
 chaîne) restent à expliquer avec le CSV des images.
 
+À la chute, une image a fait 32 envois en 56,8 ms : le budget comptait alors des tuiles au coût
+moyen d'un envoi, et les tuiles lourdes le dépassaient. Désormais, chaque tuile est estimée d'après
+ses sommets et l'image s'arrête avant 6 ms (`stream_loading_test`, `unreal_load_phase_test`).
+
 **Après, dans le conteneur** (Linux, 4 cœurs, donc 2 morceaux d'horizon seulement, planète) :
 instant où chaque niveau de l'horizon est montré.
 
@@ -172,3 +185,9 @@ C'est l'objet d'une tâche à part, sans changement de bits.
   répondent « non » (pas encore de session) ; une construction du niveau Planète absent du disque
   (plusieurs minutes) se fait derrière le même écran noir, message affiché.
 - L'horizon CPU (`HorizonRenderer` = CPU) montre toujours tous ses niveaux d'un coup.
+- L'image d'une téléportation est longue (253 ms mesurés à la chute, hors du tick du terrain :
+  c'est l'image où la commande s'exécute). La lecture du sol au point d'arrivée, sur le fil du jeu,
+  en fait partie : 87 ms dans le conteneur à la chute, la première lecture de cette région
+  (hydrologie), 0 ms au K2. Le log `the teleport took … ms: the ground of the point …, the move
+  of the pawn …, the report of the previous load and the start of this one …` le détaille. Si la
+  lecture du sol domine, elle peut passer sur un fil (le pion est tenu de toute façon).

@@ -248,10 +248,13 @@ void applyBudget(Game& game) {
         return;
     }
     const bool pending = game.session.streamer().manager().pendingCount() > 0;
-    const terrain::unreal::LoadBudget budget =
-        game.phase->budget(pending, game.uploadMilliseconds);
+    const terrain::unreal::LoadBudget budget = game.phase->budget(pending);
     game.session.streamer().setWorkerLimit(budget.workers);
     game.session.streamer().setMaxLoadsPerUpdate(budget.uploadsPerFrame);
+    // No upload here: each tile costs --upload-ms against the time budget of the frame.
+    const double cost = game.uploadMilliseconds;
+    game.session.streamer().setLoadBudget([cost](const terrain::TileData&) { return cost; },
+                                          budget.uploadMilliseconds);
     if (game.horizon != nullptr) {
         game.horizon->setMaxPiecesInFlight(budget.pieces);
     }
@@ -335,9 +338,13 @@ void writeCsv(const Options& options, int index, LoadReason reason, const LoadTi
 void load(Game& game, const Options& options, int index, LoadReason reason, const Place& place) {
     LoadTimeline& timeline = game.session.timeline();
     const terrain::Heightfield& field = game.session.tiles().heightfield();
-    const terrain::unreal::UnrealPoint position = terrain::unreal::toUnreal(
-        game.frame, {place.x, static_cast<double>(field.heightAt(place.x, place.z)) + 1.8,
-                     place.z});
+    // The ground of the place, read on the game thread by TeleportWhenReady: timed.
+    const LoadClock::time_point asked = LoadClock::now();
+    const double ground = static_cast<double>(field.heightAt(place.x, place.z));
+    std::printf("  the ground of (%.1f, %.1f) m read in %.1f ms\n", place.x, place.z,
+                secondsSince(asked) * 1000.0);
+    const terrain::unreal::UnrealPoint position =
+        terrain::unreal::toUnreal(game.frame, {place.x, ground + 1.8, place.z});
     const bool detail = game.horizon != nullptr && game.horizon->detail() != nullptr;
     timeline.begin(reason, place.x, place.z, LoadClock::now(),
                    {false, game.horizon != nullptr, detail});

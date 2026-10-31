@@ -14,6 +14,7 @@
 #include <memory>
 #include <span>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace terrain::unreal {
@@ -103,6 +104,10 @@ public:
     // of conversions per update), never the tiles: more while a new place loads (agent 38).
     void setWorkerLimit(int workers) { manager_.setWorkerLimit(workers); }
     void setMaxLoadsPerUpdate(std::size_t loads) { manager_.setMaxLoadsPerUpdate(loads); }
+    // The budget of the uploads of an update, their costs estimated (StreamManager::setLoadBudget).
+    void setLoadBudget(TileLoadCost cost, double budget) {
+        manager_.setLoadBudget(std::move(cost), budget);
+    }
 
     // The tiles over chunks whose edits changed are generated again (StreamManager::invalidate);
     // the shown ones stay until their new data is uploaded in place.

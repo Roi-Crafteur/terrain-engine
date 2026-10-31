@@ -26,9 +26,28 @@ namespace terrain::unreal {
 struct LoadBudget {
     int workers = 2;              // tile workers taking tiles (StreamManager::setWorkerLimit)
     int pieces = 2;               // horizon pieces at once (HorizonEpochRunner)
-    std::size_t uploadsPerFrame = 8; // tiles converted and uploaded by an update
+    std::size_t uploadsPerFrame = 8; // tiles converted and uploaded by an update, at most
+    // The time the uploads of a frame may take, milliseconds (StreamManager::setLoadBudget with
+    // the costs of UploadCostModel): the update stops before going beyond it, one tile at least.
+    // 0: the count alone.
+    double uploadMilliseconds = 0.0;
 
     friend bool operator==(const LoadBudget&, const LoadBudget&) = default;
+};
+
+// The cost of the upload of a tile on the game thread (its mesh, its collision, its water), from
+// its vertices: a time per vertex learnt from the uploads measured (a moving mean over the
+// frames, the heavy tiles weighing in), never below kMinUploadMilliseconds a tile.
+inline constexpr double kMinUploadMilliseconds = 0.05;
+class UploadCostModel {
+public:
+    // The uploads of a frame: their vertices and the time they took. Ignored without either.
+    void record(std::size_t vertices, double milliseconds);
+    [[nodiscard]] double estimate(std::size_t vertices) const;
+    [[nodiscard]] double millisecondsPerVertex() const { return perVertex_; }
+
+private:
+    double perVertex_ = 5e-4; // 0.15 ms for a tile of 300 vertices, before any measure
 };
 
 // The cap of the tile workers and horizon pieces together while loading, by default:
@@ -39,7 +58,7 @@ struct LoadPhaseParams {
     LoadBudget normal;
     int cap = 12;                             // workers + pieces while loading
     std::size_t maxUploadsPerFrame = 32;      // while loading, at most
-    double uploadMillisecondsPerFrame = 6.0;  // while loading: the uploads of a frame take this
+    double uploadMillisecondsPerFrame = 6.0;  // the uploads of a frame, at most (0: no bound)
     double fadeMaxSeconds = 2.0;
     double timeoutSeconds = 30.0; // the boost ends then, whatever is still loading
     int nearHorizonLevels = 4;    // the levels 0 to 3 of the horizon: the fade waits for them
@@ -89,9 +108,9 @@ public:
 
     // The budget of this frame: normal outside a load; while loading, the tile workers take half
     // of the cap while tiles are pending (the horizon the rest), the horizon all but the normal
-    // workers afterwards; the uploads of a frame as many as uploadMillisecondsPerFrame allows at
-    // the mean cost of an upload, between the normal ones and maxUploadsPerFrame.
-    [[nodiscard]] LoadBudget budget(bool tilesPending, double meanUploadMilliseconds) const;
+    // workers afterwards, maxUploadsPerFrame uploads at most. Always, the uploads of a frame
+    // within uploadMillisecondsPerFrame (their costs estimated, UploadCostModel).
+    [[nodiscard]] LoadBudget budget(bool tilesPending) const;
 
     [[nodiscard]] const LoadPhaseParams& params() const { return params_; }
 

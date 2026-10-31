@@ -10,8 +10,6 @@ namespace terrain::unreal {
 
 namespace {
 
-// The cheapest upload the budget assumes, milliseconds: a frame never takes more than its maximum.
-constexpr double kCheapestUploadMilliseconds = 0.05;
 constexpr double kMaxPitchDegrees = 89.9;
 
 } // namespace
@@ -104,10 +102,12 @@ std::vector<std::string> LoadPhase::takeMissingAtCap() {
     return std::exchange(missing_, {});
 }
 
-LoadBudget LoadPhase::budget(bool tilesPending, double meanUploadMilliseconds) const {
+LoadBudget LoadPhase::budget(bool tilesPending) const {
     const LoadBudget& normal = params_.normal;
     if (!loading_) {
-        return normal;
+        LoadBudget result = normal; // the time of the uploads bounded outside the loads too
+        result.uploadMilliseconds = params_.uploadMillisecondsPerFrame;
+        return result;
     }
     const int cap = std::max(params_.cap, normal.workers + normal.pieces);
     LoadBudget result;
@@ -118,10 +118,21 @@ LoadBudget LoadPhase::budget(bool tilesPending, double meanUploadMilliseconds) c
         result.workers = normal.workers;
         result.pieces = std::max(normal.pieces, cap - normal.workers);
     }
-    const double mean = std::max(meanUploadMilliseconds, kCheapestUploadMilliseconds);
-    const auto byTime = static_cast<std::size_t>(params_.uploadMillisecondsPerFrame / mean);
-    result.uploadsPerFrame = std::clamp(byTime, normal.uploadsPerFrame, params_.maxUploadsPerFrame);
+    result.uploadsPerFrame = params_.maxUploadsPerFrame;
+    result.uploadMilliseconds = params_.uploadMillisecondsPerFrame;
     return result;
+}
+
+void UploadCostModel::record(std::size_t vertices, double milliseconds) {
+    if (vertices == 0 || !(milliseconds > 0.0)) {
+        return;
+    }
+    const double sample = milliseconds / static_cast<double>(vertices);
+    perVertex_ = 0.7 * perVertex_ + 0.3 * sample;
+}
+
+double UploadCostModel::estimate(std::size_t vertices) const {
+    return std::max(kMinUploadMilliseconds, perVertex_ * static_cast<double>(vertices));
 }
 
 ViewAngles viewAngles(double headingDegrees, double pitchDegrees) {

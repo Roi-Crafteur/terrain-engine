@@ -26,10 +26,10 @@ struct FTerrainLoadingSettings
 		meta = (EditCondition = "bBoost", ClampMin = "0", ClampMax = "64"))
 	int32 ThreadCap = 0;
 
-	// While loading, the uploads of a frame take about this long at the mean cost of an upload,
-	// between MaxTileUploadsPerFrame and MaxUploadsPerFrame tiles.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loading",
-		meta = (EditCondition = "bBoost", ClampMin = "0"))
+	// The uploads of a frame stop before their time goes beyond this, milliseconds, one upload a
+	// frame at least, in the loads and outside: the cost of each tile estimated from its vertices
+	// (a time per vertex measured on the frames). 0: the count of uploads alone.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loading", meta = (ClampMin = "0"))
 	float UploadMillisecondsPerFrame = 6.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loading",

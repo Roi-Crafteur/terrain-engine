@@ -121,6 +121,11 @@ void StreamManager::setMaxLoadsPerUpdate(std::size_t loads) {
     params_.maxLoadsPerUpdate = loads;
 }
 
+void StreamManager::setLoadBudget(TileLoadCost cost, double budget) {
+    loadCost_ = std::move(cost);
+    loadBudget_ = budget;
+}
+
 void StreamManager::invalidate(std::span<const ChunkCoord> chunks) {
     std::vector<ChunkCoord> canonical;
     canonical.reserve(chunks.size());
@@ -238,20 +243,29 @@ void StreamManager::rebuildQueue() {
     workAvailable_.notify_all();
 }
 
-// Loads up to maxLoadsPerUpdate generated tiles, nearest first; stale ones are dropped.
+// Loads up to maxLoadsPerUpdate generated tiles, nearest first, within the budget of cost if
+// any (setLoadBudget); stale ones are dropped.
 void StreamManager::integrate(StreamChanges& changes) {
     const ChunkCoord player = player_.value_or(ChunkCoord{});
     std::sort(ready_.begin(), ready_.end(), [this, player](const Result& a, const Result& b) {
         return nearer(a.key, b.key, player) || (a.key == b.key && a.ticket < b.ticket);
     });
     std::vector<Result> waiting;
+    const bool costed = loadCost_ && loadBudget_ > 0.0;
+    double spent = 0.0;
+    bool full = false; // the budget of this update is used: the farther tiles wait
     for (Result& result : ready_) {
         const auto wanted = wanted_.find(result.key);
         if (wanted == wanted_.end() || wanted->second.ticket != result.ticket ||
             current(result.key, result.ticket)) {
             continue; // stale, or already loaded
         }
-        if (changes.loaded.size() == params_.maxLoadsPerUpdate) {
+        if (!full && costed) {
+            const double cost = loadCost_(result.data);
+            full = !changes.loaded.empty() && spent + cost > loadBudget_;
+            spent += full ? 0.0 : cost;
+        }
+        if (full || changes.loaded.size() == params_.maxLoadsPerUpdate) {
             waiting.push_back(std::move(result));
             continue;
         }

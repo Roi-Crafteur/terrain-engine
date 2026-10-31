@@ -55,19 +55,32 @@ void testCap() {
     TEST_CHECK(terrain::unreal::defaultLoadingCap(4, {3, 3, 8}) == 6);
 }
 
-// Normal outside a load; while loading: half of the cap for the tiles while they are pending,
-// then all but the normal workers for the horizon; the uploads by the time budget, clamped.
+// Normal outside a load (the count alone); while loading: half of the cap for the tiles while they
+// are pending, then all but the normal workers for the horizon; the uploads within 6 ms.
 void testBudget() {
     LoadPhase phase(phaseParams());
-    TEST_CHECK((phase.budget(true, 0.1) == LoadBudget{2, 2, 8}));
+    TEST_CHECK((phase.budget(true) == LoadBudget{2, 2, 8, 6.0}));
     phase.begin(0.0);
-    TEST_CHECK((phase.budget(true, 0.1) == LoadBudget{6, 6, 32}));
-    TEST_CHECK((phase.budget(false, 0.1) == LoadBudget{2, 10, 32}));
-    TEST_CHECK(phase.budget(true, 0.5).uploadsPerFrame == 12);
-    TEST_CHECK(phase.budget(true, 2.0).uploadsPerFrame == 8);
-    TEST_CHECK(phase.budget(true, 0.0).uploadsPerFrame == 32);
+    TEST_CHECK((phase.budget(true) == LoadBudget{6, 6, 32, 6.0}));
+    TEST_CHECK((phase.budget(false) == LoadBudget{2, 10, 32, 6.0}));
     phase.update(shown(10), 0.5); // everything loaded: back to normal
-    TEST_CHECK(!phase.loading() && (phase.budget(true, 0.1) == LoadBudget{2, 2, 8}));
+    TEST_CHECK(!phase.loading() && (phase.budget(true) == LoadBudget{2, 2, 8, 6.0}));
+}
+
+// The cost of an upload learnt from the frames: a time per vertex, never below its floor.
+void testUploadCost() {
+    terrain::unreal::UploadCostModel model;
+    const double before = model.estimate(300);
+    TEST_CHECK(before > terrain::unreal::kMinUploadMilliseconds);
+    model.record(0, 5.0); // ignored
+    model.record(1000, 0.0);
+    TEST_CHECK(model.estimate(300) == before);
+    for (int frame = 0; frame < 30; ++frame) {
+        model.record(32 * 826, 56.8); // the fall: 32 heavy uploads in 56.8 ms
+    }
+    TEST_CHECK(std::abs(model.millisecondsPerVertex() - 56.8 / (32 * 826)) < 1e-6);
+    TEST_CHECK(model.estimate(826) > 1.7 && model.estimate(826) < 1.8);
+    TEST_CHECK(model.estimate(0) == terrain::unreal::kMinUploadMilliseconds);
 }
 
 // The fade waits for the ground (its collision), the 64 m ring, every tile and the levels 0 to 3;
@@ -228,6 +241,45 @@ void testPreparedPoint() {
     TEST_CHECK(!phase.prepared().has_value());
 }
 
+// A tile of 4,000 vertices at LOD 0 (2 ms to upload at the first estimate), of 30,000 beyond (15
+// ms: more than a budget).
+TileData heavyTile(const TileRequest& request) {
+    TileData data = fakeTile(request);
+    const std::size_t vertices = request.key.lod == 0 ? 4000 : 30000;
+    data.mesh.vertices.assign(vertices, {0.0f, 0.0f, 0.0f});
+    data.mesh.normals.assign(vertices, {0.0f, 1.0f, 0.0f});
+    return data;
+}
+
+// The uploads of an update stop before their estimated time goes beyond the budget of 6 ms, one
+// at least: three LOD 0 tiles at most, a heavier one alone; every tile uploaded once.
+void testUploadBudget() {
+    const terrain::unreal::UploadCostModel model;
+    terrain::unreal::TileStreamer streamer(heavyTile, streamParams());
+    streamer.setMaxLoadsPerUpdate(32);
+    streamer.setLoadBudget(
+        [&model](const TileData& data) { return model.estimate(data.mesh.vertices.size()); },
+        6.0);
+    std::map<std::tuple<int, int, int>, int> uploads;
+    bool within = true;
+    for (int frame = 0; frame < 2000 && (frame == 0 || streamer.manager().pendingCount() > 0);
+         ++frame) {
+        streamer.generatePending(64);
+        const terrain::unreal::StreamerUpdate update = streamer.update(pointOf(8.0, 8.0), {});
+        double estimated = 0.0;
+        for (const terrain::unreal::TileUpload& upload : update.uploads) {
+            estimated += model.estimate(upload.mesh.positions.size());
+            ++uploads[std::tuple(upload.key.origin.x, upload.key.origin.z, upload.key.lod)];
+        }
+        within = within && (update.uploads.size() <= 1 || estimated <= 6.0);
+    }
+    TEST_CHECK(within && streamer.manager().pendingCount() == 0);
+    TEST_CHECK(uploads.size() == streamer.manager().selection().size());
+    for (const auto& [key, count] : uploads) {
+        TEST_CHECK(count == 1);
+    }
+}
+
 bool near(double a, double b) {
     return std::abs(a - b) < 1e-9;
 }
@@ -256,11 +308,13 @@ void testViewAngles() {
 int main() {
     testCap();
     testBudget();
+    testUploadCost();
     testFadeAndHold();
     testFadeCap();
     testWithoutHorizonOrFade();
     testInvalid();
     testPreparedPoint();
+    testUploadBudget();
     testViewAngles();
     return test::result();
 }

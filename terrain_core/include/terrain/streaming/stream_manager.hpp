@@ -117,6 +117,10 @@ struct TileData {
 // deterministic for the streaming to be.
 using TileGenerator = std::function<TileData(const TileRequest&)>;
 
+// The cost of loading a generated tile into a viewer (its upload, in any unit the budget of
+// StreamManager::setLoadBudget shares), estimated from its data. Called on the owner thread.
+using TileLoadCost = std::function<double(const TileData&)>;
+
 struct StreamParams {
     LodParams lod;
     // Threads generating the queued tiles (all of them active until setWorkerLimit). 0: tiles
@@ -188,6 +192,12 @@ public:
     void setWorkerLimit(int workers);
     [[nodiscard]] int workerLimit() const;
     void setMaxLoadsPerUpdate(std::size_t loads);
+    // A budget of cost per update besides the count: an update loads the generated tiles, nearest
+    // first, while their summed costs stay within budget, and stops at the first one that would
+    // go beyond it (the farther ones wait, the nearest first order kept); it loads one tile at
+    // least, whatever its cost, so that loading never stops. An empty cost or a budget of 0 or
+    // less: the count alone, as before. Rhythm only, never the data.
+    void setLoadBudget(TileLoadCost cost, double budget);
 
     // Renews the tickets of the selected tiles overlapping these chunks (and marks the loaded
     // ones stale): they are generated again, their old data shown until the new one is loaded.
@@ -249,6 +259,8 @@ private:
     std::vector<Result> ready_; // generated, not loaded yet
     std::uint64_t nextTicket_ = 1;
     bool queueDirty_ = false;
+    TileLoadCost loadCost_;
+    double loadBudget_ = 0.0;
 
     // Shared with the workers, guarded by mutex_.
     mutable std::mutex mutex_;

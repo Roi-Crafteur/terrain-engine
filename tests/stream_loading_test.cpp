@@ -1,7 +1,7 @@
 // The rhythm of the loads of StreamManager (agent 38): the order of the requests and of the
-// integrations on a case made by hand (nearest first), the budget of loads and the limit of the
-// workers changed during a load, no tile lost nor loaded twice, and the same tiles, bit for bit,
-// whatever the threads and the limits.
+// integrations on a case made by hand (nearest first), the budget of loads, the budget of cost
+// and the limit of the workers changed during a load, no tile lost nor loaded twice, and the same
+// tiles, bit for bit, whatever the threads and the limits.
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
 
@@ -119,6 +119,43 @@ void testBudgetChanged() {
     TEST_CHECK(thrown && manager.params().maxLoadsPerUpdate == 16);
 }
 
+// A budget of cost: each update loads the nearest generated tiles while their costs stay within
+// it, stops at the first that would go beyond it (one tile at least), keeps the nearest first
+// order and loses no tile; without a budget, the count alone.
+void testCostBudget() {
+    StreamManager manager(fakeTile, params(0, 100));
+    // LOD 0 tiles cost 3, the coarser ones 10: two LOD 0 tiles per update, a coarser one alone.
+    manager.setLoadBudget(
+        [](const TileData& data) { return data.request.key.lod == 0 ? 3.0 : 10.0; }, 6.0);
+    manager.update(center(0), center(0));
+    manager.generatePending(1000);
+    std::unordered_map<TileKey, int, TileKeyHash> loads;
+    int previous = 0;
+    for (int round = 0; round < 1000 && manager.pendingCount() > 0; ++round) {
+        const StreamChanges changes = manager.update(center(0), center(0));
+        TEST_CHECK(!changes.loaded.empty());
+        double cost = 0.0;
+        for (const TileKey& key : changes.loaded) {
+            cost += key.lod == 0 ? 3.0 : 10.0;
+            ++loads[key];
+            const int distance = terrain::tileDistance(key, {0, 0});
+            TEST_CHECK(distance >= previous);
+            previous = distance;
+        }
+        TEST_CHECK(changes.loaded.size() == 1 || cost <= 6.0);
+        TEST_CHECK(changes.loaded.front().lod != 0 || changes.loaded.size() <= 2);
+    }
+    TEST_CHECK(manager.pendingCount() == 0 && loads.size() == manager.selection().size());
+    for (const auto& [key, count] : loads) {
+        TEST_CHECK(count == 1);
+    }
+    StreamManager counted(fakeTile, params(0, 5));
+    counted.setLoadBudget([](const TileData&) { return 100.0; }, 0.0); // no budget: the count
+    counted.update(center(0), center(0));
+    counted.generatePending(1000);
+    TEST_CHECK(counted.update(center(0), center(0)).loaded.size() == 5);
+}
+
 // The limit of the workers, clamped to the workers; nothing without workers.
 void testWorkerLimitClamped() {
     StreamManager manager(fakeTile, params(4, 8));
@@ -191,6 +228,7 @@ int main() {
     testOrderByHand();
     testBudgetChanged();
     testWorkerLimitClamped();
+    testCostBudget();
     testSameTilesWhateverTheLimits();
     return test::result();
 }
