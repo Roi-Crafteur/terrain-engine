@@ -181,7 +181,7 @@ void testOutsideALoad() {
     timeline.observe(tiles, at(0.2));
     TEST_CHECK(timeline.complete() && !timeline.active());
     timeline.recordShown({{40, 40}, 0}, at(0.3), 1.0, true);
-    timeline.recordFrame(50.0, 3);
+    timeline.recordFrame({}, at(0.35), 50.0);
     TEST_CHECK(timeline.summary().tiles == tiles.size() && timeline.summary().frames == 0);
     TEST_CHECK(!timeline.mark(LoadMilestone::HorizonNear, at(0.4)));
     timeline.begin(LoadReason::Teleport, 0.0, 0.0, at(1.0));
@@ -222,7 +222,10 @@ void testStreamerLoad() {
         for (const terrain::unreal::TileUpload& upload : update.uploads) {
             timeline->recordShown(upload.key, LoadClock::now(), 0.0, upload.collision);
         }
-        timeline->recordFrame(1.0, update.uploads.size());
+        terrain::unreal::FrameTrace trace;
+        trace.terrainMilliseconds = 1.0;
+        trace.uploads = update.uploads.size();
+        timeline->recordFrame(trace, LoadClock::now());
         timeline->observe(terrain::unreal::selectedTiles(streamer, player), LoadClock::now());
     }
     TEST_CHECK(timeline->complete());
@@ -274,6 +277,41 @@ void testWrappedDistance() {
     TEST_CHECK(wrappedChunkDistance({0, 0}, {count.x / 2, 7}, world) == count.x / 2);
 }
 
+// The frames of a load: the whole frame of the game thread, read one frame late, goes to the
+// frame before; the worst frame and its parts; the CSV of the frames.
+void testFrames() {
+    LoadTimeline timeline;
+    timeline.begin(LoadReason::Teleport, 0.0, 0.0, kStart);
+    terrain::unreal::FrameTrace frame;
+    frame.terrainMilliseconds = 2.0;
+    timeline.recordFrame(frame, at(0.016));
+    frame.terrainMilliseconds = 5.0;
+    frame.uploads = 32;
+    frame.uploadsMilliseconds = 4.0;
+    frame.texturesMilliseconds = 210.0;
+    frame.horizonLevels = 1;
+    timeline.recordFrame(frame, at(0.033), 40.0);
+    frame = {};
+    frame.terrainMilliseconds = 3.0;
+    timeline.recordFrame(frame, at(0.333), 299.0);
+    const std::vector<terrain::unreal::FrameTrace> frames = timeline.frames();
+    TEST_CHECK(frames.size() == 3);
+    TEST_CHECK(near(frames[0].gameThreadMilliseconds, 40.0) &&
+               near(frames[1].gameThreadMilliseconds, 299.0) &&
+               frames[2].gameThreadMilliseconds < 0.0);
+    const LoadSummary summary = timeline.summary();
+    TEST_CHECK(summary.frames == 3 && summary.mostUploadsPerFrame == 32);
+    TEST_CHECK(near(summary.worstFrame.seconds, 0.033) &&
+               near(summary.worstFrame.texturesMilliseconds, 210.0));
+    TEST_CHECK(terrain::unreal::describeFrame(summary.worstFrame).rfind("299.0 ms at 0.033 s", 0) ==
+               0);
+    const std::vector<std::string> rows = terrain::unreal::frameRows(frames);
+    TEST_CHECK(rows.size() == 4 && rows[0].rfind("t_s,game_thread_ms,terrain_ms", 0) == 0);
+    TEST_CHECK(rows[2] == "0.0330,299.000,5.000,0.000,32,4.000,0.000,210.000,1");
+    const std::vector<std::string> lines = terrain::unreal::describe(summary);
+    TEST_CHECK(lines.back().rfind("worst frame: 299.0 ms", 0) == 0);
+}
+
 } // namespace
 
 int main() {
@@ -284,5 +322,6 @@ int main() {
     testStreamerLoad();
     testHorizonAround();
     testWrappedDistance();
+    testFrames();
     return test::result();
 }

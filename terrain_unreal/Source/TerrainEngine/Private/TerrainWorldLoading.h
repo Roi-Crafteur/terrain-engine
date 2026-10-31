@@ -46,6 +46,12 @@ struct FTerrainLoadingState
 	double MeanUploadMilliseconds = 0.1;
 	bool bScreenBlack = false;      // the fade holds the screen black
 	bool bBoosted = false;          // the boost of the current load is on
+	// The parts of the current frame (FrameTrace), milliseconds: its tick from TickStartSeconds,
+	// the update of the streamer, the update of the horizon, the textures sent.
+	double TickStartSeconds = 0.0;
+	double FrameTilesMilliseconds = 0.0;
+	double FrameHorizonMilliseconds = 0.0;
+	double FrameTexturesMilliseconds = 0.0;
 	TWeakObjectPtr<APawn> HeldPawn; // the pawn whose movement the hold stopped
 };
 

@@ -3,6 +3,7 @@
 # tests/CMakeLists.txt (after the Bridge library).
 
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/horizon_reveal.cpp
+                                             ${unreal_bridge}/load_frames.cpp
                                              ${unreal_bridge}/load_phase.cpp
                                              ${unreal_bridge}/load_timeline.cpp)
 

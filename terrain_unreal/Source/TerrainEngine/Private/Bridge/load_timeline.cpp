@@ -121,6 +121,7 @@ void LoadTimeline::begin(LoadReason reason, double playerX, double playerZ,
     expectations_ = expectations;
     start_ = now;
     traces_.clear();
+    frames_.clear();
     threads_.clear();
 }
 
@@ -172,15 +173,24 @@ void LoadTimeline::recordShown(const TileKey& key, LoadClock::time_point now,
     summary_.uploadMilliseconds += uploadMilliseconds;
 }
 
-void LoadTimeline::recordFrame(double gameThreadMilliseconds, std::size_t uploads) {
+void LoadTimeline::recordFrame(FrameTrace frame, LoadClock::time_point now,
+                               double previousGameThreadMilliseconds) {
     const std::lock_guard lock(mutex_);
     if (!active_) {
         return;
     }
+    if (!frames_.empty() && previousGameThreadMilliseconds >= 0.0) {
+        frames_.back().gameThreadMilliseconds = previousGameThreadMilliseconds;
+    }
+    frame.seconds = seconds(now);
+    frames_.push_back(frame);
     ++summary_.frames;
-    summary_.worstFrameMilliseconds =
-        std::max(summary_.worstFrameMilliseconds, gameThreadMilliseconds);
-    summary_.mostUploadsPerFrame = std::max(summary_.mostUploadsPerFrame, uploads);
+    summary_.mostUploadsPerFrame = std::max(summary_.mostUploadsPerFrame, frame.uploads);
+}
+
+std::vector<FrameTrace> LoadTimeline::frames() const {
+    const std::lock_guard lock(mutex_);
+    return frames_;
 }
 
 std::vector<LoadMilestone> LoadTimeline::observe(std::span<const SelectedTile> selection,
@@ -288,6 +298,7 @@ LoadSummary LoadTimeline::summary() const {
     const std::lock_guard lock(mutex_);
     LoadSummary result = summary_;
     result.tiles = traces_.size();
+    result.worstFrame = worstFrame(frames_);
     result.bandShown.fill(0.0);
     std::array<double, kLoadBandStartMeters.size()> generationMs{};
     std::array<std::size_t, kLoadBandStartMeters.size()> generated{};
@@ -380,11 +391,14 @@ std::vector<std::string> describe(const LoadSummary& summary) {
     }
     const double uploads = static_cast<double>(std::max<std::size_t>(summary.uploads, 1));
     const double meanUpload = summary.uploadMilliseconds / uploads;
-    std::snprintf(text, sizeof(text), "%zu uploads %.2f ms each, %zu frames, worst game thread "
-                  "%.1f ms, at most %zu uploads in a frame, %zu tiles generated again",
-                  summary.uploads, meanUpload, summary.frames, summary.worstFrameMilliseconds,
-                  summary.mostUploadsPerFrame, summary.generatedAgain);
+    std::snprintf(text, sizeof(text), "%zu uploads %.2f ms each, %zu frames, at most %zu "
+                  "uploads in a frame, %zu tiles generated again",
+                  summary.uploads, meanUpload, summary.frames, summary.mostUploadsPerFrame,
+                  summary.generatedAgain);
     lines.emplace_back(text);
+    if (summary.frames > 0) {
+        lines.push_back("worst frame: " + describeFrame(summary.worstFrame));
+    }
     return lines;
 }
 

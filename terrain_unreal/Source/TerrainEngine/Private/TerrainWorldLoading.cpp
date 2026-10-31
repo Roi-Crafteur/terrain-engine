@@ -96,28 +96,36 @@ namespace
 		}
 	}
 
-	void WriteLoadCsv(const LoadTimeline& Timeline, int32 Index)
+	void SaveRows(const std::vector<std::string>& Lines, const FString& Path, const TCHAR* What)
 	{
 		TArray<FString> Rows;
-		for (const std::string& Row : terrain::unreal::csvRows(Timeline.traces()))
+		for (const std::string& Line : Lines)
 		{
-			Rows.Add(ToFString(Row));
+			Rows.Add(ToFString(Line));
 		}
+		if (FFileHelper::SaveStringArrayToFile(Rows, *Path))
+		{
+			UE_LOG(LogTerrainEngine, Log, TEXT("  %s of the load (CSV): %s"), What, *Path);
+		}
+		else
+		{
+			UE_LOG(LogTerrainEngine, Warning, TEXT("  cannot write the CSV: %s"), *Path);
+		}
+	}
+
+	// The tiles of the load and its frames, two CSV files side by side.
+	void WriteLoadCsv(const LoadTimeline& Timeline, int32 Index)
+	{
 		const FString Folder = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("TerrainEngine"),
 			TEXT("Loading"));
 		IFileManager::Get().MakeDirectory(*Folder, true);
 		const FString Reason = LoadReasonText(Timeline).Replace(TEXT(" "), TEXT("_"));
-		const FString Path = FPaths::ConvertRelativePathToFull(FPaths::Combine(Folder,
-			FString::Printf(TEXT("load_%s_%d_%s.csv"),
+		const FString Stem = FPaths::ConvertRelativePathToFull(FPaths::Combine(Folder,
+			FString::Printf(TEXT("load_%s_%d_%s"),
 				*FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")), Index, *Reason)));
-		if (FFileHelper::SaveStringArrayToFile(Rows, *Path))
-		{
-			UE_LOG(LogTerrainEngine, Log, TEXT("  tiles of the load (CSV): %s"), *Path);
-		}
-		else
-		{
-			UE_LOG(LogTerrainEngine, Warning, TEXT("  cannot write the CSV of the load: %s"), *Path);
-		}
+		SaveRows(terrain::unreal::csvRows(Timeline.traces()), Stem + TEXT(".csv"), TEXT("tiles"));
+		SaveRows(terrain::unreal::frameRows(Timeline.frames()), Stem + TEXT("_frames.csv"),
+			TEXT("frames"));
 	}
 
 	// The summary, the curve and the CSV of the current load, as it stands.
@@ -242,8 +250,21 @@ void TickTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State, const F
 	LoadTimeline& Timeline = State.Session.timeline();
 	const LoadClock::time_point Now = LoadClock::now();
 	const terrain::unreal::UnrealPoint Point = ToUnrealPoint(Focus);
-	Timeline.recordFrame(FPlatformTime::ToMilliseconds(GGameThreadTime),
-		static_cast<std::size_t>(FMath::Max(0, Uploads.Count)));
+	int Shown = 0;
+	int Count = 0;
+	bool bIdle = false;
+	LoadHorizonLevels(State, Shown, Count, bIdle);
+	terrain::unreal::FrameTrace Frame;
+	Frame.terrainMilliseconds =
+		(FPlatformTime::Seconds() - State.Loading.TickStartSeconds) * 1000.0;
+	Frame.tilesMilliseconds = State.Loading.FrameTilesMilliseconds;
+	Frame.uploads = static_cast<std::size_t>(FMath::Max(0, Uploads.Count));
+	Frame.uploadsMilliseconds = Uploads.Milliseconds;
+	Frame.horizonMilliseconds = State.Loading.FrameHorizonMilliseconds;
+	Frame.texturesMilliseconds = State.Loading.FrameTexturesMilliseconds;
+	Frame.horizonLevels = Shown;
+	// stat unit reads the whole frame one frame late: it goes to the previous frame.
+	Timeline.recordFrame(Frame, Now, FPlatformTime::ToMilliseconds(GGameThreadTime));
 	const std::vector<terrain::unreal::SelectedTile> Selection = terrain::unreal::selectedTiles(
 		State.Session.streamer(), terrain::unreal::chunkAt(State.Frame, Point));
 	std::vector<LoadMilestone> Reached = Timeline.observe(Selection, Now);
@@ -256,10 +277,6 @@ void TickTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State, const F
 	{
 		Reached.push_back(LoadMilestone::GroundCollision);
 	}
-	int Shown = 0;
-	int Count = 0;
-	bool bIdle = false;
-	LoadHorizonLevels(State, Shown, Count, bIdle);
 	MarkLoadHorizon(Timeline, Shown, Count, bIdle, Now, Reached);
 	if (!State.Loading.bReported)
 	{

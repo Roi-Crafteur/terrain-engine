@@ -288,19 +288,25 @@ void frame(Game& game, const terrain::unreal::UnrealPoint& position, Worst& wors
     for (const terrain::unreal::TileUpload& upload : update.uploads) {
         timeline.recordShown(upload.key, LoadClock::now(), 0.0, upload.collision);
     }
-    worst.tiles = std::max(worst.tiles, secondsSince(start) * 1000.0);
+    terrain::unreal::FrameTrace trace;
+    trace.tilesMilliseconds = secondsSince(start) * 1000.0;
+    trace.uploads = update.uploads.size();
+    worst.tiles = std::max(worst.tiles, trace.tilesMilliseconds);
     int levels = 0;
     if (game.horizon != nullptr) {
         const LoadClock::time_point horizonStart = LoadClock::now();
         game.horizon->update(position, game.frame);
-        worst.horizon = std::max(worst.horizon, secondsSince(horizonStart) * 1000.0);
+        trace.horizonMilliseconds = secondsSince(horizonStart) * 1000.0;
+        worst.horizon = std::max(worst.horizon, trace.horizonMilliseconds);
         levels = markHorizon(game, worst);
     }
+    trace.horizonLevels = levels;
     const terrain::ChunkCoord chunk = terrain::unreal::chunkAt(game.frame, position);
     const std::vector<terrain::unreal::SelectedTile> selection =
         terrain::unreal::selectedTiles(game.session.streamer(), chunk);
     timeline.observe(selection, LoadClock::now());
-    timeline.recordFrame(secondsSince(start) * 1000.0, update.uploads.size());
+    trace.terrainMilliseconds = secondsSince(start) * 1000.0;
+    timeline.recordFrame(trace, LoadClock::now());
     if (game.phase) {
         const terrain::unreal::TileRings rings = terrain::unreal::tileRings(selection);
         const bool all = rings.all && game.session.streamer().manager().pendingCount() == 0;

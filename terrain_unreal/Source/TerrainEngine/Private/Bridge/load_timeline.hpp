@@ -114,6 +114,20 @@ struct TileTrace {
     bool collision = false;
 };
 
+// The parts of a frame of the game during a load, milliseconds: what the terrain does on the game
+// thread, against the whole frame.
+struct FrameTrace {
+    double seconds = 0.0;                 // since the start of the load (set by recordFrame)
+    double gameThreadMilliseconds = -1.0; // the whole frame (stat unit), -1: not known
+    double terrainMilliseconds = 0.0;     // the tick of the Terrain World
+    double tilesMilliseconds = 0.0;       // the update of the streamer: integrations, conversions
+    std::size_t uploads = 0;
+    double uploadsMilliseconds = 0.0;  // their meshes and collisions set in Unreal
+    double horizonMilliseconds = 0.0;  // the update of the horizon: commits, texels prepared
+    double texturesMilliseconds = 0.0; // the texels, water and normals sent, the levels placed
+    int horizonLevels = 0;             // shown around the player
+};
+
 // The summary of a load, seconds since its start (-1: not reached).
 struct LoadSummary {
     LoadReason reason = LoadReason::Spawn;
@@ -130,7 +144,7 @@ struct LoadSummary {
     std::vector<double> threadBusySeconds; // per generating thread
     std::vector<std::size_t> threadTiles;
     std::size_t frames = 0;
-    double worstFrameMilliseconds = 0.0;
+    FrameTrace worstFrame; // the longest frame on the game thread (or of the terrain, unknown)
     std::size_t mostUploadsPerFrame = 0;
     double uploadMilliseconds = 0.0; // total
     std::size_t uploads = 0;
@@ -152,7 +166,10 @@ public:
     void recordConverted(const TileKey& key, LoadClock::time_point now);
     void recordShown(const TileKey& key, LoadClock::time_point now, double uploadMilliseconds,
                      bool collision);
-    void recordFrame(double gameThreadMilliseconds, std::size_t uploads);
+    // A frame of the load; previousGameThreadMilliseconds, the whole previous frame (stat unit
+    // reads it one frame late), goes to the previous frame (-1: unknown).
+    void recordFrame(FrameTrace frame, LoadClock::time_point now,
+                     double previousGameThreadMilliseconds = -1.0);
     // The milestones of the tiles, from the selection now. Returns those reached by this call.
     std::vector<LoadMilestone> observe(std::span<const SelectedTile> selection,
                                        LoadClock::time_point now);
@@ -164,6 +181,7 @@ public:
 
     [[nodiscard]] LoadSummary summary() const;
     [[nodiscard]] std::vector<TileTrace> traces() const; // nearest first
+    [[nodiscard]] std::vector<FrameTrace> frames() const; // in their order
     // The milestones expected and not reached, for the log.
     [[nodiscard]] std::vector<LoadMilestone> missing() const;
 
@@ -180,6 +198,7 @@ private:
     LoadExpectations expectations_;
     LoadClock::time_point start_{};
     std::unordered_map<TileKey, TileTrace, TileKeyHash> traces_;
+    std::vector<FrameTrace> frames_;
     std::unordered_map<std::thread::id, int> threads_;
 };
 
@@ -194,5 +213,13 @@ private:
 [[nodiscard]] std::string describeMilestone(LoadMilestone milestone, double seconds);
 // The traces as CSV, header first.
 [[nodiscard]] std::vector<std::string> csvRows(std::span<const TileTrace> traces);
+// The frames as CSV, header first (load_frames.cpp).
+[[nodiscard]] std::vector<std::string> frameRows(std::span<const FrameTrace> frames);
+// "299.0 ms at 3.210 s (terrain 12.3 ms: tiles 1.2, 32 uploads 6.0, horizon 3.1, textures 2.0;
+// 4 levels)": a frame for the log (load_frames.cpp).
+[[nodiscard]] std::string describeFrame(const FrameTrace& frame);
+// The frame of the summary: the longest on the game thread, or of the terrain where the frames
+// are not known (load_frames.cpp).
+[[nodiscard]] FrameTrace worstFrame(std::span<const FrameTrace> frames);
 
 } // namespace terrain::unreal

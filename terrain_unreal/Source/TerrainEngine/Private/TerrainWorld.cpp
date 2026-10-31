@@ -228,6 +228,9 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 	{
 		ReturnFromWorldTurn(*Traveller, Focus);
 	}
+	State->Loading.TickStartSeconds = FPlatformTime::Seconds();
+	State->Loading.FrameHorizonMilliseconds = 0.0;
+	State->Loading.FrameTexturesMilliseconds = 0.0;
 	FString Mismatch;
 	if (!PollDeterminismCheck(*State.Get(), Mismatch))
 	{
@@ -243,8 +246,11 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 		{
 			WarmUpAround(*Pawn);
 		}
-		Uploads = ApplyUpdate(*Backend, State->Session,
-			State->Session.streamer().update(ToUnrealPoint(Focus), State->Frame));
+		const double TilesStart = FPlatformTime::Seconds();
+		const terrain::unreal::StreamerUpdate Update =
+			State->Session.streamer().update(ToUnrealPoint(Focus), State->Frame);
+		State->Loading.FrameTilesMilliseconds = (FPlatformTime::Seconds() - TilesStart) * 1000.0;
+		Uploads = ApplyUpdate(*Backend, State->Session, Update);
 	}
 	catch (const std::exception& Exception)
 	{

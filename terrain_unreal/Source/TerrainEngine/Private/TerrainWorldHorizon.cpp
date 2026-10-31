@@ -238,9 +238,14 @@ void ATerrainWorld::TickHorizon(const FVector& Focus)
 		{
 			terrain::unreal::HorizonGpuUpdate Update =
 				State->HorizonGpu->update(ToUnrealPoint(Focus), State->Frame);
+			const double ApplyStart = FPlatformTime::Seconds();
 			// Under the black screen of a load, a level shown comes in at once.
 			HorizonClipmap->SetInstantReveal(State->Loading.bScreenBlack);
 			HorizonClipmap->Apply(Update, State->HorizonTimings);
+			// The parts of the frame for the measures of the loads (TerrainWorldLoading.cpp).
+			State->Loading.FrameHorizonMilliseconds = (ApplyStart - Start) * 1000.0;
+			State->Loading.FrameTexturesMilliseconds =
+				(FPlatformTime::Seconds() - ApplyStart) * 1000.0;
 			if (Update.detailMilliseconds > 0.0)
 			{
 				// The crests and the detail normals of the epochs all in.
