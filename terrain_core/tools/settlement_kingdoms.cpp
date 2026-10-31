@@ -1,11 +1,14 @@
 #include "settlement_kingdoms.hpp"
 
 #include "terrain/generation/settlement/kingdoms.hpp"
+#include "terrain/generation/settlement/people.hpp"
+#include "terrain/json/json.hpp"
 #include "terrain/io/planet_png.hpp"
 #include "terrain/io/settlement_png.hpp"
 
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -99,6 +102,94 @@ void reportGoodWorld(const st::SettlementData& data, const st::Kingdoms& k, Repo
           static_cast<unsigned long long>(k.checksum()));
 }
 
+namespace json = terrain::json;
+
+// A value rounded to the hundredth, for the files read by people.
+double hundredths(double v) {
+    return static_cast<double>(static_cast<int>(v * 100.0 + (v < 0.0 ? -0.5 : 0.5))) / 100.0;
+}
+
+// rulers_<preset>.json in the format of the document, and relations_<preset>.json: what each
+// state thinks of each neighbor.
+bool writePolitics(const PresetRun& run, const st::Kingdoms& k) {
+    json::Value rulers = json::Value::array();
+    for (const st::Ruler& r : k.politics.rulers) {
+        json::Value v = json::Value::object();
+        v.set("id", json::Value::string(r.id));
+        v.set("kingdom", json::Value::string(r.kingdom));
+        v.set("government", json::Value::string(r.government));
+        v.set("name", json::Value::string(r.name));
+        json::Value personality = json::Value::object();
+        for (std::size_t t = 0; t < r.personality.size(); ++t) {
+            personality.set(std::string(st::kRulerTraits[t]),
+                            json::Value::number(hundredths(r.personality[t])));
+        }
+        v.set("personality", std::move(personality));
+        json::Value goals = json::Value::array();
+        for (const std::string& g : r.goals) {
+            goals.push(json::Value::string(g));
+        }
+        v.set("goals", std::move(goals));
+        rulers.push(std::move(v));
+    }
+    json::Value relations = json::Value::array();
+    for (const st::StateRelation& r : k.politics.relations) {
+        json::Value v = json::Value::object();
+        v.set("from", json::Value::string(k.politics.rulers[r.from].kingdom));
+        v.set("to", json::Value::string(k.politics.rulers[r.to].kingdom));
+        v.set("relation", json::Value::number(hundredths(r.relation)));
+        v.set("tension", json::Value::number(hundredths(r.tension)));
+        relations.push(std::move(v));
+    }
+    std::ofstream a(run.directory / ("rulers_" + run.preset + ".json"), std::ios::binary);
+    a << json::write(rulers) << '\n';
+    std::ofstream b(run.directory / ("relations_" + run.preset + ".json"), std::ios::binary);
+    b << json::write(relations) << '\n';
+    return static_cast<bool>(a) && static_cast<bool>(b);
+}
+
+void reportPolitics(const st::Kingdoms& k, Report& r) {
+    const st::Politics& p = k.politics;
+    double tension = 0.0;
+    int high = 0;
+    int hostile = 0;
+    for (const st::StateRelation& rel : p.relations) {
+        tension += rel.tension;
+        high += rel.tension >= 0.5 ? 1 : 0;
+        hostile += rel.relation < 0.0 ? 1 : 0;
+    }
+    std::map<std::string, int> goals;
+    for (const st::Ruler& ruler : p.rulers) {
+        for (const std::string& g : ruler.goals) {
+            std::string kind = g;
+            for (const char* prefix : {"secure_", "expand_into_", "weaken_"}) {
+                if (g.rfind(prefix, 0) == 0) {
+                    kind = std::string(prefix) + "*";
+                }
+            }
+            ++goals[kind];
+        }
+    }
+    std::string list;
+    for (const auto& [goal, count] : goals) {
+        list += " " + goal + " " + std::to_string(count) + ";";
+    }
+    const double n = std::max<double>(1.0, static_cast<double>(p.relations.size()));
+    r.add("  rulers %zu, relations %zu (both ways between neighbors): mean tension %.2f, "
+          "%.1f %% at 0.5 or more, %.1f %% of hostile peoples; goals:%s\n",
+          p.rulers.size(), p.relations.size(), tension / n, 100.0 * high / n, 100.0 * hostile / n,
+          list.c_str());
+    for (std::size_t s = 0; s < std::min<std::size_t>(2, p.rulers.size()); ++s) {
+        const st::Ruler& ruler = p.rulers[s];
+        std::string g;
+        for (const std::string& goal : ruler.goals) {
+            g += " " + goal;
+        }
+        r.add("    %s of %s (%s):%s\n", ruler.name.c_str(), ruler.kingdom.c_str(),
+              ruler.government.c_str(), g.c_str());
+    }
+}
+
 // capitals_<preset>.txt: one line per state, in the coordinates of the engine.
 bool writeCapitals(const PresetRun& run, const st::SettlementMaps& maps,
                    const st::SettlementData& data, const st::Kingdoms& k) {
@@ -139,6 +230,7 @@ bool runPreset(const terrain::PlanetLevel& level, const st::SettlementMaps& maps
           k.preset.minorStates, k.states.size());
     reportStates(data, k, r);
     reportGoodWorld(data, k, r);
+    reportPolitics(k, r);
     const int scale = terrain::planetImageScale(level.grid(), run.width);
     if (run.zoom != nullptr &&
         !terrain::writePng(run.directory / ("kingdoms_" + run.preset + "_zoom.png"),
@@ -146,7 +238,7 @@ bool runPreset(const terrain::PlanetLevel& level, const st::SettlementMaps& maps
                                                        *run.zoom))) {
         return false;
     }
-    return writeCapitals(run, maps, data, k) &&
+    return writeCapitals(run, maps, data, k) && writePolitics(run, k) &&
            terrain::writePng(
                run.directory / ("kingdoms_" + run.preset + ".png"),
                terrain::renderKingdoms(level, terrain, k, data.config.borders, scale));

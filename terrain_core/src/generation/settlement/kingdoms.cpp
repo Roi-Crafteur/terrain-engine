@@ -189,6 +189,22 @@ std::uint64_t Kingdoms::checksum() const {
             f.add(o, 2);
         }
     }
+    for (const Ruler& r : politics.rulers) {
+        for (const std::string* text : {&r.kingdom, &r.government, &r.name}) {
+            f.addBytes({reinterpret_cast<const std::uint8_t*>(text->data()), text->size()});
+        }
+        for (const double t : r.personality) {
+            f.add(t);
+        }
+        for (const std::string& goal : r.goals) {
+            f.addBytes({reinterpret_cast<const std::uint8_t*>(goal.data()), goal.size()});
+        }
+    }
+    for (const StateRelation& r : politics.relations) {
+        f.add(static_cast<std::uint64_t>(r.from * 65536 + r.to));
+        f.add(r.relation);
+        f.add(r.tension);
+    }
     return f.value();
 }
 
@@ -232,6 +248,7 @@ Kingdoms buildKingdoms(const PlanetLevel& level, const SettlementMaps& maps,
         k.stats.capitalFails += capital.topHabitability && capital.nearFreshWater ? 0 : 1;
     }
     elongation(terrain, k.states, capitals, k.owner, k.stats);
+    k.politics = buildPolitics(terrain, maps, suitability, data, k.states, k.owner, worldSeed);
     k.timings.analysis = since(start);
     return k;
 }

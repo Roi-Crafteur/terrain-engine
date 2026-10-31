@@ -168,6 +168,13 @@ void testInvalidKingdoms() {
     freshCopy();
     edit(world, "\"riverClass\": 2", "\"riverClass\": 0");
     TEST_CHECK(refused({"expansion.valleys.riverClass", "out of [1, 4]"}));
+    freshCopy();
+    edit(world, "\"maxGoals\": 3", "\"maxGoals\": 0");
+    TEST_CHECK(refused({"politics.maxGoals", "out of [1, 8]"}));
+    freshCopy();
+    edit(world, "\"kingdomSyllables\": { \"min\": 2, \"max\": 3 }",
+         "\"kingdomSyllables\": { \"min\": 3, \"max\": 2 }");
+    TEST_CHECK(refused({"politics.kingdomSyllables"}));
 }
 
 void testInvalidResources() {

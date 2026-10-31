@@ -241,6 +241,7 @@ struct SettlementConfig {
     ExpansionRule expansion;
     BorderRule borders;
     GoodWorldRule goodWorld;
+    PoliticsRule politics;
     // The document read, kept whole for the copy of the world.
     json::Value document;
 

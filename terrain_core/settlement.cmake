@@ -20,6 +20,7 @@ target_sources(terrain_core PRIVATE
     src/generation/settlement/map_inputs.cpp
     src/generation/settlement/massifs.cpp
     src/generation/settlement/people.cpp
+    src/generation/settlement/politics.cpp
     src/generation/settlement/preference.cpp
     src/generation/settlement/resource_def.cpp
     src/generation/settlement/settlement_config.cpp

@@ -151,6 +151,40 @@ struct BorderRule {
     double cutMinMm = 100.0;
 };
 
+// The weights of the tension of a state toward a neighbor (section 5): the share of its border
+// along it, the resources it needs that the neighbor holds more of, the ambition of its ruler, the
+// pressure of a state below its target; their sum is clamped to [0, 1].
+struct TensionWeights {
+    double border = 0.35;
+    double resources = 0.25;
+    double ambition = 0.25;
+    double pressure = 0.15;
+};
+
+// The rulers and the relations (section 5): the names of syllables of the people (the kingdom of
+// kingdomSyllables, the ruler of nameSyllables, a regnal number up to regnalMax), the goals:
+// secure_<resource> for a need of at least neededWeight whose mean in the state is below
+// scarceResource; expand_into_<terrain model> from expandAmbition; weaken_<kingdom> from
+// rivalAggression toward a neighbor of at least rivalTension; seek_mana for a people liking the
+// Mana from manaPreference in a state whose mean Mana is below scarceMana; defend_borders from
+// defendPrudence, or when no other goal is found; at most maxGoals.
+struct PoliticsRule {
+    int kingdomSyllablesMin = 2;
+    int kingdomSyllablesMax = 3;
+    int nameSyllables = 2;
+    int regnalMax = 4;
+    int maxGoals = 3;
+    double neededWeight = 0.5;
+    double scarceResource = 0.15;
+    double expandAmbition = 0.5;
+    double rivalAggression = 0.5;
+    double rivalTension = 0.4;
+    double manaPreference = 0.5;
+    double scarceMana = 0.2;
+    double defendPrudence = 0.6;
+    TensionWeights tension;
+};
+
 // What the tests of a good world call the hostile land (section 4 quater): the cells of
 // hostileModels or at least highMountainM high; a people likes a cell from likedSuitability.
 struct GoodWorldRule {

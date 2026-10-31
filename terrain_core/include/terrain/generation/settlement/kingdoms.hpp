@@ -3,6 +3,7 @@
 #include "terrain/generation/settlement/borders.hpp"
 #include "terrain/generation/settlement/capitals.hpp"
 #include "terrain/generation/settlement/expansion.hpp"
+#include "terrain/generation/settlement/politics.hpp"
 #include "terrain/generation/settlement/settlement_data.hpp"
 #include "terrain/generation/settlement/settlement_maps.hpp"
 #include "terrain/generation/settlement/suitability.hpp"
@@ -19,8 +20,8 @@ class PlanetLevel;
 
 // The kingdoms of a world at the start (docs/PEUPLEMENT.md, section 4 quater): the preset drawn,
 // the states of each people, their capitals, their expansion, the cleanup of the artifacts, and
-// the figures of the tests of a good world. Derived data: the same seed, the same preset and the
-// same data give the same kingdoms to the bit, whatever the threads.
+// the figures of the tests of a good world, the rulers and the relations. Derived data: the same
+// seed, the same preset and the same data give the same kingdoms to the bit, whatever the threads.
 namespace terrain::settlement {
 
 // The figures of the tests of a good world.
@@ -64,10 +65,12 @@ struct Kingdoms {
     std::size_t pushes = 0;
     std::vector<ClimateCut> cuts;
     KingdomStats stats;
+    Politics politics; // the rulers and the relations
     KingdomTimings timings;
 
     [[nodiscard]] std::size_t memoryBytes() const;
-    // FNV-1a 64 of the counts, the targets, the capitals, the owners and the passages.
+    // FNV-1a 64 of the counts, the targets, the capitals, the owners, the passages, the rulers
+    // and the relations.
     [[nodiscard]] std::uint64_t checksum() const;
 };
 

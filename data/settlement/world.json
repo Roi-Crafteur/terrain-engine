@@ -254,5 +254,20 @@
     "hostileModels": [ "desert", "glacier" ],
     "highMountainM": 3500,
     "likedSuitability": 0.5
+  },
+  "politics": {
+    "kingdomSyllables": { "min": 2, "max": 3 },
+    "nameSyllables": 2,
+    "regnalMax": 4,
+    "maxGoals": 3,
+    "neededWeight": 0.5,
+    "scarceResource": 0.15,
+    "expandAmbition": 0.5,
+    "rivalAggression": 0.5,
+    "rivalTension": 0.4,
+    "manaPreference": 0.5,
+    "scarceMana": 0.2,
+    "defendPrudence": 0.6,
+    "tension": { "border": 0.35, "resources": 0.25, "ambition": 0.25, "pressure": 0.15 }
   }
 }

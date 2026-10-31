@@ -163,6 +163,32 @@ BorderRule readBorders(const Fields& f) {
     return r;
 }
 
+PoliticsRule readPolitics(const Fields& f) {
+    f.only({"kingdomSyllables", "nameSyllables", "regnalMax", "maxGoals", "neededWeight",
+            "scarceResource", "expandAmbition", "rivalAggression", "rivalTension",
+            "manaPreference", "scarceMana", "defendPrudence", "tension"});
+    PoliticsRule r;
+    const CountRange syllables = readCountRange(f, "kingdomSyllables", 1, 8);
+    r.kingdomSyllablesMin = syllables.min;
+    r.kingdomSyllablesMax = syllables.max;
+    r.nameSyllables = f.integer("nameSyllables", 1, 8);
+    r.regnalMax = f.integer("regnalMax", 1, 20);
+    r.maxGoals = f.integer("maxGoals", 1, 8);
+    r.neededWeight = f.numberIn("neededWeight", 0.0, 1.0);
+    r.scarceResource = f.numberIn("scarceResource", 0.0, 1.0);
+    r.expandAmbition = f.numberIn("expandAmbition", 0.0, 1.0);
+    r.rivalAggression = f.numberIn("rivalAggression", 0.0, 1.0);
+    r.rivalTension = f.numberIn("rivalTension", 0.0, 1.0);
+    r.manaPreference = f.numberIn("manaPreference", 0.0, 1.0);
+    r.scarceMana = f.numberIn("scarceMana", 0.0, 1.0);
+    r.defendPrudence = f.numberIn("defendPrudence", 0.0, 1.0);
+    const Fields t = f.object("tension");
+    t.only({"border", "resources", "ambition", "pressure"});
+    r.tension = {t.numberIn("border", 0.0, 1.0), t.numberIn("resources", 0.0, 1.0),
+                 t.numberIn("ambition", 0.0, 1.0), t.numberIn("pressure", 0.0, 1.0)};
+    return r;
+}
+
 GoodWorldRule readGoodWorld(const Fields& f, const std::vector<TerrainModel>& models) {
     f.only({"hostileModels", "highMountainM", "likedSuitability"});
     GoodWorldRule r;

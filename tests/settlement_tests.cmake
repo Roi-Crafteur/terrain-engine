@@ -82,3 +82,10 @@ target_compile_definitions(settlement_kingdoms_test PRIVATE
 # The expansion and the borders on hand-made grids: borders on a river and on a ridge, the coast,
 # the target area and its barriers, an unlivable land, the straits, the cleanup of the artifacts.
 terrain_add_test(settlement_expansion_test terrain_core)
+
+# The rulers and the relations on a hand-made map: one ruler per state in the ranges of its people,
+# the same for the same seed, the goals from the situation; the relations of neighbors only,
+# asymmetric, selfRelation within one people, the tension in [0, 1].
+terrain_add_test(settlement_politics_test terrain_core)
+target_compile_definitions(settlement_politics_test PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")

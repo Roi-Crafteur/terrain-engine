@@ -23,6 +23,7 @@ namespace terrain::settlement {
 [[nodiscard]] CapitalRule readCapitals(const Fields& f);
 [[nodiscard]] ExpansionRule readExpansion(const Fields& f);
 [[nodiscard]] BorderRule readBorders(const Fields& f);
+[[nodiscard]] PoliticsRule readPolitics(const Fields& f);
 // The terrain models it names must be among models.
 [[nodiscard]] GoodWorldRule readGoodWorld(const Fields& f, const std::vector<TerrainModel>& models);
 
