@@ -10,7 +10,8 @@
 //   half the height of the face.
 // - The faces of the coasts of the default world (cliffs, calanques, rocky coasts, rias,
 //   mountains) in their tiles of LOD 0 to 3: the same, against the normals of the relief at the
-//   scale of the cells, wherever the face is at least two cells high.
+//   scale of the cells, wherever the face is at least two cells high, and their shores at every
+//   LOD.
 // - Along the coasts of the cliffs: the height of their top, from a few meters to the highest,
 //   with no regular pattern (once its autocorrelation has fallen below 0, it never comes back
 //   above kRebound).
@@ -204,13 +205,15 @@ bool toShore(double& x, double& z, double& ux, double& uz) {
 }
 
 // A face of the coasts: the steepest point of the ground up the coast signal from the shore,
-// the height from the foot to the top around it (200 m on either side).
+// the height from the foot to the top around it (200 m on either side), and its shore.
 struct Place {
     CoastKind kind;
     double x = 0.0;
     double z = 0.0;
     double height = 0.0;
     double slope = 0.0;
+    double shoreX = 0.0;
+    double shoreZ = 0.0;
 };
 
 bool faceOf(Place& p) {
@@ -233,6 +236,8 @@ bool faceOf(Place& p) {
     p.height = *std::max_element(h.begin() + steepest, h.begin() + high + 1) -
                *std::min_element(h.begin() + low, h.begin() + steepest + 1);
     p.slope = (h[steepest + 1] - h[steepest - 1]) / 8.0;
+    p.shoreX = p.x;
+    p.shoreZ = p.z;
     p.x += 4.0 * steepest * ux;
     p.z += 4.0 * steepest * uz;
     return true;
@@ -271,39 +276,54 @@ std::vector<Place> findFaces() {
     return found;
 }
 
-// The faces of the coasts in their tiles of LOD 0 to 3, against the normals of the relief at the
-// scale of the cells: clean wherever the face is at least kLeastCells cells high.
+// The errors of the normals of the tile of a LOD holding (x, z), against the normals of the relief
+// at the scale of its cells.
+Errors tileErrors(double x, double z, int lod) {
+    const double c = terrain::tileCellMeters(lod);
+    const terrain::ChunkCoord chunk{
+        static_cast<std::int32_t>(std::floor(x / terrain::kChunkSizeMeters)),
+        static_cast<std::int32_t>(std::floor(z / terrain::kChunkSizeMeters))};
+    const terrain::TileData data = tiles().generate({terrain::tileContaining(chunk, lod), 0});
+    const Gradient gradient = [c](double px, double pz) {
+        return std::array<double, 2>{
+            (field().heightAt(px + c, pz) - field().heightAt(px - c, pz)) / (2.0 * c),
+            (field().heightAt(px, pz + c) - field().heightAt(px, pz - c)) / (2.0 * c)};
+    };
+    Teeth t;
+    coast_teeth::addMesh(t, data.mesh, {data.originX, data.originY, data.originZ}, 1.0, c,
+                         gradient, 0.3);
+    return coast_teeth::errorsOf(t, c);
+}
+
+// The faces of the coasts in their tiles of LOD 0 to 3: clean wherever the face is at least
+// kLeastCells cells high; their shores (the water, the platform, the foot of the slope) clean at
+// every LOD.
 void testRealFaces() {
     bool cleanFaces = true;
+    bool cleanShores = true;
     std::printf("faces of the coasts: kind (x, z), height, steepest slope, then RMS / p95 / "
-                "periodic at the LOD 0 to 3 (* : face less than %.0f cells high, reported)\n",
+                "periodic at the LOD 0 to 3 (* : face less than %.0f cells high, reported), then "
+                "the same on their shore\n",
                 kLeastCells);
     for (const Place& p : findFaces()) {
         std::printf("%-8s (%.0f, %.0f) %6.1f m %4.2f |", terrain::coastKindName(p.kind), p.x, p.z,
                     p.height, p.slope);
         for (int lod = 0; lod < 4; ++lod) {
-            const double c = terrain::tileCellMeters(lod);
-            const terrain::ChunkCoord chunk{
-                static_cast<std::int32_t>(std::floor(p.x / terrain::kChunkSizeMeters)),
-                static_cast<std::int32_t>(std::floor(p.z / terrain::kChunkSizeMeters))};
-            const terrain::TileData data =
-                tiles().generate({terrain::tileContaining(chunk, lod), 0});
-            const Gradient gradient = [c](double x, double z) {
-                return std::array<double, 2>{
-                    (field().heightAt(x + c, z) - field().heightAt(x - c, z)) / (2.0 * c),
-                    (field().heightAt(x, z + c) - field().heightAt(x, z - c)) / (2.0 * c)};
-            };
-            Teeth t;
-            coast_teeth::addMesh(t, data.mesh, {data.originX, data.originY, data.originZ}, 1.0, c,
-                                 gradient, 0.3);
-            const Errors e = coast_teeth::errorsOf(t, c);
-            const bool checked = p.height >= kLeastCells * c;
+            const Errors e = tileErrors(p.x, p.z, lod);
+            const bool checked = p.height >= kLeastCells * terrain::tileCellMeters(lod);
             cleanFaces = cleanFaces && (!checked || coast_teeth::clean(e));
             std::printf(" %4.1f/%4.1f/%4.1f%s |", e.rms, e.p95, e.periodic, checked ? " " : "*");
+        }
+        std::printf("\n%-8s (%.0f, %.0f)   shore      |", "", p.shoreX, p.shoreZ);
+        for (int lod = 0; lod < 4; ++lod) {
+            const Errors e = tileErrors(p.shoreX, p.shoreZ, lod);
+            cleanShores = cleanShores && coast_teeth::clean(e);
+            std::printf(" %4.1f/%4.1f/%4.1f  |", e.rms, e.p95, e.periodic);
         }
         std::printf("\n");
     }
     TEST_CHECK(cleanFaces);
+    TEST_CHECK(cleanShores);
 }
 
 // Along the shore from (x, z), every kStep meters: the top of the ground within kInland meters.

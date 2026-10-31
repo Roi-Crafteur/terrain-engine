@@ -88,7 +88,7 @@ constexpr double kMediumLow = 0.3;
 constexpr double kBenchLow = 0.4;
 constexpr double kBenchRise = 1.1;
 constexpr double kBenchRun = 20.0;
-constexpr double kBenchFoot = 1.5;
+constexpr double kBenchFoot = 6.0;
 constexpr double kEdgeShift = 30.0;
 // The screes: where their noise passes kScreeLow to kScreeHigh, an apron up to kScreeShare of the
 // height of the face, ending kScreeEnd of the way up its width, at most kScreeSlope steep and
@@ -232,8 +232,11 @@ Land shoreOf(const Profile& k, const GeographySample& g, double coast, double d,
     const Face f = faceAt(k, std::min(high, cap), d, s);
     const double face = f.bench + f.height * smooth(f.foot, f.foot + f.width, d);
     const double patch = static_cast<double>(k.screes) * s.screeAt;
-    const double ground =
-        patch > 0.0 ? smoothMax(face, screesAt(f, patch, d), kScreeBlend * patch * f.height) : face;
+    // Rounded where the screes meet the face, never more than they stand above the platform: the
+    // platform before them keeps its height.
+    const double screes = patch > 0.0 ? screesAt(f, patch, d) : f.bench;
+    const double round = std::min(kScreeBlend * patch * f.height, screes - f.bench);
+    const double ground = round > 0.0 ? smoothMax(face, screes, round) : std::max(face, screes);
     const double top = f.foot + f.width;
     const double land = smooth(top, top + kPlateauRise, d);
     return {land, land * smooth(0.0, k.hills, coast), std::max(old, ground)};
