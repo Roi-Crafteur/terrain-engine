@@ -95,6 +95,15 @@ bool horizonAround(const HorizonClipmap& clipmap, double x, double z) {
     return clipmap.placed() && clipmap.level(0).heightAt(x, z).has_value();
 }
 
+int wrappedChunkDistance(ChunkCoord a, ChunkCoord b, const WorldSize& world) {
+    const ChunkCoord count = worldChunks(world);
+    const auto axis = [](std::int64_t from, std::int64_t to, std::int64_t period) {
+        const std::int64_t gap = wrapIndex(to - from, period); // centered on 0
+        return gap < 0 ? -gap : gap;
+    };
+    return static_cast<int>(std::max(axis(a.x, b.x, count.x), axis(a.z, b.z, count.z)));
+}
+
 void LoadTimeline::begin(LoadReason reason, double playerX, double playerZ,
                          LoadClock::time_point now, const LoadExpectations& expectations) {
     const std::lock_guard lock(mutex_);
@@ -207,6 +216,11 @@ bool LoadTimeline::mark(LoadMilestone milestone, LoadClock::time_point now) {
     const bool first = reachMilestone(milestone, seconds(now));
     active_ = !completeLocked();
     return first;
+}
+
+bool LoadTimeline::reached(LoadMilestone milestone) const {
+    const std::lock_guard lock(mutex_);
+    return summary_.milestones[static_cast<std::size_t>(milestone)] >= 0.0;
 }
 
 double LoadTimeline::secondsSince(LoadClock::time_point now) const {

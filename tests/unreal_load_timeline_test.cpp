@@ -74,6 +74,8 @@ void testMilestonesByHand() {
     show(timeline, tiles, 1, 0.1);
     const std::vector<LoadMilestone> first = timeline.observe(tiles, at(0.1));
     TEST_CHECK(first == std::vector<LoadMilestone>{LoadMilestone::Ground, LoadMilestone::Ring64});
+    TEST_CHECK(timeline.reached(LoadMilestone::Ground) &&
+               !timeline.reached(LoadMilestone::GroundCollision));
     TEST_CHECK(timeline.mark(LoadMilestone::GroundCollision, at(0.15)));
     TEST_CHECK(!timeline.mark(LoadMilestone::GroundCollision, at(0.2)));
     show(timeline, tiles, 4, 0.3); // the far tile before the 256 m ring: only all tiles waits
@@ -256,6 +258,18 @@ void testHorizonAround() {
     TEST_CHECK(!terrain::unreal::horizonAround(clipmap, x, z));
 }
 
+// The distance of a jump across the edges of the wrapped world: a turn of the world is no jump.
+void testWrappedDistance() {
+    const terrain::WorldSize world;
+    const terrain::ChunkCoord count = terrain::worldChunks(world);
+    using terrain::unreal::wrappedChunkDistance;
+    TEST_CHECK(wrappedChunkDistance({0, 0}, {0, 0}, world) == 0);
+    TEST_CHECK(wrappedChunkDistance({3, -5}, {-2, 1}, world) == 6);
+    TEST_CHECK(wrappedChunkDistance({0, 0}, {count.x, -count.z}, world) == 0);
+    TEST_CHECK(wrappedChunkDistance({count.x / 2 - 1, 0}, {-count.x / 2 + 1, 0}, world) == 2);
+    TEST_CHECK(wrappedChunkDistance({0, 0}, {count.x / 2, 7}, world) == count.x / 2);
+}
+
 } // namespace
 
 int main() {
@@ -265,5 +279,6 @@ int main() {
     testOutsideALoad();
     testStreamerLoad();
     testHorizonAround();
+    testWrappedDistance();
     return test::result();
 }

@@ -23,6 +23,7 @@
 #include "TerrainHorizonMeshes.h"
 #include "TerrainMeshBackend.h"
 #include "TerrainWorldEdits.h"
+#include "TerrainWorldLoading.h"
 #include "TerrainWorldState.h"
 #include "TerrainWorldWater.h"
 
@@ -67,17 +68,23 @@ namespace
 		return Params;
 	}
 
-	// Applies an update of the streamer to the meshes: the uploads (timed), the moves to other
-	// images of the wrapped world, then the removals.
-	void ApplyUpdate(UTerrainMeshBackend& Backend, terrain::unreal::TileTimings& Timings,
+	// Applies an update of the streamer to the meshes: the uploads (timed, and recorded in the
+	// timeline of the loads), the moves to other images of the wrapped world, then the removals.
+	// Returns the uploads.
+	int32 ApplyUpdate(UTerrainMeshBackend& Backend, terrain::unreal::TerrainSession& Session,
 		const terrain::unreal::StreamerUpdate& Update)
 	{
+		terrain::unreal::LoadTimeline& Timeline = Session.timeline();
+		const terrain::unreal::LoadClock::time_point Converted = terrain::unreal::LoadClock::now();
 		for (const terrain::unreal::TileUpload& Upload : Update.uploads)
 		{
+			Timeline.recordConverted(Upload.key, Converted);
 			const double Start = FPlatformTime::Seconds();
 			Backend.SetTile(Upload);
 			const double UploadMs = (FPlatformTime::Seconds() - Start) * 1000.0;
-			Timings.record(terrain::unreal::TileStage::Upload, Upload.key.lod, UploadMs);
+			Session.timings().record(terrain::unreal::TileStage::Upload, Upload.key.lod, UploadMs);
+			Timeline.recordShown(Upload.key, terrain::unreal::LoadClock::now(), UploadMs,
+				Upload.collision);
 			UE_LOG(LogTerrainEngine, Verbose,
 				TEXT("Tile (%d, %d) LOD %d: %d vertices, %d triangles, collision %s, conversion "
 					 "%.2f ms, upload %.2f ms"),
@@ -95,6 +102,7 @@ namespace
 		{
 			Backend.RemoveTile(Key);
 		}
+		return static_cast<int32>(Update.uploads.size());
 	}
 } // namespace
 
@@ -145,10 +153,13 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool ATerrainWorld::StartStreaming()
 {
+	const double StartSeconds = FPlatformTime::Seconds();
+	double SessionStartSeconds = StartSeconds;
 	try
 	{
 		// The world must be the one of terrain_core, bit for bit: otherwise no streaming.
 		const terrain::unreal::DeterminismReport Check = terrain::unreal::checkDefaultWorld();
+		SessionStartSeconds = FPlatformTime::Seconds();
 		if (!Check.same)
 		{
 			UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: %s. No streaming."),
@@ -168,6 +179,8 @@ bool ATerrainWorld::StartStreaming()
 		State = MakePimpl<FTerrainWorldState>(Params);
 		LogPlanet(State->Session.planet(), Params.planetFile, Before);
 		State->Frame = State->Session.frameAt(CoreOriginX, CoreOriginZ);
+		State->Loading.DeterminismSeconds = SessionStartSeconds - StartSeconds;
+		State->Loading.SessionSeconds = FPlatformTime::Seconds() - SessionStartSeconds;
 	}
 	catch (const std::exception& Exception)
 	{
@@ -183,9 +196,16 @@ bool ATerrainWorld::StartStreaming()
 		Seed, CoreOriginX, CoreOriginZ, State->Frame.origin.y, Lod0DistanceChunks,
 		Lod1DistanceChunks, Lod2DistanceChunks, ViewDistanceChunks, WorkerThreads,
 		MaxTileUploadsPerFrame);
+	const double HorizonStartSeconds = FPlatformTime::Seconds();
 	StartHorizon();
 	StartWater();
 	StartAtmosphere();
+	State->Loading.HorizonSeconds = FPlatformTime::Seconds() - HorizonStartSeconds;
+	UE_LOG(LogTerrainEngine, Log,
+		TEXT("Terrain World: start-up in %.3f s: determinism check %.3f s, planet level, hydrology "
+			 "and tiles %.3f s, horizon, water and sky %.3f s"),
+		FPlatformTime::Seconds() - StartSeconds, State->Loading.DeterminismSeconds,
+		State->Loading.SessionSeconds, State->Loading.HorizonSeconds);
 	return true;
 }
 
@@ -213,13 +233,15 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 		ReturnFromWorldTurn(*Traveller, Focus);
 	}
 	TickTerrainEdits(*State.Get());
+	NoteTerrainFocus(*this, *State.Get(), Focus);
+	int32 Uploads = 0;
 	try
 	{
 		if (Pawn != nullptr && WarmedPawn.Get() != Pawn)
 		{
 			WarmUpAround(*Pawn);
 		}
-		ApplyUpdate(*Backend, State->Session.timings(),
+		Uploads = ApplyUpdate(*Backend, State->Session,
 			State->Session.streamer().update(ToUnrealPoint(Focus), State->Frame));
 	}
 	catch (const std::exception& Exception)
@@ -228,6 +250,7 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 		return;
 	}
 	TickHorizon(Focus);
+	TickTerrainLoading(*this, *State.Get(), Focus, Pawn, Uploads);
 	RecordFrame();
 	LogTimings(DeltaSeconds);
 }
@@ -301,7 +324,7 @@ void ATerrainWorld::WarmUpAround(APawn& Pawn)
 		ToUnrealPoint(Pawn.GetActorLocation()), State->Frame, WarmUpRadiusChunks, Timeout);
 	for (const terrain::unreal::StreamerUpdate& Update : Warm.updates)
 	{
-		ApplyUpdate(*Backend, State->Session.timings(), Update);
+		ApplyUpdate(*Backend, State->Session, Update);
 	}
 	const double Seconds = FPlatformTime::Seconds() - Start;
 	if (Warm.complete)

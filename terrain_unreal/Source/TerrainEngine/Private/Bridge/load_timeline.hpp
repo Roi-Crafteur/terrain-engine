@@ -80,6 +80,11 @@ struct SelectedTile {
 // planned around the new place is committed.
 [[nodiscard]] bool horizonAround(const HorizonClipmap& clipmap, double x, double z);
 
+// Chebyshev distance between two chunks of the wrapped world, any images, in chunks: across the
+// edges of the world as well. A jump of the player farther than its view in one frame is a
+// teleport; a turn of the world (the same place) is a distance of 0.
+[[nodiscard]] int wrappedChunkDistance(ChunkCoord a, ChunkCoord b, const WorldSize& world);
+
 // What happened to one tile during the load, seconds since its start; negative: not yet. A
 // generation started before the load has a negative start.
 struct TileTrace {
@@ -139,6 +144,7 @@ public:
                                        LoadClock::time_point now);
     // Marks a milestone given by the caller; true if it was not reached before.
     bool mark(LoadMilestone milestone, LoadClock::time_point now);
+    [[nodiscard]] bool reached(LoadMilestone milestone) const;
     // Seconds since the start of the load (0 outside one).
     [[nodiscard]] double secondsSince(LoadClock::time_point now) const;
 

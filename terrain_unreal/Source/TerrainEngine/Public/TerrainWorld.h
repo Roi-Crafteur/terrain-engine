@@ -331,6 +331,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Water")
 	bool SetWaterShown(bool bShown);
 
+	// Teleports the pawn of the player to the core point (CoreX, CoreZ), meters, on the ground,
+	// facing the compass heading (0 north, 90 east) and the pitch (negative: down), and measures
+	// the load there (agent 38, TerrainWorldLoading.cpp): the milestones in the log, the tiles in a
+	// CSV of Saved/TerrainEngine/Loading. As the console command Terrain.LoadTest x z [heading]
+	// [pitch]. False outside play or without a pawn.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool LoadTest(double CoreX, double CoreZ, float HeadingDegrees = 0.0f,
+		float PitchDegrees = 0.0f);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

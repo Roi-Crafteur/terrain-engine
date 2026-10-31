@@ -9,3 +9,16 @@ target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/load_timeline.cpp)
 terrain_add_test(unreal_load_timeline_test terrain_unreal_bridge)
 target_include_directories(unreal_load_timeline_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# The load of the tiles simulated from their costs (tests/load_schedule.cpp), to compare the orders
+# of the loads: tested on costs made by hand, used by the bench.
+add_library(terrain_load_schedule STATIC load_schedule.cpp)
+target_include_directories(terrain_load_schedule PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(terrain_load_schedule PUBLIC terrain_core PRIVATE terrain_warnings)
+terrain_add_test(load_schedule_test terrain_load_schedule)
+
+# The bench of the loads, run by hand (not a test: tens of seconds, a planet file optionally):
+# unreal_loading_bench [--planet <file>] [--at <x> <z>] [--teleport <x> <z>]... (see the file).
+add_executable(unreal_loading_bench unreal_loading_bench.cpp)
+target_link_libraries(unreal_loading_bench PRIVATE terrain_unreal_bridge terrain_load_schedule
+                                                   terrain_warnings)
+add_dependencies(check unreal_loading_bench)
