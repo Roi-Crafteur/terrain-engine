@@ -27,8 +27,10 @@ constexpr std::size_t kMaxPoints = 120;
 constexpr double kCap = 12'000.0;
 constexpr double kBack = 200.0;
 constexpr double kRiverClear = 100.0;
-// The signal of a stack gives way to that of the geography kIsletReach meters beyond its rim.
+// The signal of a stack gives way to that of the geography kIsletReach meters beyond its rim; the
+// shore of the inlets and that of the geography meet rounded over kRound meters.
 constexpr double kIsletReach = 60.0;
+constexpr double kRound = 60.0;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -266,9 +268,8 @@ Inlet inletOf(const World& w, Lattice lattice, InletKind kind, const Shape& shap
         inlet.axis.push_back(p);
         widest = std::max(widest, static_cast<double>(p.half));
     }
-    inlet.wall = static_cast<float>(kind == InletKind::Fjord ? 1'200.0
-                                    : kind == InletKind::Ria ? 1'500.0
-                                                             : 300.0);
+    constexpr std::array<double, kInletKindCount> kWall{1'200.0, 1'500.0, 500.0, 800.0};
+    inlet.wall = static_cast<float>(kWall[static_cast<std::size_t>(kind)]);
     const double reach = widest + static_cast<double>(inlet.wall);
     inlet.minX = *std::min_element(m.x.begin(), m.x.end()) - reach;
     inlet.maxX = *std::max_element(m.x.begin(), m.x.end()) + reach;
@@ -319,12 +320,29 @@ double inlandOf(const World& w, double x, double z) {
     return turnsOf(gradientOf(w, x, z), 0.0);
 }
 
+namespace {
+
+// The lesser of a and b, rounded over at most round (and half the lesser) where both are positive:
+// never of another sign than the lesser.
+double softMin(double a, double b, double round) {
+    const double least = std::min(a, b);
+    const double k = std::min(round, 0.5 * least);
+    if (!(k > 0.0)) {
+        return least;
+    }
+    const double h = std::max(k - std::abs(a - b), 0.0) / k;
+    return least - 0.25 * k * h * h;
+}
+
+} // namespace
+
 double signalOf(double coast, const Effect& e) {
-    return std::max(std::min(coast, kSignalPerMeter * e.water), kSignalPerMeter * e.islet);
+    return std::max(softMin(coast, kSignalPerMeter * e.water, kSignalPerMeter * kRound),
+                    kSignalPerMeter * e.islet);
 }
 
 double distanceOf(double base, const Effect& e) {
-    return std::max(std::min(base, e.water), e.islet);
+    return std::max(softMin(base, e.water, kRound), e.islet);
 }
 
 void addInlet(const Inlet& inlet, double x, double z, const WorldSize& world, Effect& e) {
