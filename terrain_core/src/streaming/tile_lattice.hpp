@@ -11,9 +11,19 @@
 #include <cmath>
 #include <cstddef>
 #include <set>
+#include <span>
 #include <vector>
 
 namespace terrain::tile {
+
+class ColumnCache;
+
+// Heightfield::samplesAt of the points (xs, zs) of a tile of cells of spacing meters, with their
+// rock (leastRun) when rock is not empty: through cache (column_cache.hpp), the same bits, or
+// directly without one.
+void sampleThrough(const Heightfield& field, ColumnCache* cache, int spacing,
+                   std::span<const double> xs, std::span<const double> zs,
+                   std::span<HeightSample> out, std::span<RockColumn> rock, float leastRun);
 
 // Integer lattice of a tile, in meters: sample (i, j, k) of vertical level n lies at
 // (x0 + i * spacing, n * levelHeight + j * spacing, z0 + k * spacing).
@@ -68,8 +78,10 @@ struct TileColumns {
 // tile (cells of lattice.spacing meters, rockDetailForLod) draws a face at one of them: otherwise
 // every column is the relief alone, and so is the tile. With outsideStride above 0, the heights
 // of TileColumns::outsideHeights in the same batch (a sample holds the same bits in any batch).
+// Through cache when given (the columns the neighboring tiles share), the same bits.
 inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& lattice,
-                                 bool rock = false, int outsideStride = 0) {
+                                 bool rock = false, int outsideStride = 0,
+                                 ColumnCache* cache = nullptr) {
     constexpr auto kCount = static_cast<std::size_t>(kGridSamples * kGridSamples);
     std::vector<double> xs;
     std::vector<double> zs;
@@ -93,7 +105,8 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     if (rock) {
         const RockDetail detail{static_cast<float>(lattice.spacing)};
         columns.rock.resize(xs.size());
-        field.samplesAt(xs, zs, samples, columns.rock, kRunCells * detail.cell);
+        sampleThrough(field, cache, lattice.spacing, xs, zs, samples, columns.rock,
+                      kRunCells * detail.cell);
         columns.rock.resize(kCount);
         const bool faces =
             std::any_of(columns.rock.begin(), columns.rock.end(), [&](const RockColumn& c) {
@@ -106,7 +119,7 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
             columns.rock.clear();
         }
     } else {
-        field.samplesAt(xs, zs, samples);
+        sampleThrough(field, cache, lattice.spacing, xs, zs, samples, {}, 0.0f);
     }
     for (std::size_t n = kCount; n < samples.size(); ++n) {
         columns.outsideHeights.push_back(samples[n].height);
@@ -133,9 +146,9 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
 // i = kGridSamples, 2 at k = -1, 3 at k = kGridSamples, column p of a side at index
 // side * kGridSamples + p (k along the sides 0 and 1, i along 2 and 3). Each holds the bits the
 // neighboring tile of the same LOD holds there (Heightfield::samplesAt gives a column the same
-// bits in any batch).
-inline void sampleRing(const Heightfield& field, const TileLattice& lattice,
-                       TileColumns& columns) {
+// bits in any batch), through cache when given.
+inline void sampleRing(const Heightfield& field, const TileLattice& lattice, TileColumns& columns,
+                       ColumnCache* cache = nullptr) {
     constexpr auto kCount = static_cast<std::size_t>(4 * kGridSamples);
     std::vector<double> xs;
     std::vector<double> zs;
@@ -151,7 +164,8 @@ inline void sampleRing(const Heightfield& field, const TileLattice& lattice,
     }
     std::vector<HeightSample> samples(kCount);
     columns.ring.resize(kCount);
-    field.samplesAt(xs, zs, samples, columns.ring, kRunCells * static_cast<float>(s));
+    sampleThrough(field, cache, s, xs, zs, samples, columns.ring,
+                  kRunCells * static_cast<float>(s));
     columns.ringHeights.clear();
     for (const HeightSample& sample : samples) {
         columns.ringHeights.push_back(sample.height);

@@ -50,3 +50,7 @@ target_include_directories(river_walls_test PRIVATE
 # The water of the rapids of the falls as Unreal gets it: the cells of the tiles over them drawn and
 # never cut, the levels of their vertices those of the field.
 terrain_add_test(river_rapids_test terrain_unreal_bridge)
+# The cache of the columns neighboring tiles share: the same tiles in any order and on any number
+# of threads, one world apart from another, the edits never in it, its memory bounded.
+terrain_add_test(column_cache_test terrain_core)
+target_include_directories(column_cache_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)

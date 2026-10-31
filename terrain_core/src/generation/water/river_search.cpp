@@ -92,6 +92,11 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
     if (x < c.minX || x > c.maxX || z < c.minZ || z > c.maxZ) {
         return best;
     }
+    // In a box where no segment may change the valley and no lip may cut it (boxCourse): no
+    // valley, as the search below would find (nothing to blend, no block to stand).
+    if (box != nullptr && box->chunks.empty() && box->lips.empty()) {
+        return best;
+    }
     const double bound = ground + kLevee;
     double lowest = bound;
     double raise = 0.0;

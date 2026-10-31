@@ -1,8 +1,8 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "cave_tile.hpp"
+#include "column_cache.hpp"
 #include "rock_tile.hpp"
-#include "tile_normals.hpp"
 #include "terrain/generation/cave_sampler.hpp"
 #include "terrain/generation/height_grid.hpp"
 #include "terrain/generation/terrain_surface.hpp"
@@ -13,6 +13,7 @@
 #include "terrain/streaming/cave_tiles.hpp"
 #include "tile_blend.hpp"
 #include "tile_lattice.hpp"
+#include "tile_normals.hpp"
 #include "tile_rivers.hpp"
 #include "tile_water.hpp"
 
@@ -220,15 +221,33 @@ void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& c
     }
 }
 
+// The rock of a tile whose columns hold faces, in rock (none otherwise): the ring of the columns
+// beyond its sides for the normals of its sides (not those of the caves, when carved), through
+// cache; the levels and the heights of the tile reach its rock.
+void addRockTile(const Heightfield& field, tile::ColumnCache* cache, bool carved,
+                 const TileRequest& request, const TileLattice& lattice, TileColumns& columns,
+                 std::optional<tile::RockTile>& rock) {
+    if (columns.rock.empty()) {
+        return;
+    }
+    if (!carved) {
+        tile::sampleRing(field, lattice, columns, cache);
+    }
+    rock.emplace(columns, request, lattice);
+    columns.minHeight = rock->bounds().low;
+    columns.maxHeight = rock->bounds().high;
+}
+
 } // namespace
 
 TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield,
                            const EcologyParams& ecology, const std::optional<CaveParams>& caves,
                            const WorldSize& world, std::shared_ptr<const Hydrology> hydrology,
-                           bool rock)
+                           bool rock, std::size_t columnCache)
     : seed_(seed), rock_(rock),
       field_(Heightfield(seed, heightfield, world).withHydrology(hydrology)),
-      ecology_(seed, ecology, world, planetHumidity(hydrology)) {
+      ecology_(seed, ecology, world, planetHumidity(hydrology)),
+      columns_(std::make_unique<tile::ColumnCache>(columnCache, rock)) {
     if (caves) {
         caves_.emplace(seed, *caves, world);
         caveEnvironment_.emplace(field_, ecology_.climate(), ecology_.params().biomes);
@@ -243,23 +262,21 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
     }
 }
 
+TerrainTiles::~TerrainTiles() = default;
+
+ColumnCacheStats TerrainTiles::columnCache() const {
+    return columns_->stats();
+}
+
 TileData TerrainTiles::generate(const TileRequest& asked) const {
     const TileRequest request{wrapTile(asked.key, world()), asked.seams, asked.horizon};
     const TileLattice lattice = tile::latticeOf(request.key);
-    TileColumns columns = tile::sampleColumns(field_, lattice, rock_, kTileBlendStride);
+    TileColumns columns =
+        tile::sampleColumns(field_, lattice, rock_, kTileBlendStride, columns_.get());
     // The far tiles carve nothing: they are those of the world without caves.
     const bool carved = caves_ && caveDetailForLod(request.key.lod).components != 0;
     std::optional<tile::RockTile> rockTile;
-    if (!columns.rock.empty()) {
-        // The normals of the sides from the columns beyond them (not those of the caves).
-        if (!carved) {
-            tile::sampleRing(field_, lattice, columns);
-        }
-        // The levels and the heights of the tile reach its rock.
-        rockTile.emplace(columns, request, lattice);
-        columns.minHeight = rockTile->bounds().low;
-        columns.maxHeight = rockTile->bounds().high;
-    }
+    addRockTile(field_, columns_.get(), carved, request, lattice, columns, rockTile);
     TileData data;
     data.request = request;
     data.originX = lattice.x0;

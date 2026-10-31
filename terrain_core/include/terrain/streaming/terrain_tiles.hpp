@@ -12,6 +12,7 @@
 #include "terrain/storage/volume_edit.hpp"
 #include "terrain/streaming/stream_manager.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,6 +24,29 @@ namespace terrain {
 
 // Plants are only placed on the tiles of this LOD, which cover a single chunk.
 inline constexpr int kPlantLod = 0;
+
+namespace tile {
+class ColumnCache;
+}
+
+// The columns neighboring tiles share, kept by TerrainTiles (src/streaming/column_cache.hpp):
+// about kColumnCacheColumns by default (whole blocks of the outer rows of the tiles), 10.2 MB at
+// most with rock (ColumnCacheStats::bytesBound). A walk through the views of the tiles near the
+// falls finds 33% of the shared columns there, 35% without any bound.
+inline constexpr std::size_t kColumnCacheColumns = 32'768;
+
+// What the cache of the shared columns holds and did (TerrainTiles::columnCache).
+struct ColumnCacheStats {
+    std::size_t columns = 0;     // held now
+    std::size_t capacity = 0;    // at most
+    std::size_t bytes = 0;       // their memory now
+    std::size_t bytesBound = 0;  // never more
+    std::uint64_t lookups = 0;   // shared columns looked for
+    std::uint64_t hits = 0;      // found there
+    std::uint64_t locks = 0;     // locks of its shards taken
+    std::uint64_t contended = 0; // of them, held by another thread: waited for
+    double waitSeconds = 0.0;    // spent waiting for them
+};
 
 // The streamed world: the infinite Heightfield, density y - heightAt(x, z), with the block edits
 // of its modifications, meshed tile by tile for a StreamManager. Its relief, rivers and biomes
@@ -50,11 +74,19 @@ public:
     // faces the walls lay (rock_faces.hpp) shape the tiles where they lie; without it every tile
     // is that of the relief alone, a height per column. Throws std::invalid_argument for an
     // invalid world (validate).
+    //
+    // The columns its neighboring tiles share (their outer rows) are kept, columnCache at most
+    // (column_cache.hpp; 0: none): a tile takes from them what a neighbor of the same LOD sampled
+    // before, the same bits. They belong to this world alone and go with it.
     explicit TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield = {},
                           const EcologyParams& ecology = {},
                           const std::optional<CaveParams>& caves = std::nullopt,
                           const WorldSize& world = {},
-                          std::shared_ptr<const Hydrology> hydrology = nullptr, bool rock = true);
+                          std::shared_ptr<const Hydrology> hydrology = nullptr, bool rock = true,
+                          std::size_t columnCache = kColumnCacheColumns);
+    ~TerrainTiles();
+    TerrainTiles(const TerrainTiles&) = delete;
+    TerrainTiles& operator=(const TerrainTiles&) = delete;
 
     // Mesh of the canonical image of the tile (wrapTile: data.request holds the canonical key),
     // of the vertical levels holding its ground or a lattice point an edited block reaches: the
@@ -111,6 +143,8 @@ public:
     [[nodiscard]] const CaveField* caves() const { return caves_ ? &*caves_ : nullptr; }
     [[nodiscard]] const CaveGround& caveGround() const { return caveGround_; }
     [[nodiscard]] bool rock() const { return rock_; }
+    // The cache of the shared columns: what it holds and did. Thread-safe.
+    [[nodiscard]] ColumnCacheStats columnCache() const;
 
 private:
     std::uint64_t seed_;
@@ -124,6 +158,7 @@ private:
     CaveGround caveGround_; // reads field_ and caveEnvironment_
     mutable std::shared_mutex mutex_; // guards modifications_
     ModificationStore modifications_;
+    std::unique_ptr<tile::ColumnCache> columns_; // thread-safe on its own
 };
 
 // Generator of a StreamManager over the tiles, which must outlive it.
