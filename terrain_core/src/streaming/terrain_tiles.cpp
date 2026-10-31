@@ -11,6 +11,7 @@
 #include "terrain/streaming/cave_tiles.hpp"
 #include "tile_blend.hpp"
 #include "tile_lattice.hpp"
+#include "tile_rivers.hpp"
 #include "tile_water.hpp"
 
 #include <algorithm>
@@ -285,6 +286,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
                            objects && flora_ ? &*flora_ : nullptr);
     }
     data.waterLevels = tile::vertexWaterLevels(columns, lattice, data.mesh, data.materials);
+    tile::addRiverWater(data, field_, lattice, columns);
     return data;
 }
 

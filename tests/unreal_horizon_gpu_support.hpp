@@ -46,11 +46,11 @@ public:
             }
         }
         for (const terrain::unreal::WaterRegion& region : update.waterRegions) {
-            std::vector<std::uint16_t>& codes = water_[region.level];
-            codes.resize(static_cast<std::size_t>(side_ * side_), 9);
+            std::vector<float>& levels = water_[region.level];
+            levels.resize(static_cast<std::size_t>(side_ * side_), 9.0f);
             for (int row = 0; row < region.height; ++row) {
                 for (int column = 0; column < region.width; ++column) {
-                    codes[static_cast<std::size_t>((region.z + row) * side_ + region.x + column)] =
+                    levels[static_cast<std::size_t>((region.z + row) * side_ + region.x + column)] =
                         region.data[static_cast<std::size_t>(row * region.width + column)];
                 }
             }
@@ -61,7 +61,7 @@ public:
     }
 
     // The water code the material reads for the sample (i, k) of the window of a level.
-    [[nodiscard]] std::uint16_t water(int level, int i, int k) const {
+    [[nodiscard]] float water(int level, int i, int k) const {
         const LevelPlacement& placement = placements_.at(level);
         const auto x = static_cast<int>((placement.firstSlot.x + i) % side_);
         const auto z = static_cast<int>((placement.firstSlot.z + k) % side_);
@@ -105,7 +105,7 @@ public:
 private:
     int side_;
     std::map<int, std::vector<float>> textures_;
-    std::map<int, std::vector<std::uint16_t>> water_;
+    std::map<int, std::vector<float>> water_;
     std::map<int, LevelPlacement> placements_;
 };
 
@@ -121,7 +121,7 @@ inline bool texelsMatch(const Gpu& gpu, const terrain::HorizonClipmap& clipmap,
                 const terrain::HorizonCell& cell =
                     cells[static_cast<std::size_t>(k * level.side() + i)];
                 if (!(gpu.texel(n, i, k) == terrain::unreal::horizonTexel(cell, true)) ||
-                    gpu.water(n, i, k) != terrain::unreal::waterCode(cell.waterLevel)) {
+                    !(gpu.water(n, i, k) == terrain::unreal::waterTexel(cell.waterLevel))) {
                     return false;
                 }
             }

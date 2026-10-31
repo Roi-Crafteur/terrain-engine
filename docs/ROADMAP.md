@@ -140,6 +140,24 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - mémoire : échantillons de l'horizon de 16 à 20 octets (10,1 → 12,6 Mo), textures d'eau 1,26 Mo
   sur le GPU (+12,5 % d'octets par bande envoyée), rien de plus aux sommets dans Unreal
 
+### L'eau dans Unreal à son vrai niveau (agent 27)
+- l'eau manquait dans la fente de la chute de 388 m parce qu'aucun matériau ne lisait le niveau
+  des lacs et des fleuves : le core met bien l'eau dans ses bassins (253,54 et 180,03 m, LOD 0 à 3,
+  `terrain_probe_water`)
+- core, des données seulement : les colonnes d'eau des tuiles (type, niveau au bit près, sens du
+  courant des fleuves) et leurs chutes (lèvre, pied, largeur) ; goldens, montagnes gelées et somme
+  du niveau Planète identiques, coût des tuiles inchangé (`tile_rivers_test`)
+- Unreal : surface translucide des lacs et fleuves des tuiles à leur niveau, sans fente entre
+  tuiles ni entre LOD ; rideaux et écume des chutes depuis la lèvre, le pied et la largeur du core ;
+  lacs et fleuves de l'horizon GPU montés au niveau de leurs textures d'eau, désormais en float
+  (le niveau du core au bit près, raccord exact avec les tuiles) ; même aspect de près et de loin
+  (couleur et transparence selon l'épaisseur et le lieu, rides dans le sens du courant, reflet du
+  ciel et du soleil, écume) ; `Terrain.Water 0|1` pour comparer (`unreal_tile_water_test`,
+  `unreal_water_scripts_test`, `terrain_unreal/WATER_LEVEL.md`)
+- fichier planète par défaut `Saved/TerrainEngine/planet_{Seed}.bin` : la carte de test a ses
+  fleuves ; un fichier périmé ou abîmé est reconstruit, la raison dans le log, jamais lu en
+  silence ; scripts des matériaux qui remettent tous leurs réglages à zéro
+
 ### Phase 11D — Niveau Planète créé en 500 Mo
 - création du monde (`terrain_make_planet`, monde par défaut, mesuré sous Linux) : pic de
   1 084 Mo à 412 Mo sur 4 cœurs (1 053 Mo à 411 Mo sur un cœur), pour les mêmes bits (somme du
@@ -213,9 +231,9 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
 - 11A, 11R, 11R bis, 11B et 11D : faits (voir « Réalisé »)
-- tâche 7b, le niveau de l'eau pour Unreal : faite (voir « Réalisé ») ; reste côté Unreal le
-  matériau qui le lit, pour dessiner les lacs et les fleuves à leur niveau (aujourd'hui toute
-  l'eau est encore dessinée à 0 m)
+- tâche 7b, le niveau de l'eau pour Unreal : faite, et dessinée dans Unreal à son niveau (lacs,
+  fleuves, chutes : voir « Réalisé ») ; reste le coût GPU mesuré dans Unreal, et plus tard Single
+  Layer Water (phase 14, `terrain_unreal/WATER_LEVEL.md`)
 - côté Unreal (7a, 7c) : fait. Le carré de mer sous les tuiles n'est dessiné que là où le core
   met l'océan (matériau Masked ; chemin CPU : le carré entier, ou rien s'il n'a aucun
   échantillon de mer), et la couleur du fond marin seulement sous le drapeau mer
@@ -318,7 +336,9 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   le relief, nuits étoilées (Voie lactée, phases de la lune), brume dans les vallées et
   perspective atmosphérique
 - eau : transparente avec caustiques, vagues et écume, couleur selon le lieu (turquoise,
-  vert glacier, brune, noire), cascades spectaculaires (embruns, arcs-en-ciel)
+  vert glacier, brune, noire), cascades spectaculaires (embruns, arcs-en-ciel). Fait : lacs et
+  fleuves translucides à leur niveau, couleur selon l'épaisseur et le lieu, rides, rideaux et
+  écume des chutes (agent 27) ; reste Single Layer Water, caustiques, embruns, arcs-en-ciel
 - végétation PCG depuis les positions du core, densité selon le biome : forêts denses ou
   clairsemées, clairières, monts, vallons
 - transitions entre biomes (aujourd'hui un seul biome et un seul matériau par point, à

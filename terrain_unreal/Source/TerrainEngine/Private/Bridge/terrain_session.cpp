@@ -3,7 +3,6 @@
 #include "terrain/generation/caves.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
-#include "terrain/storage/planet_file.hpp"
 
 #include <chrono>
 #include <exception>
@@ -27,16 +26,23 @@ std::optional<CaveParams> caveParams(const SessionParams& params) {
     return caves;
 }
 
-// The hydrology of the planet level of the file, or none without a file.
-std::shared_ptr<const Hydrology> hydrology(const SessionParams& params) {
+// The planet level of the file, read or built (openPlanetSource), or none without a file.
+PlanetSource planetSource(const SessionParams& params) {
     if (params.planetFile.empty()) {
-        return nullptr;
+        return {};
     }
     const std::filesystem::path file(reinterpret_cast<const char8_t*>(params.planetFile.c_str()));
+    return openPlanetSource(file, params.seed, params.world);
+}
+
+// The hydrology of the planet level, or none without one.
+std::shared_ptr<const Hydrology> hydrology(const SessionParams& params,
+                                           const PlanetSource& planet) {
+    if (planet.level == nullptr) {
+        return nullptr;
+    }
     const Heightfield relief(params.seed, HeightfieldParams{}, params.world);
-    auto planet = std::make_shared<const PlanetLevel>(
-        openPlanetLevel(file, params.seed, HeightfieldParams{}, PlanetParams{}, params.world));
-    return std::make_shared<const Hydrology>(params.seed, relief, std::move(planet));
+    return std::make_shared<const Hydrology>(params.seed, relief, planet.level);
 }
 
 StreamParams streamParams(const SessionParams& params) {
@@ -48,8 +54,9 @@ StreamParams streamParams(const SessionParams& params) {
 } // namespace
 
 TerrainSession::TerrainSession(const SessionParams& params)
-    : tiles_(params.seed, HeightfieldParams{}, EcologyParams{}, caveParams(params), params.world,
-             hydrology(params)),
+    : planet_(planetSource(params)),
+      tiles_(params.seed, HeightfieldParams{}, EcologyParams{}, caveParams(params), params.world,
+             hydrology(params, planet_)),
       timings_(std::make_shared<TileTimings>()), horizonEdits_(tiles_.heightfield()),
       streamer_(timedGenerator(tileGenerator(tiles_), timings_), streamParams(params), timings_) {
 }

@@ -120,7 +120,9 @@ Sans le pack, chaque couche est une couleur unie (la moyenne de sa texture), ave
 avertissement dans le log : les scripts marchent dans tout projet. Les deux scripts reconstruisent
 les matériaux en place ; `delete_all_material_expressions` n'efface qu'environ la moitié des nœuds
 par appel (UE 5.8) et les paramètres restés en double gardaient leurs anciennes valeurs : les
-scripts l'appellent jusqu'à ce qu'il n'en reste aucun (`clear_material`).
+scripts l'appellent jusqu'à ce qu'il n'en reste aucun (`clear_material`). Ils remettent aussi tous
+les réglages du matériau à ceux d'un matériau neuf avant de poser les leurs (mode de mélange,
+modèle d'ombrage, attributs de matériau, deux faces… : `material_settings.reset_material`).
 
 ## Réglages
 

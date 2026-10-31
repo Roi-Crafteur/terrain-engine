@@ -88,7 +88,7 @@ void testFirstAndSteps() {
     for (const auto& region : first.waterRegions) {
         codes += region.data.size();
         sea += static_cast<std::size_t>(
-            std::count(region.data.begin(), region.data.end(), terrain::unreal::waterCode(0.0f)));
+            std::count(region.data.begin(), region.data.end(), 0.0f));
     }
     TEST_CHECK(codes == 5u * 129u * 129u && sea > 0);
     session.gpu.apply(first);
