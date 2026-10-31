@@ -1,6 +1,7 @@
 #pragma once
 
 #include "edit_thread.hpp"
+#include "load_timeline.hpp"
 #include "planet_source.hpp"
 #include "terrain_edits.hpp"
 #include "tile_streamer.hpp"
@@ -56,6 +57,8 @@ public:
     // How the planet level was read or built (empty without a planet file).
     [[nodiscard]] const PlanetSource& planet() const { return planet_; }
     [[nodiscard]] TileTimings& timings() { return *timings_; }
+    // The timeline of the loads (load_timeline.hpp): every generation of a tile is recorded in it.
+    [[nodiscard]] LoadTimeline& timeline() { return *timeline_; }
     [[nodiscard]] TileStreamer& streamer() { return streamer_; }
 
     // Edits of the world (TerrainTiles): the tiles over the chunks they change are generated
@@ -102,6 +105,7 @@ private:
     PlanetSource planet_; // first: the tiles read its hydrology
     TerrainTiles tiles_;
     std::shared_ptr<TileTimings> timings_;
+    std::shared_ptr<LoadTimeline> timeline_;
     HorizonEditMap horizonEdits_;   // reads the relief of the tiles
     std::vector<EditOutcome> done_; // staged, not yet taken
     TileStreamer streamer_;
