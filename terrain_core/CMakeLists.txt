@@ -181,6 +181,7 @@ add_library(terrain_core STATIC
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
     src/streaming/tile_blend.cpp
+    src/streaming/tile_rivers.cpp
     src/streaming/tile_water.cpp
     src/world_size.cpp
 )
@@ -368,6 +369,14 @@ target_link_libraries(terrain_export_rivers PRIVATE terrain_core terrain_warning
 add_executable(terrain_make_planet tools/make_planet.cpp tools/heap_counter.cpp
                                    tools/process_memory.cpp)
 target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
+
+# The water of the world at given points, as the core decides it and hands it to the renderers
+# (phase 11, task 7b): the column, the valleys and the lake there, the levels of the vertices of
+# the tiles, the sample of the horizon and the falls around. See tools/probe_water.cpp.
+# terrain_probe_water [--planet <file>] [--seed <seed>] [--world <x> <z>] [--threads <n>]
+#                     [--radius <meters>] [--falls <meters>] <x> <z> [<x> <z>]...
+add_executable(terrain_probe_water tools/probe_water.cpp)
+target_link_libraries(terrain_probe_water PRIVATE terrain_core terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
 # <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests

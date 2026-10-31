@@ -1,6 +1,8 @@
 #pragma once
 
+#include "fall_curtains.hpp"
 #include "tile_mesh_conversion.hpp"
+#include "tile_water_mesh.hpp"
 #include "tile_timings.hpp"
 #include "unreal_frame.hpp"
 
@@ -26,7 +28,9 @@ inline constexpr int kCollisionLod = 0;
 // A tile to show: its mesh placed at its origin, with collision or not. The key is canonical
 // (wrapTile); the origin is the one of its image nearest to the player (nearestTile). A tile
 // already shown under this key is replaced in place. Its surface blend (TileData::surfaceBlend,
-// tile_blend_atlas.hpp) goes to the materials as it is.
+// tile_blend_atlas.hpp) goes to the materials as it is. Its water (agent 27), in the frame of its
+// mesh: the surface of its lakes and rivers (buildTileWater) and the curtains and foam of its falls
+// (buildFallCurtains), each empty without them.
 struct TileUpload {
     TileKey key;
     UnrealPoint origin;
@@ -34,6 +38,8 @@ struct TileUpload {
     bool collision = false;
     double conversionMilliseconds = 0.0;
     std::vector<BlendTexel> blend;
+    UnrealWaterMesh water;
+    UnrealWaterMesh falls;
 };
 
 // A shown tile whose nearest image changed (the player moved by about half a world, a teleport

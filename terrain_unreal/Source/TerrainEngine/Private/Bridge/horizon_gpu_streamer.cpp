@@ -93,7 +93,7 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
             epochStart_.reset();
         }
         for (const PreparedPiece& piece : commit.pieces) {
-            // pieceUploads: the texels, then the water codes.
+            // pieceUploads: the texels, then the water levels.
             const std::span<const float> data(piece.data);
             const std::size_t texels = std::min(
                 data.size(), static_cast<std::size_t>(piece.rect.count()) * kTexelFloats);

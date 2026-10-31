@@ -1,6 +1,7 @@
 #include "TerrainWorld.h"
 
 #include "Bridge/determinism_check.hpp"
+#include "Bridge/planet_source.hpp"
 #include "Bridge/terrain_session.hpp"
 #include "Bridge/tile_streamer.hpp"
 #include "Bridge/tile_timings.hpp"
@@ -16,12 +17,14 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Misc/Paths.h"
 #include "TerrainEngineLog.h"
 #include "TerrainHorizonClipmap.h"
 #include "TerrainHorizonMeshes.h"
 #include "TerrainMeshBackend.h"
 #include "TerrainWorldEdits.h"
 #include "TerrainWorldState.h"
+#include "TerrainWorldWater.h"
 
 #include <chrono>
 #include <cstddef>
@@ -52,7 +55,9 @@ namespace
 		Params.seed = static_cast<std::uint64_t>(World.Seed);
 		Params.caves = World.bCaves;
 		Params.caveRegions = World.bCaves && World.bCaveRegions;
-		Params.planetFile = TCHAR_TO_UTF8(*World.PlanetFile);
+		// "{Seed}" replaced, a relative path from the folder of the project (Bridge/planet_source).
+		Params.planetFile = terrain::unreal::resolvePlanetPath(TCHAR_TO_UTF8(*World.PlanetFile),
+			Params.seed, TCHAR_TO_UTF8(*FPaths::ConvertRelativePathToFull(FPaths::ProjectDir())));
 		Params.stream.lod.splitDistance = {
 			World.Lod0DistanceChunks, World.Lod1DistanceChunks, World.Lod2DistanceChunks};
 		Params.stream.lod.viewDistance = World.ViewDistanceChunks;
@@ -131,6 +136,7 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		HorizonClipmap = nullptr;
 	}
 	TileSurfaceLook = nullptr;
+	TileWaterLook = nullptr;
 	StopAtmosphere();
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
@@ -151,7 +157,16 @@ bool ATerrainWorld::StartStreaming()
 		}
 		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: %s"),
 			*ToFString(terrain::unreal::describe(Check)));
-		State = MakePimpl<FTerrainWorldState>(MakeSessionParams(*this));
+		const terrain::unreal::SessionParams Params = MakeSessionParams(*this);
+		if (!Params.planetFile.empty())
+		{
+			UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: opening the planet level of seed "
+				"%lld in %s (built there if missing or stale: minutes, the game waits)"),
+				Seed, *ToFString(Params.planetFile));
+		}
+		const FPlatformMemoryStats Before = FPlatformMemory::GetStats();
+		State = MakePimpl<FTerrainWorldState>(Params);
+		LogPlanet(State->Session.planet(), Params.planetFile, Before);
 		State->Frame = State->Session.frameAt(CoreOriginX, CoreOriginZ);
 	}
 	catch (const std::exception& Exception)
@@ -169,6 +184,7 @@ bool ATerrainWorld::StartStreaming()
 		Lod1DistanceChunks, Lod2DistanceChunks, ViewDistanceChunks, WorkerThreads,
 		MaxTileUploadsPerFrame);
 	StartHorizon();
+	StartWater();
 	StartAtmosphere();
 	return true;
 }

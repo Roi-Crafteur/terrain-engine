@@ -1,18 +1,20 @@
 // The cost of the water (phase 11B) on the small world: the relief with its water against the
 // relief alone, in patches (heightsAt over 32 x 32 points 2 m apart) and in tiles (TerrainTiles,
 // LOD 0 to 3), on land, in mountains and within 1 km of a river, in its valley. Asserted: at most
-// x1.3 on land and in mountains, at most x2 near the rivers. Timed on one thread after a first
-// pass that builds the courses of the reaches (their cost apart), the least of kRuns runs of
-// each, alternated. (The small world has smaller valleys than the default one, with fewer gorges:
-// its ratios near the rivers are lower.) The places keep out of the band of the coasts (agent 33):
-// there the coasts fade out to the relief without them near the rivers, a cost of their own
-// (coast_cost_test).
+// x1.3 on land and in mountains, at most x2 near the rivers. Timed on one thread pair by pair
+// (cost_ratio_support.hpp): after a round that builds the courses of the reaches (their cost
+// apart), each patch or tile without the water and with it back to back in 5 rounds, the best
+// time of each kept on each side; measured again only past the limit. (The small world has
+// smaller valleys than the default one, with fewer gorges: its ratios near the rivers are lower.)
+// The places keep out of the band of the coasts (agent 33): there the coasts fade out to the
+// relief without them near the rivers, a cost of their own (coast_cost_test).
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "coast_zone_support.hpp"
+#include "cost_ratio_support.hpp"
 #include "planet_golden_support.hpp"
 #include "test_assert.hpp"
 
@@ -31,7 +33,6 @@ namespace {
 using terrain::Heightfield;
 using terrain::Hydrology;
 
-constexpr int kRuns = 5;
 constexpr std::size_t kPatches = 60;
 constexpr std::size_t kTiles = 24;
 constexpr int kPatchSide = 32;
@@ -145,63 +146,57 @@ private:
     std::chrono::steady_clock::time_point start_ = std::chrono::steady_clock::now();
 };
 
-// The patches of the places on field: the seconds they take (and their sum, so that nothing is
-// left out).
-double patchesOn(const Heightfield& field, const std::vector<Place>& at, double& sum) {
-    std::vector<double> xs(kPatchSide * kPatchSide);
-    std::vector<double> zs(xs.size());
-    std::vector<float> heights(xs.size());
-    const Stopwatch watch;
-    for (const Place& p : at) {
+// The points and heights of a patch, allocated once.
+struct Patch {
+    std::vector<double> xs = std::vector<double>(kPatchSide * kPatchSide);
+    std::vector<double> zs = std::vector<double>(kPatchSide * kPatchSide);
+    std::vector<float> heights = std::vector<float>(kPatchSide * kPatchSide);
+};
+
+// The seconds of the patch of a place on field (its height at the center added to sum, so that
+// nothing is left out).
+double patchSeconds(const Heightfield& field, const Place& p, Patch& patch, double& sum) {
+    const double seconds = cost_test::secondsOf([&] {
         for (int j = 0; j < kPatchSide; ++j) {
             for (int i = 0; i < kPatchSide; ++i) {
-                xs[static_cast<std::size_t>(j * kPatchSide + i)] = p.x + kPatchStep * i;
-                zs[static_cast<std::size_t>(j * kPatchSide + i)] = p.z + kPatchStep * j;
+                patch.xs[static_cast<std::size_t>(j * kPatchSide + i)] = p.x + kPatchStep * i;
+                patch.zs[static_cast<std::size_t>(j * kPatchSide + i)] = p.z + kPatchStep * j;
             }
         }
-        field.heightsAt(xs, zs, heights);
-        sum += static_cast<double>(heights[heights.size() / 2]);
-    }
-    return watch.seconds();
+        field.heightsAt(patch.xs, patch.zs, patch.heights);
+    });
+    sum += static_cast<double>(patch.heights[patch.heights.size() / 2]);
+    return seconds;
 }
 
-double tilesOf(const terrain::TerrainTiles& tiles, const std::vector<terrain::TileRequest>& at,
-               double& sum) {
-    const Stopwatch watch;
-    for (const terrain::TileRequest& r : at) {
-        sum += static_cast<double>(tiles.generate(r).mesh.vertices.size());
-    }
-    return watch.seconds();
+double tileSeconds(const terrain::TerrainTiles& tiles, const terrain::TileRequest& r,
+                   double& sum) {
+    std::size_t vertices = 0;
+    const double seconds =
+        cost_test::secondsOf([&] { vertices = tiles.generate(r).mesh.vertices.size(); });
+    sum += static_cast<double>(vertices);
+    return seconds;
 }
 
-// The least of kRuns alternated runs of dry and wet, after a first one of each: wet over dry.
-template <class Dry, class Wet>
-double ratioOf(const Dry& dry, const Wet& wet) {
-    double sum = 0.0;
-    (void)dry(sum);
-    (void)wet(sum);
-    double leastDry = 1e30;
-    double leastWet = 1e30;
-    for (int run = 0; run < kRuns; ++run) {
-        leastDry = std::min(leastDry, dry(sum));
-        leastWet = std::min(leastWet, wet(sum));
-    }
-    TEST_CHECK(std::isfinite(sum));
-    return leastWet / leastDry;
+// The ratio of the items of a kind with the water over without it, against the limit of the kind.
+void check(const char* part, const Kind& k, std::size_t items, const cost_test::TimedRun& run) {
+    const cost_test::Ratio ratio = cost_test::ratioAtMost(items, run, k.most);
+    std::printf("%-7s %-24s with the water %s\n", part, k.name,
+                cost_test::ratioText(ratio).c_str());
+    TEST_CHECK(ratio.passed());
 }
 
-void testPatches(const World& w, const std::array<Kind, 3>& kinds) {
+void testPatches(const World& w, const std::array<Kind, 3>& kinds, double& sum) {
+    Patch patch;
     for (const Kind& k : kinds) {
-        const double ratio =
-            ratioOf([&](double& sum) { return patchesOn(w.relief, k.at, sum); },
-                    [&](double& sum) { return patchesOn(w.field, k.at, sum); });
-        std::printf("patches %-24s with the water x%.2f (at most x%.1f)\n", k.name, ratio,
-                    k.most);
-        TEST_CHECK(ratio <= k.most);
+        check("patches", k, k.at.size(), [&](cost_test::Side side, std::size_t n) {
+            return patchSeconds(side == cost_test::Side::With ? w.field : w.relief, k.at[n],
+                                patch, sum);
+        });
     }
 }
 
-void testTiles(const World& w, const std::array<Kind, 3>& kinds) {
+void testTiles(const World& w, const std::array<Kind, 3>& kinds, double& sum) {
     const terrain::TerrainTiles dry(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
                                     terrain::EcologyParams{}, std::nullopt, golden::kSmallPlanet);
     const terrain::TerrainTiles wet(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
@@ -216,11 +211,9 @@ void testTiles(const World& w, const std::array<Kind, 3>& kinds) {
                 static_cast<std::int32_t>(std::floor(p.z / terrain::kChunkSizeMeters))};
             at.push_back({terrain::tileContaining(chunk, static_cast<int>(t % 4)), 0});
         }
-        const double ratio = ratioOf([&](double& sum) { return tilesOf(dry, at, sum); },
-                                     [&](double& sum) { return tilesOf(wet, at, sum); });
-        std::printf("tiles   %-24s with the water x%.2f (at most x%.1f)\n", k.name, ratio,
-                    k.most);
-        TEST_CHECK(ratio <= k.most);
+        check("tiles", k, at.size(), [&](cost_test::Side side, std::size_t n) {
+            return tileSeconds(side == cost_test::Side::With ? wet : dry, at[n], sum);
+        });
     }
 }
 
@@ -231,8 +224,10 @@ int main() {
     const World w = makeWorld();
     const std::array<Kind, 3> kinds = placesOf(w);
     std::printf("small world and places: %.1f s\n", watch.seconds());
-    testPatches(w, kinds);
-    testTiles(w, kinds);
+    double sum = 0.0;
+    testPatches(w, kinds, sum);
+    testTiles(w, kinds, sum);
+    TEST_CHECK(std::isfinite(sum));
     std::printf("total: %.1f s\n", watch.seconds());
     return test::result();
 }

@@ -177,6 +177,34 @@ long long checkUploadedWater(TerrainSession& session, double x, double z) {
     return checked;
 }
 
+// The planet file of an Unreal level: "{Seed}" replaced by the seed, a relative path from the
+// folder of the project, an absolute path as it is, none for none.
+void testPlanetPaths() {
+    using terrain::unreal::resolvePlanetPath;
+    TEST_CHECK(resolvePlanetPath("Saved/TerrainEngine/planet_{Seed}.bin", 20261019,
+                                 "/home/game/Sandbox/") ==
+               "/home/game/Sandbox/Saved/TerrainEngine/planet_20261019.bin");
+    TEST_CHECK(resolvePlanetPath("../planets/{Seed}/{Seed}.bin", 7, "/home/game/Sandbox") ==
+               "/home/game/planets/7/7.bin");
+    TEST_CHECK(resolvePlanetPath("/data/planet.bin", 7, "/home/game/Sandbox") ==
+               "/data/planet.bin");
+    TEST_CHECK(resolvePlanetPath("", 7, "/home/game/Sandbox").empty());
+    TEST_CHECK(resolvePlanetPath("planet.bin", 7, "") == "planet.bin");
+}
+
+// A planet file of another seed is never read in silence: the level of the seed is built again,
+// the reason told (stale), and written over it.
+void testStalePlanetFile(SessionParams params) {
+    params.seed += 1;
+    const TerrainSession other(params);
+    const terrain::unreal::PlanetSource& source = other.planet();
+    TEST_CHECK(source.built && source.written &&
+               source.reason.find("stale") != std::string::npos);
+    TEST_CHECK(other.tiles().heightfield().hydrology() != nullptr);
+    std::printf("planet file of another seed: %s\n",
+                terrain::unreal::describe(source, "the file").c_str());
+}
+
 // With a planet file (on a small world: the level of the whole world takes minutes), in a folder
 // whose name is not ASCII (UTF-8, as ATerrainWorld::PlanetFile hands it over): the level built
 // and written to it the first time, read from it the next; the heightfield of the tiles and of
@@ -194,6 +222,10 @@ void testPlanetFile() {
     params.planetFile.assign(reinterpret_cast<const char*>(utf8.data()), utf8.size());
     TerrainSession built(params);
     TEST_CHECK(std::filesystem::exists(folder / "planet.bin"));
+    TEST_CHECK(built.planet().built && built.planet().reason == "no file" &&
+               built.planet().written);
+    std::printf("planet file: %s\n",
+                terrain::unreal::describe(built.planet(), "the file").c_str());
     const terrain::Heightfield& field = built.tiles().heightfield();
     const terrain::Hydrology* hydrology = field.hydrology();
     TEST_CHECK(hydrology != nullptr && hydrology->reachCount() > 0);
@@ -201,6 +233,8 @@ void testPlanetFile() {
     const terrain::Hydrology* again = read.tiles().heightfield().hydrology();
     TEST_CHECK(again != nullptr &&
                again->planet().checksum() == hydrology->planet().checksum());
+    TEST_CHECK(!read.planet().built && read.planet().reason.empty());
+    std::printf("planet file: %s\n", terrain::unreal::describe(read.planet(), "the file").c_str());
     if (hydrology != nullptr) {
         bool never = true;
         std::size_t carved = 0;
@@ -225,6 +259,7 @@ void testPlanetFile() {
         std::printf("planet file: %lld wet vertices of the tiles at the level of their river\n",
                     checked);
     }
+    testStalePlanetFile(params);
     std::filesystem::remove_all(dir);
 }
 
@@ -235,6 +270,7 @@ int main() {
     testWarmUp();
     testInvalidParams();
     testDestroyWhileGenerating();
+    testPlanetPaths();
     testPlanetFile();
     return test::result();
 }

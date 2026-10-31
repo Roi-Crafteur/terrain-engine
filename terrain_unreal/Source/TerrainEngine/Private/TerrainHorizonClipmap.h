@@ -39,9 +39,10 @@ struct FTerrainHorizonLook
  * With the detail normals (Bridge/horizon_normal_stream.hpp), a second texture per level of
  * (257 * ratio)^2 texels (half floats: the slopes) lights the levels and the tiles finer than
  * their grids; its texels arrive after the samples, pending until then.
- * The water (task 7b): a texture of 257 x 257 water codes per level (R16 UNORM, the level of the
- * water over each sample, Bridge/horizon_textures.hpp), written with the texels and bound as
- * HorizonWater and CoarseWater, read by no material yet.
+ * The water (task 7b): a texture of 257 x 257 floats per level (R32F, the level of the core over
+ * each sample, Bridge/horizon_textures.hpp), written with the texels and bound as HorizonWater and
+ * CoarseWater: the material raises the lakes and rivers to their level (agent 27,
+ * Scripts/horizon_water_hlsl.py). The textures: TerrainHorizonTextures.h.
  */
 UCLASS(Transient)
 class UTerrainHorizonClipmap : public UObject
@@ -60,12 +61,23 @@ public:
 	void RemoveAll();
 
 	// Where the waves of the sea are measured from (Bridge/horizon_atmosphere.hpp), every level and
-	// the surface look of the tiles.
+	// the surface looks of the tiles.
 	void SetWaveOrigin(const terrain::unreal::WaveOrigin& Origin);
 
-	// The material of the tiles reads the surface of the ground (material and biome) from the
-	// texels of level 0 (the temporary terrain material, Bridge/terrain_surface.hpp): its
-	// parameters follow level 0 from now on.
+	// The lakes and rivers drawn at their level, or not (the ground under them), every level.
+	void SetInlandWater(bool bShown);
+
+	// The parameters of the look of the water that Source has, among Scalars and Vectors, set on
+	// every level: the lakes and rivers of the horizon look as those of the tiles (one tuning).
+	void CopyLook(const UMaterialInterface& Source, TConstArrayView<FName> Scalars,
+		TConstArrayView<FName> Vectors);
+
+	// A material of the tiles that follows level 0 from now on: the material of their ground reads
+	// the surface of the ground (material and biome) from the texels of level 0 (the temporary
+	// terrain material, Bridge/terrain_surface.hpp); the material of their water fades into the
+	// water of the horizon over the outer band of the tiles (Scripts/water_look_hlsl.py). Both
+	// read the same parameters (SurfaceOrigin, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm,
+	// SurfaceBandCm, HasSurface...); nothing without a look.
 	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
 
 	// Time spent building the grids, and the bytes of the textures and of the grids on the GPU.
@@ -78,9 +90,6 @@ private:
 	UStaticMeshComponent* CreateGridComponent(UStaticMesh* Mesh, UMaterialInstanceDynamic* Look);
 	void CreateLevel(int32 Level, const terrain::unreal::HorizonGpuStreamer& Streamer,
 		UMaterialInterface* Material);
-	void UploadRegion(terrain::unreal::TexelRegion& Region);
-	void UploadWater(terrain::unreal::WaterRegion& Region);
-	void UploadNormals(terrain::unreal::NormalRegion& Region);
 	void BindNormals(int32 Level);
 	void Place(const terrain::unreal::LevelPlacement& Placement);
 	void PlaceSurface(const terrain::unreal::LevelPlacement& Placement);
@@ -95,7 +104,7 @@ private:
 	TArray<TObjectPtr<UTexture2D>> Textures;
 
 	UPROPERTY()
-	TArray<TObjectPtr<UTexture2D>> WaterTextures; // the water codes, one per level
+	TArray<TObjectPtr<UTexture2D>> WaterTextures; // the water levels, one per level
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them
@@ -110,7 +119,7 @@ private:
 	TArray<TObjectPtr<UStaticMeshComponent>> Trims; // none for level 0
 
 	UPROPERTY()
-	TObjectPtr<UMaterialInstanceDynamic> SurfaceLook; // of the tiles, none without it
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> SurfaceLooks; // of the tiles: ground, water
 
 	TArray<int32> TrimShown;
 	TArray<TOptional<terrain::unreal::LevelPlacement>> Placed;

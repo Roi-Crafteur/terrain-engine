@@ -190,6 +190,7 @@ terrain_add_test(hydrology_test terrain_core)
 terrain_add_test(water_cost_test terrain_core)
 # A measure of time: alone, even under ctest -j.
 set_tests_properties(water_cost_test PROPERTIES RUN_SERIAL TRUE)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cost_ratio_tests.cmake) # agent 30: stable cost ratios
 terrain_add_test(river_falls_test terrain_core)
 terrain_add_test(planet_compact_test terrain_core)
 terrain_add_test(planet_golden_test terrain_core)
@@ -506,4 +507,5 @@ add_test(NAME export_silhouette_bad_args
             -DOUT=${CMAKE_BINARY_DIR}/silhouette_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_silhouette_bad_args.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/water_level_tests.cmake) # task 7b: the water level
+include(${CMAKE_CURRENT_SOURCE_DIR}/unreal_water_tests.cmake) # agent 27: the water in Unreal
 include(${CMAKE_CURRENT_SOURCE_DIR}/coast_tests.cmake) # agent 33: the coastal relief
