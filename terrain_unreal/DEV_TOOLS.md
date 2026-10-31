@@ -158,8 +158,18 @@ Une image est prise quand rien ne reste à charger autour de la vue : toutes les
 sélection affichées, aucune en attente, l'horizon GPU affiché et fini (époque et détail), aucune
 modification en cours, et cela depuis `Terrain.ShotSettle` secondes (l'exposition et la lumière
 suivent) ; au plus `Terrain.ShotTimeout` secondes, sinon l'image est prise quand même et marquée
-`NOT READY (timeout)`. L'écran F3 est caché pendant la capture. L'image a la taille de la fenêtre
-du Play : **garder la même taille de fenêtre** pour comparer deux séries.
+`NOT READY (timeout)`. L'image a la taille de la fenêtre du Play : **garder la même taille de
+fenêtre** pour comparer deux séries.
+
+- **L'écran F3 n'est pas dans les images** : `Terrain.Shot` et `Terrain.Views` le cachent pendant
+  la capture. `HighResShot` ne le montre pas non plus (`UDebugDrawService` n'y dessine pas) :
+  seul `shot showui` prend une image avec F3 (utile pour garder les lignes d'un point avec sa
+  vue).
+- **Pas de flou de mouvement** : de la commande jusqu'à la dernière image de la série,
+  `ShowFlag.MotionBlur 0`, puis `ShowFlag.MotionBlur 2` (le réglage par défaut de la fenêtre,
+  aussi quand la série s'arrête autrement, ou au Stop). Chaque téléportation est en plus une
+  coupure de caméra (`SetGameCameraCutThisFrame`) : le flou et l'historique temporel repartent de
+  la nouvelle vue.
 
 `views.txt` : la seed, le preset, le fichier planète, les anneaux de LOD, puis une ligne par vue
 (fichier, lieu, x, z, œil, yaw, inclinaison, prête ou non et après combien de secondes, tuiles en

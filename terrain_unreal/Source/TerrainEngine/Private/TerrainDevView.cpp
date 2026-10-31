@@ -7,6 +7,7 @@
 #if TERRAIN_DEV_TOOLS
 
 #include "Bridge/walkable_ground.hpp"
+#include "Camera/PlayerCameraManager.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
@@ -106,6 +107,11 @@ bool UTerrainDevTools::PlaceView(const terrain::unreal::ViewPose& Pose)
 	// The pitch of the pose negative down, as FRotator (DEV_TOOLS.md, the contract).
 	PlayerController->SetControlRotation(
 		TerrainDev::ToRotator(terrain::unreal::viewRotation(Pose)));
+	// A cut: the motion blur and the temporal history start again from the new view.
+	if (PlayerController->PlayerCameraManager != nullptr)
+	{
+		PlayerController->PlayerCameraManager->SetGameCameraCutThisFrame();
+	}
 	const double StartSeconds = FPlatformTime::Seconds();
 	// The eye stays exactly where asked: no snap onto the ground.
 	const bool bSnap = World->bSnapPawnToGround;

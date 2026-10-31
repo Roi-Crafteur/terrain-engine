@@ -86,6 +86,7 @@ void UTerrainDevTools::Stop()
 		}
 		EndHold();
 		Dev->Shot.reset();
+		SetMotionBlurOff(false);
 		Dev->Planet.reset(); // cancelled: waits at most for the end of the stage in progress
 	}
 	if (IsValid(DevPawn))

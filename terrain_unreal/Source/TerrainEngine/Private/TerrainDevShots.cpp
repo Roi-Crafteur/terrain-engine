@@ -56,6 +56,7 @@ void UTerrainDevTools::RunShot(const std::vector<std::string>& Args)
 		TerrainDev::Warn(Name ? FString(TEXT("an image is already being taken")) : ToText(Error));
 		return;
 	}
+	SetMotionBlurOff(true);
 	Dev->Shot.emplace();
 	Dev->Shot->Current.place.name = *Name;
 	CurrentPose(Dev->Shot->Current.pose);
@@ -90,8 +91,26 @@ void UTerrainDevTools::RunViews(const std::vector<std::string>& Args)
 	CurrentPose(Run.StartPose);
 	TerrainDev::Log(FString::Printf(TEXT("Terrain.Views: %d places into %s"),
 		static_cast<int32>(Run.Places.size()), *Run.Folder));
+	SetMotionBlurOff(true);
 	Dev->Shot = MoveTemp(Run);
 	NextView();
+}
+
+// No motion blur in the images (the first one after a teleport came out blurred): off from the
+// start of Terrain.Shot or Terrain.Views to its end, then back to the default of the viewport
+// (ShowFlag.MotionBlur 2).
+void UTerrainDevTools::SetMotionBlurOff(bool bOff)
+{
+	if (Dev->bMotionBlurOff == bOff)
+	{
+		return;
+	}
+	if (APlayerController* PlayerController = Controller())
+	{
+		PlayerController->ConsoleCommand(
+			bOff ? TEXT("ShowFlag.MotionBlur 0") : TEXT("ShowFlag.MotionBlur 2"));
+	}
+	Dev->bMotionBlurOff = bOff;
 }
 
 void UTerrainDevTools::StartShot(const FString& File)
@@ -146,6 +165,7 @@ void UTerrainDevTools::TickShots()
 {
 	if (!Dev->Shot.has_value())
 	{
+		SetMotionBlurOff(false); // whichever way the image or the run ended
 		return;
 	}
 	FTerrainDevShot& Shot = *Dev->Shot;

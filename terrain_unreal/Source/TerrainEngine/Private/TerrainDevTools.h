@@ -99,6 +99,7 @@ private:
 	void EndHold();
 
 	// TerrainDevShots.cpp
+	void SetMotionBlurOff(bool bOff);
 	void StartShot(const FString& File);
 	void NextView();
 	void TickShots();

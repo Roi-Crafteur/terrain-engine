@@ -64,6 +64,7 @@ struct FTerrainDevState
 	double LinesAt = -1.0;     // FPlatformTime::Seconds of the last refresh
 	double ProbeMs = 0.0;      // what the last refresh cost the game thread
 	bool bHideScreen = false;  // during a capture
+	bool bMotionBlurOff = false; // ShowFlag.MotionBlur 0 while an image or a run is taken
 	std::optional<FTerrainDevHold> Hold;
 	std::optional<FTerrainDevShot> Shot;
 	// Terrain.Seed: the planet being prepared and the world it is for.
