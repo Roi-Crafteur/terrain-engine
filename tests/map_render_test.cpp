@@ -111,6 +111,24 @@ void testWater() {
         covered += m.riverCover > 0.0f && m.discharge > 0.0f ? 1u : 0u;
     }
     TEST_CHECK(covered > 0);
+    // Around the mouths of rivers into the sea at 64 m per pixel: their courses drawn on the land,
+    // never over the sea (a course goes on to the middle of the cell of its mouth).
+    std::size_t land = 0;
+    std::size_t sea = 0;
+    std::size_t mouths = 0;
+    for (const RiverSegment& segment : w.planet->rivers().segments) {
+        if (segment.mouth != RiverMouth::Sea || segment.vertices.front().discharge < 50.0f ||
+            ++mouths > 4) {
+            continue;
+        }
+        const RiverVertex& end = segment.vertices.back();
+        const MapFrame f64 = map_world::frameAround(end.x, end.z, 64.0, 128, golden::kSmallPlanet);
+        for (const MapSample& m : map_world::samplesOf(w.source, f64, 4)) {
+            land += m.riverCover > 0.0f && m.water == WaterKind::None ? 1u : 0u;
+            sea += m.riverCover > 0.0f && m.water == WaterKind::Ocean ? 1u : 0u;
+        }
+    }
+    TEST_CHECK(mouths > 0 && land > 0 && sea == 0);
     const MapLayers layers = defaultMapLayers();
     TEST_CHECK(renderMap(w.source, f, layers, kAll, {1}).rgba ==
                renderMap(w.source, f, layers, kAll, {4}).rgba);

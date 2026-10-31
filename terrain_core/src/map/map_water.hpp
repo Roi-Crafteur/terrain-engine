@@ -37,9 +37,10 @@ struct Fall {
 // Lays the courses over the samples of frame (with its border, mapGridSize) where their channel is
 // narrower than kWideChannelPixels: each sample takes the part of its pixel the nearest course
 // covers, the channel at least leastPixels wide, and the discharge of the course covering it most
-// (the largest discharge among equals). Wider, the samples show the channel itself (its meanders
-// about the axis of the course): the river samples within its meanders take its discharge only.
-// The same samples whatever the order of the courses.
+// (the largest discharge among equals); never the samples under the sea or a lake (a course goes
+// on to the middle of the cell of its mouth). Wider, the samples show the channel itself (its
+// meanders about the axis of the course): the river samples within its meanders take its
+// discharge only. The same samples whatever the order of the courses.
 void drawCourses(const MapFrame& frame, std::span<const Course> courses, double leastPixels,
                  std::span<MapSample> out);
 

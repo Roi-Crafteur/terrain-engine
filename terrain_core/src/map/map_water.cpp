@@ -55,7 +55,12 @@ void layCourse(MapSample& sample, double cover, bool wide, bool within, float di
         }
         return;
     }
+    const bool standing = sample.water == WaterKind::Ocean || sample.water == WaterKind::Lake ||
+                          sample.water == WaterKind::SaltLake;
     const auto c = static_cast<float>(cover);
+    if (standing) {
+        return; // the course of a reach goes on to the middle of the cell of its mouth
+    }
     if (c > sample.riverCover ||
         (c > 0.0f && c == sample.riverCover && discharge > sample.discharge)) {
         sample.riverCover = c;
