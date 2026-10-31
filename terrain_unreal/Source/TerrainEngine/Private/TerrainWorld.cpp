@@ -201,11 +201,14 @@ void ATerrainWorld::StopStreaming(const FString& Reason)
 {
 	UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: streaming stopped: %s"), *Reason);
 	SetActorTickEnabled(false);
+	NotifyDevToolsStopped();
 }
 
 void ATerrainWorld::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	// First: Terrain.Seed may build the world again there, the tools tick without a world too.
+	TickDevTools(DeltaSeconds);
 	if (!State.IsValid() || Backend == nullptr)
 	{
 		return;
@@ -238,7 +241,6 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 	TickHorizon(Focus);
 	RecordFrame();
 	LogTimings(DeltaSeconds);
-	TickDevTools(DeltaSeconds);
 }
 
 void ATerrainWorld::ApplyWorldOffset(const FVector& InOffset, bool bWorldShift)

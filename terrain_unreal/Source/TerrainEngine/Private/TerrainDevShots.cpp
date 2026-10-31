@@ -108,6 +108,12 @@ void UTerrainDevTools::StartShot(const FString& File)
 void UTerrainDevTools::NextView()
 {
 	FTerrainDevShot& Shot = *Dev->Shot;
+	if (!World->State.IsValid())
+	{
+		TerrainDev::Warn(TEXT("Terrain.Views stopped: no world playing"));
+		Dev->Shot.reset();
+		return;
+	}
 	if (Shot.Index >= Shot.Places.size())
 	{
 		FinishViews();
@@ -125,7 +131,13 @@ void UTerrainDevTools::NextView()
 		TerrainDev::Warn(FString::Printf(TEXT("%s needs the planet file: taken without it"),
 			*ToText(Place.name)));
 	}
-	PlaceView(Shot.Current.pose);
+	if (!PlaceView(Shot.Current.pose))
+	{
+		// The streaming stopped (OnStreamingStopped may have ended the run already).
+		TerrainDev::Warn(TEXT("Terrain.Views stopped: the view could not be placed"));
+		Dev->Shot.reset();
+		return;
+	}
 	StartShot(FPaths::Combine(Shot.Folder,
 		ToText(terrain::unreal::viewFileName(Shot.Index + 1, Place.name))));
 }
@@ -144,6 +156,7 @@ void UTerrainDevTools::TickShots()
 		{
 			TerrainDev::Warn(FString::Printf(TEXT("no image written after %.0f s: %s"),
 				CaptureTimeoutSeconds, *Shot.File));
+			FScreenshotRequest::Reset(); // never written later under the name of another view
 			OnShotProcessed();
 		}
 		return;

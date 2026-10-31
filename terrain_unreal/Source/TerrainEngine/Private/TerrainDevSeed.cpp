@@ -33,16 +33,22 @@ void UTerrainDevTools::RunSeed(const std::vector<std::string>& Args)
 	const auto NewSeed = static_cast<std::uint64_t>(Command->seed);
 	const std::string Base =
 		TerrainDev::ToUtf8(FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()));
-	const terrain::unreal::PlanetChoice Choice =
-		terrain::unreal::choosePlanetFile(TerrainDev::ToUtf8(World->PlanetFile), NewSeed, Base);
+	const terrain::unreal::PlanetChoice Choice = terrain::unreal::choosePlanetFile(
+		TerrainDev::ToUtf8(Dev->ConfiguredPlanetFile), NewSeed, Base);
 	Dev->PendingSeed = *Command;
+	// A world stopped on an error is released: the tools tick on without it until the new one.
+	if (!World->IsActorTickEnabled() && World->State.IsValid())
+	{
+		World->ReleaseWorld();
+	}
+	World->SetActorTickEnabled(true);
 	if (Choice.file.empty())
 	{
 		SwitchSeed(std::string());
 		return;
 	}
 	Dev->Planet = std::make_unique<terrain::unreal::PlanetJob>(Choice, NewSeed,
-		World->State->Session.tiles().world());
+		World->State.IsValid() ? World->State->Session.tiles().world() : terrain::WorldSize{});
 	TerrainDev::Log(FString::Printf(TEXT("Terrain.Seed %lld (%s): the planet file %s%s is read, or "
 		"built on a thread of its own (minutes for the whole planet), the world playing meanwhile"),
 		static_cast<long long>(Command->seed),
@@ -98,6 +104,7 @@ void UTerrainDevTools::SwitchSeed(const std::string& PlanetFile)
 		World->SetActorTickEnabled(false);
 		return;
 	}
+	World->SetActorTickEnabled(true);
 	Dev->Perf.clear();
 	if (Mode != terrain::unreal::ViewMode::Normal)
 	{

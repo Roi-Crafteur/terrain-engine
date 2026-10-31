@@ -69,6 +69,8 @@ struct FTerrainDevState
 	// Terrain.Seed: the planet being prepared and the world it is for.
 	std::unique_ptr<terrain::unreal::PlanetJob> Planet;
 	terrain::unreal::SeedCommand PendingSeed;
+	// PlanetFile as the level gives it (its "{Seed}"): Terrain.Seed sets the file it prepared.
+	FString ConfiguredPlanetFile;
 };
 
 namespace TerrainDev
@@ -81,7 +83,9 @@ namespace TerrainDev
 	inline std::string ToUtf8(const FString& Text)
 	{
 		const FTCHARToUTF8 Converted(*Text);
-		return std::string(Converted.Get(), static_cast<std::size_t>(Converted.Length()));
+		// Get() is UTF8CHAR (not char) in Unreal 5: the same bytes.
+		return std::string(reinterpret_cast<const char*>(Converted.Get()),
+			static_cast<std::size_t>(Converted.Length()));
 	}
 
 	inline FString ToText(const std::string& Text)

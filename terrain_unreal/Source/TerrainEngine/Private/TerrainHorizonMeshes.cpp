@@ -137,6 +137,7 @@ UProceduralMeshComponent* UTerrainHorizonMeshes::LevelComponent(int32 Level)
 	Component->SetUsingAbsoluteScale(true);
 	Component->SetupAttachment(OwnerActor->GetRootComponent());
 	Component->RegisterComponent();
+	Component->SetHiddenInGame(bHiddenByTools);
 	if (HorizonMaterial != nullptr)
 	{
 		for (int32 Index = 0; Index < SectionCount; ++Index)
@@ -150,6 +151,7 @@ UProceduralMeshComponent* UTerrainHorizonMeshes::LevelComponent(int32 Level)
 
 void UTerrainHorizonMeshes::SetHiddenByTools(bool bHidden)
 {
+	bHiddenByTools = bHidden;
 	for (UProceduralMeshComponent* Level : Levels)
 	{
 		if (Level != nullptr)

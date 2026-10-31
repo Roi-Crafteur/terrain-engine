@@ -5,10 +5,11 @@
 // TERRAIN_DEV_TOOLS (never in Shipping).
 #include "ProceduralMeshTerrainBackend.h"
 
+#include "ProceduralMeshComponent.h"
+
 #if TERRAIN_DEV_TOOLS
 #include "Bridge/debug_colors.hpp"
 #include "Materials/MaterialInterface.h"
-#include "ProceduralMeshComponent.h"
 #endif
 
 void UProceduralMeshTerrainBackend::SetDebugLook(terrain::unreal::ViewMode Mode,

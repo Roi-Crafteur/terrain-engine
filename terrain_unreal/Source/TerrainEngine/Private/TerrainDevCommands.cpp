@@ -11,6 +11,7 @@
 #include "TerrainDevState.h"
 #include "TerrainWorld.h"
 
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -34,7 +35,14 @@ namespace
 		{
 			if (UTerrainDevTools* Tools = It->GetDevTools())
 			{
-				(Tools->*Command)(Utf8);
+				try
+				{
+					(Tools->*Command)(Utf8);
+				}
+				catch (const std::exception& Failure)
+				{
+					TerrainDev::Warn(TerrainDev::ToText(Failure.what()));
+				}
 				bAny = true;
 			}
 		}

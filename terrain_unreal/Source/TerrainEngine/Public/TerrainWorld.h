@@ -394,6 +394,7 @@ private:
 	void StartDevTools();
 	void StopDevTools();
 	void TickDevTools(float DeltaSeconds);
+	void NotifyDevToolsStopped();
 
 	friend class UTerrainDevTools;
 

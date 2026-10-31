@@ -5,6 +5,11 @@
 #include "TerrainDevTypes.h"
 #include "UObject/Object.h"
 
+#include "Bridge/dev_commands.hpp"
+#include "Bridge/place_pose.hpp"
+
+#include "terrain/dev/places_file.hpp"
+
 #include <string>
 #include <vector>
 
@@ -15,17 +20,6 @@ class APlayerController;
 class ATerrainWorld;
 class UCanvas;
 struct FTerrainDevState;
-
-namespace terrain::dev
-{
-	struct PlacesFile;
-}
-
-namespace terrain::unreal
-{
-	struct ViewPose;
-	enum class ViewMode : unsigned char; // std::uint8_t, Bridge/dev_commands.hpp
-}
 
 /**
  * The tools of the developers of an ATerrainWorld while playing (agent 36,
@@ -49,8 +43,11 @@ public:
 	// game back, the view mode normal, and cancels a build of a planet.
 	void Start(ATerrainWorld& InWorld);
 	void Stop();
-	// After the streaming of each frame: the measures, the screen, the waits, the planet.
+	// Each frame, before the streaming: the measures, the screen, the waits, the planet (the
+	// planet alone while the world is not playing).
 	void Tick(float DeltaSeconds);
+	// The streaming stopped on an error: the waits end, the pawn moves again.
+	void OnStreamingStopped();
 
 	// The console commands (TerrainDevCommands.cpp), their arguments in UTF-8.
 	void RunHud(const std::vector<std::string>& Args);
@@ -73,6 +70,7 @@ public:
 
 private:
 	// TerrainDevTools.cpp
+	void TickWorld(float DeltaSeconds);
 	APlayerController* Controller() const;
 	void BindKeys();
 	void NextPage();

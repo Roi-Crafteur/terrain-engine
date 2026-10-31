@@ -4,6 +4,9 @@
 #include "TerrainWorld.h"
 
 #include "TerrainDevTools.h"
+#include "TerrainEngineLog.h"
+
+#include <exception>
 
 void ATerrainWorld::StartDevTools()
 {
@@ -39,11 +42,30 @@ void ATerrainWorld::TickDevTools(float DeltaSeconds)
 #endif
 }
 
+void ATerrainWorld::NotifyDevToolsStopped()
+{
+#if TERRAIN_DEV_TOOLS
+	if (DevTools != nullptr)
+	{
+		DevTools->OnStreamingStopped();
+	}
+#endif
+}
+
 bool ATerrainWorld::TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
 	ETerrainEyeMode EyeMode)
 {
 #if TERRAIN_DEV_TOOLS
-	return DevTools != nullptr && DevTools->TeleportView(X, Z, Heading, Pitch, Eye, EyeMode);
+	try
+	{
+		return DevTools != nullptr && DevTools->TeleportView(X, Z, Heading, Pitch, Eye, EyeMode);
+	}
+	catch (const std::exception& Failure)
+	{
+		UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: TeleportView: %s"),
+			UTF8_TO_TCHAR(Failure.what()));
+		return false;
+	}
 #else
 	(void)X, (void)Z, (void)Heading, (void)Pitch, (void)Eye, (void)EyeMode;
 	return false;

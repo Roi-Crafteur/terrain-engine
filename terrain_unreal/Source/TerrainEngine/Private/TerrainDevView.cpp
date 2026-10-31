@@ -85,9 +85,19 @@ bool UTerrainDevTools::PlaceView(const terrain::unreal::ViewPose& Pose)
 	// The eye stays exactly where asked: no snap onto the ground.
 	const bool bSnap = World->bSnapPawnToGround;
 	World->bSnapPawnToGround = false;
-	World->WarmUpAround(*Flying);
+	try
+	{
+		World->WarmUpAround(*Flying);
+	}
+	catch (const std::exception& Failure)
+	{
+		World->bSnapPawnToGround = bSnap;
+		World->StopStreaming(ToText(Failure.what()));
+		return false;
+	}
 	World->bSnapPawnToGround = bSnap;
-	if (!Dev->Hold.has_value())
+	// A possession resets the move input that is ignored: asked again whatever happened.
+	if (!PlayerController->IsMoveInputIgnored())
 	{
 		PlayerController->SetIgnoreMoveInput(true);
 	}
@@ -193,7 +203,14 @@ bool UTerrainDevTools::ReturnToGamePawn(bool bUnderView)
 		{
 			Movement->StopMovementImmediately();
 		}
-		World->WarmUpAround(*Game);
+		try
+		{
+			World->WarmUpAround(*Game);
+		}
+		catch (const std::exception& Failure)
+		{
+			World->StopStreaming(ToText(Failure.what()));
+		}
 	}
 	else
 	{
@@ -309,6 +326,11 @@ void UTerrainDevTools::RunSave(const std::vector<std::string>& Args)
 
 void UTerrainDevTools::RunInfo(const std::vector<std::string>& Args)
 {
+	if (!World->State.IsValid())
+	{
+		TerrainDev::Warn(TEXT("no world playing"));
+		return;
+	}
 	TArray<FString> Lines;
 	if (!Args.empty() && Args[0] == "here")
 	{

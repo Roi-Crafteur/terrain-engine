@@ -64,4 +64,5 @@ private:
 	// Per level and section: the vertices and triangles shown.
 	TArray<FIntPoint> SectionSizes;
 	bool bShadows = false;
+	bool bHiddenByTools = false; // the levels created from now on too
 };

@@ -58,6 +58,7 @@ void UTerrainDevTools::Start(ATerrainWorld& InWorld)
 {
 	World = &InWorld;
 	Dev = MakePimpl<FTerrainDevState>();
+	Dev->ConfiguredPlanetFile = InWorld.PlanetFile;
 	DrawHandle = UDebugDrawService::Register(TEXT("Game"),
 		FDebugDrawDelegate::CreateUObject(this, &UTerrainDevTools::Draw));
 	ShotHandle = FScreenshotRequest::OnScreenshotRequestProcessed().AddUObject(this,
@@ -81,6 +82,14 @@ void UTerrainDevTools::Stop()
 	}
 	if (IsValid(DevPawn))
 	{
+		// The pawn of the game back, unless the whole world ends.
+		const UWorld* GameWorld = World != nullptr ? World->GetWorld() : nullptr;
+		APlayerController* PlayerController = Controller();
+		if (GameWorld != nullptr && !GameWorld->bIsTearingDown && PlayerController != nullptr &&
+			IsValid(GamePawn))
+		{
+			PlayerController->Possess(GamePawn);
+		}
 		DevPawn->Destroy();
 	}
 	DevPawn = nullptr;
@@ -100,8 +109,38 @@ void UTerrainDevTools::Stop()
 
 void UTerrainDevTools::Tick(float DeltaSeconds)
 {
-	if (!Dev.IsValid() || World == nullptr || !World->State.IsValid())
+	if (!Dev.IsValid() || World == nullptr)
 	{
+		return;
+	}
+	try
+	{
+		TickWorld(DeltaSeconds);
+	}
+	catch (const std::exception& Failure)
+	{
+		TerrainDev::Warn(FString::Printf(TEXT("the tools stopped what they did: %s"),
+			*TerrainDev::ToText(Failure.what())));
+		OnStreamingStopped();
+	}
+}
+
+void UTerrainDevTools::OnStreamingStopped()
+{
+	if (!Dev.IsValid())
+	{
+		return;
+	}
+	EndHold();
+	Dev->Shot.reset();
+	Dev->bHideScreen = false;
+}
+
+void UTerrainDevTools::TickWorld(float DeltaSeconds)
+{
+	if (!World->State.IsValid())
+	{
+		TickSeed(); // a world of another seed may be on its way
 		return;
 	}
 	BindKeys();
@@ -167,7 +206,8 @@ void UTerrainDevTools::RunHud(const std::vector<std::string>& Args)
 bool UTerrainDevTools::CurrentPose(terrain::unreal::ViewPose& OutPose) const
 {
 	const APlayerController* PlayerController = Controller();
-	if (PlayerController == nullptr || PlayerController->PlayerCameraManager == nullptr)
+	if (PlayerController == nullptr || PlayerController->PlayerCameraManager == nullptr ||
+		!World->State.IsValid())
 	{
 		return false;
 	}
@@ -182,7 +222,7 @@ bool UTerrainDevTools::CurrentPose(terrain::unreal::ViewPose& OutPose) const
 
 bool UTerrainDevTools::HasPlanet() const
 {
-	return World->State->Session.planet().level != nullptr;
+	return World->State.IsValid() && World->State->Session.planet().level != nullptr;
 }
 
 // Terrain.PlacesFile, or data/dev/places.json at the root of the repository the plugin lies in
