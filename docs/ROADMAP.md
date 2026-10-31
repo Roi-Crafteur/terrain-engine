@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -157,6 +158,20 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - fichier planète par défaut `Saved/TerrainEngine/planet_{Seed}.bin` : la carte de test a ses
   fleuves ; un fichier périmé ou abîmé est reconstruit, la raison dans le log, jamais lu en
   silence ; scripts des matériaux qui remettent tous leurs réglages à zéro
+
+### Chargement au spawn et à la téléportation (agent 38)
+- mesuré d'abord (journal de chaque tuile, jalons, courbe « distance → instant visible », CSV) :
+  les tuiles autour du joueur étaient là en 0,26 à 0,68 s, mais l'horizon lointain arrivait d'un
+  bloc 3,7 à 24 s après (Unreal, 9950X3D, avec la planète). Avec la planète, une époque complète
+  coûte 74 à 111 s sur un fil, dont 65 s pour les niveaux 8 et 9 (`Hydrology::courseOf`, tâche à
+  part)
+- l'horizon vient niveau par niveau, le niveau 0 d'abord, chacun en fondu, le bord du dernier
+  niveau visible dissous dans le ciel ; l'époque de l'ancien lieu est abandonnée à la téléportation
+- renfort pendant le chargement (fils de tuiles et morceaux d'horizon ensemble sous
+  `min(fils − 4, 12)`, envois par un budget en ms), puis retour au régime normal ; écran noir 2 s au
+  plus jusqu'au sol, 64 m, toutes les tuiles et les niveaux 0 à 3 ; pion tenu jusqu'à sa collision
+- `TeleportWhenReady`, `PrepareLocation` et `OnTerrainLocationReady` ; contrôle de déterminisme
+  sur un fil ; mêmes tuiles et mêmes échantillons au bit près (`terrain_unreal/LOADING.md`)
 
 ### Phase 11D — Niveau Planète créé en 500 Mo
 - création du monde (`terrain_make_planet`, monde par défaut, mesuré sous Linux) : pic de
