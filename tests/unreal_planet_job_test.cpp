@@ -102,7 +102,8 @@ void testCancel(const std::filesystem::path& dir) {
     const auto result = job.take();
     TEST_CHECK(job.done() && result.cancelled && result.source.level == nullptr);
     TEST_CHECK(!std::filesystem::exists(choice.file));
-    // Destroyed while it builds: it stops at the end of its stage.
+    // Destroyed while it builds: it stops at the end of its stage, or ends its build if the
+    // small world is built first (a fast machine); its file is then whole, never half written.
     const auto start = std::chrono::steady_clock::now();
     {
         PlanetJob dropped(choosePlanetFile("dropped_{Seed}.bin", 98, text(dir)), 98,
@@ -111,8 +112,17 @@ void testCancel(const std::filesystem::path& dir) {
     }
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    std::printf("  dropped while building: stopped in %.2f s\n", seconds);
-    TEST_CHECK(!std::filesystem::exists(dir / "dropped_98.bin"));
+    const std::filesystem::path dropped = dir / "dropped_98.bin";
+    const bool written = std::filesystem::exists(dropped);
+    std::printf("  dropped while building: %s in %.2f s\n", written ? "built" : "stopped",
+                seconds);
+    TEST_CHECK(seconds < 10.0);
+    if (written) {
+        const terrain::PlanetLevel level =
+            terrain::loadPlanetFile(dropped, 98, terrain::PlanetParams{}, golden::kSmallPlanet);
+        TEST_CHECK(level.grid().nx > 0);
+    }
+    TEST_CHECK(!std::filesystem::exists(dir / "dropped_98.bin.tmp"));
 }
 
 } // namespace
