@@ -142,6 +142,11 @@ double smoothMax(double a, double b, double k) {
     return std::max(a, b) + 0.25 * k * h * h;
 }
 
+// The lesser of a and b, rounded over k.
+double smoothMin(double a, double b, double k) {
+    return -smoothMax(-a, -b, k);
+}
+
 noise::FbmOctaves shapeNoise(std::uint64_t seed, std::uint64_t stream, double wavelength,
                              const WorldSize& world) {
     return noise::FbmOctaves(noise::deriveSeed(seed, stream),
@@ -252,12 +257,12 @@ Land shoreOf(const Profile& k, const GeographySample& g, double coast, double d,
             smooth(f.foot, top, d)};
 }
 
-// The mountains and the fjords: the mountains and the regional elevation rise from the shore,
-// steepest there (no ledge at the water), held down by held (in [0, 1]) where they share the coast
-// with cliffs.
-Land plungeOf(const GeographySample& g, double coast, double held) {
+// The mountains and the fjords: the mountains and the regional elevation rise from the shore of
+// the geography (base), steepest there (no ledge at the water), and from the sides of the inlets
+// (rise), held down by held (in [0, 1]) where they share the coast with cliffs.
+Land plungeOf(const GeographySample& g, double coast, double base, double rise, double held) {
     const double plain = std::min(kCoastPlainRise * coast, kCoastPlainTop);
-    const double rise = easeOut(coast / kPlungeRamp) * held;
+    rise *= easeOut(base / kPlungeRamp) * held;
     return {rise, rise, plain + (static_cast<double>(g.land) - plain) * rise};
 }
 
@@ -275,7 +280,7 @@ bool plunges(CoastKind kind) {
 // up the face of the shore kinds, leaving their platform flat; the low coast as without the
 // coasts.
 Land blendLand(const coast_kinds::Weights& weights, const GeographySample& g, double coast,
-               double d, const Shore& s, double oldLand, double old) {
+               double d, const Shore& s, double oldLand, double old, const Inlets& inlets) {
     Land sum;
     double shoreWeight = 0.0;
     double up = 0.0;
@@ -302,7 +307,8 @@ Land blendLand(const coast_kinds::Weights& weights, const GeographySample& g, do
     for (std::size_t k = 0; k < weights.size(); ++k) {
         const auto kind = static_cast<CoastKind>(k);
         if (weights[k] > 0.0f && plunges(kind)) {
-            add(static_cast<double>(weights[k]), plungeOf(g, coast, held));
+            add(static_cast<double>(weights[k]),
+                plungeOf(g, coast, inlets.base, inlets.rise, held));
         }
     }
     add(static_cast<double>(weights[static_cast<std::size_t>(CoastKind::Low)]),
@@ -377,7 +383,7 @@ Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
 
 Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,
                const GeographySample& g, double coast, double distance,
-               const coast_kinds::Weights& weights) {
+               const coast_kinds::Weights& weights, const Inlets& inlets) {
     if (coast < 0.0) {
         double ground = 0.0;
         for (std::size_t k = 0; k < weights.size(); ++k) {
@@ -386,7 +392,17 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
                           seaOf(p, static_cast<CoastKind>(k), g, coast, distance);
             }
         }
-        return {0.0f, 0.0f, static_cast<float>(ground), 1.0f, 0.0f};
+        // In the inlets the plunging mountains go on down under the water, to their floor.
+        double plunge = 0.0;
+        for (const CoastKind kind : {CoastKind::Mountain, CoastKind::Fjord}) {
+            plunge += static_cast<double>(weights[static_cast<std::size_t>(kind)]);
+        }
+        const double mirror = plunge * std::max(0.0, static_cast<double>(g.land)) *
+                              easeOut(inlets.base / kPlungeRamp) * inlets.sink;
+        // Rounded where the mountains meet the floor (a quarter of its depth).
+        const double floor =
+            std::min(inlets.floor, -smoothMin(mirror, inlets.deep, 0.25 * inlets.deep));
+        return {0.0f, 0.0f, static_cast<float>(std::min(ground, floor)), 1.0f, 0.0f};
     }
     bool shores = false;
     for (const CoastKind kind :
@@ -396,13 +412,17 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
     const Shore shore = shores ? shoreAt(noises, x, z) : Shore{};
     const double oldLand = static_cast<double>(landFactor(p, coast));
     const double old = static_cast<double>(groundBase(p, g, coast));
-    const Land sum = blendLand(weights, g, coast, distance, shore, oldLand, old);
+    Land sum = blendLand(weights, g, coast, distance, shore, oldLand, old, inlets);
+    sum.ground = std::max(sum.ground, inlets.dome);
+    // At the inner edge of the band, the world without the coasts (the inlets never reach it).
     const double inner =
-        smooth(p.coastRamp - kInnerFade, p.coastRamp - kInnerSlack, coast);
-    const auto land = static_cast<float>(sum.land + (oldLand - sum.land) * inner);
+        smooth(p.coastRamp - kInnerFade, p.coastRamp - kInnerSlack, inlets.base);
+    const double outLand = static_cast<double>(landFactor(p, inlets.base));
+    const double out = static_cast<double>(groundBase(p, g, inlets.base));
+    const auto land = static_cast<float>(sum.land + (outLand - sum.land) * inner);
     const float low = weights[static_cast<std::size_t>(CoastKind::Low)];
-    return {land, static_cast<float>(sum.mountains + (oldLand - sum.mountains) * inner),
-            static_cast<float>(sum.ground + (old - sum.ground) * inner),
+    return {land, static_cast<float>(sum.mountains + (outLand - sum.mountains) * inner),
+            static_cast<float>(sum.ground + (out - sum.ground) * inner),
             low + (1.0f - low) * land, static_cast<float>((1.0 - low) * (1.0 - inner))};
 }
 

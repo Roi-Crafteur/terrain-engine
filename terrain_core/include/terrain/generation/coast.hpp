@@ -55,4 +55,42 @@ struct CoastSample {
     [[nodiscard]] float weight(CoastKind k) const { return weights[static_cast<std::size_t>(k)]; }
 };
 
+// The inlets cut in the coast signal (Heightfield::inletsIn): each a tube of sea rooted out in the
+// sea of the geography, going inland up its coast signal (the sea always joins the ocean), its
+// width and floor changing along it; stopped before the corridor of any river or lake of the
+// Hydrology of the Heightfield (none without one), and before the inner part of the band of the
+// coasts. Placed on fixed lattices along the coasts by the kinds of coast, a pure function of
+// their cell: the same whatever the threads, the order or the box of the queries.
+enum class InletKind : std::uint8_t {
+    Fjord,    // fjords: troughs a few kilometers long between plunging mountains, a sill at sea
+    Ria,      // rias: drowned valleys narrowing inland, with side branches, shallow
+    Calanque, // calanques: narrow winding inlets between the faces of limestone cliffs
+    Cove,     // coves: round bays in soft rock between capes, on the rocky coasts and cliffs
+};
+inline constexpr int kInletKindCount = 4;
+
+[[nodiscard]] const char* inletKindName(InletKind kind);
+
+// An inlet, for the settlements to come: a harbor where it is sheltered (Heightfield::harborsIn).
+struct CoastSite {
+    double x = 0.0;       // canonical: the middle of its widest water inland of its mouth, meters
+    double z = 0.0;
+    float opening = 0.0f; // the width of its mouth on the shore of the geography, meters
+    float size = 0.0f;    // the width of its widest water inland of the mouth, meters
+    float length = 0.0f;  // from its mouth to its head, meters
+    float depth = 0.0f;   // of its floor at (x, z), meters below the sea level
+    // In [0, 1]: how far it keeps the open sea away: sqrt(1 - opening / size) times
+    // length / (length + opening / 2); 0 where its mouth is no narrower than its inside.
+    float shelter = 0.0f;
+    InletKind inlet = InletKind::Cove;
+    CoastKind coast = CoastKind::Rocky; // the kind of the coast at its mouth
+    bool harbor = false;                // sheltered: kHarborShelter and kHarborDepth at least
+};
+
+// A harbor: shelter at least kHarborShelter, depth at least kHarborDepth meters, mouth at least
+// kHarborOpening meters wide and narrower than the water inside.
+inline constexpr float kHarborShelter = 0.5f;
+inline constexpr float kHarborDepth = 3.0f;
+inline constexpr float kHarborOpening = 20.0f;
+
 } // namespace terrain

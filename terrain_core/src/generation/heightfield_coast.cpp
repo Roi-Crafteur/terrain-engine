@@ -2,12 +2,15 @@
 // without them, which the planet level and the rivers are built over.
 #include "terrain/generation/heightfield.hpp"
 
+#include "coast_inlets.hpp"
 #include "coast_kinds.hpp"
+#include "coast_lattice.hpp"
 #include "coast_shape.hpp"
 #include "heightfield_layers.hpp"
 #include "mountain_walls.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/water/hydrology.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -15,6 +18,7 @@
 namespace terrain {
 
 struct Heightfield::Coasts {
+    std::uint64_t seed = 0;
     coast_kinds::Noises kinds;
     coast_shape::Noises shapes;
 };
@@ -57,6 +61,7 @@ std::shared_ptr<const Heightfield::Coasts> Heightfield::makeCoasts(std::uint64_t
                                                                   const WorldSize& world) {
     auto coasts = std::make_shared<Coasts>();
     const std::uint64_t stream = noise::deriveSeed(seed, kCoastStream);
+    coasts->seed = stream;
     coasts->kinds = coast_kinds::makeNoises(stream, world);
     coasts->shapes = coast_shape::makeNoises(stream, world);
     return coasts;
@@ -65,19 +70,75 @@ std::shared_ptr<const Heightfield::Coasts> Heightfield::makeCoasts(std::uint64_t
 Heightfield Heightfield::withoutCoasts() const {
     Heightfield out = *this;
     out.coasts_ = nullptr;
+    out.inlets_ = nullptr;
     out.params_.geography.coasts = false;
+    return out;
+}
+
+namespace {
+
+// The kinds of coast at a canonical point of the geography g, and the share of strata there.
+coast_inlets::Site kindsOf(const coast_kinds::Noises& kinds, const mountain_walls::Noises& walls,
+                           const WorldSize& world, double x, double z, const GeographySample& g,
+                           mountain_walls::Memo* memo) {
+    // sin(pi z / world.z) is the sine of z / (2 world.z) turns, as the climate reads the latitude.
+    const double sine = dmath::sinTurns(z / (2.0 * world.z));
+    const double strata = mountain_walls::strataShare(walls, x, z, g.character, memo);
+    const coast_kinds::Ground ground{g.relief, g.character, g.rugged, static_cast<float>(strata),
+                                     sine * sine};
+    return {g.coast, coast_kinds::weightsAt(kinds, x, z, ground), static_cast<float>(strata)};
+}
+
+} // namespace
+
+std::shared_ptr<const coast_lattice::Lattices> Heightfield::makeInlets() const {
+    coast_inlets::World w;
+    w.size = world_;
+    w.seed = coasts_->seed;
+    w.band = params_.geography.coastRamp;
+    const auto geography = geography_;
+    const WorldSize world = world_;
+    w.coast = [geography, world](double x, double z) {
+        return geography->sampleAt(wrapCoordinate(x, world.x), wrapCoordinate(z, world.z)).coast;
+    };
+    const auto layers = layers_;
+    const auto coasts = coasts_;
+    w.site = [geography, layers, coasts, world](double x, double z) {
+        const double cx = wrapCoordinate(x, world.x);
+        const double cz = wrapCoordinate(z, world.z);
+        return kindsOf(coasts->kinds, layers->walls, world, cx, cz, geography->sampleAt(cx, cz),
+                       nullptr);
+    };
+    if (hydrology_) {
+        const auto hydrology = hydrology_;
+        w.clearance = [hydrology, world](double x, double z) {
+            const double cx = wrapCoordinate(x, world.x);
+            const double cz = wrapCoordinate(z, world.z);
+            return hydrology->clearance(cx, cz,
+                                        static_cast<double>(hydrology->relief().heightAt(cx, cz)));
+        };
+    }
+    return std::make_shared<const coast_lattice::Lattices>(std::move(w));
+}
+
+std::vector<CoastSite> Heightfield::inletsIn(double minX, double minZ, double maxX,
+                                             double maxZ) const {
+    return inlets_ ? inlets_->sitesIn(minX, minZ, maxX, maxZ) : std::vector<CoastSite>{};
+}
+
+std::vector<CoastSite> Heightfield::harborsIn(double minX, double minZ, double maxX,
+                                              double maxZ) const {
+    std::vector<CoastSite> out = inletsIn(minX, minZ, maxX, maxZ);
+    out.erase(std::remove_if(out.begin(), out.end(), [](const CoastSite& s) { return !s.harbor; }),
+              out.end());
     return out;
 }
 
 coast_kinds::Weights Heightfield::coastKindsAt(double x, double z, const GeographySample& g,
                                               Memos* memos) const {
-    // sin(pi z / world.z) is the sine of z / (2 world.z) turns, as the climate reads the latitude.
-    const double sine = dmath::sinTurns(z / (2.0 * world_.z));
-    const double strata = mountain_walls::strataShare(layers_->walls, x, z, g.character,
-                                                      memos != nullptr ? &memos->walls : nullptr);
-    const coast_kinds::Ground ground{g.relief, g.character, g.rugged, static_cast<float>(strata),
-                                     sine * sine};
-    return coast_kinds::weightsAt(coasts_->kinds, x, z, ground);
+    return kindsOf(coasts_->kinds, layers_->walls, world_, x, z, g,
+                   memos != nullptr ? &memos->walls : nullptr)
+        .weights;
 }
 
 Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const GeographySample& g,
@@ -93,14 +154,19 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
         c.ground = coast_shape::groundBase(p, g, g.coast);
         return c;
     }
+    // The coast signal of the world: that of the geography, the inlets and stacks cut in it.
+    const coast_inlets::Effect inlet = inlets_->effectAt(x, z);
+    c.signal = coast_inlets::signalOf(g.coast, inlet);
     const double ax = noise::wrapCanonical(x + kGradientStep, world_.x);
     const double az = noise::wrapCanonical(z + kGradientStep, world_.z);
     const double gx = (geography_->sampleAt(ax, z).coast - g.coast) / kGradientStep;
     const double gz = (geography_->sampleAt(x, az).coast - g.coast) / kGradientStep;
-    const double distance = g.coast / std::max(kLeastGradient, dmath::hypot(gx, gz));
+    const double distance = coast_inlets::distanceOf(
+        g.coast / std::max(kLeastGradient, dmath::hypot(gx, gz)), inlet);
     const coast_shape::Ground shape = coast_shape::shapeAt(
-        p, coasts_->shapes, x, z, g, g.coast, distance, coastKindsAt(x, z, g, memos));
-    c.landward = g.coast > 0.0;
+        p, coasts_->shapes, x, z, g, c.signal, distance, coastKindsAt(x, z, g, memos),
+        {g.coast, inlet.floor, inlet.rise, inlet.dome, inlet.deep, inlet.sink});
+    c.landward = c.signal > 0.0;
     c.land = shape.land;
     c.mountains = shape.mountains;
     c.ground = shape.ground;
@@ -159,6 +225,7 @@ CoastSample Heightfield::coastAt(double worldX, double worldZ) const {
     if (!c.active) {
         return out;
     }
+    out.signal = coast_inlets::signalOf(g.coast, inlets_->effectAt(x, z));
     out.weights = coastKindsAt(x, z, g, nullptr);
     out.kind = coast_kinds::heaviest(out.weights);
     return out;

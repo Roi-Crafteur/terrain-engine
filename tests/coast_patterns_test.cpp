@@ -8,6 +8,7 @@
 //   degrees) and without teeth (the part of the error repeating at the pitch of the cells along
 //   each contour of the face at most kPeriodicMost degrees) at every LOD whose cells are at most
 //   half the height of the face.
+// - The walls of its inlets (fjords, rias, calanques, coves): the same.
 // - The faces of the coasts of the default world (cliffs, calanques, rocky coasts, rias,
 //   mountains) in their tiles of LOD 0 to 3: the same, against the normals of the relief at the
 //   scale of the cells, wherever the face is at least two cells high, and their shores at every
@@ -49,76 +50,12 @@ using terrain::Heightfield;
 
 using coast_teeth::Errors;
 using coast_teeth::Gradient;
+using coast_teeth::syntheticErrors;
 using coast_teeth::Teeth;
 
 constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
 // A face is checked at the LODs whose cells are at most 1 / kLeastCells of its height.
 constexpr double kLeastCells = 2.0;
-
-// A synthetic face H meters high, as steep as slope at most, oblique by angle (radians).
-struct Synthetic {
-    double height;
-    double width;
-    double cs;
-    double sn;
-    double at(double x, double z, std::array<double, 2>* gradient) const {
-        const double t = std::clamp((x * cs + z * sn) / width, 0.0, 1.0);
-        const double dh = t > 0.0 && t < 1.0 ? height * 6.0 * t * (1.0 - t) / width : 0.0;
-        if (gradient != nullptr) {
-            *gradient = {dh * cs, dh * sn};
-        }
-        return height * t * t * (3.0 - 2.0 * t);
-    }
-};
-
-// The 2 x 2 tiles of cells c centered on (cx, cz), each level of the lattice holding the face.
-void meshAround(const Synthetic& f, double c, double cx, double cz, Teeth& t) {
-    const double size = (terrain::kGridSamples - 1) * c;
-    const Gradient gradient = [&f](double x, double z) {
-        std::array<double, 2> g{};
-        static_cast<void>(f.at(x, z, &g));
-        return g;
-    };
-    const int low = static_cast<int>(std::floor(-c / size)) - 1;
-    const int high = static_cast<int>(std::floor((f.height + c) / size)) + 1;
-    for (int tz = 0; tz < 2; ++tz) {
-        for (int tx = 0; tx < 2; ++tx) {
-            for (int level = low; level <= high; ++level) {
-                const std::array<double, 3> o{cx + (tx - 1) * size, level * size,
-                                              cz + (tz - 1) * size};
-                terrain::DensityGrid grid(0.0f);
-                for (int k = 0; k < terrain::kGridSamples; ++k) {
-                    for (int j = 0; j < terrain::kGridSamples; ++j) {
-                        for (int i = 0; i < terrain::kGridSamples; ++i) {
-                            const double h = f.at(o[0] + i * c, o[2] + k * c, nullptr);
-                            grid.set(i, j, k, static_cast<float>((o[1] + j * c - h) / c));
-                        }
-                    }
-                }
-                coast_teeth::addMesh(t, terrain::marchingCubes(grid), o, c, c, gradient, 0.1);
-            }
-        }
-    }
-}
-
-// The worst errors of a face height (meters) high, slope steep, over 10 angles to the grid, in
-// cells of c: tiles centered on its foot, its middle and its top.
-Errors syntheticErrors(double height, double slope, double c) {
-    Errors worst;
-    for (int a = 0; a < 10; ++a) {
-        const double angle = a * 5.0 * std::numbers::pi / 180.0;
-        const Synthetic f{height, 1.5 * height / slope, std::cos(angle), std::sin(angle)};
-        Teeth t;
-        for (const double across : {0.1, 0.5, 0.9}) {
-            const double u = across * f.width;
-            meshAround(f, c, u * f.cs + 0.37 * c, u * f.sn + 0.61 * c, t);
-        }
-        const Errors e = coast_teeth::errorsOf(t, c);
-        worst = {std::max(worst.rms, e.rms), std::max(worst.p95, e.p95),
-                 std::max(worst.periodic, e.periodic)};
-    }
-    return worst;
-}
 
 // The table "slope -> teeth" by height of the face in cells (1 m cells: the same at every LOD),
 // the steepest clean slope of each; a teethed face of 1.25 cells shows its period.
@@ -281,12 +218,15 @@ std::vector<Place> findFaces() {
 
 // The errors of the normals of the tile of a LOD holding (x, z), against the normals of the relief
 // at the scale of its cells.
-Errors tileErrors(double x, double z, int lod) {
+Errors tileErrors(double x, double z, int lod, double* span = nullptr) {
     const double c = terrain::tileCellMeters(lod);
     const terrain::ChunkCoord chunk{
         static_cast<std::int32_t>(std::floor(x / terrain::kChunkSizeMeters)),
         static_cast<std::int32_t>(std::floor(z / terrain::kChunkSizeMeters))};
     const terrain::TileData data = tiles().generate({terrain::tileContaining(chunk, lod), 0});
+    if (span != nullptr) {
+        *span = static_cast<double>(data.maxHeight - data.minHeight);
+    }
     const Gradient gradient = [c](double px, double pz) {
         return std::array<double, 2>{
             (field().heightAt(px + c, pz) - field().heightAt(px - c, pz)) / (2.0 * c),
@@ -387,6 +327,50 @@ double reboundOf(const std::vector<double>& v) {
     return most;
 }
 
+// The walls of the inlets of every kind (the first found 100 km around coasts of each), in the
+// tiles of LOD 0 to 3 a half of their width from their site on either side along x and z: clean
+// wherever the tile spans kLeastCells cells of height.
+void testInletWalls() {
+    constexpr std::array<std::array<double, 2>, 4> kCoasts{{{1'793'548.0, 9'821'452.0},
+                                                            {-15'720'496.0, -6'266'783.0},
+                                                            {23'433'101.0, -2'128'828.0},
+                                                            {-26'486'937.0, 7'219'391.0}}};
+    std::array<bool, terrain::kInletKindCount> found{};
+    bool cleanWalls = true;
+    for (const auto& [cx, cz] : kCoasts) {
+        const double h = 1e5;
+        for (const terrain::CoastSite& s : field().inletsIn(cx - h, cz - h, cx + h, cz + h)) {
+            if (found[static_cast<std::size_t>(s.inlet)]) {
+                continue;
+            }
+            found[static_cast<std::size_t>(s.inlet)] = true;
+            std::printf("walls of the %-8s (%.0f, %.0f), %.0f m wide:",
+                        terrain::inletKindName(s.inlet), s.x, s.z, s.size);
+            const double r = 0.5 * static_cast<double>(s.size);
+            for (int lod = 0; lod < 4; ++lod) {
+                const double c = terrain::tileCellMeters(lod);
+                Errors worst;
+                bool checked = false;
+                for (const auto& [dx, dz] : {std::array<double, 2>{r, 0.0}, {-r, 0.0}, {0.0, r},
+                                             {0.0, -r}}) {
+                    double span = 0.0;
+                    const Errors e = tileErrors(s.x + dx, s.z + dz, lod, &span);
+                    const bool tall = span >= kLeastCells * c;
+                    cleanWalls = cleanWalls && (!tall || coast_teeth::clean(e));
+                    checked = checked || tall;
+                    worst = {std::max(worst.rms, e.rms), std::max(worst.p95, e.p95),
+                             std::max(worst.periodic, e.periodic)};
+                }
+                std::printf(" %4.1f/%4.1f/%4.1f%s |", worst.rms, worst.p95, worst.periodic,
+                            checked ? " " : "*");
+            }
+            std::printf("\n");
+        }
+    }
+    TEST_CHECK(std::all_of(found.begin(), found.end(), [](bool f) { return f; }));
+    TEST_CHECK(cleanWalls);
+}
+
 // The terraces of the local relief step it before the fade of the high coasts from the shore
 // (relief_local::Shape::fade): faded by f, the relief is f times the relief unfaded, its terraces
 // along the hills; stepping the faded relief instead set them along the shore (the terraces
@@ -461,6 +445,7 @@ int main() {
     testLaw();
     const std::vector<Place> faces = findFaces();
     testRealFaces(faces);
+    testInletWalls();
     testTerracesBeforeFade();
     testAlongCoasts();
     return test::result();

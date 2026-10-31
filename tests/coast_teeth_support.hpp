@@ -5,6 +5,8 @@
 // at the pitch of the cells along the contours of the face (the light and dark triangles of a
 // face meshed too steep for its cells, and its crenellated top).
 
+#include "terrain/meshing/density_grid.hpp"
+#include "terrain/meshing/marching_cubes.hpp"
 #include "terrain/meshing/mesh.hpp"
 
 #include <algorithm>
@@ -155,6 +157,71 @@ inline Errors errorsOf(Teeth t, double cell) {
 
 inline bool clean(const Errors& e) {
     return e.rms <= kCleanRms && e.p95 <= kCleanP95 && e.periodic <= kPeriodicMost;
+}
+
+// A synthetic face H meters high, as steep as slope at most, oblique by angle (radians).
+struct Synthetic {
+    double height;
+    double width;
+    double cs;
+    double sn;
+    double at(double x, double z, std::array<double, 2>* gradient) const {
+        const double t = std::clamp((x * cs + z * sn) / width, 0.0, 1.0);
+        const double dh = t > 0.0 && t < 1.0 ? height * 6.0 * t * (1.0 - t) / width : 0.0;
+        if (gradient != nullptr) {
+            *gradient = {dh * cs, dh * sn};
+        }
+        return height * t * t * (3.0 - 2.0 * t);
+    }
+};
+
+// The 2 x 2 tiles of cells c centered on (cx, cz), each level of the lattice holding the face.
+inline void meshAround(const Synthetic& f, double c, double cx, double cz, Teeth& t) {
+    const double size = (terrain::kGridSamples - 1) * c;
+    const Gradient gradient = [&f](double x, double z) {
+        std::array<double, 2> g{};
+        static_cast<void>(f.at(x, z, &g));
+        return g;
+    };
+    const int low = static_cast<int>(std::floor(-c / size)) - 1;
+    const int high = static_cast<int>(std::floor((f.height + c) / size)) + 1;
+    for (int tz = 0; tz < 2; ++tz) {
+        for (int tx = 0; tx < 2; ++tx) {
+            for (int level = low; level <= high; ++level) {
+                const std::array<double, 3> o{cx + (tx - 1) * size, level * size,
+                                              cz + (tz - 1) * size};
+                terrain::DensityGrid grid(0.0f);
+                for (int k = 0; k < terrain::kGridSamples; ++k) {
+                    for (int j = 0; j < terrain::kGridSamples; ++j) {
+                        for (int i = 0; i < terrain::kGridSamples; ++i) {
+                            const double h = f.at(o[0] + i * c, o[2] + k * c, nullptr);
+                            grid.set(i, j, k, static_cast<float>((o[1] + j * c - h) / c));
+                        }
+                    }
+                }
+                addMesh(t, terrain::marchingCubes(grid), o, c, c, gradient, 0.1);
+            }
+        }
+    }
+}
+
+// The worst errors of a face height (meters) high, slope steep, over 10 angles to the grid, in
+// cells of c: tiles centered on its foot, its middle and its top.
+inline Errors syntheticErrors(double height, double slope, double c) {
+    Errors worst;
+    for (int a = 0; a < 10; ++a) {
+        const double angle = a * 5.0 * std::numbers::pi / 180.0;
+        const Synthetic f{height, 1.5 * height / slope, std::cos(angle), std::sin(angle)};
+        Teeth t;
+        for (const double across : {0.1, 0.5, 0.9}) {
+            const double u = across * f.width;
+            meshAround(f, c, u * f.cs + 0.37 * c, u * f.sn + 0.61 * c, t);
+        }
+        const Errors e = errorsOf(t, c);
+        worst = {std::max(worst.rms, e.rms), std::max(worst.p95, e.p95),
+                 std::max(worst.periodic, e.periodic)};
+    }
+    return worst;
 }
 
 } // namespace coast_teeth

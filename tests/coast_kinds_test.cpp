@@ -95,8 +95,8 @@ void testShares() {
     TEST_CHECK(within);
 }
 
-// Weights summing to 1; the low coast alone out of the band and without the coasts; the signal
-// of the coasts that of the geography (no inlet yet).
+// Weights summing to 1; the low coast alone out of the band and without the coasts; without the
+// coasts, the signal of the coasts that of the geography (no inlet).
 void testWeights() {
     coast_zone::Draws draws(0x33C0A57D2ULL);
     const terrain::WorldSize& w = field().world();

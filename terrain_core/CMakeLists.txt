@@ -48,7 +48,9 @@ add_library(terrain_core STATIC
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
     src/generation/climate.cpp
+    src/generation/coast_inlets.cpp
     src/generation/coast_kinds.cpp
+    src/generation/coast_lattice.cpp
     src/generation/coast_shape.cpp
     src/generation/depression_forms.cpp
     src/generation/depressions.cpp

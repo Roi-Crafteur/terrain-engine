@@ -16,6 +16,10 @@
 
 namespace terrain {
 
+namespace coast_lattice {
+class Lattices;
+}
+
 // Seed shared by the export tool and the viewer, so both show the same world.
 inline constexpr std::uint64_t kDefaultWorldSeed = 20261019;
 
@@ -171,6 +175,16 @@ public:
     // planet level and the rivers are built over. A cheap copy sharing the layers and the map.
     [[nodiscard]] Heightfield withoutCoasts() const;
     [[nodiscard]] bool hasCoasts() const { return coasts_ != nullptr; }
+    // The inlets cut in the coasts (coast.hpp, CoastSite) whose site lies in the box (canonical
+    // meters, the box not wrapping), sorted by x, then z, then their other fields; none without the
+    // coasts. Built on demand and kept, from any thread; the same whatever the threads, the order
+    // and the boxes of the queries. With a Hydrology, stopped before its rivers and lakes (not
+    // without one).
+    [[nodiscard]] std::vector<CoastSite> inletsIn(double minX, double minZ, double maxX,
+                                                  double maxZ) const;
+    // Those of them that are harbors (CoastSite::harbor), for the settlements to come.
+    [[nodiscard]] std::vector<CoastSite> harborsIn(double minX, double minZ, double maxX,
+                                                   double maxZ) const;
 
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
@@ -202,6 +216,8 @@ private:
     void leaveValleys(double x, double z, HeightSample& s, Memos* memos) const;
     [[nodiscard]] static std::shared_ptr<const Coasts> makeCoasts(std::uint64_t seed,
                                                                   const WorldSize& world);
+    // The inlets of these coasts, stopped before the rivers of hydrology_ (heightfield_coast.cpp).
+    [[nodiscard]] std::shared_ptr<const coast_lattice::Lattices> makeInlets() const;
 
     [[nodiscard]] static std::shared_ptr<const Water>
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
@@ -280,6 +296,9 @@ private:
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
     std::shared_ptr<const Coasts> coasts_;         // the coasts, or null without them
+    // The inlets and stacks of the coasts, cell by cell on demand (null without the coasts): of
+    // this Heightfield and its copies, but those with another Hydrology (withHydrology).
+    std::shared_ptr<const coast_lattice::Lattices> inlets_;
 };
 
 } // namespace terrain

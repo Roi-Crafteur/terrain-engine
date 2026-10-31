@@ -78,8 +78,23 @@ struct Ground {
     float irregular = 0.0f;
 };
 
+// What the inlets and stacks make of the point (coast_inlets::Effect): the coast signal of the
+// geography (coast in shapeAt is that of the world, the inlets cut in it), the floor of the inlets
+// (at most 0), the share of the plunging mountains on their sides, the dome of the stacks, the
+// depth of the floor of the inlets on their axis and how far into their water the point lies (as
+// rise): under their water the plunging mountains go on down to that depth (no crease at the
+// water).
+struct Inlets {
+    double base = 0.0;
+    double floor = 0.0;
+    double rise = 1.0;
+    double dome = 0.0;
+    double deep = 0.0;
+    double sink = 0.0;
+};
+
 [[nodiscard]] Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,
                              const GeographySample& g, double coast, double distance,
-                             const coast_kinds::Weights& weights);
+                             const coast_kinds::Weights& weights, const Inlets& inlets);
 
 } // namespace terrain::coast_shape

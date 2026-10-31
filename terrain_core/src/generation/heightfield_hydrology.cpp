@@ -65,6 +65,9 @@ double smooth(double edge0, double edge1, double v) {
 Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrology) const {
     Heightfield out = *this;
     out.hydrology_ = std::move(hydrology);
+    if (out.coasts_) {
+        out.inlets_ = out.makeInlets();
+    }
     return out;
 }
 
