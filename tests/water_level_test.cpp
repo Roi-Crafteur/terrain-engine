@@ -377,8 +377,8 @@ int main() {
     water_level::report("samples", horizon);
     water_level::report("vertices with caves", caves);
     golden::report("water levels of the small world",
-                   {{"tiles", tiles.sum.value(), 0xD78E06759E103D2CULL},
-                    {"horizon", horizon.sum.value(), 0xB5DE0E5393AB7ED6ULL},
+                   {{"tiles", tiles.sum.value(), 0xB30312ED566BC261ULL},
+                    {"horizon", horizon.sum.value(), 0xCBFE85E455AB0A99ULL},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();
 }

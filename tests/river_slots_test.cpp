@@ -1,6 +1,7 @@
 // The slots of the falls in steps of the small world (phase 12A): they wind, as far aside as the
 // width of their channel about, whatever the slope; their banks never step but where their water
-// falls; no levee raises the ground beside them; nothing along their walls repeats at one spacing.
+// falls; no levee raises the ground beside them; nothing along their walls repeats at one spacing
+// (their single wall up to the relief: river_walls_test).
 //   - Winding: on the corridors of the falls (the points of a reach every few meters where its
 //     slot winds aside of the axis of its course), the middle of the water found on the ground
 //     across the axis lies aside of it by kWindLeast to kWindMost times the width of the channel
@@ -27,7 +28,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <limits>
 #include <vector>
 
 namespace {
@@ -238,6 +238,9 @@ void testBanks(const World& w, Reaches& reaches, const std::vector<std::size_t>&
     std::size_t samples = 0;
     std::size_t steps = 0;
     std::size_t away = 0;
+    std::vector<double> xs;
+    std::vector<double> zs;
+    std::vector<float> heights;
     for (const std::size_t r : steeps) {
         const auto& p = reaches[r].points;
         std::vector<double> s(p.size(), 0.0);
@@ -258,21 +261,24 @@ void testBanks(const World& w, Reaches& reaches, const std::vector<std::size_t>&
             for (const double side : {-1.0, 1.0}) {
                 for (const double out : kBankOut) {
                     const double d = side * (0.5 * static_cast<double>(p[i].width) + out);
-                    double before = std::nan("");
+                    xs.clear();
+                    zs.clear();
                     for (double t = 0.0; t <= length; t += 0.5) {
-                        const double h = w.field.heightAt(p[i].x + t * ux - d * uz,
-                                                          p[i].z + t * uz + d * ux);
-                        if (!std::isnan(before)) {
-                            ++samples;
-                            if (std::abs(h - before) > kBankStep) {
-                                ++steps;
-                                const double near = kFaceNear + kFaceAngle * std::abs(d);
-                                away += std::none_of(falls.begin(), falls.end(), [&](double f) {
-                                    return std::abs(f - (s[i] + t)) < near;
-                                }) ? 1 : 0;
-                            }
+                        xs.push_back(p[i].x + t * ux - d * uz);
+                        zs.push_back(p[i].z + t * uz + d * ux);
+                    }
+                    heights.resize(xs.size());
+                    w.field.heightsAt(xs, zs, heights);
+                    for (std::size_t k = 1; k < heights.size(); ++k) {
+                        ++samples;
+                        if (std::abs(heights[k] - heights[k - 1]) > kBankStep) {
+                            ++steps;
+                            const double near = kFaceNear + kFaceAngle * std::abs(d);
+                            const double at = s[i] + 0.5 * static_cast<double>(k);
+                            away += std::none_of(falls.begin(), falls.end(), [&](double f) {
+                                return std::abs(f - at) < near;
+                            }) ? 1 : 0;
                         }
-                        before = h;
                     }
                 }
             }

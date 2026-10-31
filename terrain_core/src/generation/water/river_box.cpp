@@ -1,6 +1,7 @@
 // What of a course may change its valley at the points of a box (river_profile.hpp).
 #include "river_profile.hpp"
 
+#include "river_slot.hpp"
 #include "river_winding.hpp"
 #include "terrain/det_math.hpp"
 
@@ -47,6 +48,11 @@ BoxCourse::Segment segmentOf(const CoursePoint& a, const CoursePoint& b, std::ui
     s.stretch = std::sqrt(1.0 + rate * rate);
     s.bankFrom = half + kBankReach + kMargin;
     s.widest = half;
+    // Down a stretch in steps, its walls rise from the least rim of its slot (river_profile.cpp:
+    // frameOf), never nearer than its widest channel and the least of its widest walls.
+    if (a.steps > 0.0f || b.steps > 0.0f) {
+        s.rim = half + amplitude + kRunLeast * static_cast<double>(std::max(a.slot, b.slot));
+    }
     // Its banks above its fill, never above its floor (segmentValley).
     s.bankTop = static_cast<double>(std::max(a.valley, b.valley)) + kFloorRise;
     const auto lowOf = [bowl](const CoursePoint& p) {
@@ -81,8 +87,10 @@ Matters BoxCourse::Segment::mayMatter(double d, double beyond, bool upstream, do
     const double channel = meander > 0.0 ? (d - meander) / stretch : d;
     const Matters banks = channel * (1.0 - 1e-9) >= bankFrom ? Matters::Nothing : Matters::Banks;
     const double spur = floorHalf - warp * wallWarpOf(floorHalf) - least;
-    const double out =
-        d - least - 0.5 * (spur + std::sqrt(spur * spur + kWallSoft * kWallSoft)) - kMargin;
+    double out = d - least - 0.5 * (spur + std::sqrt(spur * spur + kWallSoft * kWallSoft)) - kMargin;
+    if (rim > 0.0) {
+        out = std::min(out, d - rim - kMargin);
+    }
     if (!(out >= kLeveeFade + kMargin) &&
         !(floorTop + floorSlope * std::max(0.0, d - half) + kMargin <= groundLow)) {
         return Matters::Valley;

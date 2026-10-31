@@ -49,6 +49,9 @@ struct RiverCarve {
     float floor = 0.0f;
     float gorge = 0.0f;   // [0, 1], open valley to narrow gorge
     float mountain = 0.0f; // [0, 1], plains to mountains
+    // [0, 1], down a stretch in steps of a fall and around it: the walls of its valley keep their
+    // slope (no rock cut into them), only the slot of its water is a cliff.
+    float steps = 0.0f;
     double upX = 1.0;     // unit direction away from the river
     double upZ = 0.0;
     double slope = 0.0;   // of the surface across the valley (meters per meter)

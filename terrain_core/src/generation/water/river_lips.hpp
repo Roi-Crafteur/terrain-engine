@@ -25,8 +25,11 @@ void placeLips(Course& c, const Heightfield& relief, double discharge);
 inline constexpr double kLipSlope = 1.0;
 inline constexpr double kLipLeast = 2.0;
 
-// How far the edge of lip l recedes upstream, side meters left of the axis: 0 from its width on.
+// How far the edge of lip l recedes upstream, side meters left of the axis: 0 from its width on;
+// recessMost at most. Never a straight cut: a bow, waves across it, the roughness of its rock and
+// a turn, within the room its pools leave.
 [[nodiscard]] double lipRecess(const FallLip& l, double side);
+[[nodiscard]] double recessMost(const FallLip& l);
 
 // The valley of course c near lip l at (x, z) (its segments around the lip alone).
 using LipValley = std::function<Valley(double x, double z, const FallLip& l)>;

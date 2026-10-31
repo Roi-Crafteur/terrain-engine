@@ -153,6 +153,9 @@ struct CoursePoint {
     // beyond the channel (river_slot.hpp); 0 elsewhere.
     float slot = 0.0f;
     bool fall = false;        // on a stretch where the water falls in steps (river_falls.hpp)
+    // 1 on a stretch in steps, down to 0 kStepsFade meters beyond it: the walls of its valley keep
+    // their slope, no rock cut into them (Valley::steps).
+    float steps = 0.0f;
     // In a corridor of falls (river_winding.hpp), or within kWindWindow meters of the segments
     // around the point: the middle of its slot lies shift meters left of the axis at the point,
     // never more than windMost meters aside anywhere in its corridor; 0 elsewhere.
@@ -163,6 +166,7 @@ struct CoursePoint {
     // beyond its ends too; 0 elsewhere.
     float bowlDeep = 0.0f;
     float bowlWide = 0.0f;
+    float bowlNarrow = 0.0f; // and narrow it by bowlNarrow of itself (toward a lip)
 };
 
 // The winding of the slot of a corridor of falls (river_winding.hpp), from to to meters along the
@@ -183,12 +187,15 @@ struct SlotWinding {
     double most = 0.0;
     double step = 1.0;
     std::vector<double> table;
+    // The half width that winds with the slot (river_winding.hpp: frameSide): its widest channel
+    // and the walls of its slot (slotReach).
+    double inner = 0.0;
 };
 
 // What bounds the windings of a course (river_winding.cpp: windBounds), every kBoundBin meters
-// from from: the least and the most its slot lies left of its axis and the most its frame
-// stretches (interleaved, with a margin), in levels[0]; the same over 2, 4, 8... bins from each
-// in the next levels.
+// from from: the least and the most its slot lies left of its axis, the most its frame stretches
+// and the farthest from the axis its frame reaches (frameOuter; interleaved, with a margin), in
+// levels[0]; the same over 2, 4, 8... bins from each in the next levels.
 struct WindTable {
     double from = 0.0;
     std::vector<std::vector<float>> levels;
@@ -203,6 +210,9 @@ struct FallPool {
     float drop = 0.0f;
     double length = 0.0; // its bowl reaches length meters below the foot, deep meters deep at most
     double deep = 0.0;
+    // Its channel narrows by pinch of itself at its lip (its sill), by nextPinch at the next lip.
+    float pinch = 0.0f;
+    float nextPinch = 0.0f;
 };
 
 // A block of rock in a pool of a fall (river_slot.hpp): radius meters wide around (x, z), its top
@@ -240,6 +250,14 @@ struct FallLip {
     float width = 0.0f;
     float reach = 0.0f;
     float turn = 0.0f;
+    // Its bow (meters: its middle upstream of its sides above 0, its sides upstream of its middle
+    // below) and two waves across it of waves meters (each its wave meters long), over its channel
+    // (channel meters on each side of its middle, width with the walls of its slot).
+    float channel = 0.0f;
+    float bow = 0.0f;
+    float waves = 0.0f;
+    float waveA = 1.0f;
+    float waveB = 1.0f;
     std::uint64_t seed = 0;
 };
 
@@ -254,6 +272,9 @@ struct CourseChunk {
     float minWall = 0.0f; // the gentlest slope of the walls and of the banks
     std::uint32_t first = 0; // points first to last, segments between them
     std::uint32_t last = 0;
+    // Beyond its floors (and their levees), the chunk only matters at (atX, atZ) where it may
+    // carve below the relief: whether it carves nowhere below threshold there.
+    [[nodiscard]] bool skips(double atX, double atZ, double threshold) const;
 };
 
 struct Course {
@@ -298,6 +319,8 @@ struct Course {
     std::vector<CoursePoint> line;
     std::vector<PathPoint> lineAxis;
 };
+
+inline constexpr double kStepsFade = 128.0;
 
 // The course of a reach.
 [[nodiscard]] Course buildCourse(const Heightfield& relief, const ReachInput& input);

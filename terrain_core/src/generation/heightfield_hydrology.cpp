@@ -96,17 +96,19 @@ Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrolog
 // ravines of the relief, in a gorge grained, cut by couloirs and laid in strata or crystalline.
 double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve& c, double show,
                                  Memos* memos) const {
+    // Down a stretch in steps, no rock cut into the walls (RiverCarve::steps): only its grain.
+    const double cut = show * (1.0 - static_cast<double>(c.steps));
     const double rock = kRockPlain + (kRockMountain - kRockPlain) * c.mountain +
                         kGorgeRock * c.gorge * c.above;
     if (layers_->geographyRock.octaves() > 0) {
         const float ridged =
             memos != nullptr ? layers_->geographyRock.ridged2D(x, z, kRockSharpness, memos->rock)
                              : layers_->geographyRock.ridged2D(x, z, kRockSharpness);
-        h += show * rock * (static_cast<double>(ridged) - 0.5);
+        h += cut * rock * (static_cast<double>(ridged) - 0.5);
     }
     const double slope = std::min(c.slope, kRavineSlope);
-    float cut = ravines::depth(layers_->ravines, x, z, slope * c.upX, slope * c.upZ, show,
-                               memos != nullptr ? &memos->ravines : nullptr);
+    float down = ravines::depth(layers_->ravines, x, z, slope * c.upX, slope * c.upZ, cut,
+                                memos != nullptr ? &memos->ravines : nullptr);
     if (c.gorge > 0.0f && layers_->wallGrain.octaves() > 0) {
         const float grain = memos != nullptr ? layers_->wallGrain.fbm2D(x, z, memos->grain)
                                              : layers_->wallGrain.fbm2D(x, z);
@@ -116,16 +118,16 @@ double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve&
     if (c.gorge > 0.0f) {
         // The couloirs of the walls of the gorges, down their slope.
         const double steep = std::min(c.slope, kGullySlope);
-        cut += ravines::depth(layers_->gullies, x, z, steep * c.upX, steep * c.upZ,
-                              show * static_cast<double>(c.gorge),
-                              memos != nullptr ? &memos->gullies : nullptr);
+        down += ravines::depth(layers_->gullies, x, z, steep * c.upX, steep * c.upZ,
+                               cut * static_cast<double>(c.gorge),
+                               memos != nullptr ? &memos->gullies : nullptr);
     }
     h += static_cast<double>(
-        relief_local::boundBelow(-cut, static_cast<float>(kRavineRoom * c.above)));
+        relief_local::boundBelow(-down, static_cast<float>(kRavineRoom * c.above)));
     if (c.gorge > 0.0f) {
         mountain_walls::Memo* walls = memos != nullptr ? &memos->walls : nullptr;
         const double share = mountain_walls::strataShare(layers_->walls, x, z, kCharacter, walls);
-        const double wall = show * static_cast<double>(c.gorge);
+        const double wall = cut * static_cast<double>(c.gorge);
         const mountain_walls::Masks masks{wall * share, wall * (1.0 - share), 0.0};
         const double top = mountain_walls::rockTop(layers_->walls, masks, x, z, h,
                                                    kLedge * c.upX, kLedge * c.upZ, walls);

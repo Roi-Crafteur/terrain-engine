@@ -2,6 +2,7 @@
 #include "river_winding.hpp"
 
 #include "river_profile.hpp"
+#include "river_slot.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
@@ -54,13 +55,8 @@ constexpr double kSideBlend = 1.0;
 // The winding is drawn from a table of its offset and rate every kTableStep meters, cubic between
 // them (the same offset and rate at its nodes, continuous).
 constexpr double kTableStep = 0.5;
-// The line of the water: the corridors every kLineStep meters at most. The bounds of the winding:
-// measured every kBoundStep meters, with a margin of half the step at the fastest it comes aside
-// plus kBoundMargin; its rate, with a step at the fastest it changes plus kRateMargin.
+// The line of the water: the corridors every kLineStep meters at most.
 constexpr double kLineStep = 8.0;
-constexpr double kBoundStep = 1.0;
-constexpr double kBoundMargin = 0.5;
-constexpr double kRateMargin = 0.05;
 constexpr std::uint64_t kWindSeed = 0x77696e6473313242ULL;
 
 double lerp(double a, double b, double t) {
@@ -308,32 +304,6 @@ void holdWater(SlotWinding& w, const Course& c, const Heightfield& relief,
     }
 }
 
-// The least and the most the slot of c lies left of its axis from from to to meters along it, and
-// the most its frame stretches there (slotFrame).
-struct Aside {
-    double lo = 0.0;
-    double hi = 0.0;
-    double stretch = 1.0;
-};
-Aside asideOf(const Course& c, double from, double to) {
-    double lo = 0.0;
-    double hi = 0.0;
-    double rate = 0.0;
-    double bend = 0.0;
-    double last = shiftAt(c, from).rate;
-    for (double s = from; s <= to + kBoundStep; s += kBoundStep) {
-        const SlotShift shift = shiftAt(c, std::min(s, to));
-        lo = std::min(lo, shift.offset);
-        hi = std::max(hi, shift.offset);
-        rate = std::max(rate, std::abs(shift.rate));
-        bend = std::max(bend, std::abs(shift.rate - last));
-        last = shift.rate;
-    }
-    const double margin = 0.5 * kBoundStep * rate + kBoundMargin;
-    const double fastest = std::min(rate + bend + kRateMargin, kRateCap);
-    return {lo - margin, hi + margin, std::sqrt(1.0 + fastest * fastest)};
-}
-
 // A point of segment a-b, t of the way: all of it interpolated (its flags those of a).
 CoursePoint between(const CoursePoint& a, const CoursePoint& b, double t) {
     const auto mix = [t](float u, float v) { return static_cast<float>(lerp(u, v, t)); };
@@ -382,37 +352,6 @@ void lineOf(Course& c) {
     c.line.push_back(p.back());
 }
 
-// The bounds of the windings of c (Course::windTable), from the start of the first to the end of
-// the last.
-void tableBounds(Course& c) {
-    WindTable& t = c.windTable;
-    t.levels.clear();
-    if (c.windings.empty()) {
-        return;
-    }
-    t.from = c.windings.front().from;
-    const double to = c.windings.back().to;
-    std::vector<float> bins;
-    for (double u = t.from; u < to; u += kBoundBin) {
-        const Aside bin = asideOf(c, u, std::min(u + kBoundBin, to));
-        bins.push_back(static_cast<float>(bin.lo));
-        bins.push_back(static_cast<float>(bin.hi));
-        bins.push_back(static_cast<float>((1.0 + 1e-6) * bin.stretch));
-    }
-    const std::size_t n = bins.size() / 3;
-    t.levels.push_back(std::move(bins));
-    for (std::size_t span = 1; 2 * span <= n; span *= 2) {
-        const std::vector<float>& below = t.levels.back();
-        std::vector<float> level(below.size() - 3 * span);
-        for (std::size_t k = 0; k < level.size(); k += 3) {
-            level[k] = std::min(below[k], below[k + 3 * span]);
-            level[k + 1] = std::max(below[k + 1], below[k + 1 + 3 * span]);
-            level[k + 2] = std::max(below[k + 2], below[k + 2 + 3 * span]);
-        }
-        t.levels.push_back(std::move(level));
-    }
-}
-
 } // namespace
 
 void windCorridors(Course& c, const Heightfield& relief, const Surface& surface,
@@ -436,12 +375,15 @@ void windCorridors(Course& c, const Heightfield& relief, const Surface& surface,
         fitWinding(w, half);
         holdWater(w, c, relief, surface);
         tableOf(w);
+        w.inner = 0.0;
+        for (const CoursePoint& p : c.points) {
+            if (p.s >= w.from && p.s <= w.to) {
+                const double reach = slotReach(p.slot, p.half);
+                w.inner = std::max(w.inner, static_cast<double>(p.half) + reach);
+            }
+        }
     }
-    for (SlotWinding& w : c.windings) {
-        const Aside aside = asideOf(c, w.from, w.to);
-        w.most = std::max(-aside.lo, aside.hi);
-    }
-    tableBounds(c);
+    boundWindings(c);
     // The points within kWindWindow meters of the segments around them from a corridor.
     std::vector<CoursePoint>& p = c.points;
     for (std::size_t i = 0; i < p.size(); ++i) {
@@ -457,42 +399,15 @@ void windCorridors(Course& c, const Heightfield& relief, const Surface& surface,
     lineOf(c);
 }
 
-WindBounds windBounds(const Course& c, double from, double to) {
-    const WindTable& t = c.windTable;
-    if (t.levels.empty() || !(to >= t.from)) {
-        return {}; // off the corridors
-    }
-    const auto bins = static_cast<double>(t.levels[0].size() / 3);
-    const double first = (std::max(from, t.from) - t.from) / kBoundBin;
-    if (!(first < bins)) {
-        return {};
-    }
-    // The bins from the first to the last (non-negative: truncated down).
-    const auto i = static_cast<std::size_t>(first);
-    const auto j = static_cast<std::size_t>(std::min((to - t.from) / kBoundBin, bins - 1.0));
-    // Two spans of 2^level bins cover them.
-    const auto level = static_cast<std::size_t>(std::bit_width(j - i + 1) - 1);
-    const std::vector<float>& v = t.levels[level];
-    const std::size_t k = 3 * (j + 1 - (std::size_t{1} << level));
-    return {std::min({0.0, static_cast<double>(v[3 * i]), static_cast<double>(v[k])}),
-            std::max({0.0, static_cast<double>(v[3 * i + 1]), static_cast<double>(v[k + 1])}),
-            std::max(static_cast<double>(v[3 * i + 2]), static_cast<double>(v[k + 2]))};
-}
-
 SlotShift shiftAt(const Course& c, double s) {
     for (const SlotWinding& w : c.windings) {
         if (s > w.from && s < w.to) {
-            return w.table.size() >= 4 ? tableAt(w, s - w.from) : sidedAt(w, s - w.from);
+            SlotShift out = w.table.size() >= 4 ? tableAt(w, s - w.from) : sidedAt(w, s - w.from);
+            out.inner = w.inner;
+            return out;
         }
     }
     return {};
-}
-
-SlotFrame slotFrame(const Course& c, double s, double side) {
-    const SlotShift shift = shiftAt(c, s);
-    const double rate = std::min(std::abs(shift.rate), kRateCap);
-    const double stretch = std::sqrt(1.0 + rate * rate);
-    return {(side - shift.offset) / stretch, stretch};
 }
 
 } // namespace terrain::water

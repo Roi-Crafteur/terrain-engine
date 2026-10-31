@@ -34,6 +34,10 @@ namespace terrain::water {
 [[nodiscard]] double slotRun(std::uint64_t seed, double s, double base, double half, double side,
                              double bowl = 0.0);
 
+// The walls of a slot of base its walls never reach less than kRunLeast times base beyond its
+// channel (slotRun).
+inline constexpr double kRunLeast = 0.25;
+
 // The farthest the walls of a slot of base its walls and half its channel reach beyond it
 // (slotRun), at any s and on either side.
 [[nodiscard]] double slotReach(double base, double half);
@@ -44,15 +48,21 @@ namespace terrain::water {
 // whatever the depth of the steps, the rim stands where the cliff meets the floor.
 [[nodiscard]] double slotWall(double out, double run, double rise);
 
+// Whether the water of a course of points p comes down a face from point i to the next.
+[[nodiscard]] bool faceAt(const std::vector<CoursePoint>& p, std::size_t i);
+
 // The pools of the stretches in steps of c (its levels set, Course::pools): below each drop of
-// kLipLeast meters at least (river_lips.hpp), up to the next lip or the end of the stretch.
+// kLipLeast meters at least (river_lips.hpp), up to the next lip or the end of the stretch
+// (river_pools.cpp).
 void placePools(Course& c);
 
 // The bowl of a pool at the foot of its drop, s meters along course c: its bed deeper by deeper
 // meters in the middle of its channel (kBowlShare of the drop, kBowlLeast to kBowlMost meters),
 // its channel wider by wider of itself (kBowlWiden at most), the walls of its slot giving way to
 // it. Full at the foot of the face (from nothing at its lip) and for a while below it, then
-// shallower down to nothing within kBowlPool of its pool; nothing elsewhere.
+// shallower down to nothing within kBowlPool of its pool; nothing elsewhere. Narrower (wider below
+// 0) toward each lip, its sill, down the face and back at its foot (river_pools.cpp: the pools
+// oval), the walls of its slot coming in with it.
 struct Bowl {
     double deeper = 0.0;
     double wider = 0.0;

@@ -31,6 +31,7 @@ struct Valley {
     bool wet = false;     // in its channel: under its water
     float gorge = 0.0f;
     float mountain = 0.0f;
+    float steps = 0.0f;   // down a stretch in steps (CoursePoint::steps)
     double upX = 1.0;     // unit direction away from the axis
     double upZ = 0.0;
     double slope = 0.0;   // of the floor and walls across the valley (meters per meter)
@@ -181,6 +182,7 @@ struct BoxCourse {
         double floorSlope = 0.0;
         double half = 0.0;
         double bankFrom = 0.0;
+        double rim = 0.0; // down a stretch in steps, its walls rise from rim at the nearest
         double widest = 0.0;
         double bankTop = 0.0;
         double meander = 0.0;

@@ -41,6 +41,7 @@ RiverCarve carveOf(const water::Valley& v) {
     c.floor = v.floorLevel;
     c.gorge = v.gorge;
     c.mountain = v.mountain;
+    c.steps = v.steps;
     c.upX = v.upX;
     c.upZ = v.upZ;
     c.slope = v.slope;

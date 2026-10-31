@@ -23,10 +23,9 @@ constexpr std::array<double, 3> kUnder = {0.5, 1.0, 1.5};
 // The middle of the edge recedes the height of the drop times kRecessBase plus kRecessContrast of
 // the contrast of their hardness, times the share of the discharge (kFlowLow at kFlowRef m^3/s and
 // below, kFlowGrowth more per tenfold of it, kFlowHigh at most); within kRecessWidth of its width,
-// and within the pools: kPoolAbove of the pool above (the valley moves from twice its recess
-// upstream of the edge, which reaches 1.3 times the recess with its roughness) and kPoolBelow of
-// the pool below its face (the valley comes back over twice the recess below the lip, plus the
-// face).
+// and within the pools: kPoolAbove of the pool above (the valley moves from 1.5 times its most
+// recess upstream of the edge: recessMost) and kPoolBelow of the pool below its face (the valley
+// comes back over 1.5 times its most recess below the lip, plus the face).
 constexpr double kRecessBase = 0.1;
 constexpr double kRecessContrast = 2.5;
 constexpr double kFlowRef = 10.0;
@@ -34,8 +33,8 @@ constexpr double kFlowLow = 0.6;
 constexpr double kFlowGrowth = 0.3;
 constexpr double kFlowHigh = 1.4;
 constexpr double kRecessWidth = 1.2;
-constexpr double kPoolAbove = 0.25;
-constexpr double kPoolBelow = 1.0 / 2.5;
+constexpr double kPoolAbove = 0.5;
+constexpr double kPoolBelow = 0.5;
 // The width of the edge: its channel and kWallShare of the walls of its slot on each side. Its
 // irregularity: kEdgeBase plus kEdgeShare of the drop, kEdgeMost meters at most, over waves of
 // kEdgeWave meters across; the recess of the middle varies by up to a half of kRoughShare of it
@@ -55,6 +54,16 @@ constexpr double kOpenPool = 40.0;
 // to the line of its middle over the outer kTurnFade of its width (the walls of its slot).
 constexpr double kTurnMost = 35.0 / 360.0;
 constexpr double kTurnFade = 0.4;
+// Its bow: kBowLeast to kBowMost of its width (drawn), its middle upstream over hard rock on soft
+// (kBowContrast at least: an amphitheater), either way over rock of one hardness; and two waves
+// across it, of kWaveLeast to kWaveMost of its width each (drawn), kWaveShare of it high at most
+// each. All within the room its pools leave, the waves first, then the bow, then the turn.
+constexpr double kBowLeast = 0.15;
+constexpr double kBowMost = 0.4;
+constexpr double kBowContrast = 0.3;
+constexpr double kWaveLeast = 0.3;
+constexpr double kWaveMost = 0.7;
+constexpr double kWaveShare = 0.07;
 constexpr std::uint64_t kLipSalt = 0x6c6970735f313241ULL;
 
 double smooth(double edge0, double edge1, double v) {
@@ -87,7 +96,9 @@ void shapeLip(FallLip& l, const Course& c, double above, double below, double di
         kFlowLow + kFlowGrowth * dmath::log(std::max(discharge, kFlowRef) / kFlowRef) /
                        dmath::log(10.0),
         kFlowLow, kFlowHigh);
-    l.width = static_cast<float>(slotHalf(c.slotSeed, l.s, p.half) + kWallShare * p.slot);
+    // Its channel narrowed at its sill (river_slot.hpp: bowlAt).
+    l.channel = static_cast<float>(slotHalf(c.slotSeed, l.s, p.half) * (1.0 + bowlAt(c, l.s).wider));
+    l.width = static_cast<float>(static_cast<double>(l.channel) + kWallShare * p.slot);
     const double room = std::min({kRecessWidth * l.width, kPoolAbove * above, kPoolBelow * below});
     l.recess = static_cast<float>(std::clamp(
         drop * (kRecessBase + kRecessContrast * static_cast<double>(l.contrast)) * flow, 0.0,
@@ -96,6 +107,21 @@ void shapeLip(FallLip& l, const Course& c, double above, double below, double di
         std::clamp(std::min(kEdgeBase + kEdgeShare * drop, kEdgeMost), 0.0, std::max(0.0, room)));
     l.recess = std::min(l.recess, static_cast<float>(std::max(0.0, room)) - l.edge);
     l.recess = std::max(l.recess, 0.0f);
+    // Its waves, then its bow, in the room left (shares of its whole width).
+    const auto share = [&l](std::uint64_t stream) {
+        return static_cast<double>(noise::deriveSeed(l.seed, stream) >> 40) * 0x1.0p-24;
+    };
+    const double width = static_cast<double>(l.width);
+    const double across = 2.0 * static_cast<double>(l.channel);
+    double left = std::max(0.0, room - static_cast<double>(l.recess + l.edge));
+    l.waves = static_cast<float>(std::min(kWaveShare * across, 0.25 * left));
+    l.waveA = static_cast<float>(across * (kWaveLeast + (kWaveMost - kWaveLeast) * share(4)));
+    l.waveB = static_cast<float>(across * (kWaveLeast + (kWaveMost - kWaveLeast) * share(5)));
+    left -= 2.0 * static_cast<double>(l.waves);
+    const double bow = std::min(across * (kBowLeast + (kBowMost - kBowLeast) * share(6)), left);
+    const bool hollow = static_cast<double>(l.contrast) >= kBowContrast || share(7) < 0.5;
+    l.bow = static_cast<float>(hollow ? bow : -bow);
+    left -= bow;
     // The turn of its edge: an angle to the slot drawn, the slot itself at an angle to the axis
     // where it winds (rate: its tangent), within the room the pools leave on its farther side.
     const double angle =
@@ -104,8 +130,7 @@ void shapeLip(FallLip& l, const Course& c, double above, double below, double di
     const double rate = shiftAt(c, l.s).rate;
     const double turn = (rate + dmath::sinTurns(angle) / dmath::cosTurns(angle)) /
                         std::sqrt(1.0 + rate * rate);
-    const double free = std::max(0.0, room - static_cast<double>(l.recess + l.edge)) /
-                        (2.0 * static_cast<double>(l.width));
+    const double free = std::max(0.0, left) / (2.0 * width);
     l.turn = static_cast<float>(std::clamp(turn, -free, free));
 }
 
@@ -149,9 +174,8 @@ void placeLips(Course& c, const Heightfield& relief, double discharge) {
         const double below =
             (k + 1 < drops.size() ? p[drops[k + 1][0]].s : foot.s + kOpenPool) - foot.s;
         shapeLip(l, c, above, below, discharge);
-        const double turned = 2.0 * std::abs(static_cast<double>(l.turn)) * l.width;
-        l.reach = static_cast<float>(2.0 * (l.recess + l.edge + turned) + (foot.s - a.s));
-        if (l.recess + l.edge > 0.0f || l.turn != 0.0f) {
+        l.reach = static_cast<float>(1.5 * recessMost(l) + (foot.s - a.s));
+        if (recessMost(l) > 0.0) {
             c.lips.push_back(l);
         }
     }
@@ -159,8 +183,8 @@ void placeLips(Course& c, const Heightfield& relief, double discharge) {
     c.lipsMaxX = c.lipsMaxZ = -std::numeric_limits<double>::infinity();
     for (const FallLip& l : c.lips) {
         // Its slot as far aside and stretched as it winds (river_winding.hpp).
-        const double r = 4.0 * static_cast<double>(l.recess + l.edge) + l.reach +
-                         kStretchMost * l.width + c.points[l.point].windMost;
+        const double r = 4.0 * recessMost(l) + l.reach + kStretchMost * l.width +
+                         c.points[l.point].windMost;
         c.lipsMinX = std::min(c.lipsMinX, l.x - r);
         c.lipsMinZ = std::min(c.lipsMinZ, l.z - r);
         c.lipsMaxX = std::max(c.lipsMaxX, l.x + r);
@@ -177,10 +201,28 @@ double lipRecess(const FallLip& l, double side) {
     const double rough = slotNoise(l.seed, 1, side, kRoughWave);
     const double edge = slotNoise(l.seed, 2, side, kEdgeWave);
     const double turn = static_cast<double>(l.turn);
-    const double turned = (turn > 0.0 ? turn * (side + l.width) : -turn * (l.width - side)) *
-                          (1.0 - smooth(1.0 - kTurnFade, 1.0, std::abs(u)));
+    const double fade = 1.0 - smooth(1.0 - kTurnFade, 1.0, std::abs(u));
+    const double turned = (turn > 0.0 ? turn * (side + l.width) : -turn * (l.width - side)) * fade;
+    // Its bow and its waves over its channel, back to the line of its middle within the walls of
+    // its slot (inside: 1 in its channel, 0 at its width).
+    const double v = std::min(1.0, std::abs(side) / std::max(1e-6, static_cast<double>(l.channel)));
+    const double inside =
+        1.0 - smooth(static_cast<double>(l.channel), static_cast<double>(l.width), std::abs(side));
+    const double bow = static_cast<double>(l.bow);
+    // As bent all across its channel (no straight piece), meeting its walls at an angle.
+    const double bowed = bow > 0.0 ? bow * (1.0 - v * v) : -bow * v * v * inside;
+    const double waves = static_cast<double>(l.waves) * inside *
+                         (2.0 + slotNoise(l.seed, 4, side, l.waveA) +
+                          slotNoise(l.seed, 5, side, l.waveB)) * 0.5;
     return static_cast<double>(l.recess) * across * across * (1.0 + kRoughShare * rough) +
-           static_cast<double>(l.edge) * across * (0.5 + edge) + turned;
+           static_cast<double>(l.edge) * across * (0.5 + edge) + turned + bowed + waves;
+}
+
+double recessMost(const FallLip& l) {
+    // The noises within [-1, 1] (slotNoise).
+    return kRecessMost * static_cast<double>(l.recess) + 1.5 * static_cast<double>(l.edge) +
+           std::abs(static_cast<double>(l.bow)) + 2.0 * static_cast<double>(l.waves) +
+           2.0 * std::abs(static_cast<double>(l.turn)) * l.width;
 }
 
 void cutLips(const Course& c, double x, double z, const LipValley& near, Valley& v) {
@@ -193,14 +235,12 @@ void cutLips(const Course& c, double x, double z, const LipValley& near, Valley&
         const double dx = x - l.x;
         const double dz = z - l.z;
         const double along = dx * l.dirX + dz * l.dirZ;
-        // The valley moved downstream by the recess from twice it upstream of the edge (in the
-        // pool above: the water coming down to the first lip of a stretch at most 1.75 times as
-        // steep there) to the lip, back over reach below it: the course in order still, from the
-        // pool above to the pool below. The recess is kRecessMost of that of the lip at most.
+        // The valley moved downstream by the recess from 1.5 times it upstream of the edge (in
+        // the pool above) to the lip, back over reach below it: the course in order still, from
+        // the pool above to the pool below. The recess is recessMost at most.
         const double reach = l.reach;
-        const double most = kRecessMost * static_cast<double>(l.recess + l.edge) +
-                            2.0 * std::abs(static_cast<double>(l.turn)) * l.width;
-        if (along < -3.0 * most || along > reach) {
+        const double most = recessMost(l);
+        if (along < -1.5 * most || along > reach) {
             continue;
         }
         // Across the slot where it winds (river_winding.hpp).
@@ -209,10 +249,10 @@ void cutLips(const Course& c, double x, double z, const LipValley& near, Valley&
             continue;
         }
         const double recess = lipRecess(l, side);
-        if (!(recess > 0.0) || along < -3.0 * recess) {
+        if (!(recess > 0.0) || along < -1.5 * recess) {
             continue;
         }
-        const double shift = recess * smooth(-3.0 * recess, -recess, along) *
+        const double shift = recess * smooth(-1.5 * recess, -recess, along) *
                              (1.0 - smooth(0.0, reach, along));
         if (!(shift > 0.0)) {
             continue;

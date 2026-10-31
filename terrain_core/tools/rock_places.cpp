@@ -71,6 +71,8 @@ Direction unit(double dx, double dz, Direction fallback) {
     return length > 1e-9 ? Direction{dx / length, dz / length} : fallback;
 }
 
+} // namespace
+
 // The index of the point of the course meters along it from point from (down it when meters > 0),
 // the last one reached.
 std::size_t alongCourse(const terrain::RiverReach& reach, std::size_t from, double meters) {
@@ -88,6 +90,8 @@ std::size_t alongCourse(const terrain::RiverReach& reach, std::size_t from, doub
     return i;
 }
 
+namespace {
+
 // The direction down the course at point i (over a few points).
 Direction downAt(const terrain::RiverReach& reach, std::size_t i) {
     const auto& p = reach.points;
@@ -95,6 +99,8 @@ Direction downAt(const terrain::RiverReach& reach, std::size_t i) {
     const std::size_t b = alongCourse(reach, i, 15.0);
     return unit(p[b].x - p[a].x, p[b].z - p[a].z, {});
 }
+
+} // namespace
 
 std::size_t nearestPoint(const terrain::RiverReach& reach, double x, double z) {
     std::size_t best = 0;
@@ -109,19 +115,6 @@ std::size_t nearestPoint(const terrain::RiverReach& reach, double x, double z) {
     return best;
 }
 
-// A stretch in steps: the falls of a reach whose lips follow each other within kStepGap meters
-// down the course, from its highest lip (point first) to its lowest foot (point last).
-struct Stretch {
-    std::size_t reach = 0;
-    std::size_t first = 0;
-    std::size_t last = 0;
-    int down = 1; // +1 when the course runs down its points in order, -1 otherwise
-    double top = 0.0;
-    double bottom = 0.0;
-    std::size_t falls = 0;
-    bool found = false;
-};
-
 // Along-course meters between points a and b of a reach.
 double between(const terrain::RiverReach& reach, std::size_t a, std::size_t b) {
     double meters = 0.0;
@@ -131,6 +124,8 @@ double between(const terrain::RiverReach& reach, std::size_t a, std::size_t b) {
     }
     return meters;
 }
+
+namespace {
 
 // The stretches of a reach, each a run of its falls down the course.
 std::vector<Stretch> stretchesOf(const terrain::RiverReach& reach, std::size_t r) {
@@ -165,6 +160,8 @@ std::vector<Stretch> stretchesOf(const terrain::RiverReach& reach, std::size_t r
     return out;
 }
 
+} // namespace
+
 // The stretch whose lips come nearest to (x, z), within kFallSearch meters.
 Stretch stretchNear(const terrain::Hydrology& h, double x, double z) {
     Stretch pick;
@@ -186,6 +183,8 @@ Stretch stretchNear(const terrain::Hydrology& h, double x, double z) {
     }
     return pick;
 }
+
+namespace {
 
 // The face of the rock at a column, its middle and how high it stands.
 struct FaceSeen {

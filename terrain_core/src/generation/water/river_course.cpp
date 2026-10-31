@@ -217,7 +217,8 @@ std::vector<CoursePoint> axisOf(const ReachInput& in) {
 
 // The gorge factor of each point from the relief above its valley, smoothed along the course
 // (but at both ends, which other reaches share). A fall cuts a gorge into its slope: the factor
-// rises to 1 over the kFallReach meters before and after its stretch.
+// rises to 1 over the kFallReach meters before and after its stretch; and its share of a stretch
+// in steps (CoursePoint::steps) over kStepsFade meters.
 constexpr double kFallReach = 100.0;
 void setGorges(std::vector<CoursePoint>& points) {
     std::vector<float> raw(points.size());
@@ -252,6 +253,9 @@ void setGorges(std::vector<CoursePoint>& points) {
     for (std::size_t i = 1; i + 1 < points.size(); ++i) {
         const double near = 1.0 - smooth(0.0, kFallReach, nearest[i]);
         points[i].gorge = std::max(points[i].gorge, static_cast<float>(near));
+    }
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        points[i].steps = static_cast<float>(1.0 - smooth(0.0, kStepsFade, nearest[i]));
     }
 }
 
@@ -475,6 +479,14 @@ float levelAt(const Course& c, double x, double z) {
         }
     }
     return level;
+}
+
+
+bool CourseChunk::skips(double atX, double atZ, double threshold) const {
+    const double away = dmath::hypot(atX - x, atZ - z) - radius - flat;
+    const double floorOf = static_cast<double>(minLevel - maxDepth) +
+                           static_cast<double>(minWall) * std::max(0.0, away);
+    return away > 0.0 && !(floorOf < threshold);
 }
 
 } // namespace terrain::water

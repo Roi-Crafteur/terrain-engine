@@ -186,13 +186,15 @@ void testCrossSections(const World& w) {
 }
 
 // Down the face of a fall the channel is wet from bank to bank: at a quarter, half and three
-// quarters of the drop of the falls of one reach in 3, every meter across the inner 70 % of its
-// channel, where the surface first comes down through that height along the water (from
-// kFaceSearch meters upstream to as far downstream, every kFaceStep: the edge of a lip may recede
-// or turn, its slot wind) it is water. The segments below on the same face reach up it beyond
+// quarters of the drop of the falls of one reach in 3, every meter across the inner kFaceShare of
+// its channel (its sill narrows it by up to 30 % over its lip: the pools of the steps are oval),
+// where the surface first comes down through that height along the water (from kFaceSearch meters
+// upstream to as far downstream, every kFaceStep: the edge of a lip may recede or turn, its slot
+// wind) it is water. The segments below on the same face reach up it beyond
 // their start and hold about the same ground: they must not leave it dry.
 constexpr double kFaceSearch = 20.0;
 constexpr double kFaceStep = 0.1;
+constexpr double kFaceShare = 0.5;
 
 // Where the surface first comes down below level along the points of a reach, side meters left of
 // them, from kFaceSearch meters upstream of along meters along them: dry or not (nullopt: never).
@@ -246,7 +248,7 @@ void testFallFaces(const World& w) {
                 const terrain::RiverPoint& a = reach.points[i - 1];
                 const terrain::RiverPoint& b = reach.points[i];
                 const double t = (a.level - level) / (a.level - b.level);
-                const double half = 0.35 * (a.width + t * (b.width - a.width));
+                const double half = 0.5 * kFaceShare * (a.width + t * (b.width - a.width));
                 for (double d = -half; d <= half; d += 1.0) {
                     const std::optional<bool> below =
                         dryBelow(w, reach, s, s[i - 1] + t * (s[i] - s[i - 1]), d, level);

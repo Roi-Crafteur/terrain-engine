@@ -7,6 +7,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,31 @@ struct Places {
     std::vector<Shot> shots;
     std::vector<TopShot> tops;
 };
+
+// A stretch in steps: the falls of a reach whose lips follow each other within 250 m down the
+// course, from its highest lip (point first) to its lowest foot (point last).
+struct Stretch {
+    std::size_t reach = 0;
+    std::size_t first = 0;
+    std::size_t last = 0;
+    int down = 1; // +1 when the course runs down its points in order, -1 otherwise
+    double top = 0.0;
+    double bottom = 0.0;
+    std::size_t falls = 0;
+    bool found = false;
+};
+
+// The stretch whose lips come nearest to (x, z), within 3 km (found false without one).
+Stretch stretchNear(const terrain::Hydrology& hydrology, double x, double z);
+
+// The index of the point of the course meters along it from point from (down its points when
+// meters > 0), the last one reached.
+std::size_t alongCourse(const terrain::RiverReach& reach, std::size_t from, double meters);
+
+// Meters along the course between points a and b of a reach.
+double between(const terrain::RiverReach& reach, std::size_t a, std::size_t b);
+
+std::size_t nearestPoint(const terrain::RiverReach& reach, double x, double z);
 
 // The highest wall within 4 km of the K2 (view_places::highestWall on the relief): seen from 120
 // m and from the end of its approach (view_wall), along it across the edge of the tiles (reach:

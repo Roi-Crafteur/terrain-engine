@@ -15,8 +15,10 @@ namespace terrain::water {
 
 namespace {
 
-// The headwall of a fall turns to rock over kHeadFade meters beside its channel.
+// The headwall of a fall turns to rock over kHeadFade meters beside its channel. Down a stretch in
+// steps, the walls of the valley are rounded at their foot over kStepsFoot meters.
 constexpr double kHeadFade = 10.0;
+constexpr double kStepsFoot = 2.0;
 
 double lerp(double a, double b, double t) {
     return a + (b - a) * t;
@@ -121,12 +123,13 @@ struct Frame {
     // share its channel widens by in a bowl (river_slot.hpp).
     double fall = 0.0;
     double slot = 0.0;
+    double channel = 0.0; // the half width of its channel, narrowed in a slot (slotHalf)
     double wider = 0.0;
     double along = 0.0; // where the foot lies along the course
 };
 
 Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double rise,
-              double valleyRise, double warp, const Bowl& bowl) {
+              double valleyRise, double warp, const Bowl& bowl, std::uint64_t slotSeed) {
     Frame r;
     const double t = f.t;
     r.t = t;
@@ -138,11 +141,20 @@ Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double 
     r.surfaceLevel = f.upstream ? r.ground + valleyRise * f.beyond : r.ground;
     r.fillLevel = f.upstream ? r.ground : r.ground - valleyRise * f.beyond;
     r.half = lerp(a.half, b.half, t);
+    r.channel = r.half;
     r.depth = lerp(a.depth, b.depth, t) + bowl.deeper * r.fall;
     r.wider = bowl.wider * r.fall;
+    // Down a stretch in steps (CoursePoint::steps), the walls rise from the rim of its slot (from
+    // its narrowed channel and the least of its walls, river_slot.hpp: no floor beside it),
+    // rounded over kStepsFoot meters only.
+    const double steps = lerp(a.steps, b.steps, t);
     const double floorHalf = lerp(a.floorHalf, b.floorHalf, t);
     const double wall = lerp(a.wall, b.wall, t);
-    const double foot = std::max(1.0, lerp(a.foot, b.foot, t));
+    const double foot = std::max(1.0, lerp(lerp(a.foot, b.foot, t), kStepsFoot, steps));
+    if (r.fall > 0.0) {
+        r.slot = std::max(a.slot, b.slot);
+        r.channel = slotHalf(slotSeed, r.along, r.half);
+    }
     const double d = f.distance;
     // The walls, rounded at their foot, their edge with spurs and re-entrants, but never nearer
     // to the axis than kWallMargin meters beyond the channel and its meanders (a soft bound).
@@ -150,6 +162,11 @@ Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double 
     const double least = r.half * (1.0 + r.wider) + r.amplitude + kWallMargin;
     const double spur = floorHalf - warp * wallWarpOf(floorHalf) - least;
     r.out = d - least - 0.5 * (spur + std::sqrt(spur * spur + kWallSoft * kWallSoft));
+    if (steps > 0.0) {
+        const double rim = lerp(r.half, r.channel, r.fall) * (1.0 + r.wider) + r.amplitude +
+                           kRunLeast * r.slot * r.fall;
+        r.out = lerp(r.out, d - rim, steps);
+    }
     // The walls of a gorge are steeper on its spurs and gentler in its bays (the noise of the
     // walls): no even trench.
     const double steep = wall * (1.0 + kGorgeSwing * lerp(a.gorge, b.gorge, t) * warp);
@@ -161,9 +178,6 @@ Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double 
     r.floorSlope = lerp(a.floorSlope, b.floorSlope, t);
     r.above = kFloorRise + r.floorSlope * std::max(0.0, d - r.half);
     r.floorLevel = r.surfaceLevel + r.above;
-    if (r.fall > 0.0) {
-        r.slot = std::max(a.slot, b.slot);
-    }
     return r;
 }
 
@@ -240,7 +254,7 @@ double slotBank(const Frame& r, const Foot& f, std::uint64_t slotSeed, double al
 // over their own width beyond it, whatever the depth of the steps below the floor.
 // Where the channel of segment a-b lies from a foot (channelOf): its distance and its half width.
 Channel channelReach(const CoursePoint& a, const CoursePoint& b, const Foot& f, const Frame& r,
-                     std::uint64_t seed, std::uint64_t slotSeed) {
+                     std::uint64_t seed) {
     const double t = r.t;
     Channel c;
     c.distance = f.distance;
@@ -249,7 +263,7 @@ Channel channelReach(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     // too: the segments around it draw the same slot there. Its bowls widen it (the walls of the
     // slot giving way).
     if (r.fall > 0.0) {
-        const double base = slotHalf(slotSeed, r.along, r.half);
+        const double base = r.channel; // slotHalf (frameOf)
         c.bowl = base * r.wider;
         c.half = base + c.bowl;
     }
@@ -273,7 +287,7 @@ Channel channelReach(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
 
 Channel channelOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, const Frame& r,
                   std::uint64_t seed, std::uint64_t slotSeed) {
-    Channel c = channelReach(a, b, f, r, seed, slotSeed);
+    Channel c = channelReach(a, b, f, r, seed);
     const double half = c.half;
     if (c.distance < half) {
         c.height = r.water - r.depth * (1.0 - (c.distance / half) * (c.distance / half));
@@ -282,7 +296,7 @@ Channel channelOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, con
     const double out = c.distance - half;
     c.height = r.water + kBankSlope * out;
     if (r.fall > 0.0) {
-        c.height = slotBank(r, f, slotSeed, r.along, out, c.height, c.bowl);
+        c.height = slotBank(r, f, slotSeed, r.along, out, c.height, std::max(0.0, c.bowl));
     }
     return c;
 }
@@ -323,6 +337,7 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     v.wet = channelDistance < half && channel < surface;
     v.gorge = static_cast<float>(lerp(a.gorge, b.gorge, t));
     v.mountain = static_cast<float>(lerp(a.mountain, b.mountain, t));
+    v.steps = static_cast<float>(lerp(a.steps, b.steps, t));
     v.upX = f.upX;
     v.upZ = f.upZ;
     // The slope of the valley across it, continuous (the banks of the channel aside): the rock
@@ -350,16 +365,7 @@ Frame frameAt(const Course& c, std::size_t i, const SegmentSpan& span, double x,
     sideOf(a, span, x, z, f);
     windFoot(c, a, b, span, f);
     const Bowl bowl = a.fall || b.fall ? bowlAt(c, alongOf(a, b, f), i) : Bowl{};
-    return frameOf(a, b, f, c.rises[i], c.valleyRises[i], warp, bowl);
-}
-
-// Beyond its floors (and their levees), a chunk only matters at (x, z) where it may carve below
-// the relief: below threshold.
-bool skipsChunk(const CourseChunk& k, double x, double z, double threshold) {
-    const double away = dmath::hypot(x - k.x, z - k.z) - k.radius - k.flat;
-    const double floorOf = static_cast<double>(k.minLevel - k.maxDepth) +
-                           static_cast<double>(k.minWall) * std::max(0.0, away);
-    return away > 0.0 && !(floorOf < threshold);
+    return frameOf(a, b, f, c.rises[i], c.valleyRises[i], warp, bowl, c.slotSeed);
 }
 
 // How far (x, z) lies at least from box segment s of course c, its foot f on it: in the frame of
@@ -381,7 +387,7 @@ double boxDistance(const Course& c, const BoxCourse::Segment& s, double x, doubl
 constexpr double kNearLip = 4.0;
 Valley valleyNear(const Course& c, const FallLip& l, double x, double z, std::uint64_t meanderSeed,
                   double warp) {
-    const double from = l.s - 4.0 * static_cast<double>(l.recess + l.edge) - kNearLip;
+    const double from = l.s - 4.0 * recessMost(l) - kNearLip;
     const double to = l.s + static_cast<double>(l.reach) + kNearLip;
     std::size_t first = l.point;
     while (first > 0 && c.points[first].s > from) {
@@ -424,7 +430,7 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
         const Matters matters = mayMatter(a, b, f, r, lowest + kBlend, ground);
         if (matters != Matters::Valley) {
             if (matters == Matters::Banks) { // its surface and fill change nothing: its banks
-                bank = std::max(bank, bankOf(channelReach(a, b, f, r, meanderSeed, c.slotSeed), r));
+                bank = std::max(bank, bankOf(channelReach(a, b, f, r, meanderSeed), r));
             }
             return;
         }
@@ -443,7 +449,7 @@ Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_
             best = v;
         }
     };
-    const auto skips = [&](const CourseChunk& k) { return skipsChunk(k, x, z, lowest + kBlend); };
+    const auto skips = [&](const CourseChunk& k) { return k.skips(x, z, lowest + kBlend); };
     if (box == nullptr) {
         for (const CourseChunk& k : c.chunks) {
             if (!skips(k)) {

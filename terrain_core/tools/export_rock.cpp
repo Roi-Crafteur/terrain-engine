@@ -8,7 +8,7 @@
 // Usage: terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
 //        [--view-distance <chunks>] [--only <name>]... [--no-rock]
 //        [--at <x> <z> <heading degrees> <tilt> <meters above the ground>] [--sun <turns>]
-//        [--cost] [--check] [--face <x> <z>] [--walk <x> <z>]
+//        [--cost] [--check] [--face <x> <z>] [--walk <x> <z>] [--steps]
 // --cost: the cost of the rock in the tiles around a wall, the rivers, the plains and crests.
 // --check: also check_<name>.png, the same view with the openings of the tiles in yellow, their
 // inverted triangles in red and the triangles seen from behind in cyan (mesh_checks.hpp), and
@@ -16,13 +16,17 @@
 // --face: face_side, the tallest face near (x, z) under a sun across it (rock_spots.hpp).
 // --walk: where to walk from straight to a face and under an overhang near (x, z), and the views
 // from there (walk_face, walk_under).
+// --steps: the eyes on the steps of the fall of 388 m (rock_steps.hpp), without a view but
+// those --only names.
 // --no-rock: the tiles of the relief alone (a height per column), the views before phase 12A.
 // The planet level is read from --planet (or <output-dir>/planet.bin), built and written there
 // when it does not hold it (about 100 s on 4 cores).
 
 #include "rock_cost.hpp"
 #include "rock_places.hpp"
+#include "rock_report.hpp"
 #include "rock_spots.hpp"
+#include "rock_steps.hpp"
 
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/io/mesh_checks.hpp"
@@ -53,7 +57,9 @@
 
 namespace {
 
+using rock_tool::format;
 using rock_tool::Places;
+using rock_tool::Report;
 using rock_tool::Shot;
 using rock_tool::TopShot;
 using terrain::TileData;
@@ -65,6 +71,7 @@ constexpr double kFallZ = 156'215.0;
 // The level of water drawn over a cell: its 4 corners under water within kFlatWater meters of
 // each other (the pools, not the water falling down a face).
 constexpr float kFlatWater = 1.0f;
+constexpr double kBigStep = 10.0; // --steps: meters of the drop of a step at least
 
 struct Options {
     std::filesystem::path directory;
@@ -75,6 +82,7 @@ struct Options {
     bool rock = true;      // --no-rock: the tiles of the relief alone, a height per column
     bool cost = false;     // --cost: the cost of the rock at the places instead of the views
     bool check = false;    // --check: the views of the checks of the meshes too
+    bool steps = false;    // --steps: the eyes on the steps of the fall of 388 m
     std::vector<std::string> only;
     // --at <x> <z> <heading degrees> <tilt> <meters above the ground>: a view "at" there, and
     // "at_top" from above, 100 m wide.
@@ -95,8 +103,8 @@ bool parseOptions(int argc, char** argv, Options& o) {
             o.rock = false;
             continue;
         }
-        if (flag == "--cost" || flag == "--check") {
-            (flag == "--cost" ? o.cost : o.check) = true;
+        if (flag == "--cost" || flag == "--check" || flag == "--steps") {
+            (flag == "--cost" ? o.cost : flag == "--check" ? o.check : o.steps) = true;
             continue;
         }
         if (flag == "--at") {
@@ -144,32 +152,6 @@ bool parseOptions(int argc, char** argv, Options& o) {
 
 bool wanted(const Options& o, const std::string& name) {
     return o.only.empty() || std::find(o.only.begin(), o.only.end(), name) != o.only.end();
-}
-
-class Report {
-public:
-    void add(const std::string& line) {
-        std::fputs(line.c_str(), stdout);
-        text_ += line;
-    }
-    [[nodiscard]] bool write(const std::filesystem::path& path) const {
-        std::FILE* file = std::fopen(path.string().c_str(), "w");
-        if (file == nullptr) {
-            return false;
-        }
-        const bool ok = std::fputs(text_.c_str(), file) >= 0;
-        return std::fclose(file) == 0 && ok;
-    }
-
-private:
-    std::string text_;
-};
-
-template <typename... Args>
-std::string format(const char* pattern, Args... args) {
-    char line[512];
-    std::snprintf(line, sizeof line, pattern, args...);
-    return line;
 }
 
 struct World {
@@ -406,6 +388,38 @@ void reportCost(const World& w, Options& o, const Places& places, Report& r) {
     o.only = {"none"};
 }
 
+// The places the options ask for: the eyes on the steps (--steps), the cost (--cost), a view
+// (--at), a face (--face), a walk (--walk).
+void addAsked(const World& w, Options& o, Places& places, Report& r) {
+    if (o.steps) {
+        r.add(rock_tool::addSteps(w.field, *w.hydrology, kFallX, kFallZ, kBigStep, places));
+        o.only = o.only.empty() ? std::vector<std::string>{"none"} : o.only;
+    }
+    if (o.cost) {
+        reportCost(w, o, places, r);
+    }
+    if (o.at) {
+        const std::array<double, 5>& a = *o.at;
+        places.shots.push_back(
+            {"at", a[0], a[1], a[4], a[2] / 360.0, a[3], 900, o.sunLeft, "--at", 0.5});
+        const double side = 4.0 * a[4] + 4.0;
+        places.tops.push_back({"at_top", a[0], a[1], side, side / 1000.0, "--at"});
+    }
+    if (o.face && !rock_tool::addFaceSide(w.field, (*o.face)[0], (*o.face)[1], places)) {
+        r.add("no face near --face\n");
+    }
+    if (o.walk) {
+        for (const bool under : {false, true}) {
+            const rock_tool::WalkSpot spot =
+                rock_tool::walkToFace(w.tiles, (*o.walk)[0], (*o.walk)[1], under);
+            r.add(rock_tool::describe(spot, under) + "\n");
+            if (spot.found) {
+                places.shots.push_back(rock_tool::walkShot(spot, under ? "walk_under" : "walk_face"));
+            }
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -415,7 +429,7 @@ int main(int argc, char** argv) {
                      "Usage: %s <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>] "
                      "[--view-distance <chunks>] [--only <name>]... [--no-rock] "
                      "[--at <x> <z> <heading> <tilt> <above>] [--sun <turns>] [--cost] [--check] "
-                     "[--face <x> <z>] [--walk <x> <z>]\n",
+                     "[--face <x> <z>] [--walk <x> <z>] [--steps]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -449,28 +463,7 @@ int main(int argc, char** argv) {
         r.add("no gorge near the fall of 388 m\n");
     }
     rock_tool::addFallViews(places);
-    if (o.cost) {
-        reportCost(w, o, places, r);
-    }
-    if (o.at) {
-        const std::array<double, 5>& a = *o.at;
-        places.shots.push_back(
-            {"at", a[0], a[1], a[4], a[2] / 360.0, a[3], 900, o.sunLeft, "--at", 0.5});
-        places.tops.push_back({"at_top", a[0], a[1], 4.0 * a[4] + 4.0, (4.0 * a[4] + 4.0) / 1000.0, "--at"});
-    }
-    if (o.face && !rock_tool::addFaceSide(w.field, (*o.face)[0], (*o.face)[1], places)) {
-        r.add("no face near --face\n");
-    }
-    if (o.walk) {
-        for (const bool under : {false, true}) {
-            const rock_tool::WalkSpot spot =
-                rock_tool::walkToFace(w.tiles, (*o.walk)[0], (*o.walk)[1], under);
-            r.add(rock_tool::describe(spot, under) + "\n");
-            if (spot.found) {
-                places.shots.push_back(rock_tool::walkShot(spot, under ? "walk_under" : "walk_face"));
-            }
-        }
-    }
+    addAsked(w, o, places, r);
     bool written = true;
     for (const Shot& s : places.shots) {
         written = (!wanted(o, s.name) || writeShot(w, o, s, r)) && written;

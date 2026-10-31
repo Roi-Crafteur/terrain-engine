@@ -117,6 +117,8 @@ add_library(terrain_core STATIC
     src/generation/water/river_path.cpp
     src/generation/water/river_profile.cpp
     src/generation/water/river_slot.cpp
+    src/generation/water/river_frame.cpp
+    src/generation/water/river_pools.cpp
     src/generation/water/river_winding.cpp
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
@@ -367,9 +369,10 @@ target_link_libraries(terrain_export_rivers PRIVATE terrain_core terrain_warning
 # terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
 #                     [--view-distance <chunks>] [--only <name>]... [--no-rock] [--cost]
 #                     [--at <x> <z> <heading> <tilt> <above>] [--sun <turns>] [--check]
-#                     [--face <x> <z>] [--walk <x> <z>]
+#                     [--face <x> <z>] [--walk <x> <z>] [--steps]
 add_executable(terrain_export_rock tools/export_rock.cpp tools/rock_places.cpp
-                                   tools/rock_cost.cpp tools/rock_spots.cpp tools/view_places.cpp)
+                                   tools/rock_cost.cpp tools/rock_spots.cpp tools/rock_steps.cpp
+                                   tools/view_places.cpp)
 target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
 
 # The planet level of a world written to its file, as the game reads it (phase 11B):

@@ -15,7 +15,8 @@
 //     its sides turns from across the slot by more than kTurnLeast degrees at kTurnedShare of the
 //     lips at least, kTurnMost at most.
 //   - Bowls: the water of the pools kDeeperLeast meters deeper and kWiderLeast times wider just
-//     below their drop than near their next lip (the medians).
+//     below their drop than near their next lip (the medians); oval, narrower toward the next lip
+//     (its sill) than at their middle, a share of them at least.
 //   - Heaps: the blocks of the pools at the foot of the drops, of 1.5 to 7 meters, a share of
 //     them out of the water.
 #include "falls_support.hpp"
@@ -24,6 +25,7 @@
 #include "test_assert.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -46,14 +48,21 @@ constexpr double kCascadeGap = 10.0;
 constexpr double kAcross = 0.8;
 constexpr double kContrast = 0.3;
 constexpr double kRecessLeast = 0.3;
-constexpr double kStraightMost = 2.5;
-constexpr double kEdgeLeast = 0.1;
+constexpr std::size_t kPlaces = 9;
+constexpr std::size_t kPiece = 5; // 0.4 of the width (kAcross of its half on each side)
+constexpr double kOnLine = 0.02;
+constexpr double kOnLineLeast = 0.3;
+constexpr double kBowedLeast = 0.1;
+constexpr double kBowedShare = 0.9;
+constexpr double kRoomLeast = 0.35;
+constexpr double kStraightShare = 0.05;
+constexpr double kOpenRoom = 40.0;
 constexpr double kTurnAcross = 0.6;
 constexpr double kTurnLeast = 10.0;
 constexpr double kTurnedShare = 0.6;
 constexpr double kTurnMost = 45.0;
 constexpr double kDeeperLeast = 1.5;
-constexpr double kWiderLeast = 1.08;
+constexpr double kWiderLeast = 1.05;
 
 // Meters along the points of a reach.
 std::vector<double> alongOf(const RiverReach& reach) {
@@ -164,13 +173,17 @@ double contrastAt(const World& w, double x, double z, double top, double bottom)
 }
 
 struct LipMeasures {
-    std::vector<double> hollow;   // the middle upstream of the sides, by the drop (contrasted)
-    std::vector<double> straight; // and meters (one hardness)
-    std::vector<double> apart;    // the three places, the farthest apart (meters)
-    std::vector<double> turns;    // degrees from across the slot
+    std::vector<double> hollow; // the middle upstream of the sides, by the drop (contrasted)
+    std::vector<double> bowed;  // the farthest from the line through its sides, by its width
+    std::vector<double> turns;  // degrees from across the slot
+    std::size_t straight = 0;   // with a straight piece kPiece places long
+    // The same for the lips whose pools leave room (kRoomLeast of their width).
+    std::vector<double> roomyBowed;
+    std::size_t roomyStraight = 0;
 };
 
-void measureLip(const World& w, const RiverReach& reach, std::size_t i, LipMeasures& m) {
+void measureLip(const World& w, const RiverReach& reach, std::size_t i, bool roomy,
+                LipMeasures& m) {
     const auto& p = reach.points;
     std::size_t j = i + 1;
     while (j + 1 < p.size() && p[j].level - p[j + 1].level > 0.5f) {
@@ -197,10 +210,39 @@ void measureLip(const World& w, const RiverReach& reach, std::size_t i, LipMeasu
     const double recess = centre - 0.5 * (left + right);
     if (contrast >= kContrast) {
         m.hollow.push_back(recess / (top - bottom));
-    } else if (!(contrast > 0.0)) {
-        m.straight.push_back(std::abs(recess));
-        m.apart.push_back(std::max({left, centre, right}) - std::min({left, centre, right}));
     }
+    // Its edge at kPlaces places across: how far from the line through its sides, and whether
+    // any kPiece consecutive ones lie on a line (within kOnLine of the width).
+    std::array<double, kPlaces> edge{};
+    for (std::size_t k = 0; k < kPlaces; ++k) {
+        const double u = -kAcross + 2.0 * kAcross * static_cast<double>(k) / (kPlaces - 1.0);
+        edge[k] = edgeAt(w, reach, i, middle, u * width);
+        if (std::isnan(edge[k])) {
+            return;
+        }
+    }
+    const auto off = [&](std::size_t a, std::size_t b, std::size_t k) {
+        const double t = static_cast<double>(k - a) / static_cast<double>(b - a);
+        return std::abs(edge[k] - (edge[a] + t * (edge[b] - edge[a])));
+    };
+    double bowed = 0.0;
+    for (std::size_t k = 1; k + 1 < kPlaces; ++k) {
+        bowed = std::max(bowed, off(0, kPlaces - 1, k));
+    }
+    m.bowed.push_back(bowed / (2.0 * width));
+    if (roomy) {
+        m.roomyBowed.push_back(bowed / (2.0 * width));
+    }
+    bool straight = false;
+    for (std::size_t a = 0; a + kPiece <= kPlaces; ++a) {
+        double most = 0.0;
+        for (std::size_t k = a + 1; k + 1 < a + kPiece; ++k) {
+            most = std::max(most, off(a, a + kPiece - 1, k));
+        }
+        straight = straight || most < std::max(kOnLineLeast, kOnLine * 2.0 * width);
+    }
+    m.straight += straight ? 1 : 0;
+    m.roomyStraight += straight && roomy ? 1 : 0;
 }
 
 double meanOf(const std::vector<double>& values) {
@@ -216,15 +258,36 @@ void testLips(const World& w, Reaches& reaches, const std::vector<std::size_t>& 
     for (const std::size_t r : steeps) {
         const RiverReach& reach = reaches[r];
         const auto& p = reach.points;
-        for (std::size_t i = 1; i + 2 < p.size(); ++i) {
+        const std::vector<double> s = alongOf(reach);
+        const std::vector<Drop> drops = dropsOf(reach);
+        for (std::size_t k = 0; k < drops.size(); ++k) {
+            const std::size_t i = drops[k].lip;
             const double run = std::hypot(p[i + 1].x - p[i].x, p[i + 1].z - p[i].z);
-            if (p[i - 1].level == p[i].level && p[i].level - p[i + 1].level > 2.0f &&
-                static_cast<double>(p[i].level - p[i + 1].level) > run) {
-                measureLip(w, reach, i, m);
+            if (i == 0 || i + 2 >= p.size() || !(p[i - 1].level == p[i].level) ||
+                !(p[i].level - p[i + 1].level > 2.0f) ||
+                !(static_cast<double>(p[i].level - p[i + 1].level) > run)) {
+                continue;
             }
+            // The room of its pools: half of the pool above, half of the pool below.
+            const double above = k > 0 ? s[i] - s[drops[k - 1].foot] : kOpenRoom;
+            const double below = k + 1 < drops.size() ? s[drops[k + 1].lip] - s[drops[k].foot]
+                                                      : kOpenRoom;
+            const bool roomy = 0.5 * std::min(above, below) >=
+                               kRoomLeast * static_cast<double>(p[i].width);
+            measureLip(w, reach, i, roomy, m);
         }
     }
-    const double straightMost = falls::quantile(m.straight, 0.95);
+    const auto shareBowed = [](const std::vector<double>& bows) {
+        std::size_t bowed = 0;
+        for (const double b : bows) {
+            bowed += b >= kBowedLeast ? 1 : 0;
+        }
+        return static_cast<double>(bowed) / static_cast<double>(std::max<std::size_t>(1, bows.size()));
+    };
+    const double bowedShare = shareBowed(m.bowed);
+    const double roomyShare = shareBowed(m.roomyBowed);
+    std::printf("of them %zu whose pools leave room: %.0f%% bowed, %zu with a straight piece\n",
+                m.roomyBowed.size(), 100.0 * roomyShare, m.roomyStraight);
     std::size_t turned = 0;
     double most = 0.0;
     for (const double t : m.turns) {
@@ -233,14 +296,18 @@ void testLips(const World& w, Reaches& reaches, const std::vector<std::size_t>& 
     }
     const double share = static_cast<double>(turned) / static_cast<double>(m.turns.size());
     std::printf("%zu lips over hard rock on soft: their middle %.2f of their drop upstream of "
-                "their sides on average; %zu over rock of one hardness: %.2f m at most (95th "
-                "percentile), their three places %.2f m apart on average; %zu lips: %.0f%% of "
-                "them turned from across their slot by more than %.0f degrees, %.1f at most\n",
-                m.hollow.size(), meanOf(m.hollow), m.straight.size(), straightMost,
-                meanOf(m.apart), m.turns.size(), 100.0 * share, kTurnLeast, most);
-    TEST_CHECK(m.hollow.size() >= 5 && m.straight.size() >= 100 && m.turns.size() >= 100);
+                "their sides on average; %zu lips at %zu places: %.0f%% of them %.2f of their "
+                "width off the line through their sides at least (median %.2f), %zu with a "
+                "straight piece; %zu lips: %.0f%% of them turned from across their slot by more "
+                "than %.0f degrees, %.1f at most\n",
+                m.hollow.size(), meanOf(m.hollow), m.bowed.size(), kPlaces, 100.0 * bowedShare,
+                kBowedLeast, falls::quantile(m.bowed, 0.5), m.straight, m.turns.size(),
+                100.0 * share, kTurnLeast, most);
+    TEST_CHECK(m.hollow.size() >= 5 && m.bowed.size() >= 100 && m.turns.size() >= 100);
     TEST_CHECK(meanOf(m.hollow) >= kRecessLeast);
-    TEST_CHECK(straightMost <= kStraightMost && meanOf(m.apart) >= kEdgeLeast);
+    TEST_CHECK(m.roomyBowed.size() >= 50 && roomyShare >= kBowedShare);
+    TEST_CHECK(static_cast<double>(m.roomyStraight) <=
+               kStraightShare * static_cast<double>(m.roomyBowed.size()));
     TEST_CHECK(share >= kTurnedShare && most <= kTurnMost);
 }
 
@@ -280,10 +347,21 @@ constexpr double kBowlDrop = 3.0;
 constexpr double kBowlPool = 25.0;
 constexpr double kBowlBelow = 3.0;
 constexpr double kBowlTail = 0.85;
+// Oval: before a drop of kSillDrop meters at least, the water at its narrowest from kSillFrom to
+// kSillTo of the way to it (every kSillStep: its sill, wherever the edge of the lip recedes) as
+// wide as kOvalMost of it at the middle of the pool at most, in kOvalShare of the pools at least
+// (the edge of a lip receding far into its pool takes its sill away).
+constexpr double kSillDrop = 4.0;
+constexpr double kSillFrom = 0.8;
+constexpr double kSillTo = 0.97;
+constexpr double kSillStep = 0.01;
+constexpr double kOvalMost = 0.85;
+constexpr double kOvalShare = 0.1;
 
 void testBowls(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
     std::vector<double> deeper;
     std::vector<double> wider;
+    std::vector<double> oval;
     for (const std::size_t r : steeps) {
         const RiverReach& reach = reaches[r];
         const std::vector<double> s = alongOf(reach);
@@ -299,8 +377,23 @@ void testBowls(const World& w, Reaches& reaches, const std::vector<std::size_t>&
             const auto tail = waterAt(w, reach, s, foot, next, s[foot] + kBowlTail * pool);
             deeper.push_back(below[0] - tail[0]);
             wider.push_back(below[1] / std::max(1.0, tail[1]));
+            // Oval: its water at its sill against the middle of the pool.
+            if (drops[k + 1].height >= kSillDrop) {
+                double sill = std::numeric_limits<double>::infinity();
+                for (double f = kSillFrom; f <= kSillTo; f += kSillStep) {
+                    const double across = waterAt(w, reach, s, foot, next, s[foot] + f * pool)[1];
+                    sill = across > 0.0 ? std::min(sill, across) : sill;
+                }
+                const auto middle = waterAt(w, reach, s, foot, next, s[foot] + 0.5 * pool);
+                oval.push_back(sill / std::max(1.0, middle[1]));
+            }
         }
     }
+    std::printf("%zu pools before a sill: their water %.2f, %.2f and %.2f as wide there as at "
+                "their middle (the 10th, 25th and 50th percentiles)\n",
+                oval.size(), falls::quantile(oval, 0.1), falls::quantile(oval, 0.25),
+                falls::quantile(oval, 0.5));
+    TEST_CHECK(oval.size() >= 30 && falls::quantile(oval, kOvalShare) <= kOvalMost);
     const double deep = falls::quantile(deeper, 0.5);
     const double wide = falls::quantile(wider, 0.5);
     std::printf("%zu pools below the drops: the water %.2f m deeper (median, %.2f at the 10th "

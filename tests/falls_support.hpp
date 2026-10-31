@@ -211,9 +211,10 @@ inline Jumps jumpsAround(const World& w, const RiverReach& reach, std::size_t r,
     for (std::size_t i = 1; i < p.size(); ++i) {
         s[i] = s[i - 1] + std::hypot(p[i].x - p[i - 1].x, p[i].z - p[i - 1].z);
     }
+    // kFaceRun meters beyond the span too: a face that crosses its edge seen whole (onFace).
     std::vector<AxisSample> samples;
-    for (double along = std::max(0.0, s[at] - kEndSpan);
-         along <= std::min(s.back(), s[at] + kEndSpan); along += kEndStep) {
+    for (double along = std::max(0.0, s[at] - kEndSpan - kFaceRun);
+         along <= std::min(s.back(), s[at] + kEndSpan + kFaceRun); along += kEndStep) {
         std::size_t i = 0;
         while (i + 2 < p.size() && s[i + 1] < along) {
             ++i;
@@ -256,7 +257,9 @@ inline Jumps jumpsAround(const World& w, const RiverReach& reach, std::size_t r,
     for (std::size_t k = 1; k < samples.size(); ++k) {
         const terrain::HeightSample& a = samples[k - 1].h;
         const terrain::HeightSample& b = samples[k].h;
-        if (!samples[k - 1].ours || !samples[k].ours || onFace(k)) {
+        const bool within = std::abs(samples[k - 1].along - s[at]) <= kEndSpan &&
+                            std::abs(samples[k].along - s[at]) <= kEndSpan;
+        if (!within || !samples[k - 1].ours || !samples[k].ours || onFace(k)) {
             continue;
         }
         out.bed = std::max(out.bed, std::abs(static_cast<double>(b.height - a.height)));

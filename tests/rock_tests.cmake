@@ -39,3 +39,8 @@ terrain_add_test(river_slots_test terrain_core)
 # The steps of the falls: of all heights and spacings, in cascades too, their lips turned and
 # shaped by the hardness of the rock, a bowl at their foot, heaps of blocks below them.
 terrain_add_test(river_steps_test terrain_core)
+# The walls of the slots of the falls: one wall from the water up to the relief, the frame of the
+# slot faded back to the axis on it, with its internals (src/generation/water/river_winding.hpp).
+terrain_add_test(river_walls_test terrain_core)
+target_include_directories(river_walls_test PRIVATE
+                           ${PROJECT_SOURCE_DIR}/terrain_core/src/generation/water)
