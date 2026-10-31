@@ -86,6 +86,28 @@ void testCostNoise(const settlement_test::World& w, const st::SettlementMaps& m,
     TEST_CHECK(plain.mask == t.mask && plain.hostile == t.hostile && plain.ford == t.ford);
 }
 
+// Every ridge edge is on a crest line: the land falls on both sides of it.
+void testCrests(const settlement_test::World& w, const st::ExpansionTerrain& t) {
+    const terrain::PlanetGrid& g = t.grid;
+    std::size_t ridges = 0;
+    std::size_t slopes = 0;
+    t.land->forEachLand([&](std::size_t cell, std::size_t slot) {
+        for (const bool east : {true, false}) {
+            if ((t.mask[slot] & (east ? st::kRidgeEastBit : st::kRidgeSouthBit)) == 0) {
+                continue;
+            }
+            const auto at = [&](int k) {
+                return w.level.elevation(g.index(g.wrapColumn(g.column(cell) + (east ? k : 0)),
+                                                 g.wrapRow(g.row(cell) + (east ? 0 : k))));
+            };
+            ++ridges;
+            slopes += at(-1) < at(0) && at(2) < at(1) ? 0 : 1;
+        }
+    });
+    std::printf("ridge edges %zu, on a slope %zu\n", ridges, slopes);
+    TEST_CHECK(ridges > 0 && slopes == 0);
+}
+
 } // namespace
 
 int main() {
@@ -98,6 +120,7 @@ int main() {
     const st::ExpansionTerrain t =
         st::buildExpansionTerrain(w.level, m, w.data.config, settlement_test::kSeed, 0);
     testCostNoise(w, m, t);
+    testCrests(w, t);
     std::printf("world, maps, suitability and terrain in %.2f s\n",
                 settlement_test::secondsSince(start));
     for (const st::WorldPreset& preset : w.data.config.presets) {

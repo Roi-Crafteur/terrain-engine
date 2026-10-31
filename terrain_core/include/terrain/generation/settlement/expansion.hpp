@@ -33,6 +33,9 @@ inline constexpr std::uint8_t kMountainBit = 0x80;    // its nearest model is a 
 
 inline constexpr std::uint32_t kNoCompartment = 0xFFFFFFFF;
 
+// ExpansionTerrain::drainage counts the height above the drainage in steps of this many meters.
+inline constexpr double kDrainageStepM = 8.0;
+
 // The compartments of the land: the connected regions (by the 4 sides) of the dry land that is not
 // hostile, bounded exactly by what makes a natural border: the rivers and the lakes, the ridges,
 // the sea, the hostile land. A state filling one exactly has natural borders only.
@@ -52,6 +55,10 @@ struct ExpansionTerrain {
     std::vector<std::uint8_t> ford;    // by land slot: the probable ford, 0 to 255
     std::vector<std::uint8_t> coastKm; // by land slot: to the sea (255: far)
     std::vector<std::uint8_t> hostile; // by land slot: 1 on hostile land (GoodWorldRule)
+    // By land slot: its height above its drainage (the first river of ValleyGrowth::riverClass or
+    // more, lake or sea its receivers reach), in steps of kDrainageStepM, at most 255: low on the
+    // floor of a main valley, high on the slopes and the divides.
+    std::vector<std::uint8_t> drainage;
     // The sea cells a state may cross (none when the sea is forbidden), numbered as land.
     std::shared_ptr<const planet::LandIndex> straits;
     Compartments compartments;

@@ -95,7 +95,7 @@ CapitalRule readCapitals(const Fields& f) {
 }
 
 ExpansionRule readExpansion(const Fields& f) {
-    f.only({"preferenceWeight", "minCost", "penalties", "costNoise", "riverCrossing",
+    f.only({"preferenceWeight", "minCost", "penalties", "costNoise", "valleys", "riverCrossing",
             "barrierRiverClass", "barrierModels", "fordBonus", "fordMaxRoughness",
             "confluenceBonus", "lakeCost", "ridgeCost", "sea", "seaCost", "straitCells",
             "minSuitability", "maxCost", "barrierStop", "overflow", "maxPeopleShare",
@@ -114,6 +114,12 @@ ExpansionRule readExpansion(const Fields& f) {
     r.costNoise.scaleKm = noise.numberIn("scaleKm", 8.0, 1000.0);
     r.costNoise.octaves = noise.integer("octaves", 1, 4);
     r.costNoise.amplitude = noise.numberIn("amplitude", 0.0, 0.9);
+    const Fields valleys = f.object("valleys");
+    valleys.only({"riverClass", "valleyBonus", "slopePenalty", "slopeHeightM"});
+    r.valleys.riverClass = valleys.integer("riverClass", 1, 4);
+    r.valleys.valleyBonus = valleys.numberIn("valleyBonus", 0.0, 0.9);
+    r.valleys.slopePenalty = valleys.numberIn("slopePenalty", 0.0, 10.0);
+    r.valleys.slopeHeightM = valleys.numberIn("slopeHeightM", 8.0, 2000.0);
     const Fields crossing = f.object("riverCrossing");
     crossing.only({"river", "largeRiver", "majorRiver", "impassableRiver"});
     r.riverCrossing = {crossing.numberIn("river", 0.0, 1000.0),

@@ -60,10 +60,8 @@ void reportSuitability(const terrain::settlement::SuitabilityMaps& s,
 // class), lakes, barrier models, the ridge edges, the sea cells of the straits.
 void reportTerrain(const terrain::settlement::ExpansionTerrain& t, double seconds, Report& r);
 
-// The ridge edges: how many lie on a crest line (the land falls on both sides) and how many on a
-// slope, and the share of the massifs of mountains touching a ridge edge, a crest one.
-void reportRidges(const terrain::PlanetLevel& level,
-                  const terrain::settlement::ExpansionTerrain& t, Report& r);
+// The ridge edges, and the share of the massifs of mountains touching one.
+void reportRidges(const terrain::settlement::ExpansionTerrain& t, Report& r);
 
 // The cuts of the climate found on the rainfall, their latitudes and jumps.
 void reportCuts(const std::vector<terrain::settlement::ClimateCut>& cuts, Report& r);

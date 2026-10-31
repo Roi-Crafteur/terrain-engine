@@ -303,7 +303,7 @@ int run(const Options& o) {
     const st::ExpansionTerrain terrain =
         st::buildExpansionTerrain(level, maps, data.config, o.seed, o.threads);
     settlement_tool::reportTerrain(terrain, since(start), r);
-    settlement_tool::reportRidges(level, terrain, r);
+    settlement_tool::reportRidges(terrain, r);
     settlement_tool::reportCuts(st::climateCuts(level, *maps.land, data.config.borders), r);
     const terrain::PlanetWindow window =
         terrain::planetWindow(level.grid(), o.zoomX, o.zoomZ, o.zoomWidthKm, o.zoomHeightKm);

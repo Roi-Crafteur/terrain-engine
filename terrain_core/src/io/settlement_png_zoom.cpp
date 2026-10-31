@@ -17,7 +17,6 @@ constexpr Rgb kSea{15.0f, 20.0f, 40.0f};
 constexpr Rgb kRiver{40.0f, 110.0f, 255.0f};
 constexpr Rgb kLake{0.0f, 190.0f, 255.0f};
 constexpr Rgb kRidge{255.0f, 255.0f, 255.0f};
-constexpr Rgb kSlopeRidge{255.0f, 120.0f, 170.0f};
 constexpr Rgb kMountain{150.0f, 105.0f, 70.0f};
 constexpr Rgb kHostile{255.0f, 170.0f, 60.0f};
 constexpr std::uint8_t kRidgeBits = settlement::kRidgeEastBit | settlement::kRidgeSouthBit;
@@ -85,29 +84,7 @@ void waterAndLand(Image& image, const settlement::ExpansionTerrain& t, std::size
     }
 }
 
-// The color of the ridge edges of a land cell: white on a crest line, pink on a slope.
-Rgb ridgeColor(const PlanetLevel& level, const settlement::ExpansionTerrain& t, std::size_t cell,
-               std::size_t slot) {
-    bool crest = false;
-    for (const bool east : {true, false}) {
-        const std::uint8_t bit = east ? settlement::kRidgeEastBit : settlement::kRidgeSouthBit;
-        crest = crest || ((t.mask[slot] & bit) != 0 && crestEdge(level, cell, east));
-    }
-    return crest ? kRidge : kSlopeRidge;
-}
-
 } // namespace
-
-bool crestEdge(const PlanetLevel& level, std::size_t cell, bool east) {
-    const PlanetGrid& g = level.grid();
-    const int dx = east ? 1 : 0;
-    const int dz = east ? 0 : 1;
-    const std::size_t before = neighbor(g, cell, -dx, -dz);
-    const std::size_t next = neighbor(g, cell, dx, dz);
-    const std::size_t after = neighbor(g, cell, 2 * dx, 2 * dz);
-    return level.elevation(before) < level.elevation(cell) &&
-           level.elevation(after) < level.elevation(next);
-}
 
 PlanetWindow planetWindow(const PlanetGrid& grid, double x, double z, double widthKm,
                           double heightKm) {
@@ -136,7 +113,7 @@ Image renderRidgesZoom(const PlanetLevel& level, const settlement::ExpansionTerr
             const std::size_t slot = terrain.land->slot(cell);
             waterAndLand(image, terrain, slot, x, y);
             if ((terrain.mask[slot] & kRidgeBits) != 0) {
-                planet_png::put(image, x, y, ridgeColor(level, terrain, cell, slot));
+                planet_png::put(image, x, y, kRidge);
             }
         }
     }

@@ -162,6 +162,12 @@ void testInvalidKingdoms() {
     freshCopy();
     edit(world, "\"barrierStop\": 0.7", "\"barrierStop\": 0.05");
     TEST_CHECK(refused({"expansion.barrierStop", "out of [0.1, 1]"}));
+    freshCopy();
+    edit(world, "\"valleyBonus\": 0.7", "\"valleyBonus\": 1");
+    TEST_CHECK(refused({"expansion.valleys.valleyBonus", "out of [0, 0.9]"}));
+    freshCopy();
+    edit(world, "\"riverClass\": 2", "\"riverClass\": 0");
+    TEST_CHECK(refused({"expansion.valleys.riverClass", "out of [1, 4]"}));
 }
 
 void testInvalidResources() {

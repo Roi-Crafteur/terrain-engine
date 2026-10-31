@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -59,6 +60,61 @@ bool lowerTargets(std::vector<StatePlan>& states, const std::vector<std::size_t>
         }
     }
     return over;
+}
+
+// The second moments of the cells of a state about its capital (on the torus), in cells.
+struct Moments {
+    double n = 0.0;
+    double x = 0.0;
+    double z = 0.0;
+    double xx = 0.0;
+    double zz = 0.0;
+    double xz = 0.0;
+
+    // The square root of the ratio of the principal moments about the centroid.
+    [[nodiscard]] double elongation() const {
+        const double a = xx / n - (x / n) * (x / n);
+        const double c = zz / n - (z / n) * (z / n);
+        const double b = xz / n - (x / n) * (z / n);
+        const double mean = 0.5 * (a + c);
+        const double spread = std::sqrt(0.25 * (a - c) * (a - c) + b * b);
+        return mean - spread > 0.0 ? std::sqrt((mean + spread) / (mean - spread)) : 1.0;
+    }
+};
+
+// The mean elongation of the states of each rank (KingdomStats::majorElongation).
+void elongation(const ExpansionTerrain& t, const std::vector<StatePlan>& states,
+                const std::vector<std::size_t>& capitals, const std::vector<std::uint16_t>& owner,
+                KingdomStats& st) {
+    std::vector<Moments> m(states.size());
+    const PlanetGrid& g = t.grid;
+    const auto wrap = [](int d, int n) { return d > n / 2 ? d - n : (d < -n / 2 ? d + n : d); };
+    t.land->forEachLand([&](std::size_t cell, std::size_t slot) {
+        if (owner[slot] == 0) {
+            return;
+        }
+        const std::size_t s = owner[slot] - 1u;
+        const double dx = wrap(g.column(cell) - g.column(capitals[s]), g.nx);
+        const double dz = wrap(g.row(cell) - g.row(capitals[s]), g.nz);
+        Moments& k = m[s];
+        k.n += 1.0;
+        k.x += dx;
+        k.z += dz;
+        k.xx += dx * dx;
+        k.zz += dz * dz;
+        k.xz += dx * dz;
+    });
+    double sum[2] = {0.0, 0.0};
+    double count[2] = {0.0, 0.0};
+    for (std::size_t s = 0; s < states.size(); ++s) {
+        if (m[s].n >= 3.0) {
+            const std::size_t rank = states[s].rank == StateRank::Major ? 0 : 1;
+            sum[rank] += m[s].elongation();
+            count[rank] += 1.0;
+        }
+    }
+    st.majorElongation = count[0] > 0.0 ? sum[0] / count[0] : 0.0;
+    st.minorElongation = count[1] > 0.0 ? sum[1] / count[1] : 0.0;
 }
 
 } // namespace
@@ -175,6 +231,7 @@ Kingdoms buildKingdoms(const PlanetLevel& level, const SettlementMaps& maps,
     for (const Capital& capital : k.capitals.capitals) {
         k.stats.capitalFails += capital.topHabitability && capital.nearFreshWater ? 0 : 1;
     }
+    elongation(terrain, k.states, capitals, k.owner, k.stats);
     k.timings.analysis = since(start);
     return k;
 }

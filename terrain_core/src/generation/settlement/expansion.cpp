@@ -118,10 +118,11 @@ private:
 
     void grow(std::size_t cell, std::uint16_t s, std::uint32_t cost) {
         const int people = states_[s].people;
+        const bool minor = states_[s].rank == StateRank::Minor;
         const double limit = rule_.maxCost * kScale;
         for (const PlanetNeighbor& n : kPlanetNeighbors) {
             Step step;
-            if (!stepTo(cell, n.dx, n.dz, people, step) || claimed(step.node)) {
+            if (!stepTo(cell, n.dx, n.dz, people, minor, step) || claimed(step.node)) {
                 continue;
             }
             const double total = cost + std::max(1.0, std::floor(step.cost * kScale + 0.5));
@@ -170,7 +171,16 @@ private:
         return std::max(0.0, full - bonus);
     }
 
-    bool stepTo(std::size_t from, int dx, int dz, int people, Step& step) const;
+    // The factor of a minor state on a land slot: cheaper on the floor of a valley, dearer up the
+    // slopes (ExpansionRule::valleys).
+    [[nodiscard]] double valleyFactor(std::size_t slot) const {
+        const ValleyGrowth& v = rule_.valleys;
+        const double above = t_.drainage[slot] * kDrainageStepM;
+        const double rise = std::min(1.0, above / v.slopeHeightM);
+        return 1.0 - v.valleyBonus + (v.valleyBonus + v.slopePenalty) * rise;
+    }
+
+    bool stepTo(std::size_t from, int dx, int dz, int people, bool minor, Step& step) const;
 
     const ExpansionTerrain& t_;
     const SuitabilityMaps& s_;
@@ -183,7 +193,8 @@ private:
     ExpansionResult out_;
 };
 
-bool Expansion::stepTo(std::size_t from, int dx, int dz, int people, Step& step) const {
+bool Expansion::stepTo(std::size_t from, int dx, int dz, int people, bool minor,
+                       Step& step) const {
     const bool diagonal = dx != 0 && dz != 0;
     step.cell = at(from, dx, dz);
     if (!t_.land->land(step.cell)) {
@@ -204,8 +215,9 @@ bool Expansion::stepTo(std::size_t from, int dx, int dz, int people, Step& step)
     const bool fromLand = t_.land->land(from);
     const std::uint8_t was = fromLand ? t_.mask[t_.land->slot(from)] : 0;
     const std::uint8_t is = t_.mask[to];
+    const double valley = minor ? valleyFactor(to) : 1.0;
     double cost = std::max(rule_.minCost,
-                           t_.cost[to] * (1.0 - rule_.preferenceWeight * suitability)) *
+                           t_.cost[to] * valley * (1.0 - rule_.preferenceWeight * suitability)) *
                   (diagonal ? kDiagonal : 1.0);
     // Half of the crossing of a river on entering it from a bank, half on leaving it to a bank:
     // a state on the river pays again to spill over the other bank. A state filling up to its
@@ -230,7 +242,9 @@ bool Expansion::stepTo(std::size_t from, int dx, int dz, int people, Step& step)
         cost += rule_.ridgeCost;
         barrier = true;
     }
-    barrier = barrier || ((is & kMountainBit) != 0 && (was & kMountainBit) == 0);
+    // Up the valleys of a massif to its crest (a ridge stops it), not onto its hostile summits.
+    const bool fromHostile = fromLand && t_.hostile[t_.land->slot(from)] != 0;
+    barrier = barrier || ((is & kMountainBit) != 0 && t_.hostile[to] != 0 && !fromHostile);
     step.node = to;
     step.cost = cost;
     step.barrier = barrier;

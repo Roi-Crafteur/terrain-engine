@@ -83,6 +83,9 @@ void reportGoodWorld(const st::SettlementData& data, const st::Kingdoms& k, Repo
           100.0 * share(m.sharedCells, m.cells), m.ridgeMeet,
           100.0 * share(m.ridgeMeetCells, m.cells),
           100.0 * share(m.footEdges, b.edges), 100.0 * share(m.footNatural, m.footEdges));
+    r.add("  shapes: mean elongation (1 round, 2 twice as long as wide) of the major kingdoms "
+          "%.2f, of the minor states %.2f\n",
+          s.majorElongation, s.minorElongation);
     r.add("  climate cuts: %.2f %% of the border edges within a cell of a cut (%.2f %% of all the "
           "land edges), %zu border edges on a cut\n",
           100.0 * share(b.nearCuts, b.edges), 100.0 * share(b.landEdgesNearCuts, b.landEdges),

@@ -3,7 +3,8 @@
 // the target area and the filling up to the next barrier, a land the people cannot live on never
 // taken, a strait of 3 cells crossed but an arm of the sea of 6 never, nothing crossed when the sea
 // is forbidden, the sea never held, the cleanup of the artifacts only, the compartments and the
-// capital of a minor state in one of its size, the massifs of mountains, the same result twice.
+// capital of a minor state in one of its size, the massifs of mountains (climbed up to their crest
+// while filling), the minor states along their valleys, the same result twice.
 
 #include "terrain/generation/settlement/borders.hpp"
 #include "terrain/generation/settlement/capitals.hpp"
@@ -11,9 +12,11 @@
 
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace st = terrain::settlement;
@@ -55,6 +58,7 @@ st::ExpansionTerrain grid(int nx, int nz, Land land) {
     t.ford.assign(cells.size(), 0);
     t.coastKm.assign(cells.size(), 255);
     t.hostile.assign(cells.size(), 0);
+    t.drainage.assign(cells.size(), 0);
     return t;
 }
 
@@ -378,6 +382,74 @@ void testMassifs() {
     TEST_CHECK(st::massifStats(t, owner, st::BorderRule{}, 101).massifs == 0);
 }
 
+// Filling, a state climbs the valleys of a massif up to its crest, never over it, and never onto
+// hostile summits: plains of 300 cells (columns 5 to 19), then mountains (20 to 34, cost 10) with a
+// crest between 27 and 28; a target of 400 starts the filling on the plains.
+void testMountains() {
+    st::ExpansionTerrain t = grid(60, 20, strip);
+    for (int j = 0; j < 20; ++j) {
+        for (int i = 20; i < 35; ++i) {
+            t.mask[slotAt(t, i, j)] |= st::kMountainBit;
+            t.cost[slotAt(t, i, j)] = 10.0f;
+        }
+        t.mask[slotAt(t, 27, j)] |= st::kRidgeEastBit;
+    }
+    const st::ExpansionResult up = alone(t, liked(t), 400, 10, 10);
+    bool crest = true;
+    for (int j = 0; j < 20; ++j) {
+        crest = crest && ownerAt(t, up, 27, j) == 1 && ownerAt(t, up, 28, j) == 0;
+    }
+    std::printf("mountains: %zu cells up to the crest\n", up.cells[0]);
+    TEST_CHECK(crest && up.cells[0] == 300 + 8 * 20);
+    for (int j = 0; j < 20; ++j) {
+        for (int i = 20; i < 35; ++i) {
+            t.hostile[slotAt(t, i, j)] = 1; // the massif hostile: a summit of glaciers
+        }
+    }
+    const st::ExpansionResult summit = alone(t, liked(t), 400, 10, 10);
+    TEST_CHECK(summit.cells[0] == 300 && ownerAt(t, summit, 20, 10) == 0);
+}
+
+// The extent of a state along x and along z (in columns and rows of the grid).
+std::pair<int, int> extent(const st::ExpansionTerrain& t, const st::ExpansionResult& r) {
+    int i0 = 1000;
+    int i1 = -1;
+    int j0 = 1000;
+    int j1 = -1;
+    for (int j = 0; j < t.grid.nz; ++j) {
+        for (int i = 0; i < t.grid.nx; ++i) {
+            if (t.land->land(t.grid.index(i, j)) && ownerAt(t, r, i, j) != 0) {
+                i0 = std::min(i0, i);
+                i1 = std::max(i1, i);
+                j0 = std::min(j0, j);
+                j1 = std::max(j1, j);
+            }
+        }
+    }
+    return {i1 - i0 + 1, j1 - j0 + 1};
+}
+
+// A minor state grows along the floor of its valley; a major kingdom does not care: a valley along
+// the row 20 of an open land, 16 m higher every row away from it, no river to cross.
+void testValleys() {
+    st::ExpansionTerrain t = grid(60, 40, strip);
+    for (int j = 0; j < 40; ++j) {
+        for (int i = 5; i < 45; ++i) {
+            t.drainage[slotAt(t, i, j)] = static_cast<std::uint8_t>(2 * std::abs(j - 20));
+        }
+    }
+    const st::SuitabilityMaps s = liked(t);
+    const auto grow = [&](st::StateRank rank) {
+        return st::expand(t, s, rule(), {{0, rank, 150.0}}, {t.grid.index(25, 20)}, 1e9);
+    };
+    const auto [majorX, majorZ] = extent(t, grow(st::StateRank::Major));
+    const auto [minorX, minorZ] = extent(t, grow(st::StateRank::Minor));
+    std::printf("valleys: a major kingdom %d x %d cells, a minor state %d x %d\n", majorX, majorZ,
+                minorX, minorZ);
+    TEST_CHECK(majorX <= majorZ + 2);
+    TEST_CHECK(minorX >= 2 * minorZ);
+}
+
 void testDeterminism() {
     st::ExpansionTerrain t = grid(50, 40, [](int i, int j) { return (i * 7 + j * 3) % 23 != 0; });
     for (std::size_t k = 0; k < t.cost.size(); ++k) {
@@ -407,6 +479,8 @@ int main() {
     testCompartments();
     testCompartmentCapital();
     testMassifs();
+    testMountains();
+    testValleys();
     testDeterminism();
     return test::result();
 }

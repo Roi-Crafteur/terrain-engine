@@ -2,7 +2,6 @@
 
 #include "terrain/generation/settlement/geology.hpp"
 #include "terrain/generation/settlement/telluric.hpp"
-#include "terrain/io/settlement_png.hpp"
 #include "terrain/world_size.hpp"
 
 #include <algorithm>
@@ -300,36 +299,23 @@ void reportTerrain(const st::ExpansionTerrain& t, double seconds, Report& r) {
     r.add("compartments %zu:%s\n", t.compartments.cells.size(), bins.c_str());
 }
 
-void reportRidges(const terrain::PlanetLevel& level, const st::ExpansionTerrain& t, Report& r) {
+void reportRidges(const st::ExpansionTerrain& t, Report& r) {
     double edges = 0.0;
-    double crests = 0.0;
     double mountains = 0.0;
     double touched = 0.0;
-    double crested = 0.0;
-    t.land->forEachLand([&](std::size_t cell, std::size_t slot) {
-        bool ridge = false;
-        bool crest = false;
-        for (const bool east : {true, false}) {
-            if ((t.mask[slot] & (east ? st::kRidgeEastBit : st::kRidgeSouthBit)) == 0) {
-                continue;
-            }
-            const bool c = terrain::crestEdge(level, cell, east);
-            edges += 1.0;
-            crests += c ? 1.0 : 0.0;
-            ridge = true;
-            crest = crest || c;
-        }
-        if ((t.mask[slot] & st::kMountainBit) != 0 && t.hostile[slot] == 0) {
+    for (std::size_t slot = 0; slot < t.mask.size(); ++slot) {
+        const std::uint8_t m = t.mask[slot];
+        const double ridges = ((m & st::kRidgeEastBit) != 0 ? 1.0 : 0.0) +
+                              ((m & st::kRidgeSouthBit) != 0 ? 1.0 : 0.0);
+        edges += ridges;
+        if ((m & st::kMountainBit) != 0 && t.hostile[slot] == 0) {
             mountains += 1.0;
-            touched += ridge ? 1.0 : 0.0;
-            crested += crest ? 1.0 : 0.0;
+            touched += ridges > 0.0 ? 1.0 : 0.0;
         }
-    });
-    r.add("ridge edges %.0f: %.1f %% on a crest line (the land falls on both sides), %.1f %% on a "
-          "slope; cells of mountains with a ridge edge %.1f %%, with a crest one %.1f %%\n",
-          edges, 100.0 * crests / std::max(1.0, edges),
-          100.0 * (edges - crests) / std::max(1.0, edges),
-          100.0 * touched / std::max(1.0, mountains), 100.0 * crested / std::max(1.0, mountains));
+    }
+    r.add("ridge edges %.0f (crest lines: the land falls on both sides); cells of mountains with a "
+          "ridge edge %.1f %%\n",
+          edges, 100.0 * touched / std::max(1.0, mountains));
 }
 
 void reportCuts(const std::vector<st::ClimateCut>& cuts, Report& r) {

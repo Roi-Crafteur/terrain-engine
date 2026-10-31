@@ -6,6 +6,7 @@
 #include "terrain/generation/planet/planet_level.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -110,8 +111,8 @@ void confluences(const PlanetLevel& level, ExpansionTerrain& t) {
     }
 }
 
-// The catchment of every land cell: where its receivers first reach a river segment, a lake or
-// the sea; a sink without receiver is a catchment of its own. By land slot.
+// The catchment of every land cell, by land slot: where its receivers first reach a river segment,
+// a lake or the sea; a sink without receiver is a catchment of its own.
 std::vector<std::uint32_t> catchments(const PlanetLevel& level, const ExpansionTerrain& t) {
     const PlanetCells& cells = level.cells();
     const auto segments = static_cast<std::uint32_t>(level.rivers().segments.size());
@@ -143,12 +144,61 @@ std::vector<std::uint32_t> catchments(const PlanetLevel& level, const ExpansionT
             c = k == kNoNeighbor ? c : t.grid.neighbor(c, k);
         }
         for (const std::size_t p : path) {
-            if (t.land->land(p)) {
-                id[t.land->slot(p)] = found;
-            }
+            id[t.land->slot(p)] = found;
         }
     });
     return id;
+}
+
+// The height of every land cell above its drainage: the first river of riverClass or more, lake,
+// sea (at 0) or sink its receivers reach, in steps of kDrainageStepM (ExpansionTerrain::drainage).
+void drainageHeights(const PlanetLevel& level, int riverClass, ExpansionTerrain& t) {
+    const PlanetCells& cells = level.cells();
+    std::vector<float> outlet(t.mask.size(), 0.0f);
+    std::vector<std::uint8_t> known(t.mask.size(), 0);
+    std::vector<std::size_t> path;
+    t.land->forEachLand([&](std::size_t start, std::size_t) {
+        path.clear();
+        float low = 0.0f;
+        for (std::size_t c = start;;) {
+            if (!t.land->land(c)) {
+                low = 0.0f; // the sea
+                break;
+            }
+            const std::size_t s = t.land->slot(c);
+            if (known[s] != 0) {
+                low = outlet[s];
+                break;
+            }
+            path.push_back(c);
+            low = level.elevation(c);
+            const std::uint8_t k = cells.receiver(c);
+            if (t.riverClass(s) >= riverClass || (t.mask[s] & kLakeBit) != 0 || k == kNoNeighbor ||
+                path.size() > t.mask.size()) {
+                break;
+            }
+            c = t.grid.neighbor(c, k);
+        }
+        for (const std::size_t p : path) {
+            const std::size_t s = t.land->slot(p);
+            known[s] = 1;
+            outlet[s] = low;
+            const double above = std::max(0.0, (level.elevation(p) - low) / kDrainageStepM);
+            t.drainage[s] = static_cast<std::uint8_t>(std::min(255.0, std::floor(above + 0.5)));
+        }
+    });
+}
+
+// Whether the land falls on both sides of the edge between a land cell and its neighbor east (or
+// south): the cell before it lower than it, the cell after the neighbor lower than the neighbor.
+bool fallsBothSides(const PlanetLevel& level, const PlanetGrid& g, std::size_t cell, bool east) {
+    const int dx = east ? 1 : 0;
+    const int dz = east ? 0 : 1;
+    const auto at = [&](int k) {
+        return level.elevation(
+            g.index(g.wrapColumn(g.column(cell) + k * dx), g.wrapRow(g.row(cell) + k * dz)));
+    };
+    return at(-1) < at(0) && at(2) < at(1);
 }
 
 // The lowest floor of the land within radius cells of each land cell, by land slot.
@@ -180,7 +230,8 @@ std::vector<float> lowestAround(const PlanetLevel& level, const ExpansionTerrain
 }
 
 // The ridges: the edges east and south of each land cell between two dry cells of different
-// catchments, high above the land around, where the geography has relief.
+// catchments, high above the land around, where the geography has relief, the land falling on
+// both sides (a crest line, not a slope).
 void ridges(const PlanetLevel& level, const SettlementMaps& maps, const BorderRule& rule,
             ExpansionTerrain& t, int threads) {
     const std::vector<std::uint32_t> basin = catchments(level, t);
@@ -205,7 +256,7 @@ void ridges(const PlanetLevel& level, const SettlementMaps& maps, const BorderRu
             const double relief =
                 unquantize(std::max(maps.relief.values()[a], maps.relief.values()[b]));
             if (dry(b) && basin[a] != basin[b] && height >= rule.ridgeHeightM &&
-                relief >= rule.ridgeRelief) {
+                relief >= rule.ridgeRelief && fallsBothSides(level, g, cell, k == 0)) {
                 t.mask[a] |= k == 0 ? kRidgeEastBit : kRidgeSouthBit;
             }
         }
@@ -247,7 +298,7 @@ std::shared_ptr<const planet::LandIndex> straitsOf(const ExpansionTerrain& t, in
 std::size_t ExpansionTerrain::memoryBytes() const {
     return land->memoryBytes() + straits->memoryBytes() + cost.capacity() * sizeof(float) +
            mask.capacity() + ford.capacity() + coastKm.capacity() + hostile.capacity() +
-           compartments.memoryBytes();
+           drainage.capacity() + compartments.memoryBytes();
 }
 
 ExpansionTerrain buildExpansionTerrain(const PlanetLevel& level, const SettlementMaps& maps,
@@ -262,10 +313,12 @@ ExpansionTerrain buildExpansionTerrain(const PlanetLevel& level, const Settlemen
     t.mask.assign(n, 0);
     t.ford.assign(n, 0);
     t.hostile.assign(n, 0);
+    t.drainage.assign(n, 0);
     t.coastKm = maps.coastKm.values();
     costsAndBits(level, maps, config, worldSeed, t, workers);
     confluences(level, t);
     ridges(level, maps, config.borders, t, workers);
+    drainageHeights(level, config.expansion.valleys.riverClass, t);
     t.straits = config.expansion.sea == SeaCrossing::Straits
                     ? straitsOf(t, config.expansion.straitCells, workers)
                     : std::make_shared<const planet::LandIndex>(

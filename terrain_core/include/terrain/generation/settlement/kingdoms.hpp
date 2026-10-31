@@ -38,6 +38,11 @@ struct KingdomStats {
     double hostileUnliked = 0.0;
     BorderStats borders;
     MassifStats massifs;
+    // The mean elongation of the major kingdoms and of the minor states: the square root of the
+    // ratio of the two principal moments of their cells (1 for a round shape, 2 for a shape twice
+    // as long as wide), little changed by the roughness of their borders.
+    double majorElongation = 0.0;
+    double minorElongation = 0.0;
 };
 
 struct KingdomTimings {
