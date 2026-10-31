@@ -33,6 +33,9 @@ target_include_directories(unreal_load_timeline_test PRIVATE ${CMAKE_CURRENT_SOU
 terrain_add_test(unreal_load_phase_test terrain_unreal_bridge)
 target_include_directories(unreal_load_phase_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# The session built on another thread, as at the start of the game: the same world (Bridge).
+terrain_add_test(unreal_session_thread_test terrain_unreal_bridge)
+
 # The load of the tiles simulated from their costs (tests/load_schedule.cpp), to compare the orders
 # of the loads: tested on costs made by hand, used by the bench.
 add_library(terrain_load_schedule STATIC load_schedule.cpp)

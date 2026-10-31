@@ -24,6 +24,7 @@
 #include "TerrainMeshBackend.h"
 #include "TerrainWorldEdits.h"
 #include "TerrainWorldLoading.h"
+#include "TerrainWorldStart.h"
 #include "TerrainWorldState.h"
 #include "TerrainWorldWater.h"
 
@@ -152,39 +153,48 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	TileSurfaceLook = nullptr;
 	TileWaterLook = nullptr;
 	StopAtmosphere();
+	if (Starting.IsValid())
+	{
+		EndTerrainStart(*this, *Starting.Get());
+		Starting.Reset(); // waits for the build of the session in flight
+	}
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
 	Super::EndPlay(EndPlayReason);
 }
 
+// The session (planetary map, planet level, hydrology, tiles) builds on a thread, the screen
+// black and the pawn held meanwhile (TerrainWorldStart.cpp); TickStart finishes the start once it
+// is built (FinishStreamingStart).
 bool ATerrainWorld::StartStreaming()
 {
-	const double StartSeconds = FPlatformTime::Seconds();
+	terrain::unreal::SessionParams Params;
 	try
 	{
-		// The world must be the one of terrain_core, bit for bit: checked on a thread from the
-		// start (StartTerrainLoading), the streaming stops if it is not (PollDeterminismCheck).
-		const terrain::unreal::SessionParams Params = MakeSessionParams(*this);
-		if (!Params.planetFile.empty())
-		{
-			UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: opening the planet level of seed "
-				"%lld in %s (built there if missing or stale: minutes, the game waits)"),
-				Seed, *ToFString(Params.planetFile));
-		}
-		const FPlatformMemoryStats Before = FPlatformMemory::GetStats();
-		State = MakePimpl<FTerrainWorldState>(Params);
-		LogPlanet(State->Session.planet(), Params.planetFile, Before);
-		State->Frame = State->Session.frameAt(CoreOriginX, CoreOriginZ);
-		State->Loading.SessionSeconds = FPlatformTime::Seconds() - StartSeconds;
+		Params = MakeSessionParams(*this);
 	}
 	catch (const std::exception& Exception)
 	{
-		State.Reset();
 		UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: cannot start the streaming: %s"),
 			*ToFString(Exception.what()));
 		return false;
 	}
+	if (!Params.planetFile.empty())
+	{
+		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: opening the planet level of seed %lld "
+			"in %s (built there if missing or stale: minutes, the screen black meanwhile)"),
+			Seed, *ToFString(Params.planetFile));
+	}
+	Starting = MakePimpl<FTerrainWorldStart>();
+	BeginTerrainStart(*Starting.Get(), Params, CoreOriginX, CoreOriginZ);
 	Backend = CreateTerrainMeshBackend(MeshType, *this, MakeTileLook(), bAsyncCollisionCooking);
+	return true;
+}
+
+// The rest of the start on the game thread, the session built: the horizon, the water, the sky,
+// the phase of the loads and the check of the world (on a thread, StartTerrainLoading).
+void ATerrainWorld::FinishStreamingStart(double StartSeconds)
+{
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: seed %lld, ground of (%.1f, %.1f) m at %.2f m placed at the origin, "
 			 "LOD rings %d/%d/%d/%d chunks, %d workers, %d uploads per frame"),
@@ -198,11 +208,10 @@ bool ATerrainWorld::StartStreaming()
 	State->Loading.HorizonSeconds = FPlatformTime::Seconds() - HorizonStartSeconds;
 	StartTerrainLoading(*this, *State.Get());
 	UE_LOG(LogTerrainEngine, Log,
-		TEXT("Terrain World: start-up in %.3f s: planet level, hydrology and tiles %.3f s, "
-			 "horizon, water and sky %.3f s (the check of the world on a thread)"),
+		TEXT("Terrain World: start-up in %.3f s: the world built on a thread in %.3f s, then the "
+			 "horizon, the water and the sky in %.3f s on the game thread"),
 		FPlatformTime::Seconds() - StartSeconds, State->Loading.SessionSeconds,
 		State->Loading.HorizonSeconds);
-	return true;
 }
 
 void ATerrainWorld::StopStreaming(const FString& Reason)
@@ -214,6 +223,10 @@ void ATerrainWorld::StopStreaming(const FString& Reason)
 void ATerrainWorld::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (Starting.IsValid() && !TickStart())
+	{
+		return; // the world still builds on its thread
+	}
 	if (!State.IsValid() || Backend == nullptr)
 	{
 		return;

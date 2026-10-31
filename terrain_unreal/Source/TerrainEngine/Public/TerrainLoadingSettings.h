@@ -46,6 +46,11 @@ struct FTerrainLoadingSettings
 		meta = (EditCondition = "bFade", ClampMin = "0"))
 	float FadeMaxSeconds = 2.0f;
 
+	// The world (planetary map, planet level, hydrology, tiles) builds on a thread at the start,
+	// the screen black: "Chargement du monde…" shows on it after this delay.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loading", meta = (ClampMin = "0"))
+	float MessageDelaySeconds = 0.5f;
+
 	// The boost ends then, whatever is still loading.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loading", meta = (ClampMin = "0"))
 	float TimeoutSeconds = 30.0f;

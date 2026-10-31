@@ -18,6 +18,7 @@ class UTerrainAtmosphereFollower;
 class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
+struct FTerrainWorldStart;
 struct FTerrainWorldState;
 
 // How the tiles become Unreal meshes: the options of phase 10, to compare by measure.
@@ -364,6 +365,8 @@ protected:
 
 private:
 	bool StartStreaming();
+	bool TickStart();
+	void FinishStreamingStart(double StartSeconds);
 	void StopStreaming(const FString& Reason);
 	void StartHorizon();
 	bool StartGpuHorizon();
@@ -412,6 +415,8 @@ private:
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor).
 	TPimplPtr<FTerrainWorldState> State;
+	// While the session builds on its thread (TerrainWorldStart.cpp).
+	TPimplPtr<FTerrainWorldStart> Starting;
 	TWeakObjectPtr<APawn> WarmedPawn;
 	float SecondsSinceTimingLog = 0.0f;
 	// The depth of the aerial perspective before StartAtmosphere extended it, km; -1: unchanged.

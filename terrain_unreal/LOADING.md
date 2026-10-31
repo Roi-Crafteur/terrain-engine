@@ -23,19 +23,39 @@ montrer tout de suite et du plus proche au plus loin, sans jamais le laisser tom
    collision), l'anneau de 64 m, toutes les tuiles et les niveaux 0 à 3 de l'horizon, **2 s au
    plus**. Si le plafond est atteint, le log dit ce qui manquait, avec les temps. Le retour à
    l'image dure 0,25 s.
-5. **Le contrôle de déterminisme** tourne sur un fil dès le départ ; s'il trouve un autre monde,
-   le streaming s'arrête, avec la raison dans le log. Il ne raccourcit pas l'image figée du
-   démarrage : sa seconde d'avant était surtout la carte planétaire (`Geography::shared`, 0,93 s
-   ici), que la session construit de toute façon, et que le processus garde ensuite. Le contrôle
-   lui-même (10 hauteurs et 5 empreintes de tuiles, inchangées) prend 0,004 s une fois la carte
-   là. Le démarrage figé est donc la carte, la lecture de la planète et l'hydrologie : environ
-   2,3 s au premier Play après l'ouverture de l'éditeur, environ 1,2 s aux suivants (carte déjà en
-   mémoire).
+5. **Le monde se construit sur un fil au démarrage.** La carte planétaire, le niveau Planète,
+   l'hydrologie, les tuiles et leurs fils sont construits hors du fil du jeu, comme avant mais
+   ailleurs. Pendant ce temps, l'écran est noir, le pion tenu, l'éditeur ne gèle plus, et
+   « Chargement du monde… » s'affiche sur le noir après `MessageDelaySeconds` (0,5 s). Ensuite,
+   l'horizon, l'eau et le ciel démarrent sur le fil du jeu (environ 0,2 s pour les grilles de
+   l'horizon), puis le chargement du spawn commence : son fondu et son plafond de 2 s comptent à
+   partir de là. Le contrôle de déterminisme reste : il tourne sur un fil une fois la session prête
+   et arrête le streaming s'il trouve un autre monde. Il prend 0,004 s, car la carte planétaire
+   (0,93 s), qu'il partage avec la session (`Geography::shared`), est déjà là.
 
 Rien de tout cela ne change le monde : mêmes tuiles, mêmes échantillons, mêmes bits. Seuls l'ordre,
 le rythme et l'affichage changent. Les preuves sont `stream_loading_test`,
 `horizon_progressive_test`, `unreal_horizon_progressive_test`, les goldens, `mountain_freeze_test`
 et la somme du niveau Planète.
+
+## Le démarrage, avant / après
+
+Avant, tout le démarrage tenait le fil du jeu : l'éditeur gelait environ 2,3 s au premier Play
+(mesure dans Unreal : contrôle de déterminisme 0,97 s, c'est-à-dire la carte planétaire, lecture de
+la planète 0,6 s, hydrologie, grilles de l'horizon) et environ 1,2 s aux suivants (carte déjà en
+mémoire). Après, seuls l'horizon, l'eau et le ciel (environ 0,2 s) restent sur le fil du jeu, une
+fois la session prête ; avant, les images continuent, noires.
+
+Dans le conteneur (Linux, 4 cœurs), la session construite sur son fil prend 2,9 s avec la planète
+(5,1 s à la toute première lecture du fichier) et 0,9 s sans elle. Dans Unreal, deux lignes du log
+le mesurent : `the world built on a thread in … s …, worst frame … ms` (la pire image pendant la
+construction) et `start-up in … s: …, then the horizon, the water and the sky in … s on the game
+thread`.
+
+| Premier Play (9950X3D, planète) | Fil du jeu gelé | Pire image pendant la construction |
+|---|---|---|
+| avant | environ 2,3 s | 2 495 ms (l'image du démarrage) |
+| après | à mesurer (attendu : environ 0,2 s, les grilles de l'horizon) | à mesurer |
 
 ## Réglages (`Terrain World` → `Loading Settings`)
 
@@ -46,6 +66,7 @@ et la somme du niveau Planète.
 | `UploadMillisecondsPerFrame`, `MaxUploadsPerFrame` | 6 ms, 32 | envois d'une image pendant le chargement |
 | `bFade`, `FadeMaxSeconds` | oui, 2 s | fondu au noir et son plafond |
 | `TimeoutSeconds` | 30 s | fin du renfort, quoi qu'il reste à charger |
+| `MessageDelaySeconds` | 0,5 s | « Chargement du monde… » sur le noir si le monde se construit encore |
 | `bHorizonLevelByLevel` | oui | horizon niveau par niveau ; non : tous les niveaux d'un coup, comme avant |
 | `HorizonRevealSeconds` | 0,6 s | durée de l'apparition d'un niveau |
 
@@ -147,7 +168,7 @@ C'est l'objet d'une tâche à part, sans changement de bits.
   301) ; un code qui la borne à [−90 ; 90] sans la ramener d'abord dans [−180 ; 180] en fait +90 :
   c'est sans doute la caméra du personnage. Le pion des outils de l'agent 36 (`TeleportView`)
   pose l'œil exactement.
-- L'image figée du premier Play (environ 2,3 s : carte planétaire, planète, hydrologie) reste. La
-  raccourcir demande de construire la carte plus tôt (préchargement sur un fil dès l'ouverture du
-  niveau) ou de construire la session hors du fil du jeu derrière un écran noir.
+- Pendant la construction du monde au démarrage, `PrepareLocation` et `TeleportWhenReady`
+  répondent « non » (pas encore de session) ; une construction du niveau Planète absent du disque
+  (plusieurs minutes) se fait derrière le même écran noir, message affiché.
 - L'horizon CPU (`HorizonRenderer` = CPU) montre toujours tous ses niveaux d'un coup.
