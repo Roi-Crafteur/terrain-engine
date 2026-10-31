@@ -148,6 +148,17 @@ UProceduralMeshComponent* UTerrainHorizonMeshes::LevelComponent(int32 Level)
 	return Component;
 }
 
+void UTerrainHorizonMeshes::SetHiddenByTools(bool bHidden)
+{
+	for (UProceduralMeshComponent* Level : Levels)
+	{
+		if (Level != nullptr)
+		{
+			Level->SetHiddenInGame(bHidden);
+		}
+	}
+}
+
 void UTerrainHorizonMeshes::RemoveAll()
 {
 	for (const TObjectPtr<UProceduralMeshComponent>& Component : Levels)

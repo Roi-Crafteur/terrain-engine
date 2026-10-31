@@ -167,6 +167,13 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 	SetWaterSection(*Component, WaterSection, Tile.water, WaterMaterial);
 	SetWaterSection(*Component, FallsSection, Tile.falls, FallsMaterial);
 	UploadBlend(*Component, Tile);
+	// The tools of the developers (ProceduralMeshTerrainLooks.cpp): a new mesh in their mode.
+	Component->SetMeshSectionVisible(0, bGroundVisible);
+	OwnColors.Remove(Key);
+	if (Look != terrain::unreal::ViewMode::Normal)
+	{
+		ApplyLook(*Component, Key);
+	}
 }
 
 // A section of the water of a tile, without collision; cleared when the tile has none of it (a
@@ -231,6 +238,7 @@ void UProceduralMeshTerrainBackend::RemoveTile(const terrain::TileKey& Key)
 	{
 		Component->DestroyComponent();
 	}
+	OwnColors.Remove(TileMapKey(Key));
 	if (BlendAtlas.has_value())
 	{
 		BlendAtlas->release(Key);
@@ -247,6 +255,7 @@ void UProceduralMeshTerrainBackend::RemoveAllTiles()
 		}
 	}
 	Tiles.Empty();
+	OwnColors.Empty();
 	if (BlendAtlas.has_value())
 	{
 		BlendAtlas->clear();

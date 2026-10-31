@@ -372,6 +372,33 @@ void UTerrainHorizonClipmap::SetInlandWater(bool bShown)
 	}
 }
 
+void UTerrainHorizonClipmap::SetHiddenByTools(bool bHidden)
+{
+	for (UStaticMeshComponent* Body : Bodies)
+	{
+		if (Body != nullptr)
+		{
+			Body->SetHiddenInGame(bHidden);
+		}
+	}
+	for (UStaticMeshComponent* Trim : Trims)
+	{
+		if (Trim != nullptr)
+		{
+			Trim->SetHiddenInGame(bHidden);
+		}
+	}
+}
+
+void UTerrainHorizonClipmap::SetDebugTint(bool bTint)
+{
+	for (int32 Level = 0; Level < Looks.Num(); ++Level)
+	{
+		Looks[Level]->SetVectorParameterValue(TintParameter,
+			bTint ? DebugTint(Level) : FLinearColor(0.0f, 0.0f, 0.0f, 0.0f));
+	}
+}
+
 void UTerrainHorizonClipmap::CopyLook(const UMaterialInterface& Source,
 	TConstArrayView<FName> Scalars, TConstArrayView<FName> Vectors)
 {
