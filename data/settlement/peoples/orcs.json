@@ -1,0 +1,36 @@
+{
+  "id": "orcs",
+  "type": "people",
+  "name": "Orcs",
+  "plane": "material",
+  "majorKingdomShare": 8,
+  "minorStateShare": 14,
+  "baseTerrainModel": "hills",
+  "physicalPreferences": {
+    "temperature": { "min": -12, "idealMin": 0, "idealMax": 28, "max": 40 },
+    "rainfall": { "min": 80, "idealMin": 250, "idealMax": 1200, "max": 2600 },
+    "roughness": { "min": 0.05, "idealMin": 0.2, "idealMax": 0.65, "max": 0.85 },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 25, "max": 120 }
+  },
+  "habitabilityWeight": 0.8,
+  "physicalWeight": 1.2,
+  "dangerSensitivity": 0.2,
+  "ambientEnergyPreferences": { "prana": 0.0, "aura": 0.3, "mana": 0.1 },
+  "underground": { "level": "partial", "preferredDepth": 0.2, "needsSurfaceAccess": true },
+  "needs": { "metaux_communs": 0.9, "food": 0.8, "bois": 0.6, "freshwater": 0.5 },
+  "fears": { "highMagic": 0.5, "volcano": 0.2, "deepOcean": 0.6, "monsterDensity": 0.1 },
+  "government": [ "warlord", "tribal_horde", "blood_council" ],
+  "relations": { "nains": -0.4, "elfes": -0.8, "humains": -0.5, "halfelins": -0.3, "gobelins": 0.2, "hobgobelins": 0.1, "geants": 0.2 },
+  "selfRelation": 0.4,
+  "rulerTraits": {
+    "ambition": { "min": 0.5, "max": 1.0 },
+    "aggression": { "min": 0.6, "max": 1.0 },
+    "greed": { "min": 0.4, "max": 0.9 },
+    "prudence": { "min": 0.0, "max": 0.4 },
+    "piety": { "min": 0.1, "max": 0.6 }
+  },
+  "names": {
+    "syllables": [ "gro", "mash", "uk", "gor", "thak", "zug", "rok", "nar", "dush", "ug", "gash", "krag" ],
+    "titles": { "warlord": "Chef de Guerre", "tribal_horde": "Grand Khan", "blood_council": "Premier du Sang" }
+  }
+}
