@@ -34,6 +34,8 @@ class Example(unittest.TestCase):
         self.assertEqual(m.sun["falls"], {"elevation": 50, "yaw": 116})
         self.assertEqual(m.seed, 20261019)
         self.assertIn("-unattended", m.editor_args)
+        self.assertEqual(m.link_content, ["StylescapeHD", "Characters"])
+        self.assertEqual(m.cmake, "")
         self.assertEqual(m.editor_exe("Windows").as_posix(),
                          "C:/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/"
                          "UnrealEditor.exe")

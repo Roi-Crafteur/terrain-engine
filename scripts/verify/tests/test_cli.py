@@ -22,6 +22,7 @@ NOWHERE = "C:/TerrainVerifyNowhere" if os.name == "nt" else "/nonexistent/terrai
 def machine_file(folder):
     data = json.loads(EXAMPLE.read_text(encoding="utf-8"))
     data["workRoot"] = NOWHERE
+    data["repository"] = str(Path(folder) / "no-repository")  # ls-remote fails at once
     path = Path(folder) / "machine.json"
     path.write_text(json.dumps(data), encoding="utf-8")
     return path
@@ -44,14 +45,24 @@ class DryRun(unittest.TestCase):
                                "--dry-run")
             self.assertEqual(code, 0)
             for expected in ("avant : c761ad2", "apres : #57", "refs/pull/57/head",
+                             "git ls-remote", "cache/c761ad2/", "cache/57/",
+                             "TERRAIN_VERIFY_DRIVER=",
                              "git clone --no-hardlinks", "TerrainSandboxEditor Win64 Development",
                              "-DTERRAIN_REPO=", "--planet-check C:/TerrainEngine/planet.bin",
                              "--sections relief,water -6185104.0 155924.0",
                              "--sections relief,water -26927500.0 -270336.0",
-                             "--line -6185104.0 155924.0", "-ExecutePythonScript=",
+                             "--line -6185104.0 155924.0",
                              "/Game/TerrainTest/TerrainGasp", "TERRAIN_VERIFY_JOB="):
                 self.assertIn(expected, out)
             self.assertFalse(Path(NOWHERE).exists())
+            self.assertNotIn("-ExecutePythonScript", out)
+
+    def test_start_by_exec_cmds(self):
+        with tempfile.TemporaryDirectory() as folder:
+            _, out, _ = run("run", "--machine", str(machine_file(folder)), "--before", "main",
+                            "--places", "chute388_bassin", "--start", "execcmds", "--dry-run")
+            self.assertIn("start_driver.py", out)
+            self.assertIn("-ExecCmds", out)
 
     def test_planet_no_probes_without_it(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -37,6 +37,7 @@ class Machine:
     link_content: list = field(default_factory=list)  # folders of Content linked, not copied
     editor_args: list = field(default_factory=list)
     cmake_generator: str = ""
+    cmake: str = ""             # the path of cmake, tried before the PATH and the one of pip
     seed: int = 20261019
     sun: dict = field(default_factory=lambda: dict(SUN_PRESETS))
 
@@ -109,7 +110,7 @@ def parse_machine(data, check_root=True):
             planets=[Path(p) for p in data.get("planets", [])],
             link_content=list(data.get("linkContent", [])),
             editor_args=list(data.get("editorArgs", [])),
-            cmake_generator=data.get("cmakeGenerator", ""),
+            cmake_generator=data.get("cmakeGenerator", ""), cmake=data.get("cmake", ""),
             seed=int(data.get("seed", 20261019)))
     except KeyError as missing:
         raise MachineError(f"machine file without {missing}") from None

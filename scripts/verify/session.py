@@ -1,7 +1,9 @@
 """The sessions of Unreal of a verification, short and watched.
 
-The editor is started on the project of a version and its test map with the driver
-(ue_driver.py, -ExecutePythonScript), the job given by the environment (TERRAIN_VERIFY_JOB). The
+The editor is started on the project of a version and its test map; init_unreal.py of the copy
+of the project (start_driver.py) starts the driver (ue_driver.py, TERRAIN_VERIFY_DRIVER) with the
+job given by the environment (TERRAIN_VERIFY_JOB), and the editor stays open until the driver
+quits it (-ExecutePythonScript, which closes the editor after its script, is never used). The
 driver writes a heartbeat (JSON: its phase, the place, a counter, done) every second. The watchdog
 kills the whole tree of the processes of the editor (taskkill /T /F under Windows) when the
 heartbeat stops for longer than the limit of its phase, when the session lasts too long, or when
@@ -19,10 +21,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 JOB_VARIABLE = "TERRAIN_VERIFY_JOB"
+DRIVER_VARIABLE = "TERRAIN_VERIFY_DRIVER"
+# Options that run something then close the editor: the driver never depends on them.
+CLOSING_OPTIONS = ("-ExecutePythonScript", "-run=")
 
 # Seconds without a heartbeat, by phase of the driver: the start (the editor, the shaders of a
-# first run), the material scripts (their recompilation blocks the editor), the others.
-DEFAULT_LIMITS = {"start": 1800.0, "materials": 1200.0, "other": 300.0}
+# first run), the wait for the map and its assets, the material scripts (their recompilation
+# blocks the editor), the others.
+DEFAULT_LIMITS = {"start": 1800.0, "editor-ready": 1800.0, "materials": 1200.0, "other": 300.0}
 
 
 @dataclass
@@ -44,12 +50,20 @@ class Outcome:
     last_beat: dict = field(default_factory=dict)
 
 
-def editor_command(machine, uproject, driver, offscreen=False, extra=()):
-    command = [str(machine.editor_exe()), str(uproject), machine.map,
-               f"-ExecutePythonScript={driver}", *machine.editor_args, *extra]
+def editor_command(machine, uproject, offscreen=False, start_file=None, system=None):
+    """The editor on the project and its map. The driver starts from init_unreal.py of the copy
+    of the project (start_driver.py); with start_file (--start execcmds), from -ExecCmds="py
+    <start_file>" instead, a command line given whole under Windows so that its quotes stay
+    where Unreal reads them. Never -ExecutePythonScript: it runs its script, then closes the
+    editor."""
+    command = [str(machine.editor_exe(system)), str(uproject), machine.map, *machine.editor_args]
     if offscreen:
         command.append("-RenderOffScreen")
-    return command
+    if start_file is None:
+        return command
+    if (system or platform.system()) == "Windows":
+        return subprocess.list2cmdline(command) + f' -ExecCmds="py {start_file}"'
+    return command + [f"-ExecCmds=py {start_file}"]
 
 
 def kill_tree(process):
@@ -88,11 +102,13 @@ def _start(command, env, log):
 
 
 def run_watched(command, job_path, heartbeat_path, log_path, limits=None, poll=0.5,
-                clock=time.monotonic):
+                clock=time.monotonic, driver=None):
     """Runs the session under the watchdog until the editor exits or is killed."""
     limits = limits or Limits()
     env = dict(os.environ)
     env[JOB_VARIABLE] = str(job_path)
+    if driver is not None:
+        env[DRIVER_VARIABLE] = str(driver)
     Path(heartbeat_path).unlink(missing_ok=True)
     start = clock()
     last_change = start

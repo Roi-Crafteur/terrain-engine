@@ -1,7 +1,9 @@
-"""The driver of a session of the verification, run by the Unreal editor
-(-ExecutePythonScript=ue_driver.py, the job in TERRAIN_VERIFY_JOB; scripts/verify/README.md).
+"""The driver of a session of the verification, started in the Unreal editor by init_unreal.py
+of the copy of the project (start_driver.py; the job in TERRAIN_VERIFY_JOB;
+scripts/verify/README.md). It quits the editor itself at its end.
 
 On the tick of the editor (register_slate_post_tick_callback), one step after the other:
+0. the editor ready: the map open with its Terrain World, then a few ticks (phase editor-ready);
 1. the material scripts of the version, run as the `py` command of the editor runs them;
 2. for each place: CoreOriginX/Z and PlanetFile of the Terrain World of the level set (never
    saved, put back at the end), Play In Editor, the view placed (a CameraActor, or Terrain.Goto
@@ -55,6 +57,7 @@ class Driver:
         self.phase, self.place, self.beats = "start", None, 0
         self.terrain, self.saved, self.origin = None, {}, None
         self.done = False
+        self.ticks, self.started = 0, clock()
         self._steps = self.steps()
         self._waiting, self._since, self._last_beat = None, clock(), -1e9
 
@@ -63,6 +66,7 @@ class Driver:
     def tick(self, _delta=0.0):
         if self.done:
             return
+        self.ticks += 1
         self.beat()
         try:
             if self._waiting is not None and not self._ready():
@@ -113,12 +117,7 @@ class Driver:
     # ---- the steps -------------------------------------------------------------------------------
 
     def steps(self):
-        yield Wait(self.job.get("startWait", 5.0))
-        until = Until(self.find_terrain, self.job.get("levelTimeout", 300.0),
-                      "the Terrain World of the level")
-        yield until
-        if until.timed_out:
-            raise RuntimeError("no Terrain World in the level of the map")
+        yield from self.editor_ready()
         if self.job.get("materials"):
             self.set_phase("materials")
             yield from self.materials()
@@ -132,9 +131,28 @@ class Driver:
                 yield from self.stop_play()
             self.save_result()
 
+    def editor_ready(self):
+        """init_unreal.py runs early, before the map is open and its assets ready: the world of
+        the editor holding its Terrain World first, then a few more ticks and seconds."""
+        self.set_phase("editor-ready")
+        until = Until(self.find_terrain, self.job.get("levelTimeout", 600.0),
+                      "the Terrain World of the level")
+        yield until
+        if until.timed_out:
+            raise RuntimeError("no Terrain World in the level of the map after "
+                               f"{self.job.get('levelTimeout', 600.0):.0f} s")
+        found = self.ticks
+        yield Wait(self.job.get("readyWait", 3.0))
+        yield Until(lambda: self.ticks - found >= self.job.get("readyTicks", 30), 120.0,
+                    "a few ticks of the editor")
+        self.result["editorReady"] = round(self.clock() - self.started, 1)
+
     def find_terrain(self):
         """True once the level of the map holds its Terrain World (its settings then kept)."""
-        worlds = self.api.terrain_worlds(self.api.editor_world())
+        if getattr(self.api.ue, "TerrainWorld", None) is None:
+            return False  # the plugin not loaded yet: the timeout names it if it never is
+        world = self.api.editor_world()
+        worlds = self.api.terrain_worlds(world) if world is not None else []
         if not worlds:
             return False
         self.terrain = worlds[0]

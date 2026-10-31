@@ -22,7 +22,13 @@ class Folders(unittest.TestCase):
     def test_never_linked(self):
         with tempfile.TemporaryDirectory() as root:
             m = fakes.a_machine(root)
-            self.assertEqual(workspace.never_linked(m, SCRIPTS), {"TerrainEngine", "TerrainTest"})
+            self.assertEqual(workspace.never_linked(m, SCRIPTS),
+                             {"TerrainEngine", "TerrainTest", "Python"})
+
+    def test_the_folders_of_the_example_may_be_linked(self):
+        with tempfile.TemporaryDirectory() as root:
+            m = fakes.a_machine(root, linkContent=["StylescapeHD", "Characters"])
+            workspace.check_links(m.link_content, workspace.never_linked(m, SCRIPTS))
 
 
 class Copy(unittest.TestCase):
@@ -49,12 +55,13 @@ class Copy(unittest.TestCase):
             self.assertIn("linked Content/BigPack/", "\n".join(done))
 
     def test_a_folder_written_to_is_never_linked(self):
-        for name in ("TerrainEngine", "TerrainTest"):
+        for name in ("TerrainEngine", "TerrainTest", "Python"):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as root:
                 m = fakes.a_machine(root, linkContent=["BigPack", name])
                 target = Path(root) / "copy"
                 with self.assertRaises(workspace.WorkspaceError) as caught:
-                    workspace.copy_host_project(m, target, {"TerrainEngine", "TerrainTest"},
+                    workspace.copy_host_project(m, target,
+                                                {"TerrainEngine", "TerrainTest", "Python"},
                                                 linker=lambda s, t: None)
                 self.assertIn(name, str(caught.exception))
                 self.assertFalse(target.exists())  # refused before anything is copied
@@ -97,6 +104,62 @@ class Commands(unittest.TestCase):
             self.assertEqual(workspace.probe_target(root), "terrain_probe")
 
 
+class Start(unittest.TestCase):
+    START = Path(__file__).resolve().parents[1] / "start_driver.py"
+
+    def test_init_unreal_in_the_copy_only(self):
+        with tempfile.TemporaryDirectory() as root:
+            m = fakes.a_machine(root)
+            v = workspace.prepare(m, "main", "avant", fakes.FakeRunner())
+            user_python = m.project.parent / "Content" / "Python"
+            user_python.mkdir()
+            (user_python / "init_unreal.py").write_text("PROJECT = 1\n", encoding="utf-8")
+            # The copy of a project that had its own startup script.
+            copy_python = v.project_dir / "Content" / "Python"
+            copy_python.mkdir(parents=True)
+            (copy_python / "init_unreal.py").write_text("PROJECT = 1\n", encoding="utf-8")
+            path = workspace.install_start(m, v, self.START)
+            self.assertEqual(path, copy_python / "init_unreal.py")
+            self.assertEqual(path.read_text(encoding="utf-8"),
+                             self.START.read_text(encoding="utf-8"))
+            self.assertEqual((copy_python / "init_unreal_project.py").read_text(), "PROJECT = 1\n")
+            workspace.install_start(m, v, self.START)  # again: the project script kept once
+            self.assertEqual((copy_python / "init_unreal_project.py").read_text(), "PROJECT = 1\n")
+            self.assertEqual((user_python / "init_unreal.py").read_text(), "PROJECT = 1\n")
+            self.assertFalse((user_python / "init_unreal_project.py").exists())
+
+    def test_never_in_the_project_of_the_user(self):
+        with tempfile.TemporaryDirectory() as root:
+            m = fakes.a_machine(root)
+            v = workspace.prepare(m, "main", "avant", fakes.FakeRunner())
+            v.project_dir = m.project.parent
+            with self.assertRaises(workspace.WorkspaceError):
+                workspace.install_start(m, v, self.START)
+            self.assertFalse((m.project.parent / "Content" / "Python").exists())
+
+
+class Cmake(unittest.TestCase):
+    def test_the_machine_then_the_path_then_pip(self):
+        import types
+        with tempfile.TemporaryDirectory() as root:
+            m = fakes.a_machine(root)
+            self.assertEqual(workspace.find_cmake(m), Path(sys.executable))
+            m.cmake = str(Path(root) / "missing" / "cmake.exe")
+            self.assertIsNone(workspace.find_cmake(m))
+            m.cmake = ""
+            self.assertEqual(workspace.find_cmake(m, which=lambda n: "/usr/x/cmake"),
+                             Path("/usr/x/cmake"))
+            bin_dir = Path(root) / "pip" / "bin"
+            bin_dir.mkdir(parents=True)
+            name = "cmake.exe" if os.name == "nt" else "cmake"
+            (bin_dir / name).write_text("", encoding="utf-8")
+            sys.modules["cmake"] = types.SimpleNamespace(CMAKE_BIN_DIR=str(bin_dir))
+            try:
+                self.assertEqual(workspace.find_cmake(m, which=lambda n: None), bin_dir / name)
+            finally:
+                del sys.modules["cmake"]
+
+
 class Cache(unittest.TestCase):
     def test_built_once_by_commit(self):
         with tempfile.TemporaryDirectory() as root:
@@ -128,6 +191,16 @@ class Cache(unittest.TestCase):
             self.assertFalse((m.work_root / "cache" / fakes.SHA[:12] / workspace.MARKER).exists())
             v = workspace.prepare(m, "main", "avant", fakes.FakeRunner())
             self.assertTrue(v.built_now)
+
+    def test_a_dry_run_resolves_the_commit(self):
+        with tempfile.TemporaryDirectory() as root:
+            m = fakes.a_machine(root)
+            runner = fakes.FakeRunner()
+            runner.dry = True
+            v = workspace.prepare(m, "claude/peaceful-bell-zb968r", "apres", runner)
+            self.assertEqual(v.cache, m.work_root / "cache" / fakes.SHA[:12])
+            self.assertFalse(m.work_root.exists())  # nothing written
+            self.assertEqual(workspace.cache_name(None, "claude/peace"), "claude-peace")
 
     def test_pull_request_refs(self):
         runner = fakes.FakeRunner()

@@ -26,7 +26,7 @@ add_dependencies(check terrain_probe)
 find_package(Python COMPONENTS Interpreter QUIET)
 if(Python_Interpreter_FOUND)
     set(verify_tests places png pixels sheet walks logs machine workspace planet probe session
-                     driver report cli)
+                     driver report cli safety)
     foreach(name IN LISTS verify_tests)
         add_test(NAME verify_${name}_test
             COMMAND ${Python_EXECUTABLE} -B -m unittest test_${name}

@@ -70,6 +70,57 @@ def _pct(value):
     return "?" if value is None else f"{100.0 * value:.0f} %"
 
 
+def _session_warnings(v, s, n):
+    """The alerts of one session: killed, ended before the driver, without its result, the
+    problems its log shows."""
+    label = v["label"]
+    outcome, scan, result = s.get("outcome") or {}, s.get("scan") or {}, s.get("result")
+    beat = outcome.get("last_beat") or {}
+    out = []
+    if outcome.get("killed"):
+        out.append(f"ATTENTION ({label}) : session {n} tuée : {outcome.get('reason')}")
+    elif not beat.get("done"):
+        out.append(f"ATTENTION ({label}) : session {n} : l'éditeur s'est fermé avant la fin du "
+                   f"pilote (sortie {outcome.get('exit_code')}, dernier battement : phase "
+                   f"{beat.get('phase', 'aucun')}, n {beat.get('n', 0)})")
+    if result is None:
+        out.append(f"ATTENTION ({label}) : session {n} sans résultat (result_{n}.json absent)")
+    elif not result.get("done"):
+        out.append(f"ATTENTION ({label}) : session {n} : le pilote n'a pas fini son résultat")
+    for missing in (result or {}).get("missingApi", [])[:2]:
+        out.append(f"ATTENTION ({label}) : session {n} : {missing}")
+    if scan.get("determinism") is False:
+        out.append(f"ATTENTION ({label}) : le plugin ne génère pas le même monde que "
+                   "terrain_core")
+    if scan.get("planetBuilt"):
+        out.append(f"ATTENTION ({label}) : Unreal a reconstruit la planète (fichier copié "
+                   "refusé ?)")
+    if scan.get("crash"):
+        out.append(f"ATTENTION ({label}) : plantage : {scan['crash'][0]}")
+    return out
+
+
+def _missing_outputs(v, run):
+    """A view or a walk asked of a version that has no file, unless its session already failed
+    as a whole."""
+    out = []
+    views = _views(v)
+    for s in v.get("sessions", []):
+        result = s.get("result")
+        if result is None:
+            continue
+        for place in s.get("places", []):
+            file = (views.get(place) or (None,))[0]
+            if not file or not Path(file).is_file():
+                out.append(f"ATTENTION ({v['label']}) : vue absente : {place}")
+        asked = [w for w in run.get("walkPlaces", []) if w in s.get("places", [])]
+        done = {w["place"] for w in result.get("walks", []) if w.get("file")}
+        for place in asked:
+            if place not in done:
+                out.append(f"ATTENTION ({v['label']}) : marche absente : {place}")
+    return out
+
+
 def warnings(run):
     out = []
     for v in run["versions"]:
@@ -78,19 +129,33 @@ def warnings(run):
             out.append(line)
         if v.get("error"):
             out.append(f"ATTENTION ({v['label']}) : {v['error'].splitlines()[0]}")
-        for s in v.get("sessions", []):
-            outcome, scan = s.get("outcome") or {}, s.get("scan") or {}
-            if outcome.get("killed"):
-                out.append(f"ATTENTION ({v['label']}) : session tuée : {outcome.get('reason')}")
-            if scan.get("determinism") is False:
-                out.append(f"ATTENTION ({v['label']}) : le plugin ne génère pas le même monde "
-                           "que terrain_core")
-            if scan.get("planetBuilt"):
-                out.append(f"ATTENTION ({v['label']}) : Unreal a reconstruit la planète "
-                           "(fichier copié refusé ?)")
-            if scan.get("crash"):
-                out.append(f"ATTENTION ({v['label']}) : plantage : {scan['crash'][0]}")
+        for n, s in enumerate(v.get("sessions", []), 1):
+            out += _session_warnings(v, s, n)
+        out += _missing_outputs(v, run)
+    safety = run.get("safety")
+    if safety is not None and not _untouched(safety):
+        changed = safety["changed"] + safety["added"] + safety["removed"]
+        planets = [p for p, same in safety["planets"].items() if not same]
+        out.append("ATTENTION : le projet de l'utilisateur a changé pendant le run : "
+                   f"{', '.join((changed + planets)[:10])}")
     return out
+
+
+def _untouched(safety):
+    return (not safety["changed"] and not safety["added"] and not safety["removed"] and
+            all(safety["planets"].values()))
+
+
+def safety_line(run):
+    safety = run.get("safety")
+    if safety is None:
+        return "Projet de l'utilisateur : non vérifié."
+    if _untouched(safety):
+        return (f"Projet de l'utilisateur : intact ({safety['files']} fichiers, tailles et dates "
+                f"identiques ; planètes identiques, SHA256) ; Binaries, Intermediate, Saved et "
+                f"DDC non comptés.")
+    return (f"Projet de l'utilisateur : {len(safety['changed'])} fichier(s) changé(s), "
+            f"{len(safety['added'])} ajouté(s), {len(safety['removed'])} retiré(s).")
 
 
 def _session_lines(v):
@@ -217,9 +282,11 @@ def write_report(run):
         columns.append("ecarts x4")
     sheet.write_sheet(folder / "planche.png", folder / "planche.html", run["title"], columns,
                       rows)
+    alerts = warnings(run)
+    run["alerts"] = alerts
     lines = [f"Vérification du {run['date']} : {run['title']}"]
-    lines += warnings(run) or ["Aucune alerte."]
-    lines.append("")
+    lines += alerts or ["Aucune alerte."]
+    lines += [safety_line(run), ""]
     for v in run["versions"]:
         lines += version_lines(v, run) + [""]
     if len(run["versions"]) == 2:

@@ -23,8 +23,13 @@ dans [`docs/dev/PROBE_AND_PLACES.md`](../../docs/dev/PROBE_AND_PLACES.md).
    - carte `/Game/TerrainTest/TerrainGasp` ;
    - planètes réutilisables `C:/TerrainEngine/planet.bin` et
      `C:/Projets/TerrainSandbox/Saved/TerrainEngine/planet_20261019.bin` ;
-   - dossier de travail `C:/TerrainVerify`.
+   - dossier de travail `C:/TerrainVerify` ;
+   - `linkContent` : `StylescapeHD` et `Characters`, liés au lieu d'être copiés (11 Go de
+     moins par commit dans le cache).
 3. `workRoot` ne doit pas être sous `%TEMP%` (le lanceur le refuse) ni contenir d'espace.
+4. **cmake** : si `cmake` n'est pas dans le PATH, mettre son chemin dans la clé `cmake` de
+   `machine.json`, par exemple le `cmake.exe` installé par pip. Le lanceur essaie d'abord cette
+   clé, puis le PATH, puis le cmake de pip (`import cmake`).
 
 ## Vérifier une PR contre `main`
 
@@ -39,13 +44,20 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
   100 m par défaut. Elle s'arrête à la première chute.
 - `--sun falls` : élévation 50°, yaw 116 (le soleil des vérifications de chutes). On peut aussi
   donner `élévation,yaw` ou `none`.
-- `--dry-run` : imprime toutes les commandes sans rien lancer ni écrire.
+- `--dry-run` : imprime toutes les commandes sans rien lancer ni écrire. Le SHA est résolu
+  quand même, par le miroir s'il existe déjà, sinon par `git ls-remote` : les dossiers du cache
+  affichés sont les vrais.
+
+**Code de sortie** : 0 sans alerte, 1 si `resume.txt` commence par une alerte (session tuée ou
+fermée avant la fin du pilote, résultat absent, vue ou marche absente, version non compilée,
+projet de l'utilisateur modifié…), 2 pour une erreur de la commande (lieu inconnu, machine
+absente).
 
 Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
 
 | Fichier | Contenu |
 |---|---|
-| `resume.txt` | les alertes d'abord, puis pour chaque version : build, planète (source, somme), scripts de matériaux, erreurs de shader et Python, contrôle du déterminisme, sessions, bruit de chaque vue avec elle-même, marches, sol et eau du core à chaque lieu ; puis les écarts de pixels avant / après |
+| `resume.txt` | les alertes d'abord, puis le contrôle du projet de l'utilisateur, puis pour chaque version : build, planète (source, somme), scripts de matériaux, erreurs de shader et Python, contrôle du déterminisme, sessions, bruit de chaque vue avec elle-même, marches, sol et eau du core à chaque lieu ; puis les écarts de pixels avant / après |
 | `planche.png` | une ligne par vue : avant, après, écarts ×4, avec la vue et ses chiffres au-dessus |
 | `planche.html` | la même planche avec les images en taille réelle |
 | `avant/`, `apres/` | `views/` (les images), `walks/` (les journaux CSV des marches), `logs/` (UBT, éditeur, sondes), `result_<n>.json` |
@@ -76,8 +88,18 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
 4. **Les sondes** : le sol et l'eau du core à chaque lieu donnent la hauteur de l'œil dans
    Unreal, et le sol le long de chaque marche sert à la comparer. Pour une version antérieure à
    `terrain_probe`, le lanceur lit la sortie de `terrain_probe_water`.
-5. **Les sessions d'Unreal**, courtes : l'éditeur s'ouvre sur la carte de test avec le pilote
-   (`ue_driver.py`), 6 lieux au plus par session (`--places-per-session`).
+5. **Les sessions d'Unreal**, courtes : l'éditeur s'ouvre sur la carte de test, 6 lieux au plus
+   par session (`--places-per-session`).
+   - **Le démarrage** : le lanceur écrit `Content/Python/init_unreal.py` dans la copie du projet
+     (jamais dans le tien), le script que le plugin Python lance à chaque ouverture de l'éditeur.
+     Il ne fait rien sans les variables du lanceur ; avec elles, il démarre le pilote
+     (`ue_driver.py`) sur le tick de l'éditeur, et l'éditeur reste ouvert jusqu'à ce que le
+     pilote le ferme. Un `init_unreal.py` du projet est gardé en `init_unreal_project.py` et lancé
+     d'abord. `-ExecutePythonScript` n'est jamais utilisé, car il ferme l'éditeur après son
+     script. En secours, `--start execcmds` démarre le même code par `-ExecCmds="py …"`.
+   - **L'éditeur prêt** : `init_unreal.py` tourne très tôt, avant que la carte soit ouverte. Le
+     pilote attend donc le Terrain World dans le monde de l'éditeur, puis quelques ticks, avant
+     les scripts de matériaux (phase `editor-ready` du battement de cœur, 10 min au plus).
    - Les scripts de matériaux de la version sont relancés dans l'ordre de
      `terrain_unreal/WATER_LEVEL.md`.
    - Pour chaque lieu, en Play In Editor :
@@ -93,7 +115,13 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
      - **les marches** se font jusqu'à la première chute.
    - Le pilote ne sauvegarde **jamais** la carte ni un asset, et remet le Terrain World comme il
      était.
-6. **Le chien de garde** :
+6. **Le contrôle du projet de l'utilisateur**, sans git (le projet hôte n'est pas un dépôt) :
+   - avant et après le run, la taille et la date d'écriture de chaque fichier du projet,
+     dossiers liés compris, et le SHA256 des planètes de `machine.json` ;
+   - `Binaries`, `Intermediate`, `Saved` et la DDC ne sont pas comptés : ton éditeur peut y
+     écrire ;
+   - `resume.txt` dit « intact », ou met en alerte les fichiers changés.
+7. **Le chien de garde** :
    - le pilote écrit un battement de cœur chaque seconde ;
    - sans battement pendant trop longtemps, après une session trop longue, ou si l'éditeur ne se
      ferme pas, le lanceur tue tout l'arbre des processus d'Unreal (`taskkill /T /F`) ;
@@ -116,7 +144,10 @@ l'inclinaison que la caméra dit montrer, et le résumé mesure la part de ciel 
 qu'à copier : de gros paquets de textures, par exemple. **Un dossier lié pointe vers le vrai
 projet de l'utilisateur.**
 - Le lanceur refuse donc de lier `TerrainEngine` (les scripts de matériaux y écrivent : leur
-  `PACKAGE_PATH`, lu dans les scripts de la version) et le dossier de la carte (`TerrainTest`).
+  `PACKAGE_PATH`, lu dans les scripts de la version), `Python` (le lanceur y écrit
+  `init_unreal.py`) et le dossier de la carte (`TerrainTest`).
+- `StylescapeHD` et `Characters` (liés par défaut) ne sont jamais écrits, ni par les scripts ni
+  par le pilote.
 - Un cache effacé retire les liens sans jamais toucher à ce vers quoi ils pointent.
 
 ## La sonde sur des lieux nommés

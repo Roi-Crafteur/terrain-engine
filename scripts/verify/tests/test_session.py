@@ -48,7 +48,8 @@ def watched(folder, body, limits=FAST):
     command = [sys.executable, str(child(folder, body)), str(beat)]
     started = time.monotonic()
     outcome = session.run_watched(command, Path(folder) / "job.json", beat,
-                                  Path(folder) / "editor.log", limits, poll=0.1)
+                                  Path(folder) / "editor.log", limits, poll=0.1,
+                                  driver=Path(folder) / "ue_driver.py")
     return outcome, time.monotonic() - started
 
 
@@ -58,12 +59,14 @@ class Watchdog(unittest.TestCase):
             outcome, _ = watched(folder, """
                 write(phase="place", n=1, job=os.environ["TERRAIN_VERIFY_JOB"])
                 time.sleep(0.3)
-                write(phase="done", n=2, done=True, job=os.environ["TERRAIN_VERIFY_JOB"])
+                write(phase="done", n=2, done=True, job=os.environ["TERRAIN_VERIFY_JOB"],
+                      driver=os.environ["TERRAIN_VERIFY_DRIVER"])
                 """)
             self.assertEqual((outcome.exit_code, outcome.killed, outcome.reason),
                              (0, False, "exited"))
             self.assertTrue(outcome.last_beat["done"])
             self.assertTrue(outcome.last_beat["job"].endswith("job.json"))
+            self.assertTrue(outcome.last_beat["driver"].endswith("ue_driver.py"))
 
     def test_a_hung_editor_is_killed_with_its_children(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -107,12 +110,32 @@ class Command(unittest.TestCase):
     def test_editor_command(self):
         with tempfile.TemporaryDirectory() as root:
             m = fakes.a_machine(root, editorArgs=["-NoSplash", "-unattended"])
-            c = session.editor_command(m, "P/TerrainSandbox.uproject", "D/ue_driver.py")
-            self.assertEqual(c[1:4], ["P/TerrainSandbox.uproject", "/Game/TerrainTest/TerrainGasp",
-                                      "-ExecutePythonScript=D/ue_driver.py"])
+            c = session.editor_command(m, "P/TerrainSandbox.uproject")
+            self.assertEqual(c[1:3], ["P/TerrainSandbox.uproject",
+                                      "/Game/TerrainTest/TerrainGasp"])
             self.assertIn("-unattended", c)
             self.assertNotIn("-RenderOffScreen", c)
-            self.assertIn("-RenderOffScreen", session.editor_command(m, "P", "D", offscreen=True))
+            self.assertIn("-RenderOffScreen", session.editor_command(m, "P", offscreen=True))
+
+    def test_never_an_option_that_closes_the_editor(self):
+        """-ExecutePythonScript runs its script then closes the editor (seen on facfd09): the
+        driver starts from init_unreal.py or -ExecCmds, never from an option that quits."""
+        with tempfile.TemporaryDirectory() as root:
+            m = fakes.a_machine(root, editorArgs=["-NoSplash", "-unattended"])
+            for command in (session.editor_command(m, "P/x.uproject"),
+                            session.editor_command(m, "P/x.uproject", start_file="D/start.py",
+                                                   system="Windows"),
+                            session.editor_command(m, "P/x.uproject", start_file="D/start.py",
+                                                   system="Linux")):
+                text = command if isinstance(command, str) else " ".join(command)
+                for option in session.CLOSING_OPTIONS:
+                    self.assertNotIn(option, text)
+            windows = session.editor_command(m, "P/x.uproject", start_file="C:/r/start.py",
+                                             system="Windows")
+            self.assertTrue(windows.endswith(' -ExecCmds="py C:/r/start.py"'), windows)
+            linux = session.editor_command(m, "P/x.uproject", start_file="/r/start.py",
+                                           system="Linux")
+            self.assertEqual(linux[-1], "-ExecCmds=py /r/start.py")
 
     def test_sessions(self):
         self.assertEqual(session.sessions(list(range(7)), 3), [[0, 1, 2], [3, 4, 5], [6]])

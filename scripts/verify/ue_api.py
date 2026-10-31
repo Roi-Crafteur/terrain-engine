@@ -34,7 +34,10 @@ class Api:
         return _get(self.ue, "get_editor_subsystem")(cls)
 
     def editor_world(self):
-        return self.subsystem("UnrealEditorSubsystem").get_editor_world()
+        """The world of the editor, or None while the editor starts (no subsystem nor world
+        yet)."""
+        subsystem = self.subsystem("UnrealEditorSubsystem")
+        return subsystem.get_editor_world() if subsystem is not None else None
 
     def game_world(self):
         """The world of the Play In Editor, or None outside it."""

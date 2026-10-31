@@ -44,7 +44,8 @@ def version(folder, label, check_color=GROUND, seen=-30.0, killed=False, shift=0
               "walks": [{"place": "a", "heading": 90.0, "distance": 9.0, "file": str(walk),
                          "reason": "distance"}], "errors": [], "missingApi": []}
     outcome = {"exit_code": 0, "killed": killed, "reason": "no heartbeat" if killed else "exited",
-               "seconds": 300.0}
+               "seconds": 300.0, "last_beat": {"phase": "done", "n": 40, "done": True}}
+    result["done"] = True
     scan = {"shaderErrors": [], "pythonErrors": [], "loadReports": [1, 2], "determinism": True,
             "planetBuilt": False, "terrainProblems": [], "crash": []}
     return {"label": label, "ref": label + "-ref", "sha": "0123456789abcdef", "build":
@@ -57,9 +58,12 @@ def version(folder, label, check_color=GROUND, seen=-30.0, killed=False, shift=0
             "profiles": {"a": [(0.0, 10.0), (9.0, 10.0)]}}
 
 
-def run_of(folder, before, after):
+def run_of(folder, before, after, safety_diff=None):
     return {"title": "main vs x", "date": "20261031_2000", "folder": str(folder),
-            "versions": [before, after], "places": ["a", "b"], "walks": ["a:90:9"]}
+            "versions": [before, after], "places": ["a", "b"], "walks": ["a:90:9"],
+            "walkPlaces": ["a"], "safety": safety_diff or {
+                "files": 1234, "changed": [], "added": [], "removed": [],
+                "planets": {"C:/TerrainEngine/planet.bin": True}}}
 
 
 class Summary(unittest.TestCase):
@@ -68,6 +72,7 @@ class Summary(unittest.TestCase):
             text = report.write_report(run_of(folder, version(folder, "avant"),
                                               version(folder, "apres", shift=40)))
             self.assertEqual(text.splitlines()[1], "Aucune alerte.")
+            self.assertIn("Projet de l'utilisateur : intact (1234 fichiers", text.splitlines()[2])
             self.assertIn("== avant : avant-ref (0123456789)", text)
             self.assertIn("build : Succeeded (cache du commit), 2 avertissement(s)", text)
             self.assertIn("somme 0x26626564570b0d9e", text)
@@ -101,8 +106,51 @@ class Summary(unittest.TestCase):
             after = version(folder, "apres", killed=True)
             Path(after["sessions"][0]["result"]["views"][1]["file"]).unlink()
             text = report.write_report(run_of(folder, version(folder, "avant"), after))
-            self.assertIn("session tuée : no heartbeat", text)
+            self.assertIn("ATTENTION (apres) : session 1 tuée : no heartbeat", text)
+            self.assertIn("ATTENTION (apres) : vue absente : b", text)
             self.assertIn("b : vue absente", text)
+
+    def test_the_editor_that_closed_at_once(self):
+        """facfd09: the editor closed 3 frames after the map, the heartbeat at start, no
+        result: alerts first, and a non-zero exit code."""
+        import verify
+        with tempfile.TemporaryDirectory() as folder:
+            after = version(folder, "apres")
+            session = after["sessions"][0]
+            session["outcome"]["last_beat"] = {"phase": "start", "place": None, "n": 1,
+                                               "done": False}
+            session["result"] = None
+            run = run_of(folder, version(folder, "avant"), after)
+            text = report.write_report(run)
+            head = "\n".join(text.splitlines()[1:4])
+            self.assertIn("l'éditeur s'est fermé avant la fin du pilote (sortie 0, dernier "
+                          "battement : phase start, n 1)", head)
+            self.assertIn("session 1 sans résultat (result_1.json absent)", head)
+            self.assertNotIn("Aucune alerte", text)
+            self.assertEqual(verify.exit_code(run), 1)
+            clean = run_of(folder, version(folder, "avant2"), version(folder, "apres2"))
+            report.write_report(clean)
+            self.assertEqual(verify.exit_code(clean), 0)
+
+    def test_a_view_and_a_walk_missing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            after = version(folder, "apres")
+            result = after["sessions"][0]["result"]
+            result["views"][1]["file"] = None
+            result["walks"] = []
+            text = report.write_report(run_of(folder, version(folder, "avant"), after))
+            self.assertIn("ATTENTION (apres) : vue absente : b", text)
+            self.assertIn("ATTENTION (apres) : marche absente : a", text)
+
+    def test_the_project_of_the_user_changed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            diff = {"files": 10, "changed": ["Content/TerrainEngine/M_TerrainWater.uasset"],
+                    "added": [], "removed": [], "planets": {"C:/TerrainEngine/planet.bin": False}}
+            text = report.write_report(run_of(folder, version(folder, "avant"),
+                                              version(folder, "apres"), diff))
+            self.assertIn("ATTENTION : le projet de l'utilisateur a changé pendant le run : "
+                          "Content/TerrainEngine/M_TerrainWater.uasset, "
+                          "C:/TerrainEngine/planet.bin", text)
 
     def test_a_version_that_did_not_build(self):
         with tempfile.TemporaryDirectory() as folder:

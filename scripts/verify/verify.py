@@ -30,12 +30,13 @@ import places as places_module  # noqa: E402
 import planet as planet_module  # noqa: E402
 import probe as probe_module  # noqa: E402
 import report  # noqa: E402
+import safety  # noqa: E402
 import session  # noqa: E402
 import ue_log  # noqa: E402
 import walks as walks_module  # noqa: E402
 import workspace  # noqa: E402
 
-DRIVER_FILES = ["ue_driver.py", "ue_api.py", "ue_log.py", "walks.py"]
+DRIVER_FILES = ["ue_driver.py", "ue_api.py", "ue_log.py", "walks.py", "start_driver.py"]
 # The order of terrain_unreal/WATER_LEVEL.md: the horizon material again after the water.
 MATERIAL_SCRIPTS = ["create_temporary_terrain_material.py", "create_horizon_gpu_material.py",
                     "create_water_materials.py", "create_horizon_gpu_material.py"]
@@ -64,6 +65,9 @@ def parser():
     run.add_argument("--console", action="append", default=[], help="a command before each view")
     run.add_argument("--session-seconds", type=float, default=3600.0)
     run.add_argument("--hang-seconds", type=float, default=300.0)
+    run.add_argument("--start", choices=("init", "execcmds"), default="init",
+                     help="init: init_unreal.py of the copy of the project starts the driver; "
+                          "execcmds: -ExecCmds=\"py <start_driver.py>\"")
     for flag, what in (("--no-materials", "do not run the material scripts"),
                        ("--no-freeze", "do not pause the game before the screenshots"),
                        ("--no-repeat", "no second screenshot of each view"),
@@ -159,14 +163,17 @@ def run_sessions(args, v, m, job, chosen_jobs, walk_list, folder, driver_dir):
                     heartbeat=str(folder / f"heartbeat_{n}.json"),
                     result=str(folder / f"result_{n}.json"))
         job_path = folder / f"job_{n}.json"
-        command = session.editor_command(m, v.uproject, driver_dir / "ue_driver.py",
-                                         args.offscreen)
+        start_file = driver_dir / "start_driver.py" if args.start == "execcmds" else None
+        command = session.editor_command(m, v.uproject, args.offscreen, start_file)
         if args.dry_run:
-            print("  " + " ".join(command) + f"   ({session.JOB_VARIABLE}={job_path})")
+            shown = command if isinstance(command, str) else " ".join(command)
+            print(f"  {shown}   ({session.JOB_VARIABLE}={job_path}, "
+                  f"{session.DRIVER_VARIABLE}={driver_dir / 'ue_driver.py'})")
             continue
         job_path.write_text(json.dumps(this, indent=2), encoding="utf-8")
         outcome = session.run_watched(command, job_path, this["heartbeat"],
-                                      folder / "logs" / f"editor_stdout_{n}.log", limits)
+                                      folder / "logs" / f"editor_stdout_{n}.log", limits,
+                                      driver=driver_dir / "ue_driver.py")
         log = Path(job["editorLog"])
         kept = folder / "logs" / f"editor_{n}.log"
         if log.is_file():
@@ -188,6 +195,8 @@ def run_version(args, m, ref, label, chosen, asked_walks, run_folder, runner):
         entry["error"] = str(error)
         return entry
     entry.update(sha=v.sha, build=v.build, cached=not v.built_now, features=v.features)
+    if args.start == "init" and not args.dry_run:
+        entry["start"] = str(workspace.install_start(m, v, HERE / "start_driver.py"))
     folder = run_folder / label
     log = folder / "logs" / "probe.log"
     if not args.dry_run:
@@ -226,6 +235,7 @@ def cmd_run(args):
     title = " vs ".join(r for r, _ in refs)
     run_folder = m.work_root / "runs" / f"{date}_{'_vs_'.join(slug(r) for r, _ in refs)}"
     runner = workspace.Runner(dry=args.dry_run)
+    before = None if args.dry_run else safety.snapshot(m)
     if not args.dry_run:
         (run_folder / "driver").mkdir(parents=True, exist_ok=True)
         for name in DRIVER_FILES:
@@ -242,9 +252,16 @@ def cmd_run(args):
     if args.dry_run:
         return 0
     run = {"title": title, "date": date, "folder": str(run_folder), "versions": versions,
-           "places": [p.name for p in chosen], "walks": args.walk}
+           "places": [p.name for p in chosen], "walks": args.walk,
+           "walkPlaces": [w["place"] for w in asked_walks],
+           "safety": safety.compare(before, safety.snapshot(m))}
     print(report.write_report(run))
-    return 0
+    return exit_code(run)
+
+
+def exit_code(run):
+    """1 when the summary holds an alert (a session that failed, a view missing...), else 0."""
+    return 1 if run.get("alerts") else 0
 
 
 def cmd_probe(args):

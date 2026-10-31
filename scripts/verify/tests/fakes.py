@@ -37,7 +37,8 @@ def a_machine(root, **changes):
     project = host_project(root)
     data = {"engine": str(root / "UE_5.8"), "project": str(project / "TerrainSandbox.uproject"),
             "map": "/Game/TerrainTest/TerrainGasp", "workRoot": str(root / "work"),
-            "planets": [str(project / "Saved" / "TerrainEngine" / "planet_20261019.bin")]}
+            "planets": [str(project / "Saved" / "TerrainEngine" / "planet_20261019.bin")],
+            "cmake": sys.executable}  # any file that exists: the commands are never run
     data.update(changes)
     return machine_module.parse_machine(data, check_root=False)
 
@@ -54,7 +55,8 @@ class FakeRunner(workspace.Runner):
     def run(self, command, log=None, cwd=None, check=True):
         command = [str(c) for c in command]
         self.commands.append(command)
-        text = " ".join(command)
+        if self.dry:
+            return 0, ""
         if "rev-parse" in command:
             return 0, SHA + "\n"
         if command[:2] == ["git", "clone"] and "--mirror" not in command:
@@ -62,7 +64,7 @@ class FakeRunner(workspace.Runner):
             return 0, ""
         if command[0].endswith(("Build.bat", "Build.sh")):
             return (0, "Result: Succeeded\n") if self.build_ok else (6, "x.cpp(1): error C1\n")
-        if command[:2] == ["cmake", "--build"]:
+        if command[1:2] == ["--build"]:
             self._tools(Path(command[2]))
             return 0, ""
         if "--planet-check" in command:
@@ -70,10 +72,17 @@ class FakeRunner(workspace.Runner):
             status = self.planet_status.get(Path(path).name, "stale")
             check = {"status": status, "checksum": "0x26626564570b0d9e" if status == "ok" else None}
             return (0 if status == "ok" else 2), json.dumps({"planetCheck": check})
-        if "terrain_make_planet" in text:
+        if Path(command[0]).name.startswith("terrain_make_planet"):
             Path(command[1]).write_bytes(b"built planet")
             return 0, f"{command[1]}: built, checksum 1111222233334444\n"
         return 0, ""
+
+    def query(self, command, cwd=None):
+        command = [str(c) for c in command]
+        self.commands.append(command)
+        if "ls-remote" in command:
+            return 0, f"{SHA}\trefs/heads/main\n"
+        return (0, SHA + "\n") if "rev-parse" in command else (1, "")
 
     def _clone(self, target):
         core = target / "terrain_core"

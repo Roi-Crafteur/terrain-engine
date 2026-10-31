@@ -61,6 +61,17 @@ class Runner:
                                  f"{log}:\n{tail}")
         return done.returncode, done.stdout
 
+    def query(self, command, cwd=None):
+        """A command that only reads (git rev-parse, git ls-remote): run even when dry."""
+        command = [str(c) for c in command]
+        self.commands.append(command)
+        try:
+            done = subprocess.run(command, cwd=cwd, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL, text=True, errors="replace")
+        except OSError:
+            return 1, ""
+        return done.returncode, done.stdout
+
 
 @dataclass
 class Version:
@@ -99,7 +110,10 @@ def written_content_folders(scripts_dir):
 
 
 def never_linked(machine, scripts_dir):
-    return {"TerrainEngine", machine.map_folder()} | written_content_folders(scripts_dir)
+    """The folders of Content always copied: those the material scripts write to, the folder of
+    the map, and Python (the launcher writes init_unreal.py there)."""
+    return ({"TerrainEngine", "Python", machine.map_folder()} |
+            written_content_folders(scripts_dir))
 
 
 def check_links(link_content, never):
@@ -205,18 +219,37 @@ def mirror(machine, runner, log):
     return path
 
 
-def resolve(runner, mirror_path, ref, log):
-    """The commit of a branch, a tag, a commit or a pull request ("pull/57" or "#57")."""
+def _candidates(ref):
     found = re.fullmatch(r"(?:#|pull/)(\d+)", ref)
-    candidates = [f"refs/pull/{found.group(1)}/head"] if found else [ref, f"refs/heads/{ref}"]
-    for candidate in candidates:
-        code, out = runner.run(["git", "-C", mirror_path, "rev-parse", "--verify", "--quiet",
-                                f"{candidate}^{{commit}}"], log, check=False)
-        if runner.dry:
-            return ref
-        if code == 0 and out.strip():
-            return out.strip().splitlines()[-1]
+    return [f"refs/pull/{found.group(1)}/head"] if found else [ref, f"refs/heads/{ref}",
+                                                               f"refs/tags/{ref}"]
+
+
+def resolve(runner, mirror_path, ref, log, repository=None):
+    """The commit of a branch, a tag, a commit or a pull request ("pull/57" or "#57"), read in
+    the mirror (even dry: it only reads), or by git ls-remote when there is no mirror yet."""
+    if (Path(mirror_path) / "HEAD").exists() or not runner.dry:
+        for candidate in _candidates(ref):
+            code, out = runner.query(["git", "-C", mirror_path, "rev-parse", "--verify",
+                                      "--quiet", f"{candidate}^{{commit}}"])
+            if code == 0 and out.strip():
+                return out.strip().splitlines()[-1]
+    if runner.dry and repository:
+        code, out = runner.query(["git", "ls-remote", repository, *_candidates(ref)[1:]] if
+                                 not ref.startswith(("#", "pull/")) else
+                                 ["git", "ls-remote", repository, _candidates(ref)[0]])
+        lines = [l.split() for l in out.splitlines() if l.strip()]
+        if code == 0 and lines:
+            return lines[0][0]
+    if runner.dry:
+        return None
     raise WorkspaceError(f"no commit for '{ref}' in {mirror_path}")
+
+
+def cache_name(sha, ref):
+    """The folder of the cache of a commit: its first 12 digits (the paths of UBT stay short
+    under Windows), or the ref without its separators when a dry run could not resolve it."""
+    return sha[:12] if sha else re.sub(r"[^A-Za-z0-9._-]+", "-", ref).strip("-") or "ref"
 
 
 # ---- builds ------------------------------------------------------------------------------------
@@ -230,8 +263,25 @@ def probe_target(plugin_dir):
     return "terrain_probe_water" if "add_executable(terrain_probe_water " in text else None
 
 
-def build_commands(machine, uproject, plugin_dir, tools_dir, probe, system=None):
-    configure = ["cmake", "-S", TOOLS_PROJECT, "-B", tools_dir, f"-DTERRAIN_REPO={plugin_dir}",
+def find_cmake(machine, which=shutil.which):
+    """cmake: the one of machine.json first, then the one of the PATH, then the one pip
+    installed (the module cmake). None without one."""
+    if machine.cmake:
+        return Path(machine.cmake) if Path(machine.cmake).is_file() else None
+    found = which("cmake")
+    if found:
+        return Path(found)
+    try:
+        import cmake as pip_cmake  # noqa: PLC0415 - optional
+    except ImportError:
+        return None
+    name = "cmake.exe" if platform.system() == "Windows" else "cmake"
+    path = Path(getattr(pip_cmake, "CMAKE_BIN_DIR", "")) / name
+    return path if path.is_file() else None
+
+
+def build_commands(machine, uproject, plugin_dir, tools_dir, probe, system=None, cmake="cmake"):
+    configure = [cmake, "-S", TOOLS_PROJECT, "-B", tools_dir, f"-DTERRAIN_REPO={plugin_dir}",
                  "-DCMAKE_BUILD_TYPE=Release"]
     if machine.cmake_generator:
         configure += ["-G", machine.cmake_generator]
@@ -241,7 +291,7 @@ def build_commands(machine, uproject, plugin_dir, tools_dir, probe, system=None)
                    machine.configuration, f"-Project={uproject}", "-WaitMutex",
                    "-NoHotReloadFromIDE"],
         "configure": configure,
-        "tools": ["cmake", "--build", tools_dir, "--config", "Release", "--parallel",
+        "tools": [cmake, "--build", tools_dir, "--config", "Release", "--parallel",
                   "--target", *targets],
     }
 
@@ -273,8 +323,12 @@ def _finish(version):
 
 
 def _build(machine, version, runner, logs):
+    cmake = find_cmake(machine)
+    if cmake is None and not runner.dry:
+        raise WorkspaceError("no cmake: set \"cmake\" in machine.json (the path of cmake.exe), "
+                             "or put cmake in the PATH")
     commands = build_commands(machine, version.uproject, version.plugin_dir, version.tools_dir,
-                              probe_target(version.plugin_dir))
+                              probe_target(version.plugin_dir), cmake=cmake or "cmake")
     code, out = runner.run(commands["plugin"], logs / "ubt.log", check=False)
     version.build = ue_log.scan_build(out) if not runner.dry else {"result": "dry"}
     if code != 0 and not runner.dry:
@@ -289,10 +343,10 @@ def prepare(machine, ref, label, runner, fresh=False):
     """The version of ref, from its cache or built now."""
     logs = machine.work_root / "logs"
     mirror_path = mirror(machine, runner, logs / "git.log")
-    sha = resolve(runner, mirror_path, ref, logs / "git.log")
-    cache = machine.work_root / "cache" / sha[:12]  # short: the paths of UBT stay under 260
+    sha = resolve(runner, mirror_path, ref, logs / "git.log", machine.repository)
+    cache = machine.work_root / "cache" / cache_name(sha, ref)
     project = cache / "project"
-    version = Version(label, ref, sha, cache, project, project / machine.project.name,
+    version = Version(label, ref, sha or ref, cache, project, project / machine.project.name,
                       project / "Plugins" / machine.plugin_folder, cache / "tools")
     marker = cache / MARKER
     if fresh and cache.exists() and not runner.dry:
@@ -304,7 +358,8 @@ def prepare(machine, ref, label, runner, fresh=False):
         remove_tree(cache, machine.work_root)  # an incomplete build: never reused
     runner.run(["git", "clone", "--no-hardlinks", "--no-checkout", mirror_path,
                 version.plugin_dir], logs / "git.log")
-    runner.run(["git", "-C", version.plugin_dir, "checkout", "--detach", sha], logs / "git.log")
+    runner.run(["git", "-C", version.plugin_dir, "checkout", "--detach", version.sha],
+               logs / "git.log")
     if not runner.dry:
         never = never_linked(machine, version.scripts_dir)
         copied = copy_host_project(machine, project, never)
@@ -322,6 +377,27 @@ def prepare(machine, ref, label, runner, fresh=False):
         marker.write_text(json.dumps({"sha": sha, "ref": ref, "build": version.build},
                                      indent=2), encoding="utf-8")
     return version
+
+
+def install_start(machine, version, start_file):
+    """init_unreal.py in Content/Python of the copy of the project of a version: the startup
+    script that starts the driver (start_driver.py); never in the project of the user. An
+    init_unreal.py the project had is kept as init_unreal_project.py, which ours runs first."""
+    folder = version.project_dir / "Content" / "Python"
+    user = machine.project.parent.resolve()
+    target = (folder / "init_unreal.py").resolve()
+    if user == target or user in target.parents:
+        raise WorkspaceError(f"refusing to write {target}: in the project of the user")
+    folder.mkdir(parents=True, exist_ok=True)
+    text = Path(start_file).read_text(encoding="utf-8")
+    current = folder / "init_unreal.py"
+    if current.is_file():
+        existing = current.read_text(encoding="utf-8", errors="replace")
+        marker = text.splitlines()[0]
+        if marker not in existing:
+            current.replace(folder / "init_unreal_project.py")
+    current.write_text(text, encoding="utf-8")
+    return current
 
 
 def describe(version):

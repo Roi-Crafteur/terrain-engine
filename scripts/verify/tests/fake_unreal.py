@@ -134,8 +134,9 @@ class FakeUnreal:
     """The module: install as sys.modules["unreal"], or give it to ue_api.Api."""
 
     def __init__(self, folder, features=None, fall_after=1e9, invert_pitch=False,
-                 shots_fail_for=()):
+                 shots_fail_for=(), terrain_after=0.0):
         self.folder = Path(folder)
+        self.terrain_after = terrain_after  # seconds before the map and its Terrain World load
         self.time = 0.0
         self.calls = []
         self.features = features or {}
@@ -257,7 +258,7 @@ class FakeUnreal:
         self.calls.append(("unregister_tick", handle))
 
     def log(self, text):
-        self.calls.append(("log", text))
+        self.calls.append(("log", text, self.time))
 
 
 class _Statics:
@@ -266,7 +267,7 @@ class _Statics:
 
     def get_all_actors_of_class(self, world, cls):
         if world is self.fake.editor_world and cls is TerrainWorld:
-            return [self.fake.terrain]
+            return [self.fake.terrain] if self.fake.time >= self.fake.terrain_after else []
         if world is self.fake.game and cls is DirectionalLight:
             return [self.fake.game.light]
         if world is self.fake.game and cls is TerrainWorld:

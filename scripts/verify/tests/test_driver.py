@@ -31,10 +31,12 @@ EDGE = {"name": "lisiere", "x": -26927500.0, "z": -270336.0, "heading": 300.0, "
 
 
 def job_in(folder, fake, places, **changes):
+    fake_unreal.install(fake)  # what the material scripts import
     folder = Path(folder)
     scripts = folder / "Scripts"
     scripts.mkdir()
-    (scripts / "create_ok.py").write_text("RAN = True\n", encoding="utf-8")
+    (scripts / "create_ok.py").write_text("import unreal\nunreal.log('material')\n",
+                                          encoding="utf-8")
     (scripts / "create_bad.py").write_text("raise ValueError('no such node')\n",
                                            encoding="utf-8")
     job = {"label": "avant", "sha": "abc", "out": str(folder / "out"),
@@ -142,6 +144,56 @@ class CameraSessions(unittest.TestCase):
             self.assertIsNone(r["views"][0]["file"])
             self.assertTrue(Path(r["views"][1]["file"]).is_file())
             self.assertTrue(r["done"])
+
+
+class EditorReady(unittest.TestCase):
+    def test_the_terrain_world_after_several_ticks(self):
+        """init_unreal.py starts the driver before the map is open: it waits (phase
+        editor-ready), then a few ticks, before the material scripts and the play."""
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder, terrain_after=12.0)
+            fake_unreal.install(fake)
+            job = job_in(folder, fake, [BASIN], pitchCheck=False)
+            driver = ue_driver.Driver(job, ue_api.Api(fake), clock=fake.clock, wall=fake.wall)
+            phases = set()
+            while not driver.done and fake.time < 600.0:
+                fake.advance(0.1)
+                driver.tick(0.1)
+                if fake.time < 12.0:
+                    phases.add(json.loads(Path(job["heartbeat"]).read_text())["phase"])
+            self.assertEqual(phases, {"editor-ready"})
+            self.assertTrue(driver.result["done"], driver.result["errors"])
+            material = [c for c in fake.calls if c[0] == "log" and c[1] == "material"]
+            self.assertGreaterEqual(material[0][2], 12.0 + 3.0)  # found, then readyWait
+            begin = fake.calls.index(("begin_play",))
+            self.assertLess(fake.calls.index(material[0]), begin)
+            self.assertGreaterEqual(driver.result["editorReady"], 15.0)
+
+    def test_started_by_init_unreal(self):
+        import start_driver
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.install(fake_unreal.FakeUnreal(folder))
+            job = job_in(folder, fake, [BASIN], materials=False)
+            job_path = Path(folder) / "job.json"
+            job_path.write_text(json.dumps(job), encoding="utf-8")
+            init = Path(folder) / "Content" / "Python" / "init_unreal.py"
+            init.parent.mkdir(parents=True)
+            (init.parent / "init_unreal_project.py").write_text(
+                f"open({str(Path(folder) / 'project_ran')!r}, 'w').write('x')\n")
+            driver_file = Path(ue_driver.__file__)
+            self.assertIsNone(start_driver.start({}, init))  # not started by the launcher
+            self.assertFalse(calls(fake, "register_tick"))
+            self.assertTrue((Path(folder) / "project_ran").exists())  # the project's, first
+            env = {"TERRAIN_VERIFY_JOB": str(job_path), "TERRAIN_VERIFY_DRIVER": str(driver_file)}
+            import os
+            os.environ["TERRAIN_VERIFY_JOB"] = str(job_path)
+            try:
+                driver = start_driver.start(env, init)
+            finally:
+                del os.environ["TERRAIN_VERIFY_JOB"]
+            self.assertIsNotNone(driver)
+            self.assertTrue(calls(fake, "register_tick"))
+            self.assertFalse(calls(fake, "quit"))  # open until the driver ends
 
 
 class Walks(unittest.TestCase):
