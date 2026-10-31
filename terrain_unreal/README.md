@@ -623,3 +623,41 @@ montre, en GPU comme en CPU.
   dessiné en mer ; une très grosse modification met quelques centaines de millisecondes à
   sortir du fil de modifications (sans bloquer le jeu), et les modifications suivantes
   attendent leur tour.
+
+## 16. La carte de dev et la minicarte (agent 35)
+
+Voir le monde, zoomer, cliquer, y être. `terrain_core` rend les images de la carte (données
+seulement, `terrain/map`, `terrain_export_map` pour un PNG) ; le Bridge choisit les tuiles de
+chaque vue et les rend sur des fils à lui, jamais sur le fil du jeu
+(`Bridge/map_tile_cache.hpp`) ; le composant `Terrain Dev Map` (`DevMap` de `Terrain World`) ne
+fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image) et les dessiner
+(Slate).
+
+- **Minicarte** (`bMinimap`, coin `MinimapCorner`, côté `MinimapSize`) : centrée sur le joueur,
+  flèche de direction, le nord en haut ; `bMinimapRotates` (ou `Terrain.Map.MinimapRotate 1`) la
+  fait tourner avec le joueur (un « N » montre alors le nord). Zoom : `MinimapMetersPerPixel`
+  (4 m par pixel : 1 km de côté), les touches `+` et `−` du pavé numérique (deux fois plus près ou
+  plus loin) ou `Terrain.Map.MinimapZoom <m/px>`. Faite pour le jeu aussi : sa vue, ses tuiles et
+  son dessin sont à part de la carte de dev ; le masque des zones découvertes d'une carte de jeu
+  se branchera sur `Bridge/map_reveal.hpp`.
+- **Carte de dev** (touche `M`, `DevMapKey`, ou `Terrain.Map` ; jamais dans un build Shipping) :
+  plein écran, curseur visible, le personnage et la caméra ne bougent plus ; `M` ou Échap la
+  ferment. Molette : zoom autour du curseur, de 0,25 m à 65 km par pixel (la planète entière) ;
+  glisser : déplacer. Panneau de droite : le fichier planète (chargé, construit, ou ABSENT : ni
+  fleuves, ni lacs, ni chutes), les calques (relief, biomes, eau, courbes), « Go to x, z »
+  (`-241631, -86277`, ou `-6 185 104 ; 155 924`), « Me » (recentrer sur le joueur), « Add this
+  place » (la vue de la caméra), les lieux enregistrés, et sous le curseur : x, z, sol, eau (type,
+  niveau, profondeur), biome, climat, case de la planète.
+- **Clic = y aller** : un clic pose la vue au point cliqué, le cap gardé, l'œil à 1,8 m au-dessus
+  du sol ou de l'eau ; un clic sur un repère jaune (un lieu) prend la vue du lieu. L'écran
+  « Loading the terrain » s'affiche une image, puis la téléportation des outils de l'agent 36
+  (`ATerrainWorld::TeleportView`, `DEV_TOOLS.md`), branchée à la fusion avec eux.
+- **Sources selon le zoom** : jusqu'à 64 m/px le relief fin avec ses vallées, fleuves, lacs et
+  chutes ; de 128 m à 1 km/px le relief seul et l'eau du niveau Planète (jamais les tracés de
+  l'hydrologie, trop chers sur de grandes zones) ; à partir de 2 km/px les cases du niveau
+  Planète. Une tuile prend de 0,05 à 0,2 s en plaine et aux zooms larges, 0,4 à 1,6 s près des
+  fleuves et en montagne, 3,9 s au pire mesuré (un fil, monde par défaut avec son fichier
+  planète). En attendant une tuile, une tuile plus grossière déjà là tient sa place.
+- **Fils et mémoire** : `MapThreads` (1) fils de rendu ; `KeptTiles` (192) tuiles gardées, 256 Ko
+  chacune sur le CPU et autant sur le GPU (48 Mo) ; arrêtés avant que le monde ne s'en aille
+  (`EndPlay`), et refaits pour un nouveau monde.

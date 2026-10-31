@@ -21,3 +21,6 @@ target_sources(terrain_unreal_bridge PRIVATE
 terrain_add_test(unreal_map_view_test terrain_unreal_bridge)
 terrain_add_test(unreal_map_cache_test terrain_unreal_bridge)
 terrain_add_test(unreal_map_targets_test terrain_unreal_bridge)
+add_test(NAME unreal_dev_map_sources
+    COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/unreal_dev_map_sources.cmake)

@@ -14,6 +14,7 @@ class ASkyLight;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UTerrainAtmosphereFollower;
+class UTerrainDevMapComponent;
 class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
@@ -331,6 +332,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Water")
 	bool SetWaterShown(bool bShown);
 
+	// The map of the world (agent 35, README section 16): the minimap and the full-screen dev map
+	// (key M), their settings.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain|Map")
+	TObjectPtr<UTerrainDevMapComponent> DevMap;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -383,7 +389,8 @@ private:
 	TObjectPtr<UMaterialInstanceDynamic> TileWaterLook;
 
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
-	// class default object nor in the editor).
+	// class default object nor in the editor). The map reads them (TerrainDevMap.cpp).
+	friend class UTerrainDevMapComponent;
 	TPimplPtr<FTerrainWorldState> State;
 	TWeakObjectPtr<APawn> WarmedPawn;
 	float SecondsSinceTimingLog = 0.0f;

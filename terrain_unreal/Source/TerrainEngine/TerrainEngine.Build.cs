@@ -37,9 +37,12 @@ public class TerrainEngine : ModuleRules
 		PrivateIncludePaths.Add(CoreInclude);
 		PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "Private"));
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
+		// InputCore: the keys of the map are settings of its component (FKey, Public/TerrainDevMap.h).
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
 		// The GPU horizon: static meshes built in game, textures updated by regions, frame times.
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"ProceduralMeshComponent", "MeshDescription", "StaticMeshDescription", "RenderCore", "RHI" });
+		// The minimap and the dev map (agent 35): widgets written in C++ (the plugin has no content).
+		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 	}
 }
