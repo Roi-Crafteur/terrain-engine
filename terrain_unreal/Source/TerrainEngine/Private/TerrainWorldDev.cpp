@@ -83,5 +83,5 @@ bool ATerrainWorld::ReturnToGamePawn()
 
 UTerrainDevTools* ATerrainWorld::GetDevTools() const
 {
-	return DevTools;
+	return DevTools.Get();
 }

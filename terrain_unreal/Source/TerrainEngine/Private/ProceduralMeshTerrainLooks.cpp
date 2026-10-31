@@ -16,7 +16,7 @@ void UProceduralMeshTerrainBackend::SetDebugLook(terrain::unreal::ViewMode Mode,
 	UMaterialInterface* Material, FTerrainOffHeightmap OffHeightmap)
 {
 #if TERRAIN_DEV_TOOLS
-	Look = terrain::unreal::colorsVertices(Mode) && Material != nullptr
+	ViewLook = terrain::unreal::colorsVertices(Mode) && Material != nullptr
 		? Mode
 		: terrain::unreal::ViewMode::Normal;
 	LookMaterial = Material;
@@ -28,7 +28,7 @@ void UProceduralMeshTerrainBackend::SetDebugLook(terrain::unreal::ViewMode Mode,
 			ApplyLook(*Tile.Value, Tile.Key);
 		}
 	}
-	if (Look == terrain::unreal::ViewMode::Normal)
+	if (ViewLook == terrain::unreal::ViewMode::Normal)
 	{
 		OwnColors.Empty();
 	}
@@ -60,14 +60,14 @@ void UProceduralMeshTerrainBackend::ApplyLook(UProceduralMeshComponent& Componen
 	{
 		return;
 	}
-	if (Look == terrain::unreal::ViewMode::Normal)
+	if (ViewLook == terrain::unreal::ViewMode::Normal)
 	{
 		if (const TArray<FColor>* Own = OwnColors.Find(Key))
 		{
 			Component.UpdateMeshSection(0, TArray<FVector>(), TArray<FVector>(),
 				TArray<FVector2D>(), *Own, TArray<FProcMeshTangent>());
 		}
-		Component.SetMaterial(0, TileMaterial);
+		Component.SetMaterial(0, TileMaterial.Get());
 		return;
 	}
 	terrain::unreal::UnrealMesh Mesh;
@@ -85,19 +85,19 @@ void UProceduralMeshTerrainBackend::ApplyLook(UProceduralMeshComponent& Componen
 			Own.Add(Vertex.Color);
 		}
 	}
-	const std::vector<std::uint8_t> Off = Look == terrain::unreal::ViewMode::Rock && OffHeightmapOf
+	const std::vector<std::uint8_t> Off = ViewLook == terrain::unreal::ViewMode::Rock && OffHeightmapOf
 		? OffHeightmapOf(Mesh, Key.Z, Component.GetComponentLocation())
 		: std::vector<std::uint8_t>();
 	TArray<FColor> Colors;
 	Colors.Reserve(static_cast<int32>(Mesh.positions.size()));
 	for (const terrain::unreal::VertexColor& Color :
-		terrain::unreal::debugColors(Look, Mesh, Key.Z, Off))
+		terrain::unreal::debugColors(ViewLook, Mesh, Key.Z, Off))
 	{
 		Colors.Emplace(Color.r, Color.g, Color.b, Color.a);
 	}
 	Component.UpdateMeshSection(0, TArray<FVector>(), TArray<FVector>(), TArray<FVector2D>(),
 		Colors, TArray<FProcMeshTangent>());
-	Component.SetMaterial(0, LookMaterial);
+	Component.SetMaterial(0, LookMaterial.Get());
 #else
 	(void)Component, (void)Key;
 #endif

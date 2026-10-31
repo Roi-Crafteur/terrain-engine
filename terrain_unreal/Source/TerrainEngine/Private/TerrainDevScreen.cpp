@@ -156,15 +156,20 @@ void UTerrainDevTools::AimedLines(TArray<FString>& Lines) const
 		Lines.Add(TEXT("no camera"));
 		return;
 	}
-	const FVector Start = PlayerController->PlayerCameraManager->GetCameraLocation();
+	const FVector Camera = PlayerController->PlayerCameraManager->GetCameraLocation();
 	const FVector Forward = PlayerController->PlayerCameraManager->GetCameraRotation().Vector();
 	const terrain::unreal::UnrealFrame& Frame = World->State->Frame;
 	const terrain::TerrainTiles& Tiles = World->State->Session.tiles();
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TerrainDevAim), true);
-	Params.AddIgnoredActor(PlayerController->GetPawn());
+	// GetPawn() gives a TObjectPtr in Unreal 5.8 and AddIgnoredActor also takes an id (uint32):
+	// the raw pointer, so that the overload of the actor is the only one.
+	if (const AActor* Viewer = ToRawPtr(PlayerController->GetPawn()))
+	{
+		Params.AddIgnoredActor(Viewer);
+	}
 	std::optional<terrain::unreal::CorePoint> Point;
-	if (World->GetWorld()->LineTraceSingleByChannel(Hit, Start, Start + Forward * TraceCm,
+	if (World->GetWorld()->LineTraceSingleByChannel(Hit, Camera, Camera + Forward * TraceCm,
 			ECC_Visibility, Params))
 	{
 		Point = terrain::unreal::toCore(Frame, TerrainWorldConversions::ToUnrealPoint(Hit.ImpactPoint));
@@ -175,7 +180,7 @@ void UTerrainDevTools::AimedLines(TArray<FString>& Lines) const
 	{
 		const terrain::Heightfield& Field = Tiles.heightfield();
 		const std::optional<terrain::unreal::GroundHit> Ground = terrain::unreal::marchGround(
-			terrain::unreal::toCore(Frame, TerrainWorldConversions::ToUnrealPoint(Start)),
+			terrain::unreal::toCore(Frame, TerrainWorldConversions::ToUnrealPoint(Camera)),
 			terrain::unreal::coreDirection(Forward.X, Forward.Y, Forward.Z), MarchMeters,
 			[&Field](double X, double Z) { return static_cast<double>(Field.heightAt(X, Z)); });
 		if (Ground)

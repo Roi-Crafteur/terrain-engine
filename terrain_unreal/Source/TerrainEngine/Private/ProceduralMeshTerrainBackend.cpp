@@ -170,7 +170,7 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 	// The tools of the developers (ProceduralMeshTerrainLooks.cpp): a new mesh in their mode.
 	Component->SetMeshSectionVisible(0, bGroundVisible);
 	OwnColors.Remove(Key);
-	if (Look != terrain::unreal::ViewMode::Normal)
+	if (ViewLook != terrain::unreal::ViewMode::Normal)
 	{
 		ApplyLook(*Component, Key);
 	}

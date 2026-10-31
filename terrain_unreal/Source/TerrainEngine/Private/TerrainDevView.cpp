@@ -81,7 +81,7 @@ bool UTerrainDevTools::PlaceView(const terrain::unreal::ViewPose& Pose)
 		Movement->StopMovementImmediately();
 	}
 	PlayerController->SetControlRotation(FRotator(Pose.pitch, Pose.yaw, 0.0));
-	const double Start = FPlatformTime::Seconds();
+	const double StartSeconds = FPlatformTime::Seconds();
 	// The eye stays exactly where asked: no snap onto the ground.
 	const bool bSnap = World->bSnapPawnToGround;
 	World->bSnapPawnToGround = false;
@@ -101,11 +101,11 @@ bool UTerrainDevTools::PlaceView(const terrain::unreal::ViewPose& Pose)
 	{
 		PlayerController->SetIgnoreMoveInput(true);
 	}
-	Dev->Hold = FTerrainDevHold{Start,
+	Dev->Hold = FTerrainDevHold{StartSeconds,
 		terrain::unreal::ShotWaiter({0.0, 0.0, TerrainDev::ShotTimeoutSeconds()})};
 	TerrainDev::Log(FString::Printf(TEXT("view at x %.2f, z %.2f, eye %.2f m, heading %.1f, "
 		"pitch %.1f; the ground ready in %.2f s"), Pose.eye.x, Pose.eye.z, Pose.eye.y,
-		terrain::unreal::headingOfYaw(Pose.yaw), Pose.pitch, FPlatformTime::Seconds() - Start));
+		terrain::unreal::headingOfYaw(Pose.yaw), Pose.pitch, FPlatformTime::Seconds() - StartSeconds));
 	return true;
 }
 
@@ -113,16 +113,16 @@ APawn* UTerrainDevTools::EnsureDevPawn(APlayerController& PlayerController)
 {
 	if (IsValid(DevPawn))
 	{
-		if (PlayerController.GetPawn() != DevPawn.Get())
+		if (ToRawPtr(PlayerController.GetPawn()) != DevPawn.Get())
 		{
-			PlayerController.Possess(DevPawn);
+			PlayerController.Possess(DevPawn.Get());
 		}
-		return DevPawn;
+		return DevPawn.Get();
 	}
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	Params.ObjectFlags |= RF_Transient;
-	APawn* Previous = PlayerController.GetPawn();
+	APawn* Previous = ToRawPtr(PlayerController.GetPawn());
 	const FVector Location = Previous != nullptr ? Previous->GetActorLocation() : FVector::ZeroVector;
 	ASpectatorPawn* Spectator = World->GetWorld()->SpawnActor<ASpectatorPawn>(
 		ASpectatorPawn::StaticClass(), Location, FRotator::ZeroRotator, Params);

@@ -56,12 +56,12 @@ void UTerrainDevTools::SetViewMode(ViewMode Mode)
 	{
 		World->SetWaterShown(Mode != ViewMode::Dry);
 	}
-	if (UTerrainMeshBackend* Backend = World->Backend)
+	if (UTerrainMeshBackend* Backend = World->Backend.Get())
 	{
 		UMaterialInterface* VertexColors = nullptr;
 		if (GEngine != nullptr)
 		{
-			UMaterial* DebugColors = GEngine->VertexColorMaterial;
+			UMaterial* DebugColors = ToRawPtr(GEngine->VertexColorMaterial);
 			VertexColors = DebugColors;
 		}
 		FTerrainOffHeightmap OffHeightmap;

@@ -80,7 +80,7 @@ private:
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> LookMaterial;
 
-	terrain::unreal::ViewMode Look = terrain::unreal::ViewMode::Normal;
+	terrain::unreal::ViewMode ViewLook = terrain::unreal::ViewMode::Normal;
 	FTerrainOffHeightmap OffHeightmapOf;
 	TMap<FIntVector, TArray<FColor>> OwnColors;
 	bool bGroundVisible = true;

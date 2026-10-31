@@ -88,7 +88,7 @@ void UTerrainDevTools::Stop()
 		if (GameWorld != nullptr && !GameWorld->bIsTearingDown && PlayerController != nullptr &&
 			IsValid(GamePawn))
 		{
-			PlayerController->Possess(GamePawn);
+			PlayerController->Possess(GamePawn.Get());
 		}
 		DevPawn->Destroy();
 	}
