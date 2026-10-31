@@ -49,11 +49,11 @@ inline terrain::MapSample syntheticSample(double x, double z, double step) {
 class SyntheticSampler : public terrain::MapSampler {
 public:
     void sample(const terrain::MapFrame& frame, std::span<terrain::MapSample> out, int,
-                terrain::MapSampleStats& stats) const override {
+                terrain::MapSampleStats& stats, terrain::MapCancel cancel) const override {
         if (out.size() != terrain::mapGridSize(frame)) {
             throw std::invalid_argument("synthetic sampler: wrong grid size");
         }
-        for (int j = -1; j <= frame.height(); ++j) {
+        for (int j = -1; j <= frame.height() && !terrain::mapCancelled(cancel); ++j) {
             for (int i = -1; i <= frame.width(); ++i) {
                 out[terrain::mapGridIndex(frame, i, j)] =
                     syntheticSample(frame.pixelX(i), frame.pixelZ(j), frame.stepX());

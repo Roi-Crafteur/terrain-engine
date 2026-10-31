@@ -51,9 +51,11 @@ void drawFalls(const MapFrame& frame, std::span<const Fall> falls, double center
 
 // The courses of the reaches whose course may cross the box of frame, and their falls, the steps
 // of a reach whose lips lie within stretch meters of the next taken as one fall (its first lip,
-// the whole drop): one reachesNear and one reach per reach, counted in stats.hydrologyCalls.
+// the whole drop): one reachesNear and one reach per reach, counted in stats.hydrologyCalls. Stops
+// between two reaches once cancel is raised.
 void reachCourses(const Hydrology& hydrology, const MapFrame& frame, double stretch,
-                  std::vector<Course>& courses, std::vector<Fall>& falls, MapSampleStats& stats);
+                  std::vector<Course>& courses, std::vector<Fall>& falls, MapSampleStats& stats,
+                  MapCancel cancel = nullptr);
 
 // The pieces of the rivers of the planet level of at least minDischarge m^3/s whose cell lies in
 // the box of frame (or a cell around it), and its waterfalls of at least leastDrop meters in the

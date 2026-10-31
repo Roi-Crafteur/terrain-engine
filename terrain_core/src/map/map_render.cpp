@@ -30,11 +30,12 @@ MapPoint pointAt(const MapFrame& grid, const std::vector<MapSample>& samples, in
 
 // The color of every pixel of the grid (without its border), row by row.
 std::vector<MapColor> composite(const MapFrame& grid, const std::vector<MapSample>& samples,
-                                const std::vector<const MapLayerFn*>& layers, int threads) {
+                                const std::vector<const MapLayerFn*>& layers, int threads,
+                                MapCancel cancel) {
     std::vector<MapColor> colors(static_cast<std::size_t>(grid.width()) *
                                  static_cast<std::size_t>(grid.height()));
     planet::parallelRows(grid.height(), threads, [&](int begin, int end) {
-        for (int j = begin; j < end; ++j) {
+        for (int j = begin; j < end && !mapCancelled(cancel); ++j) {
             for (int i = 0; i < grid.width(); ++i) {
                 const MapPoint point = pointAt(grid, samples, i, j);
                 MapColor color;
@@ -104,8 +105,14 @@ MapImage renderMap(const MapSampler& sampler, const MapFrame& frame, const MapLa
     image.stride = mapStride(frame.width(), frame.height(), params.maxSamples);
     const MapFrame grid = strideFrame(frame, image.stride);
     std::vector<MapSample> samples(mapGridSize(grid));
-    sampler.sample(grid, samples, threads, image.stats);
-    const std::vector<MapColor> colors = composite(grid, samples, chosen, threads);
+    sampler.sample(grid, samples, threads, image.stats, params.cancel);
+    if (mapCancelled(params.cancel)) {
+        throw MapCancelled();
+    }
+    const std::vector<MapColor> colors = composite(grid, samples, chosen, threads, params.cancel);
+    if (mapCancelled(params.cancel)) {
+        throw MapCancelled();
+    }
     image.rgba.assign(4u * static_cast<std::size_t>(image.width) *
                           static_cast<std::size_t>(image.height),
                       0);

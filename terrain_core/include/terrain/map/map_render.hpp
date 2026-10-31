@@ -3,9 +3,11 @@
 #include "terrain/map/map_frame.hpp"
 #include "terrain/map/map_layers.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -32,6 +34,20 @@ struct MapSampleStats {
     return static_cast<std::size_t>(frame.width() + 2) * static_cast<std::size_t>(frame.height() + 2);
 }
 
+// The flag that stops a render (a tile no longer wanted, the game closing): checked at every row
+// of the samples and of the image; null for none.
+using MapCancel = const std::atomic<bool>*;
+
+[[nodiscard]] inline bool mapCancelled(MapCancel cancel) {
+    return cancel != nullptr && cancel->load(std::memory_order_relaxed);
+}
+
+// Thrown by renderMap when its flag is raised before the image is done: no image.
+class MapCancelled : public std::runtime_error {
+public:
+    MapCancelled() : std::runtime_error("map render cancelled") {}
+};
+
 // Where a map reads the world.
 class MapSampler {
 public:
@@ -39,10 +55,11 @@ public:
     // Fills out (mapGridSize(frame) samples) with the samples of the pixels of frame and of its
     // border, on up to threads threads. Each sample depends on its pixel center (frame.pixelX,
     // pixelZ) and on the spacing of the pixels only: the same in every frame of this spacing that
-    // has this center, whatever the number of threads. Throws std::invalid_argument if out is of
-    // another size.
+    // has this center, whatever the number of threads. Once cancel is raised it stops as soon as
+    // it can (between two rows), the samples left unfinished. Throws std::invalid_argument if out
+    // is of another size.
     virtual void sample(const MapFrame& frame, std::span<MapSample> out, int threads,
-                        MapSampleStats& stats) const = 0;
+                        MapSampleStats& stats, MapCancel cancel) const = 0;
 };
 
 // The cost cap of an image: at most this many samples are read for it (1024 x 1024).
@@ -53,6 +70,8 @@ struct MapRenderParams {
     // Above this many samples (pixels and border), the image is sampled every stride pixels
     // along each axis and each sample covers a stride x stride block (mapStride). At least 9.
     std::size_t maxSamples = kMapMaxSamples;
+    // Raised, the render stops between two rows and throws MapCancelled.
+    MapCancel cancel = nullptr;
 };
 
 // An image of the map: 4 bytes per pixel (r, g, b, a), row by row from the north.
@@ -75,7 +94,8 @@ struct MapImage {
 
 // The image of frame: the samples of sampler, then over each pixel the enabled layers in the
 // order of layers. A pixel no layer covers stays transparent black. The same bytes whatever the
-// number of threads. Throws std::invalid_argument for a name of enabled not in layers.
+// number of threads. Throws std::invalid_argument for a name of enabled not in layers, and
+// MapCancelled once params.cancel is raised before the image is done.
 [[nodiscard]] MapImage renderMap(const MapSampler& sampler, const MapFrame& frame,
                                  const MapLayers& layers, const std::vector<std::string>& enabled,
                                  const MapRenderParams& params = {});

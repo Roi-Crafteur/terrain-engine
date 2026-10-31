@@ -1,17 +1,21 @@
 // The tiles of the dev map on threads of their own (Bridge/map_tile_cache.hpp): the bytes of
 // renderMap, kept and reused (moving a view renders only its new tiles), the least used dropped
 // beyond the capacity, the stale requests dropped, the layers changed, the probe of the cursor,
-// and a clean stop while tiles render.
+// a clean stop while tiles render, and a stop in the middle of heavy tiles of the generated world
+// within 100 ms (their render ends between two rows, the tile dropped).
 #include "map_tile_cache.hpp"
 
 #include "map_test_support.hpp"
 #include "map_view.hpp"
+#include "map_world_support.hpp"
 #include "test_assert.hpp"
 
 #include "terrain/map/map_style.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <thread>
 #include <vector>
 
@@ -28,12 +32,13 @@ struct Counted {
     MapTileCache::Render render() const {
         auto c = calls;
         auto d = delayMs;
-        return [c, d](const MapTileKey& key, const std::vector<std::string>& layers) {
+        return [c, d](const MapTileKey& key, const std::vector<std::string>& layers,
+                      MapCancel cancel) {
             ++*c;
             std::this_thread::sleep_for(std::chrono::milliseconds(d->load()));
             static const map_test::SyntheticSampler sampler;
             static const MapLayers registry = defaultMapLayers();
-            return renderMap(sampler, mapTileFrame(key), registry, layers);
+            return renderMap(sampler, mapTileFrame(key), registry, layers, {1, kMapMaxSamples, cancel});
         };
     }
 };
@@ -152,6 +157,36 @@ void testStop() {
     TEST_CHECK(counted.calls->load() <= 6);
 }
 
+// The cache of the small world with its water, on a hydrology that has computed nothing yet (the
+// heaviest tiles: their courses to compute), destroyed 40 ms after its threads started on tiles
+// of 2 and 64 m per pixel around a fall: the time the destructor takes, the best of 3 tries.
+void testStopHeavyTiles() {
+    const map_world::FallPlace fall = map_world::firstFall();
+    double best = 1.0e9;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        const map_world::WetWorld w;
+        auto cache = std::make_unique<MapTileCache>(renderTilesOf(w.source), probesOf(w.source),
+                                                    defaultMapLayers().names(), MapCacheParams{64, 2});
+        std::vector<MapTileKey> heavy;
+        for (const int level : {1, 6}) {
+            const MapTileKey k = mapTileAt(level, fall.x, fall.z, golden::kSmallPlanet);
+            heavy.push_back(k);
+            heavy.push_back({level, k.tx + 1, k.tz});
+        }
+        cache->want(heavy);
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        const bool busy = cache->waiting() > 0 && cache->kept() == 0;
+        const auto start = std::chrono::steady_clock::now();
+        cache.reset();
+        const double ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        std::printf("cache stopped in the middle of heavy tiles in %.1f ms\n", ms);
+        TEST_CHECK(busy);
+        best = std::min(best, ms);
+    }
+    TEST_CHECK(best < 100.0);
+}
+
 } // namespace
 
 int main() {
@@ -159,5 +194,6 @@ int main() {
     testCapacityAndLayers();
     testStaleAndProbe();
     testStop();
+    testStopHeavyTiles();
     return test::result();
 }

@@ -101,7 +101,7 @@ inline std::vector<terrain::MapSample> samplesOf(const terrain::MapSampler& samp
                                                  terrain::MapSampleStats* stats = nullptr) {
     std::vector<terrain::MapSample> out(terrain::mapGridSize(frame));
     terrain::MapSampleStats local;
-    sampler.sample(frame, out, threads, stats != nullptr ? *stats : local);
+    sampler.sample(frame, out, threads, stats != nullptr ? *stats : local, nullptr);
     return out;
 }
 

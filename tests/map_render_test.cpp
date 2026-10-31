@@ -5,10 +5,13 @@
 #include "map_world_support.hpp"
 #include "test_assert.hpp"
 
+#include <atomic>
 #include <bit>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace terrain;
@@ -148,6 +151,39 @@ void testWater() {
     TEST_CHECK(fromCells);
 }
 
+// The flag raised before the render, or during it from another thread: MapCancelled, soon.
+void testCancel() {
+    const map_world::DryWorld& w = map_world::dry();
+    const MapFrame f = map_world::frameAround(416857.0, -11405966.0, 4.0, 256);
+    std::atomic<bool> raised{true};
+    bool thrown = false;
+    try {
+        (void)renderMap(w.source, f, defaultMapLayers(), kAll, {1, kMapMaxSamples, &raised});
+    } catch (const MapCancelled&) {
+        thrown = true;
+    }
+    TEST_CHECK(thrown);
+    std::atomic<bool> later{false};
+    std::atomic<bool> cancelled{false};
+    std::chrono::steady_clock::time_point raisedAt;
+    std::thread render([&] {
+        try {
+            (void)renderMap(w.source, map_world::frameAround(416857.0, -11405966.0, 1.0, 1024),
+                            defaultMapLayers(), kAll, {1, kMapMaxSamples, &later});
+        } catch (const MapCancelled&) {
+            cancelled = true;
+        }
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    raisedAt = std::chrono::steady_clock::now();
+    later = true;
+    render.join();
+    const double ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - raisedAt).count();
+    std::printf("render of 1024 x 1024 pixels stopped %.1f ms after its flag\n", ms);
+    TEST_CHECK(cancelled.load());
+}
+
 } // namespace
 
 int main() {
@@ -155,5 +191,6 @@ int main() {
     testFineSamples();
     testKinds();
     testWater();
+    testCancel();
     return test::result();
 }

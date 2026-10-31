@@ -660,4 +660,12 @@ fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image
   planète). En attendant une tuile, une tuile plus grossière déjà là tient sa place.
 - **Fils et mémoire** : `MapThreads` (1) fils de rendu ; `KeptTiles` (192) tuiles gardées, 256 Ko
   chacune sur le CPU et autant sur le GPU (48 Mo) ; arrêtés avant que le monde ne s'en aille
-  (`EndPlay`), et refaits pour un nouveau monde.
+  (`EndPlay`), et refaits pour un nouveau monde. Une tuile en cours s'arrête entre deux de ses
+  lignes et n'est pas gardée : en général quelques millisecondes ; mais une première requête de
+  l'hydrologie près d'un grand fleuve (le calcul de ses tracés) ne se coupe pas et peut durer
+  jusqu'à 3 s, pour la carte comme pour les fils des tuiles.
+- **Échap en PIE** : dans l'éditeur, Échap est aussi le raccourci « Stop » du Play : si la carte
+  n'a pas le focus clavier (un clic hors d'elle), il arrête la session au lieu de fermer la carte.
+  Pour le garder à la carte : Edit > Editor Preferences > General > Keyboard Shortcuts, catégorie
+  « Play World (PIE/SIE) », commande « Stop » : lui donner une autre touche (par exemple Maj+Échap).
+  La touche de la carte (M) la ferme toujours.

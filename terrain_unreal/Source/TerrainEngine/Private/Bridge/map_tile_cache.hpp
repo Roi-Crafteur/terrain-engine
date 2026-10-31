@@ -10,6 +10,7 @@
 #include "terrain/map/map_probe.hpp"
 #include "terrain/map/map_render.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -50,14 +51,17 @@ struct MapCacheParams {
 class MapTileCache {
 public:
     // The image of a tile with these layers (renderMap over a source), called on the threads of the
-    // cache, several at once.
-    using Render = std::function<MapImage(const MapTileKey&, const std::vector<std::string>&)>;
+    // cache, several at once; it stops soon (between two rows) once the flag is raised, throwing
+    // MapCancelled, and the tile is dropped.
+    using Render =
+        std::function<MapImage(const MapTileKey&, const std::vector<std::string>&, MapCancel)>;
     // What the map says of a point (probeAt), called on the threads of the cache.
     using Probe = std::function<MapProbe(double x, double z)>;
 
     MapTileCache(Render render, Probe probe, std::vector<std::string> layers,
                  const MapCacheParams& params = {});
-    // Stops the threads: a tile being rendered is finished and dropped, the others never start.
+    // Stops the threads: the tiles being rendered stop between two of their rows and are dropped
+    // (well under 100 ms), the others never start.
     ~MapTileCache();
     MapTileCache(const MapTileCache&) = delete;
     MapTileCache& operator=(const MapTileCache&) = delete;
@@ -123,6 +127,7 @@ private:
     std::size_t rendered_ = 0;
     std::string lastError_;
     bool stopping_ = false;
+    std::atomic<bool> cancel_{false}; // raised when the cache stops: the renders in flight end
     std::vector<std::thread> threads_; // joined by the destructor
 };
 

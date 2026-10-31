@@ -67,7 +67,7 @@ MapSourceKind MapWorldSource::kindFor(double metersPerPixel) const {
 }
 
 void MapWorldSource::sample(const MapFrame& frame, std::span<MapSample> out, int threads,
-                            MapSampleStats& stats) const {
+                            MapSampleStats& stats, MapCancel cancel) const {
     if (out.size() != mapGridSize(frame)) {
         throw std::invalid_argument("map source: the samples of another frame");
     }
@@ -77,20 +77,23 @@ void MapWorldSource::sample(const MapFrame& frame, std::span<MapSample> out, int
     const double step = std::max(frame.stepX(), frame.stepZ());
     const MapSourceKind kind = kindFor(step);
     if (kind == MapSourceKind::PlanetCells) {
-        samplePlanet(frame, out, threads, stats);
+        samplePlanet(frame, out, threads, stats, cancel);
     } else {
         sampleRelief(frame, kind == MapSourceKind::FineRelief ? *field_ : *relief_, out, threads,
-                     stats);
+                     stats, cancel);
         if (kind == MapSourceKind::Relief && planet_ != nullptr) {
-            addPlanetWater(frame, out, threads);
+            addPlanetWater(frame, out, threads, cancel);
         }
+    }
+    if (mapCancelled(cancel)) {
+        return;
     }
     std::vector<map_water::Course> courses;
     std::vector<map_water::Fall> falls;
     if (kind == MapSourceKind::FineRelief) {
         if (hydrology_ != nullptr) {
             map_water::reachCourses(*hydrology_, frame, params_.fallStretchMeters, courses, falls,
-                                    stats);
+                                    stats, cancel);
         }
     } else if (planet_ != nullptr) {
         const double least = hydrology_ != nullptr ? hydrology_->params().minDischarge : 0.0;
@@ -112,8 +115,8 @@ void MapWorldSource::sample(const MapFrame& frame, std::span<MapSample> out, int
 // The relief of field at every sample, row by row through its batch reading (the same bits as
 // sampleAt point by point), then the biomes.
 void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& field,
-                                  std::span<MapSample> out, int threads,
-                                  MapSampleStats& stats) const {
+                                  std::span<MapSample> out, int threads, MapSampleStats& stats,
+                                  MapCancel cancel) const {
     const std::size_t columns = gridColumns(frame);
     std::vector<float> continentalness(out.size());
     planet::parallelRows(frame.height() + 2, threads, [&](int begin, int end) {
@@ -123,7 +126,7 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
         for (std::size_t i = 0; i < columns; ++i) {
             xs[i] = frame.pixelX(static_cast<std::int64_t>(i) - 1);
         }
-        for (int row = begin; row < end; ++row) {
+        for (int row = begin; row < end && !mapCancelled(cancel); ++row) {
             std::fill(zs.begin(), zs.end(), frame.pixelZ(row - 1));
             field.samplesAt(xs, zs, samples);
             for (std::size_t i = 0; i < columns; ++i) {
@@ -142,17 +145,17 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
     if (field.hydrology() != nullptr) {
         stats.hydrologyCalls += out.size();
     }
-    addBiomes(frame, continentalness, out, threads);
+    addBiomes(frame, continentalness, out, threads, cancel);
 }
 
 // The cells of the planet level: the bilinear altitude, the sea and the lakes of the cell
 // holding each sample; then the biomes.
 void MapWorldSource::samplePlanet(const MapFrame& frame, std::span<MapSample> out, int threads,
-                                  MapSampleStats& stats) const {
+                                  MapSampleStats& stats, MapCancel cancel) const {
     const std::size_t columns = gridColumns(frame);
     std::vector<float> continentalness(out.size());
     planet::parallelRows(frame.height() + 2, threads, [&](int begin, int end) {
-        for (int row = begin; row < end; ++row) {
+        for (int row = begin; row < end && !mapCancelled(cancel); ++row) {
             const double z = frame.pixelZ(row - 1);
             for (std::size_t i = 0; i < columns; ++i) {
                 const std::size_t at = static_cast<std::size_t>(row) * columns + i;
@@ -175,17 +178,17 @@ void MapWorldSource::samplePlanet(const MapFrame& frame, std::span<MapSample> ou
         }
     });
     stats.planetSamples += out.size();
-    addBiomes(frame, continentalness, out, threads);
+    addBiomes(frame, continentalness, out, threads, cancel);
 }
 
 // The biome of every pixel (not of the border) as the far horizon classifies its samples: the
 // site of its ground with the slopes of its 4 neighbor pixels and its water, its climate, then
 // classifyBiome (streaming/horizon_sampler.cpp, at the spacing of the pixels).
 void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> continentalness,
-                               std::span<MapSample> out, int threads) const {
+                               std::span<MapSample> out, int threads, MapCancel cancel) const {
     const BiomeParams& biomes = ecology_->params().biomes;
     planet::parallelRows(frame.height(), threads, [&](int begin, int end) {
-        for (int j = begin; j < end; ++j) {
+        for (int j = begin; j < end && !mapCancelled(cancel); ++j) {
             const double z = frame.pixelZ(j);
             for (int i = 0; i < frame.width(); ++i) {
                 const std::size_t at = mapGridIndex(frame, i, j);
@@ -208,13 +211,13 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
 
 // The lakes of the planet level over the relief alone: where the cell of a sample is under a
 // lake and the relief lies below its level.
-void MapWorldSource::addPlanetWater(const MapFrame& frame, std::span<MapSample> out,
-                                    int threads) const {
+void MapWorldSource::addPlanetWater(const MapFrame& frame, std::span<MapSample> out, int threads,
+                                    MapCancel cancel) const {
     const std::size_t columns = gridColumns(frame);
     const PlanetGrid& grid = planet_->grid();
     const PlanetCells& cells = planet_->cells();
     planet::parallelRows(frame.height() + 2, threads, [&](int begin, int end) {
-        for (int row = begin; row < end; ++row) {
+        for (int row = begin; row < end && !mapCancelled(cancel); ++row) {
             const double z = frame.pixelZ(row - 1);
             for (std::size_t i = 0; i < columns; ++i) {
                 MapSample& s = out[static_cast<std::size_t>(row) * columns + i];

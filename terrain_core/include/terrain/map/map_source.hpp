@@ -64,17 +64,20 @@ public:
     [[nodiscard]] const PlanetLevel* planet() const { return planet_; }
     [[nodiscard]] const Hydrology* hydrology() const { return hydrology_; }
 
+    // Stops between two rows of each of its stages, and between two courses of rivers, once
+    // cancel is raised.
     void sample(const MapFrame& frame, std::span<MapSample> out, int threads,
-                MapSampleStats& stats) const override;
+                MapSampleStats& stats, MapCancel cancel) const override;
 
 private:
     void sampleRelief(const MapFrame& frame, const Heightfield& field, std::span<MapSample> out,
-                      int threads, MapSampleStats& stats) const;
+                      int threads, MapSampleStats& stats, MapCancel cancel) const;
     void samplePlanet(const MapFrame& frame, std::span<MapSample> out, int threads,
-                      MapSampleStats& stats) const;
+                      MapSampleStats& stats, MapCancel cancel) const;
     void addBiomes(const MapFrame& frame, std::span<const float> continentalness,
-                   std::span<MapSample> out, int threads) const;
-    void addPlanetWater(const MapFrame& frame, std::span<MapSample> out, int threads) const;
+                   std::span<MapSample> out, int threads, MapCancel cancel) const;
+    void addPlanetWater(const MapFrame& frame, std::span<MapSample> out, int threads,
+                        MapCancel cancel) const;
 
     MapSourceParams params_;
     const Heightfield* field_ = nullptr;  // with its water

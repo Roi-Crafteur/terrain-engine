@@ -176,7 +176,8 @@ void drawFalls(const MapFrame& frame, std::span<const Fall> falls, double center
 }
 
 void reachCourses(const Hydrology& hydrology, const MapFrame& frame, double stretch,
-                  std::vector<Course>& courses, std::vector<Fall>& falls, MapSampleStats& stats) {
+                  std::vector<Course>& courses, std::vector<Fall>& falls, MapSampleStats& stats,
+                  MapCancel cancel) {
     const MapBox& b = frame.box();
     const double cx = wrapCoordinate(b.x + 0.5 * b.width, frame.world().x);
     const double cz = wrapCoordinate(b.z + 0.5 * b.height, frame.world().z);
@@ -184,6 +185,9 @@ void reachCourses(const Hydrology& hydrology, const MapFrame& frame, double stre
     const std::vector<std::size_t> near = hydrology.reachesNear(cx, cz, radius);
     ++stats.hydrologyCalls;
     for (const std::size_t index : near) {
+        if (mapCancelled(cancel)) {
+            return;
+        }
         const RiverReach reach = hydrology.reach(index);
         ++stats.hydrologyCalls;
         Course c;

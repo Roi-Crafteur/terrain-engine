@@ -26,6 +26,7 @@ MapTileCache::MapTileCache(Render render, Probe probe, std::vector<std::string> 
 }
 
 MapTileCache::~MapTileCache() {
+    cancel_.store(true, std::memory_order_relaxed);
     {
         const std::lock_guard lock(mutex_);
         stopping_ = true;
@@ -166,10 +167,12 @@ void MapTileCache::loop() {
                 probed = probe_(job.point->first, job.point->second);
             } else {
                 const auto start = std::chrono::steady_clock::now();
-                MapImage image = render_(job.key, job.layers);
+                MapImage image = render_(job.key, job.layers, &cancel_);
                 const std::chrono::duration<double> spent = std::chrono::steady_clock::now() - start;
                 tile = MapTile{job.key, job.revision, std::move(image), spent.count()};
             }
+        } catch (const MapCancelled&) {
+            // the cache stops: the tile is dropped, nothing went wrong
         } catch (const std::exception& e) {
             error = e.what();
         } catch (...) {
@@ -218,8 +221,10 @@ void MapTileCache::evict() {
 
 MapTileCache::Render renderTilesOf(const MapWorldSource& source) {
     auto layers = std::make_shared<const MapLayers>(defaultMapLayers());
-    return [&source, layers](const MapTileKey& key, const std::vector<std::string>& enabled) {
-        return renderMap(source, mapTileFrame(key, source.field().world()), *layers, enabled, {1});
+    return [&source, layers](const MapTileKey& key, const std::vector<std::string>& enabled,
+                             MapCancel cancel) {
+        return renderMap(source, mapTileFrame(key, source.field().world()), *layers, enabled,
+                         {1, kMapMaxSamples, cancel});
     };
 }
 
