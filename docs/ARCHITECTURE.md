@@ -15,10 +15,15 @@ structure :
       Source/TerrainEngine/Private/TerrainCore/ ← un enrobage par .cpp du core (hors io/)
       Scripts/          ← scripts Python qui créent les matériaux
     tests/              ← tests unitaires et golden
+    data/
+      dev/places.json   ← lieux de test partagés des outils de dev
+    scripts/
+      verify/           ← lanceur de vérification dans Unreal (Python, agent 37)
     docs/
       ARCHITECTURE.md
       ROADMAP.md
       AI_RULES.md
+      dev/              ← formats de la sonde et des lieux
     CMakeLists.txt
     README.md
 

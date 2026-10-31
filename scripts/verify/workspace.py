@@ -310,7 +310,13 @@ def prepare(machine, ref, label, runner, fresh=False):
         (cache / "copied.txt").write_text("\n".join(copied) + "\n", encoding="utf-8")
     _build(machine, version, runner, cache / "logs")
     version.built_now = True
-    if not runner.dry:
+    if runner.dry:  # what the tools of a version with terrain_probe would be
+        suffix = ".exe" if platform.system() == "Windows" else ""
+        folder = version.tools_dir / "terrain_core"
+        version.probe_kind = "probe"
+        version.probe = folder / f"terrain_probe{suffix}"
+        version.make_planet = folder / f"terrain_make_planet{suffix}"
+    else:
         _finish(version)
         marker.write_text(json.dumps({"sha": sha, "ref": ref, "build": version.build},
                                      indent=2), encoding="utf-8")

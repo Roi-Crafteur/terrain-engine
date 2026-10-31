@@ -74,7 +74,8 @@ def choose(machine, version, runner, log=None):
     if version.probe_kind != "probe" and target.exists():
         return PlanetChoice(target, _checksum_of_log(log), "built before")
     guard(target, machine)
-    planets.mkdir(parents=True, exist_ok=True)
+    if not runner.dry:
+        planets.mkdir(parents=True, exist_ok=True)
     _, out = runner.run([version.make_planet, target, "--seed", machine.seed], log)
     found = _CHECKSUM.search(out)
     checksum = "0x" + found.group(1) if found else None

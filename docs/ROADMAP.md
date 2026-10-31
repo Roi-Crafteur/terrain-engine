@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -185,6 +186,27 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   des fleuves ×1,42 à ×1,50 au lieu de ×0,99 à ×1,90 ; un faux échec de l'ancienne mesure
   sous la charge, aucun de la nouvelle ; une régression forcée de l'eau (fleuves calculés 3 ou 5
   fois, attente sur chaque échantillon) toujours détectée
+
+### Vérifications automatiques et sonde unique (agent 37)
+- `terrain_probe` remplace `terrain_probe_water` : pour des points ou le long d'une ligne
+  (`--line`), avec ou sans fichier planète, tout ce que le core sait. Une section par module :
+  relief et sol (le sol du repère d'Unreal), géographie, case de la planète (climat, débit), eau
+  (type, niveau, profondeur, vallée, lac, courant), chutes proches et couloir de marches,
+  colonne de roche, côte, surface, ce que reçoit Unreal (tuiles, horizon). Texte ou JSON à schéma
+  stable ; `--planet-check` lit un fichier planète sans jamais l'écrire. Les sections
+  `rock.faces` (12A) et `coast.type` (agent 33) ont leur place prévue
+  (`docs/dev/PROBE_AND_PLACES.md`)
+- `data/dev/places.json` : les lieux de test partagés des agents 35, 36 et 37
+- `scripts/verify/` : une commande pour vérifier une version, ou la comparer à une autre, dans
+  Unreal :
+  - clones jetables, cache de build par commit, planète vérifiée et copiée à côté ;
+  - sessions courtes sous un chien de garde ;
+  - vues prises en pause (bruit à monde identique mesuré), contrôle du signe de l'inclinaison,
+    marches jusqu'à la première chute ;
+  - planche avant / après, écarts de pixels et `resume.txt`.
+
+  Le pilote d'Unreal est testé contre un faux module `unreal` ; son premier essai réel est celui
+  de l'orchestrateur
 
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
