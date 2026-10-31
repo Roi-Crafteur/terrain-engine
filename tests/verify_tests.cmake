@@ -25,7 +25,7 @@ add_dependencies(check terrain_probe)
 # The verification launcher (scripts/verify/), without Unreal: one test per file of its unit tests.
 find_package(Python COMPONENTS Interpreter QUIET)
 if(Python_Interpreter_FOUND)
-    set(verify_tests places png pixels sheet walks logs machine workspace planet probe session)
+    set(verify_tests places png pixels sheet walks logs machine workspace planet probe session driver)
     foreach(name IN LISTS verify_tests)
         add_test(NAME verify_${name}_test
             COMMAND ${Python_EXECUTABLE} -B -m unittest test_${name}
