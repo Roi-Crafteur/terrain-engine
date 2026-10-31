@@ -1,6 +1,7 @@
 # Peuplement, énergies et royaumes — document de conception
 
-Statut : en cours d'affinage avec l'utilisateur (octobre 2026). Rien n'est encore codé. Les
+Statut : la V1 (section 4 quater) est codée (agent 25, octobre 2026) : fichiers, formats,
+écarts et mesures dans la section 9. Le reste est en cours d'affinage avec l'utilisateur. Les
 points marqués **À décider** attendent une réponse ; tout le reste est validé.
 
 Règles qui s'appliquent partout :
@@ -1147,7 +1148,8 @@ Même règle que `docs/ARCHITECTURE.md` :
 | Géologie en données, lignes telluriques, nœuds, rifts, sanctuaires, zones mortes | positions, tracés et intensités | effets visuels (lueurs, particules, brume, son), visibles ou cachés selon le gameplay |
 | Mana caché (seed secrète) | calculé sur le serveur seulement | le serveur de jeu envoie à chaque client ce qu'il a découvert (exploration, rituels, artefacts) |
 | Prana, Aura, Mana, instabilité, danger magique | valeurs par case et à la demande en un point | effets de jeu : régénération, progression, puissance des sorts, ambiance du lieu |
-| Énergies personnelles (Anima, Numen, Entropie) | rien (seulement le bonus ou le malus du lieu, s'il en a un) | entièrement : personnages, liens, pactes, divinités || raceSuitability, graines, capitales | calcul complet | rien, sauf l'affichage de debug |
+| Énergies personnelles (Anima, Numen, Entropie) | rien (seulement le bonus ou le malus du lieu, s'il en a un) | entièrement : personnages, liens, pactes, divinités |
+| raceSuitability, graines, capitales | calcul complet | rien, sauf l'affichage de debug |
 | Expansion, frontières, histoire courte (guerres, alliances, ruines, forts), dirigeants initiaux | calcul complet de l'état initial du monde | affichage des frontières ; la politique **en cours de partie** (nouvelles guerres, traités) est du gameplay, côté serveur de jeu |
 | Villes, villages, routes | plan : sites exacts, hiérarchie, tracés, parcelles ; pour chaque bâtiment : emprise, hauteur, type, style, orientation, matériaux ; retouches du relief (routes, terrasses, quais) | bâtiments assemblés depuis des kits modulaires (PCG), décor, PNJ, vie des villes |
 | Vie souterraine | habitabilité souterraine, sites des cités et des mines dans les régions de grottes, galeries creusées (retouches du volume, comme les routes en surface) | éclairage, décor et vie des cités souterraines |
@@ -1160,3 +1162,147 @@ Aucune géométrie de bâtiment, aucun effet visuel et aucune règle de combat d
 
 Elles sont dans `docs/PEUPLEMENT_QUESTIONS.md`. Chaque réponse est reportée ici, puis la
 question est retirée de cette liste.
+
+## 9. V1 codée : fichiers, formats et écarts (agent 25, octobre 2026)
+
+La V1 de la section 4 quater est codée. Tout est dans `terrain_core`, sans rien de graphique ni
+d'Unreal ; ce sont des données dérivées du niveau Planète, rangées à part : la somme du niveau
+Planète (`26626564570b0d9e`), les goldens du monde et les montagnes gelées ne changent pas.
+Rien n'est encore branché dans Unreal.
+
+### Où sont les choses
+
+- Données : `data/settlement/` — `world.json` (tous les poids et toutes les règles),
+  `resources/*.json` (6 ressources : bois, cristaux de mana, métaux communs, métaux précieux,
+  pierre, sel), `peoples/*.json` (les 13 peuples de la section 5). Lecture stricte : une valeur
+  hors plage, un champ inconnu ou manquant, une relation vers un peuple inconnu est refusé avec
+  le fichier, le chemin, la raison, la ligne et la colonne.
+- Code : `terrain_core/src/generation/settlement/` (cartes, peuples, presets, capitales,
+  expansion, frontières, dirigeants), `src/storage/settlement_file.cpp` (`settlement.json`),
+  `src/io/settlement_png*.cpp` (images de contrôle) ; un enrobage Unreal par source hors `io/`.
+- Outil : `terrain_export_settlement <dossier> --planet <planet.bin> --preset all` (cartes PNG,
+  zooms `--zoom x z largeur_km hauteur_km`, rapport `settlement.txt`).
+- Tests : `tests/settlement_*` (données, cartes, géologie, peuples, préférences, presets,
+  expansion sur des grilles faites à la main, royaumes du monde par défaut en cases de 65 km,
+  dirigeants, `settlement.json`).
+
+### Formats finaux
+
+`world.json`, sections dans l'ordre : `configVersion`, `referencePlanetAreaKm2`,
+`physicalScore`, `roughness`, `vegetation`, `rivers` (seuils de débit de la section 6 bis),
+`arable`, `food`, `danger`, `prana`, `mana`, `magic`, `geology`, `habitability`, `suitability`,
+`terrainModels`, `worldPresets` (`wild`, `balanced`, `civilized`, chaque valeur en
+`{ "mode": "range", "min", "max" }` ou `{ "mode": "exact", "value" }`), `defaultPreset`,
+`states`, `capitals`, `expansion`, `borders`, `goodWorld`, `politics`.
+
+Un peuple (`peoples/nains.json`, abrégé) :
+
+```json
+{ "id": "nains", "type": "people", "name": "Nains", "plane": "material",
+  "majorKingdomShare": 8, "minorStateShare": 6, "baseTerrainModel": "mountain",
+  "physicalPreferences": { "temperature": { "min": -30, "idealMin": -2, "idealMax": 10,
+                                            "max": 20, "hardMax": 32 } },
+  "habitabilityWeight": 0.8, "physicalWeight": 1.4, "dangerSensitivity": 0.3,
+  "ambientEnergyPreferences": { "prana": 0.4, "aura": 0.8, "mana": 0.5 },
+  "underground": { "level": "partial", "preferredDepth": 0.5, "needsSurfaceAccess": true },
+  "needs": { "metaux_communs": 1.0, "pierre": 0.9, "metaux_precieux": 0.8 },
+  "fears": { "highMagic": 0.2, "volcano": 0.1, "deepOcean": 1.0, "monsterDensity": 0.6 },
+  "government": [ "clan_monarchy", "council_of_clans", "hereditary_republic" ],
+  "relations": { "humains": 0.6, "orcs": -0.9 }, "selfRelation": 0.9,
+  "rulerTraits": { "ambition": { "min": 0.3, "max": 0.8 } },
+  "names": { "syllables": [ "thor", "grim", "dur" ],
+             "titles": { "clan_monarchy": "Roi sous la Montagne" } } }
+```
+
+Sorties de l'outil, par preset : `kingdoms_<preset>.png` (et `_zoom.png`),
+`capitals_<preset>.txt`, `rulers_<preset>.json` (le format de la section 5, valeurs au
+centième), `relations_<preset>.json` (`{ "from", "to", "relation", "tension" }` dans les deux
+sens pour chaque paire de voisins), `settlement_<preset>.json`.
+
+`settlement.json`, ce qu'un monde garde de son peuplement (section 6 bis) :
+
+```json
+{ "format": 1,
+  "world": { "seed": "0x000000000135289b", "secretSeedId": "", "worldPreset": "wild",
+             "forced": {},
+             "resolved": { "civilizedShare": 0.184344, "civilizedShareBits": "0x3fc79895a36ae68e",
+                           "resolvedMajorKingdoms": 17, "resolvedMinorStates": 146 },
+             "configVersion": "1.0", "config": { "world": {}, "resources": [], "peoples": [] },
+             "configHash": "0x954607d509a39103", "kingdomsChecksum": "0x8210947631f7a7f2",
+             "generationState": { "terrain": "done", "rivers": "done", "coasts": "pending",
+                                  "civilizations": "done", "hiddenLayer": "pending" } } }
+```
+
+- `config` est la copie complète des données (`world.json`, les ressources, les peuples), et
+  `configHash` sa somme FNV-1a 64 sur le texte canonique compact (la somme de contrôle du
+  projet, comme prévu). Les nombres qui ne tiennent pas exactement dans un nombre JSON (seed,
+  sommes) sont écrits en `"0x"` et 16 chiffres hexadécimaux ; la part civilisée tirée est
+  écrite deux fois, arrondie au millionième pour la lecture et par ses bits pour l'exactitude.
+- Relu strictement : une copie modifiée (somme qui ne correspond plus), une somme abîmée, un
+  `configVersion` différent de celui de la copie, un champ manquant ou inconnu, un format plus
+  récent sont refusés avec un message clair.
+- Vérifié par le test : quand les fichiers globaux changent, ils donnent d'autres royaumes ; la
+  copie seule redonne les mêmes royaumes au bit près.
+- `secretSeedId` reste vide et `hiddenLayer` à `pending` : pas encore de seed secrète ni de
+  Mana caché en V1.
+
+### Écarts et réglages décidés pendant la V1 (validés aux arrêts 3, 3 bis et 3 ter)
+
+1. **Bruit lent du coût d'expansion** (`expansion.costNoise`) : coût × (1 + 0,5 n), n un bruit
+   de 50 km sur 2 octaves. Jamais une case gratuite ; il ne touche ni la suitability, ni les
+   limites dures, ni les traversées.
+2. **Arrêt sur la barrière la plus proche** (`barrierStop` 0,7) : dès 0,7 × la cible, un État
+   ne franchit plus de barrière ; débordement au plus 1,3 × la cible (`overflow`) et 15 % des
+   terres. En remplissage, un État ne quitte pas un fleuve ou un lac, ne longe pas un fleuve, ne
+   franchit pas une crête et n'entre pas dans une terre hostile depuis une terre non hostile.
+3. **Lisière d'une terre hostile = frontière naturelle** (option D) : déserts, glaces et terres
+   au-dessus de 3 500 m ; une arête compte quand une seule de ses deux cases est hostile. Rangée à
+   part (« terre hostile »). Le seuil des 50 % de frontières naturelles n'a pas bougé.
+4. **Crêtes** : cases sèches de bassins différents, au moins 300 m au-dessus du minimum de la
+   fenêtre 5 × 5, relief ≥ 0,12, **et le terrain descend des deux côtés** (ligne de crête, plus
+   les pentes).
+5. **Montagnes** : un royaume remonte les vallées d'un massif (modèle `mountain` hors terre
+   hostile) jusqu'à la crête, sans la franchir en remplissage ; coût de montée inchangé.
+6. **Petits États** : leur capitale se pose de préférence dans un compartiment naturel libre de
+   0,7 à 1,3 × leur cible (terre sèche bordée de rivières ≥ 10 m³/s, lacs, crêtes, côte, terre
+   hostile), et ils grandissent le long des vallées (`expansion.valleys`) : coût × (1 −
+   valleyBonus + (valleyBonus + slopePenalty) × min(1, h / slopeHeightM)), h la hauteur
+   au-dessus du drainage le plus proche. Réglage doux retenu : `riverClass` 2, `valleyBonus`
+   0,7, `slopePenalty` 3,5, `slopeHeightM` 150.
+7. **Nettoyage** des seuls artefacts : enclaves de 4 cases au plus (sans capitale) et pointes
+   d'une case. Les coupures du climat (lignes à +30°, 0°, −30°) sont mesurées : moins de 1 %
+   des frontières.
+8. **Dirigeants** : un par État, gouvernement tiré dans la liste du peuple, personnalité dans
+   les plages `rulerTraits`, nom du royaume et du dirigeant par syllabes du peuple, uniques sur
+   le monde (nouveau tirage déterministe en cas de doublon). Objectifs, un à trois, de la
+   situation : `secure_<ressource>` (besoin peu présent sur ses terres), `expand_into_<modèle>`
+   (ambition, terre sauvage voisine qui lui convient), `weaken_<royaume>` (agressivité et voisin
+   le plus tendu), `seek_mana`, `defend_borders` (prudence).
+9. **Relations de base** entre voisins seulement, asymétriques : `relation` = l'opinion du
+   peuple (la `selfRelation` entre deux États d'un même peuple) ; `tension` = 0,35 × part de la
+   frontière commune + 0,25 × ressources convoitées + 0,25 × ambition du dirigeant + 0,15 ×
+   pression démographique, bornée à [0, 1]. Pas d'histoire, d'alliance ni de religion en V1.
+
+### Mesures sur la planète entière (11,59 millions de cases de terre)
+
+Seed par défaut, `terrain_export_settlement --preset all --equity-seeds 8`, sous Linux sur
+4 cœurs : 77 s en tout (cartes d'analyse 31 s, raceSuitability des 13 peuples 3 s, chaque preset
+de 6 à 14 s), pic de 960 Mo. Les trois presets passent tous les tests d'un bon monde.
+
+| | Sauvage | Équilibré | Civilisé |
+|---|---|---|---|
+| Grands royaumes + petits États | 17 + 146 | 38 + 385 | 146 + 530 |
+| Terres tenues | 23,3 % | 42,9 % | 57,7 % |
+| Plus grand État (≤ 15 %) | 1,23 % | 1,16 % | 0,53 % |
+| Plus grand peuple (≤ 40 % des terres tenues) | humains 33,4 % | humains 34,4 % | humains 28,3 % |
+| Frontières naturelles (≥ 50 %) | 66,8 % | 61,5 % | 55,3 % |
+| dont fleuve ou lac / crête / côte / terre hostile | 64,8 / 0,9 / 0,4 / 0,7 % | 59,6 / 0,9 / 0,3 / 0,7 % | 52,6 / 1,0 / 0,4 / 1,3 % |
+| Entre deux États seulement | 63,8 % | 62,2 % | 59,6 % |
+| Capitales hors des 20 % les plus habitables ou loin de l'eau douce | 0 | 0 | 0 |
+| Terre hostile tenue par des peuples qui ne l'aiment pas (≤ 10 %) | 1,1 % | 2,7 % | 6,3 % |
+| Allongement moyen des petits États (1 = rond) | 1,608 | 1,628 | 1,646 |
+| Frontières près d'une coupure du climat | 0,52 % | 0,51 % | 0,53 % |
+| Relations entre voisins (dans les deux sens) | 190 | 1 006 | 2 632 |
+| Tension moyenne | 0,20 | 0,21 | 0,22 |
+
+Même seed et même preset : mêmes bits, quel que soit le nombre de threads (tests).

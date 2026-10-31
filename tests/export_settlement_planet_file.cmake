@@ -1,0 +1,72 @@
+# terrain_export_settlement never writes a planet file given with --planet in silence: a stale,
+# missing or damaged file is refused with its reason and left as it was; --rebuild-planet builds
+# it again into <file>.new and replaces the file only once it reads back.
+# Usage: cmake -DTOOL=<terrain_export_settlement> -DDIR=<scratch-dir>
+#        -P export_settlement_planet_file.cmake
+
+file(REMOVE_RECURSE "${DIR}")
+file(MAKE_DIRECTORY "${DIR}")
+set(planet "${DIR}/planet.bin")
+set(small --world 2097152 1048576 --cell 16384 --threads 2 --width 64)
+
+function(run name expect_success out)
+    execute_process(COMMAND "${TOOL}" "${DIR}/${out}" ${ARGN} ${small}
+                    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(expect_success AND NOT result EQUAL 0)
+        message(FATAL_ERROR "${name}: expected a success, got ${result}:\n${error}")
+    endif()
+    if(NOT expect_success)
+        if(result EQUAL 0)
+            message(FATAL_ERROR "${name}: expected a refusal, got success:\n${output}")
+        endif()
+        if(NOT error MATCHES "Invalid planet file.*\nUsage: ")
+            message(FATAL_ERROR "${name}: no clear error message, stderr:\n${error}")
+        endif()
+        if(EXISTS "${DIR}/${out}")
+            message(FATAL_ERROR "${name}: ${out} was written despite the refusal")
+        endif()
+        string(REGEX REPLACE "\n.*" "" first_line "${error}")
+        message(STATUS "${name}: refused (${first_line})")
+    endif()
+endfunction()
+
+function(expect_unchanged name file hash)
+    file(SHA256 "${file}" now)
+    if(NOT now STREQUAL hash)
+        message(FATAL_ERROR "${name}: ${file} was changed")
+    endif()
+    if(EXISTS "${file}.new")
+        message(FATAL_ERROR "${name}: ${file}.new was left behind")
+    endif()
+endfunction()
+
+run("missing file" FALSE out_missing --planet "${planet}")
+if(EXISTS "${planet}")
+    message(FATAL_ERROR "missing file: the planet file was created without --rebuild-planet")
+endif()
+run("built with --rebuild-planet" TRUE out_built --planet "${planet}" --rebuild-planet)
+file(SHA256 "${planet}" built)
+expect_unchanged("built" "${planet}" "${built}")
+run("read back" TRUE out_read --planet "${planet}")
+expect_unchanged("read back" "${planet}" "${built}")
+run("stale: another seed" FALSE out_stale --planet "${planet}" --seed 5)
+expect_unchanged("stale" "${planet}" "${built}")
+
+file(WRITE "${DIR}/garbage.bin" "not a planet file at all")
+file(SHA256 "${DIR}/garbage.bin" garbage)
+run("damaged: not a planet file" FALSE out_garbage --planet "${DIR}/garbage.bin")
+expect_unchanged("damaged" "${DIR}/garbage.bin" "${garbage}")
+file(WRITE "${DIR}/cut.bin" "TPLNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+file(SHA256 "${DIR}/cut.bin" cut)
+run("damaged: a cut header" FALSE out_cut --planet "${DIR}/cut.bin")
+expect_unchanged("cut" "${DIR}/cut.bin" "${cut}")
+
+run("stale rebuilt with --rebuild-planet" TRUE out_rebuilt --planet "${planet}" --seed 5
+    --rebuild-planet)
+file(SHA256 "${planet}" rebuilt)
+if(rebuilt STREQUAL built)
+    message(FATAL_ERROR "rebuilt: the planet file was not replaced")
+endif()
+expect_unchanged("rebuilt" "${planet}" "${rebuilt}")
+run("rebuilt read back" TRUE out_reread --planet "${planet}" --seed 5)
+message(STATUS "the planet file is only ever written with --rebuild-planet")

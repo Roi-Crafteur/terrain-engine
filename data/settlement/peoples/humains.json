@@ -1,0 +1,38 @@
+{
+  "id": "humains",
+  "type": "people",
+  "name": "Humains",
+  "plane": "material",
+  "majorKingdomShare": 30,
+  "minorStateShare": 24,
+  "baseTerrainModel": "plains",
+  "physicalPreferences": {
+    "temperature": { "hardMin": -22, "min": -6, "idealMin": 6, "idealMax": 24, "max": 33 },
+    "humidity": { "min": 0.12, "idealMin": 0.3, "idealMax": 0.75, "max": 0.9 },
+    "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.3, "max": 0.65 },
+    "altitude": { "min": -100, "idealMin": 0, "idealMax": 1200, "max": 3500, "hardMax": 5000 },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 15, "max": 80 }
+  },
+  "physicalWeights": { "waterDistance": 1.5 },
+  "habitabilityWeight": 1.5,
+  "physicalWeight": 1.0,
+  "dangerSensitivity": 0.6,
+  "ambientEnergyPreferences": { "prana": 0.3, "aura": 0.1, "mana": 0.1 },
+  "underground": { "level": "none", "preferredDepth": 0, "needsSurfaceAccess": true },
+  "needs": { "farmland": 1.0, "freshwater": 0.9, "bois": 0.7, "metaux_communs": 0.7, "pierre": 0.5, "sel": 0.5 },
+  "fears": { "highMagic": 0.4, "volcano": 0.5, "deepOcean": 0.3, "monsterDensity": 0.7 },
+  "government": [ "feudal_monarchy", "elective_monarchy", "merchant_republic", "city_state" ],
+  "relations": { "elfes": 0.3, "nains": 0.4, "halfelins": 0.5, "gnomes": 0.3, "orcs": -0.5, "gobelins": -0.6, "hobgobelins": -0.5, "kobolds": -0.4, "hommes_betes": -0.3, "dragonides": 0.0, "geants": -0.2, "tieflings": -0.3 },
+  "selfRelation": 0.6,
+  "rulerTraits": {
+    "ambition": { "min": 0.3, "max": 0.95 },
+    "aggression": { "min": 0.2, "max": 0.8 },
+    "greed": { "min": 0.2, "max": 0.85 },
+    "prudence": { "min": 0.2, "max": 0.8 },
+    "piety": { "min": 0.1, "max": 0.8 }
+  },
+  "names": {
+    "syllables": [ "al", "ber", "ed", "mund", "ric", "ald", "wen", "har", "thur", "gar", "lin", "dor", "mar", "ian" ],
+    "titles": { "feudal_monarchy": "Roi", "elective_monarchy": "Roi élu", "merchant_republic": "Doge", "city_state": "Seigneur" }
+  }
+}
