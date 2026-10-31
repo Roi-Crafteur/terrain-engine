@@ -98,16 +98,27 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
      pilote le ferme. Un `init_unreal.py` du projet est gardé en `init_unreal_project.py` et lancé
      d'abord. `-ExecutePythonScript` n'est jamais utilisé, car il ferme l'éditeur après son
      script. En secours, `--start execcmds` démarre le même code par `-ExecCmds="py …"`.
+   - **L'API vérifiée d'abord** : toutes les fonctions de l'API Python dont la session a besoin
+     sont vérifiées d'un coup, et celles qui manquent sont toutes nommées ensemble dans
+     `result_<n>.json` et en tête du résumé. Sans celles des vues, la session s'arrête avant la
+     PIE. Sans celles des marches ou du soleil, les vues sont prises quand même.
    - **L'éditeur prêt** : `init_unreal.py` tourne très tôt, avant que la carte soit ouverte. Le
      pilote attend donc le Terrain World dans le monde de l'éditeur, puis quelques ticks, avant
      les scripts de matériaux (phase `editor-ready` du battement de cœur, 10 min au plus).
    - Les scripts de matériaux de la version sont relancés dans l'ordre de
      `terrain_unreal/WATER_LEVEL.md`.
    - Pour chaque lieu, en Play In Editor :
-     - **la vue est placée** : une `CameraActor` à l'œil, avec `CoreOriginX/Z` sur le lieu (yaw =
-       cap − 90, l'inclinaison telle quelle, négative vers le bas). Si la version a les outils
-       de l'agent 36, ce sont `Terrain.Goto` et `Terrain.Look`, avec `Terrain.View normal`
-       avant chaque image ;
+     - **la vue est placée** :
+       - si la version a les outils de l'agent 36 (détectés dans ses sources), par
+         `Terrain.Goto x z <œil>` et `Terrain.Look cap inclinaison`, avec `Terrain.View normal`
+         avant chaque image, une PIE pour tous les lieux du même besoin de planète ;
+       - sinon, par une `CameraActor` posée dans la carte avant la PIE, avec `CoreOriginX/Z` sur
+         le lieu : à l'œil, yaw = cap − 90, l'inclinaison telle quelle, négative vers le bas.
+         Les fonctions de spawn différé ne sont pas exposées à Python dans UE 5.8 : la PIE
+         duplique cette caméra avec la carte, et le pilote retrouve la copie par son étiquette
+         (`TerrainVerifyCamera`). Le Terrain World charge les tuiles autour d'elle
+         (`FocusActor`). La caméra est retirée de la carte après chaque lieu, sans
+         sauvegarder ; une PIE par lieu ;
      - **le chargement est attendu** : la ligne `Terrain World: load N report` (agent 38) si la
        version l'écrit, sinon des délais (`--settle`, `--first-settle`) ;
      - **le jeu est mis en pause** avant les images : le temps de l'eau et des chutes s'arrête ;

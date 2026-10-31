@@ -22,10 +22,54 @@ def _get(owner, name, what=None):
     return value
 
 
+# What the driver calls, checked all at once before it starts ("a|b": one of them is enough).
+# The functions of an actor are checked on its class.
+NEEDED = {
+    "editor": ["get_editor_subsystem", "register_slate_post_tick_callback",
+               "UnrealEditorSubsystem.get_editor_world", "UnrealEditorSubsystem.get_game_world",
+               "LevelEditorSubsystem.editor_request_begin_play",
+               "LevelEditorSubsystem.editor_request_end_play",
+               "LevelEditorSubsystem.is_in_play_in_editor",
+               "GameplayStatics.get_all_actors_of_class", "GameplayStatics.get_player_pawn",
+               "GameplayStatics.get_player_controller", "SystemLibrary.execute_console_command",
+               "SystemLibrary.quit_editor", "Paths.screen_shot_dir",
+               "Paths.convert_relative_path_to_full", "Vector", "Rotator",
+               "PlayerController.set_view_target_with_blend",
+               "PlayerCameraManager.get_camera_rotation"],
+    "camera": ["CameraActor",
+               "EditorActorSubsystem.spawn_actor_from_class|EditorLevelLibrary"
+               ".spawn_actor_from_class",
+               "EditorActorSubsystem.destroy_actor|Actor.destroy_actor",
+               "GameplayStatics.get_all_actors_with_tag", "Actor.set_actor_location_and_rotation"],
+    "walk": ["Pawn.add_movement_input", "Actor.set_actor_location",
+             "Controller.set_control_rotation", "SystemLibrary.line_trace_single",
+             "TraceTypeQuery", "DrawDebugTrace"],
+    "sun": ["DirectionalLight", "Actor.set_actor_rotation"],
+}
+
+
 class Api:
     def __init__(self, unreal):
         self.ue = unreal
         self.missing = []
+
+    def has(self, path):
+        """Whether the API has a dotted name ("GameplayStatics.set_game_paused")."""
+        owner = self.ue
+        for part in path.split("."):
+            owner = getattr(owner, part, None)
+            if owner is None:
+                return False
+        return True
+
+    def missing_of(self, groups):
+        """Every name of these groups of NEEDED the API lacks, all at once."""
+        out = []
+        for group in groups:
+            for spec in NEEDED[group]:
+                if not any(self.has(name) for name in spec.split("|")):
+                    out.append(spec)
+        return out
 
     # ---- editor and Play In Editor ------------------------------------------------------------
 
@@ -84,16 +128,34 @@ class Api:
     def vector(self, x, y, z):
         return _get(self.ue, "Vector")(float(x), float(y), float(z))
 
-    def spawn_camera(self, world, location, rotation):
-        """A CameraActor in the world of the play, viewed by the first player."""
-        statics = _get(self.ue, "GameplayStatics")
-        transform = _get(self.ue, "Transform")(location=location, rotation=rotation,
-                                               scale=self.vector(1, 1, 1))
-        begin = _get(statics, "begin_deferred_actor_spawn_from_class")
-        camera = begin(world, _get(self.ue, "CameraActor"), transform)
-        statics.finish_spawning_actor(camera, transform)
-        self.view_through(world, camera)
+    def spawn_editor_camera(self, location, rotation, tag):
+        """A CameraActor in the world of the editor (the deferred spawns of the world of a play
+        are not exposed to Python in UE 5.8): Play In Editor duplicates it with the level, and
+        find_tagged finds the copy by its tag. Never saved; destroy_editor_actor removes it."""
+        cls = _get(self.ue, "CameraActor")
+        spawner = getattr(self.ue, "EditorActorSubsystem", None)
+        if spawner is not None and hasattr(spawner, "spawn_actor_from_class"):
+            camera = self.subsystem("EditorActorSubsystem").spawn_actor_from_class(
+                cls, location, rotation)
+        else:
+            library = _get(self.ue, "EditorLevelLibrary", "EditorActorSubsystem or "
+                           "EditorLevelLibrary.spawn_actor_from_class")
+            camera = library.spawn_actor_from_class(cls, location, rotation)
+        camera.set_editor_property("tags", [tag])
+        if hasattr(camera, "set_actor_label"):
+            camera.set_actor_label(tag)
         return camera
+
+    def find_tagged(self, world, tag):
+        actors = list(_get(self.ue, "GameplayStatics").get_all_actors_with_tag(world, tag))
+        return actors[0] if actors else None
+
+    def destroy_editor_actor(self, actor):
+        spawner = getattr(self.ue, "EditorActorSubsystem", None)
+        if spawner is not None and hasattr(spawner, "destroy_actor"):
+            self.subsystem("EditorActorSubsystem").destroy_actor(actor)
+        else:
+            actor.destroy_actor()
 
     def view_through(self, world, actor):
         controller = _get(self.ue, "GameplayStatics").get_player_controller(world, 0)

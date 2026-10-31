@@ -19,7 +19,6 @@ A heartbeat (JSON, about every second) lets the launcher kill a session that han
 """
 
 import json
-import math
 import sys
 import time
 import traceback
@@ -31,23 +30,13 @@ if str(HERE) not in sys.path:
 
 import ue_api  # noqa: E402
 import ue_log  # noqa: E402
-import walks  # noqa: E402
+from ue_walk import Until, Wait, WalkSteps  # noqa: E402
 
 PITCH_CHECK = -30.0  # degrees: the check view looks down by this much
+CAMERA_TAG = "TerrainVerifyCamera"  # the camera put in the level, found again in the play
 
 
-class Wait:
-    def __init__(self, seconds):
-        self.seconds = seconds
-
-
-class Until:
-    def __init__(self, ready, timeout, what):
-        self.ready, self.timeout, self.what = ready, timeout, what
-        self.timed_out = False
-
-
-class Driver:
+class Driver(WalkSteps):
     def __init__(self, job, api, clock=time.monotonic, wall=time.time):
         self.job, self.api, self.clock, self.wall = job, api, clock, wall
         self.out = Path(job["out"])
@@ -56,6 +45,7 @@ class Driver:
                        "features": job.get("features", {}), "done": False}
         self.phase, self.place, self.beats = "start", None, 0
         self.terrain, self.saved, self.origin = None, {}, None
+        self.editor_camera, self.skip_walks, self.skip_sun = None, False, False
         self.done = False
         self.ticks, self.started, self._in_step = 0, clock(), False
         self._steps = self.steps()
@@ -83,7 +73,8 @@ class Driver:
         except StopIteration:
             self.finish()
         except ue_api.MissingApi as missing:
-            self.result["missingApi"].append(str(missing))
+            if not self.result["missingApi"]:
+                self.result["missingApi"].append(str(missing))
             self.finish()
         except Exception:  # noqa: BLE001 - recorded, then the session ends cleanly
             self.result["errors"].append(traceback.format_exc())
@@ -126,6 +117,7 @@ class Driver:
     # ---- the steps -------------------------------------------------------------------------------
 
     def steps(self):
+        self.check_api()
         yield from self.editor_ready()
         if self.job.get("materials"):
             self.set_phase("materials")
@@ -139,6 +131,19 @@ class Driver:
                 self.result["errors"].append(traceback.format_exc())
                 yield from self.stop_play()
             self.save_result()
+
+    def check_api(self):
+        """Every function the session needs, checked at once before anything: all those that
+        are missing named together; the views need the editor (and the camera without the dev
+        tools), the walks and the sun are only skipped without theirs."""
+        needed = ["editor"] + ([] if self.dev_commands() else ["camera"])
+        missing = self.api.missing_of(needed)
+        walks_missing = self.api.missing_of(["walk"]) if self.job.get("walks") else []
+        sun_missing = self.api.missing_of(["sun"]) if self.job.get("sun") else []
+        self.result["missingApi"] = missing + walks_missing + sun_missing
+        self.skip_walks, self.skip_sun = bool(walks_missing), bool(sun_missing)
+        if missing:
+            raise ue_api.MissingApi("unreal API missing: " + ", ".join(missing))
 
     def editor_ready(self):
         """init_unreal.py runs early, before the map is open and its assets ready: the world of
@@ -165,7 +170,7 @@ class Driver:
         if not worlds:
             return False
         self.terrain = worlds[0]
-        for name in ("core_origin_x", "core_origin_z", "planet_file"):
+        for name in ("core_origin_x", "core_origin_z", "planet_file", "focus_actor"):
             self.saved[name] = self.api.read(self.terrain, name)
         return True
 
@@ -221,6 +226,8 @@ class Driver:
         self.api.write(self.terrain, "planet_file",
                        self.job["planetFile"] if first["usePlanet"] else "")
         self.origin = (float(first["x"]), float(first["z"]), float(first["ground"]))
+        if not self.dev_commands():
+            self.put_camera(first)
         self.set_phase("play")
         offset = self.log_size()
         self.api.begin_play()
@@ -239,30 +246,60 @@ class Driver:
             self.save_result()
         yield from self.stop_play()
 
+    def put_camera(self, place):
+        """Without the dev tools: a CameraActor at the eye of the place in the level, before the
+        play duplicates it; the Terrain World streams around it (its FocusActor, which the
+        duplication points at the copy)."""
+        self.remove_camera()
+        self.editor_camera = self.api.spawn_editor_camera(
+            self.eye_location(place), self.api.rotator(place["pitch"], place["yaw"]), CAMERA_TAG)
+        self.api.write(self.terrain, "focus_actor", self.editor_camera)
+
+    def remove_camera(self):
+        if self.editor_camera is None:
+            return
+        try:
+            self.api.destroy_editor_actor(self.editor_camera)
+        except Exception:  # noqa: BLE001 - the level is never saved anyway
+            self.result["errors"].append("could not remove the camera of the level")
+        self.editor_camera = None
+        self.api.write(self.terrain, "focus_actor", self.saved.get("focus_actor"))
+
     def stop_play(self):
         if self.api.playing():
             self.api.end_play()
             yield Until(lambda: not self.api.playing(), 60.0, "the end of the play")
+        self.remove_camera()
+
+    def eye_location(self, place):
+        x0, z0, y0 = self.origin
+        return self.api.vector(100.0 * (place["x"] - x0), 100.0 * (place["z"] - z0),
+                               100.0 * (place["eyeAltitude"] - y0))
 
     # ---- a view ----------------------------------------------------------------------------------
 
     def aim(self, world, place, pitch, camera):
-        """The view of the place pitched by pitch: the dev tools, or the camera at the origin."""
+        """The view of the place pitched by pitch: the dev tools, or the camera of the place in
+        the world of the play."""
         if self.dev_commands():
             eye = place["eye"]
             text = f"{eye:.2f}" if place["eyeMode"] == "altitude" else f"+{eye:.2f}"
             self.api.console(world, f"Terrain.Goto {place['x']} {place['z']} {text}")
             self.api.console(world, f"Terrain.Look {place['heading']} {pitch}")
+            return
+        self.api.place_camera(camera, self.eye_location(place),
+                              self.api.rotator(pitch, place["yaw"]))
+
+    def play_camera(self, world, place):
+        """The copy of the camera of the level in the play, the view through it; None with the
+        dev tools (Terrain.Goto, Terrain.Look)."""
+        if self.dev_commands():
+            self.aim(world, place, place["pitch"], None)
             return None
-        x0, z0, y0 = self.origin
-        location = self.api.vector(100.0 * (place["x"] - x0), 100.0 * (place["z"] - z0),
-                                   100.0 * (place["eyeAltitude"] - y0))
-        rotation = self.api.rotator(pitch, place["yaw"])
+        camera = self.api.find_tagged(world, CAMERA_TAG)
         if camera is None:
-            camera = self.api.spawn_camera(world, location, rotation)
-            self.api.set_focus(world, camera)  # the tiles around the eye, not the player start
-            return camera
-        self.api.place_camera(camera, location, rotation)
+            raise RuntimeError(f"the camera {CAMERA_TAG} of the level is not in the play")
+        self.api.view_through(world, camera)
         return camera
 
     def view(self, world, place, offset):
@@ -270,7 +307,7 @@ class Driver:
                  "freeze": None, "method": None}
         self.result["views"].append(entry)
         offset = self.log_size() if offset is None else offset
-        camera = self.aim(world, place, place["pitch"], None)
+        camera = self.play_camera(world, place)
         if self.result["features"].get("loadReport"):
             until = Until(lambda: self.load_reported(offset), self.job.get("loadTimeout", 120.0),
                           "the load report")
@@ -285,7 +322,7 @@ class Driver:
         for command in self.job.get("console", []):
             self.api.console(world, command)
         sun = self.job.get("sun")
-        if sun:
+        if sun and not self.skip_sun:
             entry["suns"] = self.api.set_sun(world, sun["elevation"], sun["yaw"])
         yield Wait(self.job.get("settle", 20.0))
         if self.job.get("pitchCheck", True) and self.result["pitchCheck"] is None:
@@ -341,61 +378,10 @@ class Driver:
         check["file"], _ = yield from self.shot(world, "pitch_check", 480, 270,
                                                 "_pitch_check_" + place["name"])
 
-    # ---- walks -------------------------------------------------------------------------------------
-
-    def walks_of(self, world, place):
-        for walk in [w for w in self.job.get("walks", []) if w["place"] == place["name"]]:
-            self.set_phase("walk")
-            pawn = self.api.pawn(world)
-            if self.dev_commands() and self.result["features"].get("pawn"):
-                self.api.console(world, "Terrain.Pawn")
-                yield Wait(2.0)
-                pawn = self.api.pawn(world)
-            else:  # on the ground of the place, the origin of the frame
-                self.api.set_focus(world, None)
-                self.api.teleport(pawn, self.api.vector(0.0, 0.0,
-                                                        self.api.half_height(pawn) + 50.0))
-                yield Wait(1.0)
-            self.api.view_through(world, pawn)
-            entry = {"place": place["name"], "heading": walk["heading"],
-                     "distance": walk["distance"], "file": None, "reason": None}
-            self.result["walks"].append(entry)
-            yield from self.walk(world, pawn, walk, entry)
-
-    def walk(self, world, pawn, walk, entry):
-        x0, z0, y0 = self.origin
-        heading = math.radians(walk["heading"])
-        dx, dz = math.sin(heading), -math.cos(heading)
-        self.api.face(world, walk["yaw"])
-        half = self.api.half_height(pawn)
-        sx, sy, _ = self.api.location(pawn)
-        watch = walks.WalkWatch(walk["distance"], timeout=self.job.get("walkTimeout", 120.0))
-        samples, started, last = [], self.clock(), -1.0
-        while True:
-            self.api.walk_input(pawn, dx, dz)
-            now = self.clock() - started
-            if now - last >= 0.1:
-                last = now
-                ux, uy, uz = self.api.location(pawn)
-                hit = self.api.trace_down(world, ux, uy, uz - half, pawn)
-                s = walks.Sample(now, x0 + ux / 100.0, z0 + uy / 100.0,
-                                 y0 + (uz - half) / 100.0, self.api.movement_mode(pawn),
-                                 None if hit is None else y0 + hit / 100.0,
-                                 math.hypot(ux - sx, uy - sy) / 100.0)
-                samples.append(s)
-                reason = watch.feed(s)
-                if reason:
-                    entry["reason"] = reason
-                    break
-            yield Wait(0.0)
-        path = self.out / "walks" / f"{walk['place']}.csv"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        walks.write_walk(path, samples)
-        entry["file"] = str(path)
-
     # ---- the end -------------------------------------------------------------------------------------
 
     def restore(self):
+        self.remove_camera()
         for name, value in self.saved.items():
             try:
                 self.api.write(self.terrain, name, value)

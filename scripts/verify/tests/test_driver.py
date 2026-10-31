@@ -94,24 +94,37 @@ class CameraSessions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             fake = fake_unreal.FakeUnreal(folder)
             job = job_in(folder, fake, [LIP], materials=False, pitchCheck=False)
-            spawned = []
-            original = fake.GameplayStatics.begin_deferred_actor_spawn_from_class
-
-            def spawn(world, cls, transform):
-                spawned.append(transform)
-                return original(world, cls, transform)
-            fake.GameplayStatics.begin_deferred_actor_spawn_from_class = spawn
             drive(fake, job)
-            rotation = spawned[0].rotation
-            self.assertEqual(rotation.pitch, -20.0)
-            self.assertEqual(rotation.yaw, -44.0)  # heading 46 - 90
-            location = spawned[0].location
+            (spawn,) = calls(fake, "editor_spawn")
+            _, cls, location, rotation = spawn
+            self.assertEqual(cls, "CameraActor")
+            self.assertEqual((rotation.pitch, rotation.yaw), (-20.0, -44.0))  # yaw: heading - 90
             self.assertEqual((location.x, location.y), (0.0, 0.0))
             self.assertAlmostEqual(location.z, 100.0 * (570.991 - 567.781))
-            # The tiles stream around the camera (the focus of the Terrain World of the play).
-            focus = [c for c in fake.calls if c[0] == "set_editor_property" and
-                     c[1] == "focus_actor"]
-            self.assertEqual(type(focus[0][2]).__name__, "CameraActor")
+
+    def test_the_camera_of_the_level(self):
+        """UE 5.8 has no deferred spawn in Python: the camera is put in the level before the
+        play, found again in it by its tag, the tiles around it; removed after each place, the
+        Terrain World given its focus back, nothing saved."""
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder)
+            self.assertFalse(hasattr(fake.GameplayStatics, "begin_deferred_actor_spawn_from_class"))
+            focus_in_play = []
+            original = fake._start_play
+
+            def start():
+                original()
+                focus_in_play.append(fake.game.terrain.properties["focus_actor"])
+            fake._start_play = start
+            r = drive(fake, job_in(folder, fake, [BASIN, LIP], materials=False)).result
+            self.assertEqual(r["errors"], [])
+            self.assertTrue(all(Path(v["file"]).is_file() for v in r["views"]))
+            self.assertEqual([type(f).__name__ for f in focus_in_play], ["CameraActor"] * 2)
+            self.assertEqual(len(calls(fake, "editor_spawn")), 2)
+            self.assertEqual(len(calls(fake, "destroy")), 2)
+            self.assertEqual(fake.editor_actors, [])
+            self.assertIsNone(fake.terrain.properties["focus_actor"])
+            self.assertEqual(r["missingApi"], [])
 
     def test_the_pitch_check(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -298,7 +311,7 @@ class DevCommands(unittest.TestCase):
             self.assertIn("Terrain.Look 46.0 -20.0", commands)   # negative: down
             self.assertIn("Terrain.View normal", commands)
             self.assertEqual([v["loaded"] for v in r["views"]], ["reported"] * 3)
-            self.assertFalse(calls(fake, "spawn"))  # no camera of its own
+            self.assertFalse(calls(fake, "editor_spawn"))  # no camera of its own
             planet_files = [c[2] for c in fake.calls
                             if c[0] == "set_editor_property" and c[1] == "planet_file"]
             self.assertEqual(planet_files[:2], ["C:/TerrainVerify/cache/x/planet.bin", ""])
@@ -321,6 +334,32 @@ class Failures(unittest.TestCase):
             self.assertTrue(r["done"])
             self.assertIn("no Terrain World", r["errors"][0])
             self.assertFalse(calls(fake, "begin_play"))
+
+    def test_every_missing_function_at_once(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder)
+            del fake.EditorActorSubsystem
+            fake.GameplayStatics.get_all_actors_with_tag = None
+            walk = {"place": "chute388_bassin", "heading": 90.0, "distance": 60.0, "yaw": 0.0}
+            r = drive(fake, job_in(folder, fake, [BASIN], materials=False, walks=[walk])).result
+            self.assertTrue(r["done"])
+            # Both named together (Actor.destroy_actor stands in for the subsystem).
+            self.assertEqual(r["missingApi"], [
+                "EditorActorSubsystem.spawn_actor_from_class|EditorLevelLibrary"
+                ".spawn_actor_from_class",
+                "GameplayStatics.get_all_actors_with_tag"])
+            self.assertFalse(calls(fake, "begin_play"))
+
+    def test_the_walks_skipped_without_their_functions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder)
+            fake.Pawn = type("PawnWithoutInput", (), {})
+            walk = {"place": "chute388_bassin", "heading": 90.0, "distance": 60.0, "yaw": 0.0}
+            r = drive(fake, job_in(folder, fake, [BASIN], materials=False, pitchCheck=False,
+                                   walks=[walk])).result
+            self.assertEqual(r["missingApi"], ["Pawn.add_movement_input"])
+            self.assertTrue(Path(r["views"][0]["file"]).is_file())  # the views still taken
+            self.assertEqual(r["walks"][0]["reason"], "API missing")
 
     def test_a_missing_api(self):
         with tempfile.TemporaryDirectory() as folder:

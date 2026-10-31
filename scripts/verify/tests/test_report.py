@@ -143,6 +143,16 @@ class Summary(unittest.TestCase):
                           "generator already executing", text)
             self.assertIn("erreurs Python : 1 (journal 0, pilote 1, scripts 0)", text)
 
+    def test_every_missing_function_in_one_alert(self):
+        with tempfile.TemporaryDirectory() as folder:
+            after = version(folder, "apres")
+            after["sessions"][0]["result"]["missingApi"] = [
+                "GameplayStatics.get_all_actors_with_tag", "Pawn.add_movement_input"]
+            text = report.write_report(run_of(folder, version(folder, "avant"), after))
+            self.assertIn("ATTENTION (apres) : session 1 : API d'Unreal manquante : "
+                          "GameplayStatics.get_all_actors_with_tag, Pawn.add_movement_input",
+                          text)
+
     def test_a_view_and_a_walk_missing(self):
         with tempfile.TemporaryDirectory() as folder:
             after = version(folder, "apres")

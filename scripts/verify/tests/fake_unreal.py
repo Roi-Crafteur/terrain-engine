@@ -56,6 +56,13 @@ class Actor:
         self.fake.calls.append(("teleport", location.x, location.y, location.z))
         self.location = location
 
+    def destroy_actor(self):
+        self.fake.calls.append(("destroy", type(self).__name__))
+        self.fake.editor_actors = [a for a in self.fake.editor_actors if a is not self]
+
+    def set_actor_label(self, label):
+        self.label = label
+
 
 class TerrainWorld(Actor):
     pass
@@ -83,6 +90,9 @@ class MovementMode:
 
 
 class Pawn(Actor):
+    character_movement = None  # set by each pawn; here for the checks on the class
+    capsule_component = None
+
     def __init__(self, fake):
         super().__init__(fake, Vector(0.0, 0.0, 90.0))
         self.capsule_component = types.SimpleNamespace(
@@ -109,14 +119,22 @@ class Pawn(Actor):
         self.input = (0.0, 0.0)
 
 
+class PlayerCameraManager:
+    def __init__(self, controller):
+        self.controller = controller
+
+    def get_camera_rotation(self):
+        return self.controller.rotation_seen()
+
+
 class Controller:
     def __init__(self, fake):
         self.fake = fake
         self.view_target = None
         self.control = Rotator()
-        self.player_camera_manager = types.SimpleNamespace(get_camera_rotation=self._rotation)
+        self.player_camera_manager = PlayerCameraManager(self)
 
-    def _rotation(self):
+    def rotation_seen(self):
         target = self.view_target
         r = target.rotation if target is not None else self.control
         if self.fake.invert_pitch:
@@ -155,6 +173,8 @@ class FakeUnreal:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_path.write_text("LogInit: start\n", encoding="utf-8")
         self.pending_reports = []
+        self.editor_actors = []
+        self.terrain.properties["focus_actor"] = None
         self._build_module()
 
     # ---- the clock of the tests ---------------------------------------------------------------
@@ -168,13 +188,7 @@ class FakeUnreal:
     def advance(self, dt):
         self.time += dt
         if self.starting_at is not None and self.time >= self.starting_at:
-            terrain = TerrainWorld(self)
-            terrain.properties["focus_actor"] = None
-            self.game = types.SimpleNamespace(name="pie", pawn=Pawn(self),
-                                              controller=Controller(self),
-                                              light=DirectionalLight(self), terrain=terrain)
-            self.starting_at = None
-            self._report_later()
+            self._start_play()
         if self.game is not None:
             self.game.pawn.advance(dt, self.fall_after)
         for at, name in list(self.pending_shots):
@@ -187,6 +201,28 @@ class FakeUnreal:
                 self.loads += 1
                 with open(self.log_path, "a", encoding="utf-8") as log:
                     log.write(f"LogTerrainEngine: Terrain World: load {self.loads} report\n")
+
+    def _start_play(self):
+        """Play In Editor: the level duplicated, its actors (the cameras with their tags) copied,
+        the references between them (the FocusActor of the Terrain World) pointed at the
+        copies."""
+        copies = {}
+        for actor in self.editor_actors:
+            copy = type(actor)(self, Vector(actor.location.x, actor.location.y,
+                                            actor.location.z),
+                               Rotator(pitch=actor.rotation.pitch, yaw=actor.rotation.yaw))
+            copy.properties = dict(actor.properties)
+            copies[id(actor)] = copy
+        terrain = TerrainWorld(self)
+        terrain.properties = dict(self.terrain.properties)
+        focus = self.terrain.properties.get("focus_actor")
+        terrain.properties["focus_actor"] = copies.get(id(focus)) if focus is not None else None
+        self.game = types.SimpleNamespace(name="pie", pawn=Pawn(self),
+                                          controller=Controller(self),
+                                          light=DirectionalLight(self), terrain=terrain,
+                                          actors=list(copies.values()))
+        self.starting_at = None
+        self._report_later()
 
     def _report_later(self):
         if self.features.get("loadReport"):
@@ -213,6 +249,9 @@ class FakeUnreal:
             TerrainWorld, CameraActor, DirectionalLight)
         self.Vector, self.Rotator, self.Transform = Vector, Rotator, Transform
         self.MovementMode = MovementMode
+        self.Actor, self.Pawn, self.Character = Actor, Pawn, Pawn
+        self.Controller, self.PlayerController = Controller, Controller
+        self.PlayerCameraManager = PlayerCameraManager
         self.TraceTypeQuery = types.SimpleNamespace(TRACE_TYPE_QUERY1=1)
         self.DrawDebugTrace = types.SimpleNamespace(NONE=0)
 
@@ -235,10 +274,22 @@ class FakeUnreal:
             def is_in_play_in_editor(self):
                 return fake.game is not None
 
+        class EditorActorSubsystem:
+            def spawn_actor_from_class(self, cls, location, rotation):
+                fake.calls.append(("editor_spawn", cls.__name__, location, rotation))
+                actor = cls(fake, location, rotation)
+                fake.editor_actors.append(actor)
+                return actor
+
+            def destroy_actor(self, actor):
+                actor.destroy_actor()
+
         self.UnrealEditorSubsystem = UnrealEditorSubsystem
         self.LevelEditorSubsystem = LevelEditorSubsystem
+        self.EditorActorSubsystem = EditorActorSubsystem
         self._subsystems = {UnrealEditorSubsystem: UnrealEditorSubsystem(),
-                            LevelEditorSubsystem: LevelEditorSubsystem()}
+                            LevelEditorSubsystem: LevelEditorSubsystem(),
+                            EditorActorSubsystem: EditorActorSubsystem()}
         self.GameplayStatics = _Statics(self)
         self.SystemLibrary = _System(self)
         self.Paths = types.SimpleNamespace(
@@ -290,12 +341,12 @@ class _Statics:
     def get_player_controller(self, world, index):
         return world.controller
 
-    def begin_deferred_actor_spawn_from_class(self, world, cls, transform):
-        self.fake.calls.append(("spawn", cls.__name__))
-        return cls(self.fake, transform.location, transform.rotation)
+    # As in UE 5.8: no begin_deferred_actor_spawn_from_class nor finish_spawning_actor.
 
-    def finish_spawning_actor(self, actor, transform):
-        return actor
+    def get_all_actors_with_tag(self, world, tag):
+        actors = self.fake.editor_actors if world is self.fake.editor_world else (
+            world.actors if world is not None else [])
+        return [a for a in actors if tag in a.properties.get("tags", [])]
 
     def set_game_paused(self, world, paused):
         self.fake.calls.append(("paused", paused))

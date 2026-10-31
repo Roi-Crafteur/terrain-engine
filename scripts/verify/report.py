@@ -87,8 +87,10 @@ def _session_warnings(v, s, n):
         out.append(f"ATTENTION ({label}) : session {n} sans résultat (result_{n}.json absent)")
     elif not result.get("done"):
         out.append(f"ATTENTION ({label}) : session {n} : le pilote n'a pas fini son résultat")
-    for missing in (result or {}).get("missingApi", [])[:2]:
-        out.append(f"ATTENTION ({label}) : session {n} : {missing}")
+    missing = (result or {}).get("missingApi", [])
+    if missing:
+        out.append(f"ATTENTION ({label}) : session {n} : API d'Unreal manquante : "
+                   f"{', '.join(missing)}")
     for error in (result or {}).get("errors", [])[:2]:
         last = (str(error).strip().splitlines() or [""])[-1]
         out.append(f"ATTENTION ({label}) : session {n} : erreur du pilote : {last[:160]}")
