@@ -186,6 +186,22 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   sous la charge, aucun de la nouvelle ; une régression forcée de l'eau (fleuves calculés 3 ou 5
   fois, attente sur chaque échantillon) toujours détectée
 
+### Outils de debug en jeu (agent 36)
+- écran F3 en trois pages (joueur, point visé, performance), lignes du core extensibles par
+  d'autres modules (`Bridge/point_info`) ; commandes `Terrain.Goto x z [œil]` et
+  `Terrain.Goto <lieu>`, `Look`, `Eye`, `Pawn`, `Save`, `Info`, `Shot`, `Views`, `View`, `Seed`,
+  `Hud` ; une seule téléportation, `ATerrainWorld::TeleportView` (synchrone, terrain chargé avant
+  de rendre la main), pour la console et la carte de dev
+- fichier des lieux commun `data/dev/places.json` (agents 35, 36, 37), lu et écrit par
+  `terrain_core/dev/` (JSON strict, aller-retour exact, champs inconnus gardés) ; 11 lieux de test
+- images prises une fois la vue chargée (tuiles, horizon, délai maximum) ; `Terrain.Views` : une
+  image par lieu dans un dossier daté avec `views.txt`, la base des comparaisons avant / après
+- modes de vue : filaire, LOD, roche 3D (sommets hors heightmap), eau seule, sans eau, normales,
+  pente ; `Terrain.Seed` : autre seed et preset sans quitter le Play, planète construite à part
+  sur un fil, jamais sur un fichier de l'utilisateur
+- jamais dans un build Shipping (`TERRAIN_DEV_TOOLS`) ; aucun bit du monde changé
+  (`terrain_unreal/DEV_TOOLS.md`)
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
