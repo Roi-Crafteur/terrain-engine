@@ -36,9 +36,10 @@ seulement la mer.
 | Niveau de l'horizon | `HorizonCell::waterLevel`, textures `HorizonWater` | le niveau du core en float 32 bits |
 
 Rien de tout cela ne change le monde : golden du monde, montagnes gelées, somme du niveau Planète
-identiques. Sonde : `terrain_probe_water --planet <fichier> <x> <z>…` imprime, pour chaque
-point, la colonne, les vallées et le lac du core, les niveaux des sommets des tuiles LOD 0 à 3,
-l'échantillon de l'horizon et les chutes autour. Côté Bridge, `unreal_water_probe --planet
+identiques. Sonde : `terrain_probe --planet <fichier> <x> <z>…` (qui remplace
+`terrain_probe_water`, agent 37) imprime, pour chaque point, la colonne, les vallées et le lac du
+core (section `water`), les niveaux des sommets des tuiles LOD 0 à 3 et l'échantillon de l'horizon
+(section `render`) et les chutes autour (section `falls`). Côté Bridge, `unreal_water_probe --planet
 <fichier> <x> <z>…` (exécutable des tests, lancé à la main) imprime pour la tuile de chaque LOD qui
 tient le point : colonnes mouillées, chutes dont la lèvre est dans la tuile (lèvre, pied, chute,
 course, pente moyenne, rideau courbe ou droit), triangles de la surface, mailles coupées et sommets
@@ -166,8 +167,9 @@ tuiles et des chutes et les lacs et fleuves de l'horizon ; `bWater` faux sur l'a
 Coordonnées du core (x, z en m) ; en posant `CoreOriginX/Z` sur le point, l'œil est en (0, 0) dans
 Unreal, à 100 × (altitude de l'œil − sol du point) cm. Cap en degrés dans le sens des aiguilles
 d'une montre depuis le nord (−z du core, −Y d'Unreal) : le yaw d'Unreal vaut cap − 90. Chaque
-point est vérifié avec `terrain_probe_water` (eau, niveau, sol) ; les vues de la chute viennent de
-`unreal_water_probe` (œil dans l'air, vue dégagée au-dessus du sol du core).
+point est vérifié avec `terrain_probe` (eau, niveau, sol ; avant l'agent 37 :
+`terrain_probe_water`) ; les vues de la chute viennent de `unreal_water_probe` (œil dans l'air,
+vue dégagée au-dessus du sol du core).
 
 | Vue | Point (x ; z) | Sol | Eau | Œil (altitude) | Cap | Inclinaison | Ce qu'on doit voir |
 |---|---|---|---|---|---|---|---|

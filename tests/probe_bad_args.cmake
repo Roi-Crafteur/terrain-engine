@@ -1,6 +1,6 @@
-# Invalid arguments of terrain_probe_water: each case must fail, with an error message on stderr,
-# before any planet file is read or built.
-# Usage: cmake -DTOOL=<terrain_probe_water> -DOUT=<scratch-dir> -P probe_water_bad_args.cmake
+# Invalid arguments of terrain_probe: each case must fail, with an error message on stderr, before
+# any planet file is read or built.
+# Usage: cmake -DTOOL=<terrain_probe> -DOUT=<scratch-dir> -P probe_bad_args.cmake
 
 file(REMOVE_RECURSE "${OUT}")
 
@@ -24,9 +24,19 @@ expect_failure("no point")
 expect_failure("no point but a planet" --planet "${OUT}/planet.bin")
 expect_failure("a point without its z" 1000)
 expect_failure("a non-numeric point" 1000 north --planet "${OUT}/planet.bin")
+expect_failure("a point not finite" inf 0 --planet "${OUT}/planet.bin")
 expect_failure("non-numeric seed" --seed world 0 0)
 expect_failure("unknown option" --rivers 0 0)
 expect_failure("world not a multiple of 65,536 m" --world 100000 1048576 0 0)
 expect_failure("negative threads" --threads -1 0 0)
 expect_failure("radius of 0 m" --radius 0 0 0)
 expect_failure("negative falls radius" --falls -5 0 0)
+expect_failure("unknown section" --sections relief,kingdom 0 0 --planet "${OUT}/planet.bin")
+expect_failure("empty section" --sections relief, 0 0)
+expect_failure("line without its step" --line 0 0 100 0)
+expect_failure("line of step 0" --line 0 0 100 0 0 --planet "${OUT}/planet.bin")
+expect_failure("line of negative step" --line 0 0 100 0 -1)
+expect_failure("line of too many points" --line 0 0 1000000 0 1)
+expect_failure("points and a line" 0 0 --line 0 0 100 0 10)
+expect_failure("planet check with a point" --planet-check "${OUT}/planet.bin" 0 0)
+expect_failure("planet check with a planet" --planet-check "${OUT}/a.bin" --planet "${OUT}/b.bin")

@@ -570,8 +570,9 @@ aspect de près et de loin : couleur et transparence selon l'épaisseur d'eau et
 bruit dans le sens du courant, reflet du ciel et du soleil, écume des rapides, rives fondues. Il faut un fichier planète (`PlanetFile`, section 5,
 par défaut dans `Saved/TerrainEngine`) et les matériaux de `Scripts/create_water_materials.py`.
 Données, formats, aspect, coût, évolution vers Single Layer Water et limites :
-[`WATER_LEVEL.md`](WATER_LEVEL.md). La sonde `terrain_probe_water` dit ce que le core met en un
-point, `unreal_water_probe` ce que le Bridge en fait (chutes, rideaux, mailles coupées par LOD).
+[`WATER_LEVEL.md`](WATER_LEVEL.md). La sonde `terrain_probe` (qui remplace `terrain_probe_water`)
+dit ce que le core met en un point, `unreal_water_probe` ce que le Bridge en fait (chutes,
+rideaux, mailles coupées par LOD).
 
 ## 15. Les modifications vues de loin (phase 15)
 

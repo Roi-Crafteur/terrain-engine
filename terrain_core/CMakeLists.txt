@@ -366,13 +366,32 @@ add_executable(terrain_make_planet tools/make_planet.cpp tools/heap_counter.cpp
                                    tools/process_memory.cpp)
 target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
 
-# The water of the world at given points, as the core decides it and hands it to the renderers
-# (phase 11, task 7b): the column, the valleys and the lake there, the levels of the vertices of
-# the tiles, the sample of the horizon and the falls around. See tools/probe_water.cpp.
-# terrain_probe_water [--planet <file>] [--seed <seed>] [--world <x> <z>] [--threads <n>]
-#                     [--radius <meters>] [--falls <meters>] <x> <z> [<x> <z>]...
-add_executable(terrain_probe_water tools/probe_water.cpp)
-target_link_libraries(terrain_probe_water PRIVATE terrain_core terrain_warnings)
+# Everything the core knows of points of the world or along a line (agent 37), one section per
+# module: relief and ground, geography, planet cell, water, falls and corridors, rock, coast,
+# surface, and what the renderers get (tiles of LOD 0 to 3, horizon). Text or JSON (--json);
+# --planet-check reads a planet file without ever writing it. It replaces terrain_probe_water.
+# See tools/probe.cpp; a section is added in tools/probe_sections.hpp.
+# terrain_probe [--planet <file>] [--seed <seed>] [--world <x> <z>] [--threads <n>] [--json]
+#               [--sections <a,b,...>] [--radius <meters>] [--falls <meters>] [--caves]
+#               (<x> <z> [<x> <z>]... | --line <x1> <z1> <x2> <z2> <step>)
+# terrain_probe --planet-check <file> [--seed <seed>] [--world <x> <z>] [--json]
+# terrain_probe --list-sections
+add_library(terrain_probe_lib STATIC
+    tools/probe_falls.cpp
+    tools/probe_options.cpp
+    tools/probe_planet.cpp
+    tools/probe_record.cpp
+    tools/probe_relief.cpp
+    tools/probe_rock.cpp
+    tools/probe_sections.cpp
+    tools/probe_surface.cpp
+    tools/probe_water.cpp
+    tools/probe_world.cpp
+)
+target_include_directories(terrain_probe_lib PUBLIC tools)
+target_link_libraries(terrain_probe_lib PUBLIC terrain_core PRIVATE terrain_warnings)
+add_executable(terrain_probe tools/probe.cpp)
+target_link_libraries(terrain_probe PRIVATE terrain_probe_lib terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
 # <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests
