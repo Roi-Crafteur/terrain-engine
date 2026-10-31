@@ -72,7 +72,8 @@ def choose(machine, version, runner, log=None):
     target = planets / (f"building_{version.short}.bin" if version.probe_kind == "probe"
                         else f"commit_{version.sha}.bin")
     if version.probe_kind != "probe" and target.exists():
-        return PlanetChoice(target, _checksum_of_log(log), "built before")
+        return PlanetChoice(target, read_checksum(target) or _checksum_of_log(log),
+                            "built before")
     guard(target, machine)
     if not runner.dry:
         planets.mkdir(parents=True, exist_ok=True)
@@ -83,7 +84,23 @@ def choose(machine, version, runner, log=None):
         named = planets / f"{checksum[2:]}.bin"
         target.replace(named)
         target = named
+    if checksum and not runner.dry:
+        checksum_file(target).write_text(checksum + "\n", encoding="utf-8")
     return PlanetChoice(target, checksum, "built now")
+
+
+def checksum_file(path):
+    """The checksum of a planet built here, kept beside it (<file>.checksum): a version without
+    --planet-check reuses the file in a later run with its checksum."""
+    return Path(str(path) + ".checksum")
+
+
+def read_checksum(path):
+    side = checksum_file(path)
+    if not side.is_file():
+        return None
+    text = side.read_text(encoding="utf-8").strip()
+    return text if re.fullmatch(r"0x[0-9a-f]{16}", text) else None
 
 
 def _checksum_of_log(log):

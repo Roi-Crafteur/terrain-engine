@@ -260,6 +260,16 @@ class FakeUnreal:
     def log(self, text):
         self.calls.append(("log", text, self.time))
 
+    def rebuild_material(self):
+        """What the rebuild of a material does in the editor: it ticks the editor (and so the
+        callbacks of Python) while the material script still runs."""
+        self.calls.append(("rebuild", self.time))
+        for _ in range(5):
+            self.advance(0.1)
+            callback = getattr(self, "reentrant", None) or getattr(self, "tick_callback", None)
+            if callback is not None:
+                callback(0.1)
+
 
 class _Statics:
     def __init__(self, fake):
@@ -315,6 +325,9 @@ class _System:
 
     def quit_editor(self):
         self.fake.calls.append(("quit",))
+        hook = getattr(self.fake, "on_quit", None)
+        if hook is not None:
+            hook()
 
 
 def install(fake):

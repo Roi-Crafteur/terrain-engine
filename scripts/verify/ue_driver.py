@@ -57,17 +57,24 @@ class Driver:
         self.phase, self.place, self.beats = "start", None, 0
         self.terrain, self.saved, self.origin = None, {}, None
         self.done = False
-        self.ticks, self.started = 0, clock()
+        self.ticks, self.started, self._in_step = 0, clock(), False
         self._steps = self.steps()
         self._waiting, self._since, self._last_beat = None, clock(), -1e9
 
     # ---- the tick ------------------------------------------------------------------------------
 
     def tick(self, _delta=0.0):
+        """One step when the current wait is over. A tick that comes while a step runs (the
+        rebuild of a material makes the editor tick inside the material script) only writes the
+        heartbeat: a step never starts inside another."""
         if self.done:
             return
         self.ticks += 1
         self.beat()
+        if self._in_step:
+            self.result["reentered"] = self.result.get("reentered", 0) + 1
+            return
+        self._in_step = True
         try:
             if self._waiting is not None and not self._ready():
                 return
@@ -81,6 +88,8 @@ class Driver:
         except Exception:  # noqa: BLE001 - recorded, then the session ends cleanly
             self.result["errors"].append(traceback.format_exc())
             self.finish()
+        finally:
+            self._in_step = False
 
     def _ready(self):
         w = self._waiting
@@ -163,6 +172,7 @@ class Driver:
     def materials(self):
         scripts = Path(self.job["scripts"])
         for name in self.job.get("materialScripts", []):
+            yield Wait(0.0)  # each script in a step of its own, nothing else in it
             path = scripts / name
             started = self.clock()
             entry = {"script": name, "ok": True, "error": None}
@@ -423,11 +433,20 @@ def main(unreal=None):
     state = {}
 
     def on_tick(delta):
-        driver.tick(delta)
-        if driver.done:
-            api.untick(state.get("handle"))
-            if job.get("quit", True):
+        # The editor is quit on a tick after the one where the driver ended, outside any step
+        # (quit_editor from inside a step, itself inside a tick, froze the editor on 888435b).
+        if state.get("quit"):
+            if not state.get("quitting"):
+                state["quitting"] = True
+                api.untick(state.get("handle"))
                 api.quit()
+            return
+        driver.tick(delta)
+        if driver.done and not driver._in_step:
+            if job.get("quit", True):
+                state["quit"] = True
+            else:
+                api.untick(state.get("handle"))
     state["handle"] = api.tick(on_tick)
     return driver
 

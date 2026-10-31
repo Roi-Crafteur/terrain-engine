@@ -42,6 +42,7 @@ class Runner:
     def __init__(self, dry=False):
         self.dry = dry
         self.commands = []
+        self.notes = []  # what a dry run has to say (a mirror out of date)
 
     def run(self, command, log=None, cwd=None, check=True):
         command = [str(c) for c in command]
@@ -225,25 +226,44 @@ def _candidates(ref):
                                                                f"refs/tags/{ref}"]
 
 
+def _in_mirror(runner, mirror_path, ref):
+    for candidate in _candidates(ref):
+        code, out = runner.query(["git", "-C", mirror_path, "rev-parse", "--verify", "--quiet",
+                                  f"{candidate}^{{commit}}"])
+        if code == 0 and out.strip():
+            return out.strip().splitlines()[-1]
+    return None
+
+
+def _in_repository(runner, repository, ref):
+    names = _candidates(ref) if ref.startswith(("#", "pull/")) else _candidates(ref)[1:]
+    code, out = runner.query(["git", "ls-remote", repository, *names])
+    lines = [line.split() for line in out.splitlines() if line.strip()]
+    return lines[0][0] if code == 0 and lines else None
+
+
 def resolve(runner, mirror_path, ref, log, repository=None):
     """The commit of a branch, a tag, a commit or a pull request ("pull/57" or "#57"), read in
-    the mirror (even dry: it only reads), or by git ls-remote when there is no mirror yet."""
-    if (Path(mirror_path) / "HEAD").exists() or not runner.dry:
-        for candidate in _candidates(ref):
-            code, out = runner.query(["git", "-C", mirror_path, "rev-parse", "--verify",
-                                      "--quiet", f"{candidate}^{{commit}}"])
-            if code == 0 and out.strip():
-                return out.strip().splitlines()[-1]
-    if runner.dry and repository:
-        code, out = runner.query(["git", "ls-remote", repository, *_candidates(ref)[1:]] if
-                                 not ref.startswith(("#", "pull/")) else
-                                 ["git", "ls-remote", repository, _candidates(ref)[0]])
-        lines = [l.split() for l in out.splitlines() if l.strip()]
-        if code == 0 and lines:
-            return lines[0][0]
-    if runner.dry:
-        return None
-    raise WorkspaceError(f"no commit for '{ref}' in {mirror_path}")
+    the mirror (updated just before by a real run). A dry run only reads: a branch, a tag or a
+    pull request by git ls-remote of the repository (the mirror may be out of date: said in
+    runner.notes), a commit in the mirror; None when it cannot tell."""
+    has_mirror = (Path(mirror_path) / "HEAD").exists()
+    if not runner.dry:
+        found = _in_mirror(runner, mirror_path, ref)
+        if found:
+            return found
+        raise WorkspaceError(f"no commit for '{ref}' in {mirror_path}")
+    mirrored = _in_mirror(runner, mirror_path, ref) if has_mirror else None
+    if re.fullmatch(r"[0-9a-fA-F]{7,40}", ref) or not repository:
+        return mirrored
+    remote = _in_repository(runner, repository, ref)
+    if remote and mirrored and remote != mirrored:
+        runner.notes.append(f"the mirror is out of date for {ref}: {mirrored[:12]} there, "
+                            f"{remote[:12]} in the repository (a real run fetches it first)")
+    if remote is None and mirrored:
+        runner.notes.append(f"{ref} not found by git ls-remote: {mirrored[:12]} of the mirror, "
+                            "which may be out of date")
+    return remote or mirrored
 
 
 def cache_name(sha, ref):

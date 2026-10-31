@@ -35,7 +35,8 @@ DEFAULT_LIMITS = {"start": 1800.0, "editor-ready": 1800.0, "materials": 1200.0, 
 class Limits:
     phases: dict = field(default_factory=lambda: dict(DEFAULT_LIMITS))
     total: float = 3600.0        # seconds of a whole session
-    close: float = 120.0         # seconds for the editor to close once the driver is done
+    # Seconds for the editor to close once the driver is done: its result is written by then.
+    close: float = 15.0
 
     def stale_after(self, phase):
         return self.phases.get(phase or "start", self.phases["other"])

@@ -49,6 +49,13 @@ class Choose(unittest.TestCase):
             choice = planet.choose(m, v, fakes.FakeRunner(planet_status={}))
             self.assertEqual(choice.path.name, f"commit_{fakes.SHA}.bin")
             self.assertEqual(choice.checksum, "0x1111222233334444")
+            # A later run reuses it with its checksum, kept beside it (888435b: "None").
+            runner = fakes.FakeRunner(planet_status={})
+            again = planet.choose(m, v, runner, log=Path(root) / "new_run_planet.log")
+            self.assertEqual((again.path, again.origin, again.checksum),
+                             (choice.path, "built before", "0x1111222233334444"))
+            self.assertFalse(any("terrain_make_planet" in c[0] for c in runner.commands))
+            self.assertNotIn(planet.checksum_file(choice.path), planet.candidates(m))
 
 
 class Install(unittest.TestCase):

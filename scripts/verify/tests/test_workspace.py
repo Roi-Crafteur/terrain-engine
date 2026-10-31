@@ -202,6 +202,30 @@ class Cache(unittest.TestCase):
             self.assertFalse(m.work_root.exists())  # nothing written
             self.assertEqual(workspace.cache_name(None, "claude/peace"), "claude-peace")
 
+    def test_a_dry_run_says_the_mirror_is_out_of_date(self):
+        class Stale(fakes.FakeRunner):
+            def query(self, command, cwd=None):
+                command = [str(c) for c in command]
+                self.commands.append(command)
+                if "ls-remote" in command:
+                    return 0, "888435b2aaa1125f18c0798548d57707621fc665\trefs/heads/x\n"
+                return 0, "facfd09c8402" + "0" * 28 + "\n"  # the mirror of the last run
+        with tempfile.TemporaryDirectory() as root:
+            mirror = Path(root) / "mirror.git"
+            mirror.mkdir()
+            (mirror / "HEAD").write_text("ref: refs/heads/main\n")
+            runner = Stale()
+            runner.dry = True
+            sha = workspace.resolve(runner, mirror, "claude/peaceful-bell-zb968r", None,
+                                    "https://example.invalid/repo.git")
+            self.assertTrue(sha.startswith("888435b2aaa1"))
+            self.assertIn("out of date", runner.notes[0])
+            runner = Stale()
+            runner.dry = True
+            self.assertTrue(workspace.resolve(runner, mirror, "c761ad2", None, "r").startswith(
+                "facfd09c8402"))  # a commit: the mirror alone
+            self.assertFalse(any("ls-remote" in c for c in runner.commands))
+
     def test_pull_request_refs(self):
         runner = fakes.FakeRunner()
         workspace.resolve(runner, "mirror.git", "#57", None)

@@ -45,8 +45,9 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
 - `--sun falls` : élévation 50°, yaw 116 (le soleil des vérifications de chutes). On peut aussi
   donner `élévation,yaw` ou `none`.
 - `--dry-run` : imprime toutes les commandes sans rien lancer ni écrire. Le SHA est résolu
-  quand même, par le miroir s'il existe déjà, sinon par `git ls-remote` : les dossiers du cache
-  affichés sont les vrais.
+  quand même, en lecture seule : une branche, une étiquette ou une PR par `git ls-remote` du
+  dépôt, un commit dans le miroir. Les dossiers du cache affichés sont les vrais. Une `NOTE` dit
+  si le miroir est en retard ; un vrai lancement le met à jour d'abord.
 
 **Code de sortie** : 0 sans alerte, 1 si `resume.txt` commence par une alerte (session tuée ou
 fermée avant la fin du pilote, résultat absent, vue ou marche absente, version non compilée,
@@ -80,7 +81,7 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
      celles déjà construites dans `<workRoot>/planets/` : version, seed, monde, somme ;
    - la première acceptée est **copiée** dans le projet de la version ;
    - sinon, `terrain_make_planet` de la version la construit dans `<workRoot>/planets/`
-     (environ 2 min) ;
+     (environ 2 min). Sa somme est gardée à côté (`<fichier>.checksum`), pour le run suivant ;
    - **les planètes de l'utilisateur ne sont jamais écrites**.
    
    Le pilote règle toujours `PlanetFile` du Terrain World de la carte lui-même : la copie, ou
@@ -115,6 +116,12 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
      - **les marches** se font jusqu'à la première chute.
    - Le pilote ne sauvegarde **jamais** la carte ni un asset, et remet le Terrain World comme il
      était.
+   - **Les ticks qui arrivent pendant une étape** sont ignorés : la reconstruction d'un matériau
+     fait tourner l'éditeur pendant son script. Seul le battement de cœur est écrit, et une étape
+     ne démarre jamais dans une autre. Chaque script de matériaux a son étape à lui.
+   - **La fermeture** : le pilote ferme l'éditeur au tick qui suit sa fin, jamais depuis une
+     étape. Son résultat est alors écrit, et le chien de garde tue l'éditeur s'il n'est pas fermé
+     15 s plus tard.
 6. **Le contrôle du projet de l'utilisateur**, sans git (le projet hôte n'est pas un dépôt) :
    - avant et après le run, la taille et la date d'écriture de chaque fichier du projet,
      dossiers liés compris, et le SHA256 des planètes de `machine.json` ;

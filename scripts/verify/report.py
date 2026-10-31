@@ -89,6 +89,9 @@ def _session_warnings(v, s, n):
         out.append(f"ATTENTION ({label}) : session {n} : le pilote n'a pas fini son résultat")
     for missing in (result or {}).get("missingApi", [])[:2]:
         out.append(f"ATTENTION ({label}) : session {n} : {missing}")
+    for error in (result or {}).get("errors", [])[:2]:
+        last = (str(error).strip().splitlines() or [""])[-1]
+        out.append(f"ATTENTION ({label}) : session {n} : erreur du pilote : {last[:160]}")
     if scan.get("determinism") is False:
         out.append(f"ATTENTION ({label}) : le plugin ne génère pas le même monde que "
                    "terrain_core")
@@ -172,9 +175,14 @@ def _session_lines(v):
             lines.append(f"    scripts de matériaux : {len(scripts) - len(bad)}/{len(scripts)} ok"
                          + (f" ; en erreur : {', '.join(bad)}" if bad else ""))
         determinism = {True: "ok", False: "FAUX"}.get(scan.get("determinism"), "?")
+        logged = len(scan.get("pythonErrors", []))
+        driver = len(result.get("errors", []))
         lines.append(f"    erreurs de shader : {len(scan.get('shaderErrors', []))} ; erreurs "
-                     f"Python : {len(scan.get('pythonErrors', []))} ; chargements rapportés : "
+                     f"Python : {logged + driver + len(bad)} (journal {logged}, pilote "
+                     f"{driver}, scripts {len(bad)}) ; chargements rapportés : "
                      f"{len(scan.get('loadReports', []))} ; déterminisme : {determinism}")
+        if result.get("reentered"):
+            lines.append(f"    ticks venus pendant une étape (ignorés) : {result['reentered']}")
         for line in (scan.get("shaderErrors", []) + scan.get("terrainProblems", []))[:5]:
             lines.append(f"      {line[:160]}")
         for name in ("missingApi", "errors"):

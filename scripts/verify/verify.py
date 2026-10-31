@@ -248,7 +248,10 @@ def cmd_run(args):
         if args.dry_run:
             for command in runner.commands:
                 print("  " + " ".join(command))
+            for note in runner.notes:
+                print(f"  NOTE: {note}")
             runner.commands.clear()
+            runner.notes.clear()
     if args.dry_run:
         return 0
     run = {"title": title, "date": date, "folder": str(run_folder), "versions": versions,

@@ -132,6 +132,17 @@ class Summary(unittest.TestCase):
             report.write_report(clean)
             self.assertEqual(verify.exit_code(clean), 0)
 
+    def test_an_error_of_the_driver(self):
+        with tempfile.TemporaryDirectory() as folder:
+            after = version(folder, "apres")
+            after["sessions"][0]["result"]["errors"] = [
+                "Traceback (most recent call last):\n  File \"ue_driver.py\", line 74, in tick\n"
+                "ValueError: generator already executing\n"]
+            text = report.write_report(run_of(folder, version(folder, "avant"), after))
+            self.assertIn("ATTENTION (apres) : session 1 : erreur du pilote : ValueError: "
+                          "generator already executing", text)
+            self.assertIn("erreurs Python : 1 (journal 0, pilote 1, scripts 0)", text)
+
     def test_a_view_and_a_walk_missing(self):
         with tempfile.TemporaryDirectory() as folder:
             after = version(folder, "apres")

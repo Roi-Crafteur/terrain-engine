@@ -141,6 +141,12 @@ class Command(unittest.TestCase):
         self.assertEqual(session.sessions(list(range(7)), 3), [[0, 1, 2], [3, 4, 5], [6]])
         self.assertEqual(session.sessions([1], 0), [[1]])
 
+    def test_the_limits(self):
+        limits = session.Limits()
+        self.assertEqual(limits.close, 15.0)  # the result is written before the driver is done
+        self.assertEqual(limits.stale_after("editor-ready"), 1800.0)
+        self.assertEqual(limits.stale_after("place"), 300.0)
+
     def test_read_beat(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "b.json"

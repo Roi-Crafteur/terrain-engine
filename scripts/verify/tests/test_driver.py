@@ -196,6 +196,69 @@ class EditorReady(unittest.TestCase):
             self.assertFalse(calls(fake, "quit"))  # open until the driver ends
 
 
+class Reentrance(unittest.TestCase):
+    """888435b: the rebuild of M_TemporaryTerrain ticked the editor inside the material script;
+    the tick of the driver ran again inside its step (ValueError: generator already executing)
+    and quit the editor from there, which froze it."""
+
+    def scripts(self, folder):
+        scripts = Path(folder) / "Scripts"
+        (scripts / "create_rebuild.py").write_text("import unreal\nunreal.rebuild_material()\n",
+                                                   encoding="utf-8")
+
+    def test_a_tick_during_a_material_script(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder)
+            job = job_in(folder, fake, [BASIN], pitchCheck=False,
+                         materialScripts=["create_rebuild.py", "create_ok.py"])
+            self.scripts(folder)
+            driver = ue_driver.Driver(job, ue_api.Api(fake), clock=fake.clock, wall=fake.wall)
+            fake.reentrant = driver.tick
+            while not driver.done and fake.time < 600.0:
+                fake.advance(0.1)
+                driver.tick(0.1)
+            r = driver.result
+            self.assertEqual(r["errors"], [])
+            self.assertEqual([m["ok"] for m in r["materials"]], [True, True])
+            self.assertGreaterEqual(r["reentered"], 5)
+            self.assertTrue(Path(r["views"][0]["file"]).is_file())
+
+    def test_quit_on_a_later_tick_outside_any_step(self):
+        import os
+        for scripts in (["create_rebuild.py", "create_ok.py"], ["create_rebuild.py"]):
+            with self.subTest(scripts=scripts), tempfile.TemporaryDirectory() as folder:
+                fake = fake_unreal.FakeUnreal(folder)
+                # A level without its Terrain World: the session ends on an error, too.
+                job = job_in(folder, fake, [BASIN], pitchCheck=False, materialScripts=scripts,
+                             levelTimeout=5.0 if len(scripts) == 1 else 600.0)
+                if len(scripts) == 1:
+                    fake.terrain_after = 1e9
+                self.scripts(folder)
+                path = Path(folder) / "job.json"
+                path.write_text(json.dumps(job), encoding="utf-8")
+                os.environ["TERRAIN_VERIFY_JOB"] = str(path)
+                try:
+                    driver = ue_driver.main(fake)
+                finally:
+                    del os.environ["TERRAIN_VERIFY_JOB"]
+                driver.clock, driver.wall, driver._since = fake.clock, fake.wall, fake.time
+                seen = {}
+                fake.on_quit = lambda: seen.update(in_step=driver._in_step, done=driver.done,
+                                                   ticks=driver.ticks)
+                done_at = None
+                while not calls(fake, "quit") and fake.time < 600.0:
+                    fake.advance(0.1)
+                    fake.tick_callback(0.1)
+                    if driver.done and done_at is None:
+                        done_at = driver.ticks
+                self.assertEqual(len(calls(fake, "quit")), 1)
+                self.assertEqual((seen["in_step"], seen["done"]), (False, True))
+                self.assertTrue(json.loads(Path(job["result"]).read_text())["done"])
+                for _ in range(5):  # later ticks never quit again
+                    fake.tick_callback(0.1)
+                self.assertEqual(len(calls(fake, "quit")), 1)
+
+
 class Walks(unittest.TestCase):
     def test_stopped_at_the_first_fall(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -284,6 +347,8 @@ class Failures(unittest.TestCase):
             while not driver.done and fake.time < 300:
                 fake.advance(0.1)
                 fake.tick_callback(0.1)
+            self.assertFalse(calls(fake, "quit"))  # never in the tick where the driver ends
+            fake.tick_callback(0.1)
             self.assertTrue(calls(fake, "quit"))
             self.assertTrue(calls(fake, "unregister_tick"))
 
