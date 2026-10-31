@@ -10,6 +10,30 @@
 #if TERRAIN_DEV_TOOLS
 #include "Bridge/debug_colors.hpp"
 #include "Materials/MaterialInterface.h"
+
+namespace
+{
+	// New colors on the ground of a tile, nothing else. UpdateMeshSection takes the positions
+	// whatever changes (Unreal 5.8 refuses an empty array: "different number of vertices"): the
+	// section's own positions are given back; its normals, UVs and tangents (empty arrays) stay.
+	// No collision cooked again (SetProcMeshSection would): only the same vertices given to it.
+	void UpdateColors(UProceduralMeshComponent& Component, const TArray<FColor>& Colors)
+	{
+		const FProcMeshSection* Section = Component.GetProcMeshSection(0);
+		if (Section == nullptr || Section->ProcVertexBuffer.Num() != Colors.Num())
+		{
+			return;
+		}
+		TArray<FVector> Positions;
+		Positions.Reserve(Section->ProcVertexBuffer.Num());
+		for (const FProcMeshVertex& Vertex : Section->ProcVertexBuffer)
+		{
+			Positions.Add(Vertex.Position);
+		}
+		Component.UpdateMeshSection(0, Positions, TArray<FVector>(), TArray<FVector2D>(), Colors,
+			TArray<FProcMeshTangent>());
+	}
+} // namespace
 #endif
 
 void UProceduralMeshTerrainBackend::SetDebugLook(terrain::unreal::ViewMode Mode,
@@ -64,8 +88,7 @@ void UProceduralMeshTerrainBackend::ApplyLook(UProceduralMeshComponent& Componen
 	{
 		if (const TArray<FColor>* Own = OwnColors.Find(Key))
 		{
-			Component.UpdateMeshSection(0, TArray<FVector>(), TArray<FVector>(),
-				TArray<FVector2D>(), *Own, TArray<FProcMeshTangent>());
+			UpdateColors(Component, *Own);
 		}
 		Component.SetMaterial(0, TileMaterial.Get());
 		return;
@@ -95,8 +118,7 @@ void UProceduralMeshTerrainBackend::ApplyLook(UProceduralMeshComponent& Componen
 	{
 		Colors.Emplace(Color.r, Color.g, Color.b, Color.a);
 	}
-	Component.UpdateMeshSection(0, TArray<FVector>(), TArray<FVector>(), TArray<FVector2D>(),
-		Colors, TArray<FProcMeshTangent>());
+	UpdateColors(Component, Colors);
 	Component.SetMaterial(0, LookMaterial.Get());
 #else
 	(void)Component, (void)Key;
