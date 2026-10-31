@@ -262,11 +262,14 @@ void testMatch() {
     TEST_CHECK(threw);
 }
 
-// The places of the repository: valid, canonical (Terrain.Save rewrites it without noise), and
-// holding the views the agents check.
+// The places of the repository: valid, canonical (Terrain.Save rewrites it without noise; LF on
+// every platform by .gitattributes, a checkout in CRLF read the same), and holding the views the
+// agents check.
 void testRepositoryFile(const char* path) {
     const PlacesFile file = terrain::dev::loadPlaces(path);
-    TEST_CHECK(writePlaces(file) == fileText(path));
+    std::string text = fileText(path);
+    std::erase(text, '\r');
+    TEST_CHECK(writePlaces(file) == text);
     for (const char* name : {"chute388_bassin", "chute388_levre", "chute388_mer", "k2_paroi",
                              "falaise_cotiere", "montagnes_mer", "cote_froide", "plage_origine",
                              "fleuve_plaine", "lac_montagne", "lisiere_tropicale_savane"}) {
