@@ -282,9 +282,11 @@ public:
 	// The sky follows the camera over the curved planet (terrain_unreal/README.md, section 12):
 	// the SkyAtmosphere of the level takes the radius of the planet, its top at the sea level
 	// right under the camera, the ExponentialHeightFog stays under the camera at its height above
-	// the sea level, and the SkyLight (its real-time capture) on the camera; they move after the
-	// camera, every frame. The aerial perspective then reaches the end of the horizon. Off: they
-	// stay where the level puts them, and the sky turns black thousands of kilometers away.
+	// the sea level (its Z in the level, the Z 0 of the level read as the sea level, whatever
+	// point of the core lies at the origin), and the SkyLight (its real-time capture) on the
+	// camera; they move after the camera, every frame. The aerial perspective then reaches the
+	// end of the horizon. Off: they stay where the level puts them, and the sky turns black
+	// thousands of kilometers away.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Atmosphere")
 	bool bAtmosphereFollowsCamera = true;
 
@@ -437,4 +439,8 @@ private:
 	float SecondsSinceTimingLog = 0.0f;
 	// The depth of the aerial perspective before StartAtmosphere extended it, km; -1: unchanged.
 	float RestoredAerialPerspectiveDepthKm = -1.0f;
+	// The height of the height fog above the sea level, cm: its Z in the level, read by the first
+	// StartAtmosphere of the play, before the follower moves it (a world started again by
+	// Terrain.Seed keeps it).
+	TOptional<double> LevelFogAboveSeaCm;
 };
