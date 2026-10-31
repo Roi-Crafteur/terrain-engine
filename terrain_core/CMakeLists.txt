@@ -142,6 +142,10 @@ add_library(terrain_core STATIC
     src/io/relief_stats_terrain.cpp
     src/io/relief_view.cpp
     src/io/voronoi_png.cpp
+    src/map/map_frame.cpp
+    src/map/map_layers.cpp
+    src/map/map_render.cpp
+    src/map/map_style.cpp
     src/meshing/marching_cubes.cpp
     src/storage/block_section.cpp
     src/storage/chunk_record.cpp

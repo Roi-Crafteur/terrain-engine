@@ -509,3 +509,4 @@ add_test(NAME export_silhouette_bad_args
 include(${CMAKE_CURRENT_SOURCE_DIR}/water_level_tests.cmake) # task 7b: the water level
 include(${CMAKE_CURRENT_SOURCE_DIR}/settlement_tests.cmake) # agent 25: the settlement V1
 include(${CMAKE_CURRENT_SOURCE_DIR}/unreal_water_tests.cmake) # agent 27: the water in Unreal
+include(${CMAKE_CURRENT_SOURCE_DIR}/dev_map_tests.cmake) # agent 35: the dev map
