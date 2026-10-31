@@ -239,7 +239,8 @@ RiverReach Hydrology::reach(std::size_t index) const {
         }
         if (j > i && c.points[i].level - c.points[j].level > kFallMin) {
             out.falls.push_back({c.points[i].x, c.points[i].z, c.points[i].level,
-                                 c.points[j].level, 2.0f * c.points[i].half});
+                                 c.points[j].level, 2.0f * c.points[i].half, c.points[j].x,
+                                 c.points[j].z});
         }
         i = j > i ? j : i + 1;
     }

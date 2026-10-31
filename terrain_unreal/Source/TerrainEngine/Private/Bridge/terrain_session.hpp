@@ -1,6 +1,7 @@
 #pragma once
 
 #include "edit_thread.hpp"
+#include "planet_source.hpp"
 #include "terrain_edits.hpp"
 #include "tile_streamer.hpp"
 #include "tile_timings.hpp"
@@ -32,8 +33,9 @@ struct SessionParams {
     StreamParams stream;      // its world is replaced by world
     // The water of the world (phase 11B): the planet level of the seed in this file (written by
     // terrain_make_planet, storage/planet_file.hpp), built and written there when it does not
-    // hold it; its hydrology carves the rivers and fills the lakes of the tiles and the horizon.
-    // Empty: the relief alone, without rivers or lakes. UTF-8.
+    // hold it, the reason told (openPlanetSource); its hydrology carves the rivers and fills the
+    // lakes of the tiles and the horizon. Empty: the relief alone, without rivers or lakes.
+    // UTF-8, as resolvePlanetPath gives it.
     std::string planetFile;
 };
 
@@ -51,6 +53,8 @@ public:
     TerrainSession& operator=(const TerrainSession&) = delete;
 
     [[nodiscard]] const TerrainTiles& tiles() const { return tiles_; }
+    // How the planet level was read or built (empty without a planet file).
+    [[nodiscard]] const PlanetSource& planet() const { return planet_; }
     [[nodiscard]] TileTimings& timings() { return *timings_; }
     [[nodiscard]] TileStreamer& streamer() { return streamer_; }
 
@@ -95,6 +99,7 @@ private:
     void stageDone();
     void finishQueued();
 
+    PlanetSource planet_; // first: the tiles read its hydrology
     TerrainTiles tiles_;
     std::shared_ptr<TileTimings> timings_;
     HorizonEditMap horizonEdits_;   // reads the relief of the tiles

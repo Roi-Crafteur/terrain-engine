@@ -11,6 +11,7 @@
 #include "horizon_test_support.hpp"
 #include "test_assert.hpp"
 
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -147,43 +148,35 @@ void testRegions() {
     TEST_CHECK(refused);
 }
 
-// The water codes: 0 on dry land, the level within half a step, exactly at the sea level and on
-// every step, never decreasing with the level, clamped to the range of the codes.
-void testWaterCodes() {
-    using terrain::unreal::waterCode;
-    using terrain::unreal::waterCodeLevel;
-    TEST_CHECK(waterCode(terrain::kNoWaterLevel) == 0);
-    TEST_CHECK(waterCodeLevel(0) == terrain::kNoWaterLevel);
-    TEST_CHECK(waterCodeLevel(waterCode(0.0f)) == 0.0f && waterCode(0.0f) == 16385);
-    TEST_CHECK(waterCodeLevel(waterCode(1725.25f)) == 1725.25f);
-    TEST_CHECK(waterCode(-9000.0f) == 1 && waterCodeLevel(1) == terrain::unreal::kWaterLevelLowest);
-    TEST_CHECK(waterCode(20000.0f) == 65535 &&
-               waterCodeLevel(65535) == terrain::unreal::kWaterLevelHighest);
-    bool near = true;
-    bool rising = true;
-    std::uint16_t last = 1;
-    for (float level = -4096.0f; level <= 12287.5f; level += 0.37f) {
-        const std::uint16_t code = waterCode(level);
-        near = near && std::abs(waterCodeLevel(code) - level) <= 0.125f + 1e-3f;
-        rising = rising && code >= last;
-        last = code;
+// The water texels: the level of the core bit for bit, kNoWaterLevel on dry land (or for a level
+// that is not a number), below the wet threshold of the materials.
+void testWaterTexels() {
+    using terrain::unreal::waterTexel;
+    TEST_CHECK(waterTexel(terrain::kNoWaterLevel) == terrain::kNoWaterLevel);
+    TEST_CHECK(waterTexel(std::nanf("")) == terrain::kNoWaterLevel);
+    TEST_CHECK(waterTexel(terrain::kNoWaterLevel) < terrain::unreal::kWetWaterTexel);
+    bool exact = true;
+    for (float level = -4500.0f; level <= 13000.0f; level += 0.37f) {
+        exact = exact && std::bit_cast<std::uint32_t>(waterTexel(level)) ==
+                             std::bit_cast<std::uint32_t>(level) &&
+                waterTexel(level) > terrain::unreal::kWetWaterTexel;
     }
-    TEST_CHECK(near && rising);
+    TEST_CHECK(exact && waterTexel(0.0f) == 0.0f && waterTexel(1725.2513f) == 1725.2513f);
 }
 
-// The water regions of rectangles across the wrap: every code at the slot of its sample. What
-// the GPU horizon uploads for a piece: its texels, then the code of each cell.
+// The water regions of rectangles across the wrap: every level at the slot of its sample. What
+// the GPU horizon uploads for a piece: its texels, then the water texel of each cell.
 void testWaterRegions() {
     constexpr int kSide = 17;
     for (const HorizonRect rect : {HorizonRect{3, 4, 9, 6}, HorizonRect{-5, 14, 6, 22}}) {
-        std::vector<float> codes;
+        std::vector<float> levels;
         for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
             for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
-                codes.push_back(static_cast<float>((i + 64) * 100 + (k + 64)));
+                levels.push_back(static_cast<float>((i + 64) * 100 + (k + 64)) + 0.125f);
             }
         }
-        std::vector<std::uint16_t> texture(kSide * kSide, 0);
-        for (const auto& region : terrain::unreal::waterRegions(2, kSide, rect, codes)) {
+        std::vector<float> texture(kSide * kSide, 0.0f);
+        for (const auto& region : terrain::unreal::waterRegions(2, kSide, rect, levels)) {
             TEST_CHECK(region.level == 2);
             for (int row = 0; row < region.height; ++row) {
                 for (int column = 0; column < region.width; ++column) {
@@ -198,7 +191,7 @@ void testWaterRegions() {
             for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
                 const terrain::HorizonIndex slot = terrain::slotOf({i, k}, kSide);
                 placed = placed && texture[static_cast<std::size_t>(slot.z * kSide + slot.x)] ==
-                                       (i + 64) * 100 + (k + 64);
+                                       static_cast<float>((i + 64) * 100 + (k + 64)) + 0.125f;
             }
         }
         TEST_CHECK(placed);
@@ -208,8 +201,7 @@ void testWaterRegions() {
     piece.cells[0].waterLevel = 1725.25f;
     const std::vector<float> uploads = terrain::unreal::pieceUploads(piece, true);
     std::vector<float> expected = terrain::unreal::pieceTexels(piece, true);
-    const auto code = static_cast<float>(terrain::unreal::waterCode(1725.25f));
-    expected.insert(expected.end(), {code, 0.0f});
+    expected.insert(expected.end(), {1725.25f, terrain::kNoWaterLevel});
     TEST_CHECK(uploads == expected);
 }
 
@@ -336,7 +328,7 @@ void testGrids() {
 int main() {
     testTexels();
     testRegions();
-    testWaterCodes();
+    testWaterTexels();
     testWaterRegions();
     testWalk();
     testGrids();
