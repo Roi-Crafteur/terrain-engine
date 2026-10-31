@@ -55,16 +55,22 @@ double MapFrame::pixelZ(std::int64_t j) const {
     return wrapCoordinate(box_.z + (static_cast<double>(j) + 0.5) * stepZ_, world_.z);
 }
 
-std::int64_t MapFrame::columnAt(double x) const {
+double MapFrame::offsetX(double x) const {
     const double half = 0.5 * box_.width;
-    const double offset = wrapCoordinate(x - (box_.x + half), world_.x) + half;
-    return cellOf(offset, stepX_);
+    return wrapCoordinate(x - (box_.x + half), world_.x) + half;
+}
+
+double MapFrame::offsetZ(double z) const {
+    const double half = 0.5 * box_.height;
+    return wrapCoordinate(z - (box_.z + half), world_.z) + half;
+}
+
+std::int64_t MapFrame::columnAt(double x) const {
+    return cellOf(offsetX(x), stepX_);
 }
 
 std::int64_t MapFrame::rowAt(double z) const {
-    const double half = 0.5 * box_.height;
-    const double offset = wrapCoordinate(z - (box_.z + half), world_.z) + half;
-    return cellOf(offset, stepZ_);
+    return cellOf(offsetZ(z), stepZ_);
 }
 
 double mapLevelMeters(int level) {

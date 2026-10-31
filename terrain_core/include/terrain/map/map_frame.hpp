@@ -56,6 +56,10 @@ public:
     // back column i, pixelZ(j) row j.
     [[nodiscard]] std::int64_t columnAt(double x) const;
     [[nodiscard]] std::int64_t rowAt(double z) const;
+    // Meters east of the west edge (south of the north edge) of the image of x (z) nearest to the
+    // center of the box: the column of x is floor(offsetX(x) / stepX()).
+    [[nodiscard]] double offsetX(double x) const;
+    [[nodiscard]] double offsetZ(double z) const;
 
     friend bool operator==(const MapFrame&, const MapFrame&) = default;
 
