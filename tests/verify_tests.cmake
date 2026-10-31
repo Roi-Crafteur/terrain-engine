@@ -21,3 +21,14 @@ add_test(NAME probe_line_smoke
 set_tests_properties(probe_line_smoke PROPERTIES
     PASS_REGULAR_EXPRESSION "distance +x +z +relief\\.relief")
 add_dependencies(check terrain_probe)
+
+# The verification launcher (scripts/verify/), without Unreal: one test per file of its unit tests.
+find_package(Python COMPONENTS Interpreter QUIET)
+if(Python_Interpreter_FOUND)
+    set(verify_tests places)
+    foreach(name IN LISTS verify_tests)
+        add_test(NAME verify_${name}_test
+            COMMAND ${Python_EXECUTABLE} -B -m unittest test_${name}
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/scripts/verify/tests)
+    endforeach()
+endif()
