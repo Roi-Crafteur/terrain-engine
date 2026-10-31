@@ -337,7 +337,7 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
                           seaOf(p, static_cast<CoastKind>(k), g, coast, distance);
             }
         }
-        return {0.0f, 0.0f, static_cast<float>(ground)};
+        return {0.0f, 0.0f, static_cast<float>(ground), 1.0f};
     }
     bool shores = false;
     for (const CoastKind kind :
@@ -360,9 +360,11 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
     }
     const double inner =
         smooth(p.coastRamp - kInnerFade, p.coastRamp - kInnerSlack, coast);
-    return {static_cast<float>(sum.land + (oldLand - sum.land) * inner),
-            static_cast<float>(sum.mountains + (oldLand - sum.mountains) * inner),
-            static_cast<float>(sum.ground + (old - sum.ground) * inner)};
+    const auto land = static_cast<float>(sum.land + (oldLand - sum.land) * inner);
+    const float low = weights[static_cast<std::size_t>(CoastKind::Low)];
+    return {land, static_cast<float>(sum.mountains + (oldLand - sum.mountains) * inner),
+            static_cast<float>(sum.ground + (old - sum.ground) * inner),
+            low + (1.0f - low) * land};
 }
 
 } // namespace terrain::coast_shape

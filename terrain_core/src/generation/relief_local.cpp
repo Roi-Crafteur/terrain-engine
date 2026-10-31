@@ -126,7 +126,10 @@ float hillsAt(const Noises& noises, double x, double z, float rough, Memos* memo
 float rolling(const Noises& noises, double x, double z, const Shape& shape, Memos* memos) {
     const Lands lands = landsOf(noises.lively, shape);
     float relief = shape.amplitude * hillsAt(noises, x, z, shape.rough, memos);
-    if (lands.terraces > 0.0f) {
+    if (lands.terraces > 0.0f && shape.fade > 0.0f && shape.fade < 1.0f) {
+        const float full = relief / shape.fade;
+        relief = shape.fade * (full + lands.terraces * (terrace(full) - full));
+    } else if (lands.terraces > 0.0f) {
         relief += lands.terraces * (terrace(relief) - relief);
     }
     if (lands.vallons > 0.0f) {

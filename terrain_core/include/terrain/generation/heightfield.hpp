@@ -187,6 +187,7 @@ private:
         float land = 0.0f;
         float mountains = 0.0f; // the factor of the land of the mountains, never above land
         float ground = 0.0f;
+        float fade = 1.0f; // coast_shape::Ground::fade
     };
     [[nodiscard]] CoastPoint coastPointAt(double x, double z, const GeographySample& g,
                                           Memos* memos) const;
@@ -262,7 +263,7 @@ private:
                                      Memos* memos) const;
     // The hills, vallons, buttes and terraces of the geography (relief_local).
     [[nodiscard]] float localReliefAt(double x, double z, float amplitude, float buttes,
-                                      float region, float plain, float rough,
+                                      float region, float plain, float rough, float fade,
                                       Memos* memos) const;
     [[nodiscard]] float detailAt(double x, double z, float base, Memos* memos) const;
     // The top of the rock with the walls of the mountains (mountain_walls) over ground meters

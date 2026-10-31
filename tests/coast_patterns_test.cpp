@@ -12,10 +12,13 @@
 //   mountains) in their tiles of LOD 0 to 3: the same, against the normals of the relief at the
 //   scale of the cells, wherever the face is at least two cells high, and their shores at every
 //   LOD.
+// - The terraces of the local relief step it before the fade of the high coasts from the shore,
+//   never along the shore.
 // - Along the coasts of the cliffs: the height of their top, from a few meters to the highest,
 //   with no regular pattern (once its autocorrelation has fallen below 0, it never comes back
 //   above kRebound).
 #include "coast_shape.hpp"
+#include "relief_local.hpp"
 
 #include "terrain/chunk_coord.hpp"
 #include "terrain/generation/coast.hpp"
@@ -298,14 +301,14 @@ Errors tileErrors(double x, double z, int lod) {
 // The faces of the coasts in their tiles of LOD 0 to 3: clean wherever the face is at least
 // kLeastCells cells high; their shores (the water, the platform, the foot of the slope) clean at
 // every LOD.
-void testRealFaces() {
+void testRealFaces(const std::vector<Place>& faces) {
     bool cleanFaces = true;
     bool cleanShores = true;
     std::printf("faces of the coasts: kind (x, z), height, steepest slope, then RMS / p95 / "
                 "periodic at the LOD 0 to 3 (* : face less than %.0f cells high, reported), then "
                 "the same on their shore\n",
                 kLeastCells);
-    for (const Place& p : findFaces()) {
+    for (const Place& p : faces) {
         std::printf("%-8s (%.0f, %.0f) %6.1f m %4.2f |", terrain::coastKindName(p.kind), p.x, p.z,
                     p.height, p.slope);
         for (int lod = 0; lod < 4; ++lod) {
@@ -384,6 +387,33 @@ double reboundOf(const std::vector<double>& v) {
     return most;
 }
 
+// The terraces of the local relief step it before the fade of the high coasts from the shore
+// (relief_local::Shape::fade): faded by f, the relief is f times the relief unfaded, its terraces
+// along the hills; stepping the faded relief instead set them along the shore (the terraces
+// parallel to the bay under the mountains checked in Unreal at the stop point 1).
+void testTerracesBeforeFade() {
+    namespace rl = terrain::relief_local;
+    const rl::Noises noises = rl::makeNoises(kSeed, field().world(), true);
+    coast_zone::Draws draws(0x33C0A57E3ULL);
+    double most = 0.0;
+    for (int i = 0; i < 2'000; ++i) {
+        const double x = (draws.next() - 0.5) * 1.0e6;
+        const double z = (draws.next() - 0.5) * 1.0e6;
+        const auto amplitude = static_cast<float>(20.0 + 200.0 * draws.next());
+        const auto fade = static_cast<float>(0.05 + 0.9 * draws.next());
+        const rl::Shape full{amplitude, 0.0f, 0.0f, 1.0f, 0.3f, 1.0f};
+        rl::Shape faded = full;
+        faded.amplitude = fade * amplitude;
+        faded.fade = fade;
+        const double a = fade * rl::rolling(noises, x, z, full, nullptr);
+        const double b = rl::rolling(noises, x, z, faded, nullptr);
+        most = std::max(most, std::abs(a - b) / static_cast<double>(amplitude));
+    }
+    std::printf("terraces before the fade: the faded relief off by %.2e of the amplitude at most\n",
+                most);
+    TEST_CHECK(most < 1.0e-4);
+}
+
 // Along the coasts of the cliffs: tops from a few meters to the highest, without a regular
 // pattern.
 void testAlongCoasts() {
@@ -429,7 +459,9 @@ void testAlongCoasts() {
 int main() {
     testTable();
     testLaw();
-    testRealFaces();
+    const std::vector<Place> faces = findFaces();
+    testRealFaces(faces);
+    testTerracesBeforeFade();
     testAlongCoasts();
     return test::result();
 }

@@ -70,6 +70,9 @@ struct Ground {
     float land = 0.0f;
     float mountains = 0.0f; // never above land
     float ground = 0.0f;
+    // The share of the local relief its terraces step before the fade from the shore: 1 on the
+    // low coasts (their slow fade, as without the coasts), land on the others (their quick one).
+    float fade = 1.0f;
 };
 
 [[nodiscard]] Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,
