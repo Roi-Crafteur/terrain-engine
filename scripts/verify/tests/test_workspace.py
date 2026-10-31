@@ -125,7 +125,7 @@ class Cache(unittest.TestCase):
             m = fakes.a_machine(root)
             with self.assertRaises(workspace.WorkspaceError):
                 workspace.prepare(m, "main", "avant", fakes.FakeRunner(build_ok=False))
-            self.assertFalse((m.work_root / "cache" / fakes.SHA / workspace.MARKER).exists())
+            self.assertFalse((m.work_root / "cache" / fakes.SHA[:12] / workspace.MARKER).exists())
             v = workspace.prepare(m, "main", "avant", fakes.FakeRunner())
             self.assertTrue(v.built_now)
 

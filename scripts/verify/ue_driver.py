@@ -114,7 +114,11 @@ class Driver:
 
     def steps(self):
         yield Wait(self.job.get("startWait", 5.0))
-        self.find_terrain()
+        until = Until(self.find_terrain, self.job.get("levelTimeout", 300.0),
+                      "the Terrain World of the level")
+        yield until
+        if until.timed_out:
+            raise RuntimeError("no Terrain World in the level of the map")
         if self.job.get("materials"):
             self.set_phase("materials")
             yield from self.materials()
@@ -129,12 +133,14 @@ class Driver:
             self.save_result()
 
     def find_terrain(self):
+        """True once the level of the map holds its Terrain World (its settings then kept)."""
         worlds = self.api.terrain_worlds(self.api.editor_world())
         if not worlds:
-            raise RuntimeError("no Terrain World in the level of the map")
+            return False
         self.terrain = worlds[0]
         for name in ("core_origin_x", "core_origin_z", "planet_file"):
             self.saved[name] = self.api.read(self.terrain, name)
+        return True
 
     def materials(self):
         scripts = Path(self.job["scripts"])

@@ -1,10 +1,11 @@
 """The versions of a verification, each built from scratch once and kept by commit.
 
 <workRoot>/mirror.git              a mirror of the repository (fetched at each run)
-<workRoot>/cache/<sha>/project/    a fresh copy of the host project; Plugins/<plugin> is a clone
+<workRoot>/cache/<sha12>/project/  a fresh copy of the host project; Plugins/<plugin> is a clone
                                    of the commit, Binaries and Intermediate built there by UBT
-<workRoot>/cache/<sha>/tools/      the tools of the core (scripts/verify/tools/CMakeLists.txt)
-<workRoot>/cache/<sha>/build_ok.json   written last: the cache of this commit is complete
+<workRoot>/cache/<sha12>/tools/    the tools of the core (scripts/verify/tools/CMakeLists.txt)
+<workRoot>/cache/<sha12>/build_ok.json   written last: the cache of this commit is complete
+(sha12: the first 12 digits of the commit, so that the paths of UBT stay short under Windows)
 
 A commit whose cache is complete is not built again (--fresh: removed and built again). The host
 project is copied without Binaries, Intermediate, Saved and the DDC; the folders of Content
@@ -289,7 +290,7 @@ def prepare(machine, ref, label, runner, fresh=False):
     logs = machine.work_root / "logs"
     mirror_path = mirror(machine, runner, logs / "git.log")
     sha = resolve(runner, mirror_path, ref, logs / "git.log")
-    cache = machine.work_root / "cache" / sha
+    cache = machine.work_root / "cache" / sha[:12]  # short: the paths of UBT stay under 260
     project = cache / "project"
     version = Version(label, ref, sha, cache, project, project / machine.project.name,
                       project / "Plugins" / machine.plugin_folder, cache / "tools")

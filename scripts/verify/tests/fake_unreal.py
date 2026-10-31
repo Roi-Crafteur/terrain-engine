@@ -242,6 +242,7 @@ class FakeUnreal:
         self.SystemLibrary = _System(self)
         self.Paths = types.SimpleNamespace(
             screen_shot_dir=lambda: str(fake.folder / "Saved" / "Screenshots"),
+            project_saved_dir=lambda: str(fake.folder / "Saved"),
             convert_relative_path_to_full=lambda p: p)
 
     def get_editor_subsystem(self, cls):

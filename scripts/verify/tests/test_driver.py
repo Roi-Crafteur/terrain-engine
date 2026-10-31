@@ -197,6 +197,16 @@ class DevCommands(unittest.TestCase):
 
 
 class Failures(unittest.TestCase):
+    def test_a_level_without_terrain_world(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder)
+            fake.GameplayStatics.get_all_actors_of_class = lambda world, cls: []
+            r = drive(fake, job_in(folder, fake, [BASIN], materials=False,
+                                   levelTimeout=5.0)).result
+            self.assertTrue(r["done"])
+            self.assertIn("no Terrain World", r["errors"][0])
+            self.assertFalse(calls(fake, "begin_play"))
+
     def test_a_missing_api(self):
         with tempfile.TemporaryDirectory() as folder:
             fake = fake_unreal.FakeUnreal(folder)

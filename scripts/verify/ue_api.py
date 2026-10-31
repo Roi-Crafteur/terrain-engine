@@ -144,24 +144,32 @@ class Api:
     def take_shot(self, world, name, width, height):
         """Asks for a screenshot of the view named name; the file appears a few frames later in
         screenshot_dir (find_shot)."""
+        if getattr(self.ue, "SystemLibrary", None) is not None:
+            self.console(world, f"HighResShot {width}x{height} filename={name}")
+            return "HighResShot"
         automation = getattr(self.ue, "AutomationLibrary", None)
-        take = getattr(automation, "take_high_res_screenshot", None) if automation else None
-        if take is not None:
-            take(width, height, name)
-            return "AutomationLibrary"
-        self.console(world, f"HighResShot {width}x{height} filename={name}")
-        return "HighResShot"
+        _get(automation, "take_high_res_screenshot", "HighResShot or "
+             "AutomationLibrary.take_high_res_screenshot")(width, height, name)
+        return "AutomationLibrary"
+
+    def saved_dir(self):
+        paths = _get(self.ue, "Paths")
+        saved = getattr(paths, "project_saved_dir", None)
+        return Path(paths.convert_relative_path_to_full(saved())) if saved else None
 
     def find_shot(self, name, since):
-        """The newest PNG named name* written after since (seconds of the epoch), or None."""
-        found = []
-        folder = self.screenshot_dir()
-        if folder.exists():
-            for path in folder.rglob(f"{name}*.png"):
-                stat = path.stat()
-                if stat.st_mtime >= since and stat.st_size > 0:
-                    found.append((stat.st_mtime, path))
-        return max(found)[1] if found else None
+        """The newest PNG named name* written after since (seconds of the epoch), in the folder of
+        the screenshots, else anywhere in Saved; or None."""
+        for folder in (self.screenshot_dir(), self.saved_dir()):
+            found = []
+            if folder is not None and folder.exists():
+                for path in folder.rglob(f"{name}*.png"):
+                    stat = path.stat()
+                    if stat.st_mtime >= since and stat.st_size > 0:
+                        found.append((stat.st_mtime, path))
+            if found:
+                return max(found)[1]
+        return None
 
     # ---- the pawn -------------------------------------------------------------------------------
 
