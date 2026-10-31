@@ -40,6 +40,12 @@ std::string describeLod(int lod, const LodTimings& timings) {
     return line;
 }
 
+void addTo(StageStats& stats, double milliseconds) {
+    ++stats.tiles;
+    stats.totalMilliseconds += milliseconds;
+    stats.maxMilliseconds = std::max(stats.maxMilliseconds, milliseconds);
+}
+
 bool holdsMeasures(const LodTimings& timings) {
     return timings.meshes > 0 ||
            std::any_of(timings.stages.begin(), timings.stages.end(),
@@ -59,19 +65,28 @@ const StageStats& LodTimings::stage(TileStage which) const {
 void TileTimings::record(TileStage stage, int lod, double milliseconds) {
     const std::size_t index = lodIndex(lod);
     const std::lock_guard lock(mutex_);
-    StageStats& stats = report_[index].stages[static_cast<std::size_t>(stage)];
-    ++stats.tiles;
-    stats.totalMilliseconds += milliseconds;
-    stats.maxMilliseconds = std::max(stats.maxMilliseconds, milliseconds);
+    for (TimingsReport* report : {&report_, &totals_}) {
+        addTo((*report)[index].stages[static_cast<std::size_t>(stage)], milliseconds);
+    }
 }
 
 void TileTimings::recordMesh(int lod, std::size_t vertices, std::size_t triangles) {
     const std::size_t index = lodIndex(lod);
     const std::lock_guard lock(mutex_);
-    LodTimings& timings = report_[index];
-    ++timings.meshes;
-    timings.vertices += vertices;
-    timings.triangles += triangles;
+    for (TimingsReport* report : {&report_, &totals_}) {
+        LodTimings& timings = (*report)[index];
+        ++timings.meshes;
+        timings.vertices += vertices;
+        timings.triangles += triangles;
+    }
+}
+
+void TileTimings::recordWater(int lod, double milliseconds) {
+    const std::size_t index = lodIndex(lod);
+    const std::lock_guard lock(mutex_);
+    for (TimingsReport* report : {&report_, &totals_}) {
+        addTo((*report)[index].water, milliseconds);
+    }
 }
 
 TimingsReport TileTimings::snapshot() const {
@@ -82,6 +97,11 @@ TimingsReport TileTimings::snapshot() const {
 TimingsReport TileTimings::take() {
     const std::lock_guard lock(mutex_);
     return std::exchange(report_, TimingsReport{});
+}
+
+TimingsReport TileTimings::totals() const {
+    const std::lock_guard lock(mutex_);
+    return totals_;
 }
 
 double millisecondsSince(std::chrono::steady_clock::time_point start) {

@@ -27,3 +27,12 @@ terrain_add_test(unreal_place_pose_test terrain_unreal_bridge)
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/ground_ray.cpp
                                              ${unreal_bridge}/point_info.cpp)
 terrain_add_test(unreal_point_info_test terrain_unreal_bridge)
+
+# The page of the performance (the sliding window, the totals of the timings), the wait for the
+# streaming to settle before an image, the names and lines of a run of views, and the colors of
+# the view modes with the vertices off the heightmap.
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/debug_colors.cpp
+                                             ${unreal_bridge}/dev_perf.cpp
+                                             ${unreal_bridge}/shot_waiter.cpp)
+terrain_add_test(unreal_dev_perf_test terrain_unreal_bridge)
+terrain_add_test(unreal_debug_colors_test terrain_unreal_bridge)
