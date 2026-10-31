@@ -92,7 +92,7 @@ bool UTerrainDevTools::PlaceView(const terrain::unreal::ViewPose& Pose)
 		PlayerController->SetIgnoreMoveInput(true);
 	}
 	Dev->Hold = FTerrainDevHold{Start,
-		terrain::unreal::ShotWaiter({0.0, 0.0, TerrainDev::ShotTimeoutSeconds())}};
+		terrain::unreal::ShotWaiter({0.0, 0.0, TerrainDev::ShotTimeoutSeconds()})};
 	TerrainDev::Log(FString::Printf(TEXT("view at x %.2f, z %.2f, eye %.2f m, heading %.1f, "
 		"pitch %.1f; the ground ready in %.2f s"), Pose.eye.x, Pose.eye.z, Pose.eye.y,
 		terrain::unreal::headingOfYaw(Pose.yaw), Pose.pitch, FPlatformTime::Seconds() - Start));
@@ -103,7 +103,7 @@ APawn* UTerrainDevTools::EnsureDevPawn(APlayerController& PlayerController)
 {
 	if (IsValid(DevPawn))
 	{
-		if (PlayerController.GetPawn() != DevPawn)
+		if (PlayerController.GetPawn() != DevPawn.Get())
 		{
 			PlayerController.Possess(DevPawn);
 		}

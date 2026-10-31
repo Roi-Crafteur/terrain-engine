@@ -74,8 +74,9 @@ void UTerrainDevTools::Draw(UCanvas* Canvas, APlayerController* PlayerController
 	{
 		Width = FMath::Max(Width, Font->GetStringSize(*Line));
 	}
+	const float Height = LineHeight * static_cast<float>(Dev->Lines.Num());
 	FCanvasTileItem Tile(FVector2D(ScreenLeft - 8.0f, ScreenTop - 6.0f),
-		FVector2D(Width + 16.0f, LineHeight * Dev->Lines.Num() + 12.0f), Back);
+		FVector2D(static_cast<float>(Width) + 16.0f, Height + 12.0f), Back);
 	Tile.BlendMode = SE_BLEND_Translucent;
 	Canvas->DrawItem(Tile);
 	float Y = ScreenTop;
@@ -168,7 +169,7 @@ void UTerrainDevTools::AimedLines(TArray<FString>& Lines) const
 	{
 		Point = terrain::unreal::toCore(Frame, TerrainWorldConversions::ToUnrealPoint(Hit.ImpactPoint));
 		Lines.Add(FString::Printf(TEXT("aimed: %.1f m away, on %s"), Hit.Distance / 100.0,
-			Hit.GetActor() == World ? TEXT("a tile (its collision)") : *GetNameSafe(Hit.GetActor())));
+			Hit.GetActor() == World.Get() ? TEXT("a tile (its collision)") : *GetNameSafe(Hit.GetActor())));
 	}
 	else
 	{
@@ -212,7 +213,9 @@ void UTerrainDevTools::PerfLines(TArray<FString>& Lines) const
 		Lines.Add(FString::Printf(TEXT("horizon (GPU): %s, %.1f MB of samples, %.1f MB on the GPU"),
 			State.HorizonGpu->busy() ? TEXT("computing") : TEXT("done"),
 			Megabytes(State.HorizonGpu->memoryBytes()),
-			World->HorizonClipmap != nullptr ? Megabytes(World->HorizonClipmap->GetGpuBytes()) : 0.0));
+			World->HorizonClipmap != nullptr
+				? Megabytes(static_cast<uint64>(World->HorizonClipmap->GetGpuBytes()))
+				: 0.0));
 	}
 	else if (State.Horizon != nullptr)
 	{
