@@ -11,3 +11,13 @@ add_test(NAME export_map_bad_args
             -DOUT=${CMAKE_BINARY_DIR}/export_map_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_map_bad_args.cmake)
 add_dependencies(check terrain_export_map)
+
+# The Bridge of the dev map (pure C++ of the Unreal plugin): its views, its tiles on threads of
+# their own, where it sends the player.
+target_sources(terrain_unreal_bridge PRIVATE
+    ${unreal_bridge}/map_targets.cpp
+    ${unreal_bridge}/map_tile_cache.cpp
+    ${unreal_bridge}/map_view.cpp)
+terrain_add_test(unreal_map_view_test terrain_unreal_bridge)
+terrain_add_test(unreal_map_cache_test terrain_unreal_bridge)
+terrain_add_test(unreal_map_targets_test terrain_unreal_bridge)
