@@ -57,8 +57,10 @@ struct PlacesFile {
 
     // The place of this name, or nullptr.
     [[nodiscard]] const Place* find(std::string_view name) const;
-    // Replaces the place of the same name, or adds it at the end. Throws PlacesError for an
-    // invalid place (validPlace).
+    // Adds the place at the end, or replaces the known values of the place of the same name
+    // (Terrain.Save over a place): its other members stay as they are, in their order (a member
+    // place also has takes its new value), and its note stays when place has none. Throws
+    // PlacesError for an invalid place (validPlace).
     void put(Place place);
 
     friend bool operator==(const PlacesFile&, const PlacesFile&) = default;

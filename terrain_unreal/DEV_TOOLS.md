@@ -51,7 +51,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Look cap inclinaison` | le cap en degrés depuis le nord, sens horaire ; l'inclinaison vers le haut, de −90 à 90 |
 | `Terrain.Eye 1800` / `Terrain.Eye +2` | l'œil à cette altitude, ou à cette hauteur au-dessus du sol ou de l'eau |
 | `Terrain.Pawn` | le pion du jeu rendu, posé au sol sous la vue |
-| `Terrain.Save <nom> [note…]` | la vue écrite dans le fichier des lieux (remplace un lieu du même nom) |
+| `Terrain.Save <nom> [note…]` | la vue écrite dans le fichier des lieux (met à jour un lieu du même nom, ses champs inconnus et sa note gardés) |
 | `Terrain.Info` / `Terrain.Info here` | les lignes du point visé / de la colonne de l'œil dans le log |
 | `Terrain.Shot <nom>` | une image `Saved/TerrainEngine/Shots/<nom>.png` une fois tout chargé |
 | `Terrain.Views <lieux>` | une image par lieu (`chute388_bassin k2_paroi`, `*`, `chute388_*`) dans `Saved/TerrainEngine/Views/<date>/` avec `views.txt` |
@@ -128,8 +128,12 @@ par `terrain_core/dev/places_file` :
   biomes) ; `note` : facultative.
 - Lecture stricte : une erreur dit sa ligne et sa colonne, ou le lieu et le champ fautifs
   (« place 3 ("k2_paroi"): "pitch" must be in [-90, 90] degrees »). Les champs inconnus (ceux
-  d'un autre agent) sont gardés et réécrits. Écriture canonique (la mise en page ci-dessus) :
+  d'un autre agent ou d'un autre outil), dans un lieu ou autour des lieux, sont gardés et
+  réécrits tels quels, dans leur ordre. Écriture canonique (la mise en page ci-dessus) :
   `Terrain.Save` ne change que le lieu qu'il écrit.
+- `Terrain.Save` sur un lieu qui existe déjà : seuls les champs connus (`x`, `z`, `heading`,
+  `pitch`, `eye`, `eyeMode`, `planet`) changent ; ses champs inconnus restent au bit près, à
+  leur place, et sa note reste si la commande n'en donne pas.
 - Les nombres relus sont les mêmes au bit près ; `Terrain.Save` arrondit au centimètre et au
   centième de degré.
 

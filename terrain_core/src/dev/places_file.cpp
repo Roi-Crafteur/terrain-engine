@@ -137,11 +137,28 @@ void PlacesFile::put(Place place) {
     validPlace(place);
     const auto it = std::find_if(places.begin(), places.end(),
                                  [&place](const Place& p) { return p.name == place.name; });
-    if (it != places.end()) {
-        *it = std::move(place);
-    } else {
+    if (it == places.end()) {
         places.push_back(std::move(place));
+        return;
     }
+    // What other tools wrote in the place stays, in its order; a member the new place also has
+    // takes its new value, the others come after.
+    std::vector<JsonMember> kept = std::move(it->extra);
+    for (JsonMember& member : place.extra) {
+        const auto same = std::find_if(kept.begin(), kept.end(), [&member](const JsonMember& m) {
+            return m.key == member.key;
+        });
+        if (same != kept.end()) {
+            same->value = std::move(member.value);
+        } else {
+            kept.push_back(std::move(member));
+        }
+    }
+    place.extra = std::move(kept);
+    if (place.note.empty()) {
+        place.note = std::move(it->note);
+    }
+    *it = std::move(place);
 }
 
 std::string_view eyeModeName(EyeMode mode) {

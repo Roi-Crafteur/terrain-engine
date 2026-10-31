@@ -200,6 +200,59 @@ void testPut() {
     TEST_CHECK(threw);
 }
 
+// Terrain.Save over a place (put): what other tools wrote in it stays, bit for bit and in its
+// order, and its note when the new place has none; only the known values change.
+void testPutKeepsOtherMembers() {
+    const std::string others = ",\n      \"probe\": {\"water\": 180.03, \"seen\": [true, null, "
+                               "{\"by\": \"agent 37\"}]},\n      \"agent37\": 0.1";
+    std::string text(kExample);
+    text.insert(text.find(" } ] }"), others);
+    PlacesFile file = parsePlaces(text);
+    Place saved = *file.find("chute388_bassin");
+    saved.extra.clear();
+    saved.note.clear();
+    saved.eye = 190.5;
+    file.put(saved);
+    std::string expected = text;
+    expected.replace(expected.find("182.03"), 6, "190.5");
+    TEST_CHECK(writePlaces(file) == expected);
+
+    // A member the new place also has takes its new value where it was; a new one comes after.
+    std::string own(kExample);
+    own.insert(own.find(" } ] }"), ",\n      \"agent37\": 2,\n      \"added\": true");
+    saved.extra = parsePlaces(own).places[0].extra;
+    saved.note = "new note";
+    file.put(saved);
+    expected.replace(expected.find("\"agent37\": 0.1"), 14, "\"agent37\": 2,\n      \"added\": true");
+    expected.replace(expected.find("chute de 388 m vue depuis son bassin"), 36, "new note");
+    TEST_CHECK(writePlaces(file) == expected);
+    TEST_CHECK(file.places.size() == 1);
+}
+
+// The file of the agent 37 (measured with its probe terrain_probe): another layout, notes in
+// UTF-8. Read the same; written back in the canonical layout, read back to the same places.
+void testOtherLayout() {
+    constexpr std::string_view kAgent37 =
+        "{ \"version\": 1,\n"
+        "  \"places\": [\n"
+        "    { \"name\": \"chute388_levre\", \"x\": -6185411, \"z\": 156218,\n"
+        "      \"heading\": 45.9, \"pitch\": -30, \"eye\": 3, \"eyeMode\": \"ground\",\n"
+        "      \"planet\": true, \"note\": \"l\xC3\xA8vre de la chute (eau \xC3\xA0 568,99 m)\" },\n"
+        "    { \"name\": \"lisiere_tropicale_savane\", \"x\": -26927500, \"z\": -270336,\n"
+        "      \"heading\": 300, \"pitch\": -8, \"eye\": 40, \"eyeMode\": \"ground\",\n"
+        "      \"planet\": false, \"note\": \"sans plan\xC3\xA8te seulement\" }\n"
+        "  ] }\n";
+    const PlacesFile file = parsePlaces(kAgent37);
+    TEST_CHECK(file.places.size() == 2);
+    const Place* lip = file.find("chute388_levre");
+    TEST_CHECK(lip != nullptr && lip->x == -6185411.0 && lip->heading == 45.9 &&
+               lip->pitch == -30.0 && lip->eye == 3.0 && lip->eyeMode == EyeMode::Ground &&
+               lip->planet && lip->note == "l\xC3\xA8vre de la chute (eau \xC3\xA0 568,99 m)");
+    const Place* edge = file.find("lisiere_tropicale_savane");
+    TEST_CHECK(edge != nullptr && !edge->planet && edge->pitch == -8.0 && edge->extra.empty());
+    TEST_CHECK(parsePlaces(writePlaces(file)) == file);
+}
+
 std::string fileText(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
     return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
@@ -290,6 +343,8 @@ int main(int argc, char** argv) {
     testExtraMembers();
     testRefusals();
     testPut();
+    testPutKeepsOtherMembers();
+    testOtherLayout();
     testSaveAndLoad();
     testMatch();
     if (argc < 2) {
