@@ -34,18 +34,22 @@ enum class LoadReason : std::uint8_t { Spawn, Teleport, Prepared };
 // shown (the LOD 0 tiles under its feet). GroundCollision: marked by the caller once a trace down
 // from the player hits a tile. Ring64 and Ring256: every selected tile closer than 4 and 16
 // chunks shown (the LOD 0 tiles, then up to LOD 2 with the default rings). AllTiles: every
-// selected tile shown. Horizon, HorizonDetail: marked by the caller (first display of the far
-// horizon, then its detail normals and crests all in).
+// selected tile shown. HorizonNear, HorizonAll, HorizonDetail: marked by the caller (the levels 0
+// to 3 of the far horizon shown around the player, then every level, then their detail normals
+// and crests all in).
 enum class LoadMilestone : std::uint8_t {
     Ground,
     GroundCollision,
     Ring64,
     Ring256,
     AllTiles,
-    Horizon,
+    HorizonNear,
+    HorizonAll,
     HorizonDetail
 };
-inline constexpr std::size_t kLoadMilestoneCount = 7;
+inline constexpr std::size_t kLoadMilestoneCount = 8;
+// The levels of the horizon of HorizonNear: the levels 0 to 3, out to about 8 km.
+inline constexpr int kNearHorizonLevels = 4;
 [[nodiscard]] const char* milestoneName(LoadMilestone milestone);
 
 inline constexpr int kGroundChunks = 1;
@@ -74,6 +78,16 @@ struct SelectedTile {
 // The selected tiles of the streamer around the player (an unwrapped chunk).
 [[nodiscard]] std::vector<SelectedTile> selectedTiles(const TileStreamer& streamer,
                                                       ChunkCoord player);
+
+// The rings complete in a selection: every tile within kGroundChunks shown (the ground), closer
+// than kRing64Chunks and kRing256Chunks, every tile. Nothing complete in an empty selection.
+struct TileRings {
+    bool ground = false;
+    bool ring64 = false;
+    bool ring256 = false;
+    bool all = false;
+};
+[[nodiscard]] TileRings tileRings(std::span<const SelectedTile> selection);
 
 // Whether the far horizon is placed around the core point (x, z), any image: its finest level
 // covers it. False before the first commit, and after a jump beyond that level until the epoch

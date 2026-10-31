@@ -25,9 +25,15 @@ using JobLauncher = std::function<void(std::function<void()>)>;
 using PiecePreparer = std::function<std::vector<float>(const HorizonPiece&)>;
 
 struct HorizonEpochParams {
-    // Pieces computed at once: the horizon never takes more of the task threads.
+    // Pieces computed at once: the horizon never takes more of the task threads
+    // (setMaxPiecesInFlight changes it while running).
     int maxPiecesInFlight = 2;
     std::size_t pieceSamples = kHorizonPieceSamples;
+    // A new place (the first update, or a jump out of the window of the finest level) is
+    // brought level by level, finest first, each level shown as soon as its epoch is committed
+    // (HorizonClipmap::planFinest), and the epoch in flight for the old place is abandoned
+    // (agent 38). False: one epoch of every level, as before.
+    bool progressive = false;
 };
 
 // A piece of a committed epoch with what the preparer made of it.
@@ -53,6 +59,13 @@ struct EpochCommit {
 // from the thread owning the runner; only the jobs run elsewhere. Once idle, the samples only
 // depend on the last position and the sampler, as with HorizonStreamer.
 //
+// Progressive (HorizonEpochParams::progressive): at a new place, levelsShown() falls to 0 (the
+// windows of the old place no longer nest around the player), the epoch in flight is abandoned
+// without waiting (no piece of it launched any more, forgotten once its pieces in flight end),
+// then the epochs bring one more level each, finest first: levelsShown() counts the finest levels
+// placed around the player, which a renderer shows, nested, the coarser ones hidden. Walking
+// within the finest window moves every level at once, as before.
+//
 // With the map of edits the sampler reads, an update with no epoch in flight applies the staged
 // edits and invalidates their areas before it plans (as HorizonStreamer): the next epoch
 // computes again the samples around them, and its commit sends only those bands.
@@ -75,14 +88,27 @@ public:
     // update.
     EpochCommit update(double x, double z);
 
-    // Waits until every piece of the epoch in flight is computed (or an error).
+    // Waits until every piece of the epoch in flight is computed (or an error); for an abandoned
+    // epoch, until its pieces in flight end.
     void waitIdle();
+
+    // The pieces computed at once from now on (at least 1): more are launched at once when it
+    // grows, fewer once the pieces in flight end when it shrinks.
+    void setMaxPiecesInFlight(int pieces);
+    [[nodiscard]] int maxPiecesInFlight() const;
+    // The finest levels placed around the player (see above): every level once a place is
+    // loaded, fewer while a new place is brought level by level, 0 before the first commit.
+    [[nodiscard]] int levelsShown() const { return levelsShown_; }
 
     [[nodiscard]] bool busy() const { return epoch_ != nullptr; }
     [[nodiscard]] const HorizonClipmap& clipmap() const { return clipmap_; }
     [[nodiscard]] const HorizonLevel& level(int level) const { return clipmap_.level(level); }
 
 private:
+    void noteNewPlace(double x, double z);
+    [[nodiscard]] bool settleAbandoned();
+    void planNext(double x, double z);
+    [[nodiscard]] bool near(double ax, double az, double bx, double bz) const;
     void start(HorizonEpoch epoch);
     void commitIfComplete(EpochCommit& result);
     void dropEpoch();
@@ -100,13 +126,18 @@ private:
     // The epoch in flight: the jobs write its pieces and their prepared data, each its own.
     std::unique_ptr<HorizonEpoch> epoch_;
     std::vector<std::vector<float>> prepared_;
+    double epochX_ = 0.0; // where it was planned around
+    double epochZ_ = 0.0;
+    bool abandoned_ = false; // owner thread: never committed, forgotten once its jobs end
+    int levelsShown_ = 0;    // owner thread
 
     // Shared with the jobs, guarded by mutex_.
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable done_;
     std::size_t next_ = 0;      // next piece to launch
     std::size_t remaining_ = 0; // pieces not computed yet
     std::size_t inFlight_ = 0;
+    int maxPieces_ = 1;
     std::exception_ptr error_;
     bool stopping_ = false;
 };

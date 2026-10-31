@@ -11,7 +11,8 @@ namespace terrain::unreal {
 namespace {
 
 constexpr std::array<const char*, kLoadMilestoneCount> kMilestoneNames{
-    "ground", "ground collision", "64 m", "256 m", "all tiles", "horizon", "horizon detail"};
+    "ground",      "ground collision", "64 m",        "256 m",
+    "all tiles",   "horizon 0-3",      "horizon all", "horizon detail"};
 
 constexpr double kNotYet = -1.0;
 
@@ -48,20 +49,6 @@ bool nearerTrace(const TileTrace& a, const TileTrace& b) {
            std::tuple(b.distanceChunks, b.key.lod, b.key.origin.z, b.key.origin.x);
 }
 
-// The reach of a tile milestone: the selected tiles closer than this many chunks (all: -1).
-int milestoneReach(LoadMilestone milestone) {
-    switch (milestone) {
-    case LoadMilestone::Ground:
-        return kGroundChunks + 1;
-    case LoadMilestone::Ring64:
-        return kRing64Chunks;
-    case LoadMilestone::Ring256:
-        return kRing256Chunks;
-    default:
-        return -1;
-    }
-}
-
 } // namespace
 
 const char* loadReasonName(LoadReason reason) {
@@ -89,6 +76,24 @@ std::vector<SelectedTile> selectedTiles(const TileStreamer& streamer, ChunkCoord
         tiles.push_back({request.key, tileDistance(image, player), streamer.shown(request.key)});
     }
     return tiles;
+}
+
+TileRings tileRings(std::span<const SelectedTile> selection) {
+    // The nearest tile not shown yet bounds the rings complete.
+    int nearestMissing = -1;
+    for (const SelectedTile& tile : selection) {
+        if (!tile.shown && (nearestMissing < 0 || tile.distanceChunks < nearestMissing)) {
+            nearestMissing = tile.distanceChunks;
+        }
+    }
+    if (selection.empty()) {
+        return {};
+    }
+    const auto complete = [nearestMissing](int reach) {
+        return nearestMissing < 0 || nearestMissing >= reach;
+    };
+    return {complete(kGroundChunks + 1), complete(kRing64Chunks), complete(kRing256Chunks),
+            nearestMissing < 0};
 }
 
 bool horizonAround(const HorizonClipmap& clipmap, double x, double z) {
@@ -185,22 +190,19 @@ std::vector<LoadMilestone> LoadTimeline::observe(std::span<const SelectedTile> s
     if (!active_) {
         return reached;
     }
-    // The nearest tile not shown yet bounds the rings complete now.
-    int nearestMissing = -1;
     for (const SelectedTile& tile : selection) {
         TileTrace& trace = traces_[tile.key];
         trace.key = tile.key;
         trace.distanceChunks = tile.distanceChunks;
-        if (!tile.shown && (nearestMissing < 0 || tile.distanceChunks < nearestMissing)) {
-            nearestMissing = tile.distanceChunks;
-        }
     }
+    const TileRings rings = tileRings(selection);
     const double at = seconds(now);
-    for (const LoadMilestone milestone : {LoadMilestone::Ground, LoadMilestone::Ring64,
-                                          LoadMilestone::Ring256, LoadMilestone::AllTiles}) {
-        const int reach = milestoneReach(milestone);
-        const bool done = nearestMissing < 0 || (reach >= 0 && nearestMissing >= reach);
-        if (!selection.empty() && done && reachMilestone(milestone, at)) {
+    const std::pair<LoadMilestone, bool> tiles[] = {{LoadMilestone::Ground, rings.ground},
+                                                    {LoadMilestone::Ring64, rings.ring64},
+                                                    {LoadMilestone::Ring256, rings.ring256},
+                                                    {LoadMilestone::AllTiles, rings.all}};
+    for (const auto& [milestone, done] : tiles) {
+        if (done && reachMilestone(milestone, at)) {
             reached.push_back(milestone);
         }
     }
@@ -249,7 +251,8 @@ bool LoadTimeline::expected(LoadMilestone milestone) const {
     switch (milestone) {
     case LoadMilestone::GroundCollision:
         return expectations_.groundCollision;
-    case LoadMilestone::Horizon:
+    case LoadMilestone::HorizonNear:
+    case LoadMilestone::HorizonAll:
         return expectations_.horizon;
     case LoadMilestone::HorizonDetail:
         return expectations_.horizon && expectations_.horizonDetail;

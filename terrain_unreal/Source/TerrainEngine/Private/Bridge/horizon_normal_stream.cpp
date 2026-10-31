@@ -74,6 +74,11 @@ void HorizonNormalStream::launchJobs() {
     }
 }
 
+void HorizonNormalStream::dropQueued() {
+    const std::lock_guard lock(mutex_);
+    queue_.clear();
+}
+
 // The next task still in its window, clipped to it; false when none is left.
 bool HorizonNormalStream::takeTask(Task& task) {
     while (!queue_.empty() && !stopping_ && error_ == nullptr) {

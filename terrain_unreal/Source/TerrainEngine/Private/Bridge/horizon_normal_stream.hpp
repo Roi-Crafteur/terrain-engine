@@ -61,6 +61,10 @@ public:
     // normals (into normals) and the crests (into crests, their bands clipped to the windows).
     // Rethrows the error of a job.
     void collect(std::vector<NormalRegion>& normals, std::vector<CrestBand>& crests);
+    // Forgets the detail queued and not started (a jump to a new place: the windows it was for
+    // are left); the jobs running end as usual, their detail written where it still lies in a
+    // window.
+    void dropQueued();
     // Waits until every queued job is done (or an error).
     void waitIdle();
 

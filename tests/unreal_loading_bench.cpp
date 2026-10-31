@@ -8,7 +8,13 @@
 //
 //   unreal_loading_bench [--planet <file>] [--at <x> <z>] [--teleport <x> <z>]... [--workers <n>]
 //                        [--pieces <n>] [--uploads <n>] [--no-horizon] [--schedule]
-//                        [--csv <prefix>] [--timeout <seconds>] [--levels]
+//                        [--csv <prefix>] [--timeout <seconds>] [--levels] [--cap <n>]
+//                        [--all-at-once] [--upload-ms <ms>]
+//
+// The horizon is brought level by level, finest first, as in the game (--all-at-once: every level
+// in one epoch, as before agent 38). --cap n: the boost of a load (Bridge/load_phase.hpp), n tile
+// workers and horizon pieces together while loading, uploads by a budget of 6 ms per frame at
+// --upload-ms per upload (0.1 by default, the median measured in Unreal); 0: no boost.
 //
 // --levels: the cost of the first epoch of the horizon around the spawn, level by level, on one
 // thread (a few pieces of each level timed, the level extrapolated), as the GPU horizon computes
@@ -16,6 +22,7 @@
 // --schedule: after the loads, the cost of every tile of the selection around each place,
 // measured one at a time, then the load simulated for 2 to 16 workers and two orders: the order of
 // today (nearest first) and a coarse stage first (rings {2, 4, 8}, then the final rings).
+#include "load_phase.hpp"
 #include "load_schedule.hpp"
 #include "load_timeline.hpp"
 #include "terrain_session.hpp"
@@ -59,6 +66,9 @@ struct Options {
     bool horizon = true;
     bool schedule = false;
     bool levels = false;
+    int cap = 0;
+    bool allAtOnce = false;
+    double uploadMilliseconds = 0.1;
     std::string csv;
     double timeoutSeconds = 90.0;
 };
@@ -103,6 +113,12 @@ Options parse(int argc, char** argv) {
             options.schedule = true;
         } else if (arg == "--levels") {
             options.levels = true;
+        } else if (arg == "--cap") {
+            options.cap = static_cast<int>(number(argc, argv, i));
+        } else if (arg == "--all-at-once") {
+            options.allAtOnce = true;
+        } else if (arg == "--upload-ms") {
+            options.uploadMilliseconds = number(argc, argv, i);
         } else if (arg == "--csv" && i + 1 < argc) {
             options.csv = argv[++i];
         } else {
@@ -177,16 +193,30 @@ struct Game {
     terrain::unreal::UnrealFrame frame;
     Pool pool;
     std::unique_ptr<terrain::unreal::HorizonGpuStreamer> horizon;
+    std::optional<terrain::unreal::LoadPhase> phase; // with a boost
+    double uploadMilliseconds = 0.1;
 
     Game(const terrain::unreal::SessionParams& params, const Options& options)
         : session(params), frame(session.frameAt(options.spawn.x, options.spawn.z)),
-          pool(options.pieces) {}
+          pool(std::max(options.pieces, options.cap)),
+          uploadMilliseconds(options.uploadMilliseconds) {
+        if (options.cap > 0) {
+            terrain::unreal::LoadPhaseParams phaseParams;
+            phaseParams.normal = {options.workers, options.pieces,
+                                  static_cast<std::size_t>(options.uploads)};
+            phaseParams.cap = options.cap;
+            phaseParams.maxUploadsPerFrame =
+                std::max<std::size_t>(32, static_cast<std::size_t>(options.uploads));
+            phase.emplace(phaseParams);
+            session.streamer().setWorkerLimit(options.workers);
+        }
+    }
 };
 
 terrain::unreal::SessionParams sessionParams(const Options& options) {
     terrain::unreal::SessionParams params;
     params.planetFile = options.planet;
-    params.stream.workerThreads = options.workers;
+    params.stream.workerThreads = std::max(options.workers, options.cap);
     params.stream.maxLoadsPerUpdate = static_cast<std::size_t>(options.uploads);
     return params;
 }
@@ -195,6 +225,7 @@ void startHorizon(Game& game, const Options& options) {
     const LoadClock::time_point start = LoadClock::now();
     terrain::unreal::HorizonGpuParams params;
     params.maxPiecesInFlight = options.pieces;
+    params.progressive = !options.allAtOnce;
     params.lod = game.session.streamer().manager().params().lod;
     game.horizon = std::make_unique<terrain::unreal::HorizonGpuStreamer>(
         game.session.tiles().heightfield(), game.session.tiles().ecology(),
@@ -203,38 +234,81 @@ void startHorizon(Game& game, const Options& options) {
                 options.pieces, secondsSince(start));
 }
 
-// The worst updates of the tiles and of the horizon in a load, milliseconds.
+// The worst updates of the tiles and of the horizon in a load, milliseconds, and the instant
+// each level of the horizon was shown, seconds.
 struct Worst {
     double tiles = 0.0;
     double horizon = 0.0;
+    std::vector<double> levels;
 };
 
-// One frame of the game: the tiles (their conversions recorded), the horizon, the milestones.
-void frame(Game& game, const Place& place, const terrain::unreal::UnrealPoint& position,
-           Worst& worst) {
+// The boost of the frame, from the phase of the load.
+void applyBudget(Game& game) {
+    if (!game.phase) {
+        return;
+    }
+    const bool pending = game.session.streamer().manager().pendingCount() > 0;
+    const terrain::unreal::LoadBudget budget =
+        game.phase->budget(pending, game.uploadMilliseconds);
+    game.session.streamer().setWorkerLimit(budget.workers);
+    game.session.streamer().setMaxLoadsPerUpdate(budget.uploadsPerFrame);
+    if (game.horizon != nullptr) {
+        game.horizon->setMaxPiecesInFlight(budget.pieces);
+    }
+}
+
+// The levels of the horizon shown around the player: the milestones they reach.
+int markHorizon(Game& game, Worst& worst) {
+    LoadTimeline& timeline = game.session.timeline();
+    const int count = game.horizon->params().levels;
+    const int shown = game.horizon->levelsShown();
+    while (static_cast<int>(worst.levels.size()) < shown) {
+        worst.levels.push_back(timeline.secondsSince(LoadClock::now()));
+    }
+    if (shown >= std::min(terrain::unreal::kNearHorizonLevels, count)) {
+        timeline.mark(LoadMilestone::HorizonNear, LoadClock::now());
+    }
+    if (shown == count) {
+        timeline.mark(LoadMilestone::HorizonAll, LoadClock::now());
+        if (!game.horizon->busy()) {
+            timeline.mark(LoadMilestone::HorizonDetail, LoadClock::now());
+        }
+    }
+    return shown;
+}
+
+// One frame of the game: the boost, the tiles (their conversions recorded), the horizon, the
+// milestones and the phase of the load.
+void frame(Game& game, const terrain::unreal::UnrealPoint& position, Worst& worst) {
     LoadTimeline& timeline = game.session.timeline();
     const LoadClock::time_point start = LoadClock::now();
+    applyBudget(game);
     const terrain::unreal::StreamerUpdate update =
         game.session.streamer().update(position, game.frame);
     for (const terrain::unreal::TileUpload& upload : update.uploads) {
         timeline.recordShown(upload.key, LoadClock::now(), 0.0, upload.collision);
     }
     worst.tiles = std::max(worst.tiles, secondsSince(start) * 1000.0);
+    int levels = 0;
     if (game.horizon != nullptr) {
         const LoadClock::time_point horizonStart = LoadClock::now();
         game.horizon->update(position, game.frame);
         worst.horizon = std::max(worst.horizon, secondsSince(horizonStart) * 1000.0);
-        if (terrain::unreal::horizonAround(game.horizon->clipmap(), place.x, place.z)) {
-            timeline.mark(LoadMilestone::Horizon, LoadClock::now());
-            if (!game.horizon->busy()) {
-                timeline.mark(LoadMilestone::HorizonDetail, LoadClock::now());
-            }
-        }
+        levels = markHorizon(game, worst);
     }
     const terrain::ChunkCoord chunk = terrain::unreal::chunkAt(game.frame, position);
-    timeline.observe(terrain::unreal::selectedTiles(game.session.streamer(), chunk),
-                     LoadClock::now());
+    const std::vector<terrain::unreal::SelectedTile> selection =
+        terrain::unreal::selectedTiles(game.session.streamer(), chunk);
+    timeline.observe(selection, LoadClock::now());
     timeline.recordFrame(secondsSince(start) * 1000.0, update.uploads.size());
+    if (game.phase) {
+        const terrain::unreal::TileRings rings = terrain::unreal::tileRings(selection);
+        const bool all = rings.all && game.session.streamer().manager().pendingCount() == 0;
+        const int count = game.horizon != nullptr ? game.horizon->params().levels : 0;
+        game.phase->update({rings.ground, rings.ground, rings.ring64, all, levels, count},
+                           std::chrono::duration<double>(LoadClock::now().time_since_epoch())
+                               .count());
+    }
 }
 
 void writeCsv(const Options& options, int index, LoadReason reason, const LoadTimeline& timeline) {
@@ -261,6 +335,10 @@ void load(Game& game, const Options& options, int index, LoadReason reason, cons
     const bool detail = game.horizon != nullptr && game.horizon->detail() != nullptr;
     timeline.begin(reason, place.x, place.z, LoadClock::now(),
                    {false, game.horizon != nullptr, detail});
+    if (game.phase) {
+        game.phase->begin(
+            std::chrono::duration<double>(LoadClock::now().time_since_epoch()).count());
+    }
     if (reason == LoadReason::Spawn) {
         const terrain::unreal::WarmUpResult warm = game.session.streamer().warmUp(
             position, game.frame, 1, std::chrono::seconds(10));
@@ -275,7 +353,7 @@ void load(Game& game, const Options& options, int index, LoadReason reason, cons
     LoadClock::time_point next = start;
     Worst worst;
     while (timeline.active() && secondsSince(start) < options.timeoutSeconds) {
-        frame(game, place, position, worst);
+        frame(game, position, worst);
         next += period;
         std::this_thread::sleep_until(next);
     }
@@ -284,6 +362,13 @@ void load(Game& game, const Options& options, int index, LoadReason reason, cons
     }
     std::printf("  worst update of the tiles %.1f ms, of the horizon %.1f ms\n", worst.tiles,
                 worst.horizon);
+    std::string levels = "  horizon levels shown at:";
+    for (std::size_t level = 0; level < worst.levels.size(); ++level) {
+        char text[48];
+        std::snprintf(text, sizeof(text), " %zu %.2f s", level, worst.levels[level]);
+        levels += text;
+    }
+    std::printf("%s\n", levels.c_str());
     writeCsv(options, index, reason, timeline);
 }
 

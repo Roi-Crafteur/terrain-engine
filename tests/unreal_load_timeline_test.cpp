@@ -85,8 +85,11 @@ void testMilestonesByHand() {
                 std::vector<LoadMilestone>{LoadMilestone::Ring256, LoadMilestone::AllTiles}));
     TEST_CHECK(timeline.active() && !timeline.complete());
     TEST_CHECK(timeline.missing() ==
-               (std::vector<LoadMilestone>{LoadMilestone::Horizon, LoadMilestone::HorizonDetail}));
-    TEST_CHECK(timeline.mark(LoadMilestone::Horizon, at(1.0)));
+               (std::vector<LoadMilestone>{LoadMilestone::HorizonNear, LoadMilestone::HorizonAll,
+                                           LoadMilestone::HorizonDetail}));
+    TEST_CHECK(timeline.mark(LoadMilestone::HorizonNear, at(1.0)));
+    TEST_CHECK(!timeline.complete());
+    TEST_CHECK(timeline.mark(LoadMilestone::HorizonAll, at(2.0)));
     TEST_CHECK(timeline.mark(LoadMilestone::HorizonDetail, at(2.5)));
     TEST_CHECK(timeline.complete() && !timeline.active() && timeline.missing().empty());
 
@@ -97,7 +100,8 @@ void testMilestonesByHand() {
     TEST_CHECK(near(milestone(summary, LoadMilestone::Ring64), 0.1));
     TEST_CHECK(near(milestone(summary, LoadMilestone::Ring256), 0.5));
     TEST_CHECK(near(milestone(summary, LoadMilestone::AllTiles), 0.5));
-    TEST_CHECK(near(milestone(summary, LoadMilestone::Horizon), 1.0));
+    TEST_CHECK(near(milestone(summary, LoadMilestone::HorizonNear), 1.0));
+    TEST_CHECK(near(milestone(summary, LoadMilestone::HorizonAll), 2.0));
     TEST_CHECK(near(milestone(summary, LoadMilestone::HorizonDetail), 2.5));
     TEST_CHECK(summary.uploads == 5 && near(summary.uploadMilliseconds, 7.5));
 }
@@ -179,7 +183,7 @@ void testOutsideALoad() {
     timeline.recordShown({{40, 40}, 0}, at(0.3), 1.0, true);
     timeline.recordFrame(50.0, 3);
     TEST_CHECK(timeline.summary().tiles == tiles.size() && timeline.summary().frames == 0);
-    TEST_CHECK(!timeline.mark(LoadMilestone::Horizon, at(0.4)));
+    TEST_CHECK(!timeline.mark(LoadMilestone::HorizonNear, at(0.4)));
     timeline.begin(LoadReason::Teleport, 0.0, 0.0, at(1.0));
     TEST_CHECK(timeline.active() && timeline.summary().tiles == 0);
     TEST_CHECK(near(timeline.secondsSince(at(1.25)), 0.25));

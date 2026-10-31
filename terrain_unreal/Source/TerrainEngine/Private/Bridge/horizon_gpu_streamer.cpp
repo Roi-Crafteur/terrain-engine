@@ -70,17 +70,23 @@ HorizonGpuStreamer::HorizonGpuStreamer(const Heightfield& field, const Ecology& 
       detail_(detailStream(field, horizonParams_, params, launch)),
       runner_(sampler_, std::move(launch),
               [sea = params.sea](const HorizonPiece& piece) { return pieceUploads(piece, sea); },
-              HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples}, edits) {}
+              HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples,
+                                 params.progressive},
+              edits) {}
 
 HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const UnrealFrame& frame) {
     // Unwrapped: the images near the player are taken around where it stands in Unreal.
     const CorePoint observer = toCore(frame, player);
     const auto now = std::chrono::steady_clock::now();
+    const int shownBefore = runner_.levelsShown();
     const EpochCommit commit = runner_.update(observer.x, observer.z);
+    if (detail_ && shownBefore > 0 && runner_.levelsShown() == 0) {
+        detail_->dropQueued(); // a new place: the detail of the old one is of no use
+    }
     HorizonGpuUpdate result;
     if (!commit.empty()) {
         result.committed = true;
-        result.first = !shown_.front().has_value();
+        result.first = !shown_.front().has_value() && runner_.levelsShown() > 0;
         result.samples = samplesWritten(commit.changes);
         for (const HorizonLevelChange& change : commit.changes.levels) {
             if (change.moved) {
@@ -310,22 +316,30 @@ LevelPlacement HorizonGpuStreamer::placementOf(int level, const CorePoint& obser
         placement.trim = trimVariant(finerWindowCells(window, clipmap.level(level - 1)),
                                      horizonParams_.cellsPerSide);
     }
-    if (level + 1 < clipmap.levelCount()) {
+    if (level + 1 < runner_.levelsShown()) {
         const CellRect inCoarser = finerWindowCells(clipmap.level(level + 1), window);
         placement.inCoarser = {inCoarser.i0, inCoarser.k0};
     }
     return placement;
 }
 
-// Every level placed again whenever its window, its trim or its image changes.
+// Every level shown placed again whenever its window, its trim or its image changes; a level
+// placed before and no longer shown (a new place) hidden.
 void HorizonGpuStreamer::placeLevels(const CorePoint& observer, const UnrealFrame& frame,
                                      HorizonGpuUpdate& result) {
-    if (!runner_.clipmap().placed()) {
-        return;
-    }
     for (int level = 0; level < horizonParams_.levels; ++level) {
-        const LevelPlacement placement = placementOf(level, observer, frame);
         std::optional<LevelPlacement>& shown = shown_[static_cast<std::size_t>(level)];
+        if (level >= runner_.levelsShown()) {
+            if (shown && shown->visible) {
+                LevelPlacement hidden;
+                hidden.level = level;
+                hidden.visible = false;
+                shown = hidden;
+                result.placements.push_back(hidden);
+            }
+            continue;
+        }
+        const LevelPlacement placement = placementOf(level, observer, frame);
         if (!shown || !(*shown == placement)) {
             shown = placement;
             result.placements.push_back(placement);
