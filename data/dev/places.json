@@ -31,5 +31,5 @@
       "heading": 180, "pitch": 5, "eye": 2, "eyeMode": "ground",
       "planet": true, "note": "un lac de montagne (eau à 1 725,26 m), vers les sommets de 3 345 m à 3 km" },
     { "name": "lisiere_tropicale_savane", "x": -26927500, "z": -270336,
-      "heading": 0, "pitch": -5, "eye": 2, "eyeMode": "ground",
-      "planet": true, "note": "lisière forêt tropicale / savane ; sur main, le core n'y voit que de la savane à moins de 500 km (22,7 °C, humidité 0,48) : à revoir" } ] }
+      "heading": 265, "pitch": -5, "eye": 40, "eyeMode": "ground",
+      "planet": false, "note": "lisière forêt tropicale / savane à 450 m vers l'ouest, vue de 40 m au-dessus des arbres ; sans planète seulement (avec elle, savane partout)" } ] }
