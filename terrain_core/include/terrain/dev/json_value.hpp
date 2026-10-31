@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -70,6 +71,10 @@ inline constexpr int kJsonMaxDepth = 64;
 
 // The value of a strict JSON text. Throws JsonError.
 [[nodiscard]] JsonValue parseJson(std::string_view text);
+
+// The number of a text that is a JSON number and nothing else (no space, no "+", no "1." nor
+// ".5"), whatever the locale; nullopt otherwise. For the numbers typed in a console.
+[[nodiscard]] std::optional<double> parseJsonNumber(std::string_view text);
 
 // The value on one line: ", " between items and members, ": " after keys, strings escaped
 // (", \, control characters; the rest of UTF-8 as it is). Throws std::invalid_argument for a

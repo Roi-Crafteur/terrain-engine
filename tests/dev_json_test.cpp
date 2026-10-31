@@ -172,6 +172,17 @@ void testNumbers() {
     TEST_CHECK(parseJson("2.5e-3").number == 0.0025);
 }
 
+void testConsoleNumbers() {
+    using terrain::dev::parseJsonNumber;
+    TEST_CHECK(parseJsonNumber("182.03") == 182.03);
+    TEST_CHECK(parseJsonNumber("-6185104") == -6185104.0);
+    TEST_CHECK(parseJsonNumber("1e3") == 1000.0);
+    for (const char* bad : {"", " 1", "1 ", "+1", "1.", ".5", "1,5", "abc", "1e", "--1", "0x10",
+                            "nan", "inf", "\xEF\xBB\xBF" "1", "1e999", "[1]", "\"1\""}) {
+        TEST_CHECK(!parseJsonNumber(bad).has_value());
+    }
+}
+
 } // namespace
 
 int main() {
@@ -179,5 +190,6 @@ int main() {
     testStrings();
     testRefusals();
     testNumbers();
+    testConsoleNumbers();
     return test::result();
 }

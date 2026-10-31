@@ -12,3 +12,11 @@ target_link_libraries(dev_places_file_test PRIVATE terrain_core terrain_warnings
 add_test(NAME dev_places_file_test
     COMMAND dev_places_file_test ${PROJECT_SOURCE_DIR}/data/dev/places.json)
 add_dependencies(check dev_places_file_test)
+
+# The Bridge of the tools (pure C++, compiled by Unreal with the plugin).
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/dev_commands.cpp
+                                             ${unreal_bridge}/place_pose.cpp)
+
+# The poses of the views (the yaw of a heading, the eye above the ground or the water, a saved
+# view posed again) and the arguments of the console commands.
+terrain_add_test(unreal_place_pose_test terrain_unreal_bridge)

@@ -334,4 +334,19 @@ JsonValue parseJson(std::string_view text) {
     return Reader(text).document();
 }
 
+std::optional<double> parseJsonNumber(std::string_view text) {
+    const auto digit = [](char c) { return c >= '0' && c <= '9'; };
+    if (text.empty() || !(text.front() == '-' || digit(text.front())) || !digit(text.back())) {
+        return std::nullopt; // spaces, signs, letters or a byte order mark around it
+    }
+    try {
+        const JsonValue value = parseJson(text);
+        if (value.kind == JsonKind::Number) {
+            return value.number;
+        }
+    } catch (const JsonError&) {
+    }
+    return std::nullopt;
+}
+
 } // namespace terrain::dev
