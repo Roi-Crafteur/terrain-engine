@@ -14,12 +14,13 @@ INPUTS = ["LocalPos", "Cells"] + list(SCALARS)
 
 # The share of a pixel of the level kept, dithered on the screen and in time (the temporal
 # antialiasing blends it): Reveal, times the outer band of the window where EdgeFade dissolves it.
-# LocalPos is the position in the cells of the window, from its low corner.
+# LocalPos is the position in the cells of the window, from its low corner. No identifier may be
+# a type Unreal rewrites (half, fixed...): unreal_loading_scripts_test checks every HLSL here.
 HLSL = r"""
-float half = Cells * 0.5;
+float halfSide = Cells * 0.5;
 float2 p = LocalPos.xy;
-float d = max(abs(p.x - half), abs(p.y - half));
-float edge = saturate((half - d) / max(EdgeFadeCells, 1.0));
+float d = max(abs(p.x - halfSide), abs(p.y - halfSide));
+float edge = saturate((halfSide - d) / max(EdgeFadeCells, 1.0));
 float keep = saturate(Reveal) * lerp(1.0, edge, saturate(EdgeFade));
 float2 s = Parameters.SvPosition.xy + (float)View.StateFrameIndexMod8 * float2(5.588238, 5.588238);
 float noise = frac(52.9829189 * frac(dot(s, float2(0.06711056, 0.00583715))));
