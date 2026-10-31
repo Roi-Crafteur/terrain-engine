@@ -73,6 +73,9 @@ struct Ground {
     // The share of the local relief its terraces step before the fade from the shore: 1 on the
     // low coasts (their slow fade, as without the coasts), land on the others (their quick one).
     float fade = 1.0f;
+    // How irregular its terraces are: the share of the high coasts, 0 on the low coasts and at
+    // the inner edge of the band (relief_local::Shape::irregular).
+    float irregular = 0.0f;
 };
 
 [[nodiscard]] Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,

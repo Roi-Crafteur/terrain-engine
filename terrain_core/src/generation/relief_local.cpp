@@ -4,6 +4,7 @@
 #include "terrain/generation/noise.hpp"
 
 #include <cmath>
+#include <cstdint>
 
 namespace terrain::relief_local {
 
@@ -54,6 +55,14 @@ constexpr float kLandsSpan = 0.4f;
 constexpr float kTerraceCore = 0.04f;
 constexpr float kTerraceLands = 0.12f;
 constexpr double kTerraceStep = 10.0;
+// Irregular terraces (Shape::irregular): each level moved by up to kLevelJitter / 2 of a step,
+// each tread kTread plus up to kTreadJitter / 2 of it, their edges moved by kTerraceWander meters
+// times the noise of the buttes, their steps kTerraceSoften softer.
+constexpr double kLevelJitter = 0.9;
+constexpr double kTread = 0.6;
+constexpr double kTreadJitter = 0.5;
+constexpr float kTerraceWander = 20.0f;
+constexpr float kTerraceSoften = 0.5f;
 
 float fbm(const noise::FbmOctaves& layer, double x, double z, noise::FbmOctaves::Memo* memo) {
     return memo != nullptr ? layer.fbm2D(x, z, *memo) : layer.fbm2D(x, z);
@@ -66,6 +75,33 @@ float terrace(float h) {
     const double f = steps - k;
     const double t = f <= 0.6 ? 0.0 : (f - 0.6) / 0.4;
     return static_cast<float>(kTerraceStep * (k + t * t * (3.0 - 2.0 * t)));
+}
+
+// A number in [0, 1) for the step k of the terraces and a stream (splitmix64).
+double stepShare(double k, std::uint64_t stream) {
+    std::uint64_t v = static_cast<std::uint64_t>(static_cast<std::int64_t>(k)) * 2 + stream +
+                      0x9E3779B97F4A7C15ULL;
+    v = (v ^ (v >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    v = (v ^ (v >> 27)) * 0x94D049BB133111EBULL;
+    v ^= v >> 31;
+    return static_cast<double>(v >> 11) * 0x1.0p-53;
+}
+
+// Soft terraces whose levels and treads change from one step to the next, as irregular is 0 to 1.
+float irregularTerrace(float h, float irregular) {
+    const double s = static_cast<double>(h) / kTerraceStep;
+    const double jitter = static_cast<double>(irregular);
+    const auto level = [jitter](double k) {
+        return k + jitter * kLevelJitter * (stepShare(k, 0) - 0.5);
+    };
+    double k = std::floor(s);
+    k = s < level(k) ? k - 1.0 : (s >= level(k + 1.0) ? k + 1.0 : k);
+    const double low = level(k);
+    const double high = level(k + 1.0);
+    const double tread = kTread + jitter * kTreadJitter * (stepShare(k, 1) - 0.5);
+    const double f = (s - low) / (high - low);
+    const double t = f <= tread ? 0.0 : (f - tread) / (1.0 - tread);
+    return static_cast<float>(kTerraceStep * (low + (high - low) * t * t * (3.0 - 2.0 * t)));
 }
 
 // The share of the vallons, the foot of the buttes and the share of the terraces at a point.
@@ -123,14 +159,34 @@ float hillsAt(const Noises& noises, double x, double z, float rough, Memos* memo
     return plain + broad * (wide - plain);
 }
 
+namespace {
+
+// The relief stepped by its terraces: before the fade of the coasts (Shape::fade), irregular on
+// the high coasts (Shape::irregular); without the coasts, as in the plains.
+float stepped(const Noises& noises, double x, double z, float relief, float terraces,
+              const Shape& shape, Memos* memos) {
+    const bool faded = shape.fade > 0.0f && shape.fade < 1.0f;
+    const float full = faded ? relief / shape.fade : relief;
+    float out = 0.0f;
+    if (shape.irregular > 0.0f) {
+        const float wander =
+            shape.irregular * kTerraceWander *
+            fbm(noises.buttes, x, z, memos != nullptr ? &memos->buttes : nullptr);
+        out = full + terraces * (1.0f - kTerraceSoften * shape.irregular) *
+                         (irregularTerrace(full + wander, shape.irregular) - wander - full);
+    } else {
+        out = full + terraces * (terrace(full) - full);
+    }
+    return faded ? shape.fade * out : out;
+}
+
+} // namespace
+
 float rolling(const Noises& noises, double x, double z, const Shape& shape, Memos* memos) {
     const Lands lands = landsOf(noises.lively, shape);
     float relief = shape.amplitude * hillsAt(noises, x, z, shape.rough, memos);
-    if (lands.terraces > 0.0f && shape.fade > 0.0f && shape.fade < 1.0f) {
-        const float full = relief / shape.fade;
-        relief = shape.fade * (full + lands.terraces * (terrace(full) - full));
-    } else if (lands.terraces > 0.0f) {
-        relief += lands.terraces * (terrace(relief) - relief);
+    if (lands.terraces > 0.0f) {
+        relief = stepped(noises, x, z, relief, lands.terraces, shape, memos);
     }
     if (lands.vallons > 0.0f) {
         const float across =

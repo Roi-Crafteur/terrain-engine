@@ -100,6 +100,9 @@ constexpr double kScreeEnd = 0.45;
 constexpr double kScreeSlope = 0.7;
 constexpr double kScreeSteep = 0.5;
 constexpr double kScreeBlend = 0.25;
+// The screes never reach the water side of the platform: their toe stays kScreeKeep of its width
+// from the water at least.
+constexpr double kScreeKeep = 0.6;
 // The hills and the vallons of the hinterland come onto the plateau over kPlateauRise meters
 // beyond the top of the face.
 constexpr double kPlateauRise = 250.0;
@@ -107,6 +110,9 @@ constexpr double kPlateauRise = 250.0;
 // meters of coast signal (about 5 km): read on the signal, smooth, not on the distance to the
 // shore, whose rounding the heights of the mountains would show.
 constexpr double kPlungeRamp = 15'000.0;
+// Where the shore kinds weigh kHeldShare or more of the weight of the shore and plunging kinds,
+// the plunging kinds keep off their platform.
+constexpr double kHeldShare = 0.5;
 // Every kind gives way to the low coast (the ground and the factors of the land out of the band)
 // over the last kInnerFade meters of signal of the band, the last kInnerSlack excepted.
 constexpr double kInnerFade = 10'000.0;
@@ -175,7 +181,8 @@ struct Face {
 
 // The apron of screes at the foot of a face, at distance d from the water: rising as the square
 // of the distance from its toe up to its top, kScreeEnd of the way up the face, at most
-// kScreeSlope and kScreeSteep of the face steep there; smaller where the platform leaves no room.
+// kScreeSlope and kScreeSteep of the face steep there; smaller where the platform leaves no room
+// (its toe never on the water side of the platform, which stays flat).
 double screesAt(const Face& f, double patch, double d) {
     double top = patch * kScreeShare * f.height;
     const double slope =
@@ -185,8 +192,9 @@ double screesAt(const Face& f, double patch, double d) {
     }
     const double end = f.foot + kScreeEnd * f.width;
     double width = 2.0 * top / slope;
-    if (end - width < kBenchFoot) {
-        const double room = std::max(0.0, end - kBenchFoot);
+    const double toe = std::max(kBenchFoot, kScreeKeep * f.foot);
+    if (end - width < toe) {
+        const double room = std::max(0.0, end - toe);
         top *= (room / width) * (room / width);
         width = room;
     }
@@ -218,6 +226,7 @@ struct Land {
     double land = 0.0;
     double mountains = 0.0;
     double ground = 0.0;
+    double up = 1.0; // the shore kinds: how far up their face, 0 on the platform, 1 on the top
 };
 
 // The rocky coasts, the cliffs, the calanques and the rias: the platform, the screes and the face
@@ -239,26 +248,66 @@ Land shoreOf(const Profile& k, const GeographySample& g, double coast, double d,
     const double ground = round > 0.0 ? smoothMax(face, screes, round) : std::max(face, screes);
     const double top = f.foot + f.width;
     const double land = smooth(top, top + kPlateauRise, d);
-    return {land, land * smooth(0.0, k.hills, coast), std::max(old, ground)};
+    return {land, land * smooth(0.0, k.hills, coast), std::max(old, ground),
+            smooth(f.foot, top, d)};
 }
 
 // The mountains and the fjords: the mountains and the regional elevation rise from the shore,
-// steepest there (no ledge at the water).
-Land plungeOf(const GeographySample& g, double coast) {
+// steepest there (no ledge at the water), held down by held (in [0, 1]) where they share the coast
+// with cliffs.
+Land plungeOf(const GeographySample& g, double coast, double held) {
     const double plain = std::min(kCoastPlainRise * coast, kCoastPlainTop);
-    const double rise = easeOut(coast / kPlungeRamp);
+    const double rise = easeOut(coast / kPlungeRamp) * held;
     return {rise, rise, plain + (static_cast<double>(g.land) - plain) * rise};
 }
 
-Land landOf(CoastKind kind, const GeographySample& g, double coast, double d, const Shore& s,
-            double oldLand, double old) {
-    if (kind == CoastKind::Low) {
-        return {oldLand, oldLand, old};
+bool isShore(CoastKind kind) {
+    return kind == CoastKind::Rocky || kind == CoastKind::Cliff || kind == CoastKind::Calanque ||
+           kind == CoastKind::Ria;
+}
+
+bool plunges(CoastKind kind) {
+    return kind == CoastKind::Mountain || kind == CoastKind::Fjord;
+}
+
+// The land of the kinds blended by their weights: the shore kinds first; where they weigh more
+// than the plunging kinds (from kHeldShare of the weight of both on), the plunging kinds rise only
+// up the face of the shore kinds, leaving their platform flat; the low coast as without the
+// coasts.
+Land blendLand(const coast_kinds::Weights& weights, const GeographySample& g, double coast,
+               double d, const Shore& s, double oldLand, double old) {
+    Land sum;
+    double shoreWeight = 0.0;
+    double up = 0.0;
+    double plungeWeight = 0.0;
+    const auto add = [&sum](double w, const Land& l) {
+        sum.land += w * l.land;
+        sum.mountains += w * l.mountains;
+        sum.ground += w * l.ground;
+    };
+    for (std::size_t k = 0; k < weights.size(); ++k) {
+        const auto kind = static_cast<CoastKind>(k);
+        const auto w = static_cast<double>(weights[k]);
+        plungeWeight += plunges(kind) ? w : 0.0;
+        if (isShore(kind) && w > 0.0) {
+            const Land l = shoreOf(kProfiles[k], g, coast, d, s, old);
+            add(w, l);
+            shoreWeight += w;
+            up += w * l.up;
+        }
     }
-    if (kind == CoastKind::Mountain || kind == CoastKind::Fjord) {
-        return plungeOf(g, coast);
+    const double share = shoreWeight > 0.0 ? shoreWeight / (shoreWeight + plungeWeight) : 0.0;
+    const double held =
+        shoreWeight > 0.0 ? 1.0 - smooth(0.0, kHeldShare, share) * (1.0 - up / shoreWeight) : 1.0;
+    for (std::size_t k = 0; k < weights.size(); ++k) {
+        const auto kind = static_cast<CoastKind>(k);
+        if (weights[k] > 0.0f && plunges(kind)) {
+            add(static_cast<double>(weights[k]), plungeOf(g, coast, held));
+        }
     }
-    return shoreOf(kProfiles[static_cast<std::size_t>(kind)], g, coast, d, s, old);
+    add(static_cast<double>(weights[static_cast<std::size_t>(CoastKind::Low)]),
+        {oldLand, oldLand, old});
+    return sum;
 }
 
 // The floor of a kind at sea (coast < 0): from the shelf at the shore, the share deepen of the way
@@ -337,7 +386,7 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
                           seaOf(p, static_cast<CoastKind>(k), g, coast, distance);
             }
         }
-        return {0.0f, 0.0f, static_cast<float>(ground), 1.0f};
+        return {0.0f, 0.0f, static_cast<float>(ground), 1.0f, 0.0f};
     }
     bool shores = false;
     for (const CoastKind kind :
@@ -347,24 +396,14 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
     const Shore shore = shores ? shoreAt(noises, x, z) : Shore{};
     const double oldLand = static_cast<double>(landFactor(p, coast));
     const double old = static_cast<double>(groundBase(p, g, coast));
-    Land sum;
-    for (std::size_t k = 0; k < weights.size(); ++k) {
-        if (weights[k] > 0.0f) {
-            const auto w = static_cast<double>(weights[k]);
-            const Land kind = landOf(static_cast<CoastKind>(k), g, coast, distance, shore,
-                                     oldLand, old);
-            sum.land += w * kind.land;
-            sum.mountains += w * kind.mountains;
-            sum.ground += w * kind.ground;
-        }
-    }
+    const Land sum = blendLand(weights, g, coast, distance, shore, oldLand, old);
     const double inner =
         smooth(p.coastRamp - kInnerFade, p.coastRamp - kInnerSlack, coast);
     const auto land = static_cast<float>(sum.land + (oldLand - sum.land) * inner);
     const float low = weights[static_cast<std::size_t>(CoastKind::Low)];
     return {land, static_cast<float>(sum.mountains + (oldLand - sum.mountains) * inner),
             static_cast<float>(sum.ground + (old - sum.ground) * inner),
-            low + (1.0f - low) * land};
+            low + (1.0f - low) * land, static_cast<float>((1.0 - low) * (1.0 - inner))};
 }
 
 } // namespace terrain::coast_shape

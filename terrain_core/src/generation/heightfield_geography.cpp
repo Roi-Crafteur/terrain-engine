@@ -172,10 +172,11 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
                          (1.0f - noise::smoothstep(kButteLow, kButteHigh, intensity));
     const float plain = 1.0f - noise::smoothstep(kPlainLow, kPlainHigh, s.mountainMask);
     const float rough = noise::smoothstep(kRoughLow, kRoughHigh, intensity);
-    // The terraces step the relief before the quick fade of the high coasts from the shore, not
-    // along it (1 out of the band, on the low coasts and without the coasts: their bits kept).
+    // On the high coasts the terraces step the relief before its quick fade from the shore, not
+    // along it, and irregularly (out of the band, on the low coasts and without the coasts: their
+    // bits kept).
     float local = amplitude > 0.0f ? localReliefAt(x, z, amplitude, buttes, g.regions, plain,
-                                                   rough, coast.fade, memos)
+                                                   rough, coast, memos)
                                    : 0.0f;
     // The forms of the plains, only where the mask of the mountains is 0: their weight is 0 from
     // kMountainLow on, and the local relief keeps its bits there.
@@ -360,9 +361,11 @@ float Heightfield::plainFormsAt(double x, double z, float region, float local, f
 }
 
 float Heightfield::localReliefAt(double x, double z, float amplitude, float buttes, float region,
-                                 float plain, float rough, float fade, Memos* memos) const {
+                                 float plain, float rough, const CoastPoint& coast,
+                                 Memos* memos) const {
     return relief_local::rolling(layers_->local, x, z,
-                                 {amplitude, buttes, region, plain, rough, fade},
+                                 {amplitude, buttes, region, plain, rough, coast.fade,
+                                  coast.irregular},
                                  memos != nullptr ? &memos->local : nullptr);
 }
 

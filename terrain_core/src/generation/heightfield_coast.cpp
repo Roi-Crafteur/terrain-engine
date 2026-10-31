@@ -105,6 +105,7 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
     c.mountains = shape.mountains;
     c.ground = shape.ground;
     c.fade = shape.fade;
+    c.irregular = shape.irregular;
     return c;
 }
 
