@@ -39,6 +39,11 @@ terrain_add_test(unreal_debug_colors_test terrain_unreal_bridge)
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/planet_job.cpp)
 terrain_add_test(unreal_planet_job_test terrain_unreal_bridge)
 
+# Where the pawn of the game is put down (Terrain.Pawn): the walkable ground nearest to the view,
+# on made-up reliefs and under the wall of the K2.
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/walkable_ground.cpp)
+terrain_add_test(unreal_walkable_ground_test terrain_unreal_bridge)
+
 # The tools are never in a Shipping build: TERRAIN_DEV_TOOLS 0 there (TerrainEngine.Build.cs),
 # every file of the tools under it, the hooks of ATerrainWorld empty without it.
 add_test(NAME unreal_dev_tools_guard

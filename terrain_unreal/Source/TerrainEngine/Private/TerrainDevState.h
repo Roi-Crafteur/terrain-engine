@@ -79,6 +79,7 @@ namespace TerrainDev
 	FString PlacesFileSetting();
 	double ShotTimeoutSeconds();
 	double ShotSettleSeconds();
+	double PawnRadiusMeters();
 
 	inline std::string ToUtf8(const FString& Text)
 	{

@@ -111,8 +111,9 @@ namespace
 	};
 
 	FAutoConsoleCommandWithWorldAndArgs PawnCommand(TEXT("Terrain.Pawn"),
-		TEXT("The pawn of the game back from the flying pawn of the tools, on the ground under the "
-			 "view; refused over water (never put on the bottom)"),
+		TEXT("The pawn of the game back from the flying pawn of the tools, on the walkable ground "
+			 "nearest to the view (Terrain.PawnRadius); refused over water or without walkable "
+			 "ground"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda(
 			[](const TArray<FString>&, UWorld* World)
 			{

@@ -50,7 +50,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Goto <lieu>` | la vue d'un lieu du fichier (position, cap, inclinaison, œil) ; avertit si le lieu a besoin du fichier planète et que le monde n'en a pas |
 | `Terrain.Look cap inclinaison` | le cap en degrés depuis le nord, sens horaire ; l'inclinaison de −90 à 90, positive vers le haut, **négative vers le bas** (`Terrain.Look 0 -45` : vers le nord, 45° sous l'horizon) |
 | `Terrain.Eye 1800` / `Terrain.Eye +2` | l'œil à cette altitude, ou à cette hauteur au-dessus du sol ou de l'eau |
-| `Terrain.Pawn` | le pion du jeu rendu, posé au sol sous la vue ; refusé au-dessus de l'eau (message à l'écran) |
+| `Terrain.Pawn` | le pion du jeu rendu, posé sur le sol praticable le plus proche de la vue (50 m au plus) ; refusé au-dessus de l'eau ou sans sol praticable (message à l'écran) |
 | `Terrain.Save <nom> [note…]` | la vue écrite dans le fichier des lieux (met à jour un lieu du même nom, ses champs inconnus et sa note gardés) |
 | `Terrain.Info` / `Terrain.Info here` | les lignes du point visé / de la colonne de l'œil dans le log |
 | `Terrain.Shot <nom>` | une image `Saved/TerrainEngine/Shots/<nom>.png` une fois tout chargé |
@@ -61,7 +61,8 @@ redemandent leur mode de vue à l'image suivante.
 
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),
-`Terrain.ShotSettle` (stabilité avant une image, 1 s).
+`Terrain.ShotSettle` (stabilité avant une image, 1 s), `Terrain.PawnRadius` (rayon de la
+recherche du sol praticable de `Terrain.Pawn`, 50 m).
 
 ### La téléportation : le contrat de `TeleportView`
 
@@ -114,15 +115,34 @@ Elle rend `false` sans rien changer : sans les outils (`bDevTools` faux, build S
 Play, quand le monde est arrêté sur une erreur, ou sans joueur. Si la génération autour de la vue
 échoue, le monde s'arrête (l'erreur est dans le log) et elle rend `false`.
 
-`ReturnToGamePawn()` (et `Terrain.Pawn`) rend le pion du jeu, posé sur le sol du heightmap sous
-la vue (50 cm au-dessus de sa capsule), le cap et l'inclinaison gardés, les tuiles autour
-générées. Elle rend `false` sans rien changer :
+`ReturnToGamePawn()` (et `Terrain.Pawn`) rend le pion du jeu, posé sur le **sol praticable le
+plus proche** de la colonne sous la vue (50 cm au-dessus de sa capsule), le cap et l'inclinaison
+gardés, les tuiles autour générées :
+
+- praticable : une colonne sèche dont la pente est sous l'angle de marche du `CharacterMovement`
+  du pion moins 5° (44,765° par défaut, donc 39,8° ; le même pour un pion qui n'est pas un
+  `ACharacter`). La pente est la plus forte des quatre pentes à 1 m autour du point ;
+- la recherche (`Bridge/walkable_ground`) : la colonne même, puis des anneaux tous les 2 m
+  jusqu'à `Terrain.PawnRadius` (50 m), chacun parcouru depuis le nord dans le sens horaire ; sur
+  l'anneau le plus proche qui en a un, le point de pente la plus douce. Mêmes hauteurs, même
+  point ;
+- quand le point n'est pas sous la vue, un message le dit à l'écran (8 s) et dans le log
+  (« the ground under the view is too steep (72 degrees): the pawn of the game is put 34 m away,
+  on a slope of 39 degrees », sous la paroi de `k2_paroi`) ;
+- la recherche lit **la heightmap** du core, comme le sol sous la vue : ni surplomb ni paroi de
+  la roche 3D. Quand la roche 3D de l'agent 20 (12A) sera sur `main`, il faudra lire la colonne
+  réelle.
+
+Elle rend `false` sans rien changer :
 
 - **au-dessus de l'eau** (la colonne sous la vue a de l'eau au-dessus de son sol : mer, lac,
   fleuve, lac salé) : le pion du jeu n'est jamais posé au fond. Un message s'affiche à l'écran
   (8 s) et dans le log : « Terrain.Pawn: over water (sea, lake or river): the pawn of the game is
   not put down here, the view of the tools stays; move over dry ground first ». La vue des outils
   reste ; il suffit d'avancer au-dessus de la terre et de recommencer ;
+- **sans sol praticable** dans `Terrain.PawnRadius` : message à l'écran et dans le log
+  (« no walkable ground within 50 m (… degrees under the view, the pawn walks up to 40) »), la vue
+  des outils reste ;
 - quand le joueur n'a pas le pion des outils (il a déjà celui du jeu).
 
 `Terrain.Views` rend le pion du jeu là où il était, sans le poser : il n'est pas concerné.
@@ -265,4 +285,5 @@ Arrêter le Play annule une construction à la fin de l'étape en cours.
 `dev_places_file_test` (le fichier du dépôt valide et canonique, les champs inconnus gardés,
 le fichier de l'agent 37 lu, les nombres de `Terrain.Save` relus au bit près),
 `unreal_place_pose_test`, `unreal_point_info_test`, `unreal_dev_perf_test`,
-`unreal_debug_colors_test`, `unreal_planet_job_test`, `unreal_dev_tools_guard`.
+`unreal_debug_colors_test`, `unreal_planet_job_test`, `unreal_walkable_ground_test` (le sol
+praticable sur des reliefs fabriqués et sous la paroi du K2), `unreal_dev_tools_guard`.

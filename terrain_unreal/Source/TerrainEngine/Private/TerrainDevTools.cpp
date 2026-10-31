@@ -37,6 +37,9 @@ namespace
 	TAutoConsoleVariable<float> CVarShotSettle(TEXT("Terrain.ShotSettle"), 1.0f,
 		TEXT("Seconds the streaming stays settled before an image is taken (the exposure and the "
 			 "lighting follow)"));
+	TAutoConsoleVariable<float> CVarPawnRadius(TEXT("Terrain.PawnRadius"), 50.0f,
+		TEXT("Meters around the view where Terrain.Pawn looks for walkable ground to put the pawn "
+			 "of the game down on"));
 } // namespace
 
 FString TerrainDev::PlacesFileSetting()
@@ -52,6 +55,11 @@ double TerrainDev::ShotTimeoutSeconds()
 double TerrainDev::ShotSettleSeconds()
 {
 	return FMath::Max(0.0, static_cast<double>(CVarShotSettle.GetValueOnGameThread()));
+}
+
+double TerrainDev::PawnRadiusMeters()
+{
+	return FMath::Clamp(static_cast<double>(CVarPawnRadius.GetValueOnGameThread()), 0.0, 500.0);
 }
 
 void UTerrainDevTools::Start(ATerrainWorld& InWorld)
