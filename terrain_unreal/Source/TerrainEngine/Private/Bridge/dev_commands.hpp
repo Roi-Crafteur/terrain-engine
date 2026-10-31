@@ -15,7 +15,8 @@ namespace terrain::unreal {
 // The arguments of the console commands of the tools of the developers (agent 36,
 // TerrainDevCommands.cpp), parsed here to be tested without Unreal. Each parser gives its command,
 // or nullopt with the reason in error (the usage of the command). Numbers are JSON numbers, the
-// whole argument ("182.03", "-6185104"; dev::parseJsonNumber), whatever the locale.
+// whole argument ("182.03", "-6185104"; terrain/json: an exact decimal m 10^e, m <= 2^53),
+// whatever the locale.
 
 // An eye: an altitude of the core ("182.03") or a height above the top of its column ("+2").
 struct EyeArgument {

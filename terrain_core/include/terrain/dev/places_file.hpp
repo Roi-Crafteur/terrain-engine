@@ -1,6 +1,6 @@
 #pragma once
 
-#include "terrain/dev/json_value.hpp"
+#include "terrain/json/json.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -27,6 +27,8 @@
 // "ground", >= 0); planet: the view needs the planet file (rivers, falls, lakes, the climate of
 // the biomes); note: optional. The members a reader does not know,
 // in a place or around the places, are kept as they are and written back after the known ones.
+// Read and written with the strict JSON of terrain/json (#56): the same bits on every platform,
+// each number an exact decimal m 10^e (m <= 2^53, |e| <= 22).
 namespace terrain::dev {
 
 inline constexpr int kPlacesFileVersion = 1;
@@ -46,15 +48,17 @@ struct Place {
     double eye = 0.0;
     EyeMode eyeMode = EyeMode::Altitude;
     bool planet = false;
-    std::string note;               // empty: none (not written)
-    std::vector<JsonMember> extra; // the other members, in their order
+    std::string note; // empty: none (not written)
+    // The other members, an object in their order (never a known key).
+    json::Value extra = json::Value::object();
 
     friend bool operator==(const Place&, const Place&) = default;
 };
 
 struct PlacesFile {
     std::vector<Place> places;
-    std::vector<JsonMember> extra; // the other members of the file, in their order
+    // The other members of the file, an object in their order (never "version" or "places").
+    json::Value extra = json::Value::object();
 
     // The place of this name, or nullptr.
     [[nodiscard]] const Place* find(std::string_view name) const;
@@ -67,8 +71,9 @@ struct PlacesFile {
     friend bool operator==(const PlacesFile&, const PlacesFile&) = default;
 };
 
-// Why a file of places was refused, a clear message: "places.json: line 4, column 9: expected
-// ',' or '}'", "place 3 (\"k2_paroi\"): \"pitch\" must be in [-90, 90] degrees".
+// Why a file of places was refused, a clear message, its source first: "data/dev/places.json:4:9:
+// expected ',' or '}'", "data/dev/places.json: place 3 (\"k2_paroi\"): \"pitch\" must be in
+// [-90, 90] degrees".
 class PlacesError : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
@@ -82,12 +87,14 @@ public:
 // Throws PlacesError if a value of the place is out of its range (the comment above).
 void validPlace(const Place& place);
 
-// The places of a strict JSON text. Throws PlacesError.
-[[nodiscard]] PlacesFile parsePlaces(std::string_view text);
+// The places of a strict JSON text, source naming it in the messages. Throws PlacesError.
+[[nodiscard]] PlacesFile parsePlaces(std::string_view text,
+                                     std::string_view source = "<places>");
 // The canonical text of the places (the layout of the comment above, one place per three lines
-// or more, a final newline): parsePlaces reads it back to the same places, bit for bit, and
-// writePlaces(parsePlaces(text)) == text for a canonical text. Throws PlacesError for an invalid
-// place.
+// or more, the other members compact, a final newline): parsePlaces reads it back to the same
+// places, bit for bit, and writePlaces(parsePlaces(text)) == text for a canonical text. Throws
+// PlacesError for an invalid place, or a number without an exact short decimal (0.1 + 0.2: the
+// places of Terrain.Save are rounded to the centimeter and to the hundredth of a degree).
 [[nodiscard]] std::string writePlaces(const PlacesFile& file);
 
 // parsePlaces of a file, its path in the messages. Throws PlacesError (also when it cannot be

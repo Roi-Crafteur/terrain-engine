@@ -214,7 +214,7 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   `Hud` ; une seule téléportation, `ATerrainWorld::TeleportView` (synchrone, terrain chargé avant
   de rendre la main), pour la console et la carte de dev
 - fichier des lieux commun `data/dev/places.json` (agents 35, 36, 37), lu et écrit par
-  `terrain_core/dev/` (JSON strict, aller-retour exact, champs inconnus gardés) ; 11 lieux de test
+  `terrain_core/dev/places_file` sur le JSON strict de `terrain/json` (aller-retour exact, champs inconnus gardés) ; 11 lieux de test
 - images prises une fois la vue chargée (tuiles, horizon, délai maximum) ; `Terrain.Views` : une
   image par lieu dans un dossier daté avec `views.txt`, la base des comparaisons avant / après
 - modes de vue : filaire, LOD, roche 3D (sommets hors heightmap), eau seule, sans eau, normales,

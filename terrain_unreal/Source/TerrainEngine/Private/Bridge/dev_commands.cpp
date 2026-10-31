@@ -1,6 +1,6 @@
 #include "dev_commands.hpp"
 
-#include "terrain/dev/json_value.hpp"
+#include "terrain/json/json.hpp"
 
 #include <array>
 #include <cmath>
@@ -11,8 +11,21 @@ namespace terrain::unreal {
 
 namespace {
 
+// A JSON number, the whole text (terrain/json: an exact decimal, the same bits everywhere), or
+// nullopt: spaces, signs, letters or a byte order mark around it, or anything else.
 std::optional<double> numberOf(const std::string& text) {
-    return dev::parseJsonNumber(text);
+    const auto digit = [](char c) { return c >= '0' && c <= '9'; };
+    if (text.empty() || !(text.front() == '-' || digit(text.front())) || !digit(text.back())) {
+        return std::nullopt;
+    }
+    try {
+        const json::Value value = json::parse(text);
+        if (value.isNumber()) {
+            return value.asNumber();
+        }
+    } catch (const json::Error&) {
+    }
+    return std::nullopt;
 }
 
 template <class T>

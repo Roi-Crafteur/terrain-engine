@@ -8,6 +8,7 @@
 #include "terrain/dev/places_file.hpp"
 
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -71,7 +72,7 @@ bool sameBits(double a, double b) {
 
 void testExample() {
     const PlacesFile file = parsePlaces(kExample);
-    TEST_CHECK(file.places.size() == 1 && file.extra.empty());
+    TEST_CHECK(file.places.size() == 1 && file.extra.isObject() && file.extra.size() == 0);
     const Place* p = file.find("chute388_bassin");
     TEST_CHECK(p != nullptr && p == &file.places[0]);
     TEST_CHECK(p->x == -6185104.0 && p->z == 155924.0);
@@ -98,8 +99,8 @@ Place placeAt(std::string name, double x, double z) {
 
 void testRoundTrip() {
     PlacesFile file;
-    file.places.push_back(placeAt("a", 0.1 + 0.2, -1.0 / 3.0));
-    file.places.push_back(placeAt("b.c-d_9", -30015487.999999996, 17498111.5));
+    file.places.push_back(placeAt("a", 0.3, -0.33));
+    file.places.push_back(placeAt("b.c-d_9", -30015487.99, 17498111.5));
     file.places.back().note.clear();
     file.places.back().planet = true;
     file.places.back().eyeMode = EyeMode::Altitude;
@@ -125,22 +126,63 @@ void testRoundTrip() {
         "\"x\":-6185104,\"name\":\"chute388_bassin\"}],\"version\":1}";
     TEST_CHECK(parsePlaces(compact) == parsePlaces(kExample));
     TEST_CHECK(writePlaces(parsePlaces(compact)) == kExample);
+    // What Terrain.Save writes (centimeters, hundredths of a degree) reads back bit for bit.
+    std::uint64_t state = 0x9E3779B97F4A7C15u;
+    PlacesFile many;
+    for (int i = 0; i < 2000; ++i) {
+        state = state * 6364136223846793005u + 1442695040888963407u;
+        const double unit = static_cast<double>(state >> 11) / 9007199254740992.0; // [0, 1)
+        Place p = placeAt("p" + std::to_string(i), std::round((unit - 0.5) * 6.0e9) / 100.0,
+                          std::round((0.5 - unit) * 3.4e9) / 100.0);
+        p.heading = std::round(unit * 35999.0) / 100.0;
+        p.eye = std::round(unit * 1.0e6) / 100.0;
+        many.places.push_back(p);
+    }
+    const PlacesFile manyBack = parsePlaces(writePlaces(many));
+    TEST_CHECK(manyBack == many);
+}
+
+// What cannot be written is refused, the place and the member named: a number without an exact
+// short decimal, a known key among the other members.
+void testWriteRefusals() {
+    PlacesFile file;
+    file.places.push_back(placeAt("a", 0.1 + 0.2, 0.0));
+    std::string message;
+    try {
+        (void)writePlaces(file);
+    } catch (const PlacesError& error) {
+        message = error.what();
+    }
+    TEST_CHECK(message.find("place 1 (\"a\"): \"x\" cannot be written") != std::string::npos);
+    file.places[0].x = 0.3;
+    file.places[0].extra.set("pitch", terrain::json::Value::number(3.0));
+    message.clear();
+    try {
+        (void)writePlaces(file);
+    } catch (const PlacesError& error) {
+        message = error.what();
+    }
+    TEST_CHECK(message.find("place 1 (\"a\"): \"pitch\" is known") != std::string::npos);
 }
 
 void testExtraMembers() {
     std::string text(kExample);
-    text.insert(text.find("  \"places\""), "  \"map\": {\"zoom\": 3},\n");
-    text.insert(text.find(" } ] }"), ",\n      \"checks\": [\"water\", 180.03]");
+    text.insert(text.find("  \"places\""), "  \"map\": {\"zoom\":3},\n");
+    text.insert(text.find(" } ] }"), ",\n      \"checks\": [\"water\",180.03]");
     const PlacesFile file = parsePlaces(text);
-    TEST_CHECK(file.extra.size() == 1 && file.extra[0].key == "map");
-    TEST_CHECK(file.places[0].extra.size() == 1 && file.places[0].extra[0].key == "checks");
-    TEST_CHECK(file.places[0].extra[0].value.items.size() == 2);
-    // Kept, written back where they were, in the canonical layout.
+    TEST_CHECK(file.extra.keys() == std::vector<std::string>{"map"});
+    TEST_CHECK(file.places[0].extra.keys() == std::vector<std::string>{"checks"});
+    TEST_CHECK(file.places[0].extra.items()[0].size() == 2);
+    // Kept, written back where they were, in the canonical layout (compact: terrain/json).
     TEST_CHECK(writePlaces(file) == text);
+    std::string spaced(kExample);
+    spaced.insert(spaced.find(" } ] }"), ",\n      \"checks\": [ \"water\" , 180.03 ]");
+    TEST_CHECK(parsePlaces(spaced).places[0].extra == file.places[0].extra);
 }
 
 void testRefusals() {
-    TEST_CHECK(refused("{\"version\": 1, \"places\": [}", "line 1, column 27: expected a value"));
+    TEST_CHECK(refused("{\"version\": 1, \"places\": [}", "<places>:1:27: expected a value"));
+    TEST_CHECK(refused(withMember("x", "\"x\": -6185104.12345678901"), "too many significant"));
     TEST_CHECK(refused("[]", "must hold an object"));
     TEST_CHECK(refused("{\"places\": []}", "\"version\" is missing"));
     TEST_CHECK(refused("{\"version\": 2, \"places\": []}", "\"version\" 2 is not known"));
@@ -203,13 +245,13 @@ void testPut() {
 // Terrain.Save over a place (put): what other tools wrote in it stays, bit for bit and in its
 // order, and its note when the new place has none; only the known values change.
 void testPutKeepsOtherMembers() {
-    const std::string others = ",\n      \"probe\": {\"water\": 180.03, \"seen\": [true, null, "
-                               "{\"by\": \"agent 37\"}]},\n      \"agent37\": 0.1";
+    const std::string others = ",\n      \"probe\": {\"water\":180.03,\"seen\":[true,null,"
+                               "{\"by\":\"agent 37\"}]},\n      \"agent37\": 0.1";
     std::string text(kExample);
     text.insert(text.find(" } ] }"), others);
     PlacesFile file = parsePlaces(text);
     Place saved = *file.find("chute388_bassin");
-    saved.extra.clear();
+    saved.extra = terrain::json::Value::object();
     saved.note.clear();
     saved.eye = 190.5;
     file.put(saved);
@@ -249,7 +291,7 @@ void testOtherLayout() {
                lip->pitch == -30.0 && lip->eye == 3.0 && lip->eyeMode == EyeMode::Ground &&
                lip->planet && lip->note == "l\xC3\xA8vre de la chute (eau \xC3\xA0 568,99 m)");
     const Place* edge = file.find("lisiere_tropicale_savane");
-    TEST_CHECK(edge != nullptr && !edge->planet && edge->pitch == -8.0 && edge->extra.empty());
+    TEST_CHECK(edge != nullptr && !edge->planet && edge->pitch == -8.0 && edge->extra.size() == 0);
     TEST_CHECK(parsePlaces(writePlaces(file)) == file);
 }
 
@@ -283,7 +325,7 @@ void testSaveAndLoad() {
     try {
         (void)terrain::dev::loadPlaces(dir / "bad.json");
     } catch (const PlacesError& error) {
-        threw = std::string_view(error.what()).find("bad.json: line 2, column 13") !=
+        threw = std::string_view(error.what()).find("bad.json:2:13: expected a value") !=
                 std::string_view::npos;
     }
     TEST_CHECK(threw);
@@ -340,6 +382,7 @@ void testRepositoryFile(const char* path) {
 int main(int argc, char** argv) {
     testExample();
     testRoundTrip();
+    testWriteRefusals();
     testExtraMembers();
     testRefusals();
     testPut();

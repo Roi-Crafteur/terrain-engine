@@ -15,7 +15,7 @@ Shipping, tout le code des outils est sous `#if TERRAIN_DEV_TOOLS` (vérifié pa
 |---|---|---|
 | Infos d'un point | `Bridge/point_info` lit le core : sol, eau (type, niveau, profondeur), relief avant les fleuves, biome, matériau, climat, case et climat de la planète, vallée et lac, chute la plus proche, distance à la côte, LOD de la tuile affichée, chunk, bloc | l'écran F3, `Terrain.Info` |
 | Point visé | `Bridge/ground_ray` : marche du rayon sur le sol du core jusqu'à 30 km ; « hors heightmap » quand le point touché s'écarte du relief | trace sur les tuiles qui ont une collision (LOD 0, ~64 m) d'abord |
-| Lieux | `terrain_core/dev/` : lecteur JSON strict et fichier des lieux ; `Bridge/place_pose` : yaw = cap − 90, œil selon `eyeMode` | `Terrain.Goto`, `Look`, `Eye`, `Save`, `Pawn` ; le pion volant des outils |
+| Lieux | `terrain_core/dev/places_file` : le fichier des lieux, sur le JSON strict de `terrain/json` (#56) ; `Bridge/place_pose` : yaw = cap − 90, œil selon `eyeMode` | `Terrain.Goto`, `Look`, `Eye`, `Save`, `Pawn` ; le pion volant des outils |
 | Images | `Bridge/shot_waiter` : quand tout est chargé, délai maximum, noms, `views.txt` | `FScreenshotRequest`, l'enchaînement de `Terrain.Views` |
 | Modes de vue | `Bridge/debug_colors` : couleurs par LOD, pente, normale, sommets hors heightmap | couleurs de sommets, matériau de couleurs de sommets d'Unreal, filaire, sections cachées |
 | Performance | `Bridge/dev_perf` : fenêtre glissante ; `TileTimings::totals()` | FPS, temps CPU et GPU, mémoire |
@@ -176,16 +176,21 @@ par `terrain_core/dev/places_file` :
       "planet": true, "note": "chute de 388 m vue depuis son bassin" } ] }
 ```
 
-- `x`, `z` : mètres du moteur ; `heading` : cap en degrés depuis le nord (−Z), sens horaire, dans
-  [0, 360) (yaw Unreal = cap − 90) ; `pitch` : degrés, positif vers le haut, négatif vers le bas, dans [−90, 90] ; `eye` :
-  altitude du core (`eyeMode` `altitude`) ou hauteur au-dessus du sol ou de l'eau (`ground`,
-  ≥ 0) ; `planet` : la vue a besoin du fichier planète (fleuves, chutes, lacs, climat des
-  biomes) ; `note` : facultative.
-- Lecture stricte : une erreur dit sa ligne et sa colonne, ou le lieu et le champ fautifs
-  (« place 3 ("k2_paroi"): "pitch" must be in [-90, 90] degrees »). Les champs inconnus (ceux
-  d'un autre agent ou d'un autre outil), dans un lieu ou autour des lieux, sont gardés et
-  réécrits tels quels, dans leur ordre. Écriture canonique (la mise en page ci-dessus) :
-  `Terrain.Save` ne change que le lieu qu'il écrit.
+- `x`, `z` : mètres du moteur ; `heading` : cap en degrés depuis le nord (−Z), sens horaire,
+  dans [0, 360) (yaw Unreal = cap − 90) ; `pitch` : degrés, positif vers le haut, négatif vers
+  le bas, dans [−90, 90] ; `eye` : altitude du core (`eyeMode` `altitude`) ou hauteur au-dessus
+  du sol ou de l'eau (`ground`, ≥ 0) ; `planet` : la vue a besoin du fichier planète (fleuves,
+  chutes, lacs, climat des biomes) ; `note` : facultative.
+- Lu et écrit par `terrain_core/dev/places_file` sur le lecteur JSON strict de `terrain/json`
+  (PR #56, le même que celui du peuplement) : mêmes bits sur toutes les plateformes ; chaque
+  nombre est un décimal exact m·10^e (m ≤ 2^53, |e| ≤ 22, donc au plus 15 à 16 chiffres).
+- Lecture stricte : une erreur de syntaxe dit le fichier, sa ligne et sa colonne
+  (« data/dev/places.json:4:9: expected ',' or '}' ») ; une erreur de contenu dit le lieu et le
+  champ fautifs (« data/dev/places.json: place 3 ("k2_paroi"): "pitch" must be in [-90, 90]
+  degrees »). Les champs inconnus (ceux d'un autre agent ou d'un autre outil), dans un lieu ou
+  autour des lieux, sont gardés et réécrits tels quels, dans leur ordre, en JSON compact
+  (sans espaces). Écriture canonique (la mise en page ci-dessus) : `Terrain.Save` ne change que
+  le lieu qu'il écrit.
 - `Terrain.Save` sur un lieu qui existe déjà : seuls les champs connus (`x`, `z`, `heading`,
   `pitch`, `eye`, `eyeMode`, `planet`) changent ; ses champs inconnus restent au bit près, à
   leur place, et sa note reste si la commande n'en donne pas.
@@ -257,6 +262,7 @@ Arrêter le Play annule une construction à la fin de l'étape en cours.
 
 ## Tests (ctest, sans Unreal)
 
-`dev_json_test`, `dev_places_file_test` (le fichier du dépôt valide et canonique),
+`dev_places_file_test` (le fichier du dépôt valide et canonique, les champs inconnus gardés,
+le fichier de l'agent 37 lu, les nombres de `Terrain.Save` relus au bit près),
 `unreal_place_pose_test`, `unreal_point_info_test`, `unreal_dev_perf_test`,
 `unreal_debug_colors_test`, `unreal_planet_job_test`, `unreal_dev_tools_guard`.
