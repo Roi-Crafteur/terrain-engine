@@ -71,9 +71,9 @@ def choose(machine, version, runner, log=None):
                 return PlanetChoice(path, checksum, origin)
     target = planets / (f"building_{version.short}.bin" if version.probe_kind == "probe"
                         else f"commit_{version.sha}.bin")
-    if version.probe_kind != "probe" and target.exists():
-        return PlanetChoice(target, read_checksum(target) or _checksum_of_log(log),
-                            "built before")
+    if version.probe_kind != "probe" and target.exists() and read_checksum(target):
+        # Reused only with its checksum kept beside it; without it, built again (21 s).
+        return PlanetChoice(target, read_checksum(target), "built before")
     guard(target, machine)
     if not runner.dry:
         planets.mkdir(parents=True, exist_ok=True)
@@ -101,13 +101,6 @@ def read_checksum(path):
         return None
     text = side.read_text(encoding="utf-8").strip()
     return text if re.fullmatch(r"0x[0-9a-f]{16}", text) else None
-
-
-def _checksum_of_log(log):
-    if log is None or not Path(log).exists():
-        return None
-    found = _CHECKSUM.findall(Path(log).read_text(encoding="utf-8", errors="replace"))
-    return "0x" + found[-1] if found else None
 
 
 def install(choice, version, machine, dry=False):

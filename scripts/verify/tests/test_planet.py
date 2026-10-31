@@ -56,6 +56,12 @@ class Choose(unittest.TestCase):
                              (choice.path, "built before", "0x1111222233334444"))
             self.assertFalse(any("terrain_make_planet" in c[0] for c in runner.commands))
             self.assertNotIn(planet.checksum_file(choice.path), planet.candidates(m))
+            # A planet of an earlier run without its checksum beside it is built again.
+            planet.checksum_file(choice.path).unlink()
+            runner = fakes.FakeRunner(planet_status={})
+            rebuilt = planet.choose(m, v, runner)
+            self.assertEqual((rebuilt.origin, rebuilt.checksum), ("built now",
+                                                                  "0x1111222233334444"))
 
 
 class Install(unittest.TestCase):
