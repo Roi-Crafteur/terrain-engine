@@ -1,0 +1,11 @@
+{
+  "id": "pierre",
+  "name": "Pierre",
+  "hidden": false,
+  "sources": [
+    { "kind": "relief", "type": "mountain", "weight": 0.6 },
+    { "kind": "relief", "type": "hills", "weight": 0.5 },
+    { "kind": "roughness", "weight": 0.4 }
+  ],
+  "depositNoise": { "scaleKm": 200, "threshold": 0.35, "softness": 0.25 }
+}

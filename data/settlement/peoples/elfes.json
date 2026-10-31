@@ -1,0 +1,36 @@
+{
+  "id": "elfes",
+  "type": "people",
+  "name": "Elfes",
+  "plane": "material",
+  "majorKingdomShare": 10,
+  "minorStateShare": 6,
+  "baseTerrainModel": "forest",
+  "physicalPreferences": {
+    "temperature": { "hardMin": -18, "min": -4, "idealMin": 6, "idealMax": 22, "max": 30 },
+    "humidity": { "min": 0.4, "idealMin": 0.55, "idealMax": 1, "max": 1 },
+    "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.45, "max": 0.75 },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 20, "max": 90 }
+  },
+  "habitabilityWeight": 1.0,
+  "physicalWeight": 1.3,
+  "dangerSensitivity": 0.4,
+  "ambientEnergyPreferences": { "prana": 0.9, "aura": 0.2, "mana": 0.8 },
+  "underground": { "level": "none", "preferredDepth": 0, "needsSurfaceAccess": true },
+  "needs": { "prana": 1.0, "mana": 0.7, "bois": 0.5, "freshwater": 0.7, "cristaux_de_mana": 0.5 },
+  "fears": { "highMagic": 0.0, "volcano": 0.6, "deepOcean": 0.2, "monsterDensity": 0.4 },
+  "government": [ "ancient_monarchy", "council_of_elders", "forest_court" ],
+  "relations": { "humains": 0.1, "nains": -0.1, "halfelins": 0.4, "gnomes": 0.3, "orcs": -0.9, "gobelins": -0.8, "hobgobelins": -0.7, "kobolds": -0.5, "hommes_betes": 0.2, "dragonides": -0.2, "geants": -0.3, "tieflings": -0.4 },
+  "selfRelation": 0.8,
+  "rulerTraits": {
+    "ambition": { "min": 0.1, "max": 0.6 },
+    "aggression": { "min": 0.05, "max": 0.5 },
+    "greed": { "min": 0.05, "max": 0.4 },
+    "prudence": { "min": 0.5, "max": 1.0 },
+    "piety": { "min": 0.2, "max": 0.9 }
+  },
+  "names": {
+    "syllables": [ "ae", "la", "rin", "thal", "sil", "van", "el", "lor", "ith", "nae", "dhel", "ari", "quen" ],
+    "titles": { "ancient_monarchy": "Haut-Roi", "council_of_elders": "Doyen du Conseil", "forest_court": "Prince de la Cour" }
+  }
+}

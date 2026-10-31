@@ -1,0 +1,11 @@
+{
+  "id": "sel",
+  "name": "Sel",
+  "hidden": false,
+  "sources": [
+    { "kind": "aridCoast", "weight": 0.8 },
+    { "kind": "saltLake", "weight": 1.0 },
+    { "kind": "closedBasin", "weight": 0.7 }
+  ],
+  "depositNoise": { "scaleKm": 150, "threshold": 0.4, "softness": 0.2 }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "cristaux_de_mana",
+  "name": "Cristaux de mana",
+  "hidden": true,
+  "hiddenShare": 0.5,
+  "sources": [
+    { "kind": "manaNode", "weight": 1.0 },
+    { "kind": "crater", "weight": 1.0 }
+  ],
+  "depositNoise": { "scaleKm": 80, "threshold": 0.45, "softness": 0.2 }
+}
