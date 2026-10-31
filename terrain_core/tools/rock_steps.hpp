@@ -1,8 +1,9 @@
 #pragma once
 
 // The eyes on the steps of a stretch of falls (terrain_export_rock --steps): for each step of 10 m
-// or more, its basin, its lip and its foot, each with a heading and the height of the eye, as --at
-// sees them.
+// or more, its basin, its lip and its foot, each with a heading, a tilt (the tangent of the
+// elevation of the middle of the view, not an angle) and the height of the eye, as --at sees
+// them.
 
 #include "rock_places.hpp"
 

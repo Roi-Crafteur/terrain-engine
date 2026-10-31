@@ -143,14 +143,15 @@ std::vector<Drop> dropsOf(const RiverReach& reach) {
     return out;
 }
 
-// No tooth along the slot: its rim does not stand farther from the axis below the drops than
-// above them, kMeanJumpMost meters at most on average over every side of every drop, and the more
-// so the taller the drop by kGrowthMost meters per meter of it at most (the least squares through
-// 0). A slot as wide as it is deep widens at the foot of each step by about a quarter of its
-// height: a tooth there. Its pools are oval (river_slot.hpp): narrower at the sill above each lip,
-// wider in the bowl below each face, by shares of the channel, the longer bowls of the taller
-// drops wider farther below their foot (about 0.05 m per meter of drop).
-constexpr double kMeanJumpMost = 0.5;
+// No tooth along the slot: where its rim is found on both sides of a drop, it does not stand
+// farther from the axis below the drops than above them, kMeanJumpMost meters at most on average
+// over every side of every drop, and the more so the taller the drop by kGrowthMost meters per
+// meter of it at most (the least squares through 0). A slot as wide as it is deep widens at the
+// foot of each step by about a quarter of its height: a tooth there. Its pools are oval
+// (river_slot.hpp): narrower at the sill above each lip, wider in the bowl below each face, by
+// shares of the channel (about 0.5 m on average), the longer bowls of the taller drops wider
+// farther below their foot (about 0.05 m per meter of drop).
+constexpr double kMeanJumpMost = 0.75;
 constexpr double kGrowthMost = 0.1;
 
 void testTeeth(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
@@ -165,6 +166,10 @@ void testTeeth(const World& w, Reaches& reaches, const std::vector<std::size_t>&
             const std::array<double, 2> below = rimsAt(w, reach, d.below);
             const auto h = static_cast<double>(d.height);
             for (std::size_t side = 0; side < 2; ++side) {
+                // A rim found on both sides of the drop (rimsAt: 0 when none is within reach).
+                if (!(below[side] > 0.0) || !(above[side] > 0.0)) {
+                    continue;
+                }
                 const double jump = below[side] - above[side];
                 jumps += jump;
                 byHeight += jump * h;

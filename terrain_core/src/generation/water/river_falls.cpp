@@ -24,9 +24,12 @@ constexpr double kStepDrop = 4.0;
 // kSheer falls at once, kSheerMax meters at most. The face of a drop comes down at kFaceLeastTurn
 // to kFaceLeastTurn + kFaceSpreadTurn (70 to 88 degrees) over kFaceLeast meters at least, or as
 // steep as the slope where it is steeper. In kCascadeChance of the drops where the slope is not
-// sheer, a cascade instead: kCascadeLeast to kCascadeMost drops of kStepLeast to kStepLeast +
-// kStepSpread meters each, kLedgeLeast to kLedgeMost meters apart (a ledge between two), as long as
-// the water of each ledge stays under the slope.
+// sheer, rapids instead: a ramp down as far as kCascadeLeast to kCascadeMost drops of kStepLeast to
+// kStepLeast + kStepSpread meters each would come, kRampLeast to kRampLeast + kRampSpread meters
+// per meter (drawn), steeper where the slope is (its water never above the slope, looked at every
+// kRampProbe meters); steeper than kRampMost, a single drop instead. No pool between two drops is
+// shorter than kPoolLeast meters, nor than kPoolWidths times the width of the channel: closer, the
+// two are one drop (a box seen from above otherwise, its lips without room to bend).
 constexpr double kStepRun = 70.0;
 constexpr double kRunLeast = 0.25;
 constexpr double kRunSpread = 2.75;
@@ -43,8 +46,12 @@ constexpr int kCascadeLeast = 2;
 constexpr int kCascadeMost = 4;
 constexpr double kStepLeast = 2.0;
 constexpr double kStepSpread = 4.0;
-constexpr double kLedgeLeast = 2.0;
-constexpr double kLedgeMost = 8.0;
+constexpr double kRampLeast = 0.3;
+constexpr double kRampSpread = 0.2;
+constexpr double kRampMost = 0.6;
+constexpr double kRampProbe = 1.0;
+constexpr double kPoolLeast = 8.0;
+constexpr double kPoolWidths = 0.4;
 // The slot of a stretch lies kInciseShare of its mean drop (kInciseLeast to kInciseMost meters)
 // deeper below the floor of its valley than its steps alone, at its lips too: its walls never
 // vanish between its steps. Its steps come down under the slope less that (the floor of the
@@ -121,38 +128,74 @@ double shareOf(std::uint64_t bits, int shift) {
     return static_cast<double>((bits >> shift) & 0xffffffULL) * 0x1.0p-24;
 }
 
-// A cascade from its lip at s down from level, its faces as steep as slope (meters per meter),
-// above the water bottom: its drops appended. Returns where its last face ends and its water.
+// Rapids from their top at s down from level, a face as steep as slope where they fall at once
+// instead: their drop appended. Returns where they end and their water.
 struct Stair {
     double s = 0.0;
     double level = 0.0;
 };
 
-Stair addCascade(const std::vector<CoursePoint>& p, std::size_t first, std::size_t last, double s,
-                 double level, double slope, std::uint64_t bits, std::vector<Drop>& drops) {
+Stair addRapids(const std::vector<CoursePoint>& p, std::size_t first, std::size_t last, double s,
+                double level, double slope, std::uint64_t bits, std::vector<Drop>& drops) {
     const double bottom = p[last].level;
     const int count =
         kCascadeLeast +
         std::min(kCascadeMost - kCascadeLeast,
                  static_cast<int>(shareOf(bits, 0) * (kCascadeMost - kCascadeLeast + 1)));
-    for (int n = 0; n < count && level > bottom; ++n) {
+    double height = 0.0;
+    for (int n = 0; n < count; ++n) {
         const std::uint64_t draw = noise::deriveSeed(bits, static_cast<std::uint64_t>(n));
-        double height = kStepLeast + kStepSpread * shareOf(draw, 0);
-        if (level - height - bottom < kStepLeast) {
-            height = level - bottom;
-        }
-        const double face = std::max(height / slope, kFaceLeast);
-        drops.push_back({s, face, level, level - height});
-        level -= height;
-        s += face;
-        // The next drop of the cascade only where the water of the ledge stays under the slope.
-        const double ledge = kLedgeLeast + (kLedgeMost - kLedgeLeast) * shareOf(draw, 24);
-        if (n + 1 == count || !(level <= levelOn(p, first, last, s + ledge))) {
-            break;
-        }
-        s += ledge;
+        height += kStepLeast + kStepSpread * shareOf(draw, 0);
     }
-    return {s, level};
+    if (level - height - bottom < kStepLeast) {
+        height = level - bottom;
+    }
+    // Under the slope all along: as steep as the slope comes down from its top at least.
+    double ramp = kRampLeast + kRampSpread * shareOf(bits, 40);
+    const double reach = height / ramp;
+    for (double u = kRampProbe; u <= reach; u += kRampProbe) {
+        ramp = std::max(ramp, (level - levelOn(p, first, last, s + u)) / u);
+    }
+    const double run = ramp > kRampMost ? std::max(height / slope, kFaceLeast) : height / ramp;
+    drops.push_back({s, run, level, level - height});
+    return {s + run, level - height};
+}
+
+// The half width of the channel of the stretch p[first..last] at s along it.
+double halfOn(const std::vector<CoursePoint>& p, std::size_t first, std::size_t last, double s) {
+    for (std::size_t i = first; i < last; ++i) {
+        if (s <= p[i + 1].s) {
+            const double run = p[i + 1].s - p[i].s;
+            const double t = run > 0.0 ? std::clamp((s - p[i].s) / run, 0.0, 1.0) : 1.0;
+            return lerp(p[i].half, p[i + 1].half, t);
+        }
+    }
+    return p[last].half;
+}
+
+// The drops with no short pool between two faces (kPoolLeast, kPoolWidths): closer, one drop,
+// its face as steep as the gentler of theirs (never a ramp as steep as a fall), from the lip of
+// the first. Rapids are never joined: they have no lip to bend.
+std::vector<Drop> mergeClose(const std::vector<CoursePoint>& p, std::size_t first, std::size_t last,
+                             const std::vector<Drop>& drops) {
+    const auto slopeOfDrop = [](const Drop& d) { return (d.from - d.to) / d.run; };
+    std::vector<Drop> out;
+    for (const Drop& d : drops) {
+        if (!out.empty()) {
+            Drop& above = out.back();
+            const double least =
+                std::max(kPoolLeast, kPoolWidths * 2.0 * halfOn(p, first, last, d.s));
+            const double steep = std::min(slopeOfDrop(above), slopeOfDrop(d));
+            if (d.s - (above.s + above.run) < least && steep > kRampMost) {
+                above.run = std::min(d.s + d.run - above.s,
+                                     std::max((above.from - d.to) / steep, kFaceLeast));
+                above.to = d.to;
+                continue;
+            }
+        }
+        out.push_back(d);
+    }
+    return out;
 }
 
 // The drops of the stretch p[first..last], from its lip down.
@@ -172,7 +215,7 @@ std::vector<Drop> dropsOf(const std::vector<CoursePoint>& p, std::size_t first,
         const double sheer = level - levelOn(p, first, last, sheerEnd(p, first, last, s));
         if (!(sheer >= kStepMin) && shareOf(noise::deriveSeed(bits, 2), 0) < kCascadeChance) {
             const Stair after =
-                addCascade(p, first, last, s, level, steep, noise::deriveSeed(bits, 3), drops);
+                addRapids(p, first, last, s, level, steep, noise::deriveSeed(bits, 3), drops);
             level = after.level;
             s = std::max(after.s, whereOn(p, first, last, level));
             continue;
@@ -194,7 +237,7 @@ std::vector<Drop> dropsOf(const std::vector<CoursePoint>& p, std::size_t first,
         level -= height;
         s = next;
     }
-    return drops;
+    return mergeClose(p, first, last, drops);
 }
 
 // The level of the stretch in steps at s along it, top above its first drop.

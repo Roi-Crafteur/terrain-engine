@@ -16,8 +16,11 @@
 // --face: face_side, the tallest face near (x, z) under a sun across it (rock_spots.hpp).
 // --walk: where to walk from straight to a face and under an overhang near (x, z), and the views
 // from there (walk_face, walk_under).
+// --at: heading in degrees clockwise from the north (-Z); tilt the tangent of the elevation of
+// the middle row of the view, not an angle (0 level, 0.27 about 15 degrees up, -0.27 about 15
+// degrees down, 1.0 45 degrees); above in meters over the ground (or the water).
 // --steps: the eyes on the steps of the fall of 388 m (rock_steps.hpp), without a view but
-// those --only names.
+// those --only names; their tilts are tangents too (the angle in degrees beside them).
 // --no-rock: the tiles of the relief alone (a height per column), the views before phase 12A.
 // The planet level is read from --planet (or <output-dir>/planet.bin), built and written there
 // when it does not hold it (about 100 s on 4 cores).
@@ -84,8 +87,8 @@ struct Options {
     bool check = false;    // --check: the views of the checks of the meshes too
     bool steps = false;    // --steps: the eyes on the steps of the fall of 388 m
     std::vector<std::string> only;
-    // --at <x> <z> <heading degrees> <tilt> <meters above the ground>: a view "at" there, and
-    // "at_top" from above, 100 m wide.
+    // --at <x> <z> <heading degrees> <tilt> <meters above the ground>: a view "at" there (tilt:
+    // the tangent of the elevation of its middle row), and "at_top" from above, 100 m wide.
     std::optional<std::array<double, 5>> at;
     double sunLeft = 0.3; // --sun <turns>: of the sun of the view --at, left of its axis
     std::optional<std::array<double, 2>> face; // --face <x> <z>
@@ -428,7 +431,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>] "
                      "[--view-distance <chunks>] [--only <name>]... [--no-rock] "
-                     "[--at <x> <z> <heading> <tilt> <above>] [--sun <turns>] [--cost] [--check] "
+                     "[--at <x> <z> <heading degrees> <tilt: a tangent> <above>] [--sun <turns>] "
+                     "[--cost] [--check] "
                      "[--face <x> <z>] [--walk <x> <z>] [--steps]\n",
                      argv[0]);
         return EXIT_FAILURE;

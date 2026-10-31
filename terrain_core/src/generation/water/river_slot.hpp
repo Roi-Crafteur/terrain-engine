@@ -79,7 +79,8 @@ inline constexpr double kBowlBeyond = 16.0;
 // The blocks of rock of the stretches in steps of c (its levels, shapes and slots set): heaps at
 // the foot of their drops, a block per few meters of the drop, of 1.5 to 7 meters (mostly small),
 // nearly a half of them 1 to 4 meters out of their water, the others sunk, never within
-// kBlockLip of the level of the step above them; in the slot where it winds (its windings set,
+// kBlockLip of the level of the step above them; and all over the channel of their rapids, a
+// block per 5 meters of them, of 1.5 to 4 meters; in the slot where it winds (its windings set,
 // river_winding.hpp), on the bed of its bowls; and their box.
 void placeBlocks(Course& c);
 

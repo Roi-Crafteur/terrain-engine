@@ -47,18 +47,28 @@ constexpr double kEdgeWave = 3.0;
 constexpr double kRoughShare = 0.6;
 constexpr double kRecessMost = 1.0 + 0.5 * kRoughShare; // lipRecess within it
 constexpr double kRoughWave = 7.0;
-// Without a pool around it (the first or the last lip of a course), kOpenPool meters.
+// Without a pool around it (the first or the last lip of a course), kOpenPool meters. Its pool
+// above ends at rapids (a stretch in steps whose water comes down more than kPoolSlope meters per
+// meter), where it is shorter: the edge never recedes into them (it would squeeze them into a
+// step).
 constexpr double kOpenPool = 40.0;
-// Its edge turns from across the slot by up to kTurnMost (35 degrees, drawn), as far as the pools
-// leave room for (in the frame of the slot: river_winding.hpp); the line of its turn bends back
-// to the line of its middle over the outer kTurnFade of its width (the walls of its slot).
+constexpr double kPoolSlope = 0.05;
+// Its edge turns from across the slot by kTurnLeast to kTurnMost (10 to 35 degrees, drawn), the
+// other way from the lip above it but in kTurnSame of them (the lips of a stair staggered), as far
+// as the pools leave room for (in the frame of the slot: river_winding.hpp); the line of its turn
+// bends back to the line of its middle over the outer kTurnFade of its width (the walls of its
+// slot). Its recess (its amphitheater) takes kRecessRoom of the room at most: never a straight
+// edge across, the bow, the waves and the turn in the rest.
+constexpr double kTurnLeast = 10.0 / 360.0;
 constexpr double kTurnMost = 35.0 / 360.0;
+constexpr double kTurnSame = 0.25;
+constexpr double kRecessRoom = 0.5;
 constexpr double kTurnFade = 0.4;
 // Its bow: kBowLeast to kBowMost of its width (drawn), its middle upstream over hard rock on soft
 // (kBowContrast at least: an amphitheater), either way over rock of one hardness; and two waves
 // across it, of kWaveLeast to kWaveMost of its width each (drawn), kWaveShare of it high at most
-// each. All within the room its pools leave, the waves first, then the bow, then the turn.
-constexpr double kBowLeast = 0.15;
+// each. All within the room its pools leave, the bow first, then the waves, then the turn.
+constexpr double kBowLeast = 0.2;
 constexpr double kBowMost = 0.4;
 constexpr double kBowContrast = 0.3;
 constexpr double kWaveLeast = 0.3;
@@ -75,6 +85,19 @@ bool isFace(const CoursePoint& a, const CoursePoint& b) {
     return a.fall && b.fall && a.level - b.level > kLipSlope * (b.s - a.s);
 }
 
+// Meters of pool above the lip at point i of p, from where it begins at most (meters along the
+// course: the foot of the drop above), up to the rapids above it if any.
+double poolAbove(const std::vector<CoursePoint>& p, std::size_t i, double from) {
+    for (std::size_t j = i; j > 0 && p[j - 1].s >= from; --j) {
+        const CoursePoint& a = p[j - 1];
+        const CoursePoint& b = p[j];
+        if (a.fall && b.fall && a.level - b.level > kPoolSlope * (b.s - a.s)) {
+            return p[i].s - b.s;
+        }
+    }
+    return p[i].s - from;
+}
+
 // The least hardness of the rock of relief under the lip of a drop at (x, z), from top to bottom
 // water, and the hardness of the lip.
 double contrastAt(const Heightfield& relief, double x, double z, double top, double bottom) {
@@ -89,7 +112,8 @@ double contrastAt(const Heightfield& relief, double x, double z, double top, dou
 
 // The edge of lip l at its pools above and below (meters along the course), of a river of
 // discharge.
-void shapeLip(FallLip& l, const Course& c, double above, double below, double discharge) {
+void shapeLip(FallLip& l, const Course& c, double above, double below, double discharge,
+              double lean) {
     const CoursePoint& p = c.points[l.point];
     const double drop = static_cast<double>(l.top) - l.bottom;
     const double flow = std::clamp(
@@ -100,33 +124,33 @@ void shapeLip(FallLip& l, const Course& c, double above, double below, double di
     l.channel = static_cast<float>(slotHalf(c.slotSeed, l.s, p.half) * (1.0 + bowlAt(c, l.s).wider));
     l.width = static_cast<float>(static_cast<double>(l.channel) + kWallShare * p.slot);
     const double room = std::min({kRecessWidth * l.width, kPoolAbove * above, kPoolBelow * below});
-    l.recess = static_cast<float>(std::clamp(
-        drop * (kRecessBase + kRecessContrast * static_cast<double>(l.contrast)) * flow, 0.0,
-        std::max(0.0, room)));
+    l.recess = static_cast<float>(
+        std::clamp(drop * (kRecessBase + kRecessContrast * static_cast<double>(l.contrast)) * flow,
+                   0.0, std::max(0.0, kRecessRoom * room)));
     l.edge = static_cast<float>(
         std::clamp(std::min(kEdgeBase + kEdgeShare * drop, kEdgeMost), 0.0, std::max(0.0, room)));
     l.recess = std::min(l.recess, static_cast<float>(std::max(0.0, room)) - l.edge);
     l.recess = std::max(l.recess, 0.0f);
-    // Its waves, then its bow, in the room left (shares of its whole width).
+    // Its bow, then its waves, in the room left (shares of its whole width).
     const auto share = [&l](std::uint64_t stream) {
         return static_cast<double>(noise::deriveSeed(l.seed, stream) >> 40) * 0x1.0p-24;
     };
     const double width = static_cast<double>(l.width);
     const double across = 2.0 * static_cast<double>(l.channel);
     double left = std::max(0.0, room - static_cast<double>(l.recess + l.edge));
-    l.waves = static_cast<float>(std::min(kWaveShare * across, 0.25 * left));
-    l.waveA = static_cast<float>(across * (kWaveLeast + (kWaveMost - kWaveLeast) * share(4)));
-    l.waveB = static_cast<float>(across * (kWaveLeast + (kWaveMost - kWaveLeast) * share(5)));
-    left -= 2.0 * static_cast<double>(l.waves);
     const double bow = std::min(across * (kBowLeast + (kBowMost - kBowLeast) * share(6)), left);
     const bool hollow = static_cast<double>(l.contrast) >= kBowContrast || share(7) < 0.5;
     l.bow = static_cast<float>(hollow ? bow : -bow);
     left -= bow;
+    l.waves = static_cast<float>(std::min(kWaveShare * across, 0.25 * left));
+    l.waveA = static_cast<float>(across * (kWaveLeast + (kWaveMost - kWaveLeast) * share(4)));
+    l.waveB = static_cast<float>(across * (kWaveLeast + (kWaveMost - kWaveLeast) * share(5)));
+    left -= 2.0 * static_cast<double>(l.waves);
     // The turn of its edge: an angle to the slot drawn, the slot itself at an angle to the axis
     // where it winds (rate: its tangent), within the room the pools leave on its farther side.
-    const double angle =
-        kTurnMost * (2.0 * static_cast<double>(noise::deriveSeed(l.seed, 3) >> 40) * 0x1.0p-24 -
-                     1.0);
+    const double side =
+        lean == 0.0 ? (share(8) < 0.5 ? -1.0 : 1.0) : (share(8) < kTurnSame ? lean : -lean);
+    const double angle = side * (kTurnLeast + (kTurnMost - kTurnLeast) * share(3));
     const double rate = shiftAt(c, l.s).rate;
     const double turn = (rate + dmath::sinTurns(angle) / dmath::cosTurns(angle)) /
                         std::sqrt(1.0 + rate * rate);
@@ -154,6 +178,7 @@ void placeLips(Course& c, const Heightfield& relief, double discharge) {
         }
         i = j - 1;
     }
+    double lean = 0.0; // the way the lip above turned
     for (std::size_t k = 0; k < drops.size(); ++k) {
         const CoursePoint& a = p[drops[k][0]];
         const CoursePoint& b = p[drops[k][0] + 1];
@@ -170,10 +195,12 @@ void placeLips(Course& c, const Heightfield& relief, double discharge) {
         l.bottom = foot.level;
         l.contrast = static_cast<float>(contrastAt(relief, a.x, a.z, a.level, foot.level));
         l.seed = noise::deriveSeed(noise::deriveSeed(kLipSalt, c.slotSeed), k);
-        const double above = k > 0 ? a.s - p[drops[k - 1][1]].s : kOpenPool;
+        const double above =
+            poolAbove(p, drops[k][0], k > 0 ? p[drops[k - 1][1]].s : a.s - kOpenPool);
         const double below =
             (k + 1 < drops.size() ? p[drops[k + 1][0]].s : foot.s + kOpenPool) - foot.s;
-        shapeLip(l, c, above, below, discharge);
+        shapeLip(l, c, above, below, discharge, lean);
+        lean = l.turn > 0.0f ? 1.0 : (l.turn < 0.0f ? -1.0 : lean);
         l.reach = static_cast<float>(1.5 * recessMost(l) + (foot.s - a.s));
         if (recessMost(l) > 0.0) {
             c.lips.push_back(l);

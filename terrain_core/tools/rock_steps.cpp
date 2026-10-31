@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <numbers>
 #include <vector>
 
 namespace rock_tool {
@@ -118,11 +119,13 @@ std::string eyeAt(const terrain::Heightfield& field, const terrain::RiverReach& 
     s.note = std::string("the ") + e.what + " of a step of the fall of 388 m";
     out.shots.push_back(s);
     const double level = static_cast<double>(wet ? h.waterLevel : h.height);
-    char line[320];
+    char line[400];
     std::snprintf(line, sizeof line,
                   "  %-5s (%.1f, %.1f), %.0f m down the lip: water %.1f m, eye %.1f m, heading "
-                  "%.1f degrees, tilt %.2f%s; --at %.1f %.1f %.1f %.2f %.1f\n",
+                  "%.1f degrees, tilt %.2f (a tangent: %+.0f degrees)%s; --at %.1f %.1f %.1f "
+                  "%.2f %.1f\n",
                   e.what, p.x, p.z, e.along, level, level + kEye, degrees(s.heading), e.tilt,
+                  terrain::dmath::atan(e.tilt) * 180.0 / std::numbers::pi,
                   wet ? "" : " (DRY: over the ground)", p.x, p.z, degrees(s.heading), e.tilt, kEye);
     return line;
 }

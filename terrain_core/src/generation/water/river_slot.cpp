@@ -91,6 +91,12 @@ constexpr double kBlockAbove = 0.5; // their top above it at least
 // the water: the finest meshes (cells of 1 m) reach its top and follow its sides.
 constexpr double kBlockTall = 0.9;
 constexpr double kBlockOutWidth = 0.6;
+// The rapids: where the water of a stretch comes down less steeply than a face (kLipSlope) and
+// more than kRampSlope meters per meter (river_falls.cpp).
+constexpr double kRampSlope = 0.15;
+constexpr double kRampEvery = 5.0;
+constexpr int kRampMost = 12;
+constexpr double kRampSpread = 2.5;
 constexpr std::uint64_t kWidthLeft = 1;
 constexpr std::uint64_t kWidthRight = 2;
 constexpr std::uint64_t kEdgeLeft = 3;
@@ -143,13 +149,81 @@ double topOf(std::uint64_t more, double level, double bed, double cap, double wi
     return std::min(std::max(top, bed + kBlockAbove), highest);
 }
 
+// A block width meters wide s meters along course c (from point from on), around middle of its
+// half width aside of its axis (spread meters both ways; anywhere across with a negative spread),
+// in its water (at level, or on the slope of its water where sloped), never above cap: on the bed,
+// never on another block of c from first on, in a channel kBlockHalfLeast meters wide at least.
+struct BlockAsk {
+    std::size_t from = 0;
+    double s = 0.0;
+    double middle = 0.0;
+    double spread = 0.0;
+    double width = 0.0;
+    double level = 0.0;
+    bool sloped = false;
+    double cap = 0.0;
+};
+
+void placeBlock(Course& c, const BlockAsk& ask, std::uint64_t bits, std::size_t first) {
+    const std::vector<CoursePoint>& p = c.points;
+    const double s = ask.s;
+    std::size_t q = ask.from;
+    while (q + 2 < p.size() && p[q + 1].s < s) {
+        ++q;
+    }
+    const CoursePoint& a = p[q];
+    const CoursePoint& b = p[q + 1];
+    const double t = b.s > a.s ? std::clamp((s - a.s) / (b.s - a.s), 0.0, 1.0) : 0.0;
+    const double dx = b.x - a.x;
+    const double dz = b.z - a.z;
+    const double along = dmath::hypot(dx, dz);
+    const Bowl bowl = bowlAt(c, s);
+    const double half = slotHalf(c.slotSeed, s, lerp(a.half, b.half, t)) * (1.0 + bowl.wider);
+    if (!(along > 0.0) || half < kBlockHalfLeast) {
+        return;
+    }
+    const double width = std::min(ask.width, kBlockHalf * half);
+    const double radius = 0.5 * width;
+    const double free = 0.8 * (half - radius);
+    const double draw = 2.0 * shareOf(bits, 40) - 1.0;
+    const double aside = ask.spread < 0.0
+                             ? free * draw
+                             : std::clamp(ask.middle * half + ask.spread * draw, -free, free);
+    // The bed of the channel there (river_profile.cpp): the block stands above it.
+    const double level = ask.sloped ? lerp(a.level, b.level, t) : ask.level;
+    const double off = aside / half;
+    const double bed =
+        level - (static_cast<double>(lerp(a.depth, b.depth, t)) + bowl.deeper) * (1.0 - off * off);
+    const double base = bed - kBlockBelow;
+    // On a slope, never above the lowest relief across the channel (it would stand out of the
+    // valley, uncarved).
+    const double cap =
+        ask.sloped ? std::min(ask.cap, static_cast<double>(lerp(a.ground, b.ground, t)) - kBlockLip)
+                   : ask.cap;
+    const double placed = topOf(noise::deriveSeed(bits, 1), level, bed, cap, width);
+    // In the slot where it winds: aside of its middle, across it (river_winding.hpp).
+    const SlotShift shift = shiftAt(c, s);
+    const double rate = std::min(std::abs(shift.rate), kRateCap);
+    const double sideways = shift.offset + aside * std::sqrt(1.0 + rate * rate);
+    const double x = lerp(a.x, b.x, t) - sideways * dz / along;
+    const double z = lerp(a.z, b.z, t) + sideways * dx / along;
+    // Never on another block: each stands on the bed, its top its own.
+    const bool apart = std::all_of(c.blocks.begin() + static_cast<std::ptrdiff_t>(first),
+                                   c.blocks.end(), [&](const FallBlock& o) {
+                                       return dmath::hypot(o.x - x, o.z - z) >=
+                                              radius + static_cast<double>(o.radius);
+                                   });
+    if (placed > base + 0.5 && apart) {
+        c.blocks.push_back({x, z, static_cast<float>(radius), static_cast<float>(placed),
+                            static_cast<float>(base)});
+    }
+}
+
 // The heap of blocks at the foot of the drop of c from point lip to point foot, the next lip at
 // next meters along it: the k-th block of the course next.
 void placeHeap(Course& c, std::size_t lip, std::size_t foot, double next, std::uint64_t& k) {
     const std::vector<CoursePoint>& p = c.points;
     const double drop = static_cast<double>(p[lip].level - p[foot].level);
-    const double level = p[foot].level;
-    const double cap = static_cast<double>(p[lip].level) - kBlockLip;
     const std::uint64_t seed = noise::deriveSeed(c.slotSeed, kBlocks);
     const std::uint64_t heap = noise::deriveSeed(seed, ++k);
     const int count =
@@ -157,69 +231,58 @@ void placeHeap(Course& c, std::size_t lip, std::size_t foot, double next, std::u
     const double room = kPoolShare * (next - p[foot].s);
     const double middle =
         p[foot].s + std::min(room, drop * (kHeapNear + (kHeapFar - kHeapNear) * shareOf(heap, 24)));
-    const double spread = kHeapSpread + kHeapGrowth * drop;
-    const double across = 2.0 * shareOf(heap, 40) - 1.0;
+    BlockAsk ask;
+    ask.from = foot;
+    ask.middle = 0.5 * (2.0 * shareOf(heap, 40) - 1.0);
+    ask.spread = kHeapSpread + kHeapGrowth * drop;
+    ask.level = p[foot].level;
+    ask.cap = static_cast<double>(p[lip].level) - kBlockLip;
     const std::size_t first = c.blocks.size();
     for (int n = 0; n < count; ++n) {
         const std::uint64_t bits = noise::deriveSeed(seed, ++k);
         const double u = shareOf(bits, 24);
-        double width =
-            std::min(kBlockLeast + kBlockSpread * u * u, kBlockDrop * drop + kBlockLeast);
+        ask.width = std::min(kBlockLeast + kBlockSpread * u * u, kBlockDrop * drop + kBlockLeast);
         // Below the face: the whole block in the pool, never over the falling water, nor in its
         // last kPoolTail where the next lip may recede (river_lips.hpp).
-        const double low = p[foot].s + 0.5 * width + kBlockClear;
+        const double low = p[foot].s + 0.5 * ask.width + kBlockClear;
         const double high = std::min(p[foot].s + room, next - kPoolTail * (next - p[foot].s) -
-                                                           0.5 * width - kBlockClear);
+                                                           0.5 * ask.width - kBlockClear);
         if (!(high >= low)) {
             continue;
         }
-        const double s = std::clamp(middle + spread * (2.0 * shareOf(bits, 0) - 1.0), low, high);
-        if (s < p.front().s + kBlockEnds || s > p.back().s - kBlockEnds) {
+        ask.s = std::clamp(middle + ask.spread * (2.0 * shareOf(bits, 0) - 1.0), low, high);
+        if (ask.s < p.front().s + kBlockEnds || ask.s > p.back().s - kBlockEnds) {
             continue;
         }
-        std::size_t q = foot;
-        while (q + 2 < p.size() && p[q + 1].s < s) {
-            ++q;
-        }
-        const CoursePoint& a = p[q];
-        const CoursePoint& b = p[q + 1];
-        const double t = b.s > a.s ? std::clamp((s - a.s) / (b.s - a.s), 0.0, 1.0) : 0.0;
-        const double dx = b.x - a.x;
-        const double dz = b.z - a.z;
-        const double along = dmath::hypot(dx, dz);
-        const Bowl bowl = bowlAt(c, s);
-        const double half = slotHalf(c.slotSeed, s, lerp(a.half, b.half, t)) * (1.0 + bowl.wider);
-        if (!(along > 0.0) || half < kBlockHalfLeast) {
+        placeBlock(c, ask, bits, first);
+    }
+}
+
+// The blocks of the rapids of c from point from to point to: a block every kRampEvery meters
+// (plus a draw), kRampMost at most, all over their channel, of kBlockLeast to kBlockLeast +
+// kRampSpread meters; the k-th block of the course next.
+void placeRapids(Course& c, std::size_t from, std::size_t to, std::uint64_t& k) {
+    const std::vector<CoursePoint>& p = c.points;
+    const std::uint64_t seed = noise::deriveSeed(c.slotSeed, kBlocks);
+    const std::uint64_t rapids = noise::deriveSeed(seed, ++k);
+    const double length = p[to].s - p[from].s;
+    const int count =
+        std::min(kRampMost, static_cast<int>(std::floor(length / kRampEvery + shareOf(rapids, 0))));
+    BlockAsk ask;
+    ask.from = from;
+    ask.sloped = true;
+    ask.cap = std::numeric_limits<double>::infinity();
+    const std::size_t first = c.blocks.size();
+    for (int n = 0; n < count; ++n) {
+        const std::uint64_t bits = noise::deriveSeed(seed, ++k);
+        const double u = shareOf(bits, 24);
+        ask.width = kBlockLeast + kRampSpread * u * u;
+        ask.s = p[from].s + length * shareOf(bits, 0);
+        ask.spread = -1.0; // anywhere across its channel
+        if (ask.s < p.front().s + kBlockEnds || ask.s > p.back().s - kBlockEnds) {
             continue;
         }
-        width = std::min(width, kBlockHalf * half);
-        const double radius = 0.5 * width;
-        const double free = 0.8 * (half - radius);
-        const double aside =
-            std::clamp(0.5 * across * half + spread * (2.0 * shareOf(bits, 40) - 1.0), -free, free);
-        // The bed of the channel there (river_profile.cpp): the block stands above it.
-        const double off = aside / half;
-        const double bed = level - (static_cast<double>(lerp(a.depth, b.depth, t)) + bowl.deeper) *
-                                       (1.0 - off * off);
-        const double base = bed - kBlockBelow;
-        const double placed = topOf(noise::deriveSeed(bits, 1), level, bed, cap, width);
-        // In the slot where it winds: aside of its middle, across it (river_winding.hpp).
-        const SlotShift shift = shiftAt(c, s);
-        const double rate = std::min(std::abs(shift.rate), kRateCap);
-        const double sideways = shift.offset + aside * std::sqrt(1.0 + rate * rate);
-        const double x = lerp(a.x, b.x, t) - sideways * dz / along;
-        const double z = lerp(a.z, b.z, t) + sideways * dx / along;
-        // Never on another block of the heap: each stands on the bed, its top its own.
-        const bool apart = std::all_of(c.blocks.begin() + static_cast<std::ptrdiff_t>(first),
-                                       c.blocks.end(), [&](const FallBlock& o) {
-                                           return dmath::hypot(o.x - x, o.z - z) >=
-                                                  radius + static_cast<double>(o.radius);
-                                       });
-        if (!(placed > base + 0.5) || !apart) {
-            continue;
-        }
-        c.blocks.push_back({x, z, static_cast<float>(radius), static_cast<float>(placed),
-                            static_cast<float>(base)});
+        placeBlock(c, ask, bits, first);
     }
 }
 
@@ -312,6 +375,23 @@ void placeBlocks(Course& c) {
     for (std::size_t d = 0; d < lips.size(); ++d) {
         const double next = d + 1 < lips.size() ? p[lips[d + 1]].s : p.back().s;
         placeHeap(c, lips[d], feet[d], next, k);
+    }
+    // The rapids: runs of segments of the stretches sloping less than a face.
+    for (std::size_t i = 0; i + 1 < p.size(); ++i) {
+        const auto sloped = [&p](std::size_t n) {
+            const double run = p[n + 1].s - p[n].s;
+            return p[n].fall && p[n + 1].fall && !faceAt(p, n) && run > 0.0 &&
+                   static_cast<double>(p[n].level - p[n + 1].level) > kRampSlope * run;
+        };
+        if (!sloped(i)) {
+            continue;
+        }
+        std::size_t j = i + 1;
+        while (j + 1 < p.size() && sloped(j)) {
+            ++j;
+        }
+        placeRapids(c, i, j, k);
+        i = j - 1;
     }
     c.blocksMinX = c.blocksMinZ = std::numeric_limits<double>::infinity();
     c.blocksMaxX = c.blocksMaxZ = -std::numeric_limits<double>::infinity();

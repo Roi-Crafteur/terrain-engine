@@ -8,7 +8,9 @@
 //     kSlopeMost per meter at most (no jump).
 //   - One wall: across the slot down the stretches in steps, from its channel to the relief, the
 //     carved ground never has a second break of slope above the lip of the slot (a terrace above
-//     its rim, then a second wall): kTerracesMost per thousand sides at most.
+//     its rim, then a second wall): kTerracesMost per thousand sides at most. The same up its
+//     steepest slope from the edge of its channel (the true slope of the bank, which may run down
+//     the valley rather than across it).
 //   - Boxes: kBoxSide x kBoxSide samples kBoxStep meters apart in one batch around points of the
 //     corridors (their boxes cut in blocks, with the lips that may cut them: BoxCourse) hold the
 //     same bits as each sampled alone, every kBoxEvery points down the stretches in steps.
@@ -119,9 +121,44 @@ bool terraceOn(const std::vector<terrain::HeightSample>& ground, const std::vect
     return false;
 }
 
+// The section of the carved ground up its steepest slope from the edge of the channel at (x, z),
+// kTerraceStep meters apart, setting off along (dx, dz) (and on along the way it went where the
+// ground is flat: kSlopeFlat), up to its top (a crest, or the edge of a lower ground beyond: it
+// stays there).
+constexpr double kGradientStep = 0.5;
+constexpr double kSlopeFlat = 0.02;
+constexpr std::size_t kSlopeEvery = 4; // points between two sections up the slope
+
+void slopeSection(const World& w, double x, double z, double dx, double dz, std::vector<double>& xs,
+                  std::vector<double>& zs) {
+    double height = static_cast<double>(w.field.heightAt(x, z));
+    for (std::size_t k = 0; k < xs.size(); ++k) {
+        xs[k] = x;
+        zs[k] = z;
+        const double gx = static_cast<double>(w.field.heightAt(x + kGradientStep, z) -
+                                              w.field.heightAt(x - kGradientStep, z));
+        const double gz = static_cast<double>(w.field.heightAt(x, z + kGradientStep) -
+                                              w.field.heightAt(x, z - kGradientStep));
+        const double g = std::hypot(gx, gz);
+        if (g > 2.0 * kGradientStep * kSlopeFlat) {
+            dx = gx / g;
+            dz = gz / g;
+        }
+        const double next =
+            static_cast<double>(w.field.heightAt(x + kTerraceStep * dx, z + kTerraceStep * dz));
+        if (next >= height) {
+            x += kTerraceStep * dx;
+            z += kTerraceStep * dz;
+            height = next;
+        }
+    }
+}
+
 void testOneWall(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
     std::size_t sides = 0;
     std::size_t terraces = 0;
+    std::size_t slopes = 0;        // sections up the steepest slope
+    std::size_t slopeTerraces = 0; // with a terrace
     const auto n = static_cast<std::size_t>(kTerraceFar / kTerraceStep);
     std::vector<double> xs(n);
     std::vector<double> zs(n);
@@ -148,16 +185,28 @@ void testOneWall(const World& w, Reaches& reaches, const std::vector<std::size_t
                 w.relief.heightsAt(xs, zs, relief);
                 ++sides;
                 terraces += terraceOn(ground, relief, p[i].level) ? 1 : 0;
+                if (i % (2 * kSlopeEvery) == 1) {
+                    slopeSection(w, xs[0], zs[0], -side * dz / length, side * dx / length, xs, zs);
+                    w.field.samplesAt(xs, zs, ground);
+                    w.relief.heightsAt(xs, zs, relief);
+                    ++slopes;
+                    slopeTerraces += terraceOn(ground, relief, p[i].level) ? 1 : 0;
+                }
             }
         }
     }
-    const double perThousand =
-        1000.0 * static_cast<double>(terraces) / static_cast<double>(std::max<std::size_t>(1, sides));
+    const auto perThousand = [](std::size_t count, std::size_t of) {
+        return 1000.0 * static_cast<double>(count) /
+               static_cast<double>(std::max<std::size_t>(1, of));
+    };
     std::printf("across the slots of the stretches in steps: %zu sides, %zu with a terrace above "
-                "the lip and a second wall (%.1f per thousand)\n",
-                sides, terraces, perThousand);
-    TEST_CHECK(sides >= 1000);
-    TEST_CHECK(perThousand <= kTerracesMost);
+                "the lip and a second wall (%.1f per thousand); up their steepest slope: %zu "
+                "sides, %zu with one (%.1f per thousand)\n",
+                sides, terraces, perThousand(terraces, sides), slopes, slopeTerraces,
+                perThousand(slopeTerraces, slopes));
+    TEST_CHECK(sides >= 1000 && slopes >= 200);
+    TEST_CHECK(perThousand(terraces, sides) <= kTerracesMost);
+    TEST_CHECK(perThousand(slopeTerraces, slopes) <= kTerracesMost);
 }
 
 constexpr int kBoxSide = 17;

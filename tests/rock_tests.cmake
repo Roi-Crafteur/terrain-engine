@@ -36,11 +36,17 @@ terrain_add_test(rock_walk_test terrain_core)
 # The slots of the falls: they wind whatever the slope, their banks never step nor rise on a
 # levee, no pattern repeats along them.
 terrain_add_test(river_slots_test terrain_core)
-# The steps of the falls: of all heights and spacings, in cascades too, their lips turned and
-# shaped by the hardness of the rock, a bowl at their foot, heaps of blocks below them.
+# The steps of the falls: of all heights and spacings, rapids with their blocks, a bowl at their
+# foot, heaps of blocks below them.
 terrain_add_test(river_steps_test terrain_core)
+# The lips of the steps of the falls: shaped by the hardness of the rock, bowed and turned, never a
+# straight cut across their slot.
+terrain_add_test(river_lips_test terrain_core)
 # The walls of the slots of the falls: one wall from the water up to the relief, the frame of the
 # slot faded back to the axis on it, with its internals (src/generation/water/river_winding.hpp).
 terrain_add_test(river_walls_test terrain_core)
 target_include_directories(river_walls_test PRIVATE
                            ${PROJECT_SOURCE_DIR}/terrain_core/src/generation/water)
+# The water of the rapids of the falls as Unreal gets it: the cells of the tiles over them drawn and
+# never cut, the levels of their vertices those of the field.
+terrain_add_test(river_rapids_test terrain_unreal_bridge)
