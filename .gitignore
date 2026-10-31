@@ -9,3 +9,6 @@ build-*/
 *.exe
 compile_commands.json
 __pycache__/
+
+# The machine of the verification launcher (scripts/verify/machine.example.json)
+scripts/verify/machine.json

@@ -1,0 +1,27 @@
+{
+  "notes": [
+    "The machine of the verification (scripts/verify/README.md): copy this file to machine.json (ignored by git) and adapt it.",
+    "workRoot: the clones, the build cache by commit, the planets and the runs; never under %TEMP%, no space in it.",
+    "planets: planet files reused when terrain_probe --planet-check accepts them, only read and copied, never written.",
+    "linkContent: folders of Content linked (mklink /J) instead of copied; never TerrainEngine (the material scripts write there) nor the folder of the map.",
+    "The driver always sets PlanetFile of the Terrain World of the map itself (the copy of a planet, or empty without it)."
+  ],
+  "engine": "C:/Program Files/Epic Games/UE_5.8",
+  "project": "C:/Projets/TerrainSandbox/TerrainSandbox.uproject",
+  "target": "TerrainSandboxEditor",
+  "platform": "Win64",
+  "configuration": "Development",
+  "pluginFolder": "terrain-engine",
+  "map": "/Game/TerrainTest/TerrainGasp",
+  "workRoot": "C:/TerrainVerify",
+  "repository": "https://github.com/Roi-Crafteur/terrain-engine.git",
+  "planets": [
+    "C:/TerrainEngine/planet.bin",
+    "C:/Projets/TerrainSandbox/Saved/TerrainEngine/planet_20261019.bin"
+  ],
+  "linkContent": [],
+  "editorArgs": ["-NoSplash", "-unattended"],
+  "cmakeGenerator": "",
+  "seed": 20261019,
+  "sun": { "falls": { "elevation": 50, "yaw": 116 } }
+}
