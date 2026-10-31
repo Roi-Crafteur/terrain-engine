@@ -1,0 +1,36 @@
+{
+  "id": "kobolds",
+  "type": "people",
+  "name": "Kobolds",
+  "plane": "material",
+  "majorKingdomShare": 1,
+  "minorStateShare": 8,
+  "baseTerrainModel": "mountain",
+  "physicalPreferences": {
+    "temperature": { "hardMin": -20, "min": -4, "idealMin": 10, "idealMax": 34, "max": 46 },
+    "roughness": { "min": 0.25, "idealMin": 0.45, "idealMax": 1, "max": 1 },
+    "rainfall": { "min": 0, "idealMin": 100, "idealMax": 1400, "max": 2800 }
+  },
+  "habitabilityWeight": 0.6,
+  "physicalWeight": 1.4,
+  "dangerSensitivity": 0.15,
+  "ambientEnergyPreferences": { "prana": 0.0, "aura": 0.3, "mana": 0.4 },
+  "underground": { "level": "mostly", "preferredDepth": 0.7, "needsSurfaceAccess": false },
+  "undergroundPreferences": { "caveDensity": 0.9, "stableRock": 0.7, "groundwater": 0.6, "ore": 0.8, "stone": 0.7, "heat": 0.8, "volcanoProximity": 0.7, "dragonProximity": 0.6, "cold": -0.6, "surfaceAccess": 0.4 },
+  "needs": { "metaux_communs": 0.7, "metaux_precieux": 0.8, "pierre": 0.6, "food": 0.6 },
+  "fears": { "highMagic": 0.2, "volcano": 0.0, "deepOcean": 0.8, "monsterDensity": 0.3 },
+  "government": [ "warren_chiefdom", "dragon_cult" ],
+  "relations": { "dragonides": 0.6, "gnomes": -0.6, "nains": -0.6, "gobelins": -0.3, "humains": -0.3 },
+  "selfRelation": 0.6,
+  "rulerTraits": {
+    "ambition": { "min": 0.2, "max": 0.7 },
+    "aggression": { "min": 0.3, "max": 0.8 },
+    "greed": { "min": 0.5, "max": 1.0 },
+    "prudence": { "min": 0.3, "max": 0.8 },
+    "piety": { "min": 0.3, "max": 0.9 }
+  },
+  "names": {
+    "syllables": [ "kik", "rax", "snee", "vik", "taz", "mek", "ix", "ska", "lee", "drak" ],
+    "titles": { "warren_chiefdom": "Chef du Terrier", "dragon_cult": "Voix du Dragon" }
+  }
+}

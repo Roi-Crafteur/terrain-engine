@@ -186,6 +186,27 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   sous la charge, aucun de la nouvelle ; une régression forcée de l'eau (fleuves calculés 3 ou 5
   fois, attente sur chaque échantillon) toujours détectée
 
+### Peuplement V1 — cartes d'analyse, peuples, royaumes et dirigeants (agent 25)
+- données seules, dérivées du niveau Planète et rangées à part : somme du niveau Planète
+  (`26626564570b0d9e`), goldens et montagnes gelées identiques ; rien dans Unreal pour l'instant
+- données en JSON modifiables sans code (`data/settlement/` : `world.json`, 6 ressources,
+  13 peuples), lues strictement : refus clair (fichier, chemin, raison, ligne, colonne)
+- cartes d'analyse sur toute la planète : terres arables, nourriture, ressources par la
+  géologie, distance à l'eau, rugosité, danger naturel, Prana, Mana simple et lignes
+  telluriques, habitabilité, raceSuitability des 13 peuples
+- presets sauvage, équilibré et civilisé (nombres tirés de la seed ou forcés), capitales dans
+  les 20 % les plus habitables près de l'eau douce, expansion par coût (bruit lent de 50 km,
+  fleuves, crêtes, mer, terres hostiles), arrêt sur la barrière la plus proche dès 0,7 × la
+  cible, petits États dans des compartiments naturels et le long des vallées, royaumes qui
+  remontent les vallées des massifs jusqu'à la crête, nettoyage des seuls artefacts
+- un dirigeant par État (gouvernement, personnalité, nom dans la culture de son peuple, un à
+  trois objectifs) et relations de base entre voisins (relation et tension asymétriques)
+- le monde garde une copie complète de sa configuration et son empreinte (`settlement.json`) :
+  un fichier modifié est refusé, la copie seule redonne les mêmes royaumes au bit près
+- planète entière, trois presets (`terrain_export_settlement --preset all`) : 77 s, pic de
+  960 Mo ; frontières naturelles 66,8 / 61,5 / 55,3 % (sauvage / équilibré / civilisé, seuil
+  50 %), tous les tests d'un bon monde passent ; détails dans `docs/PEUPLEMENT.md`, section 9
+
 ### Outils de debug en jeu (agent 36)
 - écran F3 en trois pages (joueur, point visé, performance), lignes du core extensibles par
   d'autres modules (`Bridge/point_info`) ; commandes `Terrain.Goto x z [œil]` et
@@ -218,7 +239,8 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   roche 3D dans le monde streamé
 - en parallèle, sans changer le monde : l'eau dans Unreal à son vrai niveau (lacs, fleuves,
   chutes), casser et poser en jeu, poids des biomes dans l'horizon lointain
-- en pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game
+- fait : peuplement V1 (cartes d'analyse, peuples, royaumes et frontières, dirigeants) ; en
+  pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game
   design
 - ensuite, l'un après l'autre (chacun change le monde) : réseau hydrographique complet avec la
   11C, versants convexes / droits / concaves et cirques, relief côtier et falaises marines,
@@ -426,11 +448,11 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   | biome | type de terrain final | partiel : calculé au point, pas en carte Planète |
   | river | villes, agriculture, frontières | fait (réseau complet : agent 31) |
   | coast | ports, commerce, peuples marins | partiel : mer et côte, pas de type de côte |
-  | resources | mines, agriculture, magie | à faire |
-  | danger | monstres, zones interdites | à faire |
-  | magic | zones magiques, portails, anomalies | à faire |
-  | habitability | score global pour la vie civile | à faire |
-  | raceSuitability[race] | score séparé pour chaque peuple | à faire |
+  | resources | mines, agriculture, magie | fait (V1 : 6 ressources par la géologie) |
+  | danger | monstres, zones interdites | fait (V1 : danger naturel) |
+  | magic | zones magiques, portails, anomalies | fait (V1 : Prana, Mana simple) |
+  | habitability | score global pour la vie civile | fait (V1) |
+  | raceSuitability[race] | score séparé pour chaque peuple | fait (V1, 13 peuples) |
 - conception détaillée (deux passes Planète / site, presets de monde, énergies Prana, Aura et
   Mana, lignes telluriques, danger magique, format JSON des peuples, calendrier par rapport
   aux agents 31, 33 et 34) : `docs/PEUPLEMENT.md`
