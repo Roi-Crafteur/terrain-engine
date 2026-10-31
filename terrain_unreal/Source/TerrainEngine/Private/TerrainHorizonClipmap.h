@@ -80,6 +80,12 @@ public:
 	// SurfaceBandCm, HasSurface...); nothing without a look.
 	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
 
+	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
+	// (independent of the visibility the placements set), each level tinted with its own hue or
+	// not (bHorizonDebugTint while playing).
+	void SetHiddenByTools(bool bHidden);
+	void SetDebugTint(bool bTint);
+
 	// Time spent building the grids, and the bytes of the textures and of the grids on the GPU.
 	double GetBuildMilliseconds() const { return BuildMilliseconds; }
 	int64 GetGpuBytes() const { return GpuBytes; }

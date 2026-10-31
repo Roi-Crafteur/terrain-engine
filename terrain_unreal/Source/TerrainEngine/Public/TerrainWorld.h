@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Templates/PimplPtr.h"
+#include "TerrainDevTypes.h"
 #include "TerrainEdits.h"
 
 #include "TerrainWorld.generated.h"
@@ -14,6 +15,7 @@ class ASkyLight;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UTerrainAtmosphereFollower;
+class UTerrainDevTools;
 class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
@@ -331,6 +333,39 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Water")
 	bool SetWaterShown(bool bShown);
 
+	// The tools of the developers while playing (terrain_unreal/DEV_TOOLS.md): the screen of F3 and
+	// the Terrain.* commands of views, places, view modes and seed. Off: none of them. Never in a
+	// Shipping build (TERRAIN_DEV_TOOLS, TerrainEngine.Build.cs).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Dev")
+	bool bDevTools = true;
+
+	// The one teleport of the tools (Terrain.Goto, the dev map; its contract in
+	// terrain_unreal/DEV_TOOLS.md): the view at the core point (X, Z), meters, looking along
+	// Heading (degrees clockwise from the north, -Z of the core) and Pitch (degrees, positive up,
+	// negative down, clamped to [-90, 90]), its eye at the altitude Eye (Altitude) or Eye meters
+	// above the ground or the water (Ground). Synchronous: the player takes a flying pawn of the
+	// tools whose eye stands exactly there, the tiles of LOD 0 around it are generated before it
+	// returns, and the pawn stays put until the tiles around are loaded (IsViewLoading,
+	// Terrain.ShotTimeout at most). False without the tools or outside play.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
+	bool TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
+		ETerrainEyeMode EyeMode);
+
+	// True while the view of the last TeleportView waits for the tiles around it (its pawn held
+	// still); false once they are shown, after Terrain.ShotTimeout, or without the tools.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
+	bool IsViewLoading() const;
+
+	// The pawn of the game back from the pawn of the tools, placed on the ground under the view.
+	// False, nothing changed, when the player has no pawn of the tools, or when the view is over
+	// water (the sea, a lake, a river): the pawn of the game is never put on the bottom; a message
+	// on the screen and in the log says so, the view of the tools stays.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
+	bool ReturnToGamePawn();
+
+	// The tools of the developers of this world while playing, or null (off, or Shipping).
+	UTerrainDevTools* GetDevTools() const;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -360,6 +395,16 @@ private:
 	UMaterialInterface* ResolveMaterial() const;
 	UMaterialInterface* MakeTileLook();
 	void StartWater();
+	// Everything of the world while playing removed (EndPlay, and Terrain.Seed before
+	// StartStreaming builds the world again).
+	void ReleaseWorld();
+	// The tools of the developers (TerrainWorldDev.cpp), nothing without TERRAIN_DEV_TOOLS.
+	void StartDevTools();
+	void StopDevTools();
+	void TickDevTools(float DeltaSeconds);
+	void NotifyDevToolsStopped();
+
+	friend class UTerrainDevTools;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainMeshBackend> Backend;
@@ -381,6 +426,9 @@ private:
 	// horizon over the outer band of the tiles (TerrainWorldWater.cpp).
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> TileWaterLook;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTerrainDevTools> DevTools;
 
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor).

@@ -74,12 +74,19 @@ TileUpload TileStreamer::convert(const TileKey& key, const TileKey& image,
                       hasCollision(key),
                       0.0,
                       data->surfaceBlend,
-                      buildTileWater(*data),
-                      buildFallCurtains(*data)};
+                      {},
+                      {}};
+    const auto waterStart = std::chrono::steady_clock::now();
+    upload.water = buildTileWater(*data);
+    upload.falls = buildFallCurtains(*data);
+    const double waterMilliseconds = millisecondsSince(waterStart);
     upload.conversionMilliseconds = millisecondsSince(start);
     if (timings_ != nullptr) {
         timings_->record(TileStage::Conversion, key.lod, upload.conversionMilliseconds);
         timings_->recordMesh(key.lod, upload.mesh.positions.size(), upload.mesh.triangleCount());
+        if (!upload.water.empty() || !upload.falls.empty()) {
+            timings_->recordWater(key.lod, waterMilliseconds);
+        }
     }
     return upload;
 }

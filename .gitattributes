@@ -1,0 +1,3 @@
+# The places of the developers: the same bytes on every platform (written by Terrain.Save and the
+# tools in their canonical layout, LF), whatever core.autocrlf says.
+data/dev/*.json text eol=lf

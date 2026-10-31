@@ -115,10 +115,19 @@ void ATerrainWorld::BeginPlay()
 	if (!StartStreaming())
 	{
 		SetActorTickEnabled(false);
+		return;
 	}
+	StartDevTools();
 }
 
 void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	StopDevTools();
+	ReleaseWorld();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATerrainWorld::ReleaseWorld()
 {
 	if (Backend != nullptr)
 	{
@@ -140,7 +149,6 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	StopAtmosphere();
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
-	Super::EndPlay(EndPlayReason);
 }
 
 bool ATerrainWorld::StartStreaming()
@@ -193,11 +201,14 @@ void ATerrainWorld::StopStreaming(const FString& Reason)
 {
 	UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: streaming stopped: %s"), *Reason);
 	SetActorTickEnabled(false);
+	NotifyDevToolsStopped();
 }
 
 void ATerrainWorld::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	// First: Terrain.Seed may build the world again there, the tools tick without a world too.
+	TickDevTools(DeltaSeconds);
 	if (!State.IsValid() || Backend == nullptr)
 	{
 		return;
