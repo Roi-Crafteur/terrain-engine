@@ -38,8 +38,9 @@ StreamManager::StreamManager(TileGenerator generator, const StreamParams& params
     if (count.x < span || count.z < span) {
         throw std::invalid_argument("StreamParams: the world is too small for the view distance");
     }
+    workerLimit_ = params_.workerThreads;
     for (int i = 0; i < params_.workerThreads; ++i) {
-        workers_.emplace_back([this] { workerLoop(); });
+        workers_.emplace_back([this, i] { workerLoop(i); });
     }
 }
 
@@ -95,6 +96,29 @@ void StreamManager::waitIdle() {
         });
     }
     rethrowError();
+}
+
+void StreamManager::setWorkerLimit(int workers) {
+    if (workers_.empty()) {
+        return;
+    }
+    {
+        const std::lock_guard lock(mutex_);
+        workerLimit_ = std::clamp(workers, 1, static_cast<int>(workers_.size()));
+    }
+    workAvailable_.notify_all();
+}
+
+int StreamManager::workerLimit() const {
+    const std::lock_guard lock(mutex_);
+    return workerLimit_;
+}
+
+void StreamManager::setMaxLoadsPerUpdate(std::size_t loads) {
+    if (loads == 0) {
+        throw std::invalid_argument("StreamManager: at least one load per update");
+    }
+    params_.maxLoadsPerUpdate = loads;
 }
 
 void StreamManager::invalidate(std::span<const ChunkCoord> chunks) {
@@ -301,10 +325,12 @@ void StreamManager::runJob(std::unique_lock<std::mutex>& lock) {
     workDone_.notify_all();
 }
 
-void StreamManager::workerLoop() {
+void StreamManager::workerLoop(int index) {
     std::unique_lock lock(mutex_);
     while (true) {
-        workAvailable_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+        workAvailable_.wait(lock, [this, index] {
+            return stopping_ || (!queue_.empty() && index < workerLimit_);
+        });
         if (stopping_) {
             return;
         }

@@ -4,6 +4,13 @@
 
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/load_timeline.cpp)
 
+# The rhythm of the loads (core): the order of the requests and integrations made by hand, the
+# budget and the limit of the workers changed during a load, the same tiles bit for bit.
+terrain_add_test(stream_loading_test terrain_core)
+
+# The far horizon brought to a new place level by level, finest first (core, planFinest).
+terrain_add_test(horizon_progressive_test terrain_core)
+
 # The timeline of a load: its milestones on a selection made by hand, the curve per band of
 # distance and the CSV, the records of several threads, a whole load of the streamer traced.
 terrain_add_test(unreal_load_timeline_test terrain_unreal_bridge)

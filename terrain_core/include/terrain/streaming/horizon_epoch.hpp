@@ -21,14 +21,15 @@ struct HorizonPiece {
     std::vector<HorizonCell> cells;
 };
 
-// One update of every level of a clipmap: the window each level moves to and the pieces to
+// One update of the levels of a clipmap: the window each level moves to and the pieces to
 // compute, the samples entering the windows and the samples of the invalidated areas. A
 // renderer computes the pieces on its own threads (computePiece), in any order and on any
 // thread, then commits the epoch on the thread owning the clipmap: every level then moves at
-// once, so the levels shown are always complete and nested.
+// once, so the levels shown are always complete and nested. An epoch of planFinest moves only
+// the finest levels (as many as its centers), the coarser ones staying as they were.
 struct HorizonEpoch {
     std::uint64_t base = 0;            // commits of the clipmap it was planned after
-    std::vector<HorizonIndex> centers; // the new center of every level (continuous)
+    std::vector<HorizonIndex> centers; // the new center of every level it moves (continuous)
     std::vector<HorizonPiece> pieces;  // finest levels first
     std::uint64_t invalidations = 0;   // the invalidations it covers: those up to this one
 
@@ -69,9 +70,19 @@ public:
     [[nodiscard]] std::optional<HorizonEpoch>
     plan(double x, double z, std::size_t pieceSamples = kHorizonPieceSamples) const;
 
-    // Applies an epoch planned after the last commit, its pieces computed: moves the windows,
-    // writes the pieces and forgets the invalidations it covers. Throws std::invalid_argument
-    // for another epoch (a stale one, or one with a piece not computed).
+    // The epoch bringing only the `levels` finest levels to their windows around (x, z), with
+    // the invalidated samples on them, the coarser levels left as they are: a new place shown
+    // level by level, finest first (agent 38). Once every level is brought there, the samples are
+    // those of plan. Throws like plan, and std::invalid_argument for levels outside
+    // [1, levelCount()].
+    [[nodiscard]] std::optional<HorizonEpoch>
+    planFinest(double x, double z, int levels,
+               std::size_t pieceSamples = kHorizonPieceSamples) const;
+
+    // Applies an epoch planned after the last commit, its pieces computed: moves the windows of
+    // its levels, writes the pieces and, when it moves every level, forgets the invalidations
+    // it covers (an epoch of the finest levels keeps them for the coarser ones). Throws
+    // std::invalid_argument for another epoch (a stale one, or one with a piece not computed).
     HorizonChanges commit(const HorizonEpoch& epoch);
 
     // The samples whose footprint, or a neighbor's (their gradients), meets [minX, maxX] x

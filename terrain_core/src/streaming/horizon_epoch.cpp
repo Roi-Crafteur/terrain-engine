@@ -59,19 +59,29 @@ HorizonClipmap::HorizonClipmap(const HorizonParams& params) : params_(params) {
 
 std::optional<HorizonEpoch> HorizonClipmap::plan(double x, double z,
                                                  std::size_t pieceSamples) const {
+    return planFinest(x, z, levelCount(), pieceSamples);
+}
+
+std::optional<HorizonEpoch> HorizonClipmap::planFinest(double x, double z, int levels,
+                                                       std::size_t pieceSamples) const {
     if (!std::isfinite(x) || !std::isfinite(z) || pieceSamples == 0) {
         throw std::invalid_argument("HorizonClipmap: invalid observer or piece size");
+    }
+    if (levels < 1 || levels > levelCount()) {
+        throw std::invalid_argument("HorizonClipmap: invalid count of levels to plan");
     }
     HorizonEpoch epoch;
     epoch.base = commits_;
     epoch.invalidations = dirty_.empty() ? 0 : dirty_.back().id;
     bool moves = false;
-    for (int level = 0; level < levelCount(); ++level) {
+    for (int level = 0; level < levels; ++level) {
         planLevel(level, x, z, pieceSamples, epoch);
         const HorizonLevel& current = levels_[static_cast<std::size_t>(level)];
         moves = moves || !current.placed() || !(current.center() == epoch.centers.back());
     }
-    if (!moves && epoch.pieces.empty() && dirty_.empty()) {
+    // The invalidations count only where they are computed: on every level, or on none of the
+    // levels an epoch of the finest ones leaves out.
+    if (!moves && epoch.pieces.empty() && (dirty_.empty() || levels < levelCount())) {
         return std::nullopt;
     }
     return epoch;
@@ -109,19 +119,20 @@ HorizonRect HorizonClipmap::areaSamples(const Area& area, int level, HorizonInde
 }
 
 HorizonChanges HorizonClipmap::commit(const HorizonEpoch& epoch) {
-    if (epoch.base != commits_ || epoch.centers.size() != levels_.size()) {
+    const std::size_t moved = epoch.centers.size();
+    if (epoch.base != commits_ || moved == 0 || moved > levels_.size()) {
         throw std::invalid_argument("HorizonClipmap: the epoch was not planned after the last "
                                     "commit");
     }
     for (const HorizonPiece& piece : epoch.pieces) {
-        if (piece.level < 0 || piece.level >= levelCount() ||
+        if (piece.level < 0 || piece.level >= static_cast<int>(moved) ||
             static_cast<std::int64_t>(piece.cells.size()) != piece.rect.count()) {
             throw std::invalid_argument("HorizonClipmap: a piece of the epoch is not computed");
         }
     }
     HorizonChanges changes;
-    std::vector<HorizonLevelChange> perLevel(levels_.size());
-    for (std::size_t n = 0; n < levels_.size(); ++n) {
+    std::vector<HorizonLevelChange> perLevel(moved);
+    for (std::size_t n = 0; n < moved; ++n) {
         HorizonLevel& level = levels_[n];
         perLevel[n].level = static_cast<int>(n);
         perLevel[n].moved = !level.placed() || !(level.center() == epoch.centers[n]);
@@ -137,7 +148,10 @@ HorizonChanges HorizonClipmap::commit(const HorizonEpoch& epoch) {
             changes.levels.push_back(std::move(change));
         }
     }
-    std::erase_if(dirty_, [&epoch](const Area& area) { return area.id <= epoch.invalidations; });
+    if (moved == levels_.size()) {
+        std::erase_if(dirty_,
+                      [&epoch](const Area& area) { return area.id <= epoch.invalidations; });
+    }
     ++commits_;
     return changes;
 }
