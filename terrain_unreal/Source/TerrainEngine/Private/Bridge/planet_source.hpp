@@ -31,10 +31,12 @@ struct PlanetSource {
 
 // The planet level of seed on world (HeightfieldParams{}, PlanetParams{}) in file: read when the
 // file holds it, otherwise built and written there (its folder created), as openPlanetLevel, the
-// reason told. A file of a newer version of the game is never replaced. Throws what the build
+// reason told. A file of a newer version of the game is never replaced. probe, if set, hears of
+// each stage of a build (PlanetLevel), and may throw to stop it there. Throws what the build
 // throws.
 [[nodiscard]] PlanetSource openPlanetSource(const std::filesystem::path& file, std::uint64_t seed,
-                                            const WorldSize& world);
+                                            const WorldSize& world,
+                                            const PlanetStageProbe& probe = {});
 
 // One line for the log: what was read or built, why, in how long.
 [[nodiscard]] std::string describe(const PlanetSource& source, const std::string& file);

@@ -45,7 +45,7 @@ std::string resolvePlanetPath(const std::string& path, std::uint64_t seed,
 }
 
 PlanetSource openPlanetSource(const std::filesystem::path& file, std::uint64_t seed,
-                              const WorldSize& world) {
+                              const WorldSize& world, const PlanetStageProbe& probe) {
     const auto start = std::chrono::steady_clock::now();
     PlanetSource source;
     bool newer = false;
@@ -64,8 +64,8 @@ PlanetSource openPlanetSource(const std::filesystem::path& file, std::uint64_t s
         }
     }
     source.built = true;
-    source.level =
-        std::make_shared<const PlanetLevel>(seed, HeightfieldParams{}, PlanetParams{}, world);
+    source.level = std::make_shared<const PlanetLevel>(seed, HeightfieldParams{}, PlanetParams{},
+                                                       world, probe);
     if (newer) {
         source.writeError = "a file of a newer version of the game is never replaced";
     } else {

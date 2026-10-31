@@ -36,3 +36,8 @@ target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/debug_colors.cpp
                                              ${unreal_bridge}/shot_waiter.cpp)
 terrain_add_test(unreal_dev_perf_test terrain_unreal_bridge)
 terrain_add_test(unreal_debug_colors_test terrain_unreal_bridge)
+
+# The planet file of Terrain.Seed: the file a seed reads and where it may be built, a build on a
+# thread of its own, the files of the user never written, a cancelled build.
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/planet_job.cpp)
+terrain_add_test(unreal_planet_job_test terrain_unreal_bridge)
