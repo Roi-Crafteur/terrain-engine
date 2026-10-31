@@ -213,10 +213,8 @@ bool UTerrainDevTools::CurrentPose(terrain::unreal::ViewPose& OutPose) const
 	}
 	const FVector Camera = PlayerController->PlayerCameraManager->GetCameraLocation();
 	const FRotator Rotation = PlayerController->PlayerCameraManager->GetCameraRotation();
-	OutPose.eye = terrain::unreal::toCore(World->State->Frame,
-		TerrainWorldConversions::ToUnrealPoint(Camera));
-	OutPose.yaw = FRotator::NormalizeAxis(Rotation.Yaw);
-	OutPose.pitch = FRotator::NormalizeAxis(Rotation.Pitch);
+	OutPose = terrain::unreal::cameraPose(terrain::unreal::toCore(World->State->Frame,
+		TerrainWorldConversions::ToUnrealPoint(Camera)), Rotation.Pitch, Rotation.Yaw);
 	return true;
 }
 

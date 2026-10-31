@@ -6,6 +6,7 @@
 
 #if TERRAIN_DEV_TOOLS
 
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/FloatingPawnMovement.h"
 #include "GameFramework/Pawn.h"
@@ -80,7 +81,9 @@ bool UTerrainDevTools::PlaceView(const terrain::unreal::ViewPose& Pose)
 	{
 		Movement->StopMovementImmediately();
 	}
-	PlayerController->SetControlRotation(FRotator(Pose.pitch, Pose.yaw, 0.0));
+	// The pitch of the pose negative down, as FRotator (DEV_TOOLS.md, the contract).
+	PlayerController->SetControlRotation(
+		TerrainDev::ToRotator(terrain::unreal::viewRotation(Pose)));
 	const double StartSeconds = FPlatformTime::Seconds();
 	// The eye stays exactly where asked: no snap onto the ground.
 	const bool bSnap = World->bSnapPawnToGround;
@@ -176,6 +179,11 @@ void UTerrainDevTools::EndHold()
 	Dev->Hold.reset();
 }
 
+bool UTerrainDevTools::IsViewLoading() const
+{
+	return Dev.IsValid() && Dev->Hold.has_value();
+}
+
 bool UTerrainDevTools::ReturnToGamePawn(bool bUnderView)
 {
 	APlayerController* PlayerController = Controller();
@@ -183,10 +191,14 @@ bool UTerrainDevTools::ReturnToGamePawn(bool bUnderView)
 	{
 		return false;
 	}
-	EndHold();
 	const FVector ViewLocation = DevPawn->GetPawnViewLocation();
 	const FRotator Rotation = PlayerController->GetControlRotation();
 	APawn* Game = GamePawn.Get();
+	if (bUnderView && IsValid(Game) && OverWater(ViewLocation))
+	{
+		return false;
+	}
+	EndHold();
 	if (IsValid(Game))
 	{
 		if (bUnderView)
@@ -271,7 +283,7 @@ void UTerrainDevTools::RunLook(const std::vector<std::string>& Args)
 		return;
 	}
 	PlayerController->SetControlRotation(
-		FRotator(Command->pitch, terrain::unreal::yawOfHeading(Command->heading), 0.0));
+		TerrainDev::ToRotator(terrain::unreal::viewRotation(Command->heading, Command->pitch)));
 }
 
 void UTerrainDevTools::RunEye(const std::vector<std::string>& Args)
@@ -291,10 +303,33 @@ void UTerrainDevTools::RunEye(const std::vector<std::string>& Args)
 
 void UTerrainDevTools::RunPawn()
 {
-	if (!ReturnToGamePawn(true))
+	if (!IsValid(DevPawn))
 	{
 		TerrainDev::Warn(TEXT("the player already has the pawn of the game"));
+		return;
 	}
+	ReturnToGamePawn(true); // over water: refused, with its message
+}
+
+// The column under the view holds water: said on the screen and in the log (the pawn of the game
+// is never put on the bottom).
+bool UTerrainDevTools::OverWater(const FVector& ViewLocation) const
+{
+	const terrain::unreal::CorePoint Under = terrain::unreal::toCore(World->State->Frame,
+		TerrainWorldConversions::ToUnrealPoint(ViewLocation));
+	if (!terrain::unreal::columnHasWater(
+			World->State->Session.tiles().heightfield().sampleAt(Under.x, Under.z)))
+	{
+		return false;
+	}
+	const FString Message(TEXT("Terrain.Pawn: over water (sea, lake or river): the pawn of the "
+		"game is not put down here, the view of the tools stays; move over dry ground first"));
+	TerrainDev::Warn(Message);
+	if (GEngine != nullptr)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Yellow, Message);
+	}
+	return true;
 }
 
 void UTerrainDevTools::RunSave(const std::vector<std::string>& Args)

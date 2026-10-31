@@ -48,9 +48,9 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Goto x z 182.03` | l'œil à l'altitude 182,03 m du core |
 | `Terrain.Goto x z +25` | l'œil à 25 m au-dessus du sol ou de l'eau |
 | `Terrain.Goto <lieu>` | la vue d'un lieu du fichier (position, cap, inclinaison, œil) ; avertit si le lieu a besoin du fichier planète et que le monde n'en a pas |
-| `Terrain.Look cap inclinaison` | le cap en degrés depuis le nord, sens horaire ; l'inclinaison vers le haut, de −90 à 90 |
+| `Terrain.Look cap inclinaison` | le cap en degrés depuis le nord, sens horaire ; l'inclinaison de −90 à 90, positive vers le haut, **négative vers le bas** (`Terrain.Look 0 -45` : vers le nord, 45° sous l'horizon) |
 | `Terrain.Eye 1800` / `Terrain.Eye +2` | l'œil à cette altitude, ou à cette hauteur au-dessus du sol ou de l'eau |
-| `Terrain.Pawn` | le pion du jeu rendu, posé au sol sous la vue |
+| `Terrain.Pawn` | le pion du jeu rendu, posé au sol sous la vue ; refusé au-dessus de l'eau (message à l'écran) |
 | `Terrain.Save <nom> [note…]` | la vue écrite dans le fichier des lieux (met à jour un lieu du même nom, ses champs inconnus et sa note gardés) |
 | `Terrain.Info` / `Terrain.Info here` | les lignes du point visé / de la colonne de l'œil dans le log |
 | `Terrain.Shot <nom>` | une image `Saved/TerrainEngine/Shots/<nom>.png` une fois tout chargé |
@@ -63,19 +63,74 @@ Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : ce
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),
 `Terrain.ShotSettle` (stabilité avant une image, 1 s).
 
-### La téléportation
+### La téléportation : le contrat de `TeleportView`
 
-`Terrain.Goto` et la carte de dev (agent 35) appellent la même fonction,
-`ATerrainWorld::TeleportView(X, Z, Heading, Pitch, Eye, EyeMode)` (appelable en Blueprint) :
+`Terrain.Goto`, la carte de dev (agent 35) et le chargement progressif (agent 38) passent par la
+même fonction, sur `ATerrainWorld` (`Public/TerrainWorld.h`, appelables en Blueprint, catégorie
+`Terrain|Dev`) :
 
-1. le joueur prend le **pion volant des outils** (un `ASpectatorPawn`, 50 m/s), dont l'œil est
-   posé exactement à l'œil demandé, à l'image du point la plus proche de la vue actuelle ;
-2. les tuiles LOD 0 autour sont générées avant que la fonction rende la main (le sol existe) ;
-3. le pion reste immobile jusqu'à ce que toutes les tuiles autour soient affichées
-   (`Terrain.ShotTimeout` au plus), le log dit après combien de temps.
+```cpp
+bool TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
+    ETerrainEyeMode EyeMode);
+bool IsViewLoading() const;
+bool ReturnToGamePawn();
+```
 
-`Terrain.Pawn` (ou `ATerrainWorld::ReturnToGamePawn`) rend le pion du jeu. Elle est synchrone ;
-l'agent 38 la rendra progressive (chargement, fondu au noir).
+Les entrées :
+
+- `X`, `Z` : le point du core, en mètres (x vers l'est, z vers le sud), de n'importe quelle image
+  du monde : la vue va à l'image la plus proche de la vue actuelle (les tuiles la suivent).
+- `Heading` : le cap en degrés depuis le nord (−Z du core, −Y d'Unreal), sens horaire ; toute
+  valeur est ramenée dans [0, 360). Yaw Unreal = cap − 90.
+- `Pitch` : l'inclinaison en degrés, **positive vers le haut, négative vers le bas** (−45 : 45°
+  sous l'horizon), ramenée dans [−90, 90]. C'est la convention de `FRotator` : la rotation posée
+  est `FRotator(Pitch, Heading − 90, 0)`, sans roulis (`Bridge/place_pose` : `viewRotation`,
+  testée par `unreal_place_pose_test`). Les lieux, `Terrain.Look` et `Terrain.Save` suivent la
+  même convention ; à l'essai, `Terrain.Look 0 -45` regarde vers le nord, 45° sous l'horizon.
+- `Eye`, `EyeMode` :
+  - `Altitude` : l'œil à l'altitude `Eye` du core, en mètres, sans contrôle (il peut être sous
+    le sol ou sous l'eau) ;
+  - `Ground` : l'œil à `Eye` mètres au-dessus du haut de la colonne : **la surface de l'eau**
+    quand le core y en met (la mer toujours ; les lacs, les fleuves et les lacs salés seulement
+    avec le fichier planète), sinon le sol du heightmap (ni surplomb ni grotte).
+
+Quand elle rend `true` :
+
+1. le joueur possède le **pion volant des outils** (un `ASpectatorPawn`, 50 m/s, collision
+   `Spectator`, créé au premier appel) ; le pion du jeu reste où il était, non possédé, gardé
+   pour `ReturnToGamePawn` ;
+2. l'œil de la caméra est **exactement** au point demandé : jamais posé sur le sol, jamais
+   déplacé par `bSnapPawnToGround` ; le cap et l'inclinaison sont posés sur la rotation du
+   contrôleur ;
+3. les tuiles LOD 0 dans `WarmUpRadiusChunks` autour de l'œil sont générées avant le retour (le
+   sol sous la vue existe, avec sa collision) ;
+4. ensuite, le mouvement du pion est bloqué (la souris tourne toujours la vue) jusqu'à ce que
+   toutes les tuiles de la sélection autour de la vue soient affichées, au plus
+   `Terrain.ShotTimeout` (60 s) ; `IsViewLoading()` est vrai pendant ce temps, le log dit après
+   combien de temps. L'horizon lointain n'est pas attendu (`Terrain.Shot` l'attend) ;
+5. un nouvel appel remplace l'attente du précédent.
+
+Elle rend `false` sans rien changer : sans les outils (`bDevTools` faux, build Shipping), hors
+Play, quand le monde est arrêté sur une erreur, ou sans joueur. Si la génération autour de la vue
+échoue, le monde s'arrête (l'erreur est dans le log) et elle rend `false`.
+
+`ReturnToGamePawn()` (et `Terrain.Pawn`) rend le pion du jeu, posé sur le sol du heightmap sous
+la vue (50 cm au-dessus de sa capsule), le cap et l'inclinaison gardés, les tuiles autour
+générées. Elle rend `false` sans rien changer :
+
+- **au-dessus de l'eau** (la colonne sous la vue a de l'eau au-dessus de son sol : mer, lac,
+  fleuve, lac salé) : le pion du jeu n'est jamais posé au fond. Un message s'affiche à l'écran
+  (8 s) et dans le log : « Terrain.Pawn: over water (sea, lake or river): the pawn of the game is
+  not put down here, the view of the tools stays; move over dry ground first ». La vue des outils
+  reste ; il suffit d'avancer au-dessus de la terre et de recommencer ;
+- quand le joueur n'a pas le pion des outils (il a déjà celui du jeu).
+
+`Terrain.Views` rend le pion du jeu là où il était, sans le poser : il n'est pas concerné.
+
+Pour l'agent 38 (fondu au noir) : appeler `TeleportView` pendant le noir, puis attendre que
+`IsViewLoading()` soit faux avant de rouvrir. Attention en relisant une rotation : Unreal garde
+l'inclinaison de la caméra dans [0, 360) (−59 se relit 301) ; les outils la ramènent dans
+[−90, 90] (`cameraPose`). Un code qui la borne sans la ramener obtient +90 : du ciel pur.
 
 ### Les images
 
@@ -122,7 +177,7 @@ par `terrain_core/dev/places_file` :
 ```
 
 - `x`, `z` : mètres du moteur ; `heading` : cap en degrés depuis le nord (−Z), sens horaire, dans
-  [0, 360) (yaw Unreal = cap − 90) ; `pitch` : degrés vers le haut, dans [−90, 90] ; `eye` :
+  [0, 360) (yaw Unreal = cap − 90) ; `pitch` : degrés, positif vers le haut, négatif vers le bas, dans [−90, 90] ; `eye` :
   altitude du core (`eyeMode` `altitude`) ou hauteur au-dessus du sol ou de l'eau (`ground`,
   ≥ 0) ; `planet` : la vue a besoin du fichier planète (fleuves, chutes, lacs, climat des
   biomes) ; `note` : facultative.
@@ -149,7 +204,7 @@ par `terrain_core/dev/places_file` :
 | `plage_origine` | −3 985 | −165 | 40 | 0 | +1,8 m | non | la plage près de l'origine, vers la mer |
 | `fleuve_plaine` | −241 631 | −86 277 | 5 | 0 | +2 m | oui | un fleuve de plaine (eau à 3,28 m), vers l'aval |
 | `lac_montagne` | 7 369 228 | −7 088 911 | 180 | 5 | +2 m | oui | un lac de montagne (eau à 1 725,26 m) |
-| `lisiere_tropicale_savane` | −26 927 500 | −270 336 | 0 | −5 | +2 m | oui | la lisière (sur `main`, le core n'y voit que de la savane) |
+| `lisiere_tropicale_savane` | −26 927 500 | −270 336 | 265 | −5 | +40 m | **non** | la lisière forêt tropicale / savane à 450 m vers l'ouest, au-dessus des arbres ; **sans** fichier planète seulement (avec lui, savane partout) |
 
 ## Comparer avant / après
 
@@ -183,7 +238,8 @@ Arrêter le Play annule une construction à la fin de l'étape en cours.
   (`Bridge/point_info.hpp`) ajoutée à `defaultInfoProviders()` dans `Bridge/point_info.cpp` ; F3
   et `Terrain.Info` l'affichent sans autre changement (type de côte de l'agent 33, roche 3D de la
   12A, royaumes de l'agent 25…).
-- **Téléporter** : `ATerrainWorld::TeleportView`.
+- **Téléporter** : `ATerrainWorld::TeleportView` (son contrat plus haut), puis
+  `IsViewLoading`.
 - **Lire les lieux** dans un outil du core : `terrain/dev/places_file.hpp`.
 
 ## Limites

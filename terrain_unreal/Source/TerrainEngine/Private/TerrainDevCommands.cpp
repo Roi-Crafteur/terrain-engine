@@ -79,7 +79,8 @@ namespace
 				 "moves"),
 			&UTerrainDevTools::RunGoto},
 		{TEXT("Terrain.Look"),
-			TEXT("Terrain.Look <heading: degrees clockwise from the north> <pitch: degrees up>"),
+			TEXT("Terrain.Look <heading: degrees clockwise from the north> <pitch: degrees, "
+				 "negative down>: Terrain.Look 0 -45 looks north, 45 degrees below the horizon"),
 			&UTerrainDevTools::RunLook},
 		{TEXT("Terrain.Eye"),
 			TEXT("Terrain.Eye <altitude> | Terrain.Eye +<height above the ground or the water>"),
@@ -111,7 +112,7 @@ namespace
 
 	FAutoConsoleCommandWithWorldAndArgs PawnCommand(TEXT("Terrain.Pawn"),
 		TEXT("The pawn of the game back from the flying pawn of the tools, on the ground under the "
-			 "view"),
+			 "view; refused over water (never put on the bottom)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda(
 			[](const TArray<FString>&, UWorld* World)
 			{

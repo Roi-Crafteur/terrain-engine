@@ -339,19 +339,27 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Dev")
 	bool bDevTools = true;
 
-	// The one teleport of the tools (Terrain.Goto, the dev map): the view at the core point (X, Z),
-	// meters, looking along Heading (degrees clockwise from the north, -Z of the core) and Pitch
-	// (degrees up), its eye at the altitude Eye (Altitude) or Eye meters above the ground or the
-	// water (Ground). Synchronous: the player takes a flying pawn of the tools whose eye stands
-	// exactly there, the tiles of LOD 0 around it are generated before it returns, and the pawn
-	// stays put until the tiles around are loaded (Terrain.ShotTimeout at most). False without the
-	// tools or outside play. ReturnToGamePawn gives the pawn of the game back.
+	// The one teleport of the tools (Terrain.Goto, the dev map; its contract in
+	// terrain_unreal/DEV_TOOLS.md): the view at the core point (X, Z), meters, looking along
+	// Heading (degrees clockwise from the north, -Z of the core) and Pitch (degrees, positive up,
+	// negative down, clamped to [-90, 90]), its eye at the altitude Eye (Altitude) or Eye meters
+	// above the ground or the water (Ground). Synchronous: the player takes a flying pawn of the
+	// tools whose eye stands exactly there, the tiles of LOD 0 around it are generated before it
+	// returns, and the pawn stays put until the tiles around are loaded (IsViewLoading,
+	// Terrain.ShotTimeout at most). False without the tools or outside play.
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
 	bool TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
 		ETerrainEyeMode EyeMode);
 
+	// True while the view of the last TeleportView waits for the tiles around it (its pawn held
+	// still); false once they are shown, after Terrain.ShotTimeout, or without the tools.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
+	bool IsViewLoading() const;
+
 	// The pawn of the game back from the pawn of the tools, placed on the ground under the view.
-	// False when the player has no pawn of the tools.
+	// False, nothing changed, when the player has no pawn of the tools, or when the view is over
+	// water (the sea, a lake, a river): the pawn of the game is never put on the bottom; a message
+	// on the screen and in the log says so, the view of the tools stays.
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
 	bool ReturnToGamePawn();
 

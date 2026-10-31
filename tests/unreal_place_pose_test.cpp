@@ -2,6 +2,7 @@
 // of their console commands (Bridge/dev_commands.hpp): the yaw of a heading and back, the eye
 // above the ground or the water, a saved view posed again where it was, and every refusal.
 #include "dev_commands.hpp"
+#include "ground_ray.hpp"
 #include "place_pose.hpp"
 
 #include "test_assert.hpp"
@@ -46,6 +47,39 @@ void testHeadings() {
     }
 }
 
+// The pitch is negative down, from the place to the FRotator of Unreal and back: heading 0,
+// pitch -45 (Terrain.Look 0 -45) looks north and 45 degrees below the horizon.
+void testRotations() {
+    using terrain::unreal::cameraPose;
+    using terrain::unreal::lookDirection;
+    using terrain::unreal::UnrealRotation;
+    using terrain::unreal::viewRotation;
+    const UnrealRotation down = viewRotation(0.0, -45.0);
+    TEST_CHECK(down == (UnrealRotation{-45.0, -90.0, 0.0})); // FRotator(Pitch, Yaw, Roll)
+    const terrain::unreal::UnrealDirection d = lookDirection(down);
+    TEST_CHECK(near(d.x, 0.0, 1e-12) && near(d.y, -std::sqrt(0.5), 1e-12)); // -Y: the north
+    TEST_CHECK(d.z < 0.0 && near(d.z, -std::sqrt(0.5), 1e-12));            // below the horizon
+    // The same direction in the core (y up), as the march of the aimed point takes it.
+    const terrain::unreal::CorePoint core = terrain::unreal::coreDirection(d.x, d.y, d.z);
+    TEST_CHECK(core.y < 0.0 && core.z < 0.0 && near(core.x, 0.0, 1e-12));
+    TEST_CHECK(lookDirection(viewRotation(0.0, 30.0)).z > 0.0);
+    TEST_CHECK(near(lookDirection(viewRotation(90.0, 0.0)).x, 1.0, 1e-12)); // east: +X
+    TEST_CHECK(near(lookDirection(viewRotation(180.0, 0.0)).y, 1.0, 1e-12)); // south: +Y
+    TEST_CHECK(near(lookDirection(viewRotation(0.0, -90.0)).z, -1.0, 1e-12));
+    TEST_CHECK(viewRotation(0.0, -120.0).pitch == -90.0 && viewRotation(0.0, 95.0).pitch == 90.0);
+    // A pose takes its own yaw and pitch, unchanged (TeleportView).
+    const ViewPose pose = terrain::unreal::viewPose(1.0, 2.0, 227.0, -59.0, 3.0, EyeMode::Ground,
+                                                    10.0);
+    TEST_CHECK(viewRotation(pose) == (UnrealRotation{-59.0, 137.0, 0.0}));
+    // Unreal gives the pitch of a camera back in [0, 360): 315 is 45 degrees down.
+    const ViewPose read = cameraPose({1.0, 2.0, 3.0}, 315.0, 270.0);
+    TEST_CHECK(read.pitch == -45.0 && read.yaw == -90.0 && read.eye.y == 2.0);
+    TEST_CHECK(cameraPose({}, -45.0, -180.0).pitch == -45.0);
+    TEST_CHECK(cameraPose({}, -45.0, -180.0).yaw == 180.0);
+    TEST_CHECK(cameraPose({}, 30.0, 0.0).pitch == 30.0 && cameraPose({}, 270.0, 0.0).pitch == -90.0);
+    TEST_CHECK(cameraPose({}, 89.9, 0.0).pitch == 89.9 && cameraPose({}, 180.0, 0.0).pitch == 90.0);
+}
+
 void testEyes() {
     using terrain::unreal::columnTop;
     terrain::HeightSample dry;
@@ -61,6 +95,12 @@ void testEyes() {
     sea.water = terrain::WaterKind::Ocean;
     sea.waterLevel = 0.0f;
     TEST_CHECK(columnTop(sea) == 0.0);
+    // Over water, the pawn of the game is not put down (ReturnToGamePawn).
+    using terrain::unreal::columnHasWater;
+    TEST_CHECK(!columnHasWater(dry) && columnHasWater(basin) && columnHasWater(sea));
+    terrain::HeightSample bank = basin;
+    bank.waterLevel = bank.height; // a lake that ends here: no water over the ground
+    TEST_CHECK(!columnHasWater(bank));
     TEST_CHECK(terrain::unreal::eyeAltitude(182.03, EyeMode::Altitude, 500.0) == 182.03);
     TEST_CHECK(terrain::unreal::eyeAltitude(2.0, EyeMode::Ground, 180.03) == 182.03);
     // The example of the format: the eye 2 m over the water of the basin of the fall of 388 m.
@@ -215,6 +255,7 @@ void testModesAndPages() {
 
 int main() {
     testHeadings();
+    testRotations();
     testEyes();
     testSavedViews();
     testGotoLookEye();

@@ -72,6 +72,15 @@ bool ATerrainWorld::TeleportView(double X, double Z, double Heading, double Pitc
 #endif
 }
 
+bool ATerrainWorld::IsViewLoading() const
+{
+#if TERRAIN_DEV_TOOLS
+	return DevTools != nullptr && DevTools->IsViewLoading();
+#else
+	return false;
+#endif
+}
+
 bool ATerrainWorld::ReturnToGamePawn()
 {
 #if TERRAIN_DEV_TOOLS

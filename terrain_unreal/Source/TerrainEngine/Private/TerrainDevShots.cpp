@@ -251,7 +251,8 @@ void UTerrainDevTools::FinishViews()
 		ReturnToGamePawn(false);
 		if (APlayerController* PlayerController = Controller())
 		{
-			PlayerController->SetControlRotation(FRotator(Back.pitch, Back.yaw, 0.0));
+			PlayerController->SetControlRotation(
+				TerrainDev::ToRotator(terrain::unreal::viewRotation(Back)));
 		}
 	}
 }

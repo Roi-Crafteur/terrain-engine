@@ -100,6 +100,12 @@ namespace TerrainDev
 		return std::filesystem::path(reinterpret_cast<const char8_t*>(Utf8.c_str()));
 	}
 
+	// The rotation of a view (Bridge/place_pose: the pitch negative down, as FRotator).
+	inline FRotator ToRotator(const terrain::unreal::UnrealRotation& Rotation)
+	{
+		return FRotator(Rotation.pitch, Rotation.yaw, Rotation.roll);
+	}
+
 	inline void Log(const FString& Line)
 	{
 		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain dev: %s"), *Line);

@@ -62,10 +62,11 @@ public:
 	void RunView(const std::vector<std::string>& Args);
 	void RunSeed(const std::vector<std::string>& Args);
 
-	// TerrainDevView.cpp: ATerrainWorld::TeleportView and ReturnToGamePawn (placed on the ground
-	// under the view, or left where it stood).
+	// TerrainDevView.cpp: ATerrainWorld::TeleportView, IsViewLoading and ReturnToGamePawn
+	// (placed on the ground under the view, refused over water; or left where it stood).
 	bool TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
 		ETerrainEyeMode EyeMode);
+	bool IsViewLoading() const;
 	bool ReturnToGamePawn(bool bUnderView);
 
 private:
@@ -90,6 +91,7 @@ private:
 
 	// TerrainDevView.cpp
 	APawn* EnsureDevPawn(APlayerController& PlayerController);
+	bool OverWater(const FVector& ViewLocation) const;
 	bool PlaceView(const terrain::unreal::ViewPose& Pose);
 	void TickHold();
 	void EndHold();

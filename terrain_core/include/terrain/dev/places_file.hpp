@@ -21,10 +21,11 @@
 //         "planet": true, "note": "chute de 388 m vue depuis son bassin" } ] }
 //
 // x, z: the point of the core, meters (x east, z south); heading: degrees clockwise from the
-// north (-z), in [0, 360) (the yaw of Unreal is heading - 90); pitch: degrees up, in [-90, 90];
-// eye: meters, the altitude of the eye in the core (eyeMode "altitude") or its height above the
-// ground or the water (eyeMode "ground", >= 0); planet: the view needs the planet file (rivers,
-// falls, lakes, the climate of the biomes); note: optional. The members a reader does not know,
+// north (-z), in [0, 360) (the yaw of Unreal is heading - 90); pitch: degrees, positive up and
+// negative down (as the pitch of an FRotator), in [-90, 90]; eye: meters, the altitude of the
+// eye in the core (eyeMode "altitude") or its height above the ground or the water (eyeMode
+// "ground", >= 0); planet: the view needs the planet file (rivers, falls, lakes, the climate of
+// the biomes); note: optional. The members a reader does not know,
 // in a place or around the places, are kept as they are and written back after the known ones.
 namespace terrain::dev {
 
