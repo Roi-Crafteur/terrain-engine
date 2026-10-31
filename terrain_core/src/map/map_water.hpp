@@ -40,7 +40,9 @@ struct Fall {
 // (the largest discharge among equals); never the samples under the sea or a lake (a course goes
 // on to the middle of the cell of its mouth). Wider, the samples show the channel itself (its
 // meanders about the axis of the course): the river samples within its meanders take its
-// discharge only. The same samples whatever the order of the courses.
+// discharge only. A river sample within the meanders of narrow courses only is no longer water:
+// the antialiased line of the course draws the channel (its samples would draw steps). The same
+// samples whatever the order of the courses.
 void drawCourses(const MapFrame& frame, std::span<const Course> courses, double leastPixels,
                  std::span<MapSample> out);
 

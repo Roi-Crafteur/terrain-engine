@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/generation/water_kind.hpp"
 #include "terrain/map/map_render.hpp"
 
 #include <cstddef>
@@ -42,6 +43,23 @@ struct MapSourceParams {
     double riverLeastPixels = 1.0;
 };
 
+// The points per pixel along each axis, at most, in the cells of the planet level (n x n points
+// spread over a pixel larger than a cell).
+inline constexpr int kMapPlanetSubPoints = 3;
+
+// The water a map shows over a sample of the core: none where the ground stands at or above the
+// surface of a sea, a lake or a salt lake (the ground Unreal shows emerged, such as the banks of a
+// valley the hydrology carries out into the sea); every other water as it is.
+[[nodiscard]] WaterKind mapWaterOf(WaterKind water, float ground, float waterLevel);
+
+// A point of a pixel of the cells of the planet level: its ground (bilinear) and the water of its
+// cell.
+struct MapSubPoint {
+    float ground = 0.0f;
+    WaterKind water = WaterKind::None;
+    float waterLevel = kNoWaterLevel;
+};
+
 // The world as the map sees it: the relief, its water and its biomes (MapSampler). It reads what
 // the streaming reads (the heightfield with its hydrology, the ecology, the planet level), never
 // changes them, and may run on any thread at the same time as the streaming: every query it makes
@@ -74,8 +92,11 @@ private:
                       int threads, MapSampleStats& stats, MapCancel cancel) const;
     void samplePlanet(const MapFrame& frame, std::span<MapSample> out, int threads,
                       MapSampleStats& stats, MapCancel cancel) const;
+    [[nodiscard]] int planetSubPoints(const MapFrame& frame) const;
+    [[nodiscard]] MapSubPoint planetPoint(double x, double z) const;
     void addBiomes(const MapFrame& frame, std::span<const float> continentalness,
-                   std::span<MapSample> out, int threads, MapCancel cancel) const;
+                   std::span<MapSample> out, int threads, MapCancel cancel,
+                   std::span<const MapSubPoint> points, int n) const;
     void addPlanetWater(const MapFrame& frame, std::span<MapSample> out, int threads,
                         MapCancel cancel) const;
 

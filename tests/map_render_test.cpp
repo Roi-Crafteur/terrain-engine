@@ -5,11 +5,14 @@
 #include "map_world_support.hpp"
 #include "test_assert.hpp"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <bit>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <string>
 #include <thread>
 #include <vector>
@@ -114,6 +117,13 @@ void testWater() {
         covered += m.riverCover > 0.0f && m.discharge > 0.0f ? 1u : 0u;
     }
     TEST_CHECK(covered > 0);
+    // There every channel is narrower than 3 pixels: drawn by its antialiased line alone, no river
+    // sample left (they would draw steps along it).
+    std::size_t opaque = 0;
+    for (const MapSample& m : map_world::samplesOf(w.source, coarse, 4)) {
+        opaque += m.water == WaterKind::River ? 1u : 0u;
+    }
+    TEST_CHECK(opaque == 0);
     // Around the mouths of rivers into the sea at 64 m per pixel: their courses drawn on the land,
     // never over the sea (a course goes on to the middle of the cell of its mouth).
     std::size_t land = 0;
@@ -149,6 +159,73 @@ void testWater() {
         }
     }
     TEST_CHECK(fromCells);
+}
+
+// The ground at or above the surface of a sea or a lake is land on the map, as Unreal shows it
+// (the banks a valley carries out into the sea); rivers stay rivers.
+void testEmergedGround() {
+    TEST_CHECK(mapWaterOf(WaterKind::Ocean, 0.69f, 0.0f) == WaterKind::None);
+    TEST_CHECK(mapWaterOf(WaterKind::Ocean, 0.0f, 0.0f) == WaterKind::None);
+    TEST_CHECK(mapWaterOf(WaterKind::Ocean, -0.93f, 0.0f) == WaterKind::Ocean);
+    TEST_CHECK(mapWaterOf(WaterKind::Lake, 201.0f, 200.75f) == WaterKind::None);
+    TEST_CHECK(mapWaterOf(WaterKind::SaltLake, 10.0f, 12.0f) == WaterKind::SaltLake);
+    TEST_CHECK(mapWaterOf(WaterKind::River, 5.0f, 4.0f) == WaterKind::River);
+    TEST_CHECK(mapWaterOf(WaterKind::None, 5.0f, 5.0f) == WaterKind::None);
+}
+
+// The whole small world at 32 km per pixel, 4 x 4 cells of 8 km in a pixel: each pixel takes the
+// water most of its 3 x 3 points have (the oracle: PlanetLevel::sampleAt at the same points), and
+// fewer water pixels stand alone among dry ones than with the point at their center only.
+void testPlanetPixels() {
+    const map_world::WetWorld w;
+    const WorldSize& small = golden::kSmallPlanet;
+    const MapFrame f({-0.5 * small.x, -0.5 * small.z, small.x, small.z}, 64, 32, small);
+    const std::vector<MapSample> s = map_world::samplesOf(w.source, f, 4);
+    const auto kindAt = [&](double x, double z) {
+        const PlanetSample p = w.planet->sampleAt(x, z);
+        if (p.lake >= 0 && !p.ocean) {
+            return w.planet->lakes()[static_cast<std::size_t>(p.lake)].playa ? 3 : 2;
+        }
+        return p.ocean ? 1 : 0;
+    };
+    bool majority = true;
+    std::size_t aloneMap = 0;
+    std::size_t aloneCenter = 0;
+    for (int j = 0; j < f.height(); ++j) {
+        for (int i = 0; i < f.width(); ++i) {
+            std::array<int, 4> votes{}; // none, sea, lake, salt lake: the order of WaterKind
+            for (int b = 0; b < kMapPlanetSubPoints; ++b) {
+                for (int a = 0; a < kMapPlanetSubPoints; ++a) {
+                    ++votes[static_cast<std::size_t>(
+                        kindAt(f.pixelX(i) + ((a + 0.5) / 3.0 - 0.5) * f.stepX(),
+                               f.pixelZ(j) + ((b + 0.5) / 3.0 - 0.5) * f.stepZ()))];
+                }
+            }
+            const int expected = static_cast<int>(
+                std::distance(votes.begin(), std::max_element(votes.begin(), votes.end())));
+            const WaterKind got = s[mapGridIndex(f, i, j)].water;
+            // none 0, sea 1, lake 2, salt lake 3 (WaterKind less its river)
+            const int kind =
+                got == WaterKind::None || got == WaterKind::Ocean ? static_cast<int>(got)
+                                                                  : static_cast<int>(got) - 1;
+            majority = majority && kind == expected;
+            const auto wetAt = [&](int di, int dj, bool center) {
+                const MapSample& m = s[mapGridIndex(f, i + di, j + dj)];
+                return center ? kindAt(f.pixelX(i + di), f.pixelZ(j + dj)) != 0
+                              : m.water != WaterKind::None;
+            };
+            for (const bool center : {false, true}) {
+                const bool alone = wetAt(0, 0, center) && !wetAt(1, 0, center) &&
+                                   !wetAt(-1, 0, center) && !wetAt(0, 1, center) &&
+                                   !wetAt(0, -1, center);
+                (center ? aloneCenter : aloneMap) += alone ? 1u : 0u;
+            }
+        }
+    }
+    std::printf("small world at 32 km/px: %zu water pixels alone (%zu with the centers only)\n",
+                aloneMap, aloneCenter);
+    TEST_CHECK(majority);
+    TEST_CHECK(aloneMap < aloneCenter);
 }
 
 // The flag raised before the render, or during it from another thread: MapCancelled, soon.
@@ -191,6 +268,8 @@ int main() {
     testFineSamples();
     testKinds();
     testWater();
+    testEmergedGround();
+    testPlanetPixels();
     testCancel();
     return test::result();
 }

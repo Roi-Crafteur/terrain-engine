@@ -11,6 +11,9 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <iterator>
 #include <stdexcept>
 #include <vector>
 
@@ -27,6 +30,16 @@ std::size_t gridColumns(const MapFrame& f) {
 constexpr float kPlanetLandContinentalness = 0.5f;
 constexpr float kPlanetSeaContinentalness = -1.0f;
 
+// The point a of n along each axis of the pixel i of a frame, spread evenly over it (its center
+// for n = 1).
+double subX(const MapFrame& frame, std::int64_t i, int a, int n) {
+    return frame.pixelX(i) + ((a + 0.5) / n - 0.5) * frame.stepX();
+}
+
+double subZ(const MapFrame& frame, std::int64_t j, int b, int n) {
+    return frame.pixelZ(j) + ((b + 0.5) / n - 0.5) * frame.stepZ();
+}
+
 void validateParams(const MapSourceParams& p) {
     if (!(p.fineMostMetersPerPixel > 0.0) ||
         !(p.planetLeastMetersPerPixel > p.fineMostMetersPerPixel) ||
@@ -38,6 +51,12 @@ void validateParams(const MapSourceParams& p) {
 }
 
 } // namespace
+
+WaterKind mapWaterOf(WaterKind water, float ground, float waterLevel) {
+    const bool standing =
+        water == WaterKind::Ocean || water == WaterKind::Lake || water == WaterKind::SaltLake;
+    return standing && !(ground < waterLevel) ? WaterKind::None : water;
+}
 
 MapWorldSource::MapWorldSource(const TerrainTiles& tiles, const MapSourceParams& params)
     : MapWorldSource(tiles.heightfield(), tiles.ecology(), params) {}
@@ -135,8 +154,8 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
                 MapSample& s = out[at];
                 s = MapSample{};
                 s.ground = h.height;
-                s.water = h.water;
-                s.waterLevel = h.water == WaterKind::None ? kNoWaterLevel : h.waterLevel;
+                s.water = mapWaterOf(h.water, h.height, h.waterLevel);
+                s.waterLevel = s.water == WaterKind::None ? kNoWaterLevel : h.waterLevel;
                 continentalness[at] = h.continentalness;
             }
         }
@@ -145,51 +164,102 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
     if (field.hydrology() != nullptr) {
         stats.hydrologyCalls += out.size();
     }
-    addBiomes(frame, continentalness, out, threads, cancel);
+    addBiomes(frame, continentalness, out, threads, cancel, {}, 1);
 }
 
-// The cells of the planet level: the bilinear altitude, the sea and the lakes of the cell
-// holding each sample; then the biomes.
+int MapWorldSource::planetSubPoints(const MapFrame& frame) const {
+    const double cells = std::max(frame.stepX(), frame.stepZ()) / planet_->grid().cellSize;
+    return std::clamp(static_cast<int>(std::ceil(cells)), 1, kMapPlanetSubPoints);
+}
+
+namespace {
+
+// The water most points of a pixel have (ties to the first in None, Ocean, Lake, SaltLake order),
+// the mean of their levels, and the mean ground of all of them.
+void aggregate(std::span<const MapSubPoint> points, MapSample& s) {
+    std::array<int, 5> votes{};
+    std::array<double, 5> levels{};
+    double ground = 0.0;
+    for (const MapSubPoint& p : points) {
+        const auto k = static_cast<std::size_t>(p.water);
+        ++votes[k];
+        levels[k] += p.water == WaterKind::None ? 0.0 : static_cast<double>(p.waterLevel);
+        ground += static_cast<double>(p.ground);
+    }
+    std::size_t best = 0;
+    for (std::size_t k = 1; k < votes.size(); ++k) {
+        best = votes[k] > votes[best] ? k : best;
+    }
+    s.ground = static_cast<float>(ground / static_cast<double>(points.size()));
+    s.water = static_cast<WaterKind>(best);
+    s.waterLevel = s.water == WaterKind::None
+                       ? kNoWaterLevel
+                       : static_cast<float>(levels[best] / static_cast<double>(votes[best]));
+}
+
+} // namespace
+
+// The cells of the planet level: each pixel (and its border) from n x n points spread over it
+// (planetSubPoints): their mean altitude (bilinear) and the water most of them have (the sea and
+// the lakes of their cells); then the biome most of them have.
 void MapWorldSource::samplePlanet(const MapFrame& frame, std::span<MapSample> out, int threads,
                                   MapSampleStats& stats, MapCancel cancel) const {
     const std::size_t columns = gridColumns(frame);
+    const int n = planetSubPoints(frame);
+    const auto per = static_cast<std::size_t>(n * n);
+    std::vector<MapSubPoint> points(out.size() * per);
     std::vector<float> continentalness(out.size());
     planet::parallelRows(frame.height() + 2, threads, [&](int begin, int end) {
         for (int row = begin; row < end && !mapCancelled(cancel); ++row) {
-            const double z = frame.pixelZ(row - 1);
             for (std::size_t i = 0; i < columns; ++i) {
                 const std::size_t at = static_cast<std::size_t>(row) * columns + i;
-                const PlanetSample p =
-                    planet_->sampleAt(frame.pixelX(static_cast<std::int64_t>(i) - 1), z);
+                const std::span<MapSubPoint> mine(points.data() + at * per, per);
+                for (int b = 0; b < n; ++b) {
+                    for (int a = 0; a < n; ++a) {
+                        mine[static_cast<std::size_t>(b * n + a)] = planetPoint(
+                            subX(frame, static_cast<std::int64_t>(i) - 1, a, n),
+                            subZ(frame, row - 1, b, n));
+                    }
+                }
                 MapSample& s = out[at];
                 s = MapSample{};
-                s.ground = p.elevation;
-                if (p.ocean) {
-                    s.water = WaterKind::Ocean;
-                    s.waterLevel = kSeaLevel;
-                } else if (p.lake >= 0) {
-                    const PlanetLake& lake = planet_->lakes()[static_cast<std::size_t>(p.lake)];
-                    s.water = lake.playa ? WaterKind::SaltLake : WaterKind::Lake;
-                    s.waterLevel = p.waterSurface;
-                }
-                continentalness[at] =
-                    p.ocean ? kPlanetSeaContinentalness : kPlanetLandContinentalness;
+                aggregate(mine, s);
+                continentalness[at] = s.water == WaterKind::Ocean ? kPlanetSeaContinentalness
+                                                                  : kPlanetLandContinentalness;
             }
         }
     });
-    stats.planetSamples += out.size();
-    addBiomes(frame, continentalness, out, threads, cancel);
+    stats.planetSamples += points.size();
+    addBiomes(frame, continentalness, out, threads, cancel, {points.data(), points.size()}, n);
+}
+
+MapSubPoint MapWorldSource::planetPoint(double x, double z) const {
+    const PlanetSample p = planet_->sampleAt(x, z);
+    MapSubPoint point;
+    point.ground = p.elevation;
+    if (p.ocean) {
+        point.water = WaterKind::Ocean;
+        point.waterLevel = kSeaLevel;
+    } else if (p.lake >= 0) {
+        const PlanetLake& lake = planet_->lakes()[static_cast<std::size_t>(p.lake)];
+        point.water = lake.playa ? WaterKind::SaltLake : WaterKind::Lake;
+        point.waterLevel = p.waterSurface;
+    }
+    return point;
 }
 
 // The biome of every pixel (not of the border) as the far horizon classifies its samples: the
 // site of its ground with the slopes of its 4 neighbor pixels and its water, its climate, then
-// classifyBiome (streaming/horizon_sampler.cpp, at the spacing of the pixels).
+// classifyBiome (streaming/horizon_sampler.cpp, at the spacing of the pixels). With points
+// (n x n per pixel, the cells of the planet level), the biome most of them have, each classified
+// with its own ground and water and the slopes of the pixel (ties to the first biome).
 void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> continentalness,
-                               std::span<MapSample> out, int threads, MapCancel cancel) const {
+                               std::span<MapSample> out, int threads, MapCancel cancel,
+                               std::span<const MapSubPoint> points, int n) const {
     const BiomeParams& biomes = ecology_->params().biomes;
+    const auto per = static_cast<std::size_t>(n * n);
     planet::parallelRows(frame.height(), threads, [&](int begin, int end) {
         for (int j = begin; j < end && !mapCancelled(cancel); ++j) {
-            const double z = frame.pixelZ(j);
             for (int i = 0; i < frame.width(); ++i) {
                 const std::size_t at = mapGridIndex(frame, i, j);
                 MapSample& s = out[at];
@@ -198,12 +268,31 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
                     out[mapGridIndex(frame, i - 1, j)].ground,
                     out[mapGridIndex(frame, i, j + 1)].ground,
                     out[mapGridIndex(frame, i, j - 1)].ground};
-                SurfaceSite site =
-                    heightfieldSite(s.ground, continentalness[at], around, frame.stepX());
-                site.water = s.water;
-                site.waterLevel = s.water == WaterKind::None ? s.ground : s.waterLevel;
-                const ClimateSample climate = ecology_->climate().sample(frame.pixelX(i), z, site);
-                s.biome = classifyBiome(climate, site, biomes);
+                const auto classify = [&](double x, double z, float ground, WaterKind water,
+                                          float level) {
+                    SurfaceSite site =
+                        heightfieldSite(ground, continentalness[at], around, frame.stepX());
+                    site.water = water;
+                    site.waterLevel = water == WaterKind::None ? ground : level;
+                    return classifyBiome(ecology_->climate().sample(x, z, site), site, biomes);
+                };
+                if (points.empty()) {
+                    s.biome = classify(frame.pixelX(i), frame.pixelZ(j), s.ground, s.water,
+                                       s.waterLevel);
+                    continue;
+                }
+                std::array<int, kBiomeCount> votes{};
+                for (int b = 0; b < n; ++b) {
+                    for (int a = 0; a < n; ++a) {
+                        const MapSubPoint& p =
+                            points[at * per + static_cast<std::size_t>(b * n + a)];
+                        ++votes[static_cast<std::size_t>(classify(subX(frame, i, a, n),
+                                                                  subZ(frame, j, b, n), p.ground,
+                                                                  p.water, p.waterLevel))];
+                    }
+                }
+                s.biome = static_cast<Biome>(std::distance(
+                    votes.begin(), std::max_element(votes.begin(), votes.end())));
             }
         }
     });

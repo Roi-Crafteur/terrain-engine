@@ -46,9 +46,17 @@ struct Segment {
     double meander;        // amplitude of the meanders about the axis, meters
 };
 
+// Which courses a sample lies within the meanders of (drawCourses): a narrow one, a wide one.
+constexpr std::uint8_t kNearNarrow = 1;
+constexpr std::uint8_t kNearWide = 2;
+
 // The sample of a pixel at a distance from the axis of a course: covered by a narrow channel, or
 // its discharge given to the river samples within the meanders of a wide one.
-void layCourse(MapSample& sample, double cover, bool wide, bool within, float discharge) {
+void layCourse(MapSample& sample, std::uint8_t& near, double cover, bool wide, bool within,
+               float discharge) {
+    if (within) {
+        near = static_cast<std::uint8_t>(near | (wide ? kNearWide : kNearNarrow));
+    }
     if (wide) {
         if (within && sample.water == WaterKind::River && discharge > sample.discharge) {
             sample.discharge = discharge;
@@ -70,7 +78,8 @@ void layCourse(MapSample& sample, double cover, bool wide, bool within, float di
 
 // The part of each pixel the channel of a segment covers: 1 within its half width, fading over
 // one pixel beyond it.
-void drawSegment(const MapFrame& f, const Segment& s, float discharge, std::span<MapSample> out) {
+void drawSegment(const MapFrame& f, const Segment& s, float discharge, std::span<MapSample> out,
+                 std::span<std::uint8_t> near) {
     const double step = std::max(f.stepX(), f.stepZ());
     const bool wide = std::min(s.ha, s.hb) >= 0.5 * kWideChannelPixels * step;
     const double reach = std::max(s.ha, s.hb) + s.meander + step;
@@ -92,7 +101,8 @@ void drawSegment(const MapFrame& f, const Segment& s, float discharge, std::span
             const double half = s.ha + (s.hb - s.ha) * t;
             const double distance = std::sqrt(ex * ex + ez * ez);
             const double cover = std::clamp((half + 0.5 * step - distance) / step, 0.0, 1.0);
-            layCourse(out[mapGridIndex(f, i, j)], cover, wide, distance <= reach, discharge);
+            const std::size_t at = mapGridIndex(f, i, j);
+            layCourse(out[at], near[at], cover, wide, distance <= reach, discharge);
         }
     }
 }
@@ -125,6 +135,7 @@ void addStretches(const std::vector<RiverFall>& steps, double stretch, std::vect
 void drawCourses(const MapFrame& frame, std::span<const Course> courses, double leastPixels,
                  std::span<MapSample> out) {
     const double least = 0.5 * leastPixels * std::max(frame.stepX(), frame.stepZ());
+    std::vector<std::uint8_t> near(out.size(), 0);
     for (const Course& c : courses) {
         if (c.xs.size() < 2) {
             continue;
@@ -141,9 +152,17 @@ void drawCourses(const MapFrame& frame, std::span<const Course> courses, double 
                             std::max(static_cast<double>(c.halfWidths[k - 1]), least),
                             std::max(static_cast<double>(c.halfWidths[k]), least),
                             static_cast<double>(std::max(c.meanders[k - 1], c.meanders[k]))};
-            drawSegment(frame, s, c.discharge, out);
+            drawSegment(frame, s, c.discharge, out, near);
             ax = bx;
             az = bz;
+        }
+    }
+    // A channel narrower than kWideChannelPixels is the line of its course alone: its samples,
+    // a pixel or two of it, would draw steps along it.
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        if (out[k].water == WaterKind::River && near[k] == kNearNarrow) {
+            out[k].water = WaterKind::None;
+            out[k].waterLevel = kNoWaterLevel;
         }
     }
 }
