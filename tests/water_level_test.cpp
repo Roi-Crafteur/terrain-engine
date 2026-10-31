@@ -381,7 +381,7 @@ int main() {
     golden::report("water levels of the small world",
                    // The coasts (agent 33) change tiles of their band (0x5E8C41F9A71B2235
                    // without them, as the horizon and the caves).
-                   {{"tiles", tiles.sum.value(), 0x1EF14A99F2A74AB5ULL},
+                   {{"tiles", tiles.sum.value(), 0x6DFC682960D825B5ULL},
                     {"horizon", horizon.sum.value(), 0xEF77A2A8E53BB1EBULL},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();

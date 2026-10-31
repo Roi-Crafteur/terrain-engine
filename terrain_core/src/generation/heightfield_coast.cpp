@@ -26,9 +26,12 @@ namespace {
 constexpr std::uint64_t kCoastStream = 0xC0A57;
 
 // The distance to the shore is the coast signal over its gradient, read kGradientStep meters
-// along x and z, never below kLeastGradient meters of signal per meter.
-constexpr double kGradientStep = 8.0;
-constexpr double kLeastGradient = 0.3;
+// along x and z (the signal of the map is a float: its rounding over that step moves the distance
+// by millimeters near the shore), never below kLeastGradient meters of signal per meter (half the
+// usual gradient): where the signal flattens (the middle of a narrow peninsula) the distance never
+// runs away, and the shapes there only get wider, never steeper.
+constexpr double kGradientStep = 64.0;
+constexpr double kLeastGradient = 1.5;
 
 // Near the rivers the coasts fade out over kClearance meters of clearance of their valleys
 // (Hydrology::clearance).
@@ -86,6 +89,7 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
                coast_shape::inBand(p, g.coast);
     if (!c.active) {
         c.land = coast_shape::landFactor(p, g.coast);
+        c.mountains = c.land;
         c.ground = coast_shape::groundBase(p, g, g.coast);
         return c;
     }
@@ -96,7 +100,9 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
     const double distance = g.coast / std::max(kLeastGradient, dmath::hypot(gx, gz));
     const coast_shape::Ground shape = coast_shape::shapeAt(
         p, coasts_->shapes, x, z, g, g.coast, distance, coastKindsAt(x, z, g, memos));
+    c.landward = g.coast > 0.0;
     c.land = shape.land;
+    c.mountains = shape.mountains;
     c.ground = shape.ground;
     return c;
 }

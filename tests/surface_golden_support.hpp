@@ -98,7 +98,7 @@ inline std::vector<Part> heightfieldParts() {
          0x00687ACED72B3163ULL},
         // The coasts (agent 33) change 9 of its 1,024 points, all in their band (0x96F897D9B46A5FE7
         // without them).
-        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0xFC12685AFA0A5A20ULL},
+        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0x20598227E0BF85CEULL},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},

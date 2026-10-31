@@ -3,3 +3,5 @@
 terrain_add_test(coast_outside_test terrain_core)
 terrain_add_test(coast_kinds_test terrain_core)
 terrain_add_test(coast_mouths_test terrain_core)
+terrain_add_test(coast_patterns_test terrain_core)
+target_include_directories(coast_patterns_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

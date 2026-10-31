@@ -154,9 +154,10 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
     // The local relief and the mountains, faded in from the coast: none at sea.
     const float land = coast.land;
     s.plateCollision = g.belt;
-    const float intensity = land > 0.0f ? reliefAt(x, z, g.relief, memos) : 0.0f;
+    const float intensity =
+        land > 0.0f || coast.landward ? reliefAt(x, z, g.relief, memos) : 0.0f;
     s.relief = intensity; // 0 at sea
-    s.mountainMask = land * noise::smoothstep(kMountainLow, kMountainHigh, intensity);
+    s.mountainMask = coast.mountains * noise::smoothstep(kMountainLow, kMountainHigh, intensity);
     // Around the regional elevation, the local relief rises and falls.
     const float ground = coast.ground;
     const MountainForm mountain =
