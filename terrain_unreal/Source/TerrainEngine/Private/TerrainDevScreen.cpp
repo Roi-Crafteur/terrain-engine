@@ -17,6 +17,7 @@
 #include "Engine/Font.h"
 #include "Engine/HitResult.h"
 #include "Engine/World.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformMemory.h"
 #include "HAL/PlatformTime.h"
