@@ -41,5 +41,13 @@ public class TerrainEngine : ModuleRules
 		// The GPU horizon: static meshes built in game, textures updated by regions, frame times.
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"ProceduralMeshComponent", "MeshDescription", "StaticMeshDescription", "RenderCore", "RHI" });
+
+		// The tools of the developers (terrain_unreal/DEV_TOOLS.md): the screen of F3 and the
+		// Terrain.* commands of views, places, view modes and seed. Never in a Shipping build: every
+		// file of them holds its code under #if TERRAIN_DEV_TOOLS (tests/unreal_dev_tools_guard).
+		bool bDevTools = Target.Configuration != UnrealTargetConfiguration.Shipping;
+		PrivateDefinitions.Add(bDevTools ? "TERRAIN_DEV_TOOLS=1" : "TERRAIN_DEV_TOOLS=0");
+		// Their keys (InputCore) and the folder of the plugin, where the places lie (Projects).
+		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "Projects" });
 	}
 }
