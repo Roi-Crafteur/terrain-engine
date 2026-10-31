@@ -1,5 +1,6 @@
-// The valley of a course at a point (river_profile.hpp).
+// One segment of a course at a point (river_segment.hpp).
 #include "river_profile.hpp"
+#include "river_segment.hpp"
 
 #include "river_lips.hpp"
 #include "river_slot.hpp"
@@ -29,21 +30,7 @@ double smooth(double edge0, double edge1, double v) {
     return t * t * (3.0 - 2.0 * t);
 }
 
-// The point of segment a-b nearest to (x, z): the share t along it, the distance and how far the
-// point lies beyond its ends along it (0 alongside), upstream of its start or downstream of its
-// end; then (sideOf) the unit direction from it to the point and the signed distance to the line
-// of the segment (left of the course positive).
-struct Foot {
-    double t = 0.0;
-    double distance = 0.0;
-    double qx = 0.0; // from it to the point
-    double qz = 0.0;
-    double beyond = 0.0;
-    bool upstream = false;
-    double side = 0.0;
-    double upX = 1.0;
-    double upZ = 0.0;
-};
+} // namespace
 
 Foot footOn(const CoursePoint& a, const SegmentSpan& s, double x, double z) {
     Foot f;
@@ -60,10 +47,11 @@ Foot footOn(const CoursePoint& a, const SegmentSpan& s, double x, double z) {
     return f;
 }
 
-// How far (x, z) lies left of the line of segment a-b (positive) or right of it.
 double sideAt(const CoursePoint& a, const SegmentSpan& s, double x, double z) {
     return s.length2 > 0.0 ? (s.dx * (z - a.z) - s.dz * (x - a.x)) / s.length : 0.0;
 }
+
+namespace {
 
 void sideOf(const CoursePoint& a, const SegmentSpan& s, double x, double z, Foot& f) {
     if (f.distance > 0.0) {
@@ -76,10 +64,13 @@ void sideOf(const CoursePoint& a, const SegmentSpan& s, double x, double z, Foot
     f.side = sideAt(a, s, x, z);
 }
 
-// Where the foot of a point lies along the course (beyond the ends of segment a-b too).
+} // namespace
+
 double alongOf(const CoursePoint& a, const CoursePoint& b, const Foot& f) {
     return lerp(a.s, b.s, f.t) + (f.upstream ? -f.beyond : f.beyond);
 }
+
+namespace {
 
 // The foot on segment a-b of a corridor of course c in the frame of its slot (river_winding.hpp):
 // its side from the middle of the slot across it, its distance and the direction away from it.
@@ -100,33 +91,6 @@ void windFoot(const Course& c, const CoursePoint& a, const CoursePoint& b, const
 // A segment whose water comes down more than kFaceDrop meters per meter is the face of a fall
 // (the steps of river_falls: 4 to 8, the runs of a river never more than 0.12).
 constexpr double kFaceDrop = 1.0;
-
-// What bounds the surface of the valley of segment a-b at a foot: the water and the levels there,
-// the walls and the floor (segmentValley goes on from them to the channel).
-struct Frame {
-    double t = 0.0;
-    double level = 0.0;
-    double ground = 0.0;
-    double water = 0.0;
-    double surfaceLevel = 0.0;
-    double fillLevel = 0.0;
-    double half = 0.0;
-    double depth = 0.0;
-    double amplitude = 0.0;
-    double out = 0.0;
-    double walls = 0.0;
-    double wallSlope = 0.0;
-    double floorSlope = 0.0;
-    double above = 0.0;
-    double floorLevel = 0.0;
-    // On a stretch in steps (fall above 0), the walls of its slot (CoursePoint::slot), and the
-    // share its channel widens by in a bowl (river_slot.hpp).
-    double fall = 0.0;
-    double slot = 0.0;
-    double channel = 0.0; // the half width of its channel, narrowed in a slot (slotHalf)
-    double wider = 0.0;
-    double along = 0.0; // where the foot lies along the course
-};
 
 Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double rise,
               double valleyRise, double warp, const Bowl& bowl, std::uint64_t slotSeed) {
@@ -195,12 +159,8 @@ double channelFrom(const CoursePoint& a, const CoursePoint& b, const Foot& f, co
 // than the rounding of the distances and heights.
 constexpr double kFarMargin = 1e-3;
 
-// What of the valley of segment a-b at a foot may change valleyAt over relief ground meters high:
-// its surface below threshold (the lowest it may join the blend) or its floor filling the relief
-// (all of it), else its banks there (only them), else nothing. Exact: the surface is never below
-// the floor and the walls cut down to the water less the depth of the channel (the channel is
-// never lower), the fill is that of segmentValley, and the banks only stand within kBankReach of
-// the channel.
+} // namespace
+
 Matters mayMatter(const CoursePoint& a, const CoursePoint& b, const Foot& f, const Frame& r,
                   double threshold, double ground) {
     const double cut = std::max(0.0, r.floorLevel - (r.water - std::max(0.0, r.depth)));
@@ -221,13 +181,7 @@ Matters mayMatter(const CoursePoint& a, const CoursePoint& b, const Foot& f, con
     return banks ? Matters::Banks : Matters::Nothing;
 }
 
-// The channel of segment a-b at a foot (channelOf).
-struct Channel {
-    double distance = 0.0;
-    double half = 0.0;
-    double height = 0.0;
-    double bowl = 0.0; // what its bowls widen it by
-};
+namespace {
 
 // The banks of segment a-b, bank meters high out meters beyond its channel, in the slot of a fall
 // drawn along meters along the course. Beyond the walls of the slot at their widest (slotReach),
@@ -248,11 +202,8 @@ double slotBank(const Frame& r, const Foot& f, std::uint64_t slotSeed, double al
     return bank + (wall - bank) * r.fall;
 }
 
-// The channel of segment a-b at a foot: how far the point lies from its meandering line, its
-// half width and the height of its bed or of its banks there. On a stretch in steps, in the slot of
-// the fall (river_slot.hpp): the channel narrowed, its walls rising from the water to the floor
-// over their own width beyond it, whatever the depth of the steps below the floor.
-// Where the channel of segment a-b lies from a foot (channelOf): its distance and its half width.
+} // namespace
+
 Channel channelReach(const CoursePoint& a, const CoursePoint& b, const Foot& f, const Frame& r,
                      std::uint64_t seed) {
     const double t = r.t;
@@ -285,6 +236,8 @@ Channel channelReach(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     return c;
 }
 
+namespace {
+
 Channel channelOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, const Frame& r,
                   std::uint64_t seed, std::uint64_t slotSeed) {
     Channel c = channelReach(a, b, f, r, seed);
@@ -301,14 +254,8 @@ Channel channelOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, con
     return c;
 }
 
-// The rest of the valley of segment a-b at a foot from its frame. Upstream of its start, the
-// surface rises rise meters per meter (risesOf: at least as fast as the level upstream of it
-// comes down to it): on a steep stretch or below a fall the floor of the segments below never
-// undercuts the water above them, while the segments alongside the point set its surface. The
-// fill of the floor drops as fast downstream of its end, for the same reason. The valley is carved
-// from its level (CoursePoint::valley, its surface rising valleyRise), the channel from the water
-// (rise): on a fall, in its slot cut into the floor of the valley (channelOf).
-// The banks of a channel ch of the frame r (Valley::bank): within kBankReach of its edge.
+} // namespace
+
 double bankOf(const Channel& ch, const Frame& r) {
     const double edge = ch.distance - ch.half;
     if (edge >= 0.0 && edge < kBankReach) {
@@ -356,8 +303,6 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     return v;
 }
 
-// The frame of segment i of course c at the foot f of (x, z) on it: in the frame of the slot of a
-// corridor (river_winding.hpp), with the bowl of a pool below a drop (river_slot.hpp).
 Frame frameAt(const Course& c, std::size_t i, const SegmentSpan& span, double x, double z, Foot& f,
               double warp) {
     const CoursePoint& a = c.points[i];
@@ -366,135 +311,6 @@ Frame frameAt(const Course& c, std::size_t i, const SegmentSpan& span, double x,
     windFoot(c, a, b, span, f);
     const Bowl bowl = a.fall || b.fall ? bowlAt(c, alongOf(a, b, f), i) : Bowl{};
     return frameOf(a, b, f, c.rises[i], c.valleyRises[i], warp, bowl, c.slotSeed);
-}
-
-// How far (x, z) lies at least from box segment s of course c, its foot f on it: in the frame of
-// the slot near a corridor (river_winding.hpp).
-double boxDistance(const Course& c, const BoxCourse::Segment& s, double x, double z,
-                   const Foot& f) {
-    if (!(s.windMost > 0.0)) {
-        return f.distance;
-    }
-    const CoursePoint& a = c.points[s.first];
-    const double side = sideAt(a, s.span, x, z);
-    return windDistance(windAt(c, alongOf(a, c.points[s.first + 1], f)), f.beyond, side, side);
-}
-
-// The lowest valley of the segments of c around lip l at (x, z) (river_lips.hpp): those from
-// kNearLip meters above where it moves the valley to as far below (the others lie higher there:
-// their water upstream rising with its slot walls, or beyond their ends); neither blended nor
-// filled.
-constexpr double kNearLip = 4.0;
-Valley valleyNear(const Course& c, const FallLip& l, double x, double z, std::uint64_t meanderSeed,
-                  double warp) {
-    const double from = l.s - 4.0 * recessMost(l) - kNearLip;
-    const double to = l.s + static_cast<double>(l.reach) + kNearLip;
-    std::size_t first = l.point;
-    while (first > 0 && c.points[first].s > from) {
-        --first;
-    }
-    Valley best;
-    for (std::size_t i = first; i + 1 < c.points.size() && c.points[i].s < to; ++i) {
-        const CoursePoint& a = c.points[i];
-        const CoursePoint& b = c.points[i + 1];
-        const SegmentSpan span(a, b);
-        Foot f = footOn(a, span, x, z);
-        const Frame r = frameAt(c, i, span, x, z, f, warp);
-        const Valley v = segmentValley(a, b, f, r, meanderSeed, c.slotSeed);
-        if (v.height < best.height) {
-            best = v;
-        }
-    }
-    return best;
-}
-
-} // namespace
-
-Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_t meanderSeed,
-                WallWarp& warp, const BoxCourse* box) {
-    Valley best;
-    if (x < c.minX || x > c.maxX || z < c.minZ || z > c.maxZ) {
-        return best;
-    }
-    const double bound = ground + kLevee;
-    double lowest = bound;
-    double raise = 0.0;
-    double bank = -std::numeric_limits<double>::infinity();
-    ValleyBlend blend;
-    // Below lowest + kBlend (the lowest valley found so far, or bound) a valley may join the
-    // blend; above, only its fill and its banks may matter.
-    const auto take = [&](std::uint32_t i, const SegmentSpan& span, Foot& f) {
-        const CoursePoint& a = c.points[i];
-        const CoursePoint& b = c.points[i + 1];
-        const Frame r = frameAt(c, i, span, x, z, f, warp.value());
-        const Matters matters = mayMatter(a, b, f, r, lowest + kBlend, ground);
-        if (matters != Matters::Valley) {
-            if (matters == Matters::Banks) { // its surface and fill change nothing: its banks
-                bank = std::max(bank, bankOf(channelReach(a, b, f, r, meanderSeed), r));
-            }
-            return;
-        }
-        Valley v = segmentValley(a, b, f, r, meanderSeed, c.slotSeed);
-        if (v.height < bound && f.distance > kReach - kReachFade - 500.0) {
-            v.height += (bound - v.height) *
-                        smooth(kReach - kReachFade - 500.0, kReach - 500.0, f.distance);
-        }
-        raise = std::max(raise, std::clamp(v.floor - ground, 0.0, kLevee) * v.onFloor);
-        bank = std::max(bank, v.bank);
-        if (v.height < bound + kBlend) {
-            blend.add(v);
-        }
-        if (v.height < lowest) {
-            lowest = v.height;
-            best = v;
-        }
-    };
-    const auto skips = [&](const CourseChunk& k) { return k.skips(x, z, lowest + kBlend); };
-    if (box == nullptr) {
-        for (const CourseChunk& k : c.chunks) {
-            if (!skips(k)) {
-                for (std::uint32_t i = k.first; i < k.last; ++i) {
-                    const SegmentSpan span(c.points[i], c.points[i + 1]);
-                    Foot f = footOn(c.points[i], span, x, z);
-                    take(i, span, f);
-                }
-            }
-        }
-    } else {
-        for (const BoxCourse::Chunk& k : box->chunks) {
-            // Skipped over the whole box: so it is at the point (away and floor only grow).
-            if ((k.away > 0.0 && !(k.floor < lowest + kBlend)) || skips(c.chunks[k.chunk])) {
-                continue;
-            }
-            for (std::uint32_t j = k.first; j < k.last; ++j) {
-                const BoxCourse::Segment& s = box->segments[j];
-                Foot f = footOn(c.points[s.first], s.span, x, z);
-                const double d = boxDistance(c, s, x, z, f);
-                // Only its banks may matter: where they may stand above those of the others.
-                const Matters m =
-                    s.mayMatter(d, f.beyond, f.upstream, ground, lowest + kBlend, warp.value());
-                if (m == Matters::Valley || (m == Matters::Banks && s.bankAt(d) > bank)) {
-                    take(s.first, s.span, f);
-                }
-            }
-        }
-    }
-    cutLips(c, x, z,
-            [&](double sx, double sz, const FallLip& l) {
-                return valleyNear(c, l, sx, sz, meanderSeed, warp.value());
-            },
-            best);
-    standBlocks(c, x, z, best);
-    blend.applyTo(best);
-    best.raise = raise;
-    best.bank = bank;
-    return best;
-}
-
-Valley valleyAt(const Course& c, double x, double z, double ground, std::uint64_t meanderSeed,
-                double warp) {
-    WallWarp given(warp);
-    return valleyAt(c, x, z, ground, meanderSeed, given);
 }
 
 } // namespace terrain::water

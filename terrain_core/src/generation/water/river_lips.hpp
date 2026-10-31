@@ -14,7 +14,9 @@
 
 #include "river_profile.hpp"
 
+#include <cstdint>
 #include <functional>
+#include <vector>
 
 namespace terrain::water {
 
@@ -37,6 +39,12 @@ using LipValley = std::function<Valley(double x, double z, const FallLip& l)>;
 // The valley v of course c at (x, z) with the edges of its lips: where the point lies near a lip
 // and within its width, the valley near the lip at the point moved downstream as far as the edge
 // recedes there, where that one lies lower (its surface and its water).
-void cutLips(const Course& c, double x, double z, const LipValley& near, Valley& v);
+// lips: those of c that may cut the point (lipsNear), or null (all of them).
+void cutLips(const Course& c, double x, double z, const LipValley& near, Valley& v,
+             const std::vector<std::uint32_t>* lips = nullptr);
+
+// The lips of c that may cut a point within reach meters of (cx, cz) (their indices, in order).
+[[nodiscard]] std::vector<std::uint32_t> lipsNear(const Course& c, double cx, double cz,
+                                                  double reach);
 
 } // namespace terrain::water

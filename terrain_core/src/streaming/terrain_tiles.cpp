@@ -245,7 +245,7 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
 TileData TerrainTiles::generate(const TileRequest& asked) const {
     const TileRequest request{wrapTile(asked.key, world()), asked.seams, asked.horizon};
     const TileLattice lattice = tile::latticeOf(request.key);
-    TileColumns columns = tile::sampleColumns(field_, lattice, rock_);
+    TileColumns columns = tile::sampleColumns(field_, lattice, rock_, kTileBlendStride);
     // The far tiles carve nothing: they are those of the world without caves.
     const bool carved = caves_ && caveDetailForLod(request.key.lod).components != 0;
     std::optional<tile::RockTile> rockTile;

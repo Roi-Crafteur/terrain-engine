@@ -249,6 +249,7 @@ struct FallLip {
     float edge = 0.0f;
     float width = 0.0f;
     float reach = 0.0f;
+    float around = 0.0f; // no point farther than this from (x, z) is cut (cutLips)
     float turn = 0.0f;
     // Its bow (meters: its middle upstream of its sides above 0, its sides upstream of its middle
     // below) and two waves across it of waves meters (each its wave meters long), over its channel

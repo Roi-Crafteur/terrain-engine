@@ -178,6 +178,10 @@ struct BoxCourse {
         double low = 0.0;
         double lowStart = 0.0; // the lowest its surface starts from at its start, at its end
         double lowEnd = 0.0;
+        double startFloor = 0.0; // its floor and its water less its channel at its start, and
+        double startWater = 0.0; // how fast they rise upstream of it (Course::rises)
+        double floorRise = kLeastRise;
+        double waterRise = kLeastRise;
         double floorTop = 0.0;
         double floorSlope = 0.0;
         double half = 0.0;
@@ -188,6 +192,7 @@ struct BoxCourse {
         double meander = 0.0;
         double stretch = 1.0;
         double windMost = 0.0;
+        bool falls = false; // both its points on a fall: its floor never fills (no levee there)
         // What of its valley may change valleyAt at a point d meters from it, beyond meters
         // beyond its ends (upstream of its start or not), where the relief lies at least groundLow
         // high, the noise of the walls warp there (or below, as -1 bounds every point of a box),
@@ -199,7 +204,25 @@ struct BoxCourse {
     };
     std::vector<Chunk> chunks;
     std::vector<Segment> segments;
+    // The box in blocks x blocks blocks, blockX by blockZ meters from (minX, minZ), kBlockLeast
+    // meters wide at least (none in a smaller box), kBoxBlocks at most: of the segments, those
+    // that may change the valley at some point of each block, by the same bounds (their indices
+    // in segments, in order: blockSegments from blockStart[b] to blockStart[b + 1]).
+    int blocks = 0;
+    double minX = 0.0;
+    double minZ = 0.0;
+    double blockX = 0.0;
+    double blockZ = 0.0;
+    std::vector<std::uint32_t> blockStart;
+    std::vector<std::uint32_t> blockSegments;
+    // The lips of the course that may cut some point of the box (lipsNear, river_lips.hpp).
+    std::vector<std::uint32_t> lips;
+    // The segments of the block holding (x, z), end their end; null outside the box (then all of
+    // them may).
+    [[nodiscard]] const std::uint32_t* blockAt(double x, double z, const std::uint32_t*& end) const;
 };
+inline constexpr int kBoxBlocks = 4;
+inline constexpr double kBlockLeast = 16.0;
 // The box [minX, maxX] x [minZ, maxZ] of points of course c (its images) where the relief stands
 // between groundMin and groundMax meters high (river_box.cpp).
 [[nodiscard]] BoxCourse boxCourse(const Course& c, double minX, double minZ, double maxX,

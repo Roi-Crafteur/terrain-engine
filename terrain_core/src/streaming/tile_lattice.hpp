@@ -43,6 +43,11 @@ struct TileColumns {
     // (sampleRing), for the normals of its sides.
     std::vector<float> ringHeights;
     std::vector<RockColumn> ring;
+    // Optionally (sampleColumns with an outside stride): the heights one step beyond the sides
+    // every stride columns along them, the neighbors of the texels on the sides (blendTexels),
+    // stride s at index (p / s) * 4 + side (side 0 at i = -1, 1 at i = kGridSamples, 2 at k = -1,
+    // 3 at k = kGridSamples).
+    std::vector<float> outsideHeights;
     float minHeight = 0.0f;
     float maxHeight = 0.0f;
 
@@ -60,9 +65,10 @@ struct TileColumns {
 // The heights in one batch (Heightfield::samplesAt, the bits of heightsAt): neighboring columns
 // share noise cells. With rock, the rock of the columns too, kept only when the detail of the
 // tile (cells of lattice.spacing meters, rockDetailForLod) draws a face at one of them: otherwise
-// every column is the relief alone, and so is the tile.
+// every column is the relief alone, and so is the tile. With outsideStride above 0, the heights
+// of TileColumns::outsideHeights in the same batch (a sample holds the same bits in any batch).
 inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& lattice,
-                                 bool rock = false) {
+                                 bool rock = false, int outsideStride = 0) {
     constexpr auto kCount = static_cast<std::size_t>(kGridSamples * kGridSamples);
     std::vector<double> xs;
     std::vector<double> zs;
@@ -74,12 +80,20 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
             zs.push_back(lattice.z0 + k * lattice.spacing);
         }
     }
-    std::vector<HeightSample> samples(kCount);
+    for (int p = 0; outsideStride > 0 && p < kGridSamples; p += outsideStride) {
+        for (int side = 0; side < 4; ++side) {
+            const int across = side % 2 == 0 ? -1 : kGridSamples;
+            xs.push_back(lattice.x0 + (side < 2 ? across : p) * lattice.spacing);
+            zs.push_back(lattice.z0 + (side < 2 ? p : across) * lattice.spacing);
+        }
+    }
+    std::vector<HeightSample> samples(xs.size());
     TileColumns columns;
     if (rock) {
         const RockDetail detail{static_cast<float>(lattice.spacing)};
-        columns.rock.resize(kCount);
+        columns.rock.resize(xs.size());
         field.samplesAt(xs, zs, samples, columns.rock, kRunCells * detail.cell);
+        columns.rock.resize(kCount);
         const bool faces =
             std::any_of(columns.rock.begin(), columns.rock.end(), [&](const RockColumn& c) {
                 return std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
@@ -93,6 +107,10 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     } else {
         field.samplesAt(xs, zs, samples);
     }
+    for (std::size_t n = kCount; n < samples.size(); ++n) {
+        columns.outsideHeights.push_back(samples[n].height);
+    }
+    samples.resize(kCount);
     columns.heights.reserve(kCount);
     columns.continentalness.reserve(kCount);
     columns.waterLevels.reserve(kCount);

@@ -9,12 +9,17 @@
 //   - One wall: across the slot down the stretches in steps, from its channel to the relief, the
 //     carved ground never has a second break of slope above the lip of the slot (a terrace above
 //     its rim, then a second wall): kTerracesMost per thousand sides at most.
+//   - Boxes: kBoxSide x kBoxSide samples kBoxStep meters apart in one batch around points of the
+//     corridors (their boxes cut in blocks, with the lips that may cut them: BoxCourse) hold the
+//     same bits as each sampled alone, every kBoxEvery points down the stretches in steps.
 #include "falls_support.hpp"
 #include "river_winding.hpp"
 
 #include "test_assert.hpp"
 
 #include <algorithm>
+#include <bit>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -155,6 +160,50 @@ void testOneWall(const World& w, Reaches& reaches, const std::vector<std::size_t
     TEST_CHECK(perThousand <= kTerracesMost);
 }
 
+constexpr int kBoxSide = 17;
+constexpr double kBoxStep = 4.0;
+constexpr std::size_t kBoxEvery = 40;
+
+bool sameBits(const terrain::HeightSample& a, const terrain::HeightSample& b) {
+    const auto bits = [](float v) { return std::bit_cast<std::uint32_t>(v); };
+    return bits(a.height) == bits(b.height) && bits(a.waterLevel) == bits(b.waterLevel) &&
+           a.water == b.water;
+}
+
+void testBoxes(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
+    std::size_t boxes = 0;
+    std::size_t samples = 0;
+    std::size_t wrong = 0;
+    std::vector<double> xs;
+    std::vector<double> zs;
+    std::vector<terrain::HeightSample> batch;
+    for (const std::size_t r : steeps) {
+        const auto& p = reaches[r].points;
+        for (std::size_t i = 0; i < p.size(); i += kBoxEvery) {
+            xs.clear();
+            zs.clear();
+            for (int k = 0; k < kBoxSide; ++k) {
+                for (int n = 0; n < kBoxSide; ++n) {
+                    xs.push_back(p[i].x + (n - kBoxSide / 2) * kBoxStep);
+                    zs.push_back(p[i].z + (k - kBoxSide / 2) * kBoxStep);
+                }
+            }
+            batch.resize(xs.size());
+            w.field.samplesAt(xs, zs, batch);
+            for (std::size_t n = 0; n < xs.size(); ++n) {
+                wrong += sameBits(batch[n], w.field.sampleAt(xs[n], zs[n])) ? 0 : 1;
+            }
+            samples += xs.size();
+            ++boxes;
+        }
+    }
+    std::printf("%zu boxes of %d x %d samples %.0f m apart around the corridors of the falls: %zu "
+                "samples, %zu of them not the bits of the sample alone\n",
+                boxes, kBoxSide, kBoxSide, kBoxStep, samples, wrong);
+    TEST_CHECK(samples >= 20'000);
+    TEST_CHECK(wrong == 0);
+}
+
 } // namespace
 
 int main() {
@@ -163,5 +212,6 @@ int main() {
     Reaches reaches(*w.hydrology);
     const std::vector<std::size_t> steeps = falls::steepReaches(w, reaches);
     testOneWall(w, reaches, steeps);
+    testBoxes(w, reaches, steeps);
     return test::result();
 }

@@ -181,10 +181,17 @@ void placeLips(Course& c, const Heightfield& relief, double discharge) {
     }
     c.lipsMinX = c.lipsMinZ = std::numeric_limits<double>::infinity();
     c.lipsMaxX = c.lipsMaxZ = -std::numeric_limits<double>::infinity();
-    for (const FallLip& l : c.lips) {
-        // Its slot as far aside and stretched as it winds (river_winding.hpp).
-        const double r = 4.0 * recessMost(l) + l.reach + kStretchMost * l.width +
-                         c.points[l.point].windMost;
+    for (FallLip& l : c.lips) {
+        // Its slot as far aside and stretched as it winds (river_winding.hpp), all along what it
+        // cuts (cutLips).
+        const double from = l.s - 1.5 * recessMost(l) - kWindWindow;
+        const double to = l.s + static_cast<double>(l.reach) + kWindWindow;
+        float aside = 0.0f;
+        for (const CoursePoint& q : c.points) {
+            aside = q.s > from && q.s < to ? std::max(aside, q.windMost) : aside;
+        }
+        const double r = 4.0 * recessMost(l) + l.reach + kStretchMost * l.width + aside;
+        l.around = static_cast<float>(r + 1.0);
         c.lipsMinX = std::min(c.lipsMinX, l.x - r);
         c.lipsMinZ = std::min(c.lipsMinZ, l.z - r);
         c.lipsMaxX = std::max(c.lipsMaxX, l.x + r);
@@ -225,13 +232,27 @@ double recessMost(const FallLip& l) {
            2.0 * std::abs(static_cast<double>(l.turn)) * l.width;
 }
 
-void cutLips(const Course& c, double x, double z, const LipValley& near, Valley& v) {
+std::vector<std::uint32_t> lipsNear(const Course& c, double cx, double cz, double reach) {
+    std::vector<std::uint32_t> out;
+    for (std::uint32_t n = 0; n < c.lips.size(); ++n) {
+        const FallLip& l = c.lips[n];
+        if (dmath::hypot(cx - l.x, cz - l.z) < reach + static_cast<double>(l.around)) {
+            out.push_back(n);
+        }
+    }
+    return out;
+}
+
+void cutLips(const Course& c, double x, double z, const LipValley& near, Valley& v,
+             const std::vector<std::uint32_t>* lips) {
     if (c.lips.empty() || !(v.height < std::numeric_limits<double>::infinity()) ||
         x < c.lipsMinX || x > c.lipsMaxX || z < c.lipsMinZ ||
         z > c.lipsMaxZ) {
         return;
     }
-    for (const FallLip& l : c.lips) {
+    const std::size_t count = lips != nullptr ? lips->size() : c.lips.size();
+    for (std::size_t n = 0; n < count; ++n) {
+        const FallLip& l = c.lips[lips != nullptr ? (*lips)[n] : n];
         const double dx = x - l.x;
         const double dz = z - l.z;
         const double along = dx * l.dirX + dz * l.dirZ;

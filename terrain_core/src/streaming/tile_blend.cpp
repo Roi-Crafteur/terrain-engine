@@ -16,9 +16,23 @@ constexpr int kLastColumn = kGridSamples - 1;
 enum Side : int { kWest, kEast, kNorth, kSouth, kSides };
 
 // Heights of the neighbors of the texels on the sides of the tile, one cell beyond them: texel t
-// along a side (column or row t * stride) at index t * kSides + side.
-std::vector<float> outsideHeights(const Heightfield& field, const TileLattice& lattice, int texels,
-                                  int stride) {
+// along a side (column or row t * stride) at index t * kSides + side. Those the columns hold
+// when they do (TileColumns::outsideHeights, or their ring: the same columns, the same bits).
+std::vector<float> outsideHeights(const Heightfield& field, const TileLattice& lattice,
+                                  const TileColumns& columns, int texels, int stride) {
+    if (columns.outsideHeights.size() == static_cast<std::size_t>(kSides * texels)) {
+        return columns.outsideHeights;
+    }
+    if (columns.ringHeights.size() == static_cast<std::size_t>(kSides * kGridSamples)) {
+        std::vector<float> heights;
+        for (int t = 0; t < texels; ++t) {
+            for (int side = 0; side < kSides; ++side) {
+                const auto at = static_cast<std::size_t>(side * kGridSamples + t * stride);
+                heights.push_back(columns.ringHeights[at]);
+            }
+        }
+        return heights;
+    }
     const double x0 = lattice.x0;
     const double z0 = lattice.z0;
     const double cell = lattice.spacing;
@@ -50,7 +64,7 @@ std::vector<BlendTexel> blendTexels(const Heightfield& field, const Ecology& eco
         throw std::invalid_argument("blendTexels: the stride must divide the cells of a tile");
     }
     const int texels = kLastColumn / stride + 1;
-    const std::vector<float> outside = outsideHeights(field, lattice, texels, stride);
+    const std::vector<float> outside = outsideHeights(field, lattice, columns, texels, stride);
     const auto at = [&outside, stride](int along, Side side) {
         return outside[static_cast<std::size_t>((along / stride) * kSides + side)];
     };

@@ -116,6 +116,7 @@ add_library(terrain_core STATIC
     src/generation/water/river_lips.cpp
     src/generation/water/river_path.cpp
     src/generation/water/river_profile.cpp
+    src/generation/water/river_search.cpp
     src/generation/water/river_slot.cpp
     src/generation/water/river_frame.cpp
     src/generation/water/river_pools.cpp
