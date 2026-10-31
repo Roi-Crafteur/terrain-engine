@@ -62,7 +62,10 @@ namespace
 		Params.stream.lod.splitDistance = {
 			World.Lod0DistanceChunks, World.Lod1DistanceChunks, World.Lod2DistanceChunks};
 		Params.stream.lod.viewDistance = World.ViewDistanceChunks;
-		Params.stream.workerThreads = FMath::Max(1, World.WorkerThreads);
+		// Every worker of a load created at the start (the boost: TerrainWorldLoadingPhase.cpp), the
+		// WorkerThreads first ones taking tiles outside the loads.
+		Params.stream.workerThreads = FMath::Max(FMath::Max(1, World.WorkerThreads),
+			World.LoadingSettings.bBoost ? TerrainLoadingCap(World) : 0);
 		Params.stream.maxLoadsPerUpdate =
 			static_cast<std::size_t>(FMath::Max(1, World.MaxTileUploadsPerFrame));
 		return Params;
@@ -70,10 +73,11 @@ namespace
 
 	// Applies an update of the streamer to the meshes: the uploads (timed, and recorded in the
 	// timeline of the loads), the moves to other images of the wrapped world, then the removals.
-	// Returns the uploads.
-	int32 ApplyUpdate(UTerrainMeshBackend& Backend, terrain::unreal::TerrainSession& Session,
-		const terrain::unreal::StreamerUpdate& Update)
+	// Returns the uploads and their time.
+	FTerrainUploads ApplyUpdate(UTerrainMeshBackend& Backend,
+		terrain::unreal::TerrainSession& Session, const terrain::unreal::StreamerUpdate& Update)
 	{
+		FTerrainUploads Uploads;
 		terrain::unreal::LoadTimeline& Timeline = Session.timeline();
 		const terrain::unreal::LoadClock::time_point Converted = terrain::unreal::LoadClock::now();
 		for (const terrain::unreal::TileUpload& Upload : Update.uploads)
@@ -83,6 +87,7 @@ namespace
 			Backend.SetTile(Upload);
 			const double UploadMs = (FPlatformTime::Seconds() - Start) * 1000.0;
 			Session.timings().record(terrain::unreal::TileStage::Upload, Upload.key.lod, UploadMs);
+			Uploads.Milliseconds += UploadMs;
 			Timeline.recordShown(Upload.key, terrain::unreal::LoadClock::now(), UploadMs,
 				Upload.collision);
 			UE_LOG(LogTerrainEngine, Verbose,
@@ -102,7 +107,8 @@ namespace
 		{
 			Backend.RemoveTile(Key);
 		}
-		return static_cast<int32>(Update.uploads.size());
+		Uploads.Count = static_cast<int32>(Update.uploads.size());
+		return Uploads;
 	}
 } // namespace
 
@@ -154,20 +160,10 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 bool ATerrainWorld::StartStreaming()
 {
 	const double StartSeconds = FPlatformTime::Seconds();
-	double SessionStartSeconds = StartSeconds;
 	try
 	{
-		// The world must be the one of terrain_core, bit for bit: otherwise no streaming.
-		const terrain::unreal::DeterminismReport Check = terrain::unreal::checkDefaultWorld();
-		SessionStartSeconds = FPlatformTime::Seconds();
-		if (!Check.same)
-		{
-			UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: %s. No streaming."),
-				*ToFString(terrain::unreal::describe(Check)));
-			return false;
-		}
-		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: %s"),
-			*ToFString(terrain::unreal::describe(Check)));
+		// The world must be the one of terrain_core, bit for bit: checked on a thread from the
+		// start (StartTerrainLoading), the streaming stops if it is not (PollDeterminismCheck).
 		const terrain::unreal::SessionParams Params = MakeSessionParams(*this);
 		if (!Params.planetFile.empty())
 		{
@@ -179,8 +175,7 @@ bool ATerrainWorld::StartStreaming()
 		State = MakePimpl<FTerrainWorldState>(Params);
 		LogPlanet(State->Session.planet(), Params.planetFile, Before);
 		State->Frame = State->Session.frameAt(CoreOriginX, CoreOriginZ);
-		State->Loading.DeterminismSeconds = SessionStartSeconds - StartSeconds;
-		State->Loading.SessionSeconds = FPlatformTime::Seconds() - SessionStartSeconds;
+		State->Loading.SessionSeconds = FPlatformTime::Seconds() - StartSeconds;
 	}
 	catch (const std::exception& Exception)
 	{
@@ -201,11 +196,12 @@ bool ATerrainWorld::StartStreaming()
 	StartWater();
 	StartAtmosphere();
 	State->Loading.HorizonSeconds = FPlatformTime::Seconds() - HorizonStartSeconds;
+	StartTerrainLoading(*this, *State.Get());
 	UE_LOG(LogTerrainEngine, Log,
-		TEXT("Terrain World: start-up in %.3f s: determinism check %.3f s, planet level, hydrology "
-			 "and tiles %.3f s, horizon, water and sky %.3f s"),
-		FPlatformTime::Seconds() - StartSeconds, State->Loading.DeterminismSeconds,
-		State->Loading.SessionSeconds, State->Loading.HorizonSeconds);
+		TEXT("Terrain World: start-up in %.3f s: planet level, hydrology and tiles %.3f s, "
+			 "horizon, water and sky %.3f s (the check of the world on a thread)"),
+		FPlatformTime::Seconds() - StartSeconds, State->Loading.SessionSeconds,
+		State->Loading.HorizonSeconds);
 	return true;
 }
 
@@ -232,9 +228,15 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 	{
 		ReturnFromWorldTurn(*Traveller, Focus);
 	}
+	FString Mismatch;
+	if (!PollDeterminismCheck(*State.Get(), Mismatch))
+	{
+		StopStreaming(Mismatch);
+		return;
+	}
 	TickTerrainEdits(*State.Get());
-	NoteTerrainFocus(*this, *State.Get(), Focus);
-	int32 Uploads = 0;
+	Focus = BeginTerrainFrame(*this, *State.Get(), Focus); // a prepared point while one is set
+	FTerrainUploads Uploads;
 	try
 	{
 		if (Pawn != nullptr && WarmedPawn.Get() != Pawn)

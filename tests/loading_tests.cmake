@@ -2,7 +2,8 @@
 # (Bridge), and the bench that measures it in this container. Included once, at the end of
 # tests/CMakeLists.txt (after the Bridge library).
 
-target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/load_phase.cpp
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/horizon_reveal.cpp
+                                             ${unreal_bridge}/load_phase.cpp
                                              ${unreal_bridge}/load_timeline.cpp)
 
 # The rhythm of the loads (core): the order of the requests and integrations made by hand, the
@@ -16,6 +17,10 @@ terrain_add_test(horizon_progressive_test terrain_core)
 # at each commit, a jump in the middle of an epoch, more or fewer pieces at once, the same view.
 terrain_add_test(unreal_horizon_progressive_test terrain_unreal_bridge)
 target_include_directories(unreal_horizon_progressive_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# The reveal of the levels of the GPU horizon (Bridge): the reveal of a level shown, at once under
+# the black screen, the outer band of the coarsest level shown dissolved, only the changes sent.
+terrain_add_test(unreal_horizon_reveal_test terrain_unreal_bridge)
 
 # The timeline of a load: its milestones on a selection made by hand, the curve per band of
 # distance and the CSV, the records of several threads, a whole load of the streamer traced.
@@ -40,3 +45,12 @@ add_executable(unreal_loading_bench unreal_loading_bench.cpp)
 target_link_libraries(unreal_loading_bench PRIVATE terrain_unreal_bridge terrain_load_schedule
                                                    terrain_warnings)
 add_dependencies(check unreal_loading_bench)
+
+# The reveal of the levels of the GPU horizon in its material (the script and the names the plugin
+# sets), without Unreal.
+find_package(Python COMPONENTS Interpreter QUIET)
+if(Python_Interpreter_FOUND)
+    add_test(NAME unreal_loading_scripts_test
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_loading_scripts_test.py
+                ${PROJECT_SOURCE_DIR}/terrain_unreal)
+endif()

@@ -6,6 +6,7 @@
 
 #include "Bridge/horizon_atmosphere.hpp"
 #include "Bridge/horizon_gpu_streamer.hpp"
+#include "Bridge/horizon_reveal.hpp"
 #include "Bridge/horizon_timings.hpp"
 #include "Bridge/terrain_surface.hpp"
 
@@ -25,6 +26,10 @@ struct FTerrainHorizonLook
 	double MorphCells = 32.0;
 	bool bShadows = false;
 	bool bDebugTint = false; // each level tinted with its own hue
+	// A level shown comes in over this time, the outer band of the coarsest level shown dissolved
+	// into the sky over this many cells while the coarser ones are still to come (agent 38).
+	double RevealSeconds = 0.6;
+	double EdgeFadeCells = 24.0;
 };
 
 /**
@@ -80,6 +85,9 @@ public:
 	// SurfaceBandCm, HasSurface...); nothing without a look.
 	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
 
+	// While the screen is held black (the fade of a load), a level shown comes in at once.
+	void SetInstantReveal(bool bInstant) { bInstantReveal = bInstant; }
+
 	// Time spent building the grids, and the bytes of the textures and of the grids on the GPU.
 	double GetBuildMilliseconds() const { return BuildMilliseconds; }
 	int64 GetGpuBytes() const { return GpuBytes; }
@@ -93,6 +101,7 @@ private:
 	void BindNormals(int32 Level);
 	void Place(const terrain::unreal::LevelPlacement& Placement);
 	void PlaceSurface(const terrain::unreal::LevelPlacement& Placement);
+	void ApplyReveal();
 
 	UPROPERTY()
 	TObjectPtr<AActor> OwnerActor;
@@ -123,6 +132,10 @@ private:
 
 	TArray<int32> TrimShown;
 	TArray<TOptional<terrain::unreal::LevelPlacement>> Placed;
+	// The reveal of the levels shown (Bridge/horizon_reveal.hpp) and when it last went on.
+	TOptional<terrain::unreal::HorizonReveal> Reveal;
+	double RevealSeconds = -1.0;
+	bool bInstantReveal = false;
 	FTerrainHorizonLook HorizonLook;
 	terrain::unreal::DropFade Fade;
 	double Level0PitchCm = 0.0;

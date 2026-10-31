@@ -378,9 +378,8 @@ std::vector<std::string> describe(const LoadSummary& summary) {
                       summary.threadTiles[thread], summary.threadBusySeconds[thread]);
         lines.emplace_back(text);
     }
-    const double meanUpload = summary.uploads == 0
-                                  ? 0.0
-                                  : summary.uploadMilliseconds / static_cast<double>(summary.uploads);
+    const double uploads = static_cast<double>(std::max<std::size_t>(summary.uploads, 1));
+    const double meanUpload = summary.uploadMilliseconds / uploads;
     std::snprintf(text, sizeof(text), "%zu uploads %.2f ms each, %zu frames, worst game thread "
                   "%.1f ms, at most %zu uploads in a frame, %zu tiles generated again",
                   summary.uploads, meanUpload, summary.frames, summary.worstFrameMilliseconds,

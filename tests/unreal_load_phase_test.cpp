@@ -247,7 +247,8 @@ void testViewAngles() {
     TEST_CHECK(near(fall.pitch, -59.0) && near(fall.yaw, -133.1));
     const terrain::unreal::UnrealPoint look = lookDirection(fall);
     TEST_CHECK(look.z < -0.85 && look.x < 0.0 && look.y < 0.0);
-    TEST_CHECK(near(viewAngles(0.0, -95.0).pitch, -89.9) && near(viewAngles(270.0, 0.0).yaw, 180.0));
+    TEST_CHECK(near(viewAngles(0.0, -95.0).pitch, -89.9));
+    TEST_CHECK(near(viewAngles(270.0, 0.0).yaw, 180.0));
 }
 
 } // namespace

@@ -44,12 +44,14 @@ import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
+import horizon_reveal as reveal  # noqa: E402
 import horizon_sea_hlsl as sea_code  # noqa: E402
 import horizon_water_nodes as water_nodes  # noqa: E402
 import material_settings as settings  # noqa: E402
 import temporary_terrain_look as look  # noqa: E402
 detail = importlib.reload(detail)  # the modules of this checkout, even if run before
 look = importlib.reload(look)
+reveal = importlib.reload(reveal)
 sea_code = importlib.reload(sea_code)
 settings = importlib.reload(settings)
 water_nodes = importlib.reload(water_nodes)
@@ -229,7 +231,7 @@ def parameters(material):
              "CoarseNormals": texture_parameter(material, "CoarseNormals", -1550)}
     nodes.update(detail.scalars(material, detail.HORIZON_SCALARS, -1300, -1900))
     scalars = (list(SCALARS.items()) + list(SEA_SCALARS.items()) + list(SHADE_SCALARS.items())
-               + list(BEHIND_SCALARS.items()))
+               + list(BEHIND_SCALARS.items()) + list(reveal.SCALARS.items()))
     for index, (name, value) in enumerate(scalars):
         scalar = expression(material, unreal.MaterialExpressionScalarParameter, -1300,
                             300 + 60 * index)
@@ -428,7 +430,8 @@ def pixel_shader(material, nodes, vertex, kind):
     g = helpers()
     water = water_nodes.vertex(material, g, nodes, kind)
     inland = water_nodes.pixel(material, g, nodes, shade, water)
-    water_nodes.opacity_mask(material, g, square, inland, attributes)
+    water_nodes.opacity_mask(material, g, reveal.mask(material, g, nodes, square), inland,
+                             attributes)
     for source, output, name in ((inland, "", "BaseColor"),
                                  (inland, "EmissiveOut", "EmissiveColor"),
                                  (inland, "NormalOut", "Normal"),

@@ -166,7 +166,8 @@ double lastShown(std::span<const Tile> tiles, std::span<const double> shown, int
 }
 
 std::vector<std::string> report(const terrain::TerrainTiles& tiles,
-                                const terrain::StreamParams& params, std::span<const Place> places) {
+                                const terrain::StreamParams& params,
+                                std::span<const Place> places) {
     std::vector<std::string> lines;
     for (const Place& place : places) {
         const terrain::ChunkCoord chunk = terrain::worldToChunk(place.x, place.z);

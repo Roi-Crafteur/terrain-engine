@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "Templates/PimplPtr.h"
 #include "TerrainEdits.h"
+#include "TerrainLoadingSettings.h"
 
 #include "TerrainWorld.generated.h"
 
@@ -177,6 +178,14 @@ public:
 		meta = (ClampMin = "0.1"))
 	float WarmUpTimeoutSeconds = 10.0f;
 
+	// The loads at the start, after a teleport and around a prepared point (agent 38): the boost,
+	// the fade, the hold, the horizon level by level (TerrainLoadingSettings.h).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Loading")
+	FTerrainLoadingSettings LoadingSettings;
+
+	UPROPERTY(BlueprintAssignable, Category = "Terrain|Loading")
+	FTerrainLocationReady OnTerrainLocationReady;
+
 	// Interval of the summary of the tile costs in the log; 0: no summary.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Measures",
 		meta = (ClampMin = "0"))
@@ -331,14 +340,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Water")
 	bool SetWaterShown(bool bShown);
 
-	// Teleports the pawn of the player to the core point (CoreX, CoreZ), meters, on the ground,
-	// facing the compass heading (0 north, 90 east) and the pitch (negative: down), and measures
-	// the load there (agent 38, TerrainWorldLoading.cpp): the milestones in the log, the tiles in a
-	// CSV of Saved/TerrainEngine/Loading. As the console command Terrain.LoadTest x z [heading]
-	// [pitch]. False outside play or without a pawn.
+	// Teleports Pawn to the core point (CoreX, CoreZ), meters, on the ground, facing the compass
+	// heading (0 north, 90 east) and the pitch (negative: down), the screen black and the pawn held
+	// until the world around is shown (agent 38, LoadingSettings). False outside play.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ, float HeadingDegrees = 0.0f,
+		float PitchDegrees = 0.0f);
+	// TeleportWhenReady of the pawn of the player, measured (log and CSV of
+	// Saved/TerrainEngine/Loading): the console command Terrain.LoadTest x z [heading] [pitch].
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
 	bool LoadTest(double CoreX, double CoreZ, float HeadingDegrees = 0.0f,
 		float PitchDegrees = 0.0f);
+	// "Prepare this point, then tell": the tiles and the horizon streamed around the core point
+	// until ReleasePreparedLocation, OnTerrainLocationReady broadcast once they are shown.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool PrepareLocation(double CoreX, double CoreZ);
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	void ReleasePreparedLocation();
 
 protected:
 	virtual void BeginPlay() override;

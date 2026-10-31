@@ -173,12 +173,14 @@ void testSameTilesWhateverTheLimits() {
     const terrain::TerrainTiles tiles(streaming_test::kSeed);
     const ChunkCoord player{streaming_test::kCenterChunkX + 3, streaming_test::kCenterChunkZ - 5};
     bool onceReference = false;
-    const Loaded reference = loadAround(terrain::tileGenerator(tiles), player, 0, {}, onceReference);
+    const Loaded reference =
+        loadAround(terrain::tileGenerator(tiles), player, 0, {}, onceReference);
     TEST_CHECK(onceReference && !reference.empty());
     const std::vector<std::pair<int, std::size_t>> limits = {
         {1, 1}, {1, 1}, {4, 32}, {4, 32}, {2, 3}, {2, 3}, {2, 3}, {4, 8}};
     bool onceLimited = false;
-    const Loaded limited = loadAround(terrain::tileGenerator(tiles), player, 4, limits, onceLimited);
+    const Loaded limited =
+        loadAround(terrain::tileGenerator(tiles), player, 4, limits, onceLimited);
     TEST_CHECK(onceLimited);
     TEST_CHECK(limited == reference);
 }

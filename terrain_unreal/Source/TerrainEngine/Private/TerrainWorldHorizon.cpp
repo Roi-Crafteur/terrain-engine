@@ -66,6 +66,7 @@ namespace
 		Params.sea = World.bHorizonSea;
 		Params.planetRadiusMeters = FMath::Max(0.0, World.PlanetRadiusKm) * 1000.0;
 		Params.lod = Lod;
+		Params.progressive = World.LoadingSettings.bHorizonLevelByLevel; // agent 38
 		return Params;
 	}
 
@@ -140,6 +141,7 @@ bool ATerrainWorld::StartGpuHorizon()
 	Look.MorphCells = FMath::Clamp(HorizonMorphCells, 1.0f, 100.0f);
 	Look.bShadows = bHorizonShadows;
 	Look.bDebugTint = bHorizonDebugTint;
+	Look.RevealSeconds = FMath::Max(0.0f, LoadingSettings.HorizonRevealSeconds);
 	HorizonClipmap = NewObject<UTerrainHorizonClipmap>(this);
 	HorizonClipmap->Initialize(*this, GpuLook, Horizon, Look);
 	HorizonClipmap->BindSurfaceLook(TileSurfaceLook);
@@ -236,6 +238,8 @@ void ATerrainWorld::TickHorizon(const FVector& Focus)
 		{
 			terrain::unreal::HorizonGpuUpdate Update =
 				State->HorizonGpu->update(ToUnrealPoint(Focus), State->Frame);
+			// Under the black screen of a load, a level shown comes in at once.
+			HorizonClipmap->SetInstantReveal(State->Loading.bScreenBlack);
 			HorizonClipmap->Apply(Update, State->HorizonTimings);
 			if (Update.detailMilliseconds > 0.0)
 			{

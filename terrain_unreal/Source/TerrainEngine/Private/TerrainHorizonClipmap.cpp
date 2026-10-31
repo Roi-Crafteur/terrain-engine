@@ -35,6 +35,10 @@ namespace
 	const FName CoarseFirstXParameter(TEXT("CoarseFirstX"));
 	const FName CoarseFirstZParameter(TEXT("CoarseFirstZ"));
 	const FName HasCoarserParameter(TEXT("HasCoarser"));
+	// The reveal of the levels (Scripts/horizon_reveal.py, agent 38).
+	const FName RevealParameter(TEXT("Reveal"));
+	const FName EdgeFadeParameter(TEXT("EdgeFade"));
+	const FName EdgeFadeCellsParameter(TEXT("EdgeFadeCells"));
 	const FName MorphParameter(TEXT("MorphCells"));
 	const FName SkirtParameter(TEXT("SkirtCm"));
 	const FName DropParameter(TEXT("DropCm"));
@@ -110,6 +114,7 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 			static_cast<int64>(Shape.triangles.size()) * static_cast<int64>(sizeof(int32));
 	}
 	const int32 Levels = Streamer.params().levels;
+	Reveal.Emplace(Levels, HorizonLook.RevealSeconds);
 	NormalRatio = Streamer.normals() != nullptr ? Streamer.normals()->ratio() : 0;
 	for (int32 Level = 0; Level < Levels; ++Level)
 	{
@@ -175,6 +180,8 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	Look->SetScalarParameterValue(HasCoarserParameter,
 		Level + 1 < Streamer.params().levels ? 1.0f : 0.0f);
 	Look->SetScalarParameterValue(MorphParameter, static_cast<float>(HorizonLook.MorphCells));
+	Look->SetScalarParameterValue(EdgeFadeCellsParameter,
+		static_cast<float>(HorizonLook.EdgeFadeCells));
 	Look->SetScalarParameterValue(SkirtParameter,
 		static_cast<float>(Streamer.skirtMetersOf(Level) * 100.0));
 	Look->SetScalarParameterValue(DropParameter, static_cast<float>(HorizonLook.DropCm));
@@ -273,12 +280,42 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 			Look->SetScalarParameterValue(CoarseFirstZParameter, static_cast<float>(First.z));
 		}
 	}
+	ApplyReveal();
+}
+
+// The reveal of the levels shown goes on (Bridge/horizon_reveal.hpp): their changes to the looks.
+void UTerrainHorizonClipmap::ApplyReveal()
+{
+	const double Now = FPlatformTime::Seconds();
+	const double Elapsed = RevealSeconds < 0.0 ? 0.0 : Now - RevealSeconds;
+	RevealSeconds = Now;
+	for (const int Level : Reveal->advance(Elapsed, bInstantReveal))
+	{
+		Looks[Level]->SetScalarParameterValue(RevealParameter,
+			static_cast<float>(Reveal->reveal(Level)));
+		Looks[Level]->SetScalarParameterValue(EdgeFadeParameter,
+			static_cast<float>(Reveal->edgeFade(Level)));
+	}
 }
 
 void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placement)
 {
 	const int32 Level = Placement.level;
+	Reveal->place(Placement, bInstantReveal);
+	if (!Placement.visible)
+	{
+		// A new place brought level by level: the window of the old place is hidden until its turn.
+		Bodies[Level]->SetVisibility(false);
+		if (Trims[Level] != nullptr)
+		{
+			Trims[Level]->SetVisibility(false);
+		}
+		Placed[Level].Reset();
+		return;
+	}
 	UMaterialInstanceDynamic* Look = Looks[Level];
+	// The coarsest level shown has no coarser one to morph toward (the others are hidden).
+	Look->SetScalarParameterValue(HasCoarserParameter, Placement.inCoarser.x >= 0 ? 1.0f : 0.0f);
 	Look->SetScalarParameterValue(FirstSlotXParameter, static_cast<float>(Placement.firstSlot.x));
 	Look->SetScalarParameterValue(FirstSlotZParameter, static_cast<float>(Placement.firstSlot.z));
 	// The coarsest level has no coarser one (-1): unused there (HasCoarser).
