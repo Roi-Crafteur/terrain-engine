@@ -45,7 +45,7 @@ add_test(NAME export_settlement_smoke
             --cell 16384 --threads 2 --width 128 --preset all --zoom 0 0 800 400)
 set_tests_properties(export_settlement_smoke PROPERTIES
     PASS_REGULAR_EXPRESSION
-    "Spearman .*images in .*zoom: 49 x 24 cells.*preset civilized.*peak resident")
+    "Spearman .*images in .*zoom: 49 x 24 cells.*civilized.json: configHash .*peak resident")
 add_test(NAME export_settlement_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_settlement>
             -DOUT=${CMAKE_BINARY_DIR}/settlement_bad_args
@@ -88,4 +88,11 @@ terrain_add_test(settlement_expansion_test terrain_core)
 # asymmetric, selfRelation within one people, the tension in [0, 1].
 terrain_add_test(settlement_politics_test terrain_core)
 target_compile_definitions(settlement_politics_test PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
+
+# What a world keeps of its settlement (settlement.json) on the default world in cells of 65 km:
+# the record read back the same, the kingdoms computed again from the copy alone the same to the
+# bit, an altered copy, a damaged fingerprint, a missing member and a newer format refused.
+terrain_add_test(settlement_file_test terrain_core)
+target_compile_definitions(settlement_file_test PRIVATE
     TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")

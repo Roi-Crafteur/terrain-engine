@@ -5,8 +5,11 @@
 #include "terrain/json/json.hpp"
 #include "terrain/io/planet_png.hpp"
 #include "terrain/io/settlement_png.hpp"
+#include "terrain/storage/settlement_file.hpp"
+#include "terrain/storage/storage_error.hpp"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <string>
@@ -217,6 +220,34 @@ bool writeCapitals(const PresetRun& run, const st::SettlementMaps& maps,
     return static_cast<bool>(out);
 }
 
+// settlement_<preset>.json: what the world keeps of its settlement (storage/settlement_file.hpp),
+// read back once to check it.
+bool writeSettlement(const PresetRun& run, const st::SettlementData& data, const st::Kingdoms& k,
+                     Report& r) {
+    terrain::SettlementRecord record;
+    record.worldSeed = run.seed;
+    record.request = {run.preset, {}, {}, {}};
+    record.resolved = k.preset;
+    record.config = data.document();
+    record.configVersion = data.config.version;
+    record.kingdomsChecksum = k.checksum();
+    record.generationState = {{"terrain", "done"},       {"rivers", "done"},
+                              {"coasts", "pending"},     {"civilizations", "done"},
+                              {"hiddenLayer", "pending"}};
+    const std::filesystem::path file = run.directory / ("settlement_" + run.preset + ".json");
+    try {
+        terrain::saveSettlementFile(file, record);
+        const terrain::SettlementRecord back = terrain::loadSettlementFile(file);
+        r.add("  settlement_%s.json: configHash %016llx, kingdoms %016llx\n", run.preset.c_str(),
+              static_cast<unsigned long long>(terrain::settlementConfigHash(back.config)),
+              static_cast<unsigned long long>(back.kingdomsChecksum));
+    } catch (const terrain::StorageError& e) {
+        std::fprintf(stderr, "%s\n", e.what());
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool runPreset(const terrain::PlanetLevel& level, const st::SettlementMaps& maps,
@@ -239,6 +270,7 @@ bool runPreset(const terrain::PlanetLevel& level, const st::SettlementMaps& maps
         return false;
     }
     return writeCapitals(run, maps, data, k) && writePolitics(run, k) &&
+           writeSettlement(run, data, k, r) &&
            terrain::writePng(
                run.directory / ("kingdoms_" + run.preset + ".png"),
                terrain::renderKingdoms(level, terrain, k, data.config.borders, scale));

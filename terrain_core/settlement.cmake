@@ -32,6 +32,8 @@ target_sources(terrain_core PRIVATE
     src/generation/settlement/telluric.cpp
     src/generation/settlement/world_preset.cpp
 )
+# What a world keeps of its settlement: settlement.json, the copy of the data and its fingerprint.
+target_sources(terrain_core PRIVATE src/storage/settlement_file.cpp)
 # The PNG control images of the maps (io/: no Unreal wrapper).
 target_sources(terrain_core PRIVATE src/io/settlement_png.cpp src/io/settlement_png_kingdoms.cpp
                                     src/io/settlement_png_zoom.cpp)
