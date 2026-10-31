@@ -377,6 +377,7 @@ void testMassifs() {
     const st::MassifStats m = st::massifStats(t, owner, st::BorderRule{});
     TEST_CHECK(m.massifs == 2 && m.cells == 199 && m.held == 100);
     TEST_CHECK(m.shared == 1 && m.sharedCells == 100 && m.ridgeMeet == 1);
+    TEST_CHECK(m.statesEdges == 10 && m.statesRidgeEdges == 10);
     TEST_CHECK(m.footEdges == 10 && m.footNatural == 0);
     // Below 25 cells a block is no massif.
     TEST_CHECK(st::massifStats(t, owner, st::BorderRule{}, 101).massifs == 0);

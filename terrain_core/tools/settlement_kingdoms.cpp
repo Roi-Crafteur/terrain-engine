@@ -77,14 +77,16 @@ void reportGoodWorld(const st::SettlementData& data, const st::Kingdoms& k, Repo
     const st::MassifStats& m = s.massifs;
     r.add("  mountains: %zu massifs of at least 25 cells (%zu cells): %.1f %% of their land held; "
           "%zu massifs (%.1f %% of their land) held by two states or more, %zu of them (%.1f %%) "
-          "with two states meeting on a ridge; borders along the foot of a massif held by no one: "
-          "%.1f %% of the land borders, %.1f %% of them natural\n",
+          "with two states meeting on a ridge; borders between two states in the massifs: %zu "
+          "edges, %.1f %% on a ridge; borders along the foot of a massif held by no one: %.1f %% "
+          "of the land borders, %.1f %% of them natural\n",
           m.massifs, m.cells, 100.0 * share(m.held, m.cells), m.shared,
           100.0 * share(m.sharedCells, m.cells), m.ridgeMeet,
-          100.0 * share(m.ridgeMeetCells, m.cells),
-          100.0 * share(m.footEdges, b.edges), 100.0 * share(m.footNatural, m.footEdges));
+          100.0 * share(m.ridgeMeetCells, m.cells), m.statesEdges,
+          100.0 * share(m.statesRidgeEdges, m.statesEdges), 100.0 * share(m.footEdges, b.edges),
+          100.0 * share(m.footNatural, m.footEdges));
     r.add("  shapes: mean elongation (1 round, 2 twice as long as wide) of the major kingdoms "
-          "%.2f, of the minor states %.2f\n",
+          "%.3f, of the minor states %.3f\n",
           s.majorElongation, s.minorElongation);
     r.add("  climate cuts: %.2f %% of the border edges within a cell of a cut (%.2f %% of all the "
           "land edges), %zu border edges on a cut\n",

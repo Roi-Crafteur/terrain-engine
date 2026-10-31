@@ -80,31 +80,29 @@ struct CostNoise {
 struct ValleyGrowth {
     int riverClass = 2;
     double valleyBonus = 0.7;
-    double slopePenalty = 4.0;
-    double slopeHeightM = 40.0;
+    double slopePenalty = 3.5;
+    double slopeHeightM = 150.0;
 };
 
-// The expansion (section 6 bis): the cost of entering a cell for a state is the cost of its
-// nearest terrain model plus the penalties of its altitude, roughness, aridity (humidity) and
-// danger, times the noise of costNoise (and for a minor state the factor of valleys), lowered by
-// the suitability of the people (times preferenceWeight, at most 0.6: a liked terrain is cheaper,
-// never free), at least minCost.
-// Crossing a river costs the crossing of its class (river, large, major, impassable) less the
-// probable ford (classes 1 and 2, flat ground: fordBonus of it at roughness 0, nothing from
-// fordMaxRoughness) or less confluenceBonus at a confluence (never below 0), half on entering the
-// river from a bank and half on leaving it to a bank; following a river costs no crossing. A lake
-// costs lakeCost, a ridge ridgeCost more. The sea: with "straits", a sea cell at most straitCells
-// from the land costs seaCost and is only crossed, never held; with "forbidden", never entered. A
-// state takes no cell where its people's suitability is below minSuitability, nor farther than
-// maxCost. From barrierStop times its target it crosses no barrier any more: it may still take
-// the rivers and the lakes along its land, but neither follow them away nor leave a river of
-// barrierRiverClass or more or a lake for the land beyond, nor cross a ridge, nor enter a hostile
-// cell of one of barrierModels (a glacier, a summit) from the land that is not hostile, or the sea:
-// it may climb the valleys of a massif up to its crest, never over it; a front closed by barriers
-// stops there, an open
-// one goes on to the target and then up to the next barrier, at most overflow times the target.
-// A people holding more than maxPeopleShare of the land held has the targets of its states
-// lowered and the expansion run again, at most peopleReruns times.
+// The expansion (section 6 bis): the cost of entering a cell for a state is the cost of its nearest
+// terrain model plus the penalties of its altitude, roughness, aridity (humidity) and danger, times
+// the noise of costNoise (and for a minor state the factor of valleys), lowered by the suitability
+// of the people (times preferenceWeight, at most 0.6: a liked terrain is cheaper, never free), at
+// least minCost. Crossing a river costs the crossing of its class (river, large, major, impassable)
+// less the probable ford (classes 1 and 2, flat ground: fordBonus of it at roughness 0, nothing
+// from fordMaxRoughness) or less confluenceBonus at a confluence (never below 0), half on entering
+// the river from a bank and half on leaving it to a bank; following a river costs no crossing. A
+// lake costs lakeCost, a ridge ridgeCost more. The sea: with "straits", a sea cell at most
+// straitCells from the land costs seaCost and is only crossed, never held; with "forbidden", never
+// entered. A state takes no cell where its people's suitability is below minSuitability, nor
+// farther than maxCost. From barrierStop times its target it crosses no barrier any more: it may
+// still take the rivers and the lakes along its land, but neither follow them away nor leave a
+// river of barrierRiverClass or more or a lake for the land beyond, nor cross a ridge, nor enter a
+// hostile cell of one of barrierModels (a glacier, a summit) from the land that is not hostile, or
+// the sea: it may climb the valleys of a massif up to its crest, never over it; a front closed by
+// barriers stops there, an open one goes on to the target and then up to the next barrier, at most
+// overflow times the target. A people holding more than maxPeopleShare of the land held has the
+// targets of its states lowered and the expansion run again, at most peopleReruns times.
 struct ExpansionRule {
     double preferenceWeight = 0.5;
     double minCost = 0.1;
@@ -138,8 +136,8 @@ struct ExpansionRule {
 // lowest land within ridgeWindow cells, where the relief of the geography is at least
 // ridgeRelief, and with the land falling on both sides of it (a crest line, never a slope: the
 // cell before the edge lower than the first cell, the cell after it lower than the second); a
-// border follows the coast when one of its cells is at most coastKm from the sea
-// and the two are at different distances from it. The cleanup gives the enclaves of at most
+// border follows the coast when one of its cells is at most coastKm from the sea and the two are
+// at different distances from it. The cleanup gives the enclaves of at most
 // holeCells cells to the one owner around them. The cuts of the climate are the limits between
 // two rows where the mean difference of the rainfall of the land is above cutFactor times the
 // median of all the limits and at least cutMinMm.

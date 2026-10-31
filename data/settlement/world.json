@@ -222,7 +222,7 @@
       "danger": 4
     },
     "costNoise": { "scaleKm": 50, "octaves": 2, "amplitude": 0.5 },
-    "valleys": { "riverClass": 2, "valleyBonus": 0.7, "slopePenalty": 4.0, "slopeHeightM": 40 },
+    "valleys": { "riverClass": 2, "valleyBonus": 0.7, "slopePenalty": 3.5, "slopeHeightM": 150 },
     "riverCrossing": { "river": 3, "largeRiver": 6.5, "majorRiver": 11.5, "impassableRiver": 25 },
     "barrierRiverClass": 1,
     "barrierModels": [ "mountain", "glacier" ],

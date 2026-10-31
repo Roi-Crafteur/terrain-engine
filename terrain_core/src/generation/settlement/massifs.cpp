@@ -80,6 +80,11 @@ MassifStats massifStats(const ExpansionTerrain& t, const std::vector<std::uint16
             }
             const std::size_t b = t.land->slot(n);
             const bool ridge = (t.mask[a] & (east ? kRidgeEastBit : kRidgeSouthBit)) != 0;
+            const bool inMassif = big(id[a]) || big(id[b]);
+            if (owner[a] != 0 && owner[b] != 0 && inMassif) {
+                ++st.statesEdges;
+                st.statesRidgeEdges += ridge ? 1 : 0;
+            }
             if (owner[a] != 0 && owner[b] != 0 && ridge) {
                 for (const std::uint32_t m : {id[a], id[b]}) {
                     if (big(m)) {
