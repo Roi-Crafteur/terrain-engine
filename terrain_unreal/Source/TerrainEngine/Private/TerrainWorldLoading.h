@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Misc/Optional.h"
-#include "UObject/WeakObjectPtrTemplates.h"
+#include "UObject/WeakObjectPtr.h"
 
 #include "Bridge/determinism_check.hpp"
 #include "Bridge/load_phase.hpp"
