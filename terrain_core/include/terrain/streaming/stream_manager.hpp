@@ -6,6 +6,7 @@
 #include "terrain/generation/cave_materials.hpp"
 #include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/vegetation.hpp"
+#include "terrain/generation/water_kind.hpp"
 #include "terrain/meshing/mesh.hpp"
 #include "terrain/streaming/lod.hpp"
 
@@ -31,6 +32,34 @@ namespace terrain {
 inline constexpr int kTileBlendStride = 4;
 inline constexpr int kTileBlendTexels = kChunkCells / kTileBlendStride + 1;
 static_assert(kChunkCells % kTileBlendStride == 0, "the texels reach both sides of a tile");
+
+// The water over a column of a tile (TileData::waterColumns), for the renderers to draw its surface.
+struct WaterColumn {
+    float level = kNoWaterLevel; // HeightSample::waterLevel, kNoWaterLevel on dry land
+    WaterKind kind = WaterKind::None;
+    // Downstream along the course of the river nearest to the column, a unit vector along
+    // (x, z): the direction of its segment (Hydrology::reach); 0 off the rivers.
+    float flowX = 0.0f;
+    float flowZ = 0.0f;
+
+    friend bool operator==(const WaterColumn&, const WaterColumn&) = default;
+};
+
+// A fall of a river whose lip lies in a tile (TileData::falls, from RiverFall), for the renderers
+// to draw its water: its lip and its foot, meters, at their images nearest to the tile (the lip
+// in the canonical range of the tile), the water above and below, and the width of its channel
+// at the lip.
+struct TileFall {
+    double x = 0.0;
+    double z = 0.0;
+    double footX = 0.0;
+    double footZ = 0.0;
+    float top = 0.0f;
+    float bottom = 0.0f;
+    float width = 0.0f;
+
+    friend bool operator==(const TileFall&, const TileFall&) = default;
+};
 
 // Generated content of a tile. The world wraps around (WorldSize): the tiles of a StreamManager
 // have canonical keys (wrapTile), and their data lie in the canonical range of the world; a
@@ -59,6 +88,16 @@ struct TileData {
     // with caves, on their walls. Taken from the columns of the natural relief, as surfaceBlend:
     // the edits only change the vertices it is given at (a block of a player in a lake has it).
     std::vector<float> waterLevels;
+    // The water over the kGridSamples x kGridSamples columns of the lattice of the tile, column
+    // (i, k) at index k * kGridSamples + i, at (originX + i * s, originZ + k * s) with
+    // s = tileCellMeters(lod): the kind and level of HeightSample, bit for bit, and the flow of
+    // the rivers. Only with a hydrology and where a column holds a river or a lake; empty
+    // otherwise (the sea alone: the renderers draw it on their own). Taken from the columns of
+    // the natural relief, as waterLevels: a pure function of the world position at each LOD, the
+    // same bits on the sides two tiles share. The falls whose lip lies in the tile
+    // ([originX, originX + side) x [originZ, originZ + side)), with those columns only.
+    std::vector<WaterColumn> waterColumns;
+    std::vector<TileFall> falls;
     // With caves only, empty otherwise: the material of each vertex of mesh, the lakes of the
     // caves (relative to the same origin) with the material of each of their vertices (water or
     // ice), and the speleothems (world positions, LOD 0 tiles only); with cave regions only, the

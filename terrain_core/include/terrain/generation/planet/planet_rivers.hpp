@@ -4,9 +4,12 @@
 #include "terrain/generation/planet/planet_flow.hpp"
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_lakes.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
 
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <vector>
 
 namespace terrain {
@@ -55,18 +58,27 @@ struct RiverGraph {
 
 namespace planet {
 
+// Told when the river graph no longer reads the discharge of the flow (its river cells keep
+// their own), then the order of the cells: what the lean build frees there.
+struct RiverRelease {
+    std::function<void()> flow;
+    std::function<void()> order;
+};
+
 // The river graph: the river cells (dry land, not frozen, at least minDischarge, and not a dry
 // pit that no river feeds) linked by their receivers. Strahler orders in one pass in decreasing
 // total order (the inputs of a cell come before it; a lake is a confluence of the rivers entering
 // it, and its outflow starts at its partner when the pass reaches its pass). Segments start at
 // every river cell without exactly one river cell above it (but a dry pit, where the rivers
-// reaching it end), sorted by cell index.
+// reaching it end), sorted by cell index. Only water(c).frozen is read. The river cells are
+// numbered apart (a few % of the cells), with their discharge, inputs and orders.
 [[nodiscard]] RiverGraph buildRiverGraph(const PlanetGrid& grid, const std::vector<float>& height,
-                                         const std::vector<std::uint8_t>& ocean,
-                                         const std::vector<std::uint8_t>& receiver,
+                                         const std::shared_ptr<const LandIndex>& land,
+                                         const LandValues<std::uint8_t>& receiver,
                                          const std::vector<std::uint32_t>& order,
                                          const LakeSolution& lakes, const PlanetFlow& flow,
-                                         const WaterOf& water, const PlanetRiverParams& params);
+                                         const WaterOf& water, const PlanetRiverParams& params,
+                                         const RiverRelease& release = {});
 
 // Bankfull width and depth of a river of discharge Q (m^3/s).
 [[nodiscard]] float riverWidth(double discharge, const PlanetRiverParams& params);

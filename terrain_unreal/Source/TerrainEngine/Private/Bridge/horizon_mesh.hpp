@@ -20,7 +20,7 @@ struct HorizonLook {
     double dropMeters = 1.0;
     // The ocean, every sample of the sea (isSeaCell), flat at the sea level in kSeaColor (a lake
     // keeps its ground, and so does a dry depression below the sea level); and a sea square at
-    // the sea level under the tiles.
+    // the sea level under the tiles, left out when none of its samples is of the sea.
     bool sea = true;
 };
 

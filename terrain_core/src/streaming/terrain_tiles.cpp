@@ -13,6 +13,7 @@
 #include "terrain/streaming/cave_tiles.hpp"
 #include "tile_blend.hpp"
 #include "tile_lattice.hpp"
+#include "tile_rivers.hpp"
 #include "tile_water.hpp"
 
 #include <algorithm>
@@ -321,6 +322,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
         data.rock = rockTile->vertexRock(data.mesh, data.originY);
     }
     data.waterLevels = tile::vertexWaterLevels(columns, lattice, data.mesh, data.materials);
+    tile::addRiverWater(data, field_, lattice, columns);
     return data;
 }
 
@@ -432,6 +434,11 @@ std::optional<BlockEdit> TerrainTiles::blockAt(BlockCoord block) const {
 ModificationStore TerrainTiles::modifications() const {
     const std::shared_lock lock(mutex_);
     return modifications_;
+}
+
+EditWindow TerrainTiles::editWindow(int minX, int maxX, int minZ, int maxZ) const {
+    const std::shared_lock lock(mutex_);
+    return blocksAround(modifications_, minX, maxX, minZ, maxZ, world());
 }
 
 TileGenerator tileGenerator(const TerrainTiles& tiles) {

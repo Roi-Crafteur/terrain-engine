@@ -140,6 +140,73 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - mémoire : échantillons de l'horizon de 16 à 20 octets (10,1 → 12,6 Mo), textures d'eau 1,26 Mo
   sur le GPU (+12,5 % d'octets par bande envoyée), rien de plus aux sommets dans Unreal
 
+### L'eau dans Unreal à son vrai niveau (agent 27)
+- l'eau manquait dans la fente de la chute de 388 m parce qu'aucun matériau ne lisait le niveau
+  des lacs et des fleuves : le core met bien l'eau dans ses bassins (253,54 et 180,03 m, LOD 0 à 3,
+  `terrain_probe_water`)
+- core, des données seulement : les colonnes d'eau des tuiles (type, niveau au bit près, sens du
+  courant des fleuves) et leurs chutes (lèvre, pied, largeur) ; goldens, montagnes gelées et somme
+  du niveau Planète identiques, coût des tuiles inchangé (`tile_rivers_test`)
+- Unreal : surface translucide des lacs et fleuves des tuiles à leur niveau, sans fente entre
+  tuiles ni entre LOD ; rideaux et écume des chutes depuis la lèvre, le pied et la largeur du core ;
+  lacs et fleuves de l'horizon GPU montés au niveau de leurs textures d'eau, désormais en float
+  (le niveau du core au bit près, raccord exact avec les tuiles) ; même aspect de près et de loin
+  (couleur et transparence selon l'épaisseur et le lieu, rides dans le sens du courant, reflet du
+  ciel et du soleil, écume) ; `Terrain.Water 0|1` pour comparer (`unreal_tile_water_test`,
+  `unreal_water_scripts_test`, `terrain_unreal/WATER_LEVEL.md`)
+- fichier planète par défaut `Saved/TerrainEngine/planet_{Seed}.bin` : la carte de test a ses
+  fleuves ; un fichier périmé ou abîmé est reconstruit, la raison dans le log, jamais lu en
+  silence ; scripts des matériaux qui remettent tous leurs réglages à zéro
+
+### Phase 11D — Niveau Planète créé en 500 Mo
+- création du monde (`terrain_make_planet`, monde par défaut, mesuré sous Linux) : pic de
+  1 084 Mo à 412 Mo sur 4 cœurs (1 053 Mo à 411 Mo sur un cœur), pour les mêmes bits (somme du
+  niveau `26626564570b0d9e`, goldens, montagnes gelées) et le même temps (environ 130 s ici sur
+  4 cœurs) ; tas au plus 390 Mo
+- l'hydrologie n'a plus de tableaux sur toutes les cases : des tableaux par case de terre (37 %
+  des cases, `LandIndex`) ou des listes des seules cases qui ont une valeur (dépressions, lacs,
+  fleuves : quelques %) ; chaque tableau libéré après son dernier usage, les cases compactes du
+  niveau faites au fil de l'eau (`planet::buildLevelParts`, que suivent `openPlanetLevel` et le
+  jeu ; `buildPlanet` garde tout pour les tests)
+- climat sur une seule grille : la pluie remplace la surface ligne par ligne, la pluie des
+  tempêtes calculée en flux (17 Mo au lieu de 500), les flous sur place
+- mer et seuils sans tableau de composantes ni liste triée des cases des dépressions
+- fichier du niveau écrit en flux (mêmes octets), relu sans garder le niveau construit ;
+  l'outil rend au système, sous Linux, chaque grand bloc libéré, comme Windows
+- `terrain_make_planet --memory` : temps, tas et mémoire du processus de chaque étape ;
+  `planet_memory_test` (petit monde : au plus 32 octets par case, contre 40 à 46 avant)
+
+### Tests de coût stables sur une machine lente
+- `water_cost_test` mesure ses rapports paire par paire (`tests/cost_ratio_support.hpp`) : à
+  chaque tour, chaque morceau ou tuile sans l'eau puis avec (ou l'inverse, en alternance), le
+  meilleur temps de chacun gardé de chaque côté ; nouvelle mesure (5 tours de plus, 2 fois au
+  plus) seulement au-delà de la limite. Mêmes limites, mêmes lieux, même durée
+- mesuré sous Linux (4 cœurs), 18 exécutions dont 8 sous une charge en rafales : morceaux près
+  des fleuves ×1,42 à ×1,50 au lieu de ×0,99 à ×1,90 ; un faux échec de l'ancienne mesure
+  sous la charge, aucun de la nouvelle ; une régression forcée de l'eau (fleuves calculés 3 ou 5
+  fois, attente sur chaque échantillon) toujours détectée
+
+### Peuplement V1 — cartes d'analyse, peuples, royaumes et dirigeants (agent 25)
+- données seules, dérivées du niveau Planète et rangées à part : somme du niveau Planète
+  (`26626564570b0d9e`), goldens et montagnes gelées identiques ; rien dans Unreal pour l'instant
+- données en JSON modifiables sans code (`data/settlement/` : `world.json`, 6 ressources,
+  13 peuples), lues strictement : refus clair (fichier, chemin, raison, ligne, colonne)
+- cartes d'analyse sur toute la planète : terres arables, nourriture, ressources par la
+  géologie, distance à l'eau, rugosité, danger naturel, Prana, Mana simple et lignes
+  telluriques, habitabilité, raceSuitability des 13 peuples
+- presets sauvage, équilibré et civilisé (nombres tirés de la seed ou forcés), capitales dans
+  les 20 % les plus habitables près de l'eau douce, expansion par coût (bruit lent de 50 km,
+  fleuves, crêtes, mer, terres hostiles), arrêt sur la barrière la plus proche dès 0,7 × la
+  cible, petits États dans des compartiments naturels et le long des vallées, royaumes qui
+  remontent les vallées des massifs jusqu'à la crête, nettoyage des seuls artefacts
+- un dirigeant par État (gouvernement, personnalité, nom dans la culture de son peuple, un à
+  trois objectifs) et relations de base entre voisins (relation et tension asymétriques)
+- le monde garde une copie complète de sa configuration et son empreinte (`settlement.json`) :
+  un fichier modifié est refusé, la copie seule redonne les mêmes royaumes au bit près
+- planète entière, trois presets (`terrain_export_settlement --preset all`) : 77 s, pic de
+  960 Mo ; frontières naturelles 66,8 / 61,5 / 55,3 % (sauvage / équilibré / civilisé, seuil
+  50 %), tous les tests d'un bon monde passent ; détails dans `docs/PEUPLEMENT.md`, section 9
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
@@ -148,6 +215,20 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   jusqu'à 400 km depuis un sommet
 
 ## À venir
+
+### Ordre des prochains travaux (octobre 2026)
+Un seul chantier à la fois change la forme du monde ; les autres prouvent qu'ils ne la changent
+pas (golden du monde, montagnes gelées, somme du niveau Planète).
+- en cours, change le monde : phase 12A, vrais murs verticaux, surplombs, arches et chutes en
+  roche 3D dans le monde streamé
+- en parallèle, sans changer le monde : l'eau dans Unreal à son vrai niveau (lacs, fleuves,
+  chutes), casser et poser en jeu, poids des biomes dans l'horizon lointain
+- fait : peuplement V1 (cartes d'analyse, peuples, royaumes et frontières, dirigeants) ; en
+  pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game
+  design
+- ensuite, l'un après l'autre (chacun change le monde) : réseau hydrographique complet avec la
+  11C, versants convexes / droits / concaves et cirques, relief côtier et falaises marines,
+  mers de dunes
 
 ### Phase 10 — suite
 - Character qui marche, saute et tombe sur le terrain : vérifié avec le Character du
@@ -171,23 +252,17 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - deltas, estuaires, grands lacs, méandres, bras morts
 - canyons et gorges fluviales, grandes chutes aux escarpements (type Niagara)
 - sorties : splines (Water d'Unreal) et contraintes de hauteur
-- 11A, 11R, 11R bis et 11B : faits (voir « Réalisé »)
-- tâche 7b, le niveau de l'eau pour Unreal : faite (voir « Réalisé ») ; reste côté Unreal le
-  matériau qui le lit, pour dessiner les lacs et les fleuves à leur niveau (aujourd'hui toute
-  l'eau est encore dessinée à 0 m)
-- côté Unreal (7a) : la mer sous les tuiles et la mer de l'horizon masquées là où le core ne met
-  pas l'océan (test bilinéaire `t.a < 0` dans la branche `Kind.g` du matériau, en
-  Masked / OpacityMask ; de même dans le chemin CPU) : plus de mer carrée sur une dépression
-  sous 0 m
-- côté Unreal (7c) : la couleur du fond marin seulement sous le drapeau mer
-- côté Unreal : damier de carrés sombres sur les collines (vu depuis 900 m en aval de la chute
-  de 388 m, à 30 m de haut). Ni la géométrie ni les types de sol du core n'en ont (maillage des
-  tuiles lisse, plaques de sol continues) : c'est le matériau. Cause probable : le tirage `Bomb`
-  du matériau temporaire (`temporary_terrain_hlsl.py`), des cases de 2,8 m (5,6 m pour la roche)
-  tournées au hasard d'un quart de tour et fondues seulement sur leur dernier quart. À vérifier
-  dans Unreal : des carrés de 2,8 m, et le damier qui disparaît avec `DetailNearM = 0` sur
-  l'instance ; des carrés de 8 m viendraient plutôt des texels de l'horizon
-- création du niveau Planète en 500 Mo : phase 11D
+- 11A, 11R, 11R bis, 11B et 11D : faits (voir « Réalisé »)
+- tâche 7b, le niveau de l'eau pour Unreal : faite, et dessinée dans Unreal à son niveau (lacs,
+  fleuves, chutes : voir « Réalisé ») ; reste le coût GPU mesuré dans Unreal, et plus tard Single
+  Layer Water (phase 14, `terrain_unreal/WATER_LEVEL.md`)
+- côté Unreal (7a, 7c) : fait. Le carré de mer sous les tuiles n'est dessiné que là où le core
+  met l'océan (matériau Masked ; chemin CPU : le carré entier, ou rien s'il n'a aucun
+  échantillon de mer), et la couleur du fond marin seulement sous le drapeau mer
+- côté Unreal : damier de carrés sombres sur les collines : fait. Ce n'était pas le tirage `Bomb`
+  (le damier restait avec `DetailNearM = 0`) mais les mailles de 8 m du niveau 0 de l'horizon,
+  qui traversaient les tuiles au-delà de la bande où sa descente s'efface ; le sol du niveau 0
+  est repoussé de 1 m en profondeur là où les tuiles peuvent le couvrir
 - liaison avec les rivières souterraines (pertes, résurgences) : plus tard
 - sans les cols du relief fin entre les cellules du niveau Planète, les fleuves de la 11B
   traversent les crêtes des montagnes en gorges (un tronçon de montagne sur trois creuse plus
@@ -195,7 +270,19 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   cols (essai du point d'arrêt 3 : 1 à 49 % de lacs dans les fenêtres de haute montagne avec
   un lit de 300 m, 19 % encore avec 1 000 m). C'est la phase 11C qui règle cela
 
-### Phase 11C — Vallées de montagne qui descendent (prochaine phase)
+### Phase 11C — Réseau hydrographique complet et vallées qui descendent (après la 12A)
+- aujourd'hui une rivière n'existe qu'à partir de 10 m³/s et naît d'un coup avec 22 m de large ;
+  le ruissellement est la pluie moins l'évaporation, sans la roche, le sol, les plantes ni la
+  pente ; le delta n'a pas de bras
+- ruissellement : l'eau qui ne s'infiltre pas (pluie trop forte, sol saturé, gelé ou
+  imperméable) s'écoule d'abord en nappe sur les pentes, puis se concentre en rigoles, ravines,
+  sources et ruisseaux ; la densité de ces petits cours d'eau dépend de la perméabilité de la
+  roche et du sol, de la pente, des plantes et du climat
+- hiérarchie : source → ruisseau → rivière → fleuve, largeur et profondeur qui grandissent depuis
+  presque rien vers l'aval ; affluents et confluents, rive droite et rive gauche
+- une ou plusieurs fins : mer (estuaire, delta à plusieurs bras), lac, autre cours d'eau,
+  assèchement en climat sec (oueds), pertes dans le calcaire
+- le réseau fin et les vallées sont la même chose, creusée par l'eau à toutes les tailles
 - dégel des montagnes : `mountain_freeze_test` est levé pour cette phase, puis refait
 - refaire les vallées des montagnes en un vrai réseau qui descend vers les plaines : un arbre
   de vallées qui draine, leurs fonds toujours en pente vers l'aval, de la crête à la plaine. Les
@@ -206,15 +293,6 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   de lacs (les lacs de haut bassin seulement), des lits de moins de 300 m
 - nouvelle validation des montagnes à l'œil, dans Unreal, avec le personnage
 
-### Phase 11D — Création du niveau Planète en 500 Mo
-- aujourd'hui la création du monde (`terrain_make_planet`) monte à 1 080 Mo sur 4 cœurs
-  (1 050 Mo sur un cœur), quand le jeu chargé n'en demande que 300 (372 Mo en jeu)
-- mémoire après chaque étape : relief 258 Mo, climat 450, ordre 603, hiérarchie 848,
-  lacs 725, écoulement 848, fleuves 1 022
-- but : 500 Mo au plus, les mêmes bits (somme du niveau et goldens identiques)
-- pistes : libérer les tableaux de chaque étape dès qu'elle est finie, des tableaux plus
-  compacts pour l'ordre et la hiérarchie, le fichier écrit en flux comme il est lu
-
 ### Phase 12 — Monde streamé unifié
 - régions et chunks générés à la volée, mis en cache, contraints par le niveau Planète
 - érosion hydraulique, glaciaire (vallées en U, cirques, fjords), thermique (éboulis)
@@ -223,7 +301,18 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   karst et pitons, volcans
 - mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
   province du relief au cœur des continents secs, jamais placée par le biome
-- falaises, surplombs et arches dans le monde infini
+- falaises, surplombs et arches dans le monde infini : phase 12A en cours. Une couche de roche 3D
+  autour de la surface, là où la géologie fait des parois (couches dures des montagnes, fentes
+  des chutes et gorges, escarpements, arches et ponts de roche) ; le reste du monde garde ses
+  bits ; tuiles LOD 0 à 3, raccord exact avec l'horizon. Parois de montagne faites (faces
+  verticales, bancs, surplombs, niches) ; à suivre : chutes et gorges, escarpements, arches
+- formes convexes, droites et concaves partout, en profil et en plan, jamais un seul profil :
+  sommets et épaules arrondis, pieds de versant concaves, cirques et amphithéâtres, éperons ;
+  parois droites, bombées ou creusées en grands abris ; chutes devant une paroi droite ou un
+  amphithéâtre ; placées par la roche et le climat, jamais par le biome
+- relief côtier (aujourd'hui toutes les côtes sont des plaines de 20 m au plus) : falaises
+  marines, montagnes qui plongent dans la mer, fjords, rias, calanques, grottes marines, arches
+  et stacks
 - érosion par ondes alignées sur la pente (sillons et ravins ramifiés à toutes les tailles,
   de 4 m à 256 m, type Big Globe) si elle n'est pas déjà venue avec la 11R bis
 - reliefs fantastiques, rares et spectaculaires (médiéval-fantasy), placés par le niveau
@@ -240,18 +329,25 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 ### Phase 13 — Horizon lointain
 - vue jusqu'à l'horizon réel (300 km et plus depuis un sommet)
 - core : fait (voir « Réalisé »)
-- modifications des joueurs visibles de loin : toutes si possible, sinon les grosses
-  (format du résumé à définir avec la phase 15)
+- modifications des joueurs visibles de loin : fait — tirées des masques de la phase 15, à
+  chaque niveau ; le niveau 0 montre sur chaque colonne de 8 m le sommet des tuiles LOD 3 (pas de
+  marche au raccord), les niveaux plus grossiers le changement moyen du sol de leurs mailles,
+  borné par le sol modifié quand toute la maille l'est (un fond rasé reste plat, crêtes
+  comprises) ; appliquées entre deux époques, seules les bandes autour sont recalculées et
+  envoyées, chemins CPU et GPU ; une grosse explosion se voit de loin en quelques millisecondes
+  (`horizon_edits_cost_test`) ; essai dans Unreal : `Terrain.Edit`
 - Unreal : fait — rendu en clipmap (une texture par niveau, envoi des seules bandes
   changées, géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles,
   jupe sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure ; ciel qui suit la
   caméra partout sur la planète (perspective aérienne jusqu'au bout de l'horizon), mer
   colorée selon la profondeur avec vagues, reflet du ciel et du soleil
 - préfiltrage des crêtes lointaines : fait — à partir du niveau 1, le coin le plus haut de
-  chaque maille monte au sommet de la maille, cherché 2 fois plus finement (les fonds de vallée
-  ne montent jamais) ; silhouette trop basse de 0,10° au lieu de 0,17° en moyenne depuis la
-  vallée du K2, pour ×1,4 sur l'époque. Plus tard : 4 fois plus finement (0,08°), presque
-  gratuit avec une grille commune aux normales de détail, calculée en arrière-plan
+  chaque maille monte au sommet de la maille, cherché 4 fois plus finement (les fonds de vallée
+  ne montent jamais) ; silhouette trop basse de 0,09° au lieu de 0,18° en moyenne depuis la
+  vallée du K2. En GPU, les crêtes sont calculées après l'époque, avec les normales de détail et
+  dans la même grille fine : l'horizon s'affiche au coût d'une époque sans crêtes, puis ses
+  crêtes arrivent ; crêtes et normales complètes plus tôt qu'avant avec les crêtes à 2 dans
+  l'époque (36 s au lieu de 45 s au K2 sur un thread)
 
 ### Phase 14 — Rendu Unreal
 - références : Enshrouded, shaders Minecraft (Complementary, BSL, SEUS),
@@ -262,7 +358,9 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   le relief, nuits étoilées (Voie lactée, phases de la lune), brume dans les vallées et
   perspective atmosphérique
 - eau : transparente avec caustiques, vagues et écume, couleur selon le lieu (turquoise,
-  vert glacier, brune, noire), cascades spectaculaires (embruns, arcs-en-ciel)
+  vert glacier, brune, noire), cascades spectaculaires (embruns, arcs-en-ciel). Fait : lacs et
+  fleuves translucides à leur niveau, couleur selon l'épaisseur et le lieu, rides, rideaux et
+  écume des chutes (agent 27) ; reste Single Layer Water, caustiques, embruns, arcs-en-ciel
 - végétation PCG depuis les positions du core, densité selon le biome : forêts denses ou
   clairsemées, clairières, monts, vallons
 - transitions entre biomes (aujourd'hui un seul biome et un seul matériau par point, à
@@ -271,7 +369,10 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   de façon déterministe, fondus de textures et densité de végétation progressive dans
   Unreal ; largeur réaliste selon le couple (quelques km entre forêt et prairie, quelques
   mètres entre plage et roche). Le relief n'en dépend pas : les biomes ne modifient
-  jamais la hauteur
+  jamais la hauteur. Unreal : fondu des textures fait sur les tuiles (matériau temporaire,
+  texels de chaque tuile dans une texture commune) ; l'horizon garde le biome dominant de ses
+  échantillons, les tuiles s'y fondent sur leur bande au-dessus du niveau 0. Reste : les poids
+  dans les échantillons de l'horizon (core), la densité de la végétation
 - matériaux depuis les identifiants de matériau du core ; très haut détail par des
   rochers, falaises et arbres Nanite placés par PCG et du relief fin dans le matériau
   (Nanite ne s'applique pas directement aux tuiles générées en jeu)
@@ -321,6 +422,47 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   4. capitale : château sur une hauteur, remparts et portes, cathédrale, marché, port,
      faubourgs
   5. cultures et archétypes supplémentaires (désert, montagne, côte, marais, toundra, jungle)
+- cartes du niveau Planète pour le monde peuplé (proposition d'octobre 2026, à affiner avec
+  l'utilisateur avant l'agent 25) ; pour chaque case :
+  | carte | utilité | état |
+  |---|---|---|
+  | elevation | montagnes, plaines, océans | fait |
+  | temperature | climat, déserts, glaces | fait |
+  | rainfall | forêts, prairies, déserts | fait (précipitations) |
+  | biome | type de terrain final | partiel : calculé au point, pas en carte Planète |
+  | river | villes, agriculture, frontières | fait (réseau complet : agent 31) |
+  | coast | ports, commerce, peuples marins | partiel : mer et côte, pas de type de côte |
+  | resources | mines, agriculture, magie | fait (V1 : 6 ressources par la géologie) |
+  | danger | monstres, zones interdites | fait (V1 : danger naturel) |
+  | magic | zones magiques, portails, anomalies | fait (V1 : Prana, Mana simple) |
+  | habitability | score global pour la vie civile | fait (V1) |
+  | raceSuitability[race] | score séparé pour chaque peuple | fait (V1, 13 peuples) |
+- conception détaillée (deux passes Planète / site, presets de monde, énergies Prana, Aura et
+  Mana, lignes telluriques, danger magique, format JSON des peuples, calendrier par rapport
+  aux agents 31, 33 et 34) : `docs/PEUPLEMENT.md`
+- pipeline du monde peuplé (validé avec l'utilisateur, octobre 2026), tout sur le niveau
+  Planète, déterministe :
+  1. génération physique : elevation, temperature, rainfall, river, biome, coast basique
+     (fait, sauf le type de côte ; les biomes ne modifient jamais la hauteur)
+  2. cartes d'analyse : slope (rugosité dans la case de 8 km, pas une pente moyenne),
+     waterDistance, arableLand, resources (par la géologie, jamais le biome ; minerais rares
+     sur la seed secrète), danger naturel, magic, habitability. Données dérivées, recalculées
+     depuis le niveau Planète (les fleuves changeront avec la 11C), rangées à part : la somme
+     du niveau Planète ne change pas, aucune forme du monde modifiée
+  3. peuples : races (liste et préférences fixées par l'utilisateur), raceSuitability[race],
+     graines et capitales potentielles
+  4. expansion et frontières naturelles : expansion pondérée par un coût (terrain, pente,
+     fleuve, désert), frontières qui en émergent (jamais tracées après coup), nettoyage
+     minimal des seuls artefacts (les enclaves réalistes restent : îles, vallées isolées,
+     peuples réfugiés)
+  5. guerres et alliances : gouvernements et relations entre peuples, puis une histoire
+     courte et déterministe (nombre fixe de tours) : déplacement de frontières, zones
+     disputées, ruines et forts, monde politique final
+  6. villes, villages et routes : capitales confirmées, villes selon le monde d'après-guerre,
+     routes selon les frontières et le relief, ports et réseaux commerciaux
+  7. plans parallèles : plan céleste, plan infernal, portails selon la magie et les
+     royaumes. Bien plus tard : chaque plan est un monde à part, après la validation du
+     relief, de l'eau et des côtes du monde principal
 - décisions de game design :
   - monde sauvage, royaumes rares ; par royaume : rayon de 2 000 à 5 000 km, 1 capitale,
     3 à 8 villes, 10 à 30 bourgs, 30 à 120 villages
@@ -353,15 +495,20 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
     la même tuile intacte, une tuile au milieu d'une zone rasée 1,2 à 2 fois, une tuile sur la
     falaise qui la borde 4 à 6 fois (4 à 28 fois plus de surface)
   - les plantes générées dont le sol est retiré disparaissent, de près comme de loin
-  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : format
-    seulement, pas encore branché sur l'horizon
+  - résumé des modifications pour l'horizon lointain (phase 13) tiré des masques : branché sur
+    l'horizon (voir phase 13) ; les cellules de 4 m restent un format d'envoi, l'horizon lit le
+    sol des colonnes LOD 3
   - coutures entre LOD fermées au bord des cratères et dans les grottes : la face fine suit les
     segments droits que Marching Cubes trace sur la face grossière (avant : jusqu'à 0,45 m entre
     LOD 0 et 1, 1,3 m entre 1 et 2, 2,8 m entre 2 et 3, 0,62 m dans les grottes ; après : au
     plus 0,25 mm). Le terrain naturel sans grottes garde ses bits ; toute tuile Marching Cubes en
     profite (`stitchSeams` puis `stitchedMesh`, `lod_seams.cpp`)
-  - reste : casser et poser en jeu dans Unreal, effets de destruction, branchement du résumé
-    sur l'horizon
+  - les modifications se font sur un fil à part (`Bridge/edit_thread`) : le thread de jeu ne fait
+    que reprendre celles qui sont finies (quelques millisecondes pour une montagne rasée), avec
+    les bits du chemin synchrone
+  - reste : casser et poser en jeu dans Unreal (en attendant : `Terrain.Edit`, `Apply Volume
+    Edit`), effets de destruction, normales de détail de l'horizon qui suivent les modifications
+    (aujourd'hui : les pentes de la grille sur les mailles modifiées)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

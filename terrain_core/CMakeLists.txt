@@ -71,6 +71,7 @@ add_library(terrain_core STATIC
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
+    src/generation/planet/planet_blur.cpp
     src/generation/planet/planet_breach.cpp
     src/generation/planet/planet_build.cpp
     src/generation/planet/planet_climate.cpp
@@ -80,6 +81,8 @@ add_library(terrain_core STATIC
     src/generation/planet/planet_flow.cpp
     src/generation/planet/planet_grid.cpp
     src/generation/planet/planet_hierarchy.cpp
+    src/generation/planet/planet_land.cpp
+    src/generation/planet/planet_lean.cpp
     src/generation/planet/planet_lakes.cpp
     src/generation/planet/planet_level.cpp
     src/generation/planet/planet_moisture.cpp
@@ -170,7 +173,11 @@ add_library(terrain_core STATIC
     src/storage/world_save.cpp
     src/streaming/cave_tiles.cpp
     src/streaming/horizon_crests.cpp
+    src/streaming/horizon_detail.cpp
+    src/streaming/horizon_edit_columns.cpp
+    src/streaming/horizon_edits.cpp
     src/streaming/horizon_epoch.cpp
+    src/streaming/horizon_fine_grid.cpp
     src/streaming/horizon_grids.cpp
     src/streaming/horizon_levels.cpp
     src/streaming/horizon_normals.cpp
@@ -183,6 +190,7 @@ add_library(terrain_core STATIC
     src/streaming/terrain_tiles.cpp
     src/streaming/tile_blend.cpp
     src/streaming/tile_normals.cpp
+    src/streaming/tile_rivers.cpp
     src/streaming/tile_water.cpp
     src/world_size.cpp
 )
@@ -194,6 +202,7 @@ find_package(Threads REQUIRED)
 target_link_libraries(terrain_core
     PUBLIC Threads::Threads terrain_fp_strict
     PRIVATE terrain_warnings)
+include(${CMAKE_CURRENT_SOURCE_DIR}/settlement.cmake) # the settlement V1: data files, maps, peoples, kingdoms
 
 # Heightmap PNG export for visual checks:
 # terrain_export_heightmap <output-dir> [seed] [m/px] [size] [center-x] [center-z]
@@ -376,10 +385,20 @@ add_executable(terrain_export_rock tools/export_rock.cpp tools/rock_places.cpp
                                    tools/view_places.cpp)
 target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
 
-# The planet level of a world written to its file, as the game reads it (phase 11B):
-# terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>]
-add_executable(terrain_make_planet tools/make_planet.cpp)
+# The planet level of a world written to its file, as the game reads it (phase 11B); --memory
+# prints the time and memory of each stage (its own operator new counts the heap):
+# terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>] [--memory]
+add_executable(terrain_make_planet tools/make_planet.cpp tools/heap_counter.cpp
+                                   tools/process_memory.cpp)
 target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
+
+# The water of the world at given points, as the core decides it and hands it to the renderers
+# (phase 11, task 7b): the column, the valleys and the lake there, the levels of the vertices of
+# the tiles, the sample of the horizon and the falls around. See tools/probe_water.cpp.
+# terrain_probe_water [--planet <file>] [--seed <seed>] [--world <x> <z>] [--threads <n>]
+#                     [--radius <meters>] [--falls <meters>] <x> <z> [<x> <z>]...
+add_executable(terrain_probe_water tools/probe_water.cpp)
+target_link_libraries(terrain_probe_water PRIVATE terrain_core terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
 # <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests

@@ -36,6 +36,7 @@ struct TileColumns {
     std::vector<float> continentalness; // of each column, for the climate
     // The water over each column (HeightSample::waterLevel), kNoWaterLevel on dry land.
     std::vector<float> waterLevels;
+    std::vector<WaterKind> waterKinds; // HeightSample::water of each column
     // The rock of each column in three dimensions (phase 12A), only when a face lies at one of
     // them: empty otherwise, and the tile is that of the relief alone.
     std::vector<RockColumn> rock;
@@ -114,7 +115,9 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     columns.heights.reserve(kCount);
     columns.continentalness.reserve(kCount);
     columns.waterLevels.reserve(kCount);
+    columns.waterKinds.reserve(kCount);
     for (const HeightSample& sample : samples) {
+        columns.waterKinds.push_back(sample.water);
         columns.heights.push_back(sample.height);
         columns.continentalness.push_back(sample.continentalness);
         columns.waterLevels.push_back(sample.water == WaterKind::None ? kNoWaterLevel

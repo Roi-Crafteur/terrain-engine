@@ -78,7 +78,7 @@ public:
         : height_(height), hierarchy_(hierarchy), solution_(solution),
           ranges_(leafRanges(hierarchy)), water_(ranges_.leaves) {}
 
-    void gather(const PlanetGrid& grid, const WaterOf& water);
+    void start(const LakeWater& gathered);
     void solveAll();
 
 private:
@@ -96,20 +96,17 @@ private:
     Fenwick water_;
 };
 
-void Solver::gather(const PlanetGrid& grid, const WaterOf& water) {
+void Solver::start(const LakeWater& gathered) {
     const std::size_t nodes = hierarchy_.nodes.size();
-    std::vector<std::int64_t> own(nodes, 0);
-    for (std::size_t c = 0; c < grid.cells(); ++c) {
-        const CellWater cell = water(c);
-        solution_.runoff += cell.runoff;
-        deliver(hierarchy_.label[c], cell.runoff);
-        own[static_cast<std::size_t>(hierarchy_.own[c])] += cell.lakeEvaporation;
-    }
+    solution_.runoff = gathered.runoff;
+    solution_.toOcean = gathered.toOcean;
     solution_.capacity.assign(nodes, 0);
     for (std::size_t n = 1; n < nodes; ++n) {
         const DepressionNode& node = hierarchy_.nodes[n];
-        solution_.capacity[n] = own[n];
-        if (!node.leaf()) {
+        solution_.capacity[n] = gathered.ownEvaporation[n];
+        if (node.leaf()) {
+            water_.add(ranges_.start[n], gathered.leafRunoff[n]);
+        } else {
             solution_.capacity[n] +=
                 solution_.capacity[static_cast<std::size_t>(node.children[0])] +
                 solution_.capacity[static_cast<std::size_t>(node.children[1])];
@@ -250,15 +247,18 @@ void submerge(const PlanetGrid& grid, const std::vector<float>& height,
             }
         }
     }
-    solution.lakeOfCell.assign(grid.cells(), -1);
+    solution.lakeOfCell = SparseCells<std::int32_t>(grid.cells(), -1);
     for (const std::uint32_t c : order) {
+        if (!hierarchy.own.has(c)) {
+            continue; // joined to the ocean, or the ocean
+        }
         const auto own = static_cast<std::size_t>(hierarchy.own[c]);
         const DepressionState state = solution.state[own];
         if (own == 0 || state == DepressionState::Dry) {
             continue;
         }
         if (state == DepressionState::Full) {
-            solution.lakeOfCell[c] = solution.lakeOfNode[own];
+            solution.lakeOfCell.add(c, solution.lakeOfNode[own]);
             continue;
         }
         if (remaining[own] < 0) {
@@ -268,22 +268,21 @@ void submerge(const PlanetGrid& grid, const std::vector<float>& height,
         PlanetLake& lake = solution.lakes[static_cast<std::size_t>(solution.lakeOfNode[own])];
         if (evaporation <= remaining[own]) {
             remaining[own] -= evaporation;
-            solution.lakeOfCell[c] = solution.lakeOfNode[own];
+            solution.lakeOfCell.add(c, solution.lakeOfNode[own]);
         } else {
             remaining[own] = -1;
             lake.level = height[c];
         }
     }
+    solution.lakeOfCell.finish();
+    // In the order of the cells, as the volumes always were summed.
     std::vector<std::uint32_t> frozen(solution.lakes.size(), 0);
-    for (std::size_t c = 0; c < grid.cells(); ++c) {
-        const std::int32_t id = solution.lakeOfCell[c];
-        if (id >= 0) {
-            PlanetLake& lake = solution.lakes[static_cast<std::size_t>(id)];
-            ++lake.cells;
-            lake.volume +=
-                std::max(0.0, static_cast<double>(lake.level) - height[c]) * grid.cellArea();
-            frozen[static_cast<std::size_t>(id)] += water(c).frozen ? 1u : 0u;
-        }
+    for (const auto& [c, id] : solution.lakeOfCell.entries()) {
+        PlanetLake& lake = solution.lakes[static_cast<std::size_t>(id)];
+        ++lake.cells;
+        lake.volume +=
+            std::max(0.0, static_cast<double>(lake.level) - height[c]) * grid.cellArea();
+        frozen[static_cast<std::size_t>(id)] += water(c).frozen ? 1u : 0u;
     }
     for (std::size_t l = 0; l < solution.lakes.size(); ++l) {
         PlanetLake& lake = solution.lakes[l];
@@ -297,16 +296,43 @@ void submerge(const PlanetGrid& grid, const std::vector<float>& height,
 
 } // namespace
 
+LakeWater gatherWater(const DepressionHierarchy& hierarchy, const WaterOf& water) {
+    const std::size_t nodes = hierarchy.nodes.size();
+    LakeWater gathered;
+    gathered.leafRunoff.assign(nodes, 0);
+    gathered.ownEvaporation.assign(nodes, 0);
+    const std::vector<std::int32_t>& labels = hierarchy.label.values();
+    hierarchy.label.index().forEachLand([&](std::size_t c, std::size_t slot) {
+        const CellWater cell = water(c);
+        gathered.runoff += cell.runoff;
+        const std::int32_t leaf = labels[slot];
+        (leaf == kOceanNode ? gathered.toOcean
+                            : gathered.leafRunoff[static_cast<std::size_t>(leaf)]) += cell.runoff;
+        if (hierarchy.own.has(c)) {
+            gathered.ownEvaporation[static_cast<std::size_t>(hierarchy.own[c])] +=
+                cell.lakeEvaporation;
+        }
+    });
+    return gathered;
+}
+
 LakeSolution solveLakes(const PlanetGrid& grid, const std::vector<float>& height,
                         const DepressionHierarchy& hierarchy,
-                        const std::vector<std::uint32_t>& order, const WaterOf& water) {
+                        const std::vector<std::uint32_t>& order, const WaterOf& water,
+                        const LakeWater& gathered) {
     LakeSolution solution;
     Solver solver(height, hierarchy, solution);
-    solver.gather(grid, water);
+    solver.start(gathered);
     solver.solveAll();
     assignLakes(height, hierarchy, solution);
     submerge(grid, height, hierarchy, order, water, solution);
     return solution;
+}
+
+LakeSolution solveLakes(const PlanetGrid& grid, const std::vector<float>& height,
+                        const DepressionHierarchy& hierarchy,
+                        const std::vector<std::uint32_t>& order, const WaterOf& water) {
+    return solveLakes(grid, height, hierarchy, order, water, gatherWater(hierarchy, water));
 }
 
 } // namespace terrain::planet

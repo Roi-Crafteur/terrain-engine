@@ -56,26 +56,19 @@ struct HorizonTexel {
 // The texels of a computed piece, kTexelFloats floats per cell, row by row as its cells.
 [[nodiscard]] std::vector<float> pieceTexels(const HorizonPiece& piece, bool sea);
 
-// The water of the GPU horizon (task 7b): a second texture per level, one 16-bit code per texel
-// (R16 UNORM, PF_G16 in Unreal), at the slots of the texels. 0: no water; otherwise the level of
-// the water over the sample (HorizonCell::waterLevel: the sea at 0, a lake, a river) quantized to
-// kWaterLevelStep from kWaterLevelLowest: level = kWaterLevelLowest + (code - 1) kWaterLevelStep,
-// within kWaterLevelStep / 2 of the core (8 m pitches seen from 640 m and farther), clamped to
-// [kWaterLevelLowest, kWaterLevelHighest]. A material reading the normalized value t of a texel
-// takes code = round(t 65535). Half the bytes of a float texture, and exact steps where half
-// floats would lose 1 to 2 m at the altitudes of the mountain lakes.
-inline constexpr float kWaterLevelLowest = -4096.0f;
-inline constexpr float kWaterLevelStep = 0.25f;
-inline constexpr float kWaterLevelHighest = kWaterLevelLowest + 65534.0f * kWaterLevelStep;
-static_assert(kWaterLevelLowest + 16384.0f * kWaterLevelStep == kSeaLevel,
-              "the sea level is a code of the water exactly");
+// The water of the GPU horizon (task 7b): a second texture per level, one float per texel (R32F,
+// PF_R32_FLOAT in Unreal), at the slots of the texels: the level of the water over the sample
+// (HorizonCell::waterLevel: the sea at 0, a lake, a river), bit for bit the level of the core,
+// so that the water of the horizon meets that of the tiles without a step (agent 27); where no
+// water stands, kNoWaterLevel. A material takes a texel below kWetWaterTexel for dry land.
+inline constexpr float kWetWaterTexel = -1.0e8f;
+static_assert(kNoWaterLevel < kWetWaterTexel, "dry land reads below the wet threshold");
 
-[[nodiscard]] std::uint16_t waterCode(float level);
-// The level of a code, kNoWaterLevel for 0.
-[[nodiscard]] float waterCodeLevel(std::uint16_t code);
+// The water texel of a level: the level itself, kNoWaterLevel where none (or not a number).
+[[nodiscard]] float waterTexel(float level);
 
 // What the GPU horizon uploads for a computed piece: the texels of pieceTexels, then the water
-// code of each of its cells in the same order, one float each (exact).
+// texel of each of its cells in the same order, one float each.
 [[nodiscard]] std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea);
 
 // Texels to write into the texture of a level: slots [x, x + width) x [z, z + height), their
@@ -106,21 +99,21 @@ struct SlotSpan {
 [[nodiscard]] std::vector<TexelRegion> texelRegions(int level, int side, const HorizonRect& rect,
                                                     std::span<const float> data);
 
-// Water codes to write into the water texture of a level, as a TexelRegion.
+// Water texels to write into the water texture of a level, as a TexelRegion.
 struct WaterRegion {
     int level = 0;
     int x = 0;
     int z = 0;
     int width = 0;
     int height = 0;
-    std::vector<std::uint16_t> data;
+    std::vector<float> data;
 };
 
-// The regions of the water codes of a rectangle of samples of a level, given as pieceUploads lays
-// them out after the texels (one float per sample): split as texelRegions. Throws
+// The regions of the water texels of a rectangle of samples of a level, given as pieceUploads
+// lays them out after the texels (one float per sample): split as texelRegions. Throws
 // std::invalid_argument as texelRegions.
 [[nodiscard]] std::vector<WaterRegion> waterRegions(int level, int side, const HorizonRect& rect,
-                                                    std::span<const float> codes);
+                                                    std::span<const float> levels);
 
 // The fixed grids of the GPU horizon, in cells: the vertex (i, k) of a level stands (i, k)
 // pitches from the low corner of its window, its height read from the texel of its sample.

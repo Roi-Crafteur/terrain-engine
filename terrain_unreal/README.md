@@ -80,7 +80,8 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
    `/Game/TerrainEngine/M_TerrainAltitude`, un matériau éclairé qui affiche la couleur des sommets
    (sable au bord de la mer, vert, gris en altitude, blanc sur les sommets). Sans aucun des deux,
    l'acteur prend le matériau de debug d'Unreal qui affiche les couleurs de sommet, et le dit dans
-   le log.
+   le log. Pour l'eau des lacs, des fleuves et des chutes : `Scripts/create_water_materials.py`
+   (section 14).
 3. Niveau : File → New Level → **Basic** (ciel, lumière, un Player Start), puis supprime le sol
    (`Floor`), qui cacherait le terrain. Le mode de jeu du gabarit Third Person
    (`BP_ThirdPersonGameMode`) donne le Character qui marche. Ou bien, dans `ThirdPersonMap`,
@@ -127,7 +128,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 |---|---|---|
 | `Seed` | 20261019 | seed du monde |
 | `bCaves`, `bCaveRegions` | non | grottes, et leurs régions (galeries, rivières, lave) |
-| `PlanetFile` | vide | fichier du niveau Planète de la seed (`terrain_make_planet`) : fleuves et lacs des tuiles et de l'horizon, et leur niveau (section 14) ; construit et écrit là s'il manque (quelques minutes) ; vide : le relief seul, sans fleuves ni lacs |
+| `PlanetFile` | `Saved/TerrainEngine/planet_{Seed}.bin` | fichier du niveau Planète de la seed (`terrain_make_planet`) : fleuves, lacs et chutes des tuiles et de l'horizon, et leur niveau (section 14) ; `{Seed}` remplacé par la seed, un chemin relatif part du dossier du projet, un chemin absolu est pris tel quel ; construit et écrit là s'il manque, s'il est périmé ou abîmé (quelques minutes, la raison dans le log) ; vide : le relief seul, sans fleuves ni lacs |
 | `CoreOriginX`, `CoreOriginZ` | 0, 0 | point du core (m) dont le sol est à l'origine d'Unreal |
 | `Lod0/1/2DistanceChunks`, `ViewDistanceChunks` | 4, 8, 16, 32 | anneaux de LOD en chunks de 16 m ; Lod1 − Lod0 ≥ 2, Lod2 − Lod1 ≥ 4 |
 | `WorkerThreads` | 2 | threads de génération |
@@ -135,6 +136,8 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `MeshType` | Procedural Mesh | type de mesh (Dynamic Mesh, Realtime Mesh : emplacements) |
 | `Material` | aucun | matériau des tuiles (voir 4.2) ; aucun : `M_TemporaryTerrain`, sinon `M_TerrainAltitude` |
 | `bAsyncCollisionCooking` | non | cuisson des collisions hors du thread de jeu |
+| `bWater` | oui | lacs et fleuves des tuiles à leur niveau, rideaux et écume des chutes, lacs et fleuves de l'horizon GPU (section 14) ; `Terrain.Water 0\|1` les cache ou les montre en jeu |
+| `WaterMaterial`, `FallsMaterial` | aucun | matériaux de la surface de l'eau des tuiles et des chutes ; aucun : `M_TerrainWater`, `M_TerrainFalls` (`Scripts/create_water_materials.py`) |
 | `FocusActor` | aucun | acteur suivi ; sinon le pion du premier joueur, ou sa caméra |
 | `bSnapPawnToGround` | oui | pose sur le sol un nouveau pion qui est dessous |
 | `WarmUpRadiusChunks`, `WarmUpTimeoutSeconds` | 1, 10 | tuiles LOD 0 générées avant qu'un nouveau pion bouge |
@@ -148,11 +151,11 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `bHorizonDebugTint` | non | GPU : chaque niveau teinté de sa couleur |
 | `HorizonMaterial` | aucun | matériau de l'horizon CPU (voir 10) |
 | `HorizonDropCm` | 100 | l'horizon est posé ce tant sous son sol là où les tuiles le recouvrent : elles restent devant ; il remonte à son sol vers le bord des tuiles (section 13) |
-| `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles (section 12) |
+| `bHorizonSea` | oui | l'océan à plat au niveau de la mer, et un carré de mer sous les tuiles, seulement là où le core met l'océan (section 12) |
 | `PlanetRadiusKm` | 0 | rayon de la planète pour la courbure ; 0 : la circonférence est-ouest du monde (9 554 km) |
 | `bHorizonShadows` | non | ombres portées par l'horizon |
 | `bHorizonDetailNormals`, `HorizonNormalRatio`, `HorizonNormalJobs` | oui, 4, 2 | GPU : normales de détail, 4 fois plus fines que la grille de chaque niveau, calculées par 2 tâches (TEMPORARY_MATERIAL.md) |
-| `HorizonCrestRatio` | 2 | crêtes des montagnes lointaines : à partir du niveau 1, chaque échantillon monte aux crêtes de ses mailles, cherchées 2, 4 ou 8 fois plus finement que la grille (`terrain_core` `streaming/horizon_crests.hpp`) ; 0 : les points, l'horizon d'avant |
+| `HorizonCrestRatio` | 4 | crêtes des montagnes lointaines : à partir du niveau 1, chaque échantillon monte aux crêtes de ses mailles, cherchées 2, 4 ou 8 fois plus finement que la grille (`terrain_core` `streaming/horizon_crests.hpp`) ; en GPU, calculées après l'époque avec les normales de détail, par les mêmes `HorizonNormalJobs` tâches (section 11) ; 0 : les points, l'horizon d'avant |
 | `bAtmosphereFollowsCamera` | oui | le ciel, le brouillard et la lumière du ciel suivent la caméra (section 12) |
 | `SkyAtmosphere`, `HeightFog`, `SkyLight` | aucun | ceux qui suivent la caméra ; sinon les premiers du niveau |
 | `FogEndDistanceKm` | 20 | distance où le brouillard cesse d'intégrer ; 0 : son propre réglage |
@@ -167,14 +170,21 @@ terrain_unreal/
   Scripts/create_horizon_gpu_material.py
   Scripts/create_temporary_terrain_material.py, temporary_terrain_look.py,
     temporary_terrain_hlsl.py  le matériau temporaire
+  Scripts/create_water_materials.py, water_look_hlsl.py, horizon_water_hlsl.py,
+    horizon_water_nodes.py     l'eau des tuiles, des chutes et de l'horizon
+  Scripts/material_settings.py  la remise à zéro des réglages des matériaux reconstruits
   Source/TerrainEngine/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
+    Public/TerrainEdits.h      ETerrainEditShape, ETerrainEditMode
     Private/
       TerrainWorld.cpp         cycle de vie, tick, démarrage d'un pion, mesures
       TerrainWorldHorizon.cpp  l'horizon lointain d'ATerrainWorld
+      TerrainWorldEdits.cpp    les modifications pour essayer (section 15), Terrain.Edit
+      TerrainWorldWater.cpp    l'eau (section 14), Terrain.Water, la ligne du fichier planète
       TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
-      TerrainHorizonClipmap.*  l'horizon GPU : textures, grilles fixes, placements
+      TerrainHorizonClipmap.*  l'horizon GPU : grilles fixes, placements
+      TerrainHorizonTextures.* ses textures (texels, normales, eau) et leurs envois
       TerrainWorldAtmosphere.cpp, TerrainAtmosphereFollower.*  le ciel qui suit la caméra
       TerrainHorizonGrids.*    les grilles fixes, des UStaticMesh construits en jeu
       TerrainHorizonMeshes.*   l'horizon CPU : un ProceduralMeshComponent par niveau
@@ -240,8 +250,11 @@ Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_fr
 `unreal_tile_streamer_test`, `unreal_terrain_session_test`, `unreal_determinism_check_test`,
 `unreal_horizon_layout_test`, `unreal_horizon_mesh_test`, `unreal_horizon_streamer_test`,
 `unreal_horizon_epochs_test`, `unreal_horizon_textures_test`, `unreal_horizon_gpu_streamer_test`,
-`unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`,
-`unreal_core_sources`.
+`unreal_horizon_normals_test`, `unreal_horizon_detail_test`, `unreal_horizon_crests_test`,
+`unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`, `unreal_tile_water_test`,
+`unreal_water_scripts_test` (les scripts de l'eau, sans Unreal), `unreal_planet_file`,
+`unreal_core_sources`. Mesures à la main : `unreal_horizon_bench` (temps de l'horizon GPU, crêtes
+dans l'époque ou après, voir l'en-tête de `tests/unreal_horizon_bench.cpp`).
 
 ## 7. Linux et Mac (non essayés)
 
@@ -279,10 +292,10 @@ devra passer à `std::thread` (petit changement dans `terrain_core`, par l'agent
 ## 9. Pas encore fait
 
 Type de mesh autre que le Procedural Mesh Component (emplacements Dynamic Mesh et Realtime Mesh),
-eau, lave, plantes, vrais matériaux de la phase 14 (un matériau temporaire en tient lieu,
+eau des grottes, lave, plantes, vrais matériaux de la phase 14 (un matériau temporaire en tient lieu,
 section 13). En build empaqueté, assigne les matériaux explicitement dans `Material`,
-`HorizonGpuMaterial` et `HorizonMaterial` : le chemin chargé par défaut n'est cuit que s'il est
-référencé.
+`HorizonGpuMaterial`, `HorizonMaterial`, `WaterMaterial` et `FallsMaterial` : le chemin chargé par
+défaut n'est cuit que s'il est référencé.
 
 ## 10. L'horizon lointain (phase 13, étape 1)
 
@@ -313,12 +326,16 @@ mode CPU (`HorizonRenderer` = CPU) ; le mode par défaut, sur le GPU, est en sec
 - **Sous les tuiles** : le niveau 0 a un trou carré qui contient toutes les tuiles LOD 0 à 2
   (grottes, falaises, surplombs) ; autour, une bande de tuiles LOD 3 (128 m, au moins 64 m)
   recouvre l'horizon, posé `HorizonDropCm` plus bas : pas de z-fighting, et pas de trou quand des
-  tuiles du bord arrivent en retard. Les tuiles doivent finir dans le niveau 0 :
+  tuiles du bord arrivent en retard. Là où les tuiles peuvent le couvrir (jusqu'à 128 m au-delà
+  de cette bande, puis en fondu sur 128 m), le sol du niveau 0 est aussi repoussé de 1 m en
+  profondeur (pixel depth offset, `BehindTilesCm`) : sans cela ses mailles de 8 m traversaient
+  les tuiles en damier de carrés sombres sur les pentes. Les tuiles doivent finir dans le niveau 0 :
   `ViewDistanceChunks` de 28 à 55 avec les anneaux par défaut, sinon l'horizon est désactivé avec
   une erreur dans le log.
 - **Mer** : sur l'horizon, tout échantillon sous le niveau de la mer est posé à plat au niveau de
-  la mer (un lac en altitude garde son sol) ; un carré de mer à 0 m s'étend sous les tuiles. Son
-  aspect : section 12. Le reste de l'eau (rivières, lacs, Water) vient avec la phase 14.
+  la mer (un lac en altitude garde son sol) ; un carré de mer à 0 m s'étend sous les tuiles, dessiné
+  seulement là où le core met l'océan (une dépression sèche sous 0 m montre son sol). Son
+  aspect : section 12. Les lacs et fleuves : section 14 (horizon GPU seulement).
 - **Threads** : `HorizonThreads` threads du core, à part de ceux des tuiles. Tant que rien ne
   bouge, le tick de l'horizon coûte 0,01 ms.
 - **Log** : toutes les `TimingLogIntervalSeconds`, le coût de l'horizon sur le thread de jeu (le
@@ -393,6 +410,15 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   époque sont calculés par `UE::Tasks` en `BackgroundLow`, au plus `HorizonThreads` à la fois ;
   les workers des tuiles passent devant. Une époque est appliquée en une frame (bandes et
   placements de tous ses niveaux), comme à l'étape 1.
+- **Crêtes après l'époque** (`HorizonGpuParams::deferCrests`, `Bridge/horizon_crest_texels.hpp`) :
+  l'époque ne calcule que les points ; les crêtes viennent ensuite, des tâches des normales de
+  détail, lues dans la même grille fine (`terrain_core` `streaming/horizon_detail.hpp`) ; les
+  texels des échantillons qui montent sont réécrits par bandes (les seules lignes qui montent),
+  au bit près ceux des crêtes calculées dans l'époque. L'horizon s'affiche donc au coût d'une
+  époque sans crêtes, en points, puis ses crêtes arrivent, les niveaux fins d'abord. Pas de
+  fissure entre un niveau relevé et un voisin pas encore relevé : au bord, le géomorphing ne lit
+  que les texels du niveau plus grossier (`unreal_horizon_crests_test`). Une maille retouchée par
+  le joueur garde la hauteur de son époque, sans crête (E si elle l'est entièrement).
 - **Inchangé** : le monde bouclé (image la plus proche, tour du monde sans rien reconstruire), la
   mer à 0 m, le raccord sous les tuiles, l'autocontrôle bit à bit.
 - **Teinte de débogage** : `bHorizonDebugTint` colore chaque niveau de sa teinte.
@@ -400,7 +426,9 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   (standalone) : les grilles se construisent (250 ms) et l'horizon s'affiche. Build empaqueté :
   non essayé (assigner `HorizonGpuMaterial`, section 9).
 - **Log** : en plus de la section 10, `horizon texels` (envoi des bandes : ticks, ms, texels par
-  tick) et, toujours, `frames` : thread de jeu, thread de rendu et GPU, comme `stat unit`.
+  tick, crêtes comprises), `horizon detail` (du commit d'une époque à l'arrivée de toutes ses
+  crêtes et normales) et, toujours, `frames` : thread de jeu, thread de rendu et GPU, comme
+  `stat unit`.
 
 ### Mesures, GPU contre CPU (UE 5.8, éditeur en PIE, Ryzen 9 9950X3D, `ViewDistanceChunks` 32)
 
@@ -450,15 +478,24 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
 
   | | vallée du K2 | pied de la plus longue chaîne |
   |---|---|---|
-  | points (0) | −0,166 / 0,167 | −0,111 / 0,117 |
-  | 2 (défaut) | −0,103 / 0,120 | −0,076 / 0,090 |
-  | 4 | −0,082 / 0,107 | −0,058 / 0,079 |
+  | points (0) | −0,175 / 0,180 | −0,112 / 0,118 |
+  | 2 | −0,110 / 0,133 | −0,075 / 0,091 |
+  | 4 (défaut) | −0,090 / 0,118 | −0,057 / 0,080 |
 
-  Coût au K2 (K = 256, 1 thread) : époque complète 16,6 s sans crêtes, ×1,37 à 2, ×1,97 à 4 ;
-  marche de 2 km 9,3 ms par pas, 11,3 ms à 2, 16,4 ms à 4 ; même mémoire. À 4, 75 à 88 % de ce
-  coût est la lecture du relief des mailles, que les normales de détail font déjà au même pas :
-  une grille fine commune aux deux (après la PR de l'agent 12), calculée en arrière-plan comme
-  les normales (les points d'abord, les crêtes ensuite), rendrait 4 presque gratuit.
+  (relief d'après la 11B ; mêmes chiffres et mêmes images, au bit près, avant et après les crêtes
+  différées.) Coût en GPU (`unreal_horizon_bench`, 4 cœurs, GCC, normales à 4), affichage /
+  crêtes et normales complètes :
+
+  | | K2, 1 thread | K2, 2 threads | chaîne, 1 thread | chaîne, 2 threads |
+  |---|---|---|---|---|
+  | crêtes à 2 dans l'époque (avant) | 17,2 / 45,5 s | 8,2 / 21,2 s | 15,7 / 40,2 s | 8,0 / 20,9 s |
+  | sans crêtes | 11,8 / 39,1 s | 5,6 / 19,2 s | 11,0 / 35,1 s | 5,7 / 19,6 s |
+  | crêtes à 4 après l'époque (défaut) | 11,3 / 36,0 s | 6,5 / 19,1 s | 10,9 / 34,5 s | 5,8 / 17,8 s |
+
+  Marche de 2 km par pas de 8 m, du pas jusqu'au détail complet : 20 à 21 ms par pas au K2, 34 à
+  43 ms au pied de la chaîne, avant comme après (à la dispersion près). Même mémoire (10,6 Mo
+  d'échantillons). Les crêtes arrivent avec les normales : celles des niveaux lointains (les
+  silhouettes) les dernières, environ 25 s après l'affichage sur un thread, 13 s sur deux.
 - Matériaux et biomes : dessinés par le matériau temporaire (section 13).
 - Les grilles sont construites sur le thread de jeu au `BeginPlay` (0,2 s, une fois) ; elles
   pourraient l'être hors de ce thread si ce temps gêne au chargement.
@@ -494,7 +531,9 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
   recentrage), qui s'effacent dans la rugosité selon la taille du pixel (aucune répétition au
   loin, un chemin de soleil plus large), reflet du ciel (Fresnel, ciel lu dans la table de vue de
   la `SkyAtmosphere`) et reflet du soleil (GGX) en émissif, sans spéculaire du moteur (aucun reflet
-  Lumen à tracer). Le carré de mer sous les tuiles lit le sol du niveau 0 : même mer près et loin.
+  Lumen à tracer). Le carré de mer sous les tuiles lit le sol du niveau 0 : même mer près et loin ;
+  il est masqué (matériau Masked) là où moins de la moitié des 4 texels du niveau 0 autour du
+  pixel sont de l'océan. Le fond marin n'a sa couleur que sous le drapeau mer du core.
   Les normales penchent avec la courbure (d / R). Seuls les pixels de mer paient ces calculs.
 - **Mesures** (PIE 2042 × 1752, 3,6 Mpx, autant que le 1440p ; même session, A sans ces
   changements, B avec, GPU saturé à 200 % de résolution) : GPU +0,1 à +0,6 ms à 4 fois les pixels
@@ -512,17 +551,75 @@ En attendant les vrais matériaux de la phase 14 : roche grise sur les pentes ra
 sol froid peu pentu, herbe, herbe sèche, forêt, alpage, terre, sable, désert et éboulis selon les
 matériaux et biomes du core, avec des plaques dans chaque biome et des textures sans répétition
 visible, les mêmes de près (tuiles, `M_TemporaryTerrain`) et de loin
-(`M_TerrainHorizonGpu`). Ses textures viennent du pack **Stylescape HD** (licence Fab : jamais
+(`M_TerrainHorizonGpu`). Sur les tuiles, les biomes et matériaux se fondent selon les poids du
+core (`TileData::surfaceBlend`, une texture commune `TileBlendTexels`). Ses textures viennent du pack **Stylescape HD** (licence Fab : jamais
 dans ce dépôt) copié sous `/Game/StylescapeHD` du projet ; sans lui, des couleurs unies. Tout est
 décrit dans [`TEMPORARY_MATERIAL.md`](TEMPORARY_MATERIAL.md) : règles, installation du pack,
 réglages, coût, limites, et trois défauts de rendu (le trait sombre au bord des tuiles, corrigé
 par le fondu de `HorizonDropCm` ; les dents de scie sous un soleil bas, corrigées par des
 normales lissées ; la « ligne d'ombre » au pied de la chaîne, une arête du relief).
 
-## 14. Le niveau de l'eau (phase 11, tâche 7b)
+## 14. L'eau à son niveau (phase 11, tâche 7b ; agent 27)
 
-Le niveau de l'eau du core (mer, lacs, fleuves, chutes) arrive dans Unreal : aux sommets des
-tuiles et de l'horizon CPU dans le canal UV 0, et dans une texture d'eau par niveau de l'horizon GPU
-(`HorizonWater`, `CoarseWater`). Aucun matériau ne le lit encore : l'image ne change pas. Il faut
-un fichier planète (`PlanetFile`, section 5). Formats, lecture, mémoire et limites :
-[`WATER_LEVEL.md`](WATER_LEVEL.md).
+Les lacs et fleuves sont dessinés à leur niveau : sur les tuiles, une surface translucide tirée des
+colonnes d'eau du core (`TileData::waterColumns`), en pente avec les fleuves, plate sur les lacs,
+sans fente entre tuiles ni entre LOD ; aux chutes, un rideau de la lèvre au pied et de l'écume
+(`TileData::falls`) ; sur l'horizon GPU, l'eau montée au niveau de ses textures d'eau (R32F, le
+niveau du core au bit près), qui se fond dans celle des tuiles sur leur bande extérieure. Même
+aspect de près et de loin : couleur et transparence selon l'épaisseur d'eau et le lieu, rides de
+bruit dans le sens du courant, reflet du ciel et du soleil, écume des rapides, rives fondues. Il faut un fichier planète (`PlanetFile`, section 5,
+par défaut dans `Saved/TerrainEngine`) et les matériaux de `Scripts/create_water_materials.py`.
+Données, formats, aspect, coût, évolution vers Single Layer Water et limites :
+[`WATER_LEVEL.md`](WATER_LEVEL.md). La sonde `terrain_probe_water` dit ce que le core met en un
+point, `unreal_water_probe` ce que le Bridge en fait (chutes, rideaux, mailles coupées par LOD).
+
+## 15. Les modifications vues de loin (phase 15)
+
+En attendant « casser et poser » en jeu, des modifications pour essayer : les tuiles au-dessus sont
+générées à nouveau (elles restent montrées jusqu'à leur nouvelle version), et l'horizon lointain les
+montre, en GPU comme en CPU.
+
+- **Console** (en jeu, `²` ou `` ` ``) : `Terrain.Edit` modifie le sol devant la caméra, à une
+  distance comptée à l'horizontale le long de sa direction, en mètres :
+  - `Terrain.Edit raze 5000 1000 500` : un carré de 1 000 m de côté à 5 km, rasé jusqu'à 500 m
+    sous son point le plus bas (sans profondeur : 10 m) ;
+  - `Terrain.Edit blast 2000 32` : une explosion de 32 m de rayon sur le sol, à 2 km ;
+  - `Terrain.Edit heap 2000 60` : un tas de roche, une sphère de 60 m de rayon posée un tiers sous
+    le sol.
+  La commande rend la main tout de suite : la modification part sur le fil de modifications de
+  la session (`Bridge/edit_thread.hpp`), qui calcule son volume, l'écrit dans les masques des
+  tuiles puis lit le sol modifié pour l'horizon. À chaque image, le thread de jeu reprend les
+  modifications finies, dans leur ordre : il fait générer à nouveau leurs tuiles et les passe à
+  l'horizon (`TickTerrainEdits`). Les bits sont ceux du chemin synchrone. Le log
+  (`LogTerrainEngine`) note la mise en file, puis, une fois finie, les chunks à générer, le
+  temps passé sur le fil de modifications et celui passé sur le thread de jeu.
+- **Blueprint** : `Apply Volume Edit` (boîte, sphère ou explosion, retirer, ajouter ou rendre le
+  sol d'origine, en coordonnées du monde Unreal) et `Edit Ahead` (comme la console). Elles
+  renvoient vrai quand la modification est en file ; un refus arrive dans le log.
+- **L'horizon** (`terrain_core` `streaming/horizon_edits.hpp`) : le niveau 0 montre sur chaque
+  colonne de 8 m le sommet de la tuile LOD 3 (au raccord : pas de marche ; un fond rasé paraît 0,5 à
+  7,5 m plus haut que le vrai, comme sur les tuiles) ; chaque niveau plus grossier, le changement
+  moyen du sol de ses mailles, borné par le sol modifié quand toute la maille l'est (un fond rasé
+  reste plat, crêtes comprises). La modification est appliquée entre deux époques : l'époque
+  suivante ne recalcule et n'envoie que les bandes autour d'elle. Le matériau ne change pas (le sol
+  d'origine, comme les tuiles).
+- **Normales de détail** (GPU) : elles sont calculées sans les modifications ; là où au moins la
+  moitié d'une maille est modifiée, ses texels prennent les pentes de la grille, qui suit les
+  modifications (interpolées entre les 4 échantillons de sa maille, comme la pente lissée des
+  tuiles). Jamais « en attente » : le filtre bilinéaire du matériau mêlerait un texel en attente
+  aux texels voisins, et un faible poids donnerait une pente prise pour vraie, une normale
+  couchée éclairée par le ciel seul (une ligne couleur ciel le long des coins d'un bloc rasé).
+- **Coût mesuré** (Linux, `horizon_edits_cost_test`) : une explosion de 64 m se voit de loin 3 à
+  4 ms après elle (sans époque en vol ; sinon après la fin de celle-ci) ; une montagne rasée
+  (1 km × 1 km × 500 m) : environ 0,25 s pour lire son sol, 0,1 à 0,2 s pour son époque si le
+  niveau 0 la contient, 1 Mo de résumé. Le rasage du K2 (`Terrain.Edit raze 11300 1000 500`
+  depuis sa vallée, `unreal_horizon_edits_cost_test`) : la commande prend 0,03 ms sur le thread
+  de jeu, puis au plus 6,4 ms par image (reprendre la modification : 1,5 ms) ; il se voit de loin
+  20 ms après la fin du fil de modifications.
+- **Limites** : entre deux colonnes, un mur de modification coupe le bord des tuiles plus raide
+  que la grille de 8 m de l'horizon : un écart de quelques mètres au plus, sur une maille (pas de
+  trou : l'horizon passe sous les tuiles) ; sous la bande des tuiles LOD 3, l'horizon peut
+  dépasser de la paroi d'un cratère de plus de `HorizonDropCm` ; un tas sorti de la mer reste
+  dessiné en mer ; une très grosse modification met quelques centaines de millisecondes à
+  sortir du fil de modifications (sans bloquer le jeu), et les modifications suivantes
+  attendent leur tour.

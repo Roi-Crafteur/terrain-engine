@@ -2,11 +2,16 @@
 
 Custom nodes cannot declare functions: the helpers live in a struct (FTemporaryTerrain Look).
 - Layers: the ground layers of a texel of the horizon (its packed surface, terrain_surface.hpp).
+- BlendLayers: the ground layers of the surface blend of a tile (its texels in the atlas,
+  Bridge/tile_blend_atlas.hpp): the weights of 3 biomes and 3 materials per texel.
 - Noise: periodic value noise in world space (4096 m period, as the waves of the sea).
 - Bomb: stochastic tiling, each cell of 0.7 texture repeat with its own offset and quarter turn,
   blended over the last quarter of the cell: no repetition can be read near or far.
 - RockPlane: one plane of the triplanar rock, two rock textures mixed by world patches.
 """
+
+# Texels along each side of a tile (terrain_core stream_manager.hpp: kTileBlendTexels).
+TILE_BLEND_TEXELS = 5
 
 STRUCT_HLSL = r"""
 struct FTemporaryTerrain
@@ -29,6 +34,67 @@ struct FTemporaryTerrain
         else if (m == 4) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); c.y = 1.0; }            // rock
         else if (m == 5) { c.x = 1.0; }                                                    // snow
         else if (m == 7) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); }                        // scree
+    }
+
+    // The layers of the surface blend of a tile (Bridge/tile_blend_atlas.hpp): the 4 texels of
+    // its slot of the atlas T around the point at local (centimeters from the lowest corner of the
+    // tile), pitchCm apart. Each slot of each texel adds its bilinear share of its weight to its
+    // id (biome_blend.hpp: addTexel), never interpolating the ids; the layers are those of every
+    // biome (BIOMES) and the overrides of every material (as in Layers), both linear in the
+    // weights. False where the tile has no texels (slot -1, or the texels of no tile).
+    bool BlendLayers(Texture2D T, float slot, float pitchCm, float2 local, out float4 a,
+                     out float4 b, out float2 c)
+    {
+        const float4 BA[12] = { BIOME_A };
+        const float4 BB[12] = { BIOME_B };
+        const float2 BC[12] = { BIOME_C };
+        a = float4(0.0, 0.0, 0.0, 0.0); b = a; c = float2(0.0, 0.0);
+        if (slot < -0.5) { return false; }
+        uint width, height;
+        T.GetDimensions(width, height);
+        int perSide = max((int)width / TEXELS, 1);
+        int s = (int)(slot + 0.5);
+        int2 corner = int2(s % perSide, s / perSide) * TEXELS;
+        float2 ij = clamp(local / max(pitchCm, 1.0), 0.0, TEXELS - 1.0);
+        float2 base = min(floor(ij), TEXELS - 2.0);
+        float2 f = ij - base;
+        float4 share = float4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+        float wm[8] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+        float ocean = 0.0;
+        float desert = 0.0;
+        [unroll] for (int t = 0; t < 4; ++t)
+        {
+            float4 x = T.Load(int3(corner + int2(base) + int2(t & 1, t >> 1), 0));
+            if (x.a < 0.5) { return false; }
+            uint ids = (uint)(x.r + 0.5);
+            uint lo = (uint)(x.g + 0.5);
+            uint hi = (uint)(x.b + 0.5);
+            float3 wb = float3(lo & 255u, lo >> 8u, 0.0) / 255.0;
+            wb.z = max(1.0 - wb.x - wb.y, 0.0);
+            float3 wt = float3(hi & 255u, hi >> 8u, 0.0) / 255.0;
+            wt.z = max(1.0 - wt.x - wt.y, 0.0);
+            [unroll] for (int k = 0; k < 3; ++k)
+            {
+                int biome = min((int)((ids >> (4u * k)) & 15u), 11);
+                int material = min((int)((ids >> (12u + 4u * k)) & 15u), 7);
+                float w = share[t] * wb[k];
+                a += w * BA[biome]; b += w * BB[biome]; c += w * BC[biome];
+                ocean += biome == 0 ? w : 0.0;
+                desert += biome == 2 ? w : 0.0;
+                wm[material] += share[t] * wt[k];
+            }
+        }
+        float4 A = a, B = b;
+        float4 z = float4(0.0, 0.0, 0.0, 0.0);
+        float4 bed = ocean * BB[0] + (1.0 - ocean) * float4(0.5, 0.0, 0.0, 0.5);       // river bed
+        float soil = wm[3] + wm[6];                                                      // dirt, mud
+        float keep = wm[2] + wm[5];                                                      // grass, snow
+        a = keep * A + 0.3 * soil * A + wm[0] * ocean * BA[0];
+        b = keep * B + soil * (0.3 * B + float4(0.7, 0.0, 0.0, 0.0)) + wm[0] * bed
+          + wm[1] * float4(0.0, 1.0 - desert, desert, 0.0) + (wm[4] + wm[7]) * float4(0.0, 0.0, 0.0, 1.0);
+        c.x = lerp(c.x, 1.0, wm[5]);                                                     // snow
+        c.y = lerp(c.y, 1.0, wm[4]);                                                     // rock
+        return true;
     }
 
     // The height of the ground (meters) at the sample coordinates ij of the window of level 0,
@@ -353,7 +419,7 @@ def struct_hlsl(biomes):
             values.append(f"float{width}({cells})")
         return ", ".join(values)
     return (STRUCT_HLSL.replace("BIOME_A", rows(0, 4)).replace("BIOME_B", rows(1, 4))
-            .replace("BIOME_C", rows(2, 2)))
+            .replace("BIOME_C", rows(2, 2)).replace("TEXELS", str(TILE_BLEND_TEXELS)))
 
 
 def ground_layer(index, scale, detail, saturation):

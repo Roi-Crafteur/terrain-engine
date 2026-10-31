@@ -45,6 +45,14 @@ public:
 
 	virtual void RemoveAllTiles() {}
 
+	// The materials of the water of the tiles (agent 27): the surface of their lakes and rivers,
+	// the curtains and foam of their falls (Bridge/tile_water_mesh.hpp, Bridge/fall_curtains.hpp).
+	// None: that water is not drawn. For the tiles set from now on.
+	virtual void SetWaterMaterials(UMaterialInterface* /*Water*/, UMaterialInterface* /*Falls*/) {}
+
+	// Shows or hides the water of every tile, and of the tiles to come (Terrain.Water).
+	virtual void SetWaterVisible(bool /*bVisible*/) {}
+
 	virtual int32 GetTileCount() const { return 0; }
 };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/streaming/horizon_fine_grid.hpp"
 #include "terrain/streaming/horizon_levels.hpp"
 
 #include <span>
@@ -20,7 +21,9 @@ namespace terrain {
 // prefiltered over its footprint (a Sobel filter on the 3 x 3 heights one spacing apart: the mean
 // slope over two spacings along each axis, weighted 1 2 1 across), so that a renderer magnifying
 // them never aliases. A pure function of the seed, the level and the canonical position of the
-// texel: the same bits for every image, rectangle, thread and observer.
+// texel: the same bits for every image, rectangle, thread and observer. The heights come from a
+// HorizonFineGrid (horizon_fine_grid.hpp) of the level at the ratio, or at a multiple of it: the
+// same nodes, the same bits.
 inline constexpr int kHorizonNormalRatioMax = 16;
 
 // Slopes of the ground, rise over run along x and z: the normal is normalize(-gradX, 1, -gradZ).
@@ -49,6 +52,15 @@ public:
     // std::invalid_argument for a level out of range or an output of another size.
     void fill(int level, const HorizonRect& rect, std::span<DetailSlope> out) const;
     [[nodiscard]] std::vector<DetailSlope> sample(int level, const HorizonRect& rect) const;
+
+    // The nodes of the lattice of the level (at the ratio) the texels of a rectangle read: one
+    // around them, [x0 * ratio - 1, x1 * ratio + 1) on each axis.
+    [[nodiscard]] HorizonRect nodes(const HorizonRect& rect) const;
+    // The same texels from the heights of a grid of the level whose ratio is a multiple of this
+    // one and which holds these nodes. Throws std::invalid_argument for a level out of range, an
+    // output of another size, or a grid of another level or ratio, or not covering the nodes.
+    void fill(int level, const HorizonRect& rect, const HorizonFineGrid& grid,
+              std::span<DetailSlope> out) const;
 
     // Texels of a rectangle of samples.
     [[nodiscard]] std::int64_t texelCount(const HorizonRect& rect) const;

@@ -106,6 +106,8 @@ struct RiverFall {
     float top = 0.0f;    // the water above
     float bottom = 0.0f; // the water below
     float width = 0.0f;
+    double footX = 0.0; // the foot: the point of the course where the water below begins
+    double footZ = 0.0;
 };
 
 // A block of rock in a pool of a fall: radius meters wide around (x, z), its top at top (flatter

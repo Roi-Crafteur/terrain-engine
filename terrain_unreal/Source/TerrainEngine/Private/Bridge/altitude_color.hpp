@@ -28,4 +28,9 @@ inline constexpr double kSnowFull = 3500.0;
 // until the materials of phase 14. Opaque.
 [[nodiscard]] VertexColor altitudeColor(double altitude);
 
+// Color of the ground at this altitude, where the core puts the sea or not: the sea floor only
+// under the sea; dry ground below the sea level (a depression) takes the color of the ground at
+// the sea level.
+[[nodiscard]] VertexColor groundColor(double altitude, bool sea);
+
 } // namespace terrain::unreal

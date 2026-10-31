@@ -4,6 +4,7 @@
 #include "byte_stream.hpp"
 #include "file_commit.hpp"
 #include "frame_reader.hpp"
+#include "frame_stream.hpp"
 #include "storage_codec.hpp"
 #include "terrain/storage/world_meta.hpp"
 
@@ -24,7 +25,7 @@ using storage::FrameReader;
 constexpr storage::Magic kMagic = {'T', 'P', 'L', 'N'};
 
 // Every parameter of the level but its threads, in a fixed order: the level it builds.
-void writeParams(ByteWriter& out, const PlanetParams& p) {
+template <class Out> void writeParams(Out& out, const PlanetParams& p) {
     out.f64(p.cellSize);
     out.i32(p.samplesPerAxis);
     out.i32(p.floorSamples);
@@ -67,7 +68,7 @@ std::vector<std::uint8_t> paramsBytes(const PlanetParams& p) {
     return out.take();
 }
 
-void writeCells(ByteWriter& out, const PlanetCells& c) {
+template <class Out> void writeCells(Out& out, const PlanetCells& c) {
     out.i32(c.grid.nx);
     out.i32(c.grid.nz);
     out.f64(c.grid.cellSize);
@@ -130,7 +131,7 @@ PlanetCells readCells(FrameReader& in) {
     return c;
 }
 
-void writeLakes(ByteWriter& out, const std::vector<PlanetLake>& lakes) {
+template <class Out> void writeLakes(Out& out, const std::vector<PlanetLake>& lakes) {
     out.count(lakes.size());
     for (const PlanetLake& l : lakes) {
         out.i32(l.node);
@@ -169,7 +170,7 @@ std::vector<PlanetLake> readLakes(FrameReader& in) {
     return lakes;
 }
 
-void writeIndices(ByteWriter& out, const std::vector<std::int32_t>& v) {
+template <class Out> void writeIndices(Out& out, const std::vector<std::int32_t>& v) {
     out.count(v.size());
     for (const std::int32_t i : v) {
         out.i32(i);
@@ -184,7 +185,7 @@ std::vector<std::int32_t> readIndices(FrameReader& in) {
     return v;
 }
 
-void writeRivers(ByteWriter& out, const RiverGraph& g) {
+template <class Out> void writeRivers(Out& out, const RiverGraph& g) {
     out.count(g.segments.size());
     for (const RiverSegment& s : g.segments) {
         out.count(s.vertices.size());
@@ -244,7 +245,7 @@ RiverGraph readRivers(FrameReader& in) {
     return g;
 }
 
-void writeFeatures(ByteWriter& out, const std::vector<RiverFeature>& features) {
+template <class Out> void writeFeatures(Out& out, const std::vector<RiverFeature>& features) {
     out.count(features.size());
     for (const RiverFeature& f : features) {
         out.u8(static_cast<std::uint8_t>(f.kind));
@@ -277,7 +278,7 @@ std::vector<RiverFeature> readFeatures(FrameReader& in) {
     return features;
 }
 
-void writeTotals(ByteWriter& out, const PlanetLevel& level) {
+template <class Out> void writeTotals(Out& out, const PlanetLevel& level) {
     const PlanetWaterBudget& b = level.budget();
     out.i64(b.runoff);
     out.i64(b.toOcean);
@@ -329,11 +330,10 @@ void checkOrigin(FrameReader& in, std::uint64_t seed, const PlanetParams& params
     }
 }
 
-} // namespace
-
-void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
-                    std::uint64_t seed, const WorldSize& world) {
-    ByteWriter out = storage::beginFrame(kMagic, kPlanetFileVersion, level.memoryBytes());
+// The body of the planet file.
+template <class Out>
+void writeLevel(Out& out, const PlanetLevel& level, std::uint64_t checksum, std::uint64_t seed,
+                const WorldSize& world) {
     out.u64(seed);
     out.u32(kReliefGeneratorVersion);
     out.f64(world.x);
@@ -341,15 +341,30 @@ void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
     const std::vector<std::uint8_t> params = paramsBytes(level.params());
     out.count(params.size());
     out.bytes(params);
-    out.u64(level.checksum());
+    out.u64(checksum);
     writeCells(out, level.cells());
     writeLakes(out, level.lakes());
     writeRivers(out, level.rivers());
     writeFeatures(out, level.features());
     writeTotals(out, level);
-    const std::array<storage::FileWrite, 1> writes = {
-        storage::FileWrite{file, storage::sealFrame(std::move(out))}};
-    storage::commitFiles(writes, {}, {.keepBackups = false, .createDirectories = true});
+}
+
+} // namespace
+
+void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
+                    std::uint64_t seed, const WorldSize& world) {
+    // Written in pieces, never whole in memory: its size counted first, for its header.
+    const std::uint64_t checksum = level.checksum();
+    storage::ByteCounter size;
+    writeLevel(size, level, checksum, seed, world);
+    storage::commitStreamedFile(
+        file,
+        [&](storage::DurableWriter& durable) {
+            storage::FrameStream out(durable, kMagic, kPlanetFileVersion, size.size());
+            writeLevel(out, level, checksum, seed, world);
+            out.finish();
+        },
+        {.keepBackups = false, .createDirectories = true});
 }
 
 PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
@@ -377,25 +392,32 @@ PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed
 
 PlanetLevel openPlanetLevel(const std::filesystem::path& file, std::uint64_t seed,
                             const HeightfieldParams& heightfield, const PlanetParams& params,
-                            const WorldSize& world, bool* built) {
+                            const WorldSize& world, bool* built, const PlanetStageProbe& probe) {
+    const auto tell = [&probe](const char* stage) {
+        if (probe) {
+            probe(stage);
+        }
+    };
     bool newer = false;
     try {
         PlanetLevel level = loadPlanetFile(file, seed, params, world);
         if (built != nullptr) {
             *built = false;
         }
+        tell("load");
         return level;
     } catch (const StorageError& e) {
         // Missing, damaged or stale: built again. A file of a newer version is never replaced.
         newer = e.kind() == StorageErrorKind::NewerVersion;
     }
-    PlanetLevel level(seed, heightfield, params, world);
+    PlanetLevel level(seed, heightfield, params, world, probe);
     if (!newer) {
         try {
             savePlanetFile(file, level, seed, world);
         } catch (const StorageError&) {
             // Kept in memory only.
         }
+        tell("save");
     }
     if (built != nullptr) {
         *built = true;

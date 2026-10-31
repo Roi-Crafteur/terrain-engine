@@ -237,7 +237,7 @@ RiverReach Hydrology::reach(std::size_t index) const {
                               p.gorge, p.mountain, p.meander, p.valley, p.shift,
                               wound ? c.lineAxis[i].x : p.x, wound ? c.lineAxis[i].z : p.z});
     }
-    // A lip on the middle of its slot.
+    // A point of the course on the middle of its slot (the lip or the foot of a fall).
     const auto onSlot = [&c](std::size_t i) {
         const water::CoursePoint& a = c.points[i];
         const water::CoursePoint& b = c.points[std::min(i + 1, c.points.size() - 1)];
@@ -254,8 +254,9 @@ RiverReach Hydrology::reach(std::size_t index) const {
         }
         if (j > i && c.points[i].level - c.points[j].level > kFallMin) {
             const std::array<double, 2> lip = onSlot(i);
-            out.falls.push_back(
-                {lip[0], lip[1], c.points[i].level, c.points[j].level, 2.0f * c.points[i].half});
+            const std::array<double, 2> foot = onSlot(j);
+            out.falls.push_back({lip[0], lip[1], c.points[i].level, c.points[j].level,
+                                 2.0f * c.points[i].half, foot[0], foot[1]});
         }
         i = j > i ? j : i + 1;
     }

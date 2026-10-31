@@ -26,8 +26,9 @@ inline constexpr std::uint8_t kHorizonSea = 1U << 2;
 struct HorizonCell {
     // Top of the ground, meters: Heightfield::heightAt at the sample, bit for bit, plus its
     // lift to the crests of its cells from level 1 on (HorizonCrestSampler, when it rises), then
-    // the height change of the player edits. Without lift, sample J of level n + 1 is sample 2J
-    // of level n: the same bits on both levels (always so with HorizonParams::crestRatio 0).
+    // the height change of the player edits (editedHeight). Without lift nor edit, sample J of
+    // level n + 1 is sample 2J of level n: the same bits on both levels (always so with
+    // HorizonParams::crestRatio 0 and no edit).
     float height = 0.0f;
     // Gradient of the ground at the scale of the level (rise over run), by central differences
     // of the point heights (and edits) of its neighbor samples, without their lifts: the normal
@@ -59,11 +60,22 @@ struct CellFootprint {
     double halfSide = 0.0;
 };
 
-// Summary of the player edits within a footprint, for the far terrain. Provisional: the
-// summaries of the edit masks of the world format come later (phase 15).
+// The lowest and highest ground the edits leave in a footprint, meters.
+struct GroundRange {
+    float low = 0.0f;
+    float high = 0.0f;
+
+    friend bool operator==(const GroundRange&, const GroundRange&) = default;
+};
+
+// Summary of the player edits within a footprint, for the far terrain: HorizonEditMap draws it
+// from the edit masks (horizon_edits.hpp).
 struct EditSummary {
     float heightChange = 0.0f;               // mean change of the ground, meters
     std::optional<SurfaceMaterial> material; // what the edits leave on top, if they decide it
+    // Where the edits decide the whole ground of the footprint: its range, which bounds the
+    // edited sample (a razed floor, the crests of the generated relief gone with it).
+    std::optional<GroundRange> range;
 };
 
 // Summary of the edits within a footprint, or nullopt where nothing was edited. Called from the
@@ -71,8 +83,12 @@ struct EditSummary {
 // horizon to be. It handles the footprints across the edges of the world.
 using EditSummarySource = std::function<std::optional<EditSummary>(const CellFootprint&)>;
 
-// Applies a summary to a sample: its height changes, its material is replaced if the summary
-// decides it, and it is flagged as edited.
+// A height of a footprint with its edits: height + heightChange (in floats), brought into the
+// range of the summary if it has one.
+[[nodiscard]] float editedHeight(const EditSummary& summary, float height);
+
+// Applies a summary to a sample: its height becomes editedHeight, its material is replaced if
+// the summary decides it, and it is flagged as edited.
 void applyEditSummary(const EditSummary& summary, HorizonCell& cell);
 
 // Samples of the horizon levels from the relief and the ecology of a world (TerrainTiles gives
@@ -85,7 +101,7 @@ void applyEditSummary(const EditSummary& summary, HorizonCell& cell);
 // materialSlopeStep (the slopes of the 4 ground samples around it), then classified as
 // Ecology::sampleAt does (climate, biome, material); the water is the ocean of that site. With
 // edits, every sample of the rectangle and of its one-sample margin gets its summary before the
-// gradients are taken: the edited heights shape the normals.
+// gradients are taken: the edited heights (editedHeight of the point heights) shape the normals.
 class HorizonSampler {
 public:
     // field and ecology must outlive the sampler and share the world of params. Throws

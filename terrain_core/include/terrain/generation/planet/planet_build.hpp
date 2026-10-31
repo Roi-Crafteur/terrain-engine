@@ -9,9 +9,15 @@
 #include "terrain/generation/planet/planet_rivers.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace terrain {
+
+// Called by the build with the name of each stage as soon as it is done, in order ("field" when
+// the build starts, the relief field being ready), for the tools that measure the build (time,
+// memory). The result never depends on it.
+using PlanetStageProbe = std::function<void(const char* stage)>;
 
 // Wall-clock seconds of each stage of a build (not part of the result).
 struct PlanetTimings {
@@ -67,8 +73,10 @@ namespace planet {
 // Every stage on the grid of the world of the field: relief, ocean, climate, total order,
 // depression hierarchy, lakes, discharge, river graph and features. The same field and
 // parameters give the same bits whatever params.threads. Each stage frees what the next ones
-// do not need. Throws std::invalid_argument for a cell size that does not fit the world.
-[[nodiscard]] PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params);
+// do not need. probe, if set, hears of each stage. Throws std::invalid_argument for a cell size
+// that does not fit the world.
+[[nodiscard]] PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params,
+                                      const PlanetStageProbe& probe = {});
 
 } // namespace planet
 

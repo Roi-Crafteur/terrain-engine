@@ -7,7 +7,12 @@ with the far horizon (create_horizon_gpu_material.py).
 Vertex shader: the 4 texels of level 0 of the GPU horizon around the vertex (texture
 SurfaceTexels, its window placed by SurfaceOrigin, SurfaceFirstX/Z, SurfacePitchCm, SurfaceCells:
 ATerrainWorld binds them, UTerrainHorizonClipmap::BindSurfaceLook) give the layers of the ground,
-bilinear: the same samples as the horizon, so the near and far ground match. The far tiles lean
+bilinear: the same samples as the horizon, so the near and far ground match. Where the tile has
+its surface blend (the weights of 3 biomes and 3 materials every 4 cells, in the atlas
+TileBlendTexels at the slot of its custom primitive data, ProceduralMeshTerrainBackend), its 4
+texels around the vertex give the layers instead, faded back into those of the horizon across the
+band of the tiles over level 0 (SurfaceCoveredCm, SurfaceBandCm): no seam at the outer edge of the
+tiles. TileBlend 0 turns the blend off, for comparisons. The far tiles lean
 toward the detail normals of level 0 (horizon_detail_normals.py: 2 m at the default ratio 4,
 SurfaceNormals), or the smooth normals of its samples where the detail is not ready. Without the GPU
 horizon (HasSurface 0), the layers follow the altitude only.
@@ -31,16 +36,24 @@ import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
+import material_settings as settings  # noqa: E402
 import temporary_terrain_look as look  # noqa: E402
 detail = importlib.reload(detail)  # the modules of this checkout, even if run before
 look = importlib.reload(look)
+settings = importlib.reload(settings)
 
 PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TemporaryTerrain"
 SURFACE_SCALARS = {"SurfaceFirstX": 0.0, "SurfaceFirstZ": 0.0, "SurfaceCells": 256.0,
                    "SurfacePitchCm": 800.0, "HasSurface": 0.0, "WaveOriginX": 0.0,
                    "WaveOriginY": 0.0, "SmoothNormal": 0.8, "SmoothNearM": 60.0,
-                   "SmoothFarM": 220.0, **detail.TILE_SCALARS}
+                   "SmoothFarM": 220.0, "TileBlend": 1.0, "SurfaceCoveredCm": 0.0,
+                   "SurfaceBandCm": 0.0, **detail.TILE_SCALARS}
+# The custom primitive data of a tile (ProceduralMeshTerrainBackend): the slot of its surface
+# blend in the atlas TileBlendTexels (-1: none) and the centimeters between its texels.
+PRIMITIVE_SCALARS = {"BlendSlot": (0, -1.0), "BlendPitchCm": (1, 400.0)}
+BLEND_INPUTS = ["Blend", "Local", "BlendSlot", "BlendPitchCm", "TileBlend", "SurfaceCoveredCm",
+                "SurfaceBandCm"]
 FLOAT1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
 FLOAT2 = unreal.CustomMaterialOutputType.CMOT_FLOAT2
 FLOAT3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
@@ -95,6 +108,27 @@ else
     if (altitude < 2.0) { a = float4(0.0, 0.0, 0.0, 0.0); b = float4(0.0, 1.0, 0.0, 0.0); }
     else if (altitude > 1800.0) { a = float4(0.0, 0.0, 0.0, 1.0); }
     c.x = saturate((altitude - 3200.0) / 400.0);
+}
+// The surface blend of the tile (its texels in the atlas, custom primitive data: slot and pitch)
+// replaces the layers of the horizon samples, except across the band of the tiles over level 0:
+// there it fades out (none at the outer edge of the tiles), so that the tiles meet the horizon,
+// which only has the samples, without a seam.
+float blendShare = TileBlend;
+BRANCH if (HasSurface > 0.5)
+{
+    float2 fromCenter = abs(Rel.xy / SurfacePitchCm - SurfaceCells * 0.5) * SurfacePitchCm;
+    blendShare *= saturate((SurfaceCoveredCm - max(fromCenter.x, fromCenter.y)) / max(SurfaceBandCm, 1.0));
+}
+BRANCH if (blendShare > 0.0)
+{
+    float4 ta, tb;
+    float2 tc;
+    if (Look.BlendLayers(Blend, BlendSlot, BlendPitchCm, Local.xy, ta, tb, tc))
+    {
+        a = lerp(a, ta, blendShare);
+        b = lerp(b, tb, blendShare);
+        c.xy = lerp(c.xy, tc, blendShare);
+    }
 }
 c.w = altitude / 1000.0;
 // The rock the core gives the vertex (phase 12A: the faces in three dimensions, under their caps
@@ -160,12 +194,31 @@ def scalar(material, name, value, x, y):
     return node
 
 
+def blend_inputs(material, custom):
+    """The surface blend of the tile: the atlas, the position in the tile, its slot and pitch."""
+    blend = expression(material, unreal.MaterialExpressionTextureObjectParameter, -2000, -500)
+    blend.set_editor_property("parameter_name", "TileBlendTexels")
+    blend.set_editor_property("texture", unreal.EditorAssetLibrary.load_asset(
+        "/Engine/EngineResources/Black"))
+    blend.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    connect(blend, "", custom, "Blend")
+    # The vertices of a tile are relative to its lowest corner (Bridge/tile_mesh_conversion.hpp).
+    local = expression(material, unreal.MaterialExpressionLocalPosition, -2000, -650)
+    connect(local, "", custom, "Local")
+    for index, (name, (data_index, value)) in enumerate(PRIMITIVE_SCALARS.items()):
+        node = scalar(material, name, value, -2000, -800 - 60 * index)
+        node.set_editor_property("use_custom_primitive_data", True)
+        node.set_editor_property("primitive_data_index", data_index)
+        connect(node, "", custom, name)
+
+
 def vertex_shader(material, scalars):
     """The layers of the vertex, from the texels of level 0 of the horizon."""
     custom = custom_node(
         material, -1400, 0, "TemporaryTerrainVertex", look.struct_hlsl() + VERTEX_HLSL,
         ["Tex", "Rel", "SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm",
-         "HasSurface", "VertexRock"], [("W1", FLOAT4), ("W2", FLOAT4), ("W3", FLOAT4)], FLOAT4)
+         "HasSurface", "VertexRock"] + BLEND_INPUTS,
+        [("W1", FLOAT4), ("W2", FLOAT4), ("W3", FLOAT4)], FLOAT4)
     texels = expression(material, unreal.MaterialExpressionTextureObjectParameter, -2000, -200)
     texels.set_editor_property("parameter_name", "SurfaceTexels")
     texels.set_editor_property("texture", unreal.EditorAssetLibrary.load_asset(
@@ -183,13 +236,15 @@ def vertex_shader(material, scalars):
         to_float.set_editor_property(channel, channel != "a")
     connect(relative, "", to_float, "")
     connect(to_float, "", custom, "Rel")
-    for name in ["SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm", "HasSurface"]:
+    for name in ["SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm", "HasSurface",
+                 "TileBlend", "SurfaceCoveredCm", "SurfaceBandCm"]:
         connect(scalars[name], "", custom, name)
     # The rock of the vertex: 1 - the alpha of its color (tile_mesh_conversion.hpp).
     color = expression(material, unreal.MaterialExpressionVertexColor, -2200, 300)
     rock = expression(material, unreal.MaterialExpressionOneMinus, -1900, 300)
     connect(color, "A", rock, "")
     connect(rock, "", custom, "VertexRock")
+    blend_inputs(material, custom)
     # The position from level 0, also read by the pixel shader (detail_slope), evaluated there.
     interpolated = {"Rel": to_float}
     for index, output in enumerate(["", "W1", "W2", "W3"]):
@@ -272,8 +327,9 @@ def create_temporary_terrain_material():
         tools = unreal.AssetToolsHelpers.get_asset_tools()
         material = tools.create_asset(ASSET_NAME, PACKAGE_PATH, unreal.Material,
                                       unreal.MaterialFactoryNew())
-    # The normal of the pixel shader is in world space.
-    material.set_editor_property("tangent_space_normal", False)
+    # Every setting reset (material_settings.py), then the normal of the pixel shader in world
+    # space.
+    settings.reset_material(material, tangent_space_normal=False)
     scalars = {name: scalar(material, name, value, -2200, -900 + 60 * index)
                for index, (name, value) in enumerate(SURFACE_SCALARS.items())}
     weights = vertex_shader(material, scalars)

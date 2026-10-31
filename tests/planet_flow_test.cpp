@@ -18,7 +18,7 @@ using terrain::planet::LakeSolution;
 using terrain::planet::PlanetFlow;
 
 struct Routed {
-    std::vector<std::uint8_t> receiver;
+    terrain::planet::LandValues<std::uint8_t> receiver;
     LakeSolution lakes;
     PlanetFlow flow;
     std::vector<std::int32_t> basin;
@@ -27,13 +27,15 @@ struct Routed {
 Routed route(const Terrain& t, const terrain::planet::WaterOf& water) {
     Routed r;
     const std::vector<std::uint32_t> order = terrain::planet::sortCells(t.height, 1);
-    r.receiver = terrain::planet::computeReceivers(t.grid, t.height, t.ocean, 1);
+    r.receiver = terrain::planet::computeReceivers(t.grid, t.height, t.land, 1);
     const auto hierarchy =
-        terrain::planet::buildHierarchy(t.grid, t.height, t.ocean, order, r.receiver);
+        terrain::planet::buildHierarchy(t.grid, t.height, t.land, order, r.receiver);
     r.lakes = terrain::planet::solveLakes(t.grid, t.height, hierarchy, order, water);
-    r.flow = terrain::planet::routeFlow(t.grid, t.ocean, r.receiver, order, r.lakes, water);
+    r.flow =
+        terrain::planet::routeFlow(t.grid, t.height, t.land, r.receiver, order, r.lakes, water);
     const terrain::planet::LakeAt lakeAt = [&r](std::size_t c) { return r.lakes.lakeOfCell[c]; };
-    r.basin = terrain::planet::computeBasins(t.grid, t.ocean, r.receiver, lakeAt, r.lakes.lakes);
+    r.basin = terrain::planet::computeBasins(t.grid, t.ocean, r.receiver.expand(), lakeAt,
+                                             r.lakes.lakes);
     return r;
 }
 

@@ -253,13 +253,14 @@ void testRockAlpha() {
     mesh.normals.assign(3, {0.0f, 1.0f, 0.0f});
     mesh.indices = {0, 1, 2};
     const std::vector<float> rock = {0.0f, 0.5f, 1.0f};
-    const UnrealMesh out = terrain::unreal::convertMesh(mesh, 10.0, {}, rock);
+    const UnrealMesh out = terrain::unreal::convertMesh(mesh, 10.0, {}, {}, rock);
     TEST_CHECK(out.colors[0].a == 255 && out.colors[1].a == 128 && out.colors[2].a == 0);
     TEST_CHECK(out.colors[2].r == terrain::unreal::altitudeColor(10.0).r);
     TEST_CHECK(terrain::unreal::convertMesh(mesh, 10.0).colors[2].a == 255);
     bool thrown = false;
     try {
-        static_cast<void>(terrain::unreal::convertMesh(mesh, 10.0, {}, std::vector<float>{0.5f}));
+        static_cast<void>(
+            terrain::unreal::convertMesh(mesh, 10.0, {}, {}, std::vector<float>{0.5f}));
     } catch (const std::invalid_argument&) {
         thrown = true;
     }
