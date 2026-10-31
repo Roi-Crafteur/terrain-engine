@@ -31,6 +31,9 @@ endif()
 add_library(terrain_core STATIC
     src/chunk_coord.cpp
     src/det_math.cpp
+    src/dev/json_reader.cpp
+    src/dev/json_value.cpp
+    src/dev/places_file.cpp
     src/generation/aquifers.cpp
     src/generation/arches.cpp
     src/generation/biome.cpp
