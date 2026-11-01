@@ -88,7 +88,8 @@ void flowAt(const std::vector<Segment>& segments, double x, double z, WaterColum
     }
 }
 
-// The falls of reaches whose lip lies in the box.
+// The falls of reaches whose lip lies in the box (here) or within kFallNear meters of it, at their
+// images nearest to it: their edges moved with their lips.
 std::vector<TileFall> fallsIn(const std::vector<RiverReach>& reaches, const Box& box,
                               const WorldSize& world) {
     std::vector<TileFall> falls;
@@ -97,14 +98,25 @@ std::vector<TileFall> fallsIn(const std::vector<RiverReach>& reaches, const Box&
             TileFall fall;
             fall.x = nearestImage(f.x, box.centerX(), world.x);
             fall.z = nearestImage(f.z, box.centerZ(), world.z);
-            if (!box.holds(fall.x, fall.z)) {
+            const double outX = std::max({0.0, box.minX - fall.x, fall.x - box.minX - box.side});
+            const double outZ = std::max({0.0, box.minZ - fall.z, fall.z - box.minZ - box.side});
+            if (!(std::max(outX, outZ) <= kFallNear)) {
                 continue;
             }
+            fall.here = box.holds(fall.x, fall.z);
             fall.footX = nearestImage(f.footX, fall.x, world.x);
             fall.footZ = nearestImage(f.footZ, fall.z, world.z);
             fall.top = f.top;
             fall.bottom = f.bottom;
             fall.width = f.width;
+            fall.edge = f.edge;
+            for (std::size_t p = 0; p < kFallEdge && f.edge > 0; ++p) {
+                fall.edgeX[p] = f.edgeX[p] + (fall.x - f.x);
+                fall.edgeZ[p] = f.edgeZ[p] + (fall.z - f.z);
+                fall.footEdgeX[p] = f.footEdgeX[p] + (fall.x - f.x);
+                fall.footEdgeZ[p] = f.footEdgeZ[p] + (fall.z - f.z);
+            }
+            fall.pool = f.pool;
             falls.push_back(fall);
         }
     }

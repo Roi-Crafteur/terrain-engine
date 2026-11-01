@@ -17,14 +17,18 @@ namespace {
 // The bowls: kBowlShare of the drop deep, from kBowlLeast meters; full at the foot of the face
 // and kBowlHold of their length below it, kBowlRun times the drop long (kBowlRunLeast meters at
 // least, kBowlPool of the pool at most); their bed never rising faster than kBowlSteep meters per
-// meter below it (shallower where the pool is too short: between the drops of a cascade).
+// meter below it (shallower where the pool is too short: between the drops of a cascade). Round
+// seen from above: below the foot they rise with the distance from it along the course and from
+// the axis across it (kBowlRound of the half width of the channel as far as a meter along it),
+// never along a straight line across the channel.
 constexpr double kBowlShare = 0.1;
 constexpr double kBowlLeast = 2.0;
-constexpr double kBowlRun = 1.0;
-constexpr double kBowlRunLeast = 12.0;
-constexpr double kBowlPool = 0.6;
-constexpr double kBowlHold = 0.3;
+constexpr double kBowlRun = 1.5;
+constexpr double kBowlRunLeast = 16.0;
+constexpr double kBowlPool = 0.75;
+constexpr double kBowlHold = 0.2;
 constexpr double kBowlSteep = 0.38;
+constexpr double kBowlRound = 0.7;
 // The channel narrows toward each lip (its sill) by kPinchLeast to kPinchMost of itself (drawn),
 // over the last kPinchShare of the pool above it: the pools oval.
 constexpr double kPinchLeast = 0.15;
@@ -68,18 +72,23 @@ double narrowOf(const FallPool& q, double s) {
 }
 
 // The bowl of pool q s meters along the course.
-Bowl bowlOf(const FallPool& q, double s) {
+Bowl bowlOf(const FallPool& q, double s, double across) {
     const double length = q.length;
     const double narrow = narrowOf(q, s);
     if (!(length > 0.0)) {
         return {0.0, -narrow}; // no pool below the face: no bowl
     }
     // Deeper down the face, full at its foot and kBowlHold of the bowl below it; wider from the
-    // lip to there (the walls of the slot giving way gradually), then both back to nothing.
+    // lip to there (the walls of the slot giving way gradually), then both back to nothing: the
+    // depth with the distance from the foot and from the axis (round), the width along the course.
     const double hold = q.foot + kBowlHold * length;
     const double back = s > hold ? 1.0 - smoothOf((s - hold) / ((1.0 - kBowlHold) * length)) : 1.0;
+    const double down = std::max(0.0, s - q.foot) / length;
+    const double aside = kBowlRound * std::min(1.0, across);
+    const double away = std::sqrt(down * down + aside * aside);
     const double deeper =
-        s < q.foot ? (q.foot > q.lip ? smoothOf((s - q.lip) / (q.foot - q.lip)) : 1.0) : back;
+        s < q.foot ? (q.foot > q.lip ? smoothOf((s - q.lip) / (q.foot - q.lip)) : 1.0)
+                   : 1.0 - smoothOf((away - kBowlHold) / (1.0 - kBowlHold));
     const double wider = s < hold ? smoothOf((s - q.lip) / (hold - q.lip)) : back;
     return {std::max(0.0, deeper) * q.deep, std::max(0.0, wider) * kBowlWiden - narrow};
 }
@@ -164,13 +173,13 @@ void placePools(Course& c) {
     boundBowls(c);
 }
 
-Bowl bowlAt(const Course& c, double s) {
+Bowl bowlAt(const Course& c, double s, double across) {
     const auto after = std::upper_bound(c.pools.begin(), c.pools.end(), s,
                                         [](double v, const FallPool& q) { return v < q.lip; });
-    return after == c.pools.begin() ? Bowl{} : bowlOf(*(after - 1), s);
+    return after == c.pools.begin() ? Bowl{} : bowlOf(*(after - 1), s, across);
 }
 
-Bowl bowlAt(const Course& c, double s, std::size_t i) {
+Bowl bowlAt(const Course& c, double s, std::size_t i, double across) {
     const CoursePoint& a = c.points[i];
     if (!(a.bowlWide > 0.0f) && !(a.bowlNarrow > 0.0f)) {
         return {}; // no bowl near the segment (boundBowls)
@@ -185,7 +194,7 @@ Bowl bowlAt(const Course& c, double s, std::size_t i) {
     while (k >= 0 && s < c.pools[static_cast<std::size_t>(k)].lip) {
         --k;
     }
-    return k < 0 ? Bowl{} : bowlOf(c.pools[static_cast<std::size_t>(k)], s);
+    return k < 0 ? Bowl{} : bowlOf(c.pools[static_cast<std::size_t>(k)], s, across);
 }
 
 } // namespace terrain::water

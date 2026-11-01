@@ -13,7 +13,11 @@
 //     and kRampEnd meters off their ends, where the lip of a drop below may recede).
 //   - Bowls: the water of the pools kDeeperLeast meters deeper and kWiderLeast times wider just
 //     below their drop than near their next lip (the medians); oval, narrower toward the next lip
-//     (its sill) than at their middle, a share of them at least.
+//     (its sill) than at their middle, a share of them at least. Their bed round: no slope break
+//     along a straight line across the channel (a section of the pool every kBedStep meters, from
+//     kBedFoot meters below the foot to kBedLip meters above the next lip, on its still water,
+//     where the slope of the bed along the course changes by more than kBedBreak per meter at all
+//     its kBedPlaces places across: none).
 //   - Heaps: the blocks of the pools at the foot of the drops, of 1.5 to 7 meters, a share of
 //     them out of the water.
 #include "falls_support.hpp"
@@ -185,6 +189,76 @@ void testBowls(const World& w, Reaches& reaches, const std::vector<std::size_t>&
                 deeper.size(), deep, falls::quantile(deeper, 0.1), wide);
     TEST_CHECK(deeper.size() >= 50);
     TEST_CHECK(deep >= kDeeperLeast && wide >= kWiderLeast);
+}
+
+constexpr double kBedStep = 0.5;
+constexpr double kBedFoot = 4.0;
+constexpr double kBedLip = 6.0;
+constexpr double kBedPoolMost = 300.0; // longer: the river below the stretch
+constexpr double kBedDelta = 1.0;
+constexpr double kBedBreak = 0.05;
+constexpr int kBedPlaces = 9; // within 0.8 of the half width of the channel on each side
+constexpr float kBedStill = 0.01f; // meters of water between two points of a pool at most
+
+// Whether the slope of the bed along the course breaks at every place across the channel at
+// (x, z) (along (dx, dz), half meters wide).
+bool brokenAcross(const World& w, double x, double z, double dx, double dz, double half) {
+    for (int k = 0; k < kBedPlaces; ++k) {
+        const double side = 0.8 * half * (2.0 * k / (kBedPlaces - 1.0) - 1.0);
+        const auto h = [&](double d) {
+            return static_cast<double>(
+                w.field.heightAt(x + dx * d - dz * side, z + dz * d + dx * side));
+        };
+        const double change =
+            (h(kBedDelta) - h(0.0)) / kBedDelta - (h(0.0) - h(-kBedDelta)) / kBedDelta;
+        if (!(std::abs(change) / kBedDelta > kBedBreak)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void testBowlBeds(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
+    std::size_t sections = 0;
+    std::size_t broken = 0;
+    for (const std::size_t r : steeps) {
+        const auto& p = reaches[r].points;
+        const std::vector<double> s = alongOf(reaches[r]);
+        const std::vector<Drop> drops = dropsOf(reaches[r]);
+        for (std::size_t k = 0; k + 1 < drops.size(); ++k) {
+            const double foot = s[drops[k].foot];
+            const double next = s[drops[k + 1].lip];
+            if (next - foot > kBedPoolMost) {
+                continue;
+            }
+            std::size_t q = drops[k].foot;
+            for (double a = foot + kBedFoot; a < next - kBedLip; a += kBedStep) {
+                while (q + 2 < p.size() && s[q + 1] < a) {
+                    ++q;
+                }
+                const double run = std::max(1e-9, s[q + 1] - s[q]);
+                const double t = (a - s[q]) / run;
+                // On the still water of the pool (rapids aside: their slope starts across).
+                if (std::abs(p[q].level - p[q + 1].level) > kBedStill ||
+                    (q > 0 && std::abs(p[q - 1].level - p[q].level) > kBedStill) ||
+                    (q + 2 < p.size() && std::abs(p[q + 1].level - p[q + 2].level) > kBedStill)) {
+                    continue;
+                }
+                ++sections;
+                broken += brokenAcross(w, p[q].x + t * (p[q + 1].x - p[q].x),
+                                       p[q].z + t * (p[q + 1].z - p[q].z),
+                                       (p[q + 1].x - p[q].x) / run, (p[q + 1].z - p[q].z) / run,
+                                       0.5 * static_cast<double>(p[q].width))
+                              ? 1
+                              : 0;
+            }
+        }
+    }
+    std::printf("%zu sections of the beds of the pools: %zu of them where the slope of the bed "
+                "breaks all across the channel\n",
+                sections, broken);
+    TEST_CHECK(sections >= 2000);
+    TEST_CHECK(broken == 0);
 }
 
 // The blocks of the pools: in heaps at the foot of the drops (kHeapNear meters below the nearest
@@ -364,6 +438,7 @@ int main() {
     const std::vector<std::size_t> steeps = falls::steepReaches(w, reaches);
     testSteps(reaches, steeps);
     testBowls(w, reaches, steeps);
+    testBowlBeds(w, reaches, steeps);
     testHeaps(w, reaches, steeps);
     testRapids(w, reaches, steeps);
     return test::result();

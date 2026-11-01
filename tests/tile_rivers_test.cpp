@@ -2,8 +2,9 @@
 // agent 27) on the small world with its water: the kind and the level of every column are those
 // of the core bit for bit, two tiles of a LOD hold the same columns on their common side, the flow
 // of a river goes down its course, every fall lies in the one tile of each LOD that holds its lip
-// with its foot downstream at the water below, the same data whatever the thread or the order,
-// and nothing on dry land or without a hydrology.
+// (here; the tiles within kFallNear meters of it hold it too, not here) with its foot downstream
+// at the water below, the same data whatever the thread or the order, and nothing on dry land or
+// without a hydrology.
 #include "water_level_support.hpp"
 
 #include <array>
@@ -63,8 +64,19 @@ bool columnsMatch(const World& w, const TileData& t) {
     return match;
 }
 
+// Whether fall g of tile t lies in it (here) or near it: its lip within kFallNear meters of its
+// box along x and z (not here).
+bool nearTile(const TileData& t, const terrain::TileFall& g) {
+    const double side = terrain::tileSizeMeters(t.request.key.lod);
+    const double outX = std::max({t.originX - g.x, g.x - (t.originX + side), 0.0});
+    const double outZ = std::max({t.originZ - g.z, g.z - (t.originZ + side), 0.0});
+    const bool in = outX == 0.0 && outZ == 0.0 && g.x < t.originX + side && g.z < t.originZ + side;
+    return g.here ? in : !in && std::max(outX, outZ) <= terrain::kFallNear;
+}
+
 // The tiles of every LOD at the lips of the falls and their neighbors along x and z: the columns
-// against the core, the common sides, the falls in the one tile holding their lip.
+// against the core, the common sides, the falls in the one tile holding their lip (here), the
+// others near it.
 void testTiles(const World& w, const std::vector<terrain::RiverFall>& falls) {
     std::size_t tiles = 0;
     std::size_t sides = 0;
@@ -72,6 +84,7 @@ void testTiles(const World& w, const std::vector<terrain::RiverFall>& falls) {
     bool match = true;
     bool shared = true;
     bool once = true;
+    bool near = true;
     for (const terrain::RiverFall& f : falls) {
         for (int lod = 0; lod < terrain::kLodCount; ++lod) {
             const double side = terrain::tileSizeMeters(lod);
@@ -95,19 +108,22 @@ void testTiles(const World& w, const std::vector<terrain::RiverFall>& falls) {
             std::size_t found = 0;
             for (const TileData* d : {&t, &east, &south}) {
                 for (const terrain::TileFall& g : d->falls) {
-                    found += std::abs(g.x - lipX) < 1e-6 && std::abs(g.z - lipZ) < 1e-6 ? 1u : 0u;
+                    const bool lip = std::abs(g.x - lipX) < 1e-6 && std::abs(g.z - lipZ) < 1e-6;
+                    found += lip && g.here ? 1u : 0u;
+                    near = near && nearTile(*d, g);
                 }
             }
             once = once && found == 1;
             held += found;
         }
     }
-    TEST_CHECK(match && shared && once && sides > 0);
+    TEST_CHECK(match && shared && once && near && sides > 0);
     std::printf("tiles: %zu at the lips of %zu falls, columns %s, %zu columns of common sides %s, "
-                "%zu falls %s\n",
+                "%zu falls %s, the others %s\n",
                 tiles, falls.size(), match ? "those of the core" : "NOT THOSE OF THE CORE", sides,
                 shared ? "the same" : "DIFFERENT", held,
-                once ? "each in the one tile of its lip" : "NOT IN THE TILE OF THEIR LIP");
+                once ? "each in the one tile of its lip" : "NOT IN THE TILE OF THEIR LIP",
+                near ? "near it" : "FAR FROM IT");
 }
 
 // The flow of the river columns of the LOD 0 tiles around the falls: a unit vector, and the water

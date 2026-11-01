@@ -1,5 +1,7 @@
 #include "tile_water_mesh.hpp"
 
+#include "fall_edges.hpp"
+
 #include "terrain/det_math.hpp"
 #include "terrain/meshing/density_grid.hpp"
 #include "terrain/streaming/lod.hpp"
@@ -7,6 +9,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -131,12 +135,18 @@ struct Cell {
 
 constexpr std::array<std::array<int, 2>, 4> kCorners{{{0, 0}, {1, 0}, {0, 1}, {1, 1}}};
 
+// The water of a corner is that above (or below) a fall within kLevelLeast meters plus
+// kLevelCells cells of its level, near its edge within kReachCells cells (and a meter).
+constexpr double kLevelLeast = 0.25;
+constexpr double kLevelCells = 0.35;
+constexpr double kReachCells = 3.0;
+
 // Builds the vertices and triangles of the cells.
 class Builder {
 public:
     Builder(const TileData& data, std::vector<Column> columns, double spacing)
         : columns_(std::move(columns)), spacing_(spacing), originY_(data.originY),
-          shared_(columns_.size(), -1), rim_(columns_.size(), false) {
+          shared_(columns_.size(), -1), rim_(columns_.size(), false), edges_(data) {
         for (int k = 0; k < kCells; ++k) {
             for (int i = 0; i < kCells; ++i) {
                 if (describe(i, k).cut) {
@@ -151,6 +161,9 @@ public:
 
     void cell(int i, int k) {
         const Cell c = describe(i, k);
+        if (c.drawn && c.cut) {
+            cutCell(i, k);
+        }
         if (!c.drawn || c.cut) {
             return;
         }
@@ -221,7 +234,71 @@ private:
         return index;
     }
 
+    // The fade of the water of corner (i, k) at level: near the edge of the lip of a fall whose
+    // water above stands there, by its distance to it (whether a cut cell of the tile meets the
+    // corner or not: the same in the tile beside); none on the pool below a fall near where its
+    // water meets it; toward a cut off the falls (of the core alone), all; none elsewhere.
+    [[nodiscard]] double fadeAt(int i, int k, double level) const {
+        if (edges_.size() == 0) {
+            return rim_[at(i, k)] ? 0.0 : 1.0;
+        }
+        const double x = i * spacing_;
+        const double z = k * spacing_;
+        const double tolerance = kLevelLeast + kLevelCells * spacing_;
+        const double reach = kReachCells * spacing_ + 1.0;
+        if (const std::optional<double> fade = edges_.above(x, z, level, tolerance, reach)) {
+            return *fade;
+        }
+        return !rim_[at(i, k)] || edges_.below(x, z, level, tolerance, reach) ? 1.0 : 0.0;
+    }
+
+    // A cut cell across the edge of the lip of a fall, a corner of it under the water above the
+    // fall and upstream of the edge: drawn at that water (its corners there at their level, the
+    // others at the level of the fall above: the same on both sides of a side of a tile), faded
+    // out to nothing at the edge (its corners beyond it below 0): the water ends at the edge, not
+    // at a side of a cell.
+    void cutCell(int i, int k) {
+        const double tolerance = kLevelLeast + kLevelCells * spacing_;
+        const auto above = [&](const Column& c, std::size_t n) {
+            return c.wet && std::abs(c.level - edges_.top(n)) <= tolerance;
+        };
+        for (std::size_t n = 0; n < edges_.size(); ++n) {
+            const Column* top = nullptr;
+            bool upstream = false;
+            for (const auto& o : kCorners) {
+                const Column& c = columns_[at(i + o[0], k + o[1])];
+                if (above(c, n)) {
+                    const std::optional<double> fade =
+                        edges_.toward(n, (i + o[0]) * spacing_, (k + o[1]) * spacing_);
+                    upstream = upstream || (fade && *fade > 0.0);
+                    top = top == nullptr || c.level > top->level ? &c : top;
+                }
+            }
+            if (!upstream) {
+                continue;
+            }
+            Column fall = *top;
+            fall.level = edges_.top(n);
+            std::array<std::int32_t, 4> v{};
+            for (std::size_t c = 0; c < kCorners.size(); ++c) {
+                const int ci = i + kCorners[c][0];
+                const int ck = k + kCorners[c][1];
+                const Column& own = columns_[at(ci, ck)];
+                const std::optional<double> fade = edges_.toward(n, ci * spacing_, ck * spacing_);
+                v[c] = vertex(ci, ck, above(own, n) ? own : fall, fade ? *fade : kEdgeBeyond);
+            }
+            for (const std::int32_t index : {v[0], v[3], v[1], v[0], v[2], v[3]}) {
+                mesh.triangles.push_back(index);
+            }
+            return;
+        }
+    }
+
     std::int32_t vertex(int i, int k, const Column& c) {
+        return vertex(i, k, c, fadeAt(i, k, c.level));
+    }
+
+    std::int32_t vertex(int i, int k, const Column& c, double fade) {
         const auto index = static_cast<std::int32_t>(mesh.positions.size());
         const double x = i * spacing_;
         const double z = k * spacing_;
@@ -234,7 +311,7 @@ private:
                                 static_cast<float>(1.0 / length)});
         mesh.uv0.push_back({c.flowX, c.flowZ});
         mesh.uv1.push_back({c.kind, static_cast<float>(dmath::hypot(c.slopeX, c.slopeZ))});
-        mesh.uv2.push_back({static_cast<float>(c.level), rim_[at(i, k)] ? 0.0f : 1.0f});
+        mesh.uv2.push_back({static_cast<float>(c.level), static_cast<float>(fade)});
         return index;
     }
 
@@ -243,6 +320,7 @@ private:
     double originY_;
     std::vector<std::int32_t> shared_;
     std::vector<bool> rim_; // the columns at a corner of a cut cell
+    FallEdges edges_;
 };
 
 } // namespace

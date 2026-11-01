@@ -36,9 +36,9 @@ inline constexpr float kWaterFoam = 5.0f;
 //   on a lake); on a curtain or the foam, meters across and down the fall from its lip.
 // - uv1: (what the vertex is, kWater*; on the surface the slope of the water, meters per meter,
 //   on a curtain or the foam the height of the fall, meters).
-// - uv2: (the altitude of the water, meters; on the surface its edge: 0 at a corner of a cell cut
-//   at the face of a fall, 1 elsewhere, the material fading the water out toward the cut; on a
-//   curtain its width, on the foam its radius, meters).
+// - uv2: (the altitude of the water, meters; on the surface its edge: the fade the material shows
+//   it by, clamped to [0, 1] (fall_edges.hpp: by the distance to the edge of the lip of a fall);
+//   on a curtain its width, on the foam its radius, meters).
 // cutCells: the cells of the surface cut at the faces of falls (none on the curtains).
 struct UnrealWaterMesh {
     std::vector<UnrealVector3f> positions;
@@ -68,10 +68,15 @@ inline constexpr double kWaterCutSlope = 0.7;
 //   meters) and is shared by its cells; a dry corner of a drawn cell stands at the mean level of
 //   the wet corners of that cell (its own vertex): the water goes on under the bank, whose ground
 //   hides it;
-// - a cell steeper than kWaterCutSlope between two corners is cut; the corners of the cut cells
-//   have an edge of 0 (uv2.v), the others 1: the water fades out over the cell before the cut,
-//   whatever the shape of the cut, and the slope of the water (its normal, the foam of the
-//   rapids) is never measured across a cut;
+// - a cell steeper than kWaterCutSlope between two corners is cut, and the slope of the water
+//   (its normal, the foam of the rapids) is never measured across a cut. Near the edge of the lip
+//   of a fall (TileData::falls, here or near: FallEdges), the water above it fades out by its
+//   distance to the edge, to nothing kEdgeOver meters beyond it under the top of the curtain,
+//   whether a cut cell meets a corner or not (the same in the tile beside), and a cut cell across
+//   the edge is drawn at the water above (its corners there at their level, the others at the
+//   level of the fall), faded out beyond the edge: the water ends along the edge, not at a side
+//   of a cell; the pool below keeps all of it. Off the falls, the corners of the cut cells have
+//   an edge of 0, the others 1: the water fades out over the cell before the cut;
 // - on a side stitched to a coarser tile (TileRequest::seams), an odd column between two wet
 //   even ones stands at their mean level: on the straight edge of the coarser cell, no crack
 //   between the LODs. Two tiles of a LOD share the columns of their common side: the same

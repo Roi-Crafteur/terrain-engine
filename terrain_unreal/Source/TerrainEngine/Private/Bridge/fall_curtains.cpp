@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <utility>
 
 namespace terrain::unreal {
 
@@ -104,14 +105,94 @@ void curtain(Writer& out, const TileFall& f, const Point& lip, double dirX, doub
     }
 }
 
-double foamRadius(const TileFall& f) {
-    return std::max(kFoamLeastRadius, kFoamRadiusShare * static_cast<double>(f.width));
+// The curtain of a fall along the edge of its lip (TileFall::edgeX), in the frame of the tile:
+// from each point of the edge down to where its water meets the pool (footEdgeX), kCurtainAhead
+// in front, curved or straight as curtain; uv0.x meters along the edge. Returns its width.
+// The points of an edge (TileFall::edgeX) and of the foot of its water, its two ends carried
+// kCurtainSides meters on beyond them: the water of the pools around the ends of the edge falls
+// too.
+struct CurtainEdge {
+    std::array<double, kFallEdge> x{};
+    std::array<double, kFallEdge> z{};
+    std::array<double, kFallEdge> footX{};
+    std::array<double, kFallEdge> footZ{};
+};
+
+CurtainEdge curtainEdge(const TileFall& f) {
+    CurtainEdge e{f.edgeX, f.edgeZ, f.footEdgeX, f.footEdgeZ};
+    for (const auto& [end, next] : {std::pair{std::size_t{0}, std::size_t{1}},
+                                    std::pair{kFallEdge - 1, kFallEdge - 2}}) {
+        const double dx = f.edgeX[end] - f.edgeX[next];
+        const double dz = f.edgeZ[end] - f.edgeZ[next];
+        const double length = dmath::hypot(dx, dz);
+        if (length > 1e-6) {
+            e.x[end] += kCurtainSides * dx / length;
+            e.z[end] += kCurtainSides * dz / length;
+            e.footX[end] += kCurtainSides * dx / length;
+            e.footZ[end] += kCurtainSides * dz / length;
+        }
+    }
+    return e;
+}
+
+double shapedCurtain(Writer& out, const TileFall& f, double originX, double originZ,
+                     double lipY) {
+    const CurtainEdge e = curtainEdge(f);
+    const double drop = static_cast<double>(f.top) - static_cast<double>(f.bottom);
+    const int rows = std::clamp(static_cast<int>(std::ceil(drop / kRowDrop)), 2, kMostRows);
+    std::array<double, kFallEdge> across{};
+    for (std::size_t p = 1; p < kFallEdge; ++p) {
+        across[p] = across[p - 1] + dmath::hypot(e.x[p] - e.x[p - 1], e.z[p] - e.z[p - 1]);
+    }
+    const double width = across[kFallEdge - 1];
+    const double lipDx = f.footX - f.x;
+    const double lipDz = f.footZ - f.z;
+    const double lipRun = std::max(dmath::hypot(lipDx, lipDz), 1e-6);
+    std::array<std::int32_t, kFallEdge> previous{};
+    for (int r = 0; r <= rows; ++r) {
+        const double t = static_cast<double>(r) / rows;
+        const double fall = drop * t + (r == rows ? kCurtainBelow : 0.0);
+        std::array<std::int32_t, kFallEdge> current{};
+        for (std::size_t p = 0; p < kFallEdge; ++p) {
+            const double dx = e.footX[p] - e.x[p];
+            const double dz = e.footZ[p] - e.z[p];
+            const double run = dmath::hypot(dx, dz);
+            const double dirX = run > 1e-6 ? dx / run : lipDx / lipRun;
+            const double dirZ = run > 1e-6 ? dz / run : lipDz / lipRun;
+            const bool curved = drop >= kCurtainCurveSlope * run;
+            const double share = curved ? std::sqrt(t) : t;
+            const double ahead = kCurtainAhead + run * share;
+            const double along = std::max(curved ? run * 0.5 / std::max(share, 0.05) : run, 1e-3);
+            const double length = dmath::hypot(drop, along);
+            const Point normal{dirX * drop / length, along / length, dirZ * drop / length};
+            const UnrealUV uv{static_cast<float>(across[p]), static_cast<float>(fall)};
+            current[p] = out.vertex({e.x[p] - originX + dirX * ahead, lipY - fall,
+                                     e.z[p] - originZ + dirZ * ahead},
+                                    normal, uv, {kWaterCurtain, static_cast<float>(drop)}, width);
+            if (r > 0 && p > 0) {
+                out.triangle(previous[p - 1], previous[p], current[p]);
+                out.triangle(previous[p - 1], current[p], current[p - 1]);
+            }
+        }
+        previous = current;
+    }
+    return width;
+}
+
+// The foam at the foot of a fall falling width meters across: kFoamRadiusShare of it in radius
+// (kFoamLeastRadius at least), within its pool (TileFall::pool) when known.
+double foamRadius(const TileFall& f, double width) {
+    const double radius = std::max(kFoamLeastRadius, kFoamRadiusShare * width);
+    if (!(f.pool > 0.0f)) {
+        return radius;
+    }
+    const double room = (static_cast<double>(f.pool) - kCurtainAhead) / (1.0 + kFoamAheadShare);
+    return std::max(0.5, std::min(radius, room));
 }
 
 // The foam on the water below a fall, from where its curtain meets it downstream.
-void foam(Writer& out, const TileFall& f, const Point& center) {
+void foam(Writer& out, const TileFall& f, const Point& center, double radius) {
     const double drop = static_cast<double>(f.top) - static_cast<double>(f.bottom);
-    const double radius = foamRadius(f);
     const Point up{0.0, 1.0, 0.0};
     const UnrealUV kind{kWaterFoam, static_cast<float>(drop)};
     const std::int32_t middle = out.vertex(center, up, {0.0f, 0.0f}, kind, radius);
@@ -145,16 +226,28 @@ UnrealWaterMesh buildFallCurtains(const TileData& data) {
         const double dx = f.footX - f.x;
         const double dz = f.footZ - f.z;
         const double run = dmath::hypot(dx, dz);
-        if (!(drop > 0.0) || !(run > 0.0)) {
-            continue; // no fall (the foot of a fall of the core lies below and downstream)
+        if (!f.here || !(drop > 0.0) || !(run > 0.0)) {
+            continue; // drawn by its own tile; or no fall (its foot lies below and downstream)
         }
         const Point lip{f.x - data.originX, static_cast<double>(f.top) - data.originY,
                         f.z - data.originZ};
-        curtain(out, f, lip, dx / run, dz / run, run);
-        const double ahead = kCurtainAhead + run + kFoamAheadShare * foamRadius(f);
+        double width = static_cast<double>(f.width); // of its channel, or of its edge
+        // The foot of the middle of its water.
+        double footX = lip.x + dx;
+        double footZ = lip.z + dz;
+        if (f.edge == kFallEdge) {
+            width = shapedCurtain(out, f, data.originX, data.originZ, lip.y);
+            footX = f.footEdgeX[kFallEdge / 2] - data.originX;
+            footZ = f.footEdgeZ[kFallEdge / 2] - data.originZ;
+        } else {
+            curtain(out, f, lip, dx / run, dz / run, run);
+        }
+        const double radius = foamRadius(f, width);
+        const double ahead = kCurtainAhead + kFoamAheadShare * radius;
         foam(out, f,
-             {lip.x + dx / run * ahead, static_cast<double>(f.bottom) - data.originY + kFoamAbove,
-              lip.z + dz / run * ahead});
+             {footX + dx / run * ahead, static_cast<double>(f.bottom) - data.originY + kFoamAbove,
+              footZ + dz / run * ahead},
+             radius);
     }
     return mesh;
 }

@@ -309,7 +309,10 @@ Frame frameAt(const Course& c, std::size_t i, const SegmentSpan& span, double x,
     const CoursePoint& b = c.points[i + 1];
     sideOf(a, span, x, z, f);
     windFoot(c, a, b, span, f);
-    const Bowl bowl = a.fall || b.fall ? bowlAt(c, alongOf(a, b, f), i) : Bowl{};
+    // The bowl round below the foot: as far from the axis as the half width of the channel.
+    const double half = lerp(a.half, b.half, f.t);
+    const double across = half > 0.0 ? std::min(1.0, f.distance / half) : 1.0;
+    const Bowl bowl = a.fall || b.fall ? bowlAt(c, alongOf(a, b, f), i, across) : Bowl{};
     return frameOf(a, b, f, c.rises[i], c.valleyRises[i], warp, bowl, c.slotSeed);
 }
 

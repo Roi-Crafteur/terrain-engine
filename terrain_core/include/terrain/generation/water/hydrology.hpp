@@ -19,6 +19,7 @@
 #include "terrain/generation/climate.hpp"
 #include "terrain/generation/heightfield.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -108,6 +109,18 @@ struct RiverFall {
     float width = 0.0f;
     double footX = 0.0; // the foot: the point of the course where the water below begins
     double footZ = 0.0;
+    // The edge its water leaves the rock from (phase 12A, the lips of the falls in steps:
+    // receded, bowed, turned): edge points (kFallEdge, or 0 for a straight lip across at (x, z))
+    // across its channel, from one side to the other, meters; and where the water falling from
+    // each meets the pool below (its face goes back with its lip, less and less down to its
+    // foot).
+    std::array<double, kFallEdge> edgeX{};
+    std::array<double, kFallEdge> edgeZ{};
+    std::array<double, kFallEdge> footEdgeX{};
+    std::array<double, kFallEdge> footEdgeZ{};
+    std::uint8_t edge = 0;
+    // Meters of its pool below its foot, to the next lip down the course (0: none known).
+    float pool = 0.0f;
 };
 
 // A block of rock in a pool of a fall: radius meters wide around (x, z), its top at top (flatter

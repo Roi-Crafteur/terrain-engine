@@ -208,15 +208,15 @@ BODY_CALL = ("Water.Body(Kind, Altitude, RiverWaterColor, LakeWaterColor, Glacie
 
 
 # The pixel of the surface of a lake or a river of a tile (M_TerrainWater, translucent): inputs Flow
-# (UV0), KindSlope (UV1), Altitude (UV2.x), Edge (UV2.y: 0 at the corners of the cells cut at a
-# fall), Rel (cm from the corner of level 0 of the horizon) with SurfaceCells, SurfacePitchCm,
-# SurfaceCoveredCm, SurfaceBandCm and HasSurface (placed by the horizon, 0 without it), CameraRel,
-# Time, SunDir, SunIlluminance, SkyView (binds the sky view LUT), SceneDepth and PixelDepth (cm),
-# VertexNormal, the look parameters; returns the base color, with EmissiveOut, OpacityOut,
-# NormalOut (world space) and RoughnessOut. The color the water lets through is one share for the
-# three channels: the same as the horizon draws it. The water fades out (its opacity, so its
-# reflection too) toward a cut and at a shore; over the outer band of the tiles, it keeps the
-# pixels the water of the horizon leaves (FTerrainWater::Dither).
+# (UV0), KindSlope (UV1), Altitude (UV2.x), Edge (UV2.y: the fade toward the edge of the lip of a
+# fall or a cut, clamped to [0, 1]), Rel (cm from the corner of level 0 of the horizon) with
+# SurfaceCells, SurfacePitchCm, SurfaceCoveredCm, SurfaceBandCm and HasSurface (placed by the
+# horizon, 0 without it), CameraRel, Time, SunDir, SunIlluminance, SkyView (binds the sky view LUT),
+# SceneDepth and PixelDepth (cm), VertexNormal, the look parameters; returns the base color, with
+# EmissiveOut, OpacityOut, NormalOut (world space) and RoughnessOut. The color the water lets
+# through is one share for the three channels: the same as the horizon draws it. The water fades out
+# (its opacity, so its reflection too) toward a cut and at a shore; over the outer band of the
+# tiles, it keeps the pixels the water of the horizon leaves (FTerrainWater::Dither).
 TILE_WATER_HLSL = r"""
 const float PERIOD = 409600.0; // 4096 m, cm
 float2 p = (GetTranslatedWorldPosition(Parameters).xy - GetPeriodicWorldOrigin(float3(PERIOD, PERIOD, PERIOD)).xy) * 0.01;
@@ -239,10 +239,21 @@ float thickness = max(SceneDepth - PixelDepth, 0.0) * 0.01 * length(CameraRel) /
 float3 deep, absorb;
 BODY_CODE
 float through = dot(exp(-absorb * thickness), float3(0.3333, 0.3333, 0.3334));
-// The foam of the rapids, where the water slopes, carried by the flow.
-float2 q = p - flow * Time;
-float foam = saturate((slope - FoamFromSlope) / max(FoamFullSlope - FoamFromSlope, 1e-3));
-foam *= smoothstep(0.35, 0.75, 0.6 * Water.Noise(q, 0.7) + 0.4 * Water.Noise(q * 1.3 + 11.0, 2.3));
+// The foam of the rapids, where the water slopes, carried by the flow: its noise in the frame of
+// the flow (streaks along it, never rows along the axes of the world), a second one turned
+// against it, and the slope where it starts and its threshold moved by a slower noise (no
+// straight front where the slope of the water changes).
+float flowLength = length(Flow);
+float2 along = flowLength > 0.01 ? Flow / flowLength : float2(0.8, 0.6);
+float2 across = float2(-along.y, along.x);
+float2 r = float2(dot(p, along), dot(p, across)) - float2(FlowSpeed * Time, 0.0);
+float patch = Water.Noise(r * float2(0.17, 0.21) + 5.3, 1.0);
+float2 turned = float2(0.83 * r.x - 0.56 * r.y, 0.56 * r.x + 0.83 * r.y);
+float streaks = 0.6 * Water.Noise(r * float2(0.45, 1.3), 1.0)
+              + 0.4 * Water.Noise(turned * float2(0.9, 2.1) + 11.0, 1.0);
+float from = FoamFromSlope * (0.5 + patch);
+float foam = saturate((slope - from) / max(FoamFullSlope - from, 1e-3));
+foam *= smoothstep(0.3 + 0.2 * patch, 0.7 + 0.2 * patch, streaks);
 // Translucent: what the water keeps of the light behind it, the foam opaque.
 float opacity = max(saturate(1.0 - through * (1.0 - Fresnel)), foam);
 float keep = max(opacity, 0.05);

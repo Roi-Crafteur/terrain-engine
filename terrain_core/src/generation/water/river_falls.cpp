@@ -27,9 +27,10 @@ constexpr double kStepDrop = 4.0;
 // sheer, rapids instead: a ramp down as far as kCascadeLeast to kCascadeMost drops of kStepLeast to
 // kStepLeast + kStepSpread meters each would come, kRampLeast to kRampLeast + kRampSpread meters
 // per meter (drawn), steeper where the slope is (its water never above the slope, looked at every
-// kRampProbe meters); steeper than kRampMost, a single drop instead. No pool between two drops is
-// shorter than kPoolLeast meters, nor than kPoolWidths times the width of the channel: closer, the
-// two are one drop (a box seen from above otherwise, its lips without room to bend).
+// kRampProbe meters), eased at its ends (kRampEase); steeper than kRampMost, a single drop
+// instead. No pool between two drops is shorter than kPoolLeast meters, nor than kPoolWidths times
+// the width of the channel: closer, the two are one drop (a box seen from above otherwise, its lips
+// without room to bend).
 constexpr double kStepRun = 70.0;
 constexpr double kRunLeast = 0.25;
 constexpr double kRunSpread = 2.75;
@@ -50,6 +51,13 @@ constexpr double kRampLeast = 0.3;
 constexpr double kRampSpread = 0.2;
 constexpr double kRampMost = 0.6;
 constexpr double kRampProbe = 1.0;
+// The slope of rapids grows over kRampEase meters about their top and fades over as many about
+// their foot (their water has no kink), round about where it breaks (kEaseBreaks points of the
+// course on each), half on the ramp and half in the pool or the river beside, half of it at most:
+// their water dips under the line of the pool above and of the ramp (so under the slope), and
+// comes ramp times kRampEase / 8 meters at most above the line of the pool below.
+constexpr double kRampEase = 4.0;
+constexpr int kEaseBreaks = 4;
 constexpr double kPoolLeast = 8.0;
 constexpr double kPoolWidths = 0.4;
 // The slot of a stretch lies kInciseShare of its mean drop (kInciseLeast to kInciseMost meters)
@@ -72,6 +80,18 @@ struct Drop {
     double run = 0.0;
     double from = 0.0;
     double to = 0.0;
+    bool rapids = false;
+    // Rapids: the meters about s and about s + run over which their slope grows from that of the
+    // water above (above, meters per meter) and fades.
+    double easeTop = 0.0;
+    double easeFoot = 0.0;
+    double above = 0.0;
+};
+
+// The water above a stretch in steps: the meters of the course before it and their slope.
+struct Above {
+    double room = 0.0;
+    double slope = 0.0;
 };
 
 double lerp(double a, double b, double t) {
@@ -157,7 +177,7 @@ Stair addRapids(const std::vector<CoursePoint>& p, std::size_t first, std::size_
         ramp = std::max(ramp, (level - levelOn(p, first, last, s + u)) / u);
     }
     const double run = ramp > kRampMost ? std::max(height / slope, kFaceLeast) : height / ramp;
-    drops.push_back({s, run, level, level - height});
+    drops.push_back({s, run, level, level - height, !(ramp > kRampMost)});
     return {s + run, level - height};
 }
 
@@ -196,6 +216,24 @@ std::vector<Drop> mergeClose(const std::vector<CoursePoint>& p, std::size_t firs
         out.push_back(d);
     }
     return out;
+}
+
+// The rapids among drops eased at their ends (kRampEase), the stretch from first to last along
+// the course with above before it: each takes half of the pool or the river beside it at most.
+std::vector<Drop> easeRapids(std::vector<Drop> drops, double first, double last,
+                             const Above& above) {
+    double end = first - above.room; // where the water above the drop starts to be free
+    for (std::size_t k = 0; k < drops.size(); ++k) {
+        Drop& d = drops[k];
+        const double below = (k + 1 < drops.size() ? drops[k + 1].s : last) - (d.s + d.run);
+        if (d.rapids && d.run > 0.0) {
+            d.easeTop = std::clamp(d.s - end, 0.0, std::min(kRampEase, d.run));
+            d.easeFoot = std::clamp(below, 0.0, std::min(kRampEase, d.run));
+            d.above = k == 0 && d.s <= first ? above.slope : 0.0;
+        }
+        end = d.s + d.run + 0.5 * d.easeFoot;
+    }
+    return drops;
 }
 
 // The drops of the stretch p[first..last], from its lip down.
@@ -240,15 +278,36 @@ std::vector<Drop> dropsOf(const std::vector<CoursePoint>& p, std::size_t first,
     return mergeClose(p, first, last, drops);
 }
 
+// The level of eased rapids d at s along the course, within kRampEase / 2 of its top or foot or
+// between them: from the line of the water above to that of the ramp and to the pool below, round.
+double easedLevel(const Drop& d, double s) {
+    const double ramp = (d.from - d.to) / d.run;
+    const double x = s - d.s;
+    const double top = 0.5 * d.easeTop;
+    const double foot = 0.5 * d.easeFoot;
+    if (x < top) {
+        const double in = x + top;
+        return d.from - d.above * x -
+               (ramp - d.above) * in * in / (2.0 * std::max(d.easeTop, 1e-9));
+    }
+    const double past = x - d.run;
+    if (past > -foot) {
+        const double in = past + foot;
+        return d.to - ramp * past + ramp * in * in / (2.0 * std::max(d.easeFoot, 1e-9));
+    }
+    return d.from - ramp * x;
+}
+
 // The level of the stretch in steps at s along it, top above its first drop.
 double steppedLevel(const std::vector<Drop>& drops, double top, double s) {
     double level = top;
     for (const Drop& d : drops) {
-        if (s <= d.s) {
+        const bool eased = d.easeTop > 0.0 || d.easeFoot > 0.0;
+        if (eased ? s < d.s - 0.5 * d.easeTop : s <= d.s) {
             return level;
         }
-        if (s < d.s + d.run) {
-            return lerp(d.from, d.to, (s - d.s) / d.run);
+        if (s < d.s + d.run + 0.5 * d.easeFoot) {
+            return eased ? easedLevel(d, s) : lerp(d.from, d.to, (s - d.s) / d.run);
         }
         level = d.to;
     }
@@ -346,15 +405,35 @@ float appendSteps(const std::vector<CoursePoint>& p, std::size_t first, std::siz
     constexpr double kNear = 0.05;
     const Incision incision = incisionOf(p, first, last, meanOf(dropsOf(p, first, last)));
     const std::vector<CoursePoint> under = slopeUnder(p, first, last, incision);
-    const std::vector<Drop> drops = dropsOf(under, 0, under.size() - 1);
+    const Above above = first > 0 ? Above{p[first].s - p[first - 1].s,
+                                          slopeOf(p[first - 1], p[first])}
+                                  : Above{};
+    const std::vector<Drop> drops =
+        easeRapids(dropsOf(under, 0, under.size() - 1), p[first].s, p[last].s, above);
     std::vector<double> breaks;
     for (const Drop& d : drops) {
+        const double foot = d.s + d.run;
+        for (int k = 0; k <= kEaseBreaks && d.easeTop > 0.0; ++k) {
+            breaks.push_back(d.s + d.easeTop * (static_cast<double>(k) / kEaseBreaks - 0.5));
+        }
         breaks.push_back(d.s);
-        breaks.push_back(d.s + d.run);
+        breaks.push_back(foot);
+        for (int k = 0; k <= kEaseBreaks && d.easeFoot > 0.0; ++k) {
+            breaks.push_back(foot + d.easeFoot * (static_cast<double>(k) / kEaseBreaks - 0.5));
+        }
     }
+    std::sort(breaks.begin(), breaks.end());
     const float slot = slotBase(meanOf(drops));
     const double top = p[first].level;
     std::size_t b = 0;
+    // The top of rapids at the top of the stretch eased in the river above it (its points aside).
+    for (; b < breaks.size() && breaks[b] < p[first].s - kNear; ++b) {
+        if (first > 0 && breaks[b] > out.back().s + kNear) {
+            out.push_back(pointAt(p[first - 1], p[first], breaks[b],
+                                  steppedLevel(drops, top, breaks[b])));
+            out.back().fall = p[first - 1].fall;
+        }
+    }
     for (std::size_t i = first; i < last; ++i) {
         CoursePoint a = p[i];
         a.level = static_cast<float>(steppedLevel(drops, top, a.s));

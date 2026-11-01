@@ -2,6 +2,8 @@
 // (hydrology.hpp).
 #include "terrain/generation/water/hydrology.hpp"
 
+#include "river_lips.hpp"
+
 #include "hydrology_impl.hpp"
 #include "river_profile.hpp"
 #include "terrain/det_math.hpp"
@@ -72,6 +74,32 @@ std::size_t holderOf(const Candidates& c, std::size_t win, double top, double& b
     }
     bank = hold;
     return win;
+}
+
+// The edges of the lips of the falls of course c (runs: their lip and foot points), and their
+// pools down to the next lip.
+void shapeFalls(const water::Course& c, const std::vector<std::array<std::size_t, 2>>& runs,
+                std::vector<RiverFall>& falls) {
+    for (std::size_t k = 0; k < falls.size(); ++k) {
+        const std::size_t i = runs[k][0];
+        const std::size_t j = runs[k][1];
+        const double foot = c.points[j].s;
+        falls[k].pool =
+            k + 1 < falls.size() ? static_cast<float>(c.points[runs[k + 1][0]].s - foot) : 0.0f;
+        const auto lip = std::find_if(c.lips.begin(), c.lips.end(), [&](const water::FallLip& l) {
+            return l.point >= i && l.point < j;
+        });
+        if (lip == c.lips.end()) {
+            continue; // a straight lip
+        }
+        const water::LipEdge e = water::lipEdge(c, *lip, c.points[j].x, c.points[j].z,
+                                                foot - lip->s);
+        falls[k].edgeX = e.x;
+        falls[k].edgeZ = e.z;
+        falls[k].footEdgeX = e.footX;
+        falls[k].footEdgeZ = e.footZ;
+        falls[k].edge = static_cast<std::uint8_t>(kFallEdge);
+    }
 }
 
 } // namespace
@@ -245,6 +273,7 @@ RiverReach Hydrology::reach(std::size_t index) const {
         const double shift = length > 0.0 ? static_cast<double>(a.shift) / length : 0.0;
         return std::array<double, 2>{a.x - shift * (b.z - a.z), a.z + shift * (b.x - a.x)};
     };
+    std::vector<std::array<std::size_t, 2>> runs; // the lip and the foot of each fall
     for (std::size_t i = 0; i + 1 < c.points.size();) {
         std::size_t j = i;
         while (j + 1 < c.points.size() &&
@@ -257,9 +286,11 @@ RiverReach Hydrology::reach(std::size_t index) const {
             const std::array<double, 2> foot = onSlot(j);
             out.falls.push_back({lip[0], lip[1], c.points[i].level, c.points[j].level,
                                  2.0f * c.points[i].half, foot[0], foot[1]});
+            runs.push_back({i, j});
         }
         i = j > i ? j : i + 1;
     }
+    shapeFalls(c, runs, out.falls);
     for (const water::FallBlock& b : c.blocks) {
         out.blocks.push_back({b.x, b.z, b.radius, b.top});
     }

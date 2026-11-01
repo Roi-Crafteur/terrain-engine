@@ -171,8 +171,8 @@ double meanOf(const std::vector<double>& values) {
 
 // Meters of pool above point i of p, from the foot of the drop above at from (meters along the
 // reach) at most, up to the rapids above it if any (their water coming down more than kPoolSlope
-// meters per meter).
-constexpr double kPoolSlope = 0.05;
+// meters per meter: river_lips.cpp).
+constexpr double kPoolSlope = 0.15;
 
 double poolAbove(const std::vector<RiverPoint>& p, const std::vector<double>& s, std::size_t i,
                  double from) {

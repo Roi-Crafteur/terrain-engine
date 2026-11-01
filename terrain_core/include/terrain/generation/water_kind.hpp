@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace terrain {
@@ -17,5 +18,8 @@ enum class WaterKind : std::uint8_t {
 // TileData::waterLevels): far below any ground. HeightSample::waterLevel has no such value: on dry
 // land it holds the height of the relief.
 inline constexpr float kNoWaterLevel = -1.0e9f;
+
+// The points of the edge of the lip of a fall (RiverFall::edgeX, TileFall::edgeX).
+inline constexpr std::size_t kFallEdge = 9;
 
 } // namespace terrain

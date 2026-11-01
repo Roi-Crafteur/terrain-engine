@@ -192,8 +192,12 @@ void placeBlock(Course& c, const BlockAsk& ask, std::uint64_t bits, std::size_t 
     // The bed of the channel there (river_profile.cpp): the block stands above it.
     const double level = ask.sloped ? lerp(a.level, b.level, t) : ask.level;
     const double off = aside / half;
+    // The bowl as deep there as the valley has it (round: from the axis too).
+    const double riverHalf = lerp(a.half, b.half, t);
+    const double deeper =
+        bowlAt(c, s, riverHalf > 0.0 ? std::min(1.0, std::abs(aside) / riverHalf) : 1.0).deeper;
     const double bed =
-        level - (static_cast<double>(lerp(a.depth, b.depth, t)) + bowl.deeper) * (1.0 - off * off);
+        level - (static_cast<double>(lerp(a.depth, b.depth, t)) + deeper) * (1.0 - off * off);
     const double base = bed - kBlockBelow;
     // On a slope, never above the lowest relief across the channel (it would stand out of the
     // valley, uncarved).

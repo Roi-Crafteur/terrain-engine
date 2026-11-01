@@ -63,15 +63,17 @@ void placePools(Course& c);
 // shallower down to nothing within kBowlPool of its pool; nothing elsewhere. Narrower (wider below
 // 0) toward each lip, its sill, down the face and back at its foot (river_pools.cpp: the pools
 // oval), the walls of its slot coming in with it.
+// Below the foot, round seen from above: the deeper the nearer the axis too (across: the share of
+// the half width of the channel from it, 0 on the axis), never a straight line across it.
 struct Bowl {
     double deeper = 0.0;
     double wider = 0.0;
 };
-[[nodiscard]] Bowl bowlAt(const Course& c, double s);
+[[nodiscard]] Bowl bowlAt(const Course& c, double s, double across = 0.0);
 // The same for the valley of segment i of the course (from its point i to the next, found from
 // there), s meters along it read no farther than kBowlBeyond meters beyond its ends: where
 // CoursePoint::bowlDeep and bowlWide bound it.
-[[nodiscard]] Bowl bowlAt(const Course& c, double s, std::size_t i);
+[[nodiscard]] Bowl bowlAt(const Course& c, double s, std::size_t i, double across = 0.0);
 inline constexpr double kBowlMost = 8.0;
 inline constexpr double kBowlWiden = 0.3;
 inline constexpr double kBowlBeyond = 16.0;

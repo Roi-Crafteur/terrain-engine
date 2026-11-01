@@ -12,6 +12,7 @@
 #include "water_level_support.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <vector>
@@ -150,26 +151,63 @@ void testFallAndSeam() {
                 stitched ? "on its edge" : "OFF ITS EDGE", kept ? "at their levels" : "MOVED");
 }
 
-// The Unreal Z of the water at the column (i, k) of a tile, in meters, or none.
-std::optional<double> waterAt(const TileData& t, int i, int k) {
+// The vertices of the water at the column (i, k) of a tile: their Unreal Z in meters and their
+// fade (uv2.v); a cut cell near a lip draws its own there, at the water above the fall.
+std::vector<std::array<double, 2>> waterAt(const TileData& t, int i, int k) {
     const WaterColumn& c = t.waterColumns.empty()
                                ? WaterColumn{}
                                : t.waterColumns[static_cast<std::size_t>(k * kSide + i)];
     if (c.kind != WaterKind::River && c.kind != WaterKind::Lake && c.kind != WaterKind::SaltLake) {
-        return std::nullopt;
+        return {};
     }
     const UnrealWaterMesh m = terrain::unreal::buildTileWater(t);
     const double spacing = terrain::tileCellMeters(t.request.key.lod);
-    for (const UnrealVector3f& p : m.positions) {
+    std::vector<std::array<double, 2>> found;
+    for (std::size_t n = 0; n < m.positions.size(); ++n) {
+        const UnrealVector3f& p = m.positions[n];
         if (std::abs(p.x - 100.0 * i * spacing) < 1e-3 &&
             std::abs(p.y - 100.0 * k * spacing) < 1e-3) {
-            return t.originY + p.z / 100.0;
+            found.push_back({t.originY + p.z / 100.0, m.uv2[n].v});
         }
     }
-    return std::nullopt;
+    return found;
 }
 
-// Around the lips of falls: the common side of two tiles of LOD 0 holds the same water; the side
+// How far the vertices of from that show (their fade above 0) lie at most from those of to (in
+// level and in fade): 0 when each has its twin there.
+double twinOff(const std::vector<std::array<double, 2>>& from,
+               const std::vector<std::array<double, 2>>& to) {
+    double worst = 0.0;
+    for (const auto& v : from) {
+        double best = v[1] > 0.0 ? 1e9 : 0.0;
+        for (const auto& u : to) {
+            best = std::min(best, std::max(std::abs(v[0] - u[0]), std::abs(v[1] - u[1])));
+        }
+        worst = std::max(worst, best);
+    }
+    return worst;
+}
+
+// How far the vertices of mid that show lie at most from the middle of a vertex of low and one of
+// high (the edge of a coarser cell).
+double edgeOff(const std::vector<std::array<double, 2>>& mid,
+               const std::vector<std::array<double, 2>>& low,
+               const std::vector<std::array<double, 2>>& high) {
+    double worst = 0.0;
+    for (const auto& v : mid) {
+        double best = v[1] > 0.0 ? 1e9 : 0.0;
+        for (const auto& l : low) {
+            for (const auto& h : high) {
+                best = std::min(best, std::abs(v[0] - 0.5 * (l[0] + h[0])));
+            }
+        }
+        worst = std::max(worst, best);
+    }
+    return worst;
+}
+
+// Around the lips of falls: the common side of two tiles of LOD 0 holds the same water (each
+// vertex that shows its twin, level and fade); the side
 // of a LOD 0 tile against a LOD 1 tile lies on its edge; the side of a LOD 3 tile has the levels
 // of the water texels of the horizon level 0, bit for bit.
 void testSides(const World& w, const std::vector<terrain::RiverFall>& falls) {
@@ -189,16 +227,17 @@ void testSides(const World& w, const std::vector<terrain::RiverFall>& falls) {
         for (int k = 0; k < kSide; ++k) {
             const auto left = waterAt(a, kLast, k);
             const auto right = waterAt(b, 0, k);
-            if (left && right) {
+            if (!left.empty() && !right.empty()) {
                 ++same;
-                worstSame = std::max(worstSame, std::abs(*left - *right));
+                worstSame = std::max({worstSame, twinOff(left, right), twinOff(right, left)});
             }
             const auto low = waterAt(coarse, 0, row + k / 2);
             const auto high = waterAt(coarse, 0, row + (k + 1) / 2);
             const auto mid = waterAt(fine, kLast, k);
-            if (low && high && mid && coarse.originX == a.originX + 16.0) {
+            if (!low.empty() && !high.empty() && !mid.empty() &&
+                coarse.originX == a.originX + 16.0) {
                 ++edge;
-                worstEdge = std::max(worstEdge, std::abs(*mid - 0.5 * (*low + *high)));
+                worstEdge = std::max(worstEdge, edgeOff(mid, low, high));
             }
         }
         const TileData far = tileAt(w.tiles, f.x, f.z, 3);
@@ -225,25 +264,48 @@ void testSides(const World& w, const std::vector<terrain::RiverFall>& falls) {
                 exact ? "the levels of its water texels" : "NOT THE LEVELS OF ITS WATER TEXELS");
 }
 
-// Whether every fall of a tile has its curtain and its foam, their sizes in uv2.v: the width of
-// the curtain (kCurtainWidthShare of the fall), the radius of the foam.
+// The width of the curtain of fall f (kCurtainWidthShare of its channel, or along the edge of its
+// lip carried kCurtainSides beyond its ends) and the radius of its foam (kFoamRadiusShare of the
+// width of its channel or of that edge, kFoamLeastRadius at least, within its pool).
+std::array<double, 2> sizesOf(const terrain::TileFall& f) {
+    using namespace terrain::unreal;
+    double width = kCurtainWidthShare * static_cast<double>(f.width);
+    double falling = static_cast<double>(f.width);
+    if (f.edge == terrain::kFallEdge) {
+        width = 2.0 * kCurtainSides;
+        for (std::size_t p = 1; p < terrain::kFallEdge; ++p) {
+            width += std::hypot(f.edgeX[p] - f.edgeX[p - 1], f.edgeZ[p] - f.edgeZ[p - 1]);
+        }
+        falling = width;
+    }
+    double radius = std::max(kFoamLeastRadius, kFoamRadiusShare * falling);
+    if (f.pool > 0.0f) {
+        const double room = (static_cast<double>(f.pool) - kCurtainAhead) / (1.0 + kFoamAheadShare);
+        radius = std::max(0.5, std::min(radius, room));
+    }
+    return {width, radius};
+}
+
+// Whether every fall whose lip lies in a tile has its curtain and its foam, their sizes in uv2.v:
+// the width of the curtain, the radius of the foam (sizesOf); the falls near it, nothing.
 bool everyFallDrawn(const TileData& t, const UnrealWaterMesh& m) {
     std::size_t foam = 0;
     bool sized = true;
+    std::size_t here = 0;
+    for (const terrain::TileFall& f : t.falls) {
+        here += f.here ? 1u : 0u;
+    }
     for (std::size_t n = 0; n < m.positions.size(); ++n) {
         const bool curtain = m.uv1[n].u == terrain::unreal::kWaterCurtain;
         foam += curtain ? 0u : 1u;
         bool known = false;
         for (const terrain::TileFall& f : t.falls) {
-            const double width = static_cast<double>(f.width);
-            const double size = curtain ? terrain::unreal::kCurtainWidthShare * width
-                                        : std::max(terrain::unreal::kFoamLeastRadius,
-                                                   terrain::unreal::kFoamRadiusShare * width);
-            known = known || std::abs(m.uv2[n].v - size) < 1e-3;
+            const double size = sizesOf(f)[curtain ? 0 : 1];
+            known = known || (f.here && std::abs(m.uv2[n].v - size) < 1e-3);
         }
         sized = sized && known;
     }
-    return sized && foam == 17u * t.falls.size();
+    return sized && foam == 17u * here;
 }
 
 // Whether every triangle faces the side of the normal of its first vertex, and the normals of the

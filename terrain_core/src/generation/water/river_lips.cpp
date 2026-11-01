@@ -49,10 +49,10 @@ constexpr double kRecessMost = 1.0 + 0.5 * kRoughShare; // lipRecess within it
 constexpr double kRoughWave = 7.0;
 // Without a pool around it (the first or the last lip of a course), kOpenPool meters. Its pool
 // above ends at rapids (a stretch in steps whose water comes down more than kPoolSlope meters per
-// meter), where it is shorter: the edge never recedes into them (it would squeeze them into a
-// step).
+// meter: the end of their foot, where their slope fades, is of the pool), where it is shorter:
+// the edge never recedes into them (it would squeeze them into a step).
 constexpr double kOpenPool = 40.0;
-constexpr double kPoolSlope = 0.05;
+constexpr double kPoolSlope = 0.15;
 // Its edge turns from across the slot by kTurnLeast to kTurnMost (10 to 35 degrees, drawn), the
 // other way from the lip above it but in kTurnSame of them (the lips of a stair staggered), as far
 // as the pools leave room for (in the frame of the slot: river_winding.hpp); the line of its turn
@@ -268,6 +268,34 @@ std::vector<std::uint32_t> lipsNear(const Course& c, double cx, double cz, doubl
         }
     }
     return out;
+}
+
+LipEdge lipEdge(const Course& c, const FallLip& l, double footX, double footZ, double run) {
+    LipEdge e;
+    // Across the slot at the lip: the axis side of each place of the slot (its offset, its
+    // stretch); the valley moved along the lip and across the slot as it winds (cutLips).
+    const SlotShift lip = shiftAt(c, l.s);
+    const SlotShift foot = shiftAt(c, l.s + run);
+    const auto stretchOf = [](const SlotShift& shift) {
+        const double rate = std::min(std::abs(shift.rate), kRateCap);
+        return std::sqrt(1.0 + rate * rate);
+    };
+    const double kept = 1.0 - smooth(0.0, static_cast<double>(l.reach), run);
+    // Across its whole width (its channel and the walls of its slot): the water of the pool above
+    // it may be wider than its channel at the sill.
+    const double width = static_cast<double>(l.width);
+    for (std::size_t p = 0; p < kFallEdge; ++p) {
+        const double side =
+            width * (2.0 * static_cast<double>(p) / static_cast<double>(kFallEdge - 1) - 1.0);
+        const double back = lipRecess(l, side);
+        const double w = lip.offset + side * stretchOf(lip);
+        e.x[p] = l.x - l.dirZ * w - back * (l.dirX - lip.rate * l.dirZ);
+        e.z[p] = l.z + l.dirX * w - back * (l.dirZ + lip.rate * l.dirX);
+        const double wf = foot.offset + side * stretchOf(foot);
+        e.footX[p] = footX - l.dirZ * wf - kept * back * (l.dirX - foot.rate * l.dirZ);
+        e.footZ[p] = footZ + l.dirX * wf - kept * back * (l.dirZ + foot.rate * l.dirX);
+    }
+    return e;
 }
 
 void cutLips(const Course& c, double x, double z, const LipValley& near, Valley& v,

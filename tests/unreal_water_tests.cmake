@@ -17,9 +17,14 @@ terrain_add_test(tile_rivers_test terrain_core)
 # The water of the tiles as Unreal draws it (Bridge): the surface of the lakes and rivers, the
 # curtains of the falls; their sides against another tile, a coarser one and the horizon.
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/fall_curtains.cpp
+                                             ${unreal_bridge}/fall_edges.cpp
                                              ${unreal_bridge}/planet_source.cpp
                                              ${unreal_bridge}/tile_water_mesh.cpp)
 terrain_add_test(unreal_tile_water_test terrain_unreal_bridge)
+
+# The water of the falls of the small world around their lips as Unreal draws it (LOD 0 to 2): no
+# hole seen from above in the cut cells, no cell drawn faded out, the foam in its pool.
+terrain_add_test(unreal_fall_lips_test terrain_unreal_bridge)
 
 # The scripts of the materials of the water, without Unreal: they compile, their HLSL declares
 # what it reads and writes, the materials they rebuild get every setting reset.

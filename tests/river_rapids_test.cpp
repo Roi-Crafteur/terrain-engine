@@ -9,7 +9,14 @@
 //     recede into it).
 //   - Levels: the level of the vertices of those cells (TileData::waterLevels, the UV0 of the
 //     tiles in Unreal) is that of the water of the field there, within kLevelOff meters; on a
-//     bank where the field is dry, under its ground (the level of the wet column beside it).
+//     bank where the field is dry, under its ground (the level of the wet column beside it); a
+//     cell off the blocks of the reach (a vertex beside one takes the levels of the wet columns of
+//     its cell only).
+//   - Ends: within kEndsOut meters of the top and of the foot of the rapids of the steps (their
+//     valley carved from above their water), the slope of their water along the axis of the
+//     course (RiverPoint::axisX, the levels of the reach) changes by kSlopeChange at most between
+//     two steps kEndsStep meters long (no kink where they start and end: their foam fades in and
+//     out), the faces of the drops aside (steeper than kRampMost, kFaceMargin meters around).
 #include "falls_support.hpp"
 #include "tile_water_mesh.hpp"
 
@@ -42,6 +49,12 @@ constexpr double kRampEnd = 5.0;
 constexpr double kSampleStep = 2.0;
 constexpr double kLevelOff = 0.1;
 constexpr int kSide = terrain::kGridSamples;
+constexpr double kEndsOut = 6.0;
+constexpr double kEndsStep = 0.5;
+constexpr double kSlopeChange = 0.2;
+constexpr double kRampMost = 0.6;
+constexpr double kFaceMargin = 1.0;
+constexpr float kSteppedValley = 0.01f;
 
 struct Rapids {
     std::size_t first = 0;
@@ -82,7 +95,19 @@ struct Checks {
     std::size_t wrong = 0;
     std::map<Key, TileData> tiles;
     std::map<Key, std::set<std::pair<int, int>>> rampCells;
+    std::vector<terrain::RiverBlock> blocks; // of the reaches of the rapids
 };
+
+// Whether (x, z) lies within margin meters of the water off a block (wrapped coordinates).
+bool nearBlock(const Checks& c, double x, double z, double margin) {
+    return std::any_of(c.blocks.begin(), c.blocks.end(), [&](const terrain::RiverBlock& b) {
+        double dx = std::abs(x - terrain::wrapCoordinate(b.x, golden::kSmallPlanet.x));
+        double dz = std::abs(z - terrain::wrapCoordinate(b.z, golden::kSmallPlanet.z));
+        dx = std::min(dx, golden::kSmallPlanet.x - dx);
+        dz = std::min(dz, golden::kSmallPlanet.z - dz);
+        return std::hypot(dx, dz) < static_cast<double>(b.radius) + margin;
+    });
+}
 
 // The cell of the tile of lod holding (x, z): drawn and not cut as buildTileWater draws it.
 void checkCell(const terrain::TerrainTiles& tiles, double x, double z, int lod, Checks& c) {
@@ -143,7 +168,9 @@ void checkLevels(const World& w, Checks& c) {
             const auto cell =
                 std::make_pair(static_cast<int>(std::floor((x - t.originX) / spacing)),
                                static_cast<int>(std::floor((z - t.originZ) / spacing)));
-            if (cells.count(cell) == 0 || !(t.waterLevels[v] > terrain::kNoWaterLevel)) {
+            // Beside a block, a vertex takes the level of the wet columns of its cell only.
+            if (cells.count(cell) == 0 || !(t.waterLevels[v] > terrain::kNoWaterLevel) ||
+                nearBlock(c, x, z, spacing)) {
                 continue;
             }
             const terrain::HeightSample h = w.field.sampleAt(x, z);
@@ -158,6 +185,63 @@ void checkLevels(const World& w, Checks& c) {
     }
 }
 
+// Meters along the axis of the points of a reach (RiverPoint::axisX: their levels lie along it).
+std::vector<double> axisAlong(const RiverReach& reach) {
+    const auto& p = reach.points;
+    std::vector<double> a(p.size(), 0.0);
+    for (std::size_t i = 1; i < p.size(); ++i) {
+        a[i] = a[i - 1] + std::hypot(p[i].axisX - p[i - 1].axisX, p[i].axisZ - p[i - 1].axisZ);
+    }
+    return a;
+}
+
+// The most the slope of the water of reach changes between two steps kEndsStep long from a0 to a1
+// along its axis (a: meters along it), off the faces of the drops: its segments steeper than
+// kRampMost, kFaceMargin meters around them.
+double slopeChange(const RiverReach& reach, const std::vector<double>& a, double a0, double a1) {
+    const auto& p = reach.points;
+    const auto face = [&](std::size_t i) {
+        const double run = a[i + 1] - a[i];
+        return run > 0.0 && static_cast<double>(p[i].level - p[i + 1].level) > kRampMost * run;
+    };
+    const auto levelAt = [&](double at, bool& onFace) {
+        std::size_t i = 0;
+        while (i + 2 < p.size() && a[i + 1] < at) {
+            ++i;
+        }
+        for (std::size_t k = 0; k + 1 < p.size(); ++k) {
+            onFace = onFace || (face(k) && a[k + 1] > at - kFaceMargin && a[k] < at + kFaceMargin);
+        }
+        const double run = a[i + 1] - a[i];
+        const double t = run > 0.0 ? std::clamp((at - a[i]) / run, 0.0, 1.0) : 1.0;
+        return static_cast<double>(p[i].level) +
+               t * static_cast<double>(p[i + 1].level - p[i].level);
+    };
+    double most = 0.0;
+    for (double at = std::max(a0, kEndsStep); at + kEndsStep <= std::min(a1, a.back());
+         at += kEndsStep) {
+        bool onFace = false;
+        const double before = levelAt(at - kEndsStep, onFace);
+        const double here = levelAt(at, onFace);
+        const double after = levelAt(at + kEndsStep, onFace);
+        if (!onFace) {
+            most = std::max(most, std::abs((before - here) - (here - after)) / kEndsStep);
+        }
+    }
+    return most;
+}
+
+// Whether the run of reach from point first to point last is rapids of a stretch in steps (its
+// valley carved from above its water, RiverPoint::valley), not the slope of a river.
+bool stepped(const RiverReach& reach, std::size_t first, std::size_t last) {
+    for (std::size_t i = first; i <= last; ++i) {
+        if (std::abs(reach.points[i].valley - reach.points[i].level) > kSteppedValley) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 int main() {
@@ -168,6 +252,8 @@ int main() {
     Reaches reaches(*w.hydrology);
     Checks c;
     std::size_t rapids = 0;
+    std::size_t ends = 0;
+    double change = 0.0;
     for (const std::size_t r : falls::steepReaches(w, reaches)) {
         const RiverReach& reach = reaches[r];
         const auto& p = reach.points;
@@ -175,8 +261,17 @@ int main() {
         for (std::size_t i = 1; i < p.size(); ++i) {
             s[i] = s[i - 1] + std::hypot(p[i].x - p[i - 1].x, p[i].z - p[i - 1].z);
         }
+        const std::vector<double> axis = axisAlong(reach);
+        c.blocks.insert(c.blocks.end(), reach.blocks.begin(), reach.blocks.end());
         for (const Rapids& run : rapidsOf(reach, s)) {
             ++rapids;
+            if (stepped(reach, run.first, run.last)) {
+                ++ends;
+                for (const double end : {axis[run.first], axis[run.last]}) {
+                    change = std::max(change,
+                                      slopeChange(reach, axis, end - kEndsOut, end + kEndsOut));
+                }
+            }
             for (double along = s[run.first] + kRampEnd; along <= s[run.last] - kRampEnd;
                  along += kSampleStep) {
                 std::size_t i = run.first;
@@ -203,7 +298,11 @@ int main() {
                 "without water, %zu cut; %zu vertices of them under water, %zu off the level of "
                 "the field by more than %.1f m\n",
                 rapids, c.cells, c.dry, c.cut, c.vertices, c.wrong, kLevelOff);
-    TEST_CHECK(rapids >= 10 && c.cells >= 500 && c.vertices >= 1000);
+    std::printf("%zu of them in steps: within %.0f m of their ends, the slope of their water "
+                "changes by %.3f at most every %.1f m\n",
+                ends, kEndsOut, change, kEndsStep);
+    TEST_CHECK(rapids >= 10 && ends >= 10 && c.cells >= 500 && c.vertices >= 1000);
+    TEST_CHECK(change <= kSlopeChange);
     TEST_CHECK(c.dry == 0 && c.cut == 0);
     TEST_CHECK(c.wrong == 0);
     return test::result();

@@ -17,14 +17,16 @@ namespace terrain::water {
 // tall ones), the drops 0.6 to 1.4 times as high as the slope comes down over that run; a fifth of
 // them rapids instead, a ramp of 0.3 to 0.5 meters per meter (steeper under a steeper slope, a
 // single drop beyond 0.6: the water of the tiles is cut steeper than 0.7, as a fall) down as far as
-// 2 to 4 drops of 2 to 6 meters would come; a slope steeper than kSheer falls at once, kSheerMax
-// meters at most per drop. No pool between two drops is shorter than 8 meters, nor than 0.4 times
-// the width of the channel: closer, they are one drop. The faces of the drops come down at 70 to 88
-// degrees. The water keeps the level of the ends of each stretch and comes down under its slope
-// less a half of their mean drop (2 to 20 meters, faded in and out at their ends): their slot stays
-// cut into the floor of the valley, which stays on the slope (CoursePoint::valley, never above the
-// relief there), at the lips too. Marks the points of the stretches (CoursePoint::fall) and the
-// walls of their slot (CoursePoint::slot, slotBase of their mean drop).
+// 2 to 4 drops of 2 to 6 meters would come, its slope growing and fading over 4 meters about its
+// top and its foot (half in the pool or the river beside: no kink in its water); a slope steeper
+// than kSheer falls at once, kSheerMax meters at most per drop. No pool between two drops is
+// shorter than 8 meters, nor than 0.4 times the width of the channel: closer, they are one drop.
+// The faces of the drops come down at 70 to 88 degrees. The water keeps the level of the ends of
+// each stretch and comes down under its slope less a half of their mean drop (2 to 20 meters, faded
+// in and out at their ends): their slot stays cut into the floor of the valley, which stays on the
+// slope (CoursePoint::valley, never above the relief there), at the lips too. Marks the points of
+// the stretches (CoursePoint::fall) and the walls of their slot (CoursePoint::slot, slotBase of
+// their mean drop).
 void stepFalls(std::vector<CoursePoint>& points);
 
 } // namespace terrain::water

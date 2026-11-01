@@ -14,6 +14,9 @@
 
 #include "river_profile.hpp"
 
+#include "terrain/generation/water/hydrology.hpp"
+
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -46,5 +49,18 @@ void cutLips(const Course& c, double x, double z, const LipValley& near, Valley&
 // The lips of c that may cut a point within reach meters of (cx, cz) (their indices, in order).
 [[nodiscard]] std::vector<std::uint32_t> lipsNear(const Course& c, double cx, double cz,
                                                   double reach);
+
+// The edge of lip l of course c (RiverFall::edgeX): its water leaves the rock kFallEdge times
+// across its width, from one side to the other (lipRecess, moved as cutLips moves the valley),
+// meters; and where that water meets the pool below run meters down the course from the lip,
+// the face gone back with the lip there as far as cutLips moves it.
+struct LipEdge {
+    std::array<double, kFallEdge> x{};
+    std::array<double, kFallEdge> z{};
+    std::array<double, kFallEdge> footX{};
+    std::array<double, kFallEdge> footZ{};
+};
+[[nodiscard]] LipEdge lipEdge(const Course& c, const FallLip& l, double footX, double footZ,
+                              double run);
 
 } // namespace terrain::water
