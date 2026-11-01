@@ -11,6 +11,7 @@
 #include "terrain/world_size.hpp"
 
 #include <cstdint>
+#include <limits>
 
 namespace terrain::coast_shape {
 
@@ -91,6 +92,11 @@ struct Inlets {
     double dome = 0.0;
     double deep = 0.0;
     double sink = 0.0;
+    // In the reach of the fjords, how far the plunging mountains rise from their water rather
+    // than from the shore of the geography (coast_inlets::Effect::glen).
+    double glen = 0.0;
+    // Into the rocks of the reefs, meters (coast_inlets::Effect::islet, below 0 out of them).
+    double islet = -std::numeric_limits<double>::infinity();
 };
 
 [[nodiscard]] Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,

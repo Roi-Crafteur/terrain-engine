@@ -104,6 +104,7 @@ private:
     [[nodiscard]] const Near& near(int lattice, std::int64_t i, std::int64_t j) const;
 
     coast_inlets::World world_;
+    noise::FbmOctaves cut_; // coast_inlets::makeCut
     std::array<Grid, 2> grids_;
     mutable Store<Cell> cells_;
     mutable Store<Near> nears_;

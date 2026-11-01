@@ -1,13 +1,11 @@
 #include "coast_lattice.hpp"
 
-#include "coast_shape.hpp"
+#include "coast_reefs.hpp"
 
 #include "terrain/det_math.hpp"
-#include "terrain/generation/noise.hpp"
 #include "terrain/world_size.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <set>
 #include <tuple>
@@ -39,29 +37,24 @@ constexpr double kNearLand = 6'000.0;
 constexpr std::array<double, 2> kRoot{1'200.0, 300.0};
 constexpr double kRootSlack = 500.0;
 // How often a cell holds an inlet where its kind of coast weighs fully: the fjords and the rias
-// on the large lattice; the calanques, the coves (more in strata) and else the stacks on the
-// small one.
+// on the large lattice; the calanques and the coves (more in strata) on the small one.
 constexpr double kFjordRate = 0.9;
 constexpr double kRiaRate = 0.8;
 constexpr double kCalanqueRate = 0.9;
 constexpr double kCoveRate = 0.6;
-constexpr double kStackRate = 0.35;
-// The stacks: kStackLow to kStackHigh meters high, kStackGap meters of sea at least between their
-// radius and the shore of the geography (their lobes reach a little nearer).
-constexpr double kStackLow = 35.0;
-constexpr double kStackHigh = 60.0;
-constexpr double kStackGap = 120.0;
-// The coves and the stacks only where the faces of the shore rise kCoveTop meters at least; the
-// coves of a group kCoveSpacing apart (see addCoves), the second and third kCoveSecond and
-// kCoveThird of the time, kCoveLeast meters inland at least, their roots and the stacks off
-// their capes within kNearSlack meters of the cell.
+// A reef (coast_reefs) off kCapeReef of the capes between two coves.
+constexpr double kCapeReef = 0.3;
+// The coves only where the faces of the shore rise kCoveTop meters at least; the coves of a
+// group kCoveSpacing apart (see addCoves), the second and third kCoveSecond and kCoveThird of the
+// time, kCoveLeast meters inland at least, their roots and the reefs off their capes within
+// kNearSlack meters of the cell.
 constexpr double kCoveTop = 8.0;
 constexpr double kCoveSpacingMost = 650.0;
 constexpr double kCoveSecond = 0.7;
 constexpr double kCoveThird = 0.4;
 constexpr double kCoveLeast = 60.0;
-constexpr double kCapeStack = 0.6;
 constexpr double kNearSlack = 100.0;
+constexpr double kCapeLeast = 30.0;
 // A fjord between massifs (betweenMassifs): the land read kFjordSide meters beyond its water,
 // kFjordMassif meters high somewhere on either side, kFjordBank meters at every place read. Where
 // the candidate of a cell gives none, others kFjordAlong meters along the shore where the fjords
@@ -127,13 +120,6 @@ bool betweenMassifs(const World& w, const Inlet& fjord) {
     return massif[0] >= kFjordMassif && massif[1] >= kFjordMassif;
 }
 
-// The radius of a stack height meters high: its flank as steep as the slope law lets the tiles
-// draw it (coast_shape::faceSlopeLimit; its distance is exact, no slack), at least 1 there (the
-// material of the slopes from 1 on is rock); its lobes only make it gentler.
-double stackRadius(double height) {
-    const double slope = coast_shape::faceSlopeLimit(height);
-    return height / (slope * (1.0 - 0.5 * (coast_inlets::kStackRim + coast_inlets::kStackTop)));
-}
 
 // The side branches of a ria from its main arm: one to three, from 30 to 70 % of the way up it,
 // 40 to 70 degrees off it on either side, 30 to 50 % of its length, 70 % of its width there.
@@ -206,22 +192,15 @@ void addFjord(const World& w, Draws& d, double x, double z, const std::array<dou
     }
 }
 
-// A stack of a cell from (x, z), out at sea off the shore, its middle within slack meters of the
-// cell.
-void addStack(const World& w, Draws& d, double x, double z, const std::array<double, 4>& bounds,
-              double slack, Cell& cell) {
-    const double height = between(kStackLow, kStackHigh, d.next());
-    const double radius = stackRadius(height);
-    if (!rootOf(w, -kSignalPerMeter * (radius + kStackGap), x, z) || !inCell(x, z, bounds, slack)) {
-        return;
+// A reef of a cell off the cape at (x, z), its middle within slack meters of the cell.
+void addReef(const World& w, Draws& d, double x, double z, const std::array<double, 4>& bounds,
+             double slack, Cell& cell) {
+    const auto inside = [&bounds, slack](double px, double pz) {
+        return inCell(px, pz, bounds, slack);
+    };
+    for (const coast_inlets::Stack& rock : coast_reefs::reefOf(w, d, x, z, inside)) {
+        cell.stacks.push_back(rock);
     }
-    const double cx = wrapCoordinate(x, w.size.x);
-    const double cz = wrapCoordinate(z, w.size.z);
-    // The phase of its lobes from where it stands (no draw taken).
-    const std::uint64_t h = noise::deriveSeed(std::bit_cast<std::uint64_t>(cx),
-                                              std::bit_cast<std::uint64_t>(cz));
-    cell.stacks.push_back({cx, cz, static_cast<float>(radius), static_cast<float>(height),
-                           static_cast<float>(static_cast<double>(h >> 11) * 0x1.0p-53)});
 }
 
 // Whether the shore rises kCoveTop meters at least at the mouth of a cove (coast_shape::shoreTop).
@@ -230,10 +209,30 @@ bool rises(const World& w, const Inlet& cove) {
     return static_cast<double>(w.site(m.x, m.z).top) >= kCoveTop;
 }
 
+// Whether a cove keeps kCapeLeast meters of land at least from every other inlet of the cell, from
+// shore to shore along their axes inland of their mouths (a cape between them, never crossing;
+// out at sea their flared roots may meet).
+bool apart(const World& w, const Inlet& cove, const Cell& cell) {
+    for (const Inlet& other : cell.inlets) {
+        for (std::size_t i = mouthOf(w, cove); i < cove.axis.size(); ++i) {
+            const coast_inlets::AxisPoint& a = cove.axis[i];
+            for (std::size_t k = mouthOf(w, other); k < other.axis.size(); ++k) {
+                const coast_inlets::AxisPoint& b = other.axis[k];
+                const double gap = static_cast<double>(a.half) + static_cast<double>(b.half) +
+                                   kCapeLeast;
+                if (dmath::hypot(a.x - b.x, a.z - b.z) < gap) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
 // The coves of a cell: the first from its candidate (x, z), then one on either side along the
 // shore (kCoveSecond and kCoveThird of the time), kCoveSpacing times the mouth of the first apart
 // (at most kCoveSpacingMost meters), where the shore rises kCoveTop meters too; capes between them,
-// a stack off each cape kCapeStack of the time.
+// a reef off kCapeReef of the capes.
 void addCoves(const World& w, Draws& d, double x, double z, const std::array<double, 4>& bounds,
               Cell& cell) {
     const std::size_t first = cell.inlets.size();
@@ -259,12 +258,12 @@ void addCoves(const World& w, Draws& d, double x, double z, const std::array<dou
         const Shape shape = shapeOf(InletKind::Cove, d);
         Inlet cove = inletOf(w, Lattice::Small, InletKind::Cove, shape, cx, cz,
                              inlandOf(w, cx, cz), kCoveLeast);
-        if (cove.axis.empty() || !rises(w, cove)) {
+        if (cove.axis.empty() || !rises(w, cove) || !apart(w, cove, cell)) {
             continue;
         }
         cell.inlets.push_back(std::move(cove));
-        if (d.next() < kCapeStack) {
-            addStack(w, d, 0.5 * (root.x + cx), 0.5 * (root.z + cz), bounds, kNearSlack, cell);
+        if (d.next() < kCapeReef) {
+            addReef(w, d, 0.5 * (root.x + cx), 0.5 * (root.z + cz), bounds, kNearSlack, cell);
         }
     }
 }
@@ -320,23 +319,19 @@ Cell cellOf(const World& w, Lattice lattice, std::int64_t i, std::int64_t j, dou
     const double calanque = kCalanqueRate * weight(CoastKind::Calanque);
     const double cove = kCoveRate * (weight(CoastKind::Rocky) + weight(CoastKind::Cliff)) *
                         (0.4 + 0.6 * static_cast<double>(site.strata));
-    // The calanques as drawn before the coves and the stacks kept to shores with relief.
-    const bool relief = static_cast<double>(site.top) >= kCoveTop;
+    // The calanques as drawn before; the coves kept to shores with relief.
     if (pick < calanque + cove) {
         if (kind * (calanque + cove) < calanque) {
             addInlet(w, lattice, InletKind::Calanque, d, x, z, bounds, cell);
-        } else if (relief) {
+        } else if (static_cast<double>(site.top) >= kCoveTop) {
             addCoves(w, d, x, z, bounds, cell);
         }
-    } else if (relief && pick < calanque + cove + kStackRate * (weight(CoastKind::Rocky) +
-                                                                weight(CoastKind::Cliff) +
-                                                                weight(CoastKind::Calanque))) {
-        addStack(w, d, x, z, bounds, kRootSlack, cell);
     }
     return cell;
 }
 
-Lattices::Lattices(coast_inlets::World world) : world_(std::move(world)) {
+Lattices::Lattices(coast_inlets::World world)
+    : world_(std::move(world)), cut_(coast_inlets::makeCut(world_.seed, world_.size)) {
     for (std::size_t l = 0; l < grids_.size(); ++l) {
         Grid& g = grids_[l];
         g.nx = std::max<std::int64_t>(1, static_cast<std::int64_t>(world_.size.x / kCellMeters[l]));
@@ -398,10 +393,10 @@ coast_inlets::Effect Lattices::effectAt(double x, double z) const {
     for (int l = 0; l < 2; ++l) {
         const Near& n = near(l, column(l, x), row(l, z));
         for (const Inlet* inlet : n.inlets) {
-            coast_inlets::addInlet(*inlet, x, z, world_.size, e);
+            coast_inlets::addInlet(*inlet, x, z, world_.size, cut_, e);
         }
         for (const coast_inlets::Stack* stack : n.stacks) {
-            coast_inlets::addStack(*stack, x, z, world_.size, e);
+            coast_reefs::addRock(*stack, x, z, world_.size, e);
         }
     }
     return e;

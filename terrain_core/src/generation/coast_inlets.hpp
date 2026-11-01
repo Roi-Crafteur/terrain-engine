@@ -7,6 +7,7 @@
 // plunging mountains on its sides. A stack is a dome of rock out at sea off the capes.
 
 #include "terrain/generation/coast.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
 #include <array>
@@ -82,15 +83,13 @@ struct Effect {
     double deep = 0.0; // the depth of their floor on their axis, meters
     // In their water, as rise on their sides: 0 at their shore, 1 a wall into the water.
     double sink = 0.0;
+    // In the reach of the fjords: how far the plunging mountains rise from their water rather than
+    // from the shore of the geography (1 in their water and near it, 0 from their wall on).
+    double glen = 0.0;
 };
 
 // The coast signal per meter of the inlets and stacks (about the gradient of the coast signal).
 inline constexpr double kSignalPerMeter = 3.0;
-// A stack is a steep dome: its flank straight, its rim rounded over kStackRim of its radius, its
-// top over kStackTop; its foot widened by lobes up to kStackLobe of its radius.
-inline constexpr double kStackRim = 0.1;
-inline constexpr double kStackTop = 0.12;
-inline constexpr double kStackLobe = 0.4;
 
 [[nodiscard]] double signalOf(double coast, const Effect& e);
 // The distance to the shore of the world from the distance to the shore of the geography (base,
@@ -98,8 +97,17 @@ inline constexpr double kStackLobe = 0.4;
 // Never below the true distance where their signal gives way, never folded.
 [[nodiscard]] double distanceOf(double base, const Effect& e);
 
-void addInlet(const Inlet& inlet, double x, double z, const WorldSize& world, Effect& e);
-void addStack(const Stack& stack, double x, double z, const WorldSize& world, Effect& e);
+// The noise of the cut of the coves (kCutAmplitude meters of it on their distance to their water):
+// no flat facet on their walls and their capes, a ragged shore.
+[[nodiscard]] noise::FbmOctaves makeCut(std::uint64_t seed, const WorldSize& world);
+
+void addInlet(const Inlet& inlet, double x, double z, const WorldSize& world,
+              const noise::FbmOctaves& cut, Effect& e);
+
+// A distance w as the signal of the inlets and rocks reads it: itself up to near, then growing to
+// infinity at far, so that their signal gives way to that of the geography before far (C1 at
+// near).
+[[nodiscard]] double reachOf(double w, double near, double far);
 
 // The lattices of the inlets (coast_lattice.hpp): the large one holds the fjords and the rias, the
 // small one the calanques, the coves and the stacks.

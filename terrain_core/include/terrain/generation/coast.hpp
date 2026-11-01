@@ -66,22 +66,29 @@ struct CoastSample {
 // coasts. Placed on fixed lattices along the coasts by the kinds of coast, a pure function of
 // their cell: the same whatever the threads, the order or the box of the queries.
 enum class InletKind : std::uint8_t {
-    // Fjords: wide valleys in U a few kilometers long, steep flanks but no slit, between massifs
-    // (on either side the land rises 700 m somewhere 1.2 to 3 km beyond the water, and 300 m at
-    // least at a third, two thirds and the head of the fjord: never along a coastal plain).
+    // Fjords: wide valleys in U a few kilometers long, between massifs (on either side the land
+    // rises 700 m somewhere 1.2 to 3 km beyond the water, and 300 m at least at a third, two
+    // thirds and the head of the fjord: never along a coastal plain); in their reach (2 km) the
+    // mountains rise from their water, steep down to it along all their length and at their
+    // entrance, no low bank.
     Fjord,
     Ria,      // rias: drowned valleys narrowing inland, with side branches, shallow
     Calanque, // calanques: narrow winding inlets between the faces of limestone cliffs
     // Coves: irregular bays opening out to the sea (no neck at their mouth, a bulb in some), in
-    // groups of one to three between capes (a stack off some capes), where the shore rises 8 m at
-    // least (the rocky coasts, the cliffs and the rias; never a low coast).
+    // groups of one to three between capes (a reef off some capes), where the faces of the shore
+    // rise 8 m (the rocky coasts, the cliffs and the rias), their cut and their shore ragged (no
+    // flat facet). Their capes may be low points of the rock platform, the cliff behind them.
     Cove,
 };
+// Not yet made: the lagoons behind a barrier (a spit, a lido), a form of their own, for later; the
+// coves have no inner basin (no keyhole).
 inline constexpr int kInletKindCount = 4;
 
 [[nodiscard]] const char* inletKindName(InletKind kind);
 
-// An inlet, for the settlements to come: a harbor where it is sheltered (Heightfield::harborsIn).
+// An inlet, for the settlements to come: a harbor where it is sheltered (Heightfield::harborsIn),
+// an anchorage where it is a cove between two capes without a neck (Heightfield::anchoragesIn);
+// never both. The settlements V2 read both.
 struct CoastSite {
     double x = 0.0;       // canonical: the middle of its widest water inland of its mouth, meters
     double z = 0.0;
@@ -95,12 +102,15 @@ struct CoastSite {
     InletKind inlet = InletKind::Cove;
     CoastKind coast = CoastKind::Rocky; // the kind of the coast at its mouth
     bool harbor = false;                // sheltered: kHarborShelter and kHarborDepth at least
+    bool anchorage = false;             // a cove between two capes, no harbor (kAnchorageLength)
 };
 
-// A stack off the coasts (Heightfield::stacksIn): a steep dome of rock out at sea, its middle
-// canonical, 35 to 60 m high, its flank as steep as the tiles draw without teeth (rock from a
-// slope of 1 on), its foot irregular (lobes); as wide as it is high or more until the 3D rock of
-// the faces (commit 5).
+// A rock of the reefs off the coasts (Heightfield::stacksIn): a low dome out at sea, its middle
+// canonical, 3 to 12 m high, its foot irregular (lobes), as steep as the tiles draw it without
+// teeth; two to four of them in a group off some capes between coves, merging into irregular
+// reefs. In 2D a stack cannot be both of rock (a slope of 1 at least) and credible (the slope law
+// of the tiles; any ledge, saddle or flat top is soil): the stacks come with the 3D faces
+// (commit 5).
 struct CoastStack {
     double x = 0.0;
     double z = 0.0;
@@ -113,5 +123,11 @@ struct CoastStack {
 inline constexpr float kHarborShelter = 0.5f;
 inline constexpr float kHarborDepth = 3.0f;
 inline constexpr float kHarborOpening = 20.0f;
+// An anchorage: a cove that is no harbor (its mouth no neck), its mouth at least kHarborOpening
+// meters wide, kHarborDepth meters deep at least, at least kAnchorageLength times as long as its
+// mouth is wide, the land of the geography on either side of its widest water (30 m beyond it):
+// the capes on either side keep off the swell running along the coast. Those capes may be low
+// points of rock (the platform before the cliffs), with beaches.
+inline constexpr float kAnchorageLength = 1.0f;
 
 } // namespace terrain

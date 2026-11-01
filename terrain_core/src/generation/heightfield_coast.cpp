@@ -148,6 +148,15 @@ std::vector<CoastSite> Heightfield::harborsIn(double minX, double minZ, double m
     return out;
 }
 
+std::vector<CoastSite> Heightfield::anchoragesIn(double minX, double minZ, double maxX,
+                                                 double maxZ) const {
+    std::vector<CoastSite> out = inletsIn(minX, minZ, maxX, maxZ);
+    out.erase(std::remove_if(out.begin(), out.end(),
+                             [](const CoastSite& s) { return !s.anchorage; }),
+              out.end());
+    return out;
+}
+
 coast_kinds::Weights Heightfield::coastKindsAt(double x, double z, const GeographySample& g,
                                               Memos* memos) const {
     return kindsOf(coasts_->kinds, layers_->walls, world_, x, z, g,
@@ -179,7 +188,8 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
         g.coast / std::max(kLeastGradient, dmath::hypot(gx, gz)), inlet);
     const coast_shape::Ground shape = coast_shape::shapeAt(
         p, coasts_->shapes, x, z, g, c.signal, distance, coastKindsAt(x, z, g, memos),
-        {g.coast, inlet.floor, inlet.rise, inlet.dome, inlet.deep, inlet.sink});
+        {g.coast, inlet.floor, inlet.rise, inlet.dome, inlet.deep, inlet.sink, inlet.glen,
+         inlet.islet});
     c.landward = c.signal > 0.0;
     c.land = shape.land;
     c.mountains = shape.mountains;

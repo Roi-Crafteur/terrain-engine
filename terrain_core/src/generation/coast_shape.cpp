@@ -110,6 +110,9 @@ constexpr double kPlateauRise = 250.0;
 // meters of coast signal (about 5 km): read on the signal, smooth, not on the distance to the
 // shore, whose rounding the heights of the mountains would show.
 constexpr double kPlungeRamp = 15'000.0;
+constexpr double kGlenRamp = 3'000.0;
+// Around a rock of the reefs, the sea floor at most kRockFoot meters deep per meter from its foot.
+constexpr double kRockFoot = 0.5;
 // Where the shore kinds weigh kHeldShare or more of the weight of the shore and plunging kinds,
 // the plunging kinds keep off their platform.
 constexpr double kHeldShare = 0.5;
@@ -262,12 +265,21 @@ Land shoreOf(const Profile& k, const GeographySample& g, double coast, double d,
             smooth(f.foot, top, d)};
 }
 
+// How far the plunging mountains have risen from the shore of the geography: steepest there, over
+// kPlungeRamp of coast signal, or over kGlenRamp only in the reach of a fjord (Inlets::glen),
+// whose own water they rise from (Inlets::rise): no low banks along it, no wall on the open sea
+// at its mouth.
+double rampOf(const Inlets& inlets) {
+    const double ramp = easeOut(inlets.base / kPlungeRamp);
+    return ramp + (easeOut(inlets.base / kGlenRamp) - ramp) * inlets.glen;
+}
+
 // The mountains and the fjords: the mountains and the regional elevation rise from the shore of
-// the geography (base), steepest there (no ledge at the water), and from the sides of the inlets
-// (rise), held down by held (in [0, 1]) where they share the coast with cliffs.
-Land plungeOf(const GeographySample& g, double coast, double base, double rise, double held) {
+// the geography (rampOf), steepest there (no ledge at the water), and from the sides of the
+// inlets (rise), held down by held (in [0, 1]) where they share the coast with cliffs.
+Land plungeOf(const GeographySample& g, double coast, const Inlets& inlets, double held) {
     const double plain = std::min(kCoastPlainRise * coast, kCoastPlainTop);
-    rise *= easeOut(base / kPlungeRamp) * held;
+    const double rise = inlets.rise * (rampOf(inlets) * held); // the order of before: same bits
     return {rise, rise, plain + (static_cast<double>(g.land) - plain) * rise};
 }
 
@@ -313,7 +325,7 @@ Land blendLand(const coast_kinds::Weights& weights, const GeographySample& g, do
         const auto kind = static_cast<CoastKind>(k);
         if (weights[k] > 0.0f && plunges(kind)) {
             add(static_cast<double>(weights[k]),
-                plungeOf(g, coast, inlets.base, inlets.rise, held));
+                plungeOf(g, coast, inlets, held));
         }
     }
     add(static_cast<double>(weights[static_cast<std::size_t>(CoastKind::Low)]),
@@ -403,11 +415,19 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
             plunge += static_cast<double>(weights[static_cast<std::size_t>(kind)]);
         }
         const double mirror = plunge * std::max(0.0, static_cast<double>(g.land)) *
-                              easeOut(inlets.base / kPlungeRamp) * inlets.sink;
+                              rampOf(inlets) * inlets.sink;
         // Rounded where the mountains meet the floor (a quarter of its depth).
         const double floor =
             std::min(inlets.floor, -smoothMin(mirror, inlets.deep, 0.25 * inlets.deep));
-        return {0.0f, 0.0f, static_cast<float>(std::min(ground, floor)), 1.0f, 0.0f};
+        // Toward a rock of the reefs the floor rises to its foot, at most kRockFoot steep.
+        const double rock = kRockFoot * inlets.islet;
+        return {0.0f, 0.0f, static_cast<float>(std::max(std::min(ground, floor), rock)), 1.0f,
+                0.0f};
+    }
+    if (inlets.base < 0.0) {
+        // A rock of the reefs out in the sea of the geography: its dome alone (no face of the
+        // coast, no relief of the land on it).
+        return {0.0f, 0.0f, static_cast<float>(inlets.dome), 1.0f, 0.0f};
     }
     bool shores = false;
     for (const CoastKind kind :

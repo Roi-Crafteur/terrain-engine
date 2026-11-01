@@ -185,6 +185,9 @@ public:
     // Those of them that are harbors (CoastSite::harbor), for the settlements to come.
     [[nodiscard]] std::vector<CoastSite> harborsIn(double minX, double minZ, double maxX,
                                                    double maxZ) const;
+    // Those of them that are anchorages (CoastSite::anchorage; never a harbor), the same way.
+    [[nodiscard]] std::vector<CoastSite> anchoragesIn(double minX, double minZ, double maxX,
+                                                      double maxZ) const;
     // The stacks off the coasts whose middle lies in the box (the same rules as inletsIn).
     [[nodiscard]] std::vector<CoastStack> stacksIn(double minX, double minZ, double maxX,
                                                    double maxZ) const;

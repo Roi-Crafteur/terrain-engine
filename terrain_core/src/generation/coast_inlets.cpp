@@ -27,14 +27,23 @@ constexpr std::size_t kMaxPoints = 120;
 constexpr double kCap = 12'000.0;
 constexpr double kBack = 200.0;
 constexpr double kRiverClear = 100.0;
-// The signal of a stack gives way to that of the geography kIsletReach meters beyond its rim; the
-// shore of the inlets and that of the geography meet rounded over kRound meters.
-constexpr double kIsletReach = 60.0;
+// The shore of the inlets and that of the geography meet rounded over kRound meters.
 constexpr double kRound = 60.0;
-// A cove flares out to kCoveFlare wider than its mouth at its root out at sea; the flank of a
-// fjord starts kFjordFlank of the way up its U.
+// A cove flares out to kCoveFlare wider than its mouth at its root out at sea. In the reach of a
+// fjord the plunging mountains rise from its water: fully up to kGlenHold of the way to its wall,
+// then giving way to the rise from the shore of the geography at its wall.
 constexpr double kCoveFlare = 0.7;
-constexpr double kFjordFlank = 0.25;
+constexpr double kGlenHold = 0.4;
+// The cut of the coves: a noise of kCutWavelength meters (three octaves) times kCutAmplitude
+// meters on their distance to their water, at most 0.25 meters per meter steep (measured: the
+// slack of the faces over the distance, coast_shape); the capes between two coves rounded over
+// kCapeRound meters.
+constexpr std::uint64_t kCutStream = 0xC07;
+constexpr double kCutWavelength = 160.0;
+constexpr double kCutAmplitude = 10.0;
+constexpr double kCapeRound = 40.0;
+// The capes of an anchorage: land kCapeSide meters beyond its water on either side.
+constexpr double kCapeSide = 30.0;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -230,6 +239,22 @@ March marchOf(const World& w, Lattice lattice, const Shape& shape, double x, dou
     return m;
 }
 
+// Whether the land of the geography lies on either side of the water of an inlet at its axis
+// point k, kCapeSide meters beyond its shore (the capes of an anchorage).
+bool landBothSides(const Inlet& inlet, std::size_t k, const World& w) {
+    const AxisPoint& a = inlet.axis[k > 0 ? k - 1 : k];
+    const AxisPoint& b = inlet.axis[std::min(k + 1, inlet.axis.size() - 1)];
+    const double length = dmath::hypot(b.x - a.x, b.z - a.z);
+    if (!(length > 0.0)) {
+        return false;
+    }
+    const AxisPoint& p = inlet.axis[k];
+    const double away = static_cast<double>(p.half) + kCapeSide;
+    const double nx = -(b.z - a.z) / length * away;
+    const double nz = (b.x - a.x) / length * away;
+    return w.coast(p.x + nx, p.z + nz) > 0.0 && w.coast(p.x - nx, p.z - nz) > 0.0;
+}
+
 // The site of an inlet: its mouth, its widest water inland and how sheltered it is.
 CoastSite siteOf(const Inlet& inlet, std::size_t mouth, const World& w) {
     CoastSite site;
@@ -260,6 +285,10 @@ CoastSite siteOf(const Inlet& inlet, std::size_t mouth, const World& w) {
         std::max_element(at.weights.begin(), at.weights.end()) - at.weights.begin());
     site.harbor = site.shelter >= kHarborShelter && site.depth >= kHarborDepth &&
                   site.opening >= kHarborOpening && site.opening < site.size;
+    site.anchorage = inlet.kind == InletKind::Cove && !site.harbor &&
+                     site.depth >= kHarborDepth && site.opening >= kHarborOpening &&
+                     site.length >= kAnchorageLength * site.opening &&
+                     landBothSides(inlet, widest, w);
     return site;
 }
 
@@ -302,51 +331,20 @@ Inlet inletOf(const World& w, Lattice lattice, InletKind kind, const Shape& shap
 
 namespace {
 
-// A distance w as the signal of the inlets reads it: itself up to near, then growing to infinity
-// at far, so that their signal gives way to that of the geography before far (C1 at near).
-double reachOf(double w, double near, double far) {
-    if (w <= near) {
-        return w;
-    }
-    return w < far ? w + (w - near) * (w - near) / (far - w)
-                   : std::numeric_limits<double>::infinity();
-}
 
 // How far up the side of an inlet the plunging mountains are at u, 0 at its water to 1 at its
-// wall (and as far down under its water): for the fjords a U, already steep at the water (two
-// thirds of its steepest), steepest midway, a rounded shoulder; an ease-out for the others.
+// wall (and as far down under its water): steepest at the water, a rounded shoulder at the wall;
+// for the fjords the sides of a U (their flat floor under the water), 1.5 times as steep at the
+// water as on average rather than twice.
 double flankOf(InletKind kind, double u) {
     if (kind == InletKind::Fjord) {
-        const double low = smooth(0.0, 1.0, kFjordFlank);
-        return (smooth(0.0, 1.0, kFjordFlank + (1.0 - kFjordFlank) * u) - low) / (1.0 - low);
+        const double v = 1.0 - u;
+        return 1.0 - v * std::sqrt(v);
     }
     return u * (2.0 - u);
 }
 
-// A stack at u, 0 at its rim to 1 at its middle: its flank straight (steepest), its rim rounded
-// over kStackRim of the way, its top over kStackTop (a dome), the slope continuous.
-double domeOf(double u) {
-    const double k = 1.0 / (1.0 - 0.5 * (kStackRim + kStackTop));
-    if (!(u > 0.0)) {
-        return 0.0;
-    }
-    if (u < kStackRim) {
-        return 0.5 * k * u * u / kStackRim;
-    }
-    if (u > 1.0 - kStackTop) {
-        return u < 1.0 ? 1.0 - 0.5 * k * (1.0 - u) * (1.0 - u) / kStackTop : 1.0;
-    }
-    return k * (u - 0.5 * kStackRim);
-}
 
-// How far the foot of a stack reaches toward turns, over its radius: 1 to 1 + kStackLobe, two and
-// three lobes turned by its phase.
-double lobesOf(const Stack& stack, double turns) {
-    const auto phase = static_cast<double>(stack.phase);
-    const double wave = 0.5 + 0.3 * dmath::sinTurns(2.0 * turns + phase) +
-                        0.2 * dmath::sinTurns(3.0 * turns + 2.7 * phase + 0.21);
-    return 1.0 + kStackLobe * wave;
-}
 
 double segmentT(double px, double pz, const AxisPoint& a, const AxisPoint& b) {
     const double dx = b.x - a.x;
@@ -393,6 +391,14 @@ double softMin(double a, double b, double round) {
 
 } // namespace
 
+double reachOf(double w, double near, double far) {
+    if (w <= near) {
+        return w;
+    }
+    return w < far ? w + (w - near) * (w - near) / (far - w)
+                   : std::numeric_limits<double>::infinity();
+}
+
 double signalOf(double coast, const Effect& e) {
     return std::max(softMin(coast, kSignalPerMeter * e.water, kSignalPerMeter * kRound),
                     kSignalPerMeter * e.islet);
@@ -402,7 +408,14 @@ double distanceOf(double base, const Effect& e) {
     return std::max(softMin(base, e.water, kRound), e.islet);
 }
 
-void addInlet(const Inlet& inlet, double x, double z, const WorldSize& world, Effect& e) {
+noise::FbmOctaves makeCut(std::uint64_t seed, const WorldSize& world) {
+    return noise::FbmOctaves(noise::deriveSeed(seed, kCutStream),
+                             {.octaves = 3, .frequency = 1.0 / kCutWavelength, .gain = 0.5},
+                             world);
+}
+
+void addInlet(const Inlet& inlet, double x, double z, const WorldSize& world,
+              const noise::FbmOctaves& cut, Effect& e) {
     const AxisPoint& root = inlet.axis.front();
     const double px = root.x + noise::wrapCanonical(x - root.x, world.x);
     const double pz = root.z + noise::wrapCanonical(z - root.z, world.z);
@@ -427,24 +440,24 @@ void addInlet(const Inlet& inlet, double x, double z, const WorldSize& world, Ef
         }
     }
     const auto reach = static_cast<double>(inlet.wall);
-    e.water = std::min(e.water, reachOf(water, 0.5 * reach, reach));
-    e.rise = std::min(e.rise, flankOf(inlet.kind, std::clamp(water / reach, 0.0, 1.0)));
+    if (inlet.kind == InletKind::Cove) {
+        water += kCutAmplitude * static_cast<double>(cut.fbm2D(x, z));
+        // Rounded between two coves within reach only (beyond it a distance is infinite).
+        const double away = reachOf(water, 0.5 * reach, reach);
+        e.water = std::isfinite(away) && std::isfinite(e.water)
+                      ? softMin(e.water, away, kCapeRound)
+                      : std::min(e.water, away);
+    } else {
+        e.water = std::min(e.water, reachOf(water, 0.5 * reach, reach));
+    }
+    const double u = std::clamp(water / reach, 0.0, 1.0);
+    e.rise = std::min(e.rise, flankOf(inlet.kind, u));
     e.sink = std::max(e.sink, flankOf(inlet.kind, std::clamp(-water / reach, 0.0, 1.0)));
+    if (inlet.kind == InletKind::Fjord) {
+        e.glen = std::max(e.glen, 1.0 - smooth(kGlenHold, 1.0, u));
+    }
 }
 
-void addStack(const Stack& stack, double x, double z, const WorldSize& world, Effect& e) {
-    const double dx = noise::wrapCanonical(x - stack.x, world.x);
-    const double dz = noise::wrapCanonical(z - stack.z, world.z);
-    const double most = static_cast<double>(stack.radius) * (1.0 + kStackLobe);
-    if (std::abs(dx) > most + kIsletReach || std::abs(dz) > most + kIsletReach) {
-        return;
-    }
-    const double r = dmath::hypot(dx, dz);
-    const double turns = r > 0.0 ? dmath::atan2(dz, dx) / (2.0 * kPi) : 0.0;
-    const double radius = static_cast<double>(stack.radius) * lobesOf(stack, turns);
-    e.islet = std::max(e.islet, r < radius ? radius - r : -reachOf(r - radius, 0.0, kIsletReach));
-    e.dome = std::max(e.dome, static_cast<double>(stack.height) * domeOf(1.0 - r / radius));
-}
 
 } // namespace terrain::coast_inlets
 
