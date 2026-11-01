@@ -20,6 +20,8 @@ _DETERMINISM_OK = "match terrain_core bit for bit"
 _DETERMINISM_BAD = "does not generate the same world"
 _PLANET = re.compile(r"planet level (read from|BUILT)[^\n]*")
 _LOAD_REPORT = re.compile(r"Terrain World: load (\d+) report")
+_LOAD_START = re.compile(r"Terrain World: load (\d+) \(([^)]*)\) started at "
+                         r"\((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?)\) m")
 _TERRAIN_PROBLEM = re.compile(r"LogTerrainEngine: (Error|Warning): (.*)")
 _CRASH = re.compile(r"Fatal error|Unhandled Exception|=== Critical error: ===")
 
@@ -45,6 +47,26 @@ def scan_build(text):
 def load_reports(text):
     """The numbers of the loads the plugin reported ("Terrain World: load N report"), in order."""
     return [int(m.group(1)) for m in _LOAD_REPORT.finditer(text)]
+
+
+def load_ended(text, starts_logged=True):
+    """The load that ended in this part of the log: the last one started in it ("Terrain World:
+    load N (reason) started at (x, z) m"), once its report follows; {"n", "reason", "x", "z"},
+    or None while it runs. The report of a load started before does not count: a teleport first
+    reports the previous load as it stands, then starts its own. Only for a plugin that logs no
+    start (starts_logged False) does any report count."""
+    starts = list(_LOAD_START.finditer(text))
+    reports = list(_LOAD_REPORT.finditer(text))
+    if not starts:
+        if starts_logged or not reports:
+            return None
+        return {"n": int(reports[-1].group(1)), "reason": None, "x": None, "z": None}
+    last = starts[-1]
+    n = int(last.group(1))
+    if not any(int(r.group(1)) == n and r.start() > last.start() for r in reports):
+        return None
+    return {"n": n, "reason": last.group(2), "x": float(last.group(3)),
+            "z": float(last.group(4))}
 
 
 def scan_editor(text):
@@ -83,7 +105,7 @@ def read_text(path):
 
 def plugin_features(source_texts):
     """What the plugin of a version offers to the driver, from the texts of its sources: the
-    report of each load (agent 38) and the console commands of the dev tools (agent 36), each
+    start and the report of each load (agent 38) and the console commands of the dev tools (agent 36), each
     found by the text of its registration (TEXT("Terrain.Goto")...)."""
     joined = "\n".join(source_texts)
 
@@ -92,6 +114,7 @@ def plugin_features(source_texts):
 
     return {
         "loadReport": "load %d report" in joined,
+        "loadStart": "started at (%.1f, %.1f) m" in joined,
         "goto": command("Terrain.Goto"),
         "look": command("Terrain.Look"),
         "viewMode": command("Terrain.View"),

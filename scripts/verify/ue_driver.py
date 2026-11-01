@@ -44,7 +44,7 @@ class Driver(WalkSteps):
                        "materials": [], "errors": [], "missingApi": [], "pitchCheck": None,
                        "features": job.get("features", {}), "done": False}
         self.phase, self.place, self.beats = "start", None, 0
-        self.terrain, self.saved, self.origin = None, {}, None
+        self.terrain, self.saved, self.origin, self.load = None, {}, None, None
         self.editor_camera, self.skip_walks, self.skip_sun = None, False, False
         self.pitch_candidates = None  # the places where the pitch may be checked
         self.done = False
@@ -213,12 +213,16 @@ class Driver(WalkSteps):
         return path.stat().st_size if path.is_file() else 0
 
     def load_reported(self, offset):
+        """The load started since offset in the log of the editor has ended (its report): kept in
+        self.load ({"n", "reason", "x", "z"})."""
         path = Path(self.job.get("editorLog", ""))
         if not path.is_file():
             return False
         with open(path, "rb") as file:
             file.seek(offset)
-            return bool(ue_log.load_reports(file.read().decode("utf-8", "replace")))
+            text = file.read().decode("utf-8", "replace")
+        self.load = ue_log.load_ended(text, self.result["features"].get("loadStart", False))
+        return self.load is not None
 
     def play(self, group):
         first = group[0]
@@ -311,7 +315,7 @@ class Driver(WalkSteps):
 
     def view(self, world, place, offset):
         entry = {"place": place["name"], "file": None, "repeat": None, "loaded": None,
-                 "freeze": None, "method": None}
+                 "load": None, "freeze": None, "method": None}
         self.result["views"].append(entry)
         offset = self.log_size() if offset is None else offset
         camera = self.play_camera(world, place)
@@ -320,6 +324,7 @@ class Driver(WalkSteps):
                           "the load report")
             yield until
             entry["loaded"] = "timeout" if until.timed_out else "reported"
+            entry["load"] = None if until.timed_out else self.load
         else:
             yield Wait(self.job.get("firstSettle", 45.0) if len(self.result["views"]) == 1
                        else self.job.get("settle", 20.0))

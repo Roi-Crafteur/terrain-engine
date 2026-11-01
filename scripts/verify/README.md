@@ -123,7 +123,11 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
          (`FocusActor`). La caméra est retirée de la carte après chaque lieu, sans
          sauvegarder ; une PIE par lieu ;
      - **le chargement est attendu** : la ligne `Terrain World: load N report` (agent 38) si la
-       version l'écrit, sinon des délais (`--settle`, `--first-settle`) ;
+       version l'écrit, sinon des délais (`--settle`, `--first-settle`). C'est le rapport du
+       dernier chargement commencé depuis la mise en place de la vue (`load N (raison) started
+       at (x, z) m`) : une téléportation rapporte d'abord le chargement précédent tel quel, et ce
+       rapport-là ne compte pas. Le numéro, la raison et le point du chargement vont dans
+       `result_N.json` ;
      - **le jeu est mis en pause** avant les images : le temps de l'eau et des chutes s'arrête ;
      - **deux images** sont prises à 2 s d'écart. Leur écart est le bruit qui reste à monde
        identique ;

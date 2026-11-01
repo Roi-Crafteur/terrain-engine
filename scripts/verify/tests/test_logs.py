@@ -84,17 +84,51 @@ class Editor(unittest.TestCase):
             self.assertEqual(ue_log.read_text(path), "é\n")
 
 
+TELEPORT = """LogTerrainEngine: Terrain World: BP_Hero_C_0 teleported to (-6185411.0, 156218.0) m
+LogTerrainEngine: Terrain World: load 3 report
+  not reached when reported: ground, 64 m
+LogTerrainEngine: Terrain World: load 4 (teleport) started at (-6185411.0, 156218.0) m, 12 tiles shown, 80 pending
+LogTerrainEngine: Terrain World: load 4 (teleport): ground at 0.41 s
+"""
+
+
+class Loads(unittest.TestCase):
+    def test_the_load_started_and_its_report(self):
+        self.assertIsNone(ue_log.load_ended(EDITOR.split("[200]")[0]))  # nothing started
+        self.assertIsNone(ue_log.load_ended(EDITOR.split("[300]")[0]))  # started, not reported
+        self.assertEqual(ue_log.load_ended(EDITOR),
+                         {"n": 1, "reason": "spawn", "x": 0.0, "z": 0.0})
+
+    def test_a_teleport_reports_the_previous_load_first(self):
+        """#58: a teleport first reports the previous load as it stands (if it was not), then
+        starts its own: that report is not the end of the new load."""
+        self.assertIsNone(ue_log.load_ended(TELEPORT))
+        done = TELEPORT + "LogTerrainEngine: Terrain World: load 4 report\n"
+        self.assertEqual(ue_log.load_ended(done),
+                         {"n": 4, "reason": "teleport", "x": -6185411.0, "z": 156218.0})
+
+    def test_a_plugin_that_logs_no_start(self):
+        reports = "LogTerrainEngine: Terrain World: load 2 report\n"
+        self.assertIsNone(ue_log.load_ended(reports))
+        self.assertEqual(ue_log.load_ended(reports, starts_logged=False)["n"], 2)
+        self.assertIsNone(ue_log.load_ended("", starts_logged=False))
+
+
 class Features(unittest.TestCase):
     def test_commands_of_the_plugin(self):
         main = 'FAutoConsoleCommandWithWorldAndArgs Water(TEXT("Terrain.Water"), ...)'
         dev = ('{TEXT("Terrain.Goto"), TEXT("Terrain.Goto <x> <z>")}, {TEXT("Terrain.Look")}, '
                '{TEXT("Terrain.Views"), ...}, PawnCommand(TEXT("Terrain.Pawn"), ...)')
         loading = 'UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: load %d report"), n);'
+        start = ('TEXT("Terrain World: load %d (%s) started at (%.1f, %.1f) m, %d tiles shown, '
+                 '%d pending")')  # TerrainWorldLoading.cpp of main (#58)
         self.assertEqual(ue_log.plugin_features([main]),
-                         {"loadReport": False, "goto": False, "look": False, "viewMode": False,
-                          "pawn": False, "loadTest": False})
+                         {"loadReport": False, "loadStart": False, "goto": False, "look": False,
+                          "viewMode": False, "pawn": False, "loadTest": False})
         f = ue_log.plugin_features([main, dev, loading])
         self.assertTrue(f["goto"] and f["look"] and f["pawn"] and f["loadReport"])
+        self.assertFalse(f["loadStart"])
+        self.assertTrue(ue_log.plugin_features([loading, start])["loadStart"])
         self.assertFalse(f["viewMode"])  # Terrain.Views alone is not Terrain.View
         self.assertTrue(ue_log.plugin_features(['TEXT("Terrain.View")'])["viewMode"])
 

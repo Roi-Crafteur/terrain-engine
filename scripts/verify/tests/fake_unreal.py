@@ -167,12 +167,13 @@ class FakeUnreal:
         self.editor_world = types.SimpleNamespace(name="editor")
         self.game = None
         self.starting_at = None
-        self.loads = 0
+        self.loads, self.loading, self.report_at = 0, None, None
+        self.pawn_load_seconds = 3.0  # the load the pawn brought back by Terrain.Pawn starts
+        self.load_point, self.shot_log_sizes = None, []  # where the last load started
         self.pending_shots = []
         self.log_path = self.folder / "Saved" / "Logs" / "TerrainSandbox.log"
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_path.write_text("LogInit: start\n", encoding="utf-8")
-        self.pending_reports = []
         self.editor_actors = []
         self.terrain.properties["focus_actor"] = None
         self._build_module()
@@ -195,12 +196,27 @@ class FakeUnreal:
             if self.time >= at:
                 self.pending_shots.remove((at, name))
                 self._write_shot(name)
-        for at in list(self.pending_reports):
-            if self.time >= at:
-                self.pending_reports.remove(at)
-                self.loads += 1
-                with open(self.log_path, "a", encoding="utf-8") as log:
-                    log.write(f"LogTerrainEngine: Terrain World: load {self.loads} report\n")
+        if self.loading is not None and self.time >= self.report_at:
+            self._log(f"Terrain World: load {self.loading} report")
+            self.loading = None
+
+    def _log(self, line):
+        with open(self.log_path, "a", encoding="utf-8") as log:
+            log.write(f"LogTerrainEngine: {line}\n")
+
+    def begin_load(self, reason, x, z, seconds=3.0):
+        """As BeginTerrainLoad of the plugin (agent 38): the previous load reported as it stands
+        if it was not, then the new one started; its report seconds later."""
+        if not self.features.get("loadReport"):
+            return
+        if self.loading is not None:
+            self._log(f"Terrain World: load {self.loading} report")
+        self.loads += 1
+        self.loading, self.report_at = self.loads, self.time + seconds
+        self.load_point = (x, z)
+        if self.features.get("loadStart"):
+            self._log(f"Terrain World: load {self.loads} ({reason}) started at ({x:.1f}, "
+                      f"{z:.1f}) m, 0 tiles shown, 0 pending")
 
     def _start_play(self):
         """Play In Editor: the level duplicated, its actors (the cameras with their tags) copied,
@@ -222,11 +238,9 @@ class FakeUnreal:
                                           light=DirectionalLight(self), terrain=terrain,
                                           actors=list(copies.values()))
         self.starting_at = None
-        self._report_later()
-
-    def _report_later(self):
-        if self.features.get("loadReport"):
-            self.pending_reports.append(self.time + 3.0)
+        self.loads, self.loading = 0, None  # the loads of the world of this play
+        self.begin_load("spawn", terrain.properties["core_origin_x"],
+                        terrain.properties["core_origin_z"])
 
     def _write_shot(self, name):
         target = self.game.controller.view_target if self.game else None
@@ -361,6 +375,7 @@ class _System:
         fake.calls.append(("console", command))
         if command.startswith("HighResShot"):
             name = command.split("filename=")[1]
+            fake.shot_log_sizes.append(fake.log_path.stat().st_size)
             if not any(part in name for part in fake.shots_fail_for):
                 fake.pending_shots.append((fake.time + 0.5, name))
         elif command.startswith("Terrain.Look") and fake.game is not None:
@@ -369,7 +384,13 @@ class _System:
             fake.game.controller.control = Rotator(pitch=float(pitch),
                                                    yaw=float(heading) - 90.0)
         elif command.startswith("Terrain.Goto") and fake.game is not None:
-            fake._report_later()
+            _, x, z, _eye = command.split()
+            fake.goto = (float(x), float(z))
+            if fake.load_point is None or distance(fake.goto, fake.load_point) > 100.0:
+                fake.begin_load("teleport", *fake.goto)  # the focus jumped: a teleport
+        elif command == "Terrain.Pawn" and fake.game is not None:
+            fake.begin_load("teleport", *getattr(fake, "goto", (0.0, 0.0)),
+                            seconds=fake.pawn_load_seconds)
 
     def line_trace_single(self, world, start, end, channel, complex_, ignore, debug, self_):
         return types.SimpleNamespace(impact_point=Vector(start.x, start.y, 0.0))

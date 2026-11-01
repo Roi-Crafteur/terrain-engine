@@ -328,6 +328,27 @@ class DevCommands(unittest.TestCase):
                             if c[0] == "set_editor_property" and c[1] == "planet_file"]
             self.assertEqual(planet_files[:2], ["C:/TerrainVerify/cache/x/planet.bin", ""])
 
+    def test_a_load_still_running_at_the_next_goto(self):
+        """#58: a teleport first reports the load still running as it stands (here the one of
+        Terrain.Pawn before the walk), then starts its own: the next view waits for its own."""
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder, features=dict(self.FEATURES, loadStart=True))
+            fake.pawn_load_seconds = 1000.0  # still running at the next Terrain.Goto
+            walk = {"place": BASIN["name"], "heading": 90.0, "distance": 5.0, "yaw": 0.0}
+            r = drive(fake, job_in(folder, fake, [BASIN, LIP], materials=False,
+                                   pitchCheck=False, walks=[walk])).result
+            self.assertTrue(r["done"], r["errors"])
+            log = fake.log_path.read_text(encoding="utf-8")
+            stale = log.index("load 2 report")  # the load of Terrain.Pawn, as it stands
+            self.assertLess(stale, log.index("load 3 (teleport) started at (-6185411.0"))
+            self.assertEqual([(v["load"]["n"], v["load"]["reason"]) for v in r["views"]],
+                             [(1, "spawn"), (3, "teleport")])
+            self.assertEqual((r["views"][1]["load"]["x"], r["views"][1]["load"]["z"]),
+                             (LIP["x"], LIP["z"]))
+            # The first shot of LIP (after the shot and its repeat at BASIN) once load 3 reported.
+            done = len(log[:log.index("load 3 report")].encode("utf-8"))
+            self.assertGreater(fake.shot_log_sizes[2], done)
+
     def test_without_load_report_the_delays(self):
         with tempfile.TemporaryDirectory() as folder:
             features = dict(self.FEATURES, loadReport=False)
