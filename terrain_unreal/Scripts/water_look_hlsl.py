@@ -246,10 +246,10 @@ float through = dot(exp(-absorb * thickness), float3(0.3333, 0.3333, 0.3334));
 float flowLength = length(Flow);
 float2 along = flowLength > 0.01 ? Flow / flowLength : float2(0.8, 0.6);
 float2 across = float2(-along.y, along.x);
-float2 r = float2(dot(p, along), dot(p, across)) - float2(FlowSpeed * Time, 0.0);
-float patch = Water.Noise(r * float2(0.17, 0.21) + 5.3, 1.0);
-float2 turned = float2(0.83 * r.x - 0.56 * r.y, 0.56 * r.x + 0.83 * r.y);
-float streaks = 0.6 * Water.Noise(r * float2(0.45, 1.3), 1.0)
+float2 fr = float2(dot(p, along), dot(p, across)) - float2(FlowSpeed * Time, 0.0);
+float patch = Water.Noise(fr * float2(0.17, 0.21) + 5.3, 1.0);
+float2 turned = float2(0.83 * fr.x - 0.56 * fr.y, 0.56 * fr.x + 0.83 * fr.y);
+float streaks = 0.6 * Water.Noise(fr * float2(0.45, 1.3), 1.0)
               + 0.4 * Water.Noise(turned * float2(0.9, 2.1) + 11.0, 1.0);
 float from = FoamFromSlope * (0.5 + patch);
 float foam = saturate((slope - from) / max(FoamFullSlope - from, 1e-3));
