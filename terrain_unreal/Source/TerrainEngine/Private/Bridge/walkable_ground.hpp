@@ -18,8 +18,8 @@ namespace terrain::unreal {
 // - the candidates, read on the heightmap of the core (walkableCandidates): dry columns whose
 //   slope is under the walkable angle of the pawn, nearest first;
 // - each candidate checked on the real collision of the tiles (checkStand): rays down at its
-//   center and around the capsule. The tiles are meshed from the 3D SDF (cliffs, the basin of a
-//   fall): their ground may be steeper than the heightmap, or far under it, under water.
+//   center and around the capsule. The tiles are meshed from the 3D SDF (cliffs, overhangs):
+//   their ground may be steeper than the heightmap, or away from it.
 // When the 3D rock of task 12A is on main, the candidates will have to read the real column.
 
 // The search around the column: rings ringStep meters apart up to radius, each walked along in
@@ -102,7 +102,7 @@ enum class StandRefusal : std::uint8_t {
     NoCollision,  // a ray hit nothing (the tiles not loaded there yet?)
     TooSteep,     // a normal steeper than the walkable angle less the margin
     Step,         // the hits further apart than a step
-    OffHeightmap, // the collision far from the heightmap: a cliff, an overhang, a basin
+    OffHeightmap, // the collision far from the heightmap: a cliff, an overhang, a hollow
     UnderWater,   // the hit under the water surface of the core around
 };
 [[nodiscard]] const char* standRefusalText(StandRefusal refusal);

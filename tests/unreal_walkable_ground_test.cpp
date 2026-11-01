@@ -3,7 +3,7 @@
 // made-up reliefs (a flat ground, terraces in a wall of slope 3.28, water), then under the wall
 // of the K2 of the default world (k2_paroi, without the planet file); the reasons when there is
 // none; and the check of a candidate on the collision of the tiles (too steep, a step, far from
-// the heightmap as in the basin of the fall of 388 m, under water).
+// the heightmap, under water).
 #include "walkable_ground.hpp"
 
 #include "test_assert.hpp"
@@ -202,9 +202,9 @@ void testStand() {
     step[1].altitude = 100.6;
     TEST_CHECK(terrain::unreal::checkStand(step, 100.0, std::nullopt, limits).refusal ==
                StandRefusal::Step);
-    // The basin of the fall of 388 m (-6185124 ; 155984): the heightmap says dry ground at
-    // 260.11 m, the collision of the tiles lies at the bottom of the basin, under its water at
-    // 180.03 m: far from the heightmap, and under water.
+    // A made-up basin: the heightmap says dry ground at 260.11 m where the collision of the tiles
+    // would lie at the bottom, under water at 180.03 m: far from the heightmap, and under water.
+    // (At the fall of 388 m, -6185124 ; 155984, the pawn stands dry at 260.2 m: no such basin.)
     std::array<FloorProbe, 5> basin{};
     for (FloorProbe& p : basin) {
         p = {true, 178.5, 0.99};

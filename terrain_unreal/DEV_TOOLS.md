@@ -140,9 +140,8 @@ générées. Deux étapes (`Bridge/walkable_ground`, `TerrainDevPawn.cpp`) :
    - un rayon ne touche rien (tuiles pas encore chargées) ;
    - une normale est plus raide que l'angle de marche moins 5° ;
    - les impacts sont plus éloignés que la hauteur de marche (`MaxStepHeight`, 45 cm) ;
-   - l'impact du centre est à plus de 2 m de la heightmap (falaise, surplomb ou bassin taillés
-     par le SDF : au pied de la chute de 388 m, la heightmap dit 260 m sec, la collision est au
-     fond du bassin, sous l'eau à 180 m) ;
+   - l'impact du centre est à plus de 2 m de la heightmap (une falaise, un surplomb ou un creux
+     taillés par le SDF : la collision n'y est plus le sol que la heightmap décrit) ;
    - l'impact est **sous la surface de l'eau du core** à 3 m autour.
 
 Le pion est posé sur le premier candidat accepté, 2 cm au-dessus de l'impact le plus haut, à
@@ -348,5 +347,5 @@ le fichier de l'agent 37 lu, les nombres de `Terrain.Save` relus au bit près),
 `unreal_place_pose_test`, `unreal_point_info_test`, `unreal_dev_perf_test`,
 `unreal_debug_colors_test`, `unreal_planet_job_test`, `unreal_walkable_ground_test` (le sol
 praticable sur des reliefs fabriqués et sous la paroi du K2, l'ordre et les raisons des candidats,
-la vérification sur la collision : trop raide, marche, bassin de la chute, sous l'eau),
+la vérification sur la collision : trop raide, marche, loin de la heightmap, sous l'eau),
 `unreal_dev_tools_guard`.

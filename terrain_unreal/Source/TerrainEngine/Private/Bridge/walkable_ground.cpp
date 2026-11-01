@@ -138,7 +138,7 @@ const char* standRefusalText(StandRefusal refusal) {
     case StandRefusal::Step:
         return "its collision has a step higher than the pawn climbs";
     case StandRefusal::OffHeightmap:
-        return "its collision is far from the heightmap (a cliff, an overhang, a basin)";
+        return "its collision is far from the heightmap (a cliff, an overhang, a hollow)";
     case StandRefusal::UnderWater:
         return "its collision is under the water of the core";
     }
