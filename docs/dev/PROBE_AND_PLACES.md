@@ -101,6 +101,14 @@ terrain_probe --list-sections
 - Un **écrivain** les **garde telles quelles** quand il réécrit un fichier : l'écrivain des lieux
   de l'agent 36, et tout outil qui modifie un lieu.
 
+## Le JSON dans le dépôt
+
+- `terrain_core/json/` (agent 25) : lecture stricte et écriture canonique des fichiers de
+  données. Le lecteur et l'écrivain des lieux de l'agent 36 s'en servent.
+- `terrain_core/tools/probe_record` : l'écrivain de la sonde seule (ordre des champs, décimales
+  fixes par unité). Il reste à regrouper sur `terrain_core/json/`, sans changer un octet de la
+  sortie : le schéma figé et le test de stabilité de `probe_test` le gardent.
+
 ## Ajouter une section à la sonde
 
 1. Écrire sa fonction dans `terrain_core/tools/probe_<nom>.cpp`. Elle prend
