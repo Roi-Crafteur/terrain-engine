@@ -176,6 +176,9 @@ class FakeUnreal:
         # Terrain.Pawn (agent 36): refused with this message (over water...), or the pawn of the
         # game given back at once and standing landing_seconds later.
         self.pawn_refusal, self.landing_seconds, self.landing_at = None, 1.0, None
+        # The spawn load of a play lasts this long (0: reported at once); the lines of a
+        # Terrain.Goto reach the file this late (the log of Unreal is written by a thread).
+        self.spawn_load_seconds, self.goto_log_lag, self.pending_lines = 3.0, 0.0, []
         self.inputs_while_landing = 0
         self.pending_shots = []
         self.log_path = self.folder / "Saved" / "Logs" / "TerrainSandbox.log"
@@ -203,6 +206,10 @@ class FakeUnreal:
             if self.time >= at:
                 self.pending_shots.remove((at, name))
                 self._write_shot(name)
+        for due, line in list(self.pending_lines):
+            if self.time >= due:
+                self.pending_lines.remove((due, line))
+                self._log(line)
         if self.landing_at is not None and self.time >= self.landing_at:
             self.landing_at = None
             self.game.pawn.landing = False
@@ -211,23 +218,29 @@ class FakeUnreal:
             self._log(f"Terrain World: load {self.loading} report")
             self.loading = None
 
-    def _log(self, line):
+    def _log(self, line, lag=0.0):
+        if lag > 0.0:
+            self.pending_lines.append((self.time + lag, line))
+            return
         with open(self.log_path, "a", encoding="utf-8") as log:
             log.write(f"LogTerrainEngine: {line}\n")
 
-    def begin_load(self, reason, x, z, seconds=3.0):
+    def begin_load(self, reason, x, z, seconds=3.0, lag=0.0):
         """As BeginTerrainLoad of the plugin (agent 38): the previous load reported as it stands
-        if it was not, then the new one started; its report seconds later."""
+        if it was not, then the new one started; its report seconds later (0: at once)."""
         if not self.features.get("loadReport"):
             return
         if self.loading is not None:
-            self._log(f"Terrain World: load {self.loading} report")
+            self._log(f"Terrain World: load {self.loading} report", lag)
         self.loads += 1
-        self.loading, self.report_at = self.loads, self.time + seconds
+        self.loading, self.report_at = self.loads, self.time + seconds + lag
         self.load_point = (x, z)
         if self.features.get("loadStart"):
             self._log(f"Terrain World: load {self.loads} ({reason}) started at ({x:.1f}, "
-                      f"{z:.1f}) m, 0 tiles shown, 0 pending")
+                      f"{z:.1f}) m, 0 tiles shown, 0 pending", lag)
+        if seconds <= 0.0:
+            self._log(f"Terrain World: load {self.loads} report", lag)
+            self.loading = None
 
     def _start_play(self):
         """Play In Editor: the level duplicated, its actors (the cameras with their tags) copied,
@@ -251,7 +264,7 @@ class FakeUnreal:
         self.starting_at = None
         self.loads, self.loading = 0, None  # the loads of the world of this play
         self.begin_load("spawn", terrain.properties["core_origin_x"],
-                        terrain.properties["core_origin_z"])
+                        terrain.properties["core_origin_z"], self.spawn_load_seconds)
 
     def _write_shot(self, name):
         target = self.game.controller.view_target if self.game else None
@@ -397,8 +410,8 @@ class _System:
         elif command.startswith("Terrain.Goto") and fake.game is not None:
             _, x, z, _eye = command.split()
             fake.goto = (float(x), float(z))
-            if fake.load_point is None or distance(fake.goto, fake.load_point) > 100.0:
-                fake.begin_load("teleport", *fake.goto)  # the focus jumped: a teleport
+            # BeginTeleport (agent 38) starts a load at every Terrain.Goto, even to the same point.
+            fake.begin_load("teleport", *fake.goto, lag=fake.goto_log_lag)
         elif command == "Terrain.Pawn" and fake.game is not None:
             if fake.pawn_refusal:  # the flying pawn of the tools stays
                 fake._log(f"Warning: Terrain dev: Terrain.Pawn: {fake.pawn_refusal}")

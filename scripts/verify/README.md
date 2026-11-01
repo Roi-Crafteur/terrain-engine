@@ -126,8 +126,10 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_59\` :
        version l'écrit, sinon des délais (`--settle`, `--first-settle`). C'est le rapport du
        dernier chargement commencé depuis la mise en place de la vue (`load N (raison) started
        at (x, z) m`) : une téléportation rapporte d'abord le chargement précédent tel quel, et ce
-       rapport-là ne compte pas. Le numéro, la raison et le point du chargement vont dans
-       `result_N.json` ;
+       rapport-là ne compte pas. Avec `Terrain.Goto`, c'est le chargement `teleport` commencé
+       après la commande, jamais celui du démarrage de la PIE. Avec la caméra de la carte, c'est
+       le chargement `spawn` du démarrage de la PIE, au point du lieu. Le numéro, la raison et le
+       point du chargement vont dans `result_N.json`, et `resume.txt` les donne pour chaque vue ;
      - **le jeu est mis en pause** avant les images : le temps de l'eau et des chutes s'arrête ;
      - **deux images** sont prises à 2 s d'écart. Leur écart est le bruit qui reste à monde
        identique ;
@@ -159,7 +161,9 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_59\` :
      écrire ;
    - `resume.txt` dit « intact », ou met en alerte les fichiers changés.
 7. **Le chien de garde** :
-   - le pilote écrit un battement de cœur chaque seconde ;
+   - le pilote écrit un battement de cœur chaque seconde. Si le lanceur lit le fichier au même
+     instant, Windows refuse de le remplacer (`PermissionError`) : le pilote réessaie 5 fois à
+     20 ms d'écart, puis saute ce battement (compté dans `resume.txt`) ;
    - sans battement pendant trop longtemps, après une session trop longue, ou si l'éditeur ne se
      ferme pas, le lanceur tue tout l'arbre des processus d'Unreal (`taskkill /T /F`) ;
    - **aucun réglage d'alimentation, de veille ou d'affichage de Windows n'est touché** ;
@@ -167,10 +171,18 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_59\` :
 
 ## Le contrôle de l'inclinaison
 
-À un lieu de la session, le premier sans eau sous l'œil s'il y en a un, le pilote prend la même
-vue deux fois en petit, à +30° puis à −30°, et note chaque fois l'inclinaison que la caméra dit
-montrer. Le résumé mesure la part de ciel des deux images : ciel bleu net, lisse ; ni l'écume
-blanche ni la brume ne comptent.
+Le pilote fait ce contrôle une fois par session, au premier lieu de la session (toutes PIE
+confondues) qui est sec et qui regarde à l'horizontale ou vers le bas (inclinaison de 10° au
+plus) :
+- sec, parce que l'eau reflète le ciel et que l'écume est blanche ;
+- pas tourné vers le haut, parce qu'un lieu tourné vers le haut regarde une paroi ou une chute
+  (`k2_paroi`, +35°) : à +30°, il ne voit pas le ciel.
+
+À ce lieu, il prend la même vue deux fois en petit, à +30° puis à −30°, en tournant seulement
+la vue (`Terrain.Look` ; un nouveau `Terrain.Goto` relancerait un chargement et son écran noir).
+Il note chaque fois l'inclinaison que la caméra dit montrer. Le résumé mesure la part de ciel
+des deux images : ciel bleu net, lisse ; ni l'écume blanche ni la brume ne comptent. Sans lieu
+qui convient, le contrôle est sauté, avec une note dans `resume.txt` et sans avertissement.
 
 - Le résumé commence par l'avertissement « inclinaison inversée ? » dans deux cas : la caméra
   dit une inclinaison du signe opposé, ou la vue vers le bas ne montre pas nettement moins de

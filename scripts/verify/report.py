@@ -48,7 +48,7 @@ def pitch_warning(version):
     show clearly less sky than the same view pitched up (water and foam fool one image alone)."""
     for s in version.get("sessions", []):
         check = (s.get("result") or {}).get("pitchCheck")
-        if not check:
+        if not check or check.get("skipped"):
             continue
         seen, asked = check.get("seen"), check.get("requested", -30.0)
         check["sky"], check["upSky"] = _sky(check.get("file")), _sky(check.get("upFile"))
@@ -66,15 +66,51 @@ def pitch_warning(version):
     return None
 
 
+SKIPPED = {"no dry place looking level or down": "aucun lieu sec qui regarde à l'horizontale "
+           "ou vers le bas (l'eau reflète le ciel, une vue tournée vers le haut voit une paroi)"}
+
+
 def pitch_line(version):
-    for s in version.get("sessions", []):
-        check = (s.get("result") or {}).get("pitchCheck")
-        if check:
+    checks = [(s.get("result") or {}).get("pitchCheck") for s in version.get("sessions", [])]
+    for check in checks:
+        if check and not check.get("skipped"):
             return (f"  contrôle de l'inclinaison à {check.get('place')} : la caméra dit "
                     f"{_deg(check.get('seen'))} pour -30° et {_deg(check.get('upSeen'))} pour "
                     f"+30° ; ciel {_pct(check.get('sky'))} vers le bas, "
                     f"{_pct(check.get('upSky'))} vers le haut")
+    for check in checks:
+        if check:
+            reason = check["skipped"]
+            return f"  contrôle de l'inclinaison sauté : {SKIPPED.get(reason, reason)}"
     return "  contrôle de l'inclinaison : aucun"
+
+
+def _load_text(view):
+    """The load a view waited for (the report of agent 38) and what it is."""
+    loaded, load = view.get("loaded"), view.get("load")
+    if loaded == "delay":
+        return "délai fixe (la version ne rapporte pas ses chargements)"
+    if loaded == "timeout":
+        return "rapport de chargement attendu en vain (délai dépassé)"
+    if not load:
+        return "chargement rapporté" if loaded == "reported" else "?"
+    head = f"chargement {load['n']}" + (f" ({load['reason']})" if load.get("reason") else "")
+    if load.get("reason") == "spawn":
+        return head + " : chargement du démarrage de la PIE, au point du lieu"
+    if load.get("reason") == "teleport" and load.get("x") is not None:
+        return head + f" : celui de Terrain.Goto, commencé en ({load['x']:.1f} ; {load['z']:.1f}) m"
+    return head
+
+
+def _load_lines(v):
+    lines = []
+    for s in v.get("sessions", []):
+        result = s.get("result") or {}
+        lines += [f"    {view['place']} : {_load_text(view)}" for view in result.get("views", [])]
+        if result.get("beatsSkipped"):
+            lines.append(f"    battements de cœur sautés : {result['beatsSkipped']} (fichier tenu "
+                         f"ouvert par le lanceur au même moment)")
+    return lines
 
 
 def difference_text(d):
@@ -300,6 +336,8 @@ def version_lines(v, run):
                                    f"{planet['checksum']}, copiée dans {planet['installed']}"))
     lines += _session_lines(v)
     lines.append(pitch_line(v))
+    lines.append("  chargements attendus avant les images :")
+    lines += _load_lines(v) or ["    (aucun)"]
     lines.append("  bruit à monde identique (2 prises à 2 s, jeu en pause) :")
     lines += _noise_lines(v) or ["    (aucune)"]
     lines.append("  marches :")

@@ -19,6 +19,7 @@ A heartbeat (JSON, about every second) lets the launcher kill a session that han
 """
 
 import json
+import os
 import sys
 import time
 import traceback
@@ -33,6 +34,12 @@ import ue_log  # noqa: E402
 from ue_walk import Until, Wait, WalkSteps  # noqa: E402
 
 PITCH_CHECK = -30.0  # degrees: the check view looks down by this much
+# A place pitched up by more than this looks at something above the eye (a wall, a fall): its
+# view pitched up by 30 degrees shows no sky, no place for the check of the pitch.
+PITCH_CHECK_MAX_PITCH = 10.0
+# The heartbeat replaced this many times, this far apart, when the launcher holds the file open
+# (Windows: PermissionError); a beat that still fails is skipped, the next one comes.
+BEAT_TRIES, BEAT_PAUSE = 5, 0.02
 CAMERA_TAG = "TerrainVerifyCamera"  # the camera put in the level, found again in the play
 
 
@@ -105,8 +112,19 @@ class Driver(WalkSteps):
                  "done": self.result["done"]}
         path = Path(self.job["heartbeat"])
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(state), encoding="utf-8")
-        tmp.replace(path)
+        try:
+            tmp.write_text(json.dumps(state), encoding="utf-8")
+        except OSError:
+            self.result["beatsSkipped"] = self.result.get("beatsSkipped", 0) + 1
+            return
+        for attempt in range(BEAT_TRIES):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:  # the launcher reads it at this very moment
+                if attempt + 1 < BEAT_TRIES:
+                    time.sleep(BEAT_PAUSE)
+        self.result["beatsSkipped"] = self.result.get("beatsSkipped", 0) + 1
 
     def save_result(self):
         Path(self.job["result"]).write_text(json.dumps(self.result, indent=2), encoding="utf-8")
@@ -225,7 +243,8 @@ class Driver(WalkSteps):
         """The load started since offset in the log of the editor has ended (its report): kept in
         self.load ({"n", "reason", "x", "z"})."""
         self.load = ue_log.load_ended(self.log_text(offset),
-                                      self.result["features"].get("loadStart", False))
+                                      self.result["features"].get("loadStart", False),
+                                      ("teleport",) if self.dev_commands() else None)
         return self.load is not None
 
     def play(self, group):
@@ -246,12 +265,13 @@ class Driver(WalkSteps):
         if until.timed_out:
             raise RuntimeError("the play did not start or has no pawn")
         world = self.world()
-        # The pitch is checked at a place of the first play (one place per play with the camera
-        # of the level: the dry places of the session then come first).
+        # The pitch is checked once a session, at the place pitch_place chooses among all the
+        # places of the session (whichever play holds it).
         if self.pitch_candidates is None:
-            self.pitch_candidates = (group if self.dev_commands() else
-                                     sorted(self.job["places"],
-                                            key=lambda p: p.get("waterLevel") is not None)[:1])
+            self.pitch_candidates = self.job["places"]
+            if self.job.get("pitchCheck", True) and self.pitch_place(self.pitch_candidates) is None:
+                self.result["pitchCheck"] = {"place": None, "skipped": "no dry place looking "
+                                             "level or down"}
         for place in group:
             self.place = place["name"]
             self.set_phase("place")
@@ -293,13 +313,15 @@ class Driver(WalkSteps):
 
     # ---- a view ----------------------------------------------------------------------------------
 
-    def aim(self, world, place, pitch, camera):
+    def aim(self, world, place, pitch, camera, move=True):
         """The view of the place pitched by pitch: the dev tools, or the camera of the place in
-        the world of the play."""
+        the world of the play. With the dev tools, move False only turns the view (Terrain.Look):
+        a new Terrain.Goto, even to the same point, would start a load and its black screen."""
         if self.dev_commands():
             eye = place["eye"]
             text = f"{eye:.2f}" if place["eyeMode"] == "altitude" else f"+{eye:.2f}"
-            self.api.console(world, f"Terrain.Goto {place['x']} {place['z']} {text}")
+            if move:
+                self.api.console(world, f"Terrain.Goto {place['x']} {place['z']} {text}")
             self.api.console(world, f"Terrain.Look {place['heading']} {pitch}")
             return
         self.api.place_camera(camera, self.eye_location(place),
@@ -321,7 +343,10 @@ class Driver(WalkSteps):
         entry = {"place": place["name"], "file": None, "repeat": None, "loaded": None,
                  "load": None, "freeze": None, "method": None}
         self.result["views"].append(entry)
-        offset = self.log_size() if offset is None else offset
+        # The load of the view: with the dev tools the one Terrain.Goto starts, so the log from
+        # just before it (the start of the play is logged by a thread, maybe after the report of
+        # the spawn load); else the spawn load of the play, from before its start.
+        offset = self.log_size() if offset is None or self.dev_commands() else offset
         camera = self.play_camera(world, place)
         if self.result["features"].get("loadReport"):
             until = Until(lambda: self.load_reported(offset), self.job.get("loadTimeout", 120.0),
@@ -344,7 +369,7 @@ class Driver(WalkSteps):
         if (self.job.get("pitchCheck", True) and self.result["pitchCheck"] is None and
                 place["name"] == self.pitch_place(self.pitch_candidates)):
             yield from self.check_pitch(world, place, camera)
-            self.aim(world, place, place["pitch"], camera)
+            self.aim(world, place, place["pitch"], camera, move=False)
             yield Wait(2.0)
         yield from self.shots(world, place, entry)
 
@@ -392,7 +417,7 @@ class Driver(WalkSteps):
                  "upRequested": -PITCH_CHECK, "upSeen": None, "upFile": None}
         self.result["pitchCheck"] = check
         for pitch, prefix in ((-PITCH_CHECK, "up"), (PITCH_CHECK, "")):
-            self.aim(world, place, pitch, camera)
+            self.aim(world, place, pitch, camera, move=False)
             yield Wait(2.0)
             seen = self.api.camera_rotation(world)
             stem = f"_pitch_{'up' if prefix else 'down'}_{place['name']}"
@@ -400,11 +425,15 @@ class Driver(WalkSteps):
             check["upSeen" if prefix else "seen"] = None if seen is None else seen[0]
             check["upFile" if prefix else "file"] = shot
 
-    def pitch_place(self, group):
-        """The place of a play where the pitch is checked: the first one without water under the
-        eye, else the first one."""
-        dry = [p for p in group if p.get("waterLevel") is None]
-        return (dry or group)[0]["name"]
+    @staticmethod
+    def pitch_place(places):
+        """The place of the session where the pitch is checked: the first one without water under
+        the eye (water reflects the sky, foam is white) that looks level or down (pitched up, it
+        looks at a wall or a fall: no sky at +30 degrees); None when there is none."""
+        for p in places:
+            if p.get("waterLevel") is None and p.get("pitch", 0.0) <= PITCH_CHECK_MAX_PITCH:
+                return p["name"]
+        return None
 
     # ---- the end -------------------------------------------------------------------------------------
 

@@ -54,13 +54,14 @@ def load_reports(text):
     return [int(m.group(1)) for m in _LOAD_REPORT.finditer(text)]
 
 
-def load_ended(text, starts_logged=True):
+def load_ended(text, starts_logged=True, reasons=None):
     """The load that ended in this part of the log: the last one started in it ("Terrain World:
     load N (reason) started at (x, z) m"), once its report follows; {"n", "reason", "x", "z"},
     or None while it runs. The report of a load started before does not count: a teleport first
-    reports the previous load as it stands, then starts its own. Only for a plugin that logs no
-    start (starts_logged False) does any report count."""
-    starts = list(_LOAD_START.finditer(text))
+    reports the previous load as it stands, then starts its own. With reasons, only the loads of
+    these reasons count (after Terrain.Goto: "teleport", never the spawn load of the play). Only
+    for a plugin that logs no start (starts_logged False) does any report count."""
+    starts = [m for m in _LOAD_START.finditer(text) if reasons is None or m.group(2) in reasons]
     reports = list(_LOAD_REPORT.finditer(text))
     if not starts:
         if starts_logged or not reports:

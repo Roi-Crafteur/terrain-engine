@@ -115,6 +115,35 @@ class Summary(unittest.TestCase):
             self.assertIn("contrôle de l'inclinaison à a : la caméra dit -30.0° pour -30° et "
                           "30.0° pour +30° ; ciel 0 % vers le bas, 100 % vers le haut", text)
 
+    def test_no_place_for_the_pitch_check(self):
+        """Without a dry place looking level or down the check is skipped: a note, no notice."""
+        with tempfile.TemporaryDirectory() as folder:
+            after = version(folder, "apres")
+            after["sessions"][0]["result"]["pitchCheck"] = {
+                "place": None, "skipped": "no dry place looking level or down"}
+            text = report.write_report(run_of(folder, version(folder, "avant"), after))
+            self.assertEqual(text.splitlines()[1], "Aucune alerte.")
+            self.assertIn("contrôle de l'inclinaison sauté : aucun lieu sec qui regarde à "
+                          "l'horizontale ou vers le bas", text)
+
+    def test_the_loads_of_the_views(self):
+        """Essai 5: "spawn" for the first place of a play, explained (the start of the play)."""
+        with tempfile.TemporaryDirectory() as folder:
+            after = version(folder, "apres")
+            result = after["sessions"][0]["result"]
+            result["views"][0].update(loaded="reported", load={"n": 1, "reason": "spawn",
+                                                                "x": 0.0, "z": 0.0})
+            result["views"][1].update(loaded="reported", load={
+                "n": 4, "reason": "teleport", "x": -6185411.0, "z": 156218.0})
+            result["beatsSkipped"] = 2
+            text = report.write_report(run_of(folder, version(folder, "avant"), after))
+            self.assertIn("a : chargement 1 (spawn) : chargement du démarrage de la PIE, au "
+                          "point du lieu", text)
+            self.assertIn("b : chargement 4 (teleport) : celui de Terrain.Goto, commencé en "
+                          "(-6185411.0 ; 156218.0) m", text)
+            self.assertIn("battements de cœur sautés : 2", text)
+            self.assertEqual(text.splitlines()[1], "Aucune alerte.")
+
     def test_a_camera_that_keeps_its_own_pitch(self):
         with tempfile.TemporaryDirectory() as folder:
             text = report.write_report(run_of(folder, version(folder, "avant"),

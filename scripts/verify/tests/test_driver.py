@@ -1,9 +1,9 @@
 """The driver of a session (ue_driver.py) against a stand-in module unreal (fake_unreal.py): the
 places one after the other, the camera where the frame puts it and pitched with the sign of the
 places (negative is down in Unreal), the check view of the pitch, the pause around the
-screenshots, the material scripts and their errors, the walk stopped at the first fall, the dev
-commands of agent 36 and the load reports of agent 38 when the version has them, an API that is
-missing, nothing ever saved, the heartbeat and the result."""
+screenshots, the material scripts and their errors, the walk stopped at the first fall, an API
+that is missing, nothing ever saved, the heartbeat and the result. The dev commands of agent 36,
+the loads of agent 38 and the heartbeat refused by Windows: test_dev_commands.py."""
 
 import json
 import sys
@@ -25,6 +25,9 @@ BASIN = {"name": "chute388_bassin", "x": -6185104.0, "z": 155924.0, "heading": 2
 LIP = {"name": "chute388_levre", "x": -6185411.0, "z": 156218.0, "heading": 46.0,
        "pitch": -20.0, "yaw": -44.0, "eye": 2.0, "eyeMode": "ground", "usePlanet": True,
        "ground": 567.781, "waterLevel": 568.991, "eyeAltitude": 570.991}
+K2 = {"name": "k2_paroi", "x": 416102.0, "z": -11414891.0, "heading": 225.0, "pitch": 35.0,
+      "yaw": 135.0, "eye": 25.0, "eyeMode": "ground", "usePlanet": False, "ground": 6674.37,
+      "waterLevel": None, "eyeAltitude": 6699.37}
 EDGE = {"name": "lisiere", "x": -26927500.0, "z": -270336.0, "heading": 300.0, "pitch": -8.0,
         "yaw": 210.0, "eye": 40.0, "eyeMode": "ground", "usePlanet": False, "ground": 264.408,
         "waterLevel": None, "eyeAltitude": 304.408}
@@ -127,15 +130,16 @@ class CameraSessions(unittest.TestCase):
             self.assertEqual(r["missingApi"], [])
 
     def test_the_pitch_check(self):
-        """Up then down by 30 degrees at the same place, the first dry one of the session (the
-        foam of a basin looked down at fools one image alone)."""
+        """Up then down by 30 degrees at the same place, the first dry one of the session that
+        looks level or down (the foam of a basin looked down at fools one image alone; a wall
+        looked up at shows no sky at +30 degrees)."""
         import pixels
         import pngio
         with tempfile.TemporaryDirectory() as folder:
             fake = fake_unreal.FakeUnreal(folder)
-            r = drive(fake, job_in(folder, fake, [BASIN, LIP, EDGE], materials=False)).result
+            r = drive(fake, job_in(folder, fake, [BASIN, LIP, K2, EDGE], materials=False)).result
             check = r["pitchCheck"]
-            self.assertEqual(check["place"], "lisiere")  # dry; the others over water
+            self.assertEqual(check["place"], "lisiere")  # over water, over water, pitched up
             self.assertEqual((check["requested"], check["seen"]), (-30.0, -30.0))
             self.assertEqual((check["upRequested"], check["upSeen"]), (30.0, 30.0))
             down, up = (pngio.read_png(check[k], use_pillow=False) for k in ("file", "upFile"))
@@ -143,11 +147,14 @@ class CameraSessions(unittest.TestCase):
             self.assertTrue(all(Path(v["file"]).is_file() for v in r["views"]))
         with tempfile.TemporaryDirectory() as folder:
             fake = fake_unreal.FakeUnreal(folder)
-            r = drive(fake, job_in(folder, fake, [BASIN, LIP], materials=False)).result
-            self.assertEqual(r["pitchCheck"]["place"], "chute388_bassin")  # no dry place
+            r = drive(fake, job_in(folder, fake, [BASIN, LIP, K2], materials=False)).result
+            self.assertTrue(r["done"], r["errors"])
+            self.assertEqual(r["pitchCheck"], {"place": None,  # skipped, with a note
+                                               "skipped": "no dry place looking level or down"})
+            self.assertFalse([c for c in fake.calls if c[0] == "console" and "pitch" in c[1]])
         with tempfile.TemporaryDirectory() as folder:
             fake = fake_unreal.FakeUnreal(folder, invert_pitch=True)
-            r = drive(fake, job_in(folder, fake, [BASIN], materials=False)).result
+            r = drive(fake, job_in(folder, fake, [EDGE], materials=False)).result
             self.assertEqual(r["pitchCheck"]["seen"], 30.0)  # what the launcher flags
             self.assertEqual(r["pitchCheck"]["upSeen"], -30.0)
 
@@ -303,89 +310,6 @@ class Walks(unittest.TestCase):
             self.assertEqual(samples[-1].mode, "falling")
             # The pawn put on the ground of the place before it walks, the focus back on it.
             self.assertEqual(calls(fake, "teleport")[0][1:], (0.0, 0.0, 140.0))
-
-
-class DevCommands(unittest.TestCase):
-    FEATURES = {"goto": True, "look": True, "viewMode": True, "pawn": True, "loadReport": True}
-
-    def test_goto_look_and_the_load_reports(self):
-        with tempfile.TemporaryDirectory() as folder:
-            fake = fake_unreal.FakeUnreal(folder, features=dict(self.FEATURES))
-            r = drive(fake, job_in(folder, fake, [BASIN, LIP, EDGE], materials=False)).result
-            self.assertTrue(r["done"], r["errors"])
-            # One play per need of the planet file: with it (2 places), without it (1).
-            self.assertEqual(len(calls(fake, "begin_play")), 2)
-            commands = [c[1] for c in calls(fake, "console")]
-            self.assertIn("Terrain.Goto -6185104.0 155924.0 182.03", commands)
-            self.assertIn("Terrain.Goto -6185411.0 156218.0 +2.00", commands)
-            self.assertIn("Terrain.Look 227.0 -30.0", commands)  # the check, down
-            self.assertIn("Terrain.Look 227.0 30.0", commands)
-            self.assertIn("Terrain.Look 46.0 -20.0", commands)   # negative: down
-            self.assertIn("Terrain.View normal", commands)
-            self.assertEqual([v["loaded"] for v in r["views"]], ["reported"] * 3)
-            self.assertFalse(calls(fake, "editor_spawn"))  # no camera of its own
-            planet_files = [c[2] for c in fake.calls
-                            if c[0] == "set_editor_property" and c[1] == "planet_file"]
-            self.assertEqual(planet_files[:2], ["C:/TerrainVerify/cache/x/planet.bin", ""])
-
-    def test_a_load_still_running_at_the_next_goto(self):
-        """#58: a teleport first reports the load still running as it stands (here the one of
-        Terrain.Pawn before the walk), then starts its own: the next view waits for its own."""
-        with tempfile.TemporaryDirectory() as folder:
-            fake = fake_unreal.FakeUnreal(folder, features=dict(self.FEATURES, loadStart=True))
-            fake.pawn_load_seconds = 1000.0  # still running at the next Terrain.Goto
-            walk = {"place": BASIN["name"], "heading": 90.0, "distance": 5.0, "yaw": 0.0}
-            r = drive(fake, job_in(folder, fake, [BASIN, LIP], materials=False,
-                                   pitchCheck=False, walks=[walk])).result
-            self.assertTrue(r["done"], r["errors"])
-            log = fake.log_path.read_text(encoding="utf-8")
-            stale = log.index("load 2 report")  # the load of Terrain.Pawn, as it stands
-            self.assertLess(stale, log.index("load 3 (teleport) started at (-6185411.0"))
-            self.assertEqual([(v["load"]["n"], v["load"]["reason"]) for v in r["views"]],
-                             [(1, "spawn"), (3, "teleport")])
-            self.assertEqual((r["views"][1]["load"]["x"], r["views"][1]["load"]["z"]),
-                             (LIP["x"], LIP["z"]))
-            # The first shot of LIP (after the shot and its repeat at BASIN) once load 3 reported.
-            done = len(log[:log.index("load 3 report")].encode("utf-8"))
-            self.assertGreater(fake.shot_log_sizes[2], done)
-
-    def test_the_walk_waits_for_the_pawn_to_stand(self):
-        """#57: Terrain.Pawn puts the pawn of the game down and ignores its move input until it
-        stands (1 s a spot, up to 8 spots); the walk forces its input: it waits for that line."""
-        with tempfile.TemporaryDirectory() as folder:
-            features = dict(self.FEATURES, loadStart=True, pawnLanding=True)
-            fake = fake_unreal.FakeUnreal(folder, features=features)
-            fake.landing_seconds = 4.0  # longer than the former fixed wait of 2 s
-            walk = {"place": BASIN["name"], "heading": 90.0, "distance": 5.0, "yaw": 0.0}
-            r = drive(fake, job_in(folder, fake, [BASIN], materials=False, pitchCheck=False,
-                                   walks=[walk])).result
-            self.assertTrue(r["done"], r["errors"])
-            self.assertEqual(fake.inputs_while_landing, 0)  # 11 with the former wait of 2 s
-            (entry,) = r["walks"]
-            self.assertEqual((entry["reason"], entry["landing"]["state"]), ("distance", "stands"))
-
-    def test_a_walk_refused_by_terrain_pawn(self):
-        """Over water Terrain.Pawn refuses and the flying pawn of the tools stays: no walk of it
-        (it never falls), the reason kept."""
-        with tempfile.TemporaryDirectory() as folder:
-            fake = fake_unreal.FakeUnreal(folder, features=dict(self.FEATURES, pawnLanding=True))
-            fake.pawn_refusal = ("over water (sea, lake or river): the pawn of the game is not "
-                                 "put down here, the view of the tools stays")
-            walk = {"place": LIP["name"], "heading": 46.0, "distance": 80.0, "yaw": -44.0}
-            r = drive(fake, job_in(folder, fake, [LIP], materials=False, pitchCheck=False,
-                                   walks=[walk], landTimeout=60.0)).result
-            self.assertTrue(r["done"], r["errors"])
-            (entry,) = r["walks"]
-            self.assertEqual((entry["reason"], entry["file"]), ("pawn refused", None))
-            self.assertIn("over water", entry["landing"]["message"])
-            self.assertLess(fake.time, 60.0)  # the refusal read, not the whole wait
-
-    def test_without_load_report_the_delays(self):
-        with tempfile.TemporaryDirectory() as folder:
-            features = dict(self.FEATURES, loadReport=False)
-            fake = fake_unreal.FakeUnreal(folder, features=features)
-            r = drive(fake, job_in(folder, fake, [BASIN], materials=False)).result
-            self.assertEqual(r["views"][0]["loaded"], "delay")
 
 
 class Failures(unittest.TestCase):
