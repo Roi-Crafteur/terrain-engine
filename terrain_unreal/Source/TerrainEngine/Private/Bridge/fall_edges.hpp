@@ -9,14 +9,14 @@
 
 namespace terrain::unreal {
 
-// Toward the edge of the lip of a fall, the water of a tile fades out over kEdgeFade meters, to
-// nothing kEdgeOver meters downstream of the edge, under the top of its curtain (which stands
-// kCurtainAhead in front of the edge: fall_curtains.hpp); its fade goes on down to kEdgeBeyond
-// beyond and up to kEdgeAbove before (the material clamps it to [0, 1]), linear in the distance,
-// so that between two vertices on either side the water ends there, not at a side of a cell nor
-// short of the curtain.
-inline constexpr double kEdgeFade = 1.0;
-inline constexpr double kEdgeOver = 0.75;
+// Toward the edge of the lip of a fall, the water of a tile fades out over kEdgeFade meters, from
+// a quarter of a meter upstream of the edge to nothing kEdgeOver meters downstream of it, over the
+// top of its curtain (which stands kCurtainAhead in front of the edge: fall_curtains.hpp) and the
+// water starting down the face; its fade goes on down to kEdgeBeyond beyond and up to kEdgeAbove
+// before (the material clamps it to [0, 1]), linear in the distance, so that between two vertices
+// on either side the water ends there, not at a side of a cell nor short of the curtain.
+inline constexpr double kEdgeFade = 2.0;
+inline constexpr double kEdgeOver = 1.75;
 inline constexpr double kEdgeBeyond = -8.0;
 inline constexpr double kEdgeAbove = 8.0;
 
@@ -28,11 +28,15 @@ class FallEdges {
 public:
     explicit FallEdges(const TileData& data);
 
-    // Where the water stands at level at (x, z), within tolerance meters of the water above a
-    // fall and within reach meters of the edge of its lip (across its channel, upstream or
-    // downstream): its fade, kEdgeOver - kEdgeFade meters downstream of the edge 1 (above it
-    // further upstream, kEdgeAbove at most), kEdgeOver meters downstream 0, below 0 further
-    // (kEdgeBeyond at least), the fall the nearest; otherwise none.
+    // Whether level is that of the water above fall n: tolerance meters under its level at the
+    // lip at most (it may stand higher, rising upstream of a receded edge), nearer it than the
+    // water below.
+    [[nodiscard]] bool upper(std::size_t n, double level, double tolerance) const;
+    // Where the water stands at level at (x, z), the water above a fall (upper) within reach
+    // meters of the edge of its lip (across its channel, upstream or downstream): its fade, 1
+    // kEdgeFade - kEdgeOver meters upstream of the edge (above it further upstream, kEdgeAbove at
+    // most), 0 kEdgeOver meters downstream, below 0 further (kEdgeBeyond at least), the fall the
+    // nearest; otherwise none.
     [[nodiscard]] std::optional<double> above(double x, double z, double level, double tolerance,
                                               double reach) const;
     // The same toward the edge of the lip of fall n alone, whatever the level (none beyond its
@@ -45,6 +49,10 @@ public:
 
     [[nodiscard]] std::size_t size() const { return edges_.size(); }
     [[nodiscard]] double top(std::size_t n) const { return edges_[n].top; }
+    [[nodiscard]] double bottom(std::size_t n) const { return edges_[n].bottom; }
+    // Whether the water at level at (x, z) is that of the pool below fall n alone (as below).
+    [[nodiscard]] bool belowOf(std::size_t n, double x, double z, double level, double tolerance,
+                               double reach) const;
 
 private:
     struct Edge {

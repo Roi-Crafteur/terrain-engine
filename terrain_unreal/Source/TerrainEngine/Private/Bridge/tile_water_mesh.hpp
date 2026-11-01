@@ -72,16 +72,26 @@ inline constexpr double kWaterCutSlope = 0.7;
 //   (its normal, the foam of the rapids) is never measured across a cut. Near the edge of the lip
 //   of a fall (TileData::falls, here or near: FallEdges), the water above it fades out by its
 //   distance to the edge, to nothing kEdgeOver meters beyond it under the top of the curtain,
-//   whether a cut cell meets a corner or not (the same in the tile beside), and a cut cell across
-//   the edge is drawn at the water above (its corners there at their level, the others at the
-//   level of the fall), faded out beyond the edge: the water ends along the edge, not at a side
-//   of a cell; the pool below keeps all of it. Off the falls, the corners of the cut cells have
-//   an edge of 0, the others 1: the water fades out over the cell before the cut;
+//   whether a cut cell meets a corner or not (the same in the tile beside). A cut cell is drawn
+//   twice: at its upper water and at its lowest water. Its upper layer, across the edge of a
+//   lip: at the water above the fall (its corners there at their level, the others at the level
+//   of the fall), faded out beyond the edge (the water ends along the edge, not at a side of a
+//   cell); off the falls: at its highest water (its corners near that level at their own, shared
+//   with the cells beside, the others at that level and faded out: the water above the cut ends
+//   within the cell). Its lowest layer, whole: its corners near the lowest water at their level,
+//   the others at that level, under the face or the curtain (the pool goes on to the foot, never
+//   a square of bare bed beside it). Nothing fades out at a cut but the water above it;
 // - on a side stitched to a coarser tile (TileRequest::seams), an odd column between two wet
 //   even ones stands at their mean level: on the straight edge of the coarser cell, no crack
 //   between the LODs. Two tiles of a LOD share the columns of their common side: the same
 //   vertices there, bit for bit.
 // Deterministic: a pure function of the data of the tile.
 [[nodiscard]] UnrealWaterMesh buildTileWater(const TileData& data);
+
+// The level of the water at each column of a tile as buildTileWater draws its wet corners
+// (meters; kNoWaterLevel where it draws none: dry land, the sea), its odd columns on a side
+// stitched to a coarser tile included; empty without water columns. kGridSamples per side, column
+// (i, k) at index k * kGridSamples + i.
+[[nodiscard]] std::vector<double> drawnWaterLevels(const TileData& data);
 
 } // namespace terrain::unreal

@@ -3,6 +3,7 @@
 #include "terrain/generation/water/hydrology.hpp"
 
 #include "hydrology_impl.hpp"
+#include "river_lips.hpp"
 #include "river_profile.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -362,7 +363,64 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
     in.segmentLength = lengthOf(s);
     in.taperStart = true;
     in.taperEnd = true;
-    return water::buildCourse(relief, in);
+    water::Course c = water::buildCourse(relief, in);
+    wetLips(c);
+    return c;
+}
+
+// The water above a lip falls from a point of its edge where, kWetBack meters upstream of it,
+// the valley of the course holds water nearer the level above the lip than the level below it
+// (it may rise upstream of a receded edge), kWetDepth meters deep at least over the ground; and
+// where the ground under the water falling from it (kWetAhead meters in front of the edge, of the
+// foot of its water and halfway) stands kWetSlack meters above the water above at most: never
+// over the walls of its slot.
+constexpr double kWetBack = 1.0;
+constexpr double kWetDepth = 0.02;
+constexpr double kWetAhead = 0.5;
+constexpr double kWetSlack = 0.05;
+
+// The surface of the valley of c at (x, z) (carved into the relief, or the relief) and its water.
+std::array<double, 2> Hydrology::Impl::surfaceOf(const water::Course& c, double x,
+                                                 double z) const {
+    const double cx = wrapCoordinate(x, grid.periodX());
+    const double cz = wrapCoordinate(z, grid.periodZ());
+    const double ground = static_cast<double>(relief.heightAt(cx, cz));
+    const double warp = static_cast<double>(wallWarp.fbm2D(cx, cz));
+    const water::Valley v = water::valleyAt(c, x, z, ground, meanderSeed, warp);
+    return {std::min(ground, v.height), static_cast<double>(v.level)};
+}
+
+void Hydrology::Impl::wetLips(water::Course& c) const {
+    for (water::FallLip& l : c.lips) {
+        // The foot of its water: the first point of the course down at the water below it.
+        std::size_t j = l.point;
+        while (j + 1 < c.points.size() && c.points[j].level > l.bottom + 0.05f) {
+            ++j;
+        }
+        const water::CoursePoint& foot = c.points[j];
+        const water::LipEdge e = water::lipEdge(c, l, foot.x, foot.z, foot.s - l.s);
+        const double top = static_cast<double>(l.top);
+        l.wet = 0;
+        for (std::size_t p = 0; p < kFallEdge; ++p) {
+            const std::array<double, 2> above =
+                surfaceOf(c, e.x[p] - kWetBack * l.dirX, e.z[p] - kWetBack * l.dirZ);
+            bool wet = above[0] < above[1] - kWetDepth &&
+                       above[1] > 0.5 * static_cast<double>(l.top + l.bottom);
+            // In front of the edge as the curtain hangs (fall_curtains.cpp): along the way from
+            // the point to the foot of its water.
+            const double dx = e.footX[p] - e.x[p];
+            const double dz = e.footZ[p] - e.z[p];
+            const double run = dmath::hypot(dx, dz);
+            const double aheadX = run > 1e-6 ? dx / run : l.dirX;
+            const double aheadZ = run > 1e-6 ? dz / run : l.dirZ;
+            for (const double t : {0.0, 0.5, 1.0}) {
+                const double x = e.x[p] + t * dx + kWetAhead * aheadX;
+                const double z = e.z[p] + t * dz + kWetAhead * aheadZ;
+                wet = wet && surfaceOf(c, x, z)[0] <= top + kWetSlack;
+            }
+            l.wet = static_cast<std::uint16_t>(l.wet | (wet ? 1u << p : 0u));
+        }
+    }
 }
 
 bool Hydrology::Impl::mayReach(std::size_t r, double x, double z, double radius) const {

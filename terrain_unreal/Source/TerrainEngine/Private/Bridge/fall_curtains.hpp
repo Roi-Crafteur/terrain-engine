@@ -19,27 +19,30 @@ inline constexpr double kFoamRadiusShare = 0.75;
 inline constexpr double kFoamLeastRadius = 3.0;
 inline constexpr double kFoamAheadShare = 0.35;
 inline constexpr double kCurtainCurveSlope = 1.5;
-// Along the edge of a lip, a curtain goes on kCurtainSides meters beyond its two ends.
-inline constexpr double kCurtainSides = 1.0;
 
-// The water of the falls whose lip lies in a tile (TileData::falls, here), in the frame of its
-// ground (UnrealWaterMesh: centimeters from the origin of the tile). Only from the data of each
-// fall — its lip and the edge of it, its foot, the water above and below, its width and its pool
-// — never from the shape of its rock:
-// - every fall gets a curtain (the surface of the tile is cut where its water is steeper than
-//   kWaterCutSlope, the slope of the steps of a fall in the core). Along the edge of its lip when
-//   the core gives it (TileFall::edgeX: receded, bowed, turned): from each point of the edge down
-//   to where its water meets the pool (footEdgeX), kCurtainBelow under the water there. Without
-//   it, a band kCurtainWidthShare of its width across, from the lip down to its foot. Always
-//   kCurtainAhead in front; steeper on average than kCurtainCurveSlope, it is curved as the water
-//   leaves the lip (it reaches a share sqrt(t) of the way to the foot after falling a share t of
-//   the drop: free fall from a lip, outside the face from lip to foot); less steep, it is
-//   straight from lip to foot (a chute). Its front face downstream; uv0 in meters across and
+// The water of the falls of a tile (TileData::falls), in the frame of its ground
+// (UnrealWaterMesh: centimeters from the origin of the tile). Only from the data of each fall —
+// its lip and the edge of it, its foot, the water above and below, its width and its pool — and
+// the water of the tile, never from the shape of its rock:
+// - every fall whose lip lies in the tile (here) gets a curtain (the surface of the tile is cut
+//   where its water is steeper than kWaterCutSlope, the slope of the steps of a fall in the core).
+//   Along the edge of its lip when the core gives it (TileFall::edgeX: receded, bowed, turned),
+//   where the water falls from it (TileFall::edgeWet: between two points it falls from; without
+//   them, within its channel), never over the dry walls of its slot: from each point of the edge
+//   down to where its water meets the pool (footEdgeX), kCurtainBelow under the water there.
+//   Without it, a band kCurtainWidthShare of its width across, from the lip down to its foot.
+//   Always kCurtainAhead in front; steeper on average than kCurtainCurveSlope, it is curved as
+//   the water leaves the lip (it reaches a share sqrt(t) of the way to the foot after falling a
+//   share t of the drop: free fall from a lip, outside the face from lip to foot); less steep, it
+//   is straight from lip to foot (a chute). Its front face downstream; uv0 in meters across and
 //   down the fall, uv2.v its width;
-// - at its foot (that of the middle of its edge), a disc of foam on the water below,
-//   kFoamRadiusShare of the width of the water falling (its edge, or its channel) in radius, never
-//   past the end of its pool (TileFall::pool), centered kFoamAheadShare of its radius downstream
-//   (uv0 meters from its center, uv2.v its radius).
+// - every fall here or near draws its foam on the tile: centered kFoamAheadShare of its radius
+//   downstream of its foot (that of the middle of its edge), kFoamRadiusShare of the width of its
+//   channel in radius (kFoamLeastRadius at least), never past the end of its pool
+//   (TileFall::pool), on the cells of the tile whose four corners stand in the water of its pool
+//   (drawnWaterLevels near the water below the fall), a few centimeters over it: never over a
+//   ramp, a bank, a lip or another pool, the same in the tiles beside (uv0 meters from its
+//   center, uv2.v its radius: the material fades it out to a ragged rim).
 // Every fall gives the same vertices, whatever the tile around it. Deterministic.
 [[nodiscard]] UnrealWaterMesh buildFallCurtains(const TileData& data);
 

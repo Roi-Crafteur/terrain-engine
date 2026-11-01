@@ -6,6 +6,8 @@ the Unreal Editor, so this checks what can be checked here.
   and parentheses balanced, every name of an input a node reads declared among its inputs, every
   output it writes declared among its outputs; the noise of the ripples, run here, repeats every
   4,096 m.
+- The foam of the rapids, run here as TerrainWater computes it: a ramp whose water slopes 0.31
+  keeps at least 35 % of foam, at most 1 % of its squares of 4 x 4 m nearly bare.
 - At the edge of the tiles, the water of the tiles and the water of the horizon keep complementary
   pixels with the same share and threshold; the plugin copies the whole look of the water to the
   horizon (its lists of names are the parameters of water_look_hlsl.py).
@@ -26,6 +28,7 @@ import ast
 import importlib
 import math
 import pathlib
+import random
 import re
 import sys
 import types
@@ -81,14 +84,16 @@ def frac(x):
     return x - math.floor(x)
 
 
+def hash_of(c):
+    """FTerrainWater::Hash (water_look_hlsl.py), in Python: in [0, 1) for the cell c."""
+    h = [frac(v * 0.1031) for v in (c[0], c[1], c[0])]
+    d = h[0] * (h[1] + 33.33) + h[1] * (h[2] + 33.33) + h[2] * (h[0] + 33.33)
+    h = [v + d for v in h]
+    return frac((h[0] + h[1]) * h[2])
+
+
 def octave(p, a, b, k, drift):
     """FTerrainWater::Octave (water_look_hlsl.py), in Python: the gradient of the noise at p."""
-    def hash_of(c):
-        h = [frac(v * 0.1031) for v in (c[0], c[1], c[0])]
-        d = h[0] * (h[1] + 33.33) + h[1] * (h[2] + 33.33) + h[2] * (h[0] + 33.33)
-        h = [v + d for v in h]
-        return frac((h[0] + h[1]) * h[2])
-
     def periodic(c, g):
         n = g[0] * g[0] + g[1] * g[1]
         q = (round((c[0] * g[0] + c[1] * g[1]) / n), round((c[1] * g[0] - c[0] * g[1]) / n))
@@ -122,6 +127,89 @@ def check_ripples(look):
     check(worst < 1e-4 and spread > 0.5,
           f"ripples: {worst:g} apart after 4096 m, spread {spread:g}")
     return worst
+
+
+# The foam of the rapids in the code of TerrainWater (water_look_hlsl.py), which rapids_foam runs:
+# a change there must come here too.
+RAPIDS_FOAM_HLSL = """\
+float2 fr = float2(dot(p, along), dot(p, across)) - float2(FlowSpeed * Time, 0.0);
+float patch = Water.Noise(fr * float2(0.17, 0.21) + 5.3, 1.0);
+float2 turned = float2(0.83 * fr.x - 0.56 * fr.y, 0.56 * fr.x + 0.83 * fr.y);
+float streaks = 0.6 * Water.Noise(fr * float2(0.45, 1.3), 1.0)
+              + 0.4 * Water.Noise(turned * float2(0.9, 2.1) + 11.0, 1.0);
+float from = FoamFromSlope * (0.5 + patch);
+float foam = saturate((slope - from) / max(FoamFullSlope - from, 1e-3));
+foam *= smoothstep(0.35, 0.75, streaks);"""
+# A steep ramp (slope of its water 0.31): its mean foam, its squares of 4 x 4 m nearly bare (mean
+# foam under 0.1) at most.
+RAMP_SLOPE, RAMP_FOAM_LEAST, BARE_FOAM, BARE_MOST = 0.31, 0.35, 0.1, 0.01
+
+
+def noise(p, size):
+    """FTerrainWater::Noise, in Python: value noise of cells of size meters at p."""
+    q = (p[0] / size, p[1] / size)
+    i = (math.floor(q[0]), math.floor(q[1]))
+    f = [v - math.floor(v) for v in q]
+    f = [v * v * (3.0 - 2.0 * v) for v in f]
+    h00, h10 = hash_of(i), hash_of((i[0] + 1, i[1]))
+    h01, h11 = hash_of((i[0], i[1] + 1)), hash_of((i[0] + 1, i[1] + 1))
+    return (h00 + (h10 - h00) * f[0]) * (1.0 - f[1]) + (h01 + (h11 - h01) * f[0]) * f[1]
+
+
+def smoothstep(a, b, x):
+    t = min(max((x - a) / (b - a), 0.0), 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def rapids_foam(fr, slope, scalars, patched):
+    """RAPIDS_FOAM_HLSL at fr (meters along and across the flow, moved by it); patched: the
+    threshold of the streaks moved by the slow noise too (75cbf32, refused)."""
+    patch = noise((fr[0] * 0.17 + 5.3, fr[1] * 0.21 + 5.3), 1.0)
+    turned = (0.83 * fr[0] - 0.56 * fr[1], 0.56 * fr[0] + 0.83 * fr[1])
+    streaks = (0.6 * noise((fr[0] * 0.45, fr[1] * 1.3), 1.0)
+               + 0.4 * noise((turned[0] * 0.9 + 11.0, turned[1] * 2.1 + 11.0), 1.0))
+    start = scalars["FoamFromSlope"] * (0.5 + patch)
+    foam = min(max((slope - start) / max(scalars["FoamFullSlope"] - start, 1e-3), 0.0), 1.0)
+    low, high = (0.3 + 0.2 * patch, 0.7 + 0.2 * patch) if patched else (0.35, 0.75)
+    return foam * smoothstep(low, high, streaks)
+
+
+def ramp_cover(scalars, patched):
+    """The foam of a steep ramp: its mean and the share of its 4 x 4 m squares nearly bare, over
+    6 places of 40 x 40 m (each its flow, its time), sampled every 0.25 m. Deterministic."""
+    draw = random.Random(27)
+    total, squares, bare = 0.0, 0, 0
+    for _ in range(6):
+        origin = (draw.uniform(0.0, 4096.0), draw.uniform(0.0, 4096.0))
+        turn, time = draw.uniform(0.0, 2.0 * math.pi), draw.uniform(0.0, 100.0)
+        along = (math.cos(turn), math.sin(turn))
+        for sk in range(10):
+            for si in range(10):
+                share = 0.0
+                for k in range(16):
+                    for i in range(16):
+                        p = (origin[0] + 4.0 * si + 0.25 * i, origin[1] + 4.0 * sk + 0.25 * k)
+                        fr = (p[0] * along[0] + p[1] * along[1] - scalars["FlowSpeed"] * time,
+                              p[1] * along[0] - p[0] * along[1])
+                        share += rapids_foam(fr, RAMP_SLOPE, scalars, patched) / 256.0
+                total += share
+                squares += 1
+                bare += 1 if share < BARE_FOAM else 0
+    return total / squares, bare / squares
+
+
+def check_rapids_foam(look):
+    """A ramp as steep as 0.31 stays white: at least RAMP_FOAM_LEAST of foam, at most BARE_MOST of
+    its 4 x 4 m squares nearly bare; the foam of 75cbf32 (threshold moved too) is refused."""
+    check(RAPIDS_FOAM_HLSL in look.tile_water_hlsl(),
+          "rapids foam: the HLSL of TerrainWater is not the code this test runs")
+    mean, bare = ramp_cover(look.WATER_SCALARS, False)
+    check(mean >= RAMP_FOAM_LEAST and bare <= BARE_MOST,
+          f"rapids foam at slope {RAMP_SLOPE}: mean {mean:.3f}, {100 * bare:.1f}% bare squares")
+    old_mean, old_bare = ramp_cover(look.WATER_SCALARS, True)
+    check(old_mean < RAMP_FOAM_LEAST or old_bare > BARE_MOST,
+          f"rapids foam: the checker passes the foam of 75cbf32 ({old_mean:.3f})")
+    return mean, bare
 
 
 class FakeUnreal:
@@ -379,11 +467,13 @@ def main(folder):
     check_junction(look, horizon.inland_hlsl(look.SKY_HLSL, look.BODY_CALL),
                    folder.parent / "Source" / "TerrainEngine" / "Private")
     worst = check_ripples(look)
+    foam, bare = check_rapids_foam(look)
     check_scope_checker()
     nodes = check_scopes(folder)
     print(f"water scripts: {len(failures)} failure(s), {len(look.OCTAVES)} octaves of ripples "
-          f"({worst:.1e} apart after 4,096 m), {len(look.look_inputs())} look parameters, the "
-          f"HLSL of {nodes} Custom nodes")
+          f"({worst:.1e} apart after 4,096 m), foam {foam:.3f} on a ramp at slope {RAMP_SLOPE} "
+          f"({100 * bare:.1f}% of it bare), {len(look.look_inputs())} look parameters, the HLSL "
+          f"of {nodes} Custom nodes")
     return 1 if failures else 0
 
 

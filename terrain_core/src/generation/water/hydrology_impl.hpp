@@ -284,6 +284,11 @@ struct Hydrology::Impl {
     [[nodiscard]] float startLevel(std::size_t r) const;
     [[nodiscard]] const water::Course& courseOf(std::size_t r) const;
     [[nodiscard]] water::Course makeCourse(std::size_t r) const;
+    // Marks the points of the edges of the lips of c the water above falls from
+    // (water::FallLip::wet).
+    void wetLips(water::Course& c) const;
+    [[nodiscard]] std::array<double, 2> surfaceOf(const water::Course& c, double x,
+                                                  double z) const;
     [[nodiscard]] water::ReachInput::Join joinOf(const water::Course& c, double x,
                                                  double z) const;
     [[nodiscard]] water::ReachEnd pointEnd(const RiverSegment& s, std::int32_t segment,

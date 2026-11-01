@@ -241,8 +241,8 @@ BODY_CODE
 float through = dot(exp(-absorb * thickness), float3(0.3333, 0.3333, 0.3334));
 // The foam of the rapids, where the water slopes, carried by the flow: its noise in the frame of
 // the flow (streaks along it, never rows along the axes of the world), a second one turned
-// against it, and the slope where it starts and its threshold moved by a slower noise (no
-// straight front where the slope of the water changes).
+// against it, and the slope where it starts moved by a slower noise (no straight front where the
+// slope of the water changes; its streaks keep one threshold: a steep ramp stays white).
 float flowLength = length(Flow);
 float2 along = flowLength > 0.01 ? Flow / flowLength : float2(0.8, 0.6);
 float2 across = float2(-along.y, along.x);
@@ -253,7 +253,7 @@ float streaks = 0.6 * Water.Noise(fr * float2(0.45, 1.3), 1.0)
               + 0.4 * Water.Noise(turned * float2(0.9, 2.1) + 11.0, 1.0);
 float from = FoamFromSlope * (0.5 + patch);
 float foam = saturate((slope - from) / max(FoamFullSlope - from, 1e-3));
-foam *= smoothstep(0.3 + 0.2 * patch, 0.7 + 0.2 * patch, streaks);
+foam *= smoothstep(0.35, 0.75, streaks);
 // Translucent: what the water keeps of the light behind it, the foam opaque.
 float opacity = max(saturate(1.0 - through * (1.0 - Fresnel)), foam);
 float keep = max(opacity, 0.05);

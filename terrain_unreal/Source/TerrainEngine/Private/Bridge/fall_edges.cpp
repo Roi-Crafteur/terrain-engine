@@ -88,13 +88,18 @@ std::optional<double> FallEdges::toward(std::size_t n, double x, double z) const
     return std::clamp((kEdgeOver - *down) / kEdgeFade, kEdgeBeyond, kEdgeAbove);
 }
 
+bool FallEdges::upper(std::size_t n, double level, double tolerance) const {
+    const Edge& e = edges_[n];
+    return level >= e.top - tolerance && level > 0.5 * (e.top + e.bottom);
+}
+
 std::optional<double> FallEdges::above(double x, double z, double level, double tolerance,
                                        double reach) const {
     std::optional<double> fade;
     double nearest = std::numeric_limits<double>::infinity();
     for (std::size_t n = 0; n < edges_.size(); ++n) {
         const Edge& e = edges_[n];
-        if (!(std::abs(level - e.top) <= tolerance)) {
+        if (!upper(n, level, tolerance)) {
             continue;
         }
         const std::optional<double> down = downstreamOf(e, e.x, e.z, e.across, x, z, kEdgeMargin);
@@ -106,15 +111,24 @@ std::optional<double> FallEdges::above(double x, double z, double level, double 
     return fade;
 }
 
+bool FallEdges::belowOf(std::size_t n, double x, double z, double level, double tolerance,
+                        double reach) const {
+    const Edge& e = edges_[n];
+    if (!(std::abs(level - e.bottom) <= tolerance)) {
+        return false;
+    }
+    const std::optional<double> down =
+        downstreamOf(e, e.footX, e.footZ, e.footAcross, x, z, kEdgeMargin);
+    return down && *down >= -reach && *down <= reach;
+}
+
 bool FallEdges::below(double x, double z, double level, double tolerance, double reach) const {
-    return std::any_of(edges_.begin(), edges_.end(), [&](const Edge& e) {
-        if (!(std::abs(level - e.bottom) <= tolerance)) {
-            return false;
+    for (std::size_t n = 0; n < edges_.size(); ++n) {
+        if (belowOf(n, x, z, level, tolerance, reach)) {
+            return true;
         }
-        const std::optional<double> down =
-            downstreamOf(e, e.footX, e.footZ, e.footAcross, x, z, kEdgeMargin);
-        return down && *down >= -reach && *down <= reach;
-    });
+    }
+    return false;
 }
 
 } // namespace terrain::unreal
