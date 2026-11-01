@@ -23,6 +23,9 @@
 #include "TerrainHorizonMeshes.h"
 #include "TerrainMeshBackend.h"
 #include "TerrainWorldEdits.h"
+#include "TerrainWorldLoading.h"
+#include "TerrainWorldStart.h"
+#include "TerrainWorldUploads.h"
 #include "TerrainWorldState.h"
 #include "TerrainWorldWater.h"
 
@@ -61,40 +64,13 @@ namespace
 		Params.stream.lod.splitDistance = {
 			World.Lod0DistanceChunks, World.Lod1DistanceChunks, World.Lod2DistanceChunks};
 		Params.stream.lod.viewDistance = World.ViewDistanceChunks;
-		Params.stream.workerThreads = FMath::Max(1, World.WorkerThreads);
+		// Every worker of a load created at the start (the boost: TerrainWorldLoadingPhase.cpp), the
+		// WorkerThreads first ones taking tiles outside the loads.
+		Params.stream.workerThreads = FMath::Max(FMath::Max(1, World.WorkerThreads),
+			World.LoadingSettings.bBoost ? TerrainLoadingCap(World) : 0);
 		Params.stream.maxLoadsPerUpdate =
 			static_cast<std::size_t>(FMath::Max(1, World.MaxTileUploadsPerFrame));
 		return Params;
-	}
-
-	// Applies an update of the streamer to the meshes: the uploads (timed), the moves to other
-	// images of the wrapped world, then the removals.
-	void ApplyUpdate(UTerrainMeshBackend& Backend, terrain::unreal::TileTimings& Timings,
-		const terrain::unreal::StreamerUpdate& Update)
-	{
-		for (const terrain::unreal::TileUpload& Upload : Update.uploads)
-		{
-			const double Start = FPlatformTime::Seconds();
-			Backend.SetTile(Upload);
-			const double UploadMs = (FPlatformTime::Seconds() - Start) * 1000.0;
-			Timings.record(terrain::unreal::TileStage::Upload, Upload.key.lod, UploadMs);
-			UE_LOG(LogTerrainEngine, Verbose,
-				TEXT("Tile (%d, %d) LOD %d: %d vertices, %d triangles, collision %s, conversion "
-					 "%.2f ms, upload %.2f ms"),
-				Upload.key.origin.x, Upload.key.origin.z, Upload.key.lod,
-				static_cast<int32>(Upload.mesh.positions.size()),
-				static_cast<int32>(Upload.mesh.triangleCount()),
-				Upload.collision ? TEXT("yes") : TEXT("no"), Upload.conversionMilliseconds,
-				UploadMs);
-		}
-		for (const terrain::unreal::TileMove& Move : Update.moves)
-		{
-			Backend.MoveTile(Move.key, Move.origin);
-		}
-		for (const terrain::TileKey& Key : Update.removals)
-		{
-			Backend.RemoveTile(Key);
-		}
 	}
 } // namespace
 
@@ -111,9 +87,14 @@ ATerrainWorld::ATerrainWorld()
 
 void ATerrainWorld::BeginPlay()
 {
+	// Black from the first frame of Play, before anything else: the world builds behind it.
+	Starting = MakePimpl<FTerrainWorldStart>();
+	BeginTerrainBlack(*this, *Starting.Get());
 	Super::BeginPlay();
 	if (!StartStreaming())
 	{
+		EndTerrainStart(*this, *Starting.Get());
+		Starting.Reset();
 		SetActorTickEnabled(false);
 	}
 }
@@ -138,66 +119,87 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	TileSurfaceLook = nullptr;
 	TileWaterLook = nullptr;
 	StopAtmosphere();
+	if (Starting.IsValid())
+	{
+		EndTerrainStart(*this, *Starting.Get());
+		Starting.Reset(); // waits for the build of the session in flight
+	}
+	if (State.IsValid())
+	{
+		RemoveTerrainWidget(*this, State->Loading.Cover);
+	}
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
 	Super::EndPlay(EndPlayReason);
 }
 
+// The session (planetary map, planet level, hydrology, tiles) builds on a thread, the screen
+// black and the pawn held meanwhile (TerrainWorldStart.cpp); TickStart finishes the start once it
+// is built (FinishStreamingStart).
 bool ATerrainWorld::StartStreaming()
 {
+	terrain::unreal::SessionParams Params;
 	try
 	{
-		// The world must be the one of terrain_core, bit for bit: otherwise no streaming.
-		const terrain::unreal::DeterminismReport Check = terrain::unreal::checkDefaultWorld();
-		if (!Check.same)
-		{
-			UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: %s. No streaming."),
-				*ToFString(terrain::unreal::describe(Check)));
-			return false;
-		}
-		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: %s"),
-			*ToFString(terrain::unreal::describe(Check)));
-		const terrain::unreal::SessionParams Params = MakeSessionParams(*this);
-		if (!Params.planetFile.empty())
-		{
-			UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: opening the planet level of seed "
-				"%lld in %s (built there if missing or stale: minutes, the game waits)"),
-				Seed, *ToFString(Params.planetFile));
-		}
-		const FPlatformMemoryStats Before = FPlatformMemory::GetStats();
-		State = MakePimpl<FTerrainWorldState>(Params);
-		LogPlanet(State->Session.planet(), Params.planetFile, Before);
-		State->Frame = State->Session.frameAt(CoreOriginX, CoreOriginZ);
+		Params = MakeSessionParams(*this);
 	}
 	catch (const std::exception& Exception)
 	{
-		State.Reset();
 		UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: cannot start the streaming: %s"),
 			*ToFString(Exception.what()));
 		return false;
 	}
+	if (!Params.planetFile.empty())
+	{
+		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: opening the planet level of seed %lld "
+			"in %s (built there if missing or stale: minutes, the screen black meanwhile)"),
+			Seed, *ToFString(Params.planetFile));
+	}
+	BeginTerrainStart(*Starting.Get(), Params, CoreOriginX, CoreOriginZ); // Starting: BeginPlay
 	Backend = CreateTerrainMeshBackend(MeshType, *this, MakeTileLook(), bAsyncCollisionCooking);
+	return true;
+}
+
+// The rest of the start on the game thread, the session built: the horizon, the water, the sky,
+// the phase of the loads and the check of the world (on a thread, StartTerrainLoading).
+void ATerrainWorld::FinishStreamingStart(double StartSeconds)
+{
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: seed %lld, ground of (%.1f, %.1f) m at %.2f m placed at the origin, "
 			 "LOD rings %d/%d/%d/%d chunks, %d workers, %d uploads per frame"),
 		Seed, CoreOriginX, CoreOriginZ, State->Frame.origin.y, Lod0DistanceChunks,
 		Lod1DistanceChunks, Lod2DistanceChunks, ViewDistanceChunks, WorkerThreads,
 		MaxTileUploadsPerFrame);
+	const double HorizonStartSeconds = FPlatformTime::Seconds();
 	StartHorizon();
 	StartWater();
 	StartAtmosphere();
-	return true;
+	State->Loading.HorizonSeconds = FPlatformTime::Seconds() - HorizonStartSeconds;
+	StartTerrainLoading(*this, *State.Get());
+	UE_LOG(LogTerrainEngine, Log,
+		TEXT("Terrain World: start-up in %.3f s: the world built on a thread in %.3f s, then the "
+			 "horizon, the water and the sky in %.3f s on the game thread"),
+		FPlatformTime::Seconds() - StartSeconds, State->Loading.SessionSeconds,
+		State->Loading.HorizonSeconds);
 }
 
 void ATerrainWorld::StopStreaming(const FString& Reason)
 {
 	UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: streaming stopped: %s"), *Reason);
+	if (State.IsValid())
+	{
+		EndTerrainLoading(*this, *State.Get()); // the screen and the pawn given back
+	}
 	SetActorTickEnabled(false);
 }
 
 void ATerrainWorld::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (Starting.IsValid() && !TickStart())
+	{
+		return; // the world still builds on its thread
+	}
 	if (!State.IsValid() || Backend == nullptr)
 	{
 		return;
@@ -212,15 +214,26 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 	{
 		ReturnFromWorldTurn(*Traveller, Focus);
 	}
+	State->Loading.TickStartSeconds = FPlatformTime::Seconds();
+	State->Loading.FrameHorizonMilliseconds = 0.0;
+	State->Loading.FrameTexturesMilliseconds = 0.0;
+	FString Mismatch;
+	if (!PollDeterminismCheck(*State.Get(), Mismatch))
+	{
+		StopStreaming(Mismatch);
+		return;
+	}
 	TickTerrainEdits(*State.Get());
+	Focus = BeginTerrainFrame(*this, *State.Get(), Focus); // a prepared point while one is set
+	FTerrainUploads Uploads;
 	try
 	{
 		if (Pawn != nullptr && WarmedPawn.Get() != Pawn)
 		{
 			WarmUpAround(*Pawn);
 		}
-		ApplyUpdate(*Backend, State->Session.timings(),
-			State->Session.streamer().update(ToUnrealPoint(Focus), State->Frame));
+		// The uploads within the time of a frame (TerrainWorldUploads.cpp).
+		Uploads = TickTerrainUploads(*Backend, *State.Get(), Focus);
 	}
 	catch (const std::exception& Exception)
 	{
@@ -228,6 +241,7 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 		return;
 	}
 	TickHorizon(Focus);
+	TickTerrainLoading(*this, *State.Get(), Focus, Pawn, Uploads);
 	RecordFrame();
 	LogTimings(DeltaSeconds);
 }
@@ -240,6 +254,7 @@ void ATerrainWorld::ApplyWorldOffset(const FVector& InOffset, bool bWorldShift)
 	if (State.IsValid())
 	{
 		State->Frame = terrain::unreal::shifted(State->Frame, ToUnrealPoint(InOffset));
+		State->Loading.Pacer.shift(ToUnrealPoint(InOffset)); // the uploads not applied yet
 		FollowFrame();
 	}
 }
@@ -297,11 +312,12 @@ void ATerrainWorld::WarmUpAround(APawn& Pawn)
 	WarmedPawn = &Pawn;
 	const double Start = FPlatformTime::Seconds();
 	const std::chrono::milliseconds Timeout(FMath::RoundToInt(WarmUpTimeoutSeconds * 1000.0f));
+	FlushTerrainUploads(*Backend, *State.Get()); // the update being applied first
 	const terrain::unreal::WarmUpResult Warm = State->Session.streamer().warmUp(
 		ToUnrealPoint(Pawn.GetActorLocation()), State->Frame, WarmUpRadiusChunks, Timeout);
 	for (const terrain::unreal::StreamerUpdate& Update : Warm.updates)
 	{
-		ApplyUpdate(*Backend, State->Session.timings(), Update);
+		ApplyTerrainUpdateNow(*Backend, *State.Get(), Update);
 	}
 	const double Seconds = FPlatformTime::Seconds() - Start;
 	if (Warm.complete)

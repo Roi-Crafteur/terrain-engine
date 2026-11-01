@@ -141,6 +141,7 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `FocusActor` | aucun | acteur suivi ; sinon le pion du premier joueur, ou sa caméra |
 | `bSnapPawnToGround` | oui | pose sur le sol un nouveau pion qui est dessous |
 | `WarmUpRadiusChunks`, `WarmUpTimeoutSeconds` | 1, 10 | tuiles LOD 0 générées avant qu'un nouveau pion bouge |
+| `LoadingSettings` | renfort, fondu 2 s, horizon niveau par niveau | chargement au spawn et à la téléportation : renfort des fils et des envois sous un plafond, écran noir jusqu'au sol, 64 m, toutes les tuiles et les niveaux 0 à 3 de l'horizon, pion tenu jusqu'à sa collision (`LOADING.md`) |
 | `TimingLogIntervalSeconds` | 5 | intervalle du résumé des mesures (0 : aucun) |
 | `bHorizon` | oui | horizon lointain (section 10) |
 | `HorizonLevels` | 10 | niveaux de l'horizon : 8 m, puis le double à chaque niveau ; 10 vont à 520 km |
