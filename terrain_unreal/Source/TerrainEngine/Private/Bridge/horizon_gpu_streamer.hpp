@@ -44,6 +44,10 @@ struct HorizonGpuParams {
     // in the epochs wherever no player edit lies. A sample with an edit keeps the height of its
     // epoch, without crest. False: the crests in the epochs (the horizon of #41).
     bool deferCrests = true;
+    // A new place (the start, a teleport) brought level by level, finest first, each level shown
+    // once computed (HorizonEpochParams::progressive, agent 38): what the game does
+    // (ATerrainWorld::bHorizonLevelByLevel). False: every level at once, as before.
+    bool progressive = false;
 };
 
 // Where a level of the GPU horizon stands and how its material reads its textures.
@@ -53,8 +57,11 @@ struct LevelPlacement {
     HorizonIndex firstSlot; // texel of the sample at the low corner of the window
     int trim = -1;          // its trim (trimVariant), -1 for level 0
     // Low corner of the window in the window of the next coarser level, in its cells, for the
-    // morph of the normals toward its texels; (-1, -1) for the coarsest level.
+    // morph of the normals toward its texels; (-1, -1) for the coarsest level shown.
     HorizonIndex inCoarser{-1, -1};
+    // False: the level is hidden (a new place brought level by level: its window is the one of
+    // the old place, or none yet); the other fields are then meaningless.
+    bool visible = true;
 
     friend bool operator==(const LevelPlacement&, const LevelPlacement&) = default;
 };
@@ -84,7 +91,10 @@ struct HorizonGpuUpdate {
     }
 };
 
-// The far horizon drawn by the GPU (phase 13, step 2): the epochs of the clipmap of terrain_core
+// The far horizon drawn by the GPU (phase 13, step 2). A new place is brought level by level,
+// finest first (HorizonEpochRunner, agent 38): only the levelsShown() finest levels are placed
+// visible, the coarsest of them without a coarser level to morph toward, the others hidden.
+// The epochs of the clipmap of terrain_core
 // run as jobs (HorizonEpochRunner), their texels prepared on the jobs; each commit writes the
 // texels of the samples entering the windows, and the levels are placed again whenever their
 // window, their trim or their image nearest to the player changes (a world turn, the origin
@@ -124,6 +134,11 @@ public:
     [[nodiscard]] double planetRadiusMeters() const { return radius_; }
     [[nodiscard]] int side() const { return horizonParams_.cellsPerSide + 1; }
     [[nodiscard]] bool shown() const { return runner_.clipmap().placed(); }
+    // The finest levels shown around the player (HorizonEpochRunner::levelsShown).
+    [[nodiscard]] int levelsShown() const { return runner_.levelsShown(); }
+    // The pieces of the epochs computed at once from now on (more while a new place loads).
+    void setMaxPiecesInFlight(int pieces) { runner_.setMaxPiecesInFlight(pieces); }
+    [[nodiscard]] int maxPiecesInFlight() const { return runner_.maxPiecesInFlight(); }
     // The samples of the epochs: with deferred crests, their point heights on every level (the
     // texels show the samples raised to their crests once these arrive).
     [[nodiscard]] const HorizonClipmap& clipmap() const { return runner_.clipmap(); }

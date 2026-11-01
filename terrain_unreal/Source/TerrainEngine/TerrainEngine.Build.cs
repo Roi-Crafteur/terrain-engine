@@ -41,5 +41,7 @@ public class TerrainEngine : ModuleRules
 		// The GPU horizon: static meshes built in game, textures updated by regions, frame times.
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"ProceduralMeshComponent", "MeshDescription", "StaticMeshDescription", "RenderCore", "RHI" });
+		// The message on the black screen while the world builds at the start (TerrainWorldStart.cpp).
+		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 	}
 }
