@@ -2,8 +2,9 @@
 // without leaving play. Its planet file is prepared first on a thread of its own, the old world
 // playing meanwhile (Bridge/planet_job: read when it holds the seed, otherwise built and written
 // where the plugin may write, never over a file the user gave); then the world is built again on
-// the game thread (the planet file read back: seconds). Only the Terrain World of the play session
-// changes, never the one of the level.
+// a thread, as at the start of the play (TerrainWorldStart.cpp: the planet file read back, the
+// screen black meanwhile). Only the Terrain World of the play session changes, never the one of
+// the level.
 #include "TerrainDevTools.h"
 
 #if TERRAIN_DEV_TOOLS
@@ -11,6 +12,8 @@
 #include "Misc/Paths.h"
 #include "TerrainDevState.h"
 #include "TerrainWorld.h"
+#include "TerrainWorldLoading.h"
+#include "TerrainWorldStart.h"
 #include "TerrainWorldState.h"
 
 #include <cstdint>
@@ -94,12 +97,21 @@ void UTerrainDevTools::SwitchSeed(const std::string& PlanetFile)
 	}
 	World->PlanetFile = ToText(PlanetFile);
 	const terrain::unreal::ViewMode Mode = Dev->Mode;
-	EndHold();
+	EndLanding();
 	Dev->Shot.reset();
 	Dev->bHideScreen = false;
+	if (World->State.IsValid())
+	{
+		EndTerrainLoading(*World, *World->State.Get()); // the screen and a held pawn given back
+	}
 	World->ReleaseWorld();
+	// Built on a thread as at the start of the play (TerrainWorldStart.cpp), the screen black.
+	World->Starting = MakePimpl<FTerrainWorldStart>();
+	BeginTerrainBlack(*World, *World->Starting.Get());
 	if (!World->StartStreaming())
 	{
+		EndTerrainStart(*World, *World->Starting.Get());
+		World->Starting.Reset();
 		TerrainDev::Warn(TEXT("Terrain.Seed: the new world cannot start (see the log above)"));
 		World->SetActorTickEnabled(false);
 		return;
@@ -109,7 +121,7 @@ void UTerrainDevTools::SwitchSeed(const std::string& PlanetFile)
 	if (Mode != terrain::unreal::ViewMode::Normal)
 	{
 		Dev->Mode = terrain::unreal::ViewMode::Normal;
-		SetViewMode(Mode);
+		Dev->ModeAfterStart = Mode; // set once the world is built (TickLooks)
 	}
 	TerrainDev::Log(FString::Printf(TEXT("Terrain.Seed: the world of seed %lld, preset %s, planet "
 		"file %s"), static_cast<long long>(Command.seed),

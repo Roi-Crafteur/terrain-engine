@@ -140,13 +140,19 @@ bool UTerrainDevTools::ReturnToGamePawn(bool bUnderView)
 	const FVector ViewLocation = DevPawn->GetPawnViewLocation();
 	const FRotator Rotation = PlayerController->GetControlRotation();
 	APawn* Game = GamePawn.Get();
+	if (bUnderView && IsViewLoading())
+	{
+		// The load of the view still holds the pawn and would put it back onto the heightmap.
+		ShowAndLog(TEXT("Terrain.Pawn: the view is still loading: the pawn of the game is given "
+			"back once it is shown"));
+		return false;
+	}
 	TArray<FVector> Spots;
 	if (bUnderView && IsValid(Game) &&
 		(OverWater(ViewLocation) || !FindGameGround(*Game, ViewLocation, Spots)))
 	{
 		return false; // nothing changed: the view of the tools stays
 	}
-	EndHold();
 	if (IsValid(Game))
 	{
 		if (bUnderView)
@@ -384,7 +390,7 @@ void UTerrainDevTools::EndLanding()
 	Dev->Landing.reset();
 	if (APlayerController* PlayerController = Controller())
 	{
-		if (PlayerController->IsMoveInputIgnored() && !Dev->Hold.has_value())
+		if (PlayerController->IsMoveInputIgnored())
 		{
 			PlayerController->SetIgnoreMoveInput(false);
 		}

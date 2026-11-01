@@ -27,6 +27,9 @@ struct StreamingState {
     bool horizonBusy = false;      // an epoch in flight or detail queued (GPU horizon)
     bool horizonShown = true;      // false while a horizon is not shown yet
     std::size_t editsPending = 0;
+    // The load of a teleport still holds the view: the screen black or the pawn held (the
+    // LoadPhase of agent 38: fading or holding).
+    bool viewLoading = false;
 
     friend bool operator==(const StreamingState&, const StreamingState&) = default;
 };
@@ -36,7 +39,7 @@ struct StreamingState {
 [[nodiscard]] StreamingState tileState(const TileStreamer& streamer);
 
 // Nothing left to load: every selected tile shown, none pending, the horizon shown and not
-// busy, no edit pending.
+// busy, no edit pending, the view no longer held black by a load.
 [[nodiscard]] bool settled(const StreamingState& state);
 
 struct ShotWaitParams {

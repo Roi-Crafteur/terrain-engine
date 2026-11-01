@@ -100,6 +100,12 @@ void UTerrainDevTools::SetViewMode(ViewMode Mode)
 // wireframe is asked again the frame after.
 void UTerrainDevTools::TickLooks()
 {
+	if (Dev->ModeAfterStart.has_value())
+	{
+		const terrain::unreal::ViewMode Mode = *Dev->ModeAfterStart;
+		Dev->ModeAfterStart.reset();
+		SetViewMode(Mode); // the world of the new seed is built (TickWorld runs with it only)
+	}
 	if (!Dev->bReapplyMode)
 	{
 		return;

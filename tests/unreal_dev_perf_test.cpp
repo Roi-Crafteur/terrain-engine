@@ -105,12 +105,13 @@ void testWaiter() {
     using terrain::unreal::settled;
     StreamingState state = settledState();
     TEST_CHECK(settled(state));
-    std::vector<StreamingState> busy(5, state);
+    std::vector<StreamingState> busy(6, state);
     busy[0].pendingTiles = 1;
     busy[1].shownTiles = 199;
     busy[2].horizonBusy = true;
     busy[3].horizonShown = false;
     busy[4].editsPending = 2;
+    busy[5].viewLoading = true; // the screen still black after a teleport (agent 38)
     for (const StreamingState& not_settled : busy) {
         TEST_CHECK(!settled(not_settled));
     }

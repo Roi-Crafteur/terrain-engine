@@ -24,13 +24,6 @@
 #include <string>
 #include <vector>
 
-// The pawn of a teleport held still until the tiles around it are loaded (TeleportView).
-struct FTerrainDevHold
-{
-	double Start = 0.0; // FPlatformTime::Seconds
-	terrain::unreal::ShotWaiter Waiter;
-};
-
 class APawn;
 
 // The pawn of the game just put down by Terrain.Pawn, watched (TerrainDevPawn.cpp): the spots
@@ -87,8 +80,9 @@ struct FTerrainDevState
 	bool bMotionBlurOff = false;
 	bool bLookIgnored = false;
 	bool bScreenMessagesOff = false;
-	std::optional<FTerrainDevHold> Hold;
 	std::optional<FTerrainDevLanding> Landing;
+	// The view mode of the tools for a world of another seed, set once it is built (Terrain.Seed).
+	std::optional<terrain::unreal::ViewMode> ModeAfterStart;
 	std::optional<FTerrainDevShot> Shot;
 	// Terrain.Seed: the planet being prepared and the world it is for.
 	std::unique_ptr<terrain::unreal::PlanetJob> Planet;

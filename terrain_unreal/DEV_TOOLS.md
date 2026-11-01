@@ -67,9 +67,11 @@ de la recherche du sol praticable de `Terrain.Pawn`, 50 m).
 
 ### La téléportation : le contrat de `TeleportView`
 
-`Terrain.Goto`, la carte de dev (agent 35) et le chargement progressif (agent 38) passent par la
-même fonction, sur `ATerrainWorld` (`Public/TerrainWorld.h`, appelables en Blueprint, catégorie
-`Terrain|Dev`) :
+`Terrain.Goto`, `Terrain.Eye`, `Terrain.Views` et la carte de dev (agent 35) passent par la même
+fonction, sur `ATerrainWorld` (`Public/TerrainWorld.h`, appelables en Blueprint, catégorie
+`Terrain|Dev`). Elle passe elle-même par **la seule téléportation du monde**,
+`ATerrainWorld::BeginTeleport` (le chargement de l'agent 38, `TerrainWorldLoadingPhase.cpp`,
+`LOADING.md`), comme `TeleportWhenReady` : un seul chemin.
 
 ```cpp
 bool TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
@@ -85,9 +87,10 @@ Les entrées :
 - `Heading` : le cap en degrés depuis le nord (−Z du core, −Y d'Unreal), sens horaire ; toute
   valeur est ramenée dans [0, 360). Yaw Unreal = cap − 90.
 - `Pitch` : l'inclinaison en degrés, **positive vers le haut, négative vers le bas** (−45 : 45°
-  sous l'horizon), ramenée dans [−90, 90]. C'est la convention de `FRotator` : la rotation posée
-  est `FRotator(Pitch, Heading − 90, 0)`, sans roulis (`Bridge/place_pose` : `viewRotation`,
-  testée par `unreal_place_pose_test`). Les lieux, `Terrain.Look` et `Terrain.Save` suivent la
+  sous l'horizon), ramenée dans [−89,9, 89,9]. C'est la convention de `FRotator` : la rotation
+  posée est `FRotator(Pitch, Heading − 90, 0)`, sans roulis (celle de `TeleportWhenReady`,
+  `viewAngles` ; `Bridge/place_pose` : `viewRotation` pour `Terrain.Look`, testée par
+  `unreal_place_pose_test`). Les lieux, `Terrain.Look` et `Terrain.Save` suivent la
   même convention ; à l'essai, `Terrain.Look 0 -45` regarde vers le nord, 45° sous l'horizon.
 - `Eye`, `EyeMode` :
   - `Altitude` : l'œil à l'altitude `Eye` du core, en mètres, sans contrôle (il peut être sous
@@ -96,25 +99,29 @@ Les entrées :
     quand le core y en met (la mer toujours ; les lacs, les fleuves et les lacs salés seulement
     avec le fichier planète), sinon le sol du heightmap (ni surplomb ni grotte).
 
-Quand elle rend `true` :
+Elle rend la main tout de suite (≈ 0,2 ms : rien n'est généré ni lu sur le fil du jeu). Quand elle
+rend `true` :
 
 1. le joueur possède le **pion volant des outils** (un `ASpectatorPawn`, 50 m/s, collision
    `Spectator`, créé au premier appel) ; le pion du jeu reste où il était, non possédé, gardé
-   pour `ReturnToGamePawn` ;
-2. l'œil de la caméra est **exactement** au point demandé : jamais posé sur le sol, jamais
-   déplacé par `bSnapPawnToGround` ; le cap et l'inclinaison sont posés sur la rotation du
-   contrôleur ;
-3. les tuiles LOD 0 dans `WarmUpRadiusChunks` autour de l'œil sont générées avant le retour (le
-   sol sous la vue existe, avec sa collision) ;
-4. ensuite, le mouvement du pion est bloqué (la souris tourne toujours la vue) jusqu'à ce que
-   toutes les tuiles de la sélection autour de la vue soient affichées, au plus
-   `Terrain.ShotTimeout` (60 s) ; `IsViewLoading()` est vrai pendant ce temps, le log dit après
-   combien de temps. L'horizon lointain n'est pas attendu (`Terrain.Shot` l'attend) ;
-5. un nouvel appel remplace l'attente du précédent.
+   pour `ReturnToGamePawn`. Le tick du monde ne génère pas le sol de ce pion d'un coup
+   (`WarmUpAround`) : il vient avec le chargement ;
+2. **l'écran passe au noir** tout de suite, le pion est déplacé en (x, z) et **tenu** (son
+   mouvement coupé), le cap et l'inclinaison posés sur le contrôleur ;
+3. l'œil : `Altitude`, posé tout de suite à son altitude ; `Ground`, posé à `Eye` m au-dessus du
+   sol ou de l'eau dès que **le sol du point est lu sur un fil** (`the ground of (x, z) m read on
+   a thread in … ms`). Puis l'œil reste **exactement** là : jamais posé sur le sol, jamais remonté
+   au relâchement, jamais déplacé par `bSnapPawnToGround` ;
+4. le pion est relâché quand un rayon trouve la collision des tuiles sous lui ; **l'écran
+   revient** quand le sol, l'anneau de 64 m, toutes les tuiles et les niveaux 0 à 3 de l'horizon
+   sont affichés (2 s au plus, ce qui manquait est dans le log). `IsViewLoading()` est vrai tant
+   que l'écran est noir ou le pion tenu ;
+5. un nouvel appel remplace le chargement du précédent. Un changement d'œil sur place
+   (`Terrain.Eye`) donne donc un noir très bref (≈ 0,25 s de retour).
 
 Elle rend `false` sans rien changer : sans les outils (`bDevTools` faux, build Shipping), hors
-Play, quand le monde est arrêté sur une erreur, ou sans joueur. Si la génération autour de la vue
-échoue, le monde s'arrête (l'erreur est dans le log) et elle rend `false`.
+Play, pendant la construction du monde (le début du Play ou `Terrain.Seed`), quand le monde est
+arrêté sur une erreur, ou sans joueur.
 
 `ReturnToGamePawn()` (et `Terrain.Pawn`) rend le pion du jeu, posé sur le **sol praticable le
 plus proche** de la colonne sous la vue, le cap et l'inclinaison gardés, les tuiles autour
@@ -168,6 +175,8 @@ restant en place :
   around is too steep ») ;
 - **sans candidat qui tienne sur la collision** : le message compte les refus par raison (trop
   raide, marche, loin de la heightmap, sous l'eau, sans collision) ;
+- **pendant le chargement de la vue** (`IsViewLoading()`) : il tiendrait le pion et le remettrait
+  sur la heightmap au relâchement ; `Terrain.Pawn` une fois la vue affichée ;
 - quand le joueur n'a pas le pion des outils (il a déjà celui du jeu).
 
 Pour l'agent 35 (clic sur la carte) : `walkableCandidates` rend aussi sa raison. Avec
@@ -176,16 +185,16 @@ Pour l'agent 35 (clic sur la carte) : `walkableCandidates` rend aussi sa raison.
 
 `Terrain.Views` rend le pion du jeu là où il était, sans le poser : il n'est pas concerné.
 
-Pour l'agent 38 (fondu au noir) : appeler `TeleportView` pendant le noir, puis attendre que
-`IsViewLoading()` soit faux avant de rouvrir. Attention en relisant une rotation : Unreal garde
+Le fondu au noir et l'attente sont ceux du chargement de l'agent 38 : rien à envelopper. Attention
+en relisant une rotation : Unreal garde
 l'inclinaison de la caméra dans [0, 360) (−59 se relit 301) ; les outils la ramènent dans
 [−90, 90] (`cameraPose`). Un code qui la borne sans la ramener obtient +90 : du ciel pur.
 
 ### Les images
 
-Une image est prise quand rien ne reste à charger autour de la vue : toutes les tuiles de la
-sélection affichées, aucune en attente, l'horizon GPU affiché et fini (époque et détail), aucune
-modification en cours, et cela depuis `Terrain.ShotSettle` secondes (l'exposition et la lumière
+Une image est prise quand rien ne reste à charger autour de la vue : l'écran sorti du noir du
+chargement et le pion relâché, toutes les tuiles de la sélection affichées, aucune en attente,
+l'horizon GPU affiché et fini (époque et détail), aucune modification en cours, et cela depuis `Terrain.ShotSettle` secondes (l'exposition et la lumière
 suivent) ; au plus `Terrain.ShotTimeout` secondes, sinon l'image est prise quand même et marquée
 `NOT READY (timeout)`. L'image a la taille de la fenêtre du Play : **garder la même taille de
 fenêtre** pour comparer deux séries.
@@ -213,9 +222,10 @@ fenêtre** pour comparer deux séries.
   la nouvelle vue.
 
 `views.txt` : la seed, le preset, le fichier planète, les anneaux de LOD, puis une ligne par vue
-(fichier, lieu, x, z, œil, yaw, inclinaison, prête ou non et après combien de secondes, tuiles en
-attente et affichées, horizon, images par seconde, et « WITHOUT the planet file it needs » quand
-le lieu demande le fichier planète et que le monde ne l'a pas).
+(fichier, lieu, x, z, œil (celui de la caméra à la capture), yaw, inclinaison, prête ou non et
+après combien de secondes, tuiles en attente et affichées, horizon, images par seconde, et
+« WITHOUT the planet file it needs » quand le lieu demande le fichier planète et que le monde ne
+l'a pas).
 
 ## Les modes de vue (`Terrain.View`)
 

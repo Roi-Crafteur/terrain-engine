@@ -103,9 +103,8 @@ private:
 	void StartLanding(APawn& Game, TArray<FVector> Spots);
 	void TickLanding();
 	void EndLanding();
-	bool PlaceView(const terrain::unreal::ViewPose& Pose);
-	void TickHold();
-	void EndHold();
+	bool PlaceView(double X, double Z, double Heading, double Pitch, double Eye,
+		terrain::dev::EyeMode Mode);
 
 	// TerrainDevShots.cpp
 	void SetShotLook(bool bTaking);

@@ -20,6 +20,7 @@ class UTerrainDevTools;
 class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
+struct FTerrainTeleport;
 struct FTerrainWorldStart;
 struct FTerrainWorldState;
 
@@ -351,20 +352,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Dev")
 	bool bDevTools = true;
 
-	// The one teleport of the tools (Terrain.Goto, the dev map; its contract in
-	// terrain_unreal/DEV_TOOLS.md): the view at the core point (X, Z), meters, looking along
-	// Heading (degrees clockwise from the north, -Z of the core) and Pitch (degrees, positive up,
-	// negative down, clamped to [-90, 90]), its eye at the altitude Eye (Altitude) or Eye meters
-	// above the ground or the water (Ground). Synchronous: the player takes a flying pawn of the
-	// tools whose eye stands exactly there, the tiles of LOD 0 around it are generated before it
-	// returns, and the pawn stays put until the tiles around are loaded (IsViewLoading,
-	// Terrain.ShotTimeout at most). False without the tools or outside play.
+	// The teleport of the tools (Terrain.Goto, the dev map; its contract in
+	// terrain_unreal/DEV_TOOLS.md), on the one teleport of the world (BeginTeleport, the loading
+	// of agent 38): the view at the core point (X, Z), meters, looking along Heading (degrees
+	// clockwise from the north, -Z of the core) and Pitch (degrees, positive up, negative down,
+	// clamped to [-89.9, 89.9]), its eye at the altitude Eye (Altitude) or Eye meters above the
+	// ground or the water (Ground). Returns at once: the player takes a flying pawn of the tools,
+	// the screen black and the pawn held; the eye stands exactly there once the ground is read on
+	// a thread, the screen back once the world around is shown (IsViewLoading). False without the
+	// tools, outside play or while the world builds.
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
 	bool TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
 		ETerrainEyeMode EyeMode);
 
-	// True while the view of the last TeleportView waits for the tiles around it (its pawn held
-	// still); false once they are shown, after Terrain.ShotTimeout, or without the tools.
+	// True while the load of the last teleport holds the view: the screen black or the pawn held
+	// (LoadPhase); false once the world around is shown, or without the tools.
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
 	bool IsViewLoading() const;
 
@@ -405,6 +407,10 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+	// The one teleport (TerrainWorldLoadingPhase.cpp): TeleportWhenReady and the views of the
+	// tools (TeleportView) go through it. The pawn moved at once and held, the screen black, the
+	// ground read on a thread, the pawn put on it (or its eye above it) once read.
+	bool BeginTeleport(APawn& Pawn, const FTerrainTeleport& Teleport);
 	bool StartStreaming();
 	bool TickStart();
 	void FinishStreamingStart(double StartSeconds);

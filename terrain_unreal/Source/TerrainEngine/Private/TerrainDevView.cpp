@@ -1,7 +1,8 @@
-// The views of the tools of the developers (agent 36): the one teleport (TeleportView, called by
-// Terrain.Goto and by the dev map), the flying pawn of the tools that holds the eye exactly where
-// asked, the wait for the tiles around it, and the commands Terrain.Goto, Look, Eye, Save and
-// Info (the pawn of the game given back: TerrainDevPawn.cpp). The poses come from Bridge/place_pose.
+// The views of the tools of the developers (agent 36): TeleportView (called by Terrain.Goto and
+// by the dev map) on the one teleport of the world (ATerrainWorld::BeginTeleport, the loading of
+// agent 38), the flying pawn of the tools that holds the eye exactly where asked, and the
+// commands Terrain.Goto, Look, Eye, Save and Info (the pawn of the game given back:
+// TerrainDevPawn.cpp). The poses come from Bridge/place_pose.
 #include "TerrainDevTools.h"
 
 #if TERRAIN_DEV_TOOLS
@@ -16,6 +17,7 @@
 #include "HAL/PlatformTime.h"
 #include "TerrainDevState.h"
 #include "TerrainWorld.h"
+#include "TerrainWorldLoading.h"
 #include "TerrainWorldState.h"
 
 #include <exception>
@@ -43,18 +45,18 @@ bool UTerrainDevTools::TeleportView(double X, double Z, double Heading, double P
 	{
 		return false;
 	}
-	const terrain::HeightSample Sample = World->State->Session.tiles().heightfield().sampleAt(X, Z);
-	const terrain::dev::EyeMode Mode = EyeMode == ETerrainEyeMode::Ground
+	return PlaceView(X, Z, Heading, Pitch, Eye, EyeMode == ETerrainEyeMode::Ground
 		? terrain::dev::EyeMode::Ground
-		: terrain::dev::EyeMode::Altitude;
-	return PlaceView(terrain::unreal::viewPose(X, Z, Heading, Pitch, Eye, Mode,
-		terrain::unreal::columnTop(Sample)));
+		: terrain::dev::EyeMode::Altitude);
 }
 
-// The pawn of the tools, its eye at the eye of the pose (the image of the point nearest to the
-// view of the player: the tiles follow it there), the ground under it generated now, then held
-// still until the tiles around are loaded (TickHold).
-bool UTerrainDevTools::PlaceView(const terrain::unreal::ViewPose& Pose)
+// The pawn of the tools taken by the player, then the one teleport of the world
+// (ATerrainWorld::BeginTeleport, the loading of agent 38) with its eye: the screen black at once,
+// the eye at its altitude at once (Altitude) or above the ground or the water once the ground is
+// read on a thread (Ground), the pawn held until the collision under it, the screen back once
+// the world around is shown. At the image of the point nearest to the view of the player.
+bool UTerrainDevTools::PlaceView(double X, double Z, double Heading, double Pitch, double Eye,
+	terrain::dev::EyeMode Mode)
 {
 	APlayerController* PlayerController = Controller();
 	APawn* Flying = PlayerController != nullptr ? EnsureDevPawn(*PlayerController) : nullptr;
@@ -63,56 +65,33 @@ bool UTerrainDevTools::PlaceView(const terrain::unreal::ViewPose& Pose)
 		TerrainDev::Warn(TEXT("no player to move"));
 		return false;
 	}
-	terrain::unreal::CorePoint EyePoint = Pose.eye;
+	FTerrainTeleport Teleport;
+	Teleport.X = X;
+	Teleport.Z = Z;
 	terrain::unreal::ViewPose Here;
 	if (CurrentPose(Here))
 	{
 		const terrain::WorldSize& Size = World->State->Session.tiles().world();
-		EyePoint.x = terrain::nearestImage(EyePoint.x, Here.eye.x, Size.x);
-		EyePoint.z = terrain::nearestImage(EyePoint.z, Here.eye.z, Size.z);
+		Teleport.X = terrain::nearestImage(X, Here.eye.x, Size.x);
+		Teleport.Z = terrain::nearestImage(Z, Here.eye.z, Size.z);
 	}
-	const terrain::unreal::UnrealPoint Target =
-		terrain::unreal::toUnreal(World->State->Frame, EyePoint);
-	const FVector ViewOffset = Flying->GetPawnViewLocation() - Flying->GetActorLocation();
-	Flying->SetActorLocation(FVector(Target.x, Target.y, Target.z) - ViewOffset, false, nullptr,
-		ETeleportType::TeleportPhysics);
-	if (UPawnMovementComponent* Movement = Flying->GetMovementComponent())
+	Teleport.Heading = Heading;
+	Teleport.Pitch = Pitch; // negative down (DEV_TOOLS.md, the contract)
+	Teleport.EyeMeters = Eye;
+	Teleport.bEyeAboveStand = Mode == terrain::dev::EyeMode::Ground;
+	if (!World->BeginTeleport(*Flying, Teleport))
 	{
-		Movement->StopMovementImmediately();
+		return false;
 	}
-	// The pitch of the pose negative down, as FRotator (DEV_TOOLS.md, the contract).
-	PlayerController->SetControlRotation(
-		TerrainDev::ToRotator(terrain::unreal::viewRotation(Pose)));
 	// A cut: the motion blur and the temporal history start again from the new view.
 	if (PlayerController->PlayerCameraManager != nullptr)
 	{
 		PlayerController->PlayerCameraManager->SetGameCameraCutThisFrame();
 	}
-	const double StartSeconds = FPlatformTime::Seconds();
-	// The eye stays exactly where asked: no snap onto the ground.
-	const bool bSnap = World->bSnapPawnToGround;
-	World->bSnapPawnToGround = false;
-	try
-	{
-		World->WarmUpAround(*Flying);
-	}
-	catch (const std::exception& Failure)
-	{
-		World->bSnapPawnToGround = bSnap;
-		World->StopStreaming(ToText(Failure.what()));
-		return false;
-	}
-	World->bSnapPawnToGround = bSnap;
-	// A possession resets the move input that is ignored: asked again whatever happened.
-	if (!PlayerController->IsMoveInputIgnored())
-	{
-		PlayerController->SetIgnoreMoveInput(true);
-	}
-	Dev->Hold = FTerrainDevHold{StartSeconds,
-		terrain::unreal::ShotWaiter({0.0, 0.0, TerrainDev::ShotTimeoutSeconds()})};
-	TerrainDev::Log(FString::Printf(TEXT("view at x %.2f, z %.2f, eye %.2f m, heading %.1f, "
-		"pitch %.1f; the ground ready in %.2f s"), Pose.eye.x, Pose.eye.z, Pose.eye.y,
-		terrain::unreal::headingOfYaw(Pose.yaw), Pose.pitch, FPlatformTime::Seconds() - StartSeconds));
+	TerrainDev::Log(FString::Printf(TEXT("view asked at x %.2f, z %.2f, eye %.2f m %s, heading "
+		"%.1f, pitch %.1f: shown once the world around is loaded"), X, Z, Eye,
+		Mode == terrain::dev::EyeMode::Ground ? TEXT("above the ground or the water")
+											  : TEXT("of altitude"), Heading, Pitch));
 	return true;
 }
 
@@ -124,6 +103,7 @@ APawn* UTerrainDevTools::EnsureDevPawn(APlayerController& PlayerController)
 		{
 			PlayerController.Possess(DevPawn.Get());
 		}
+		World->WarmedPawn = DevPawn.Get(); // its ground comes with the load, never generated now
 		return DevPawn.Get();
 	}
 	FActorSpawnParameters Params;
@@ -144,48 +124,21 @@ APawn* UTerrainDevTools::EnsureDevPawn(APlayerController& PlayerController)
 	GamePawn = Previous;
 	PlayerController.Possess(Spectator);
 	DevPawn = Spectator;
+	// The tick of the world would generate the ground of a new focus pawn at once (WarmUpAround):
+	// the ground of a view comes with its load instead.
+	World->WarmedPawn = Spectator;
 	return Spectator;
 }
 
-void UTerrainDevTools::TickHold()
-{
-	if (!Dev->Hold.has_value())
-	{
-		return;
-	}
-	const double Elapsed = FPlatformTime::Seconds() - Dev->Hold->Start;
-	const terrain::unreal::StreamingState State =
-		terrain::unreal::tileState(World->State->Session.streamer());
-	const terrain::unreal::ShotWait Wait = Dev->Hold->Waiter.update(Elapsed, State);
-	if (Wait == terrain::unreal::ShotWait::Waiting)
-	{
-		return;
-	}
-	TerrainDev::Log(FString::Printf(TEXT("%s after %.1f s (%d of %d tiles shown, %d pending): the "
-		"pawn moves again"), Wait == terrain::unreal::ShotWait::Ready
-			? TEXT("the tiles around the view are loaded")
-			: TEXT("NOT every tile around the view is loaded"),
-		Elapsed, static_cast<int32>(State.shownTiles), static_cast<int32>(State.selectedTiles),
-		static_cast<int32>(State.pendingTiles)));
-	EndHold();
-}
-
-void UTerrainDevTools::EndHold()
-{
-	if (!Dev->Hold.has_value())
-	{
-		return;
-	}
-	if (APlayerController* PlayerController = Controller())
-	{
-		PlayerController->SetIgnoreMoveInput(false);
-	}
-	Dev->Hold.reset();
-}
-
+// The load of the last teleport holds the view: the screen black or the pawn held (LoadPhase).
 bool UTerrainDevTools::IsViewLoading() const
 {
-	return Dev.IsValid() && Dev->Hold.has_value();
+	if (!Dev.IsValid() || World == nullptr || !World->State.IsValid())
+	{
+		return false;
+	}
+	const TOptional<terrain::unreal::LoadPhase>& Phase = World->State->Loading.Phase;
+	return Phase.IsSet() && (Phase->fading() || Phase->holding());
 }
 
 void UTerrainDevTools::RunGoto(const std::vector<std::string>& Args)

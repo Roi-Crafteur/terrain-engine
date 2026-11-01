@@ -19,7 +19,8 @@ StreamingState tileState(const TileStreamer& streamer) {
 
 bool settled(const StreamingState& state) {
     return state.pendingTiles == 0 && state.shownTiles == state.selectedTiles &&
-           state.horizonShown && !state.horizonBusy && state.editsPending == 0;
+           state.horizonShown && !state.horizonBusy && state.editsPending == 0 &&
+           !state.viewLoading;
 }
 
 ShotWaiter::ShotWaiter(const ShotWaitParams& params) : params_(params) {

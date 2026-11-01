@@ -41,6 +41,16 @@ namespace
 			{0.5, TerrainDev::ShotSettleSeconds(), TerrainDev::ShotTimeoutSeconds()});
 	}
 
+	// The eye of a view as the camera had it when its image was taken (its height, unknown before
+	// the ground of the teleport is read on a thread).
+	void KeepCameraEye(terrain::unreal::ViewRecord& Record)
+	{
+		if (Record.capture.measured)
+		{
+			Record.pose.eye.y = Record.capture.camera.eye.y;
+		}
+	}
+
 	const char* PresetOf(const ATerrainWorld& World)
 	{
 		return !World.bCaves ? "surface" : World.bCaveRegions ? "regions" : "caves";
@@ -172,15 +182,15 @@ void UTerrainDevTools::NextView()
 	Shot.Current = {};
 	Shot.Current.place = Place;
 	Shot.Current.planetMissing = Place.planet && !HasPlanet();
-	const terrain::HeightSample Sample =
-		World->State->Session.tiles().heightfield().sampleAt(Place.x, Place.z);
-	Shot.Current.pose = terrain::unreal::placePose(Place, terrain::unreal::columnTop(Sample));
+	// The height of the eye is known once the ground is read on a thread: the one of the camera
+	// is written when the image is taken (Capture, TickShots).
+	Shot.Current.pose = terrain::unreal::placePose(Place, 0.0);
 	if (Shot.Current.planetMissing)
 	{
 		TerrainDev::Warn(FString::Printf(TEXT("%s needs the planet file: taken without it"),
 			*ToText(Place.name)));
 	}
-	if (!PlaceView(Shot.Current.pose))
+	if (!PlaceView(Place.x, Place.z, Place.heading, Place.pitch, Place.eye, Place.eyeMode))
 	{
 		// The streaming stopped (OnStreamingStopped may have ended the run already).
 		TerrainDev::Warn(TEXT("Terrain.Views stopped: the view could not be placed"));
@@ -211,6 +221,7 @@ void UTerrainDevTools::TickShots()
 			return;
 		}
 		Shot.Current.capture = MeasureCapture("texture");
+		KeepCameraEye(Shot.Current);
 		ReadViewTexture(Shot.File, Shot.Current.capture);
 		SetScreenMessagesOff(false);
 		OnShotProcessed();
@@ -239,6 +250,7 @@ void UTerrainDevTools::TickShots()
 		: State.Horizon != nullptr                       ? State.Horizon->shown()
 														 : true;
 	Streaming.editsPending = State.Session.editsPending();
+	Streaming.viewLoading = IsViewLoading();
 	const ShotWait Wait = Shot.Waiter->update(Now - Shot.Start, Streaming);
 	if (Wait == ShotWait::Waiting)
 	{
@@ -273,6 +285,7 @@ void UTerrainDevTools::Capture()
 	else
 	{
 		Shot.Current.capture = MeasureCapture("window");
+		KeepCameraEye(Shot.Current);
 		FScreenshotRequest::RequestScreenshot(Shot.File, true, false);
 	}
 	Shot.Phase = FTerrainDevShot::EPhase::Capturing;
@@ -350,7 +363,8 @@ void UTerrainDevTools::FinishViews()
 	Dev->Shot.reset();
 	if (bDevView)
 	{
-		PlaceView(Back);
+		PlaceView(Back.eye.x, Back.eye.z, terrain::unreal::headingOfYaw(Back.yaw), Back.pitch,
+			Back.eye.y, terrain::dev::EyeMode::Altitude);
 	}
 	else
 	{
