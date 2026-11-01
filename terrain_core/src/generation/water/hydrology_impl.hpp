@@ -287,8 +287,9 @@ struct Hydrology::Impl {
     // Marks the points of the edges of the lips of c the water above falls from
     // (water::FallLip::wet).
     void wetLips(water::Course& c) const;
-    [[nodiscard]] std::array<double, 2> surfaceOf(const water::Course& c, double x,
-                                                  double z) const;
+    [[nodiscard]] std::array<double, 2> surfaceOf(const water::Course& c,
+                                                  const water::BoxCourse& box, double x, double z,
+                                                  double ground) const;
     [[nodiscard]] water::ReachInput::Join joinOf(const water::Course& c, double x,
                                                  double z) const;
     [[nodiscard]] water::ReachEnd pointEnd(const RiverSegment& s, std::int32_t segment,
