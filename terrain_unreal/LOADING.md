@@ -96,7 +96,10 @@ coup, sans bord dissous ; le reste marche.
 
 - `TeleportWhenReady(Pawn, X, Z, Cap, Inclinaison)` : écran noir, pion posé et tenu, chargement,
   puis retour de l'image. Cap 0 = nord, 90 = est ; inclinaison négative = vers le bas. Le lacet
-  d'Unreal vaut cap − 90, comme les lieux des outils de l'agent 36.
+  d'Unreal vaut cap − 90, comme les lieux des outils de l'agent 36. C'est la seule téléportation
+  du monde (`BeginTeleport`) : `TeleportView` des outils de l'agent 36 passe par elle, avec un
+  œil (à une altitude, ou à N m au-dessus du sol ou de l'eau lus sur le fil) au lieu des pieds sur
+  le sol.
 - `PrepareLocation(X, Z)` : les tuiles et l'horizon sont calculés autour du point. Le délégué
   `OnTerrainLocationReady(X, Z, Secondes)` est appelé une fois les tuiles et les niveaux 0 à 3
   montrés. `ReleasePreparedLocation()` rend le foyer au joueur.
@@ -194,7 +197,7 @@ C'est l'objet d'une tâche à part, sans changement de bits.
   `SetControlRotation` dans [−89,9 ; 89,9]. Unreal la garde ensuite entre 0 et 360° (−59 devient
   301) ; un code qui la borne à [−90 ; 90] sans la ramener d'abord dans [−180 ; 180] en fait +90 :
   c'est sans doute la caméra du personnage. Le pion des outils de l'agent 36 (`TeleportView`)
-  pose l'œil exactement.
+  pose l'œil exactement, par la même téléportation (`BeginTeleport`).
 - Pendant la construction du monde au démarrage, `PrepareLocation` et `TeleportWhenReady`
   répondent « non » (pas encore de session) ; une construction du niveau Planète absent du disque
   (plusieurs minutes) se fait derrière le même écran noir, message affiché.
@@ -204,8 +207,10 @@ C'est l'objet d'une tâche à part, sans changement de bits.
   première lecture d'une région construit son hydrologie). Elle est maintenant faite sur un fil :
   `the teleport took … ms` ne compte plus que le déplacement et le début du chargement, et
   `the ground of (x, z) m read on a thread in … ms` dit quand le pion est posé.
-- La chute (−6 185 124 ; 155 984) est au fond d'un bassin : son sol (260 m) est sous l'eau. Le pion
-  est maintenant posé au-dessus de l'eau du core. Mais l'eau des tuiles n'a ni collision ni volume
-  d'eau : une fois relâché, le personnage s'enfonce jusqu'au fond. Pour qu'il reste à la surface ou
-  nage, il faut une collision ou un volume d'eau (le rendu de l'eau), ou un point d'arrivée au sec
-  (la recherche de sol de `TeleportView`).
+- À la chute (−6 185 124 ; 155 984), le pion reste debout **au sec** : il marche à Z constant,
+  les pieds à ≈ 260,2 m sur le sol du core (260,11 m), et le core ne met pas d'eau sur ce point.
+  La vue y reste pourtant d'un bleu uni de 3 à 10 s, sans le pion, à −59° : c'est ce que voit la
+  caméra (le rideau de la chute ou une eau voisine), pas un pion sous l'eau. À regarder avec
+  `Terrain.View eau` (les outils de l'agent 36). L'eau des tuiles n'a ni collision ni volume
+  d'eau : un pion posé au-dessus d'une eau du core s'y enfoncerait ; `Terrain.Pawn` ne pose
+  jamais le pion du jeu sur l'eau ni sous elle (sa recherche de sol vérifiée sur la collision).

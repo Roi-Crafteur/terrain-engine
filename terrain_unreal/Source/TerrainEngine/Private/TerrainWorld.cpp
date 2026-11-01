@@ -96,10 +96,19 @@ void ATerrainWorld::BeginPlay()
 		EndTerrainStart(*this, *Starting.Get());
 		Starting.Reset();
 		SetActorTickEnabled(false);
+		return;
 	}
+	StartDevTools();
 }
 
 void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	StopDevTools();
+	ReleaseWorld();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATerrainWorld::ReleaseWorld()
 {
 	if (Backend != nullptr)
 	{
@@ -130,7 +139,6 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 	State.Reset(); // the workers stop once their current tile or piece is computed
 	WarmedPawn.Reset();
-	Super::EndPlay(EndPlayReason);
 }
 
 // The session (planetary map, planet level, hydrology, tiles) builds on a thread, the screen
@@ -191,11 +199,14 @@ void ATerrainWorld::StopStreaming(const FString& Reason)
 		EndTerrainLoading(*this, *State.Get()); // the screen and the pawn given back
 	}
 	SetActorTickEnabled(false);
+	NotifyDevToolsStopped();
 }
 
 void ATerrainWorld::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	// First: Terrain.Seed may build the world again there, the tools tick without a world too.
+	TickDevTools(DeltaSeconds);
 	if (Starting.IsValid() && !TickStart())
 	{
 		return; // the world still builds on its thread

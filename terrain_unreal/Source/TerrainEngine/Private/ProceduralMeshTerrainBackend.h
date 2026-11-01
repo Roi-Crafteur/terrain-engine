@@ -42,8 +42,14 @@ public:
 	virtual int32 GetTileCount() const override { return Tiles.Num(); }
 	virtual void SetWaterMaterials(UMaterialInterface* Water, UMaterialInterface* Falls) override;
 	virtual void SetWaterVisible(bool bVisible) override;
+	// ProceduralMeshTerrainLooks.cpp: the colors change through UpdateMeshSection, colors only (no
+	// collision cooked again); each tile keeps its own colors meanwhile.
+	virtual void SetDebugLook(terrain::unreal::ViewMode Mode, UMaterialInterface* Material,
+		FTerrainOffHeightmap OffHeightmap) override;
+	virtual void SetGroundVisible(bool bVisible) override;
 
 private:
+	void ApplyLook(UProceduralMeshComponent& Component, const FIntVector& Key);
 	UProceduralMeshComponent* CreateTileComponent();
 	void CreateBlendTexture(UMaterialInterface* Material);
 	void UploadBlend(UProceduralMeshComponent& Component, const terrain::unreal::TileUpload& Tile);
@@ -69,6 +75,15 @@ private:
 	TObjectPtr<UMaterialInterface> FallsMaterial;
 
 	std::optional<terrain::unreal::BlendAtlas> BlendAtlas; // with BlendTexture only
+
+	// The view mode of the tools, its material and the tiles recolored with their own colors.
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> LookMaterial;
+
+	terrain::unreal::ViewMode ViewLook = terrain::unreal::ViewMode::Normal;
+	FTerrainOffHeightmap OffHeightmapOf;
+	TMap<FIntVector, TArray<FColor>> OwnColors;
+	bool bGroundVisible = true;
 
 	bool bAsyncCooking = false;
 	bool bWaterVisible = true;

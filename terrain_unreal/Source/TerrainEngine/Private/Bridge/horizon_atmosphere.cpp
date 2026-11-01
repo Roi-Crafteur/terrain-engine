@@ -26,6 +26,11 @@ UnrealPoint planetTopUnder(const UnrealPoint& camera, const UnrealFrame& frame) 
     return {camera.x, camera.y, seaLevelZ(frame)};
 }
 
+UnrealPoint heightFogUnder(const UnrealPoint& camera, const UnrealFrame& frame,
+                           double fogAboveSeaCm) {
+    return {camera.x, camera.y, seaLevelZ(frame) + fogAboveSeaCm};
+}
+
 double heightAbovePlanet(const UnrealPoint& camera, const UnrealPoint& planetTop,
                          double radiusMeters) {
     const double dx = (camera.x - planetTop.x) / kCentimetersPerMeter;

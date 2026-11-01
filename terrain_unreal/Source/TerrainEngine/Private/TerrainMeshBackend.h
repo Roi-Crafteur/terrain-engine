@@ -3,13 +3,23 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 
+#include "Bridge/dev_commands.hpp"
 #include "Bridge/tile_streamer.hpp"
+#include "Templates/Function.h"
 #include "TerrainWorld.h"
+
+#include <cstdint>
+#include <vector>
 
 #include "TerrainMeshBackend.generated.h"
 
 class AActor;
 class UMaterialInterface;
+
+// Which vertices of the mesh of a tile (centimeters from its origin, Origin the world location of
+// its component) lie off the heightmap: the mode roche of the tools of the developers.
+using FTerrainOffHeightmap = TFunction<std::vector<std::uint8_t>(
+	const terrain::unreal::UnrealMesh& Mesh, int32 Lod, const FVector& Origin)>;
 
 /**
  * How the tiles of an ATerrainWorld become Unreal meshes: one implementation per mesh type
@@ -54,6 +64,20 @@ public:
 	virtual void SetWaterVisible(bool /*bVisible*/) {}
 
 	virtual int32 GetTileCount() const { return 0; }
+
+	// The tools of the developers (Terrain.View, agent 36). The vertices of the ground of every
+	// tile, and of the tiles to come, take the colors of a view mode (Bridge/debug_colors.hpp)
+	// and Material (the vertex color material of Unreal); ViewMode::Normal and the modes that do
+	// not color the vertices give each tile its own colors and material back. OffHeightmap tells
+	// the vertices of a mesh (centimeters from its origin, the world location of its component)
+	// off the heightmap, for the mode roche.
+	virtual void SetDebugLook(terrain::unreal::ViewMode /*Mode*/, UMaterialInterface* /*Material*/,
+		FTerrainOffHeightmap /*OffHeightmap*/)
+	{
+	}
+
+	// Shows or hides the ground of every tile, and of the tiles to come (Terrain.View eau).
+	virtual void SetGroundVisible(bool /*bVisible*/) {}
 };
 
 // The backend of the mesh type, initialized. The placeholders fall back to ProceduralMesh with a
