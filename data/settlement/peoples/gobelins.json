@@ -1,0 +1,37 @@
+{
+  "id": "gobelins",
+  "type": "people",
+  "name": "Gobelins",
+  "plane": "material",
+  "majorKingdomShare": 2,
+  "minorStateShare": 14,
+  "baseTerrainModel": "hills",
+  "physicalPreferences": {
+    "temperature": { "min": -10, "idealMin": 2, "idealMax": 26, "max": 36 },
+    "roughness": { "min": 0.1, "idealMin": 0.25, "idealMax": 0.75, "max": 0.95 },
+    "humidity": { "min": 0.2, "idealMin": 0.35, "idealMax": 0.9, "max": 1 },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 25, "max": 100 }
+  },
+  "habitabilityWeight": 0.7,
+  "physicalWeight": 1.2,
+  "dangerSensitivity": 0.2,
+  "ambientEnergyPreferences": { "prana": -0.1, "aura": 0.2, "mana": 0.2 },
+  "underground": { "level": "mostly", "preferredDepth": 0.6, "needsSurfaceAccess": true },
+  "undergroundPreferences": { "caveDensity": 0.9, "stableRock": 0.4, "groundwater": 0.5, "ore": 0.4, "surfaceAccess": 0.7 },
+  "needs": { "food": 0.9, "metaux_communs": 0.5, "bois": 0.4 },
+  "fears": { "highMagic": 0.3, "volcano": 0.4, "deepOcean": 0.8, "monsterDensity": 0.2 },
+  "government": [ "tribal_chiefdom", "goblin_king" ],
+  "relations": { "hobgobelins": 0.3, "orcs": 0.1, "kobolds": -0.2, "nains": -0.7, "gnomes": -0.6, "humains": -0.4, "elfes": -0.6 },
+  "selfRelation": 0.5,
+  "rulerTraits": {
+    "ambition": { "min": 0.3, "max": 0.9 },
+    "aggression": { "min": 0.4, "max": 0.9 },
+    "greed": { "min": 0.6, "max": 1.0 },
+    "prudence": { "min": 0.0, "max": 0.5 },
+    "piety": { "min": 0.0, "max": 0.4 }
+  },
+  "names": {
+    "syllables": [ "snik", "grub", "nog", "ziz", "rat", "kek", "skab", "gob", "nit", "lug", "zag" ],
+    "titles": { "tribal_chiefdom": "Grand Chef", "goblin_king": "Roi Gobelin" }
+  }
+}

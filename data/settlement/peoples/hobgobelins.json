@@ -1,0 +1,36 @@
+{
+  "id": "hobgobelins",
+  "type": "people",
+  "name": "Hobgobelins",
+  "plane": "material",
+  "majorKingdomShare": 5,
+  "minorStateShare": 6,
+  "baseTerrainModel": "hills",
+  "physicalPreferences": {
+    "temperature": { "min": -8, "idealMin": 4, "idealMax": 28, "max": 38 },
+    "roughness": { "min": 0.05, "idealMin": 0.15, "idealMax": 0.55, "max": 0.8 },
+    "rainfall": { "min": 150, "idealMin": 350, "idealMax": 1600, "max": 3000 },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 20, "max": 100 }
+  },
+  "habitabilityWeight": 1.0,
+  "physicalWeight": 1.1,
+  "dangerSensitivity": 0.3,
+  "ambientEnergyPreferences": { "prana": 0.1, "aura": 0.4, "mana": 0.2 },
+  "underground": { "level": "none", "preferredDepth": 0, "needsSurfaceAccess": true },
+  "needs": { "metaux_communs": 1.0, "food": 0.7, "farmland": 0.5, "pierre": 0.5 },
+  "fears": { "highMagic": 0.4, "volcano": 0.3, "deepOcean": 0.5, "monsterDensity": 0.2 },
+  "government": [ "military_empire", "legion_command" ],
+  "relations": { "gobelins": 0.2, "orcs": 0.0, "elfes": -0.8, "humains": -0.4, "nains": -0.5 },
+  "selfRelation": 0.8,
+  "rulerTraits": {
+    "ambition": { "min": 0.6, "max": 1.0 },
+    "aggression": { "min": 0.5, "max": 0.95 },
+    "greed": { "min": 0.3, "max": 0.7 },
+    "prudence": { "min": 0.3, "max": 0.8 },
+    "piety": { "min": 0.1, "max": 0.5 }
+  },
+  "names": {
+    "syllables": [ "kar", "vok", "dral", "goth", "ur", "zan", "hrak", "mor", "tel", "vash" ],
+    "titles": { "military_empire": "Empereur", "legion_command": "Légat" }
+  }
+}

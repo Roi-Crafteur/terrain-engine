@@ -1,0 +1,36 @@
+{
+  "id": "nains",
+  "type": "people",
+  "name": "Nains",
+  "plane": "material",
+  "majorKingdomShare": 8,
+  "minorStateShare": 6,
+  "baseTerrainModel": "mountain",
+  "physicalPreferences": {
+    "temperature": { "min": -30, "idealMin": -2, "idealMax": 10, "max": 20, "hardMax": 32 },
+    "roughness": { "min": 0.3, "idealMin": 0.55, "idealMax": 1, "max": 1 },
+    "altitude": { "min": 200, "idealMin": 800, "idealMax": 3200, "max": 5000, "hardMax": 6500 }
+  },
+  "habitabilityWeight": 0.8,
+  "physicalWeight": 1.4,
+  "dangerSensitivity": 0.3,
+  "ambientEnergyPreferences": { "prana": 0.4, "aura": 0.8, "mana": 0.5 },
+  "underground": { "level": "partial", "preferredDepth": 0.5, "needsSurfaceAccess": true },
+  "undergroundPreferences": { "caveDensity": 0.6, "stableRock": 0.9, "ore": 1.0, "stone": 0.9, "groundwater": 0.4, "heat": 0.2, "cold": 0.1, "surfaceAccess": 0.6 },
+  "needs": { "metaux_communs": 1.0, "pierre": 0.9, "metaux_precieux": 0.8, "freshwater": 0.6, "farmland": 0.4 },
+  "fears": { "highMagic": 0.2, "volcano": 0.1, "deepOcean": 1.0, "monsterDensity": 0.6 },
+  "government": [ "clan_monarchy", "council_of_clans", "hereditary_republic" ],
+  "relations": { "humains": 0.6, "elfes": 0.2, "halfelins": 0.3, "gnomes": 0.5, "orcs": -0.9, "gobelins": -0.9, "hobgobelins": -0.7, "kobolds": -0.8, "dragonides": -0.1, "geants": -0.6, "tieflings": -0.2 },
+  "selfRelation": 0.9,
+  "rulerTraits": {
+    "ambition": { "min": 0.3, "max": 0.8 },
+    "aggression": { "min": 0.2, "max": 0.7 },
+    "greed": { "min": 0.5, "max": 1.0 },
+    "prudence": { "min": 0.4, "max": 0.9 },
+    "piety": { "min": 0.2, "max": 0.7 }
+  },
+  "names": {
+    "syllables": [ "thor", "grim", "dur", "bal", "in", "dum", "kar", "bor", "rak", "dain", "mor", "gun", "khaz" ],
+    "titles": { "clan_monarchy": "Roi sous la Montagne", "council_of_clans": "Premier des Clans", "hereditary_republic": "Grand Thane" }
+  }
+}

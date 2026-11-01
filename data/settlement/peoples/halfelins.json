@@ -1,0 +1,36 @@
+{
+  "id": "halfelins",
+  "type": "people",
+  "name": "Halfelins",
+  "plane": "material",
+  "majorKingdomShare": 2,
+  "minorStateShare": 8,
+  "baseTerrainModel": "plains",
+  "physicalPreferences": {
+    "temperature": { "hardMin": -14, "min": 0, "idealMin": 8, "idealMax": 20, "max": 28 },
+    "humidity": { "min": 0.25, "idealMin": 0.4, "idealMax": 0.75, "max": 0.9 },
+    "roughness": { "min": 0, "idealMin": 0.05, "idealMax": 0.3, "max": 0.55 },
+    "altitude": { "min": -50, "idealMin": 0, "idealMax": 800, "max": 2200, "hardMax": 3500 },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 12, "max": 60 }
+  },
+  "habitabilityWeight": 1.6,
+  "physicalWeight": 1.0,
+  "dangerSensitivity": 1.0,
+  "ambientEnergyPreferences": { "prana": 0.6, "aura": 0.1, "mana": 0.0 },
+  "underground": { "level": "partial", "preferredDepth": 0.05, "needsSurfaceAccess": true },
+  "needs": { "farmland": 1.0, "food": 0.9, "freshwater": 0.8, "bois": 0.4 },
+  "fears": { "highMagic": 0.5, "volcano": 0.7, "deepOcean": 0.7, "monsterDensity": 0.9 },
+  "government": [ "shire_council", "mayoralty" ],
+  "relations": { "humains": 0.5, "elfes": 0.4, "nains": 0.4, "gnomes": 0.5, "orcs": -0.7, "gobelins": -0.7, "hobgobelins": -0.6, "kobolds": -0.4, "geants": -0.5 },
+  "rulerTraits": {
+    "ambition": { "min": 0.05, "max": 0.45 },
+    "aggression": { "min": 0.0, "max": 0.3 },
+    "greed": { "min": 0.1, "max": 0.6 },
+    "prudence": { "min": 0.5, "max": 1.0 },
+    "piety": { "min": 0.1, "max": 0.6 }
+  },
+  "names": {
+    "syllables": [ "bil", "bo", "fro", "do", "sam", "wise", "pip", "per", "mer", "ry", "tob", "ol", "brand" ],
+    "titles": { "shire_council": "Thain", "mayoralty": "Maire" }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "tieflings",
+  "type": "people",
+  "name": "Tieflings",
+  "plane": "material",
+  "majorKingdomShare": 2,
+  "minorStateShare": 6,
+  "baseTerrainModel": "plains",
+  "physicalPreferences": {
+    "temperature": { "hardMin": -12, "min": 2, "idealMin": 14, "idealMax": 30, "max": 42 },
+    "humidity": { "min": 0.05, "idealMin": 0.15, "idealMax": 0.6, "max": 0.85 },
+    "roughness": { "min": 0, "idealMin": 0, "idealMax": 0.45, "max": 0.75 },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 20, "max": 100 }
+  },
+  "habitabilityWeight": 1.0,
+  "physicalWeight": 1.0,
+  "dangerSensitivity": 0.4,
+  "ambientEnergyPreferences": { "prana": -0.2, "aura": 0.6, "mana": 0.9 },
+  "underground": { "level": "none", "preferredDepth": 0, "needsSurfaceAccess": true },
+  "needs": { "mana": 0.9, "cristaux_de_mana": 0.8, "metaux_precieux": 0.5, "farmland": 0.5 },
+  "fears": { "highMagic": 0.0, "volcano": 0.2, "deepOcean": 0.4, "monsterDensity": 0.5 },
+  "government": [ "infernal_principality", "arcane_oligarchy" ],
+  "relations": { "humains": 0.1, "dragonides": 0.3, "elfes": -0.2 },
+  "selfRelation": 0.6,
+  "rulerTraits": {
+    "ambition": { "min": 0.4, "max": 1.0 },
+    "aggression": { "min": 0.2, "max": 0.7 },
+    "greed": { "min": 0.4, "max": 0.9 },
+    "prudence": { "min": 0.3, "max": 0.8 },
+    "piety": { "min": 0.0, "max": 0.6 }
+  },
+  "names": {
+    "syllables": [ "mal", "zar", "eth", "ka", "ris", "vel", "dra", "nox", "ia", "mor", "the" ],
+    "titles": { "infernal_principality": "Prince", "arcane_oligarchy": "Archonte" }
+  }
+}

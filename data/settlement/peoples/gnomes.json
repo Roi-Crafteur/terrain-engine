@@ -1,0 +1,37 @@
+{
+  "id": "gnomes",
+  "type": "people",
+  "name": "Gnomes",
+  "plane": "material",
+  "majorKingdomShare": 2,
+  "minorStateShare": 7,
+  "baseTerrainModel": "hills",
+  "physicalPreferences": {
+    "temperature": { "hardMin": -22, "min": -8, "idealMin": 3, "idealMax": 20, "max": 28 },
+    "humidity": { "min": 0.3, "idealMin": 0.45, "idealMax": 0.9, "max": 1 },
+    "roughness": { "min": 0.1, "idealMin": 0.25, "idealMax": 0.6, "max": 0.8 },
+    "waterDistance": { "min": 0, "idealMin": 0, "idealMax": 20, "max": 80 }
+  },
+  "habitabilityWeight": 1.0,
+  "physicalWeight": 1.2,
+  "dangerSensitivity": 0.7,
+  "ambientEnergyPreferences": { "prana": 0.5, "aura": 0.3, "mana": 0.6 },
+  "underground": { "level": "partial", "preferredDepth": 0.2, "needsSurfaceAccess": true },
+  "undergroundPreferences": { "caveDensity": 0.5, "stableRock": 0.6, "ore": 0.6, "stone": 0.4, "surfaceAccess": 0.8 },
+  "needs": { "metaux_precieux": 0.7, "cristaux_de_mana": 0.8, "metaux_communs": 0.6, "bois": 0.5, "mana": 0.5 },
+  "fears": { "highMagic": 0.0, "volcano": 0.5, "deepOcean": 0.6, "monsterDensity": 0.7 },
+  "government": [ "guild_council", "tinker_republic" ],
+  "relations": { "humains": 0.3, "elfes": 0.3, "nains": 0.6, "halfelins": 0.5, "kobolds": -0.7, "gobelins": -0.8, "orcs": -0.6 },
+  "selfRelation": 0.9,
+  "rulerTraits": {
+    "ambition": { "min": 0.2, "max": 0.7 },
+    "aggression": { "min": 0.0, "max": 0.4 },
+    "greed": { "min": 0.2, "max": 0.7 },
+    "prudence": { "min": 0.3, "max": 0.8 },
+    "piety": { "min": 0.0, "max": 0.5 }
+  },
+  "names": {
+    "syllables": [ "fiz", "bin", "wick", "nim", "ble", "zook", "pim", "dle", "tock", "gim", "ster", "bo" ],
+    "titles": { "guild_council": "Maître des Guildes", "tinker_republic": "Grand Inventeur" }
+  }
+}
