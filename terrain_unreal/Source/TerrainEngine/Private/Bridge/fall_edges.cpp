@@ -90,7 +90,8 @@ std::optional<double> FallEdges::toward(std::size_t n, double x, double z) const
 
 bool FallEdges::upper(std::size_t n, double level, double tolerance) const {
     const Edge& e = edges_[n];
-    return level >= e.top - tolerance && level > 0.5 * (e.top + e.bottom);
+    return level >= e.top - tolerance && level <= e.top + kUpperRise &&
+           level > 0.5 * (e.top + e.bottom);
 }
 
 std::optional<double> FallEdges::above(double x, double z, double level, double tolerance,
@@ -109,6 +110,33 @@ std::optional<double> FallEdges::above(double x, double z, double level, double 
         }
     }
     return fade;
+}
+
+bool FallEdges::face(double x, double z, double level, double tolerance, double margin) const {
+    for (const Edge& e : edges_) {
+        if (!(level > e.bottom + tolerance) || !(level < e.top - tolerance)) {
+            continue;
+        }
+        const std::optional<double> lip = downstreamOf(e, e.x, e.z, e.across, x, z, kEdgeMargin);
+        const std::optional<double> foot =
+            downstreamOf(e, e.footX, e.footZ, e.footAcross, x, z, kEdgeMargin);
+        if (lip && foot && *lip >= -margin && *foot <= margin) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool FallEdges::within(double x, double z, double margin) const {
+    for (const Edge& e : edges_) {
+        const std::optional<double> lip = downstreamOf(e, e.x, e.z, e.across, x, z, kEdgeMargin);
+        const std::optional<double> foot =
+            downstreamOf(e, e.footX, e.footZ, e.footAcross, x, z, kEdgeMargin);
+        if (lip && foot && *lip >= -margin && *foot <= margin) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool FallEdges::belowOf(std::size_t n, double x, double z, double level, double tolerance,

@@ -240,11 +240,20 @@ private:
         return edges_.above(i * spacing_, k * spacing_, level, tolerance, reach).value_or(1.0);
     }
 
+    // Whether the water of corner (i, k) at level runs down the face of a fall (FallEdges::face,
+    // within a cell of its lip and its foot): no layer of a cut cell stands at it, a shelf of
+    // water hanging from the face or over the pool below.
+    [[nodiscard]] bool onFace(int i, int k, double level) const {
+        const double tolerance = kLevelLeast + kLevelCells * spacing_;
+        return edges_.size() > 0 &&
+               edges_.face(i * spacing_, k * spacing_, level, tolerance, spacing_);
+    }
+
     // A cut cell across the edge of the lip of a fall, a corner of it under the water above the
-    // fall and upstream of the edge: drawn at that water (its corners there at their level, the
-    // others at the level of the fall above: the same on both sides of a side of a tile), faded
-    // out to nothing at the edge (its corners beyond it below 0): the water ends at the edge, not
-    // at a side of a cell.
+    // fall and upstream of the edge: drawn at that water (its corners there within kLevelLeast
+    // plus kLevelCells cells of the level of the fall at their level, the others at that level:
+    // the same on both sides of a side of a tile), faded out to nothing at the edge (its corners
+    // beyond it below 0): the water ends at the edge, not at a side of a cell.
     bool cutCell(int i, int k) {
         const double tolerance = kLevelLeast + kLevelCells * spacing_;
         const auto above = [&](const Column& c, std::size_t n) {
@@ -273,7 +282,8 @@ private:
                 const int ck = k + kCorners[c][1];
                 const Column& own = columns_[at(ci, ck)];
                 const std::optional<double> fade = edges_.toward(n, ci * spacing_, ck * spacing_);
-                v[c] = vertex(ci, ck, above(own, n) ? own : fall, fade ? *fade : kEdgeBeyond);
+                const bool level = above(own, n) && own.level <= fall.level + tolerance;
+                v[c] = vertex(ci, ck, level ? own : fall, fade ? *fade : kEdgeBeyond);
             }
             for (const std::int32_t index : {v[0], v[3], v[1], v[0], v[2], v[3]}) {
                 mesh.triangles.push_back(index);
@@ -283,18 +293,27 @@ private:
         return false;
     }
 
-    // A cut cell off the falls (no edge of a lip across it) drawn at its highest water: its
-    // corners within kLevelLeast plus kLevelCells cells of it at their level and shown, the others
-    // at its level and faded out: the water above the cut ends within the cell, never at a side
-    // of it, and never leaves the bed bare before the cut.
+    // A cut cell off the falls (no edge of a lip across it, nor within kReachCells cells and a
+    // meter of a fall, between its lip and its foot) drawn at its highest water: its corners
+    // within kLevelLeast plus kLevelCells cells of it at their level and shown, the others at its
+    // level and faded out: the water above the cut ends within the cell, never at a side of it,
+    // and never leaves the bed bare before the cut. Never at the water of a face (onFace), never
+    // a shelf hanging over a fall.
     void highCell(int i, int k) {
         const double tolerance = kLevelLeast + kLevelCells * spacing_;
         const Column* highest = nullptr;
+        std::array<int, 2> peak{};
         for (const auto& o : kCorners) {
             const Column& c = columns_[at(i + o[0], k + o[1])];
-            highest = c.wet && (highest == nullptr || c.level > highest->level) ? &c : highest;
+            if (c.wet && (highest == nullptr || c.level > highest->level)) {
+                highest = &c;
+                peak = {i + o[0], k + o[1]};
+            }
         }
-        if (highest == nullptr) {
+        const double x = (i + 0.5) * spacing_;
+        const double z = (k + 0.5) * spacing_;
+        if (highest == nullptr || onFace(peak[0], peak[1], highest->level) ||
+            edges_.within(x, z, kReachCells * spacing_ + 1.0)) {
             return;
         }
         std::array<std::int32_t, 4> v{};
@@ -313,15 +332,19 @@ private:
     // A cut cell drawn at its lowest water too (its corners within kLevelLeast plus kLevelCells
     // cells of it at their level, the others at its level, under the face or the curtain), whole:
     // the pool below a face goes on to it, never a square of bare bed beside the foot of a
-    // curtain.
+    // curtain. Never at the water of a face (onFace): no step of water on the rock.
     void poolCell(int i, int k) {
         const double tolerance = kLevelLeast + kLevelCells * spacing_;
         const Column* lowest = nullptr;
+        std::array<int, 2> low{};
         for (const auto& o : kCorners) {
             const Column& c = columns_[at(i + o[0], k + o[1])];
-            lowest = c.wet && (lowest == nullptr || c.level < lowest->level) ? &c : lowest;
+            if (c.wet && (lowest == nullptr || c.level < lowest->level)) {
+                lowest = &c;
+                low = {i + o[0], k + o[1]};
+            }
         }
-        if (lowest == nullptr) {
+        if (lowest == nullptr || onFace(low[0], low[1], lowest->level)) {
             return;
         }
         std::array<std::int32_t, 4> v{};

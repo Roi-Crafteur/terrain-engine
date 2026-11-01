@@ -74,13 +74,16 @@ inline constexpr double kWaterCutSlope = 0.7;
 //   distance to the edge, to nothing kEdgeOver meters beyond it under the top of the curtain,
 //   whether a cut cell meets a corner or not (the same in the tile beside). A cut cell is drawn
 //   twice: at its upper water and at its lowest water. Its upper layer, across the edge of a
-//   lip: at the water above the fall (its corners there at their level, the others at the level
-//   of the fall), faded out beyond the edge (the water ends along the edge, not at a side of a
-//   cell); off the falls: at its highest water (its corners near that level at their own, shared
-//   with the cells beside, the others at that level and faded out: the water above the cut ends
-//   within the cell). Its lowest layer, whole: its corners near the lowest water at their level,
-//   the others at that level, under the face or the curtain (the pool goes on to the foot, never
-//   a square of bare bed beside it). Nothing fades out at a cut but the water above it;
+//   lip: at the water above the fall (its corners there near the level of the fall at their
+//   level, the others at that level), faded out beyond the edge (the water ends along the edge,
+//   not at a side of a cell); off the falls: at its highest water (its corners near that level
+//   at their own, shared with the cells beside, the others at that level and faded out: the
+//   water above the cut ends within the cell). Its lowest layer, whole: its corners near the
+//   lowest water at their level, the others at that level, under the face or the curtain (the
+//   pool goes on to the foot, never a square of bare bed beside it). Neither layer stands at the
+//   water running down the face of a fall (FallEdges::face), nor the upper one near a fall
+//   (FallEdges::within): no step or shelf of water on its rock, which its curtain covers where
+//   its water falls. Nothing fades out at a cut but the water above it;
 // - on a side stitched to a coarser tile (TileRequest::seams), an odd column between two wet
 //   even ones stands at their mean level: on the straight edge of the coarser cell, no crack
 //   between the LODs. Two tiles of a LOD share the columns of their common side: the same

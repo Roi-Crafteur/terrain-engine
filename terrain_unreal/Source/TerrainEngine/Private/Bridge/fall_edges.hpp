@@ -19,6 +19,7 @@ inline constexpr double kEdgeFade = 2.0;
 inline constexpr double kEdgeOver = 1.75;
 inline constexpr double kEdgeBeyond = -8.0;
 inline constexpr double kEdgeAbove = 8.0;
+inline constexpr double kUpperRise = 1.5;
 
 // The edges of the lips of the falls near a tile (TileData::falls, here or not), in the frame of
 // the tile (meters from its lowest corner): kFallEdge points across each, from one side of its
@@ -29,8 +30,8 @@ public:
     explicit FallEdges(const TileData& data);
 
     // Whether level is that of the water above fall n: tolerance meters under its level at the
-    // lip at most (it may stand higher, rising upstream of a receded edge), nearer it than the
-    // water below.
+    // lip at most, kUpperRise over it at most (it rises upstream of a receded edge; higher, it is
+    // the water of a fall above, its face or its pool), nearer it than the water below.
     [[nodiscard]] bool upper(std::size_t n, double level, double tolerance) const;
     // Where the water stands at level at (x, z), the water above a fall (upper) within reach
     // meters of the edge of its lip (across its channel, upstream or downstream): its fade, 1
@@ -42,6 +43,14 @@ public:
     // The same toward the edge of the lip of fall n alone, whatever the level (none beyond its
     // channel).
     [[nodiscard]] std::optional<double> toward(std::size_t n, double x, double z) const;
+    // Whether the water at level at (x, z) runs down the face of a fall: between the edge of its
+    // lip and where its water meets the pool (within margin meters of them), more than tolerance
+    // meters under the water above it and over the water below it.
+    [[nodiscard]] bool face(double x, double z, double level, double tolerance,
+                            double margin) const;
+    // Whether (x, z) lies between the edge of the lip of a fall and where its water meets the
+    // pool (within margin meters of them), whatever the water there.
+    [[nodiscard]] bool within(double x, double z, double margin) const;
     // Whether the water at level at (x, z) is that of the pool below a fall, within tolerance
     // meters of its water and within reach meters of where its water meets the pool.
     [[nodiscard]] bool below(double x, double z, double level, double tolerance,
