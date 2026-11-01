@@ -34,7 +34,7 @@ dans [`docs/dev/PROBE_AND_PLACES.md`](../../docs/dev/PROBE_AND_PLACES.md).
 ## Vérifier une PR contre `main`
 
 ```bat
-python scripts\verify\verify.py run --machine scripts\verify\machine.json --before main --after #57 --places chute388_bassin,fleuve_plaine,k2_paroi --sun falls --walk k2_paroi:225:80
+python scripts\verify\verify.py run --machine scripts\verify\machine.json --before main --after #59 --places chute388_bassin,fleuve_plaine,k2_paroi --sun falls --walk k2_paroi:225:80
 ```
 
 - `--before`, `--after` : une branche, une étiquette, un commit ou `#<numéro de PR>`. Sans
@@ -57,7 +57,7 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
   planète reconstruite par Unreal) ;
 - 2 pour une erreur de la commande (lieu inconnu, machine absente).
 
-Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
+Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_59\` :
 
 | Fichier | Contenu |
 |---|---|
@@ -136,6 +136,14 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
        résumé compare les pieds du pion au sol du core sondé sous chaque échantillon, avec le Z
        de départ et de fin. Il donne aussi le cap réellement suivi, et dit si le pion a dévié
        de plus de 20° ou s'il est resté bloqué.
+       Avec les outils de l'agent 36, `Terrain.Pawn` rend le pion du jeu, posé sur le sol
+       marchable le plus proche de la vue. Le pilote attend qu'il tienne debout (la ligne
+       `the pawn of the game stands`, ou qu'il ait glissé de tous les points essayés) avant de le
+       faire marcher. Au-dessus de l'eau ou sans sol marchable, `Terrain.Pawn` refuse et garde
+       le pion volant des outils : la marche est alors signalée « refusée » avec la raison du
+       plugin, sans faire marcher le pion volant. Pour marcher depuis un tel lieu (la lèvre
+       d'une chute, dans le fleuve), relancer avec `--no-dev-commands` (caméra posée dans la
+       carte et pion mis sur le sol du core).
    - Le pilote ne sauvegarde **jamais** la carte ni un asset, et remet le Terrain World comme il
      était.
    - **Les ticks qui arrivent pendant une étape** sont ignorés : la reconstruction d'un matériau

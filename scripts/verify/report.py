@@ -137,8 +137,14 @@ def _missing_outputs(v, run):
                 out.append(f"ATTENTION ({v['label']}) : vue absente : {place}")
         asked = [w for w in run.get("walkPlaces", []) if w in s.get("places", [])]
         done = {w["place"] for w in result.get("walks", []) if w.get("file")}
+        refused = {w["place"]: (w.get("landing") or {}).get("message")
+                   for w in result.get("walks", []) if w.get("reason") == "pawn refused"}
         for place in asked:
-            if place not in done:
+            if place in refused:
+                out.append(f"ATTENTION ({v['label']}) : marche refusée par Terrain.Pawn à "
+                           f"{place} : {refused[place]} ; pour marcher depuis ce lieu : "
+                           f"--no-dev-commands")
+            elif place not in done:
                 out.append(f"ATTENTION ({v['label']}) : marche absente : {place}")
     return out
 
@@ -251,6 +257,9 @@ def _walk_lines(v, run):
                                         core=v.get("walkCores", {}).get(w["place"]),
                                         heading=w["heading"])
             lines += _walk_text(w, sm)
+            if (w.get("landing") or {}).get("state") == "slid":
+                lines.append("      Terrain.Pawn : le pion a glissé de tous les points essayés "
+                             "près de la vue, il est parti d'où il est resté")
     return lines
 
 

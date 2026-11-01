@@ -241,6 +241,18 @@ class Api:
     def pawn(self, world):
         return _get(self.ue, "GameplayStatics").get_player_pawn(world, 0)
 
+    @staticmethod
+    def same_actor(a, b):
+        """The same actor of the world (two wrappers of Python may hold one object)."""
+        if a is b:
+            return True
+        if a is None or b is None:
+            return False
+        try:
+            return a.get_path_name() == b.get_path_name()
+        except Exception:  # noqa: BLE001 - no path name: identity only
+            return False
+
     def controller(self, world):
         return _get(self.ue, "GameplayStatics").get_player_controller(world, 0)
 

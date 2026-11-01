@@ -349,6 +349,37 @@ class DevCommands(unittest.TestCase):
             done = len(log[:log.index("load 3 report")].encode("utf-8"))
             self.assertGreater(fake.shot_log_sizes[2], done)
 
+    def test_the_walk_waits_for_the_pawn_to_stand(self):
+        """#57: Terrain.Pawn puts the pawn of the game down and ignores its move input until it
+        stands (1 s a spot, up to 8 spots); the walk forces its input: it waits for that line."""
+        with tempfile.TemporaryDirectory() as folder:
+            features = dict(self.FEATURES, loadStart=True, pawnLanding=True)
+            fake = fake_unreal.FakeUnreal(folder, features=features)
+            fake.landing_seconds = 4.0  # longer than the former fixed wait of 2 s
+            walk = {"place": BASIN["name"], "heading": 90.0, "distance": 5.0, "yaw": 0.0}
+            r = drive(fake, job_in(folder, fake, [BASIN], materials=False, pitchCheck=False,
+                                   walks=[walk])).result
+            self.assertTrue(r["done"], r["errors"])
+            self.assertEqual(fake.inputs_while_landing, 0)  # 11 with the former wait of 2 s
+            (entry,) = r["walks"]
+            self.assertEqual((entry["reason"], entry["landing"]["state"]), ("distance", "stands"))
+
+    def test_a_walk_refused_by_terrain_pawn(self):
+        """Over water Terrain.Pawn refuses and the flying pawn of the tools stays: no walk of it
+        (it never falls), the reason kept."""
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder, features=dict(self.FEATURES, pawnLanding=True))
+            fake.pawn_refusal = ("over water (sea, lake or river): the pawn of the game is not "
+                                 "put down here, the view of the tools stays")
+            walk = {"place": LIP["name"], "heading": 46.0, "distance": 80.0, "yaw": -44.0}
+            r = drive(fake, job_in(folder, fake, [LIP], materials=False, pitchCheck=False,
+                                   walks=[walk], landTimeout=60.0)).result
+            self.assertTrue(r["done"], r["errors"])
+            (entry,) = r["walks"]
+            self.assertEqual((entry["reason"], entry["file"]), ("pawn refused", None))
+            self.assertIn("over water", entry["landing"]["message"])
+            self.assertLess(fake.time, 60.0)  # the refusal read, not the whole wait
+
     def test_without_load_report_the_delays(self):
         with tempfile.TemporaryDirectory() as folder:
             features = dict(self.FEATURES, loadReport=False)

@@ -79,6 +79,13 @@ terrain_probe --list-sections
   | `surface` | biome, matériau, plantes, climat local, poids du fondu |
   | `render` | ce que reçoit Unreal : sommets des tuiles LOD 0 à 3, horizon |
 
+- `coast.distance` et `coast.seaHeading` viennent du signal de côte de la géographie, à grande
+  échelle : la distance signée à sa côte et le cap qui descend ce signal. Le rivage réel, où le
+  sol passe 0 m, a les détails du relief en plus : il peut être plus près et dans une autre
+  direction. Exemple : à `falaise_cotiere`, `distance` dit 952 m et la terre au cap 313, alors
+  que le sol passe 0 m à 375 m au cap 217 et à 785 m au cap 313. Pour viser un rivage, il faut
+  le chercher le long de `--line` (`relief.ground`).
+
 - `--planet-check` :
   - il lit le fichier **sans jamais l'écrire ni le construire** ;
   - il répond `ok`, `missing`, `stale` (autre seed, monde, version du générateur ou

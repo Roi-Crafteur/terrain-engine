@@ -5,6 +5,7 @@ stuck, a timeout), its log written (walks.py). Also the waits the steps of the d
 
 import math
 
+import ue_log
 import walks
 
 
@@ -31,10 +32,15 @@ class WalkSteps:
                                              "reason": "API missing"})
                 continue
             pawn = self.api.pawn(world)
+            entry = {"place": place["name"], "heading": walk["heading"],
+                     "distance": walk["distance"], "file": None, "reason": None}
             if self.dev_commands() and self.result["features"].get("pawn"):
-                self.api.console(world, "Terrain.Pawn")
-                yield Wait(2.0)
-                pawn = self.api.pawn(world)
+                pawn = yield from self.pawn_back(world, pawn)
+                entry["landing"] = self.landing
+                if pawn is None:
+                    entry["reason"] = "pawn refused"
+                    self.result["walks"].append(entry)
+                    continue
             else:  # on the ground of the place, the origin of the frame
                 try:
                     self.api.set_focus(world, None)  # the tiles around the pawn again
@@ -44,10 +50,34 @@ class WalkSteps:
                                                         self.api.half_height(pawn) + 50.0))
                 yield Wait(1.0)
             self.api.view_through(world, pawn)
-            entry = {"place": place["name"], "heading": walk["heading"],
-                     "distance": walk["distance"], "file": None, "reason": None}
             self.result["walks"].append(entry)
             yield from self.walk(world, pawn, walk, entry)
+
+    def pawn_back(self, world, tools_pawn):
+        """The pawn of the game given back by Terrain.Pawn (agent 36), once it stands (its move
+        input is ignored while it lands, and the walk forces its input); None when Terrain.Pawn
+        refused: the flying pawn of the tools stays (over water, no walkable ground). What it did
+        goes in self.landing (ue_log.pawn_landing)."""
+        offset = self.log_size()
+        self.landing = None
+        self.api.console(world, "Terrain.Pawn")
+        if self.result["features"].get("pawnLanding"):
+            yield Until(lambda: self.pawn_landed(offset), self.job.get("landTimeout", 15.0),
+                        "the pawn of the game on the ground")
+        else:
+            yield Wait(2.0)
+        pawn = self.api.pawn(world)
+        given = pawn is not None and not self.api.same_actor(pawn, tools_pawn)
+        if given or (self.landing or {}).get("state") == "already":
+            return pawn
+        if self.landing is None or self.landing["state"] != "refused":
+            self.landing = {"state": "refused", "message": (self.landing or {}).get(
+                "message", "the flying pawn of the tools stayed")}
+        return None
+
+    def pawn_landed(self, offset):
+        self.landing = ue_log.pawn_landing(self.log_text(offset))
+        return self.landing is not None
 
     def walk(self, world, pawn, walk, entry):
         x0, z0, y0 = self.origin

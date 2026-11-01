@@ -114,6 +114,37 @@ class Loads(unittest.TestCase):
         self.assertIsNone(ue_log.load_ended("", starts_logged=False))
 
 
+class PawnLanding(unittest.TestCase):
+    """What Terrain.Pawn of agent 36 (TerrainDevPawn.cpp) did, from its lines in the log."""
+    W = "[2026.11.01-20.00.00:000][  9]LogTerrainEngine: Warning: Terrain dev: "
+    L = "[2026.11.01-20.00.01:000][ 70]LogTerrainEngine: Terrain dev: "
+
+    def test_put_down_and_standing(self):
+        self.assertIsNone(ue_log.pawn_landing(""))  # still landing
+        slid_once = self.W + "Terrain.Pawn: the pawn of the game slid (2.1 m): spot 2 of 3\n"
+        self.assertIsNone(ue_log.pawn_landing(slid_once))  # it tries the next spot
+        done = ue_log.pawn_landing(slid_once + self.L + "the pawn of the game stands, spot 2 of 3")
+        self.assertEqual(done["state"], "stands")
+
+    def test_slid_everywhere(self):
+        text = (self.W + "Terrain.Pawn: the pawn of the game slid from the 3 spots tried near the "
+                "view (the last: 0.8 m); it stays where it is\n")
+        self.assertEqual(ue_log.pawn_landing(text)["state"], "slid")
+
+    def test_refused(self):
+        for reason in ("over water (sea, lake or river): the pawn of the game is not put down "
+                       "here, the view of the tools stays; move over dry ground first",
+                       "no walkable ground within 40 m: too steep (52 degrees under the view, "
+                       "the pawn walks up to 40); the pawn of the game is not put down here",
+                       "the view is still loading: the pawn of the game is given back once it "
+                       "is shown"):
+            with self.subTest(reason=reason[:20]):
+                got = ue_log.pawn_landing(self.W + "Terrain.Pawn: " + reason + "\n")
+                self.assertEqual(got, {"state": "refused", "message": "Terrain.Pawn: " + reason})
+        already = self.W + "the player already has the pawn of the game\n"
+        self.assertEqual(ue_log.pawn_landing(already)["state"], "already")
+
+
 class Features(unittest.TestCase):
     def test_commands_of_the_plugin(self):
         main = 'FAutoConsoleCommandWithWorldAndArgs Water(TEXT("Terrain.Water"), ...)'
@@ -124,7 +155,11 @@ class Features(unittest.TestCase):
                  '%d pending")')  # TerrainWorldLoading.cpp of main (#58)
         self.assertEqual(ue_log.plugin_features([main]),
                          {"loadReport": False, "loadStart": False, "goto": False, "look": False,
-                          "viewMode": False, "pawn": False, "loadTest": False})
+                          "viewMode": False, "pawn": False, "pawnLanding": False,
+                          "loadTest": False})
+        stands = ('TerrainDev::Log(FString::Printf(TEXT("the pawn of the game stands, spot %d of '
+                  '%d"), ...')  # TerrainDevPawn.cpp of main (#57)
+        self.assertTrue(ue_log.plugin_features([stands])["pawnLanding"])
         f = ue_log.plugin_features([main, dev, loading])
         self.assertTrue(f["goto"] and f["look"] and f["pawn"] and f["loadReport"])
         self.assertFalse(f["loadStart"])

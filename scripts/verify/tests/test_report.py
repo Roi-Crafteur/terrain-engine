@@ -203,6 +203,19 @@ class Summary(unittest.TestCase):
             self.assertIn("ATTENTION (apres) : vue absente : b", text)
             self.assertIn("ATTENTION (apres) : marche absente : a", text)
 
+    def test_a_walk_refused_by_terrain_pawn(self):
+        with tempfile.TemporaryDirectory() as folder:
+            after = version(folder, "apres")
+            message = ("Terrain.Pawn: over water (sea, lake or river): the pawn of the game is "
+                       "not put down here, the view of the tools stays")
+            after["sessions"][0]["result"]["walks"] = [
+                {"place": "a", "heading": 90.0, "distance": 9.0, "file": None,
+                 "reason": "pawn refused", "landing": {"state": "refused", "message": message}}]
+            text = report.write_report(run_of(folder, version(folder, "avant"), after))
+            self.assertIn(f"ATTENTION (apres) : marche refusée par Terrain.Pawn à a : {message} ; "
+                          "pour marcher depuis ce lieu : --no-dev-commands", text)
+            self.assertNotIn("marche absente : a", text)
+
     def test_the_project_of_the_user_changed(self):
         with tempfile.TemporaryDirectory() as folder:
             diff = {"files": 10, "changed": ["Content/TerrainEngine/M_TerrainWater.uasset"],

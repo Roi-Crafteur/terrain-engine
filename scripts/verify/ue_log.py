@@ -22,6 +22,11 @@ _PLANET = re.compile(r"planet level (read from|BUILT)[^\n]*")
 _LOAD_REPORT = re.compile(r"Terrain World: load (\d+) report")
 _LOAD_START = re.compile(r"Terrain World: load (\d+) \(([^)]*)\) started at "
                          r"\((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?)\) m")
+_PAWN_STANDS = re.compile(r"Terrain dev: the pawn of the game stands, spot \d+ of \d+")
+_PAWN_SLID = re.compile(r"Terrain dev: Terrain\.Pawn: the pawn of the game slid from the [^\n]*")
+_PAWN_REFUSED = re.compile(r"Terrain dev: (Terrain\.Pawn: (over water|no walkable ground|none of "
+                           r"the|the view is still loading)[^\n]*)")
+_PAWN_ALREADY = "Terrain dev: the player already has the pawn of the game"
 _TERRAIN_PROBLEM = re.compile(r"LogTerrainEngine: (Error|Warning): (.*)")
 _CRASH = re.compile(r"Fatal error|Unhandled Exception|=== Critical error: ===")
 
@@ -67,6 +72,25 @@ def load_ended(text, starts_logged=True):
         return None
     return {"n": n, "reason": last.group(2), "x": float(last.group(3)),
             "z": float(last.group(4))}
+
+
+def pawn_landing(text):
+    """What Terrain.Pawn (agent 36) did, from this part of the log: {"state": "stands" (put down
+    and standing), "slid" (it slid from every spot tried and stays where it is), "refused" (over
+    water, no walkable ground, the view still loading: the flying pawn of the tools stays) or
+    "already" (the player had the pawn of the game), "message"}, or None while it lands."""
+    refused = _PAWN_REFUSED.search(text)
+    if refused:
+        return {"state": "refused", "message": refused.group(1).strip()}
+    slid = _PAWN_SLID.search(text)
+    if slid:
+        return {"state": "slid", "message": slid.group(0).strip()}
+    stands = _PAWN_STANDS.search(text)
+    if stands:
+        return {"state": "stands", "message": stands.group(0).strip()}
+    if _PAWN_ALREADY in text:
+        return {"state": "already", "message": _PAWN_ALREADY}
+    return None
 
 
 def scan_editor(text):
@@ -119,5 +143,6 @@ def plugin_features(source_texts):
         "look": command("Terrain.Look"),
         "viewMode": command("Terrain.View"),
         "pawn": command("Terrain.Pawn"),
+        "pawnLanding": "the pawn of the game stands, spot" in joined,
         "loadTest": command("Terrain.LoadTest"),
     }

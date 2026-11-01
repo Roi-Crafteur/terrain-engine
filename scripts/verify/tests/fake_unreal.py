@@ -100,8 +100,11 @@ class Pawn(Actor):
         self.character_movement = types.SimpleNamespace(movement_mode=MovementMode.MOVE_WALKING)
         self.input = (0.0, 0.0)
         self.walked = 0.0
+        self.landing = False  # put down by Terrain.Pawn, its move input ignored until it stands
 
     def add_movement_input(self, direction, scale, force):
+        if self.landing:
+            self.fake.inputs_while_landing += 1
         self.input = (direction.x * scale, direction.y * scale)
 
     def advance(self, dt, fall_after):
@@ -170,6 +173,10 @@ class FakeUnreal:
         self.loads, self.loading, self.report_at = 0, None, None
         self.pawn_load_seconds = 3.0  # the load the pawn brought back by Terrain.Pawn starts
         self.load_point, self.shot_log_sizes = None, []  # where the last load started
+        # Terrain.Pawn (agent 36): refused with this message (over water...), or the pawn of the
+        # game given back at once and standing landing_seconds later.
+        self.pawn_refusal, self.landing_seconds, self.landing_at = None, 1.0, None
+        self.inputs_while_landing = 0
         self.pending_shots = []
         self.log_path = self.folder / "Saved" / "Logs" / "TerrainSandbox.log"
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -196,6 +203,10 @@ class FakeUnreal:
             if self.time >= at:
                 self.pending_shots.remove((at, name))
                 self._write_shot(name)
+        if self.landing_at is not None and self.time >= self.landing_at:
+            self.landing_at = None
+            self.game.pawn.landing = False
+            self._log("Terrain dev: the pawn of the game stands, spot 1 of 3")
         if self.loading is not None and self.time >= self.report_at:
             self._log(f"Terrain World: load {self.loading} report")
             self.loading = None
@@ -389,8 +400,15 @@ class _System:
             if fake.load_point is None or distance(fake.goto, fake.load_point) > 100.0:
                 fake.begin_load("teleport", *fake.goto)  # the focus jumped: a teleport
         elif command == "Terrain.Pawn" and fake.game is not None:
+            if fake.pawn_refusal:  # the flying pawn of the tools stays
+                fake._log(f"Warning: Terrain dev: Terrain.Pawn: {fake.pawn_refusal}")
+                return
             fake.begin_load("teleport", *getattr(fake, "goto", (0.0, 0.0)),
                             seconds=fake.pawn_load_seconds)
+            game = Pawn(fake)
+            game.location = Vector(fake.game.pawn.location.x, fake.game.pawn.location.y, 90.0)
+            game.landing, fake.game.pawn = True, game
+            fake.landing_at = fake.time + fake.landing_seconds
 
     def line_trace_single(self, world, start, end, channel, complex_, ignore, debug, self_):
         return types.SimpleNamespace(impact_point=Vector(start.x, start.y, 0.0))

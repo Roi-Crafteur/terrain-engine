@@ -212,16 +212,20 @@ class Driver(WalkSteps):
         path = Path(self.job.get("editorLog", ""))
         return path.stat().st_size if path.is_file() else 0
 
+    def log_text(self, offset):
+        """The log of the editor from offset on ("" without a log)."""
+        path = Path(self.job.get("editorLog", ""))
+        if not path.is_file():
+            return ""
+        with open(path, "rb") as file:
+            file.seek(offset)
+            return file.read().decode("utf-8", "replace")
+
     def load_reported(self, offset):
         """The load started since offset in the log of the editor has ended (its report): kept in
         self.load ({"n", "reason", "x", "z"})."""
-        path = Path(self.job.get("editorLog", ""))
-        if not path.is_file():
-            return False
-        with open(path, "rb") as file:
-            file.seek(offset)
-            text = file.read().decode("utf-8", "replace")
-        self.load = ue_log.load_ended(text, self.result["features"].get("loadStart", False))
+        self.load = ue_log.load_ended(self.log_text(offset),
+                                      self.result["features"].get("loadStart", False))
         return self.load is not None
 
     def play(self, group):
