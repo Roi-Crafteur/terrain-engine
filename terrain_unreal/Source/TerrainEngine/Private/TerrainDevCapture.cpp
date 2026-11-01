@@ -6,7 +6,9 @@
 // the viewport; with a display scaled by Windows (200 %), the viewport of the editor counts its
 // pixels at the scale of the desktop while its render target holds the physical ones, and the
 // image held only the top left of the view: the horizon of a level view at its bottom edge.
-// Terrain.ShotShowUI 1 takes the window instead, as shot showui does (the screen of F3 hidden).
+// Terrain.ShotShowUI 1 takes the viewport with its UI instead, as Slate draws its widget (shot
+// showui without the panels of the editor, the screen of F3 hidden); the whole window, by Unreal,
+// only when Slate cannot.
 #include "TerrainDevTools.h"
 
 #if TERRAIN_DEV_TOOLS
@@ -14,6 +16,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
 #include "ImageCore.h"
@@ -22,6 +25,7 @@
 #include "TerrainWorld.h"
 #include "TerrainWorldState.h"
 #include "UnrealClient.h"
+#include "Widgets/SViewport.h"
 
 #include <cstdint>
 
@@ -79,6 +83,39 @@ bool UTerrainDevTools::ReadViewTexture(const FString& File, terrain::unreal::Cap
 	for (FColor& Pixel : Pixels)
 	{
 		Pixel.A = 255; // the scene leaves its own alpha there
+	}
+	if (!FImageUtils::SaveImageByExtension(*File, FImageView(Pixels.GetData(), Size.X, Size.Y)))
+	{
+		TerrainDev::Warn(FString::Printf(TEXT("the image could not be written: %s"), *File));
+		return false;
+	}
+	Check.imageWidth = Size.X;
+	Check.imageHeight = Size.Y;
+	return true;
+}
+
+// The viewport of the game with its UI, as Slate draws its widget (the debug canvas, the HUD and
+// the widgets over it; not the panels of the editor around it), into a PNG at File, the size of
+// the widget in physical pixels. False, logged, when Slate cannot draw it alone.
+bool UTerrainDevTools::ReadViewWidget(const FString& File, terrain::unreal::CaptureCheck& Check)
+{
+	const UWorld* GameWorld = World->GetWorld();
+	UGameViewportClient* Client = GameWorld != nullptr ? GameWorld->GetGameViewport() : nullptr;
+	const TSharedPtr<SViewport> Widget =
+		Client != nullptr ? Client->GetGameViewportWidget() : TSharedPtr<SViewport>();
+	TArray<FColor> Pixels;
+	FIntVector Size(0, 0, 0);
+	if (!Widget.IsValid() || !FSlateApplication::IsInitialized() ||
+		!FSlateApplication::Get().TakeScreenshot(Widget.ToSharedRef(), Pixels, Size) ||
+		Size.X <= 0 || Size.Y <= 0 || Pixels.Num() < Size.X * Size.Y)
+	{
+		TerrainDev::Warn(FString::Printf(TEXT("the viewport could not be drawn alone: the whole "
+			"window is taken instead: %s"), *File));
+		return false;
+	}
+	for (FColor& Pixel : Pixels)
+	{
+		Pixel.A = 255;
 	}
 	if (!FImageUtils::SaveImageByExtension(*File, FImageView(Pixels.GetData(), Size.X, Size.Y)))
 	{

@@ -62,8 +62,9 @@ redemandent leur mode de vue à l'image suivante.
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),
 `Terrain.ShotSettle` (stabilité avant une image, 1 s), `Terrain.ShotShowUI` (0 : le render target
-de la vue en pixels physiques ; 1 : la fenêtre, comme `shot showui`), `Terrain.PawnRadius` (rayon
-de la recherche du sol praticable de `Terrain.Pawn`, 50 m).
+de la vue en pixels physiques ; 1 : le viewport avec son UI, sans les panneaux de l'éditeur, ou la
+fenêtre entière si Slate ne peut pas le dessiner seul), `Terrain.PawnRadius` (rayon de la
+recherche du sol praticable de `Terrain.Pawn`, 50 m).
 
 ### La téléportation : le contrat de `TeleportView`
 
@@ -208,7 +209,11 @@ fenêtre** pour comparer deux séries.
   avec Windows à 200 %, le viewport de l'éditeur compte ses pixels à l'échelle du bureau (1920 ×
   1080) alors que son render target a les pixels physiques (3840 × 2160), et l'image ne gardait
   que le quart haut-gauche de la vue (l'horizon d'une vue à plat au bord du bas).
-  `Terrain.ShotShowUI 1` prend la fenêtre, comme `shot showui` (F3 caché). Pendant toute la
+  `Terrain.ShotShowUI 1` prend le viewport avec son UI (F3 caché, les messages de l'écran
+  gardés), comme Slate dessine son widget, à la taille du viewport en pixels physiques : sans les
+  panneaux de l'éditeur, que `shot showui` prend avec lui (la fenêtre entière, 3 840 × 2 064).
+  Si Slate ne peut pas dessiner le viewport seul, un `WARNING` le dit et la fenêtre entière est
+  prise par Unreal (méthode `whole window`, sa taille relue dans le PNG). Pendant toute la
   prise, la souris ne tourne plus la vue, et la pose est reposée juste avant la capture.
 - **Contrôle dans `views.txt`** : pour chaque image, la caméra réelle au moment de la capture (cap,
   inclinaison, FOV, lus sur le `PlayerCameraManager`), la taille de l'image, du viewport et de son
@@ -286,10 +291,34 @@ par `terrain_core/dev/places_file` :
 | `falaise_cotiere` | 429 908 | −855 305 | 217 | 3 | +2 m | non | la côte vue de la mer, au milieu de l'image (rivage de 171 à 262°, 375 m au plus près ; côte basse sur `main`) |
 | `montagnes_mer` | 1 430 074 | 2 052 007 | 133 | 5 | +2 m | non | des montagnes qui plongent dans la mer, au milieu de l'image (rivage de 84 à 182°, 165 m au plus près) |
 | `cote_froide` | 3 624 471 | −10 006 796 | 120 | 5 | +2 m | non | une côte froide vue de la mer |
-| `plage_origine` | −3 985 | −165 | 40 | 0 | +1,8 m | non | la plage près de l'origine, vers la mer |
+| `plage_origine` | −3 985 | −165 | 35 | 0 | +1,8 m | non | la plage près de l'origine, la mer au milieu de l'image (dans le core ; Unreal y montre du sable : voir plus bas) |
 | `fleuve_plaine` | −241 631 | −86 277 | 5 | 0 | +2 m | oui | un fleuve de plaine (eau à 3,28 m), vers l'aval |
 | `lac_montagne` | 7 369 228 | −7 088 911 | 180 | 5 | +2 m | oui | un lac de montagne (eau à 1 725,26 m) |
 | `lisiere_tropicale_savane` | −26 927 500 | −270 336 | 265 | −5 | +40 m | **non** | la lisière forêt tropicale / savane à 450 m vers l'ouest, au-dessus des arbres ; **sans** fichier planète seulement (avec lui, savane partout) |
+
+### `plage_origine` : la mer peu profonde rendue en sable (constat, à traiter dans la tâche « eau et horizon »)
+
+- **Le core** : la caméra est sur le rivage (sol à 0,00 m) ; au cap 35 (la mer la plus profonde
+  au milieu de l'image : cap 34,5), la mer couvre toute la vue de 10 m à 3 km, mais peu
+  profonde : 0,17 m d'eau à 50 m, 0,74 m à 200 m, 1,73 m à 500 m, 2,52 m à 1 km.
+- **Unreal (essai de a028b7e, cap 40)** : en vue normale, du sable jusqu'à l'horizon, la mer
+  seulement dans un coin à gauche (≈ 20 % de la largeur). Avec `Terrain.View eau`, une surface
+  bleu clair uniforme et plate couvre tout le bas de l'image jusqu'à la caméra ; à l'horizon,
+  une bande bleu marine sombre qui finit par un bord courbe, elliptique.
+- **Ce que dit le code** : en mode `eau`, les outils cachent tout l'horizon et le sol des tuiles
+  (`TerrainDevLooks.cpp`), et les tuiles ne maillent pas la mer (fleuves et lacs seulement,
+  `Bridge/tile_water_mesh.cpp`) : la surface bleu clair, la bande sombre et le bord elliptique ne
+  sont donc pas la mer du plugin (seul l'horizon GPU la dessine : son carré de mer à 0 m sous les
+  tuiles), mais ce qui reste derrière quand rien n'est dessiné (sans doute le brouillard et le
+  ciel de la carte), et ce mode ne montre pas si le carré de mer est là. Le sable n'est pas une hauteur des tuiles : leur sol est celui du core (0,02 à
+  2,5 m sous 0 m ici, sans plancher à 0 m dans `convertMesh`), sous le carré de mer posé à 0 m
+  sans descente ni pixel depth offset ; en revanche le matériau de la mer tire sa couleur vers
+  le sable des hauts-fonds (`Scripts/horizon_sea_hlsl.py`, poids exp(−profondeur / 1,2 m) :
+  87 % à 0,17 m d'eau, 54 % à 0,74 m, 24 % à 1,73 m) ; le carré de mer est masqué là où moins de
+  la moitié des 4 texels de 8 m du niveau 0 autour du pixel sont de l'océan.
+- **Reste ouvert** : le coin de mer vu à gauche (caps −5 à 9 environ) n'est pas plus profond
+  dans le core (0,15 à 0,17 m à 50 m, 0,97 à 1,4 m à 500 m) : la profondeur seule n'explique pas
+  où Unreal montre la mer ou le sable.
 
 ## Comparer avant / après
 

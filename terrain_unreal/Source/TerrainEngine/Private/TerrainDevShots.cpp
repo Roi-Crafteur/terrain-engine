@@ -214,17 +214,31 @@ void UTerrainDevTools::TickShots()
 	SetShotLook(true);
 	FTerrainDevShot& Shot = *Dev->Shot;
 	const double Now = FPlatformTime::Seconds();
-	if (Shot.Phase == FTerrainDevShot::EPhase::Capturing && Shot.bFromTexture)
+	using ERead = FTerrainDevShot::ERead;
+	if (Shot.Phase == FTerrainDevShot::EPhase::Capturing && Shot.Read != ERead::Window)
 	{
 		if (--Shot.CaptureFrames > 0)
 		{
 			return;
 		}
-		Shot.Current.capture = MeasureCapture("texture");
+		const bool bTexture = Shot.Read == ERead::Texture;
+		Shot.Current.capture = MeasureCapture(bTexture ? "texture" : "viewport and its UI");
 		KeepCameraEye(Shot.Current);
-		ReadViewTexture(Shot.File, Shot.Current.capture);
-		SetScreenMessagesOff(false);
-		OnShotProcessed();
+		if (bTexture)
+		{
+			ReadViewTexture(Shot.File, Shot.Current.capture);
+			SetScreenMessagesOff(false);
+		}
+		else if (!ReadViewWidget(Shot.File, Shot.Current.capture))
+		{
+			// Slate could not draw the viewport alone: the whole window, by Unreal.
+			Shot.Read = ERead::Window;
+			Shot.Current.capture.method = "whole window";
+			Shot.CaptureStart = Now;
+			FScreenshotRequest::RequestScreenshot(Shot.File, true, false);
+			return;
+		}
+		FinishCapture();
 		return;
 	}
 	if (Shot.Phase == FTerrainDevShot::EPhase::Capturing)
@@ -234,7 +248,7 @@ void UTerrainDevTools::TickShots()
 			TerrainDev::Warn(FString::Printf(TEXT("no image written after %.0f s: %s"),
 				CaptureTimeoutSeconds, *Shot.File));
 			FScreenshotRequest::Reset(); // never written later under the name of another view
-			OnShotProcessed();
+			FinishCapture();
 		}
 		return;
 	}
@@ -264,8 +278,9 @@ void UTerrainDevTools::TickShots()
 }
 
 // The image of the view at the path given (no suffix), the screen of F3 hidden, the pose set
-// once more (nothing turns the view of an image): the render target of the viewport read two
-// frames later (TerrainDevCapture.cpp), or with Terrain.ShotShowUI 1 the window, as shot showui.
+// once more (nothing turns the view of an image), read two frames later (TerrainDevCapture.cpp):
+// the render target of the viewport, or with Terrain.ShotShowUI 1 the viewport and its UI, as
+// shot showui but without the panels of the editor.
 void UTerrainDevTools::Capture()
 {
 	FTerrainDevShot& Shot = *Dev->Shot;
@@ -276,38 +291,44 @@ void UTerrainDevTools::Capture()
 		PlayerController->SetControlRotation(
 			TerrainDev::ToRotator(terrain::unreal::viewRotation(Shot.Current.pose)));
 	}
-	Shot.bFromTexture = !TerrainDev::ShotShowUI();
-	if (Shot.bFromTexture)
+	Shot.Read = TerrainDev::ShotShowUI() ? FTerrainDevShot::ERead::Viewport
+										 : FTerrainDevShot::ERead::Texture;
+	if (Shot.Read == FTerrainDevShot::ERead::Texture)
 	{
-		SetScreenMessagesOff(true);
-		Shot.CaptureFrames = 2;
+		SetScreenMessagesOff(true); // they belong to the UI
 	}
-	else
-	{
-		Shot.Current.capture = MeasureCapture("window");
-		KeepCameraEye(Shot.Current);
-		FScreenshotRequest::RequestScreenshot(Shot.File, true, false);
-	}
+	Shot.CaptureFrames = 2;
 	Shot.Phase = FTerrainDevShot::EPhase::Capturing;
 	Shot.CaptureStart = FPlatformTime::Seconds();
 }
 
-// Called by Unreal once a screenshot is written (any screenshot: only ours is taken here), and by
-// TickShots when none comes.
+// Called by Unreal once a screenshot is written (any screenshot): ours only when the whole window
+// is taken by Unreal (the fallback of Terrain.ShotShowUI 1).
 void UTerrainDevTools::OnShotProcessed()
 {
-	if (!Dev.IsValid() || !Dev->Shot.has_value() ||
-		Dev->Shot->Phase != FTerrainDevShot::EPhase::Capturing ||
-		(Dev->Shot->bFromTexture && Dev->Shot->CaptureFrames > 0)) // another screenshot
+	if (Dev.IsValid() && Dev->Shot.has_value() &&
+		Dev->Shot->Phase == FTerrainDevShot::EPhase::Capturing &&
+		Dev->Shot->Read == FTerrainDevShot::ERead::Window)
 	{
-		return;
+		FinishCapture();
 	}
+}
+
+// The image written (or given up): the log, then the next view of a run.
+void UTerrainDevTools::FinishCapture()
+{
 	Dev->bHideScreen = false;
 	FTerrainDevShot& Shot = *Dev->Shot;
 	TerrainDev::Log(FString::Printf(TEXT("image %s: %s after %.1f s"), *Shot.File,
 		Shot.Current.ready ? TEXT("ready") : TEXT("NOT READY (timeout)"),
 		Shot.Current.waitedSeconds));
-	const terrain::unreal::CaptureCheck& Check = Shot.Current.capture;
+	terrain::unreal::CaptureCheck& Check = Shot.Current.capture;
+	if (Shot.Read == FTerrainDevShot::ERead::Window && Check.imageWidth == 0 &&
+		!TerrainDev::PngFileSize(Shot.File, Check.imageWidth, Check.imageHeight))
+	{
+		Check.imageWidth = 0; // the window written by Unreal: its size from the file, else 0x0
+		Check.imageHeight = 0;
+	}
 	if (Check.measured)
 	{
 		TerrainDev::Log(FString::Printf(TEXT("camera yaw %.2f pitch %.2f fov %.1f (pose yaw %.2f "
@@ -342,7 +363,8 @@ void UTerrainDevTools::FinishViews()
 		HasPlanet() ? TerrainDev::ToUtf8(World->PlanetFile) : std::string(), Rings);
 	for (terrain::unreal::ViewRecord& Record : Shot.Records)
 	{
-		// The window taken by Unreal (Terrain.ShotShowUI 1): its size read back from the file.
+		// The whole window taken by Unreal (Terrain.ShotShowUI 1 when Slate cannot draw the
+		// viewport alone): its size read back from the file.
 		terrain::unreal::CaptureCheck& Check = Record.capture;
 		if (Check.measured && Check.imageWidth == 0 &&
 			!TerrainDev::PngFileSize(FPaths::Combine(Shot.Folder, ToText(Record.file)),
