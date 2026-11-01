@@ -133,7 +133,7 @@ bool UTerrainDevMapComponent::StartMap()
 		Params.threads = FMath::Clamp(MapThreads, 1, 4);
 		State->Cache = std::make_unique<terrain::unreal::MapTileCache>(
 			terrain::unreal::renderTilesOf(*State->Source), terrain::unreal::probesOf(*State->Source),
-			terrain::defaultMapLayerNames(), Params);
+			terrain::defaultMapLayerNames(), Params, terrain::unreal::landingsOf(*State->Source));
 	}
 	catch (const std::exception& Error)
 	{
@@ -142,9 +142,7 @@ bool UTerrainDevMapComponent::StartMap()
 		State.Reset();
 		return false;
 	}
-	// The places and the teleport of the tools of agent 36 plug in here (terrain/dev/places_file,
-	// ATerrainWorld::TeleportView); until then, the places of this play only, and no teleport.
-	State->Places = std::make_unique<terrain::unreal::MemoryPlaces>();
+	// The places of the tools of agent 36 are read when the dev map opens (RefreshPlaces).
 	State->Reveal = std::make_unique<terrain::unreal::RevealEverything>();
 	State->View.metersPerPixel = 64.0;
 	UE_LOG(LogTerrainEngine, Log, TEXT("Terrain Dev Map: started (%d thread(s), %d tiles kept)"),
@@ -158,7 +156,9 @@ void UTerrainDevMapComponent::StopMap()
 	{
 		return;
 	}
+#if TERRAIN_DEV_TOOLS
 	CloseDevMap();
+#endif
 	ShowMinimapWidget(false);
 	if (State->Loading.IsValid() && GetWorld() != nullptr && GetWorld()->GetGameViewport() != nullptr)
 	{
@@ -197,13 +197,19 @@ void UTerrainDevMapComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		State->Heading = terrain::unreal::headingOfYaw(Rotation.Yaw);
 		State->Pitch = FRotator::NormalizeAxis(Rotation.Pitch);
 	}
-	TickTeleport();
+#if TERRAIN_DEV_TOOLS
+	TickClick();
+#endif
 	UploadTiles();
 	State->Wanted.clear();
-	UpdateDevMap();
+#if TERRAIN_DEV_TOOLS
+	UpdateDevMap(); // its tiles first
+#endif
 	UpdateMinimap();
 	State->Cache->want(State->Wanted);
+#if TERRAIN_DEV_TOOLS
 	TickReadout();
+#endif
 }
 
 bool UTerrainDevMapComponent::PlayerView(FVector& OutLocation, FRotator& OutRotation) const
@@ -326,6 +332,9 @@ void UTerrainDevMapComponent::ShowMinimapWidget(bool bShown)
 	Viewport->AddViewportWidgetContent(State->Minimap.ToSharedRef(), MinimapZOrder);
 }
 
+#if TERRAIN_DEV_TOOLS
+
+// The full-screen dev map (only with TERRAIN_DEV_TOOLS): its tiles, the saved places, the player.
 void UTerrainDevMapComponent::UpdateDevMap()
 {
 	if (!IsDevMapOpen())
@@ -334,7 +343,7 @@ void UTerrainDevMapComponent::UpdateDevMap()
 	}
 	const terrain::unreal::MapView& View = State->View;
 	FTerrainMapDrawList List = DrawTiles(View, *State, TileTextures);
-	for (const terrain::unreal::MapPlace& Place : State->Places->places())
+	for (const terrain::dev::Place& Place : State->PlacesShown)
 	{
 		const terrain::unreal::ScreenPoint At =
 			terrain::unreal::worldToScreen(View, {Place.x, Place.z}, State->World);
@@ -367,3 +376,5 @@ void UTerrainDevMapComponent::UpdateDevMap()
 		Canvas->SetDrawList(MoveTemp(List));
 	}
 }
+
+#endif // TERRAIN_DEV_TOOLS

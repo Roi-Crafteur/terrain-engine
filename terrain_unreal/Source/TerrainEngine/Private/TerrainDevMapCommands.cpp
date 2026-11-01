@@ -1,5 +1,6 @@
 // The console commands of the map (agent 35), on the map of every Terrain World of the world:
-// Terrain.Map, Terrain.Map.Minimap 0|1, Terrain.Map.MinimapZoom <m/px>, Terrain.Map.MinimapRotate 0|1.
+// Terrain.Map (only with TERRAIN_DEV_TOOLS: the full-screen dev map is never in Shipping),
+// Terrain.Map.Minimap 0|1, Terrain.Map.MinimapZoom <m/px>, Terrain.Map.MinimapRotate 0|1.
 // The commands of views and places are those of the tools of agent 36 (Terrain.Goto, Terrain.Save).
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
@@ -25,10 +26,12 @@ namespace
 		}
 	}
 
+#if TERRAIN_DEV_TOOLS
 	void RunMap(const TArray<FString>&, UWorld* World)
 	{
 		ForEachMap(World, [](UTerrainDevMapComponent& Map) { Map.ToggleDevMap(); });
 	}
+#endif
 
 	void RunMinimap(const TArray<FString>& Args, UWorld* World)
 	{
@@ -64,9 +67,11 @@ namespace
 		ForEachMap(World, [bRotates](UTerrainDevMapComponent& Map) { Map.SetMinimapRotates(bRotates); });
 	}
 
+#if TERRAIN_DEV_TOOLS
 	FAutoConsoleCommandWithWorldAndArgs MapCommand(TEXT("Terrain.Map"),
 		TEXT("Opens or closes the full-screen dev map (as its key, M by default)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunMap));
+#endif
 
 	FAutoConsoleCommandWithWorldAndArgs MinimapCommand(TEXT("Terrain.Map.Minimap"),
 		TEXT("Shows (1) or hides (0) the minimap: Terrain.Map.Minimap 0|1"),

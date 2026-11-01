@@ -1,9 +1,15 @@
-// Where the dev map sends the player: the coordinates typed, the saved places, the place added
-// from the camera, the teleport (one frame of "Loading the terrain" first), and the texts of the
-// panel: the planet file, what lies under the cursor, the last message (UTerrainDevMapComponent).
+// Where the dev map sends the player: the coordinates typed, the saved places (the places file of
+// the tools of agent 36), the place added from the camera (as Terrain.Save writes it), the view of
+// a place (ATerrainWorld::TeleportView), the screen "Loading the terrain" while a click is decided,
+// and the texts of the panel: the planet file, what lies under the cursor, the last message
+// (UTerrainDevMapComponent). Only with TERRAIN_DEV_TOOLS: never in Shipping.
 #include "TerrainDevMap.h"
 
+#if TERRAIN_DEV_TOOLS
+
+#include "Bridge/map_places_file.hpp"
 #include "Bridge/map_targets.hpp"
+#include "Bridge/place_pose.hpp"
 #include "Bridge/planet_source.hpp"
 #include "Bridge/terrain_session.hpp"
 #include "Bridge/unreal_frame.hpp"
@@ -11,6 +17,8 @@
 #include "Engine/World.h"
 #include "Styling/CoreStyle.h"
 #include "TerrainDevMapState.h"
+#include "TerrainDevState.h"
+#include "TerrainDevTools.h"
 #include "TerrainEngineLog.h"
 #include "TerrainWorld.h"
 #include "TerrainWorldState.h"
@@ -77,65 +85,74 @@ void UTerrainDevMapComponent::SetMessage(const FString& Text)
 	UE_LOG(LogTerrainEngine, Log, TEXT("Terrain Dev Map: %s"), *Text);
 }
 
-// The teleport (agent 36) after one frame of "Loading the terrain": the map closes first.
+// The view of a place on the one teleport of the tools (ATerrainWorld::TeleportView, agent 36):
+// the map closes, the screen goes black until the world around is shown (agent 38).
 void UTerrainDevMapComponent::RequestTeleport(double X, double Z, double Heading, double Pitch,
 	double Eye, bool bEyeAboveGround, const FString& What)
 {
-	if (!State.IsValid() || State->Pending.has_value())
+	ATerrainWorld* Terrain = TerrainWorld();
+	if (!State.IsValid() || Terrain == nullptr)
 	{
 		return;
 	}
-	if (!State->Teleport)
-	{
-		SetMessage(FString::Printf(TEXT("No teleport to %s (x %.0f, z %.0f): the teleport of the "
-										"tools (ATerrainWorld::TeleportView, agent 36) is not there"),
-			*What, X, Z));
-		return;
-	}
-	FTerrainMapPendingTeleport Pending;
-	Pending.X = X;
-	Pending.Z = Z;
-	Pending.Heading = Heading;
-	Pending.Pitch = Pitch;
-	Pending.Eye = Eye;
-	Pending.bEyeAboveGround = bEyeAboveGround;
-	Pending.What = What;
-	State->Pending = Pending;
+	State->Click.reset();
 	CloseDevMap();
-	if (UGameViewportClient* Viewport = GetWorld() != nullptr ? GetWorld()->GetGameViewport() : nullptr)
+	const bool bAsked = Terrain->TeleportView(X, Z, Heading, Pitch, Eye,
+		bEyeAboveGround ? ETerrainEyeMode::Ground : ETerrainEyeMode::Altitude);
+	SetMessage(bAsked
+			? FString::Printf(TEXT("To %s: x %.0f, z %.0f, heading %.0f, pitch %.0f"), *What, X, Z,
+				  Heading, Pitch)
+			: FString::Printf(TEXT("The teleport to %s was refused (the tools of the developers are "
+								   "off, or the world is not playing: the log says why)"),
+				  *What));
+}
+
+void UTerrainDevMapComponent::ShowLoading(bool bShown, double X, double Z)
+{
+	UGameViewportClient* Viewport = GetWorld() != nullptr ? GetWorld()->GetGameViewport() : nullptr;
+	if (!State.IsValid() || Viewport == nullptr)
+	{
+		return;
+	}
+	if (State->Loading.IsValid())
+	{
+		Viewport->RemoveViewportWidgetContent(State->Loading.ToSharedRef());
+		State->Loading.Reset();
+	}
+	if (bShown)
 	{
 		State->Loading = LoadingScreen(X, Z);
 		Viewport->AddViewportWidgetContent(State->Loading.ToSharedRef(), LoadingZOrder);
 	}
 }
 
-void UTerrainDevMapComponent::TickTeleport()
+// The places of the places file of the tools (Terrain.PlacesFile, data/dev/places.json by
+// default), or of this play only without the tools.
+void UTerrainDevMapComponent::RefreshPlaces()
 {
-	if (!State->Pending.has_value())
+	if (!State.IsValid())
 	{
 		return;
 	}
-	if (State->Pending->FramesLeft > 0)
+	if (State->Places == nullptr)
 	{
-		--State->Pending->FramesLeft; // the screen "Loading the terrain" shows this frame
-		return;
-	}
-	const FTerrainMapPendingTeleport Asked = *State->Pending;
-	State->Pending.reset();
-	const bool bPlaced = State->Teleport(Asked.X, Asked.Z, Asked.Heading, Asked.Pitch, Asked.Eye,
-		Asked.bEyeAboveGround);
-	if (State->Loading.IsValid())
-	{
-		if (UGameViewportClient* Viewport = GetWorld()->GetGameViewport())
+		const ATerrainWorld* Terrain = TerrainWorld();
+		const UTerrainDevTools* Tools = Terrain != nullptr ? Terrain->GetDevTools() : nullptr;
+		if (Tools != nullptr)
 		{
-			Viewport->RemoveViewportWidgetContent(State->Loading.ToSharedRef());
+			State->Places = std::make_unique<terrain::unreal::PlacesFileSource>(
+				TerrainDev::ToPath(Tools->PlacesPath()));
 		}
-		State->Loading.Reset();
+		else
+		{
+			State->Places = std::make_unique<terrain::unreal::MemoryPlaces>();
+		}
 	}
-	SetMessage(bPlaced
-			? FString::Printf(TEXT("At %s: x %.0f, z %.0f, heading %.0f, pitch %.0f"), *Asked.What,
-				  Asked.X, Asked.Z, Asked.Heading, Asked.Pitch)
-			: FString::Printf(TEXT("The teleport to %s was refused (the log says why)"), *Asked.What));
+	State->PlacesShown = State->Places->places();
+	if (!State->Places->error().empty())
+	{
+		SetMessage(FString::Printf(TEXT("No places: %s"), *ToFString(State->Places->error())));
+	}
 }
 
 void UTerrainDevMapComponent::GoToTyped(const FString& Text)
@@ -149,8 +166,7 @@ void UTerrainDevMapComponent::GoToTyped(const FString& Text)
 			*Text));
 		return;
 	}
-	RequestTeleport(Point->x, Point->z, State->Heading, State->Pitch,
-		terrain::unreal::kMapEyeAboveGround, true, TEXT("the point typed"));
+	RequestClick(Point->x, Point->z, State->Heading, State->Pitch, TEXT("the point typed"));
 }
 
 void UTerrainDevMapComponent::GoToPlace(int32 Index)
@@ -159,22 +175,24 @@ void UTerrainDevMapComponent::GoToPlace(int32 Index)
 	{
 		return;
 	}
-	const std::vector<terrain::unreal::MapPlace> Places = State->Places->places();
+	const std::vector<terrain::dev::Place>& Places = State->PlacesShown;
 	if (Index < 0 || Index >= static_cast<int32>(Places.size()))
 	{
 		return;
 	}
-	const terrain::unreal::MapPlace& Place = Places[static_cast<std::size_t>(Index)];
+	const terrain::dev::Place Place = Places[static_cast<std::size_t>(Index)];
 	FString What = ToFString(Place.name);
 	if (Place.planet && !State->Source->hasPlanet())
 	{
 		What += TEXT(" (it needs the planet file, missing: no rivers, lakes nor falls there)");
 	}
 	RequestTeleport(Place.x, Place.z, Place.heading, Place.pitch, Place.eye,
-		Place.eyeMode == terrain::unreal::MapEyeMode::Ground, What);
+		Place.eyeMode == terrain::dev::EyeMode::Ground, What);
 }
 
-// The view of the camera as a place: its point, heading and pitch, its eye at its altitude.
+// The view of the camera as a place, as Terrain.Save writes it (Bridge/place_pose of agent 36:
+// cameraPose, placeOfView): its point, heading and pitch, its eye at its altitude, rounded to the
+// centimeter and to the hundredth of a degree.
 void UTerrainDevMapComponent::AddPlaceHere(const FString& Name)
 {
 	const FString Clean = Name.TrimStartAndEnd();
@@ -193,19 +211,26 @@ void UTerrainDevMapComponent::AddPlaceHere(const FString& Name)
 	}
 	const terrain::unreal::CorePoint Eye =
 		terrain::unreal::toCore(Terrain->State->Frame, ToUnrealPoint(Location));
-	const terrain::unreal::MapPlace Place = terrain::unreal::placeFromCamera(
-		std::string(TCHAR_TO_UTF8(*Clean)), Eye, Rotation.Yaw, FRotator::NormalizeAxis(Rotation.Pitch),
-		State->Source->hasPlanet(), "added from the dev map", State->World);
-	if (State->Places->add(Place))
+	terrain::dev::Place Place;
+	try
 	{
-		SetMessage(FString::Printf(TEXT("Saved %s: x %.2f, z %.2f, eye %.2f m, heading %.2f, pitch "
-										"%.2f"),
-			*Clean, Place.x, Place.z, Place.eye, Place.heading, Place.pitch));
+		Place = terrain::unreal::placeOfView(TerrainDev::ToUtf8(Clean), "added from the dev map",
+			terrain::unreal::cameraPose(Eye, Rotation.Pitch, Rotation.Yaw),
+			State->Source->hasPlanet(), State->World);
 	}
-	else
+	catch (const terrain::dev::PlacesError& Error)
+	{
+		SetMessage(FString::Printf(TEXT("Not saved: %s"), *ToFString(Error.what())));
+		return;
+	}
+	if (!State->Places->add(Place))
 	{
 		SetMessage(FString::Printf(TEXT("Not saved: %s"), *ToFString(State->Places->error())));
+		return;
 	}
+	RefreshPlaces();
+	SetMessage(FString::Printf(TEXT("Saved %s: x %.2f, z %.2f, eye %.2f m, heading %.2f, pitch %.2f"),
+		*Clean, Place.x, Place.z, Place.eye, Place.heading, Place.pitch));
 }
 
 TArray<FString> UTerrainDevMapComponent::PlaceLabels() const
@@ -215,7 +240,7 @@ TArray<FString> UTerrainDevMapComponent::PlaceLabels() const
 	{
 		return Labels;
 	}
-	for (const terrain::unreal::MapPlace& Place : State->Places->places())
+	for (const terrain::dev::Place& Place : State->PlacesShown)
 	{
 		FString Label = ToFString(Place.name);
 		if (Place.planet)
@@ -292,3 +317,5 @@ FText UTerrainDevMapComponent::MessageText() const
 {
 	return State.IsValid() ? FText::FromString(State->Message) : FText::GetEmpty();
 }
+
+#endif // TERRAIN_DEV_TOOLS

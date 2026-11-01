@@ -1,7 +1,8 @@
 // The tiles of the dev map on threads of their own (Bridge/map_tile_cache.hpp): the bytes of
 // renderMap, kept and reused (moving a view renders only its new tiles), the least used dropped
 // beyond the capacity, the stale requests dropped, the layers changed, the probe of the cursor,
-// a clean stop while tiles render, and a stop in the middle of heavy tiles of the generated world
+// the landing of a click (the last asked, as clickLandingOn the source gives it), a clean stop
+// while tiles render, and a stop in the middle of heavy tiles of the generated world
 // within 100 ms (their render ends between two rows, the tile dropped).
 #include "map_tile_cache.hpp"
 
@@ -141,6 +142,32 @@ void testStaleAndProbe() {
     TEST_CHECK(p.has_value() && p->x == 100.0 && p->z == 200.0 && !cache.takeProbe().has_value());
 }
 
+// The landing of a click on the threads of the cache, before the tiles: the last asked is the one
+// done, and it is clickLandingOn the heightfield of the source.
+void testLanding() {
+    const Counted counted;
+    *counted.delayMs = 20;
+    const map_world::DryWorld w;
+    MapTileCache cache(counted.render(), noProbe(), {"relief"}, {64, 1}, landingsOf(w.source));
+    std::vector<MapTileKey> many;
+    for (int i = 0; i < 10; ++i) {
+        many.push_back({6, i, 2});
+    }
+    cache.want(many);
+    cache.land(-2699.0, -1697.0, 50.0);
+    cache.land(-3985.0, -165.0, 50.0); // the beach of the origin
+    cache.waitIdle();
+    const std::optional<MapLanding> l = cache.takeLanding();
+    const MapLanding direct = clickLandingOn(w.field, -3985.0, -165.0, 50.0);
+    TEST_CHECK(l.has_value() && l->clickX == -3985.0 && l->clickZ == -165.0);
+    TEST_CHECK(l->kind == direct.kind && l->x == direct.x && l->z == direct.z);
+    TEST_CHECK(!cache.takeLanding().has_value());
+    MapTileCache without(counted.render(), noProbe(), {"relief"}, {64, 1});
+    without.land(0.0, 0.0, 50.0); // no landing function: nothing asked
+    without.waitIdle();
+    TEST_CHECK(!without.takeLanding().has_value());
+}
+
 // Destroyed while its threads render: they finish their tile and stop.
 void testStop() {
     const Counted counted;
@@ -193,6 +220,7 @@ int main() {
     testRenderAndReuse();
     testCapacityAndLayers();
     testStaleAndProbe();
+    testLanding();
     testStop();
     testStopHeavyTiles();
     return test::result();

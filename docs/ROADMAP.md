@@ -237,6 +237,8 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - jamais dans un build Shipping (`TERRAIN_DEV_TOOLS`) ; aucun bit du monde changé
   (`terrain_unreal/DEV_TOOLS.md`)
 
+### Carte de dev et minicarte (agent 35) : images de la carte dans `terrain_core/map` (relief, biomes, eau, courbes, tout zoom, mêmes octets sur tout fil), minicarte, carte plein écran `M` (jamais en Shipping), clic = pion du jeu sur terre ou vue au-dessus de l'eau, lieux de `data/dev/places.json` (`terrain_unreal/README.md`, section 16)
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les

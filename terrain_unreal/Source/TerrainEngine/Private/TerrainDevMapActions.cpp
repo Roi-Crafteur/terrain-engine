@@ -1,5 +1,7 @@
 // The full-screen dev map opened and closed, its keys, its view moved by the mouse, its layers, and
-// the settings of the minimap (UTerrainDevMapComponent, TerrainDevMap.h).
+// the settings of the minimap (UTerrainDevMapComponent, TerrainDevMap.h). The full-screen map, its
+// places and its clicks only with TERRAIN_DEV_TOOLS (never in Shipping, TerrainEngine.Build.cs);
+// the minimap in every build.
 #include "TerrainDevMap.h"
 
 #include "Bridge/map_targets.hpp"
@@ -17,21 +19,9 @@
 #include <string>
 #include <vector>
 
-namespace
-{
-	// Above the minimap and the screens of the tools.
-	constexpr int32 DevMapZOrder = 50;
-	// The first spacing of the dev map, meters per pixel: about 120 km across a full HD screen.
-	constexpr double FirstMetersPerPixel = 64.0;
-	// A click within this many pixels of a saved place takes its view.
-	constexpr double PlacePickPixels = 10.0;
-} // namespace
-
 bool UTerrainDevMapComponent::ToggleDevMap()
 {
-#if UE_BUILD_SHIPPING
-	return false;
-#else
+#if TERRAIN_DEV_TOOLS
 	if (!State.IsValid())
 	{
 		return false;
@@ -45,6 +35,8 @@ bool UTerrainDevMapComponent::ToggleDevMap()
 		OpenDevMap();
 	}
 	return true;
+#else
+	return false;
 #endif
 }
 
@@ -97,7 +89,7 @@ void UTerrainDevMapComponent::BindKeys()
 	Input->bBlockInput = false;
 	Input->BindKey(MinimapZoomInKey, IE_Pressed, this, &UTerrainDevMapComponent::ZoomMinimapIn);
 	Input->BindKey(MinimapZoomOutKey, IE_Pressed, this, &UTerrainDevMapComponent::ZoomMinimapOut);
-#if !UE_BUILD_SHIPPING
+#if TERRAIN_DEV_TOOLS
 	Input->BindKey(DevMapKey, IE_Pressed, this, &UTerrainDevMapComponent::PressDevMapKey);
 #endif
 	Controller->PushInputComponent(Input);
@@ -114,6 +106,18 @@ void UTerrainDevMapComponent::UnbindKeys()
 	MapInput = nullptr;
 }
 
+#if TERRAIN_DEV_TOOLS
+
+namespace
+{
+	// Above the minimap and the screens of the tools.
+	constexpr int32 DevMapZOrder = 50;
+	// The first spacing of the dev map, meters per pixel: about 120 km across a full HD screen.
+	constexpr double FirstMetersPerPixel = 64.0;
+	// A click within this many pixels of a saved place takes its view.
+	constexpr double PlacePickPixels = 10.0;
+} // namespace
+
 // Full screen over the game, the cursor shown, the game and the interface both listening but the
 // character and the camera held still; the keys and the mouse stay in the map (STerrainDevMap).
 void UTerrainDevMapComponent::OpenDevMap()
@@ -129,6 +133,7 @@ void UTerrainDevMapComponent::OpenDevMap()
 		State->View.metersPerPixel = FirstMetersPerPixel;
 		State->bViewCentered = true;
 	}
+	RefreshPlaces(); // Terrain.Save may have written the file since
 	State->DevMap = SNew(STerrainDevMap)
 		.Map(TWeakObjectPtr<UTerrainDevMapComponent>(this))
 		.CloseKey(DevMapKey);
@@ -209,14 +214,15 @@ void UTerrainDevMapComponent::ResizeDevMap(const FVector2D& Size)
 	}
 }
 
-// A click on a saved place takes its view; elsewhere the point clicked, the heading kept.
+// A click on a saved place takes its view; elsewhere the point clicked, the heading kept: the pawn
+// of the game on land, the view of the tools over water (TerrainDevMapLanding.cpp).
 void UTerrainDevMapComponent::ClickDevMap(const FVector2D& Pixel)
 {
 	if (!State.IsValid())
 	{
 		return;
 	}
-	const std::vector<terrain::unreal::MapPlace> Places = State->Places->places();
+	const std::vector<terrain::dev::Place>& Places = State->PlacesShown;
 	for (int32 Index = 0; Index < static_cast<int32>(Places.size()); ++Index)
 	{
 		const terrain::unreal::ScreenPoint At = terrain::unreal::worldToScreen(
@@ -227,10 +233,9 @@ void UTerrainDevMapComponent::ClickDevMap(const FVector2D& Pixel)
 			return;
 		}
 	}
-	const terrain::unreal::MapPlace Target = terrain::unreal::clickTarget(
+	const terrain::dev::Place Target = terrain::unreal::clickTarget(
 		State->View, {Pixel.X, Pixel.Y}, State->Heading, State->Pitch, State->World);
-	RequestTeleport(Target.x, Target.z, Target.heading, Target.pitch, Target.eye, true,
-		TEXT("the point clicked"));
+	RequestClick(Target.x, Target.z, Target.heading, Target.pitch, TEXT("the point clicked"));
 }
 
 TArray<FString> UTerrainDevMapComponent::LayerNames() const
@@ -273,3 +278,5 @@ void UTerrainDevMapComponent::SetLayerShown(const FString& Layer, bool bShown)
 	}
 	State->Cache->setLayers(Shown);
 }
+
+#endif // TERRAIN_DEV_TOOLS

@@ -7,6 +7,8 @@ structure :
         settlement/     ← peuplement (docs/PEUPLEMENT.md) : cartes d'analyse, énergies,
                           peuples, presets, capitales, expansion, frontières, dirigeants
       json/             ← lecture stricte et écriture canonique des fichiers de données
+      map/              ← la carte vue de haut (données seules) : calques, tuiles, sonde d'un
+                          point ; la carte de dev et la minicarte d'Unreal la dessinent
       meshing/          ← Marching Cubes
       streaming/        ← tuiles, LOD, coutures, horizon lointain, génération asynchrone
       storage/          ← modifications des joueurs, sauvegarde, planet.bin, settlement.json

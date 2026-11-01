@@ -95,7 +95,8 @@ public:
 		meta = (ClampMin = "1", ClampMax = "32"))
 	int32 TileUploadsPerFrame = 4;
 
-	// Opens or closes the full-screen dev map (key M). False outside play or in Shipping.
+	// Opens or closes the full-screen dev map (key M). False outside play or without
+	// TERRAIN_DEV_TOOLS (Shipping).
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Map")
 	bool ToggleDevMap();
 
@@ -153,10 +154,18 @@ private:
 	void ShowMinimapWidget(bool bShown);
 	void OpenDevMap();
 	void CloseDevMap();
-	void TickTeleport();
 	void TickReadout();
+	// TerrainDevMapPlaces.cpp: the view of a place (ATerrainWorld::TeleportView), the places read
+	// again. TerrainDevMapLanding.cpp: a click or a point typed (the pawn of the game on land, the
+	// view of the tools over water). Only with TERRAIN_DEV_TOOLS.
 	void RequestTeleport(double X, double Z, double Heading, double Pitch, double Eye,
 		bool bEyeAboveGround, const FString& What);
+	void RefreshPlaces();
+	void RequestClick(double X, double Z, double Heading, double Pitch, const FString& What);
+	void TickClick();
+	void TickClickLoading();
+	void LogClickCheck();
+	void ShowLoading(bool bShown, double X = 0.0, double Z = 0.0);
 	bool PlayerView(FVector& OutLocation, FRotator& OutRotation) const;
 	void SetMessage(const FString& Text);
 

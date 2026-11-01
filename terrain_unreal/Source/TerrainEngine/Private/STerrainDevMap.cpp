@@ -1,4 +1,8 @@
+// The full-screen dev map of agent 35 (STerrainDevMap.h). Only with TERRAIN_DEV_TOOLS: never in
+// Shipping.
 #include "STerrainDevMap.h"
+
+#if TERRAIN_DEV_TOOLS
 
 #include "GameFramework/InputSettings.h"
 #include "STerrainMapCanvas.h"
@@ -353,3 +357,5 @@ FReply STerrainDevMap::OnMouseWheel(const FGeometry&, const FPointerEvent&)
 {
 	return FReply::Handled();
 }
+
+#endif // TERRAIN_DEV_TOOLS

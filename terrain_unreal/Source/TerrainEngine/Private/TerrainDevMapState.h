@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+#include "Bridge/map_landing.hpp"
 #include "Bridge/map_places_port.hpp"
 #include "Bridge/map_reveal.hpp"
 #include "Bridge/map_tile_cache.hpp"
@@ -28,24 +29,27 @@ namespace terrain::unreal
 	class TerrainSession;
 }
 
-// The teleport of the dev map: the view at the core point (X, Z), its heading and pitch (degrees),
-// its eye at the altitude Eye or Eye meters above the ground or the water; true once the pawn is
-// placed. ATerrainWorld::TeleportView of the tools of agent 36 when they are there; unset, the map
-// says so and stays.
-using FTerrainMapTeleport =
-	TFunction<bool(double X, double Z, double Heading, double Pitch, double Eye, bool bEyeAboveGround)>;
-
-// A teleport asked for: the screen "Loading the terrain" is shown one frame first.
-struct FTerrainMapPendingTeleport
+// A click (or a point typed) on its way (TerrainDevMapLanding.cpp, only with TERRAIN_DEV_TOOLS):
+// its landing decided on the thread of the map (clickLanding), the view of the tools put there
+// (ATerrainWorld::TeleportView), its load waited for, the pawn of the game given back
+// (ATerrainWorld::ReturnToGamePawn), and a second later the line of the check in the log.
+struct FTerrainMapClick
 {
-	double X = 0.0;
+	enum class EStep : uint8
+	{
+		Deciding, // the landing asked to the thread of the map
+		Loading,  // the view of the tools put at the dry ground, its load waited for
+		Watching, // the pawn of the game given back, the check a second later
+	};
+	EStep Step = EStep::Deciding;
+	double X = 0.0; // the point clicked, its heading and pitch
 	double Z = 0.0;
 	double Heading = 0.0;
 	double Pitch = 0.0;
-	double Eye = 1.8;
-	bool bEyeAboveGround = true;
 	FString What;
-	int32 FramesLeft = 1;
+	terrain::unreal::MapLanding Landing; // once decided
+	double Since = 0.0;                  // FPlatformTime::Seconds of the step
+	int32 Frames = 0;                    // ticks since the step began
 };
 
 // The texture holding a tile of the map: its slot in UTerrainDevMapComponent::TileTextures and the
@@ -66,9 +70,11 @@ struct FTerrainDevMapState
 	terrain::WorldSize World;
 	std::unique_ptr<terrain::MapWorldSource> Source;
 	std::unique_ptr<terrain::unreal::MapTileCache> Cache;
+	// The places of the tools of agent 36 (Terrain.PlacesFile), read again when the dev map opens
+	// and after a place is added; their copy drawn on the map.
 	std::unique_ptr<terrain::unreal::MapPlaceSource> Places;
+	std::vector<terrain::dev::Place> PlacesShown;
 	std::unique_ptr<terrain::unreal::MapReveal> Reveal;
-	FTerrainMapTeleport Teleport;
 
 	// The textures of the tiles and those waiting for one.
 	std::map<terrain::MapTileKey, FTerrainMapTileTexture> Textures;
@@ -97,6 +103,6 @@ struct FTerrainDevMapState
 	std::optional<terrain::unreal::WorldPoint> HoverAsked;
 	std::optional<terrain::MapProbe> Probe;
 
-	std::optional<FTerrainMapPendingTeleport> Pending;
+	std::optional<FTerrainMapClick> Click;
 	FString Message;
 };

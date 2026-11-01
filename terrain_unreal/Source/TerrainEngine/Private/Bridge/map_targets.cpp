@@ -98,17 +98,17 @@ std::string grouped(std::uint64_t whole) {
 
 } // namespace
 
-MapPlace clickTarget(const MapView& view, ScreenPoint pixel, double heading, double pitch,
-                     const WorldSize& world) {
+dev::Place clickTarget(const MapView& view, ScreenPoint pixel, double heading, double pitch,
+                       const WorldSize& world) {
     const WorldPoint p = screenToWorld(view, pixel, world);
-    MapPlace place;
+    dev::Place place;
     place.name = "map_click";
     place.x = p.x;
     place.z = p.z;
     place.heading = headingOfYaw(yawOfHeading(heading));
     place.pitch = std::clamp(pitch, -90.0, 90.0);
     place.eye = kMapEyeAboveGround;
-    place.eyeMode = MapEyeMode::Ground;
+    place.eyeMode = dev::EyeMode::Ground;
     return place;
 }
 
@@ -151,21 +151,6 @@ std::string formatMeters(double meters, int decimals) {
         out += ',' + std::string(static_cast<std::size_t>(places) - fraction.size(), '0') + fraction;
     }
     return out;
-}
-
-MapPlace placeFromCamera(std::string name, const CorePoint& eye, double yaw, double pitch,
-                         bool planet, std::string note, const WorldSize& world) {
-    MapPlace place;
-    place.name = std::move(name);
-    place.x = wrapCoordinate(eye.x, world.x);
-    place.z = wrapCoordinate(eye.z, world.z);
-    place.heading = headingOfYaw(yaw);
-    place.pitch = std::clamp(pitch, -90.0, 90.0);
-    place.eye = eye.y;
-    place.eyeMode = MapEyeMode::Altitude;
-    place.planet = planet;
-    place.note = std::move(note);
-    return place;
 }
 
 } // namespace terrain::unreal

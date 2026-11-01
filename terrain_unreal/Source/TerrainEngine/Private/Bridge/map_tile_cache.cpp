@@ -14,9 +14,9 @@
 namespace terrain::unreal {
 
 MapTileCache::MapTileCache(Render render, Probe probe, std::vector<std::string> layers,
-                           const MapCacheParams& params)
-    : render_(std::move(render)), probe_(std::move(probe)), params_(params),
-      layers_(std::move(layers)) {
+                           const MapCacheParams& params, Land land)
+    : render_(std::move(render)), probe_(std::move(probe)), land_(std::move(land)),
+      params_(params), layers_(std::move(layers)) {
     if (!render_ || params.capacity == 0 || params.threads < 1) {
         throw std::invalid_argument("map tile cache: a render, a capacity and a thread expected");
     }
@@ -104,6 +104,22 @@ std::optional<MapProbe> MapTileCache::takeProbe() {
     return std::exchange(probeDone_, std::nullopt);
 }
 
+void MapTileCache::land(double x, double z, double radius) {
+    if (!land_) {
+        return;
+    }
+    {
+        const std::lock_guard lock(mutex_);
+        landAsked_ = LandAsked{x, z, radius};
+    }
+    work_.notify_one();
+}
+
+std::optional<MapLanding> MapTileCache::takeLanding() {
+    const std::lock_guard lock(mutex_);
+    return std::exchange(landDone_, std::nullopt);
+}
+
 std::string MapTileCache::lastError() const {
     const std::lock_guard lock(mutex_);
     return lastError_;
@@ -127,25 +143,40 @@ std::size_t MapTileCache::waiting() const {
 void MapTileCache::waitIdle() const {
     std::unique_lock lock(mutex_);
     idle_.wait(lock, [this] {
-        return queue_.empty() && rendering_.empty() && !probeAsked_ && !probing_;
+        return queue_.empty() && rendering_.empty() && !probeAsked_ && !probing_ && !landAsked_ &&
+               !landing_;
     });
 }
 
-bool MapTileCache::nextJob(std::unique_lock<std::mutex>& lock, Job& job) {
-    work_.wait(lock, [this] { return stopping_ || probeAsked_ || !queue_.empty(); });
-    if (stopping_) {
-        return false;
+bool MapTileCache::takePointJob(Job& job) {
+    job.point.reset();
+    job.landing.reset();
+    if (landAsked_ && !landing_) {
+        job.landing = std::exchange(landAsked_, std::nullopt);
+        landing_ = true;
+        return true;
     }
     if (probeAsked_ && !probing_) {
         job.point = std::exchange(probeAsked_, std::nullopt);
         probing_ = true;
         return true;
     }
-    if (queue_.empty()) { // another thread probes: wait for it
-        work_.wait(lock, [this] { return stopping_ || !queue_.empty() || !probing_; });
-        return nextJob(lock, job);
+    return false;
+}
+
+bool MapTileCache::nextJob(std::unique_lock<std::mutex>& lock, Job& job) {
+    const auto pointWaits = [this] {
+        return (landAsked_ && !landing_) || (probeAsked_ && !probing_);
+    };
+    // A landing or a probe asked while another thread does one waits for it, as long as no tile
+    // waits.
+    work_.wait(lock, [this, &pointWaits] { return stopping_ || pointWaits() || !queue_.empty(); });
+    if (stopping_) {
+        return false;
     }
-    job.point.reset();
+    if (takePointJob(job)) {
+        return true;
+    }
     job.key = queue_.front();
     queue_.pop_front();
     rendering_.push_back(job.key);
@@ -154,16 +185,38 @@ bool MapTileCache::nextJob(std::unique_lock<std::mutex>& lock, Job& job) {
     return true;
 }
 
+void MapTileCache::finish(const Job& job, std::optional<MapLanding> landed,
+                          std::optional<MapProbe> probed, std::optional<MapTile> tile,
+                          const std::string& error) {
+    if (job.landing) {
+        landing_ = false;
+        landDone_ = landed ? landed : landDone_;
+    } else if (job.point) {
+        probing_ = false;
+        probeDone_ = probed ? probed : probeDone_;
+    } else {
+        rendering_.erase(std::find(rendering_.begin(), rendering_.end(), job.key));
+        ++rendered_;
+        if (tile && tile->revision == revision_) {
+            keep(std::move(*tile));
+        }
+    }
+    lastError_ = error.empty() ? lastError_ : error;
+}
+
 void MapTileCache::loop() {
     std::unique_lock lock(mutex_);
     Job job;
     while (nextJob(lock, job)) {
         lock.unlock();
+        std::optional<MapLanding> landed;
         std::optional<MapProbe> probed;
         std::optional<MapTile> tile;
         std::string error;
         try {
-            if (job.point) {
+            if (job.landing) {
+                landed = land_(job.landing->x, job.landing->z, job.landing->radius);
+            } else if (job.point) {
                 probed = probe_(job.point->first, job.point->second);
             } else {
                 const auto start = std::chrono::steady_clock::now();
@@ -179,17 +232,7 @@ void MapTileCache::loop() {
             error = "unknown error";
         }
         lock.lock();
-        if (job.point) {
-            probing_ = false;
-            probeDone_ = probed ? probed : probeDone_;
-        } else {
-            rendering_.erase(std::find(rendering_.begin(), rendering_.end(), job.key));
-            ++rendered_;
-            if (tile && tile->revision == revision_) {
-                keep(std::move(*tile));
-            }
-        }
-        lastError_ = error.empty() ? lastError_ : error;
+        finish(job, std::move(landed), std::move(probed), std::move(tile), error);
         idle_.notify_all();
         work_.notify_all();
     }
@@ -230,6 +273,12 @@ MapTileCache::Render renderTilesOf(const MapWorldSource& source) {
 
 MapTileCache::Probe probesOf(const MapWorldSource& source) {
     return [&source](double x, double z) { return probeAt(source, x, z); };
+}
+
+MapTileCache::Land landingsOf(const MapWorldSource& source) {
+    return [&source](double x, double z, double radius) {
+        return clickLandingOn(source.field(), x, z, radius);
+    };
 }
 
 } // namespace terrain::unreal

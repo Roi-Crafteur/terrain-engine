@@ -1,6 +1,7 @@
-// Where the dev map sends the player (Bridge/map_targets.hpp): heading <-> yaw, the point clicked,
-// the coordinates typed, the meters written, the view saved from the camera, and the places kept
-// in memory (Bridge/map_places_port.hpp) until the file of agent 36 plugs in.
+// Where the dev map sends the player (Bridge/map_targets.hpp): heading <-> yaw (those of agent 36,
+// Bridge/place_pose), the point clicked, the coordinates typed, the meters written, the view saved
+// from the camera (cameraPose, placeOfView of agent 36), and the places kept in memory
+// (Bridge/map_places_port.hpp).
 #include "map_targets.hpp"
 
 #include "map_reveal.hpp"
@@ -38,10 +39,10 @@ void testClick() {
     view.metersPerPixel = 2.0;
     view.width = 800.0;
     view.height = 600.0;
-    const MapPlace p = clickTarget(view, {400.0 - 153.5, 300.0 + 147.0}, 405.0, -120.0);
+    const dev::Place p = clickTarget(view, {400.0 - 153.5, 300.0 + 147.0}, 405.0, -120.0);
     TEST_CHECK(p.x == -6185411.0 && p.z == 156218.0); // the lip of the 388 m fall
     TEST_CHECK(p.heading == 45.0 && p.pitch == -90.0);
-    TEST_CHECK(p.eyeMode == MapEyeMode::Ground && p.eye == kMapEyeAboveGround);
+    TEST_CHECK(p.eyeMode == dev::EyeMode::Ground && p.eye == kMapEyeAboveGround);
 }
 
 void testParse() {
@@ -71,18 +72,22 @@ void testFormat() {
     TEST_CHECK(formatMeters(-0.05, 1) == "\xE2\x88\x92" "0,1");
 }
 
+// "Add this place": the view of the camera as Terrain.Save writes it (agent 36), kept by a source.
 void testCameraAndPlaces() {
-    const MapPlace p = placeFromCamera("chute388_bassin", {-6185104.0 + WorldSize{}.x, 182.03, 155924.0},
-                                       137.0, 30.0, true, "la chute de 388 m");
+    const ViewPose pose =
+        cameraPose({-6185104.0 + WorldSize{}.x, 182.03, 155924.0}, 30.0, 137.0);
+    const dev::Place p = placeOfView("chute388_bassin", "la chute de 388 m", pose, true, WorldSize{});
     TEST_CHECK(p.x == -6185104.0 && p.z == 155924.0 && p.heading == 227.0 && p.pitch == 30.0);
-    TEST_CHECK(p.eye == 182.03 && p.eyeMode == MapEyeMode::Altitude && p.planet);
+    TEST_CHECK(p.eye == 182.03 && p.eyeMode == dev::EyeMode::Altitude && p.planet);
     MemoryPlaces places;
     TEST_CHECK(places.add(p) && places.places().size() == 1);
-    MapPlace moved = p;
+    dev::Place moved = p;
     moved.heading = 90.0;
+    moved.note.clear(); // put keeps the note when none is given
     TEST_CHECK(places.add(moved) && places.places().size() == 1 &&
-               places.places().front().heading == 90.0);
-    MapPlace unnamed;
+               places.places().front().heading == 90.0 &&
+               places.places().front().note == "la chute de 388 m");
+    dev::Place unnamed;
     TEST_CHECK(!places.add(unnamed) && !places.error().empty());
     const RevealEverything all;
     TEST_CHECK(all.revealedAt(1.0, 2.0) == 1.0f && all.wholeTile({3, 1, 1}));

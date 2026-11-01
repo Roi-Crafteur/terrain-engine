@@ -1,6 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+// Only with TERRAIN_DEV_TOOLS (TerrainEngine.Build.cs): never in Shipping.
+#if TERRAIN_DEV_TOOLS
+
 #include "Brushes/SlateColorBrush.h"
 #include "InputCoreTypes.h"
 #include "Widgets/SCompoundWidget.h"
@@ -56,3 +60,5 @@ private:
 	TSharedPtr<SEditableTextBox> NameBox;
 	FSlateColorBrush PanelBrush = FSlateColorBrush(FLinearColor(0.0f, 0.0f, 0.0f, 0.72f));
 };
+
+#endif // TERRAIN_DEV_TOOLS
