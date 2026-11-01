@@ -47,7 +47,8 @@ public class TerrainEngine : ModuleRules
 		// file of them holds its code under #if TERRAIN_DEV_TOOLS (tests/unreal_dev_tools_guard).
 		bool bDevTools = Target.Configuration != UnrealTargetConfiguration.Shipping;
 		PrivateDefinitions.Add(bDevTools ? "TERRAIN_DEV_TOOLS=1" : "TERRAIN_DEV_TOOLS=0");
-		// Their keys (InputCore) and the folder of the plugin, where the places lie (Projects).
-		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "Projects" });
+		// Their keys (InputCore), the folder of the plugin, where the places lie (Projects), and
+		// the images they write (ImageCore).
+		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "Projects", "ImageCore" });
 	}
 }

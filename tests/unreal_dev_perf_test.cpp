@@ -9,7 +9,9 @@
 #include "test_assert.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -167,6 +169,65 @@ void testNames() {
     TEST_CHECK(line.ends_with(", WITHOUT the planet file it needs"));
 }
 
+// How an image was taken, in views.txt: the camera read back against the pose, the sizes; and
+// the two faults it shows: a camera turned away, an image of the top left of the view only (a
+// display scaled at 200 % by Windows, the viewport counted at the scale of the desktop).
+void testCaptureCheck() {
+    terrain::unreal::ViewRecord record;
+    record.file = "02_fleuve_plaine.png";
+    record.place.name = "fleuve_plaine";
+    record.pose.yaw = -85.0;
+    record.pose.pitch = 0.0;
+    record.state = settledState();
+    TEST_CHECK(terrain::unreal::captureWarnings(record).empty()); // not measured
+    terrain::unreal::CaptureCheck& c = record.capture;
+    c.measured = true;
+    c.camera.yaw = 275.0 - 360.0; // the same yaw, read as Unreal gives it
+    c.camera.pitch = 0.2;
+    c.fov = 90.0;
+    c.viewportWidth = 1920;
+    c.viewportHeight = 1080;
+    c.textureWidth = 3840;
+    c.textureHeight = 2160;
+    c.imageWidth = 3840;
+    c.imageHeight = 2160;
+    c.method = "texture";
+    TEST_CHECK(terrain::unreal::captureWarnings(record).empty());
+    TEST_CHECK(terrain::unreal::describeView(record).ends_with(
+        "; camera yaw -85.00 pitch 0.20 fov 90.0, image 3840x2160 (viewport 1920x1080, texture "
+        "3840x2160, read from the texture)"));
+    c.imageWidth = 1920; // the top left only
+    c.imageHeight = 1080;
+    c.camera.pitch = 25.0;
+    c.camera.yaw = 179.0;
+    record.pose.yaw = -179.0; // 2 degrees apart across the end of (-180, 180]
+    const std::vector<std::string> warnings = terrain::unreal::captureWarnings(record);
+    TEST_CHECK(warnings.size() == 2);
+    const std::string line = terrain::unreal::describeView(record);
+    TEST_CHECK(line.find("; WARNING: the camera was not at the pose asked") != std::string::npos);
+    TEST_CHECK(line.find("; WARNING: the image is not the size of the view") != std::string::npos);
+    c.camera.pitch = 0.0;
+    c.camera.yaw = -179.4;
+    c.imageWidth = 0; // not known: no warning on the size
+    TEST_CHECK(terrain::unreal::captureWarnings(record).empty());
+}
+
+// The size of a PNG from its header: a real one, cut short, not a PNG.
+void testPngSize() {
+    const std::vector<std::uint8_t> header = {
+        0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 0, 0, 0, 13, 'I', 'H', 'D', 'R',
+        0x00, 0x00, 0x0F, 0x00, 0x00, 0x00, 0x08, 0x70, 8, 6, 0, 0, 0};
+    const auto size = terrain::unreal::pngSize(header);
+    TEST_CHECK(size && size->first == 3840 && size->second == 2160);
+    TEST_CHECK(!terrain::unreal::pngSize(std::span(header).first(23)));
+    std::vector<std::uint8_t> jpeg = header;
+    jpeg[1] = 'J';
+    TEST_CHECK(!terrain::unreal::pngSize(jpeg));
+    std::vector<std::uint8_t> chunk = header;
+    chunk[12] = 'X'; // not the IHDR chunk first
+    TEST_CHECK(!terrain::unreal::pngSize(chunk));
+}
+
 } // namespace
 
 int main() {
@@ -175,5 +236,7 @@ int main() {
     testTiles();
     testWaiter();
     testNames();
+    testCaptureCheck();
+    testPngSize();
     return test::result();
 }

@@ -36,7 +36,7 @@ struct FTerrainDevShot
 	enum class EPhase : uint8
 	{
 		Waiting,   // for the streaming to settle
-		Capturing, // the screenshot asked, not yet written
+		Capturing, // the screenshot asked (or the frames before the view is read), not written
 	};
 	std::vector<terrain::dev::Place> Places; // Terrain.Views, in their order; empty for a Shot
 	std::size_t Index = 0;                   // the place being taken
@@ -45,6 +45,10 @@ struct FTerrainDevShot
 	EPhase Phase = EPhase::Waiting;
 	double Start = 0.0;                      // the pose, FPlatformTime::Seconds
 	double CaptureStart = 0.0;
+	// Terrain.ShotShowUI 0: the render target read by the tools (TerrainDevCapture.cpp) once
+	// CaptureFrames frames are drawn without the screen of F3; 1: the window, by Unreal.
+	bool bFromTexture = true;
+	int32 CaptureFrames = 0;
 	std::optional<terrain::unreal::ShotWaiter> Waiter;
 	terrain::unreal::ViewRecord Current;
 	std::vector<terrain::unreal::ViewRecord> Records;
@@ -64,7 +68,11 @@ struct FTerrainDevState
 	double LinesAt = -1.0;     // FPlatformTime::Seconds of the last refresh
 	double ProbeMs = 0.0;      // what the last refresh cost the game thread
 	bool bHideScreen = false;  // during a capture
-	bool bMotionBlurOff = false; // ShowFlag.MotionBlur 0 while an image or a run is taken
+	// While an image or a run is taken: ShowFlag.MotionBlur 0, the look input ignored, and the
+	// screen messages off during a read of the view (SetShotLook).
+	bool bMotionBlurOff = false;
+	bool bLookIgnored = false;
+	bool bScreenMessagesOff = false;
 	std::optional<FTerrainDevHold> Hold;
 	std::optional<FTerrainDevShot> Shot;
 	// Terrain.Seed: the planet being prepared and the world it is for.
@@ -81,6 +89,9 @@ namespace TerrainDev
 	double ShotTimeoutSeconds();
 	double ShotSettleSeconds();
 	double PawnRadiusMeters();
+	bool ShotShowUI();
+	// The size of a PNG from its header (TerrainDevCapture.cpp); false when it cannot be read.
+	bool PngFileSize(const FString& File, int32& OutWidth, int32& OutHeight);
 
 	inline std::string ToUtf8(const FString& Text)
 	{

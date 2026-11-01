@@ -37,6 +37,9 @@ namespace
 	TAutoConsoleVariable<float> CVarShotSettle(TEXT("Terrain.ShotSettle"), 1.0f,
 		TEXT("Seconds the streaming stays settled before an image is taken (the exposure and the "
 			 "lighting follow)"));
+	TAutoConsoleVariable<int32> CVarShotShowUI(TEXT("Terrain.ShotShowUI"), 0,
+		TEXT("How the tools take their images: 0, the render target of the view read whole in its "
+			 "physical pixels; 1, the window, as shot showui (the screen of F3 hidden)"));
 	TAutoConsoleVariable<float> CVarPawnRadius(TEXT("Terrain.PawnRadius"), 50.0f,
 		TEXT("Meters around the view where Terrain.Pawn looks for walkable ground to put the pawn "
 			 "of the game down on"));
@@ -55,6 +58,11 @@ double TerrainDev::ShotTimeoutSeconds()
 double TerrainDev::ShotSettleSeconds()
 {
 	return FMath::Max(0.0, static_cast<double>(CVarShotSettle.GetValueOnGameThread()));
+}
+
+bool TerrainDev::ShotShowUI()
+{
+	return CVarShotShowUI.GetValueOnGameThread() != 0;
 }
 
 double TerrainDev::PawnRadiusMeters()
@@ -86,7 +94,7 @@ void UTerrainDevTools::Stop()
 		}
 		EndHold();
 		Dev->Shot.reset();
-		SetMotionBlurOff(false);
+		SetShotLook(false);
 		Dev->Planet.reset(); // cancelled: waits at most for the end of the stage in progress
 	}
 	if (IsValid(DevPawn))

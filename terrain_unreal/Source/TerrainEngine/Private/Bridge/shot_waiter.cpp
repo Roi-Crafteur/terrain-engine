@@ -1,5 +1,7 @@
 #include "shot_waiter.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 
@@ -61,6 +63,61 @@ std::string viewsHeader(std::int64_t seed, const std::string& preset,
            ", LOD rings " + rings + "\n";
 }
 
+namespace {
+
+// The difference of two angles, degrees, brought into [0, 180].
+double angleGap(double a, double b) {
+    const double gap = std::fmod(std::abs(a - b), 360.0);
+    return gap > 180.0 ? 360.0 - gap : gap;
+}
+
+std::string measuredText(const CaptureCheck& c) {
+    char text[256];
+    std::snprintf(text, sizeof(text),
+                  "; camera yaw %.2f pitch %.2f fov %.1f, image %dx%d (viewport %dx%d, texture "
+                  "%dx%d, read from the %s)",
+                  c.camera.yaw, c.camera.pitch, c.fov, c.imageWidth, c.imageHeight,
+                  c.viewportWidth, c.viewportHeight, c.textureWidth, c.textureHeight,
+                  c.method.c_str());
+    return text;
+}
+
+} // namespace
+
+std::vector<std::string> captureWarnings(const ViewRecord& r) {
+    std::vector<std::string> warnings;
+    const CaptureCheck& c = r.capture;
+    if (!c.measured) {
+        return warnings;
+    }
+    if (angleGap(c.camera.yaw, r.pose.yaw) > 0.5 || angleGap(c.camera.pitch, r.pose.pitch) > 0.5) {
+        warnings.push_back("the camera was not at the pose asked");
+    }
+    if (c.imageWidth > 0 && (c.imageWidth != c.textureWidth || c.imageHeight != c.textureHeight)) {
+        warnings.push_back("the image is not the size of the view (a display scaled by Windows?)");
+    }
+    return warnings;
+}
+
+std::optional<std::pair<std::uint32_t, std::uint32_t>>
+pngSize(std::span<const std::uint8_t> bytes) {
+    constexpr std::uint8_t kSignature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    if (bytes.size() < 24 || !std::equal(kSignature, kSignature + 8, bytes.begin()) ||
+        bytes[12] != 'I' || bytes[13] != 'H' || bytes[14] != 'D' || bytes[15] != 'R') {
+        return std::nullopt;
+    }
+    const auto bigEndian = [&bytes](std::size_t at) {
+        return (std::uint32_t{bytes[at]} << 24) | (std::uint32_t{bytes[at + 1]} << 16) |
+               (std::uint32_t{bytes[at + 2]} << 8) | std::uint32_t{bytes[at + 3]};
+    };
+    const std::uint32_t width = bigEndian(16);
+    const std::uint32_t height = bigEndian(20);
+    if (width == 0 || height == 0) {
+        return std::nullopt;
+    }
+    return std::make_pair(width, height);
+}
+
 std::string describeView(const ViewRecord& r) {
     char text[384];
     std::snprintf(text, sizeof(text),
@@ -72,7 +129,14 @@ std::string describeView(const ViewRecord& r) {
                   r.state.selectedTiles,
                   !r.state.horizonShown ? "not shown" : r.state.horizonBusy ? "busy" : "done",
                   r.framesPerSecond, r.planetMissing ? ", WITHOUT the planet file it needs" : "");
-    return text;
+    std::string line = text;
+    if (r.capture.measured) {
+        line += measuredText(r.capture);
+    }
+    for (const std::string& warning : captureWarnings(r)) {
+        line += "; WARNING: " + warning;
+    }
+    return line;
 }
 
 } // namespace terrain::unreal

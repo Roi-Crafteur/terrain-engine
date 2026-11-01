@@ -7,7 +7,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace terrain::unreal {
 
@@ -66,6 +70,24 @@ private:
 // "01_chute388_bassin.png".
 [[nodiscard]] std::string viewFileName(std::size_t index, const std::string& place);
 
+// How an image was taken: the camera as Unreal really had it then (to set against the pose
+// asked), the sizes of the viewport, of its render target and of the image. With a display
+// scaled by Windows (200 %), the viewport may count its pixels at the scale of the desktop while
+// its render target holds the physical ones: an image of the viewport's size then holds only the
+// top left of the view (the horizon of a level view at its bottom edge).
+struct CaptureCheck {
+    bool measured = false;
+    ViewPose camera;     // cameraPose of the PlayerCameraManager when the image was read
+    double fov = 0.0;    // its horizontal field of view, degrees
+    int viewportWidth = 0;
+    int viewportHeight = 0;
+    int textureWidth = 0; // the render target of the viewport, physical pixels
+    int textureHeight = 0;
+    int imageWidth = 0;   // the image written; 0: not known
+    int imageHeight = 0;
+    std::string method;   // "texture": its render target read; "window": shot showui
+};
+
 // What a run of Terrain.Views keeps of a view, in its views.txt: the place and its pose, how
 // long it waited and whether it was ready, what the streaming still had to do then, the frames
 // per second, and whether the planet file the place needs was missing.
@@ -78,14 +100,26 @@ struct ViewRecord {
     StreamingState state;
     double framesPerSecond = 0.0;
     bool planetMissing = false;
+    CaptureCheck capture;
 };
+
+// What looks wrong in a capture: the camera turned more than 0.5 degree away from the pose, or
+// an image whose size is not the one of the render target of the view.
+[[nodiscard]] std::vector<std::string> captureWarnings(const ViewRecord& record);
+
+// The width and height of a PNG from its first 24 bytes (its signature and its IHDR chunk), or
+// nullopt when they are not those of a PNG.
+[[nodiscard]] std::optional<std::pair<std::uint32_t, std::uint32_t>>
+pngSize(std::span<const std::uint8_t> bytes);
 
 // The first lines of views.txt: the world of the run (seed, preset, planet file, LOD rings).
 [[nodiscard]] std::string viewsHeader(std::int64_t seed, const std::string& preset,
                                       const std::string& planetFile, const std::string& rings);
 // One line of views.txt, for example
 // "01_chute388_bassin.png chute388_bassin x -6185104 z 155924 eye 182.03 m yaw 137.00 pitch
-// 30.00: ready after 7.4 s, 0 tiles pending, 214/214 shown, 58.1 fps".
+// 30.00: ready after 7.4 s, 0 tiles pending, 214/214 shown, 58.1 fps", then, once measured,
+// "; camera yaw 137.00 pitch 30.00 fov 90.0, image 3840x2160 (viewport 1920x1080, texture
+// 3840x2160, read from the texture)" and its warnings.
 [[nodiscard]] std::string describeView(const ViewRecord& record);
 
 } // namespace terrain::unreal

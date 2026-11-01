@@ -61,8 +61,9 @@ redemandent leur mode de vue à l'image suivante.
 
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),
-`Terrain.ShotSettle` (stabilité avant une image, 1 s), `Terrain.PawnRadius` (rayon de la
-recherche du sol praticable de `Terrain.Pawn`, 50 m).
+`Terrain.ShotSettle` (stabilité avant une image, 1 s), `Terrain.ShotShowUI` (0 : le render target
+de la vue en pixels physiques ; 1 : la fenêtre, comme `shot showui`), `Terrain.PawnRadius` (rayon
+de la recherche du sol praticable de `Terrain.Pawn`, 50 m).
 
 ### La téléportation : le contrat de `TeleportView`
 
@@ -165,6 +166,18 @@ fenêtre** pour comparer deux séries.
   la capture. `HighResShot` ne le montre pas non plus (`UDebugDrawService` n'y dessine pas) :
   seul `shot showui` prend une image avec F3 (utile pour garder les lignes d'un point avec sa
   vue).
+- **Comment l'image est lue** : par défaut (`Terrain.ShotShowUI 0`), les outils lisent le render
+  target de la vue en entier, **en pixels physiques**, deux images après avoir caché F3 et les
+  messages de l'écran. La capture sans UI d'Unreal lisait un rectangle de la taille du viewport :
+  avec Windows à 200 %, le viewport de l'éditeur compte ses pixels à l'échelle du bureau (1920 ×
+  1080) alors que son render target a les pixels physiques (3840 × 2160), et l'image ne gardait
+  que le quart haut-gauche de la vue (l'horizon d'une vue à plat au bord du bas).
+  `Terrain.ShotShowUI 1` prend la fenêtre, comme `shot showui` (F3 caché). Pendant toute la
+  prise, la souris ne tourne plus la vue, et la pose est reposée juste avant la capture.
+- **Contrôle dans `views.txt`** : pour chaque image, la caméra réelle au moment de la capture (cap,
+  inclinaison, FOV, lus sur le `PlayerCameraManager`), la taille de l'image, du viewport et de son
+  render target, et la méthode ; `WARNING` si la caméra s'écarte de la pose de plus de 0,5° ou si
+  l'image n'a pas la taille de la vue.
 - **Pas de flou de mouvement** : de la commande jusqu'à la dernière image de la série,
   `ShowFlag.MotionBlur 0`, puis `ShowFlag.MotionBlur 2` (le réglage par défaut de la fenêtre,
   aussi quand la série s'arrête autrement, ou au Stop). Chaque téléportation est en plus une

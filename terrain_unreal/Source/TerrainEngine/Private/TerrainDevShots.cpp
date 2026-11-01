@@ -56,7 +56,7 @@ void UTerrainDevTools::RunShot(const std::vector<std::string>& Args)
 		TerrainDev::Warn(Name ? FString(TEXT("an image is already being taken")) : ToText(Error));
 		return;
 	}
-	SetMotionBlurOff(true);
+	SetShotLook(true);
 	Dev->Shot.emplace();
 	Dev->Shot->Current.place.name = *Name;
 	CurrentPose(Dev->Shot->Current.pose);
@@ -91,26 +91,56 @@ void UTerrainDevTools::RunViews(const std::vector<std::string>& Args)
 	CurrentPose(Run.StartPose);
 	TerrainDev::Log(FString::Printf(TEXT("Terrain.Views: %d places into %s"),
 		static_cast<int32>(Run.Places.size()), *Run.Folder));
-	SetMotionBlurOff(true);
+	SetShotLook(true);
 	Dev->Shot = MoveTemp(Run);
 	NextView();
 }
 
-// No motion blur in the images (the first one after a teleport came out blurred): off from the
-// start of Terrain.Shot or Terrain.Views to its end, then back to the default of the viewport
-// (ShowFlag.MotionBlur 2).
-void UTerrainDevTools::SetMotionBlurOff(bool bOff)
+// From the start of Terrain.Shot or Terrain.Views to its end: no motion blur in the images (the
+// first one after a teleport came out blurred; ShowFlag.MotionBlur 2 gives the default of the
+// viewport back), and the mouse does not turn the view (a possession resets the look input that
+// is ignored: asked again on every tick of the run).
+void UTerrainDevTools::SetShotLook(bool bTaking)
 {
-	if (Dev->bMotionBlurOff == bOff)
+	APlayerController* PlayerController = Controller();
+	if (Dev->bMotionBlurOff != bTaking && PlayerController != nullptr)
+	{
+		PlayerController->ConsoleCommand(
+			bTaking ? TEXT("ShowFlag.MotionBlur 0") : TEXT("ShowFlag.MotionBlur 2"));
+	}
+	Dev->bMotionBlurOff = bTaking;
+	if (PlayerController != nullptr)
+	{
+		if (bTaking && !PlayerController->IsLookInputIgnored())
+		{
+			PlayerController->SetIgnoreLookInput(true);
+		}
+		else if (!bTaking && Dev->bLookIgnored && PlayerController->IsLookInputIgnored())
+		{
+			PlayerController->SetIgnoreLookInput(false);
+		}
+	}
+	Dev->bLookIgnored = bTaking;
+	if (!bTaking)
+	{
+		SetScreenMessagesOff(false);
+	}
+}
+
+// The messages of the screen are not in an image read from the view (Unreal leaves them out of
+// its own screenshots without UI too).
+void UTerrainDevTools::SetScreenMessagesOff(bool bOff)
+{
+	if (Dev->bScreenMessagesOff == bOff)
 	{
 		return;
 	}
 	if (APlayerController* PlayerController = Controller())
 	{
 		PlayerController->ConsoleCommand(
-			bOff ? TEXT("ShowFlag.MotionBlur 0") : TEXT("ShowFlag.MotionBlur 2"));
+			bOff ? TEXT("DisableAllScreenMessages") : TEXT("EnableAllScreenMessages"));
 	}
-	Dev->bMotionBlurOff = bOff;
+	Dev->bScreenMessagesOff = bOff;
 }
 
 void UTerrainDevTools::StartShot(const FString& File)
@@ -165,11 +195,27 @@ void UTerrainDevTools::TickShots()
 {
 	if (!Dev->Shot.has_value())
 	{
-		SetMotionBlurOff(false); // whichever way the image or the run ended
+		if (Dev->bMotionBlurOff || Dev->bLookIgnored)
+		{
+			SetShotLook(false); // whichever way the image or the run ended
+		}
 		return;
 	}
+	SetShotLook(true);
 	FTerrainDevShot& Shot = *Dev->Shot;
 	const double Now = FPlatformTime::Seconds();
+	if (Shot.Phase == FTerrainDevShot::EPhase::Capturing && Shot.bFromTexture)
+	{
+		if (--Shot.CaptureFrames > 0)
+		{
+			return;
+		}
+		Shot.Current.capture = MeasureCapture("texture");
+		ReadViewTexture(Shot.File, Shot.Current.capture);
+		SetScreenMessagesOff(false);
+		OnShotProcessed();
+		return;
+	}
 	if (Shot.Phase == FTerrainDevShot::EPhase::Capturing)
 	{
 		if (Now - Shot.CaptureStart > CaptureTimeoutSeconds)
@@ -205,13 +251,30 @@ void UTerrainDevTools::TickShots()
 	Capture();
 }
 
-// The screenshot of the next frame, the screen of F3 hidden, at the path given (no suffix).
+// The image of the view at the path given (no suffix), the screen of F3 hidden, the pose set
+// once more (nothing turns the view of an image): the render target of the viewport read two
+// frames later (TerrainDevCapture.cpp), or with Terrain.ShotShowUI 1 the window, as shot showui.
 void UTerrainDevTools::Capture()
 {
 	FTerrainDevShot& Shot = *Dev->Shot;
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Shot.File), true);
 	Dev->bHideScreen = true;
-	FScreenshotRequest::RequestScreenshot(Shot.File, false, false);
+	if (APlayerController* PlayerController = Controller())
+	{
+		PlayerController->SetControlRotation(
+			TerrainDev::ToRotator(terrain::unreal::viewRotation(Shot.Current.pose)));
+	}
+	Shot.bFromTexture = !TerrainDev::ShotShowUI();
+	if (Shot.bFromTexture)
+	{
+		SetScreenMessagesOff(true);
+		Shot.CaptureFrames = 2;
+	}
+	else
+	{
+		Shot.Current.capture = MeasureCapture("window");
+		FScreenshotRequest::RequestScreenshot(Shot.File, true, false);
+	}
 	Shot.Phase = FTerrainDevShot::EPhase::Capturing;
 	Shot.CaptureStart = FPlatformTime::Seconds();
 }
@@ -221,7 +284,8 @@ void UTerrainDevTools::Capture()
 void UTerrainDevTools::OnShotProcessed()
 {
 	if (!Dev.IsValid() || !Dev->Shot.has_value() ||
-		Dev->Shot->Phase != FTerrainDevShot::EPhase::Capturing)
+		Dev->Shot->Phase != FTerrainDevShot::EPhase::Capturing ||
+		(Dev->Shot->bFromTexture && Dev->Shot->CaptureFrames > 0)) // another screenshot
 	{
 		return;
 	}
@@ -230,6 +294,19 @@ void UTerrainDevTools::OnShotProcessed()
 	TerrainDev::Log(FString::Printf(TEXT("image %s: %s after %.1f s"), *Shot.File,
 		Shot.Current.ready ? TEXT("ready") : TEXT("NOT READY (timeout)"),
 		Shot.Current.waitedSeconds));
+	const terrain::unreal::CaptureCheck& Check = Shot.Current.capture;
+	if (Check.measured)
+	{
+		TerrainDev::Log(FString::Printf(TEXT("camera yaw %.2f pitch %.2f fov %.1f (pose yaw %.2f "
+			"pitch %.2f); image %dx%d, viewport %dx%d, its texture %dx%d, read from the %s"),
+			Check.camera.yaw, Check.camera.pitch, Check.fov, Shot.Current.pose.yaw,
+			Shot.Current.pose.pitch, Check.imageWidth, Check.imageHeight, Check.viewportWidth,
+			Check.viewportHeight, Check.textureWidth, Check.textureHeight, *ToText(Check.method)));
+	}
+	for (const std::string& Warning : terrain::unreal::captureWarnings(Shot.Current))
+	{
+		TerrainDev::Warn(FString::Printf(TEXT("%s: %s"), *Shot.File, *ToText(Warning)));
+	}
 	if (Shot.Places.empty())
 	{
 		Dev->Shot.reset();
@@ -250,8 +327,17 @@ void UTerrainDevTools::FinishViews()
 		"/" + std::to_string(World->ViewDistanceChunks);
 	std::string Text = terrain::unreal::viewsHeader(World->Seed, PresetOf(*World),
 		HasPlanet() ? TerrainDev::ToUtf8(World->PlanetFile) : std::string(), Rings);
-	for (const terrain::unreal::ViewRecord& Record : Shot.Records)
+	for (terrain::unreal::ViewRecord& Record : Shot.Records)
 	{
+		// The window taken by Unreal (Terrain.ShotShowUI 1): its size read back from the file.
+		terrain::unreal::CaptureCheck& Check = Record.capture;
+		if (Check.measured && Check.imageWidth == 0 &&
+			!TerrainDev::PngFileSize(FPaths::Combine(Shot.Folder, ToText(Record.file)),
+				Check.imageWidth, Check.imageHeight))
+		{
+			Check.imageWidth = 0;
+			Check.imageHeight = 0;
+		}
 		Text += terrain::unreal::describeView(Record) + "\n";
 	}
 	const FString Manifest = FPaths::Combine(Shot.Folder, TEXT("views.txt"));

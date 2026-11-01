@@ -20,8 +20,9 @@ endif()
 
 # Every file of the tools: its code between "#if TERRAIN_DEV_TOOLS" (after its own header) and
 # the "#endif // TERRAIN_DEV_TOOLS" that ends it.
-set(tools TerrainDevCommands.cpp TerrainDevLooks.cpp TerrainDevScreen.cpp TerrainDevSeed.cpp
-          TerrainDevShots.cpp TerrainDevTools.cpp TerrainDevView.cpp TerrainDevState.h)
+set(tools TerrainDevCapture.cpp TerrainDevCommands.cpp TerrainDevLooks.cpp TerrainDevScreen.cpp
+          TerrainDevSeed.cpp TerrainDevShots.cpp TerrainDevTools.cpp TerrainDevView.cpp
+          TerrainDevState.h)
 foreach(name IN LISTS tools)
     file(READ "${plugin}/Private/${name}" text)
     string(REGEX REPLACE "\r" "" text "${text}")
@@ -56,7 +57,8 @@ foreach(file IN LISTS sources)
     file(READ "${file}" text)
     foreach(command Terrain.Goto Terrain.Look Terrain.Eye Terrain.Pawn Terrain.Save Terrain.Info
                     Terrain.Shot Terrain.Views Terrain.View\" Terrain.Seed Terrain.Hud
-                    Terrain.PlacesFile Terrain.ShotTimeout Terrain.ShotSettle)
+                    Terrain.PlacesFile Terrain.ShotTimeout Terrain.ShotSettle
+                    Terrain.ShotShowUI Terrain.PawnRadius)
         string(FIND "${text}" "TEXT(\"${command}" at)
         if(NOT at EQUAL -1)
             string(APPEND errors "${name}: registers ${command} outside the files of the tools\n")

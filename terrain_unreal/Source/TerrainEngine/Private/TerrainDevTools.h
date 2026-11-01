@@ -7,6 +7,7 @@
 
 #include "Bridge/dev_commands.hpp"
 #include "Bridge/place_pose.hpp"
+#include "Bridge/shot_waiter.hpp"
 
 #include "terrain/dev/places_file.hpp"
 
@@ -99,13 +100,18 @@ private:
 	void EndHold();
 
 	// TerrainDevShots.cpp
-	void SetMotionBlurOff(bool bOff);
+	void SetShotLook(bool bTaking);
+	void SetScreenMessagesOff(bool bOff);
 	void StartShot(const FString& File);
 	void NextView();
 	void TickShots();
 	void Capture();
 	void OnShotProcessed();
 	void FinishViews();
+
+	// TerrainDevCapture.cpp
+	terrain::unreal::CaptureCheck MeasureCapture(const char* Method) const;
+	bool ReadViewTexture(const FString& File, terrain::unreal::CaptureCheck& Check);
 
 	// TerrainDevLooks.cpp
 	void SetViewMode(terrain::unreal::ViewMode Mode);
