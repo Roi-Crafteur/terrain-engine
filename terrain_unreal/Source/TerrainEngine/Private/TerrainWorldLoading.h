@@ -6,12 +6,13 @@
 #include "UObject/WeakObjectPtr.h"
 
 #include "Bridge/determinism_check.hpp"
+#include "Bridge/ground_read.hpp"
 #include "Bridge/load_phase.hpp"
 #include "Bridge/load_timeline.hpp"
+#include "Bridge/upload_pacer.hpp"
 
 #include "terrain/chunk_coord.hpp"
 
-#include <cstddef>
 #include <future>
 
 class APawn;
@@ -43,10 +44,17 @@ struct FTerrainLoadingState
 	// The loads measured since the start, and whether the report of the current one is written.
 	int32 Loads = 0;
 	bool bReported = true;
-	// The phase of the loads, its budget applied last, the cost of an upload (from its vertices).
+	// The phase of the loads, its budget applied last, the cost of an upload (from its vertices,
+	// prudent again at each load), the uploads of an update applied within the budget of a frame.
 	TOptional<terrain::unreal::LoadPhase> Phase;
 	terrain::unreal::LoadBudget Applied;
 	terrain::unreal::UploadCostModel UploadCosts;
+	terrain::unreal::UploadPacer Pacer;
+	// The ground of a teleport read on a thread (TeleportWhenReady): the pawn to place once it is
+	// read, then the level read, for the pawn held there.
+	terrain::unreal::GroundRead Ground;
+	TWeakObjectPtr<APawn> PawnToPlace;
+	TOptional<terrain::unreal::GroundLevel> KnownGround;
 	bool bScreenBlack = false;      // the fade holds the screen black
 	TSharedPtr<SWidget> Cover;      // the black widget of the start, until its fade ends
 	bool bBoosted = false;          // the boost of the current load is on
@@ -59,11 +67,10 @@ struct FTerrainLoadingState
 	TWeakObjectPtr<APawn> HeldPawn; // the pawn whose movement the hold stopped
 };
 
-// The uploads of a frame, their vertices and their time on the game thread.
+// The uploads of a frame and their time on the game thread.
 struct FTerrainUploads
 {
 	int32 Count = 0;
-	std::size_t Vertices = 0;
 	double Milliseconds = 0.0;
 };
 
@@ -96,6 +103,14 @@ void TickTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State, const F
 
 // The streaming stops (an error): the screen given back from black and the pawn released.
 void EndTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State);
+
+// Once per frame before the collision under the pawn is traced: the ground of a teleport read on
+// its thread, the pawn placed over it once read. True while it is being read: nothing to trace.
+bool PollTerrainGround(FTerrainWorldState& State);
+
+// The Unreal height of the ground under Location (bStand: or of the water over it, if higher):
+// the level read for the teleport while the pawn is held over it, else read now.
+double TerrainLevelZ(const FTerrainWorldState& State, const FVector& Location, bool bStand);
 
 // Between TerrainWorldLoading.cpp (the measures) and TerrainWorldLoadingPhase.cpp (the phase).
 void StartDeterminismCheck(FTerrainWorldState& State);

@@ -21,6 +21,7 @@
 #include "TerrainWorldStart.h"
 #include "TerrainWorldState.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,8 @@ namespace
 	constexpr double LoadClearanceCm = 50.0;
 	// The screen comes back from black over this time once the world around is shown.
 	constexpr float LoadFadeInSeconds = 0.25f;
+	// The level read for a teleport serves the pawn held within this distance of its point.
+	constexpr double LoadKnownGroundMeters = 1.0;
 
 	terrain::unreal::LoadBudget LoadNormalBudget(const ATerrainWorld& World)
 	{
@@ -48,13 +51,14 @@ namespace
 			terrain::worldToChunk(Core.x, Core.z), State.Session.tiles().world());
 	}
 
-	// The Unreal position AboveCm over the ground of the core point (x, z).
-	FVector LoadGroundPoint(const FTerrainWorldState& State, double X, double Z, double AboveCm)
+	// The Unreal position of the core point (x, z) at the height of the origin of the frame: no
+	// ground read (up to 200 ms the first time in a region), the streaming and the horizon follow
+	// x and z only.
+	FVector LoadFocusPoint(const FTerrainWorldState& State, double X, double Z)
 	{
-		const double Ground = State.Session.tiles().heightfield().heightAt(X, Z);
 		const terrain::unreal::UnrealPoint Point =
-			terrain::unreal::toUnreal(State.Frame, {X, Ground, Z});
-		return FVector(Point.x, Point.y, Point.z + AboveCm);
+			terrain::unreal::toUnreal(State.Frame, {X, State.Frame.origin.y, Z});
+		return FVector(Point.x, Point.y, Point.z);
 	}
 
 	APlayerCameraManager* LoadCamera(const ATerrainWorld& World)
@@ -87,8 +91,8 @@ namespace
 		}
 	}
 
-	// The pawn held still (its movement off: no gravity) or given back, placed on the ground if it
-	// stands below it.
+	// The pawn held still (its movement off: no gravity) or given back, placed on the ground, or on
+	// the water over it, if it stands below.
 	void HoldLoadPawn(FTerrainWorldState& State, APawn* Pawn, bool bHold)
 	{
 		APawn* Held = State.Loading.HeldPawn.Get();
@@ -107,11 +111,11 @@ namespace
 			return;
 		}
 		const FVector Location = Held->GetActorLocation();
-		const double GroundZ = State.Session.groundZ(State.Frame, ToUnrealPoint(Location));
+		const double StandZ = TerrainLevelZ(State, Location, true);
 		const double HalfHeight = Held->GetSimpleCollisionHalfHeight();
-		if (Location.Z - HalfHeight < GroundZ)
+		if (Location.Z - HalfHeight < StandZ)
 		{
-			const FVector OnGround(Location.X, Location.Y, GroundZ + HalfHeight + LoadClearanceCm);
+			const FVector OnGround(Location.X, Location.Y, StandZ + HalfHeight + LoadClearanceCm);
 			Held->SetActorLocation(OnGround, false, nullptr, ETeleportType::TeleportPhysics);
 		}
 		if (UPawnMovementComponent* Movement = Held->GetMovementComponent())
@@ -141,7 +145,10 @@ namespace
 		// least: the costs read on the game thread, where the uploads are measured.
 		const terrain::unreal::UploadCostModel* Costs = &Loading.UploadCosts;
 		Streamer.setLoadBudget([Costs](const terrain::TileData& Data)
-			{ return Costs->estimate(Data.mesh.vertices.size()); },
+			{
+				return Costs->estimate(
+					Data.mesh.vertices.size(), terrain::unreal::hasCollision(Data.request.key));
+			},
 			Budget.uploadMilliseconds);
 		if (State.HorizonGpu != nullptr)
 		{
@@ -243,7 +250,7 @@ FVector BeginTerrainFrame(ATerrainWorld& World, FTerrainWorldState& State, const
 	if (bPrepared)
 	{
 		const auto [X, Z] = *Loading.Phase->prepared();
-		return LoadGroundPoint(State, X, Z, 0.0);
+		return LoadFocusPoint(State, X, Z);
 	}
 	return Focus;
 }
@@ -256,7 +263,6 @@ void UpdateTerrainPhase(ATerrainWorld& World, FTerrainWorldState& State, APawn* 
 	{
 		return;
 	}
-	Loading.UploadCosts.record(Uploads.Vertices, Uploads.Milliseconds);
 	terrain::unreal::LoadPhase& Phase = *Loading.Phase;
 	const double Now = FPlatformTime::Seconds();
 	Phase.update(Status, Now);
@@ -286,6 +292,48 @@ void EndTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State)
 	HoldLoadPawn(State, nullptr, false);
 }
 
+bool PollTerrainGround(FTerrainWorldState& State)
+{
+	FTerrainLoadingState& Loading = State.Loading;
+	const std::optional<terrain::unreal::GroundLevel> Level = Loading.Ground.poll();
+	if (!Level.has_value())
+	{
+		return Loading.Ground.pending();
+	}
+	Loading.KnownGround = *Level;
+	APawn* Pawn = Loading.PawnToPlace.Get();
+	Loading.PawnToPlace.Reset();
+	const terrain::unreal::UnrealPoint Stand =
+		terrain::unreal::toUnreal(State.Frame, {Level->x, Level->stand, Level->z});
+	if (Pawn != nullptr)
+	{
+		const double AboveCm = Pawn->GetSimpleCollisionHalfHeight() + LoadClearanceCm;
+		Pawn->SetActorLocation(FVector(Stand.x, Stand.y, Stand.z + AboveCm), false, nullptr,
+			ETeleportType::TeleportPhysics);
+	}
+	const FString Water = Level->stand > Level->ground
+		? FString::Printf(TEXT(", the water over it at %.2f m"), Level->stand)
+		: FString();
+	UE_LOG(LogTerrainEngine, Log,
+		TEXT("Terrain World: the ground of (%.1f, %.1f) m read on a thread in %.1f ms: %.2f m%s; "
+			 "the pawn placed over %.2f m"),
+		Level->x, Level->z, Level->milliseconds, Level->ground, *Water, Level->stand);
+	return false;
+}
+
+double TerrainLevelZ(const FTerrainWorldState& State, const FVector& Location, bool bStand)
+{
+	const terrain::unreal::CorePoint Core =
+		terrain::unreal::toCore(State.Frame, ToUnrealPoint(Location));
+	const TOptional<terrain::unreal::GroundLevel>& Known = State.Loading.KnownGround;
+	const bool bKnown = Known.IsSet() && FMath::Abs(Known->x - Core.x) < LoadKnownGroundMeters &&
+		FMath::Abs(Known->z - Core.z) < LoadKnownGroundMeters;
+	const terrain::unreal::GroundLevel Level = bKnown ? *Known
+		: terrain::unreal::groundLevelAt(State.Session.tiles().heightfield(), Core.x, Core.z);
+	return terrain::unreal::toUnreal(
+		State.Frame, {Core.x, bStand ? Level.stand : Level.ground, Core.z}).z;
+}
+
 bool ATerrainWorld::TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ,
 	float HeadingDegrees, float PitchDegrees)
 {
@@ -301,11 +349,12 @@ bool ATerrainWorld::TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ,
 	}
 	// Black at once: nothing of the new place shows before its ground.
 	SetLoadBlack(*this, Terrain, LoadingSettings.bFade);
-	// Each step timed: the frame of a teleport is long (253 ms measured), outside the tick.
+	// The pawn at the point at once, held, its height kept: the ground there is read on a thread
+	// (202 ms measured the first time in a region), the pawn placed over it, or over the water,
+	// once read (PollTerrainGround).
 	const double Begin = FPlatformTime::Seconds();
-	const double AboveCm = Pawn->GetSimpleCollisionHalfHeight() + LoadClearanceCm;
-	const FVector Location = LoadGroundPoint(Terrain, CoreX, CoreZ, AboveCm);
-	const double Grounded = FPlatformTime::Seconds();
+	const FVector Point = LoadFocusPoint(Terrain, CoreX, CoreZ);
+	const FVector Location(Point.X, Point.Y, Pawn->GetActorLocation().Z);
 	Pawn->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
 	HoldLoadPawn(Terrain, Pawn, true);
 	const double Moved = FPlatformTime::Seconds();
@@ -320,13 +369,14 @@ bool ATerrainWorld::TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ,
 			 "%.1f; held until the world around is shown"),
 		*Pawn->GetName(), CoreX, CoreZ, HeadingDegrees, Angles.yaw, Angles.pitch);
 	BeginTerrainLoad(Terrain, Location, terrain::unreal::LoadReason::Teleport);
+	Terrain.Loading.Ground.ask(Terrain.Session.tiles().heightfield(), CoreX, CoreZ);
+	Terrain.Loading.PawnToPlace = Pawn;
 	const double End = FPlatformTime::Seconds();
 	UE_LOG(LogTerrainEngine, Log,
-		TEXT("Terrain World: the teleport took %.1f ms on the game thread: the ground of the "
-			 "point %.1f ms, the move of the pawn %.1f ms, the report of the previous load and the "
-			 "start of this one %.1f ms"),
-		(End - Begin) * 1000.0, (Grounded - Begin) * 1000.0, (Moved - Grounded) * 1000.0,
-		(End - Moved) * 1000.0);
+		TEXT("Terrain World: the teleport took %.1f ms on the game thread: the move of the pawn "
+			 "%.1f ms, the report of the previous load and the start of this one %.1f ms; the "
+			 "ground of the point is read on a thread"),
+		(End - Begin) * 1000.0, (Moved - Begin) * 1000.0, (End - Moved) * 1000.0);
 	return true;
 }
 
@@ -336,7 +386,7 @@ bool ATerrainWorld::PrepareLocation(double CoreX, double CoreZ)
 	{
 		return false;
 	}
-	BeginTerrainLoad(*State.Get(), LoadGroundPoint(*State.Get(), CoreX, CoreZ, 0.0),
+	BeginTerrainLoad(*State.Get(), LoadFocusPoint(*State.Get(), CoreX, CoreZ),
 		terrain::unreal::LoadReason::Prepared);
 	State->Loading.Phase->prepare(CoreX, CoreZ, FPlatformTime::Seconds());
 	UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: preparing the point (%.1f, %.1f) m"), CoreX,

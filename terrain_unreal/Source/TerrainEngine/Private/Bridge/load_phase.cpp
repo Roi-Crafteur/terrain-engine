@@ -123,16 +123,19 @@ LoadBudget LoadPhase::budget(bool tilesPending) const {
     return result;
 }
 
-void UploadCostModel::record(std::size_t vertices, double milliseconds) {
+void UploadCostModel::record(std::size_t vertices, bool collision, double milliseconds) {
     if (vertices == 0 || !(milliseconds > 0.0)) {
         return;
     }
     const double sample = milliseconds / static_cast<double>(vertices);
-    perVertex_ = 0.7 * perVertex_ + 0.3 * sample;
+    double& perVertex = perVertex_[collision ? 1 : 0];
+    const double weight = sample > perVertex ? 0.5 : 0.2; // prudent: up fast, down slowly
+    perVertex += weight * (sample - perVertex);
 }
 
-double UploadCostModel::estimate(std::size_t vertices) const {
-    return std::max(kMinUploadMilliseconds, perVertex_ * static_cast<double>(vertices));
+double UploadCostModel::estimate(std::size_t vertices, bool collision) const {
+    return std::max(kMinUploadMilliseconds,
+                    millisecondsPerVertex(collision) * static_cast<double>(vertices));
 }
 
 ViewAngles viewAngles(double headingDegrees, double pitchDegrees) {

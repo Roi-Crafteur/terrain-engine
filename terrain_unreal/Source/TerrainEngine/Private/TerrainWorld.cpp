@@ -25,6 +25,7 @@
 #include "TerrainWorldEdits.h"
 #include "TerrainWorldLoading.h"
 #include "TerrainWorldStart.h"
+#include "TerrainWorldUploads.h"
 #include "TerrainWorldState.h"
 #include "TerrainWorldWater.h"
 
@@ -70,47 +71,6 @@ namespace
 		Params.stream.maxLoadsPerUpdate =
 			static_cast<std::size_t>(FMath::Max(1, World.MaxTileUploadsPerFrame));
 		return Params;
-	}
-
-	// Applies an update of the streamer to the meshes: the uploads (timed, and recorded in the
-	// timeline of the loads), the moves to other images of the wrapped world, then the removals.
-	// Returns the uploads and their time.
-	FTerrainUploads ApplyUpdate(UTerrainMeshBackend& Backend,
-		terrain::unreal::TerrainSession& Session, const terrain::unreal::StreamerUpdate& Update)
-	{
-		FTerrainUploads Uploads;
-		terrain::unreal::LoadTimeline& Timeline = Session.timeline();
-		const terrain::unreal::LoadClock::time_point Converted = terrain::unreal::LoadClock::now();
-		for (const terrain::unreal::TileUpload& Upload : Update.uploads)
-		{
-			Timeline.recordConverted(Upload.key, Converted);
-			const double Start = FPlatformTime::Seconds();
-			Backend.SetTile(Upload);
-			const double UploadMs = (FPlatformTime::Seconds() - Start) * 1000.0;
-			Session.timings().record(terrain::unreal::TileStage::Upload, Upload.key.lod, UploadMs);
-			Uploads.Milliseconds += UploadMs;
-			Uploads.Vertices += Upload.mesh.positions.size();
-			Timeline.recordShown(Upload.key, terrain::unreal::LoadClock::now(), UploadMs,
-				Upload.collision);
-			UE_LOG(LogTerrainEngine, Verbose,
-				TEXT("Tile (%d, %d) LOD %d: %d vertices, %d triangles, collision %s, conversion "
-					 "%.2f ms, upload %.2f ms"),
-				Upload.key.origin.x, Upload.key.origin.z, Upload.key.lod,
-				static_cast<int32>(Upload.mesh.positions.size()),
-				static_cast<int32>(Upload.mesh.triangleCount()),
-				Upload.collision ? TEXT("yes") : TEXT("no"), Upload.conversionMilliseconds,
-				UploadMs);
-		}
-		for (const terrain::unreal::TileMove& Move : Update.moves)
-		{
-			Backend.MoveTile(Move.key, Move.origin);
-		}
-		for (const terrain::TileKey& Key : Update.removals)
-		{
-			Backend.RemoveTile(Key);
-		}
-		Uploads.Count = static_cast<int32>(Update.uploads.size());
-		return Uploads;
 	}
 } // namespace
 
@@ -272,11 +232,8 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 		{
 			WarmUpAround(*Pawn);
 		}
-		const double TilesStart = FPlatformTime::Seconds();
-		const terrain::unreal::StreamerUpdate Update =
-			State->Session.streamer().update(ToUnrealPoint(Focus), State->Frame);
-		State->Loading.FrameTilesMilliseconds = (FPlatformTime::Seconds() - TilesStart) * 1000.0;
-		Uploads = ApplyUpdate(*Backend, State->Session, Update);
+		// The uploads within the time of a frame (TerrainWorldUploads.cpp).
+		Uploads = TickTerrainUploads(*Backend, *State.Get(), Focus);
 	}
 	catch (const std::exception& Exception)
 	{
@@ -297,6 +254,7 @@ void ATerrainWorld::ApplyWorldOffset(const FVector& InOffset, bool bWorldShift)
 	if (State.IsValid())
 	{
 		State->Frame = terrain::unreal::shifted(State->Frame, ToUnrealPoint(InOffset));
+		State->Loading.Pacer.shift(ToUnrealPoint(InOffset)); // the uploads not applied yet
 		FollowFrame();
 	}
 }
@@ -354,11 +312,12 @@ void ATerrainWorld::WarmUpAround(APawn& Pawn)
 	WarmedPawn = &Pawn;
 	const double Start = FPlatformTime::Seconds();
 	const std::chrono::milliseconds Timeout(FMath::RoundToInt(WarmUpTimeoutSeconds * 1000.0f));
+	FlushTerrainUploads(*Backend, *State.Get()); // the update being applied first
 	const terrain::unreal::WarmUpResult Warm = State->Session.streamer().warmUp(
 		ToUnrealPoint(Pawn.GetActorLocation()), State->Frame, WarmUpRadiusChunks, Timeout);
 	for (const terrain::unreal::StreamerUpdate& Update : Warm.updates)
 	{
-		ApplyUpdate(*Backend, State->Session, Update);
+		ApplyTerrainUpdateNow(*Backend, *State.Get(), Update);
 	}
 	const double Seconds = FPlatformTime::Seconds() - Start;
 	if (Warm.complete)

@@ -8,14 +8,21 @@ montrer tout de suite et du plus proche au plus loin, sans jamais le laisser tom
 1. **Le sol d'abord.** Les tuiles sont demandées et intégrées du plus proche au plus loin
    (`selectTiles`, `loadsBefore`). Au spawn, les 3 × 3 tuiles LOD 0 sous le pion sont générées
    avant qu'il bouge. Après une téléportation, le pion est **tenu** (son mouvement coupé, pas de
-   gravité) jusqu'à ce qu'un tracé vers le bas touche une tuile, aussi longtemps qu'il le faut.
+   gravité) jusqu'à ce qu'un tracé vers le bas touche une tuile, aussi longtemps qu'il le faut. Le
+   sol du point d'arrivée est lu sur un fil (jusqu'à 202 ms la première fois dans une région, à
+   cause de l'hydrologie) ; le pion est posé dès qu'il est lu, au-dessus du sol ou de l'eau du
+   core s'il y en a (lac, rivière, mer).
 2. **Le renfort.** Pendant le chargement, il y a plus de fils de tuiles et plus de morceaux
    d'horizon. Ensemble, ils ne dépassent pas un plafond : `min(fils matériels − 4, 12)` par défaut,
    soit 12 sur un Ryzen 9 9950X3D, et jusqu'à 32 envois par image. Ensuite, retour au régime normal
    (`WorkerThreads`, `HorizonThreads`, `MaxTileUploadsPerFrame`). Toujours, les envois d'une image
-   s'arrêtent avant de dépasser 6 ms : le coût de chaque tuile est estimé d'après ses sommets (un
-   temps par sommet appris sur les images), et l'image s'arrête à la première tuile qui ferait
-   dépasser le budget, avec au moins un envoi par image pour ne jamais bloquer.
+   tiennent dans 6 ms : le vrai temps est lu après chaque envoi, et l'image s'arrête dès qu'il
+   atteint le budget, ou dès que l'envoi suivant, estimé, le ferait dépasser. Il y a au moins un
+   envoi par image pour ne jamais bloquer : une estimation fausse ne fait dépasser que d'une tuile.
+   L'estimation part d'une valeur prudente à chaque chargement (6,2 ms pour 830 sommets), monte
+   tout de suite avec un envoi lourd et ne redescend que lentement ; les tuiles avec collision ont
+   leur propre estimation. Une mise à jour pas finie continue à l'image suivante ; ses retraits
+   attendent que tous ses envois soient faits, donc jamais de trou.
 3. **L'horizon niveau par niveau.** Le niveau 0 (jusqu'à 1 km) vient d'abord, puis les niveaux 1
    à 3 (jusqu'à 8 km), puis les autres. Chaque niveau apparaît en fondu tramé en 0,6 s. Tant que
    des niveaux plus lointains manquent, le bord extérieur du dernier niveau visible se dissout dans
@@ -63,7 +70,9 @@ thread`.
 | après | aucun gel : session prête en 2,16 s (1,04 s aux Play suivants), puis une image de 271,7 ms (horizon, eau, ciel, et 32 envois en 11,2 ms) | 128 ms |
 
 Au premier Play, une image de ciel vide passait encore avant le noir (vers 0,43 s) : le noir
-n'était posé qu'au premier tick du terrain. Le voile noir posé dans `BeginPlay` la supprime.
+n'était posé qu'au premier tick du terrain. Le voile noir posé dans `BeginPlay` la supprime :
+vérifié par une capture du bureau toutes les 30 ms, noir dès la première image du Play (0,165 s),
+stable, puis un fondu de 0,25 s vers un décor complet.
 
 ## Réglages (`Terrain World` → `Loading Settings`)
 
@@ -71,7 +80,7 @@ n'était posé qu'au premier tick du terrain. Le voile noir posé dans `BeginPla
 |---|---|---|
 | `bBoost` | oui | renfort pendant le chargement |
 | `ThreadCap` | 0 | plafond des fils de tuiles et des morceaux d'horizon ensemble ; 0 : `min(fils − 4, 12)` |
-| `UploadMillisecondsPerFrame` | 6 ms | les envois d'une image s'arrêtent avant ce temps (au moins 1), toujours ; 0 : le nombre seul |
+| `UploadMillisecondsPerFrame` | 6 ms | les envois d'une image tiennent dans ce temps, mesuré après chaque envoi (au moins 1), toujours ; 0 : le nombre seul |
 | `MaxUploadsPerFrame` | 32 | envois d'une image au plus pendant le chargement |
 | `bFade`, `FadeMaxSeconds` | oui, 2 s | fondu au noir et son plafond |
 | `TimeoutSeconds` | 30 s | fin du renfort, quoi qu'il reste à charger |
@@ -146,8 +155,13 @@ le budget en ms par image amortit les tuiles lourdes. Les pires images (299 ms a
 chaîne) restent à expliquer avec le CSV des images.
 
 À la chute, une image a fait 32 envois en 56,8 ms : le budget comptait alors des tuiles au coût
-moyen d'un envoi, et les tuiles lourdes le dépassaient. Désormais, chaque tuile est estimée d'après
-ses sommets et l'image s'arrête avant 6 ms (`stream_loading_test`, `unreal_load_phase_test`).
+moyen d'un envoi. Une estimation par sommet seule ne suffisait pas non plus (essai de 7dcc52d) :
+les premières images de chaque chargement dépassaient encore, 10,5 ms (32 envois) au spawn,
+10,8 ms à la chaîne, 37,6 ms (22 envois) à la chute, car le coût appris sur les images d'avant
+était trop bas pour les tuiles LOD 0 lourdes (environ 830 sommets, jusqu'à 6 ms chacune). Les
+images suivantes restaient entre 1,5 et 2,9 ms. Désormais, le vrai temps arrête l'image
+(`Bridge/upload_pacer`) : `unreal_upload_pacer_test` vérifie qu'une estimation 10 fois trop
+basse ne fait jamais dépasser le budget de plus d'une tuile.
 
 **Après, dans le conteneur** (Linux, 4 cœurs, donc 2 morceaux d'horizon seulement, planète) :
 instant où chaque niveau de l'horizon est montré.
@@ -185,9 +199,13 @@ C'est l'objet d'une tâche à part, sans changement de bits.
   répondent « non » (pas encore de session) ; une construction du niveau Planète absent du disque
   (plusieurs minutes) se fait derrière le même écran noir, message affiché.
 - L'horizon CPU (`HorizonRenderer` = CPU) montre toujours tous ses niveaux d'un coup.
-- L'image d'une téléportation est longue (253 ms mesurés à la chute, hors du tick du terrain :
-  c'est l'image où la commande s'exécute). La lecture du sol au point d'arrivée, sur le fil du jeu,
-  en fait partie : 87 ms dans le conteneur à la chute, la première lecture de cette région
-  (hydrologie), 0 ms au K2. Le log `the teleport took … ms: the ground of the point …, the move
-  of the pawn …, the report of the previous load and the start of this one …` le détaille. Si la
-  lecture du sol domine, elle peut passer sur un fil (le pion est tenu de toute façon).
+- L'image d'une téléportation était longue à cause de la lecture du sol au point d'arrivée, sur
+  le fil du jeu : 202,6 ms sur 202,8 au pied de la chaîne, 32,3 ms sur 32,5 à la chute (la
+  première lecture d'une région construit son hydrologie). Elle est maintenant faite sur un fil :
+  `the teleport took … ms` ne compte plus que le déplacement et le début du chargement, et
+  `the ground of (x, z) m read on a thread in … ms` dit quand le pion est posé.
+- La chute (−6 185 124 ; 155 984) est au fond d'un bassin : son sol (260 m) est sous l'eau. Le pion
+  est maintenant posé au-dessus de l'eau du core. Mais l'eau des tuiles n'a ni collision ni volume
+  d'eau : une fois relâché, le personnage s'enfonce jusqu'au fond. Pour qu'il reste à la surface ou
+  nage, il faut une collision ou un volume d'eau (le rendu de l'eau), ou un point d'arrivée au sec
+  (la recherche de sol de `TeleportView`).

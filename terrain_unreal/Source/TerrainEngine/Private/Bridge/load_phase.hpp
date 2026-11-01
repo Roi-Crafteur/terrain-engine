@@ -27,8 +27,9 @@ struct LoadBudget {
     int workers = 2;              // tile workers taking tiles (StreamManager::setWorkerLimit)
     int pieces = 2;               // horizon pieces at once (HorizonEpochRunner)
     std::size_t uploadsPerFrame = 8; // tiles converted and uploaded by an update, at most
-    // The time the uploads of a frame may take, milliseconds (StreamManager::setLoadBudget with
-    // the costs of UploadCostModel): the update stops before going beyond it, one tile at least.
+    // The time the uploads of a frame may take, milliseconds: the update of the streamer stops
+    // before its estimated costs go beyond it (StreamManager::setLoadBudget with UploadCostModel),
+    // and the uploads stop once their real time reaches it (UploadPacer); one tile at least.
     // 0: the count alone.
     double uploadMilliseconds = 0.0;
 
@@ -36,18 +37,24 @@ struct LoadBudget {
 };
 
 // The cost of the upload of a tile on the game thread (its mesh, its collision, its water), from
-// its vertices: a time per vertex learnt from the uploads measured (a moving mean over the
-// frames, the heavy tiles weighing in), never below kMinUploadMilliseconds a tile.
+// its vertices: a time per vertex for the tiles with collision, one for the others, learnt from
+// each upload measured. Prudent: it starts high (kStartUploadMillisecondsPerVertex: 6.2 ms for a
+// tile of 830 vertices, above the worst upload measured, 6 ms), follows at once half of the way
+// to a heavier upload and comes down a fifth of the way to a lighter one; never below
+// kMinUploadMilliseconds a tile. The real time bounds the frame anyway (UploadPacer).
 inline constexpr double kMinUploadMilliseconds = 0.05;
+inline constexpr double kStartUploadMillisecondsPerVertex = 7.5e-3;
 class UploadCostModel {
 public:
-    // The uploads of a frame: their vertices and the time they took. Ignored without either.
-    void record(std::size_t vertices, double milliseconds);
-    [[nodiscard]] double estimate(std::size_t vertices) const;
-    [[nodiscard]] double millisecondsPerVertex() const { return perVertex_; }
+    // An upload measured: its vertices, its collision and its time. Ignored without either.
+    void record(std::size_t vertices, bool collision, double milliseconds);
+    [[nodiscard]] double estimate(std::size_t vertices, bool collision) const;
+    [[nodiscard]] double millisecondsPerVertex(bool collision) const {
+        return perVertex_[collision ? 1 : 0];
+    }
 
 private:
-    double perVertex_ = 5e-4; // 0.15 ms for a tile of 300 vertices, before any measure
+    double perVertex_[2] = {kStartUploadMillisecondsPerVertex, kStartUploadMillisecondsPerVertex};
 };
 
 // The cap of the tile workers and horizon pieces together while loading, by default:

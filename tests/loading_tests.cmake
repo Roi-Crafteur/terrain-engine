@@ -2,10 +2,12 @@
 # (Bridge), and the bench that measures it in this container. Included once, at the end of
 # tests/CMakeLists.txt (after the Bridge library).
 
-target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/horizon_reveal.cpp
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/ground_read.cpp
+                                             ${unreal_bridge}/horizon_reveal.cpp
                                              ${unreal_bridge}/load_frames.cpp
                                              ${unreal_bridge}/load_phase.cpp
-                                             ${unreal_bridge}/load_timeline.cpp)
+                                             ${unreal_bridge}/load_timeline.cpp
+                                             ${unreal_bridge}/upload_pacer.cpp)
 
 # The rhythm of the loads (core): the order of the requests and integrations made by hand, the
 # budget and the limit of the workers changed during a load, the same tiles bit for bit.
@@ -33,8 +35,13 @@ target_include_directories(unreal_load_timeline_test PRIVATE ${CMAKE_CURRENT_SOU
 terrain_add_test(unreal_load_phase_test terrain_unreal_bridge)
 target_include_directories(unreal_load_phase_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# The session built on another thread, as at the start of the game: the same world (Bridge).
+# The session built on another thread, as at the start of the game: the same world (Bridge); the
+# ground of a teleport read on a thread, above the water.
 terrain_add_test(unreal_session_thread_test terrain_unreal_bridge)
+
+# The uploads applied within a time per frame (Bridge): the real time after each upload stops the
+# frame, an estimate ten times too low beyond the budget by one upload at most.
+terrain_add_test(unreal_upload_pacer_test terrain_unreal_bridge)
 
 # The load of the tiles simulated from their costs (tests/load_schedule.cpp), to compare the orders
 # of the loads: tested on costs made by hand, used by the bench.

@@ -50,7 +50,7 @@ namespace
 		const APawn& Pawn)
 	{
 		const FVector Location = Pawn.GetActorLocation();
-		const double GroundZ = State.Session.groundZ(State.Frame, ToUnrealPoint(Location));
+		const double GroundZ = TerrainLevelZ(State, Location, false);
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(TerrainGroundReady), false, &Pawn);
 		FHitResult Hit;
 		const FVector Start(Location.X, Location.Y, GroundZ + LoadGroundTraceCm);
@@ -228,6 +228,12 @@ void BeginTerrainLoad(FTerrainWorldState& State, const FVector& Focus,
 		State.Loading.Phase->begin(FPlatformTime::Seconds());
 		State.Loading.bBoosted = true;
 	}
+	// A new place: the cost of the uploads prudent again, the ground of a former teleport
+	// forgotten (TeleportWhenReady asks for its own after).
+	State.Loading.UploadCosts = terrain::unreal::UploadCostModel();
+	State.Loading.Ground.forget();
+	State.Loading.PawnToPlace.Reset();
+	State.Loading.KnownGround.Reset();
 	++State.Loading.Loads;
 	State.Loading.bReported = false;
 	if (Reason != terrain::unreal::LoadReason::Prepared)
@@ -265,14 +271,20 @@ void TickTerrainLoading(ATerrainWorld& World, FTerrainWorldState& State, const F
 	Frame.horizonLevels = Shown;
 	// stat unit reads the whole frame one frame late: it goes to the previous frame.
 	Timeline.recordFrame(Frame, Now, FPlatformTime::ToMilliseconds(GGameThreadTime));
-	const std::vector<terrain::unreal::SelectedTile> Selection = terrain::unreal::selectedTiles(
+	std::vector<terrain::unreal::SelectedTile> Selection = terrain::unreal::selectedTiles(
 		State.Session.streamer(), terrain::unreal::chunkAt(State.Frame, Point));
+	for (terrain::unreal::SelectedTile& Tile : Selection)
+	{
+		Tile.shown = Tile.shown && !State.Loading.Pacer.holds(Tile.key); // not uploaded yet
+	}
 	std::vector<LoadMilestone> Reached = Timeline.observe(Selection, Now);
-	// The collision under the pawn, traced while the load or the hold waits for it.
+	// The collision under the pawn, traced while the load or the hold waits for it, once the ground
+	// of a teleport is read (the pawn placed over it).
+	const bool bReading = PollTerrainGround(State);
 	const bool bWaits = !Timeline.reached(LoadMilestone::GroundCollision) ||
 		(State.Loading.Phase.IsSet() && State.Loading.Phase->holding());
 	const bool bCollision =
-		!bWaits || Pawn == nullptr || LoadGroundCollision(World, State, *Pawn);
+		!bWaits || Pawn == nullptr || (!bReading && LoadGroundCollision(World, State, *Pawn));
 	if (bCollision && Timeline.mark(LoadMilestone::GroundCollision, Now))
 	{
 		Reached.push_back(LoadMilestone::GroundCollision);

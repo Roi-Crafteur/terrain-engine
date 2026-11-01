@@ -26,9 +26,10 @@ struct FTerrainLoadingSettings
 		meta = (EditCondition = "bBoost", ClampMin = "0", ClampMax = "64"))
 	int32 ThreadCap = 0;
 
-	// The uploads of a frame stop before their time goes beyond this, milliseconds, one upload a
-	// frame at least, in the loads and outside: the cost of each tile estimated from its vertices
-	// (a time per vertex measured on the frames). 0: the count of uploads alone.
+	// The uploads of a frame fit in this time, milliseconds, in the loads and outside: the real
+	// time read after each upload stops the frame, as does the next upload estimated to go beyond
+	// it (from its vertices, prudent at each load); one upload a frame at least. 0: the count of
+	// uploads alone.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loading", meta = (ClampMin = "0"))
 	float UploadMillisecondsPerFrame = 6.0f;
 

@@ -67,20 +67,29 @@ void testBudget() {
     TEST_CHECK(!phase.loading() && (phase.budget(true) == LoadBudget{2, 2, 8, 6.0}));
 }
 
-// The cost of an upload learnt from the frames: a time per vertex, never below its floor.
+// The cost of an upload learnt from each upload, per kind (with collision or not): prudent at
+// first (above the worst upload measured, 6 ms), up half of the way at once to a heavier upload,
+// down a fifth of the way to a lighter one, never below its floor.
 void testUploadCost() {
+    using terrain::unreal::kMinUploadMilliseconds;
+    using terrain::unreal::kStartUploadMillisecondsPerVertex;
     terrain::unreal::UploadCostModel model;
-    const double before = model.estimate(300);
-    TEST_CHECK(before > terrain::unreal::kMinUploadMilliseconds);
-    model.record(0, 5.0); // ignored
-    model.record(1000, 0.0);
-    TEST_CHECK(model.estimate(300) == before);
-    for (int frame = 0; frame < 30; ++frame) {
-        model.record(32 * 826, 56.8); // the fall: 32 heavy uploads in 56.8 ms
+    TEST_CHECK(model.estimate(830, true) > 6.0 && model.estimate(830, false) > 6.0);
+    const double before = model.estimate(300, false);
+    model.record(0, false, 5.0); // ignored
+    model.record(1000, false, 0.0);
+    TEST_CHECK(model.estimate(300, false) == before);
+    for (int upload = 0; upload < 80; ++upload) {
+        model.record(830, false, 0.33); // the spawn: light uploads
     }
-    TEST_CHECK(std::abs(model.millisecondsPerVertex() - 56.8 / (32 * 826)) < 1e-6);
-    TEST_CHECK(model.estimate(826) > 1.7 && model.estimate(826) < 1.8);
-    TEST_CHECK(model.estimate(0) == terrain::unreal::kMinUploadMilliseconds);
+    const double light = model.estimate(830, false);
+    TEST_CHECK(light >= 0.33 - 1e-9 && light < 0.34);
+    TEST_CHECK(model.millisecondsPerVertex(true) == kStartUploadMillisecondsPerVertex);
+    model.record(830, false, 6.0); // a heavy one: half of the way at once
+    TEST_CHECK(std::abs(model.estimate(830, false) - 0.5 * (light + 6.0)) < 1e-9);
+    model.record(830, false, 0.33); // a light one: a fifth of the way only
+    TEST_CHECK(model.estimate(830, false) > 2.5);
+    TEST_CHECK(model.estimate(0, false) == kMinUploadMilliseconds);
 }
 
 // The fade waits for the ground (its collision), the 64 m ring, every tile and the levels 0 to 3;
@@ -252,13 +261,21 @@ TileData heavyTile(const TileRequest& request) {
 }
 
 // The uploads of an update stop before their estimated time goes beyond the budget of 6 ms, one
-// at least: three LOD 0 tiles at most, a heavier one alone; every tile uploaded once.
+// at least: three LOD 0 tiles at most once the costs are learnt, a heavier one alone; every tile
+// uploaded once.
 void testUploadBudget() {
-    const terrain::unreal::UploadCostModel model;
+    using terrain::unreal::hasCollision;
+    terrain::unreal::UploadCostModel model;
+    for (int upload = 0; upload < 100; ++upload) {
+        model.record(4000, true, 2.0);
+        model.record(30000, false, 15.0);
+    }
     terrain::unreal::TileStreamer streamer(heavyTile, streamParams());
     streamer.setMaxLoadsPerUpdate(32);
     streamer.setLoadBudget(
-        [&model](const TileData& data) { return model.estimate(data.mesh.vertices.size()); },
+        [&model](const TileData& data) {
+            return model.estimate(data.mesh.vertices.size(), hasCollision(data.request.key));
+        },
         6.0);
     std::map<std::tuple<int, int, int>, int> uploads;
     bool within = true;
@@ -268,7 +285,7 @@ void testUploadBudget() {
         const terrain::unreal::StreamerUpdate update = streamer.update(pointOf(8.0, 8.0), {});
         double estimated = 0.0;
         for (const terrain::unreal::TileUpload& upload : update.uploads) {
-            estimated += model.estimate(upload.mesh.positions.size());
+            estimated += model.estimate(upload.mesh.positions.size(), upload.collision);
             ++uploads[std::tuple(upload.key.origin.x, upload.key.origin.z, upload.key.lod)];
         }
         within = within && (update.uploads.size() <= 1 || estimated <= 6.0);
