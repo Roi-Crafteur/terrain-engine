@@ -283,8 +283,8 @@ par `terrain_core/dev/places_file` :
 | `chute388_levre` | −6 185 411 | 156 218 | 46 | −30 | +2 m | oui | sa lèvre (eau à 568,99 m), vers le bassin |
 | `chute388_mer` | −6 184 762 | 155 681 | 230 | 20 | +2 m | oui | la chute vue de l'aval, à 842 m de sa lèvre |
 | `k2_paroi` | 416 102 | −11 414 891 | 225 | 35 | +25 m | non | la plus haute paroi près du K2 (pied 416 017 ; −11 414 806, 420 m) |
-| `falaise_cotiere` | 429 908 | −855 305 | 230 | 3 | +2 m | non | la côte vue de la mer (côte basse sur `main`) |
-| `montagnes_mer` | 1 430 074 | 2 052 007 | 220 | 5 | +2 m | non | des montagnes qui plongent dans la mer |
+| `falaise_cotiere` | 429 908 | −855 305 | 217 | 3 | +2 m | non | la côte vue de la mer, au milieu de l'image (rivage de 171 à 262°, 375 m au plus près ; côte basse sur `main`) |
+| `montagnes_mer` | 1 430 074 | 2 052 007 | 133 | 5 | +2 m | non | des montagnes qui plongent dans la mer, au milieu de l'image (rivage de 84 à 182°, 165 m au plus près) |
 | `cote_froide` | 3 624 471 | −10 006 796 | 120 | 5 | +2 m | non | une côte froide vue de la mer |
 | `plage_origine` | −3 985 | −165 | 40 | 0 | +1,8 m | non | la plage près de l'origine, vers la mer |
 | `fleuve_plaine` | −241 631 | −86 277 | 5 | 0 | +2 m | oui | un fleuve de plaine (eau à 3,28 m), vers l'aval |
