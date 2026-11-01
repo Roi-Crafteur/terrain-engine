@@ -52,9 +52,16 @@ struct FTerrainDevShot
 	EPhase Phase = EPhase::Waiting;
 	double Start = 0.0;                      // the pose, FPlatformTime::Seconds
 	double CaptureStart = 0.0;
-	// Terrain.ShotShowUI 0: the render target read by the tools (TerrainDevCapture.cpp) once
-	// CaptureFrames frames are drawn without the screen of F3; 1: the window, by Unreal.
-	bool bFromTexture = true;
+	// How the image is read (TerrainDevCapture.cpp), once CaptureFrames frames are drawn without
+	// the screen of F3: Terrain.ShotShowUI 0, the render target of the viewport; 1, the viewport
+	// with its UI (its widget, as Slate draws it); the whole window by Unreal when Slate cannot.
+	enum class ERead : uint8
+	{
+		Texture,
+		Viewport,
+		Window,
+	};
+	ERead Read = ERead::Texture;
 	int32 CaptureFrames = 0;
 	std::optional<terrain::unreal::ShotWaiter> Waiter;
 	terrain::unreal::ViewRecord Current;
