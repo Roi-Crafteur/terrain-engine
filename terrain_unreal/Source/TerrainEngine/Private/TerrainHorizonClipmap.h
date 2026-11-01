@@ -85,6 +85,11 @@ public:
 	// SurfaceBandCm, HasSurface...); nothing without a look.
 	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
 
+	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
+	// (independent of the visibility the placements set), each level tinted with its own hue or
+	// not (bHorizonDebugTint while playing).
+	void SetHiddenByTools(bool bHidden);
+	void SetDebugTint(bool bTint);
 	// While the screen is held black (the fade of a load), a level shown comes in at once.
 	void SetInstantReveal(bool bInstant) { bInstantReveal = bInstant; }
 

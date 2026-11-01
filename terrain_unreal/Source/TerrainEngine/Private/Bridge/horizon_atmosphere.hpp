@@ -26,6 +26,15 @@ namespace terrain::unreal {
 // Component Transform): at the sea level, right under the camera.
 [[nodiscard]] UnrealPoint planetTopUnder(const UnrealPoint& camera, const UnrealFrame& frame);
 
+// Where the ExponentialHeightFog stands: right under the camera, fogAboveSeaCm above the sea
+// level. Its height belongs to the planet, not to the place where the play starts: the level
+// gives it as the Z of the fog, read as its height above the sea level (the Z 0 of the level is
+// the sea, whatever point of the core lies at the Unreal origin). Read as a height above the
+// ground at the origin instead, a fog placed for a beach would float 4 km up over a level that
+// starts on a mountain, and every view near the sea would sink into it.
+[[nodiscard]] UnrealPoint heightFogUnder(const UnrealPoint& camera, const UnrealFrame& frame,
+                                         double fogAboveSeaCm);
+
 // Height (meters) of a camera above the ground of a planet of this radius (meters) whose top
 // stands at planetTop: what the SkyAtmosphere takes as its altitude.
 [[nodiscard]] double heightAbovePlanet(const UnrealPoint& camera, const UnrealPoint& planetTop,

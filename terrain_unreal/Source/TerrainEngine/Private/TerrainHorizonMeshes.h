@@ -35,6 +35,9 @@ public:
 
 	void RemoveAll();
 
+	// The tools of the developers (Terrain.View): every level hidden in game or shown.
+	void SetHiddenByTools(bool bHidden);
+
 	// Vertices and triangles of the meshes shown, and the bytes the procedural meshes keep of
 	// them on the CPU (an estimate from the size of their vertex).
 	int64 GetVertexCount() const;
@@ -61,4 +64,5 @@ private:
 	// Per level and section: the vertices and triangles shown.
 	TArray<FIntPoint> SectionSizes;
 	bool bShadows = false;
+	bool bHiddenByTools = false; // the levels created from now on too
 };

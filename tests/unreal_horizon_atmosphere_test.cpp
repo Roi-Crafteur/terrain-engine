@@ -71,6 +71,24 @@ void testPlanetUnderCamera() {
     TEST_CHECK(std::abs(terrain::unreal::seaLevelZ(moved) - (sea + offset.z)) < 1e-6);
 }
 
+// The height fog stays at its height above the sea level, whatever point of the core lies at the
+// Unreal origin: a level that starts on a mountain (the ground of its origin at 4,268 m, near the
+// K2) and one that starts on a beach put it at the same altitude of the core, under the camera.
+void testFogAboveTheSea() {
+    const double fogAboveSeaCm = 150.0 * kCm; // the Z of the fog in the level: 150 m
+    for (const double originGround : {4268.0, 0.0, -1.47}) {
+        const UnrealFrame frame{{416857.0, originGround, -11398966.0}};
+        for (const double altitude : {2.0, 300.0, 6500.0}) {
+            const UnrealPoint camera{3.0e7, -2.0e6,
+                                     terrain::unreal::seaLevelZ(frame) + altitude * kCm};
+            const UnrealPoint fog = terrain::unreal::heightFogUnder(camera, frame, fogAboveSeaCm);
+            TEST_CHECK(fog.x == camera.x && fog.y == camera.y);
+            const double above = terrain::unreal::toCore(frame, fog).y - terrain::kSeaLevel;
+            TEST_CHECK(std::abs(above - 150.0) < 1e-6); // 150 m above the sea
+        }
+    }
+}
+
 // The sea of the horizon, lowered by the curvature of its material (d^2 / 2R), lies on the
 // ground of the planet under the camera, within the gap between the parabola and the sphere
 // (d^4 / 8R^3, 10.5 m at 520 km for a drop of 14 km), from the beach and from a summit.
@@ -147,6 +165,7 @@ void testWaveOrigin() {
 int main() {
     testFixedPlanetGoesBlack();
     testPlanetUnderCamera();
+    testFogAboveTheSea();
     testCurvedSeaOnThePlanet();
     testAerialPerspectiveDepth();
     testWaveOrigin();

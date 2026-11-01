@@ -79,7 +79,9 @@ void UTerrainAtmosphereFollower::PlaceFor(const FVector& Camera)
 	}
 	if (UExponentialHeightFogComponent* HeightFog = Fog.Get())
 	{
-		MoveTo(*HeightFog, FVector(Top.x, Top.y, Top.z + FogAboveSeaCm));
+		const terrain::unreal::UnrealPoint Under = terrain::unreal::heightFogUnder(
+			{Camera.X, Camera.Y, Camera.Z}, Frame, FogAboveSeaCm);
+		MoveTo(*HeightFog, FVector(Under.x, Under.y, Under.z));
 	}
 	if (USkyLightComponent* SkyLight = Light.Get())
 	{

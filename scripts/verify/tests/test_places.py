@@ -24,11 +24,11 @@ class SharedFile(unittest.TestCase):
     def test_the_file_of_the_repository(self):
         found = places.load_places()
         names = [p.name for p in found]
-        self.assertIn("chute388_bassin", names)
-        for name in ("chute388_levre", "chute388_mer", "k2_paroi", "falaise_cotiere",
-                     "montagnes_plongent", "cote_froide", "plage_origine", "fleuve_plaine",
-                     "lac_montagne", "lisiere_tropicale_savane"):
-            self.assertIn(name, names)
+        # The 11 places of agent 36 (terrain_core/dev/places_file writes them), read here too.
+        self.assertEqual(names, ["chute388_bassin", "chute388_levre", "chute388_mer", "k2_paroi",
+                                 "falaise_cotiere", "montagnes_mer", "cote_froide",
+                                 "plage_origine", "fleuve_plaine", "lac_montagne",
+                                 "lisiere_tropicale_savane"])
         basin = places.select(found, ["chute388_bassin"])[0]
         self.assertEqual((basin.x, basin.z, basin.heading, basin.pitch, basin.eye),
                          (-6185104.0, 155924.0, 227.0, 30.0, 182.03))
