@@ -8,6 +8,7 @@
 #include "Bridge/dev_commands.hpp"
 #include "Bridge/place_pose.hpp"
 #include "Bridge/shot_waiter.hpp"
+#include "Bridge/walkable_ground.hpp"
 
 #include "terrain/dev/places_file.hpp"
 
@@ -63,9 +64,9 @@ public:
 	void RunView(const std::vector<std::string>& Args);
 	void RunSeed(const std::vector<std::string>& Args);
 
-	// TerrainDevView.cpp: ATerrainWorld::TeleportView, IsViewLoading and ReturnToGamePawn
-	// (put down on the walkable ground nearest to the view, refused over water or without one; or
-	// left where it stood).
+	// TerrainDevView.cpp: ATerrainWorld::TeleportView and IsViewLoading. TerrainDevPawn.cpp:
+	// ReturnToGamePawn (put down on the walkable ground nearest to the view, checked on the
+	// collision of the tiles, refused over water or without one; or left where it stood).
 	bool TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
 		ETerrainEyeMode EyeMode);
 	bool IsViewLoading() const;
@@ -93,8 +94,15 @@ private:
 
 	// TerrainDevView.cpp
 	APawn* EnsureDevPawn(APlayerController& PlayerController);
+
+	// TerrainDevPawn.cpp
 	bool OverWater(const FVector& ViewLocation) const;
-	bool FindGameGround(APawn& Game, const FVector& ViewLocation, FVector& OutLocation) const;
+	bool FindGameGround(APawn& Game, const FVector& ViewLocation, TArray<FVector>& OutSpots) const;
+	terrain::unreal::StandRefusal ProbeSpot(APawn& Game, const terrain::unreal::WalkableSpot& Spot,
+		const terrain::unreal::StandLimits& Limits, FVector& OutLocation) const;
+	void StartLanding(APawn& Game, TArray<FVector> Spots);
+	void TickLanding();
+	void EndLanding();
 	bool PlaceView(const terrain::unreal::ViewPose& Pose);
 	void TickHold();
 	void EndHold();

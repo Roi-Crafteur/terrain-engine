@@ -50,7 +50,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Goto <lieu>` | la vue d'un lieu du fichier (position, cap, inclinaison, œil) ; avertit si le lieu a besoin du fichier planète et que le monde n'en a pas |
 | `Terrain.Look cap inclinaison` | le cap en degrés depuis le nord, sens horaire ; l'inclinaison de −90 à 90, positive vers le haut, **négative vers le bas** (`Terrain.Look 0 -45` : vers le nord, 45° sous l'horizon) |
 | `Terrain.Eye 1800` / `Terrain.Eye +2` | l'œil à cette altitude, ou à cette hauteur au-dessus du sol ou de l'eau |
-| `Terrain.Pawn` | le pion du jeu rendu, posé sur le sol praticable le plus proche de la vue (50 m au plus) ; refusé au-dessus de l'eau ou sans sol praticable (message à l'écran) |
+| `Terrain.Pawn` | le pion du jeu rendu, posé sur le sol praticable le plus proche de la vue (50 m au plus), vérifié sur la collision et surveillé une seconde ; refusé au-dessus de l'eau ou sans sol praticable (message à l'écran) |
 | `Terrain.Save <nom> [note…]` | la vue écrite dans le fichier des lieux (met à jour un lieu du même nom, ses champs inconnus et sa note gardés) |
 | `Terrain.Info` / `Terrain.Info here` | les lignes du point visé / de la colonne de l'œil dans le log |
 | `Terrain.Shot <nom>` | une image `Saved/TerrainEngine/Shots/<nom>.png` une fois tout chargé |
@@ -117,34 +117,62 @@ Play, quand le monde est arrêté sur une erreur, ou sans joueur. Si la généra
 échoue, le monde s'arrête (l'erreur est dans le log) et elle rend `false`.
 
 `ReturnToGamePawn()` (et `Terrain.Pawn`) rend le pion du jeu, posé sur le **sol praticable le
-plus proche** de la colonne sous la vue (50 cm au-dessus de sa capsule), le cap et l'inclinaison
-gardés, les tuiles autour générées :
+plus proche** de la colonne sous la vue, le cap et l'inclinaison gardés, les tuiles autour
+générées. Deux étapes (`Bridge/walkable_ground`, `TerrainDevPawn.cpp`) :
 
-- praticable : une colonne sèche dont la pente est sous l'angle de marche du `CharacterMovement`
-  du pion moins 5° (44,765° par défaut, donc 39,8° ; le même pour un pion qui n'est pas un
-  `ACharacter`). La pente est la plus forte des quatre pentes à 1 m autour du point ;
-- la recherche (`Bridge/walkable_ground`) : la colonne même, puis des anneaux tous les 2 m
-  jusqu'à `Terrain.PawnRadius` (50 m), chacun parcouru depuis le nord dans le sens horaire ; sur
-  l'anneau le plus proche qui en a un, le point de pente la plus douce. Mêmes hauteurs, même
-  point ;
-- quand le point n'est pas sous la vue, un message le dit à l'écran (8 s) et dans le log
-  (« the ground under the view is too steep (72 degrees): the pawn of the game is put 34 m away,
-  on a slope of 39 degrees », sous la paroi de `k2_paroi`) ;
-- la recherche lit **la heightmap** du core, comme le sol sous la vue : ni surplomb ni paroi de
-  la roche 3D. Quand la roche 3D de l'agent 20 (12A) sera sur `main`, il faudra lire la colonne
-  réelle.
+1. **Les candidats, sur la heightmap** (`walkableCandidates`) : la colonne même, puis des
+   anneaux tous les 2 m jusqu'à `Terrain.PawnRadius` (50 m), chacun parcouru depuis le nord dans
+   le sens horaire. Un candidat est une colonne sèche dont la pente est sous l'angle de marche du
+   `CharacterMovement` du pion moins 5° (44,765° par défaut, donc 39,8°). La pente est la plus
+   forte des quatre pentes à 1 m autour du point. On garde l'anneau le plus proche d'abord, et
+   sur un anneau la pente la plus douce d'abord (64 candidats au plus). Mêmes hauteurs, mêmes
+   candidats.
+2. **Chaque candidat, sur la collision réelle des tuiles** (`checkStand`) : cinq rayons vers le
+   bas, au centre et aux quatre bords de la capsule, de 20 m au-dessus à 20 m sous la heightmap.
+   Il est refusé si :
+   - un rayon ne touche rien (tuiles pas encore chargées) ;
+   - une normale est plus raide que l'angle de marche moins 5° ;
+   - les impacts sont plus éloignés que la hauteur de marche (`MaxStepHeight`, 45 cm) ;
+   - l'impact du centre est à plus de 2 m de la heightmap (falaise, surplomb ou bassin taillés
+     par le SDF : au pied de la chute de 388 m, la heightmap dit 260 m sec, la collision est au
+     fond du bassin, sous l'eau à 180 m) ;
+   - l'impact est **sous la surface de l'eau du core** à 3 m autour.
 
-Elle rend `false` sans rien changer :
+Le pion est posé sur le premier candidat accepté, 2 cm au-dessus de l'impact le plus haut, à
+vitesse nulle, en `MOVE_Walking`, sans recalage sur la heightmap (`bSnapPawnToGround` coupé pour
+la pose). Puis il est **surveillé** :
+
+- deux images plus tard, il doit être au sol (`IsMovingOnGround`) ;
+- une seconde plus tard, il ne doit pas avoir bougé de plus de 0,5 m (son mouvement est bloqué
+  pendant cette seconde) ;
+- sinon, c'est un glissement : il passe au candidat suivant, avec un message, et ainsi de suite
+  jusqu'à 8 essais. Après le dernier, un message en donne la raison
+  (« slid from the 8 spots tried near the view (the last: moved 3.2 m in a second) »).
+
+Quand le point n'est pas sous la vue, un message le dit à l'écran (8 s) et dans le log
+(« the ground under the view does not hold the pawn (72 degrees on the heightmap): the pawn of
+the game is put 34 m away », sous la paroi de `k2_paroi`).
+
+Les candidats lisent **la heightmap** du core : ni surplomb ni paroi de la roche 3D. La collision
+corrige ce qui est vu de près. Quand la roche 3D de l'agent 20 (12A) sera sur `main`, il faudra
+lire la colonne réelle.
+
+Elle rend `false` sans rien changer, avec un message à l'écran et dans le log, la vue des outils
+restant en place :
 
 - **au-dessus de l'eau** (la colonne sous la vue a de l'eau au-dessus de son sol : mer, lac,
-  fleuve, lac salé) : le pion du jeu n'est jamais posé au fond. Un message s'affiche à l'écran
-  (8 s) et dans le log : « Terrain.Pawn: over water (sea, lake or river): the pawn of the game is
-  not put down here, the view of the tools stays; move over dry ground first ». La vue des outils
-  reste ; il suffit d'avancer au-dessus de la terre et de recommencer ;
-- **sans sol praticable** dans `Terrain.PawnRadius` : message à l'écran et dans le log
-  (« no walkable ground within 50 m (… degrees under the view, the pawn walks up to 40) »), la vue
-  des outils reste ;
+  fleuve, lac salé) : le pion du jeu n'est jamais posé au fond (« over water (sea, lake or
+  river): … move over dry ground first ») ;
+- **sans candidat** dans `Terrain.PawnRadius`, avec la raison de `walkableCandidates` :
+  `NoDryGround` (« no dry ground: water everywhere around ») ou `TooSteep` (« the dry ground
+  around is too steep ») ;
+- **sans candidat qui tienne sur la collision** : le message compte les refus par raison (trop
+  raide, marche, loin de la heightmap, sous l'eau, sans collision) ;
 - quand le joueur n'a pas le pion des outils (il a déjà celui du jeu).
+
+Pour l'agent 35 (clic sur la carte) : `walkableCandidates` rend aussi sa raison. Avec
+`NoDryGround`, poser la vue volante à 1,8 m au-dessus de l'eau du core (`TeleportView` en
+`Ground`, œil 1,8).
 
 `Terrain.Views` rend le pion du jeu là où il était, sans le poser : il n'est pas concerné.
 
@@ -309,4 +337,6 @@ Arrêter le Play annule une construction à la fin de l'étape en cours.
 le fichier de l'agent 37 lu, les nombres de `Terrain.Save` relus au bit près),
 `unreal_place_pose_test`, `unreal_point_info_test`, `unreal_dev_perf_test`,
 `unreal_debug_colors_test`, `unreal_planet_job_test`, `unreal_walkable_ground_test` (le sol
-praticable sur des reliefs fabriqués et sous la paroi du K2), `unreal_dev_tools_guard`.
+praticable sur des reliefs fabriqués et sous la paroi du K2, l'ordre et les raisons des candidats,
+la vérification sur la collision : trop raide, marche, bassin de la chute, sous l'eau),
+`unreal_dev_tools_guard`.

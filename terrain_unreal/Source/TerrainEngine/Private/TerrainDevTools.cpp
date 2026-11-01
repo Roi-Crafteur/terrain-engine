@@ -93,6 +93,7 @@ void UTerrainDevTools::Stop()
 			SetViewMode(terrain::unreal::ViewMode::Normal);
 		}
 		EndHold();
+		EndLanding();
 		Dev->Shot.reset();
 		SetShotLook(false);
 		Dev->Planet.reset(); // cancelled: waits at most for the end of the stage in progress
@@ -149,6 +150,7 @@ void UTerrainDevTools::OnStreamingStopped()
 		return;
 	}
 	EndHold();
+	EndLanding();
 	Dev->Shot.reset();
 	Dev->bHideScreen = false;
 }
@@ -168,6 +170,7 @@ void UTerrainDevTools::TickWorld(float DeltaSeconds)
 		FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles(0))});
 	Dev->Perf.addTiles(Now, World->State->Session.timings().totals());
 	TickHold();
+	TickLanding();
 	TickShots();
 	TickLooks();
 	TickSeed();

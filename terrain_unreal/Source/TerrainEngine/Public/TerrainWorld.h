@@ -360,10 +360,12 @@ public:
 
 	// The pawn of the game back from the pawn of the tools, put down on the walkable ground nearest
 	// to the view (Terrain.PawnRadius around, a slope under the walkable angle of its
-	// CharacterMovement less 5 degrees; a message when it is not right under the view). False,
-	// nothing changed, when the player has no pawn of the tools, when the view is over water (the
-	// sea, a lake, a river: the pawn of the game is never put on the bottom) or when no walkable
-	// ground is near; a message on the screen and in the log says so, the view of the tools stays.
+	// CharacterMovement less 5 degrees, checked by rays on the collision of the tiles, then
+	// watched for a second: the next spot when it slides; a message when it is not right under
+	// the view). False, nothing changed, when the player has no pawn of the tools, when the view
+	// is over water (the sea, a lake, a river: the pawn of the game is never put on the bottom)
+	// or when no walkable ground is near; a message on the screen and in the log says so, the
+	// view of the tools stays.
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
 	bool ReturnToGamePawn();
 

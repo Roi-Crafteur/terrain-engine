@@ -1,17 +1,13 @@
 // The views of the tools of the developers (agent 36): the one teleport (TeleportView, called by
 // Terrain.Goto and by the dev map), the flying pawn of the tools that holds the eye exactly where
-// asked, the wait for the tiles around it, the pawn of the game given back, and the commands
-// Terrain.Goto, Look, Eye, Pawn, Save and Info. The poses come from Bridge/place_pose.
+// asked, the wait for the tiles around it, and the commands Terrain.Goto, Look, Eye, Save and
+// Info (the pawn of the game given back: TerrainDevPawn.cpp). The poses come from Bridge/place_pose.
 #include "TerrainDevTools.h"
 
 #if TERRAIN_DEV_TOOLS
 
-#include "Bridge/walkable_ground.hpp"
 #include "Camera/PlayerCameraManager.h"
-#include "Engine/Engine.h"
 #include "Engine/World.h"
-#include "GameFramework/Character.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/FloatingPawnMovement.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PawnMovementComponent.h"
@@ -33,26 +29,6 @@ namespace
 	constexpr double StandingEye = 1.8;
 	// The pawn of the tools flies at 50 m/s (the floating pawn of Unreal: 12 m/s).
 	constexpr float DevPawnSpeed = 5000.0f;
-	// The pawn of the game goes down on slopes this much under the walkable angle of its
-	// CharacterMovement (44.765 degrees by default, the angle of a pawn that is no Character).
-	constexpr double WalkableMarginDegrees = 5.0;
-	constexpr double DefaultWalkableAngle = 44.765;
-
-	double SlopeDegrees(double Slope)
-	{
-		return FMath::RadiansToDegrees(FMath::Atan(Slope));
-	}
-
-	// A message on the screen (8 s) and in the log.
-	void ShowAndLog(const FString& Message)
-	{
-		TerrainDev::Warn(Message);
-		if (GEngine != nullptr)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Yellow, Message);
-		}
-	}
-
 	ETerrainEyeMode EyeModeOf(terrain::dev::EyeMode Mode)
 	{
 		return Mode == terrain::dev::EyeMode::Ground ? ETerrainEyeMode::Ground
@@ -212,55 +188,6 @@ bool UTerrainDevTools::IsViewLoading() const
 	return Dev.IsValid() && Dev->Hold.has_value();
 }
 
-bool UTerrainDevTools::ReturnToGamePawn(bool bUnderView)
-{
-	APlayerController* PlayerController = Controller();
-	if (PlayerController == nullptr || !IsValid(DevPawn) || !World->State.IsValid())
-	{
-		return false;
-	}
-	const FVector ViewLocation = DevPawn->GetPawnViewLocation();
-	const FRotator Rotation = PlayerController->GetControlRotation();
-	APawn* Game = GamePawn.Get();
-	FVector GameLocation = ViewLocation;
-	if (bUnderView && IsValid(Game) &&
-		(OverWater(ViewLocation) || !FindGameGround(*Game, ViewLocation, GameLocation)))
-	{
-		return false; // nothing changed: the view of the tools stays
-	}
-	EndHold();
-	if (IsValid(Game))
-	{
-		if (bUnderView)
-		{
-			Game->SetActorLocation(GameLocation, false, nullptr, ETeleportType::TeleportPhysics);
-		}
-		PlayerController->Possess(Game);
-		PlayerController->SetControlRotation(Rotation);
-		if (UPawnMovementComponent* Movement = Game->GetMovementComponent())
-		{
-			Movement->StopMovementImmediately();
-		}
-		try
-		{
-			World->WarmUpAround(*Game);
-		}
-		catch (const std::exception& Failure)
-		{
-			World->StopStreaming(ToText(Failure.what()));
-		}
-	}
-	else
-	{
-		TerrainDev::Warn(TEXT("the player had no pawn of the game: it keeps none"));
-		PlayerController->UnPossess();
-	}
-	DevPawn->Destroy();
-	DevPawn = nullptr;
-	GamePawn = nullptr;
-	return true;
-}
-
 void UTerrainDevTools::RunGoto(const std::vector<std::string>& Args)
 {
 	std::string Error;
@@ -325,81 +252,6 @@ void UTerrainDevTools::RunEye(const std::vector<std::string>& Args)
 	}
 	TeleportView(Here.eye.x, Here.eye.z, terrain::unreal::headingOfYaw(Here.yaw), Here.pitch,
 		EyeSetting->value, EyeModeOf(EyeSetting->mode));
-}
-
-void UTerrainDevTools::RunPawn()
-{
-	if (!IsValid(DevPawn))
-	{
-		TerrainDev::Warn(TEXT("the player already has the pawn of the game"));
-		return;
-	}
-	ReturnToGamePawn(true); // over water: refused, with its message
-}
-
-// The column under the view holds water: said on the screen and in the log (the pawn of the game
-// is never put on the bottom).
-bool UTerrainDevTools::OverWater(const FVector& ViewLocation) const
-{
-	const terrain::unreal::CorePoint Under = terrain::unreal::toCore(World->State->Frame,
-		TerrainWorldConversions::ToUnrealPoint(ViewLocation));
-	if (!terrain::unreal::columnHasWater(
-			World->State->Session.tiles().heightfield().sampleAt(Under.x, Under.z)))
-	{
-		return false;
-	}
-	ShowAndLog(TEXT("Terrain.Pawn: over water (sea, lake or river): the pawn of the game is not "
-		"put down here, the view of the tools stays; move over dry ground first"));
-	return true;
-}
-
-// Where the pawn of the game goes down: on the walkable ground nearest to the column under the
-// view (Bridge/walkable_ground: the heightmap, Terrain.PawnRadius around, the walkable angle of its
-// CharacterMovement less WalkableMarginDegrees), said on the screen when it is not right under
-// the view. False, said on the screen and in the log, when there is none.
-bool UTerrainDevTools::FindGameGround(APawn& Game, const FVector& ViewLocation,
-	FVector& OutLocation) const
-{
-	double WalkableAngle = DefaultWalkableAngle;
-	if (const ACharacter* Character = Cast<ACharacter>(&Game))
-	{
-		if (const UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
-		{
-			WalkableAngle = Movement->GetWalkableFloorAngle();
-		}
-	}
-	terrain::unreal::WalkableSearch Search;
-	Search.radius = TerrainDev::PawnRadiusMeters();
-	Search.maxSlope = terrain::unreal::walkableSlope(WalkableAngle, WalkableMarginDegrees);
-	const terrain::unreal::UnrealFrame& Frame = World->State->Frame;
-	const terrain::Heightfield& Field = World->State->Session.tiles().heightfield();
-	const terrain::unreal::GroundHeight Height = [&Field](double X, double Z)
-	{ return static_cast<double>(Field.heightAt(X, Z)); };
-	const terrain::unreal::CorePoint Under =
-		terrain::unreal::toCore(Frame, TerrainWorldConversions::ToUnrealPoint(ViewLocation));
-	const std::optional<terrain::unreal::WalkableSpot> Spot = terrain::unreal::nearestWalkable(
-		Under.x, Under.z, Search, Height, [&Field](double X, double Z)
-		{ return terrain::unreal::columnHasWater(Field.sampleAt(X, Z)); });
-	const double SteepDegrees = SlopeDegrees(terrain::unreal::groundSlope(Under.x, Under.z,
-		Search.probe, Height));
-	if (!Spot)
-	{
-		ShowAndLog(FString::Printf(TEXT("Terrain.Pawn: no walkable ground within %.0f m (%.0f "
-			"degrees under the view, the pawn walks up to %.0f): the pawn of the game is not put "
-			"down here, the view of the tools stays"), Search.radius, SteepDegrees,
-			SlopeDegrees(Search.maxSlope)));
-		return false;
-	}
-	const terrain::unreal::UnrealPoint Ground =
-		terrain::unreal::toUnreal(Frame, {Spot->x, Spot->ground, Spot->z});
-	OutLocation = FVector(Ground.x, Ground.y, Ground.z + Game.GetSimpleCollisionHalfHeight() + 50.0);
-	if (Spot->distance > 0.0)
-	{
-		ShowAndLog(FString::Printf(TEXT("Terrain.Pawn: the ground under the view is too steep (%.0f "
-			"degrees): the pawn of the game is put %.0f m away, on a slope of %.0f degrees"),
-			SteepDegrees, Spot->distance, SlopeDegrees(Spot->slope)));
-	}
-	return true;
 }
 
 void UTerrainDevTools::RunSave(const std::vector<std::string>& Args)

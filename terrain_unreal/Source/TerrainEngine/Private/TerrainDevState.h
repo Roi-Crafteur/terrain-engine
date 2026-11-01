@@ -6,6 +6,7 @@
 #if TERRAIN_DEV_TOOLS
 
 #include "CoreMinimal.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 
 #include "Bridge/dev_commands.hpp"
 #include "Bridge/dev_perf.hpp"
@@ -28,6 +29,19 @@ struct FTerrainDevHold
 {
 	double Start = 0.0; // FPlatformTime::Seconds
 	terrain::unreal::ShotWaiter Waiter;
+};
+
+class APawn;
+
+// The pawn of the game just put down by Terrain.Pawn, watched (TerrainDevPawn.cpp): the spots
+// that passed the rays, the one it stands on, since when.
+struct FTerrainDevLanding
+{
+	TWeakObjectPtr<APawn> Pawn;
+	TArray<FVector> Spots;
+	int32 Index = 0;
+	int32 Frames = 0;      // ticks since it was put there
+	double PlacedAt = 0.0; // FPlatformTime::Seconds
 };
 
 // An image waited for (Terrain.Shot), or a run of them over places (Terrain.Views).
@@ -74,6 +88,7 @@ struct FTerrainDevState
 	bool bLookIgnored = false;
 	bool bScreenMessagesOff = false;
 	std::optional<FTerrainDevHold> Hold;
+	std::optional<FTerrainDevLanding> Landing;
 	std::optional<FTerrainDevShot> Shot;
 	// Terrain.Seed: the planet being prepared and the world it is for.
 	std::unique_ptr<terrain::unreal::PlanetJob> Planet;

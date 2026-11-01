@@ -1,16 +1,21 @@
 // Where the pawn of the game is put down when the tools give it back (Bridge/walkable_ground.hpp,
 // ATerrainWorld::ReturnToGamePawn): the walkable ground nearest to the column under the view, on
 // made-up reliefs (a flat ground, terraces in a wall of slope 3.28, water), then under the wall
-// of the K2 of the default world (k2_paroi, without the planet file).
+// of the K2 of the default world (k2_paroi, without the planet file); the reasons when there is
+// none; and the check of a candidate on the collision of the tiles (too steep, a step, far from
+// the heightmap as in the basin of the fall of 388 m, under water).
 #include "walkable_ground.hpp"
 
 #include "test_assert.hpp"
 
 #include "terrain/generation/heightfield.hpp"
 
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <optional>
+#include <string>
 
 namespace {
 
@@ -117,9 +122,110 @@ void testUnderTheK2() {
 
 } // namespace
 
+// Every walkable point, nearest ring first and the gentlest first on a ring, and why there is none.
+void testCandidates() {
+    using terrain::unreal::WalkableReason;
+    const WalkableSearch search = defaultSearch();
+    const GroundHeight flat = [](double, double) { return 120.0; };
+    const auto all = terrain::unreal::walkableCandidates(0.0, 0.0, search, flat, kDry, 10);
+    TEST_CHECK(all.reason == WalkableReason::Found && all.spots.size() == 10);
+    TEST_CHECK(all.spots[0].distance == 0.0); // the column, then the 8 points of the ring of 2 m
+    for (std::size_t i = 1; i <= 8; ++i) {
+        TEST_CHECK(all.spots[i].distance == 2.0);
+    }
+    TEST_CHECK(all.spots[9].distance == 4.0);
+    // On a ring, the gentlest first: a ground that tilts more and more toward the east.
+    const GroundHeight bowl = [](double x, double) { return x > 0.0 ? 0.2 * x * x : 0.0; };
+    const auto ring = terrain::unreal::walkableCandidates(0.0, 0.0, search, bowl, kDry, 64);
+    for (std::size_t i = 1; i < ring.spots.size(); ++i) {
+        const auto& a = ring.spots[i - 1];
+        const auto& b = ring.spots[i];
+        TEST_CHECK(a.distance < b.distance || (a.distance == b.distance && a.slope <= b.slope));
+    }
+    // A view over water: no dry ground (agent 35 poses the flying view over the water).
+    const GroundWet sea = [](double, double) { return true; };
+    const auto wet = terrain::unreal::walkableCandidates(0.0, 0.0, search, flat, sea, 10);
+    TEST_CHECK(wet.spots.empty() && wet.reason == WalkableReason::NoDryGround);
+    TEST_CHECK(std::string(terrain::unreal::walkableReasonText(wet.reason)).find("no dry ground") !=
+               std::string::npos);
+    // Dry ground, all of it too steep.
+    const GroundHeight wall = wallWithTerraces(1e8, 1e8);
+    const auto steep = terrain::unreal::walkableCandidates(0.0, 0.0, search, wall, kDry, 10);
+    TEST_CHECK(steep.spots.empty() && steep.reason == WalkableReason::TooSteep);
+    WalkableSearch broken = search;
+    broken.probe = 0.0;
+    TEST_CHECK(terrain::unreal::walkableCandidates(0.0, 0.0, broken, flat, kDry, 10).reason ==
+               WalkableReason::BadSearch);
+}
+
+// The water surface of the core around a point: the lake 1 m away seen from a dry bank.
+void testWaterAround() {
+    const terrain::unreal::GroundSample lakeWest = [](double x, double) {
+        terrain::HeightSample s;
+        s.height = x < 0.0 ? 178.0f : 181.0f;
+        s.water = x < 0.0 ? terrain::WaterKind::Lake : terrain::WaterKind::None;
+        s.waterLevel = x < 0.0 ? 180.03f : s.height;
+        return s;
+    };
+    const auto surface = terrain::unreal::waterSurfaceAround(2.0, 0.0, 3.0, lakeWest);
+    TEST_CHECK(surface && *surface == static_cast<double>(180.03f));
+    TEST_CHECK(!terrain::unreal::waterSurfaceAround(10.0, 0.0, 3.0, lakeWest));
+}
+
+// A candidate checked on the collision of the tiles: five rays, the center first.
+void testStand() {
+    using terrain::unreal::FloorProbe;
+    using terrain::unreal::StandRefusal;
+    terrain::unreal::StandLimits limits;
+    limits.minNormalUp = terrain::unreal::walkableNormalUp(44.765, 5.0);
+    TEST_CHECK(std::abs(limits.minNormalUp - std::cos(39.765 * 3.14159265358979323846 / 180.0)) <
+               1e-12);
+    std::array<FloorProbe, 5> probes{};
+    for (FloorProbe& p : probes) {
+        p = {true, 100.0, 1.0};
+    }
+    probes[2].altitude = 100.2;
+    const auto stands = terrain::unreal::checkStand(probes, 100.5, std::nullopt, limits);
+    TEST_CHECK(stands.refusal == StandRefusal::None && stands.altitude == 100.2);
+    // A normal at 50 degrees: too steep for 39.8.
+    auto steep = probes;
+    steep[3].normalUp = std::cos(50.0 * 3.14159265358979323846 / 180.0);
+    TEST_CHECK(terrain::unreal::checkStand(steep, 100.0, std::nullopt, limits).refusal ==
+               StandRefusal::TooSteep);
+    // A ray that hits nothing: no collision there yet.
+    auto missing = probes;
+    missing[4].hit = false;
+    TEST_CHECK(terrain::unreal::checkStand(missing, 100.0, std::nullopt, limits).refusal ==
+               StandRefusal::NoCollision);
+    // A step of 60 cm under the capsule.
+    auto step = probes;
+    step[1].altitude = 100.6;
+    TEST_CHECK(terrain::unreal::checkStand(step, 100.0, std::nullopt, limits).refusal ==
+               StandRefusal::Step);
+    // The basin of the fall of 388 m (-6185124 ; 155984): the heightmap says dry ground at
+    // 260.11 m, the collision of the tiles lies at the bottom of the basin, under its water at
+    // 180.03 m: far from the heightmap, and under water.
+    std::array<FloorProbe, 5> basin{};
+    for (FloorProbe& p : basin) {
+        p = {true, 178.5, 0.99};
+    }
+    const std::optional<double> water = 180.03;
+    TEST_CHECK(terrain::unreal::checkStand(basin, 260.11, water, limits).refusal ==
+               StandRefusal::OffHeightmap);
+    TEST_CHECK(terrain::unreal::checkStand(basin, 179.0, water, limits).refusal ==
+               StandRefusal::UnderWater);
+    TEST_CHECK(terrain::unreal::checkStand(basin, 179.0, 178.0, limits).refusal ==
+               StandRefusal::None);
+    TEST_CHECK(std::string(terrain::unreal::standRefusalText(StandRefusal::UnderWater)) ==
+               "its collision is under the water of the core");
+}
+
 int main() {
     testSlopes();
     testMadeUpReliefs();
     testUnderTheK2();
+    testCandidates();
+    testWaterAround();
+    testStand();
     return test::result();
 }
