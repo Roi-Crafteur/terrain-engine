@@ -24,8 +24,10 @@
 // north (-z), in [0, 360) (the yaw of Unreal is heading - 90); pitch: degrees, positive up and
 // negative down (as the pitch of an FRotator), in [-90, 90]; eye: meters, the altitude of the
 // eye in the core (eyeMode "altitude") or its height above the ground or the water (eyeMode
-// "ground", >= 0); planet: the view needs the planet file (rivers, falls, lakes, the climate of
-// the biomes); note: optional. The members a reader does not know,
+// "ground", >= 0); planet: the place was measured with the planet file (true: its rivers, falls
+// and lakes, the ground its hydrology carves and fills, the climate of the biomes) or without it
+// (false); a world without the file, or with it, may show another view there (the tools warn);
+// note: optional. The members a reader does not know,
 // in a place or around the places, are kept as they are and written back after the known ones.
 // Read and written with the strict JSON of terrain/json (#56): the same bits on every platform,
 // each number an exact decimal m 10^e (m <= 2^53, |e| <= 22).
@@ -47,8 +49,8 @@ struct Place {
     double pitch = 0.0;
     double eye = 0.0;
     EyeMode eyeMode = EyeMode::Altitude;
-    bool planet = false;
-    std::string note; // empty: none (not written)
+    bool planet = false; // measured with the planet file
+    std::string note;    // empty: none (not written)
     // The other members, an object in their order (never a known key).
     json::Value extra = json::Value::object();
 

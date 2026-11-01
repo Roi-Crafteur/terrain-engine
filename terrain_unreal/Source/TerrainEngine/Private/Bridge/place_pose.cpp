@@ -50,6 +50,27 @@ bool columnHasWater(const HeightSample& sample) {
     return sample.water != WaterKind::None && sample.waterLevel > sample.height;
 }
 
+PlanetMismatch planetMismatch(bool measuredWithPlanet, bool worldHasPlanet) {
+    if (measuredWithPlanet == worldHasPlanet) {
+        return PlanetMismatch::None;
+    }
+    return measuredWithPlanet ? PlanetMismatch::Missing : PlanetMismatch::Loaded;
+}
+
+const char* planetMismatchText(PlanetMismatch mismatch) {
+    switch (mismatch) {
+    case PlanetMismatch::Missing:
+        return "was measured with the planet file (its rivers, falls and lakes, the ground they "
+               "carve, the climate of the biomes): this world has none";
+    case PlanetMismatch::Loaded:
+        return "was measured without the planet file: this world has it, whose hydrology changes "
+               "the ground near its rivers and whose climate changes the biomes";
+    case PlanetMismatch::None:
+        break;
+    }
+    return "";
+}
+
 double eyeAltitude(double eye, dev::EyeMode mode, double top) {
     return mode == dev::EyeMode::Ground ? top + eye : eye;
 }

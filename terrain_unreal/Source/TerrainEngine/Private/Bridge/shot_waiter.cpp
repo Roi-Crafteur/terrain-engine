@@ -76,11 +76,15 @@ std::string measuredText(const CaptureCheck& c) {
     char text[256];
     std::snprintf(text, sizeof(text),
                   "; camera yaw %.2f pitch %.2f fov %.1f, image %dx%d (viewport %dx%d, texture "
-                  "%dx%d, read from the %s)",
+                  "%dx%d, read from the %s",
                   c.camera.yaw, c.camera.pitch, c.fov, c.imageWidth, c.imageHeight,
                   c.viewportWidth, c.viewportHeight, c.textureWidth, c.textureHeight,
                   c.method.c_str());
-    return text;
+    std::string line = text;
+    if (c.cutTop > 0) {
+        line += ", its top " + std::to_string(c.cutTop) + " rows cut";
+    }
+    return line + ")";
 }
 
 } // namespace
@@ -94,7 +98,8 @@ std::vector<std::string> captureWarnings(const ViewRecord& r) {
     if (angleGap(c.camera.yaw, r.pose.yaw) > 0.5 || angleGap(c.camera.pitch, r.pose.pitch) > 0.5) {
         warnings.push_back("the camera was not at the pose asked");
     }
-    if (c.imageWidth > 0 && (c.imageWidth != c.textureWidth || c.imageHeight != c.textureHeight)) {
+    if (c.imageWidth > 0 &&
+        (c.imageWidth != c.textureWidth || c.imageHeight + c.cutTop != c.textureHeight)) {
         warnings.push_back("the image is not the size of the view (a display scaled by Windows?)");
     }
     return warnings;
@@ -120,7 +125,13 @@ pngSize(std::span<const std::uint8_t> bytes) {
 }
 
 std::string describeView(const ViewRecord& r) {
-    char text[384];
+    const char* planet = "";
+    if (r.planet == PlanetMismatch::Missing) {
+        planet = ", WITHOUT the planet file it was measured with";
+    } else if (r.planet == PlanetMismatch::Loaded) {
+        planet = ", WITH the planet file, measured without it";
+    }
+    char text[512];
     std::snprintf(text, sizeof(text),
                   "%s %s x %.2f z %.2f eye %.2f m yaw %.2f pitch %.2f: %s after %.1f s, %zu "
                   "tiles pending, %zu/%zu shown, horizon %s, %.1f fps%s",
@@ -129,7 +140,7 @@ std::string describeView(const ViewRecord& r) {
                   r.waitedSeconds, r.state.pendingTiles, r.state.shownTiles,
                   r.state.selectedTiles,
                   !r.state.horizonShown ? "not shown" : r.state.horizonBusy ? "busy" : "done",
-                  r.framesPerSecond, r.planetMissing ? ", WITHOUT the planet file it needs" : "");
+                  r.framesPerSecond, planet);
     std::string line = text;
     if (r.capture.measured) {
         line += measuredText(r.capture);
