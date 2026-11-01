@@ -5,6 +5,7 @@
 #include "Templates/PimplPtr.h"
 #include "TerrainDevTypes.h"
 #include "TerrainEdits.h"
+#include "TerrainLoadingSettings.h"
 
 #include "TerrainWorld.generated.h"
 
@@ -19,6 +20,7 @@ class UTerrainDevTools;
 class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
+struct FTerrainWorldStart;
 struct FTerrainWorldState;
 
 // How the tiles become Unreal meshes: the options of phase 10, to compare by measure.
@@ -178,6 +180,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Player",
 		meta = (ClampMin = "0.1"))
 	float WarmUpTimeoutSeconds = 10.0f;
+
+	// The loads at the start, after a teleport and around a prepared point (agent 38): the boost,
+	// the fade, the hold, the horizon level by level (TerrainLoadingSettings.h).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Loading")
+	FTerrainLoadingSettings LoadingSettings;
+
+	UPROPERTY(BlueprintAssignable, Category = "Terrain|Loading")
+	FTerrainLocationReady OnTerrainLocationReady;
 
 	// Interval of the summary of the tile costs in the log; 0: no summary.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Measures",
@@ -372,12 +382,32 @@ public:
 	// The tools of the developers of this world while playing, or null (off, or Shipping).
 	UTerrainDevTools* GetDevTools() const;
 
+	// Teleports Pawn to the core point (CoreX, CoreZ), meters, on the ground, facing the compass
+	// heading (0 north, 90 east) and the pitch (negative: down), the screen black and the pawn held
+	// until the world around is shown (agent 38, LoadingSettings). False outside play.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ, float HeadingDegrees = 0.0f,
+		float PitchDegrees = 0.0f);
+	// TeleportWhenReady of the pawn of the player, measured (log and CSV of
+	// Saved/TerrainEngine/Loading): the console command Terrain.LoadTest x z [heading] [pitch].
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool LoadTest(double CoreX, double CoreZ, float HeadingDegrees = 0.0f,
+		float PitchDegrees = 0.0f);
+	// "Prepare this point, then tell": the tiles and the horizon streamed around the core point
+	// until ReleasePreparedLocation, OnTerrainLocationReady broadcast once they are shown.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool PrepareLocation(double CoreX, double CoreZ);
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	void ReleasePreparedLocation();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
 	bool StartStreaming();
+	bool TickStart();
+	void FinishStreamingStart(double StartSeconds);
 	void StopStreaming(const FString& Reason);
 	void StartHorizon();
 	bool StartGpuHorizon();
@@ -439,6 +469,8 @@ private:
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor).
 	TPimplPtr<FTerrainWorldState> State;
+	// While the session builds on its thread (TerrainWorldStart.cpp).
+	TPimplPtr<FTerrainWorldStart> Starting;
 	TWeakObjectPtr<APawn> WarmedPawn;
 	float SecondsSinceTimingLog = 0.0f;
 	// The depth of the aerial perspective before StartAtmosphere extended it, km; -1: unchanged.

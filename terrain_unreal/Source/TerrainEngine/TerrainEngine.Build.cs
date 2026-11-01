@@ -41,6 +41,8 @@ public class TerrainEngine : ModuleRules
 		// The GPU horizon: static meshes built in game, textures updated by regions, frame times.
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"ProceduralMeshComponent", "MeshDescription", "StaticMeshDescription", "RenderCore", "RHI" });
+		// The message on the black screen while the world builds at the start (TerrainWorldStart.cpp).
+		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 
 		// The tools of the developers (terrain_unreal/DEV_TOOLS.md): the screen of F3 and the
 		// Terrain.* commands of views, places, view modes and seed. Never in a Shipping build: every
