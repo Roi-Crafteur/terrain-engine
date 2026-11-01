@@ -7,6 +7,7 @@
 #include "Bridge/horizon_timings.hpp"
 #include "Bridge/terrain_session.hpp"
 #include "Bridge/unreal_frame.hpp"
+#include "TerrainWorldLoading.h"
 
 #include <memory>
 #include <string>
@@ -34,6 +35,8 @@ struct FTerrainWorldState
 	terrain::unreal::StageStats GameThreadFrames;
 	terrain::unreal::StageStats RenderThreadFrames;
 	terrain::unreal::StageStats GpuFrames;
+	// The measures of the loads at the spawn and after the teleports (TerrainWorldLoading.cpp).
+	FTerrainLoadingState Loading;
 };
 
 namespace TerrainWorldConversions
