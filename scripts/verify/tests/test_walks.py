@@ -55,6 +55,15 @@ class Watch(unittest.TestCase):
         reason, at = stop(samples, walks.WalkWatch(goal=1000.0))
         self.assertEqual((reason, round(at.t, 6)), ("fall", 4.1))
 
+    def test_a_drop_without_the_mode_falling(self):
+        """b7a3f0e: down steps of 5 to 8 m, the mode read stayed walking: the drop of the feet
+        between two samples is a fall all the same."""
+        samples = walk(300, feet_at=lambda i: 100.0 if i < 30 else 94.5)
+        reason, at = stop(samples, walks.WalkWatch(goal=1000.0))
+        self.assertEqual((reason, round(at.t, 6)), ("fall", 3.0))
+        reason, _ = stop(walk(300, feet_at=lambda i: 100.0 - 0.1 * i), walks.WalkWatch(goal=50.0))
+        self.assertEqual(reason, "distance")  # a slope, no drop
+
     def test_stuck_and_timeout(self):
         reason, _ = stop(walk(300, speed=0.05), walks.WalkWatch(goal=100.0))
         self.assertEqual(reason, "stuck")
@@ -88,6 +97,36 @@ class Log(unittest.TestCase):
         self.assertEqual(s["belowCoreGround"], 2)
         self.assertEqual(walks.interpolated(profile, 3.5), 99.5)
         self.assertEqual(walks.interpolated(profile, 20.0), 99.0)
+
+    def test_summary_of_a_walk_down_steps(self):
+        # East (90 degrees) then a drop of 6 m read as walking; the core ground at each sample.
+        feet = [100.0, 100.0, 100.0, 94.0, 94.0, 93.9]
+        samples = [Sample(0.1 * i, 10.0 + i, 5.0, feet[i], "walking", feet[i], float(i))
+                   for i in range(6)]
+        core = [100.0, 100.0, 100.0, 94.0, 94.0, 94.5]
+        s = walks.summarize(samples, "fall", core=core, heading=90.0, tolerance=0.5)
+        self.assertEqual((s["falls"], s["firstFallAt"]), (1, 3.0))
+        self.assertAlmostEqual(s["largestDrop"], 6.0)
+        self.assertAlmostEqual(s["largestStep"], 0.1)  # on the ground only
+        self.assertEqual(s["belowCoreGround"], 1)        # 93.9 under 94.5 - 0.5
+        self.assertEqual((s["start"], s["end"], s["coreStart"], s["coreEnd"]),
+                         (100.0, 93.9, 100.0, 94.5))
+        self.assertAlmostEqual(s["headingFollowed"], 90.0)
+        self.assertAlmostEqual(s["deviation"], 0.0)
+        north = walks.summarize(samples, "fall", heading=0.0)
+        self.assertAlmostEqual(north["deviation"], 90.0)
+
+    def test_a_step_of_the_profile_is_no_hole(self):
+        """Along the heading, the line between two points of the profile across a step stands
+        above its foot: the lower point counts."""
+        profile = [(0.0, 100.0), (2.0, 100.0), (4.0, 94.0), (6.0, 94.0)]
+        samples = [Sample(0.1, 0.0, 0.0, 100.0, "walking", None, 1.0),
+                   Sample(0.2, 0.0, 0.0, 94.0, "walking", None, 2.5)]
+        self.assertEqual(walks.summarize(samples, "fall", profile)["belowCoreGround"], 0)
+        self.assertEqual(walks.bracket_floor(profile, 2.5), 94.0)
+        self.assertEqual(walks.heading_of(0.0, -1.0), 0.0)
+        self.assertEqual(walks.heading_of(-1.0, 0.0), 270.0)
+        self.assertEqual(walks.summarize([], "none")["samples"], 0)
 
     def test_parse(self):
         self.assertEqual(walks.parse_walk("a"), {"place": "a", "heading": None, "distance": 100.0})

@@ -25,7 +25,11 @@ def textured(color, seed=0):
     return image
 
 
-def version(folder, label, check_color=GROUND, seen=-30.0, killed=False, shift=0):
+FOAM = (235, 240, 245)
+
+
+def version(folder, label, check_color=GROUND, seen=-30.0, killed=False, shift=0,
+            up_color=SKY):
     folder = Path(folder) / label
     (folder / "views").mkdir(parents=True)
     views = []
@@ -34,13 +38,16 @@ def version(folder, label, check_color=GROUND, seen=-30.0, killed=False, shift=0
         pngio.write_png(first, textured(GROUND, shift))
         pngio.write_png(repeat, textured(GROUND, shift))
         views.append({"place": place, "file": str(first), "repeat": str(repeat)})
-    check = folder / "views" / "_pitch_check_a.png"
+    check = folder / "views" / "_pitch_down_a.png"
     pngio.write_png(check, textured(check_color))
+    up = folder / "views" / "_pitch_up_a.png"
+    pngio.write_png(up, textured(up_color))
     walk = folder / "walk_a.csv"
     walks.write_walk(walk, [walks.Sample(0.1 * i, i, 0.0, 10.0, "walking", 9.95, float(i))
                             for i in range(10)])
     result = {"views": views, "materials": [{"script": "create_water_materials.py", "ok": True}],
-              "pitchCheck": {"place": "a", "requested": -30.0, "seen": seen, "file": str(check)},
+              "pitchCheck": {"place": "a", "requested": -30.0, "seen": seen, "file": str(check),
+                             "upRequested": 30.0, "upSeen": -seen, "upFile": str(up)},
               "walks": [{"place": "a", "heading": 90.0, "distance": 9.0, "file": str(walk),
                          "reason": "distance"}], "errors": [], "missingApi": []}
     outcome = {"exit_code": 0, "killed": killed, "reason": "no heartbeat" if killed else "exited",
@@ -87,19 +94,52 @@ class Summary(unittest.TestCase):
             self.assertTrue((Path(folder) / "planche.html").is_file())
             self.assertTrue((Path(folder) / "run.json").is_file())
 
-    def test_an_inverted_pitch_comes_first(self):
-        for color, seen in ((SKY, -30.0), (GROUND, 30.0)):
-            with self.subTest(color=color, seen=seen), tempfile.TemporaryDirectory() as folder:
-                text = report.write_report(run_of(folder, version(folder, "avant"),
-                                                  version(folder, "apres", color, seen)))
-                self.assertIn("inclinaison inversée ?", text.splitlines()[1])
-                self.assertIn("(apres)", text.splitlines()[1])
+    def test_an_inverted_pitch_is_a_notice(self):
+        import verify
+        for down, up, seen in ((SKY, GROUND, -30.0), (SKY, SKY, -30.0), (GROUND, SKY, 30.0)):
+            with self.subTest(down=down, up=up, seen=seen), \
+                    tempfile.TemporaryDirectory() as folder:
+                run = run_of(folder, version(folder, "avant"),
+                             version(folder, "apres", down, seen, up_color=up))
+                text = report.write_report(run)
+                self.assertIn("AVERTISSEMENT (apres) : inclinaison inversée ?", text.splitlines()[1])
+                self.assertEqual(verify.exit_code(run), 0)  # a notice, no failure
+
+    def test_foam_looked_down_at_is_no_inverted_pitch(self):
+        """b7a3f0e: the check view of the basin of the fall looked down at its foam and mist (53 %
+        of "sky"): with the view pitched up beside it, no notice."""
+        with tempfile.TemporaryDirectory() as folder:
+            text = report.write_report(run_of(folder, version(folder, "avant", FOAM),
+                                              version(folder, "apres", FOAM)))
+            self.assertEqual(text.splitlines()[1], "Aucune alerte.")
+            self.assertIn("contrôle de l'inclinaison à a : la caméra dit -30.0° pour -30° et "
+                          "30.0° pour +30° ; ciel 0 % vers le bas, 100 % vers le haut", text)
 
     def test_a_camera_that_keeps_its_own_pitch(self):
         with tempfile.TemporaryDirectory() as folder:
             text = report.write_report(run_of(folder, version(folder, "avant"),
                                               version(folder, "apres", GROUND, -5.0)))
             self.assertIn("n'a pas l'inclinaison demandée", text.splitlines()[1])
+
+    def test_the_walk_against_the_core(self):
+        with tempfile.TemporaryDirectory() as folder:
+            after = version(folder, "apres")
+            after["walkCores"] = {"a": [10.0] * 9 + [10.6]}
+            text = report.write_report(run_of(folder, version(folder, "avant"), after))
+            self.assertIn("pieds au départ 10.00 m (core 10.00 m), à la fin 10.00 m (core "
+                          "10.60 m)", text)
+            self.assertIn("sous le sol du core : 1 échantillon(s)", text)
+            self.assertIn("cap suivi 90°", text)
+            walk = Path(after["sessions"][0]["result"]["walks"][0]["file"])
+            walks.write_walk(walk, [walks.Sample(0.1 * i, 0.0, -i, 10.0, "walking", 9.9, i)
+                                    for i in range(10)])  # north instead of east
+            text = report.write_report(run_of(folder, version(folder, "avant2"), after))
+            self.assertIn("le pion n'a pas suivi le cap : 0° au lieu de 90° (écart 90°)", text)
+
+    def test_the_commits_in_short_on_the_sheet(self):
+        self.assertEqual(report._short({"sha": "b7a3f0e4f3d0bc6e220db6ce5db313980eeceffd",
+                                        "ref": "claude/peaceful-bell-zb968r"}), "b7a3f0e4f3")
+        self.assertEqual(report._short({"sha": None, "ref": "main"}), "main")
 
     def test_a_killed_session_and_a_missing_view(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -218,7 +218,33 @@ def run_version(args, m, ref, label, chosen, asked_walks, run_folder, runner):
     job = base_job(args, v, m, folder, planet_file, parse_sun(args.sun, m))
     entry["sessions"] = run_sessions(args, v, m, job, jobs, walk_list, folder,
                                      run_folder / "driver")
+    entry["walkCores"] = walk_cores(runner, v, m, entry["sessions"], jobs, planet_file, log)
     return entry
+
+
+def walk_cores(runner, v, m, sessions, jobs, planet_file, log, most=1000):
+    """The ground of the core under each sample of each walk, probed at its x and z (the pawn
+    may leave the line of its heading): {place: [ground of each sample]}."""
+    use = {j["name"]: j["usePlanet"] for j in jobs}
+    out = {}
+    for s in sessions:
+        for w in (s.get("result") or {}).get("walks", []):
+            if not w.get("file") or not Path(w["file"]).is_file():
+                continue
+            samples = walks_module.read_walk(w["file"])
+            if not samples:
+                continue
+            every = max(1, -(-len(samples) // most))
+            picked = samples[::every]
+            try:
+                columns = probe_module.columns(runner, v, m, [(p.x, p.z) for p in picked],
+                                               planet_file if use.get(w["place"]) else None,
+                                               log)
+            except (probe_module.ProbeError, workspace.WorkspaceError):
+                continue
+            out[w["place"]] = [columns[min(i // every, len(columns) - 1)].ground
+                               for i in range(len(samples))]
+    return out
 
 
 def cmd_run(args):

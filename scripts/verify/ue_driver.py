@@ -46,6 +46,7 @@ class Driver(WalkSteps):
         self.phase, self.place, self.beats = "start", None, 0
         self.terrain, self.saved, self.origin = None, {}, None
         self.editor_camera, self.skip_walks, self.skip_sun = None, False, False
+        self.pitch_candidates = None  # the places where the pitch may be checked
         self.done = False
         self.ticks, self.started, self._in_step = 0, clock(), False
         self._steps = self.steps()
@@ -237,6 +238,12 @@ class Driver(WalkSteps):
         if until.timed_out:
             raise RuntimeError("the play did not start or has no pawn")
         world = self.world()
+        # The pitch is checked at a place of the first play (one place per play with the camera
+        # of the level: the dry places of the session then come first).
+        if self.pitch_candidates is None:
+            self.pitch_candidates = (group if self.dev_commands() else
+                                     sorted(self.job["places"],
+                                            key=lambda p: p.get("waterLevel") is not None)[:1])
         for place in group:
             self.place = place["name"]
             self.set_phase("place")
@@ -325,7 +332,8 @@ class Driver(WalkSteps):
         if sun and not self.skip_sun:
             entry["suns"] = self.api.set_sun(world, sun["elevation"], sun["yaw"])
         yield Wait(self.job.get("settle", 20.0))
-        if self.job.get("pitchCheck", True) and self.result["pitchCheck"] is None:
+        if (self.job.get("pitchCheck", True) and self.result["pitchCheck"] is None and
+                place["name"] == self.pitch_place(self.pitch_candidates)):
             yield from self.check_pitch(world, place, camera)
             self.aim(world, place, place["pitch"], camera)
             yield Wait(2.0)
@@ -367,16 +375,27 @@ class Driver(WalkSteps):
         return str(target), method
 
     def check_pitch(self, world, place, camera):
-        """The first view of the session pitched down by 30 degrees: the pitch the camera says it
-        has, and a small image whose share of sky the launcher measures."""
-        self.aim(world, place, PITCH_CHECK, camera)
-        yield Wait(2.0)
-        seen = self.api.camera_rotation(world)
-        check = {"place": place["name"], "requested": PITCH_CHECK,
-                 "seen": None if seen is None else seen[0], "file": None}
+        """The check of the sign of the pitch, at the place chosen for it: the same view pitched
+        up then down by 30 degrees, the pitch the camera manager says each has, and two small
+        images whose shares of sky the launcher compares (the water of a fall reflects the sky
+        and its foam is white: only the comparison tells)."""
+        check = {"place": place["name"], "requested": PITCH_CHECK, "seen": None, "file": None,
+                 "upRequested": -PITCH_CHECK, "upSeen": None, "upFile": None}
         self.result["pitchCheck"] = check
-        check["file"], _ = yield from self.shot(world, "pitch_check", 480, 270,
-                                                "_pitch_check_" + place["name"])
+        for pitch, prefix in ((-PITCH_CHECK, "up"), (PITCH_CHECK, "")):
+            self.aim(world, place, pitch, camera)
+            yield Wait(2.0)
+            seen = self.api.camera_rotation(world)
+            stem = f"_pitch_{'up' if prefix else 'down'}_{place['name']}"
+            shot, _ = yield from self.shot(world, stem.lstrip("_"), 480, 270, stem)
+            check["upSeen" if prefix else "seen"] = None if seen is None else seen[0]
+            check["upFile" if prefix else "file"] = shot
+
+    def pitch_place(self, group):
+        """The place of a play where the pitch is checked: the first one without water under the
+        eye, else the first one."""
+        dry = [p for p in group if p.get("waterLevel") is None]
+        return (dry or group)[0]["name"]
 
     # ---- the end -------------------------------------------------------------------------------------
 

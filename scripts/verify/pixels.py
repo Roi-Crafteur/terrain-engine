@@ -54,7 +54,8 @@ def difference_image(a, b, gain=4):
 
 def _sky_like(rgb, i, right, below):
     r, g, b = rgb[i], rgb[i + 1], rgb[i + 2]
-    if b < r or b + 8 < g or (r + g + b) < 300:
+    # Blue clearly above red: the white foam and the grey mist of a fall are no sky.
+    if b < r + 12 or b + 8 < g or (r + g + b) < 300:
         return False
     rough = sum(abs(rgb[i + k] - rgb[right + k]) + abs(rgb[i + k] - rgb[below + k])
                 for k in range(3))
@@ -63,8 +64,9 @@ def _sky_like(rgb, i, right, below):
 
 def sky_share(image, step=2):
     """The share of the pixels (one in step along each axis) that look like a clear sky: bright,
-    blue at least as much as red and about as much as green, smooth with their neighbors. A view
-    pitched down by 30 degrees over the ground shows little of it."""
+    clearly bluer than red and about as blue as green, smooth with their neighbors. A view
+    pitched down by 30 degrees shows less of it than the same view pitched up by 30 degrees
+    (water reflects the sky: only the comparison of the two tells the sign of the pitch)."""
     if image.width < 2 or image.height < 2:
         return 0.0
     w = image.width
@@ -81,3 +83,5 @@ def sky_share(image, step=2):
 
 # A view pitched down by 30 degrees whose sky share is beyond this was probably pitched up.
 SKY_SUSPECT = 0.5
+# The view pitched down must show this much less sky than the one pitched up.
+SKY_MARGIN = 0.15

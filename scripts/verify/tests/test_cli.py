@@ -29,10 +29,12 @@ def machine_file(folder):
 
 
 def run(*argv):
+    """The exit code and the outputs of the command, the paths written with "/" (Windows writes
+    them with "\\")."""
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = verify.main(list(argv))
-    return code, out.getvalue(), err.getvalue()
+    return code, out.getvalue().replace("\\", "/"), err.getvalue().replace("\\", "/")
 
 
 class DryRun(unittest.TestCase):
@@ -71,6 +73,41 @@ class DryRun(unittest.TestCase):
             self.assertIn("version : main", out)
             self.assertNotIn("--planet-check", out)
             self.assertNotIn("--planet ", out)
+
+
+class WalkCores(unittest.TestCase):
+    def test_the_core_under_every_sample(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import fakes
+        import walks
+        import workspace
+
+        class Probe(fakes.FakeRunner):
+            def run(self, command, log=None, cwd=None, check=True):
+                command = [str(c) for c in command]
+                if "terrain_probe" in Path(command[0]).name:
+                    self.commands.append(command)
+                    coords = [float(c) for c in command[command.index("relief,water") + 1:]]
+                    points = [{"relief": {"relief": x, "ground": x / 10.0},
+                               "water": {"kind": "dry", "level": None}}
+                              for x in coords[0::2]]
+                    return 0, json.dumps({"points": points})
+                return super().run(command, log, cwd, check)
+
+        with tempfile.TemporaryDirectory() as root:
+            m = fakes.a_machine(root)
+            v = workspace.prepare(m, "main", "apres", fakes.FakeRunner())
+            csv = Path(root) / "walk.csv"
+            walks.write_walk(csv, [walks.Sample(0.1 * i, 10.0 * i, 0.0, 1.0, "walking", None, i)
+                                   for i in range(5)])
+            sessions = [{"result": {"walks": [{"place": "a", "file": str(csv)}]}}]
+            jobs = [{"name": "a", "usePlanet": True}]
+            runner = Probe()
+            cores = verify.walk_cores(runner, v, m, sessions, jobs, v.project_dir / "p.bin",
+                                      None, most=2)
+            # 5 samples, at most 2 probed by call: every 3rd (x 0 and 30), held for the others.
+            self.assertEqual(cores, {"a": [0.0, 0.0, 0.0, 3.0, 3.0]})
+            self.assertIn("--planet", runner.commands[-1])
 
 
 class Errors(unittest.TestCase):

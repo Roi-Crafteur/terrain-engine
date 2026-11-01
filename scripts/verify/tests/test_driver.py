@@ -127,17 +127,29 @@ class CameraSessions(unittest.TestCase):
             self.assertEqual(r["missingApi"], [])
 
     def test_the_pitch_check(self):
+        """Up then down by 30 degrees at the same place, the first dry one of the session (the
+        foam of a basin looked down at fools one image alone)."""
+        import pixels
+        import pngio
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder)
+            r = drive(fake, job_in(folder, fake, [BASIN, LIP, EDGE], materials=False)).result
+            check = r["pitchCheck"]
+            self.assertEqual(check["place"], "lisiere")  # dry; the others over water
+            self.assertEqual((check["requested"], check["seen"]), (-30.0, -30.0))
+            self.assertEqual((check["upRequested"], check["upSeen"]), (30.0, 30.0))
+            down, up = (pngio.read_png(check[k], use_pillow=False) for k in ("file", "upFile"))
+            self.assertLess(pixels.sky_share(down) + pixels.SKY_MARGIN, pixels.sky_share(up))
+            self.assertTrue(all(Path(v["file"]).is_file() for v in r["views"]))
         with tempfile.TemporaryDirectory() as folder:
             fake = fake_unreal.FakeUnreal(folder)
             r = drive(fake, job_in(folder, fake, [BASIN, LIP], materials=False)).result
-            check = r["pitchCheck"]
-            self.assertEqual((check["place"], check["requested"], check["seen"]),
-                             ("chute388_bassin", -30.0, -30.0))
-            self.assertTrue(Path(check["file"]).is_file())
+            self.assertEqual(r["pitchCheck"]["place"], "chute388_bassin")  # no dry place
         with tempfile.TemporaryDirectory() as folder:
             fake = fake_unreal.FakeUnreal(folder, invert_pitch=True)
             r = drive(fake, job_in(folder, fake, [BASIN], materials=False)).result
             self.assertEqual(r["pitchCheck"]["seen"], 30.0)  # what the launcher flags
+            self.assertEqual(r["pitchCheck"]["upSeen"], -30.0)
 
     def test_paused_around_the_screenshots(self):
         with tempfile.TemporaryDirectory() as folder:

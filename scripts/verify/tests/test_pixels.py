@@ -68,6 +68,13 @@ class Sky(unittest.TestCase):
         self.assertGreater(share, 0.25)
         self.assertLess(share, pixels.SKY_SUSPECT)
 
+    def test_foam_and_mist_are_no_sky(self):
+        """888435b-b7a3f0e: the white foam and the mist of the basin of a fall, looked down at,
+        were read as sky."""
+        self.assertEqual(pixels.sky_share(pngio.blank(10, 10, (235, 240, 245))), 0.0)
+        self.assertEqual(pixels.sky_share(pngio.blank(10, 10, (205, 210, 214))), 0.0)
+        self.assertEqual(pixels.sky_share(pngio.blank(10, 10, (200, 212, 232))), 1.0)  # haze
+
     def test_dark_or_red_is_no_sky(self):
         self.assertEqual(pixels.sky_share(pngio.blank(10, 10, (20, 30, 60))), 0.0)
         self.assertEqual(pixels.sky_share(pngio.blank(10, 10, (230, 120, 90))), 0.0)

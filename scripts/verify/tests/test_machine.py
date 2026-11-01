@@ -41,7 +41,7 @@ class Example(unittest.TestCase):
                          "UnrealEditor.exe")
         self.assertEqual(m.build_script("Windows").as_posix(),
                          "C:/Program Files/Epic Games/UE_5.8/Engine/Build/BatchFiles/Build.bat")
-        self.assertTrue(str(m.build_script("Linux")).endswith("Linux/Build.sh"))
+        self.assertTrue(m.build_script("Linux").as_posix().endswith("Linux/Build.sh"))
 
     def test_the_example_says_planet_file_is_always_set(self):
         text = EXAMPLE.read_text(encoding="utf-8")

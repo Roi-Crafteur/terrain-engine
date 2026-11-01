@@ -8,6 +8,7 @@ A run is a dict (written by verify.py to run.json):
 """
 
 import json
+import re
 from pathlib import Path
 
 import pixels
@@ -36,25 +37,44 @@ def _views(version):
     return out
 
 
+def _sky(path):
+    image = _read(path)
+    return pixels.sky_share(image) if image is not None else None
+
+
 def pitch_warning(version):
-    """A line for the top of the summary when the check of the pitch looks wrong, else None."""
+    """A notice for the top of the summary when the check of the pitch looks wrong, else None:
+    the camera says it pitches the other way, or the view pitched down by 30 degrees does not
+    show clearly less sky than the same view pitched up (water and foam fool one image alone)."""
     for s in version.get("sessions", []):
         check = (s.get("result") or {}).get("pitchCheck")
         if not check:
             continue
         seen, asked = check.get("seen"), check.get("requested", -30.0)
-        image = _read(check.get("file"))
-        sky = pixels.sky_share(image) if image is not None else None
-        check["sky"] = sky
-        if (seen is not None and seen * asked < 0) or (sky is not None and
-                                                      sky > pixels.SKY_SUSPECT):
-            return (f"ATTENTION ({version['label']}) : inclinaison inversée ? vue de contrôle à "
-                    f"{asked:.0f}° (vers le bas) : la caméra dit {_deg(seen)}, ciel "
-                    f"{_pct(sky)} de l'image ({check.get('file')})")
+        check["sky"], check["upSky"] = _sky(check.get("file")), _sky(check.get("upFile"))
+        down, up = check["sky"], check["upSky"]
+        label = version["label"]
+        if seen is not None and seen * asked < 0:
+            return (f"AVERTISSEMENT ({label}) : inclinaison inversée ? la caméra dit {seen:.1f}° "
+                    f"pour {asked:.0f}° demandés ({check.get('place')})")
         if seen is not None and abs(seen - asked) > PITCH_TOLERANCE:
-            return (f"ATTENTION ({version['label']}) : la caméra n'a pas l'inclinaison demandée "
+            return (f"AVERTISSEMENT ({label}) : la caméra n'a pas l'inclinaison demandée "
                     f"({asked:.0f}° demandés, {seen:.1f}° vus) : la caméra du pion l'écrase ?")
+        if down is not None and up is not None and down > up - pixels.SKY_MARGIN:
+            return (f"AVERTISSEMENT ({label}) : inclinaison inversée ? ciel {_pct(down)} vers le "
+                    f"bas contre {_pct(up)} vers le haut ({check.get('place')})")
     return None
+
+
+def pitch_line(version):
+    for s in version.get("sessions", []):
+        check = (s.get("result") or {}).get("pitchCheck")
+        if check:
+            return (f"  contrôle de l'inclinaison à {check.get('place')} : la caméra dit "
+                    f"{_deg(check.get('seen'))} pour -30° et {_deg(check.get('upSeen'))} pour "
+                    f"+30° ; ciel {_pct(check.get('sky'))} vers le bas, "
+                    f"{_pct(check.get('upSky'))} vers le haut")
+    return "  contrôle de l'inclinaison : aucun"
 
 
 def difference_text(d):
@@ -97,9 +117,6 @@ def _session_warnings(v, s, n):
     if scan.get("determinism") is False:
         out.append(f"ATTENTION ({label}) : le plugin ne génère pas le même monde que "
                    "terrain_core")
-    if scan.get("planetBuilt"):
-        out.append(f"ATTENTION ({label}) : Unreal a reconstruit la planète (fichier copié "
-                   "refusé ?)")
     if scan.get("crash"):
         out.append(f"ATTENTION ({label}) : plantage : {scan['crash'][0]}")
     return out
@@ -127,11 +144,10 @@ def _missing_outputs(v, run):
 
 
 def warnings(run):
+    """The failures of a run (exit code 1): a version, a session, a view or a walk that failed,
+    a crash, the project of the user changed."""
     out = []
     for v in run["versions"]:
-        line = pitch_warning(v)
-        if line:
-            out.append(line)
         if v.get("error"):
             out.append(f"ATTENTION ({v['label']}) : {v['error'].splitlines()[0]}")
         for n, s in enumerate(v.get("sessions", []), 1):
@@ -143,6 +159,20 @@ def warnings(run):
         planets = [p for p, same in safety["planets"].items() if not same]
         out.append("ATTENTION : le projet de l'utilisateur a changé pendant le run : "
                    f"{', '.join((changed + planets)[:10])}")
+    return out
+
+
+def notices(run):
+    """What deserves a look without being a failure (exit code 0): the check of the pitch, a
+    planet that Unreal built again."""
+    out = []
+    for v in run["versions"]:
+        line = pitch_warning(v)
+        if line:
+            out.append(line)
+        if any((s.get("scan") or {}).get("planetBuilt") for s in v.get("sessions", [])):
+            out.append(f"AVERTISSEMENT ({v['label']}) : Unreal a reconstruit la planète "
+                       "(fichier copié refusé ?)")
     return out
 
 
@@ -213,16 +243,39 @@ def _walk_lines(v, run):
     for s in v.get("sessions", []):
         for w in (s.get("result") or {}).get("walks", []):
             if not w.get("file") or not Path(w["file"]).is_file():
-                lines.append(f"    {w['place']} : pas de journal")
+                lines.append(f"    {w['place']} : pas de journal ({w.get('reason')})")
                 continue
             samples = walks_module.read_walk(w["file"])
-            profile = v.get("profiles", {}).get(w["place"])
-            sm = walks_module.summarize(samples, w.get("reason"), profile)
-            lines.append(
-                f"    {w['place']} cap {w['heading']:.0f}° sur {w['distance']:.0f} m : arrêt "
-                f"« {sm['reason']} » à {sm['distance']:.1f} m en {sm['seconds']:.1f} s, "
-                f"{sm['falls']} chute(s), plus grande marche {sm['largestStep']:.2f} m, "
-                f"sous le sol du core : {sm['belowCoreGround']} échantillon(s)")
+            sm = walks_module.summarize(samples, w.get("reason"),
+                                        v.get("profiles", {}).get(w["place"]),
+                                        core=v.get("walkCores", {}).get(w["place"]),
+                                        heading=w["heading"])
+            lines += _walk_text(w, sm)
+    return lines
+
+
+def _z(value):
+    return "?" if value is None else f"{value:.2f} m"
+
+
+def _walk_text(w, sm):
+    lines = [f"    {w['place']} cap {w['heading']:.0f}° sur {w['distance']:.0f} m : arrêt "
+             f"« {sm['reason']} » à {sm['distance']:.1f} m en {sm['seconds']:.1f} s, "
+             f"{sm['falls']} chute(s), plus grande descente {sm['largestDrop']:.2f} m, plus "
+             f"grande marche au sol {sm['largestStep']:.2f} m, sous le sol du core : "
+             f"{sm['belowCoreGround']} échantillon(s)",
+             f"      pieds au départ {_z(sm['start'])} (core {_z(sm.get('coreStart'))}), à la fin "
+             f"{_z(sm['end'])} (core {_z(sm.get('coreEnd'))})"]
+    followed, deviation = sm.get("headingFollowed"), sm.get("deviation")
+    if followed is None:
+        lines.append("      le pion n'a pas avancé")
+    elif deviation is not None and deviation > 20.0:
+        lines.append(f"      le pion n'a pas suivi le cap : {followed:.0f}° au lieu de "
+                     f"{w['heading']:.0f}° (écart {deviation:.0f}°)")
+    else:
+        lines.append(f"      cap suivi {followed:.0f}°")
+    if sm["reason"] == "stuck":
+        lines.append(f"      le pion est resté bloqué à {sm['distance']:.1f} m")
     return lines
 
 
@@ -237,6 +290,7 @@ def version_lines(v, run):
                                    f"{planet['source']} ({planet['origin']}), somme "
                                    f"{planet['checksum']}, copiée dans {planet['installed']}"))
     lines += _session_lines(v)
+    lines.append(pitch_line(v))
     lines.append("  bruit à monde identique (2 prises à 2 s, jeu en pause) :")
     lines += _noise_lines(v) or ["    (aucune)"]
     lines.append("  marches :")
@@ -284,18 +338,24 @@ def _relative(path, run):
         return Path(path).as_uri()
 
 
+def _short(version):
+    """The commit of a version in 10 characters (a whole SHA ran over the next column)."""
+    sha = version.get("sha") or ""
+    return sha[:10] if re.fullmatch(r"[0-9a-f]{7,40}", sha) else version["ref"][:16]
+
+
 def write_report(run):
     folder = Path(run["folder"])
     rows, diff_lines = comparison(run)
-    columns = [f"{v['label']} {v['ref']}" for v in run["versions"]]
+    columns = [f"{v['label']} {_short(v)}" for v in run["versions"]]
     if len(columns) == 2:
         columns.append("ecarts x4")
     sheet.write_sheet(folder / "planche.png", folder / "planche.html", run["title"], columns,
                       rows)
-    alerts = warnings(run)
-    run["alerts"] = alerts
+    alerts, advice = warnings(run), notices(run)
+    run["alerts"], run["notices"] = alerts, advice
     lines = [f"Vérification du {run['date']} : {run['title']}"]
-    lines += alerts or ["Aucune alerte."]
+    lines += (alerts + advice) or ["Aucune alerte."]
     lines += [safety_line(run), ""]
     for v in run["versions"]:
         lines += version_lines(v, run) + [""]

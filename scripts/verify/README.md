@@ -49,10 +49,13 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
   dépôt, un commit dans le miroir. Les dossiers du cache affichés sont les vrais. Une `NOTE` dit
   si le miroir est en retard ; un vrai lancement le met à jour d'abord.
 
-**Code de sortie** : 0 sans alerte, 1 si `resume.txt` commence par une alerte (session tuée ou
-fermée avant la fin du pilote, résultat absent, vue ou marche absente, version non compilée,
-projet de l'utilisateur modifié…), 2 pour une erreur de la commande (lieu inconnu, machine
-absente).
+**Code de sortie** :
+- 1 pour une vraie panne, en tête de `resume.txt` sous « ATTENTION » : session tuée ou fermée
+  avant la fin du pilote, résultat absent, vue ou marche absente, API manquante, erreur du pilote,
+  plantage, version non compilée, projet de l'utilisateur modifié ;
+- 0 sinon, même avec des avertissements (« AVERTISSEMENT » : contrôle de l'inclinaison douteux,
+  planète reconstruite par Unreal) ;
+- 2 pour une erreur de la commande (lieu inconnu, machine absente).
 
 Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
 
@@ -124,7 +127,11 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
      - **le jeu est mis en pause** avant les images : le temps de l'eau et des chutes s'arrête ;
      - **deux images** sont prises à 2 s d'écart. Leur écart est le bruit qui reste à monde
        identique ;
-     - **les marches** se font jusqu'à la première chute.
+     - **les marches** se font jusqu'à la première chute : le mode `Falling` pendant 0,3 s, ou
+       les pieds descendus de 2 m d'un échantillon au suivant, quel que soit le mode lu. Le
+       résumé compare les pieds du pion au sol du core sondé sous chaque échantillon, avec le Z
+       de départ et de fin. Il donne aussi le cap réellement suivi, et dit si le pion a dévié
+       de plus de 20° ou s'il est resté bloqué.
    - Le pilote ne sauvegarde **jamais** la carte ni un asset, et remet le Terrain World comme il
      était.
    - **Les ticks qui arrivent pendant une étape** sont ignorés : la reconstruction d'un matériau
@@ -148,13 +155,18 @@ Le résultat va dans `C:\TerrainVerify\runs\<date>_main_vs_57\` :
 
 ## Le contrôle de l'inclinaison
 
-La première vue de chaque session est d'abord prise vers le bas (−30°). Le pilote note
-l'inclinaison que la caméra dit montrer, et le résumé mesure la part de ciel de l'image.
+À un lieu de la session, le premier sans eau sous l'œil s'il y en a un, le pilote prend la même
+vue deux fois en petit, à +30° puis à −30°, et note chaque fois l'inclinaison que la caméra dit
+montrer. Le résumé mesure la part de ciel des deux images : ciel bleu net, lisse ; ni l'écume
+blanche ni la brume ne comptent.
 
-- Si la caméra montre une inclinaison du signe opposé, ou surtout du ciel, `resume.txt` commence
-  par « inclinaison inversée ? ».
+- Le résumé commence par l'avertissement « inclinaison inversée ? » dans deux cas : la caméra
+  dit une inclinaison du signe opposé, ou la vue vers le bas ne montre pas nettement moins de
+  ciel que la vue vers le haut (15 points de moins au moins). Une image seule ne suffit pas :
+  l'eau reflète le ciel, et l'écume d'un bassin trompait le contrôle de b7a3f0e.
 - Si l'inclinaison n'est pas celle demandée, le résumé le dit : la caméra du pion écrase peut-être
   la rotation.
+- Ce sont des avertissements, pas des pannes : ils ne changent pas le code de sortie.
 
 ## Les jonctions
 
