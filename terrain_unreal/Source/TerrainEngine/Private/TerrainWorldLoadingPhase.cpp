@@ -92,7 +92,7 @@ namespace
 	}
 
 	// The pawn held still (its movement off: no gravity) or given back, placed on the ground, or on
-	// the water over it, if it stands below.
+	// the water over it, if it stands below (not a view of the tools, whose eye was asked).
 	void HoldLoadPawn(FTerrainWorldState& State, APawn* Pawn, bool bHold)
 	{
 		APawn* Held = State.Loading.HeldPawn.Get();
@@ -104,6 +104,7 @@ namespace
 				Movement->Deactivate();
 			}
 			State.Loading.HeldPawn = Pawn;
+			State.Loading.bHeldKeepsHeight = false;
 			return;
 		}
 		if (bHold || Held == nullptr)
@@ -113,7 +114,7 @@ namespace
 		const FVector Location = Held->GetActorLocation();
 		const double StandZ = TerrainLevelZ(State, Location, true);
 		const double HalfHeight = Held->GetSimpleCollisionHalfHeight();
-		if (Location.Z - HalfHeight < StandZ)
+		if (!State.Loading.bHeldKeepsHeight && Location.Z - HalfHeight < StandZ)
 		{
 			const FVector OnGround(Location.X, Location.Y, StandZ + HalfHeight + LoadClearanceCm);
 			Held->SetActorLocation(OnGround, false, nullptr, ETeleportType::TeleportPhysics);
@@ -123,6 +124,14 @@ namespace
 			Movement->Activate();
 		}
 		State.Loading.HeldPawn.Reset();
+		State.Loading.bHeldKeepsHeight = false;
+	}
+
+	// The pawn moved so that its eye (its view location) stands at Eye.
+	void PutEyeAt(APawn& Pawn, const FVector& Eye)
+	{
+		const FVector Offset = Pawn.GetPawnViewLocation() - Pawn.GetActorLocation();
+		Pawn.SetActorLocation(Eye - Offset, false, nullptr, ETeleportType::TeleportPhysics);
 	}
 
 	void ApplyLoadBudget(FTerrainWorldState& State)
@@ -305,7 +314,16 @@ bool PollTerrainGround(FTerrainWorldState& State)
 	Loading.PawnToPlace.Reset();
 	const terrain::unreal::UnrealPoint Stand =
 		terrain::unreal::toUnreal(State.Frame, {Level->x, Level->stand, Level->z});
-	if (Pawn != nullptr)
+	const TOptional<double> EyeAbove = Loading.EyeAboveStand;
+	Loading.EyeAboveStand.Reset();
+	if (Pawn != nullptr && EyeAbove.IsSet())
+	{
+		// A view of the tools: its eye that far above the ground or the water.
+		const terrain::unreal::UnrealPoint Eye =
+			terrain::unreal::toUnreal(State.Frame, {Level->x, Level->stand + *EyeAbove, Level->z});
+		PutEyeAt(*Pawn, FVector(Eye.x, Eye.y, Eye.z));
+	}
+	else if (Pawn != nullptr)
 	{
 		const double AboveCm = Pawn->GetSimpleCollisionHalfHeight() + LoadClearanceCm;
 		Pawn->SetActorLocation(FVector(Stand.x, Stand.y, Stand.z + AboveCm), false, nullptr,
@@ -337,11 +355,30 @@ double TerrainLevelZ(const FTerrainWorldState& State, const FVector& Location, b
 bool ATerrainWorld::TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ,
 	float HeadingDegrees, float PitchDegrees)
 {
-	if (!State.IsValid() || Pawn == nullptr)
+	if (Pawn == nullptr)
 	{
-		UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain World: no streaming or no pawn to teleport"));
+		UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain World: no pawn to teleport"));
 		return false;
 	}
+	FTerrainTeleport Teleport;
+	Teleport.X = CoreX;
+	Teleport.Z = CoreZ;
+	Teleport.Heading = HeadingDegrees;
+	Teleport.Pitch = PitchDegrees;
+	return BeginTeleport(*Pawn, Teleport);
+}
+
+bool ATerrainWorld::BeginTeleport(APawn& Pawn, const FTerrainTeleport& Teleport)
+{
+	if (!State.IsValid())
+	{
+		UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain World: no streaming to teleport in"));
+		return false;
+	}
+	const double CoreX = Teleport.X;
+	const double CoreZ = Teleport.Z;
+	const float HeadingDegrees = static_cast<float>(Teleport.Heading);
+	const float PitchDegrees = static_cast<float>(Teleport.Pitch);
 	FTerrainWorldState& Terrain = *State.Get();
 	if (Terrain.Loading.Phase.IsSet())
 	{
@@ -354,23 +391,44 @@ bool ATerrainWorld::TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ,
 	// once read (PollTerrainGround).
 	const double Begin = FPlatformTime::Seconds();
 	const FVector Point = LoadFocusPoint(Terrain, CoreX, CoreZ);
-	const FVector Location(Point.X, Point.Y, Pawn->GetActorLocation().Z);
-	Pawn->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
-	HoldLoadPawn(Terrain, Pawn, true);
+	const bool bEyeAtAltitude = Teleport.EyeMeters.IsSet() && !Teleport.bEyeAboveStand;
+	FVector Location(Point.X, Point.Y, Pawn.GetActorLocation().Z);
+	Pawn.SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
+	if (bEyeAtAltitude)
+	{
+		// An eye at an altitude of the core: there at once, no ground needed.
+		const terrain::unreal::UnrealPoint Eye =
+			terrain::unreal::toUnreal(Terrain.Frame, {CoreX, *Teleport.EyeMeters, CoreZ});
+		PutEyeAt(Pawn, FVector(Eye.x, Eye.y, Eye.z));
+		Location = Pawn.GetActorLocation();
+	}
+	HoldLoadPawn(Terrain, &Pawn, true);
+	Terrain.Loading.bHeldKeepsHeight = Teleport.EyeMeters.IsSet();
 	const double Moved = FPlatformTime::Seconds();
 	const terrain::unreal::ViewAngles Angles =
 		terrain::unreal::viewAngles(HeadingDegrees, PitchDegrees);
-	if (AController* Controller = Pawn->GetController())
+	if (AController* Controller = Pawn.GetController())
 	{
 		Controller->SetControlRotation(FRotator(Angles.pitch, Angles.yaw, 0.0));
 	}
+	const FString EyeText = !Teleport.EyeMeters.IsSet() ? FString()
+		: FString::Printf(TEXT(", the eye %s %.2f m"),
+			  bEyeAtAltitude ? TEXT("at") : TEXT("above the ground or the water by"),
+			  *Teleport.EyeMeters);
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: %s teleported to (%.1f, %.1f) m, heading %.1f (yaw %.1f), pitch "
-			 "%.1f; held until the world around is shown"),
-		*Pawn->GetName(), CoreX, CoreZ, HeadingDegrees, Angles.yaw, Angles.pitch);
+			 "%.1f%s; held until the world around is shown"),
+		*Pawn.GetName(), CoreX, CoreZ, HeadingDegrees, Angles.yaw, Angles.pitch, *EyeText);
 	BeginTerrainLoad(Terrain, Location, terrain::unreal::LoadReason::Teleport);
 	Terrain.Loading.Ground.ask(Terrain.Session.tiles().heightfield(), CoreX, CoreZ);
-	Terrain.Loading.PawnToPlace = Pawn;
+	// Placed once the ground is read: the feet on it, or the eye above it; an eye at an altitude
+	// stays where it is (the level read still serves the hold).
+	Terrain.Loading.PawnToPlace = bEyeAtAltitude ? nullptr : &Pawn;
+	Terrain.Loading.EyeAboveStand.Reset();
+	if (Teleport.EyeMeters.IsSet() && Teleport.bEyeAboveStand)
+	{
+		Terrain.Loading.EyeAboveStand = *Teleport.EyeMeters;
+	}
 	const double End = FPlatformTime::Seconds();
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: the teleport took %.1f ms on the game thread: the move of the pawn "
@@ -420,42 +478,3 @@ void ATerrainWorld::ReleasePreparedLocation()
 		BeginTerrainLoad(*State.Get(), Focus, terrain::unreal::LoadReason::Teleport);
 	}
 }
-
-bool ATerrainWorld::LoadTest(double CoreX, double CoreZ, float HeadingDegrees, float PitchDegrees)
-{
-	FVector Focus = FVector::ZeroVector;
-	APawn* Pawn = nullptr;
-	if (!State.IsValid() || !FindFocus(Focus, Pawn) || Pawn == nullptr)
-	{
-		UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.LoadTest: no streaming or no pawn"));
-		return false;
-	}
-	return TeleportWhenReady(Pawn, CoreX, CoreZ, HeadingDegrees, PitchDegrees);
-}
-
-namespace
-{
-	// Terrain.LoadTest <x> <z> [heading] [pitch]: on every Terrain World of the world.
-	void RunTerrainLoadTest(const TArray<FString>& Args, UWorld* World)
-	{
-		if (World == nullptr || Args.Num() < 2)
-		{
-			UE_LOG(LogTerrainEngine, Warning,
-				TEXT("Terrain.LoadTest <x m> <z m> [heading degrees] [pitch degrees]"));
-			return;
-		}
-		const float Heading = Args.Num() > 2 ? FCString::Atof(*Args[2]) : 0.0f;
-		const float Pitch = Args.Num() > 3 ? FCString::Atof(*Args[3]) : 0.0f;
-		for (TActorIterator<ATerrainWorld> It(World); It; ++It)
-		{
-			It->LoadTest(FCString::Atod(*Args[0]), FCString::Atod(*Args[1]), Heading, Pitch);
-		}
-	}
-
-	FAutoConsoleCommandWithWorldAndArgs TerrainLoadTestCommand(TEXT("Terrain.LoadTest"),
-		TEXT("Teleports the player to the core point (x, z), meters, on the ground, facing the "
-			 "heading (0 north, 90 east) and the pitch (negative: down), the screen black and the "
-			 "pawn held until the world around is shown, and measures the load (log and CSV in "
-			 "Saved/TerrainEngine/Loading): Terrain.LoadTest x z [heading] [pitch]"),
-		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainLoadTest));
-} // namespace

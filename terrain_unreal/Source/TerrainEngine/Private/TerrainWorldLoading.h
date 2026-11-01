@@ -30,6 +30,21 @@ struct FTerrainWorldState;
 // - the measures (Bridge/load_timeline.hpp): each milestone logged as it is reached, then the
 //   summary, the curve "distance -> instant shown" and the CSV of the tiles in
 //   Saved/TerrainEngine/Loading/.
+// A teleport (ATerrainWorld::BeginTeleport, the one teleport of the world: TeleportWhenReady and
+// the views of the tools of the developers, TeleportView): the core point, meters, the compass
+// heading and the pitch (negative: down), and for a view of the tools its eye, EyeMeters above
+// the ground or the water of the core (bEyeAboveStand) or at the altitude EyeMeters; without an
+// eye, the feet of the pawn on the ground or on the water.
+struct FTerrainTeleport
+{
+	double X = 0.0;
+	double Z = 0.0;
+	double Heading = 0.0;
+	double Pitch = 0.0;
+	TOptional<double> EyeMeters;
+	bool bEyeAboveStand = true;
+};
+
 struct FTerrainLoadingState
 {
 	// The durations of the start of the streaming (BeginPlay), seconds.
@@ -54,6 +69,9 @@ struct FTerrainLoadingState
 	// read, then the level read, for the pawn held there.
 	terrain::unreal::GroundRead Ground;
 	TWeakObjectPtr<APawn> PawnToPlace;
+	// The eye of PawnToPlace that far above the level read, meters (a view of the tools), instead
+	// of its feet on it.
+	TOptional<double> EyeAboveStand;
 	TOptional<terrain::unreal::GroundLevel> KnownGround;
 	bool bScreenBlack = false;      // the fade holds the screen black
 	TSharedPtr<SWidget> Cover;      // the black widget of the start, until its fade ends
@@ -65,6 +83,7 @@ struct FTerrainLoadingState
 	double FrameHorizonMilliseconds = 0.0;
 	double FrameTexturesMilliseconds = 0.0;
 	TWeakObjectPtr<APawn> HeldPawn; // the pawn whose movement the hold stopped
+	bool bHeldKeepsHeight = false;  // its eye was asked: not put back onto the ground at release
 };
 
 // The uploads of a frame and their time on the game thread.

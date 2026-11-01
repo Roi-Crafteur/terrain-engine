@@ -15,8 +15,8 @@ class USkyLightComponent;
 /**
  * Keeps the planet of the SkyAtmosphere under the camera, its top at the sea level
  * (Bridge/horizon_atmosphere.hpp: planetTopUnder), the height fog under the camera at its height
- * above the sea level, and the SkyLight on the camera: its real-time capture renders the sky from
- * where it stands, black from space. Ticks after the camera has moved (TG_PostUpdateWork): the
+ * above the sea level (heightFogUnder), and the SkyLight on the camera: its real-time capture
+ * renders the sky from where it stands, black from space. Ticks after the camera has moved (TG_PostUpdateWork): the
  * frame drawn after a world turn or the origin rebasing already has its sky. Moving these
  * components only sends their new transform to the renderer.
  */

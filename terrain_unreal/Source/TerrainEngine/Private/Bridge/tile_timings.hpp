@@ -34,6 +34,10 @@ struct LodTimings {
     std::size_t meshes = 0;
     std::size_t vertices = 0;
     std::size_t triangles = 0;
+    // The water meshes of the tiles that have some (lakes, rivers, falls), within their
+    // conversion: their tiles and the time to build them (the tools of the developers; not in
+    // describe).
+    StageStats water;
 
     [[nodiscard]] const StageStats& stage(TileStage stage) const;
 };
@@ -46,14 +50,19 @@ class TileTimings {
 public:
     void record(TileStage stage, int lod, double milliseconds);
     void recordMesh(int lod, std::size_t vertices, std::size_t triangles);
+    void recordWater(int lod, double milliseconds);
 
     [[nodiscard]] TimingsReport snapshot() const;
     // The measures since the previous take (or the start), then starts again from zero.
     TimingsReport take();
+    // Every measure since the start, which take never resets: the rates over a window of time
+    // of the tools of the developers (dev_perf.hpp), whatever the summaries of the log take.
+    [[nodiscard]] TimingsReport totals() const;
 
 private:
     mutable std::mutex mutex_;
     TimingsReport report_{};
+    TimingsReport totals_{};
 };
 
 // Milliseconds elapsed since start, on the steady clock.

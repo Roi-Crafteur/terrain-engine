@@ -74,8 +74,14 @@ void ATerrainWorld::StartAtmosphere()
 		Sky->SetBottomRadius(static_cast<float>(RadiusKm));
 		Sky->MarkRenderStateDirty();
 	}
-	const double SeaLevelZ = terrain::unreal::seaLevelZ(State->Frame);
-	const double FogAboveSeaCm = Fog != nullptr ? Fog->GetComponentLocation().Z - SeaLevelZ : 0.0;
+	// The Z of the fog in the level is its height above the sea level (Bridge/horizon_atmosphere:
+	// heightFogUnder), not above the ground at the origin: the same fog for a level that starts on
+	// a beach or on a mountain. Read once: the follower moves the fog afterwards.
+	if (Fog != nullptr && !LevelFogAboveSeaCm.IsSet())
+	{
+		LevelFogAboveSeaCm = Fog->GetComponentLocation().Z;
+	}
+	const double FogAboveSeaCm = LevelFogAboveSeaCm.Get(0.0);
 	if (Fog != nullptr && FogEndDistanceKm > 0.0f)
 	{
 		Fog->SetEndDistance(FogEndDistanceKm * 1.0e5f);
