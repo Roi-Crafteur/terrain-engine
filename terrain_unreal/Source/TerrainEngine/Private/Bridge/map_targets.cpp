@@ -98,24 +98,6 @@ std::string grouped(std::uint64_t whole) {
 
 } // namespace
 
-double yawOfHeading(double heading) {
-    double yaw = std::fmod(heading - 90.0, 360.0);
-    if (yaw <= -180.0) {
-        yaw += 360.0;
-    } else if (yaw > 180.0) {
-        yaw -= 360.0;
-    }
-    return yaw;
-}
-
-double headingOfYaw(double yaw) {
-    double heading = std::fmod(yaw + 90.0, 360.0);
-    if (heading < 0.0) {
-        heading += 360.0;
-    }
-    return heading >= 360.0 ? 0.0 : heading;
-}
-
 MapPlace clickTarget(const MapView& view, ScreenPoint pixel, double heading, double pitch,
                      const WorldSize& world) {
     const WorldPoint p = screenToWorld(view, pixel, world);

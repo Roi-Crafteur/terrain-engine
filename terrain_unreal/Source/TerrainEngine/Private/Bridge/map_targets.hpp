@@ -8,6 +8,7 @@
 
 #include "map_places_port.hpp"
 #include "map_view.hpp"
+#include "place_pose.hpp" // yawOfHeading, headingOfYaw (agent 36)
 #include "unreal_frame.hpp"
 
 #include <optional>
@@ -18,11 +19,6 @@ namespace terrain::unreal {
 
 // The eye of a view the dev map sends to: this many meters above the ground or the water.
 inline constexpr double kMapEyeAboveGround = 1.8;
-
-// The yaw of Unreal (degrees from +X, the east of the core, toward +Y, its south) of a heading
-// (degrees clockwise from the north, -z): heading - 90, in (-180, 180]; and back, in [0, 360).
-[[nodiscard]] double yawOfHeading(double heading);
-[[nodiscard]] double headingOfYaw(double yaw);
 
 // The view a click on a pixel of the map sends to: the point of the world under it, the heading
 // and the pitch of the player kept, the eye kMapEyeAboveGround above the ground or the water.

@@ -1,5 +1,7 @@
 #include "horizon_epochs.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -18,6 +20,7 @@ HorizonEpochRunner::HorizonEpochRunner(const HorizonSampler& sampler, JobLaunche
     if (edits_ != nullptr) {
         edits_->validate(sampler.params());
     }
+    maxPieces_ = params_.maxPiecesInFlight;
 }
 
 HorizonEpochRunner::~HorizonEpochRunner() {
@@ -27,8 +30,12 @@ HorizonEpochRunner::~HorizonEpochRunner() {
 }
 
 EpochCommit HorizonEpochRunner::update(double x, double z) {
-    rethrowError();
+    noteNewPlace(x, z);
     EpochCommit result;
+    if (!settleAbandoned()) {
+        return result; // pieces of the old place still running
+    }
+    rethrowError();
     commitIfComplete(result);
     if (epoch_ == nullptr) {
         // No job reads the edits now: the staged ones may take effect.
@@ -37,20 +44,111 @@ EpochCommit HorizonEpochRunner::update(double x, double z) {
                 clipmap_.invalidate(area.minX, area.minZ, area.maxX, area.maxZ);
             }
         }
-        if (std::optional<HorizonEpoch> next = clipmap_.plan(x, z, params_.pieceSamples)) {
-            start(std::move(*next));
-            commitIfComplete(result); // computed at once (synchronous jobs, nothing to compute)
-        }
+        planNext(x, z);
+        commitIfComplete(result); // computed at once (synchronous jobs, nothing to compute)
     }
     return result;
+}
+
+// A new place: the player out of the window of the finest level, and no epoch on its way there.
+// The levels of the old place are no longer shown; the epoch in flight is abandoned.
+void HorizonEpochRunner::noteNewPlace(double x, double z) {
+    const HorizonLevel& finest = clipmap_.level(0);
+    if (!params_.progressive || (finest.placed() && finest.heightAt(x, z).has_value())) {
+        return;
+    }
+    if (epoch_ != nullptr && !abandoned_ && near(epochX_, epochZ_, x, z)) {
+        return; // planned around this place
+    }
+    levelsShown_ = 0;
+    if (epoch_ != nullptr && !abandoned_) {
+        const std::lock_guard lock(mutex_);
+        next_ = epoch_->pieces.size(); // no more pieces of it
+        abandoned_ = true;
+    }
+}
+
+// Forgets an abandoned epoch once none of its pieces is computed any more; false until then.
+bool HorizonEpochRunner::settleAbandoned() {
+    if (!abandoned_) {
+        return true;
+    }
+    {
+        const std::lock_guard lock(mutex_);
+        if (inFlight_ > 0) {
+            return false;
+        }
+        remaining_ = 0;
+        error_ = nullptr; // an error of the old place is no longer of interest
+    }
+    epoch_.reset();
+    prepared_.clear();
+    abandoned_ = false;
+    return true;
+}
+
+// The next epoch: one more level at a new place, finest first (skipping the levels already
+// around the player), then every level at once.
+void HorizonEpochRunner::planNext(double x, double z) {
+    const int levels = clipmap_.levelCount();
+    while (params_.progressive && levelsShown_ < levels) {
+        std::optional<HorizonEpoch> next =
+            clipmap_.planFinest(x, z, levelsShown_ + 1, params_.pieceSamples);
+        if (next) {
+            epochX_ = x;
+            epochZ_ = z;
+            start(std::move(*next));
+            return;
+        }
+        ++levelsShown_; // that level stands around the player already
+    }
+    if (std::optional<HorizonEpoch> next = clipmap_.plan(x, z, params_.pieceSamples)) {
+        epochX_ = x;
+        epochZ_ = z;
+        start(std::move(*next));
+    }
+}
+
+// Two places within half of the half window of the finest level of each other, any images.
+bool HorizonEpochRunner::near(double ax, double az, double bx, double bz) const {
+    const HorizonParams& params = clipmap_.params();
+    const double reach = 0.25 * params.cellsPerSide * levelPitch(params, 0);
+    const double dx = nearestImage(bx, ax, params.world.x) - ax;
+    const double dz = nearestImage(bz, az, params.world.z) - az;
+    return std::abs(dx) <= reach && std::abs(dz) <= reach;
 }
 
 void HorizonEpochRunner::waitIdle() {
     if (epoch_ == nullptr) {
         return;
     }
+    const bool abandoned = abandoned_;
     std::unique_lock lock(mutex_);
-    done_.wait(lock, [this] { return error_ != nullptr || remaining_ == 0; });
+    done_.wait(lock, [this, abandoned] {
+        return error_ != nullptr || (abandoned ? inFlight_ == 0 : remaining_ == 0);
+    });
+}
+
+void HorizonEpochRunner::setMaxPiecesInFlight(int pieces) {
+    std::vector<std::size_t> launches;
+    {
+        const std::lock_guard lock(mutex_);
+        maxPieces_ = std::max(1, pieces);
+        if (epoch_ != nullptr) {
+            const std::size_t count = epoch_->pieces.size();
+            for (std::size_t index = takeNext(); index < count; index = takeNext()) {
+                launches.push_back(index);
+            }
+        }
+    }
+    for (const std::size_t index : launches) {
+        launch_([this, index] { runPiece(index); });
+    }
+}
+
+int HorizonEpochRunner::maxPiecesInFlight() const {
+    const std::lock_guard lock(mutex_);
+    return maxPieces_;
 }
 
 void HorizonEpochRunner::start(HorizonEpoch epoch) {
@@ -61,7 +159,7 @@ void HorizonEpochRunner::start(HorizonEpoch epoch) {
         const std::lock_guard lock(mutex_);
         next_ = 0;
         remaining_ = epoch_->pieces.size();
-        while (static_cast<int>(inFlight_) < params_.maxPiecesInFlight) {
+        while (static_cast<int>(inFlight_) < maxPieces_) {
             const std::size_t index = takeNext();
             if (index == epoch_->pieces.size()) {
                 break;
@@ -76,7 +174,8 @@ void HorizonEpochRunner::start(HorizonEpoch epoch) {
 
 std::size_t HorizonEpochRunner::takeNext() {
     const std::size_t count = epoch_->pieces.size();
-    if (stopping_ || error_ != nullptr || next_ >= count) {
+    if (stopping_ || error_ != nullptr || next_ >= count ||
+        static_cast<int>(inFlight_) >= maxPieces_) {
         return count;
     }
     ++inFlight_;
@@ -117,7 +216,7 @@ void HorizonEpochRunner::runPiece(std::size_t index) {
 }
 
 void HorizonEpochRunner::commitIfComplete(EpochCommit& result) {
-    if (epoch_ == nullptr) {
+    if (epoch_ == nullptr || abandoned_) {
         return;
     }
     {
@@ -127,6 +226,7 @@ void HorizonEpochRunner::commitIfComplete(EpochCommit& result) {
         }
     }
     HorizonChanges changes = clipmap_.commit(*epoch_);
+    levelsShown_ = std::max(levelsShown_, static_cast<int>(epoch_->centers.size()));
     for (HorizonLevelChange& change : changes.levels) {
         result.changes.levels.push_back(std::move(change));
     }

@@ -3,7 +3,9 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Templates/PimplPtr.h"
+#include "TerrainDevTypes.h"
 #include "TerrainEdits.h"
+#include "TerrainLoadingSettings.h"
 
 #include "TerrainWorld.generated.h"
 
@@ -15,9 +17,12 @@ class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UTerrainAtmosphereFollower;
 class UTerrainDevMapComponent;
+class UTerrainDevTools;
 class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
 class UTerrainMeshBackend;
+struct FTerrainTeleport;
+struct FTerrainWorldStart;
 struct FTerrainWorldState;
 
 // How the tiles become Unreal meshes: the options of phase 10, to compare by measure.
@@ -178,6 +183,14 @@ public:
 		meta = (ClampMin = "0.1"))
 	float WarmUpTimeoutSeconds = 10.0f;
 
+	// The loads at the start, after a teleport and around a prepared point (agent 38): the boost,
+	// the fade, the hold, the horizon level by level (TerrainLoadingSettings.h).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Loading")
+	FTerrainLoadingSettings LoadingSettings;
+
+	UPROPERTY(BlueprintAssignable, Category = "Terrain|Loading")
+	FTerrainLocationReady OnTerrainLocationReady;
+
 	// Interval of the summary of the tile costs in the log; 0: no summary.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Measures",
 		meta = (ClampMin = "0"))
@@ -281,9 +294,11 @@ public:
 	// The sky follows the camera over the curved planet (terrain_unreal/README.md, section 12):
 	// the SkyAtmosphere of the level takes the radius of the planet, its top at the sea level
 	// right under the camera, the ExponentialHeightFog stays under the camera at its height above
-	// the sea level, and the SkyLight (its real-time capture) on the camera; they move after the
-	// camera, every frame. The aerial perspective then reaches the end of the horizon. Off: they
-	// stay where the level puts them, and the sky turns black thousands of kilometers away.
+	// the sea level (its Z in the level, the Z 0 of the level read as the sea level, whatever
+	// point of the core lies at the origin), and the SkyLight (its real-time capture) on the
+	// camera; they move after the camera, every frame. The aerial perspective then reaches the
+	// end of the horizon. Off: they stay where the level puts them, and the sky turns black
+	// thousands of kilometers away.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Atmosphere")
 	bool bAtmosphereFollowsCamera = true;
 
@@ -337,12 +352,74 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain|Map")
 	TObjectPtr<UTerrainDevMapComponent> DevMap;
 
+	// The tools of the developers while playing (terrain_unreal/DEV_TOOLS.md): the screen of F3 and
+	// the Terrain.* commands of views, places, view modes and seed. Off: none of them. Never in a
+	// Shipping build (TERRAIN_DEV_TOOLS, TerrainEngine.Build.cs).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Dev")
+	bool bDevTools = true;
+
+	// The teleport of the tools (Terrain.Goto, the dev map; its contract in
+	// terrain_unreal/DEV_TOOLS.md), on the one teleport of the world (BeginTeleport, the loading
+	// of agent 38): the view at the core point (X, Z), meters, looking along Heading (degrees
+	// clockwise from the north, -Z of the core) and Pitch (degrees, positive up, negative down,
+	// clamped to [-89.9, 89.9]), its eye at the altitude Eye (Altitude) or Eye meters above the
+	// ground or the water (Ground). Returns at once: the player takes a flying pawn of the tools,
+	// the screen black and the pawn held; the eye stands exactly there once the ground is read on
+	// a thread, the screen back once the world around is shown (IsViewLoading). False without the
+	// tools, outside play or while the world builds.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
+	bool TeleportView(double X, double Z, double Heading, double Pitch, double Eye,
+		ETerrainEyeMode EyeMode);
+
+	// True while the load of the last teleport holds the view: the screen black or the pawn held
+	// (LoadPhase); false once the world around is shown, or without the tools.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
+	bool IsViewLoading() const;
+
+	// The pawn of the game back from the pawn of the tools, put down on the walkable ground nearest
+	// to the view (Terrain.PawnRadius around, a slope under the walkable angle of its
+	// CharacterMovement less 5 degrees, checked by rays on the collision of the tiles, then
+	// watched for a second: the next spot when it slides; a message when it is not right under
+	// the view). False, nothing changed, when the player has no pawn of the tools, when the view
+	// is over water (the sea, a lake, a river: the pawn of the game is never put on the bottom)
+	// or when no walkable ground is near; a message on the screen and in the log says so, the
+	// view of the tools stays.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Dev")
+	bool ReturnToGamePawn();
+
+	// The tools of the developers of this world while playing, or null (off, or Shipping).
+	UTerrainDevTools* GetDevTools() const;
+
+	// Teleports Pawn to the core point (CoreX, CoreZ), meters, on the ground, facing the compass
+	// heading (0 north, 90 east) and the pitch (negative: down), the screen black and the pawn held
+	// until the world around is shown (agent 38, LoadingSettings). False outside play.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool TeleportWhenReady(APawn* Pawn, double CoreX, double CoreZ, float HeadingDegrees = 0.0f,
+		float PitchDegrees = 0.0f);
+	// TeleportWhenReady of the pawn of the player, measured (log and CSV of
+	// Saved/TerrainEngine/Loading): the console command Terrain.LoadTest x z [heading] [pitch].
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool LoadTest(double CoreX, double CoreZ, float HeadingDegrees = 0.0f,
+		float PitchDegrees = 0.0f);
+	// "Prepare this point, then tell": the tiles and the horizon streamed around the core point
+	// until ReleasePreparedLocation, OnTerrainLocationReady broadcast once they are shown.
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	bool PrepareLocation(double CoreX, double CoreZ);
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Loading")
+	void ReleasePreparedLocation();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+	// The one teleport (TerrainWorldLoadingPhase.cpp): TeleportWhenReady and the views of the
+	// tools (TeleportView) go through it. The pawn moved at once and held, the screen black, the
+	// ground read on a thread, the pawn put on it (or its eye above it) once read.
+	bool BeginTeleport(APawn& Pawn, const FTerrainTeleport& Teleport);
 	bool StartStreaming();
+	bool TickStart();
+	void FinishStreamingStart(double StartSeconds);
 	void StopStreaming(const FString& Reason);
 	void StartHorizon();
 	bool StartGpuHorizon();
@@ -366,6 +443,16 @@ private:
 	UMaterialInterface* ResolveMaterial() const;
 	UMaterialInterface* MakeTileLook();
 	void StartWater();
+	// Everything of the world while playing removed (EndPlay, and Terrain.Seed before
+	// StartStreaming builds the world again).
+	void ReleaseWorld();
+	// The tools of the developers (TerrainWorldDev.cpp), nothing without TERRAIN_DEV_TOOLS.
+	void StartDevTools();
+	void StopDevTools();
+	void TickDevTools(float DeltaSeconds);
+	void NotifyDevToolsStopped();
+
+	friend class UTerrainDevTools;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTerrainMeshBackend> Backend;
@@ -388,12 +475,21 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> TileWaterLook;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UTerrainDevTools> DevTools;
+
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor). The map reads them (TerrainDevMap.cpp).
 	friend class UTerrainDevMapComponent;
 	TPimplPtr<FTerrainWorldState> State;
+	// While the session builds on its thread (TerrainWorldStart.cpp).
+	TPimplPtr<FTerrainWorldStart> Starting;
 	TWeakObjectPtr<APawn> WarmedPawn;
 	float SecondsSinceTimingLog = 0.0f;
 	// The depth of the aerial perspective before StartAtmosphere extended it, km; -1: unchanged.
 	float RestoredAerialPerspectiveDepthKm = -1.0f;
+	// The height of the height fog above the sea level, cm: its Z in the level, read by the first
+	// StartAtmosphere of the play, before the follower moves it (a world started again by
+	// Terrain.Seed keeps it).
+	TOptional<double> LevelFogAboveSeaCm;
 };

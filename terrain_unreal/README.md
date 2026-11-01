@@ -138,9 +138,11 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `bAsyncCollisionCooking` | non | cuisson des collisions hors du thread de jeu |
 | `bWater` | oui | lacs et fleuves des tuiles à leur niveau, rideaux et écume des chutes, lacs et fleuves de l'horizon GPU (section 14) ; `Terrain.Water 0\|1` les cache ou les montre en jeu |
 | `WaterMaterial`, `FallsMaterial` | aucun | matériaux de la surface de l'eau des tuiles et des chutes ; aucun : `M_TerrainWater`, `M_TerrainFalls` (`Scripts/create_water_materials.py`) |
+| `bDevTools` | oui | les outils de debug en jeu (`DEV_TOOLS.md`) : écran F3, commandes `Terrain.Goto`, `Look`, `Eye`, `Pawn`, `Save`, `Info`, `Shot`, `Views`, `View`, `Seed`, `Hud` ; jamais dans un build Shipping |
 | `FocusActor` | aucun | acteur suivi ; sinon le pion du premier joueur, ou sa caméra |
 | `bSnapPawnToGround` | oui | pose sur le sol un nouveau pion qui est dessous |
 | `WarmUpRadiusChunks`, `WarmUpTimeoutSeconds` | 1, 10 | tuiles LOD 0 générées avant qu'un nouveau pion bouge |
+| `LoadingSettings` | renfort, fondu 2 s, horizon niveau par niveau | chargement au spawn et à la téléportation : renfort des fils et des envois sous un plafond, écran noir jusqu'au sol, 64 m, toutes les tuiles et les niveaux 0 à 3 de l'horizon, pion tenu jusqu'à sa collision (`LOADING.md`) |
 | `TimingLogIntervalSeconds` | 5 | intervalle du résumé des mesures (0 : aucun) |
 | `bHorizon` | oui | horizon lointain (section 10) |
 | `HorizonLevels` | 10 | niveaux de l'horizon : 8 m, puis le double à chaque niveau ; 10 vont à 520 km |
@@ -177,11 +179,15 @@ terrain_unreal/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
     Public/TerrainEdits.h      ETerrainEditShape, ETerrainEditMode
+    Public/TerrainDevTypes.h   ETerrainEyeMode (les lieux des outils de debug)
     Private/
       TerrainWorld.cpp         cycle de vie, tick, démarrage d'un pion, mesures
       TerrainWorldHorizon.cpp  l'horizon lointain d'ATerrainWorld
       TerrainWorldEdits.cpp    les modifications pour essayer (section 15), Terrain.Edit
       TerrainWorldWater.cpp    l'eau (section 14), Terrain.Water, la ligne du fichier planète
+      TerrainWorldDev.cpp      les crochets des outils de debug, TeleportView (DEV_TOOLS.md)
+      TerrainDev*.cpp/.h       les outils de debug : F3, commandes, images, modes de vue, seed
+      ProceduralMeshTerrainLooks.cpp  les couleurs des tuiles dans les modes de vue
       TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
       TerrainHorizonClipmap.*  l'horizon GPU : grilles fixes, placements
       TerrainHorizonTextures.* ses textures (texels, normales, eau) et leurs envois
@@ -253,7 +259,9 @@ Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_fr
 `unreal_horizon_normals_test`, `unreal_horizon_detail_test`, `unreal_horizon_crests_test`,
 `unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`, `unreal_tile_water_test`,
 `unreal_water_scripts_test` (les scripts de l'eau, sans Unreal), `unreal_planet_file`,
-`unreal_core_sources`. Mesures à la main : `unreal_horizon_bench` (temps de l'horizon GPU, crêtes
+`unreal_core_sources`, et ceux des outils de debug (`DEV_TOOLS.md`) : `unreal_place_pose_test`,
+`unreal_point_info_test`, `unreal_dev_perf_test`, `unreal_debug_colors_test`,
+`unreal_planet_job_test`, `unreal_dev_tools_guard`. Mesures à la main : `unreal_horizon_bench` (temps de l'horizon GPU, crêtes
 dans l'époque ou après, voir l'en-tête de `tests/unreal_horizon_bench.cpp`).
 
 ## 7. Linux et Mac (non essayés)
@@ -514,7 +522,10 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
   frame, le sommet de sa planète au niveau de la mer sous la caméra : la même sphère que la
   courbure de l'horizon, dont la mer tombe sur son sol et l'horizon sur le sien. Il pose
   l'`ExponentialHeightFog` sous la caméra à sa hauteur au-dessus de la mer, et la `SkyLight` sur la
-  caméra. Après un tour du monde ou un recentrage d'origine, la frame suivante a déjà son ciel
+  caméra. Cette hauteur est le Z du brouillard dans le niveau, lu une fois par Play comme une
+  hauteur au-dessus de la mer (le Z 0 du niveau est la mer, quel que soit le point du core à
+  l'origine) : un brouillard posé pour une plage ne flotte pas 4 km plus haut quand le niveau
+  commence sur une montagne (`CoreOriginX`, `CoreOriginZ` près du K2). Après un tour du monde ou un recentrage d'origine, la frame suivante a déjà son ciel
   (vérifié par les positions et des captures). Coût : 0,0015 ms par frame sur le thread de jeu.
 - **Perspective aérienne** : son volume (`r.SkyAtmosphere.AerialPerspectiveLUT.Depth`, 96 km par
   défaut) est porté à la portée de l'horizon (748 km avec 10 niveaux), rendu à `EndPlay` : les

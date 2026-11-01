@@ -158,6 +158,20 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   fleuves ; un fichier périmé ou abîmé est reconstruit, la raison dans le log, jamais lu en
   silence ; scripts des matériaux qui remettent tous leurs réglages à zéro
 
+### Chargement au spawn et à la téléportation (agent 38)
+- mesuré d'abord (journal de chaque tuile, jalons, courbe « distance → instant visible », CSV) :
+  les tuiles autour du joueur étaient là en 0,26 à 0,68 s, mais l'horizon lointain arrivait d'un
+  bloc 3,7 à 24 s après (Unreal, 9950X3D, avec la planète). Avec la planète, une époque complète
+  coûte 74 à 111 s sur un fil, dont 65 s pour les niveaux 8 et 9 (`Hydrology::courseOf`, tâche à
+  part)
+- l'horizon vient niveau par niveau, le niveau 0 d'abord, chacun en fondu, le bord du dernier
+  niveau visible dissous dans le ciel ; l'époque de l'ancien lieu est abandonnée à la téléportation
+- renfort pendant le chargement (fils de tuiles et morceaux d'horizon ensemble sous
+  `min(fils − 4, 12)`, envois par un budget en ms), puis retour au régime normal ; écran noir 2 s au
+  plus jusqu'au sol, 64 m, toutes les tuiles et les niveaux 0 à 3 ; pion tenu jusqu'à sa collision
+- `TeleportWhenReady`, `PrepareLocation` et `OnTerrainLocationReady` ; contrôle de déterminisme
+  sur un fil ; mêmes tuiles et mêmes échantillons au bit près (`terrain_unreal/LOADING.md`)
+
 ### Phase 11D — Niveau Planète créé en 500 Mo
 - création du monde (`terrain_make_planet`, monde par défaut, mesuré sous Linux) : pic de
   1 084 Mo à 412 Mo sur 4 cœurs (1 053 Mo à 411 Mo sur un cœur), pour les mêmes bits (somme du
@@ -206,6 +220,22 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - planète entière, trois presets (`terrain_export_settlement --preset all`) : 77 s, pic de
   960 Mo ; frontières naturelles 66,8 / 61,5 / 55,3 % (sauvage / équilibré / civilisé, seuil
   50 %), tous les tests d'un bon monde passent ; détails dans `docs/PEUPLEMENT.md`, section 9
+
+### Outils de debug en jeu (agent 36)
+- écran F3 en trois pages (joueur, point visé, performance), lignes du core extensibles par
+  d'autres modules (`Bridge/point_info`) ; commandes `Terrain.Goto x z [œil]` et
+  `Terrain.Goto <lieu>`, `Look`, `Eye`, `Pawn`, `Save`, `Info`, `Shot`, `Views`, `View`, `Seed`,
+  `Hud` ; une seule téléportation, `ATerrainWorld::TeleportView` (synchrone, terrain chargé avant
+  de rendre la main), pour la console et la carte de dev
+- fichier des lieux commun `data/dev/places.json` (agents 35, 36, 37), lu et écrit par
+  `terrain_core/dev/places_file` sur le JSON strict de `terrain/json` (aller-retour exact, champs inconnus gardés) ; 11 lieux de test
+- images prises une fois la vue chargée (tuiles, horizon, délai maximum) ; `Terrain.Views` : une
+  image par lieu dans un dossier daté avec `views.txt`, la base des comparaisons avant / après
+- modes de vue : filaire, LOD, roche 3D (sommets hors heightmap), eau seule, sans eau, normales,
+  pente ; `Terrain.Seed` : autre seed et preset sans quitter le Play, planète construite à part
+  sur un fil, jamais sur un fichier de l'utilisateur
+- jamais dans un build Shipping (`TERRAIN_DEV_TOOLS`) ; aucun bit du monde changé
+  (`terrain_unreal/DEV_TOOLS.md`)
 
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
