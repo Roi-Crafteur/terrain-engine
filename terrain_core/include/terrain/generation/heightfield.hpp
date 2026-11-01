@@ -185,6 +185,9 @@ public:
     // Those of them that are harbors (CoastSite::harbor), for the settlements to come.
     [[nodiscard]] std::vector<CoastSite> harborsIn(double minX, double minZ, double maxX,
                                                    double maxZ) const;
+    // The stacks off the coasts whose middle lies in the box (the same rules as inletsIn).
+    [[nodiscard]] std::vector<CoastStack> stacksIn(double minX, double minZ, double maxX,
+                                                   double maxZ) const;
 
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)

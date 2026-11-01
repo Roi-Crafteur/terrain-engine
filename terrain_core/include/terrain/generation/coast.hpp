@@ -35,6 +35,10 @@ enum class CoastKind : std::uint8_t {
     Mountain, // mountains plunging into the sea
     Fjord,    // mountains plunging into the sea in the cold: long deep troughs
 };
+// The cold of the fjords is a rule of the placement of the relief, not a biome: a fjord is a
+// glacial valley drowned, so the plunging mountains are fjords where the latitude was glaciated
+// (polar: the sine squared of the latitude from 0.52 to 0.64, about 46 to 53 degrees and beyond),
+// plain plunging mountains elsewhere; the rias keep to the rugged coasts of moderate relief.
 inline constexpr int kCoastKindCount = 7;
 
 [[nodiscard]] const char* coastKindName(CoastKind kind);
@@ -62,10 +66,16 @@ struct CoastSample {
 // coasts. Placed on fixed lattices along the coasts by the kinds of coast, a pure function of
 // their cell: the same whatever the threads, the order or the box of the queries.
 enum class InletKind : std::uint8_t {
-    Fjord,    // fjords: troughs a few kilometers long between plunging mountains, a sill at sea
+    // Fjords: wide valleys in U a few kilometers long, steep flanks but no slit, between massifs
+    // (on either side the land rises 700 m somewhere 1.2 to 3 km beyond the water, and 300 m at
+    // least at a third, two thirds and the head of the fjord: never along a coastal plain).
+    Fjord,
     Ria,      // rias: drowned valleys narrowing inland, with side branches, shallow
     Calanque, // calanques: narrow winding inlets between the faces of limestone cliffs
-    Cove,     // coves: round bays in soft rock between capes, on the rocky coasts and cliffs
+    // Coves: irregular bays opening out to the sea (no neck at their mouth, a bulb in some), in
+    // groups of one to three between capes (a stack off some capes), where the shore rises 8 m at
+    // least (the rocky coasts, the cliffs and the rias; never a low coast).
+    Cove,
 };
 inline constexpr int kInletKindCount = 4;
 
@@ -85,6 +95,17 @@ struct CoastSite {
     InletKind inlet = InletKind::Cove;
     CoastKind coast = CoastKind::Rocky; // the kind of the coast at its mouth
     bool harbor = false;                // sheltered: kHarborShelter and kHarborDepth at least
+};
+
+// A stack off the coasts (Heightfield::stacksIn): a steep dome of rock out at sea, its middle
+// canonical, 35 to 60 m high, its flank as steep as the tiles draw without teeth (rock from a
+// slope of 1 on), its foot irregular (lobes); as wide as it is high or more until the 3D rock of
+// the faces (commit 5).
+struct CoastStack {
+    double x = 0.0;
+    double z = 0.0;
+    float radius = 0.0f; // at the sea level, meters (its lobes reach up to 40 % further)
+    float height = 0.0f; // above the sea level, meters
 };
 
 // A harbor: shelter at least kHarborShelter, depth at least kHarborDepth meters, mouth at least

@@ -81,6 +81,9 @@ public:
     // their other fields.
     [[nodiscard]] std::vector<CoastSite> sitesIn(double minX, double minZ, double maxX,
                                                  double maxZ) const;
+    // The stacks whose middle lies in the box (canonical, not wrapping), sorted by x, then z.
+    [[nodiscard]] std::vector<CoastStack> stacksIn(double minX, double minZ, double maxX,
+                                                   double maxZ) const;
     // The cells made so far, of both lattices.
     [[nodiscard]] std::size_t cellCount() const;
 

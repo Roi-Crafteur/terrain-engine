@@ -113,6 +113,11 @@ constexpr double kPlungeRamp = 15'000.0;
 // Where the shore kinds weigh kHeldShare or more of the weight of the shore and plunging kinds,
 // the plunging kinds keep off their platform.
 constexpr double kHeldShare = 0.5;
+// The top of the shore (shoreTop) as the ground stands kTopReach meters inland: the faces of the
+// shore kinds whole, the plunging kinds that far up their rise (kSignalPerMeter meters of coast
+// signal per meter near the shore, as the inlets read it).
+constexpr double kTopReach = 400.0;
+constexpr double kSignalPerMeter = 3.0;
 // Every kind gives way to the low coast (the ground and the factors of the land out of the band)
 // over the last kInnerFade meters of signal of the band, the last kInnerSlack excepted.
 constexpr double kInnerFade = 10'000.0;
@@ -424,6 +429,28 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
     return {land, static_cast<float>(sum.mountains + (outLand - sum.mountains) * inner),
             static_cast<float>(sum.ground + (out - sum.ground) * inner),
             low + (1.0f - low) * land, static_cast<float>((1.0 - low) * (1.0 - inner))};
+}
+
+double shoreTop(const Noises& noises, double x, double z, const GeographySample& g,
+                const coast_kinds::Weights& weights) {
+    const Shore s = shoreAt(noises, x, z);
+    const double land = std::max(0.0, static_cast<double>(g.land));
+    const double plunge = land * easeOut(kSignalPerMeter * kTopReach / kPlungeRamp);
+    double top = 0.0;
+    for (std::size_t k = 0; k < weights.size(); ++k) {
+        const auto kind = static_cast<CoastKind>(k);
+        const auto w = static_cast<double>(weights[k]);
+        if (isShore(kind) && w > 0.0) {
+            const Profile& p = kProfiles[k];
+            const double high = lerp(p.heightLow, p.heightHigh, s.heightAt);
+            const double cap =
+                static_cast<double>(p.landShare) * land + static_cast<double>(p.landTop);
+            top += w * std::min(high, cap);
+        } else if (plunges(kind)) {
+            top += w * plunge;
+        }
+    }
+    return top;
 }
 
 } // namespace terrain::coast_shape

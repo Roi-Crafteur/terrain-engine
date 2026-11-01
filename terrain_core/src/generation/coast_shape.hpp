@@ -97,4 +97,11 @@ struct Inlets {
                              const GeographySample& g, double coast, double distance,
                              const coast_kinds::Weights& weights, const Inlets& inlets);
 
+// How high the shore of the kinds weights stands at (x, z), a point of the shore of the geography
+// g, 400 m inland: the top of the faces of the shore kinds (as shapeAt raises them there), the
+// plunging kinds that far up their rise, the low coasts 0; blended by their weights. The coves and
+// the stacks keep to shores that rise (coast_lattice).
+[[nodiscard]] double shoreTop(const Noises& noises, double x, double z, const GeographySample& g,
+                              const coast_kinds::Weights& weights);
+
 } // namespace terrain::coast_shape

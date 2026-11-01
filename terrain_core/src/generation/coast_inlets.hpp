@@ -23,6 +23,7 @@ struct Site {
     double coast = 0.0;
     std::array<float, kCoastKindCount> weights{};
     float strata = 0.5f;
+    float top = 0.0f;  // the top of the faces of its shore kinds (coast_shape::shoreTop), meters
 };
 
 // The world as the inlets read it. clearance: how far the valleys, ponds and lakes of the rivers
@@ -33,6 +34,8 @@ struct World {
     std::uint64_t seed = 0;
     double band = 30'000.0; // GeographyParams::coastRamp
     std::function<double(double x, double z)> coast;
+    // The height of the world there, its coasts shaped but neither inlets nor rivers cut in it.
+    std::function<double(double x, double z)> height;
     std::function<Site(double x, double z)> site;
     std::function<double(double x, double z)> clearance;
 };
@@ -58,11 +61,14 @@ struct Inlet {
     CoastSite site;
 };
 
+// A stack: a dome of rock, its foot radius meters from its middle at least (more on its lobes),
+// the lobes turned by phase (in [0, 1)).
 struct Stack {
     double x = 0.0; // canonical
     double z = 0.0;
     float radius = 0.0f;
     float height = 0.0f;
+    float phase = 0.0f;
 };
 
 // What the inlets and stacks make of a point. The coast signal of the world there is that of the
@@ -80,6 +86,11 @@ struct Effect {
 
 // The coast signal per meter of the inlets and stacks (about the gradient of the coast signal).
 inline constexpr double kSignalPerMeter = 3.0;
+// A stack is a steep dome: its flank straight, its rim rounded over kStackRim of its radius, its
+// top over kStackTop; its foot widened by lobes up to kStackLobe of its radius.
+inline constexpr double kStackRim = 0.1;
+inline constexpr double kStackTop = 0.12;
+inline constexpr double kStackLobe = 0.4;
 
 [[nodiscard]] double signalOf(double coast, const Effect& e);
 // The distance to the shore of the world from the distance to the shore of the geography (base,
