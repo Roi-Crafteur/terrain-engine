@@ -11,7 +11,7 @@
 // (dune_phase.hpp): kPivot apart for the big waves, crests 2 to 6 km apart, 80 to 300 m high;
 // kGiantPivot apart for the giant waves, crests 6.5 to 20 km apart, 4.5 % of their spacing high
 // (300 to 800 m). A second system of crests, wider and turned, joins them (Y junctions) where a
-// noise is high. Their height is capped by their spacing, so that the backs stay that gentle.
+// noise is high, only near their own crests and lower than them. Their height is capped by their spacing, so that the backs stay that gentle.
 
 #include "dune_phase.hpp"
 
@@ -39,5 +39,9 @@ struct Shape {
     double crest = 0.0;
 };
 [[nodiscard]] Shape shapeOf(double t, double wavelength, double height, double backTan, double dig);
+// The ground where the second system (join meters, already lowered to its share, top its profile
+// over its height) rises over the first (main meters) by share: only near its crests, joined
+// smoothly over soft meters (no fold where they meet; its long backs lift no trough of the first).
+[[nodiscard]] double joined(double main, double join, double top, double share, double soft);
 
 } // namespace terrain::dune_waves

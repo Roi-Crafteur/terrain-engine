@@ -54,6 +54,15 @@ constexpr double kJoinTurn = 0.07; // turns: 25 degrees
 constexpr double kJoinShift = 919'191.0;
 constexpr float kJoinLow = 0.0f;
 constexpr float kJoinHigh = 0.45f;
+// The second system rises over the first only near its own crests, from kJoinTopLow to
+// kJoinTopHigh of its height (its long backs over the troughs of the first drew pale sheets,
+// turned 25 degrees, across them), and joins it smoothly over kJoinSoft of its height (a plain
+// maximum drew a straight fold where they meet).
+constexpr double kJoinTopLow = 0.2;
+constexpr double kJoinTopHigh = 0.9;
+constexpr double kJoinSoft = 0.15;
+// The joins below the crests of the first system: kJoinHeight of the height of their own.
+constexpr double kJoinHeight = 0.6;
 // Around the defects of the phase the waves fade between these coherences (dune_field).
 constexpr float kCoherenceLow = 0.01f;
 constexpr float kCoherenceHigh = 0.35f;
@@ -79,6 +88,14 @@ constexpr double kEndsLeast = 0.25;
 constexpr float kEndsLow = -0.35f;
 constexpr float kEndsHigh = 0.15f;
 constexpr double kEndsShift = 6'131.0;
+
+// max(0, d), joined smoothly over [-k, k].
+double softPositive(double d, double k) {
+    if (d <= -k) {
+        return 0.0;
+    }
+    return d >= k ? d : (d + k) * (d + k) / (4.0 * k);
+}
 
 double ramp(float e0, float e1, double v) {
     return static_cast<double>(noise::smoothstep(e0, e1, static_cast<float>(v)));
@@ -161,6 +178,14 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
     return out;
 }
 
+double joined(double main, double join, double top, double share, double soft) {
+    const double near = ramp(static_cast<float>(kJoinTopLow), static_cast<float>(kJoinTopHigh), top);
+    if (!(near > 0.0) || !(share > 0.0)) {
+        return main;
+    }
+    return main + share * near * softPositive(join - main, std::max(soft, 1.0));
+}
+
 double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double z, double sand,
              double amplitude, bool giant) {
     const dune_phase::Pivots p = dune_phase::pivotsAt(m, s, giant);
@@ -176,7 +201,9 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
                              static_cast<double>(slow.fbm2D(x + kEndsShift, z - kEndsShift,
                                                             memosOf(m).waveEnds)));
     const dune_phase::Pivots fine = giant ? dune_phase::pivotsAt(m, s, false) : p;
-    const auto waveOf = [&](const dune_phase::Phase& ph) {
+    // The height of a wave system and how near its crest the point lies (its profile over its
+    // height, the trough below zero).
+    const auto waveOf = [&](const dune_phase::Phase& ph, double* top) {
         // Faded at the ends of the crests and the defects of the phase: the whole form scaled
         // down, so that its fading never adds to the slope of its face.
         const double fade = ends * ramp(kCoherenceLow, kCoherenceHigh, ph.coherence);
@@ -187,6 +214,9 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
         // would grow too fast and steepen the faces; the nominal one then (smooth, gentler).
         const double wavelength = std::min(ph.wavelength, ph.nominal);
         Shape shape = shapeOf(ph.fraction, wavelength, full, backTanOf(giant), kDig);
+        if (top != nullptr) {
+            *top = full > 0.0 ? shape.height / full : 0.0;
+        }
         shape.height *= fade;
         shape.slope *= fade;
         shape.rise *= fade;
@@ -201,17 +231,20 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
         return shape.height + std::max(dune_layers::layer(m, s, fine, medium, h, on), second);
     };
     if (!(joins > 0.0)) {
-        return waveOf(dune_phase::phaseAt(m, s, p, first));
+        return waveOf(dune_phase::phaseAt(m, s, p, first), nullptr);
     }
     dune_phase::Kind second = first;
     second.spacing *= kJoinSpacing;
     second.turn = kJoinTurn;
     second.salt += 1;
     const std::array<dune_phase::Phase, 2> both = dune_phase::phasesAt(m, s, p, first, second);
-    // The joins rise over the first system by their share (both dig troughs: a share of a trough
-    // would lift it in a step where the share begins).
-    const double main = waveOf(both[0]);
-    return main + joins * std::max(0.0, waveOf(both[1]) - main);
+    // The joins rise over the first system by their share near their crests (both dig troughs:
+    // a share of a trough would lift it in a step where the share begins).
+    const double main = waveOf(both[0], nullptr);
+    double top = 0.0;
+    const double join = kJoinHeight * waveOf(both[1], &top);
+    const double soft = kJoinSoft * heightOf(sand, amplitude, both[1].nominal, giant);
+    return joined(main, join, top, joins, soft);
 }
 
 double meanWaves(const Ergs::Impl& m, const dune_phase::Shared& s, double sand, double amplitude,

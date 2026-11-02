@@ -292,8 +292,39 @@ void testBuried() {
 }
 } // namespace
 
+// The joins of the second system (the straight pale ribbons seen from 1 km at the sixth stop):
+// no fold where they meet the first one (the angle between the slopes either side of the meeting
+// under half a degree, where a plain maximum made 45 on that line), and no lift over the backs and troughs of the
+// second system, only near its crests.
+void testJoins() {
+    using terrain::dune_waves::joined;
+    const double soft = 45.0;
+    double worst = 0.0;
+    for (const double main : {-40.0, 0.0, 120.0, 250.0}) {
+        for (const double top : {0.95, 0.7}) {
+            // The join crossing the first system along a line, 1 m of it per meter of ground.
+            const auto h = [&](double d) { return joined(main, main + d, top, 1.0, soft); };
+            for (double d = -60.0; d <= 60.0; d += 0.5) {
+                const double before = h(d) - h(d - 0.5);
+                const double after = h(d + 0.5) - h(d);
+                worst = std::max(worst, std::abs(std::atan(2.0 * after) - std::atan(2.0 * before)) *
+                                            dunes_test::kDegrees);
+            }
+        }
+    }
+    std::printf("joins: worst fold %.2f deg\n", worst);
+    TEST_CHECK(worst <= 0.5);
+    // Over the back or the trough of the second system: nothing; over its crest: all of it.
+    TEST_CHECK(joined(0.0, 200.0, 0.15, 1.0, soft) == 0.0);
+    TEST_CHECK(joined(-50.0, 180.0, -0.3, 1.0, soft) == -50.0);
+    TEST_CHECK(std::abs(joined(0.0, 200.0, 0.95, 1.0, soft) - 200.0) < 1e-9);
+    TEST_CHECK(std::abs(joined(0.0, 200.0, 0.95, 0.5, soft) - 100.0) < 1e-9);
+    TEST_CHECK(joined(150.0, 100.0, 0.95, 1.0, soft) == 150.0);
+}
+
 int main() {
     testProfile();
+    testJoins();
     // The backs: at most 18 degrees for the big waves, 16 for the giants (validated at the fourth
     // stop of agent 34).
     testForms(ErgCharacter::Waves, 1'200.0, 6'000.0, 300.0, 18.0);
