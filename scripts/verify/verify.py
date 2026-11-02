@@ -19,12 +19,14 @@ import json
 import re
 import shutil
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import landings as landings_module  # noqa: E402
 import machine as machine_module  # noqa: E402
 import places as places_module  # noqa: E402
 import planet as planet_module  # noqa: E402
@@ -36,7 +38,8 @@ import ue_log  # noqa: E402
 import walks as walks_module  # noqa: E402
 import workspace  # noqa: E402
 
-DRIVER_FILES = ["ue_driver.py", "ue_api.py", "ue_walk.py", "ue_log.py", "walks.py",
+DRIVER_FILES = ["ue_driver.py", "ue_api.py", "ue_walk.py", "ue_pitch.py", "ue_landings.py",
+                "ue_ready.py", "ue_log.py", "walks.py",
                 "start_driver.py"]
 # The order of terrain_unreal/WATER_LEVEL.md: the horizon material again after the water.
 MATERIAL_SCRIPTS = ["create_temporary_terrain_material.py", "create_horizon_gpu_material.py",
@@ -57,6 +60,10 @@ def parser():
     run.add_argument("--sun", default="none", help="none, a preset (falls) or elevation,yaw")
     run.add_argument("--walk", action="append", default=[],
                      help="place[:heading[:meters]], the first fall stops it")
+    run.add_argument("--landings", default="", help="Terrain.Map.Go at places of --places, "
+                     "a,b or all, one at a time, its line of the check read")
+    run.add_argument("--landing-timeout", type=float, default=90.0,
+                     help="seconds for the end of a landing; 2 in a row without one stop it")
     run.add_argument("--view-mode", default="normal", help="Terrain.View, when the version has it")
     run.add_argument("--resolution", default="1600x900")
     run.add_argument("--settle", type=float, default=20.0, help="seconds before a screenshot")
@@ -73,6 +80,7 @@ def parser():
                        ("--no-freeze", "do not pause the game before the screenshots"),
                        ("--no-repeat", "no second screenshot of each view"),
                        ("--no-pitch-check", "no check view of the pitch"),
+                       ("--no-views", "no view of the places (the landings or walks only)"),
                        ("--no-dev-commands", "never Terrain.Goto / Terrain.Look"),
                        ("--offscreen", "-RenderOffScreen (never tried)"),
                        ("--fresh", "build the versions again, their cache removed"),
@@ -149,10 +157,11 @@ def base_job(args, v, m, folder, planet_file, sun):
             "firstSettle": args.first_settle, "freeze": not args.no_freeze,
             "repeatShot": not args.no_repeat, "pitchCheck": not args.no_pitch_check,
             "devCommands": not args.no_dev_commands, "viewMode": args.view_mode,
-            "console": args.console, "sun": sun, "quit": True}
+            "console": args.console, "sun": sun, "quit": True, "views": not args.no_views,
+            "landingTimeout": args.landing_timeout}
 
 
-def run_sessions(args, v, m, job, chosen_jobs, walk_list, folder, driver_dir):
+def run_sessions(args, v, m, job, chosen_jobs, walk_list, folder, driver_dir, landing_list):
     """The sessions of a version, one after the other; what each did."""
     out = []
     limits = session.Limits(total=args.session_seconds)
@@ -160,6 +169,7 @@ def run_sessions(args, v, m, job, chosen_jobs, walk_list, folder, driver_dir):
     for n, group in enumerate(session.sessions(chosen_jobs, args.places_per_session), 1):
         names = [p["name"] for p in group]
         this = dict(job, places=group, walks=[w for w in walk_list if w["place"] in names],
+                    landings=[w for w in landing_list if w["place"] in names],
                     materials=job["materials"] and n == 1,
                     heartbeat=str(folder / f"heartbeat_{n}.json"),
                     result=str(folder / f"result_{n}.json"))
@@ -170,6 +180,9 @@ def run_sessions(args, v, m, job, chosen_jobs, walk_list, folder, driver_dir):
             shown = command if isinstance(command, str) else " ".join(command)
             print(f"  {shown}   ({session.JOB_VARIABLE}={job_path}, "
                   f"{session.DRIVER_VARIABLE}={driver_dir / 'ue_driver.py'})")
+            for w in this["landings"]:
+                print(f"    Terrain.Map.Go {w['place']}" + (f"   (skipped: {w['skip']})"
+                                                           if w["skip"] else ""))
             continue
         job_path.write_text(json.dumps(this, indent=2), encoding="utf-8")
         outcome = session.run_watched(command, job_path, this["heartbeat"],
@@ -188,7 +201,7 @@ def run_sessions(args, v, m, job, chosen_jobs, walk_list, folder, driver_dir):
     return out
 
 
-def run_version(args, m, ref, label, chosen, asked_walks, run_folder, runner):
+def run_version(args, m, ref, label, chosen, asked_walks, run_folder, runner, asked_landings):
     entry = {"label": label, "ref": ref, "sessions": []}
     try:
         v = workspace.prepare(m, ref, label, runner, fresh=args.fresh)
@@ -216,9 +229,14 @@ def run_version(args, m, ref, label, chosen, asked_walks, run_folder, runner):
     walk_list, entry["profiles"] = walk_jobs(runner, v, m, asked_walks, by_name, args.planet,
                                              planet_file, log)
     job = base_job(args, v, m, folder, planet_file, parse_sun(args.sun, m))
+    landing_list = landings_module.jobs(asked_landings, chosen,
+                                        lambda p: use_planet(p, args.planet))
     entry["sessions"] = run_sessions(args, v, m, job, jobs, walk_list, folder,
-                                     run_folder / "driver")
+                                     run_folder / "driver", landing_list)
     entry["walkCores"] = walk_cores(runner, v, m, entry["sessions"], jobs, planet_file, log)
+    planet_of = {j["name"]: j["usePlanet"] for j in jobs}
+    entry["landingCores"] = landings_module.cores(runner, v, m, entry["sessions"], planet_of.get,
+                                                  planet_file, log)
     return entry
 
 
@@ -251,6 +269,8 @@ def cmd_run(args):
     m = machine_module.load_machine(args.machine)
     chosen = places_module.select(places_module.load_places(args.places_file), args.places)
     asked_walks = [walks_module.parse_walk(w) for w in args.walk]
+    asked_landings = landings_module.chosen(args.landings, chosen)
+    started = time.monotonic()
     names = {p.name for p in chosen}
     for w in asked_walks:
         if w["place"] not in names:
@@ -271,7 +291,7 @@ def cmd_run(args):
     for ref, label in refs:
         print(f"{label} : {ref}")
         versions.append(run_version(args, m, ref, label, chosen, asked_walks, run_folder,
-                                    runner))
+                                    runner, asked_landings))
         if args.dry_run:
             for command in runner.commands:
                 print("  " + " ".join(command))
@@ -283,7 +303,8 @@ def cmd_run(args):
         return 0
     run = {"title": title, "date": date, "folder": str(run_folder), "versions": versions,
            "places": [p.name for p in chosen], "walks": args.walk,
-           "walkPlaces": [w["place"] for w in asked_walks],
+           "walkPlaces": [w["place"] for w in asked_walks], "views": not args.no_views,
+           "landings": asked_landings, "seconds": round(time.monotonic() - started),
            "safety": safety.compare(before, safety.snapshot(m))}
     print(report.write_report(run))
     return exit_code(run)
