@@ -588,6 +588,14 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - survie : ressources, artisanat, dangers
 - outils d'administration (mode créatif)
 
+### Sous le niveau 0 (priorité avant la 11C)
+- le terrain n'a pas de plancher à 0 m : tous les chantiers de relief creusent aussi, et ne font pas que monter
+- une altitude négative n'est de la mer que si elle est reliée à l'océan ; le fondu de surface, les biomes, les matériaux,
+  l'horizon et la carte de dev suivent cette règle
+- grands bassins secs sous le niveau de la mer, fossés d'effondrement avec lac salé, cratères d'impact rares
+- plaines et bas plateaux avec de vrais creux, sans plancher visible
+- à faire avant l'étape 1 de la 11C : le réseau d'eau doit voir ces creux
+
 ### Tous les milieux du monde (minimum voulu)
 - format à élargir d'abord : 12 biomes aujourd'hui, 16 biomes et 8 matériaux au plus par le format
   actuel
