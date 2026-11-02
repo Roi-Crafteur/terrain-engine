@@ -123,6 +123,20 @@ class Errors(unittest.TestCase):
             run("run", "--machine", str(machine_file(folder)), "--before", "main", "--places",
                 "fleuve_plaine", "--walk", "k2_paroi", "--dry-run")
 
+    def test_landings(self):
+        with tempfile.TemporaryDirectory() as folder:
+            code, out, _ = run("run", "--machine", str(machine_file(folder)), "--before", "main",
+                               "--places", "k2_paroi,lisiere_tropicale_savane", "--landings",
+                               "all", "--no-views", "--planet", "no", "--dry-run")
+            self.assertEqual(code, 0)
+            # k2_paroi was measured with the planet file and the run has none: skipped.
+            self.assertIn("Terrain.Map.Go k2_paroi   (skipped: measured with the planet file, "
+                          "the run has none)", out)
+            self.assertIn("Terrain.Map.Go lisiere_tropicale_savane\n", out)
+        with tempfile.TemporaryDirectory() as folder, self.assertRaises(SystemExit):
+            run("run", "--machine", str(machine_file(folder)), "--before", "main", "--places",
+                "fleuve_plaine", "--landings", "k2_paroi", "--dry-run")
+
     def test_no_machine_file(self):
         code, _, err = run("run", "--machine", "/no/machine.json", "--before", "main",
                            "--dry-run")

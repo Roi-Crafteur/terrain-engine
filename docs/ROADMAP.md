@@ -258,6 +258,7 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 
   Le pilote d'Unreal est testé contre un faux module `unreal`, et essayé de bout en bout par
   l'orchestrateur sous Windows (UE 5.8)
+- `--landings` du lanceur : `Terrain.Map.Go` (agent 35) à chaque lieu, un à la fois, sa ligne de contrôle lue, l'issue comparée entre deux versions
 
 ### Carte de dev et minicarte (agent 35) : images de la carte dans `terrain_core/map` (relief, biomes, eau, courbes, tout zoom, mêmes octets sur tout fil), minicarte, carte plein écran `M` (jamais en Shipping), clic = pion du jeu sur terre ou vue au-dessus de l'eau, lieux de `data/dev/places.json` (`terrain_unreal/README.md`, section 16)
 

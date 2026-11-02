@@ -145,6 +145,77 @@ class PawnLanding(unittest.TestCase):
         self.assertEqual(ue_log.pawn_landing(already)["state"], "already")
 
 
+class MapGo(unittest.TestCase):
+    """What Terrain.Map.Go <place> of agent 35 (TerrainDevMapLanding.cpp, #62) writes."""
+    L = "[2026.11.02-08.00.00:000][ 90]LogTerrainEngine: "
+    W = "[2026.11.02-08.00.00:000][ 90]LogTerrainEngine: Warning: "
+    DOWN = ("Terrain Dev Map: chute388_mer: the pawn of the game goes down near x -6184762.00, "
+            "z 155681.00\n")
+    OK = ("Terrain Dev Map: 1 s after the click: the pawn of the game, Walking, 0.00 m/s, feet "
+          "at 1.94 m (no water within 3 m), 0.0 m from the click: OK\n")  # the README of #62
+    SEA = ("Terrain Dev Map: falaise_cotiere: over water (no dry ground within 50 m): the view "
+           "of the tools 1.8 m above the water; Terrain.Pawn over land\n")
+
+    def test_on_land_the_line_of_the_check_ends_it(self):
+        self.assertIsNone(ue_log.landing_end(self.L + self.DOWN, "chute388_mer"))  # still running
+        end = ue_log.landing_end(self.L + self.DOWN + self.L + self.OK, "chute388_mer")
+        self.assertEqual((end["decision"], end["end"], end["x"]), ("land", "check", -6184762.0))
+        self.assertEqual({k: end["check"][k] for k in ("who", "mode", "speed", "feet", "away",
+                                                       "ok")},
+                         {"who": "the pawn of the game", "mode": "Walking", "speed": 0.0,
+                          "feet": 1.94, "away": 0.0, "ok": True})
+        self.assertEqual(end["check"]["water"], "no water within 3 m")
+
+    def test_not_walking_still(self):
+        bad = (self.W + "Terrain Dev Map: 1 s after the click: the pawn of the game, Falling, "
+               "3.20 m/s, feet at 0.50 m (0.30 m above the water at 0.20 m), 2.1 m from the "
+               "click: NOT walking still above the water\n")
+        end = ue_log.landing_end(self.L + self.DOWN + bad, "chute388_mer")
+        self.assertFalse(end["check"]["ok"])
+        self.assertTrue(end["check"]["line"].endswith("NOT walking still above the water"))
+
+    def test_over_water_the_decision_ends_it(self):
+        end = ue_log.landing_end(self.L + self.SEA, "falaise_cotiere")
+        self.assertEqual((end["decision"], end["end"], end["radius"], end["check"]),
+                         ("water", "water", 50.0, None))
+        self.assertIsNone(ue_log.landing_end(self.L + self.SEA, "montagnes_mer"))  # not its own
+
+    def test_shallow_then_back_over_water(self):
+        text = (self.L + "Terrain Dev Map: chute388_bassin: shallow water: the pawn of the game "
+                "goes down near the dry ground at x -6185090.12, z 155950.50\n")
+        self.assertIsNone(ue_log.landing_end(text, "chute388_bassin"))
+        back = (self.L + "Terrain Dev Map: no spot near the dry ground holds the pawn: back over "
+                "water (no dry ground within 50 m): the view of the tools 1.8 m above the water; "
+                "Terrain.Pawn over land\n")
+        end = ue_log.landing_end(text + back, "chute388_bassin")
+        self.assertEqual((end["decision"], end["end"], end["radius"]),
+                         ("shallow", "fallback", 50.0))
+
+    def test_refusals(self):
+        for line in ("Terrain Dev Map: No landing for k2_paroi: the columns could not be read",
+                     "Terrain Dev Map: The teleport to k2_paroi was refused (the tools of the "
+                     "developers are off, or the world is not playing: the log says why)",
+                     "Terrain Dev Map: The view did not load in time: the view of the tools "
+                     "stays",
+                     "Terrain Dev Map: Terrain.Map.Go: no place k2_paroi in the places file"):
+            with self.subTest(line=line[17:40]):
+                end = ue_log.landing_end(self.L + line + "\n", "k2_paroi")
+                self.assertEqual((end["end"], end["message"]), ("refused", line[17:]))
+        none = self.W + "Terrain.Map.Go: no world playing (or no dev map)\n"
+        self.assertEqual(ue_log.landing_end(none, "k2_paroi")["end"], "refused")
+
+    def test_the_warning_of_the_planet_file(self):
+        warning = (self.W + "Terrain Dev Map: lisiere_tropicale_savane was measured without the "
+                   "planet file: this world has it, whose hydrology changes the ground near its "
+                   "rivers and whose climate changes the biomes\n")
+        self.assertIsNone(ue_log.landing_end(warning, "lisiere_tropicale_savane"))  # no end
+        down = (self.L + "Terrain Dev Map: lisiere_tropicale_savane: the pawn of the game goes "
+                "down near x -26927500.00, z -270336.00\n")
+        end = ue_log.landing_end(warning + down + self.L + self.OK, "lisiere_tropicale_savane")
+        self.assertEqual(end["end"], "check")
+        self.assertTrue(end["planetWarning"].startswith("was measured without the planet file"))
+
+
 class Features(unittest.TestCase):
     def test_commands_of_the_plugin(self):
         main = 'FAutoConsoleCommandWithWorldAndArgs Water(TEXT("Terrain.Water"), ...)'
@@ -156,7 +227,7 @@ class Features(unittest.TestCase):
         self.assertEqual(ue_log.plugin_features([main]),
                          {"loadReport": False, "loadStart": False, "goto": False, "look": False,
                           "viewMode": False, "pawn": False, "pawnLanding": False,
-                          "loadTest": False})
+                          "mapGo": False, "loadTest": False})
         stands = ('TerrainDev::Log(FString::Printf(TEXT("the pawn of the game stands, spot %d of '
                   '%d"), ...')  # TerrainDevPawn.cpp of main (#57)
         self.assertTrue(ue_log.plugin_features([stands])["pawnLanding"])
@@ -164,6 +235,9 @@ class Features(unittest.TestCase):
         self.assertTrue(f["goto"] and f["look"] and f["pawn"] and f["loadReport"])
         self.assertFalse(f["loadStart"])
         self.assertTrue(ue_log.plugin_features([loading, start])["loadStart"])
+        map_go = ('FAutoConsoleCommandWithWorldAndArgs MapGoCommand(TEXT("Terrain.Map.Go"),')
+        self.assertTrue(ue_log.plugin_features([map_go])["mapGo"])  # TerrainDevMapCommands.cpp
+        self.assertFalse(ue_log.plugin_features(['TEXT("Terrain.Map")'])["mapGo"])
         self.assertFalse(f["viewMode"])  # Terrain.Views alone is not Terrain.View
         self.assertTrue(ue_log.plugin_features(['TEXT("Terrain.View")'])["viewMode"])
 
