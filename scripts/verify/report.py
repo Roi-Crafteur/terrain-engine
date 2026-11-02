@@ -226,8 +226,18 @@ def notices(run):
         if any((s.get("scan") or {}).get("planetBuilt") for s in v.get("sessions", [])):
             out.append(f"AVERTISSEMENT ({v['label']}) : Unreal a reconstruit la planète "
                        "(fichier copié refusé ?)")
-        out += landings.notices(v)
     return out
+
+
+def no_alert_line(run):
+    """Without an alert: how many warnings of the log the sessions list below (the lines Warning
+    of the plugin, which are no failure: "Aucune alerte." above them read as a contradiction)."""
+    count = sum(len((s.get("scan") or {}).get("terrainProblems", []))
+                for v in run["versions"] for s in v.get("sessions", []))
+    if not count:
+        return "Aucune alerte."
+    return (f"Aucune alerte ({count} avertissement{'s' if count > 1 else ''} du journal, "
+            f"ci-dessous).")
 
 
 def duration_line(run):
@@ -282,8 +292,11 @@ def _session_lines(v):
                      f"{len(scan.get('loadReports', []))} ; déterminisme : {determinism}")
         if result.get("reentered"):
             lines.append(f"    ticks venus pendant une étape (ignorés) : {result['reentered']}")
-        for line in (scan.get("shaderErrors", []) + scan.get("terrainProblems", []))[:5]:
+        listed = scan.get("shaderErrors", []) + scan.get("terrainProblems", [])
+        for line in listed[:5]:
             lines.append(f"      {line[:160]}")
+        if len(listed) > 5:
+            lines.append(f"      … et {len(listed) - 5} autre(s) : logs/editor_{n}.log")
         for name in ("missingApi", "errors"):
             for item in result.get(name, [])[:3]:
                 last = (str(item).strip().splitlines() or [""])[-1]
@@ -432,7 +445,7 @@ def write_report(run):
     alerts, advice = warnings(run), notices(run)
     run["alerts"], run["notices"] = alerts, advice
     lines = [f"Vérification du {run['date']} : {run['title']}"]
-    lines += (alerts + advice) or ["Aucune alerte."]
+    lines += (alerts + advice) or [no_alert_line(run)]
     lines += [safety_line(run), duration_line(run), ""]
     for v in run["versions"]:
         lines += version_lines(v, run) + [""]

@@ -342,14 +342,59 @@ class Summary(unittest.TestCase):
             self.assertIn("b : sauté : mesuré avec le fichier planète, et ce run n'en a pas "
                           "(--planet no) : sauté, ce n'est pas une panne", text)
 
-    def test_the_feet_against_the_core(self):
+    def test_the_feet_and_the_eye_against_the_core(self):
+        """Failures beyond 0.5 m for the feet and 0.05 m for the eye (real run 7: the feet
+        +0.02 to +0.21 m, the eye +1.80 m exactly)."""
+        cases = [  # (feet or eye, core, failure expected)
+            (landed("a", feet=10.0), {"ground": 9.79, "waterLevel": None}, None),  # the K2
+            (landed("a", feet=10.0), {"ground": 9.5, "waterLevel": None}, None),   # 0.5 m: in
+            (landed("a", feet=10.0), {"ground": 9.4, "waterLevel": None},
+             "pieds à 10.00 m, sol du core 9.40 m sous le pion (écart +0.60 m, plus de 0.50 m)"),
+            (landed("a", feet=10.0), {"ground": 10.6, "waterLevel": None},
+             "écart -0.60 m, plus de 0.50 m"),  # under the ground too
+            (watered("b", eye=2.8), {"ground": 0.0, "waterLevel": 1.0}, None),     # +1.80 m
+            (watered("b", eye=2.85), {"ground": 0.0, "waterLevel": 1.0}, None),    # 0.05 m: in
+            (watered("b", eye=2.86), {"ground": 0.0, "waterLevel": 1.0},
+             "œil à 2.86 m, eau du core 1.00 m (écart +0.06 m aux 1,8 m attendus, plus de "
+             "0.05 m)"),
+        ]
+        for entry, core, failure in cases:
+            with self.subTest(entry=entry["place"], core=core), \
+                    tempfile.TemporaryDirectory() as folder:
+                v = with_landings(folder, "version", [entry], {entry["place"]: core})
+                text, run = summary(folder, v)
+                if failure is None:
+                    self.assertEqual(text.splitlines()[1], "Aucune alerte.")
+                    self.assertEqual(verify.exit_code(run), 0)
+                else:
+                    self.assertIn(f"ATTENTION (version) : atterrissage {entry['place']} : ", text)
+                    self.assertIn(failure, text)
+                    self.assertEqual(verify.exit_code(run), 1)
+
+    def test_no_alert_above_the_warnings_of_the_log(self):
+        """resume.txt said "Aucune alerte." above lines Warning of the plugin (the warning of
+        the planet file of lisiere_tropicale_savane): it says how many there are below."""
         with tempfile.TemporaryDirectory() as folder:
-            v = with_landings(folder, "version", [landed("a", feet=10.0)],
-                              {"a": {"ground": 7.5, "waterLevel": None}})
+            v = with_landings(folder, "version", [landed("a")])
+            v["sessions"][0]["scan"]["terrainProblems"] = [
+                "Warning: Terrain Dev Map: lisiere_tropicale_savane was measured without the "
+                "planet file: this world has it", "Warning: Terrain.Pawn: the view is still "
+                "loading"]
             text, run = summary(folder, v)
-            self.assertIn("AVERTISSEMENT (version) : atterrissage a : pieds à 10.00 m, sol du "
-                          "core 7.50 m sous le pion (écart +2.50 m)", text)
-            self.assertEqual(verify.exit_code(run), 0)  # a notice
+            self.assertEqual(text.splitlines()[1],
+                             "Aucune alerte (2 avertissements du journal, ci-dessous).")
+            self.assertIn("      Warning: Terrain Dev Map: lisiere_tropicale_savane was measured",
+                          text)
+            self.assertEqual(verify.exit_code(run), 0)
+            v["sessions"][0]["scan"]["terrainProblems"] = [f"Warning: {i}" for i in range(7)]
+            text, _ = summary(folder, v)
+            self.assertEqual(text.splitlines()[1],
+                             "Aucune alerte (7 avertissements du journal, ci-dessous).")
+            self.assertIn("      … et 2 autre(s) : logs/editor_1.log", text)
+            v["sessions"][0]["scan"]["terrainProblems"] = ["Warning: one"]
+            text, _ = summary(folder, v)
+            self.assertEqual(text.splitlines()[1],
+                             "Aucune alerte (1 avertissement du journal, ci-dessous).")
 
     def test_the_jobs_and_the_option(self):
         import places

@@ -233,6 +233,9 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
   - un refus, ou aucune issue en `--landing-timeout` secondes (90 par défaut) ;
   - `no world playing` : la commande est partie avant que le monde soit prêt. Ce n'est pas une
     issue d'atterrissage mais un problème du lanceur, dit comme tel ;
+  - les pieds du pion à plus de 0,5 m du sol du core sondé sous eux, ou l'œil de la vue des
+    outils à plus de 0,05 m des 1,8 m au-dessus de l'eau du core. L'essai réel de 90c2094 donnait
+    de +0,02 à +0,21 m pour les pieds (le plus au K2) et +1,80 m pile pour l'œil ;
   - avec `--before` et `--after`, un lieu dont l'issue diffère entre les deux versions : le
     monde est déterministe, le même clic doit donner la même issue ;
   - une version sans `Terrain.Map.Go`.
@@ -241,9 +244,9 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
     donc accepté ;
   - l'avertissement du plugin quand un lieu a été mesuré avec ou sans le fichier planète et que
     le monde est l'inverse (`lisiere_tropicale_savane` avec `--planet yes`) : il est recopié
-    dans la ligne du lieu ;
-  - les pieds à plus de 1 m du sol du core, ou l'œil à plus de 0,5 m des 1,8 m au-dessus de
-    l'eau : « AVERTISSEMENT ».
+    dans la ligne du lieu. Sans alerte, la première ligne de `resume.txt` dit combien de lignes
+    `Warning` du journal sont listées plus bas : « Aucune alerte (N avertissements du journal,
+    ci-dessous). ».
 - **Sans fichier planète** (`--planet no`), les lieux mesurés avec la planète sont sautés, et
   le résumé le dit, sans les compter en panne.
 - **Une session courte** : deux atterrissages de suite sans issue, ou envoyés avant que le monde
