@@ -138,8 +138,13 @@ public:
     // The erg at the canonical (x, z) over a relief of intensity relief (HeightSample::relief).
     [[nodiscard]] ErgPoint at(double x, double z, float relief) const;
     // The meters of sand the dunes lay over the relief of s at the canonical (x, z): exactly 0
-    // where the mask is 0 (and over the sea).
-    [[nodiscard]] float dunesAt(double x, double z, const HeightSample& s) const;
+    // where the mask is 0 (and over the sea). footprint: the side of the square a sample stands
+    // for (a level of the far horizon), meters, 0 for a point: from a tenth of the spacing of the
+    // dunes to three tenths of it, the dunes give way to their mean over their pattern (closed
+    // forms of their profiles), so that a coarse grid neither aliases them nor flickers when it moves; the same bits
+    // as a point below a tenth (the tiles and the finest levels of the horizon).
+    [[nodiscard]] float dunesAt(double x, double z, const HeightSample& s,
+                                double footprint = 0.0) const;
     // The dunes of an erg point, and the kind that weighs most there.
     [[nodiscard]] float dunesOf(double x, double z, const ErgPoint& e) const;
     [[nodiscard]] DuneKind kindOf(const ErgPoint& e) const;

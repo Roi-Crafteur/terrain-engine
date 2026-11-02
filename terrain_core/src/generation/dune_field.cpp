@@ -206,6 +206,73 @@ double heightOf(double sand, double amplitude) {
                       kHeightLow, kHeightHigh);
 }
 
+namespace {
+
+// The means of the kinds over their pattern, closed forms of dune_forms (for the far horizon):
+// a transverse ridge holds height (1 - gap) / 2 on average, whatever its slip face; a barchan
+// about kBarchanVolume half top^2 in its cell; a seif top^2 (cot 33 + cot 22) / 2 per spacing; a
+// star a cone with its arms. kCoherentMean: the share the defects of the phase leave.
+constexpr double kCoherentMean = 0.9;
+constexpr double kBarchanVolume = 3.82;
+constexpr double kBarchanTop = 0.75;   // the mean height of a barchan over its tallest
+constexpr double kSeifEnds = 0.44;     // the share of the length of the seifs their ends leave
+constexpr double kStarArms = 1.3;      // the volume of a star over that of its cone
+constexpr double kPi = 3.141592653589793;
+
+struct Means {
+    double transverse = 0.0;
+    double draa = 0.0;
+    double barchan = 0.0;
+    double seif = 0.0;
+    double star = 0.0;
+};
+
+Means meansOf(const ErgPoint& e, double height, double spacing) {
+    Means out;
+    const double sand = static_cast<double>(e.sand);
+    const double gap = kGapLow + kGapRange * (1.0 - sand);
+    const double room = spacing * (1.0 - gap);
+    const double tall = std::min(height, room / (1.0 / dune_forms::kLeeTan + 7.0));
+    out.transverse = kCoherentMean * tall * (1.0 - gap) / 2.0;
+    const double small = kSmallHeightBase + kSmallHeightShare * tall;
+    const double on = std::max(0.0, room - tall / dune_forms::kLeeTan - 2.0 * kSmallClear) / spacing;
+    out.draa = out.transverse + kCoherentMean * on * small * (1.0 - kSmallGap) / 2.0;
+    const double cell = kBarchanCell * spacing;
+    const double half = 0.36 * cell;
+    const double top = kBarchanTop * std::min(height, half / 4.5);
+    const double there = std::clamp((kBarchanOccupancy * static_cast<double>(e.mask) - 0.5) /
+                                        (2.0 * kScatterDraw * 0.25) + 0.5,
+                                    0.0, 1.0);
+    out.barchan = there * kBarchanVolume * half * top * top / (cell * spacing);
+    const double seifSpacing = kSeifSpacing * spacing;
+    const double cot = 1.0 / dune_forms::kLeeTan + 1.0 / dune_forms::kGentleTan;
+    const double seifTop = std::min(height, kSeifWidth * seifSpacing / cot);
+    out.seif = kSeifEnds * seifTop * seifTop * cot / 2.0 / seifSpacing;
+    const double peak = std::clamp(height, kStarLeast, kStarHigh);
+    const double radius = peak / dune_forms::kStarTan;
+    out.star = (kStarOccupancy + kStarOccupancySand * sand) * kStarArms * kPi * radius * radius *
+               peak / 3.0 / (kStarCell * kStarCell);
+    return out;
+}
+
+} // namespace
+
+double meanDunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
+    if (!(e.mask > 0.0f)) {
+        return 0.0;
+    }
+    const dune_phase::Shared s = dune_phase::sharedAt(m, x, z);
+    const double spacing = dune_phase::nominalAt(m, s, dune_phase::pivotsAt(m, s));
+    const double amplitude = static_cast<double>(m.amplitude.fbm2D(x, z, memosOf(m).amplitude));
+    const Means k = meansOf(e, heightOf(static_cast<double>(e.sand), amplitude), spacing);
+    const FormWeights w = weightsOf(e);
+    const double mean = static_cast<double>(w.transverse) * k.transverse +
+                        static_cast<double>(w.draa) * k.draa +
+                        static_cast<double>(w.barchan) * k.barchan +
+                        static_cast<double>(w.seif) * k.seif + static_cast<double>(w.star) * k.star;
+    return mean * static_cast<double>(noise::smoothstep(0.0f, kEdgeFade, e.mask));
+}
+
 float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
     if (!(e.mask > 0.0f)) {
         return 0.0f;

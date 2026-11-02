@@ -166,6 +166,12 @@ public:
     // The water of the world, or nullptr for the relief alone.
     [[nodiscard]] const Hydrology* hydrology() const { return hydrology_.get(); }
 
+    // This Heightfield as a grid of samples standing for squares of footprint meters sees it (a
+    // level of the far horizon): the seas of dunes filtered to their mean where the grid is
+    // coarser than them (Ergs::dunesAt), everything else the same bits. 0: points (the tiles).
+    [[nodiscard]] Heightfield forFootprint(double footprint) const;
+    [[nodiscard]] double footprint() const { return footprint_; }
+
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
     struct Memos;  // the memos of the noises during a batch call (heightfield.cpp)
@@ -250,6 +256,7 @@ private:
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
+    double footprint_ = 0.0;                       // of a sample, for the dunes (forFootprint)
 };
 
 } // namespace terrain

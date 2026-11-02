@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -354,7 +355,18 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
 - mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
-  province du relief au cœur des continents secs, jamais placée par le biome
+  province du relief au cœur des continents secs, jamais placée par le biome : faite par
+  l'agent 34 (`generation/ergs.hpp`). Posées après le niveau Planète (sa somme ne change pas),
+  hors des ergs le monde garde ses bits. Barkhanes, transversales, seifs, étoiles, draas sur un
+  champ de phase continu ; faces sous le vent à 33° ; 3,7 % des terres. Horizon : au-delà d'un
+  pas d'un dixième de leur espacement, les dunes cèdent la place à leur moyenne (pas de
+  scintillement). Pour l'agent 31 : règle des oueds = un fleuve creusé (au moins 10 m³/s)
+  traverse l'erg, aucune dune à moins de 150 m du fond de sa vallée (Hydrology::floorDistance),
+  pleine hauteur 600 m plus loin ; un cours plus petit s'arrête au pied de l'erg ; les lacs gardent
+  une case libre. 7,4 % de la surface des ergs (et 6,0 % sur savane) tombe sur la prairie de la
+  coupure climatique de 30° : à revoir quand le climat sera lissé. Coût : une tuile dans un erg
+  1,1 à 1,5 ms (×2,5 à ×3), ×1,00 ailleurs. La couleur de sable de l'horizon reste à brancher
+  (lire HeightSample::dunes du relief filtré au pas du niveau)
 - falaises, surplombs et arches dans le monde infini : phase 12A en cours. Une couche de roche 3D
   autour de la surface, là où la géologie fait des parois (couches dures des montagnes, fentes
   des chutes et gorges, escarpements, arches et ponts de roche) ; le reste du monde garde ses

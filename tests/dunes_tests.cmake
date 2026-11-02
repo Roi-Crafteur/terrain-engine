@@ -5,3 +5,4 @@ target_include_directories(dune_forms_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain
 terrain_add_test(dunes_shape_test terrain_core)
 terrain_add_test(ergs_mask_test terrain_core)
 terrain_add_test(ergs_world_test terrain_core)
+terrain_add_test(ergs_horizon_test terrain_core)

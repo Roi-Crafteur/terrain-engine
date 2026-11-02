@@ -152,6 +152,9 @@ struct FormWeights {
 // 300 m.
 [[nodiscard]] double heightOf(double sand, double amplitude);
 
+// The mean height of the dunes around the canonical (x, z) of an erg point, over their pattern
+// (closed forms, for the far horizon).
+[[nodiscard]] double meanDunes(const Ergs::Impl& ergs, double x, double z, const ErgPoint& e);
 // The dunes at the canonical (x, z) of an erg point (dune_field.cpp).
 [[nodiscard]] float dunes(const Ergs::Impl& ergs, double x, double z, const ErgPoint& e);
 

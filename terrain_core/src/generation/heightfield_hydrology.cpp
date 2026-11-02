@@ -111,12 +111,18 @@ double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve&
     return h;
 }
 
+Heightfield Heightfield::forFootprint(double footprint) const {
+    Heightfield out = *this;
+    out.footprint_ = footprint;
+    return out;
+}
+
 void Heightfield::addDunes(double x, double z, HeightSample& s) const {
     const Ergs* ergs = hydrology_->ergs();
     if (ergs == nullptr) {
         return;
     }
-    const float dunes = ergs->dunesAt(x, z, s);
+    const float dunes = ergs->dunesAt(x, z, s, footprint_);
     if (dunes > 0.0f) {
         s.dunes = dunes;
         s.height += dunes;

@@ -75,5 +75,8 @@ struct Phase {
     double nominal = 1.0;    // meters: the spacing of the pivots, weighted (smooth)
 };
 [[nodiscard]] Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind& k);
+// The spacing of the pivots at the point, weighted as their phasors (Phase::nominal of the ridges),
+// without their phases.
+[[nodiscard]] double nominalAt(const Ergs::Impl& m, const Shared& s, const Pivots& p);
 
 } // namespace terrain::dune_phase

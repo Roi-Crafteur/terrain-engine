@@ -41,6 +41,13 @@ constexpr double kDoldrumsFar = 8.0;
 constexpr float kVariabilityLatitude = 0.3f;
 constexpr float kVariabilityBase = 0.1f;
 constexpr float kVariabilityNoise = 0.55f;
+// The far horizon: the spacing of the dunes estimated from the sand (kMeanLeast + kMeanRange
+// sand^1.3, as the pivots), the dunes giving way to their mean from kFilterLow to kFilterHigh of
+// it.
+constexpr double kMeanLeast = 1000.0;
+constexpr double kMeanRange = 1900.0;
+constexpr double kFilterLow = 0.1;
+constexpr double kFilterHigh = 0.3;
 // The depressions keep their dunes kDepressionMargin of their radius away from their edge.
 constexpr double kDepressionMargin = 0.25;
 
@@ -298,12 +305,24 @@ std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z) {
     return {d.cosine, d.sine};
 }
 
-float Ergs::dunesAt(double x, double z, const HeightSample& s) const {
+float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint) const {
     if (s.water == WaterKind::Ocean || !mayHold(x, z)) {
         return 0.0f;
     }
     const ErgPoint e = at(x, z, s.relief);
-    return e.mask > 0.0f ? dunesOf(x, z, e) : 0.0f;
+    if (!(e.mask > 0.0f)) {
+        return 0.0f;
+    }
+    // The spacing of the dunes the sand gives (dune_phase: that of the pivots, smooth).
+    const double spacing = kMeanLeast + kMeanRange * dmath::pow(static_cast<double>(e.sand), 1.3);
+    const double filtered = hermite(kFilterLow * spacing, kFilterHigh * spacing, footprint);
+    const double point = filtered < 1.0 ? static_cast<double>(dunesOf(x, z, e)) : 0.0;
+    if (!(filtered > 0.0)) {
+        return static_cast<float>(point);
+    }
+    // Their mean over their pattern (closed forms).
+    const double mean = dune_field::meanDunes(*impl_, x, z, e);
+    return static_cast<float>(point + (mean - point) * filtered);
 }
 
 float Ergs::dunesOf(double x, double z, const ErgPoint& e) const {

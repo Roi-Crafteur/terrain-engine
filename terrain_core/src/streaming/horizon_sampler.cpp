@@ -166,7 +166,9 @@ void HorizonSampler::fill(int level, const HorizonRect& rect, std::span<HorizonC
     const LevelFrame frame{levelPitch(params_, level), levelCounts(params_, level)};
     const int slopeStep = params_.materialSlopeStep == 0 ? frame.pitch : params_.materialSlopeStep;
     const HorizonRect margin{rect.x0 - 1, rect.z0 - 1, rect.x1 + 1, rect.z1 + 1};
-    const GroundGrid grid = sampleGround(*field_, frame, margin);
+    // The relief as this level sees it: the dunes filtered to its pitch (Heightfield::forFootprint).
+    const Heightfield field = field_->forFootprint(frame.pitch);
+    const GroundGrid grid = sampleGround(field, frame, margin);
 
     // The samples of the margin only need a height, for the gradients.
     std::vector<HorizonCell> cells(grid.heights.size());
@@ -175,7 +177,7 @@ void HorizonSampler::fill(int level, const HorizonRect& rect, std::span<HorizonC
     }
     for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
         for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
-            classify(*field_, *ecology_, frame, grid, slopeStep, i, k, cells[grid.index(i, k)]);
+            classify(field, *ecology_, frame, grid, slopeStep, i, k, cells[grid.index(i, k)]);
         }
     }
     raiseToCrests(crests_, level, rect, grid, cells);

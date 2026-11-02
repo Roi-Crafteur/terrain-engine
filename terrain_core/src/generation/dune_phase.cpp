@@ -144,6 +144,15 @@ Weights weightsWithSlopes(const Ergs::Impl& m, const Shared& s, const Pivots& p)
 
 } // namespace
 
+double nominalAt(const Ergs::Impl& m, const Shared& s, const Pivots& p) {
+    const Weights w = weightsWithSlopes(m, s, p);
+    double nominal = 0.0;
+    for (std::size_t k = 0; k < 4; ++k) {
+        nominal += w.w[k] * p.pivots[k].spacing;
+    }
+    return nominal;
+}
+
 Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind& kind) {
     const Weights w = weightsWithSlopes(m, s, p);
     const dmath::SineCosine r = dmath::sinCosTurns(kind.turn);
