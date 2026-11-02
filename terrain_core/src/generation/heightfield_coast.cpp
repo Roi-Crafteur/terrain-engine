@@ -41,6 +41,10 @@ constexpr std::uint64_t kCoastStream = 0xC0A57;
 // runs away, and the shapes there only get wider, never steeper.
 constexpr double kGradientStep = 64.0;
 constexpr double kLeastGradient = 1.5;
+// The distance to the shore of a face read kFaceStep meters away (Heightfield::distancePerMeter),
+// never growing slower than kLeastPerMeter per meter.
+constexpr double kFaceStep = 1.0;
+constexpr double kLeastPerMeter = 0.02;
 
 // Near the rivers the coasts fade out over kClearance meters of clearance of their valleys
 // (Hydrology::clearance).
@@ -208,8 +212,17 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
                                    length > 0.0 ? -gx / length : 1.0,
                                    length > 0.0 ? -gz / length : 0.0};
     if (memos != nullptr && memos->coastFace != nullptr) {
-        *memos->coastFace = coast_faces::faceAt(p, coasts_->shapes, layers_->faceGrain, point,
-                                                g, kinds, inlets);
+        coast_faces::Report report =
+            coast_faces::faceAt(p, coasts_->shapes, layers_->faceGrain, point, g, kinds, inlets);
+        if (report.faced && report.alongShore) {
+            const double perMeter = distancePerMeter(x, z, g.coast / gradient, gx / gradient,
+                                                     gz / gradient, distance);
+            report.face.distance = static_cast<float>(report.face.distance / perMeter);
+            report.face.run = static_cast<float>(report.face.run / perMeter);
+        }
+        const bool beyond = report.front > 0.0f && report.face.distance > report.front;
+        report.faced = report.faced && !beyond;
+        *memos->coastFace = report;
     }
     c.landward = c.signal > 0.0;
     c.land = shape.land;
@@ -258,6 +271,19 @@ void Heightfield::leaveValleys(double x, double z, HeightSample& s, Memos* memos
     }
 }
 
+double Heightfield::distancePerMeter(double x, double z, double base, double gx, double gz,
+                                     double distance) const {
+    const double ax = noise::wrapCanonical(x + kFaceStep, world_.x);
+    const double az = noise::wrapCanonical(z + kFaceStep, world_.z);
+    const auto at = [this](double px, double pz, double b) {
+        return coast_inlets::distanceOf(
+            b, inlets_ ? inlets_->effectAt(px, pz) : coast_inlets::Effect{});
+    };
+    const double dx = at(ax, z, base + gx * kFaceStep) - distance;
+    const double dz = at(x, az, base + gz * kFaceStep) - distance;
+    return std::max(kLeastPerMeter, dmath::hypot(dx, dz) / kFaceStep);
+}
+
 float Heightfield::coastFaceClear(double x, double z, float height) const {
     if (!hydrology_ || !hydrology_->mayMatter(x, z)) {
         return 1.0f;
@@ -278,7 +304,7 @@ void Heightfield::anchorCoastFace(double x, double z, float relief, RockFace& fa
     face.weight *= coastFaceClear(x, z, relief);
 }
 
-HeightSample Heightfield::seenAt(double worldX, double worldZ) const {
+HeightSample Heightfield::seenAt(double worldX, double worldZ, double pitch) const {
     coast_faces::Report report;
     Memos memos;
     memos.coastFace = &report;
@@ -293,7 +319,9 @@ HeightSample Heightfield::seenAt(double worldX, double worldZ) const {
     if (report.faced) {
         RockFace face = report.face;
         anchorCoastFace(x, z, relief, face);
-        s.height += coast_faces::seenHeight(face, relief, kSeenDetail) - relief;
+        const coast_faces::Seen seen = coast_faces::seenOf(face, report.plunges, relief, pitch);
+        s.height += seen.height - relief;
+        s.rock = seen.rock ? 1.0f : s.rock;
         if (s.water == WaterKind::None) {
             s.waterLevel = s.height;
         }
@@ -302,7 +330,7 @@ HeightSample Heightfield::seenAt(double worldX, double worldZ) const {
 }
 
 void Heightfield::seenHeightsAt(std::span<const double> xs, std::span<const double> zs,
-                                std::span<float> out) const {
+                                std::span<float> out, double pitch) const {
     if (xs.size() != zs.size() || xs.size() != out.size()) {
         throw std::invalid_argument("Heightfield: the points and the results differ in size");
     }
@@ -310,7 +338,7 @@ void Heightfield::seenHeightsAt(std::span<const double> xs, std::span<const doub
     // coasts reported on the way, anchored on the relief before the water.
     Memos memos;
     std::vector<HeightSample> samples(xs.size());
-    std::vector<std::pair<std::size_t, RockFace>> faced;
+    std::vector<std::pair<std::size_t, coast_faces::Report>> faced;
     std::vector<float> relief;
     for (std::size_t i = 0; i < xs.size(); ++i) {
         coast_faces::Report report;
@@ -318,7 +346,7 @@ void Heightfield::seenHeightsAt(std::span<const double> xs, std::span<const doub
         samples[i] = reliefWith(xs[i], zs[i], &memos);
         memos.coastFace = nullptr;
         if (report.faced) {
-            faced.emplace_back(i, report.face);
+            faced.emplace_back(i, report);
             relief.push_back(samples[i].height);
         }
     }
@@ -329,10 +357,11 @@ void Heightfield::seenHeightsAt(std::span<const double> xs, std::span<const doub
         out[i] = samples[i].height;
     }
     for (std::size_t n = 0; n < faced.size(); ++n) {
-        auto& [i, face] = faced[n];
-        anchorCoastFace(noise::wrapCanonical(xs[i], world_.x), noise::wrapCanonical(zs[i], world_.z),
-                        relief[n], face);
-        out[i] += coast_faces::seenHeight(face, relief[n], kSeenDetail) - relief[n];
+        auto& [i, report] = faced[n];
+        anchorCoastFace(noise::wrapCanonical(xs[i], world_.x),
+                        noise::wrapCanonical(zs[i], world_.z), relief[n], report.face);
+        out[i] += coast_faces::seenOf(report.face, report.plunges, relief[n], pitch).height -
+                  relief[n];
     }
 }
 

@@ -27,14 +27,16 @@ struct Place {
     double z;
 };
 
-// The wall of the reference calanque (coast_reference_test): 50 m over the sea, its foot 26 m
-// under it. A cliff and a rocky coast with a notch at their foot, 54 m and 58 m high. The wall of
-// a fjord, 57 m over the water and the steep wall of the relief above it. A stack of 20 to 60 m.
+// The places of the default world with its planet file (coast_planet_support.hpp; the same faces
+// without it but the stack, whose reef the rivers remove there). The wall of the reference
+// calanque (coast_reference_test): 50 m over the sea, its foot 26 m under it. A cliff and a rocky
+// coast with a notch at their foot, 54 m and 58 m high. The wall of a fjord, 57 m over the water
+// and the steep wall of the relief above it. A stack of 59 m.
 inline constexpr Place kCalanque{"the wall of the calanque", 23'416'458.0, -2'119'970.0};
 inline constexpr Place kCliff{"the notched cliff", 429'816.0, -855'933.0};
 inline constexpr Place kRocky{"the notched rocky coast", 23'344'448.0, -2'076'633.0};
 inline constexpr Place kFjord{"the wall of the fjord", 1'822'100.0, 9'925'750.0};
-inline constexpr Place kStack{"the stack", 23'590'410.0, -2'323'834.0};
+inline constexpr Place kStack{"the stack", -15'901'339.0, -6'234'092.0};
 
 // The heaviest face at a place, and the middle of its run (the place moved along its air).
 struct Face {
@@ -182,9 +184,14 @@ struct Capsule {
     double height = 1.92;
 };
 
-// Whether the line of a capsule at (x, z) from lo to hi meets the rock: a surface crosses it, or
-// its lowest point lies in the rock (an odd number of surfaces above it).
+// The skin of a capsule: a surface within it of the lowest point of a line of the capsule is no
+// overlap (a character of Unreal floats a few centimeters over its floor).
+inline constexpr double kSkin = 0.03;
+
+// Whether the line of a capsule at (x, z) from lo to hi meets the rock: a surface crosses it (above
+// its skin), or its lowest point lies in the rock (an odd number of surfaces above it).
 inline bool lineInRock(Tiles& tiles, double x, double z, double lo, double hi) {
+    lo += kSkin;
     std::size_t above = 0;
     for (const Hit& h : tiles.hitsAt(x, z)) {
         if (h.y > lo && h.y < hi) {

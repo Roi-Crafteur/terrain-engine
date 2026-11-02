@@ -52,7 +52,7 @@ GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
     for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
         const double z = frame.z(k);
         for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
-            const HeightSample sample = field.seenAt(frame.x(i), z);
+            const HeightSample sample = field.seenAt(frame.x(i), z, frame.pitch);
             grid.heights.push_back(sample.height);
             grid.continentalness.push_back(sample.continentalness);
             grid.water.push_back(sample.water);
@@ -80,7 +80,7 @@ SurfaceSite groundSite(const GroundGrid& grid, std::size_t at, const std::array<
 float gridHeight(const Heightfield& field, const LevelFrame& frame, const GroundGrid& grid,
                  std::int64_t i, std::int64_t k) {
     return grid.rect.contains({i, k}) ? grid.heights[grid.index(i, k)]
-                                      : field.seenAt(frame.x(i), frame.z(k)).height;
+                                      : field.seenAt(frame.x(i), frame.z(k), frame.pitch).height;
 }
 
 // The steepest rise, per meter, from the sample (i, k) to the samples one and two pitches away
@@ -123,8 +123,11 @@ PointClass pointClass(const Heightfield& field, const Ecology& ecology, const Le
                      gridHeight(field, frame, grid, i, k + 1),
                      gridHeight(field, frame, grid, i, k - 1)};
     } else {
-        neighbors = {field.seenAt(x + slopeStep, z).height, field.seenAt(x - slopeStep, z).height,
-                     field.seenAt(x, z + slopeStep).height, field.seenAt(x, z - slopeStep).height};
+        const double p = frame.pitch;
+        neighbors = {field.seenAt(x + slopeStep, z, p).height,
+                     field.seenAt(x - slopeStep, z, p).height,
+                     field.seenAt(x, z + slopeStep, p).height,
+                     field.seenAt(x, z - slopeStep, p).height};
     }
     const std::size_t at = grid.index(i, k);
     SurfaceSite site = groundSite(grid, at, neighbors, slopeStep);

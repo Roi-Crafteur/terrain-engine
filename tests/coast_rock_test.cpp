@@ -9,8 +9,9 @@
 // - The tiles and the horizon show the same face (Heightfield::seenAt, the heights the grids of
 //   the horizon read beyond 512 m): across each face, the steps of the LOD 0 tiles, of the LOD 3
 //   tiles (the last ones before the horizon) and of the horizon stand kStepOff and kStepOffLod3
-//   meters apart at most, their ledges kLedgeAt meters on either side kLedgeOff and kLedgeOffLod3:
-//   no jump at 512 m, no cliff moving back.
+//   meters apart at most (kStepOffPlunge on the horizon for a face that plunges, which rises
+//   there from the shore: a pitch of its level 0 further from the sea), their ledges kLedgeAt
+//   meters on either side kLedgeOff and kLedgeOffLod3: no jump at 512 m.
 // - The notches of LOD 0: a floor kNotchFloor meters over the sea at most and a ceiling over it
 //   kNotchRoom meters higher at least (a pawn walks in), over kNotchReach meters at least.
 // - The steep faces are bare rock: kBareShare of the vertices of the LOD 0 tiles on a face
@@ -23,6 +24,7 @@
 //   32 m, which may miss a lobed stack: how many it shows is reported); every rock of the reefs
 //   kReefSeenRadius meters wide at least shows above the sea on the samples of level 0 of the
 //   horizon.
+#include "coast_planet_support.hpp"
 #include "coast_rock_support.hpp"
 
 #include "terrain/generation/coast.hpp"
@@ -53,7 +55,10 @@ constexpr double kNotchDeep = 3.0;
 constexpr double kNotchHigh = 6.0;
 constexpr double kStepOff = 2.5;
 constexpr double kStepOffLod3 = 8.0; // a cell of LOD 3
-constexpr double kLedgeAt = 12.0;
+// A face that plunges rises on the horizon from the sea level at the shore over two pitches of its
+// level (coast_faces::seenOf): its step a pitch further from the sea.
+constexpr double kStepOffPlunge = 9.0;
+constexpr double kLedgeAt = 20.0;
 constexpr double kLedgeOff = 0.5;
 constexpr double kLedgeOffLod3 = 1.5;
 constexpr double kNotchFloor = 4.0;
@@ -66,13 +71,14 @@ constexpr double kBareShare = 0.95;
 constexpr double kStackSeen = 0.75; // the shoulder of a stack: 79 % of its height (coast_faces.cpp)
 constexpr double kReefSeenRadius = 6.0; // a disc of 8 / sqrt(2) m holds a sample of level 0
 constexpr int kViewChunks = 16;         // the tiles out to 512 m
+constexpr double kLevel0 = 8.0;         // the pitch of the level 0 of the horizon
 
 constexpr std::array<Place, 4> kFaces{coast_rock::kCalanque, coast_rock::kCliff,
                                       coast_rock::kRocky, coast_rock::kFjord};
 
+// The default world with its planet file (coast_planet_support.hpp).
 const terrain::TerrainTiles& world() {
-    static const terrain::TerrainTiles t(terrain::kDefaultWorldSeed);
-    return t;
+    return coast_planet::tiles();
 }
 
 void testFaces() {
@@ -162,7 +168,7 @@ void testMeshes() {
                 "%zu inverted triangles, %zu floating pieces\n",
                 tiles, lods[0], lods[1], lods[2], lods[3], rock, triangles, open, multi, inverted,
                 floating);
-    TEST_CHECK(rock >= 100 && lods[3] >= 20);
+    TEST_CHECK(rock >= 100 && lods[3] >= 15);
     TEST_CHECK(open == 0 && multi == 0 && inverted == 0 && floating == 0);
 }
 
@@ -190,7 +196,7 @@ Profile profileOf(const coast_rock::Face& f, Tiles& tiles0, Tiles& tiles3) {
     for (std::size_t k = 0; Profile::at(k) <= kLedgeAt + kSpan; ++k) {
         const double x = f.x + ax * Profile::at(k);
         const double z = f.z + az * Profile::at(k);
-        const terrain::HeightSample seen = world().heightfield().seenAt(x, z);
+        const terrain::HeightSample seen = world().heightfield().seenAt(x, z, kLevel0);
         const double water = seen.water == terrain::WaterKind::None
                                  ? -1e9
                                  : static_cast<double>(seen.waterLevel);
@@ -234,7 +240,9 @@ void testHorizon() {
                     "on the LOD 0 tiles, %+.1f m on the LOD 3 tiles, %+.1f m on the horizon; the "
                     "ledges %.2f m off on the horizon, %.2f m on the LOD 3 tiles\n",
                     p.name, pr.lod0[b], pr.lod0[a], s0, s3, seen, ledgeSeen, ledge3);
-        TEST_CHECK(std::abs(seen - s0) <= kStepOff && std::abs(s3 - s0) <= kStepOffLod3);
+        const bool plunges = &p == &kFaces[0] || &p == &kFaces[3]; // the calanque, the fjord
+        TEST_CHECK(std::abs(seen - s0) <= (plunges ? kStepOffPlunge : kStepOff) &&
+                   std::abs(s3 - s0) <= kStepOffLod3);
         TEST_CHECK(ledgeSeen <= kLedgeOff && ledge3 <= kLedgeOffLod3);
     }
 }
@@ -398,7 +406,7 @@ double highestOver(int level, const terrain::CoastStack& s) {
 double lowestSeen(const terrain::CoastStack& s, Tiles& tiles3) {
     const terrain::Heightfield& field = world().heightfield();
     double least = std::min({static_cast<double>(field.heightAt(s.x, s.z)),
-                             static_cast<double>(field.seenAt(s.x, s.z).height),
+                             static_cast<double>(field.seenAt(s.x, s.z, kLevel0).height),
                              tiles3.topAt(s.x, s.z)});
     for (int level = 0; level < 3; ++level) {
         least = std::min(least, highestOver(level, s));

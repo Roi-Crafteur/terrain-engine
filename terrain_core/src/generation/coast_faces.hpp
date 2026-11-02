@@ -54,6 +54,17 @@ struct Point {
 struct Report {
     bool faced = false;
     RockFace face;
+    // The face rises from the sea (the calanques, the lower walls of the fjords, the rocks of the
+    // reefs): the sea lies before it, no platform.
+    bool plunges = false;
+    // Its distance and its run are measured along the distance to the shore of the point
+    // (Point::distance), which the inlets bend (coast_inlets::distanceOf: a fraction of a meter
+    // per meter by the walls of a calanque or a fjord), not in meters: the Heightfield turns them
+    // into meters (Heightfield::distancePerMeter), the overhangs, the grain and the joints of the
+    // face being in meters.
+    bool alongShore = false;
+    // Only within front meters before the plane of the face (in meters, 0: all of its run).
+    float front = 0.0f;
 };
 
 // The face of the coast at a point of the band of the kinds of coast weights over the geography
@@ -68,13 +79,23 @@ struct Report {
 [[nodiscard]] bool plungeRock(const coast_shape::Noises& noises, const Point& point,
                               const GeographySample& g, const coast_kinds::Weights& weights);
 
-// The height of the surface of a column of relief relief seen from above, with its face anchored
-// (absolute heights) as a detail draws it: the ledge of its top behind the face, that of its foot
-// in front of it (between them over a cell of the detail across the face: its line, not a
-// staircase of samples), both leaned to the relief by the weight the detail draws; the
-// relief without a face drawn, and in front of it under the sea (the floor the horizon colors the
-// sea by: no sea painted up the wall). The horizon shows the face where the tiles leave it off:
-// the same step at 512 m, no cliff moving back.
-[[nodiscard]] float seenHeight(const RockFace& face, float relief, const RockDetail& detail);
+// What a level of the horizon of pitch meters shows of a column of relief relief with its face
+// anchored (absolute heights): the ledge of its top behind the face, that of its foot in front of
+// it, leaned to the relief by the weight the tiles of LOD 3 draw (kSeenCell), with a ramp between
+// them as wide as kSeenRamp pitches of the level on either side of the face (a half of its run at
+// most): its samples, its slopes and its detail normals then follow the line of the face, which a
+// step narrower than its lattice would cut into a staircase of light and dark triangles. A face
+// that plunges rises from the sea level at the shore over twice that width (the sea before it
+// keeps the floor of its relief, by which the horizon colors it): the samples of the land at the
+// water stand at the sea level, so that the sea the horizon draws between them and the sea does
+// not climb the wall; its top stands a pitch further from the sea than in the tiles at most. The
+// relief without a face drawn. rock: the ramp and a pitch on either side of it, bare rock.
+struct Seen {
+    float height = 0.0f;
+    bool rock = false;
+};
+inline constexpr float kSeenCell = 8.0f;
+inline constexpr double kSeenRamp = 1.0;
+[[nodiscard]] Seen seenOf(const RockFace& face, bool plunges, float relief, double pitch);
 
 } // namespace terrain::coast_faces

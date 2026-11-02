@@ -22,6 +22,7 @@
 //   plane of the face at least, under its ceiling), along the foot of its face, and on the top
 //   of each face out to its edge, where the next floor lies a face below: no hole on the way.
 // The arches and the sea caves come with the tunnels, in their own commit.
+#include "coast_planet_support.hpp"
 #include "coast_rock_support.hpp"
 
 #include "map_landing.hpp"
@@ -64,9 +65,9 @@ constexpr std::array<Place, 5> kPlaces{coast_rock::kCalanque, coast_rock::kCliff
                                        coast_rock::kRocky, coast_rock::kFjord,
                                        coast_rock::kStack};
 
+// The default world with its planet file (coast_planet_support.hpp).
 const terrain::TerrainTiles& world() {
-    static const terrain::TerrainTiles t(terrain::kDefaultWorldSeed);
-    return t;
+    return coast_planet::tiles();
 }
 
 // Whether capsule c, its lowest point at bottom over (x, z), is clear of the rock where it is or

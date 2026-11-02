@@ -17,11 +17,10 @@
 //   where it stands two cells high (as the faces of coast_patterns_test: the rocks in two
 //   dimensions, as the tiles draw them where their faces are not drawn and the horizon samples
 //   them; coast_rock_test checks their faces).
+#include "coast_planet_support.hpp" // the heightfield and the tiles with the planet file
 #include "terrain/chunk_coord.hpp"
 #include "terrain/generation/coast.hpp"
-#include "terrain/generation/heightfield.hpp"
 #include "terrain/streaming/lod.hpp"
-#include "terrain/streaming/terrain_tiles.hpp"
 
 #include "coast_teeth_support.hpp"
 #include "test_assert.hpp"
@@ -44,19 +43,18 @@ using terrain::CoastKind;
 using terrain::CoastSite;
 using terrain::InletKind;
 
-constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
 
+// The default world with its planet file (coast_planet_support.hpp): the rivers truncate the
+// inlets and remove the reefs across their corridors.
 const terrain::TerrainTiles& tiles() {
-    static const terrain::TerrainTiles t(kSeed);
-    return t;
+    return coast_planet::tiles();
 }
 
 // The tiles of the relief alone (no rock in three dimensions): the rocks in two dimensions, as the
 // tiles draw them where their faces are not drawn (the LOD too coarse) and as the horizon samples
 // them; their faces in three dimensions have their own checks (coast_rock_test).
 const terrain::TerrainTiles& reliefTiles() {
-    static const terrain::TerrainTiles t(kSeed, {}, {}, std::nullopt, {}, nullptr, false);
-    return t;
+    return coast_planet::reliefTiles();
 }
 
 const terrain::Heightfield& field() {
@@ -96,7 +94,10 @@ constexpr double kFjordMost = 0.6;
 constexpr double kFjordStep = 500.0;
 constexpr int kFjordSections = 4;
 constexpr double kFjordBank = 0.7;
-constexpr double kFjordBanks = 0.75;
+// Banks across a river valley over their first kBankRun m (every kRiverStep m): left out.
+constexpr double kBankRun = 200.0;
+constexpr double kRiverStep = 25.0;
+constexpr double kFjordBanks = 0.70; // 0.75 without the planet file (78 %), 72 % with it
 
 // How far the water runs from (x, z) toward angle t, radians (6 km at most).
 double waterRun(double x, double z, double t) {
@@ -159,8 +160,12 @@ void addBanks(double x, double z, std::vector<double>& banks) {
         const double nz = gx / g;
         const Bank l = bankOf(x, z, nx, nz);
         const Bank r = bankOf(x, z, -nx, -nz);
-        banks.push_back(l.first);
-        banks.push_back(r.first);
+        // Not across the valleys the rivers keep (coast_planet::nearRiver).
+        for (const auto& [b, s] : {std::pair{l, 1.0}, std::pair{r, -1.0}}) {
+            if (!coast_planet::lineNearRiver(x, z, s * nx, s * nz, b.shore, kBankRun, kRiverStep)) {
+                banks.push_back(b.first);
+            }
+        }
         // Back to the middle of the water across, then up the fjord.
         x += 0.5 * (l.shore - r.shore) * nx + kFjordStep * gx / g;
         z += 0.5 * (l.shore - r.shore) * nz + kFjordStep * gz / g;

@@ -81,6 +81,15 @@ constexpr double kFjordWallHigh = 150.0;
 constexpr double kFjordReach = 1.5;
 constexpr double kFjordFade = 0.67;
 constexpr double kFjordRun = 0.5;
+// Only on a steep bank: the ground of the coast rising from the water kFjordSteepLow to
+// kFjordSteepHigh meters per meter of the distance to the shore at least (at kFjordSteepFrom meters
+// of it at least: about 2 on the walls of the fjords, 0.2 on their islands), the face faded in
+// between.
+constexpr double kFjordSteepLow = 0.5;
+constexpr double kFjordSteepHigh = 1.0;
+constexpr double kFjordSteepFrom = 0.1;
+// The columns of the water before the wall within kFjordFront meters of it hold its face.
+constexpr double kFjordFront = 16.0;
 
 // The heaviest of the faced kinds, and their share of the weights of the kinds.
 struct Faced {
@@ -113,10 +122,16 @@ Faced facedOf(const coast_kinds::Weights& weights) {
 double groundAt(const GeographyParams& p, const coast_shape::Noises& noises, const Point& point,
                 const GeographySample& g, const coast_kinds::Weights& weights,
                 const coast_shape::Inlets& inlets, double distance) {
-    return static_cast<double>(coast_shape::shapeAt(p, noises, point.x, point.z, g,
-                                                    distance * point.gradient, distance, weights,
-                                                    inlets)
-                                   .ground);
+    // A column of the sea of the geography read at a distance on the land is read as the land
+    // there (shapeAt would give it the dome of a rock of the reefs out at sea: none).
+    coast_shape::Inlets read = inlets;
+    const double coast = distance * point.gradient;
+    if (coast > 0.0 && read.base < 0.0) {
+        read.base = coast;
+    }
+    return static_cast<double>(
+        coast_shape::shapeAt(p, noises, point.x, point.z, g, coast, distance, weights, read)
+            .ground);
 }
 
 // The notch, the cap, the grain and the joint of a face of kind over its run, its foot at foot
@@ -188,6 +203,8 @@ Report faceOfRun(const Context& c, const coast_profile::Run& run, double share, 
     face.airZ = static_cast<float>(c.point.airZ);
     featuresOf(c.grain, c.point, kind, foot, run.plunges, face);
     out.faced = true;
+    out.plunges = run.plunges;
+    out.alongShore = true;
     return out;
 }
 
@@ -220,16 +237,24 @@ double fjordShareOf(const coast_kinds::Weights& weights) {
 // distance to the shore: each column of the bank lower than the wall, within kFjordReach times the
 // height of the wall from the water, stands as high as it (the ledge of its top), fading out over
 // the last third of that reach; the sea before the wall keeps its floor.
+Report fjordFrontAt(const Context& c, double share, double wall, double here);
+
 Report fjordFaceAt(const Context& c, double share) {
     const double d = c.point.distance;
-    if (!(d > 0.0)) {
-        return {};
-    }
     const coast_profile::Shore s = coast_profile::shoreAt(c.noises, c.point.x, c.point.z);
     const double wall = kFjordWallLow + (kFjordWallHigh - kFjordWallLow) * s.heightAt;
     const double reach = kFjordReach * wall;
     const double here = groundOf(c, d);
+    if (!(d > 0.0)) {
+        return fjordFrontAt(c, share, wall, here);
+    }
     if (!(here < wall) || !(d < reach)) {
+        return {};
+    }
+    // A bank rising gently from the water (an island, a gentle shore) keeps its slopes: the step of
+    // the wall would stand over it as a ring of rock with a hollow behind it.
+    const double steep = here / std::max(d, kFjordSteepFrom);
+    if (!(steep > kFjordSteepLow)) {
         return {};
     }
     Report out;
@@ -238,11 +263,40 @@ Report fjordFaceAt(const Context& c, double share) {
     face.top = static_cast<float>(wall - here);
     face.distance = static_cast<float>(-d);
     face.run = static_cast<float>(2.0 * std::max(kFjordRun * wall, d + 1.0));
-    face.weight = static_cast<float>(share * (1.0 - smooth(kFjordFade * reach, reach, d)));
+    face.weight = static_cast<float>(share * (1.0 - smooth(kFjordFade * reach, reach, d)) *
+                                     smooth(kFjordSteepLow, kFjordSteepHigh, steep));
     face.airX = static_cast<float>(c.point.airX);
     face.airZ = static_cast<float>(c.point.airZ);
     featuresOf(c.grain, c.point, CoastKind::Fjord, 0.0, true, face);
     out.faced = true;
+    out.plunges = true;
+    out.alongShore = true;
+    return out;
+}
+
+// The face of the lower wall of a fjord on a column of its water before it, kFjordFront meters of
+// it at most: its foot the floor there (no air under the floor of the sea), its top that of the
+// wall, so that the density crosses the plane of the face as the distance to it (the columns of
+// the water without the face would turn from the face to the air of the whole height of the wall
+// from one column to the next: a staircase of the lattice).
+Report fjordFrontAt(const Context& c, double share, double wall, double here) {
+    const double d = c.point.distance;
+    if (!(d > -kFjordRun * wall)) {
+        return {};
+    }
+    Report out;
+    RockFace& face = out.face;
+    face.top = static_cast<float>(wall - here);
+    face.distance = static_cast<float>(-d);
+    face.run = static_cast<float>(2.0 * std::max(kFjordRun * wall, 1.0 - d));
+    face.weight = static_cast<float>(share);
+    face.airX = static_cast<float>(c.point.airX);
+    face.airZ = static_cast<float>(c.point.airZ);
+    featuresOf(c.grain, c.point, CoastKind::Fjord, 0.0, true, face);
+    out.faced = true;
+    out.plunges = true;
+    out.alongShore = true;
+    out.front = static_cast<float>(kFjordFront);
     return out;
 }
 
@@ -280,9 +334,11 @@ Report rockFaceAt(const Context& c) {
     const bool inside = r < radius;
     Report out;
     RockFace& face = out.face;
+    // Out of the rock, before its face, the foot is the floor there and the top that of the rock:
+    // the density crosses its plane as the distance to it.
     face.foot = static_cast<float>(inside ? -here : 0.0);
     const double shoulder = in.rockTop * coast_reefs::domeOf(1.0 - coast_reefs::kRockTop);
-    face.top = static_cast<float>(inside ? std::max(0.0, shoulder - here) : 0.0);
+    face.top = static_cast<float>(std::max(0.0, shoulder - here));
     face.distance = static_cast<float>(r - radius);
     face.run = static_cast<float>(2.0 * reach);
     face.weight = static_cast<float>(weight);
@@ -290,6 +346,7 @@ Report rockFaceAt(const Context& c) {
     face.airZ = static_cast<float>(r > 0.0 ? dz / r : 0.0);
     featuresOf(c.grain, c.point, CoastKind::Rocky, 0.0, true, face);
     out.faced = true;
+    out.plunges = true;
     return out;
 }
 
@@ -338,23 +395,29 @@ bool plungeRock(const coast_shape::Noises& noises, const Point& point, const Geo
     return d > coast_profile::runOf(f, true).a;
 }
 
-float seenHeight(const RockFace& face, float relief, const RockDetail& detail) {
-    const double weight = std::min(1.0, static_cast<double>(drawnWeight(face, detail)));
-    // In front of the face under the sea the floor keeps its relief: the horizon draws the sea
-    // flat there and colors it by that floor, interpolated toward the top of the face behind; a
-    // floor as deep as the foot of the face would paint the sea up the lower part of its wall.
-    if (!(weight > 0.0) || (face.distance >= 0.0f && relief < 0.0f)) {
-        return relief;
+Seen seenOf(const RockFace& face, bool plunges, float relief, double pitch) {
+    const double weight =
+        std::min(1.0, static_cast<double>(drawnWeight(face, RockDetail{kSeenCell})));
+    const double behind = -static_cast<double>(face.distance);
+    const double run = static_cast<double>(face.run);
+    // The sea before a face that plunges keeps the floor of its relief.
+    if (!(weight > 0.0) || (plunges && !(behind > 0.0))) {
+        return {relief, false};
     }
-    // The step over a cell of the detail across the face (half of it on each side): the samples
-    // next to the face stand between its ledges, so that a face oblique to the grid keeps its
-    // line, not a staircase of the samples.
-    const double half = 0.5 * static_cast<double>(detail.cell);
-    const double behind = smooth(-half, half, -static_cast<double>(face.distance));
-    const double ledge = static_cast<double>(face.foot) +
-                         behind * (static_cast<double>(face.top) - face.foot);
-    return static_cast<float>(static_cast<double>(relief) +
-                              weight * (ledge - static_cast<double>(relief)));
+    double low = static_cast<double>(face.foot);
+    double from = 0.0;
+    double to = 0.0;
+    if (plunges) {
+        low = 0.0;
+        to = std::min(2.0 * kSeenRamp * pitch, 0.5 * run);
+    } else {
+        to = std::min(kSeenRamp * pitch, 0.25 * run);
+        from = -to;
+    }
+    const double ledge = low + smooth(from, to, behind) * (static_cast<double>(face.top) - low);
+    const double height = static_cast<double>(relief) + weight * (ledge - relief);
+    const bool rock = weight > 0.5 && behind > from - pitch && behind < to + pitch;
+    return {static_cast<float>(height), rock};
 }
 
 } // namespace terrain::coast_faces
