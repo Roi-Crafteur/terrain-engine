@@ -10,14 +10,22 @@
 //   water before a calanque).
 // - The cliffs and the rocky coasts keep their rock platform: their face stands at its end, or
 //   further up the slope when the platform leaves no room, the platform before it, its notch at
-//   its foot (an undercut 1 to 3 m deep and high, where the noise of its overhangs opens it: never
-//   a regular row).
+//   its foot (an undercut 3 to 4 m deep and 6 to 8 m high, 30 % of the face at most, where the
+//   noise of its overhangs opens it: never a regular row). The tiles of LOD 0 draw it whole, those
+//   of LOD 1 a little of it, the coarser ones none (they draw no overhang finer than their cells:
+//   rock_faces.hpp), nor does the horizon.
 // - Where two of these kinds share the coast, the face fades out between them: it never jumps
 //   along the coast from one place to the other.
+// - The lower walls of the fjords and the rocks of the reefs (the stacks all around) rise from the
+//   sea level, the floor under the sea before them as the relief has it: the columns of the sea
+//   do not hold their faces, which never dig under it (no air shut in the rock there).
+// - Near a rock of the reefs, the faces of the shore fade out, and the faces of two rocks fade
+//   out where they meet: no face is ever cut off from one column to the next.
 // Its heights are those of the ground of the coast at the ends of its run, at the column (relative
 // to the ground there, to anchor on the relief: anchorFace): the step meets the relief at both
 // ends. Its weight is the share of the rocky coasts, the cliffs and the calanques among the kinds
-// of coast; the cliffs and the calanques jut out at their top where the overhangs want it. Its
+// of coast; the cliffs and the calanques jut out at their top where the overhangs want it (a cap
+// of 10 % of the face, 4 m at most, drawn as the notches). Its
 // grain, its beds and its joints are those of the rock of the walls (wall_faces::Grain). The
 // Heightfield takes it out near the rivers (Hydrology::clearance: no rock over their water).
 

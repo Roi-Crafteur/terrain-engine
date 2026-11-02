@@ -21,6 +21,11 @@ inline constexpr double kRockRim = 0.3;
 inline constexpr double kRockTop = 0.3;
 inline constexpr double kRockLobe = 0.4;
 
+// The shape of a rock at u, 0 at its foot to 1 at its middle, in [0, 1] of its height: its flank
+// straight (steepest), its foot rounded over kRockRim of the way, its top over kRockTop (a dome),
+// the slope continuous.
+[[nodiscard]] double domeOf(double u);
+
 // The radius of a rock height meters high: its flank kRockEase of the slope law the tiles draw
 // without teeth (coast_shape::faceSlopeLimit; its distance is exact, no slack); its lobes only
 // make it gentler.

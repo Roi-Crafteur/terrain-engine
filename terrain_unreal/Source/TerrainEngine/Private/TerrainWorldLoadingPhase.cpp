@@ -347,7 +347,7 @@ double TerrainLevelZ(const FTerrainWorldState& State, const FVector& Location, b
 	const bool bKnown = Known.IsSet() && FMath::Abs(Known->x - Core.x) < LoadKnownGroundMeters &&
 		FMath::Abs(Known->z - Core.z) < LoadKnownGroundMeters;
 	const terrain::unreal::GroundLevel Level = bKnown ? *Known
-		: terrain::unreal::groundLevelAt(State.Session.tiles().heightfield(), Core.x, Core.z);
+		: terrain::unreal::groundLevelAt(State.Session.tiles(), Core.x, Core.z);
 	return terrain::unreal::toUnreal(
 		State.Frame, {Core.x, bStand ? Level.stand : Level.ground, Core.z}).z;
 }
@@ -420,7 +420,7 @@ bool ATerrainWorld::BeginTeleport(APawn& Pawn, const FTerrainTeleport& Teleport)
 			 "%.1f%s; held until the world around is shown"),
 		*Pawn.GetName(), CoreX, CoreZ, HeadingDegrees, Angles.yaw, Angles.pitch, *EyeText);
 	BeginTerrainLoad(Terrain, Location, terrain::unreal::LoadReason::Teleport);
-	Terrain.Loading.Ground.ask(Terrain.Session.tiles().heightfield(), CoreX, CoreZ);
+	Terrain.Loading.Ground.ask(Terrain.Session.tiles(), CoreX, CoreZ);
 	// Placed once the ground is read: the feet on it, or the eye above it; an eye at an altitude
 	// stays where it is (the level read still serves the hold).
 	Terrain.Loading.PawnToPlace = bEyeAtAltitude ? nullptr : &Pawn;

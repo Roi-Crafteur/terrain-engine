@@ -221,9 +221,12 @@ bool UTerrainDevTools::FindGameGround(APawn& Game, const FVector& ViewLocation,
 	terrain::unreal::WalkableSearch Search;
 	Search.radius = TerrainDev::PawnRadiusMeters();
 	Search.maxSlope = terrain::unreal::walkableSlope(WalkableAngle, WalkableMarginDegrees);
-	const terrain::Heightfield& Field = World->State->Session.tiles().heightfield();
-	const terrain::unreal::GroundHeight Height = [&Field](double X, double Z)
-	{ return static_cast<double>(Field.heightAt(X, Z)); };
+	const terrain::TerrainTiles& Tiles = World->State->Session.tiles();
+	const terrain::Heightfield& Field = Tiles.heightfield();
+	// The top of the rock the tiles draw: behind a face (a wall, a sea cliff) the heightmap lies in
+	// the rock, up to half the height of the face below the ground the rays find.
+	const terrain::unreal::GroundHeight Height = [&Tiles](double X, double Z)
+	{ return static_cast<double>(Tiles.groundAt(X, Z)); };
 	const terrain::unreal::CorePoint Under = terrain::unreal::toCore(World->State->Frame,
 		TerrainWorldConversions::ToUnrealPoint(ViewLocation));
 	const terrain::unreal::WalkableCandidates Candidates = terrain::unreal::walkableCandidates(

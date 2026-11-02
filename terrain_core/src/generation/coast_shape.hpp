@@ -108,6 +108,8 @@ struct Inlets {
     double rockHeight = 0.0;
     double rockTop = 0.0;
     double rockPhase = 0.0;
+    // Into the next rock (coast_inlets::Effect::nextIslet).
+    double nextIslet = -std::numeric_limits<double>::infinity();
 };
 
 [[nodiscard]] Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,

@@ -11,6 +11,12 @@ terrain_add_test(coast_reference_test terrain_core)
 terrain_add_test(coast_inlet_shapes_test terrain_core)
 terrain_add_test(coast_anchorages_test terrain_core)
 terrain_add_test(coast_materials_test terrain_core)
+# The faces of the coasts in three dimensions: in the tiles and on the horizon, their notches, the
+# stacks and the reefs seen from afar.
+terrain_add_test(coast_rock_test terrain_core)
+# The pawn of the game by the faces of the coasts, on the collision of the tiles (the Bridge of the
+# tools: the ground of a teleport, the landing of Terrain.Pawn and of a click on the map).
+terrain_add_test(coast_pawn_test terrain_unreal_bridge)
 # The materials of the coasts as the GPU horizon of Unreal draws them (Bridge).
 terrain_add_test(coast_horizon_rock_test terrain_unreal_bridge)
 # The rock under the sea in the scripts of the materials of Unreal, without Unreal.

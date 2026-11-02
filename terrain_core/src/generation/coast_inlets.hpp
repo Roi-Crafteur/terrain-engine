@@ -95,6 +95,8 @@ struct Effect {
     double rockHeight = 0.0;
     double rockTop = 0.0;
     double rockPhase = 0.0;
+    // How far the point lies into the next rock of the reefs (as islet: the second furthest).
+    double nextIslet = -std::numeric_limits<double>::infinity();
 };
 
 // The coast signal per meter of the inlets and stacks (about the gradient of the coast signal).

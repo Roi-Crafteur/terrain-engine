@@ -53,22 +53,6 @@ double between(double low, double high, double t) {
     return low + (high - low) * t;
 }
 
-// A rock at u, 0 at its foot to 1 at its middle: its flank straight (steepest), its foot rounded
-// over kRockRim of the way, its top over kRockTop (a dome), the slope continuous.
-double domeOf(double u) {
-    const double k = 1.0 / (1.0 - 0.5 * (kRockRim + kRockTop));
-    if (!(u > 0.0)) {
-        return 0.0;
-    }
-    if (u < kRockRim) {
-        return 0.5 * k * u * u / kRockRim;
-    }
-    if (u > 1.0 - kRockTop) {
-        return u < 1.0 ? 1.0 - 0.5 * k * (1.0 - u) * (1.0 - u) / kRockTop : 1.0;
-    }
-    return k * (u - 0.5 * kRockRim);
-}
-
 // How far the foot of a rock reaches toward turns, over its radius: 1 to 1 + kRockLobe, two and
 // three lobes turned by its phase.
 double lobesOf(const Stack& rock, double turns) {
@@ -100,6 +84,21 @@ Tall tallOf(double x, double z, const WorldSize& world) {
 }
 
 } // namespace
+
+double domeOf(double u) {
+    const double k = 1.0 / (1.0 - 0.5 * (kRockRim + kRockTop));
+    if (!(u > 0.0)) {
+        return 0.0;
+    }
+    if (u < kRockRim) {
+        return 0.5 * k * u * u / kRockRim;
+    }
+    if (u > 1.0 - kRockTop) {
+        return u < 1.0 ? 1.0 - 0.5 * k * (1.0 - u) * (1.0 - u) / kRockTop : 1.0;
+    }
+    return k * (u - 0.5 * kRockRim);
+}
+
 
 double rockRadius(double height) {
     const double slope = kRockEase * coast_shape::faceSlopeLimit(height);
@@ -172,6 +171,7 @@ void addRock(const Stack& rock, double x, double z, const WorldSize& world,
     const double roughness =
         dome > 0.0 ? 1.0 + amplitude * static_cast<double>(rough.fbm2D(x, z)) : 1.0;
     dome *= roughness;
+    e.nextIslet = std::max(e.nextIslet, std::min(e.islet, islet));
     if (islet > e.islet) {
         e.rockX = rock.x;
         e.rockZ = rock.z;

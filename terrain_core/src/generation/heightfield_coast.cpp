@@ -193,11 +193,11 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
     const double gradient = std::max(kLeastGradient, length);
     const double distance = coast_inlets::distanceOf(g.coast / gradient, inlet);
     const coast_kinds::Weights kinds = coastKindsAt(x, z, g, memos);
-    const coast_shape::Inlets inlets{g.coast,        inlet.floor,     inlet.rise,
-                                     inlet.dome,     inlet.deep,      inlet.sink,
-                                     inlet.glen,     inlet.islet,     inlet.rockX,
-                                     inlet.rockZ,    inlet.rockRadius, inlet.rockHeight,
-                                     inlet.rockTop,  inlet.rockPhase};
+    const coast_shape::Inlets inlets{g.coast,         inlet.floor,      inlet.rise,
+                                     inlet.dome,      inlet.deep,       inlet.sink,
+                                     inlet.glen,      inlet.islet,      inlet.rockX,
+                                     inlet.rockZ,     inlet.rockRadius, inlet.rockHeight,
+                                     inlet.rockTop,   inlet.rockPhase,  inlet.nextIslet};
     const coast_shape::Ground shape =
         coast_shape::shapeAt(p, coasts_->shapes, x, z, g, c.signal, distance, kinds, inlets);
     // Toward the sea: down the coast signal (along x where it is flat).
