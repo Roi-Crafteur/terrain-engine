@@ -33,6 +33,11 @@ constexpr double kRockEase = 0.8;
 // kRockBlend meters of height.
 constexpr double kIsletReach = 60.0;
 constexpr double kRockBlend = 6.0;
+// The small relief of the rocks (makeRough): 10 m and finer, 25 % of their height (35 % draws
+// teeth at the LOD 1).
+constexpr std::uint64_t kRoughStream = 0x2EEF;
+constexpr double kRoughWavelength = 10.0;
+constexpr double kRough = 0.25;
 
 double between(double low, double high, double t) {
     return low + (high - low) * t;
@@ -102,8 +107,14 @@ std::vector<Stack> reefOf(const coast_inlets::World& w, coast_inlets::Draws& d, 
     return out;
 }
 
+noise::FbmOctaves makeRough(std::uint64_t seed, const WorldSize& world) {
+    return noise::FbmOctaves(noise::deriveSeed(seed, kRoughStream),
+                             {.octaves = 4, .frequency = 1.0 / kRoughWavelength, .gain = 0.6},
+                             world);
+}
+
 void addRock(const Stack& rock, double x, double z, const WorldSize& world,
-             coast_inlets::Effect& e) {
+             const noise::FbmOctaves& rough, coast_inlets::Effect& e) {
     const double dx = noise::wrapCanonical(x - rock.x, world.x);
     const double dz = noise::wrapCanonical(z - rock.z, world.z);
     const double most = static_cast<double>(rock.radius) * (1.0 + kRockLobe);
@@ -117,7 +128,10 @@ void addRock(const Stack& rock, double x, double z, const WorldSize& world,
                                            : -coast_inlets::reachOf(r - radius, 0.0, kIsletReach));
     // Overlapping rocks merge rounded (no crease between them), never above the water at their
     // foot: the rounding vanishes there.
-    const double dome = static_cast<double>(rock.height) * domeOf(1.0 - r / radius);
+    double dome = static_cast<double>(rock.height) * domeOf(1.0 - r / radius);
+    if (dome > 0.0) {
+        dome *= 1.0 + kRough * static_cast<double>(rough.fbm2D(x, z));
+    }
     const double k = std::min({kRockBlend, e.dome, dome});
     if (k > 0.0) {
         const double h = std::max(k - std::abs(e.dome - dome), 0.0) / k;

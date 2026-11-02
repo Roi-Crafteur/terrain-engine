@@ -77,6 +77,9 @@ struct Ground {
     // How irregular its terraces are: the share of the high coasts, 0 on the low coasts and at
     // the inner edge of the band (relief_local::Shape::irregular).
     float irregular = 0.0f;
+    // Bare rock on the surface, 0 or 1: the rocks of the reefs and the sea kRockMargin meters
+    // around them (HeightSample::rock).
+    float rock = 0.0f;
 };
 
 // What the inlets and stacks make of the point (coast_inlets::Effect): the coast signal of the

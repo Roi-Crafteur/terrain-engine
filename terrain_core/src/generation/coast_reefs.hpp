@@ -6,6 +6,7 @@
 // law of the tiles; any ledge, saddle or flat top is soil): the rocks stay low domes.
 
 #include "coast_inlets.hpp"
+#include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
 #include <functional>
@@ -33,9 +34,14 @@ inline constexpr double kRockLobe = 0.4;
     const coast_inlets::World& w, coast_inlets::Draws& d, double x, double z,
     const std::function<bool(double x, double z)>& inside);
 
+// The relief of the rocks at a small scale: a noise of kRoughWavelength meters (four octaves)
+// scaling their domes by about 1 +- kRough (none at their foot, at the water), as strong as the
+// tiles draw it without teeth (coast_inlet_shapes_test).
+[[nodiscard]] noise::FbmOctaves makeRough(std::uint64_t seed, const WorldSize& world);
+
 // What a rock makes of the canonical point (x, z): the islet (how far into it) and the dome of the
-// effect; overlapping rocks merge rounded.
+// effect, rough; overlapping rocks merge rounded.
 void addRock(const coast_inlets::Stack& rock, double x, double z, const WorldSize& world,
-             coast_inlets::Effect& e);
+             const noise::FbmOctaves& rough, coast_inlets::Effect& e);
 
 } // namespace terrain::coast_reefs

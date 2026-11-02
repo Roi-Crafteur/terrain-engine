@@ -106,6 +106,9 @@ struct HeightSample {
     // dry land).
     WaterKind water = WaterKind::None;
     float waterLevel = 0.0f;
+    // Bare rock the coasts lay on the surface, 0 or 1 (the rocks of the reefs and the sea a few
+    // meters around them, coast.hpp): the material only, never the height.
+    float rock = 0.0f;
 };
 
 // A depression below the sea level of the geography (phase 11B): its center (canonical), its mean
@@ -209,6 +212,7 @@ private:
         float ground = 0.0f;
         float fade = 1.0f;      // coast_shape::Ground::fade
         float irregular = 0.0f; // coast_shape::Ground::irregular
+        float rock = 0.0f;      // coast_shape::Ground::rock
     };
     [[nodiscard]] CoastPoint coastPointAt(double x, double z, const GeographySample& g,
                                           Memos* memos) const;

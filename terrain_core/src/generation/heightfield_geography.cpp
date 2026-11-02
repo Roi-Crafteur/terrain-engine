@@ -201,6 +201,7 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
     }
     s.detail = detailAt(x, z, s.base, memos);
     s.height = s.base + s.mountain + s.detail;
+    s.rock = coast.rock;
     return s;
 }
 

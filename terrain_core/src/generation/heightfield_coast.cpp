@@ -196,6 +196,7 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
     c.ground = shape.ground;
     c.fade = shape.fade;
     c.irregular = shape.irregular;
+    c.rock = shape.rock;
     return c;
 }
 

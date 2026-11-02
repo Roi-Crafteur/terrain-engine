@@ -290,6 +290,10 @@ TerrainSurface surfaceFromSculpted(const SculptedRegion& sculpted) {
                              .cliffWall = walls});
 }
 
+bool barePlunge(const SurfaceSite& site, float rise, float rockSlope) {
+    return site.water == WaterKind::Ocean && rise >= rockSlope;
+}
+
 SurfaceSite heightfieldSite(float ground, float continentalness,
                             const std::array<float, 4>& neighbors, double step) {
     SurfaceSite site;

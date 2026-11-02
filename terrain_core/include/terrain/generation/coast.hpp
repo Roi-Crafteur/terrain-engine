@@ -106,11 +106,14 @@ struct CoastSite {
 };
 
 // A rock of the reefs off the coasts (Heightfield::stacksIn): a low dome out at sea, its middle
-// canonical, 3 to 12 m high, its foot irregular (lobes), as steep as the tiles draw it without
-// teeth; two to four of them in a group off some capes between coves, merging into irregular
-// reefs. In 2D a stack cannot be both of rock (a slope of 1 at least) and credible (the slope law
-// of the tiles; any ledge, saddle or flat top is soil): the stacks come with the 3D faces
-// (commit 5).
+// canonical, 3 to 12 m high, its foot irregular (lobes), its surface rough (a quarter of its
+// height at 10 m and finer), as steep as the tiles draw it without teeth; two to four of them in
+// a group off some capes between coves, merging into irregular reefs. Bare rock down to the water
+// and 20 m around under it: the core marks it (HeightSample::rock, the material only, never the
+// height), whatever its slope. The stacks come with the 3D faces (commit 5).
+// The sea floor at the foot of the walls plunging into the sea (the fjords) is bare rock too in
+// the tiles and the horizon (SurfaceSite::bareRock): never the sand of the shallows drawn up the
+// foot of a wall between two texels of the materials.
 struct CoastStack {
     double x = 0.0;
     double z = 0.0;

@@ -111,8 +111,10 @@ constexpr double kPlateauRise = 250.0;
 // shore, whose rounding the heights of the mountains would show.
 constexpr double kPlungeRamp = 15'000.0;
 constexpr double kGlenRamp = 3'000.0;
-// Around a rock of the reefs, the sea floor at most kRockFoot meters deep per meter from its foot.
+// Around a rock of the reefs, the sea floor at most kRockFoot meters deep per meter from its foot,
+// bare rock kRockMargin meters from it (no sand at its water).
 constexpr double kRockFoot = 0.5;
+constexpr double kRockMargin = 20.0;
 // Where the shore kinds weigh kHeldShare or more of the weight of the shore and plunging kinds,
 // the plunging kinds keep off their platform.
 constexpr double kHeldShare = 0.5;
@@ -419,15 +421,16 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
         // Rounded where the mountains meet the floor (a quarter of its depth).
         const double floor =
             std::min(inlets.floor, -smoothMin(mirror, inlets.deep, 0.25 * inlets.deep));
-        // Toward a rock of the reefs the floor rises to its foot, at most kRockFoot steep.
-        const double rock = kRockFoot * inlets.islet;
-        return {0.0f, 0.0f, static_cast<float>(std::max(std::min(ground, floor), rock)), 1.0f,
-                0.0f};
+        // Toward a rock of the reefs the floor rises to its foot, at most kRockFoot steep; bare
+        // rock up to kRockMargin meters from it.
+        const double foot = kRockFoot * inlets.islet;
+        return {0.0f, 0.0f, static_cast<float>(std::max(std::min(ground, floor), foot)), 1.0f,
+                0.0f, inlets.islet > -kRockMargin ? 1.0f : 0.0f};
     }
     if (inlets.base < 0.0) {
         // A rock of the reefs out in the sea of the geography: its dome alone (no face of the
         // coast, no relief of the land on it).
-        return {0.0f, 0.0f, static_cast<float>(inlets.dome), 1.0f, 0.0f};
+        return {0.0f, 0.0f, static_cast<float>(inlets.dome), 1.0f, 0.0f, 1.0f};
     }
     bool shores = false;
     for (const CoastKind kind :

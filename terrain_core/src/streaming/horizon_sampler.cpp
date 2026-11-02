@@ -31,6 +31,7 @@ struct GroundGrid {
     std::vector<float> continentalness;
     std::vector<WaterKind> water;
     std::vector<float> waterLevel;
+    std::vector<float> rock; // HeightSample::rock
 
     [[nodiscard]] std::size_t index(std::int64_t i, std::int64_t k) const {
         return static_cast<std::size_t>((k - rect.z0) * rect.width() + (i - rect.x0));
@@ -39,12 +40,13 @@ struct GroundGrid {
 
 GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
                         const HorizonRect& rect) {
-    GroundGrid grid{rect, {}, {}, {}, {}};
+    GroundGrid grid{rect, {}, {}, {}, {}, {}};
     const auto count = static_cast<std::size_t>(rect.count());
     grid.heights.reserve(count);
     grid.continentalness.reserve(count);
     grid.water.reserve(count);
     grid.waterLevel.reserve(count);
+    grid.rock.reserve(count);
     for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
         const double z = frame.z(k);
         for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
@@ -53,6 +55,7 @@ GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
             grid.continentalness.push_back(sample.continentalness);
             grid.water.push_back(sample.water);
             grid.waterLevel.push_back(sample.waterLevel);
+            grid.rock.push_back(sample.rock);
         }
     }
     return grid;
@@ -99,9 +102,12 @@ void classify(const Heightfield& field, const Ecology& ecology, const LevelFrame
         neighbors = {field.heightAt(x + slopeStep, z), field.heightAt(x - slopeStep, z),
                      field.heightAt(x, z + slopeStep), field.heightAt(x, z - slopeStep)};
     }
-    const SurfaceSite site = groundSite(grid, at, neighbors, slopeStep);
+    SurfaceSite site = groundSite(grid, at, neighbors, slopeStep);
     const EcologyParams& params = ecology.params();
     const ClimateSample climate = ecology.climate().sample(x, z, site);
+    // Bare rock: the reefs of the coasts, and the foot of the walls under the sea.
+    site.bareRock = grid.rock[at] > 0.5f ||
+                    barePlunge(site, steepestSlope(climate, site), params.materials.rockSlope);
     cell.biome = classifyBiome(climate, site, params.biomes);
     cell.material = surfaceMaterial(cell.biome, climate, site, params.materials);
     cell.flags = static_cast<std::uint8_t>((site.dry() ? 0U : kHorizonWater) |

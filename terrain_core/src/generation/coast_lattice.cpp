@@ -331,7 +331,8 @@ Cell cellOf(const World& w, Lattice lattice, std::int64_t i, std::int64_t j, dou
 }
 
 Lattices::Lattices(coast_inlets::World world)
-    : world_(std::move(world)), cut_(coast_inlets::makeCut(world_.seed, world_.size)) {
+    : world_(std::move(world)), cut_(coast_inlets::makeCut(world_.seed, world_.size)),
+      rough_(coast_reefs::makeRough(world_.seed, world_.size)) {
     for (std::size_t l = 0; l < grids_.size(); ++l) {
         Grid& g = grids_[l];
         g.nx = std::max<std::int64_t>(1, static_cast<std::int64_t>(world_.size.x / kCellMeters[l]));
@@ -396,7 +397,7 @@ coast_inlets::Effect Lattices::effectAt(double x, double z) const {
             coast_inlets::addInlet(*inlet, x, z, world_.size, cut_, e);
         }
         for (const coast_inlets::Stack* stack : n.stacks) {
-            coast_reefs::addRock(*stack, x, z, world_.size, e);
+            coast_reefs::addRock(*stack, x, z, world_.size, rough_, e);
         }
     }
     return e;
