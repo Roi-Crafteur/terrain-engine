@@ -113,8 +113,9 @@ std::vector<char> reached(const Window& w, const std::vector<char>& mask) {
         const int i = k % g;
         const int j = k / g;
         const bool edge = i == 0 || j == 0 || i == g - 1 || j == g - 1;
-        if (edge && mask[k] != 0 && w.base[k] != 0) {
-            seen[k] = 1;
+        const auto at = static_cast<std::size_t>(k);
+        if (edge && mask[at] != 0 && w.base[at] != 0) {
+            seen[at] = 1;
             todo.push_back(k);
         }
     }
@@ -128,8 +129,9 @@ std::vector<char> reached(const Window& w, const std::vector<char>& mask) {
             const int ni = i + di;
             const int nj = j + dj;
             const int n = nj * g + ni;
-            if (ni >= 0 && nj >= 0 && ni < g && nj < g && mask[n] != 0 && seen[n] == 0) {
-                seen[n] = 1;
+            const auto at = static_cast<std::size_t>(n);
+            if (ni >= 0 && nj >= 0 && ni < g && nj < g && mask[at] != 0 && seen[at] == 0) {
+                seen[at] = 1;
                 todo.push_back(n);
             }
         }
@@ -148,10 +150,11 @@ void testConnected() {
         const std::vector<char> world = reached(w, w.sea);
         const std::vector<char> geography = reached(w, w.base);
         for (int k = 0; k < w.n * w.n; ++k) {
-            const bool made = w.sea[k] != 0 && w.base[k] == 0;
+            const auto at = static_cast<std::size_t>(k);
+            const bool made = w.sea[at] != 0 && w.base[at] == 0;
             inletPoints += made ? 1 : 0;
-            cut += made && w.deep[k] != 0 && world[k] == 0 ? 1 : 0;
-            closed += geography[k] != 0 && w.sea[k] != 0 && world[k] == 0 ? 1 : 0;
+            cut += made && w.deep[at] != 0 && world[at] == 0 ? 1 : 0;
+            closed += geography[at] != 0 && w.sea[at] != 0 && world[at] == 0 ? 1 : 0;
             const double x = w.x0 + (k % w.n) * w.step;
             const double z = w.z0 + (k / w.n) * w.step;
             inner += made && coast_zone::coastSignal(field(), x, z) >= kInner ? 1 : 0;

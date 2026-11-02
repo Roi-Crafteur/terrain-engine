@@ -162,24 +162,26 @@ bool faceOf(Place& p) {
     if (!toShore(p.x, p.z, ux, uz)) {
         return false;
     }
-    constexpr int kSteps = 150; // every 4 m up to 600 m from the shore
+    constexpr std::size_t kSteps = 150; // every 4 m up to 600 m from the shore
     std::array<double, kSteps + 1> h{};
-    for (int i = 0; i <= kSteps; ++i) {
-        h[i] = field().heightAt(p.x + 4.0 * i * ux, p.z + 4.0 * i * uz);
+    for (std::size_t i = 0; i <= kSteps; ++i) {
+        const double d = 4.0 * static_cast<double>(i);
+        h[i] = field().heightAt(p.x + d * ux, p.z + d * uz);
     }
-    int steepest = 1;
-    for (int i = 1; i < kSteps; ++i) {
+    std::size_t steepest = 1;
+    for (std::size_t i = 1; i < kSteps; ++i) {
         steepest = h[i + 1] - h[i - 1] > h[steepest + 1] - h[steepest - 1] ? i : steepest;
     }
-    const auto low = std::max(0, steepest - 50);
-    const auto high = std::min(kSteps, steepest + 50);
-    p.height = *std::max_element(h.begin() + steepest, h.begin() + high + 1) -
-               *std::min_element(h.begin() + low, h.begin() + steepest + 1);
+    const std::size_t low = steepest > 50 ? steepest - 50 : 0;
+    const std::size_t high = std::min(kSteps, steepest + 50);
+    const auto at = [&h](std::size_t i) { return h.begin() + static_cast<std::ptrdiff_t>(i); };
+    p.height = *std::max_element(at(steepest), at(high + 1)) -
+               *std::min_element(at(low), at(steepest + 1));
     p.slope = (h[steepest + 1] - h[steepest - 1]) / 8.0;
     p.shoreX = p.x;
     p.shoreZ = p.z;
-    p.x += 4.0 * steepest * ux;
-    p.z += 4.0 * steepest * uz;
+    p.x += 4.0 * static_cast<double>(steepest) * ux;
+    p.z += 4.0 * static_cast<double>(steepest) * uz;
     return true;
 }
 

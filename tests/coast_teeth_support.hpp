@@ -128,12 +128,13 @@ inline double periodicOf(const Teeth& t, double cell) {
                 sum[3] += (c[j].across - meanAcross) * std::sin(phase);
             }
             const double scale = 2.0 / static_cast<double>(c.size());
-            along[k] += scale * scale * (sum[0] * sum[0] + sum[1] * sum[1]);
-            across[k] += scale * scale * (sum[2] * sum[2] + sum[3] * sum[3]);
+            const auto at = static_cast<std::size_t>(k);
+            along[at] += scale * scale * (sum[0] * sum[0] + sum[1] * sum[1]);
+            across[at] += scale * scale * (sum[2] * sum[2] + sum[3] * sum[3]);
         }
     }
     double most = 0.0;
-    for (int k = 0; k < kFrequencies && count > 0; ++k) {
+    for (std::size_t k = 0; k < along.size() && count > 0; ++k) {
         most = std::max(most, std::sqrt(std::max(along[k], across[k]) / count));
     }
     return most;

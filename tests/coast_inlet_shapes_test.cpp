@@ -364,7 +364,7 @@ int holesOf(const terrain::Mesh& m) {
     }
     std::map<std::pair<Key, Key>, int> edges;
     for (std::size_t t = 0; t + 2 < m.indices.size(); t += 3) {
-        for (int e = 0; e < 3; ++e) {
+        for (std::size_t e = 0; e < 3; ++e) {
             const Key a = key(m.indices[t + e]);
             const Key b = key(m.indices[t + (e + 1) % 3]);
             ++edges[a < b ? std::pair{a, b} : std::pair{b, a}];
