@@ -66,9 +66,10 @@ inline constexpr double kWaterCutSlope = 0.7;
 // - a cell is drawn where a corner lies under a river, a lake or a salt lake; the sea is left to
 //   the horizon, which draws it whole;
 // - a wet corner stands at the level of its column (HeightSample::waterLevel, bit for bit in
-//   meters) and is shared by its cells; a dry corner of a drawn cell stands at the mean level of
-//   the wet corners of that cell (its own vertex): the water goes on under the bank, whose ground
-//   hides it;
+//   meters; the pool below a fall a little above its level, downstream of its lip, at that
+//   level: FallEdges::poolLevel) and is shared by its cells; a dry corner of a drawn cell stands
+//   at the mean level of the wet corners of that cell (its own vertex): the water goes on under
+//   the bank, whose ground hides it;
 // - a cell steeper than kWaterCutSlope between two corners is cut, and the slope of the water
 //   (its normal, the foam of the rapids) is never measured across a cut. Near the edge of the lip
 //   of a fall (TileData::falls, here or near: FallEdges), the water above it fades out by its

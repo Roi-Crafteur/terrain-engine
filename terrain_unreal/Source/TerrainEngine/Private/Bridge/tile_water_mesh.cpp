@@ -110,6 +110,34 @@ void slopes(std::vector<Column>& columns, double spacing) {
     }
 }
 
+// The water of a corner is that above (or below) a fall within kLevelLeast meters plus
+// kLevelCells cells of its level, near its edge within kReachCells cells (and a meter).
+constexpr double kLevelLeast = 0.25;
+constexpr double kLevelCells = 0.35;
+constexpr double kReachCells = 3.0;
+
+// The water of the pool below a fall at its level where the core sets it a little above
+// (FallEdges::poolLevel: the level of the face just above its foot), within kLevelLeast meters
+// plus kLevelCells cells of it: never a bump of a few centimeters in a still pool, whose slopes
+// would light the foam of the rapids.
+void poolLevels(std::vector<Column>& columns, const TileData& data, double spacing) {
+    const FallEdges edges(data);
+    if (edges.size() == 0) {
+        return;
+    }
+    const double tolerance = kLevelLeast + kLevelCells * spacing;
+    const double reach = kReachCells * spacing + 1.0;
+    for (int k = 0; k <= kCells; ++k) {
+        for (int i = 0; i <= kCells; ++i) {
+            Column& c = columns[at(i, k)];
+            if (c.wet) {
+                c.level = edges.poolLevel(i * spacing, k * spacing, c.level, tolerance, reach)
+                              .value_or(c.level);
+            }
+        }
+    }
+}
+
 std::vector<Column> columnsOf(const TileData& data, double spacing) {
     std::vector<Column> columns(static_cast<std::size_t>(kSide * kSide));
     for (std::size_t n = 0; n < columns.size(); ++n) {
@@ -119,6 +147,7 @@ std::vector<Column> columnsOf(const TileData& data, double spacing) {
             columns[n] = {true, static_cast<double>(w.level), kind, w.flowX, w.flowZ, 0.0, 0.0};
         }
     }
+    poolLevels(columns, data, spacing);
     stitch(columns, data.request.seams);
     slopes(columns, spacing);
     return columns;
@@ -134,12 +163,6 @@ struct Cell {
 };
 
 constexpr std::array<std::array<int, 2>, 4> kCorners{{{0, 0}, {1, 0}, {0, 1}, {1, 1}}};
-
-// The water of a corner is that above (or below) a fall within kLevelLeast meters plus
-// kLevelCells cells of its level, near its edge within kReachCells cells (and a meter).
-constexpr double kLevelLeast = 0.25;
-constexpr double kLevelCells = 0.35;
-constexpr double kReachCells = 3.0;
 
 // Builds the vertices and triangles of the cells.
 class Builder {

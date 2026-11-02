@@ -40,11 +40,13 @@ inline constexpr double kCurtainCurveSlope = 1.5;
 // - every fall here or near draws its foam on the tile: centered kFoamAheadShare of its radius
 //   downstream of its foot (that of the middle of its edge), kFoamRadiusShare of the width of its
 //   channel in radius (kFoamLeastRadius at least), never past the end of its pool
-//   (TileFall::pool), on the cells of the tile whose four corners stand in the water of its pool
-//   (drawnWaterLevels near the water below the fall), a few centimeters over it: never over a
-//   ramp, a bank, a lip or another pool, the same in the tiles beside (uv0 meters from its
-//   center, uv1.v 0 on the border of its pool and 1 within, uv2.v its radius: the material fades
-//   it out to a ragged rim and toward the border, never a step of the cells there).
+//   (TileFall::pool), its ragged rim two meters short of the edge of the lip of the fall its pool
+//   runs to (nearer on a side when that lip lies in a slant or bowed), on the cells of the tile
+//   whose four corners stand in the water of its pool (drawnWaterLevels near the water below the
+//   fall), a few centimeters over it: never over a ramp, a bank, a lip or another pool, the same
+//   in the tiles beside (uv0 meters from its center, uv1.v 0 on the border of its pool and 1
+//   within, uv2.v its radius: the material fades it out to a ragged rim and toward the border,
+//   never a step of the cells there).
 // Every fall gives the same vertices, whatever the tile around it. Deterministic.
 [[nodiscard]] UnrealWaterMesh buildFallCurtains(const TileData& data);
 

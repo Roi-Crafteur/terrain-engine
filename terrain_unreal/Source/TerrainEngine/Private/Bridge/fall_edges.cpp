@@ -31,6 +31,7 @@ FallEdges::FallEdges(const TileData& data) {
         e.dirZ = dz / run;
         e.top = f.top;
         e.bottom = f.bottom;
+        e.pool = f.pool;
         const double acrossX = -e.dirZ;
         const double acrossZ = e.dirX;
         for (std::size_t p = 0; p < kFallEdge; ++p) {
@@ -148,6 +149,44 @@ bool FallEdges::belowOf(std::size_t n, double x, double z, double level, double 
     const std::optional<double> down =
         downstreamOf(e, e.footX, e.footZ, e.footAcross, x, z, kEdgeMargin);
     return down && *down >= -reach && *down <= reach;
+}
+
+std::optional<double> FallEdges::poolLevel(double x, double z, double level, double tolerance,
+                                           double reach) const {
+    for (std::size_t n = 0; n < edges_.size(); ++n) {
+        const Edge& e = edges_[n];
+        if (!(level > e.bottom) || !(level - e.bottom <= tolerance) || upper(n, level, tolerance) ||
+            !(std::max(std::abs(x - e.lipX), std::abs(z - e.lipZ)) <= kFallNear)) {
+            continue;
+        }
+        const std::optional<double> lip = downstreamOf(e, e.x, e.z, e.across, x, z, kEdgeMargin);
+        const std::optional<double> foot =
+            downstreamOf(e, e.footX, e.footZ, e.footAcross, x, z, kEdgeMargin);
+        if (lip && foot && *lip > kEdgeOver && *foot >= 0.0 &&
+            *foot <= (e.pool > 0.0 ? e.pool : reach)) {
+            return e.bottom;
+        }
+    }
+    return std::nullopt;
+}
+
+double FallEdges::edgeDistance(std::size_t n, double x, double z) const {
+    const Edge& e = edges_[n];
+    double nearest = std::numeric_limits<double>::infinity();
+    for (std::size_t p = 0; p + 1 < kFallEdge; ++p) {
+        const double ex = e.x[p + 1] - e.x[p];
+        const double ez = e.z[p + 1] - e.z[p];
+        const double length = ex * ex + ez * ez;
+        const double t =
+            length > 0.0 ? std::clamp(((x - e.x[p]) * ex + (z - e.z[p]) * ez) / length, 0.0, 1.0)
+                         : 0.0;
+        nearest = std::min(nearest, dmath::hypot(x - e.x[p] - t * ex, z - e.z[p] - t * ez));
+    }
+    return nearest;
+}
+
+double FallEdges::lipDistance(std::size_t n, double x, double z) const {
+    return std::max(std::abs(x - edges_[n].lipX), std::abs(z - edges_[n].lipZ));
 }
 
 bool FallEdges::below(double x, double z, double level, double tolerance, double reach) const {

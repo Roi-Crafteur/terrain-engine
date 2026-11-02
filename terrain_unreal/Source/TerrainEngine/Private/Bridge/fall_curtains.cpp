@@ -28,6 +28,11 @@ constexpr double kFoamAbove = 0.05; // meters over the water below
 // kFoamLevelLeast meters plus kFoamLevelCells cells of its level.
 constexpr double kFoamLevelLeast = 0.25;
 constexpr double kFoamLevelCells = 0.35;
+// The ragged rim of the foam ends within kFoamRim of its radius (the material: 1 - smoothstep(0.3,
+// 1, r + 0.25 (n - 0.5)) is 0 from r = 1.125 on, its noise n in [0, 1]), kFoamClear meters short
+// of the edge of the lip of a fall its pool runs to.
+constexpr double kFoamRim = 1.125;
+constexpr double kFoamClear = 2.0;
 
 // A point in the frame of the tile, meters: (x, z) horizontal, y up.
 struct Point {
@@ -236,6 +241,24 @@ double foamRadius(const TileFall& f) {
     return std::max(0.5, std::min(radius, room));
 }
 
+// The radius of the foam of fall f centered at (cx, cz), radius at most, clear of the edge of the
+// lip of each fall its pool runs to (whose water above stands at the water below f): its rim
+// kFoamClear meters short of it. TileFall::pool runs along the course, a lip across it in a slant
+// or bowed comes nearer on a side. Only where every tile the foam may reach knows that fall (its
+// lip within kFallNear meters of them along x and z): the same radius in every tile.
+double clearOfLips(const FallEdges& edges, const TileFall& f, double cx, double cz, double radius) {
+    double clear = radius;
+    for (std::size_t n = 0; n < edges.size(); ++n) {
+        const double top = edges.top(n);
+        if (std::abs(top - static_cast<double>(f.bottom)) <= kFoamLevelLeast &&
+            top < static_cast<double>(f.top) &&
+            edges.lipDistance(n, cx, cz) + radius <= kFallNear) {
+            clear = std::min(clear, (edges.edgeDistance(n, cx, cz) - kFoamClear) / kFoamRim);
+        }
+    }
+    return std::max(0.5, clear);
+}
+
 // Whether the column (i, k) of the pool of a foam (pool(i, k)) stands inside it: its neighbors
 // (the eight about it, those along the side of the tile on a side, none at a corner: the same in
 // the tile beside) in the pool too. On its border, the foam fades out to nothing: never a step
@@ -319,6 +342,7 @@ UnrealWaterMesh buildFallCurtains(const TileData& data) {
     out.setAltitude(data.originY);
     const std::vector<double> levels =
         data.falls.empty() ? std::vector<double>{} : drawnWaterLevels(data);
+    const FallEdges edges(data);
     for (const TileFall& f : data.falls) {
         const double drop = static_cast<double>(f.top) - static_cast<double>(f.bottom);
         const double dx = f.footX - f.x;
@@ -347,9 +371,10 @@ UnrealWaterMesh buildFallCurtains(const TileData& data) {
         // Its foam on the pool, in every tile it reaches.
         const double radius = foamRadius(f);
         const double ahead = kCurtainAhead + kFoamAheadShare * radius;
+        const double cx = footX - data.originX + dx / run * ahead;
+        const double cz = footZ - data.originZ + dz / run * ahead;
         if (!levels.empty()) {
-            poolFoam(out, data, levels, f, footX - data.originX + dx / run * ahead,
-                     footZ - data.originZ + dz / run * ahead, radius);
+            poolFoam(out, data, levels, f, cx, cz, clearOfLips(edges, f, cx, cz, radius));
         }
     }
     return mesh;

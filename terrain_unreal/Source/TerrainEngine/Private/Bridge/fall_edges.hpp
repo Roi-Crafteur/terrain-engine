@@ -62,6 +62,19 @@ public:
     // Whether the water at level at (x, z) is that of the pool below fall n alone (as below).
     [[nodiscard]] bool belowOf(std::size_t n, double x, double z, double level, double tolerance,
                                double reach) const;
+    // The level of the pool below a fall for the water at level at (x, z), if it is that pool a
+    // little above its level: tolerance meters at most over the water below the fall (never the
+    // water above it), more than kEdgeOver meters downstream of the edge of its lip, past where
+    // its water meets the pool and within it (TileFall::pool, reach meters when unknown), and
+    // within kFallNear meters of its lip (every tile holding (x, z) knows the fall). The core
+    // gives a column beside the foot of a fall the level of its face just above the foot (the
+    // segment of the course it is nearest): never a bump of the pool. None otherwise.
+    [[nodiscard]] std::optional<double> poolLevel(double x, double z, double level,
+                                                  double tolerance, double reach) const;
+    // Meters from (x, z) to the edge of the lip of fall n (its points joined by straight lines),
+    // and to its lip along x or z, the farther (as TileData::falls holds the falls near a tile).
+    [[nodiscard]] double edgeDistance(std::size_t n, double x, double z) const;
+    [[nodiscard]] double lipDistance(std::size_t n, double x, double z) const;
 
 private:
     struct Edge {
@@ -77,6 +90,7 @@ private:
         double dirZ = 0.0;
         double top = 0.0;
         double bottom = 0.0;
+        double pool = 0.0; // meters from where its water meets the pool to the next lip, 0 unknown
     };
     // The distance downstream of (x, z) from the line through points (px, pz) whose coordinates
     // across e are across, interpolated at that of (x, z); none beyond them by margin meters.
