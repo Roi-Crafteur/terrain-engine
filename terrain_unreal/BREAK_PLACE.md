@@ -31,13 +31,15 @@ Sur `Terrain World`, catégorie `Terrain|Edits`, structure `Building` :
 
 Sur le composant `Terrain Build` (catégorie `Terrain|Build`) : `ReachMeters` (6 m, depuis l'œil du
 pion, pas depuis la caméra de troisième personne), `Tool`, `EditsPerSecond` (4), `bShowGhost`,
-`GhostMaterial` (vide : le matériau filaire du moteur), et l'entrée : `MappingContext` et ses six
-actions (`BreakAction`, `PlaceAction`, `CycleToolAction`, `BlockToolAction`,
-`SmallSphereToolAction`, `LargeSphereToolAction`). Vides : créés au début du Play avec les touches
-par défaut. Pour changer les touches, donner un contexte **et** ses actions. Le contexte est ajouté
-avec la priorité `MappingPriority` (1, au-dessus du personnage). Les touches déjà prises par
-d'autres actions du joueur sont écrites une fois dans le log :
-`Terrain Build: the key LeftMouseButton of TerrainBreak is also mapped to …`.
+`GhostMaterial` (vide : le matériau filaire du moteur), et l'entrée : `MappingContext` et ses sept
+actions de boutons (`BreakAction`, `PlaceAction`, `NextToolAction`, `PreviousToolAction`,
+`BlockToolAction`, `SmallSphereToolAction`, `LargeSphereToolAction`). Vides : créés au début du
+Play avec les touches par défaut (molette : `MouseScrollUp` / `MouseScrollDown`). Pour changer les
+touches, donner un contexte **et** ses actions. Le contexte est ajouté avec la priorité
+`MappingPriority` (1, au-dessus du personnage) ; les actions sont liées (`BindAction`) sur un
+`UEnhancedInputComponent` du composant, poussé sur la pile du contrôleur. Le log écrit seulement
+les touches du composant : `Terrain Build: input of <pion> at priority 1: break: LeftMouseButton,
+…`. Les conflits avec les touches du personnage se voient en jeu.
 
 Le nœud Blueprint `Build (Break | Place)` fait la même chose qu'un clic (vrai si la modification
 est en file ; sinon `Get Last Refusal` dit pourquoi).
@@ -112,9 +114,9 @@ marchent qu'avec lui, jamais avec le pion volant des outils).
 Sur chaque lieu :
 
 1. Avant tout : `Terrain.EditSave 0` n'est pas nécessaire (coupé par défaut). Le log doit dire
-   `Terrain World: breaking and placing given to <pion>` et, s'il y a des conflits, les lignes
-   `Terrain Build: the key … is also mapped to …` (à me renvoyer, surtout pour la molette, le clic
-   droit et 1/2/3 avec GASP).
+   `Terrain World: breaking and placing given to <pion>` puis `Terrain Build: input of <pion> at
+   priority 1: …`. Vérifier en jeu que le clic droit, la molette et 1/2/3 ne déclenchent pas
+   aussi une action de GASP (ou que GASP les perd), et me le renvoyer.
 2. **Fantôme** : un cube filaire de 1 m sur le sol visé à moins de 6 m de l'œil ; rien au-delà.
    Touches 2 et 3 (ou la molette) : une sphère de 2 m puis de 4 m ; `Tool: …` en haut de l'écran.
 3. **Casser** (clic gauche, touche 1) : un creux d'environ 1 m dans l'image du clic ou la suivante.
@@ -133,7 +135,10 @@ Sur chaque lieu :
    la roche 3D de l'agent 20 aussi).
 9. **Pas d'action** : ouvrir la carte de dev (M) et cliquer : rien n'est cassé ; pendant le noir
    d'un `Terrain.Goto` : rien ; avec le pion volant (après `Terrain.Goto`, avant `Terrain.Pawn`) :
-   ni fantôme ni modification ; fenêtre sans le focus (Alt-Tab) : rien.
+   ni fantôme ni modification ; fenêtre sans le focus (Alt-Tab **en tenant le clic gauche**) : les
+   creux doivent s'arrêter. Le composant ne lit pas le focus lui-même (aucune API vérifiée en
+   5.8) : il compte sur Unreal, qui n'envoie aucune entrée sans le focus et relâche les boutons
+   tenus quand il le perd.
 10. **Sauvegarde** : `Terrain.EditSave 1`, casser et poser quelques blocs, arrêter le Play
     (« edits saved N times this play »), relancer avec `Building.bSaveEdits` coché : « … saved
     blocks of seed 20261019 read from …\Saved\TerrainEngine\Edits\seed_20261019 » et les trous

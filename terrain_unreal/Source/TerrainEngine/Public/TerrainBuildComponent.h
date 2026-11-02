@@ -8,6 +8,8 @@
 #include "TerrainBuildComponent.generated.h"
 
 class ATerrainWorld;
+class APlayerController;
+class UEnhancedInputComponent;
 class UInputAction;
 class UInputMappingContext;
 class UMaterialInterface;
@@ -30,8 +32,9 @@ struct FTerrainBuildRuntime;
  * second at most.
  *
  * Enhanced Input: the actions and their context are made at BeginPlay with the default keys when
- * left empty; give your own (both the context and its actions) to change the keys. The keys other
- * contexts of the player also map are written in the log once.
+ * left empty; give your own (both the context and its actions) to change the keys. The actions are
+ * bound on an input component of the build pushed on the controller; the keys of the build are
+ * written in the log (those of the character are read in game).
  */
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent, DisplayName = "Terrain Build"))
 class TERRAINENGINE_API UTerrainBuildComponent : public UActorComponent
@@ -65,7 +68,7 @@ public:
 	TObjectPtr<UMaterialInterface> GhostMaterial;
 
 	// The input; none: made at BeginPlay (break: left mouse button, place: right mouse button,
-	// tools: 1, 2, 3, the next or previous tool: the wheel).
+	// tools: 1, 2, 3, the next or previous tool: the wheel up or down).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
 	TObjectPtr<UInputMappingContext> MappingContext;
 
@@ -79,9 +82,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
 	TObjectPtr<UInputAction> PlaceAction;
 
-	// A value along one axis: positive, the next tool; negative, the previous one.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
-	TObjectPtr<UInputAction> CycleToolAction;
+	TObjectPtr<UInputAction> NextToolAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
+	TObjectPtr<UInputAction> PreviousToolAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
 	TObjectPtr<UInputAction> BlockToolAction;
@@ -110,10 +115,20 @@ protected:
 
 private:
 	void MakeDefaultInput();
+	void BindInput(APlayerController& Controller);
 	void MapInput();
 	void UnmapInput();
-	void LogSharedKeys();
-	void PollInput();
+	void OnBreakPressed();
+	void OnBreakReleased();
+	void OnPlacePressed();
+	void OnPlaceReleased();
+	void OnNextTool();
+	void OnPreviousTool();
+	void OnBlockTool();
+	void OnSmallSphereTool();
+	void OnLargeSphereTool();
+	void ChangeTool(ETerrainBuildTool NewTool);
+	void BuildHeld();
 	void UpdateGhost();
 	ATerrainWorld* FindTerrainWorld();
 	// The refusal of a click now, or empty when it may edit.
@@ -121,6 +136,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> Ghost;
+
+	// The actions of the build bound here, pushed on the input stack of the controller.
+	UPROPERTY(Transient)
+	TObjectPtr<UEnhancedInputComponent> BuildInput;
 
 	// The meshes of the ghost, from the engine.
 	UPROPERTY(Transient)

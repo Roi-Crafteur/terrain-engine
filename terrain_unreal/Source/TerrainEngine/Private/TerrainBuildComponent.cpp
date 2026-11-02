@@ -1,4 +1,5 @@
-// Breaking and placing in game (agent 28): Enhanced Input polled each frame, the trace of the
+// Breaking and placing in game (agent 28): Enhanced Input bound on an input component of its own, the
+// trace of the
 // camera, the ghost of the edit, the click queued on the edit thread of the session. Everything
 // computed (the aim, the face, the tool, the capsule, the gate, the rate) is in the Bridge
 // (block_targeting.hpp, build_rules.hpp), tested by ctest.
@@ -11,14 +12,13 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
-#include "Engine/GameViewportClient.h"
 #include "Engine/HitResult.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "EnhancedInputSubsystems.h"
-#include "EnhancedPlayerInput.h"
+#include "EnhancedInputComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
@@ -30,7 +30,6 @@
 #include "TerrainWorld.h"
 #include "TerrainWorldBuild.h"
 #include "TerrainWorldState.h"
-#include "UnrealClient.h"
 
 #include <optional>
 
@@ -41,7 +40,7 @@ struct FTerrainBuildRuntime
 	bool bBreakHeld = false;
 	bool bPlaceHeld = false;
 	TWeakObjectPtr<APlayerController> MappedController;
-	bool bSharedKeysLogged = false;
+	bool bDefaultInput = false; // the context and the actions made by MakeDefaultInput
 };
 
 namespace
@@ -58,12 +57,15 @@ namespace
 		return static_cast<terrain::unreal::BuildTool>(static_cast<uint8>(Tool));
 	}
 
-	UInputAction* MakeAction(UObject& Outer, const TCHAR* Name, EInputActionValueType Type)
+	// An action of a button (a new UInputAction holds a boolean value).
+	UInputAction* MakeAction(UObject& Outer, const TCHAR* Name)
 	{
-		UInputAction* Action = NewObject<UInputAction>(&Outer, Name, RF_Transient);
-		Action->ValueType = Type;
-		return Action;
+		return NewObject<UInputAction>(&Outer, Name, RF_Transient);
 	}
+
+	// The default keys, written in the log when they are mapped.
+	constexpr TCHAR DefaultKeys[] = TEXT("break: LeftMouseButton, place: RightMouseButton, tools: "
+		"One, Two, Three, next / previous tool: MouseScrollUp / MouseScrollDown");
 
 	// The edit aimed at now, and the hit it comes from.
 	struct FAim
@@ -186,23 +188,49 @@ void UTerrainBuildComponent::MakeDefaultInput()
 	{
 		return; // the context and the actions of the project
 	}
-	BreakAction = MakeAction(*this, TEXT("TerrainBreak"), EInputActionValueType::Boolean);
-	PlaceAction = MakeAction(*this, TEXT("TerrainPlace"), EInputActionValueType::Boolean);
-	CycleToolAction = MakeAction(*this, TEXT("TerrainCycleTool"), EInputActionValueType::Axis1D);
-	BlockToolAction = MakeAction(*this, TEXT("TerrainBlockTool"), EInputActionValueType::Boolean);
-	SmallSphereToolAction =
-		MakeAction(*this, TEXT("TerrainSmallSphereTool"), EInputActionValueType::Boolean);
-	LargeSphereToolAction =
-		MakeAction(*this, TEXT("TerrainLargeSphereTool"), EInputActionValueType::Boolean);
+	BreakAction = MakeAction(*this, TEXT("TerrainBreak"));
+	PlaceAction = MakeAction(*this, TEXT("TerrainPlace"));
+	NextToolAction = MakeAction(*this, TEXT("TerrainNextTool"));
+	PreviousToolAction = MakeAction(*this, TEXT("TerrainPreviousTool"));
+	BlockToolAction = MakeAction(*this, TEXT("TerrainBlockTool"));
+	SmallSphereToolAction = MakeAction(*this, TEXT("TerrainSmallSphereTool"));
+	LargeSphereToolAction = MakeAction(*this, TEXT("TerrainLargeSphereTool"));
 	UInputMappingContext* Context =
 		NewObject<UInputMappingContext>(this, TEXT("TerrainBuildContext"), RF_Transient);
 	Context->MapKey(BreakAction.Get(), EKeys::LeftMouseButton);
 	Context->MapKey(PlaceAction.Get(), EKeys::RightMouseButton);
-	Context->MapKey(CycleToolAction.Get(), EKeys::MouseWheelAxis);
+	Context->MapKey(NextToolAction.Get(), EKeys::MouseScrollUp);
+	Context->MapKey(PreviousToolAction.Get(), EKeys::MouseScrollDown);
 	Context->MapKey(BlockToolAction.Get(), EKeys::One);
 	Context->MapKey(SmallSphereToolAction.Get(), EKeys::Two);
 	Context->MapKey(LargeSphereToolAction.Get(), EKeys::Three);
 	MappingContext = Context;
+	Runtime->bDefaultInput = true;
+}
+
+// The actions bound on an input component of the build, pushed on the stack of the controller:
+// the input of the character stays as it is.
+void UTerrainBuildComponent::BindInput(APlayerController& Controller)
+{
+	BuildInput = NewObject<UEnhancedInputComponent>(this, TEXT("TerrainBuildInput"), RF_Transient);
+	const auto Bind = [this](const TObjectPtr<UInputAction>& Action, ETriggerEvent Event,
+						  void (UTerrainBuildComponent::*Handler)())
+	{
+		if (Action != nullptr)
+		{
+			BuildInput->BindAction(Action.Get(), Event, this, Handler);
+		}
+	};
+	Bind(BreakAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnBreakPressed);
+	Bind(BreakAction, ETriggerEvent::Completed, &UTerrainBuildComponent::OnBreakReleased);
+	Bind(PlaceAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnPlacePressed);
+	Bind(PlaceAction, ETriggerEvent::Completed, &UTerrainBuildComponent::OnPlaceReleased);
+	Bind(NextToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnNextTool);
+	Bind(PreviousToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnPreviousTool);
+	Bind(BlockToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnBlockTool);
+	Bind(SmallSphereToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnSmallSphereTool);
+	Bind(LargeSphereToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnLargeSphereTool);
+	Controller.PushInputComponent(BuildInput.Get());
 }
 
 void UTerrainBuildComponent::MapInput()
@@ -218,56 +246,45 @@ void UTerrainBuildComponent::MapInput()
 	{
 		return;
 	}
-	if (UEnhancedInputLocalPlayerSubsystem* Input =
-			ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(
-				Controller->GetLocalPlayer()))
+	UEnhancedInputLocalPlayerSubsystem* Input =
+		ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(Controller->GetLocalPlayer());
+	if (Input == nullptr)
 	{
-		Input->AddMappingContext(MappingContext.Get(), MappingPriority);
-		Runtime->MappedController = Controller;
-		Runtime->bSharedKeysLogged = false;
+		return;
 	}
+	Input->AddMappingContext(MappingContext.Get(), MappingPriority);
+	BindInput(*Controller);
+	Runtime->MappedController = Controller;
+	// Only the keys of the build: those of the character are read in game.
+	const FString Keys = Runtime->bDefaultInput
+		? FString(DefaultKeys)
+		: FString::Printf(TEXT("the context %s of the project"), *MappingContext->GetName());
+	UE_LOG(LogTerrainEngine, Log, TEXT("Terrain Build: input of %s at priority %d: %s"),
+		*GetNameSafe(GetOwner()), MappingPriority, *Keys);
 }
 
 void UTerrainBuildComponent::UnmapInput()
 {
 	APlayerController* Controller = Runtime.IsValid() ? Runtime->MappedController.Get() : nullptr;
-	if (Controller == nullptr || MappingContext == nullptr)
+	if (Controller != nullptr && BuildInput != nullptr)
 	{
-		return;
+		Controller->PopInputComponent(BuildInput.Get());
 	}
-	if (UEnhancedInputLocalPlayerSubsystem* Input =
-			ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(
-				Controller->GetLocalPlayer()))
+	BuildInput = nullptr;
+	if (Controller != nullptr && MappingContext != nullptr)
 	{
-		Input->RemoveMappingContext(MappingContext.Get());
-	}
-	Runtime->MappedController.Reset();
-}
-
-// The keys of the build that other actions of the player also use, written once.
-void UTerrainBuildComponent::LogSharedKeys()
-{
-	APlayerController* Controller = Runtime->MappedController.Get();
-	const UEnhancedPlayerInput* Input =
-		Controller ? Cast<UEnhancedPlayerInput>(Controller->PlayerInput) : nullptr;
-	if (Runtime->bSharedKeysLogged || Input == nullptr || MappingContext == nullptr ||
-		Input->GetEnhancedActionMappings().Num() == 0)
-	{
-		return; // the mappings are rebuilt at the next frame
-	}
-	Runtime->bSharedKeysLogged = true;
-	for (const FEnhancedActionKeyMapping& Ours : MappingContext->GetMappings())
-	{
-		for (const FEnhancedActionKeyMapping& Other : Input->GetEnhancedActionMappings())
+		if (UEnhancedInputLocalPlayerSubsystem* Input =
+				ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(
+					Controller->GetLocalPlayer()))
 		{
-			if (Other.Key == Ours.Key && Other.Action != Ours.Action && Other.Action != nullptr)
-			{
-				UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain Build: the key %s of %s is also "
-					"mapped to %s (the build has priority %d)"), *Ours.Key.ToString(),
-					*GetNameSafe(Ours.Action.Get()), *GetNameSafe(Other.Action.Get()),
-					MappingPriority);
-			}
+			Input->RemoveMappingContext(MappingContext.Get());
 		}
+	}
+	if (Runtime.IsValid())
+	{
+		Runtime->MappedController.Reset();
+		Runtime->bBreakHeld = false;
+		Runtime->bPlaceHeld = false;
 	}
 }
 
@@ -290,14 +307,14 @@ FString UTerrainBuildComponent::GateRefusal() const
 	const APlayerController* Controller =
 		Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
 	ATerrainWorld* World = TerrainWorld.Get();
-	const UGameViewportClient* Viewport = GetWorld() ? GetWorld()->GetGameViewport() : nullptr;
 	terrain::unreal::BuildGate Gate;
 	Gate.playing = World != nullptr && FTerrainBuildHooks::State(*World) != nullptr;
 	Gate.devMapOpen = World != nullptr && FTerrainBuildHooks::IsDevMapOpen(*World);
 	Gate.loading = World == nullptr || FTerrainBuildHooks::IsLoadingView(*World);
 	Gate.controlsOwner = Controller != nullptr && Controller->IsLocalController();
-	Gate.focused = Viewport != nullptr && Viewport->Viewport != nullptr &&
-				   Viewport->Viewport->HasFocus();
+	// No Unreal call reads the focus here: without it the viewport sends no input, and the keys
+	// held are released (Completed) when it is lost; to check in game (Alt-Tab, a button held).
+	Gate.focused = true;
 	const char* Refusal = terrain::unreal::gateRefusal(Gate);
 	return Refusal == nullptr ? FString() : FString(UTF8_TO_TCHAR(Refusal));
 }
@@ -352,43 +369,64 @@ bool UTerrainBuildComponent::Build(ETerrainBuildAction Action)
 	return true;
 }
 
-void UTerrainBuildComponent::PollInput()
+void UTerrainBuildComponent::OnBreakPressed()
 {
-	APlayerController* Controller = Runtime->MappedController.Get();
-	const UEnhancedPlayerInput* Input =
-		Controller ? Cast<UEnhancedPlayerInput>(Controller->PlayerInput) : nullptr;
-	if (Input == nullptr)
+	Runtime->bBreakHeld = true;
+}
+
+void UTerrainBuildComponent::OnBreakReleased()
+{
+	Runtime->bBreakHeld = false;
+}
+
+void UTerrainBuildComponent::OnPlacePressed()
+{
+	Runtime->bPlaceHeld = true;
+}
+
+void UTerrainBuildComponent::OnPlaceReleased()
+{
+	Runtime->bPlaceHeld = false;
+}
+
+void UTerrainBuildComponent::ChangeTool(ETerrainBuildTool NewTool)
+{
+	if (GateRefusal().IsEmpty()) // the dev map, a load, another pawn: the keys are not ours
 	{
-		return;
+		SetTool(NewTool);
 	}
-	const auto Held = [Input](const TObjectPtr<UInputAction>& Action)
-	{ return Action != nullptr && Input->GetActionValue(Action.Get()).Get<bool>(); };
-	Runtime->bBreakHeld = Held(BreakAction);
-	Runtime->bPlaceHeld = Held(PlaceAction);
-	if (!GateRefusal().IsEmpty())
-	{
-		return; // the dev map, a load, another pawn or no focus: the keys are not ours
-	}
-	if (Held(BlockToolAction))
-	{
-		SetTool(ETerrainBuildTool::Block);
-	}
-	else if (Held(SmallSphereToolAction))
-	{
-		SetTool(ETerrainBuildTool::Sphere2);
-	}
-	else if (Held(LargeSphereToolAction))
-	{
-		SetTool(ETerrainBuildTool::Sphere4);
-	}
-	const float Wheel =
-		CycleToolAction != nullptr ? Input->GetActionValue(CycleToolAction.Get()).Get<float>() : 0.0f;
-	if (Wheel != 0.0f)
-	{
-		SetTool(static_cast<ETerrainBuildTool>(static_cast<uint8>(
-			terrain::unreal::nextTool(ToBridge(Tool), Wheel > 0.0f ? 1 : -1))));
-	}
-	// Pressed or held: the rate of the edits (EditsPerSecond) spaces them, the first one at once.
+}
+
+void UTerrainBuildComponent::OnNextTool()
+{
+	ChangeTool(static_cast<ETerrainBuildTool>(
+		static_cast<uint8>(terrain::unreal::nextTool(ToBridge(Tool), 1))));
+}
+
+void UTerrainBuildComponent::OnPreviousTool()
+{
+	ChangeTool(static_cast<ETerrainBuildTool>(
+		static_cast<uint8>(terrain::unreal::nextTool(ToBridge(Tool), -1))));
+}
+
+void UTerrainBuildComponent::OnBlockTool()
+{
+	ChangeTool(ETerrainBuildTool::Block);
+}
+
+void UTerrainBuildComponent::OnSmallSphereTool()
+{
+	ChangeTool(ETerrainBuildTool::Sphere2);
+}
+
+void UTerrainBuildComponent::OnLargeSphereTool()
+{
+	ChangeTool(ETerrainBuildTool::Sphere4);
+}
+
+// Pressed or held: the rate of the edits (EditsPerSecond) spaces them, the first one at once.
+void UTerrainBuildComponent::BuildHeld()
+{
 	if (Runtime->bBreakHeld)
 	{
 		Build(ETerrainBuildAction::Break);
@@ -445,7 +483,6 @@ void UTerrainBuildComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		return;
 	}
 	MapInput();
-	LogSharedKeys();
-	PollInput();
+	BuildHeld();
 	UpdateGhost();
 }
