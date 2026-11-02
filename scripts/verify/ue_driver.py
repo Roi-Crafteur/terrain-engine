@@ -31,29 +31,29 @@ if str(HERE) not in sys.path:
 
 import ue_api  # noqa: E402
 import ue_log  # noqa: E402
+from ue_landings import LandingSteps, SessionStopped  # noqa: E402
+from ue_pitch import PitchSteps  # noqa: E402
+from ue_ready import ReadySteps  # noqa: E402
 from ue_walk import Until, Wait, WalkSteps  # noqa: E402
 
-PITCH_CHECK = -30.0  # degrees: the check view looks down by this much
-# A place pitched up by more than this looks at something above the eye (a wall, a fall): its
-# view pitched up by 30 degrees shows no sky, no place for the check of the pitch.
-PITCH_CHECK_MAX_PITCH = 10.0
 # The heartbeat replaced this many times, this far apart, when the launcher holds the file open
 # (Windows: PermissionError); a beat that still fails is skipped, the next one comes.
 BEAT_TRIES, BEAT_PAUSE = 5, 0.02
 CAMERA_TAG = "TerrainVerifyCamera"  # the camera put in the level, found again in the play
 
 
-class Driver(WalkSteps):
+class Driver(WalkSteps, PitchSteps, LandingSteps, ReadySteps):
     def __init__(self, job, api, clock=time.monotonic, wall=time.time):
         self.job, self.api, self.clock, self.wall = job, api, clock, wall
         self.out = Path(job["out"])
         self.result = {"label": job["label"], "sha": job.get("sha"), "views": [], "walks": [],
                        "materials": [], "errors": [], "missingApi": [], "pitchCheck": None,
-                       "features": job.get("features", {}), "done": False}
+                       "landings": [], "features": job.get("features", {}), "done": False}
         self.phase, self.place, self.beats = "start", None, 0
         self.terrain, self.saved, self.origin, self.load = None, {}, None, None
         self.editor_camera, self.skip_walks, self.skip_sun = None, False, False
         self.pitch_candidates = None  # the places where the pitch may be checked
+        self.landing, self.landing_misses = None, 0  # the end of the landing, misses in a row
         self.done = False
         self.ticks, self.started, self._in_step = 0, clock(), False
         self._steps = self.steps()
@@ -146,10 +146,15 @@ class Driver(WalkSteps):
                 yield from self.play(group)
             except ue_api.MissingApi:
                 raise
+            except SessionStopped as stop:  # the places left are not done: Unreal closes
+                self.result["stopped"] = {"misses": stop.misses, "after": stop.after}
+                yield from self.stop_play()
+                break
             except Exception:  # noqa: BLE001 - the next places still get their views
                 self.result["errors"].append(traceback.format_exc())
                 yield from self.stop_play()
             self.save_result()
+        yield from self.await_determinism()
 
     def check_api(self):
         """Every function the session needs, checked at once before anything: all those that
@@ -272,12 +277,15 @@ class Driver(WalkSteps):
             if self.job.get("pitchCheck", True) and self.pitch_place(self.pitch_candidates) is None:
                 self.result["pitchCheck"] = {"place": None, "skipped": "no dry place looking "
                                              "level or down"}
+        yield from self.world_ready(offset)  # the views and the landings alike
         for place in group:
             self.place = place["name"]
             self.set_phase("place")
-            yield from self.view(world, place, offset)
+            if self.job.get("views", True):
+                yield from self.view(world, place, offset)
             offset = None
             yield from self.walks_of(world, place)
+            yield from self.landings_of(world, place)
             self.save_result()
         yield from self.stop_play()
 
@@ -407,33 +415,6 @@ class Driver(WalkSteps):
         target.parent.mkdir(parents=True, exist_ok=True)
         found["path"].replace(target)
         return str(target), method
-
-    def check_pitch(self, world, place, camera):
-        """The check of the sign of the pitch, at the place chosen for it: the same view pitched
-        up then down by 30 degrees, the pitch the camera manager says each has, and two small
-        images whose shares of sky the launcher compares (the water of a fall reflects the sky
-        and its foam is white: only the comparison tells)."""
-        check = {"place": place["name"], "requested": PITCH_CHECK, "seen": None, "file": None,
-                 "upRequested": -PITCH_CHECK, "upSeen": None, "upFile": None}
-        self.result["pitchCheck"] = check
-        for pitch, prefix in ((-PITCH_CHECK, "up"), (PITCH_CHECK, "")):
-            self.aim(world, place, pitch, camera, move=False)
-            yield Wait(2.0)
-            seen = self.api.camera_rotation(world)
-            stem = f"_pitch_{'up' if prefix else 'down'}_{place['name']}"
-            shot, _ = yield from self.shot(world, stem.lstrip("_"), 480, 270, stem)
-            check["upSeen" if prefix else "seen"] = None if seen is None else seen[0]
-            check["upFile" if prefix else "file"] = shot
-
-    @staticmethod
-    def pitch_place(places):
-        """The place of the session where the pitch is checked: the first one without water under
-        the eye (water reflects the sky, foam is white) that looks level or down (pitched up, it
-        looks at a wall or a fall: no sky at +30 degrees); None when there is none."""
-        for p in places:
-            if p.get("waterLevel") is None and p.get("pitch", 0.0) <= PITCH_CHECK_MAX_PITCH:
-                return p["name"]
-        return None
 
     # ---- the end -------------------------------------------------------------------------------------
 

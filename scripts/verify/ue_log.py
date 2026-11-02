@@ -27,6 +27,22 @@ _PAWN_SLID = re.compile(r"Terrain dev: Terrain\.Pawn: the pawn of the game slid 
 _PAWN_REFUSED = re.compile(r"Terrain dev: (Terrain\.Pawn: (over water|no walkable ground|none of "
                            r"the|the view is still loading)[^\n]*)")
 _PAWN_ALREADY = "Terrain dev: the player already has the pawn of the game"
+# Terrain.Map.Go (agent 35, TerrainDevMapLanding.cpp): the landing decided, the line of the check
+# a second after the pawn of the game is given back, the ends without it.
+_NUMBER = r"(-?\d+(?:\.\d+)?)"
+_CHECK = re.compile(r"Terrain Dev Map: (\d+) s after the click: (the pawn of the game|the view of "
+                    r"the tools), ([^,]+), " + _NUMBER + r" m/s, feet at " + _NUMBER +
+                    r" m \(([^)]*)\), " + _NUMBER + r" m from the click: (OK|NOT walking[^\n]*)")
+_DOWN = re.compile(r": (shallow water: )?the pawn of the game goes down near (?:the dry ground at )?"
+                   r"x " + _NUMBER + r", z " + _NUMBER)
+_WATER = re.compile(r": over water \(no dry ground within " + _NUMBER + r" m\)[^\n]*")
+_FALLBACK = re.compile(r"Terrain Dev Map: (no spot near the dry ground holds the pawn: back[^\n]*)")
+_REFUSED = re.compile(r"(?:Terrain Dev Map: )?((?:The teleport to |No landing for |The view did not "
+                      r"load in time|The view of the tools stays|Terrain\.Map\.Go: )[^\n]*)")
+# Sent before the world of the play was ready: no landing at all, a problem of the launcher.
+_NOT_READY = re.compile(r"(Terrain\.Map\.Go: no world playing[^\n]*)")
+_PLANET_WARNING = re.compile(r"Terrain Dev Map: (\S+) (was measured with(?:out)? the planet "
+                             r"file[^\n]*)")
 _TERRAIN_PROBLEM = re.compile(r"LogTerrainEngine: (Error|Warning): (.*)")
 _CRASH = re.compile(r"Fatal error|Unhandled Exception|=== Critical error: ===")
 
@@ -73,6 +89,54 @@ def load_ended(text, starts_logged=True, reasons=None):
         return None
     return {"n": n, "reason": last.group(2), "x": float(last.group(3)),
             "z": float(last.group(4))}
+
+
+def _landing_check(text):
+    found = _CHECK.search(text)
+    if not found:
+        return None
+    return {"seconds": float(found.group(1)), "who": found.group(2), "mode": found.group(3),
+            "speed": float(found.group(4)), "feet": float(found.group(5)),
+            "water": found.group(6), "away": float(found.group(7)),
+            "ok": found.group(8) == "OK", "line": found.group(0)[len("Terrain Dev Map: "):]}
+
+
+def landing_end(text, name):
+    """What Terrain.Map.Go <name> wrote in this part of the log (read from just before the
+    command): {"decision" (land, shallow, water or None), "x", "z" (where the view goes),
+    "radius" (the dry ground looked for, m), "check" (the line a second after the pawn is
+    given back), "end" (check, water, fallback or refused), "message", "planetWarning"}; None
+    while the landing runs. Over water there is no line of the check: the decision ends it."""
+    out = {"decision": None, "x": None, "z": None, "radius": None, "check": None, "end": None,
+           "message": None, "planetWarning": None}
+    for warning in _PLANET_WARNING.finditer(text):
+        if warning.group(1) == name:
+            out["planetWarning"] = warning.group(2).strip()
+    prefix = re.compile(r"Terrain Dev Map: " + re.escape(name) + r"(: [^\n]*)")
+    for said in prefix.finditer(text):
+        down, water = _DOWN.match(said.group(1)), _WATER.match(said.group(1))
+        if down:
+            out.update(decision="shallow" if down.group(1) else "land", x=float(down.group(2)),
+                       z=float(down.group(3)))
+        elif water:
+            out.update(decision="water", radius=float(water.group(1)))
+        out["message"] = said.group(1)[2:].strip()
+    out["check"] = _landing_check(text)
+    fallback, refused = _FALLBACK.search(text), _REFUSED.search(text)
+    early = _NOT_READY.search(text)
+    if out["check"]:
+        out["end"] = "check"
+    elif early:
+        out.update(end="notReady", message=early.group(1).strip())
+    elif fallback:
+        out.update(end="fallback", message=fallback.group(1).strip())
+        water = _WATER.search(": " + fallback.group(1).split("back ", 1)[-1])
+        out["radius"] = float(water.group(1)) if water else out["radius"]
+    elif refused:
+        out.update(end="refused", message=refused.group(1).strip())
+    elif out["decision"] == "water":
+        out["end"] = "water"
+    return out if out["end"] else None
 
 
 def pawn_landing(text):
@@ -145,5 +209,8 @@ def plugin_features(source_texts):
         "viewMode": command("Terrain.View"),
         "pawn": command("Terrain.Pawn"),
         "pawnLanding": "the pawn of the game stands, spot" in joined,
+        "mapGo": command("Terrain.Map.Go"),
+        "mapStarted": "Terrain Dev Map: started (" in joined,
+        "determinism": _DETERMINISM_OK in joined,
         "loadTest": command("Terrain.LoadTest"),
     }
