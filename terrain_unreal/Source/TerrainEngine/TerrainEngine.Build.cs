@@ -42,6 +42,8 @@ public class TerrainEngine : ModuleRules
 		// The GPU horizon: static meshes built in game, textures updated by regions, frame times.
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"ProceduralMeshComponent", "MeshDescription", "StaticMeshDescription", "RenderCore", "RHI" });
+		// Breaking and placing in game (agent 28, UTerrainBuildComponent): its actions and keys.
+		PrivateDependencyModuleNames.AddRange(new string[] { "EnhancedInput", "InputCore" });
 		// The message on the black screen while the world builds at the start (TerrainWorldStart.cpp),
 		// the minimap and the dev map (agent 35): widgets written in C++ (the plugin has no content).
 		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

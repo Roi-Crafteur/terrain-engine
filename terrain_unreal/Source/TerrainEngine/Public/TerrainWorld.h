@@ -337,6 +337,10 @@ public:
 	// Terrain.Edit: Kind "raze" (a square of side SizeMeters removed down to DepthMeters under its
 	// lowest ground), "blast" (an explosion of radius SizeMeters) or "heap" (rock added in a
 	// sphere of radius SizeMeters). False if it was not queued (logged).
+	// Breaking and placing in game, and the save of the edits (TerrainWorldBuild.cpp).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Edits")
+	FTerrainBuildSettings Building;
+
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Edits")
 	bool EditAhead(const FString& Kind, float DistanceMeters, float SizeMeters,
 		float DepthMeters = 10.0f);
@@ -481,6 +485,7 @@ private:
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
 	// class default object nor in the editor). The map reads them (TerrainDevMap.cpp).
 	friend class UTerrainDevMapComponent;
+	friend struct FTerrainBuildHooks; // breaking and placing in game, the save of the edits
 	TPimplPtr<FTerrainWorldState> State;
 	// While the session builds on its thread (TerrainWorldStart.cpp).
 	TPimplPtr<FTerrainWorldStart> Starting;
