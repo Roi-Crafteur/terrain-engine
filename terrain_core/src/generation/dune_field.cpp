@@ -85,7 +85,7 @@ double barchanAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_ph
         b.height = std::clamp(2.0 * q.height, kBarchanLeast, kBarchanMost);
         // Their crests shifted along the rows by the same noise elsewhere: no rank of crescents.
         b.crest = kCrestBase + kCrestRange * static_cast<double>(m.scatter.fbm2D(
-                                                 cz + kScatterShift, cx - kScatterShift));
+                                                 cx + kScatterShift, cz - kScatterShift));
         best = std::max(best, dune_forms::barchan(b));
     }
     return best;
@@ -150,7 +150,7 @@ double seifAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase
     const double share =
         ramp(kBranchLow, kBranchHigh,
              static_cast<double>(
-                 m.ends.fbm2D(q.z + kBranchShift, q.x - kBranchShift, memo.branches)));
+                 m.ends.fbm2D(q.x + kBranchShift, q.z - kBranchShift, memo.branches)));
     if (!(share > 0.0)) {
         return seifLine(q, dune_phase::phaseAt(m, s, p, first), ends, slip);
     }

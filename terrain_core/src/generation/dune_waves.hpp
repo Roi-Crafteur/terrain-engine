@@ -34,7 +34,8 @@ namespace terrain::dune_waves {
 // the form without the trough (tangent), the meters to the nearer crest.
 struct Shape {
     double height = 0.0;
-    double slope = 0.0;
+    double slope = 0.0; // falling downwind: the face and the near half of the trough
+    double rise = 0.0;  // rising downwind: the back and the far half of the trough
     double crest = 0.0;
 };
 [[nodiscard]] Shape shapeOf(double t, double wavelength, double height, double backTan, double dig);

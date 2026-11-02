@@ -21,8 +21,9 @@ constexpr double kLeeCurve = 2.0;
 constexpr double kBackCurve = 1.4;
 constexpr double kWavesBackTan = 0.3249196962329063;   // tan 18 degrees
 constexpr double kGiantsBackTan = 0.24932800284318068; // tan 14 degrees
-// Spacing over that of the pivots (1 to 3 km by the sand).
-constexpr double kWavesSpacing = 1.5;
+// The big waves keep their own spacing at the pivots (dune_phase: 1.5 to 3 km, about 2 km), their
+// far filter starting kWavesFilterScale times as far as that of the realistic ridges.
+constexpr double kWavesFilterScale = 1.5;
 constexpr double kGiantsSpacing = 1.0; // their pivots hold their spacing (dune_phase)
 constexpr double kGiantsFilterScale = 6.5;
 // The noises of the sinuosity (5 km) and of the drift (12 km) keep their wavelengths: the wider
@@ -31,12 +32,15 @@ constexpr double kWavesSinuous = 1.4;
 constexpr double kWavesDrift = 0.5;
 constexpr double kGiantsSinuous = 0.35;
 constexpr double kGiantsDrift = 0.15;
-// Heights: big waves kWavesLow + kWavesRange sand^1.5 (within kWavesLow and kWavesHigh); giant
+// Heights: big waves kWavesLow + kWavesRange sand^1.5, at least kWavesFill of what their spacing
+// leaves room for (their backs steep, no flat floor where they stand far apart), within kWavesLow
+// and kWavesHigh; giant
 // waves kGiantsShare of their spacing (within kGiantsLow and kGiantsHigh); both times the noise
 // of the heights.
 constexpr double kWavesLow = 80.0;
 constexpr double kWavesRange = 220.0;
 constexpr double kWavesHigh = 300.0;
+constexpr double kWavesFill = 0.9;
 constexpr double kGiantsShare = 0.07;
 constexpr double kGiantsLow = 300.0;
 constexpr double kGiantsHigh = 800.0;
@@ -61,13 +65,15 @@ constexpr double kGiantsKept = 0.9 * 0.85;
 // The trough between two waves sinks this share of their height below the floor.
 constexpr double kDig = 0.4;
 // The dunes laid on the waves (dune_layers), where the wave is gentler than kLayersSlope
-// (tangent, 12 degrees) and kCrestClear of the wavelength from its crest: oblique ridges in
-// segments (a layer of small crests across them drew long straight lines: none).
+// (tangent, 12 degrees: falling or rising, their sinuous slip faces may face either way) and
+// kCrestClear of the wavelength from its crest: oblique ridges in segments (a layer of small
+// crests across them drew long straight lines: none).
 constexpr double kLayersSlope = 0.22;
 constexpr double kCrestClear = 0.03;
 constexpr dune_layers::Layer kWavesMedium{700.0, 20.0, 0.12, 0.06, 41};
 constexpr dune_layers::Layer kGiantsMedium{1'500.0, 40.0, 0.12, 0.06, 45};
 constexpr dune_layers::Layer kGiantsSecond{900.0, 25.0, 0.08, -0.12, 49};
+constexpr dune_layers::Layer kGiantsSmall{350.0, 6.0, 0.02, 0.1, 53};
 // The ends of the crests: the height falls to kEndsLeast of itself where the noise is low.
 constexpr double kEndsLeast = 0.25;
 constexpr float kEndsLow = -0.35f;
@@ -85,16 +91,20 @@ double backTanOf(bool giant) {
 // The height of the waves of a nominal spacing, capped by it.
 double heightOf(double sand, double amplitude, double nominal, bool giant) {
     const double amp = kAmpBase + kAmpRange * amplitude;
-    const double h = giant ? std::clamp(kGiantsShare * nominal * amp, kGiantsLow, kGiantsHigh)
-                           : std::clamp((kWavesLow + kWavesRange * sand * std::sqrt(sand)) * amp,
-                                        kWavesLow, kWavesHigh);
     const double room = nominal / (kLeeCurve / dune_forms::kLeeTan + kBackCurve / backTanOf(giant));
+    const double h =
+        giant ? std::clamp(kGiantsShare * nominal * amp, kGiantsLow, kGiantsHigh)
+              : std::clamp(std::max(kWavesLow + kWavesRange * sand * std::sqrt(sand),
+                                    kWavesFill * room) *
+                               amp,
+                           kWavesLow, kWavesHigh);
     return std::min(h, room);
 }
 
 dune_phase::Kind kindOf(bool giant) {
     dune_phase::Kind k;
-    k.spacing = giant ? kGiantsSpacing : kWavesSpacing;
+    k.spacing = giant ? kGiantsSpacing : 1.0;
+    k.waves = !giant;
     k.sinuous = giant ? kGiantsSinuous : kWavesSinuous;
     k.drift = giant ? kGiantsDrift : kWavesDrift;
     k.salt = giant ? 31 : 23;
@@ -123,19 +133,22 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
     const double rise = height * dmath::pow(r, kBackCurve);
     Shape out;
     out.height = std::max(face, rise);
-    // The slope the layers read: the steeper of the face and the back, the back's growing
+    // The slopes the layers read, falling and rising downwind: the face, and the back growing
     // linearly from its foot to its steepest at the crest (its own slope grows as r^0.4, too
     // fast for the layers that read it).
-    out.slope = std::max(dune_forms::kLeeTan * s, kBackCurve * height / back * r);
-    // The trough between two waves: from the middle of the face to the middle of the back.
-    // Its slope adds to that of the face or the back (the layers read the sum).
-    // It ends at the next crest at the latest (where the phase starts over).
+    out.slope = dune_forms::kLeeTan * s;
+    out.rise = kBackCurve * height / back * r;
+    // The trough between two waves: from the middle of the face to the middle of the back,
+    // ending at the next crest at the latest (where the phase starts over); its near half falls
+    // with the face, its far half rises with the back.
     const double from = 0.5 * lee;
     const double to = std::min(lee + 0.5 * back, wavelength);
     const double depth = dig * height;
     out.height -= dune_forms::trough(d, from, to, depth);
-    out.slope += std::abs(dune_forms::trough(d + 0.5, from, to, depth) -
-                          dune_forms::trough(d - 0.5, from, to, depth));
+    const double deeper = dune_forms::trough(d + 0.5, from, to, depth) -
+                          dune_forms::trough(d - 0.5, from, to, depth);
+    out.slope += std::max(0.0, deeper);
+    out.rise += std::max(0.0, -deeper);
     out.crest = std::min(d, up);
     return out;
 }
@@ -148,7 +161,7 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
     // wavelengths, the ends noise for the big waves, the drift for the giant ones.
     const noise::FbmOctaves& slow = giant ? m.drift : m.ends;
     const double joins = ramp(kJoinLow, kJoinHigh,
-                              static_cast<double>(slow.fbm2D(z - kJoinShift, x + kJoinShift,
+                              static_cast<double>(slow.fbm2D(x - kJoinShift, z + kJoinShift,
                                                              memosOf(m).waveJoins)));
     const double ends = kEndsLeast + (1.0 - kEndsLeast) *
                         ramp(kEndsLow, kEndsHigh,
@@ -164,11 +177,15 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
         Shape shape = shapeOf(ph.fraction, ph.wavelength, full, backTanOf(giant), kDig);
         shape.height *= fade;
         shape.slope *= fade;
+        shape.rise *= fade;
         // The dunes on the waves: where the wave is gentler than kLayersSlope, clear of its crest.
-        const double on = std::clamp(1.0 - shape.slope / kLayersSlope, 0.0, 1.0) *
+        const double on = std::clamp(1.0 - (shape.slope + shape.rise) / kLayersSlope, 0.0, 1.0) *
                           ramp(0.0f, static_cast<float>(kCrestClear * ph.wavelength), shape.crest);
         const dune_layers::Layer medium = giant ? kGiantsMedium : kWavesMedium;
-        const double second = giant ? dune_layers::layer(m, s, fine, kGiantsSecond, h, on) : 0.0;
+        const double second =
+            giant ? std::max(dune_layers::layer(m, s, fine, kGiantsSecond, h, on),
+                             dune_layers::layer(m, s, fine, kGiantsSmall, h, on))
+                  : 0.0;
         return shape.height + std::max(dune_layers::layer(m, s, fine, medium, h, on), second);
     };
     if (!(joins > 0.0)) {
@@ -188,8 +205,8 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
 double meanWaves(const Ergs::Impl& m, const dune_phase::Shared& s, double sand, double amplitude,
                  bool giant) {
     const dune_phase::Pivots p = dune_phase::pivotsAt(m, s, giant);
-    const double spacing = (giant ? kGiantsSpacing : kWavesSpacing) *
-                           dune_phase::nominalAt(m, s, p);
+    const double spacing =
+        giant ? kGiantsSpacing * dune_phase::nominalAt(m, s, p) : dune_phase::nominalAt(m, s, p, true);
     const double h = heightOf(sand, amplitude, spacing, giant);
     const double lee = kLeeCurve * h / dune_forms::kLeeTan;
     const double back = std::max(spacing - lee, kBackCurve * h / backTanOf(giant));
@@ -201,7 +218,7 @@ double meanWaves(const Ergs::Impl& m, const dune_phase::Shared& s, double sand, 
 
 double spacingScale(bool giant) {
     // The giants: 6 to 19 km against about 2 km for the realistic ridges.
-    return giant ? kGiantsFilterScale : kWavesSpacing;
+    return giant ? kGiantsFilterScale : kWavesFilterScale;
 }
 
 } // namespace terrain::dune_waves

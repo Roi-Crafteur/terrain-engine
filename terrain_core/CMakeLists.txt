@@ -65,6 +65,7 @@ add_library(terrain_core STATIC
     src/generation/erg_characters.cpp
     src/generation/erg_field.cpp
     src/generation/ergs.cpp
+    src/generation/ergs_wind.cpp
     src/generation/eroded_region.cpp
     src/generation/geography.cpp
     src/generation/geography_crust.cpp

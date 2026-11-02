@@ -310,7 +310,7 @@ int main() {
     testProfile();
     // The backs: at most 18 degrees for the big waves, 14 for the giants (validated at the third
     // stop of agent 34).
-    testForms(ErgCharacter::Waves, 2'000.0, 6'000.0, 300.0, 18.0);
+    testForms(ErgCharacter::Waves, 1'200.0, 6'000.0, 300.0, 18.0);
     testForms(ErgCharacter::Giants, 6'000.0, 20'000.0, 800.0, 14.0);
     testFarBoundary(ErgCharacter::Waves, 16'000.0, 8.0, 40.0);
     testFarBoundary(ErgCharacter::Giants, 100'000.0, 25.0, 150.0);

@@ -28,13 +28,6 @@ constexpr float kMaskGuard = 0.06f;
 constexpr float kSandLow = 0.35f;
 constexpr float kSandHigh = 1.1f;
 constexpr float kSandNoise = 0.45f;
-// The bands of the winds join over kBandJoin degrees on each side of 30 and 60 degrees; the
-// trades of the two hemispheres over kEquatorJoin degrees on each side of the equator.
-constexpr double kBandJoin = 4.0;
-constexpr double kEquatorJoin = 2.0;
-// The wind turns by up to kTurnDegrees with a slow noise.
-constexpr double kTurnDegrees = 18.0;
-constexpr double kTurnRadians = 6.283185307179586;
 // The variability: the horse latitudes (30 degrees) and the doldrums (the equator), then a noise.
 constexpr double kHorseNear = 4.0;
 constexpr double kHorseFar = 14.0;
@@ -299,33 +292,45 @@ ErgPoint Ergs::at(double x, double z, float relief) const {
     if (!mayHold(x, z)) {
         return {};
     }
+    // The cheap shares first (the same product either way): most land within reach of the ergs
+    // is too wet or too rugged for them; their noises, the water and the depressions are dear.
+    const float dry = 1.0f - noise::smoothstep(m.params.humidLow, m.params.humidHigh,
+                                               m.planet->humidityAt(x, z));
+    const float flat = 1.0f - noise::smoothstep(m.params.reliefLow, m.params.reliefHigh, relief);
+    if (!(dry > 0.0f) || !(flat > 0.0f)) {
+        return {};
+    }
+    ErgMemos& memo = memosOf(m);
+    const float supplied = noise::smoothstep(m.params.supplyLow, m.params.supplyHigh,
+                                             m.supply.fbm2D(x, z, memo.supply));
+    if (!(supplied > 0.0f)) {
+        return {};
+    }
     double warpX = 0.0;
     double warpZ = 0.0;
     const float potential = potentialOf(m, x, z, warpX, warpZ);
     if (!(potential > 0.0f)) {
         return {};
     }
-    ErgMemos& memo = memosOf(m);
     // The core of the erg: the climate where the sand is supplied; its edges frayed by a noise
     // where it passes the threshold, never beyond the climate (the guard).
-    const float core = potential * noise::smoothstep(m.params.supplyLow, m.params.supplyHigh,
-                                                     m.supply.fbm2D(x, z, memo.supply));
+    const float core = potential * supplied;
     const float frayed = core + m.params.edgeNoise * m.edges.fbm2D(x, z, memo.edges);
     float mask = noise::smoothstep(kMaskLow, kMaskHigh, frayed) *
-                 noise::smoothstep(0.0f, kMaskGuard, core) *
-                 (1.0f - noise::smoothstep(m.params.reliefLow, m.params.reliefHigh, relief));
+                 noise::smoothstep(0.0f, kMaskGuard, core) * flat;
     if (!(mask > 0.0f)) {
+        return {};
+    }
+    const float desert = desertShare(m, x + warpX, z + warpZ);
+    if (!(desert > 0.0f)) {
         return {};
     }
     ErgPoint e;
     characterOf(m, x, z, e);
     const double tallest = kWavesTallest * static_cast<double>(e.waves) +
                            kGiantsTallest * static_cast<double>(e.giants);
-    mask *= static_cast<float>(waterShare(m, x, z, tallest) *
-                               depressionShare(m, x, z)) *
-            (1.0f - noise::smoothstep(m.params.humidLow, m.params.humidHigh,
-                                      m.planet->humidityAt(x, z))) *
-            desertShare(m, x + warpX, z + warpZ);
+    mask *= static_cast<float>(waterShare(m, x, z, tallest) * depressionShare(m, x, z)) * dry *
+            desert;
     if (!(mask > 0.0f)) {
         return {};
     }
@@ -346,34 +351,6 @@ ErgPoint Ergs::at(double x, double z, float relief) const {
 
 std::array<double, 2> Ergs::windAt(double x, double z) const {
     return windOf(*impl_, x, z);
-}
-
-// The angle (turns) toward which a band of winds blows: zonal along x, meridional poleward.
-static double bandAngle(double zonal, double meridional, double poleward) {
-    return dmath::atan2(poleward * meridional, zonal) / kTurnRadians;
-}
-
-static double shorter(double turns) {
-    return turns - std::floor(turns + 0.5);
-}
-
-std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z) {
-    const double latitude = 180.0 * std::abs(z) / m.world.z;
-    const double westerly = hermite(30.0 - kBandJoin, 30.0 + kBandJoin, latitude);
-    const double polar = hermite(60.0 - kBandJoin, 60.0 + kBandJoin, latitude);
-    // Poleward is -z in the north (z < 0), +z in the south, joined across the equator.
-    const double poleward =
-        2.0 * hermite(-kEquatorJoin * m.degree, kEquatorJoin * m.degree, z) - 1.0;
-    // The angles of the bands, joined along the shorter arc: the wind turns at an even pace
-    // across the joins, never through a calm.
-    const double trades = bandAngle(-1.0, m.climate.tradeMeridional, poleward);
-    const double westerlies = bandAngle(1.0, m.climate.westerlyMeridional, poleward);
-    const double polars = bandAngle(-1.0, m.climate.polarMeridional, poleward);
-    const double angle = trades + shorter(westerlies - trades) * westerly +
-                         shorter(polars - westerlies) * polar +
-                         kTurnDegrees / 360.0 * static_cast<double>(m.turn.fbm2D(x, z));
-    const dmath::SineCosine d = dmath::sinCosTurns(angle);
-    return {d.cosine, d.sine};
 }
 
 // The sand of the ergs buries the local relief of the geography (its hills, buttes and plains:

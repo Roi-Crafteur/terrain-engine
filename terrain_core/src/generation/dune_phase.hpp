@@ -45,6 +45,7 @@ struct Pivot {
     double dx = 1.0; // the wind
     double dz = 0.0;
     double spacing = 1.0; // of its crests, meters
+    double waves = 1.0;   // of the crests of the big waves (Kind::waves), meters
     double phase = 0.0;   // [0, 1)
     std::uint64_t key = 0;
 };
@@ -73,6 +74,8 @@ struct Kind {
     double sinuous = 1.0; // the sinuosity of the crests, times that of the ridges
     // A fixed spacing in meters instead of that of the pivots (the small dunes), if positive.
     double fixedSpacing = 0.0;
+    // The spacing of the big waves of the pivots (Pivot::waves) times spacing, instead.
+    bool waves = false;
 };
 
 struct Phase {
@@ -86,7 +89,8 @@ struct Phase {
 [[nodiscard]] std::array<Phase, 2> phasesAt(const Ergs::Impl& m, const Shared& s, const Pivots& p,
                                             const Kind& first, const Kind& second);
 // The spacing of the pivots at the point, weighted as their phasors (Phase::nominal of the ridges),
-// without their phases.
-[[nodiscard]] double nominalAt(const Ergs::Impl& m, const Shared& s, const Pivots& p);
+// without their phases (waves: that of the big waves, Pivot::waves).
+[[nodiscard]] double nominalAt(const Ergs::Impl& m, const Shared& s, const Pivots& p,
+                               bool waves = false);
 
 } // namespace terrain::dune_phase

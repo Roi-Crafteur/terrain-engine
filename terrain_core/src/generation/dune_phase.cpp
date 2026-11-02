@@ -28,6 +28,10 @@ constexpr double kSpacingMost = 3000.0;
 constexpr double kGiantLeast = 4'000.0;
 constexpr double kGiantRange = 8'000.0;
 constexpr double kGiantShift = 3'000'000.0;
+// The big waves: kWavesLeast to kWavesRatio times as much, a median about 2 km.
+constexpr double kWavesLeast = 1'500.0;
+constexpr double kWavesRatio = 2.0;
+constexpr double kWavesShift = 2'222'222.0;
 // The sinuosity of the crests (share of the spacing) and the drift of the phase (cycles).
 constexpr double kSinuous = 0.3;
 constexpr double kDrift = 0.6;
@@ -71,8 +75,15 @@ Pivot pivotOf(const Ergs::Impl& m, std::int64_t i, std::int64_t j, bool giant) {
     p.spacing = std::clamp(
         (kSpacingLeast + kSpacingRange * dmath::pow(sand, kSpacingPower)) * spread, kSpacingLeast,
         kSpacingMost);
+    // The big waves: kWavesLeast to kWavesRatio times it, by the sand noise sampled elsewhere
+    // (some 140 km across: the next pivots alike, no period).
+    const float region = m.sand.fbm2D(wrapCoordinate(wx - kWavesShift, m.world.x),
+                                      wrapCoordinate(wz + kWavesShift, m.world.z));
+    p.waves = kWavesLeast * dmath::pow(kWavesRatio, static_cast<double>(
+                                                        noise::smoothstep(-0.4f, 0.4f, region)));
     if (giant) {
-        const float slow = m.turn.fbm2D(wx + kGiantShift, wz - kGiantShift);
+        const float slow = m.turn.fbm2D(wrapCoordinate(wx + kGiantShift, m.world.x),
+                                        wrapCoordinate(wz - kGiantShift, m.world.z));
         p.spacing = kGiantLeast + kGiantRange * static_cast<double>(noise::smoothstep(-0.4f, 0.4f, slow));
     }
     p.phase = draw(5);
@@ -173,11 +184,11 @@ Weights weightsWithSlopes(const Ergs::Impl& m, const Shared& s, const Pivots& p)
 
 } // namespace
 
-double nominalAt(const Ergs::Impl& m, const Shared& s, const Pivots& p) {
+double nominalAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, bool waves) {
     const Weights w = weightsWithSlopes(m, s, p);
     double nominal = 0.0;
     for (std::size_t k = 0; k < 4; ++k) {
-        nominal += w.w[k] * p.pivots[k].spacing;
+        nominal += w.w[k] * (waves ? p.pivots[k].waves : p.pivots[k].spacing);
     }
     return nominal;
 }
@@ -209,7 +220,8 @@ Phase phaseOf(const Shared& s, const Pivots& p, const Weights& w, const Kind& ki
         const double ux = ax * r.cosine - az * r.sine;
         const double uz = ax * r.sine + az * r.cosine;
         const double spacing =
-            kind.fixedSpacing > 0.0 ? kind.fixedSpacing : kind.spacing * v.spacing;
+            kind.fixedSpacing > 0.0 ? kind.fixedSpacing
+                                    : kind.spacing * (kind.waves ? v.waves : v.spacing);
         const double own =
             kind.salt == 0 ? v.phase : dune_forms::uniform(noise::deriveSeed(v.key, kind.salt));
         const double along = (s.x[0] - v.cx) * ux + (s.z[0] - v.cz) * uz;
