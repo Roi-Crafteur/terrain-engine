@@ -48,8 +48,10 @@ import horizon_reveal as reveal  # noqa: E402
 import horizon_sea_hlsl as sea_code  # noqa: E402
 import horizon_water_nodes as water_nodes  # noqa: E402
 import material_settings as settings  # noqa: E402
+import temporary_terrain_hlsl as terrain_hlsl  # noqa: E402
 import temporary_terrain_look as look  # noqa: E402
 detail = importlib.reload(detail)  # the modules of this checkout, even if run before
+terrain_hlsl = importlib.reload(terrain_hlsl)
 look = importlib.reload(look)
 reveal = importlib.reload(reveal)
 sea_code = importlib.reload(sea_code)
@@ -103,9 +105,10 @@ float4 ca = Coarse.Load(int3((inCoarser + s0 / 2 + coarseFirst) % side, 0));
 float4 cb = Coarse.Load(int3((inCoarser + s1 / 2 + coarseFirst) % side, 0));
 float distance = max(abs(ik.x - Viewer.x), abs(ik.y - Viewer.y));
 float alpha = HasCoarser > 0.5 ? saturate((distance - (Cells * 0.5 - 2.0 - MorphCells)) / MorphCells) : 0.0;
-// On the ocean the last float is the ground under the sea, below 0 (texelGround). The ground of
-// the land gets 1 cm: land at the sea level (or the whole ocean without bHorizonSea) stays dry.
-#define HORIZON_GROUND(t) ((t).a < 0.0 ? (t).a : max((t).r, 0.0) + 0.01)
+// On the ocean the last float is the ground under the sea, below 0 (texelGround), SEA_ROCK lower
+// over bare rock (Bridge/horizon_textures.hpp: kSeaRockCode). The ground of the land gets 1 cm:
+// land at the sea level (or the whole ocean without bHorizonSea) stays dry.
+#define HORIZON_GROUND(t) ((t).a < 0.0 ? SEA_GROUND((t).a) : max((t).r, 0.0) + 0.01)
 float height = lerp(own.r, 0.5 * (ca.r + cb.r), alpha);
 float ground = lerp(HORIZON_GROUND(own), 0.5 * (HORIZON_GROUND(ca) + HORIZON_GROUND(cb)), alpha);
 float2 slope = lerp(own.gb, 0.5 * (ca.gb + cb.gb), alpha);
@@ -139,6 +142,11 @@ GroundOut = ground;
 MorphOut = alpha;
 return float3(0.0, 0.0, z);
 """
+
+
+def vertex_hlsl():
+    """The vertex code, the ground under the sea decoded (temporary_terrain_hlsl.sea_ground_hlsl)."""
+    return VERTEX_HLSL.replace("SEA_GROUND((t).a)", terrain_hlsl.sea_ground_hlsl("(t).a"))
 
 SHADE_HLSL = r"""
 float3 sea = SeaBody;
@@ -251,7 +259,7 @@ def parameters(material):
 def vertex_shader(material, nodes, kind):
     float4 = unreal.CustomMaterialOutputType.CMOT_FLOAT4
     custom = custom_node(
-        material, -900, 0, "HorizonVertex", look.struct_hlsl() + VERTEX_HLSL,
+        material, -900, 0, "HorizonVertex", look.struct_hlsl() + vertex_hlsl(),
         ["Tex", "Coarse", "Local", "Kind", "Viewer", "CameraRel"] + list(SCALARS),
         [("NormalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
          ("W0Out", float4), ("W1Out", float4), ("W2Out", float4),

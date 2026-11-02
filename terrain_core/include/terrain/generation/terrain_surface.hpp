@@ -84,9 +84,14 @@ struct SurfaceGrids {
 [[nodiscard]] TerrainSurface surfaceFromHeightfield(const Heightfield& field,
                                                     const HeightmapRegion& region);
 
-// Whether a site under the sea is bare rock: the ground around it rising rockSlope meters per
-// meter at least (rise, read over the pitch the material is drawn at: the foot of a wall plunging
-// into the sea, never sand under it).
+// Whether a site may be the foot of a wall plunging into the sea: the ocean near a shore (its
+// continentalness above -kPlungeShore, about 6 km of coast signal: 2 km), no wall rising out of
+// the open sea.
+inline constexpr float kPlungeShore = 0.004f;
+[[nodiscard]] bool mayPlunge(const SurfaceSite& site);
+// Whether such a site is bare rock: the ground around it rising rockSlope meters per meter at
+// least (rise, read over the pitch the material is drawn at, the tiles between their texels, the
+// horizon between its samples: never the sand of the shallows drawn up the foot of a wall).
 [[nodiscard]] bool barePlunge(const SurfaceSite& site, float rise, float rockSlope);
 
 // The site surfaceFromHeightfield gives a sample of this ground and continentalness whose 4

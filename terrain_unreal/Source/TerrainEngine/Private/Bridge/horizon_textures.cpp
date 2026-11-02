@@ -60,7 +60,8 @@ std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side)
 
 HorizonTexel horizonTexel(const HorizonCell& cell, bool sea) {
     if (sea && isSeaCell(cell)) {
-        return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel};
+        const float rock = cell.material == SurfaceMaterial::Rock ? kSeaRockCode : 0.0f;
+        return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel - rock};
     }
     const bool inland = (cell.flags & kHorizonWater) != 0 && (cell.flags & kHorizonSea) == 0;
     return {cell.height, cell.gradX, cell.gradZ, packSurface(cell.material, cell.biome, inland)};
@@ -70,8 +71,15 @@ bool isSeaTexel(const HorizonTexel& texel) {
     return texel.color < 0.0f;
 }
 
+bool isRockSeaTexel(const HorizonTexel& texel) {
+    return texel.color <= -0.5f * kSeaRockCode;
+}
+
 float texelGround(const HorizonTexel& texel) {
-    return isSeaTexel(texel) ? texel.color : std::max(texel.height - kSeaLevel, 0.0f);
+    if (isSeaTexel(texel)) {
+        return isRockSeaTexel(texel) ? texel.color + kSeaRockCode : texel.color;
+    }
+    return std::max(texel.height - kSeaLevel, 0.0f);
 }
 
 std::vector<float> pieceTexels(const HorizonPiece& piece, bool sea) {

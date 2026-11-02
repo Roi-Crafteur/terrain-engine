@@ -29,8 +29,14 @@ namespace terrain::unreal {
 // On the ocean the last float is instead the ground under the sea, meters from the sea level,
 // below 0: the material colors the sea by its depth (texelGround). The materials of the horizon
 // and of the tiles take the layers of the ground from the surface (the temporary terrain
-// material of phase 14, Scripts/temporary_terrain_look.py).
+// material of phase 14, Scripts/temporary_terrain_look.py). Where that ground is bare rock (the
+// material of the core rock under the sea: the foot of a wall plunging into it, a reef of the
+// coasts, agent 33) it is stored kSeaRockCode lower: the materials draw rock there, not the
+// sand of the shallows, which the ground interpolated between the samples would carry up the
+// foot of the wall (Scripts/temporary_terrain_hlsl.py: SEA_ROCK_CODE, the same value). Its ground
+// comes back within the precision of a float there (1/128 m), whatever the depth of the oceans.
 inline constexpr int kTexelFloats = 4;
+inline constexpr float kSeaRockCode = 100'000.0f;
 
 // The material of the horizon draws the sea at the altitude 0.
 static_assert(kSeaLevel == 0.0f, "the sea of the horizon lies at the altitude 0");
@@ -48,6 +54,8 @@ struct HorizonTexel {
 
 // A texel of the ocean (horizonTexel with the sea): its last float is negative.
 [[nodiscard]] bool isSeaTexel(const HorizonTexel& texel);
+// A texel of the ocean over bare rock: its last float kSeaRockCode below its ground.
+[[nodiscard]] bool isRockSeaTexel(const HorizonTexel& texel);
 // The ground the material colors the sea from, meters from the sea level: under the sea for a
 // texel of the ocean (below 0), the height shown, at least 0, elsewhere. The material
 // interpolates it between the samples: the coast lies where it crosses 0.

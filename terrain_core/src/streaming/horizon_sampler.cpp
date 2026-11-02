@@ -87,6 +87,29 @@ SurfaceSite groundSite(const GroundGrid& grid, std::size_t at, const std::array<
     return site;
 }
 
+// The steepest rise, per meter, from the sample (i, k) to the samples one and two pitches away
+// (the material is drawn between the samples of the level: a wall rising there takes the colour
+// of this sample at its foot): the grid where it holds them (the same bits as the field), the
+// field beyond its margin.
+float riseAround(const Heightfield& field, const LevelFrame& frame, const GroundGrid& grid,
+                 std::int64_t i, std::int64_t k) {
+    const float ground = grid.heights[grid.index(i, k)];
+    float rise = 0.0f;
+    for (const auto& [di, dk] : {std::array<int, 2>{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+        const float near = grid.heights[grid.index(i + di, k + dk)];
+        const std::int64_t fi = i + 2 * di;
+        const std::int64_t fk = k + 2 * dk;
+        const bool inside = fi >= grid.rect.x0 && fi < grid.rect.x1 && fk >= grid.rect.z0 &&
+                            fk < grid.rect.z1;
+        const float far =
+            inside ? grid.heights[grid.index(fi, fk)] : field.heightAt(frame.x(fi), frame.z(fk));
+        const auto pitch = static_cast<double>(frame.pitch);
+        rise = std::max({rise, static_cast<float>(static_cast<double>(near - ground) / pitch),
+                         static_cast<float>(static_cast<double>(far - ground) / (2.0 * pitch))});
+    }
+    return rise;
+}
+
 // Material, biome and water of the sample (i, k) of the grid, from its natural ground.
 void classify(const Heightfield& field, const Ecology& ecology, const LevelFrame& frame,
               const GroundGrid& grid, int slopeStep, std::int64_t i, std::int64_t k,
@@ -107,7 +130,8 @@ void classify(const Heightfield& field, const Ecology& ecology, const LevelFrame
     const ClimateSample climate = ecology.climate().sample(x, z, site);
     // Bare rock: the reefs of the coasts, and the foot of the walls under the sea.
     site.bareRock = grid.rock[at] > 0.5f ||
-                    barePlunge(site, steepestSlope(climate, site), params.materials.rockSlope);
+                    (mayPlunge(site) && barePlunge(site, riseAround(field, frame, grid, i, k),
+                                                   params.materials.rockSlope));
     cell.biome = classifyBiome(climate, site, params.biomes);
     cell.material = surfaceMaterial(cell.biome, climate, site, params.materials);
     cell.flags = static_cast<std::uint8_t>((site.dry() ? 0U : kHorizonWater) |

@@ -11,3 +11,13 @@ terrain_add_test(coast_reference_test terrain_core)
 terrain_add_test(coast_inlet_shapes_test terrain_core)
 terrain_add_test(coast_anchorages_test terrain_core)
 terrain_add_test(coast_materials_test terrain_core)
+# The materials of the coasts as the GPU horizon of Unreal draws them (Bridge).
+terrain_add_test(coast_horizon_rock_test terrain_unreal_bridge)
+# The rock under the sea in the scripts of the materials of Unreal, without Unreal.
+find_package(Python COMPONENTS Interpreter QUIET)
+if(Python_Interpreter_FOUND)
+    add_test(NAME coast_rock_scripts_test
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/coast_rock_scripts_test.py
+                ${PROJECT_SOURCE_DIR}/terrain_unreal/Scripts
+                ${PROJECT_SOURCE_DIR}/terrain_unreal/Source/TerrainEngine/Private/Bridge/horizon_textures.hpp)
+endif()
