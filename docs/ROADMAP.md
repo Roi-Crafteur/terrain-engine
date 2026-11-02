@@ -237,6 +237,28 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - jamais dans un build Shipping (`TERRAIN_DEV_TOOLS`) ; aucun bit du monde changé
   (`terrain_unreal/DEV_TOOLS.md`)
 
+### Vérifications automatiques et sonde unique (agent 37)
+- `terrain_probe` remplace `terrain_probe_water` : pour des points ou le long d'une ligne
+  (`--line`), avec ou sans fichier planète, tout ce que le core sait. Une section par module :
+  relief et sol (le sol du repère d'Unreal), géographie, case de la planète (climat, débit), eau
+  (type, niveau, profondeur, vallée, lac, courant), chutes proches et couloir de marches,
+  colonne de roche, côte, surface, ce que reçoit Unreal (tuiles, horizon). Texte ou JSON à schéma
+  stable ; `--planet-check` lit un fichier planète sans jamais l'écrire. Les sections
+  `rock.faces` (12A) et `coast.type` (agent 33) ont leur place prévue
+  (`docs/dev/PROBE_AND_PLACES.md`)
+- `data/dev/places.json` : les lieux de test partagés (lecteur et écrivain de l'agent 36
+  dans `terrain_core/dev/`)
+- `scripts/verify/` : une commande pour vérifier une version, ou la comparer à une autre, dans
+  Unreal :
+  - clones jetables, cache de build par commit, planète vérifiée et copiée à côté ;
+  - sessions courtes sous un chien de garde ;
+  - vues prises en pause (bruit à monde identique mesuré), contrôle du signe de l'inclinaison,
+    marches jusqu'à la première chute ;
+  - planche avant / après, écarts de pixels et `resume.txt`.
+
+  Le pilote d'Unreal est testé contre un faux module `unreal`, et essayé de bout en bout par
+  l'orchestrateur sous Windows (UE 5.8)
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les

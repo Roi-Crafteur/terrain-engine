@@ -14,17 +14,21 @@ structure :
       tools/            ← exécutables d'export
     data/
       settlement/       ← world.json, resources/*.json, peoples/*.json (modifiables sans code)
+      dev/places.json   ← lieux de test partagés des outils de dev
     terrain_viewer/     ← mini-fenêtre OpenGL de debug
     terrain_unreal/     ← plugin UE5 (à partir de la phase 10)
       Source/TerrainEngine/Private/Bridge/      ← pont en C++ pur, testé par ctest
       Source/TerrainEngine/Private/TerrainCore/ ← un enrobage par .cpp du core (hors io/)
       Scripts/          ← scripts Python qui créent les matériaux
     tests/              ← tests unitaires et golden
+    scripts/
+      verify/           ← lanceur de vérification dans Unreal (Python, agent 37)
     docs/
       ARCHITECTURE.md
       ROADMAP.md
       AI_RULES.md
       PEUPLEMENT.md     ← conception du peuplement ; section 9 : la V1 codée
+      dev/              ← formats de la sonde et des lieux
     CMakeLists.txt
     README.md
 
