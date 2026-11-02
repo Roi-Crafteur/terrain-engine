@@ -350,6 +350,13 @@ float3 hue = lerp(float3(1.0, 1.0, 1.0), lerp(float3(1.07, 1.02, 0.86), float3(0
 float3 groundC = Look.Saturate(ground * macro * hue, Saturation) * Warmth;
 float3 rockS = max(lerp(rockMean, rockC, RockContrast), 0.0);
 float3 rockG = Look.Saturate(rockS, 1.0 - RockGrey) * RockAlbedo * (1.0 + 0.4 * MacroVariation * (n2 - 0.5));
+// The wet rock at the sea (agent 33): from under the water up to about WetBandM meters, its upper
+// edge ragged by two noises of the world position (from half to one and a half times it, over 3
+// and 12 m: never a straight line along the coast), darker by WetDarken, fading over a meter.
+// The same on the tiles and on the horizon, both shaded here: no step at 512 m.
+float wetTop = WetBandM * (0.5 + 0.7 * Look.Noise(P + 97.0, 12.0) + 0.3 * Look.Noise(P - 41.0, 3.0));
+float wet = 1.0 - smoothstep(wetTop - 0.7, wetTop + 0.3, Z);
+rockG *= lerp(1.0, WetDarken, wet);
 float3 snowG = lerp(snowC, float3(0.88, 0.91, 0.96), SnowWhiten) * TintS;
 float3 groundN = normalize(float3(N.xy + nts * NormalStrength * detail, N.z));
 float3 color = lerp(lerp(groundC, rockG, rock), snowG, snow);

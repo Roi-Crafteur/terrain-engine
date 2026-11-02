@@ -12,6 +12,10 @@ shallows, and still read its ground.
 - Every reader of that ground decodes it: the vertex code of the GPU horizon (HORIZON_GROUND,
   create_horizon_gpu_material.py) and the sea square under the tiles (horizon_sea_hlsl.py); no
   placeholder left.
+- The wet rock at the sea (temporary_terrain_hlsl.py): darker up to about WetBandM meters (3 m),
+  its upper edge ragged by noises of the world position (between half and one and a half the
+  band), in the shading of the tiles and of the GPU horizon alike (look.shade_hlsl): no step at
+  512 m.
 - The blends of the GPU horizon (agent 29: its colours come from them, Layers only where a texel
   holds none): the blend the core gives a texel of the ocean over rock (the ocean, all rock:
   coast_horizon_rock_test) draws rock and no sand of the shallows through FinishBlend
@@ -66,6 +70,44 @@ def check_blends(struct_code):
         check(abs(lc[1] - 1.0) < 1e-9, f"the rock over rock ({alpha}): {lc}")
     _, lb, lc, _, _ = reference.blend_texels_layers((over_water,), (1.0,), look.BIOMES)
     check(abs(lb[1] - 1.0) < 1e-9 and lc[1] < 1.0, f"the sand of the shallows over water: {lb}, {lc}")
+
+
+def check_wet_band(scripts):
+    """The wet rock at the sea, in the shading of the tiles and of the GPU horizon alike."""
+    import temporary_terrain_look as look
+
+    for detail in (False, True):
+        code = look.shade_hlsl(detail)
+        check("float wetTop = WetBandM * (0.5 + 0.7 * Look.Noise(P + 97.0, 12.0) "
+              "+ 0.3 * Look.Noise(P - 41.0, 3.0));" in code, f"the ragged wet edge ({detail})")
+        check("float wet = 1.0 - smoothstep(wetTop - 0.7, wetTop + 0.3, Z);" in code,
+              f"the wet band by the altitude ({detail})")
+        check("rockG *= lerp(1.0, WetDarken, wet);" in code, f"the wet rock darker ({detail})")
+    check("WetBandM" in look.shade_inputs() and "WetDarken" in look.shade_inputs(),
+          "the wet band read by the shading")
+    band, darken = look.SCALARS["WetBandM"], look.SCALARS["WetDarken"]
+    check(band == 3.0 and 0.0 < darken < 1.0, f"a wet band of 3 m, darker: {band}, {darken}")
+    # Both materials shade the land with it.
+    for name, call in (("create_horizon_gpu_material.py", "look.shade_hlsl(False)"),
+                       ("create_temporary_terrain_material.py", "look.shade_hlsl(")):
+        with open(f"{scripts}/{name}", encoding="utf-8") as f:
+            check(call in f.read(), f"{name} shades the land with the look")
+
+    def smoothstep(a, b, x):
+        t = min(max((x - a) / (b - a), 0.0), 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def wet(z, n12, n3):
+        top = band * (0.5 + 0.7 * n12 + 0.3 * n3)
+        return 1.0 - smoothstep(top - 0.7, top + 0.3, z)
+
+    tops = []
+    for n12 in (0.0, 0.25, 0.5, 0.75, 1.0):
+        for n3 in (0.0, 0.5, 1.0):
+            check(wet(0.0, n12, n3) == 1.0, "the rock wet at the sea level")
+            check(wet(1.5 * band + 0.3, n12, n3) == 0.0, "dry above one and a half the band")
+            tops.append(next(z / 10.0 for z in range(0, 100) if wet(z / 10.0, n12, n3) < 0.5))
+    check(max(tops) - min(tops) >= band, f"a ragged upper edge: {min(tops)} to {max(tops)} m")
 
 
 def main():
@@ -126,6 +168,7 @@ def main():
     check("look.struct_hlsl() + VERTEX_HLSL" not in gpu, "no undecoded vertex code left")
 
     check_blends(terrain.struct_hlsl(biomes))
+    check_wet_band(scripts)
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 
