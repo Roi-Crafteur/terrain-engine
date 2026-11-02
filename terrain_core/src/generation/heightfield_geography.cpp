@@ -159,6 +159,7 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
     const float intensity =
         land > 0.0f || coast.landward ? reliefAt(x, z, g.relief, memos) : 0.0f;
     s.relief = intensity; // 0 at sea
+    s.rift = g.rift;
     s.mountainMask = coast.mountains * noise::smoothstep(kMountainLow, kMountainHigh, intensity);
     // Around the regional elevation, the local relief rises and falls.
     const float ground = coast.ground;

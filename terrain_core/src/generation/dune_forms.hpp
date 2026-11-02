@@ -47,6 +47,7 @@ struct Barchan {
     double presence = 0.0;
     double crest = 0.5;
     bool single = false;
+    double width = 1.0; // times the usual width (at most 1.9: apart from the next cells)
 };
 [[nodiscard]] double barchan(const Barchan& b);
 

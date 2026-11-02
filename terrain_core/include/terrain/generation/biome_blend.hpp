@@ -66,11 +66,11 @@ struct SurfaceBlend {
     std::array<float, kBlendSlots> biomeWeights{};
     std::array<SurfaceMaterial, kBlendSlots> materials{};
     std::array<float, kBlendSlots> materialWeights{};
-    // [0, 1]: kErgFloorShare times the mask of the ergs (HeightSample::erg: the floor between
-    // their dunes), plus the rest times how much of the column is the sand of their dunes (from
-    // MaterialParams::duneSand / 4 to 8 duneSand meters of sand): their sand is smooth sand at
-    // any slope, never the stony ground of the desert around it. 0 off the ergs. A reader takes
-    // the dunes from the share above kErgFloorShare, the floor of an erg from the share below.
+    // [0, 1]: the mask of the ergs (HeightSample::erg, smooth over kilometers: the same at the
+    // edges of grids of any pitch); their sand is smooth sand at any slope, never the stony
+    // ground of the desert around it, but their rock out of the sand (bare rock). 0 off the
+    // ergs. A reader takes the dunes from the share above kErgFloorShare, the floor of the edges
+    // of an erg from the share below.
     float dunes = 0.0f;
 
     friend bool operator==(const SurfaceBlend&, const SurfaceBlend&) = default;

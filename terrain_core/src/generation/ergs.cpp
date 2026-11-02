@@ -63,6 +63,10 @@ constexpr float kBuryFade = 0.3f;
 constexpr double kRockFall = 5.0;
 // A hollow keeps this share of what it sinks under kBuryMost: the sand lines its walls, gentler.
 constexpr double kHollowKept = 0.35;
+// No erg in the troughs of the rifts (their walls kilometers high): faded from kRiftLow to
+// kRiftHigh (the field is a little over 0 far from them).
+constexpr float kRiftLow = 0.05f;
+constexpr float kRiftHigh = 0.2f;
 // The weights of the characters from the blocks and the slow noise: the realistic fade out from
 // kRealisticEnd, the giant waves come from kGiantsStart, over kCharacterJoin.
 constexpr float kRealisticEnd = 0.1f;
@@ -297,7 +301,7 @@ static float desertShare(const Ergs::Impl& m, double x, double z) {
     return 1.0f - noise::smoothstep(edge - p.edgeBelow, edge + p.edgeAbove, humidity);
 }
 
-ErgPoint Ergs::at(double x, double z, float relief) const {
+ErgPoint Ergs::at(double x, double z, float relief, float rift) const {
     const Impl& m = *impl_;
     if (!mayHold(x, z)) {
         return {};
@@ -306,7 +310,8 @@ ErgPoint Ergs::at(double x, double z, float relief) const {
     // is too wet or too rugged for them; their noises, the water and the depressions are dear.
     const float dry = 1.0f - noise::smoothstep(m.params.humidLow, m.params.humidHigh,
                                                m.planet->humidityAt(x, z));
-    const float flat = 1.0f - noise::smoothstep(m.params.reliefLow, m.params.reliefHigh, relief);
+    const float flat = (1.0f - noise::smoothstep(m.params.reliefLow, m.params.reliefHigh, relief)) *
+                       (1.0f - noise::smoothstep(kRiftLow, kRiftHigh, rift));
     if (!(dry > 0.0f) || !(flat > 0.0f)) {
         return {};
     }
@@ -372,7 +377,7 @@ std::array<double, 2> Ergs::windAt(double x, double z) const {
 // hollow keeps kHollowKept of what it sinks under it past kBuryMost; the rock of a butte (lowered by kBuryMost,
 // deep under the plains) stands out of the sand where it rises over it (its slopes never add to
 // those of the dunes). Faded with the mask over its first kBuryFade: none at the edges of the erg.
-static float buried(const HeightSample& s, const ErgPoint& e, double dunes) {
+static float buried(const HeightSample& s, const ErgPoint& e, double dunes, bool* bare) {
     const double local = static_cast<double>(s.base) - static_cast<double>(s.regional);
     if (local == 0.0) {
         return static_cast<float>(dunes);
@@ -383,18 +388,24 @@ static float buried(const HeightSample& s, const ErgPoint& e, double dunes) {
     // (under the troughs of the tallest waves on a plain).
     const double rock = (local - kBuryMost) * (local > kBuryMost ? 1.0 : kRockFall);
     const double surface = std::max(dunes + hollow - local, rock - local);
+    if (bare != nullptr) {
+        *bare = share > 0.5 && rock > dunes + hollow;
+    }
     return static_cast<float>(dunes + (surface - dunes) * share);
 }
 
-float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,
-                    float* mask) const {
+float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint, float* mask,
+                    bool* bare) const {
     if (mask != nullptr) {
         *mask = 0.0f;
+    }
+    if (bare != nullptr) {
+        *bare = false;
     }
     if (s.water == WaterKind::Ocean || !mayHold(x, z)) {
         return 0.0f;
     }
-    const ErgPoint e = at(x, z, s.relief);
+    const ErgPoint e = at(x, z, s.relief, s.rift);
     if (!(e.mask > 0.0f)) {
         return 0.0f;
     }
@@ -410,11 +421,11 @@ float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,
     const double filtered = hermite(kFilterLow * spacing, kFilterHigh * spacing, footprint);
     const double point = filtered < 1.0 ? static_cast<double>(dunesOf(x, z, e)) : 0.0;
     if (!(filtered > 0.0)) {
-        return buried(s, e, point);
+        return buried(s, e, point, bare);
     }
     // Their mean over their pattern (closed forms).
     const double mean = dune_field::meanDunes(*impl_, x, z, e);
-    return buried(s, e, point + (mean - point) * filtered);
+    return buried(s, e, point + (mean - point) * filtered, bare);
 }
 
 float Ergs::dunesOf(double x, double z, const ErgPoint& e) const {

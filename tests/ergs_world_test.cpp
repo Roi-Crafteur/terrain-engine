@@ -171,12 +171,11 @@ bool sameMesh(const terrain::TileData& a, const terrain::TileData& b) {
 void checkDuneTexels(const terrain::TileData& t, std::size_t& dune, std::size_t& wrong) {
     for (const terrain::BlendTexel& texel : t.surfaceBlend) {
         const terrain::SurfaceBlend b = terrain::unpackBlend(texel);
-        // Texels on the dunes: whatever the share of the floor of the erg (kErgFloorShare times
-        // its mask), at least 0.85 of the share of the dunes (6 m of sand).
-        if (b.dunes < 0.87f) {
+        // Texels in an erg (its share: its mask, biome_blend.cpp): those of its dunes all sand,
+        // none rock (no bare rock out of these sands of the small world).
+        if (!(b.dunes > 0.0f)) {
             continue;
         }
-        ++dune;
         float sand = 0.0f;
         for (std::size_t s = 0; s < terrain::kBlendSlots; ++s) {
             sand += b.materials[s] == terrain::SurfaceMaterial::Sand ? b.materialWeights[s] : 0.0f;
@@ -184,7 +183,7 @@ void checkDuneTexels(const terrain::TileData& t, std::size_t& dune, std::size_t&
                          ? 1
                          : 0;
         }
-        wrong += sand < 0.99f ? 1 : 0;
+        dune += sand >= 0.99f ? 1 : 0;
     }
 }
 
@@ -222,7 +221,7 @@ void testTiles(const std::vector<std::pair<double, double>>& sites) {
                 farSame, near, nearChanged);
     TEST_CHECK(far >= 8 && farSame == far);
     TEST_CHECK(near >= 4 && nearChanged == near);
-    std::printf("texels on the dunes: %zu, %zu not all sand\n", duneTexels, rockOnDunes);
+    std::printf("texels on the dunes: %zu all sand, %zu with rock\n", duneTexels, rockOnDunes);
     TEST_CHECK(duneTexels > 20 && rockOnDunes == 0);
 }
 

@@ -105,7 +105,7 @@ double barchan(const Barchan& b) {
     if (!(b.presence > 0.0) || !(b.height > 0.0)) {
         return 0.0;
     }
-    const double half = kBarchanHalf * b.cell;
+    const double half = kBarchanHalf * b.cell * std::min(b.width, 1.9);
     const double lateral = (b.across - 0.5) * b.cell / half;
     if (!(std::abs(lateral) < 1.0)) {
         return 0.0;

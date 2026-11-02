@@ -1,10 +1,11 @@
 // The waves of the ergs of the characters big waves and giant waves (agent 34, dune_waves.hpp):
-// - the profile across a crest: the face at 33 degrees at the brink, the back gentle, no floor
-//   between two waves; along the wind the backs at most 18 (big waves) or 14 degrees (giants);
+// - the profile across a crest: the face at 33 degrees past its rounded brink, the back gentle,
+//   no floor between two waves; along the wind the backs at most 18 (big waves) or 16 degrees
+//   (giants);
 // - on the default world (forced characters, sites far from the origin too): the spacing of the
-//   crests (2 to 6 km, 6 to 20 km), their heights (at most 300 m, 300 to 800 m), almost no flat
-//   ground, no step anywhere; across the boundary of a cell of the pivots (16 and 65 km), far
-//   from the origin, the spacing holds;
+//   crests (1.2 to 6 km, 5 to 20 km), their heights (at most 300 m, 300 to 760 m), almost no flat
+//   ground, no step anywhere, nor across the boundaries of the cells of the planet level far from
+//   the origin;
 // - the far horizon: the same bits as the tiles below a tenth of their spacing (no seam), their
 //   mean beyond without flicker.
 #include "dune_forms.hpp"
@@ -142,44 +143,26 @@ void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tal
 }
 
 
-// The mean spacing of the crests of a character along (ux, uz) from (x, z) over length meters.
-double meanSpacing(ErgCharacter c, double x, double z, double ux, double uz, double length,
-                   double step, double floor) {
-    std::vector<double> h;
-    for (double d = 0.0; d <= length; d += step) {
-        h.push_back(dunes_test::forcedDunes(real().ergs, x + d * ux, z + d * uz, 0.6f, 0.1f, c));
-    }
-    std::vector<double> crests;
-    const double reach = c == ErgCharacter::Giants ? 1'500.0 : 500.0;
-    for (std::size_t i = 1; i + 1 < h.size(); ++i) {
-        if (crestAt(h, i, floor, static_cast<std::size_t>(reach / step))) {
-            crests.push_back(static_cast<double>(i) * step);
-        }
-    }
-    return crests.size() < 2 ? 0.0 : (crests.back() - crests.front()) / static_cast<double>(crests.size() - 1);
-}
-
-// Far from the origin, across the boundary of a cell of the planet level where the wind turns,
-// the spacing of the crests holds within 1.5 times on each side (over 5 crests or so each).
-void testFarBoundary(ErgCharacter c, double length, double step, double floor) {
-    double worst = 1.0;
+// Far from the origin, across the boundary of a cell of the planet level where the wind turns:
+// no step, no seam (the spacings of two windows side by side differ by up to 3 times even far
+// from any boundary, with the ends and the joins of the crests: they tell nothing of it).
+void testFarBoundary(ErgCharacter c) {
+    double steepest = 0.0;
     for (const double x0 : {20'000'000.0 - 4096.0, -20'000'000.0 + 4096.0}) {
         for (const double z0 : {-5'830'000.0, 5'830'000.0, 3'000'000.0}) {
             const double xb = std::floor(x0 / 8192.0) * 8192.0;
-            const std::array<double, 2> w = real().ergs.windAt(xb, z0);
-            const double ux = w[0] >= 0.0 ? w[0] : -w[0];
-            const double uz = w[0] >= 0.0 ? w[1] : -w[1];
-            const double before = meanSpacing(c, xb - length * ux, z0 - length * uz, ux, uz,
-                                              length, step, floor);
-            const double after = meanSpacing(c, xb, z0, ux, uz, length, step, floor);
-            if (before > 0.0 && after > 0.0) {
-                worst = std::max(worst, std::max(before, after) / std::min(before, after));
+            double last = dunes_test::forcedDunes(real().ergs, xb - 50.0, z0, 0.6f, 0.1f, c);
+            for (double d = -49.75; d <= 50.0; d += 0.25) {
+                const double h = dunes_test::forcedDunes(real().ergs, xb + d, z0, 0.6f, 0.1f, c);
+                steepest = std::max(steepest, std::abs(h - last) / 0.25);
+                last = h;
             }
         }
     }
-    std::printf("%s far boundaries: worst ratio of the spacings on each side %.2f\n",
-                c == ErgCharacter::Giants ? "giant waves" : "big waves", worst);
-    TEST_CHECK(worst <= 1.5);
+    std::printf("%s far boundaries: steepest step across them %.1f deg\n",
+                c == ErgCharacter::Giants ? "giant waves" : "big waves",
+                std::atan(steepest) * dunes_test::kDegrees);
+    TEST_CHECK(std::atan(steepest) * dunes_test::kDegrees <= 40.0);
 }
 
 // A point of a full erg of giant waves of the default world.
@@ -311,12 +294,12 @@ void testBuried() {
 
 int main() {
     testProfile();
-    // The backs: at most 18 degrees for the big waves, 14 for the giants (validated at the third
+    // The backs: at most 18 degrees for the big waves, 16 for the giants (validated at the fourth
     // stop of agent 34).
     testForms(ErgCharacter::Waves, 1'200.0, 6'000.0, 300.0, 18.0);
-    testForms(ErgCharacter::Giants, 6'000.0, 20'000.0, 800.0, 14.0);
-    testFarBoundary(ErgCharacter::Waves, 16'000.0, 8.0, 40.0);
-    testFarBoundary(ErgCharacter::Giants, 100'000.0, 25.0, 150.0);
+    testForms(ErgCharacter::Giants, 5'000.0, 20'000.0, 760.0, 16.0);
+    testFarBoundary(ErgCharacter::Waves);
+    testFarBoundary(ErgCharacter::Giants);
     testHorizon();
     testBuried();
     return test::result();

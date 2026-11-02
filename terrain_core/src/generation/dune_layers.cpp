@@ -2,25 +2,41 @@
 #include "dune_layers.hpp"
 
 #include "dune_forms.hpp"
+#include "ergs_impl.hpp"
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
+#include <array>
 
 namespace terrain::dune_layers {
 
 namespace {
 
-constexpr double kGap = 0.15;                 // the floor between two of them, share
-// Their spacing follows that of the pivots (1 to 3 km) over kPivotSpacing: it varies from place
-// to place; their crests wander kSinuous times as much as the ridges, and break into segments
-// where the noise of the barchans (1.2 km), sampled kBreakShift times their salt away, is low.
+// Their rows follow that of the pivots (1 to 3 km) over kPivotSpacing: they vary from place to
+// place; their cells across are kCellShare of the rows; the rows wander kSinuous times as much
+// as the ridges.
 constexpr double kPivotSpacing = 2'000.0;
-constexpr double kSinuous = 4.0;
-constexpr double kBreakShift = 1'913.0;
-constexpr float kBreakLow = -0.5f;
-constexpr float kBreakHigh = 0.25f;
-constexpr float kCoherenceLow = 0.03f;         // they fade around the defects of their phase
+constexpr double kCellShare = 1.1;
+constexpr double kSinuous = 1.5;
+constexpr float kCoherenceLow = 0.03f; // they fade around the defects of their phases
 constexpr float kCoherenceHigh = 0.3f;
+// Each crescent reads at its middle (estimated from the phases and the wind: the same over it)
+// the noise of the barchans (1.2 km) sampled kShift times the salt away: there or not (within
+// kPresenceSoft of kOccupancy), its height (kLowest to 1 of the layer), its width (kNarrowest to
+// kNarrowest + kWidthRange: the widest nearly join their neighbors in curved ridges) and where its
+// crest lies along its row.
+constexpr double kShift = 1'913.0;
+constexpr double kOccupancy = 0.7;
+constexpr double kPresenceSoft = 0.3;
+constexpr double kLowest = 0.35;
+constexpr double kNarrowest = 0.7;
+constexpr double kWidthRange = 1.15;
+
+double ramp(double e0, double e1, double v) {
+    const double t = std::clamp((v - e0) / (e1 - e0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
 
 } // namespace
 
@@ -29,20 +45,51 @@ double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase:
     if (!(share > 0.0)) {
         return 0.0;
     }
-    dune_phase::Kind k;
-    k.turn = l.turn;
-    k.spacing = l.spacing / kPivotSpacing;
-    k.sinuous = kSinuous;
-    k.salt = l.salt;
-    const dune_phase::Phase phase = dune_phase::phaseAt(m, s, p, k);
-    const double shift = kBreakShift * static_cast<double>(l.salt);
-    const float pieces = m.scatter.fbm2D(s.x[0] + shift, s.z[0] - shift);
-    const double on = share *
-                      static_cast<double>(noise::smoothstep(kCoherenceLow, kCoherenceHigh,
-                                                            static_cast<float>(phase.coherence))) *
-                      static_cast<double>(noise::smoothstep(kBreakLow, kBreakHigh, pieces));
+    dune_phase::Kind rowsKind;
+    rowsKind.turn = l.turn;
+    rowsKind.spacing = l.spacing / kPivotSpacing;
+    rowsKind.sinuous = kSinuous;
+    rowsKind.salt = l.salt;
+    dune_phase::Kind cellsKind = rowsKind;
+    cellsKind.across = true;
+    cellsKind.spacing = kCellShare * rowsKind.spacing;
+    cellsKind.salt = l.salt + 1;
+    const std::array<dune_phase::Phase, 2> both = dune_phase::phasesAt(m, s, p, rowsKind, cellsKind);
+    const dune_phase::Phase& rows = both[0];
+    const dune_phase::Phase& cells = both[1];
+    const double coherent = share * ramp(kCoherenceLow, kCoherenceHigh, rows.coherence) *
+                            ramp(kCoherenceLow, kCoherenceHigh, cells.coherence);
+    if (!(coherent > 0.0)) {
+        return 0.0;
+    }
     const double tall = l.base + l.share * std::max(0.0, height);
-    return on * dune_forms::transverse(phase.fraction, phase.wavelength, tall, kGap, phase.nominal);
+    const std::array<double, 2> wind = windOf(m, s.x[0], s.z[0]);
+    const dmath::SineCosine turn = dmath::sinCosTurns(l.turn);
+    const double wx = wind[0] * turn.cosine - wind[1] * turn.sine;
+    const double wz = wind[0] * turn.sine + wind[1] * turn.cosine;
+    const double shift = kShift * static_cast<double>(l.salt);
+    double best = 0.0;
+    for (int back = -1; back <= 1; ++back) {
+        const double along = (rows.fraction + back - 0.6) * rows.wavelength;
+        const double lateral = (cells.fraction - 0.5) * cells.wavelength;
+        const double cx = s.x[0] - along * wx + lateral * wz + shift;
+        const double cz = s.z[0] - along * wz - lateral * wx - shift;
+        const double n = static_cast<double>(m.scatter.fbm2D(cx, cz));
+        const double o = static_cast<double>(m.scatter.fbm2D(cx + shift, cz + shift));
+        dune_forms::Barchan b;
+        b.t = rows.fraction + back;
+        b.wavelength = rows.wavelength;
+        b.across = cells.fraction;
+        b.cell = cells.wavelength;
+        b.single = true;
+        b.height = tall;
+        b.presence = coherent * ramp(-kPresenceSoft, kPresenceSoft, kOccupancy - (0.5 + 1.6 * n)) *
+                     (kLowest + (1.0 - kLowest) * std::clamp(0.5 + o, 0.0, 1.0));
+        b.width = kNarrowest + kWidthRange * std::clamp(0.5 - o, 0.0, 1.0);
+        b.crest = 0.45 + 0.3 * std::clamp(0.5 + n, 0.0, 1.0);
+        best = std::max(best, dune_forms::barchan(b));
+    }
+    return best;
 }
 
 } // namespace terrain::dune_layers

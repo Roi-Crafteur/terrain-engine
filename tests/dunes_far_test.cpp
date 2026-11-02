@@ -121,6 +121,6 @@ void testFar(ErgCharacter c, double low, double high) {
 
 int main() {
     testFar(ErgCharacter::Waves, 1'000.0, 6'000.0);
-    testFar(ErgCharacter::Giants, 6'000.0, 20'000.0);
+    testFar(ErgCharacter::Giants, 5'000.0, 20'000.0);
     return test::result();
 }

@@ -14,3 +14,4 @@ target_include_directories(dunes_waves_test PRIVATE ${PROJECT_SOURCE_DIR}/terrai
 terrain_add_test(ergs_characters_test terrain_core)
 terrain_add_test(dunes_far_test terrain_core)
 terrain_add_test(dunes_mesh_test terrain_core)
+terrain_add_test(dunes_seam_test terrain_core)

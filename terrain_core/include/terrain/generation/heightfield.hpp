@@ -98,6 +98,7 @@ struct HeightSample {
     float plateCollision = 0.0f;       // [0, 1], PlateSample::collision, 0 when disabled
     float mountainMask = 0.0f;         // [0, 1]
     float relief = 0.0f; // [0, 1], the intensity of the relief of the geography on land (else 0)
+    float rift = 0.0f;   // [0, 1], GeographySample::rift: the troughs of the rifts (1 on their axis)
     float base = 0.0f;                 // continental curve, [kMinBaseHeight, kMaxBaseHeight]
     // The regional ground under the local relief of the geography (its hills, buttes and forms of
     // the plains: base less them); base without the geography. The seas of dunes of the waves

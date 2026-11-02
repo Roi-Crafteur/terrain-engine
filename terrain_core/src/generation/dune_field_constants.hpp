@@ -38,6 +38,8 @@ constexpr double kSeifSinuous = 1.2;  // their crests wander a little more than 
 constexpr double kPlinthHeight = 0.45; // the plinth under their crest, share of their height
 constexpr double kPlinthWidth = 0.38;  // and its half width, share of their spacing
 constexpr double kSeifSand = 0.7;      // their height at least that of this sand
+// Their offset from the crest in at most kStretched times their nominal spacing (seifLine).
+constexpr double kStretched = 1.25;
 // The second system of seifs (the branches): its spacing over the first, where it lies (a noise
 // sampled elsewhere) and how much of it.
 constexpr double kBranchSpacing = 1.27;

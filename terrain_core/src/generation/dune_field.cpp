@@ -103,7 +103,9 @@ dune_phase::Kind seifKind(double spacing, std::uint64_t salt) {
 
 // The seifs of a system: ridges along the wind on the phase line across it.
 double seifLine(const Point& q, const dune_phase::Phase& line, double ends, double slip) {
-    const double spacing = line.wavelength;
+    // At most kStretched times the nominal spacing where the phase stretches (dune_waves: the
+    // local one varies fast there).
+    const double spacing = std::min(line.wavelength, kStretched * line.nominal);
     const double offset = (line.fraction - 0.5) * spacing;
     const double room = kSeifWidth * line.nominal /
                         (1.0 / dune_forms::kLeeTan + 1.0 / dune_forms::kGentleTan);
@@ -115,7 +117,7 @@ double seifLine(const Point& q, const dune_phase::Phase& line, double ends, doub
     const double ratio = line.wavelength / line.nominal;
     const double fade = ramp(kEndsLow, kEndsHigh, ends) *
                         ramp(kChainCoherenceLow, kChainCoherenceHigh, line.coherence) *
-                        ramp(0.45f, 0.85f, ratio) * (1.0 - ramp(1.4f, 2.4f, ratio));
+                        ramp(0.25f, 0.85f, ratio) * (1.0 - ramp(1.4f, 2.4f, ratio));
     if (!(fade > 0.0)) {
         return 0.0;
     }

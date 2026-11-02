@@ -20,11 +20,11 @@ constexpr double kLeeCurve = 2.0;
 // the crest, kBackCurve H / B, flat only at the trough where it meets the face (no floor).
 constexpr double kBackCurve = 1.4;
 constexpr double kWavesBackTan = 0.3249196962329063;   // tan 18 degrees
-constexpr double kGiantsBackTan = 0.24932800284318068; // tan 14 degrees
+constexpr double kGiantsBackTan = 0.28674538575880794; // tan 16 degrees
 // The big waves keep their own spacing at the pivots (dune_phase: 1.5 to 3 km, about 2 km), their
 // far filter starting kWavesFilterScale times as far as that of the realistic ridges.
 constexpr double kWavesFilterScale = 1.5;
-constexpr double kGiantsSpacing = 1.0; // their pivots hold their spacing (dune_phase)
+constexpr double kGiantsSpacing = 0.75; // of the spacing their pivots hold (dune_phase)
 constexpr double kGiantsFilterScale = 6.5;
 // The noises of the sinuosity (5 km) and of the drift (12 km) keep their wavelengths: the wider
 // the waves, the less of them they take, or their crests would scatter.
@@ -41,9 +41,9 @@ constexpr double kWavesLow = 80.0;
 constexpr double kWavesRange = 220.0;
 constexpr double kWavesHigh = 300.0;
 constexpr double kWavesFill = 0.9;
-constexpr double kGiantsShare = 0.07;
+constexpr double kGiantsShare = 0.1;
 constexpr double kGiantsLow = 300.0;
-constexpr double kGiantsHigh = 800.0;
+constexpr double kGiantsHigh = 760.0; // with their troughs, about 1,050 m from crest to trough
 constexpr double kAmpBase = 0.92;
 constexpr double kAmpRange = 0.25;
 // The second system: its spacing over the first, its turn, where it lies (the noise of the edges
@@ -56,7 +56,7 @@ constexpr float kJoinLow = 0.0f;
 constexpr float kJoinHigh = 0.45f;
 // Around the defects of the phase the waves fade between these coherences (dune_field).
 constexpr float kCoherenceLow = 0.01f;
-constexpr float kCoherenceHigh = 0.2f;
+constexpr float kCoherenceHigh = 0.35f;
 // The share of the mean of their profiles the waves keep (measured: along 195 lines of 36 km
 // across the ergs of waves and 31 across the giants, and over 16 and 13 windows of 10 and 30 km).
 constexpr double kWavesKept = 0.9 * 0.84;
@@ -182,13 +182,17 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
         const double fade = ends * ramp(kCoherenceLow, kCoherenceHigh, ph.coherence);
         const double full = heightOf(sand, amplitude, ph.nominal, giant);
         const double h = fade * full;
-        Shape shape = shapeOf(ph.fraction, ph.wavelength, full, backTanOf(giant), kDig);
+        // Where the phase stretches (its local wavelength over the nominal one, near its
+        // defects), the wavelength varies fast: the distance to the crest, fraction times it,
+        // would grow too fast and steepen the faces; the nominal one then (smooth, gentler).
+        const double wavelength = std::min(ph.wavelength, ph.nominal);
+        Shape shape = shapeOf(ph.fraction, wavelength, full, backTanOf(giant), kDig);
         shape.height *= fade;
         shape.slope *= fade;
         shape.rise *= fade;
         // The dunes on the waves: where the wave is gentler than kLayersSlope, clear of its crest.
         const double on = std::clamp(1.0 - (shape.slope + shape.rise) / kLayersSlope, 0.0, 1.0) *
-                          ramp(0.0f, static_cast<float>(kCrestClear * ph.wavelength), shape.crest);
+                          ramp(0.0f, static_cast<float>(kCrestClear * wavelength), shape.crest);
         const dune_layers::Layer medium = giant ? kGiantsMedium : kWavesMedium;
         const double second =
             giant ? std::max(dune_layers::layer(m, s, fine, kGiantsSecond, h, on),

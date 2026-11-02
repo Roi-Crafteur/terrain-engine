@@ -152,8 +152,12 @@ void Heightfield::addDunes(double x, double z, HeightSample& s) const {
         return;
     }
     float mask = 0.0f;
-    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask);
+    bool bare = false;
+    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask, &bare);
     s.erg = mask;
+    if (bare) {
+        s.rock = 1.0f; // the rock out of the sand: bare rock, whatever the share of the erg
+    }
     // Negative in the troughs dug between the dunes (ergs.hpp): the ground sinks, the water stays
     // what the geography made it (its flag, never the height); a dry column keeps its water level
     // at its ground (as everywhere on land), never over it.
