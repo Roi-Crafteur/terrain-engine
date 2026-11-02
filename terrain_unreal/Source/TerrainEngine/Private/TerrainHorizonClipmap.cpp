@@ -59,7 +59,7 @@ namespace
 	const FName CoarseWaterParameter(TEXT("CoarseWater"));
 	const FName InlandWaterParameter(TEXT("InlandWater"));
 	// The surface blends (agent 29): of the level, and of level 0 for the tiles.
-	const FName BlendParameter(TEXT("HorizonBlend"));
+	const FName HorizonBlendParameter(TEXT("HorizonBlend"));
 	const FName SurfaceBlendParameter(TEXT("SurfaceBlend"));
 
 	// Parameters of the materials of the tiles that read the surface of level 0
@@ -169,8 +169,8 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	Textures.Add(Texture);
 	UTexture2D* Water = TerrainHorizonTextures::CreateWater(Side, Level);
 	WaterTextures.Add(Water);
-	UTexture2D* Blend = TerrainHorizonTextures::CreateBlend(Side, Level);
-	BlendTextures.Add(Blend);
+	UTexture2D* BlendTexture = TerrainHorizonTextures::CreateBlend(Side, Level);
+	BlendTextures.Add(BlendTexture);
 	if (NormalRatio > 0)
 	{
 		NormalTextures.Add(TerrainHorizonTextures::CreateNormals(Side * NormalRatio, Level));
@@ -180,7 +180,7 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	const double PitchCm = terrain::levelPitch(Streamer.params(), Level) * 100.0;
 	Look->SetTextureParameterValue(TexelsParameter, Texture);
 	Look->SetTextureParameterValue(WaterParameter, Water);
-	Look->SetTextureParameterValue(BlendParameter, Blend);
+	Look->SetTextureParameterValue(HorizonBlendParameter, BlendTexture);
 	Look->SetScalarParameterValue(InlandWaterParameter, 1.0f);
 	Look->SetScalarParameterValue(CellsParameter,
 		static_cast<float>(Streamer.params().cellsPerSide));

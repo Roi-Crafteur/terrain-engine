@@ -143,6 +143,14 @@ def check_code(look_hlsl, loading, scripts):
                          ("SurfaceBlends", "TerrainHorizonClipmapBlend.cpp")):
         check(f'TEXT("{name}")' in (clipmap / source).read_text(encoding="utf-8"),
               f"{source} sets no {name}")
+    # Unreal builds its sources unified: a name of the plugin must not be an enumerator of an
+    # unscoped enum of the engine (EMaterialParameterAssociation: C2872, an ambiguous symbol).
+    private = scripts.parent / "Source" / "TerrainEngine" / "Private"
+    for source in sorted(private.glob("TerrainHorizon*.cpp")):
+        text = source.read_text(encoding="utf-8")
+        for name in ("LayerParameter", "BlendParameter", "GlobalParameter"):
+            check(re.search(rf"\b{name}\b", text) is None,
+                  f"{source.name}: the name {name} collides with EMaterialParameterAssociation")
     return declared
 
 
