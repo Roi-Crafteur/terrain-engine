@@ -59,3 +59,6 @@ target_include_directories(column_cache_test PRIVATE ${PROJECT_SOURCE_DIR}/terra
 terrain_add_test(rock_falls_test terrain_core)
 target_include_directories(rock_falls_test PRIVATE
                            ${PROJECT_SOURCE_DIR}/terrain_core/src/generation/water)
+# No vertical bands on the walls of the slots and of the gorges: the normals of the tiles along
+# them at mid-height never turn by more than 25 degrees from one vertex to the next.
+terrain_add_test(rock_bands_test terrain_core)

@@ -22,6 +22,13 @@
 
 namespace terrain::water {
 
+// Whether the tiles draw the faces of the slots. Not yet: the valleys hand the wall of a slot on
+// only about half a meter behind its rim (slot_wall.hpp), so the face of a wall stands within a
+// cell of where it stops in places; the columns behind without it made a ridge of the face there
+// every few meters and turned the normals of the tiles by about 40 degrees (rock_bands_test, on
+// 9de109e). Once the valleys hand it on 4 m behind the rim (agent 31), the tiles draw them.
+inline constexpr bool kSlotFacesDrawn = false;
+
 inline constexpr double kNotchFrom = 10.0;
 inline constexpr double kNotchFull = 14.0;
 inline constexpr double kNotchDeepSoft = 3.0;

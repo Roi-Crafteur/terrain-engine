@@ -379,12 +379,9 @@ int main() {
     water_level::report("samples", horizon);
     water_level::report("vertices with caves", caves);
     golden::report("water levels of the small world",
-                   // The coasts (agent 33) and the carved faces of the slots of the falls and of
-                   // the gorges (phase 12A) change tiles of their bands (0x0D969F30C054AF39
-                   // without either, 0x0AE9CB3DB169FB79 with the coasts alone, 0x91EF886EC68B6616
-                   // with the faces alone; the horizon and the caves keep theirs).
-                   // Their vertices move, their levels follow the same rule.
-                   {{"tiles", tiles.sum.value(), 0x0BF4F60E1E2AAE46ULL},
+                   // The coasts (agent 33) change tiles of their band (0x0D969F30C054AF39
+                   // without them, as the horizon and the caves).
+                   {{"tiles", tiles.sum.value(), 0x0AE9CB3DB169FB79ULL},
                     {"horizon", horizon.sum.value(), 0xCB9F99936D89D887ULL},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();

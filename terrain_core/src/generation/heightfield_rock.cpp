@@ -107,10 +107,13 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
                    alongZ < xs.size() ? &grounds[alongZ] : nullptr, out[i].height, leastRun,
                    rock[i]);
     }
+    // The walls of the slots only when their faces are drawn (slot_faces.hpp: kSlotFacesDrawn).
     std::vector<SlotWall> walls;
     std::vector<std::pair<std::size_t, wall_faces::Site>> gorges;
     if (hydrology_) {
-        walls.resize(xs.size());
+        if constexpr (water::kSlotFacesDrawn) {
+            walls.resize(xs.size());
+        }
         const WaterRock outputs{walls, &gorges};
         waterOf(xs, zs, out, memos, &outputs);
     }
