@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace rock_tool {
@@ -16,12 +17,10 @@ public:
         text_ += line;
     }
     [[nodiscard]] bool write(const std::filesystem::path& path) const {
-        std::FILE* file = std::fopen(path.string().c_str(), "w");
-        if (file == nullptr) {
-            return false;
-        }
-        const bool ok = std::fputs(text_.c_str(), file) >= 0;
-        return std::fclose(file) == 0 && ok;
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        file << text_;
+        file.close();
+        return !file.fail();
     }
 
 private:

@@ -51,6 +51,7 @@ constexpr double kAbove = 0.6;
 constexpr double kSideMargin = 2.5;
 constexpr double kClearLeast = 2.0;
 constexpr int kRimPoints = 256;
+constexpr double kPi = 3.14159265358979323846;
 constexpr int kAround = 2; // tiles of LOD 0 on each side of the tile of the foot of a fall
 
 struct Checks {
@@ -165,7 +166,7 @@ FallKey keyOf(double x, double z) {
 double rimClear(const TileData& t, const terrain::unreal::FoamShape& s, const TileFall& g) {
     double least = std::numeric_limits<double>::infinity();
     for (int p = 0; p < kRimPoints; ++p) {
-        const double angle = 2.0 * M_PI * p / kRimPoints;
+        const double angle = 2.0 * kPi * p / kRimPoints;
         const double u = terrain::unreal::kFoamRim * s.along * std::cos(angle);
         const double v = terrain::unreal::kFoamRim * s.down * std::sin(angle);
         least = std::min(least, edgeDistance(g, t.originX + s.centerX + u * s.alongX - v * s.alongZ,
