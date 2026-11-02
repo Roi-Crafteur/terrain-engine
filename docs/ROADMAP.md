@@ -426,7 +426,7 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   jamais la hauteur. Unreal : fondu des textures fait sur les tuiles (matériau temporaire,
   texels de chaque tuile dans une texture commune) ; l'horizon garde le biome dominant de ses
   échantillons, les tuiles s'y fondent sur leur bande au-dessus du niveau 0. Reste : les poids
-  dans les échantillons de l'horizon (core), la densité de la végétation
+  de l'horizon faits par l'agent 29 (tous les niveaux, `Terrain.Blend`) ; reste la densité de la végétation
 - matériaux depuis les identifiants de matériau du core ; très haut détail par des
   rochers, falaises et arbres Nanite placés par PCG et du relief fin dans le matériau
   (Nanite ne s'applique pas directement aux tuiles générées en jeu)

@@ -58,8 +58,7 @@ namespace
 	const FName WaterParameter(TEXT("HorizonWater"));
 	const FName CoarseWaterParameter(TEXT("CoarseWater"));
 	const FName InlandWaterParameter(TEXT("InlandWater"));
-	// The surface blends of the level (agent 29, Bridge/horizon_blend_texels.hpp), and those of
-	// level 0 for the material of the tiles.
+	// The surface blends (agent 29): of the level, and of level 0 for the tiles.
 	const FName BlendParameter(TEXT("HorizonBlend"));
 	const FName SurfaceBlendParameter(TEXT("SurfaceBlend"));
 
@@ -254,11 +253,7 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 		{
 			TerrainHorizonTextures::UploadWater(*WaterTextures[Region.level], Region);
 		}
-		// In the same frame as the texels of their samples: no sample is shown without its blend.
-		for (terrain::unreal::BlendRegion& Region : Update.blendRegions)
-		{
-			TerrainHorizonTextures::UploadBlend(*BlendTextures[Region.level], Region);
-		}
+		UploadBlends(Update.blendRegions); // with the texels: no sample shown without its blend
 		Timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0,
 			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
 	}

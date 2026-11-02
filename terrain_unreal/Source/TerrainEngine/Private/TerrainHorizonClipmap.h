@@ -86,6 +86,11 @@ public:
 	// SurfaceBandCm, HasSurface...); nothing without a look.
 	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
 
+	// The surface blends of the samples (agent 29) drawn (1) or not (0: the dominant biome and
+	// material of each sample, as before them), on every level and on the tiles bound to level 0:
+	// the console command Terrain.Blend 0|1, to compare their cost and their look.
+	void SetSurfaceBlends(bool bShown);
+
 	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
 	// (independent of the visibility the placements set), each level tinted with its own hue or
 	// not (bHorizonDebugTint while playing).
@@ -108,6 +113,7 @@ private:
 	void Place(const terrain::unreal::LevelPlacement& Placement);
 	void PlaceSurface(const terrain::unreal::LevelPlacement& Placement);
 	void ApplyReveal();
+	void UploadBlends(std::vector<terrain::unreal::BlendRegion>& Regions);
 
 	UPROPERTY()
 	TObjectPtr<AActor> OwnerActor;

@@ -14,3 +14,12 @@ target_include_directories(horizon_blend_test PRIVATE ${PROJECT_SOURCE_DIR}/terr
 # The blend texels of the GPU horizon of the Unreal plugin: channels, regions, written with the
 # texels of their samples level by level and after a teleport.
 terrain_add_test(unreal_horizon_blend_test terrain_unreal_bridge)
+
+# The HLSL of the blends in the materials of the horizon and of the tiles (identifiers, scopes,
+# inputs, unfiltered reads) and a reference of its formulas: weights summing to 1 through the morph.
+find_package(Python COMPONENTS Interpreter QUIET)
+if(Python_Interpreter_FOUND)
+    add_test(NAME unreal_horizon_blend_scripts_test
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_horizon_blend_scripts_test.py
+                ${PROJECT_SOURCE_DIR}/terrain_unreal)
+endif()
