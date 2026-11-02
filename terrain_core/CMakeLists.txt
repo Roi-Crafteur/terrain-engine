@@ -108,6 +108,7 @@ add_library(terrain_core STATIC
     src/generation/wall_faces.cpp
     src/generation/water/fine_lake.cpp
     src/generation/water/hydrology.cpp
+    src/generation/water/hydrology_lips.cpp
     src/generation/water/hydrology_lakes.cpp
     src/generation/water/hydrology_query.cpp
     src/generation/water/hydrology_region.cpp

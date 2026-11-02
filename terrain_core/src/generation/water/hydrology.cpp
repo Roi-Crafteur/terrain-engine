@@ -3,7 +3,6 @@
 #include "terrain/generation/water/hydrology.hpp"
 
 #include "hydrology_impl.hpp"
-#include "river_lips.hpp"
 #include "river_profile.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -366,82 +365,6 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
     water::Course c = water::buildCourse(relief, in);
     wetLips(c);
     return c;
-}
-
-// The water above a lip falls from a point of its edge where, kWetBack meters upstream of it,
-// the valley of the course holds water nearer the level above the lip than the level below it
-// (it may rise upstream of a receded edge), kWetDepth meters deep at least over the ground; and
-// where the ground under the water falling from it (kWetAhead meters in front of the edge, of the
-// foot of its water and halfway) stands kWetSlack meters above the water above at most: never
-// over the walls of its slot.
-constexpr double kWetBack = 1.0;
-constexpr double kWetDepth = 0.02;
-constexpr double kWetAhead = 0.5;
-constexpr double kWetSlack = 0.05;
-
-// The surface of the valley of c at (x, z) (carved into the relief, or the relief) and its water,
-// where the relief is ground meters high: through box (what of c may change the valley there,
-// boxCourse: the same bits as without, faster).
-std::array<double, 2> Hydrology::Impl::surfaceOf(const water::Course& c,
-                                                 const water::BoxCourse& box, double x, double z,
-                                                 double ground) const {
-    water::WallWarp warp(wallWarp, wrapCoordinate(x, grid.periodX()),
-                         wrapCoordinate(z, grid.periodZ()), nullptr);
-    const water::Valley v = water::valleyAt(c, x, z, ground, meanderSeed, warp, &box);
-    return {std::min(ground, v.height), static_cast<double>(v.level)};
-}
-
-void Hydrology::Impl::wetLips(water::Course& c) const {
-    constexpr std::size_t kAt = 4; // per point of the edge: upstream, then the way down
-    for (water::FallLip& l : c.lips) {
-        // The foot of its water: the first point of the course down at the water below it.
-        std::size_t j = l.point;
-        while (j + 1 < c.points.size() && c.points[j].level > l.bottom + 0.05f) {
-            ++j;
-        }
-        const water::CoursePoint& foot = c.points[j];
-        const water::LipEdge e = water::lipEdge(c, l, foot.x, foot.z, foot.s - l.s);
-        // Where each point is tested: kWetBack upstream of it, and in front of the edge as the
-        // curtain hangs (fall_curtains.cpp), along the way from it to the foot of its water.
-        std::array<std::array<double, 3>, kAt * kFallEdge> at{}; // x, z, ground
-        std::array<double, 4> box{1e300, 1e300, -1e300, -1e300};
-        std::array<double, 2> grounds{1e300, -1e300};
-        for (std::size_t p = 0; p < kFallEdge; ++p) {
-            const double dx = e.footX[p] - e.x[p];
-            const double dz = e.footZ[p] - e.z[p];
-            const double run = dmath::hypot(dx, dz);
-            const double aheadX = run > 1e-6 ? dx / run : l.dirX;
-            const double aheadZ = run > 1e-6 ? dz / run : l.dirZ;
-            at[kAt * p] = {e.x[p] - kWetBack * l.dirX, e.z[p] - kWetBack * l.dirZ, 0.0};
-            for (std::size_t t = 1; t < kAt; ++t) {
-                const double share = 0.5 * static_cast<double>(t - 1);
-                at[kAt * p + t] = {e.x[p] + share * dx + kWetAhead * aheadX,
-                                   e.z[p] + share * dz + kWetAhead * aheadZ, 0.0};
-            }
-        }
-        for (std::array<double, 3>& a : at) {
-            a[2] = static_cast<double>(relief.heightAt(wrapCoordinate(a[0], grid.periodX()),
-                                                       wrapCoordinate(a[1], grid.periodZ())));
-            box = {std::min(box[0], a[0]), std::min(box[1], a[1]), std::max(box[2], a[0]),
-                   std::max(box[3], a[1])};
-            grounds = {std::min(grounds[0], a[2]), std::max(grounds[1], a[2])};
-        }
-        const water::BoxCourse near =
-            water::boxCourse(c, box[0], box[1], box[2], box[3], grounds[0], grounds[1]);
-        const double top = static_cast<double>(l.top);
-        l.wet = 0;
-        for (std::size_t p = 0; p < kFallEdge; ++p) {
-            const std::array<double, 3>& b = at[kAt * p];
-            const std::array<double, 2> above = surfaceOf(c, near, b[0], b[1], b[2]);
-            bool wet = above[0] < above[1] - kWetDepth &&
-                       above[1] > 0.5 * static_cast<double>(l.top + l.bottom);
-            for (std::size_t t = 1; t < kAt; ++t) {
-                const std::array<double, 3>& a = at[kAt * p + t];
-                wet = wet && surfaceOf(c, near, a[0], a[1], a[2])[0] <= top + kWetSlack;
-            }
-            l.wet = static_cast<std::uint16_t>(l.wet | (wet ? 1u << p : 0u));
-        }
-    }
 }
 
 bool Hydrology::Impl::mayReach(std::size_t r, double x, double z, double radius) const {

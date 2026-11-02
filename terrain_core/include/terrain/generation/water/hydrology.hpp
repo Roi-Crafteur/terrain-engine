@@ -119,9 +119,12 @@ struct RiverFall {
     std::array<double, kFallEdge> footEdgeX{};
     std::array<double, kFallEdge> footEdgeZ{};
     std::uint8_t edge = 0;
-    // Bit p: the water above it stands at edge point p, so falls from it there (the pool above
-    // may be wider or narrower than its channel at the sill); 0 without edge points.
-    std::uint16_t edgeWet = 0;
+    // Where the water above it falls from its edge, in edge points (0 to kFallEdge - 1, a
+    // fraction between two): from the first place the water arrives at it to the last, all of it
+    // in between (the pool above may be wider or narrower than its channel at the sill, a rock
+    // may stand in the middle); wetFrom == wetTo without edge points or water known.
+    float wetFrom = 0.0f;
+    float wetTo = 0.0f;
     // Meters of its pool below its foot, to the next lip down the course (0: none known).
     float pool = 0.0f;
 };

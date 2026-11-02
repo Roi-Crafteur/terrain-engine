@@ -77,6 +77,20 @@ struct FTerrainWater
                     lerp(Hash(i + float2(0.0, 1.0)), Hash(i + float2(1.0, 1.0)), f.x), f.y);
     }
 
+    // The noise of the foam of the rapids at local (meters from a pivot of its lattice, which
+    // shifts it by offset), in the frame of the flow along (streaks along it), carried drift
+    // meters down it: (the slow noise that moves where the foam starts, its streaks), in [0, 1].
+    float2 Rapids(float2 local, float2 along, float2 offset, float drift)
+    {
+        float2 fr = float2(dot(local, along), along.x * local.y - along.y * local.x) + offset
+                  - float2(drift, 0.0);
+        float patch = Noise(fr * float2(0.17, 0.21) + 5.3, 1.0);
+        float2 turned = float2(0.83 * fr.x - 0.56 * fr.y, 0.56 * fr.x + 0.83 * fr.y);
+        float streaks = 0.6 * Noise(fr * float2(0.45, 1.3), 1.0)
+                      + 0.4 * Noise(turned * float2(0.9, 2.1) + 11.0, 1.0);
+        return float2(patch, streaks);
+    }
+
     // A hash of the cell c of a lattice that repeats by the Gaussian integer g (and i g): the
     // same for c and c + g z, z any Gaussian integer (c reduced to c - g round(c / g)).
     float PeriodicHash(float2 c, float2 g)
@@ -239,23 +253,45 @@ float thickness = max(SceneDepth - PixelDepth, 0.0) * 0.01 * length(CameraRel) /
 float3 deep, absorb;
 BODY_CODE
 float through = dot(exp(-absorb * thickness), float3(0.3333, 0.3333, 0.3334));
-// The foam of the rapids, where the water slopes, carried by the flow: its noise in the frame of
-// the flow (streaks along it, never rows along the axes of the world), a second one turned
-// against it, and the slope where it starts moved by a slower noise (no straight front where the
-// slope of the water changes; its streaks keep one threshold: a steep ramp stays white).
-float flowLength = length(Flow);
-float2 along = flowLength > 0.01 ? Flow / flowLength : float2(0.8, 0.6);
-float2 across = float2(-along.y, along.x);
-float2 fr = float2(dot(p, along), dot(p, across)) - float2(FlowSpeed * Time, 0.0);
-float patch = Water.Noise(fr * float2(0.17, 0.21) + 5.3, 1.0);
-float2 turned = float2(0.83 * fr.x - 0.56 * fr.y, 0.56 * fr.x + 0.83 * fr.y);
-float streaks = 0.6 * Water.Noise(fr * float2(0.45, 1.3), 1.0)
-              + 0.4 * Water.Noise(turned * float2(0.9, 2.1) + 11.0, 1.0);
-float from = FoamFromSlope * (0.5 + patch);
-float foam = saturate((slope - from) / max(FoamFullSlope - from, 1e-3));
-foam *= smoothstep(0.35, 0.75, streaks);
+// The foam of the rapids, where the water slopes, carried by the flow (FTerrainWater::Rapids): its
+// noise in the frame of the flow (streaks along it, never rows along the axes of the world) about
+// the pivots of a turned lattice of cells RAPIDS_CELL meters wide, each shifted by a hash of its
+// own: a turn of the flow moves it by that distance times its angle at most, never stripes where
+// the flow turns; the four pivots about the pixel blended keeping the contrast of the noise. Where
+// it starts moves with its slow noise. Over the steepest rapids, the water between its streaks is
+// white water: opaque, never the bed through it.
+const float RAPIDS_CELL = 4.0;
+float foam = 0.0;
+float white = 0.0;
+BRANCH
+if (slope > 0.5 * FoamFromSlope)
+{
+    float flowLength = length(Flow);
+    float2 along = flowLength > 0.01 ? Flow / flowLength : float2(0.8, 0.6);
+    float2 q = float2(0.83 * p.x + 0.56 * p.y, 0.83 * p.y - 0.56 * p.x) / RAPIDS_CELL;
+    float2 lattice = floor(q);
+    float2 inCell = q - lattice;
+    float2 sum = float2(0.0, 0.0);
+    float squares = 0.0;
+    for (int k = 0; k < 4; ++k)
+    {
+        float2 corner = lattice + float2(k % 2, k / 2);
+        float2 toward = lerp(1.0 - inCell, inCell, float2(k % 2, k / 2));
+        float weight = toward.x * toward.y;
+        float2 l = q - corner;
+        float2 local = float2(0.83 * l.x - 0.56 * l.y, 0.56 * l.x + 0.83 * l.y) * RAPIDS_CELL;
+        float2 offset = float2(Water.Hash(corner), Water.Hash(corner + 17.0)) * 256.0;
+        sum += weight * (Water.Rapids(local, along, offset, FlowSpeed * Time) - 0.5);
+        squares += weight * weight;
+    }
+    float2 rapids = 0.5 + sum / sqrt(max(squares, 1e-4));
+    float from = FoamFromSlope * (0.5 + rapids.x);
+    foam = saturate((slope - from) / max(FoamFullSlope - from, 1e-3));
+    foam *= smoothstep(0.35, 0.75, rapids.y);
+    white = 0.85 * smoothstep(FoamFullSlope, 1.5 * FoamFullSlope, slope);
+}
 // Translucent: what the water keeps of the light behind it, the foam opaque.
-float opacity = max(saturate(1.0 - through * (1.0 - Fresnel)), foam);
+float opacity = max(saturate(1.0 - through * (1.0 - Fresnel)), max(foam, white));
 float keep = max(opacity, 0.05);
 // Faded out toward a cut and at a shore; left to the water of the horizon on its pixels.
 float horizon = HasSurface > 0.5 ? Water.HorizonShare(Rel, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm, SurfaceBandCm) : 0.0;
@@ -265,13 +301,15 @@ EmissiveOut = (reflection + Glint) * (1.0 - foam) / keep;
 OpacityOut = opacity * shown;
 NormalOut = n;
 RoughnessOut = lerp(1.0, 0.8, foam);
-return lerp(deep * (1.0 - through) * (1.0 - Fresnel) / keep, FoamColor, foam);
+float3 body = lerp(deep * (1.0 - through) * (1.0 - Fresnel) / keep, 0.7 * FoamColor, white);
+return lerp(body, FoamColor, foam);
 """
 
 # The pixel of the curtain of a fall or of the foam at its foot (M_TerrainFalls, translucent, two
 # sided): inputs Fall (UV0: across and down the fall in meters; on the foam, meters from its
-# center), KindDrop (UV1), AltitudeSize (UV2: altitude, width of the curtain or radius of the
-# foam), Time, SceneDepth, PixelDepth, CurtainColor, FoamColor, FoamDepthM; returns the base
+# center), KindDrop (UV1: the kind, and the drop of the fall on a curtain or the fade of the foam
+# toward the border of its pool), AltitudeSize (UV2: altitude, width of the curtain or radius of
+# the foam), Time, SceneDepth, PixelDepth, CurtainColor, FoamColor, FoamDepthM; returns the base
 # color, with OpacityOut.
 FALLS_HLSL = r"""
 float size = max(AltitudeSize.y, 0.1);
@@ -299,13 +337,14 @@ else
 {
     // The foam at the foot, churning: full near its center, fading out to a ragged rim, never a
     // hole (the dark pool would show through it), thinner where the water under it gets shallow
-    // (toward the banks of the pool and its rock): it takes the shape of the pool.
+    // (toward the banks of the pool and its rock), and to nothing on the border of the cells of
+    // its pool (KindDrop.y): it takes the shape of the pool, never its steps.
     float r = length(Fall) / size;
     float n = 0.6 * Water.Noise(Fall + float2(Time * 0.7, -Time * 0.4), 0.9)
             + 0.4 * Water.Noise(Fall * 1.7 - float2(Time * 0.5, Time * 0.9), 0.9);
     float rim = 1.0 - smoothstep(0.3, 1.0, r + 0.25 * (n - 0.5));
     float pool = smoothstep(0.0, 1.0, behind / max(FoamDepthM, 0.01));
-    opacity = rim * lerp(0.6, 0.95, n) * pool;
+    opacity = rim * lerp(0.6, 0.95, n) * pool * saturate(KindDrop.y);
     color = FoamColor * lerp(0.82, 1.0, n);
 }
 OpacityOut = opacity;

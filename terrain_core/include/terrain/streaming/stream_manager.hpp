@@ -50,10 +50,10 @@ struct WaterColumn {
 // renderers to draw its water: its lip and its foot, meters, at their images nearest to the tile,
 // the water above and below, and the width of its channel at the lip; the edge of its lip and where
 // the water falling from it meets the pool (RiverFall::edgeX, footEdgeX: edge points, 0 for a
-// straight lip), the edge points the water falls from (RiverFall::edgeWet), and the length of its
-// pool down to the next lip (0: unknown). here: its lip lies in the tile (the tile draws its
-// curtain); the others lie within kFallNear meters of it (the water of the tile fades out toward
-// their edge, the foam of their pools lies on it).
+// straight lip), where along its edge the water falls (RiverFall::wetFrom, wetTo), and the length
+// of its pool down to the next lip (0: unknown). here: its lip lies in the tile (the tile draws
+// its curtain); the others lie within kFallNear meters of it (the water of the tile fades out
+// toward their edge, the foam of their pools lies on it).
 struct TileFall {
     double x = 0.0;
     double z = 0.0;
@@ -67,7 +67,8 @@ struct TileFall {
     std::array<double, kFallEdge> footEdgeX{};
     std::array<double, kFallEdge> footEdgeZ{};
     std::uint8_t edge = 0;
-    std::uint16_t edgeWet = 0;
+    float wetFrom = 0.0f;
+    float wetTo = 0.0f;
     float pool = 0.0f;
     bool here = true;
 

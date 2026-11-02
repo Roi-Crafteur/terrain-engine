@@ -27,8 +27,9 @@ inline constexpr double kCurtainCurveSlope = 1.5;
 // - every fall whose lip lies in the tile (here) gets a curtain (the surface of the tile is cut
 //   where its water is steeper than kWaterCutSlope, the slope of the steps of a fall in the core).
 //   Along the edge of its lip when the core gives it (TileFall::edgeX: receded, bowed, turned),
-//   where the water falls from it (TileFall::edgeWet: between two points it falls from; without
-//   them, within its channel), never over the dry walls of its slot: from each point of the edge
+//   in one piece where the water falls from it (TileFall::wetFrom to wetTo: from where it arrives
+//   at the edge to where it stops, a rock in the middle never splitting it; without them, within
+//   its channel), never over the dry walls of its slot at its ends: from each point of the edge
 //   down to where its water meets the pool (footEdgeX), kCurtainBelow under the water there.
 //   Without it, a band kCurtainWidthShare of its width across, from the lip down to its foot.
 //   Always kCurtainAhead in front; steeper on average than kCurtainCurveSlope, it is curved as
@@ -42,7 +43,8 @@ inline constexpr double kCurtainCurveSlope = 1.5;
 //   (TileFall::pool), on the cells of the tile whose four corners stand in the water of its pool
 //   (drawnWaterLevels near the water below the fall), a few centimeters over it: never over a
 //   ramp, a bank, a lip or another pool, the same in the tiles beside (uv0 meters from its
-//   center, uv2.v its radius: the material fades it out to a ragged rim).
+//   center, uv1.v 0 on the border of its pool and 1 within, uv2.v its radius: the material fades
+//   it out to a ragged rim and toward the border, never a step of the cells there).
 // Every fall gives the same vertices, whatever the tile around it. Deterministic.
 [[nodiscard]] UnrealWaterMesh buildFallCurtains(const TileData& data);
 

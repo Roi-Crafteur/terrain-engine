@@ -10,13 +10,13 @@
 namespace terrain::unreal {
 
 // Toward the edge of the lip of a fall, the water of a tile fades out over kEdgeFade meters, from
-// a quarter of a meter upstream of the edge to nothing kEdgeOver meters downstream of it, over the
-// top of its curtain (which stands kCurtainAhead in front of the edge: fall_curtains.hpp) and the
-// water starting down the face; its fade goes on down to kEdgeBeyond beyond and up to kEdgeAbove
-// before (the material clamps it to [0, 1]), linear in the distance, so that between two vertices
-// on either side the water ends there, not at a side of a cell nor short of the curtain.
+// kEdgeFade - kEdgeOver meters upstream of the edge to nothing kEdgeOver meters downstream of it,
+// where its curtain hangs (kCurtainAhead in front of the edge: fall_curtains.hpp), never in front
+// of it; its fade goes on down to kEdgeBeyond beyond and up to kEdgeAbove before (the material
+// clamps it to [0, 1]), linear in the distance, so that between two vertices on either side the
+// water ends there, not at a side of a cell nor short of the curtain.
 inline constexpr double kEdgeFade = 2.0;
-inline constexpr double kEdgeOver = 1.75;
+inline constexpr double kEdgeOver = 0.5;
 inline constexpr double kEdgeBeyond = -8.0;
 inline constexpr double kEdgeAbove = 8.0;
 inline constexpr double kUpperRise = 1.5;

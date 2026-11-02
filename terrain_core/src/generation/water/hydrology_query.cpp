@@ -99,7 +99,8 @@ void shapeFalls(const water::Course& c, const std::vector<std::array<std::size_t
         falls[k].footEdgeX = e.footX;
         falls[k].footEdgeZ = e.footZ;
         falls[k].edge = static_cast<std::uint8_t>(kFallEdge);
-        falls[k].edgeWet = lip->wet;
+        falls[k].wetFrom = lip->wetFrom;
+        falls[k].wetTo = lip->wetTo;
     }
 }
 

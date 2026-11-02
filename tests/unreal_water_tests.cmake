@@ -26,12 +26,21 @@ terrain_add_test(unreal_tile_water_test terrain_unreal_bridge)
 # hole seen from above in the cut cells, no cell drawn faded out, the foam in its pool.
 terrain_add_test(unreal_fall_lips_test terrain_unreal_bridge)
 
+# The curtains of the falls of the small world as Unreal draws them: one piece each, over the
+# width of the water falling from their lip, never over the walls of their slot at their ends.
+terrain_add_test(unreal_fall_curtains_test terrain_unreal_bridge)
+
 # The scripts of the materials of the water, without Unreal: they compile, their HLSL declares
 # what it reads and writes, the materials they rebuild get every setting reset.
 find_package(Python COMPONENTS Interpreter QUIET)
 if(Python_Interpreter_FOUND)
     add_test(NAME unreal_water_scripts_test
         COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_water_scripts_test.py
+                ${PROJECT_SOURCE_DIR}/terrain_unreal/Scripts)
+    # The foam of the water run as the material computes it: a steep ramp stays white, its
+    # streaks keep their scale where the flow turns, the foam of a fall fades out at its border.
+    add_test(NAME unreal_water_foam_test
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_water_foam_test.py
                 ${PROJECT_SOURCE_DIR}/terrain_unreal/Scripts)
 endif()
 

@@ -287,9 +287,8 @@ double foamRadiusOf(const terrain::TileFall& f) {
 
 // Whether every fall whose lip lies in a tile has its curtain, sized in uv2.v: kCurtainWidthShare
 // of its channel for a straight lip; along the edge of its lip where its water falls otherwise
-// (TileFall::edgeWet: on each run of two points of it or more, never twice as long as the channel
-// is wide: the edge bows and turns 35 degrees at most); and every foam of a fall here or near
-// (uv2.v its radius).
+// (TileFall::wetFrom to wetTo, in one piece, never twice as long as the channel is wide: the edge
+// bows and turns 35 degrees at most); and every foam of a fall here or near (uv2.v its radius).
 bool everyFallDrawn(const TileData& t, const UnrealWaterMesh& m) {
     std::vector<bool> curtained(t.falls.size(), false);
     bool sized = true;
@@ -312,9 +311,7 @@ bool everyFallDrawn(const TileData& t, const UnrealWaterMesh& m) {
     }
     for (std::size_t k = 0; k < t.falls.size(); ++k) {
         const terrain::TileFall& f = t.falls[k];
-        const unsigned runs = f.edgeWet & (f.edgeWet >> 1u);
-        const bool hangs = f.edge != terrain::kFallEdge || f.edgeWet == 0 || runs != 0;
-        sized = sized && (curtained[k] || !f.here || !hangs);
+        sized = sized && (curtained[k] || !f.here);
     }
     return sized;
 }

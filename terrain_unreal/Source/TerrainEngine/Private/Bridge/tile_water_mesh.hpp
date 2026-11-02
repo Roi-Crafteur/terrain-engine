@@ -35,7 +35,8 @@ inline constexpr float kWaterFoam = 5.0f;
 // - uv0: on the surface, the direction downstream of the river (Unreal X and Y, a unit vector; 0
 //   on a lake); on a curtain or the foam, meters across and down the fall from its lip.
 // - uv1: (what the vertex is, kWater*; on the surface the slope of the water, meters per meter,
-//   on a curtain or the foam the height of the fall, meters).
+//   on a curtain the height of the fall, meters, on the foam 0 on the border of its pool and 1
+//   within: it fades out there).
 // - uv2: (the altitude of the water, meters; on the surface its edge: the fade the material shows
 //   it by, clamped to [0, 1] (fall_edges.hpp: by the distance to the edge of the lip of a fall);
 //   on a curtain its width, on the foam its radius, meters).

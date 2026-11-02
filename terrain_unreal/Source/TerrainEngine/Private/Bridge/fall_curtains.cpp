@@ -1,5 +1,7 @@
 #include "fall_curtains.hpp"
 
+#include "fall_edges.hpp"
+
 #include "terrain/det_math.hpp"
 #include "terrain/generation/water_kind.hpp"
 #include "terrain/meshing/density_grid.hpp"
@@ -15,6 +17,9 @@
 namespace terrain::unreal {
 
 namespace {
+
+// The water above a lip ends where its curtain hangs, never in front of it (fall_edges.hpp).
+static_assert(kEdgeOver <= kCurtainAhead);
 
 constexpr double kRowDrop = 4.0;   // meters of the drop between two rows of a curtain, at most
 constexpr int kMostRows = 64;
@@ -153,31 +158,25 @@ EdgeRun channelEdge(const TileFall& f, double dirX, double dirZ) {
     return points;
 }
 
-// The runs of the edge of a lip the water falls from (TileFall::edgeWet): its segments between
-// two points it falls from (never past them, over the dry walls of its slot). Without any (no wet
-// point known), the edge within the channel.
+// The run of the edge of a lip the water falls from (TileFall::wetFrom to wetTo, in points of the
+// edge): one piece from where the water arrives at it to where it stops, never past them over the
+// dry walls of its slot. Without it (none known), the edge within the channel.
 std::vector<EdgeRun> curtainRuns(const TileFall& f, double dirX, double dirZ) {
-    if (f.edgeWet == 0) {
+    const double from = static_cast<double>(f.wetFrom);
+    const double to = static_cast<double>(f.wetTo);
+    if (!(to > from)) {
         return {channelEdge(f, dirX, dirZ)};
     }
-    const auto wet = [&f](std::size_t p) { return ((f.edgeWet >> p) & 1u) != 0; };
-    std::vector<EdgeRun> runs;
-    EdgeRun run;
-    for (std::size_t p = 0; p < kFallEdge; ++p) {
-        if (wet(p)) {
-            const double share = p + 1 < kFallEdge ? 0.0 : 1.0;
-            run.push_back(edgePointAt(f, std::min(p, kFallEdge - 2), share));
-            continue;
-        }
-        if (run.size() >= 2) {
-            runs.push_back(run);
-        }
-        run.clear();
+    const auto at = [&f](double s) {
+        const double p = std::clamp(std::floor(s), 0.0, static_cast<double>(kFallEdge) - 2.0);
+        return edgePointAt(f, static_cast<std::size_t>(p), s - p);
+    };
+    EdgeRun run{at(from)};
+    for (double p = std::floor(from) + 1.0; p < to; p += 1.0) {
+        run.push_back(at(p));
     }
-    if (run.size() >= 2) {
-        runs.push_back(run);
-    }
-    return runs;
+    run.push_back(at(to));
+    return {run};
 }
 
 // The curtain of a fall along a run of the edge of its lip (curtainRuns), in the frame of the
@@ -237,10 +236,35 @@ double foamRadius(const TileFall& f) {
     return std::max(0.5, std::min(radius, room));
 }
 
+// Whether the column (i, k) of the pool of a foam (pool(i, k)) stands inside it: its neighbors
+// (the eight about it, those along the side of the tile on a side, none at a corner: the same in
+// the tile beside) in the pool too. On its border, the foam fades out to nothing: never a step
+// of the cells of the tile at its edge.
+template <typename Pool>
+bool inside(const Pool& pool, int i, int k) {
+    const bool sideX = i == 0 || i == kChunkCells;
+    const bool sideZ = k == 0 || k == kChunkCells;
+    for (int dk = -1; dk <= 1; ++dk) {
+        for (int di = -1; di <= 1; ++di) {
+            const bool along = (sideX && di != 0) || (sideZ && dk != 0);
+            const int ni = i + di;
+            const int nk = k + dk;
+            if (along || ni < 0 || nk < 0 || ni > kChunkCells || nk > kChunkCells) {
+                continue;
+            }
+            if (!pool(ni, nk)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 // The foam of fall f centered at (cx, cz) in the frame of the tile, radius meters around, on the
 // cells of the tile whose four corners stand in the water of its pool (levels: drawnWaterLevels,
 // within kFoamLevelLeast plus kFoamLevelCells cells of the water below the fall), kFoamAbove over
-// it: uv0 meters from the center, uv2.v the radius (the material fades it out to a ragged rim).
+// it: uv0 meters from the center, uv1.v 0 on the border of the pool (inside) and 1 within, uv2.v
+// the radius (the material fades it out to a ragged rim and toward the border).
 void poolFoam(Writer& out, const TileData& data, const std::vector<double>& levels,
               const TileFall& f, double cx, double cz, double radius) {
     const double spacing = tileCellMeters(data.request.key.lod);
@@ -256,7 +280,6 @@ void poolFoam(Writer& out, const TileData& data, const std::vector<double>& leve
         return level > static_cast<double>(kNoWaterLevel) &&
                std::abs(level - static_cast<double>(f.bottom)) <= tolerance;
     };
-    const UnrealUV kind{kWaterFoam, static_cast<float>(f.top - f.bottom)};
     std::vector<std::int32_t> index(levels.size(), -1);
     const auto vertexAt = [&](int i, int k) {
         std::int32_t& v = index[static_cast<std::size_t>(k * kGridSamples + i)];
@@ -264,6 +287,7 @@ void poolFoam(Writer& out, const TileData& data, const std::vector<double>& leve
             const double x = i * spacing;
             const double z = k * spacing;
             const double y = levels[static_cast<std::size_t>(k * kGridSamples + i)];
+            const UnrealUV kind{kWaterFoam, inside(pool, i, k) ? 1.0f : 0.0f};
             v = out.vertex({x, y - data.originY + kFoamAbove, z}, {0.0, 1.0, 0.0},
                            {static_cast<float>(x - cx), static_cast<float>(z - cz)}, kind, radius);
         }

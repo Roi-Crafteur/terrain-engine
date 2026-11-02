@@ -10,17 +10,18 @@
 //     and its foot, its water between the water above and below) are its rock where its water
 //     does not fall: counted apart, never a hole.
 //   - Fades: of the triangles of the water drawn there faded out at their three corners (a cell
-//     drawn for nothing), kBareMost at most with nothing over them (water, curtain or foam) where
-//     the core has water, off the face of a fall.
+//     drawn for nothing), with nothing over them (water, curtain or foam) where the core has
+//     water, off the face of a fall: kBareMost at most over water kBareDepth deep (the material
+//     shows shallower water a few hundredths at most), kBareAll at most in all.
 //   - Shelves: no triangle of water shown twice as steep as a cut (the face of a fall drawn as
 //     water), and kShelfMost at most shown on the face of a fall over the water and the ground
 //     of the core there (a shelf of water hanging in the air).
 //   - Foam: the foam of the falls (here or near) lies on the water of the pool below one of
 //     them, kFoamAbove over it at each of its vertices: never over dry land, a ramp, a lip or
-//     another pool.
-//   - Curtains: no vertex of a curtain over dry ground higher than the water above its fall
-//     (kGroundSlack meters): the curtain spans the water falling, not the walls of its slot.
+//     another pool; faded out at the vertices of its border (uv1.v), never a step of the cells.
+// The curtains themselves: unreal_fall_curtains_test.
 #include "fall_curtains.hpp"
+#include "fall_face_support.hpp"
 #include "falls_support.hpp"
 #include "tile_water_mesh.hpp"
 
@@ -51,19 +52,20 @@ constexpr int kMostLod = 2;
 constexpr double kAbout = 2.0;   // meters about the edges of a fall, beyond a cell
 constexpr double kHoleShare = 0.003;
 constexpr std::size_t kBareMost = 8;
+constexpr double kBareDepth = 0.25;
+constexpr std::size_t kBareAll = 20;
 // Shelves of water over the water and the ground on the face of a fall: the three of e07ffcf
 // (a meter over dry ground or over the water of a face, beside a lip) at most.
 constexpr std::size_t kShelfMost = 3;
 // The foam on the cells of the pool below its fall (fall_curtains.cpp), a few centimeters over
-// its water; the ground under a curtain never above the water of its fall by more than
-// kGroundSlack.
+// its water.
 constexpr double kFoamAbove = 0.05;
+constexpr double kFoamShown = 0.8;
 constexpr double kLevelLeast = 0.25;
 constexpr double kLevelCells = 0.35;
 // The steepest a triangle of water shown may be: twice the slope of a cut (a cell not cut is at
 // most kWaterCutSlope times sqrt(2), a little more on a stitched side).
 constexpr double kSteepest = 2.0 * terrain::unreal::kWaterCutSlope;
-constexpr double kGroundSlack = 0.05;
 
 // A triangle seen from above, (x, z) in meters, a value and an altitude (meters) at each corner,
 // what it is (UnrealWaterMesh::uv1.u).
@@ -171,16 +173,15 @@ private:
 };
 
 struct Checks {
-    std::size_t falls = 0;
-    std::size_t points = 0;
+    std::size_t falls = 0, points = 0;
     std::size_t holes = 0, faceHoles = 0; // and on the rock of a face
     std::size_t faded = 0;
     std::size_t fadedBare = 0, faceBare = 0; // nothing over them, and on the rock of a face
+    std::size_t deepBare = 0; // of fadedBare, over water kBareDepth deep
     std::size_t steep = 0;     // triangles of water shown twice as steep as a cut
     std::size_t faceWater = 0; // triangles of water shown in the air on the face of a fall
     std::size_t foam = 0, foamOff = 0; // vertices of the foams, not on the pool below a fall
-    std::size_t curtain = 0; // vertices of the curtains
-    std::size_t buried = 0;  // of them over dry ground above the water of their fall
+    std::size_t foamEdges = 0, foamSteps = 0; // edges of their border, not faded out
     std::set<Key> seen;      // the tiles whose foams and curtains were checked
     std::set<std::pair<const Drawn*, std::size_t>> fadedSeen;
 };
@@ -247,55 +248,6 @@ bool covered(const std::vector<const Drawn*>& around, double x, double z) {
     return false;
 }
 
-// The distance from (x, z) to the quadrilateral q (its corners around it; 0 inside).
-double toQuad(const std::array<std::array<double, 2>, 4>& q, double x, double z) {
-    bool in = false;
-    double nearest = std::numeric_limits<double>::infinity();
-    for (std::size_t a = 0, b = 3; a < 4; b = a++) {
-        const double ax = q[a][0], az = q[a][1], bx = q[b][0], bz = q[b][1];
-        if ((az > z) != (bz > z) && x < ax + (bx - ax) * (z - az) / (bz - az)) {
-            in = !in;
-        }
-        const double ex = bx - ax, ez = bz - az, length = ex * ex + ez * ez;
-        const double t =
-            length > 0.0 ? std::clamp(((x - ax) * ex + (z - az) * ez) / length, 0.0, 1.0) : 0.0;
-        nearest = std::min(nearest, std::hypot(x - ax - t * ex, z - az - t * ez));
-    }
-    return in ? 0.0 : nearest;
-}
-
-// Whether (x, z) at level lies on the face of a fall of t (here or near): more than tolerance
-// meters over the water below it and under the water above it, between the edge of its lip and
-// where its water meets the pool (margin meters beyond them at most): its rock, which its curtain
-// covers where its water falls and leaves bare beside it.
-bool onFace(const TileData& t, double x, double z, double level, double tolerance,
-            double margin) {
-    for (const TileFall& f : t.falls) {
-        if (!(level > static_cast<double>(f.bottom) + tolerance) ||
-            !(level < static_cast<double>(f.top) - tolerance)) {
-            continue;
-        }
-        const double dx = f.footX - f.x, dz = f.footZ - f.z;
-        const double run = std::max(std::hypot(dx, dz), 1e-9);
-        std::array<std::array<double, 2>, terrain::kFallEdge> lip{}, foot{};
-        for (std::size_t p = 0; p < terrain::kFallEdge; ++p) {
-            const double w = 0.5 * static_cast<double>(f.width) *
-                             (2.0 * static_cast<double>(p) / (terrain::kFallEdge - 1.0) - 1.0);
-            const bool shaped = f.edge == terrain::kFallEdge;
-            lip[p] = shaped ? std::array<double, 2>{f.edgeX[p], f.edgeZ[p]}
-                            : std::array<double, 2>{f.x - dz / run * w, f.z + dx / run * w};
-            foot[p] = shaped ? std::array<double, 2>{f.footEdgeX[p], f.footEdgeZ[p]}
-                             : std::array<double, 2>{lip[p][0] + dx, lip[p][1] + dz};
-        }
-        for (std::size_t p = 0; p + 1 < terrain::kFallEdge; ++p) {
-            if (toQuad({lip[p], lip[p + 1], foot[p + 1], foot[p]}, x, z) <= margin) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 // The points of the cut cells of tile d within box (meters), against what covers them.
 void checkHoles(const Drawn& d, const std::vector<const Drawn*>& around,
                 const std::array<double, 4>& box, int lod, Checks& c) {
@@ -327,7 +279,8 @@ void checkHoles(const Drawn& d, const std::vector<const Drawn*>& around,
                     }
                     const double level = (1.0 - v) * ((1.0 - u) * l[0] + u * l[1]) +
                                          v * ((1.0 - u) * l[2] + u * l[3]);
-                    ++(onFace(t, px, pz, level, tolerance, spacing) ? c.faceHoles : c.holes);
+                    const bool face = falls::onFace(t, px, pz, level, tolerance, spacing);
+                    ++(face ? c.faceHoles : c.holes);
                 }
             }
         }
@@ -354,7 +307,7 @@ void checkFades(const World& w, const Drawn& d, const std::vector<const Drawn*>&
         const bool shown = t.value[0] > 0.0 || t.value[1] > 0.0 || t.value[2] > 0.0;
         const double y = (t.y[0] + t.y[1] + t.y[2]) / 3.0;
         c.steep += shown && slopeOf(t) > kSteepest ? 1u : 0u;
-        if (shown && onFace(d.data, x, z, y, tolerance, spacing)) {
+        if (shown && falls::onFace(d.data, x, z, y, tolerance, spacing)) {
             // Over the water of the core there (or over dry ground) and over its ground.
             const terrain::HeightSample h = w.field.sampleAt(x, z);
             const bool off = h.water == terrain::WaterKind::None ||
@@ -365,9 +318,15 @@ void checkFades(const World& w, const Drawn& d, const std::vector<const Drawn*>&
             ++c.faded;
             const terrain::HeightSample h = w.field.sampleAt(x, z);
             if (h.water != terrain::WaterKind::None && !covered(around, x, z)) {
-                const bool face = onFace(d.data, x, z, static_cast<double>(h.waterLevel),
-                                         tolerance, spacing);
+                const bool face = falls::onFace(
+                    d.data, x, z, static_cast<double>(h.waterLevel), tolerance, spacing);
                 ++(face ? c.faceBare : c.fadedBare);
+                const bool deep = h.waterLevel - h.height > static_cast<float>(kBareDepth);
+                c.deepBare += !face && deep ? 1u : 0u;
+                if (!face && deep) {
+                    std::printf("bare over deep water at %.1f %.1f, LOD %d\n", x, z,
+                                d.data.request.key.lod);
+                }
             }
         }
     }
@@ -376,6 +335,35 @@ void checkFades(const World& w, const Drawn& d, const std::vector<const Drawn*>&
 // The foam of the falls of d (here or near): each vertex kFoamAbove over the water drawn at its
 // column (drawnWaterLevels), that water the pool below one of them (within kLevelLeast plus
 // kLevelCells cells of its level); never over dry land, a ramp or another pool.
+// The edges of the foams of d on their border (one triangle on them), off the sides of the tile and
+// within kFoamShown of their radius of their center (the rim of the material leaves them seen):
+// both their vertices faded out (uv1.v 0), never a step of the cells of the tile.
+void checkFoamEdges(const Drawn& d, Checks& c) {
+    const UnrealWaterMesh& m = d.falls;
+    std::map<std::pair<std::int32_t, std::int32_t>, int> edges;
+    for (std::size_t n = 0; n + 2 < m.triangles.size(); n += 3) {
+        for (std::size_t e = 0; e < 3; ++e) {
+            const std::int32_t a = m.triangles[n + e], b = m.triangles[n + (e + 1) % 3];
+            ++edges[{std::min(a, b), std::max(a, b)}];
+        }
+    }
+    const double side = terrain::tileSizeMeters(d.data.request.key.lod) * 100.0;
+    const auto onSide = [&](const auto& p) {
+        return p.x <= 0.0f || p.y <= 0.0f || p.x >= side || p.y >= side;
+    };
+    for (const auto& [edge, count] : edges) {
+        const auto a = static_cast<std::size_t>(edge.first);
+        const auto b = static_cast<std::size_t>(edge.second);
+        const double u = 0.5 * (m.uv0[a].u + m.uv0[b].u), v = 0.5 * (m.uv0[a].v + m.uv0[b].v);
+        if (count != 1 || m.uv1[a].u != terrain::unreal::kWaterFoam || onSide(m.positions[a]) ||
+            onSide(m.positions[b]) || std::hypot(u, v) > kFoamShown * m.uv2[a].v) {
+            continue;
+        }
+        ++c.foamEdges;
+        c.foamSteps += m.uv1[a].v > 0.0f || m.uv1[b].v > 0.0f ? 1u : 0u;
+    }
+}
+
 void checkFoams(const Drawn& d, Checks& c) {
     const std::vector<double> levels = terrain::unreal::drawnWaterLevels(d.data);
     const double spacing = terrain::tileCellMeters(d.data.request.key.lod);
@@ -397,31 +385,7 @@ void checkFoams(const Drawn& d, Checks& c) {
         }
         c.foamOff += pool && std::abs(altitude - level - kFoamAbove) < 1e-3 ? 0u : 1u;
     }
-}
-
-// The curtains of the falls whose lip lies in d, each drawn alone: none of their vertices over
-// dry ground higher than the water above the fall (kGroundSlack meters).
-void checkCurtains(const World& w, const Drawn& d, Checks& c) {
-    for (const TileFall& f : d.data.falls) {
-        if (!f.here) {
-            continue;
-        }
-        TileData alone = d.data;
-        alone.falls = {f};
-        const UnrealWaterMesh m = terrain::unreal::buildFallCurtains(alone);
-        for (std::size_t v = 0; v < m.positions.size(); ++v) {
-            if (m.uv1[v].u != terrain::unreal::kWaterCurtain) {
-                continue;
-            }
-            ++c.curtain;
-            const terrain::HeightSample h =
-                w.field.sampleAt(d.data.originX + m.positions[v].x / 100.0,
-                                 d.data.originZ + m.positions[v].y / 100.0);
-            const double above = static_cast<double>(h.height) - static_cast<double>(f.top);
-            const bool buried = h.water == terrain::WaterKind::None && above > kGroundSlack;
-            c.buried += buried ? 1u : 0u;
-        }
-    }
+    checkFoamEdges(d, c);
 }
 
 void checkFall(const World& w, Tiles& tiles, const terrain::RiverFall& f, Checks& c) {
@@ -453,7 +417,6 @@ void checkFall(const World& w, Tiles& tiles, const terrain::RiverFall& f, Checks
             const Key k{{d->data.request.key.origin.x, d->data.request.key.origin.z}, lod};
             if (c.seen.insert(k).second) {
                 checkFoams(*d, c);
-                checkCurtains(w, *d, c);
             }
         }
     }
@@ -480,20 +443,20 @@ int main() {
                 "water, curtain nor foam over them, %.1f per thousand) and %zu on the rock of a "
                 "face beside its curtain; %zu tiles, %zu triangles of their water shown in the air "
                 "on the face of a fall, %zu twice as steep as a cut, %zu drawn faded out at their "
-                "three corners, %zu of them with nothing over the water of the core (%zu more on "
-                "the face of a fall)\n",
+                "three corners, %zu of them with nothing over the water of the core, %zu of these "
+                "over water %.2f m deep (%zu more on the face of a fall)\n",
                 c.falls, kMostLod, c.points, c.holes,
                 1000.0 * static_cast<double>(c.holes) / points, c.faceHoles, c.seen.size(),
-                c.faceWater, c.steep, c.faded, c.fadedBare, c.faceBare);
-    std::printf("%zu vertices of foam, %zu not on the water of a pool below a fall; %zu vertices "
-                "of curtains, %zu over dry ground above the water of their fall\n",
-                c.foam, c.foamOff, c.curtain, c.buried);
-    TEST_CHECK(c.falls >= 20 && c.points >= 1000 && c.foam >= 1000 && c.curtain >= 1000);
+                c.faceWater, c.steep, c.faded, c.fadedBare, c.deepBare, kBareDepth, c.faceBare);
+    std::printf("%zu vertices of foam, %zu not on the water of a pool below a fall; %zu edges of "
+                "its border, %zu of them not faded out\n",
+                c.foam, c.foamOff, c.foamEdges, c.foamSteps);
+    TEST_CHECK(c.falls >= 20 && c.points >= 1000 && c.foam >= 1000);
     TEST_CHECK(static_cast<double>(c.holes) <= kHoleShare * points);
-    TEST_CHECK(c.fadedBare <= kBareMost);
+    TEST_CHECK(c.deepBare <= kBareMost && c.fadedBare <= kBareAll);
     TEST_CHECK(c.faceWater <= kShelfMost);
     TEST_CHECK(c.steep == 0);
     TEST_CHECK(c.foamOff == 0);
-    TEST_CHECK(c.buried == 0);
+    TEST_CHECK(c.foamEdges >= 100 && c.foamSteps == 0);
     return test::result();
 }

@@ -110,7 +110,8 @@ std::vector<TileFall> fallsIn(const std::vector<RiverReach>& reaches, const Box&
             fall.bottom = f.bottom;
             fall.width = f.width;
             fall.edge = f.edge;
-            fall.edgeWet = f.edgeWet;
+            fall.wetFrom = f.wetFrom;
+            fall.wetTo = f.wetTo;
             for (std::size_t p = 0; p < kFallEdge && f.edge > 0; ++p) {
                 fall.edgeX[p] = f.edgeX[p] + (fall.x - f.x);
                 fall.edgeZ[p] = f.edgeZ[p] + (fall.z - f.z);

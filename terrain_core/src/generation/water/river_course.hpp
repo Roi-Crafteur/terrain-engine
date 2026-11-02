@@ -260,10 +260,13 @@ struct FallLip {
     float waveA = 1.0f;
     float waveB = 1.0f;
     std::uint64_t seed = 0;
-    // Bit p: the water above it falls from point p of its edge (lipEdge): it stands upstream of
-    // it (the pool above may be wider or narrower than its channel at the sill) and no wall of its
-    // slot stands under the water falling from it.
-    std::uint16_t wet = 0;
+    // Where the water above it falls from its edge (lipEdge), in points of the edge (0 to
+    // kFallEdge - 1, a fraction between two of them): from the first place along it where the water
+    // stands upstream of it (the pool above may be wider or narrower than its channel at the sill)
+    // and no wall of its slot stands under the water falling from it, to the last one; all of it
+    // in between (a rock in the middle of the lip never splits its fall). wetFrom == wetTo: none.
+    float wetFrom = 0.0f;
+    float wetTo = 0.0f;
 };
 
 // Groups of consecutive segments of a course, for the bounds of the search.
