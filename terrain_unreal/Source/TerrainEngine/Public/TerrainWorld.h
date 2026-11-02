@@ -16,6 +16,7 @@ class ASkyLight;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UTerrainAtmosphereFollower;
+class UTerrainDevMapComponent;
 class UTerrainDevTools;
 class UTerrainHorizonClipmap;
 class UTerrainHorizonMeshes;
@@ -346,6 +347,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Water")
 	bool SetWaterShown(bool bShown);
 
+	// The map of the world (agent 35, README section 16): the minimap and the full-screen dev map
+	// (key M), their settings.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain|Map")
+	TObjectPtr<UTerrainDevMapComponent> DevMap;
+
 	// The tools of the developers while playing (terrain_unreal/DEV_TOOLS.md): the screen of F3 and
 	// the Terrain.* commands of views, places, view modes and seed. Off: none of them. Never in a
 	// Shipping build (TERRAIN_DEV_TOOLS, TerrainEngine.Build.cs).
@@ -473,7 +479,8 @@ private:
 	TObjectPtr<UTerrainDevTools> DevTools;
 
 	// The tiles, their streaming and the frame of the core, while playing only (never on the
-	// class default object nor in the editor).
+	// class default object nor in the editor). The map reads them (TerrainDevMap.cpp).
+	friend class UTerrainDevMapComponent;
 	TPimplPtr<FTerrainWorldState> State;
 	// While the session builds on its thread (TerrainWorldStart.cpp).
 	TPimplPtr<FTerrainWorldStart> Starting;
