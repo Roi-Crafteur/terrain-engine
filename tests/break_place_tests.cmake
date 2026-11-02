@@ -5,8 +5,10 @@
 target_sources(terrain_unreal_bridge PRIVATE
     ${unreal_bridge}/block_targeting.cpp
     ${unreal_bridge}/build_rules.cpp
+    ${unreal_bridge}/edit_latency.cpp
     ${unreal_bridge}/edit_save.cpp
 )
 terrain_add_test(unreal_block_targeting_test terrain_unreal_bridge)
 terrain_add_test(unreal_build_rules_test terrain_unreal_bridge)
 terrain_add_test(unreal_edit_save_test terrain_unreal_bridge)
+terrain_add_test(unreal_edit_latency_test terrain_unreal_bridge)
