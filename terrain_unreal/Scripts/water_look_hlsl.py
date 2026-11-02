@@ -170,6 +170,14 @@ OCTAVE_LOOP
         return saturate((max(fromCenter.x, fromCenter.y) - (covered - fade)) / fade);
     }
 
+    // Whether rel (cm from the corner of level 0 of the horizon, cells of pitch cm) lies in the
+    // window of level 0: its water and its samples hold only there.
+    bool InWindow(float3 rel, float cells, float pitch)
+    {
+        float2 ij = rel.xy / pitch;
+        return all(ij >= 0.0) && all(ij <= cells);
+    }
+
     // A threshold in [0, 1) for the pixel at the screen position pixel, moved every 1/60 s
     // (interleaved gradient noise): the same in every material of the water, so that the tiles
     // keep the pixels the horizon leaves (threshold >= its share) and the horizon the others.
@@ -293,8 +301,11 @@ if (slope > 0.5 * FoamFromSlope)
 // Translucent: what the water keeps of the light behind it, the foam opaque.
 float opacity = max(saturate(1.0 - through * (1.0 - Fresnel)), max(foam, white));
 float keep = max(opacity, 0.05);
-// Faded out toward a cut and at a shore; left to the water of the horizon on its pixels.
-float horizon = HasSurface > 0.5 ? Water.HorizonShare(Rel, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm, SurfaceBandCm) : 0.0;
+// Faded out toward a cut and at a shore; left to the water of the horizon on its pixels, only
+// where its level 0 is placed (HasSurface: none while it is hidden, a new place brought level by
+// level) and holds the pixel (Bridge/horizon_surface.hpp, horizonWaterShare: the reference).
+bool held = HasSurface > 0.5 && Water.InWindow(Rel, SurfaceCells, SurfacePitchCm);
+float horizon = held ? Water.HorizonShare(Rel, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm, SurfaceBandCm) : 0.0;
 float shown = saturate(Edge) * saturate(thickness / max(ShoreFadeM, 0.01));
 shown *= Water.Dither(Parameters.SvPosition.xy, Time) >= horizon ? 1.0 : 0.0;
 EmissiveOut = (reflection + Glint) * (1.0 - foam) / keep;

@@ -54,7 +54,8 @@ FLOAT3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
 WATER_INPUTS = ["Flow", "KindSlope", "Altitude", "Edge", "CameraRel", "Time", "SunDir",
                 "SunIlluminance", "SkyView", "SceneDepth", "PixelDepth", "VertexNormal", "Rel"]
 # The band of the tiles over level 0 of the GPU horizon, set by it (TerrainHorizonClipmap.cpp);
-# HasSurface 0 without the horizon: no fade.
+# HasSurface 0 without the horizon, and while its level 0 is hidden (a new place brought level by
+# level, Bridge/horizon_surface.hpp): no fade, the tiles keep all their water.
 SURFACE_SCALARS = {"SurfaceCells": 256.0, "SurfacePitchCm": 800.0, "SurfaceCoveredCm": 0.0,
                    "SurfaceBandCm": 0.0, "HasSurface": 0.0}
 FALLS_INPUTS = ["Fall", "KindDrop", "AltitudeSize", "Time", "SceneDepth", "PixelDepth",

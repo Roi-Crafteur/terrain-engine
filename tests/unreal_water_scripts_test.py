@@ -54,7 +54,8 @@ def constant(source, name):
 KNOWN = {"BRANCH", "Parameters", "Water", "FTerrainWater", "PERIOD", "K", "Kind",
          "Fresnel", "Glint", "GetTranslatedWorldPosition", "GetPeriodicWorldOrigin",
          "MaterialExpressionSkyAtmosphereViewLuminance", "Load", "Body", "Waves", "Ripples",
-         "Noise", "Hash", "PeriodicHash", "Octave", "Rapids", "HorizonShare", "Dither",
+         "Noise", "Hash", "PeriodicHash", "Octave", "Rapids", "HorizonShare", "InWindow",
+         "Dither",
          "SvPosition",
          "INLAND",
          "SURFACE", "DEPTH", "D", "H", "L", "V", "Vis", "Fs", "NoV", "NoL", "NoH", "VoH"}
@@ -323,6 +324,12 @@ def check_junction(look, horizon_code, plugin):
     check(">= horizon ? 1.0 : 0.0" in tile and ">= share ? 0.0 : 1.0" in horizon_code,
           "the tiles and the horizon do not keep complementary pixels")
     check("1.0 - horizon" not in tile, "the water of the tiles still faded by the share")
+    # Left to the horizon only where its level 0 is placed and holds the pixel
+    # (Bridge/horizon_surface.hpp, horizonWaterShare): never to the window of an old place.
+    check("held = HasSurface > 0.5 && Water.InWindow(Rel, SurfaceCells, SurfacePitchCm)" in tile
+          and "float horizon = held ? Water.HorizonShare(" in tile,
+          "TerrainWater: the share of the horizon not limited to its level 0 placed and holding "
+          "the pixel")
     source = (plugin / "TerrainWorldWater.cpp").read_text(encoding="utf-8")
     copied = {}
     for kind in ("Vectors", "Scalars"):
