@@ -1,7 +1,8 @@
 // The surface blends of the GPU horizon (agent 29): their uploads, and the console command
-// Terrain.Blend 0|1 that draws them or not (the scalar parameter SurfaceBlends of the materials of
-// the horizon and of the tiles, Scripts/create_horizon_gpu_material.py and
-// Scripts/create_temporary_terrain_material.py), to compare their cost and their look.
+// Terrain.Blend 0|1 (with TERRAIN_DEV_TOOLS only) that draws them or not (the scalar parameter
+// SurfaceBlends of the materials of the horizon and of the tiles,
+// Scripts/create_horizon_gpu_material.py and Scripts/create_temporary_terrain_material.py), to
+// compare their cost and their look.
 #include "TerrainHorizonClipmap.h"
 
 #include "Engine/Texture2D.h"
@@ -15,6 +16,13 @@
 namespace
 {
 	const FName SurfaceBlendsParameter(TEXT("SurfaceBlends"));
+} // namespace
+
+// The console command is a tool of the developers: never in a Shipping build (agent 36,
+// tests/unreal_dev_tools_guard.cmake).
+#if TERRAIN_DEV_TOOLS
+namespace
+{
 
 	// Terrain.Blend 0|1: on every horizon of the world (the tiles bound to level 0 since then; the
 	// tiles bound later draw the blends).
@@ -42,6 +50,7 @@ namespace
 			 "the tiles, to compare their cost and their look: Terrain.Blend 0|1"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainBlend));
 } // namespace
+#endif // TERRAIN_DEV_TOOLS
 
 void UTerrainHorizonClipmap::UploadBlends(std::vector<terrain::unreal::BlendRegion>& Regions)
 {
