@@ -70,7 +70,7 @@ TileUpload TileStreamer::convert(const TileKey& key, const TileKey& image,
     const TileSea sea{&data->surfaceBlend, blendPitchMeters(key.lod)};
     TileUpload upload{key,
                       tileOrigin(frame, *data, image),
-                      convertMesh(data->mesh, data->originY, data->waterLevels, sea),
+                      convertMesh(data->mesh, data->originY, data->waterLevels, sea, data->rock),
                       hasCollision(key),
                       0.0,
                       data->surfaceBlend,

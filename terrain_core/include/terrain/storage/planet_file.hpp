@@ -11,7 +11,7 @@ namespace terrain {
 // few minutes for the whole planet), then read back in seconds. The file planet.bin of the folder
 // of the world, framed like the other files of the world (magic, version, size, FNV-1a checksum),
 // holds what the level keeps (PlanetLevel::Parts) and what it was built from: the seed, the
-// generator version (kGeneratorVersion: the relief), the world and every parameter of the level.
+// version of the generator of the relief (kReliefGeneratorVersion), the world and every parameter of the level.
 // It is written whole or not at all, and its level is checked against its checksum when read.
 
 inline constexpr const char* kPlanetFileName = "planet.bin";

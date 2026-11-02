@@ -2,6 +2,7 @@
 
 #include "coast_shape.hpp"
 #include "heightfield_layers.hpp"
+#include "wall_faces.hpp"
 #include "mountain_forms.hpp"
 #include "mountain_walls.hpp"
 #include "relief_local.hpp"
@@ -144,7 +145,8 @@ Raised raiseProfile(double full, double profile) {
 
 } // namespace
 
-HeightSample Heightfield::geographySample(double x, double z, Memos* memos) const {
+HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
+                                          wall_faces::Site* site) const {
     const GeographySample g = geography_->sampleAt(x, z);
     HeightSample s;
     // The coast signal, the factor of the land and the ground of the coasts in their band (agent
@@ -196,7 +198,8 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos) cons
         // The walls cut the great forms, never below the base; the rock and the ravines break
         // them afterward.
         const float top = std::max(
-            s.base, wallsAt(x, z, s.base + mountain.shape, mountain, intensity, g.character, memos));
+            s.base,
+            wallsAt(x, z, s.base + mountain.shape, mountain, intensity, g.character, memos, site));
         s.mountain = std::max(0.0f, s.mountain + (top - (s.base + mountain.shape)));
     }
     s.detail = detailAt(x, z, s.base, memos);
@@ -326,12 +329,31 @@ float Heightfield::mountainRavinesAt(const std::array<double, 2>& warped,
 }
 
 float Heightfield::wallsAt(double x, double z, float ground, const MountainForm& form,
-                           float intensity, float character, Memos* memos) const {
+                           float intensity, float character, Memos* memos,
+                           wall_faces::Site* site) const {
     const mountain_walls::Column column{static_cast<double>(ground), form.gradX, form.gradZ,
                                         intensity,  character, form.floor,
                                         form.crest, form.shape};
-    return static_cast<float>(mountain_walls::surface(
-        layers_->walls, column, x, z, memos != nullptr ? &memos->walls : nullptr));
+    mountain_walls::Memo* memo = memos != nullptr ? &memos->walls : nullptr;
+    if (site == nullptr) {
+        return static_cast<float>(mountain_walls::surface(layers_->walls, column, x, z, memo));
+    }
+    // As surface, with what the walls report at the column (phase 12A): their ground alone when
+    // the faces are not wanted (the top is then of no use).
+    site->walls = true;
+    site->ground = column.ground;
+    site->gradX = column.gradX;
+    site->gradZ = column.gradZ;
+    if (!site->faces) {
+        return ground;
+    }
+    const mountain_walls::Masks masks = mountain_walls::masks(layers_->walls, column, x, z, memo);
+    if (!(masks.strata > 0.0) && !(masks.crystal > 0.0)) {
+        return ground;
+    }
+    wall_faces::addFaces(layers_->walls, layers_->faceGrain, masks, column, x, z, memo, *site);
+    return static_cast<float>(mountain_walls::rockTop(layers_->walls, masks, x, z, column.ground,
+                                                      column.gradX, column.gradZ, memo));
 }
 
 // The ravines of the walls of the rifts run down the slope of their land (centered differences

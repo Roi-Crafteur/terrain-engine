@@ -49,9 +49,8 @@ void testRoundTrip(const std::filesystem::path& file, const PlanetLevel& level) 
 }
 
 // The bytes of the file, the timings of the level set to 0 (the only bytes that change from a
-// build to the next): those the file had when it was written whole in memory (phase 11B), with
-// generator 5 in its header (the coasts of agent 33: 0x9E95EC76 with generator 4, the same level).
-constexpr std::uint32_t kFileBytes = 0x567AAF25U;
+// build to the next): those the file had when it was written whole in memory (phase 11B).
+constexpr std::uint32_t kFileBytes = 0x9E95EC76U;
 
 void testBytes(const std::filesystem::path& dir, const PlanetLevel& level) {
     PlanetLevel::Parts parts{level.params(), level.cells(),    level.lakes(), level.rivers(),

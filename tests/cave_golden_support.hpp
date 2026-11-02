@@ -3,7 +3,9 @@
 // Golden checksums of the caves (see golden_support.hpp): voids, densities and water of LOD 0
 // to 2 at fixed points, aquifer cells, entrances, speleothems, streamed tiles with caves and
 // materials, with a fixed climate and no cave districts; and the points, aquifer cells and
-// entrances across the corner of the wrapped world, where its four edges meet.
+// entrances across the corner of the wrapped world, where its four edges meet. "cave tiles" was
+// pinned again when the normals of every tile came to agree with their triangles (phase 12A,
+// tile_normals.hpp): a few normals turned, every vertex kept its bits.
 
 #include "terrain/generation/cave_entrances.hpp"
 #include "terrain/generation/cave_materials.hpp"
@@ -236,7 +238,7 @@ inline std::vector<Part> caveParts() {
          0xB821874392C85859ULL},
         {"entrances", entrancesChecksum(entrances), 0x2877E36872FEE072ULL},
         {"speleothems", speleothemsChecksum(field, ground), 0x3F5133B8CDCF2C4AULL},
-        {"cave tiles", tiles, 0x15C48ABC55BA30B0ULL},
+        {"cave tiles", tiles, 0x91F4CB6EAF14A36CULL},
         {"cave materials", materialsChecksum(), 0xD9C5568AB1EF9B55ULL},
         {"caves at the corner", cornerChecksum(field, ground), 0x98E6B32188631A0CULL},
     };

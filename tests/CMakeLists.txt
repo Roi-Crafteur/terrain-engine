@@ -508,6 +508,7 @@ add_test(NAME export_silhouette_bad_args
             -DOUT=${CMAKE_BINARY_DIR}/silhouette_bad_args
             -P ${CMAKE_CURRENT_SOURCE_DIR}/export_silhouette_bad_args.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/water_level_tests.cmake) # task 7b: the water level
+include(rock_tests.cmake) # the rock of the streamed world (phase 12A)
 include(${CMAKE_CURRENT_SOURCE_DIR}/settlement_tests.cmake) # agent 25: the settlement V1
 include(${CMAKE_CURRENT_SOURCE_DIR}/unreal_water_tests.cmake) # agent 27: the water in Unreal
 include(${CMAKE_CURRENT_SOURCE_DIR}/coast_tests.cmake) # agent 33: the coastal relief

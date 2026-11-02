@@ -1,6 +1,8 @@
 // The world out of the zone of the coastal relief (agent 33, coast_zone_support.hpp) keeps every
 // bit: checksums of samples, tiles and horizon cells drawn out of the zone, with margins for what
-// each of them reads around it, pinned on the code of main before the coastal relief (cb64153).
+// each of them reads around it, pinned on the code of main before the coastal relief (cb64153),
+// then on main with the rock in three dimensions of phase 12A (c08baea, #68: the tiles of the
+// default world and the horizon along the rivers of the small world changed there).
 // On the default world (no planet level: no rivers) and on the small world with its planet level
 // and its rivers. The coastal relief must leave every one of them unchanged, on every commit.
 #include "terrain/chunk_coord.hpp"
@@ -319,7 +321,7 @@ void testDefaultWorld() {
     std::printf("default world in %.1f s\n", seconds(start));
     golden::report("the default world out of the coastal zone",
                    {{"default world patches", sums.patches.value(), 0x12BBBAA19D5D777FULL},
-                    {"default world tiles", sums.tiles.value(), 0x5D62471F2B5D2302ULL},
+                    {"default world tiles", sums.tiles.value(), 0x2D570AEC6B0B6379ULL},
                     {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
 }
 
@@ -345,7 +347,7 @@ void testSmallWorldWithWater() {
                     {"small world horizon", sums.horizon.value(), 0x159D43BA4E7127E6ULL},
                     {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
                     {"small world rivers tiles", rivers.tiles.value(), 0x97B050BC63942232ULL},
-                    {"small world rivers horizon", rivers.horizon.value(), 0xD0FCF8AE5E0690CDULL}});
+                    {"small world rivers horizon", rivers.horizon.value(), 0x810D6B0B60B06611ULL}});
 }
 
 } // namespace

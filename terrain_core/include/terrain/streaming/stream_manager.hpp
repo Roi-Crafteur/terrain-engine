@@ -10,6 +10,7 @@
 #include "terrain/meshing/mesh.hpp"
 #include "terrain/streaming/lod.hpp"
 
+#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -45,10 +46,14 @@ struct WaterColumn {
     friend bool operator==(const WaterColumn&, const WaterColumn&) = default;
 };
 
-// A fall of a river whose lip lies in a tile (TileData::falls, from RiverFall), for the renderers
-// to draw its water: its lip and its foot, meters, at their images nearest to the tile (the lip
-// in the canonical range of the tile), the water above and below, and the width of its channel
-// at the lip.
+// A fall of a river whose lip lies in a tile or near it (TileData::falls, from RiverFall), for the
+// renderers to draw its water: its lip and its foot, meters, at their images nearest to the tile,
+// the water above and below, and the width of its channel at the lip; the edge of its lip and where
+// the water falling from it meets the pool (RiverFall::edgeX, footEdgeX: edge points, 0 for a
+// straight lip), where along its edge the water falls (RiverFall::wetFrom, wetTo), and the length
+// of its pool down to the next lip (0: unknown). here: its lip lies in the tile (the tile draws
+// its curtain); the others lie within kFallNear meters of it (the water of the tile fades out
+// toward their edge, the foam of their pools lies on it).
 struct TileFall {
     double x = 0.0;
     double z = 0.0;
@@ -57,9 +62,19 @@ struct TileFall {
     float top = 0.0f;
     float bottom = 0.0f;
     float width = 0.0f;
+    std::array<double, kFallEdge> edgeX{};
+    std::array<double, kFallEdge> edgeZ{};
+    std::array<double, kFallEdge> footEdgeX{};
+    std::array<double, kFallEdge> footEdgeZ{};
+    std::uint8_t edge = 0;
+    float wetFrom = 0.0f;
+    float wetTo = 0.0f;
+    float pool = 0.0f;
+    bool here = true;
 
     friend bool operator==(const TileFall&, const TileFall&) = default;
 };
+inline constexpr double kFallNear = 48.0;
 
 // Generated content of a tile. The world wraps around (WorldSize): the tiles of a StreamManager
 // have canonical keys (wrapTile), and their data lie in the canonical range of the world; a
@@ -109,6 +124,10 @@ struct TileData {
     std::vector<Speleothem> speleothems;
     std::vector<CaveFlora> caveFlora;
     Mesh lava;
+    // With rock in three dimensions only (phase 12A, rock_faces.hpp), empty otherwise: the share
+    // of bare rock of each vertex of mesh, in [0, 1] (its faces, under their caps, in their
+    // niches), for the material.
+    std::vector<float> rock;
 
     friend bool operator==(const TileData&, const TileData&) = default;
 };

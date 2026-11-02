@@ -73,6 +73,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield_density.cpp
     src/generation/heightfield_geography.cpp
     src/generation/heightfield_hydrology.cpp
+    src/generation/heightfield_rock.cpp
     src/generation/heightfield_water.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
@@ -104,25 +105,34 @@ add_library(terrain_core STATIC
     src/generation/ravines.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
+    src/generation/rock_faces.cpp
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
     src/generation/voronoi.cpp
+    src/generation/wall_faces.cpp
     src/generation/water/fine_lake.cpp
     src/generation/water/hydrology.cpp
+    src/generation/water/hydrology_lips.cpp
     src/generation/water/hydrology_lakes.cpp
     src/generation/water/hydrology_query.cpp
     src/generation/water/hydrology_region.cpp
+    src/generation/water/river_blend.cpp
     src/generation/water/river_box.cpp
     src/generation/water/river_clearance.cpp
     src/generation/water/river_course.cpp
     src/generation/water/river_falls.cpp
     src/generation/water/river_join.cpp
+    src/generation/water/river_lips.cpp
     src/generation/water/river_path.cpp
     src/generation/water/river_profile.cpp
+    src/generation/water/river_search.cpp
     src/generation/water/river_slot.cpp
+    src/generation/water/river_frame.cpp
+    src/generation/water/river_pools.cpp
+    src/generation/water/river_winding.cpp
     src/generation/voronoi_layout.cpp
     src/io/arches_png.cpp
     src/io/blend_png.cpp
@@ -137,6 +147,8 @@ add_library(terrain_core STATIC
     src/io/horizon_panorama.cpp
     src/io/horizon_png.cpp
     src/io/horizon_silhouette.cpp
+    src/io/mesh_checks.cpp
+    src/io/mesh_view.cpp
     src/io/relief_lakes.cpp
     src/io/relief_rifts.cpp
     src/io/planet_png.cpp
@@ -176,6 +188,7 @@ add_library(terrain_core STATIC
     src/storage/world_meta.cpp
     src/storage/world_save.cpp
     src/streaming/cave_tiles.cpp
+    src/streaming/column_cache.cpp
     src/streaming/horizon_crests.cpp
     src/streaming/horizon_detail.cpp
     src/streaming/horizon_edit_columns.cpp
@@ -190,9 +203,11 @@ add_library(terrain_core STATIC
     src/streaming/horizon_streamer.cpp
     src/streaming/lod.cpp
     src/streaming/lod_seams.cpp
+    src/streaming/rock_tile.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
     src/streaming/tile_blend.cpp
+    src/streaming/tile_normals.cpp
     src/streaming/tile_rivers.cpp
     src/streaming/tile_water.cpp
     src/world_size.cpp
@@ -375,6 +390,18 @@ target_link_libraries(terrain_export_water PRIVATE terrain_core terrain_warnings
 add_executable(terrain_export_rivers tools/export_rivers.cpp tools/rivers_places.cpp
                                      tools/rivers_report.cpp)
 target_link_libraries(terrain_export_rivers PRIVATE terrain_core terrain_warnings)
+
+# Views of the rock of the streamed world (phase 12A): the tiles around an eye drawn as meshes over
+# the relief beyond them, and views of the LOD 0 tiles from straight above, at the highest wall by
+# the K2, the fall of 388 m and a gorge near it (see the comment at the top of the tool):
+# terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
+#                     [--view-distance <chunks>] [--only <name>]... [--no-rock] [--cost]
+#                     [--at <x> <z> <heading> <tilt> <above>] [--sun <turns>] [--check]
+#                     [--face <x> <z>] [--walk <x> <z>] [--steps]
+add_executable(terrain_export_rock tools/export_rock.cpp tools/rock_places.cpp
+                                   tools/rock_cost.cpp tools/rock_spots.cpp tools/rock_steps.cpp
+                                   tools/view_places.cpp)
+target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
 
 # The planet level of a world written to its file, as the game reads it (phase 11B); --memory
 # prints the time and memory of each stage (its own operator new counts the heap):

@@ -379,10 +379,10 @@ int main() {
     water_level::report("samples", horizon);
     water_level::report("vertices with caves", caves);
     golden::report("water levels of the small world",
-                   // The coasts (agent 33) change tiles of their band (0x5E8C41F9A71B2235
+                   // The coasts (agent 33) change tiles of their band (0x0D969F30C054AF39
                    // without them, as the horizon and the caves).
-                   {{"tiles", tiles.sum.value(), 0x6DFC682960D825B5ULL},
-                    {"horizon", horizon.sum.value(), 0xEF77A2A8E53BB1EBULL},
+                   {{"tiles", tiles.sum.value(), 0x0AE9CB3DB169FB79ULL},
+                    {"horizon", horizon.sum.value(), 0xCB9F99936D89D887ULL},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();
 }

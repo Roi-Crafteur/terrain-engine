@@ -7,6 +7,7 @@
 #include "Bridge/horizon_atmosphere.hpp"
 #include "Bridge/horizon_gpu_streamer.hpp"
 #include "Bridge/horizon_reveal.hpp"
+#include "Bridge/horizon_surface.hpp"
 #include "Bridge/horizon_timings.hpp"
 #include "Bridge/terrain_surface.hpp"
 
@@ -111,7 +112,8 @@ private:
 		UMaterialInterface* Material);
 	void BindNormals(int32 Level);
 	void Place(const terrain::unreal::LevelPlacement& Placement);
-	void PlaceSurface(const terrain::unreal::LevelPlacement& Placement);
+	// The surface the materials of the tiles read (Bridge/horizon_surface.hpp), on every look.
+	void PlaceSurface(const std::optional<terrain::unreal::SurfaceWindow>& Next);
 	void ApplyReveal();
 	void UploadBlends(std::vector<terrain::unreal::BlendRegion>& Regions);
 
@@ -147,6 +149,8 @@ private:
 
 	TArray<int32> TrimShown;
 	TArray<TOptional<terrain::unreal::LevelPlacement>> Placed;
+	// The window of level 0 the tiles read: none while level 0 is hidden.
+	std::optional<terrain::unreal::SurfaceWindow> Surface;
 	// The reveal of the levels shown (Bridge/horizon_reveal.hpp) and when it last went on.
 	TOptional<terrain::unreal::HorizonReveal> Reveal;
 	double RevealSeconds = -1.0;

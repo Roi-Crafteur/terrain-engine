@@ -310,6 +310,14 @@ void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placem
 {
 	const int32 Level = Placement.level;
 	Reveal->place(Placement, bInstantReveal);
+	// The surface of the tiles follows level 0: none while it is hidden (a new place brought
+	// level by level), its window once shown (Bridge/horizon_surface.hpp).
+	const std::optional<terrain::unreal::SurfaceWindow> Next =
+		terrain::unreal::surfaceAfter(Surface, Placement);
+	if (Next != Surface)
+	{
+		PlaceSurface(Next);
+	}
 	if (!Placement.visible)
 	{
 		// A new place brought level by level: the window of the old place is hidden until its turn.
@@ -345,10 +353,6 @@ void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placem
 		Trim->SetVisibility(true);
 	}
 	Placed[Level] = Placement;
-	if (Level == 0)
-	{
-		PlaceSurface(Placement);
-	}
 }
 
 void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
@@ -376,24 +380,29 @@ void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
 		Look->SetTextureParameterValue(SurfaceNormalsParameter, NormalTextures[0]);
 		Look->SetScalarParameterValue(SurfaceNormalRatioParameter, static_cast<float>(NormalRatio));
 	}
-	if (!Placed.IsEmpty() && Placed[0].IsSet())
-	{
-		PlaceSurface(*Placed[0]);
-	}
+	PlaceSurface(Surface);
 }
 
 // The tiles read the texels of level 0 where it stands: its texels are only valid inside its
-// window, which holds every tile.
-void UTerrainHorizonClipmap::PlaceSurface(const terrain::unreal::LevelPlacement& Placement)
+// window, which holds every tile once it is shown. While it is hidden (HasSurface 0), the tiles
+// keep their own surface and their own water, never those of the window of an old place.
+void UTerrainHorizonClipmap::PlaceSurface(
+	const std::optional<terrain::unreal::SurfaceWindow>& Next)
 {
+	Surface = Next;
 	for (UMaterialInstanceDynamic* Look : SurfaceLooks)
 	{
+		if (!Surface.has_value())
+		{
+			Look->SetScalarParameterValue(HasSurfaceParameter, 0.0f);
+			continue;
+		}
 		Look->SetScalarParameterValue(SurfaceFirstXParameter,
-			static_cast<float>(Placement.firstSlot.x));
+			static_cast<float>(Surface->firstSlot.x));
 		Look->SetScalarParameterValue(SurfaceFirstZParameter,
-			static_cast<float>(Placement.firstSlot.z));
+			static_cast<float>(Surface->firstSlot.z));
 		Look->SetDoubleVectorParameterValue(SurfaceOriginParameter,
-			FVector4(Placement.origin.x, Placement.origin.y, Placement.origin.z, 0.0));
+			FVector4(Surface->origin.x, Surface->origin.y, Surface->origin.z, 0.0));
 		Look->SetScalarParameterValue(HasSurfaceParameter, 1.0f);
 	}
 }
@@ -493,4 +502,5 @@ void UTerrainHorizonClipmap::RemoveAll()
 		Look->SetScalarParameterValue(SurfaceHasNormalsParameter, 0.0f);
 	}
 	SurfaceLooks.Empty();
+	Surface.reset();
 }

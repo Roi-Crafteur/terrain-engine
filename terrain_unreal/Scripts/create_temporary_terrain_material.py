@@ -153,6 +153,9 @@ BRANCH if (blendShare > 0.0)
     }
 }
 c.w = altitude / 1000.0;
+// The rock the core gives the vertex (phase 12A: the faces in three dimensions, under their caps
+// and in their niches), in the alpha of its color: 1 - alpha.
+c.y = max(c.y, VertexRock);
 W1 = b;
 W2 = c;
 W3 = float4(slope, HasSurface, curvature);
@@ -235,7 +238,7 @@ def vertex_shader(material, scalars):
     """The layers of the vertex, from the texels of level 0 of the horizon."""
     custom = custom_node(
         material, -1400, 0, "TemporaryTerrainVertex", look.struct_hlsl() + VERTEX_HLSL,
-        ["Tex", "SBlend", "Rel", "SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells",
+        ["Tex", "SBlend", "Rel", "VertexRock", "SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells",
          "SurfacePitchCm", "HasSurface", "SurfaceBlends"] + BLEND_INPUTS,
         [("W1", FLOAT4), ("W2", FLOAT4), ("W3", FLOAT4)], FLOAT4)
     texels = expression(material, unreal.MaterialExpressionTextureObjectParameter, -2000, -200)
@@ -266,6 +269,11 @@ def vertex_shader(material, scalars):
     for name in ["SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm", "HasSurface",
                  "SurfaceBlends", "TileBlend", "SurfaceCoveredCm", "SurfaceBandCm"]:
         connect(scalars[name], "", custom, name)
+    # The rock of the vertex: 1 - the alpha of its color (tile_mesh_conversion.hpp).
+    color = expression(material, unreal.MaterialExpressionVertexColor, -2200, 300)
+    rock = expression(material, unreal.MaterialExpressionOneMinus, -1900, 300)
+    connect(color, "A", rock, "")
+    connect(rock, "", custom, "VertexRock")
     blend_inputs(material, custom)
     # The position from level 0, also read by the pixel shader (detail_slope), evaluated there.
     interpolated = {"Rel": to_float}
