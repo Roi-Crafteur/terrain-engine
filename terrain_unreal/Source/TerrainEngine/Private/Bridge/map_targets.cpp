@@ -135,6 +135,26 @@ std::optional<WorldPoint> parseCoordinates(std::string_view text) {
     return WorldPoint{*x, *z};
 }
 
+MapGoCommand parseMapGo(const std::vector<std::string>& args) {
+    MapGoCommand command;
+    std::string joined;
+    for (const std::string& arg : args) {
+        joined += (joined.empty() ? "" : " ") + arg;
+    }
+    if (const std::optional<WorldPoint> point = parseCoordinates(joined)) {
+        command.point = point;
+        return command;
+    }
+    if (args.size() == 1 && dev::validPlaceName(args[0]) && !number(plain(args[0]), false)) {
+        command.place = args[0];
+        return command;
+    }
+    command.error = joined.empty() ? std::string("a point or a place expected")
+                                   : "not a point nor a place: \"" + joined + "\"";
+    command.error += std::string(" (usage: ") + kMapGoUsage + ")";
+    return command;
+}
+
 std::string formatMeters(double meters, int decimals) {
     const int places = std::clamp(decimals, 0, 6);
     std::int64_t scale = 1;

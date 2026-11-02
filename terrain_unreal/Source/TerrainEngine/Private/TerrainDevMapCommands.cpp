@@ -1,5 +1,6 @@
 // The console commands of the map (agent 35), on the map of every Terrain World of the world:
-// Terrain.Map (only with TERRAIN_DEV_TOOLS: the full-screen dev map is never in Shipping),
+// Terrain.Map and Terrain.Map.Go x z | <place> (only with TERRAIN_DEV_TOOLS: the full-screen dev
+// map and its clicks are never in Shipping),
 // Terrain.Map.Minimap 0|1, Terrain.Map.MinimapZoom <m/px>, Terrain.Map.MinimapRotate 0|1.
 // The commands of views and places are those of the tools of agent 36 (Terrain.Goto, Terrain.Save).
 #include "EngineUtils.h"
@@ -30,6 +31,11 @@ namespace
 	void RunMap(const TArray<FString>&, UWorld* World)
 	{
 		ForEachMap(World, [](UTerrainDevMapComponent& Map) { Map.ToggleDevMap(); });
+	}
+
+	void RunMapGo(const TArray<FString>& Args, UWorld* World)
+	{
+		ForEachMap(World, [&Args](UTerrainDevMapComponent& Map) { Map.GoToCommand(Args); });
 	}
 #endif
 
@@ -71,6 +77,12 @@ namespace
 	FAutoConsoleCommandWithWorldAndArgs MapCommand(TEXT("Terrain.Map"),
 		TEXT("Opens or closes the full-screen dev map (as its key, M by default)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunMap));
+
+	FAutoConsoleCommandWithWorldAndArgs MapGoCommand(TEXT("Terrain.Map.Go"),
+		TEXT("Goes to x z (or x, z, or -6 185 104 ; 155 924), or to the point of a place, as a "
+			 "click on the dev map: the pawn of the game on land, the view of the tools over "
+			 "water, a line of the check in the log a second later"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunMapGo));
 #endif
 
 	FAutoConsoleCommandWithWorldAndArgs MinimapCommand(TEXT("Terrain.Map.Minimap"),

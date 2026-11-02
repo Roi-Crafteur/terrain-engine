@@ -684,6 +684,13 @@ fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image
     le message « over water (no dry ground within 50 m): the view of the tools 1.8 m above the
     water; Terrain.Pawn over land ».
 
+  **`Terrain.Map.Go x z`** (ou `x, z`, ou `-6 185 104 ; 155 924` : sans `,` ni `;`, exactement deux
+  nombres) suit exactement ce chemin, le cap et l'inclinaison du joueur gardés ;
+  **`Terrain.Map.Go <lieu>`** fait de même au point du lieu, avec son cap et son inclinaison (un
+  atterrissage, pas la vue du lieu : celle-ci, c'est `Terrain.Goto <lieu>`), avec l'avertissement
+  de `Terrain.Goto` quand le lieu a été mesuré avec le fichier planète et que le monde ne l'a pas,
+  ou l'inverse. De quoi vérifier les atterrissages par script (agent 37).
+
   Le choix entre les deux (`Bridge/map_landing.hpp`, `clickLanding`) se fait sur le fil de la
   carte (en pleine mer, il lit environ 2 000 colonnes du core : 0,3 s au milieu de
   `lac_montagne`), « Loading the terrain » affiché pendant ce temps. Une seconde après que le pion

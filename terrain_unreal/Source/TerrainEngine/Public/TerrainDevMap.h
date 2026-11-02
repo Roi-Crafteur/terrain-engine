@@ -129,6 +129,10 @@ public:
 	bool IsLayerShown(const FString& Layer) const;
 	TArray<FString> LayerNames() const;
 	void GoToTyped(const FString& Text);
+	// Terrain.Map.Go x z, or Terrain.Map.Go <place>: the path of a click at the point, or at the
+	// point of the place with its heading and pitch (a landing, not the view of the place:
+	// Terrain.Goto takes the view). Only with TERRAIN_DEV_TOOLS.
+	void GoToCommand(const TArray<FString>& Args);
 	void GoToPlace(int32 Index);
 	void AddPlaceHere(const FString& Name);
 	TArray<FString> PlaceLabels() const;

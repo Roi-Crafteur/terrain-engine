@@ -27,6 +27,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "terrain/generation/biome.hpp"
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -54,6 +55,19 @@ namespace
 			break;
 		}
 		return TEXT("none (dry)");
+	}
+
+	// The warning of Terrain.Goto (agent 36) when a place was measured with the planet file and the
+	// world has none, or the other way round.
+	void WarnPlanetMismatch(const terrain::dev::Place& Place, bool bWorldHasPlanet)
+	{
+		const terrain::unreal::PlanetMismatch Mismatch =
+			terrain::unreal::planetMismatch(Place.planet, bWorldHasPlanet);
+		if (Mismatch != terrain::unreal::PlanetMismatch::None)
+		{
+			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain Dev Map: %s %s"), *ToFString(Place.name),
+				*ToFString(terrain::unreal::planetMismatchText(Mismatch)));
+		}
 	}
 
 	TSharedRef<SWidget> LoadingScreen(double X, double Z)
@@ -181,13 +195,47 @@ void UTerrainDevMapComponent::GoToPlace(int32 Index)
 		return;
 	}
 	const terrain::dev::Place Place = Places[static_cast<std::size_t>(Index)];
-	FString What = ToFString(Place.name);
-	if (Place.planet && !State->Source->hasPlanet())
-	{
-		What += TEXT(" (it needs the planet file, missing: no rivers, lakes nor falls there)");
-	}
+	WarnPlanetMismatch(Place, State->Source->hasPlanet());
 	RequestTeleport(Place.x, Place.z, Place.heading, Place.pitch, Place.eye,
-		Place.eyeMode == terrain::dev::EyeMode::Ground, What);
+		Place.eyeMode == terrain::dev::EyeMode::Ground, ToFString(Place.name));
+}
+
+void UTerrainDevMapComponent::GoToCommand(const TArray<FString>& Args)
+{
+	if (!State.IsValid())
+	{
+		UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.Map.Go: no world playing (or no dev map)"));
+		return;
+	}
+	std::vector<std::string> Words;
+	for (const FString& Arg : Args)
+	{
+		Words.push_back(TerrainDev::ToUtf8(Arg));
+	}
+	const terrain::unreal::MapGoCommand Command = terrain::unreal::parseMapGo(Words);
+	if (Command.point.has_value())
+	{
+		RequestClick(Command.point->x, Command.point->z, State->Heading, State->Pitch,
+			TEXT("Terrain.Map.Go"));
+		return;
+	}
+	if (Command.place.empty())
+	{
+		SetMessage(FString::Printf(TEXT("Terrain.Map.Go: %s"), *ToFString(Command.error)));
+		return;
+	}
+	RefreshPlaces();
+	const std::vector<terrain::dev::Place>& Places = State->PlacesShown;
+	const auto Found = std::find_if(Places.begin(), Places.end(),
+		[&Command](const terrain::dev::Place& Each) { return Each.name == Command.place; });
+	if (Found == Places.end())
+	{
+		SetMessage(FString::Printf(TEXT("Terrain.Map.Go: no place %s in the places file"),
+			*ToFString(Command.place)));
+		return;
+	}
+	WarnPlanetMismatch(*Found, State->Source->hasPlanet());
+	RequestClick(Found->x, Found->z, Found->heading, Found->pitch, ToFString(Found->name));
 }
 
 // The view of the camera as a place, as Terrain.Save writes it (Bridge/place_pose of agent 36:

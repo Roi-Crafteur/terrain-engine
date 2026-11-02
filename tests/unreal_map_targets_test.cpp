@@ -1,7 +1,7 @@
 // Where the dev map sends the player (Bridge/map_targets.hpp): heading <-> yaw (those of agent 36,
 // Bridge/place_pose), the point clicked, the coordinates typed, the meters written, the view saved
-// from the camera (cameraPose, placeOfView of agent 36), and the places kept in memory
-// (Bridge/map_places_port.hpp).
+// from the camera (cameraPose, placeOfView of agent 36), the places kept in memory
+// (Bridge/map_places_port.hpp), and the arguments of Terrain.Map.Go.
 #include "map_targets.hpp"
 
 #include "map_reveal.hpp"
@@ -72,6 +72,32 @@ void testFormat() {
     TEST_CHECK(formatMeters(-0.05, 1) == "\xE2\x88\x92" "0,1");
 }
 
+// Terrain.Map.Go: its arguments as the console of Unreal splits them.
+void testMapGo() {
+    const MapGoCommand twoPieces = parseMapGo({"160", "0"});
+    TEST_CHECK(twoPieces.point && twoPieces.point->x == 160.0 && twoPieces.point->z == 0.0);
+    const MapGoCommand comma = parseMapGo({"160,", "0"});
+    TEST_CHECK(comma.point && comma.point->x == 160.0 && comma.point->z == 0.0);
+    const MapGoCommand negative = parseMapGo({"-241631", "-86277"});
+    TEST_CHECK(negative.point && negative.point->x == -241631.0 && negative.point->z == -86277.0);
+    const MapGoCommand grouped = parseMapGo({"-6", "185", "104", ";", "155", "924"});
+    TEST_CHECK(grouped.point && grouped.point->x == -6185104.0 && grouped.point->z == 155924.0);
+    // Digits grouped by spaces only with a separator: nothing guessed.
+    const MapGoCommand noSeparator = parseMapGo({"-6", "185", "104", "155", "924"});
+    TEST_CHECK(!noSeparator.point && noSeparator.place.empty());
+    TEST_CHECK(noSeparator.error.find("usage: Terrain.Map.Go x z") != std::string::npos);
+    const MapGoCommand three = parseMapGo({"1", "2", "3"});
+    TEST_CHECK(!three.point && three.place.empty() && !three.error.empty());
+    const MapGoCommand alone = parseMapGo({"160"}); // a number, not a place
+    TEST_CHECK(!alone.point && alone.place.empty() && !alone.error.empty());
+    const MapGoCommand place = parseMapGo({"k2_paroi"});
+    TEST_CHECK(!place.point && place.place == "k2_paroi" && place.error.empty());
+    const MapGoCommand words = parseMapGo({"deux", "mots"});
+    TEST_CHECK(!words.point && words.place.empty() && !words.error.empty());
+    const MapGoCommand none = parseMapGo({});
+    TEST_CHECK(!none.point && none.place.empty() && none.error.find("usage") != std::string::npos);
+}
+
 // "Add this place": the view of the camera as Terrain.Save writes it (agent 36), kept by a source.
 void testCameraAndPlaces() {
     const ViewPose pose =
@@ -101,5 +127,6 @@ int main() {
     testParse();
     testFormat();
     testCameraAndPlaces();
+    testMapGo();
     return test::result();
 }
