@@ -202,8 +202,6 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
                                      inlet.glen,      inlet.islet,      inlet.rockX,
                                      inlet.rockZ,     inlet.rockRadius, inlet.rockHeight,
                                      inlet.rockTop,   inlet.rockPhase,  inlet.nextIslet};
-    const coast_shape::Ground shape =
-        coast_shape::shapeAt(p, coasts_->shapes, x, z, g, c.signal, distance, kinds, inlets);
     // Toward the sea: down the coast signal (along x where it is flat).
     const coast_faces::Point point{x,
                                    z,
@@ -211,9 +209,19 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
                                    gradient,
                                    length > 0.0 ? -gx / length : 1.0,
                                    length > 0.0 ? -gz / length : 0.0};
+    const coast_shape::Noises& noises = coasts_->shapes;
+    const coast_profile::Shore shore =
+        coast_shape::readsShore(kinds)
+            ? coast_profile::shoreAt(noises, x, z,
+                                     coast_profile::alongOf(noises, x, z, distance,
+                                                            g.coast / gradient, point.airX,
+                                                            point.airZ, kinds))
+            : coast_profile::Shore{};
+    const coast_shape::Ground shape =
+        coast_shape::shapeAt(p, g, c.signal, distance, kinds, inlets, shore);
     if (memos != nullptr && memos->coastFace != nullptr) {
         coast_faces::Report report =
-            coast_faces::faceAt(p, coasts_->shapes, layers_->faceGrain, point, g, kinds, inlets);
+            coast_faces::faceAt(p, layers_->faceGrain, point, g, kinds, inlets, shore);
         if (report.faced && report.alongShore) {
             const double perMeter = distancePerMeter(x, z, g.coast / gradient, gx / gradient,
                                                      gz / gradient, distance);
@@ -230,7 +238,7 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
     c.ground = shape.ground;
     c.fade = shape.fade;
     c.irregular = shape.irregular;
-    c.rock = shape.rock > 0.0f || coast_faces::plungeRock(coasts_->shapes, point, g, kinds)
+    c.rock = shape.rock > 0.0f || coast_faces::plungeRock(point, g, kinds, shore)
                  ? 1.0f
                  : 0.0f;
     return c;

@@ -5,9 +5,11 @@
 // distance of its columns to the plane of their face, every kStep meters over 2 kHalf meters):
 // - The normals of the level 0 of the horizon, as its material reads them (bilinear): its detail
 //   normals (ratio kRatio: 2 m, Bridge/horizon_normal_stream) and the normals of its samples
-//   (8 m), against the normal of the face: their direction kDirectionRms degrees off it at most
-//   in the RMS, and the part of their direction and of their tilt repeating with a wavelength of
-//   one to four steps of their lattice (the rows of triangles) kDetailPeriodic and
+//   (8 m), against the normal of the face at the scale of their lattice (averaged over a step of
+//   it on either side along the line: the turns of the face sharper than that, at the corners of
+//   its blocks, are finer than the lattice can draw): their direction kDirectionRms degrees off
+//   it at most in the RMS, and the part of their direction and of their tilt repeating with a
+//   wavelength of one to four steps of their lattice (the rows of triangles) kDetailPeriodic and
 //   kSamplePeriodic degrees at most. A face that plunges is read where its ramp stands, a pitch
 //   from the sea (coast_faces::seenOf).
 // - The normals of the tiles of LOD 1 to 3, as the material of the tiles draws them (Scripts/
@@ -250,13 +252,32 @@ struct Angles {
     std::vector<double> s, direction, tilt;
 };
 
+// The normal of the face at line[i] at the scale of a lattice: the normals of the line averaged
+// over a step of it on either side (weighted down to 0 there).
+Point atScale(const std::vector<Point>& line, std::size_t i, double lattice) {
+    Point out = line[i];
+    double nx = 0.0;
+    double nz = 0.0;
+    for (const Point& q : line) {
+        const double w = 1.0 - std::abs(q.s - out.s) / lattice;
+        nx += w > 0.0 ? w * q.nx : 0.0;
+        nz += w > 0.0 ? w * q.nz : 0.0;
+    }
+    const double n = std::hypot(nx, nz);
+    out.nx = nx / n;
+    out.nz = nz / n;
+    return out;
+}
+
 void testHorizonNormals(const FacePlace& f, const std::vector<Point>& line, const Level0& l) {
     std::array<Angles, 2> a; // detail, samples
-    for (const Point& p : line) {
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        const Point& p = line[i];
         const Point q = readAt(p, f.plunges);
         for (int fine = 0; fine < 2; ++fine) {
             const auto [gx, gz] = l.slopeAt(q.x, q.z, fine == 0);
-            const auto angles = anglesOf(gx, gz, p);
+            const double lattice = fine == 0 ? kPitch / kRatio : kPitch;
+            const auto angles = anglesOf(gx, gz, atScale(line, i, lattice));
             a[static_cast<std::size_t>(fine)].s.push_back(p.s);
             a[static_cast<std::size_t>(fine)].direction.push_back(angles[0]);
             a[static_cast<std::size_t>(fine)].tilt.push_back(angles[1]);

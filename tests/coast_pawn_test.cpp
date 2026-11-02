@@ -59,6 +59,9 @@ constexpr double kWaterAround = 3.0;     // WaterAroundMeters
 constexpr double kStep = 0.1;
 constexpr double kStepMost = 0.45;
 constexpr double kNotchWalk = 1.0;
+// The walk along the foot of a face: kFootFront meters before its plane (at a corner of its
+// blocks, whose sides turn up to 75 degrees from the coast, 0.8 m from the rock at least).
+constexpr double kFootFront = 3.0;
 const double kWalkable = terrain::unreal::walkableSlope(44.765, 0.0);
 
 constexpr std::array<Place, 5> kPlaces{coast_rock::kCalanque, coast_rock::kCliff,
@@ -233,12 +236,14 @@ double standing(Tiles& tiles, double x, double z, double floor, const Capsule& c
     return highest + kStandClearance;
 }
 
-Walk walk(Tiles& tiles, double x, double z, double dx, double dz, double length, const Capsule& c) {
+// The walk along a path: path(t) gives the point t meters along it, every kStep.
+template <class Path>
+Walk walkPath(Tiles& tiles, const Path& path, double length, const Capsule& c) {
     Walk w;
-    double floor = tiles.topAt(x, z);
+    const std::array<double, 2> start = path(0.0);
+    double floor = tiles.topAt(start[0], start[1]);
     for (double t = kStep; t <= length; t += kStep) {
-        const double px = x + dx * t;
-        const double pz = z + dz * t;
+        const auto [px, pz] = path(t);
         const std::vector<Hit> hits = tiles.hitsAt(px, pz);
         if (hits.empty()) {
             ++w.holes;
@@ -270,6 +275,11 @@ Walk walk(Tiles& tiles, double x, double z, double dx, double dz, double length,
     return w;
 }
 
+Walk walk(Tiles& tiles, double x, double z, double dx, double dz, double length, const Capsule& c) {
+    return walkPath(
+        tiles, [&](double t) { return std::array<double, 2>{x + dx * t, z + dz * t}; }, length, c);
+}
+
 // The walks by a face: on its platform into its notch (notched), along its foot, on its top out
 // to its edge. The line of a face: the plane at its middle, the air along (ax, az). (The top of
 // the wall of the fjord is the steep wall of the relief: no walk there.)
@@ -291,8 +301,14 @@ void walksBy(const Place& p, bool notched, std::size_t& holes, double& steepest)
         return;
     }
     const Walk in = walk(tiles, f.x + 15.0 * ax, f.z + 15.0 * az, -ax, -az, 25.0, capsule);
-    const Walk along =
-        walk(tiles, f.x + 1.5 * ax - 15.0 * az, f.z + 1.5 * az + 15.0 * ax, az, -ax, 30.0, capsule);
+    // Along the foot, kFootFront meters before the plane of the face where the walk is (the wall
+    // moves in and out along the coast: its meanders and its blocks).
+    const auto foot = [&](double t) {
+        const coast_rock::Face here = coast_rock::faceAt(
+            world().heightfield(), {p.name, f.x - (15.0 - t) * az, f.z + (15.0 - t) * ax});
+        return std::array<double, 2>{here.x + kFootFront * ax, here.z + kFootFront * az};
+    };
+    const Walk along = walkPath(tiles, foot, 30.0, capsule);
     std::printf("%s: from its platform toward the face, %.1f m walked, %.1f m into the notch "
                 "behind the plane of the face (%s), steps of %.2f m at most, %zu holes; along its "
                 "foot %.1f m walked%s, steps of %.2f m at most, %zu holes\n",

@@ -30,6 +30,7 @@
 // Heightfield takes it out near the rivers (Hydrology::clearance: no rock over their water).
 
 #include "coast_kinds.hpp"
+#include "coast_profile.hpp"
 #include "coast_shape.hpp"
 #include "wall_faces.hpp"
 
@@ -68,16 +69,18 @@ struct Report {
 };
 
 // The face of the coast at a point of the band of the kinds of coast weights over the geography
-// g, the inlets and stacks there inlets (coast_shape::shapeAt): none (faced false) out of a run.
-[[nodiscard]] Report faceAt(const GeographyParams& p, const coast_shape::Noises& noises,
-                            const wall_faces::Grain& grain, const Point& point,
-                            const GeographySample& g, const coast_kinds::Weights& weights,
-                            const coast_shape::Inlets& inlets);
+// g, the inlets and stacks there inlets, the noises of its shore shore (coast_shape::shapeAt):
+// none (faced false) out of a run.
+[[nodiscard]] Report faceAt(const GeographyParams& p, const wall_faces::Grain& grain,
+                            const Point& point, const GeographySample& g,
+                            const coast_kinds::Weights& weights, const coast_shape::Inlets& inlets,
+                            const coast_profile::Shore& shore);
 
 // Whether the sea at a point lies before the face of a calanque, within its run (bare rock there:
 // the tiles of the coarser details draw the face over the material of the ground before it).
-[[nodiscard]] bool plungeRock(const coast_shape::Noises& noises, const Point& point,
-                              const GeographySample& g, const coast_kinds::Weights& weights);
+[[nodiscard]] bool plungeRock(const Point& point, const GeographySample& g,
+                              const coast_kinds::Weights& weights,
+                              const coast_profile::Shore& shore);
 
 // What a level of the horizon of pitch meters shows of a column of relief relief with its face
 // anchored (absolute heights): the ledge of its top behind the face, that of its foot in front of

@@ -119,9 +119,9 @@ Faced facedOf(const coast_kinds::Weights& weights) {
 }
 
 // The ground of the coast at the point as it would stand distance meters from the shore.
-double groundAt(const GeographyParams& p, const coast_shape::Noises& noises, const Point& point,
-                const GeographySample& g, const coast_kinds::Weights& weights,
-                const coast_shape::Inlets& inlets, double distance) {
+double groundAt(const GeographyParams& p, const Point& point, const GeographySample& g,
+                const coast_kinds::Weights& weights, const coast_shape::Inlets& inlets,
+                const coast_profile::Shore& shore, double distance) {
     // A column of the sea of the geography read at a distance on the land is read as the land
     // there (shapeAt would give it the dome of a rock of the reefs out at sea: none).
     coast_shape::Inlets read = inlets;
@@ -130,8 +130,7 @@ double groundAt(const GeographyParams& p, const coast_shape::Noises& noises, con
         read.base = coast;
     }
     return static_cast<double>(
-        coast_shape::shapeAt(p, noises, point.x, point.z, g, coast, distance, weights, read)
-            .ground);
+        coast_shape::shapeAt(p, g, coast, distance, weights, read, shore).ground);
 }
 
 // The notch, the cap, the grain and the joint of a face of kind over its run, its foot at foot
@@ -174,16 +173,16 @@ void featuresOf(const wall_faces::Grain& grain, const Point& point, CoastKind ki
 // What faceAt reads, together.
 struct Context {
     const GeographyParams& p;
-    const coast_shape::Noises& noises;
     const wall_faces::Grain& grain;
     const Point& point;
     const GeographySample& g;
     const coast_kinds::Weights& weights;
     const coast_shape::Inlets& inlets;
+    const coast_profile::Shore& shore;
 };
 
 double groundOf(const Context& c, double distance) {
-    return groundAt(c.p, c.noises, c.point, c.g, c.weights, c.inlets, distance);
+    return groundAt(c.p, c.point, c.g, c.weights, c.inlets, c.shore, distance);
 }
 
 // The face of a run at the point, of kind (its grain and overhangs) and of weight share.
@@ -212,8 +211,8 @@ Report faceOfRun(const Context& c, const coast_profile::Run& run, double share, 
 Report shoreFaceAt(const Context& c, CoastKind kind, double share) {
     const double d = c.point.distance;
     const coast_profile::Profile& k = coast_profile::profileOf(kind);
-    const coast_profile::Shore s = coast_profile::shoreAt(c.noises, c.point.x, c.point.z);
-    const coast_profile::Face f = coast_profile::faceAt(
+    const coast_profile::Shore& s = c.shore;
+    const coast_profile::Face f = coast_profile::wallFaceAt(
         k, coast_profile::faceTop(k, s, static_cast<double>(c.g.land)), std::max(d, 0.0), s);
     const coast_profile::Run run = coast_profile::runOf(f, kind == CoastKind::Calanque);
     if (d < run.a || d > run.b) {
@@ -241,7 +240,7 @@ Report fjordFrontAt(const Context& c, double share, double wall, double here);
 
 Report fjordFaceAt(const Context& c, double share) {
     const double d = c.point.distance;
-    const coast_profile::Shore s = coast_profile::shoreAt(c.noises, c.point.x, c.point.z);
+    const coast_profile::Shore& s = c.shore;
     const double wall = kFjordWallLow + (kFjordWallHigh - kFjordWallLow) * s.heightAt;
     const double reach = kFjordReach * wall;
     const double here = groundOf(c, d);
@@ -352,10 +351,10 @@ Report rockFaceAt(const Context& c) {
 
 } // namespace
 
-Report faceAt(const GeographyParams& p, const coast_shape::Noises& noises,
-              const wall_faces::Grain& grain, const Point& point, const GeographySample& g,
-              const coast_kinds::Weights& weights, const coast_shape::Inlets& inlets) {
-    const Context c{p, noises, grain, point, g, weights, inlets};
+Report faceAt(const GeographyParams& p, const wall_faces::Grain& grain, const Point& point,
+              const GeographySample& g, const coast_kinds::Weights& weights,
+              const coast_shape::Inlets& inlets, const coast_profile::Shore& shore) {
+    const Context c{p, grain, point, g, weights, inlets, shore};
     // The rocks of the reefs lay their own faces, within kRockSide meters of them.
     if (inlets.islet > -kRockSide) {
         return rockFaceAt(c);
@@ -377,8 +376,8 @@ Report faceAt(const GeographyParams& p, const coast_shape::Noises& noises,
     return share > 0.0 ? shoreFaceAt(c, faced.kind, share) : Report{};
 }
 
-bool plungeRock(const coast_shape::Noises& noises, const Point& point, const GeographySample& g,
-                const coast_kinds::Weights& weights) {
+bool plungeRock(const Point& point, const GeographySample& g, const coast_kinds::Weights& weights,
+                const coast_profile::Shore& shore) {
     const double d = point.distance;
     if (!(d < 0.0) || !(d > -kFarthest)) {
         return false;
@@ -389,9 +388,8 @@ bool plungeRock(const coast_shape::Noises& noises, const Point& point, const Geo
         return false;
     }
     const coast_profile::Profile& k = coast_profile::profileOf(CoastKind::Calanque);
-    const coast_profile::Shore s = coast_profile::shoreAt(noises, point.x, point.z);
-    const coast_profile::Face f =
-        coast_profile::faceAt(k, coast_profile::faceTop(k, s, static_cast<double>(g.land)), 0.0, s);
+    const coast_profile::Face f = coast_profile::wallFaceAt(
+        k, coast_profile::faceTop(k, shore, static_cast<double>(g.land)), 0.0, shore);
     return d > coast_profile::runOf(f, true).a;
 }
 

@@ -8,7 +8,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 
 namespace terrain::coast_shape {
 
@@ -38,12 +40,23 @@ constexpr std::uint64_t kFaceStream = 0x33B3;
 constexpr std::uint64_t kStretchStream = 0x33B4;
 constexpr std::uint64_t kEdgeStream = 0x33B5;
 constexpr std::uint64_t kScreeStream = 0x33B6;
+constexpr std::uint64_t kMeanderStream = 0x33B7;
+constexpr std::uint64_t kDipStream = 0x33B8;
+constexpr std::uint64_t kBlockStream = 0x33B9;
 constexpr double kStretchWavelength = 30'000.0;
 constexpr double kHeightWavelength = 5'000.0;
 constexpr double kPlatformWavelength = 1'700.0;
 constexpr double kFaceWavelength = 900.0;
 constexpr double kEdgeWavelength = 350.0;
 constexpr double kScreeWavelength = 1'200.0;
+// Along the walls: their meanders and the dips of their top, kWallOctaves octaves from their
+// wavelength, each kWallGain as strong as the one before and kWallLacunarity times finer (a
+// spectrum flat enough, and its octaves out of tune, so that no wavelength rules: no rhythm).
+constexpr double kMeanderWavelength = 200.0;
+constexpr double kDipWavelength = 320.0;
+constexpr int kWallOctaves = 4;
+constexpr double kWallGain = 0.65;
+constexpr double kWallLacunarity = 1.9;
 
 // The slope law of the faces (faceSlopeLimit): the height of a face in cells of kFaceCell meters
 // (the LOD 3 of the tiles), and the steepest slope drawn without teeth at each height in cells,
@@ -164,11 +177,8 @@ struct Land {
 // the top of the face, its mountains later.
 Land shoreOf(const Profile& k, const GeographySample& g, double coast, double d, const Shore& s,
              double old, bool plunges) {
-    const double high = lerp(k.heightLow, k.heightHigh, s.heightAt);
-    const double cap = static_cast<double>(k.landShare) *
-                           std::max(0.0, static_cast<double>(g.land)) +
-                       static_cast<double>(k.landTop);
-    const Face f = faceAt(k, std::min(high, cap), d, s);
+    const Face f = coast_profile::wallFaceAt(
+        k, coast_profile::faceTop(k, s, static_cast<double>(g.land)), d, s);
     const double face = f.bench + f.height * smooth(f.foot, f.foot + f.width, d);
     const double patch = static_cast<double>(k.screes) * s.screeAt;
     // Rounded where the screes meet the face, never more than they stand above the platform: the
@@ -310,17 +320,38 @@ float groundBase(const GeographyParams& p, const GeographySample& g, double coas
 }
 
 Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
+    const auto wall = [&](std::uint64_t stream, double wavelength) {
+        return noise::FbmOctaves(noise::deriveSeed(seed, stream),
+                                 {.octaves = kWallOctaves,
+                                  .frequency = 1.0 / wavelength,
+                                  .lacunarity = kWallLacunarity,
+                                  .gain = kWallGain},
+                                 world);
+    };
     return {shapeNoise(seed, kStretchStream, kStretchWavelength, world),
             shapeNoise(seed, kHeightStream, kHeightWavelength, world),
             shapeNoise(seed, kPlatformStream, kPlatformWavelength, world),
             shapeNoise(seed, kFaceStream, kFaceWavelength, world),
             shapeNoise(seed, kEdgeStream, kEdgeWavelength, world),
-            shapeNoise(seed, kScreeStream, kScreeWavelength, world)};
+            shapeNoise(seed, kScreeStream, kScreeWavelength, world),
+            wall(kMeanderStream, kMeanderWavelength),
+            wall(kDipStream, kDipWavelength),
+            {noise::deriveSeed(seed, kBlockStream),
+             std::max<std::int64_t>(1, std::llround(world.x / kBlockCell)),
+             std::max<std::int64_t>(1, std::llround(world.z / kBlockCell)), world}};
 }
 
-Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,
-               const GeographySample& g, double coast, double distance,
-               const coast_kinds::Weights& weights, const Inlets& inlets) {
+bool readsShore(const coast_kinds::Weights& weights) {
+    bool reads = false;
+    for (const CoastKind kind : {CoastKind::Rocky, CoastKind::Cliff, CoastKind::Calanque,
+                                 CoastKind::Ria, CoastKind::Fjord}) {
+        reads = reads || weights[static_cast<std::size_t>(kind)] > 0.0f;
+    }
+    return reads;
+}
+
+Ground shapeAt(const GeographyParams& p, const GeographySample& g, double coast, double distance,
+               const coast_kinds::Weights& weights, const Inlets& inlets, const Shore& shore) {
     if (coast < 0.0) {
         double ground = 0.0;
         for (std::size_t k = 0; k < weights.size(); ++k) {
@@ -350,12 +381,6 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
         // coast, no relief of the land on it).
         return {0.0f, 0.0f, static_cast<float>(inlets.dome), 1.0f, 0.0f, 1.0f};
     }
-    bool shores = false;
-    for (const CoastKind kind :
-         {CoastKind::Rocky, CoastKind::Cliff, CoastKind::Calanque, CoastKind::Ria}) {
-        shores = shores || weights[static_cast<std::size_t>(kind)] > 0.0f;
-    }
-    const Shore shore = shores ? shoreAt(noises, x, z) : Shore{};
     const double oldLand = static_cast<double>(landFactor(p, coast));
     const double old = static_cast<double>(groundBase(p, g, coast));
     Land sum = blendLand(weights, g, coast, distance, shore, oldLand, old, inlets);

@@ -38,25 +38,40 @@ inline constexpr Place kRocky{"the notched rocky coast", 23'344'448.0, -2'076'63
 inline constexpr Place kFjord{"the wall of the fjord", 1'822'100.0, 9'925'750.0};
 inline constexpr Place kStack{"the stack", -15'901'339.0, -6'234'092.0};
 
-// The heaviest face at a place, and the middle of its run (the place moved along its air).
+// The heaviest face at a place, and the middle of its run: the place moved along its air to where
+// the distance of the face is 0, in kFaceSteps steps (the distance of a face changes by about a
+// meter per meter along its air, not exactly: a place 15 m from the face would miss it by 3 m in
+// one step).
 struct Face {
     terrain::RockFace face;
     double x = 0.0;
     double z = 0.0;
     bool found = false;
 };
+inline constexpr int kFaceSteps = 5;
 
 inline Face faceAt(const terrain::Heightfield& field, const Place& p) {
-    const terrain::RockColumn r = field.rockAt(p.x, p.z);
     Face out;
-    for (std::size_t i = 0; i < r.faceCount; ++i) {
-        if (!out.found || r.faces[i].weight > out.face.weight) {
-            out.face = r.faces[i];
-            out.found = true;
+    double x = p.x;
+    double z = p.z;
+    for (int step = 0; step < kFaceSteps; ++step) {
+        const terrain::RockColumn r = field.rockAt(x, z);
+        Face here;
+        for (std::size_t i = 0; i < r.faceCount; ++i) {
+            if (!here.found || r.faces[i].weight > here.face.weight) {
+                here.face = r.faces[i];
+                here.found = true;
+            }
         }
+        if (!here.found) {
+            break;
+        }
+        out = here;
+        x -= static_cast<double>(out.face.airX * out.face.distance);
+        z -= static_cast<double>(out.face.airZ * out.face.distance);
+        out.x = x;
+        out.z = z;
     }
-    out.x = p.x - static_cast<double>(out.face.airX * out.face.distance);
-    out.z = p.z - static_cast<double>(out.face.airZ * out.face.distance);
     return out;
 }
 

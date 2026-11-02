@@ -13,6 +13,10 @@
 #include <cstdint>
 #include <limits>
 
+namespace terrain::coast_profile {
+struct Shore;
+} // namespace terrain::coast_profile
+
 namespace terrain::coast_shape {
 
 // Whether a point of coast signal coast lies in the band of the coasts: from kCoastSeaBand of
@@ -41,10 +45,21 @@ namespace terrain::coast_shape {
 // face (LOD 0 to 2 from 8 m on); the LOD 3 of those faces, 256 m away and more, keeps a residue.
 [[nodiscard]] double faceSlopeLimit(double height);
 
+// The blocks of the walls of the coasts: jittered cells about kBlockCell meters wide over the
+// world (as many as fit along each side), each drawn by seed (coast_profile::shoreAt).
+inline constexpr double kBlockCell = 40.0;
+struct Blocks {
+    std::uint64_t seed = 0;
+    std::int64_t cellsX = 1;
+    std::int64_t cellsZ = 1;
+    WorldSize world;
+};
+
 // The noises of the shapes of the coasts, each varying at its own scale (no regular pattern along
 // a coast): the height of the faces (a slow, contrasted noise and a medium one), the width of the
 // rock platforms at their foot, the width of their faces, the edge (capes and hollows of their
-// top) and the screes at their foot.
+// top) and the screes at their foot; along the walls, read at the shore (coast_profile::Along),
+// the meanders of their line, their blocks and the dips of their top.
 struct Noises {
     noise::FbmOctaves stretch;
     noise::FbmOctaves height;
@@ -52,6 +67,9 @@ struct Noises {
     noise::FbmOctaves face;
     noise::FbmOctaves edge;
     noise::FbmOctaves scree;
+    noise::FbmOctaves meander;
+    noise::FbmOctaves dip;
+    Blocks blocks;
 };
 
 [[nodiscard]] Noises makeNoises(std::uint64_t seed, const WorldSize& world);
@@ -63,10 +81,12 @@ struct Noises {
 // landFactor and groundBase; the rocky coasts, the cliffs, the calanques and the rias stand up
 // from a rock platform as a face no steeper than faceSlopeLimit (screes at its foot, capes and
 // hollows along its top) to a plateau from a few meters to their highest along the coast, the
-// hills and vallons of the hinterland on it; the mountains plunge into the sea, rising steepest at
-// the shore. Out at sea, the floor drops faster at the foot of the high coasts, steepest at the
-// shore, down to the shelf at the outer edge of the band. distance: the distance to the shore in
-// meters (the coast signal over its gradient), signed as the signal.
+// hills and vallons of the hinterland on it; along the cliffs and the rocky coasts, their wall
+// moves in and out (meanders and blocks) and its top dips (coast_profile::wallFaceAt); the
+// mountains plunge into the sea, rising steepest at the shore. Out at sea, the floor drops faster
+// at the foot of the high coasts, steepest at the shore, down to the shelf at the outer edge of
+// the band. distance: the distance to the shore in meters (the coast signal over its gradient),
+// signed as the signal.
 struct Ground {
     float land = 0.0f;
     float mountains = 0.0f; // never above land
@@ -112,9 +132,15 @@ struct Inlets {
     double nextIslet = -std::numeric_limits<double>::infinity();
 };
 
-[[nodiscard]] Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,
-                             const GeographySample& g, double coast, double distance,
-                             const coast_kinds::Weights& weights, const Inlets& inlets);
+// Whether the kinds weights read the noises of a shore (coast_profile::shoreAt): the rocky coasts,
+// the cliffs, the calanques, the rias and the fjords.
+[[nodiscard]] bool readsShore(const coast_kinds::Weights& weights);
+
+// shore: the noises of the shore at the point (coast_profile::shoreAt; none needed unless
+// readsShore), the same for every distance read at the point.
+[[nodiscard]] Ground shapeAt(const GeographyParams& p, const GeographySample& g, double coast,
+                             double distance, const coast_kinds::Weights& weights,
+                             const Inlets& inlets, const coast_profile::Shore& shore);
 
 // How high the shore of the kinds weights stands at (x, z), a point of the shore of the geography
 // g, 400 m inland: the top of the faces of the shore kinds (as shapeAt raises them there), the
