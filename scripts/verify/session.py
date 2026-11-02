@@ -151,6 +151,13 @@ def _kill_reason(limits, elapsed, silent, beat, since_done):
 
 
 def sessions(places, per_session):
-    """The places split into short sessions of at most per_session each."""
+    """The places split into short sessions of at most per_session each, as even as can be (21
+    places, 6 a session: 6, 5, 5, 5, not 6, 6, 6, 3)."""
     per_session = max(1, int(per_session))
-    return [places[i:i + per_session] for i in range(0, len(places), per_session)]
+    count = -(-len(places) // per_session)  # the fewest sessions of at most per_session
+    out, start = [], 0
+    for n in range(count):
+        size = len(places) // count + (1 if n < len(places) % count else 0)
+        out.append(places[start:start + size])
+        start += size
+    return out
