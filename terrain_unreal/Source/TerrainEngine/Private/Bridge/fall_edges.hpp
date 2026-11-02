@@ -15,7 +15,7 @@ namespace terrain::unreal {
 // of it; its fade goes on down to kEdgeBeyond beyond and up to kEdgeAbove before (the material
 // clamps it to [0, 1]), linear in the distance, so that between two vertices on either side the
 // water ends there, not at a side of a cell nor short of the curtain.
-inline constexpr double kEdgeFade = 2.0;
+inline constexpr double kEdgeFade = 1.0;
 inline constexpr double kEdgeOver = 0.5;
 inline constexpr double kEdgeBeyond = -8.0;
 inline constexpr double kEdgeAbove = 8.0;
