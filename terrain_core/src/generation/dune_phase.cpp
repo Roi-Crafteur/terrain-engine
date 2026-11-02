@@ -25,8 +25,8 @@ constexpr double kSpacingMost = 3000.0;
 // The giant waves: their pivots stand 65 km apart, where the sand may differ a lot; their spacing
 // comes from a noise of 700 km instead (the next pivots alike), kGiantLeast to kGiantLeast +
 // kGiantRange meters (the noise sampled kGiantShift away from the turn of the wind it shares).
-constexpr double kGiantLeast = 6'000.0;
-constexpr double kGiantRange = 13'000.0;
+constexpr double kGiantLeast = 4'000.0;
+constexpr double kGiantRange = 8'000.0;
 constexpr double kGiantShift = 3'000'000.0;
 // The sinuosity of the crests (share of the spacing) and the drift of the phase (cycles).
 constexpr double kSinuous = 0.3;

@@ -40,6 +40,9 @@ constexpr double kArmTopSpread = 0.35;
 constexpr double kArmTurn = 0.6;
 constexpr double kArmBend = 0.35;
 
+// The trough between two ridges reaches this share of the back of the next.
+constexpr double kTroughBack = 0.4;
+
 double hermite01(double t) {
     t = std::clamp(t, 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
@@ -64,7 +67,17 @@ double backLength(double wavelength, double height, double gap) {
     return std::max(0.0, wavelength * (1.0 - gap) - height / kLeeTan);
 }
 
-double transverse(double t, double wavelength, double height, double gap, double nominal) {
+double trough(double d, double from, double to, double depth) {
+    if (!(depth > 0.0) || !(to > from) || !(d > from) || !(d < to)) {
+        return 0.0;
+    }
+    const double u = (2.0 * d - from - to) / (to - from);
+    const double v = 1.0 - u * u;
+    return depth * v * v;
+}
+
+double transverse(double t, double wavelength, double height, double gap, double nominal,
+                  double dig) {
     const double room = std::min(wavelength, nominal) * (1.0 - gap);
     height = std::min(height, room / (1.0 / kLeeTan + kBackPerHeight));
     if (!(height > 0.0)) {
@@ -74,7 +87,11 @@ double transverse(double t, double wavelength, double height, double gap, double
     const double lee = height - kLeeTan * t * wavelength;
     const double up = (1.0 - t) * wavelength;
     const double rise = up < back ? height * (1.0 - hermite01(up / back)) : 0.0;
-    return std::max({0.0, lee, rise});
+    const double form = std::max({0.0, lee, rise});
+    // The trough: from the foot of the slip face over the floor and the lower part of the back.
+    const double foot = height / kLeeTan;
+    const double start = wavelength - back; // of the back of the next ridge
+    return form - trough(t * wavelength, foot, start + kTroughBack * back, dig * height);
 }
 
 double barchan(const Barchan& b) {

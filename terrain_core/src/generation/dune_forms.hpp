@@ -18,9 +18,15 @@ inline constexpr double kStarTan = 0.5773502691896258;   // tan 30 degrees: the 
 // wavelength left as bare floor between two dunes. The slip face drops at kLeeTan from the crest,
 // the back rises over the rest of the wavelength (less the gap) along a Hermite curve. The height
 // is cut so that the back stays below about 12 degrees.
-// nominal: the spacing that caps the height (smooth, where wavelength may vary fast).
+// nominal: the spacing that caps the height (smooth, where wavelength may vary fast). dig: the
+// share of the height the trough between two ridges sinks below the floor (trough), 0 for none.
 [[nodiscard]] double transverse(double t, double wavelength, double height, double gap,
-                                double nominal);
+                                double nominal, double dig = 0.0);
+
+// A trough dug between two dunes: depth meters at the middle of [from, to] (d along the same
+// axis), none at their ends and beyond, with no slope at its ends nor at its bottom (the curve
+// (1 - u^2)^2 of u in [-1, 1]).
+[[nodiscard]] double trough(double d, double from, double to, double depth);
 // The length of the back of such a ridge, meters (0 if none).
 [[nodiscard]] double backLength(double wavelength, double height, double gap);
 

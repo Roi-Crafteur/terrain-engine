@@ -52,6 +52,7 @@ add_library(terrain_core STATIC
     src/generation/depression_forms.cpp
     src/generation/dune_field.cpp
     src/generation/dune_forms.cpp
+    src/generation/dune_layers.cpp
     src/generation/dune_phase.cpp
     src/generation/dune_waves.cpp
     src/generation/depressions.cpp

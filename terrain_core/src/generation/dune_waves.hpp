@@ -29,5 +29,14 @@ namespace terrain::dune_waves {
 // The profile across a crest: t in [0, 1) past the crest along the wind, wavelength meters
 // (local), height meters, backTan the steepest of the back (tangent).
 [[nodiscard]] double profile(double t, double wavelength, double height, double backTan);
+// The same with its trough (dig: the share of the height it sinks below the floor, from the middle
+// of the face to the middle of the next back): the height (negative in the trough), the slope of
+// the form without the trough (tangent), the meters to the nearer crest.
+struct Shape {
+    double height = 0.0;
+    double slope = 0.0;
+    double crest = 0.0;
+};
+[[nodiscard]] Shape shapeOf(double t, double wavelength, double height, double backTan, double dig);
 
 } // namespace terrain::dune_waves

@@ -2,6 +2,7 @@
 // (dune_phase.hpp), blended by a power mean of their heights (exponent 4), so that the crests
 // stay sharp where two kinds meet.
 #include "dune_forms.hpp"
+#include "dune_layers.hpp"
 #include "dune_phase.hpp"
 #include "dune_waves.hpp"
 #include "ergs_impl.hpp"
@@ -35,6 +36,8 @@ constexpr double kSmallHeightBase = 6.0;
 constexpr double kSmallHeightShare = 0.04;
 constexpr double kSmallTurn = 0.07;
 constexpr double kSmallClear = 60.0;
+// The troughs between the ridges and the chains sink this share of their height below the floor.
+constexpr double kDig = 0.4;
 constexpr double kSmallGap = 0.15;
 // Seifs: their spacing over that of the ridges, their width at most at their base (share of the
 // spacing), their ends and the side of their slip faces.
@@ -104,27 +107,34 @@ struct Point {
     double amplitude = 0.0; // the noise of the heights, about [-1, 1]
 };
 
-double powerOf(double h, float weight) {
-    return static_cast<double>(weight) * dmath::powInteger(h, 4);
-}
+// The kinds blended: the power mean of their heights above the floor (exponent 4, the crests stay
+// sharp where two kinds meet), the troughs below it by their weights.
+struct Blend {
+    double above = 0.0; // the sum of the weights times the fourth powers
+    double below = 0.0; // the sum of the weights times the depths (negative)
+    void add(double h, float weight) {
+        const auto w = static_cast<double>(weight);
+        above += w * dmath::powInteger(std::max(h, 0.0), 4);
+        below += w * std::min(h, 0.0);
+    }
+    void scale(double k) {
+        above *= k;
+        below *= k;
+    }
+    [[nodiscard]] double value() const { return std::sqrt(std::sqrt(above)) + below; }
+};
 
-// The draa: a ridge carrying small oblique dunes on its back.
-double draaAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
-              const dune_phase::Phase& ridge, double main, double height) {
-    dune_phase::Kind small;
-    small.turn = kSmallTurn;
-    small.fixedSpacing = kSmallSpacing;
-    small.salt = 7;
-    const dune_phase::Phase phase = dune_phase::phaseAt(m, s, p, small);
+// The ridges carry dunes on their backs (dune_layers): oblique ridges in segments, about
+// kSmallSpacing meters apart, clear of their slip face and of their crest.
+double layered(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
+               const dune_phase::Phase& ridge, double main, double height) {
     const double lee = height / dune_forms::kLeeTan;
     const double down = ridge.fraction * ridge.wavelength;
     const double up = (1.0 - ridge.fraction) * ridge.wavelength;
     const double on = ramp(static_cast<float>(lee), static_cast<float>(lee + kSmallClear), down) *
-                      ramp(0.0f, static_cast<float>(kSmallClear), up) *
-                      ramp(kCoherenceLow, kCoherenceHigh, phase.coherence);
-    const double tall = kSmallHeightBase + kSmallHeightShare * height;
-    return main + on * dune_forms::transverse(phase.fraction, phase.wavelength, tall, kSmallGap,
-                                              phase.nominal);
+                      ramp(0.0f, static_cast<float>(kSmallClear), up);
+    const dune_layers::Layer medium{kSmallSpacing, kSmallHeightBase, kSmallHeightShare, kSmallTurn, 7};
+    return main + dune_layers::layer(m, s, p, medium, height, on);
 }
 
 // The barchans of the rows of the ridges, in the cells of a phase across the wind.
@@ -181,7 +191,11 @@ double seifLine(const Point& q, const dune_phase::Phase& line, double ends, doub
     const double plinth =
         kPlinthHeight * top *
         (1.0 - dune_forms::hermite(std::abs(offset) / (kPlinthWidth * line.wavelength)));
-    return std::max(dune_forms::seif(offset, top, slip), plinth);
+    // The corridor between two chains sinks kDig of their height, from the edge of the plinth.
+    const double edge = kPlinthWidth * line.wavelength;
+    const double dig =
+        kDig * top * dune_forms::hermite((std::abs(offset) - edge) / (0.5 * line.wavelength - edge));
+    return std::max(dune_forms::seif(offset, top, slip), plinth) - dig;
 }
 
 // The seifs: ridges along the wind, on a phase across it, sinuous; a second system of another
@@ -224,29 +238,26 @@ double unbroken(const Ergs::Impl& m, const Point& q) {
 }
 
 // The kinds that follow the wind, around the pivots.
-double windKinds(const Ergs::Impl& m, const dune_phase::Shared& s, const Point& q,
-                 const FormWeights& w) {
+void windKinds(const Ergs::Impl& m, const dune_phase::Shared& s, const Point& q,
+               const FormWeights& w, Blend& sum) {
     const dune_phase::Pivots p = dune_phase::pivotsAt(m, s);
-    double sum = 0.0;
     const dune_phase::Phase ridge = dune_phase::phaseAt(m, s, p, {});
     const double gap = kGapLow + kGapRange * (1.0 - q.sand);
     const double coherent = ramp(kCoherenceLow, kCoherenceHigh, ridge.coherence);
     if (w.transverse > 0.0f || w.draa > 0.0f) {
-        const double main =
-            dune_forms::transverse(ridge.fraction, ridge.wavelength,
-                                   q.height * coherent * unbroken(m, q), gap, ridge.nominal);
-        sum += powerOf(main, w.transverse);
-        if (w.draa > 0.0f) {
-            sum += powerOf(draaAt(m, s, p, ridge, main, q.height * coherent), w.draa);
-        }
+        const double tall = q.height * coherent * unbroken(m, q);
+        const double main = layered(
+            m, s, p, ridge,
+            dune_forms::transverse(ridge.fraction, ridge.wavelength, tall, gap, ridge.nominal, kDig),
+            tall);
+        sum.add(main, w.transverse + w.draa);
     }
     if (w.barchan > 0.0f) {
-        sum += powerOf(barchanAt(m, s, p, ridge, q) * coherent, w.barchan);
+        sum.add(barchanAt(m, s, p, ridge, q) * coherent, w.barchan);
     }
     if (w.seif > 0.0f) {
-        sum += powerOf(seifAt(m, s, p, q), w.seif);
+        sum.add(seifAt(m, s, p, q), w.seif);
     }
-    return sum;
 }
 
 double starKind(const Ergs::Impl& m, const Point& q) {
@@ -387,25 +398,24 @@ float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
     // The characters: the realistic kinds, the big waves and the giant waves, by a power mean of
     // their heights weighted by the characters (the realistic alone: the same bits as before).
     const float realistic = 1.0f - e.waves - e.giants;
-    double sum = 0.0;
+    Blend sum;
     if (realistic > 0.0f) {
         const FormWeights w = weightsOf(e);
         if (w.star < 1.0f) {
-            sum += windKinds(m, s, q, w);
+            windKinds(m, s, q, w, sum);
         }
         if (w.star > 0.0f) {
-            sum += powerOf(starKind(m, q), w.star);
+            sum.add(starKind(m, q), w.star);
         }
-        sum *= static_cast<double>(realistic);
+        sum.scale(static_cast<double>(realistic));
     }
     if (e.waves > 0.0f) {
-        sum += powerOf(dune_waves::waves(m, s, x, z, q.sand, q.amplitude, false), e.waves);
+        sum.add(dune_waves::waves(m, s, x, z, q.sand, q.amplitude, false), e.waves);
     }
     if (e.giants > 0.0f) {
-        sum += powerOf(dune_waves::waves(m, s, x, z, q.sand, q.amplitude, true), e.giants);
+        sum.add(dune_waves::waves(m, s, x, z, q.sand, q.amplitude, true), e.giants);
     }
-    const double h = std::sqrt(std::sqrt(sum));
-    return static_cast<float>(h * edgeOf(e));
+    return static_cast<float>(sum.value() * edgeOf(e));
 }
 
 } // namespace terrain::dune_field
