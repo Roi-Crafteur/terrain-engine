@@ -47,7 +47,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Goto x z` | la vue à 1,8 m au-dessus du sol (ou de l'eau) en (x, z), même cap |
 | `Terrain.Goto x z 182.03` | l'œil à l'altitude 182,03 m du core |
 | `Terrain.Goto x z +25` | l'œil à 25 m au-dessus du sol ou de l'eau |
-| `Terrain.Goto <lieu>` | la vue d'un lieu du fichier (position, cap, inclinaison, œil) ; avertit si le lieu a besoin du fichier planète et que le monde n'en a pas |
+| `Terrain.Goto <lieu>` | la vue d'un lieu du fichier (position, cap, inclinaison, œil) ; avertit si le lieu a été mesuré avec le fichier planète et que le monde n'en a pas, ou sans lui et que le monde l'a |
 | `Terrain.Look cap inclinaison` | le cap en degrés depuis le nord, sens horaire ; l'inclinaison de −90 à 90, positive vers le haut, **négative vers le bas** (`Terrain.Look 0 -45` : vers le nord, 45° sous l'horizon) |
 | `Terrain.Eye 1800` / `Terrain.Eye +2` | l'œil à cette altitude, ou à cette hauteur au-dessus du sol ou de l'eau |
 | `Terrain.Pawn` | le pion du jeu rendu, posé sur le sol praticable le plus proche de la vue (50 m au plus), vérifié sur la collision et surveillé une seconde ; refusé au-dessus de l'eau ou sans sol praticable (message à l'écran) |
@@ -62,8 +62,9 @@ redemandent leur mode de vue à l'image suivante.
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),
 `Terrain.ShotSettle` (stabilité avant une image, 1 s), `Terrain.ShotShowUI` (0 : le render target
-de la vue en pixels physiques ; 1 : le viewport avec son UI, sans les panneaux de l'éditeur, ou la
-fenêtre entière si Slate ne peut pas le dessiner seul), `Terrain.PawnRadius` (rayon de la
+de la vue en pixels physiques ; 1 : le viewport avec son UI, sans les panneaux de l'éditeur ni
+ses 3 lignes de bordure, ou la fenêtre entière si Slate ne peut pas le dessiner seul),
+`Terrain.PawnRadius` (rayon de la
 recherche du sol praticable de `Terrain.Pawn`, 50 m).
 
 ### La téléportation : le contrat de `TeleportView`
@@ -212,6 +213,9 @@ fenêtre** pour comparer deux séries.
   `Terrain.ShotShowUI 1` prend le viewport avec son UI (F3 caché, les messages de l'écran
   gardés), comme Slate dessine son widget, à la taille du viewport en pixels physiques : sans les
   panneaux de l'éditeur, que `shot showui` prend avec lui (la fenêtre entière, 3 840 × 2 064).
+  Les 3 lignes du haut du widget, sa bordure (une ligne gris foncé, puis un trait bleu de 2
+  lignes dans l'éditeur), sont coupées : l'image a la largeur du viewport et 3 lignes de moins,
+  ce que disent le log et `views.txt` (« its top 3 rows cut »).
   Si Slate ne peut pas dessiner le viewport seul, un `WARNING` le dit et la fenêtre entière est
   prise par Unreal (méthode `whole window`, sa taille relue dans le PNG). Pendant toute la
   prise, la souris ne tourne plus la vue, et la pose est reposée juste avant la capture.
@@ -228,8 +232,9 @@ fenêtre** pour comparer deux séries.
 `views.txt` : la seed, le preset, le fichier planète, les anneaux de LOD, puis une ligne par vue
 (fichier, lieu, x, z, œil (celui de la caméra à la capture), yaw, inclinaison, prête ou non et
 après combien de secondes, tuiles en attente et affichées, horizon, images par seconde, et
-« WITHOUT the planet file it needs » quand le lieu demande le fichier planète et que le monde ne
-l'a pas).
+« WITHOUT the planet file it was measured with » quand le lieu a été mesuré avec le fichier
+planète et que le monde ne l'a pas, ou « WITH the planet file, measured without it » dans le cas
+inverse).
 
 ## Les modes de vue (`Terrain.View`)
 
@@ -264,8 +269,11 @@ par `terrain_core/dev/places_file` :
 - `x`, `z` : mètres du moteur ; `heading` : cap en degrés depuis le nord (−Z), sens horaire,
   dans [0, 360) (yaw Unreal = cap − 90) ; `pitch` : degrés, positif vers le haut, négatif vers
   le bas, dans [−90, 90] ; `eye` : altitude du core (`eyeMode` `altitude`) ou hauteur au-dessus
-  du sol ou de l'eau (`ground`, ≥ 0) ; `planet` : la vue a besoin du fichier planète (fleuves,
-  chutes, lacs, climat des biomes) ; `note` : facultative.
+  du sol ou de l'eau (`ground`, ≥ 0) ; `planet` : le lieu a été mesuré avec le fichier planète
+  (`true` : ses fleuves, chutes et lacs, le sol que son hydrologie creuse et remplit, le climat
+  des biomes) ou sans lui (`false`) ; `Terrain.Goto` et `Terrain.Views` avertissent quand le
+  monde n'est pas dans le même cas, car la vue n'y est plus la même ; `Terrain.Save` écrit si le
+  monde a le fichier ; `note` : facultative.
 - Lu et écrit par `terrain_core/dev/places_file` sur le lecteur JSON strict de `terrain/json`
   (PR #56, le même que celui du peuplement) : mêmes bits sur toutes les plateformes ; chaque
   nombre est un décimal exact m·10^e (m ≤ 2^53, |e| ≤ 22, donc au plus 15 à 16 chiffres).
@@ -287,38 +295,66 @@ par `terrain_core/dev/places_file` :
 | `chute388_bassin` | −6 185 104 | 155 924 | 227 | 30 | 182,03 m (altitude) | oui | la chute de 388 m depuis son bassin |
 | `chute388_levre` | −6 185 411 | 156 218 | 46 | −30 | +2 m | oui | sa lèvre (eau à 568,99 m), vers le bassin |
 | `chute388_mer` | −6 184 762 | 155 681 | 230 | 20 | +2 m | oui | la chute vue de l'aval, à 842 m de sa lèvre |
-| `k2_paroi` | 416 102 | −11 414 891 | 225 | 35 | +25 m | non | la plus haute paroi près du K2 (pied 416 017 ; −11 414 806, 420 m) |
-| `falaise_cotiere` | 429 908 | −855 305 | 217 | 3 | +2 m | non | la côte vue de la mer, au milieu de l'image (rivage de 171 à 262°, 375 m au plus près ; côte basse sur `main`) |
-| `montagnes_mer` | 1 430 074 | 2 052 007 | 133 | 5 | +2 m | non | des montagnes qui plongent dans la mer, au milieu de l'image (rivage de 84 à 182°, 165 m au plus près) |
-| `cote_froide` | 3 624 471 | −10 006 796 | 120 | 5 | +2 m | non | une côte froide vue de la mer |
-| `plage_origine` | −3 985 | −165 | 35 | 0 | +1,8 m | non | la plage près de l'origine, la mer au milieu de l'image (dans le core ; Unreal y montre du sable : voir plus bas) |
+| `k2_paroi` | 416 102 | −11 414 891 | 225 | 35 | +25 m | oui | la plus haute paroi près du K2 (pied 416 017 ; −11 414 806, 420 m) |
+| `falaise_cotiere` | 4 944 509 | −8 706 669 | 225 | 21,4 | +2 m | oui | montagne qui plonge dans la mer (55° en moyenne) en attendant les falaises marines de l'agent 33 : 0 m au rivage, 557 m à 400 m, 1 402 m à 1 km ; vue de la mer à 500 m du rivage, le pied et le sommet dans le cadre |
+| `montagnes_mer` | 1 430 074 | 2 052 007 | 133 | 5 | +2 m | oui | des montagnes qui plongent dans la mer, au milieu de l'image (rivage de 84 à 182°, 165 m au plus près) |
+| `cote_froide` | 3 624 471 | −10 006 796 | 120 | 5 | +2 m | oui | une côte froide vue de la mer |
+| `plage_origine` | 160 | 0 | 273 | 0 | +1,8 m | oui | la plage à 160 m de l'origine, la mer sur toute la vue (peu profonde : 0,12 m d'eau à 50 m, 2 m à 1 km) ; l'œil au-dessus du sable sec |
 | `fleuve_plaine` | −241 631 | −86 277 | 5 | 0 | +2 m | oui | un fleuve de plaine (eau à 3,28 m), vers l'aval |
 | `lac_montagne` | 7 369 228 | −7 088 911 | 180 | 5 | +2 m | oui | un lac de montagne (eau à 1 725,26 m) |
 | `lisiere_tropicale_savane` | −26 927 500 | −270 336 | 265 | −5 | +40 m | **non** | la lisière forêt tropicale / savane à 450 m vers l'ouest, au-dessus des arbres ; **sans** fichier planète seulement (avec lui, savane partout) |
 
-### `plage_origine` : la mer peu profonde rendue en sable (constat, à traiter dans la tâche « eau et horizon »)
+### Les lieux et le fichier planète
 
-- **Le core** : la caméra est sur le rivage (sol à 0,00 m) ; au cap 35 (la mer la plus profonde
-  au milieu de l'image : cap 34,5), la mer couvre toute la vue de 10 m à 3 km, mais peu
-  profonde : 0,17 m d'eau à 50 m, 0,74 m à 200 m, 1,73 m à 500 m, 2,52 m à 1 km.
-- **Unreal (essai de a028b7e, cap 40)** : en vue normale, du sable jusqu'à l'horizon, la mer
-  seulement dans un coin à gauche (≈ 20 % de la largeur). Avec `Terrain.View eau`, une surface
-  bleu clair uniforme et plate couvre tout le bas de l'image jusqu'à la caméra ; à l'horizon,
-  une bande bleu marine sombre qui finit par un bord courbe, elliptique.
-- **Ce que dit le code** : en mode `eau`, les outils cachent tout l'horizon et le sol des tuiles
-  (`TerrainDevLooks.cpp`), et les tuiles ne maillent pas la mer (fleuves et lacs seulement,
-  `Bridge/tile_water_mesh.cpp`) : la surface bleu clair, la bande sombre et le bord elliptique ne
-  sont donc pas la mer du plugin (seul l'horizon GPU la dessine : son carré de mer à 0 m sous les
-  tuiles), mais ce qui reste derrière quand rien n'est dessiné (sans doute le brouillard et le
-  ciel de la carte), et ce mode ne montre pas si le carré de mer est là. Le sable n'est pas une hauteur des tuiles : leur sol est celui du core (0,02 à
-  2,5 m sous 0 m ici, sans plancher à 0 m dans `convertMesh`), sous le carré de mer posé à 0 m
-  sans descente ni pixel depth offset ; en revanche le matériau de la mer tire sa couleur vers
-  le sable des hauts-fonds (`Scripts/horizon_sea_hlsl.py`, poids exp(−profondeur / 1,2 m) :
-  87 % à 0,17 m d'eau, 54 % à 0,74 m, 24 % à 1,73 m) ; le carré de mer est masqué là où moins de
-  la moitié des 4 texels de 8 m du niveau 0 autour du pixel sont de l'océan.
-- **Reste ouvert** : le coin de mer vu à gauche (caps −5 à 9 environ) n'est pas plus profond
-  dans le core (0,15 à 0,17 m à 50 m, 0,97 à 1,4 m à 500 m) : la profondeur seule n'explique pas
-  où Unreal montre la mer ou le sable.
+Unreal charge le fichier planète (la carte de test a `PlanetFile` par défaut) : tous les lieux
+sont mesurés avec lui (`planet.bin` de la seed 20261019, somme `26626564570b0d9e`), sauf
+`lisiere_tropicale_savane`, qui n'existe que sans lui. Mesures du 1er novembre 2026 sur `main` :
+
+- **Le même sol avec et sans la planète** (aucun écart de hauteur, au pas de 10 ou 20 m) à
+  8 km du pied de `k2_paroi`, à 5 km de `montagnes_mer` et de `cote_froide`, à 2 km du rivage de
+  `falaise_cotiere` ; leurs caps restent bons dans les deux cas.
+- **`chute388_*`, `fleuve_plaine`, `lac_montagne`** (mesurés avec la planète dès le début) : la
+  lèvre de la chute a son eau à 568,99 m, le bassin à 180,03 m (l'œil de `chute388_bassin` à
+  182,03 m, 2 m au-dessus), le sol de `chute388_mer` à 9,60 m ; le fleuve a son eau à 3,28 m sur
+  306 m de large ; le lac son eau à 1 725,26 m, avec 3 345 m à 3 km vers le sud.
+- **L'ancienne `plage_origine`** (−3 985 ; −165, cap 35, mesurée sans la planète) : avec elle,
+  l'hydrologie relève le sol de 1,94 m sous la caméra, et de 1,5 à 2 m sur presque toute la vue
+  jusqu'à 1 km ; la géographie y garde le drapeau de l'océan, mais le sol est au-dessus de l'eau
+  à 0 m : du sable sec. Le sable vu dans l'essai de a028b7e était donc le sol du core, pas la mer
+  peu profonde mal rendue, comme le disait la note de la #60 ; le mince coin de mer à gauche
+  (caps 345 à 360, au-delà de 100 m) est bien la mer du core. La nouvelle `plage_origine`
+  (160 ; 0, cap 273) a la même vue avec et sans la planète : la mer sur toute la vue de 20 m à
+  2 km, peu profonde (0,12 m d'eau à 50 m, 0,56 m à 200 m, 1,23 m à 500 m, 2 m à 1 km) ; l'œil
+  est au-dessus du sable sec (sol à 0,01 m, l'œil à 1,81 m), l'eau commence à 4,5 m devant.
+- **`falaise_cotiere`** : il n'y a pas encore de falaise marine sur `main` (pas de roche 3D sur
+  les côtes : elles viendront avec l'agent 33). C'est la côte la plus raide trouvée avec la
+  planète parmi les 6 000 cases océan de la carte planète (8 km) voisines des terres les plus
+  hautes (la plus forte montée sur 170 m depuis la mer, puis le profil tous les 5 m) : une
+  montagne qui plonge dans la mer, 55° en moyenne du rivage au sommet (0 m, 41 m à 100 m, 334 m
+  à 300 m, 557 m à 400 m, 1 402 m à 1 km ; 68° au plus raide sur 5 m), de 270 à 340 m de haut à
+  300 m du rivage, sur près de 2 km de large autour d'une baie. La vue : de la mer, à 500 m du rivage
+  (8,5 m d'eau, l'œil à 2 m), cap 225, inclinaison 21,4 : le pied au rivage à −0,2° et le sommet
+  à +43° (rien devant ne le cache), à ±22° du centre, dans le cadre d'une image 16:9 (±29,4°
+  pour un FOV horizontal de 90°).
+- **La ligne `coast` de `Terrain.Info`** est la distance au rivage du signal de côte de la
+  géographie, lissé, pas le premier sol sec : à l'ancienne `falaise_cotiere`, « at sea, 0.95 km
+  from the shore », alors que le premier sol sec est à 375 m (cap 208,5), avec et sans la
+  planète.
+
+### La mer du plugin en mode `eau` et la mer peu profonde (pour la tâche « eau et horizon »)
+
+En mode `eau`, les outils cachent tout l'horizon et le sol des tuiles (`TerrainDevLooks.cpp`),
+et les tuiles ne maillent pas la mer (fleuves et lacs seulement, `Bridge/tile_water_mesh.cpp`) :
+la surface bleu clair uniforme vue à l'ancienne `plage_origine` avec `Terrain.View eau`, sa bande
+bleu marine sombre à l'horizon et son bord courbe, elliptique, ne sont pas la mer du plugin
+(seul l'horizon GPU la dessine : son carré de mer à 0 m sous les tuiles), mais ce qui reste
+derrière quand rien n'est dessiné (sans doute le brouillard et le ciel de la carte), et ce mode
+ne montre pas si le carré de mer est là. Sous ce carré, les tuiles gardent le sol du core (sans
+plancher à 0 m dans `convertMesh`) ; il est posé à 0 m sans descente ni pixel depth offset, et
+masqué là où moins de la moitié des 4 texels de 8 m du niveau 0 autour du pixel sont de
+l'océan. Le matériau tire la couleur de la mer vers le sable des hauts-fonds
+(`Scripts/horizon_sea_hlsl.py`, poids exp(−profondeur / 1,2 m) : 90 % à 0,12 m d'eau, 63 % à
+0,56 m, 36 % à 1,23 m) : la nouvelle `plage_origine` est le lieu pour regarder cet aspect.
 
 ## Comparer avant / après
 

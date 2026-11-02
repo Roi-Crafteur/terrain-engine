@@ -181,14 +181,14 @@ void UTerrainDevTools::NextView()
 	const terrain::dev::Place& Place = Shot.Places[Shot.Index];
 	Shot.Current = {};
 	Shot.Current.place = Place;
-	Shot.Current.planetMissing = Place.planet && !HasPlanet();
+	Shot.Current.planet = terrain::unreal::planetMismatch(Place.planet, HasPlanet());
 	// The height of the eye is known once the ground is read on a thread: the one of the camera
 	// is written when the image is taken (Capture, TickShots).
 	Shot.Current.pose = terrain::unreal::placePose(Place, 0.0);
-	if (Shot.Current.planetMissing)
+	if (Shot.Current.planet != terrain::unreal::PlanetMismatch::None)
 	{
-		TerrainDev::Warn(FString::Printf(TEXT("%s needs the planet file: taken without it"),
-			*ToText(Place.name)));
+		TerrainDev::Warn(FString::Printf(TEXT("%s %s"), *ToText(Place.name),
+			*ToText(terrain::unreal::planetMismatchText(Shot.Current.planet))));
 	}
 	if (!PlaceView(Place.x, Place.z, Place.heading, Place.pitch, Place.eye, Place.eyeMode))
 	{
@@ -332,10 +332,12 @@ void UTerrainDevTools::FinishCapture()
 	if (Check.measured)
 	{
 		TerrainDev::Log(FString::Printf(TEXT("camera yaw %.2f pitch %.2f fov %.1f (pose yaw %.2f "
-			"pitch %.2f); image %dx%d, viewport %dx%d, its texture %dx%d, read from the %s"),
+			"pitch %.2f); image %dx%d, viewport %dx%d, its texture %dx%d, read from the %s%s"),
 			Check.camera.yaw, Check.camera.pitch, Check.fov, Shot.Current.pose.yaw,
 			Shot.Current.pose.pitch, Check.imageWidth, Check.imageHeight, Check.viewportWidth,
-			Check.viewportHeight, Check.textureWidth, Check.textureHeight, *ToText(Check.method)));
+			Check.viewportHeight, Check.textureWidth, Check.textureHeight, *ToText(Check.method),
+			Check.cutTop > 0 ? *FString::Printf(TEXT(", its top %d rows cut"), Check.cutTop)
+							 : TEXT("")));
 	}
 	for (const std::string& Warning : terrain::unreal::captureWarnings(Shot.Current))
 	{

@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -162,12 +163,31 @@ void testNames() {
                "yaw 137.00 pitch 30.00: ready after 7.4 s, 0 tiles pending, 200/200 shown, "
                "horizon done, 58.1 fps");
     record.ready = false;
-    record.planetMissing = true;
+    record.planet = terrain::unreal::PlanetMismatch::Missing;
     record.state.horizonBusy = true;
     const std::string line = terrain::unreal::describeView(record);
     TEST_CHECK(line.find("NOT READY (timeout)") != std::string::npos);
     TEST_CHECK(line.find("horizon busy") != std::string::npos);
-    TEST_CHECK(line.ends_with(", WITHOUT the planet file it needs"));
+    TEST_CHECK(line.ends_with(", WITHOUT the planet file it was measured with"));
+    record.planet = terrain::unreal::PlanetMismatch::Loaded;
+    TEST_CHECK(terrain::unreal::describeView(record).ends_with(
+        ", WITH the planet file, measured without it"));
+}
+
+// A place measured with the planet file, or without it, against the world (Terrain.Goto and
+// Terrain.Views warn of both).
+void testPlanetMismatch() {
+    using terrain::unreal::PlanetMismatch;
+    using terrain::unreal::planetMismatch;
+    TEST_CHECK(planetMismatch(true, true) == PlanetMismatch::None);
+    TEST_CHECK(planetMismatch(false, false) == PlanetMismatch::None);
+    TEST_CHECK(planetMismatch(true, false) == PlanetMismatch::Missing);
+    TEST_CHECK(planetMismatch(false, true) == PlanetMismatch::Loaded);
+    TEST_CHECK(std::string_view(terrain::unreal::planetMismatchText(PlanetMismatch::None)).empty());
+    TEST_CHECK(std::string_view(terrain::unreal::planetMismatchText(PlanetMismatch::Missing))
+                   .ends_with("this world has none"));
+    TEST_CHECK(std::string_view(terrain::unreal::planetMismatchText(PlanetMismatch::Loaded))
+                   .starts_with("was measured without the planet file"));
 }
 
 // How an image was taken, in views.txt: the camera read back against the pose, the sizes; and
@@ -211,6 +231,19 @@ void testCaptureCheck() {
     c.camera.yaw = -179.4;
     c.imageWidth = 0; // not known: no warning on the size
     TEST_CHECK(terrain::unreal::captureWarnings(record).empty());
+    // The viewport and its UI (Terrain.ShotShowUI 1), its top 3 rows cut: the size of the view.
+    c.textureWidth = 2027;
+    c.textureHeight = 1724;
+    c.imageWidth = 2027;
+    c.imageHeight = 1721;
+    c.cutTop = 3;
+    c.method = "viewport and its UI";
+    TEST_CHECK(terrain::unreal::captureWarnings(record).empty());
+    TEST_CHECK(terrain::unreal::describeView(record).ends_with(
+        "image 2027x1721 (viewport 1920x1080, texture 2027x1724, read from the viewport and its "
+        "UI, its top 3 rows cut)"));
+    c.cutTop = 0; // 3 rows missing for nothing
+    TEST_CHECK(terrain::unreal::captureWarnings(record).size() == 1);
 }
 
 // The size of a PNG from its header: a real one, cut short, not a PNG.
@@ -238,6 +271,7 @@ int main() {
     testWaiter();
     testNames();
     testCaptureCheck();
+    testPlanetMismatch();
     testPngSize();
     return test::result();
 }

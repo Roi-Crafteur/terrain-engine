@@ -375,6 +375,15 @@ void testRepositoryFile(const char* path) {
     }
     const Place* basin = file.find("chute388_bassin");
     TEST_CHECK(basin != nullptr && basin->x == -6185104.0 && basin->eye == 182.03);
+    // Measured with the planet file, as Unreal loads it, but the edge that exists only without
+    // it (with it, savanna all around).
+    for (const Place& place : file.places) {
+        const bool withPlanet = place.name != "lisiere_tropicale_savane";
+        if (place.planet != withPlanet) {
+            std::fprintf(stderr, "  %s: %s planet %d\n", path, place.name.c_str(), place.planet);
+            TEST_CHECK(place.planet == withPlanet);
+        }
+    }
 }
 
 } // namespace

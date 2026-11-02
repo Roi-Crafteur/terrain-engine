@@ -88,12 +88,16 @@ struct CaptureCheck {
     int textureHeight = 0;
     int imageWidth = 0;   // the image written; 0: not known
     int imageHeight = 0;
-    std::string method;   // "texture": its render target read; "window": shot showui
+    int cutTop = 0;       // rows cut off the top of the view (the border of the viewport widget)
+    // "texture": its render target read; "viewport and its UI": its widget drawn by Slate;
+    // "whole window": the window, by Unreal.
+    std::string method;
 };
 
 // What a run of Terrain.Views keeps of a view, in its views.txt: the place and its pose, how
 // long it waited and whether it was ready, what the streaming still had to do then, the frames
-// per second, and whether the planet file the place needs was missing.
+// per second, and whether the world had the planet file the place was measured with, or one it
+// was measured without.
 struct ViewRecord {
     std::string file;
     dev::Place place;
@@ -102,12 +106,13 @@ struct ViewRecord {
     bool ready = false;
     StreamingState state;
     double framesPerSecond = 0.0;
-    bool planetMissing = false;
+    PlanetMismatch planet = PlanetMismatch::None;
     CaptureCheck capture;
 };
 
 // What looks wrong in a capture: the camera turned more than 0.5 degree away from the pose, or
-// an image whose size is not the one of the render target of the view.
+// an image whose size, with the rows cut off its top, is not the one of the render target of
+// the view.
 [[nodiscard]] std::vector<std::string> captureWarnings(const ViewRecord& record);
 
 // The width and height of a PNG from its first 24 bytes (its signature and its IHDR chunk), or

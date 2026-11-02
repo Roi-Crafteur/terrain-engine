@@ -96,7 +96,8 @@ bool UTerrainDevTools::ReadViewTexture(const FString& File, terrain::unreal::Cap
 
 // The viewport of the game with its UI, as Slate draws its widget (the debug canvas, the HUD and
 // the widgets over it; not the panels of the editor around it), into a PNG at File, the size of
-// the widget in physical pixels. False, logged, when Slate cannot draw it alone.
+// the widget in physical pixels less the 3 rows of its border at the top. False, logged, when
+// Slate cannot draw it alone.
 bool UTerrainDevTools::ReadViewWidget(const FString& File, terrain::unreal::CaptureCheck& Check)
 {
 	const UWorld* GameWorld = World->GetWorld();
@@ -117,13 +118,19 @@ bool UTerrainDevTools::ReadViewWidget(const FString& File, terrain::unreal::Capt
 	{
 		Pixel.A = 255;
 	}
-	if (!FImageUtils::SaveImageByExtension(*File, FImageView(Pixels.GetData(), Size.X, Size.Y)))
+	// The border of the widget along its top (a dark row, then a blue line two rows thick in
+	// the editor), cut off: the view alone, its height less these rows (views.txt says so).
+	constexpr int32 BorderRows = 3;
+	const int32 Cut = Size.Y > BorderRows ? BorderRows : 0;
+	if (!FImageUtils::SaveImageByExtension(*File,
+			FImageView(Pixels.GetData() + Cut * Size.X, Size.X, Size.Y - Cut)))
 	{
 		TerrainDev::Warn(FString::Printf(TEXT("the image could not be written: %s"), *File));
 		return false;
 	}
 	Check.imageWidth = Size.X;
-	Check.imageHeight = Size.Y;
+	Check.imageHeight = Size.Y - Cut;
+	Check.cutTop = Cut;
 	return true;
 }
 
