@@ -511,4 +511,5 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/settlement_tests.cmake) # agent 25: the sett
 include(${CMAKE_CURRENT_SOURCE_DIR}/unreal_water_tests.cmake) # agent 27: the water in Unreal
 include(${CMAKE_CURRENT_SOURCE_DIR}/loading_tests.cmake) # agent 38: the load at the spawn and after a teleport
 include(${CMAKE_CURRENT_SOURCE_DIR}/dev_tools_tests.cmake) # agent 36: the tools in the game
+include(${CMAKE_CURRENT_SOURCE_DIR}/verify_tests.cmake) # agent 37: the probe and the verification
 include(${CMAKE_CURRENT_SOURCE_DIR}/dev_map_tests.cmake) # agent 35: the dev map

@@ -117,11 +117,13 @@ private:
 	void TickShots();
 	void Capture();
 	void OnShotProcessed();
+	void FinishCapture();
 	void FinishViews();
 
 	// TerrainDevCapture.cpp
 	terrain::unreal::CaptureCheck MeasureCapture(const char* Method) const;
 	bool ReadViewTexture(const FString& File, terrain::unreal::CaptureCheck& Check);
+	bool ReadViewWidget(const FString& File, terrain::unreal::CaptureCheck& Check);
 
 	// TerrainDevLooks.cpp
 	void SetViewMode(terrain::unreal::ViewMode Mode);

@@ -161,10 +161,12 @@ void UTerrainDevTools::RunGoto(const std::vector<std::string>& Args)
 				*PlacesPath()));
 			return;
 		}
-		if (Found->planet && !HasPlanet())
+		const terrain::unreal::PlanetMismatch Mismatch =
+			terrain::unreal::planetMismatch(Found->planet, HasPlanet());
+		if (Mismatch != terrain::unreal::PlanetMismatch::None)
 		{
-			TerrainDev::Warn(FString::Printf(TEXT("%s needs the planet file (rivers, falls, lakes): "
-				"this world has none"), *ToText(Found->name)));
+			TerrainDev::Warn(FString::Printf(TEXT("%s %s"), *ToText(Found->name),
+				*ToText(terrain::unreal::planetMismatchText(Mismatch))));
 		}
 		TeleportView(Found->x, Found->z, Found->heading, Found->pitch, Found->eye,
 			EyeModeOf(Found->eyeMode));

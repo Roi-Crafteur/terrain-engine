@@ -6,6 +6,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/world_size.hpp"
 
+#include <cstdint>
 #include <string>
 
 namespace terrain::unreal {
@@ -62,6 +63,16 @@ struct UnrealDirection {
 [[nodiscard]] ViewPose viewPose(double x, double z, double heading, double pitch, double eye,
                                 dev::EyeMode mode, double top);
 [[nodiscard]] ViewPose placePose(const dev::Place& place, double top);
+
+// Whether a place was measured with the planet file the world has (dev::Place::planet). With the
+// file, the hydrology of the planet carves and fills the ground near its rivers (the beach of
+// (-3985 ; -165) stands 1.94 m higher), adds its rivers, falls and lakes, and its climate changes
+// the biomes: a place measured with it is another view without it (Missing), and the other way
+// round (Loaded). Terrain.Goto and Terrain.Views warn of both.
+enum class PlanetMismatch : std::uint8_t { None, Missing, Loaded };
+[[nodiscard]] PlanetMismatch planetMismatch(bool measuredWithPlanet, bool worldHasPlanet);
+// What to tell after the name of the place; empty for None.
+[[nodiscard]] const char* planetMismatchText(PlanetMismatch mismatch);
 
 // The rotation of the camera for a pose (TeleportView), or for a heading and a pitch
 // (Terrain.Look): the yaw of the pose (or of heading), its pitch clamped to [-90, 90] and kept
