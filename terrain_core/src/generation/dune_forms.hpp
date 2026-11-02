@@ -6,6 +6,7 @@
 // the wind are gentle; the crests are sharp (the brink where the back meets the slip face).
 
 #include <cstdint>
+#include <functional>
 
 namespace terrain::dune_forms {
 
@@ -61,8 +62,21 @@ struct StarLattice {
     double height = 0.0;
     double occupancy = 0.0;
     std::uint64_t key = 0;
+    // Stars on a pedestal: how far below their pedestal they reach before they end (the lowest
+    // ground around them), so that they end under it, never in a step.
+    double depth = 0.0;
 };
 [[nodiscard]] double stars(const StarLattice& lattice, double x, double z);
+// The ground under a star on a pedestal, and the share of its height it takes there ([0, 1]).
+struct Pedestal {
+    double base = 0.0;
+    double presence = 0.0;
+};
+// Stars standing on a pedestal: pedestal(cx, cz) gives the ground under the star centered there;
+// the star rises from it, and sinks lattice.depth under it as its presence falls to 0. -infinity
+// where no star reaches (x, z).
+[[nodiscard]] double starsOn(const StarLattice& lattice, double x, double z,
+                             const std::function<Pedestal(double, double)>& pedestal);
 
 // The Hermite curve 3t^2 - 2t^3 of t clamped to [0, 1].
 [[nodiscard]] double hermite(double t);

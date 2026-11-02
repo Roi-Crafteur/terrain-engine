@@ -30,8 +30,10 @@ constexpr double kPresenceSoft = 0.12;
 // their crests from kArmTop to kArmTop + kArmTopSpread of the peak down to the floor at their end,
 // each bent sideways by up to kArmBend of its length at its end: no two alike.
 constexpr double kStarJitter = 0.6;
-constexpr double kStarLow = 0.6;
-constexpr double kStarSpread = 0.7;
+constexpr double kStarLow = 0.35;
+constexpr double kStarSpread = 0.85;
+// Their base an ellipse, up to kStarStretch times as long as wide, turned at random.
+constexpr double kStarStretch = 1.2;
 constexpr double kStarMost = 300.0;
 constexpr double kArmLow = 1.2;
 constexpr double kArmSpread = 1.3;
@@ -40,8 +42,11 @@ constexpr double kArmTopSpread = 0.35;
 constexpr double kArmTurn = 0.6;
 constexpr double kArmBend = 0.35;
 
-// The trough between two ridges reaches this share of the back of the next.
+// The trough between two ridges reaches this share of the back of the next; its flanks are never
+// steeper than kTroughTan (14 degrees).
 constexpr double kTroughBack = 0.4;
+constexpr double kTroughTan = 0.25;
+constexpr double kTroughFall = 1.5396007178390020; // 8 / 3^1.5
 
 double hermite01(double t) {
     t = std::clamp(t, 0.0, 1.0);
@@ -71,9 +76,11 @@ double trough(double d, double from, double to, double depth) {
     if (!(depth > 0.0) || !(to > from) || !(d > from) || !(d < to)) {
         return 0.0;
     }
+    // Never steeper than kTroughTan: (1 - u^2)^2 falls at most 8 / 3^1.5 per unit of u.
+    const double deepest = kTroughTan * 0.5 * (to - from) / kTroughFall;
     const double u = (2.0 * d - from - to) / (to - from);
     const double v = 1.0 - u * u;
-    return depth * v * v;
+    return std::min(depth, deepest) * v * v;
 }
 
 double transverse(double t, double wavelength, double height, double gap, double nominal,
@@ -136,13 +143,61 @@ double seif(double offset, double height, double slip) {
 
 namespace {
 
+constexpr double kNone = -1.0e30;
+
+// How far from its center a star of this peak reaches down to depth under its foot: its cone
+// (stretched) or the end of its longest arm (bent), then down its flanks at kLeeTan (with the
+// slack of the bend of the arm).
+double reachOf(double peak, double depth) {
+    const double radius = peak / kStarTan;
+    const double cone = (peak + depth) / kStarTan * (1.0 + kStarStretch);
+    if (!(depth > 0.0)) {
+        return std::max(cone, radius * (kArmLow + kArmSpread) * (1.0 + kArmBend));
+    }
+    // The gentlest flank of an arm: under its steepest crest (armOf).
+    const double fall = (kArmTop + kArmTopSpread) * kStarTan / kArmLow;
+    const double flank = std::sqrt(kLeeTan * kLeeTan - fall * fall);
+    const double arms = radius * (kArmLow + kArmSpread) * (1.0 + kArmBend) +
+                        (peak + depth) / flank * std::sqrt(1.0 + 4.0 * kArmBend * kArmBend);
+    return std::max(cone, arms);
+}
+
+// One arm of a star (its hash ka) at (ox, oz) from its center: its crest bends sideways along a
+// parabola and falls from top at the peak to the foot at its end, then on along its axis; its
+// flanks and its crest together at kLeeTan at most. Across the bent crest, the offset from the
+// parabola over its slope, so that the flanks keep their angle.
+double armOf(std::uint64_t ka, double turn, int k, int arms, double radius, double top,
+             double ox, double oz) {
+    const dmath::SineCosine d = dmath::sinCosTurns(
+        turn + (static_cast<double>(k) + kArmTurn * (uniform(ka) - 0.5)) / arms);
+    const double along = ox * d.cosine + oz * d.sine;
+    if (!(along > 0.0)) {
+        return kNone;
+    }
+    const double length = radius * (kArmLow + kArmSpread * uniform(noise::deriveSeed(ka, 1)));
+    const double bend = kArmBend * (2.0 * uniform(noise::deriveSeed(ka, 2)) - 1.0);
+    const double on = std::min(along, length);
+    const double tilt = 2.0 * bend * on / length;
+    const double across = std::abs(oz * d.cosine - ox * d.sine - bend * on * on / length) /
+                          std::sqrt(1.0 + tilt * tilt);
+    // The crest falls at top / length: the flanks at their angle with it.
+    const double fall = top / length;
+    const double flank = std::sqrt(std::max(0.0, kLeeTan * kLeeTan - fall * fall));
+    if (along < length) {
+        return top * (1.0 - along / length) - flank * across;
+    }
+    return -dmath::hypot(kLeeTan * (along - length), flank * across);
+}
+
 // One star of the cell (i, j) (wrapped as wi, wj for its draws) at (x, z).
 double starOf(const StarLattice& s, std::int64_t i, std::int64_t j, std::int64_t wi,
-              std::int64_t wj, double x, double z) {
+              std::int64_t wj, double x, double z,
+              const std::function<Pedestal(double, double)>* pedestal) {
+    const double none = pedestal != nullptr ? kNone : 0.0;
     const std::uint64_t h = cellHash(s.key, wi, wj);
     const double there = presence(uniform(h), s.occupancy);
     if (!(there > 0.0)) {
-        return 0.0;
+        return none;
     }
     const double cx = (static_cast<double>(i) + 0.5 +
                        kStarJitter * (uniform(noise::deriveSeed(h, 1)) - 0.5)) * s.cell -
@@ -152,58 +207,76 @@ double starOf(const StarLattice& s, std::int64_t i, std::int64_t j, std::int64_t
                       0.5 * s.periodZ;
     const double ox = x - cx;
     const double oz = z - cz;
-    const double peak =
+    double peak =
         std::min(s.height * (kStarLow + kStarSpread * uniform(noise::deriveSeed(h, 3))), kStarMost) *
         there;
-    const double radius = peak / kStarTan;
-    const double dist = dmath::hypot(ox, oz);
-    if (!(dist < radius * (kArmLow + kArmSpread) * (1.0 + kArmBend))) {
-        return 0.0;
+    if (!(dmath::hypot(ox, oz) < reachOf(peak, s.depth))) {
+        return none;
     }
+    Pedestal under;
+    if (pedestal != nullptr) {
+        under = (*pedestal)(cx, cz);
+        peak *= under.presence;
+    }
+    const double radius = peak / kStarTan;
+    // The peak: a cone over an ellipse (its long axis stretched, its slopes gentler along it).
+    const dmath::SineCosine e = dmath::sinCosTurns(uniform(noise::deriveSeed(h, 7)));
+    const double stretch = 1.0 + kStarStretch * uniform(noise::deriveSeed(h, 6));
+    const double dist = dmath::hypot((ox * e.cosine + oz * e.sine) / stretch,
+                                     oz * e.cosine - ox * e.sine);
     double best = peak - kStarTan * dist;
     const int arms = 2 + static_cast<int>(noise::deriveSeed(h, 4) % 5);
     const double turn = uniform(noise::deriveSeed(h, 5));
     for (int k = 0; k < arms; ++k) {
         const std::uint64_t ka = noise::deriveSeed(h, 10 + static_cast<std::uint64_t>(k));
-        const dmath::SineCosine d = dmath::sinCosTurns(
-            turn + (static_cast<double>(k) + kArmTurn * (uniform(ka) - 0.5)) / arms);
-        const double along = ox * d.cosine + oz * d.sine;
-        const double length = radius * (kArmLow + kArmSpread * uniform(noise::deriveSeed(ka, 1)));
-        if (!(along > 0.0) || !(along < length)) {
-            continue;
-        }
-        // The arm bends sideways along a parabola, its crest falling from the peak to its end.
-        const double bend = kArmBend * (2.0 * uniform(noise::deriveSeed(ka, 2)) - 1.0);
-        // Across the bent crest: the offset from the parabola over its slope, so that the flanks keep
-        // the angle of their slip faces.
-        const double tilt = 2.0 * bend * along / length;
-        const double across = std::abs(oz * d.cosine - ox * d.sine - bend * along * along / length) /
-                              std::sqrt(1.0 + tilt * tilt);
         const double top = (kArmTop + kArmTopSpread * uniform(noise::deriveSeed(ka, 3))) * peak;
-        best = std::max(best, top * (1.0 - along / length) - kLeeTan * across);
+        best = std::max(best, armOf(ka, turn, k, arms, radius, top, ox, oz));
     }
-    return std::max(0.0, best);
+    if (pedestal == nullptr) {
+        return std::max(0.0, best);
+    }
+    // A star fading off its pedestal sinks under it.
+    return under.base + best - (1.0 - under.presence) * s.depth;
 }
 
 } // namespace
+
+// The stars of the cells around (x, z) whose stars may reach it, the highest.
+double starsAround(const StarLattice& s, double x, double z, double none,
+                   const std::function<Pedestal(double, double)>* pedestal) {
+    const auto nx = static_cast<std::int64_t>(std::floor(s.periodX / s.cell + 0.5));
+    const auto nz = static_cast<std::int64_t>(std::floor(s.periodZ / s.cell + 0.5));
+    const dmath::FloorIndex gi = dmath::floorIndex((x + 0.5 * s.periodX) / s.cell);
+    const dmath::FloorIndex gj = dmath::floorIndex((z + 0.5 * s.periodZ) / s.cell);
+    // A center lies at least (k - 1 + (1 - kStarJitter) / 2) cells from a point k cells away.
+    const double reach = reachOf(std::min(s.height * (kStarLow + kStarSpread), kStarMost), s.depth);
+    const auto span = static_cast<std::int64_t>(
+        std::ceil(reach / s.cell + 0.5 + 0.5 * kStarJitter) - 1.0);
+    double best = none;
+    for (std::int64_t dj = -span; dj <= span; ++dj) {
+        for (std::int64_t di = -span; di <= span; ++di) {
+            const std::int64_t i = gi.index + di;
+            const std::int64_t j = gj.index + dj;
+            best = std::max(best, starOf(s, i, j, ((i % nx) + nx) % nx, ((j % nz) + nz) % nz, x, z,
+                                         pedestal));
+        }
+    }
+    return best;
+}
 
 double stars(const StarLattice& s, double x, double z) {
     if (!(s.occupancy > 0.0) || !(s.height > 0.0)) {
         return 0.0;
     }
-    const auto nx = static_cast<std::int64_t>(std::floor(s.periodX / s.cell + 0.5));
-    const auto nz = static_cast<std::int64_t>(std::floor(s.periodZ / s.cell + 0.5));
-    const dmath::FloorIndex gi = dmath::floorIndex((x + 0.5 * s.periodX) / s.cell);
-    const dmath::FloorIndex gj = dmath::floorIndex((z + 0.5 * s.periodZ) / s.cell);
-    double best = 0.0;
-    for (std::int64_t dj = -1; dj <= 1; ++dj) {
-        for (std::int64_t di = -1; di <= 1; ++di) {
-            const std::int64_t i = gi.index + di;
-            const std::int64_t j = gj.index + dj;
-            best = std::max(best, starOf(s, i, j, ((i % nx) + nx) % nx, ((j % nz) + nz) % nz, x, z));
-        }
+    return starsAround(s, x, z, 0.0, nullptr);
+}
+
+double starsOn(const StarLattice& s, double x, double z,
+               const std::function<Pedestal(double, double)>& pedestal) {
+    if (!(s.occupancy > 0.0) || !(s.height > 0.0)) {
+        return -1.0e30;
     }
-    return best;
+    return starsAround(s, x, z, -1.0e30, &pedestal);
 }
 
 } // namespace terrain::dune_forms

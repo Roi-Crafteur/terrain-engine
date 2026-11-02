@@ -140,6 +140,7 @@ struct ErgMemos {
     noise::FbmOctaves::Memo shore;
     noise::FbmOctaves::Memo character;
     noise::FbmOctaves::Memo waveJoins;
+    noise::FbmOctaves::Memo waveEnds;
     noise::FbmOctaves::Memo lakeShore;
 };
 [[nodiscard]] ErgMemos& memosOf(const Ergs::Impl& m);

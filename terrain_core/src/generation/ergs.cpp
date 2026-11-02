@@ -376,17 +376,19 @@ std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z) {
 }
 
 // The sand of the ergs buries the local relief of the geography (its hills, buttes and plains:
-// HeightSample::base over regional): the surface of the dunes rides on the regional ground; a
-// butte stands out of it by what it rises over kBuryMost, a hollow keeps what it sinks under
-// it. Faded with the mask over its first kBuryFade: none at the edges of the erg.
+// HeightSample::base over regional): the surface of the dunes rides on the regional ground, a
+// hollow keeps what it sinks under it past kBuryMost; the rock, kBuryMost under the ground of the
+// geography, stands out of the sand where it rises over it (its slopes never add to those of the
+// dunes). Faded with the mask over its first kBuryFade: none at the edges of the erg.
 static float buried(const HeightSample& s, const ErgPoint& e, double dunes) {
     const double local = static_cast<double>(s.base) - static_cast<double>(s.regional);
     if (local == 0.0) {
         return static_cast<float>(dunes);
     }
-    const double out = std::max(0.0, std::abs(local) - kBuryMost) * (local > 0.0 ? 1.0 : -1.0);
+    const double hollow = std::min(0.0, local + kBuryMost);
     const double share = static_cast<double>(noise::smoothstep(0.0f, kBuryFade, e.mask));
-    return static_cast<float>(dunes + (out - local) * share);
+    const double surface = std::max(dunes + hollow - local, -kBuryMost);
+    return static_cast<float>(dunes + (surface - dunes) * share);
 }
 
 float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,

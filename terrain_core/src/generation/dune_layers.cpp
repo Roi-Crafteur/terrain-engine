@@ -17,8 +17,8 @@ constexpr double kGap = 0.15;                 // the floor between two of them, 
 constexpr double kPivotSpacing = 2'000.0;
 constexpr double kSinuous = 4.0;
 constexpr double kBreakShift = 1'913.0;
-constexpr float kBreakLow = -0.25f;
-constexpr float kBreakHigh = 0.1f;
+constexpr float kBreakLow = -0.5f;
+constexpr float kBreakHigh = 0.25f;
 constexpr float kCoherenceLow = 0.03f;         // they fade around the defects of their phase
 constexpr float kCoherenceHigh = 0.3f;
 
