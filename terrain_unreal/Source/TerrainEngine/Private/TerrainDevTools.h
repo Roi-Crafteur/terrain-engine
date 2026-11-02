@@ -72,6 +72,10 @@ public:
 	bool IsViewLoading() const;
 	bool ReturnToGamePawn(bool bUnderView);
 
+	// The places file (Terrain.PlacesFile, by default data/dev/places.json of the repository): also
+	// the places of the dev map (agent 35).
+	FString PlacesPath() const;
+
 private:
 	// TerrainDevTools.cpp
 	void TickWorld(float DeltaSeconds);
@@ -83,7 +87,6 @@ private:
 	// The places of the places file (Terrain.PlacesFile, by default data/dev/places.json of the
 	// repository), or false with the reason in the log; Missing: an empty file of places.
 	bool LoadPlacesFile(terrain::dev::PlacesFile& OutPlaces, bool bMissingIsEmpty) const;
-	FString PlacesPath() const;
 
 	// TerrainDevScreen.cpp
 	void Draw(UCanvas* Canvas, APlayerController* PlayerController);

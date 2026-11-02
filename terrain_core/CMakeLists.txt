@@ -143,6 +143,13 @@ add_library(terrain_core STATIC
     src/io/relief_stats_terrain.cpp
     src/io/relief_view.cpp
     src/io/voronoi_png.cpp
+    src/map/map_frame.cpp
+    src/map/map_layers.cpp
+    src/map/map_probe.cpp
+    src/map/map_render.cpp
+    src/map/map_source.cpp
+    src/map/map_style.cpp
+    src/map/map_water.cpp
     src/meshing/marching_cubes.cpp
     src/storage/block_section.cpp
     src/storage/chunk_record.cpp
@@ -394,6 +401,14 @@ target_include_directories(terrain_probe_lib PUBLIC tools)
 target_link_libraries(terrain_probe_lib PUBLIC terrain_core PRIVATE terrain_warnings)
 add_executable(terrain_probe tools/probe.cpp)
 target_link_libraries(terrain_probe PRIVATE terrain_probe_lib terrain_warnings)
+
+# The dev map of the world in a PNG (agent 35): a box, a point at a spacing or the whole world,
+# or the tiles of the map pyramid around a point, timed. See tools/export_map.cpp.
+# terrain_export_map [--planet <file>] [--seed <seed>] [--threads <n>] [--layers <a,b,...>]
+#   [--max-samples <n>] (--box <x> <z> <w> <h> | --center <x> <z> --mpp <m> | --whole)
+#   (--size <w> <h> | --tiles <n>) <out.png>
+add_executable(terrain_export_map tools/export_map.cpp)
+target_link_libraries(terrain_export_map PRIVATE terrain_core terrain_warnings)
 
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
 # <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests

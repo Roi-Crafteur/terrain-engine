@@ -18,6 +18,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/Paths.h"
+#include "TerrainDevMap.h"
 #include "TerrainEngineLog.h"
 #include "TerrainHorizonClipmap.h"
 #include "TerrainHorizonMeshes.h"
@@ -79,6 +80,7 @@ ATerrainWorld::ATerrainWorld()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = true;
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	DevMap = CreateDefaultSubobject<UTerrainDevMapComponent>(TEXT("DevMap"));
 #if WITH_EDITORONLY_DATA
 	// World Partition must not unload the actor that streams the terrain.
 	bIsSpatiallyLoaded = false;
@@ -128,6 +130,10 @@ void ATerrainWorld::ReleaseWorld()
 	TileSurfaceLook = nullptr;
 	TileWaterLook = nullptr;
 	StopAtmosphere();
+	if (DevMap != nullptr)
+	{
+		DevMap->StopMap(); // its threads read the tiles of the session: they stop first
+	}
 	if (Starting.IsValid())
 	{
 		EndTerrainStart(*this, *Starting.Get());

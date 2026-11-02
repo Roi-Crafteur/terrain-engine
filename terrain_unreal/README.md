@@ -635,3 +635,83 @@ montre, en GPU comme en CPU.
   dessiné en mer ; une très grosse modification met quelques centaines de millisecondes à
   sortir du fil de modifications (sans bloquer le jeu), et les modifications suivantes
   attendent leur tour.
+
+## 16. La carte de dev et la minicarte (agent 35)
+
+Voir le monde, zoomer, cliquer, y être. `terrain_core` rend les images de la carte (données
+seulement, `terrain/map`, `terrain_export_map` pour un PNG) ; le Bridge choisit les tuiles de
+chaque vue et les rend sur des fils à lui, jamais sur le fil du jeu
+(`Bridge/map_tile_cache.hpp`) ; le composant `Terrain Dev Map` (`DevMap` de `Terrain World`) ne
+fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image) et les dessiner
+(Slate).
+
+- **Minicarte** (`bMinimap`, coin `MinimapCorner`, côté `MinimapSize`) : centrée sur le joueur,
+  flèche de direction, le nord en haut ; `bMinimapRotates` (ou `Terrain.Map.MinimapRotate 1`) la
+  fait tourner avec le joueur (un « N » montre alors le nord). Zoom : `MinimapMetersPerPixel`
+  (4 m par pixel : 1 km de côté), les touches `+` et `−` du pavé numérique (deux fois plus près ou
+  plus loin) ou `Terrain.Map.MinimapZoom <m/px>`. Faite pour le jeu aussi : sa vue, ses tuiles et
+  son dessin sont à part de la carte de dev ; le masque des zones découvertes d'une carte de jeu
+  se branchera sur `Bridge/map_reveal.hpp`.
+- **Carte de dev** (touche `M`, `DevMapKey`, ou `Terrain.Map`) : plein écran, curseur visible,
+  le personnage et la caméra ne bougent plus ; `M` ou Échap la ferment. Molette : zoom autour du
+  curseur, de 0,25 m à 65 km par pixel (la planète entière) ; glisser : déplacer. Panneau de
+  droite : le fichier planète (chargé, construit, ou ABSENT : ni fleuves, ni lacs, ni chutes), les
+  calques (relief, biomes, eau, courbes), « Go to x, z » (`-241631, -86277`, ou
+  `-6 185 104 ; 155 924`), « Me » (recentrer sur le joueur), « Add this place » (la vue de la
+  caméra), les lieux enregistrés, et sous le curseur : x, z, sol, eau (type, niveau, profondeur),
+  biome, climat, case de la planète. **Jamais dans un build Shipping** : la carte plein écran, ses
+  lieux, ses clics, la touche `M` et `Terrain.Map` sont sous `#if TERRAIN_DEV_TOOLS`, comme les
+  outils de l'agent 36 (`unreal_dev_map_sources` le vérifie) ; la minicarte et les tuiles restent
+  dans tous les builds.
+- **Les lieux** sont ceux des outils de l'agent 36 : le fichier `Terrain.PlacesFile`
+  (`data/dev/places.json` par défaut), relu à chaque ouverture de la carte. « Add this place » y
+  écrit la vue de la caméra comme `Terrain.Save` (même arrondi ; un lieu du même nom est mis à
+  jour, ses champs inconnus gardés). Un repère jaune (rouge s'il demande le fichier planète
+  absent) : un clic dessus prend la vue du lieu (position, cap, inclinaison, œil) par
+  `ATerrainWorld::TeleportView`.
+- **Clic = y aller**, le cap et l'inclinaison gardés ; « Go to x, z » fait de même :
+  - **sur terre**, le **pion du jeu** : la vue des outils va au point
+    (`ATerrainWorld::TeleportView`, l'écran noir et le pion tenu jusqu'à ce que le monde autour soit
+    là, `LOADING.md`), puis `ATerrainWorld::ReturnToGamePawn` (agent 36) pose le pion du jeu sur le
+    sol praticable le plus proche, vérifié sur la collision des tuiles et surveillé une seconde
+    (`DEV_TOOLS.md`) ;
+  - **dans l'eau peu profonde** (un sol sec à moins de `Terrain.PawnRadius`, 50 m) : la vue va
+    d'abord sur la colonne sèche la plus proche, puis de même ; si aucun point près d'elle ne tient
+    le pion (le pied d'une falaise au bord d'un lac), la vue revient au-dessus de l'eau au point
+    cliqué ;
+  - **sur l'eau sans sol sec dans le rayon** (pleine mer, milieu d'un lac, un large fleuve) : la
+    **vue des outils**, l'œil à 1,8 m au-dessus de la surface de l'eau du core (jamais du fond), et
+    le message « over water (no dry ground within 50 m): the view of the tools 1.8 m above the
+    water; Terrain.Pawn over land ».
+
+  **`Terrain.Map.Go x z`** (ou `x, z`, ou `-6 185 104 ; 155 924` : sans `,` ni `;`, exactement deux
+  nombres) suit exactement ce chemin, le cap et l'inclinaison du joueur gardés ;
+  **`Terrain.Map.Go <lieu>`** fait de même au point du lieu, avec son cap et son inclinaison (un
+  atterrissage, pas la vue du lieu : celle-ci, c'est `Terrain.Goto <lieu>`), avec l'avertissement
+  de `Terrain.Goto` quand le lieu a été mesuré avec le fichier planète et que le monde ne l'a pas,
+  ou l'inverse. De quoi vérifier les atterrissages par script (agent 37).
+
+  Le choix entre les deux (`Bridge/map_landing.hpp`, `clickLanding`) se fait sur le fil de la
+  carte (en pleine mer, il lit environ 2 000 colonnes du core : 0,3 s au milieu de
+  `lac_montagne`), « Loading the terrain » affiché pendant ce temps. Une seconde après que le pion
+  du jeu est rendu, une ligne de contrôle dans le log : « Terrain Dev Map: 1 s after the click: the
+  pawn of the game, Walking, 0.00 m/s, feet at 1.94 m (no water within 3 m), 0.0 m from the click:
+  OK » (un avertissement « NOT walking still above the water » sinon).
+- **Sources selon le zoom** : jusqu'à 64 m/px le relief fin avec ses vallées, fleuves, lacs et
+  chutes ; de 128 m à 1 km/px le relief seul et l'eau du niveau Planète (jamais les tracés de
+  l'hydrologie, trop chers sur de grandes zones) ; à partir de 2 km/px les cases du niveau
+  Planète. Une tuile prend de 0,05 à 0,2 s en plaine et aux zooms larges, 0,4 à 1,6 s près des
+  fleuves et en montagne, 3,9 s au pire mesuré (un fil, monde par défaut avec son fichier
+  planète). En attendant une tuile, une tuile plus grossière déjà là tient sa place.
+- **Fils et mémoire** : `MapThreads` (1) fils de rendu ; `KeptTiles` (192) tuiles gardées, 256 Ko
+  chacune sur le CPU et autant sur le GPU (48 Mo) ; arrêtés avant que le monde ne s'en aille
+  (`ReleaseWorld` : la fin du Play, et `Terrain.Seed` avant le nouveau monde), et refaits pour un
+  nouveau monde. Une tuile en cours s'arrête entre deux de ses
+  lignes et n'est pas gardée : en général quelques millisecondes ; mais une première requête de
+  l'hydrologie près d'un grand fleuve (le calcul de ses tracés) ne se coupe pas et peut durer
+  jusqu'à 3 s, pour la carte comme pour les fils des tuiles.
+- **Échap en PIE** : dans l'éditeur, Échap est aussi le raccourci « Stop » du Play : si la carte
+  n'a pas le focus clavier (un clic hors d'elle), il arrête la session au lieu de fermer la carte.
+  Pour le garder à la carte : Edit > Editor Preferences > General > Keyboard Shortcuts, catégorie
+  « Play World (PIE/SIE) », commande « Stop » : lui donner une autre touche (par exemple Maj+Échap).
+  La touche de la carte (M) la ferme toujours.
