@@ -37,6 +37,7 @@ struct TileColumns {
     std::vector<float> waterLevels;
     std::vector<WaterKind> waterKinds; // HeightSample::water of each column
     std::vector<float> dunes;          // HeightSample::dunes of each column
+    std::vector<float> erg;            // HeightSample::erg of each column
     float minHeight = 0.0f;
     float maxHeight = 0.0f;
 
@@ -48,6 +49,9 @@ struct TileColumns {
     }
     [[nodiscard]] float dunesAt(int i, int k) const {
         return dunes[static_cast<std::size_t>(k * kGridSamples + i)];
+    }
+    [[nodiscard]] float ergAt(int i, int k) const {
+        return erg[static_cast<std::size_t>(k * kGridSamples + i)];
     }
     [[nodiscard]] float waterAt(int i, int k) const {
         return waterLevels[static_cast<std::size_t>(k * kGridSamples + i)];
@@ -76,8 +80,10 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     columns.waterLevels.reserve(kCount);
     columns.waterKinds.reserve(kCount);
     columns.dunes.reserve(kCount);
+    columns.erg.reserve(kCount);
     for (const HeightSample& sample : samples) {
         columns.dunes.push_back(sample.dunes);
+        columns.erg.push_back(sample.erg);
         columns.waterKinds.push_back(sample.water);
         columns.heights.push_back(sample.height);
         columns.continentalness.push_back(sample.continentalness);

@@ -171,7 +171,9 @@ bool sameMesh(const terrain::TileData& a, const terrain::TileData& b) {
 void checkDuneTexels(const terrain::TileData& t, std::size_t& dune, std::size_t& wrong) {
     for (const terrain::BlendTexel& texel : t.surfaceBlend) {
         const terrain::SurfaceBlend b = terrain::unpackBlend(texel);
-        if (b.dunes < 0.99f) {
+        // Texels on the dunes: whatever the share of the floor of the erg (kErgFloorShare times
+        // its mask), at least 0.85 of the share of the dunes (6 m of sand).
+        if (b.dunes < 0.87f) {
             continue;
         }
         ++dune;

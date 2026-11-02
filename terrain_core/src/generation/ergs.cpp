@@ -337,13 +337,20 @@ std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z) {
     return {d.cosine, d.sine};
 }
 
-float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint) const {
+float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,
+                    float* mask) const {
+    if (mask != nullptr) {
+        *mask = 0.0f;
+    }
     if (s.water == WaterKind::Ocean || !mayHold(x, z)) {
         return 0.0f;
     }
     const ErgPoint e = at(x, z, s.relief);
     if (!(e.mask > 0.0f)) {
         return 0.0f;
+    }
+    if (mask != nullptr) {
+        *mask = e.mask;
     }
     // The spacing of the dunes the sand gives (dune_phase: that of the pivots, smooth).
     const double spacing = kMeanLeast + kMeanRange * dmath::pow(static_cast<double>(e.sand), 1.3);

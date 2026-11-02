@@ -35,6 +35,7 @@ struct SurfaceSite {
     // 4-neighbor sample, where the cliff mask is not 0.
     bool cliffWall = false;
     float dunes = 0.0f; // meters of sand of the seas of dunes (HeightSample::dunes)
+    float erg = 0.0f;   // the mask of the seas of dunes there (HeightSample::erg)
 
     [[nodiscard]] bool dry() const { return water == WaterKind::None; }
     [[nodiscard]] float waterDepth() const { return waterLevel - ground; }

@@ -143,8 +143,9 @@ public:
     // dunes to three tenths of it, the dunes give way to their mean over their pattern (closed
     // forms of their profiles), so that a coarse grid neither aliases them nor flickers when it moves; the same bits
     // as a point below a tenth (the tiles and the finest levels of the horizon).
-    [[nodiscard]] float dunesAt(double x, double z, const HeightSample& s,
-                                double footprint = 0.0) const;
+    // mask: if not null, the mask of the ergs there (ErgPoint::mask, 0 where no dune may be).
+    [[nodiscard]] float dunesAt(double x, double z, const HeightSample& s, double footprint = 0.0,
+                                float* mask = nullptr) const;
     // The dunes of an erg point, and the kind that weighs most there.
     [[nodiscard]] float dunesOf(double x, double z, const ErgPoint& e) const;
     [[nodiscard]] DuneKind kindOf(const ErgPoint& e) const;

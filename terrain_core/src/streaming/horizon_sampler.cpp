@@ -34,6 +34,7 @@ struct GroundGrid {
     std::vector<WaterKind> water;
     std::vector<float> waterLevel;
     std::vector<float> dunes; // HeightSample::dunes (filtered to the pitch of the level)
+    std::vector<float> erg;   // HeightSample::erg
 
     [[nodiscard]] std::size_t index(std::int64_t i, std::int64_t k) const {
         return static_cast<std::size_t>((k - rect.z0) * rect.width() + (i - rect.x0));
@@ -42,13 +43,14 @@ struct GroundGrid {
 
 GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
                         const HorizonRect& rect) {
-    GroundGrid grid{rect, {}, {}, {}, {}, {}};
+    GroundGrid grid{rect, {}, {}, {}, {}, {}, {}};
     const auto count = static_cast<std::size_t>(rect.count());
     grid.heights.reserve(count);
     grid.continentalness.reserve(count);
     grid.water.reserve(count);
     grid.waterLevel.reserve(count);
     grid.dunes.reserve(count);
+    grid.erg.reserve(count);
     for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
         const double z = frame.z(k);
         for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
@@ -58,6 +60,7 @@ GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
             grid.water.push_back(sample.water);
             grid.waterLevel.push_back(sample.waterLevel);
             grid.dunes.push_back(sample.dunes);
+            grid.erg.push_back(sample.erg);
         }
     }
     return grid;
@@ -73,6 +76,7 @@ SurfaceSite groundSite(const GroundGrid& grid, std::size_t at, const std::array<
     sample.water = grid.water[at];
     sample.waterLevel = grid.waterLevel[at];
     sample.dunes = grid.dunes[at];
+    sample.erg = grid.erg[at];
     return horizon::pointSite(sample, h, step);
 }
 

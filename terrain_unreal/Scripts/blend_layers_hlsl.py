@@ -47,12 +47,14 @@ BLEND_HLSL = r"""
 
     // The layers of the summed blends (AddBlend): those of the biomes (BIOMES), with the
     // overrides of the materials (as in Layers), both linear in the weights; the weight of the
-    // ocean and of the desert tell the river bed and the sand apart; the sand of the dunes (wd,
-    // their share) is the smooth sand, never the stony desert around it, and d that share.
+    // ocean and of the desert tell the river bed and the sand apart; the sand of the dunes is the
+    // smooth sand, never the stony desert around it. wd, d: the share of the dunes of an erg
+    // (biome_blend.hpp: its floor below 16 127ths, its dunes above).
     void FinishBlend(float4 wb0, float4 wb1, float4 wb2, float4 wm0, float4 wm1, float wd,
                      out float4 a, out float4 b, out float2 c, out float d)
     {
         d = saturate(wd);
+        float dune = saturate((d - 16.0 / 127.0) / (1.0 - 16.0 / 127.0));
         const float4 BA[12] = { BIOME_A };
         const float4 BB[12] = { BIOME_B };
         const float2 BC[12] = { BIOME_C };
@@ -72,7 +74,7 @@ BLEND_HLSL = r"""
         float keep = wm0.z + wm1.y;                                                      // grass, snow
         a = keep * A + 0.3 * soil * A + wm0.x * ocean * BA[0];
         b = keep * B + soil * (0.3 * B + float4(0.7, 0.0, 0.0, 0.0)) + wm0.x * bed
-          + wm0.y * lerp(float4(0.0, 1.0 - desert, desert, 0.0), float4(0.0, 1.0, 0.0, 0.0), d)
+          + wm0.y * lerp(float4(0.0, 1.0 - desert, desert, 0.0), float4(0.0, 1.0, 0.0, 0.0), dune)
           + (wm1.x + wm1.w) * float4(0.0, 0.0, 0.0, 1.0);
         c.x = lerp(c.x, 1.0, wm1.y);                                                     // snow
         c.y = lerp(c.y, 1.0, wm1.x);                                                     // rock

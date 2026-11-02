@@ -106,11 +106,13 @@ SurfaceBlend blendSurface(const ClimateSample& climate, const SurfaceSite& site,
     SurfaceBlend result;
     dominants(margins.biomes, biome, widthFactor, result.biomes, result.biomeWeights);
     dominants(margins.materials, material, widthFactor, result.materials, result.materialWeights);
-    if (site.dunes > 0.0f) {
-        // A wide ramp: the feet of the dunes fade into the floor between them over tens of
-        // meters (12 m at 33 degrees, 37 m at 12), never a hard edge.
-        result.dunes = noise::smoothstep(0.25f * materials.duneSand, 8.0f * materials.duneSand,
-                                         site.dunes);
+    if (site.erg > 0.0f) {
+        // The floor of an erg holds kErgFloorShare of its mask (the edges of its patches soften
+        // there, biome_blend.hpp), its dunes the rest: a wide ramp, the feet of the dunes fading
+        // into the floor over tens of meters (12 m at 33 degrees, 37 m at 12), never a hard edge.
+        const float dunes = noise::smoothstep(0.25f * materials.duneSand,
+                                              8.0f * materials.duneSand, site.dunes);
+        result.dunes = std::min(1.0f, kErgFloorShare * site.erg + (1.0f - kErgFloorShare) * dunes);
     }
     return result;
 }

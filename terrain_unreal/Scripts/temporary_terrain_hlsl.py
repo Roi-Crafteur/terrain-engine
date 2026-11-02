@@ -196,14 +196,20 @@ float pd = Look.Patch(Q, 4.0, 47.0);
 float rock = saturate((slope - (RockStartDeg + jit)) / max(RockFullDeg - RockStartDeg, 1.0));
 rock = smoothstep(0.3, 0.7, rock + (pd - 0.5) * 0.6);
 // The dunes stay sand at any slope: their slip faces stand at 33 degrees, never rock, scree nor
-// stones at their foot, nor the gravel of the desert. DUNES: their share (the surface blends of
-// the tiles and of the horizon). Elsewhere the desert keeps its rock and its scree from 30
-// degrees. The foot of the steep slopes comes from the tiles only.
-float sandLock = saturate(DUNES * 2.0);
+// stones at their foot, nor the gravel of the desert. DUNES: the share of an erg (the surface
+// blends of the tiles and of the horizon; biome_blend.hpp: its floor below 16 127ths, its dunes
+// above). Elsewhere the desert keeps its rock and its scree from 30 degrees. The foot of the
+// steep slopes comes from the tiles only.
+float ergFloor = saturate(DUNES * (127.0 / 16.0));
+float duneShare = saturate((DUNES - 16.0 / 127.0) / (1.0 - 16.0 / 127.0));
+float sandLock = saturate(duneShare * 2.0);
 // Their sand has one color near and far: the smooth Sand layer takes the mean color of the
-// Desert layer (the warm orange of the horizon) where the dunes are, its ripples kept.
+// Desert layer (the warm orange of the horizon, both read from their textures) where the dunes
+// are, its ripples kept.
 float3 duneTint = lerp(float3(1.0, 1.0, 1.0),
-                       (DESERT_MEAN * DESERT_TINT) / max(SAND_MEAN * SAND_TINT, float3(1e-4, 1e-4, 1e-4)),
+                       (DESERT_TEX.SampleLevel(DESERT_TEXSampler, P / DESERT_SCALE, 13.0).rgb * DESERT_TINT) /
+                       max(SAND_TEX.SampleLevel(SAND_TEXSampler, P / SAND_SCALE, 13.0).rgb * SAND_TINT,
+                           float3(1e-4, 1e-4, 1e-4)),
                        sandLock);
 rock *= 1.0 - sandLock;
 rock = max(rock, W2.y * CoreRock);
@@ -242,7 +248,8 @@ float gravelMask = lerp(mb, gravelSite, PatchRelief) - PatchRarity;
 float bare = PatchAmount * smoothstep(0.0, 0.05, bareMask);
 float gravel = PatchAmount * smoothstep(0.0, 0.05, gravelMask);
 // The desert keeps more of its gravel, still in the hollows first.
-float desertGravel = PatchAmount * smoothstep(0.0, 0.05, gravelMask + 0.12);
+// On the floor of an erg its edges soften (ergFloor: 0 elsewhere, the same patches as before).
+float desertGravel = PatchAmount * smoothstep(0.0, 0.05 + 0.3 * ergFloor, gravelMask + 0.12);
 float dryp = PatchAmount * smoothstep(0.60, 0.68, pb);
 float dark = PatchAmount * (1.0 - smoothstep(0.32, 0.40, pb));
 float outcrop = PatchAmount * smoothstep(0.66, 0.74, pc);
@@ -406,16 +413,14 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
     # has none.
     # The share of the dunes comes from the surface blend of the tiles (W4); the horizon has none.
     # The share of the dunes: W4 on the tiles, W2.z on the horizon (it has no foot of slopes).
-    def mean(name):
-        color = next(layer[3] for layer in layers if layer[0] == name)
-        return "float3(" + ", ".join(f"{x:.3f}" for x in color) + ")"
     code = SHADE_TOP.replace("HAS_DETAIL", "1.0" if detail else "0.0").replace(
         "CURVATURE", "W3.w" if detail else "0.0").replace(
-        "DUNES", "W4" if detail else "W2.z").replace("FOOT", "W2.z" if detail else "0.0").replace(
-        "DESERT_MEAN", mean("Desert")).replace("SAND_MEAN", mean("Sand"))
+        "DUNES", "W4" if detail else "W2.z").replace("FOOT", "W2.z" if detail else "0.0")
     names = [layer[0] for layer in layers]
-    code = code.replace("DESERT_TINT", f"Tint{names.index('Desert')}").replace(
-        "SAND_TINT", f"Tint{names.index('Sand')}")
+    for name, key in (("Desert", "DESERT"), ("Sand", "SAND")):
+        index = names.index(name)
+        code = code.replace(f"{key}_TEX", f"TA{index}").replace(
+            f"{key}_TINT", f"Tint{index}").replace(f"{key}_SCALE", f"{layers[index][4]:.1f}")
     for index in range(ground):
         code += ground_layer(index, layers[index][4], detail, saturations.get(layers[index][0]),
                              layers[index][0] == "Sand")

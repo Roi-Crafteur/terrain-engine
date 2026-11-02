@@ -104,6 +104,9 @@ struct HeightSample {
     // Meters of sand the seas of dunes lay over the relief (ergs.hpp, part of height): 0 outside
     // them and without hydrology.
     float dunes = 0.0f;
+    // The mask of the seas of dunes at the column (ErgPoint::mask, [0, 1]), even between their
+    // dunes: 0 outside them and without hydrology.
+    float erg = 0.0f;
 };
 
 // A depression below the sea level of the geography (phase 11B): its center (canonical), its mean

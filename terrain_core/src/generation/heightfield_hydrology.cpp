@@ -122,7 +122,9 @@ void Heightfield::addDunes(double x, double z, HeightSample& s) const {
     if (ergs == nullptr) {
         return;
     }
-    const float dunes = ergs->dunesAt(x, z, s, footprint_);
+    float mask = 0.0f;
+    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask);
+    s.erg = mask;
     if (dunes > 0.0f) {
         s.dunes = dunes;
         s.height += dunes;

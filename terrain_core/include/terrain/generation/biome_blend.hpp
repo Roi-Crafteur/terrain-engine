@@ -31,6 +31,9 @@ namespace terrain {
 // biomes weigh one half each stays the border of the classification.
 
 inline constexpr int kBlendSlots = 3;
+// The share of the floor of an erg in SurfaceBlend::dunes (agent 34): 16 127ths, the
+// shaders read it the same way (Scripts/blend_layers_hlsl.py, temporary_terrain_hlsl.py).
+inline constexpr float kErgFloorShare = 16.0f / 127.0f;
 
 // Widths of the transitions, each on both sides of its threshold.
 struct BlendParams {
@@ -63,9 +66,11 @@ struct SurfaceBlend {
     std::array<float, kBlendSlots> biomeWeights{};
     std::array<SurfaceMaterial, kBlendSlots> materials{};
     std::array<float, kBlendSlots> materialWeights{};
-    // [0, 1]: how much of the column is the sand of the dunes of an erg (ergs.hpp), from
-    // MaterialParams::duneSand / 4 to 8 duneSand meters of sand: its sand is smooth sand at any
-    // slope, never the stony ground of the desert around it. 0 off the ergs.
+    // [0, 1]: kErgFloorShare times the mask of the ergs (HeightSample::erg: the floor between
+    // their dunes), plus the rest times how much of the column is the sand of their dunes (from
+    // MaterialParams::duneSand / 4 to 8 duneSand meters of sand): their sand is smooth sand at
+    // any slope, never the stony ground of the desert around it. 0 off the ergs. A reader takes
+    // the dunes from the share above kErgFloorShare, the floor of an erg from the share below.
     float dunes = 0.0f;
 
     friend bool operator==(const SurfaceBlend&, const SurfaceBlend&) = default;

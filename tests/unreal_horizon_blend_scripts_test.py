@@ -15,6 +15,7 @@ Run: python3 unreal_horizon_blend_scripts_test.py <terrain_unreal>
 
 import ast
 import math
+import struct
 import pathlib
 import re
 import sys
@@ -155,13 +156,32 @@ def check_code(look_hlsl, loading, scripts):
 
 
 # The reference of the HLSL in Python (Scripts/blend_layers_hlsl.py), line for line.
+def f32(x):
+    """x rounded to a float of 32 bits, as the GPU holds it."""
+    return struct.unpack("f", struct.pack("f", x))[0]
+
+
+def unorm(channel):
+    """(uint)(saturate(t) * 65535.0 + 0.5) of a channel of 16 bits read as an unsigned normalized
+    float: each operation in floats of 32 bits."""
+    t = min(max(f32(channel / 65535.0), 0.0), 1.0)
+    return int(f32(f32(t * 65535.0) + 0.5))
+
+
 def texel_blend(channels):
-    """TexelBlend of 4 channels of 16 bits read as unsigned normalized floats."""
-    v = [int(min(max(c / 65535.0, 0.0), 1.0) * 65535.0 + 0.5) for c in channels]
-    return v[0] | ((v[1] & 255) << 16), v[2], v[3], (v[1] & 32768) != 0
+    """TexelBlend of 4 channels of 16 bits read as unsigned normalized floats: the ids with the
+    share of the dunes of an erg (bits 8-14 of G, agent 34) in their bits 24-30."""
+    v = [unorm(c) for c in channels]
+    ids = v[0] | ((v[1] & 255) << 16) | (((v[1] >> 8) & 127) << 24)
+    return ids, v[2], v[3], (v[1] & 32768) != 0
 
 
-def add_blend(ids, lo, hi, share, wb, wm):
+FLOOR = 16.0 / 127.0  # biome_blend.hpp: kErgFloorShare
+
+
+def add_blend(ids, lo, hi, share, wb, wm, wd=None):
+    if wd is not None:
+        wd[0] += share * ((ids >> 24) & 127) / 127.0
     weights_b = [(lo & 255) / 255.0, (lo >> 8) / 255.0]
     weights_b.append(max(1.0 - weights_b[0] - weights_b[1], 0.0))
     weights_t = [(hi & 255) / 255.0, (hi >> 8) / 255.0]
@@ -173,7 +193,8 @@ def add_blend(ids, lo, hi, share, wb, wm):
         wm[material] += share * weights_t[k]
 
 
-def finish_blend(wb, wm, biomes):
+def finish_blend(wb, wm, biomes, wd=0.0):
+    dune = min(max((min(max(wd, 0.0), 1.0) - FLOOR) / (1.0 - FLOOR), 0.0), 1.0)
     a = [sum(wb[n] * biomes[n][0][i] for n in range(12)) for i in range(4)]
     b = [sum(wb[n] * biomes[n][1][i] for n in range(12)) for i in range(4)]
     c = [sum(wb[n] * biomes[n][2][i] for n in range(12)) for i in range(2)]
@@ -183,31 +204,36 @@ def finish_blend(wb, wm, biomes):
     keep = wm[2] + wm[5]
     la = [keep * a[i] + 0.3 * soil * a[i] + wm[0] * ocean * biomes[0][0][i] for i in range(4)]
     lb = [keep * b[i] + soil * (0.3 * b[i] + (0.7, 0, 0, 0)[i]) + wm[0] * bed[i]
-          + wm[1] * (0.0, 1.0 - desert, desert, 0.0)[i] + (wm[4] + wm[7]) * (0, 0, 0, 1)[i]
+          + wm[1] * ((1.0 - dune) * (0.0, 1.0 - desert, desert, 0.0)[i] + dune * (0, 1, 0, 0)[i])
+          + (wm[4] + wm[7]) * (0, 0, 0, 1)[i]
           for i in range(4)]
     lc = [c[0] + (1.0 - c[0]) * wm[5], c[1] + (1.0 - c[1]) * wm[4]]
     return la, lb, lc, wb, wm
 
 
-def blend_texels_layers(texels, shares, biomes):
-    wb, wm = [0.0] * 12, [0.0] * 8
+def blend_texels_layers(texels, shares, biomes, dunes=None):
+    wb, wm, wd = [0.0] * 12, [0.0] * 8, [0.0]
     for channels, share in zip(texels, shares):
         ids, lo, hi, present = texel_blend(channels)
         if share > 0.0:
             if not present:
                 return None
-            add_blend(ids, lo, hi, share, wb, wm)
-    return finish_blend(wb, wm, biomes)
+            add_blend(ids, lo, hi, share, wb, wm, wd)
+    if dunes is not None:
+        dunes.append(wd[0])
+    return finish_blend(wb, wm, biomes, wd[0])
 
 
-def channels(biomes, biome_weights, materials, material_weights):
-    """The channels of Bridge/horizon_blend_texels.hpp of a blend (weights in 255ths)."""
-    ids = 0
+def channels(biomes, biome_weights, materials, material_weights, dunes=0):
+    """The channels of Bridge/horizon_blend_texels.hpp of a blend (weights in 255ths, the share of
+    the dunes in 127ths)."""
+    ids = dunes << 24
     for k in range(3):
         ids |= biomes[k] << (4 * k) | materials[k] << (12 + 4 * k)
     weights = (biome_weights[0] | biome_weights[1] << 8 | material_weights[0] << 16
                | material_weights[1] << 24)
-    return [ids & 0xFFFF, (ids >> 16) | 0x8000, weights & 0xFFFF, weights >> 16]
+    return [ids & 0xFFFF, ((ids >> 16) & 0xFF) | ((ids >> 24) & 0x7F) << 8 | 0x8000,
+            weights & 0xFFFF, weights >> 16]
 
 
 def check_reference(biomes):
@@ -243,6 +269,31 @@ def check_reference(biomes):
           "a texel without blend taken")
     check(blend_texels_layers((forest, [0, 0, 0, 0]), (1.0, 0.0), biomes) is not None,
           "a texel without blend and of no share refused")
+    check_dunes(biomes)
+
+
+def check_dunes(biomes):
+    """The share of the dunes of an erg (agent 34) in bits 8-14 of G, read back by every value of
+    G the GPU may hold, and its mean at the morph: half a texel of dunes beside a desert floor."""
+    wrong = 0
+    for g in range(65536):
+        ids = texel_blend([0, g, 0, 0])[0]
+        wrong += ((ids >> 16) & 255) != (g & 255) or (ids >> 24) != ((g >> 8) & 127)
+    check(wrong == 0, f"{wrong} values of G decode wrong")
+    # Sand of the desert (2) on dunes (share 127) and on the floor of the erg (16): the morph.
+    dunes = channels((2, 2, 2), (255, 0), (1, 1, 1), (255, 0), 127)
+    floor = channels((2, 2, 2), (255, 0), (1, 1, 1), (255, 0), 16)
+    for alpha in (0.0, 0.25, 0.5, 0.75, 1.0):
+        shares = (1.0 - alpha, 0.5 * alpha, 0.5 * alpha)
+        seen = []
+        la, lb, _, _, _ = blend_texels_layers((dunes, floor, floor), shares, biomes, seen)
+        expected = (1.0 - alpha) * 1.0 + alpha * 16.0 / 127.0
+        check(abs(seen[0] - expected) < 1e-6, f"the share of the dunes at the morph {alpha}: "
+              f"{seen[0]}, not {expected}")
+        dune = (expected - FLOOR) / (1.0 - FLOOR)
+        check(abs(lb[1] - dune) < 1e-6 and abs(lb[2] - (1.0 - dune)) < 1e-6,
+              f"the sand of the dunes at the morph {alpha}: {lb}")
+        check(abs(sum(la) + sum(lb) - 1.0) < 1e-6, f"the layers at the morph {alpha}")
 
 
 def main(root):
