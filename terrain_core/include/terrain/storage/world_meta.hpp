@@ -28,9 +28,13 @@ inline constexpr std::uint32_t kSectionFormatVersion = 2;
 // 4: phase 11B (the sea decided by the geography, depressions below the sea level, the water:
 // rivers carved, lakes, falls).
 // 5: phase 12A (the rock in three dimensions: vertical walls, overhangs and niches).
-inline constexpr std::uint32_t kGeneratorVersion = 5;
+// 6: the coasts of agent 33 (cliffs, mountains plunging into the sea, inlets, reefs, near sea
+// floors).
+inline constexpr std::uint32_t kGeneratorVersion = 6;
 // Version of the generator of the relief (Heightfield::heightAt and the planet level built from
-// it): the planet files hold it. The rock in three dimensions leaves the relief as it is.
+// it): the planet files hold it. The rock in three dimensions leaves the relief as it is, and the
+// planet level is built from the relief without the coasts (Heightfield::withoutCoasts), which
+// they leave as it is too.
 inline constexpr std::uint32_t kReliefGeneratorVersion = 4;
 
 // Generator of the worlds saved before the world format (TMOD files): the one up to phase 8C-2.

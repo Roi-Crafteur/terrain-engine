@@ -462,6 +462,9 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   streamées : une capitale de plusieurs km n'est jamais générée d'un coup
 - choix des sites par le terrain : gués, confluents, estuaires, ports abrités, éperons
   défendables, vallées fertiles, cols, ressources (mines) ; climat, pente, altitude, eau
+  - côtes (agent 33) : le peuplement V2 lit les ports abrités (`Heightfield::harborsIn` :
+    entrée plus étroite que l'intérieur) et les mouillages (`Heightfield::anchoragesIn` :
+    criques sans goulet entre deux caps), jamais les deux pour un même site (`coast.hpp`)
 - routes : liaisons pondérées par la population et la distance (modèle de gravité), tracées
   par coût (pente, rivières à franchir par pont ou gué, vallées, cols, lacets en montagne),
   regroupées, avec des boucles et pas seulement un arbre
@@ -599,6 +602,14 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 ### Chantier parallèle — Gameplay
 - survie : ressources, artisanat, dangers
 - outils d'administration (mode créatif)
+
+### Sous le niveau 0 (priorité avant la 11C)
+- le terrain n'a pas de plancher à 0 m : tous les chantiers de relief creusent aussi, et ne font pas que monter
+- une altitude négative n'est de la mer que si elle est reliée à l'océan ; le fondu de surface, les biomes, les matériaux,
+  l'horizon et la carte de dev suivent cette règle
+- grands bassins secs sous le niveau de la mer, fossés d'effondrement avec lac salé, cratères d'impact rares
+- plaines et bas plateaux avec de vrais creux, sans plancher visible
+- à faire avant l'étape 1 de la 11C : le réseau d'eau doit voir ces creux
 
 ### Tous les milieux du monde (minimum voulu)
 - format à élargir d'abord : 12 biomes aujourd'hui, 16 biomes et 8 matériaux au plus par le format

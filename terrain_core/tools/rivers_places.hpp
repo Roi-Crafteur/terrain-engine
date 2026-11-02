@@ -39,6 +39,7 @@ struct Options {
     int threads = 0;
     int width = 1600;
     int pixels = 1024; // of the maps
+    bool coasts = true; // GeographyParams::coasts (--without coasts: the world before agent 33)
     std::vector<Place> maps;
     std::vector<Place> views;
 };

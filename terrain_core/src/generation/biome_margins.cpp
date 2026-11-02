@@ -229,6 +229,14 @@ dryMaterialMargins(const Column& c, const MaterialParams& p,
     return m;
 }
 
+// The materials of a site of bare rock (SurfaceSite::bareRock): rock alone, no blend.
+void bareRockOnly(const SurfaceSite& site, Margins& margins) {
+    if (site.bareRock) {
+        margins.materials.fill(kRuledOut);
+        margins.materials[static_cast<std::size_t>(SurfaceMaterial::Rock)] = 0.0f;
+    }
+}
+
 } // namespace
 
 Margins regionMargins(const ClimateSample& climate, const SurfaceSite& site,
@@ -240,6 +248,7 @@ Margins regionMargins(const ClimateSample& climate, const SurfaceSite& site,
         margins.materials.fill(kRuledOut);
         margins.biomes[static_cast<std::size_t>(Biome::Ocean)] = 0.0f;
         margins.materials[static_cast<std::size_t>(SurfaceMaterial::Water)] = 0.0f;
+        bareRockOnly(site, margins);
         return margins;
     }
     const Column column{climate.temperature,     climate.humidity,
@@ -255,6 +264,7 @@ Margins regionMargins(const ClimateSample& climate, const SurfaceSite& site,
         margins.materials.fill(kRuledOut);
         margins.materials[static_cast<std::size_t>(SurfaceMaterial::Water)] = 0.0f;
     }
+    bareRockOnly(site, margins);
     return margins;
 }
 

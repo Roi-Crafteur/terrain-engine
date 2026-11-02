@@ -11,6 +11,8 @@
   the band where the drop fades out. Not on the sea, which stays in front of the shallow sea floor.
 """
 
+import temporary_terrain_hlsl as terrain_hlsl
+
 # The ground and the sand at the sea level: altitudeColor(kSeaLevel) (Bridge/altitude_color.cpp).
 SHORE = "float3(194.0, 179.0, 128.0) / 255.0"
 
@@ -46,8 +48,10 @@ if (Kind.g > 0.5)
     float4 t10 = Tex.Load(int3((i0 + int2(1, 0) + first) % side, 0));
     float4 t01 = Tex.Load(int3((i0 + int2(0, 1) + first) % side, 0));
     float4 t11 = Tex.Load(int3((i0 + int2(1, 1) + first) % side, 0));
-    float4 g = float4(t00.a < 0.0 ? t00.a : max(t00.r, 0.0), t10.a < 0.0 ? t10.a : max(t10.r, 0.0),
-                      t01.a < 0.0 ? t01.a : max(t01.r, 0.0), t11.a < 0.0 ? t11.a : max(t11.r, 0.0));
+    float4 g = float4(t00.a < 0.0 ? SEA_GROUND(t00.a) : max(t00.r, 0.0),
+                      t10.a < 0.0 ? SEA_GROUND(t10.a) : max(t10.r, 0.0),
+                      t01.a < 0.0 ? SEA_GROUND(t01.a) : max(t01.r, 0.0),
+                      t11.a < 0.0 ? SEA_GROUND(t11.a) : max(t11.r, 0.0));
     ground = min(lerp(lerp(g.x, g.y, f.x), lerp(g.z, g.w, f.x), f.y), -0.05);
 }
 // The sea where the ground lies below the sea level, antialiased across the coast line.
@@ -131,7 +135,11 @@ return BehindTilesCm * saturate((reach - fromCenter) / max(BehindFadeCm, 1.0)) *
 
 
 def sea_hlsl():
-    """The code of the sea of a pixel, its waves unrolled."""
+    """The code of the sea of a pixel, its waves unrolled, the ground under the sea of the texels
+    decoded (temporary_terrain_hlsl.sea_ground_hlsl: SEA_ROCK_CODE lower over bare rock)."""
     loop = "".join(WAVE_TEMPLATE.format(a=a, b=b, slope=slope, phase=phase)
                    for a, b, slope, phase in WAVES)
-    return SEA_HLSL.replace("WAVE_LOOP", loop)
+    code = SEA_HLSL.replace("WAVE_LOOP", loop)
+    for t in ("t00", "t10", "t01", "t11"):
+        code = code.replace(f"SEA_GROUND({t}.a)", terrain_hlsl.sea_ground_hlsl(f"{t}.a"))
+    return code

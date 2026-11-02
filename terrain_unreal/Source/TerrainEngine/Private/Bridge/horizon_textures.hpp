@@ -23,14 +23,24 @@ namespace terrain::unreal {
 //
 // A texel is 4 floats: the height shown (meters, the sea flat at the sea level where isSeaCell,
 // never a dry depression below it), the slopes of the ground along x and z (0 on the ocean,
-// whose normal points up), and the surface of the ground, its material and its biome packed by
-// packSurface (terrain_surface.hpp), at least 0, with the water code (kSurfaceWaterCode) under a
-// lake or a river: the ground of a dry depression below the sea level never has it.
+// whose normal points up, but over bare rock, below), and the surface of the ground, its
+// material and its biome packed by packSurface (terrain_surface.hpp), at least 0, with the water
+// code (kSurfaceWaterCode) under a lake or a river: the ground of a dry depression below the sea
+// level never has it.
 // On the ocean the last float is instead the ground under the sea, meters from the sea level,
 // below 0: the material colors the sea by its depth (texelGround). The materials of the horizon
 // and of the tiles take the layers of the ground from the surface (the temporary terrain
-// material of phase 14, Scripts/temporary_terrain_look.py).
+// material of phase 14, Scripts/temporary_terrain_look.py). Where that ground is bare rock (the
+// material of the core rock under the sea: the foot of a wall plunging into it, a reef of the
+// coasts, agent 33) it is stored kSeaRockCode lower: the materials draw rock there, not the
+// sand of the shallows, which the ground interpolated between the samples would carry up the
+// foot of the wall (Scripts/temporary_terrain_hlsl.py: SEA_ROCK_CODE, the same value), where a
+// texel holds no blend (horizon_blend_texels.hpp: its blend is all rock there). Its ground comes
+// back within the precision of a float there (1/128 m), whatever the depth of the oceans. It keeps
+// the slopes of its ground: the triangles between it and the wall above it are lit as the wall
+// (the normal of the sea comes from its waves, not from its texels).
 inline constexpr int kTexelFloats = 4;
+inline constexpr float kSeaRockCode = 100'000.0f;
 
 // The material of the horizon draws the sea at the altitude 0.
 static_assert(kSeaLevel == 0.0f, "the sea of the horizon lies at the altitude 0");
@@ -48,6 +58,8 @@ struct HorizonTexel {
 
 // A texel of the ocean (horizonTexel with the sea): its last float is negative.
 [[nodiscard]] bool isSeaTexel(const HorizonTexel& texel);
+// A texel of the ocean over bare rock: its last float kSeaRockCode below its ground.
+[[nodiscard]] bool isRockSeaTexel(const HorizonTexel& texel);
 // The ground the material colors the sea from, meters from the sea level: under the sea for a
 // texel of the ocean (below 0), the height shown, at least 0, elsewhere. The material
 // interpolates it between the samples: the coast lies where it crosses 0.

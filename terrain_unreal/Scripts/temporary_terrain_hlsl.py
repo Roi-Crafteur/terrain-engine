@@ -24,17 +24,29 @@ blend_code = importlib.reload(blend_code)  # the module of this checkout, even i
 # Texels along each side of a tile (terrain_core stream_manager.hpp: kTileBlendTexels).
 TILE_BLEND_TEXELS = 5
 
+# A texel of the ocean over bare rock (the foot of a wall plunging into the sea, a reef) holds its
+# ground under the sea this much lower (Bridge/horizon_textures.hpp: kSeaRockCode): rock, not the
+# sand of the shallows. Its ground is that value plus the code.
+SEA_ROCK_CODE = 100000.0
+
+
+def sea_ground_hlsl(code):
+    """The HLSL of the ground under the sea of the last float code of a texel of the ocean."""
+    return f"({code} <= {-0.5 * SEA_ROCK_CODE:.1f} ? {code} + {SEA_ROCK_CODE:.1f} : {code})"
+
 STRUCT_HLSL = r"""
 struct FTemporaryTerrain
 {
     // The layers of a texel: its packed surface (material + 8 biome, plus 128 under a lake or a
-    // river, Bridge/terrain_surface.hpp) or, on the ocean, a negative ground.
+    // river, Bridge/terrain_surface.hpp) or, on the ocean, a negative ground: the water of the
+    // ocean (the sand of the shallows), or the rock (4) where it lies kSeaRockCode lower (from
+    // half of it on, Bridge/horizon_textures.hpp).
     void Layers(float code, out float4 a, out float4 b, out float2 c)
     {
         const float4 BA[12] = { BIOME_A };
         const float4 BB[12] = { BIOME_B };
         const float2 BC[12] = { BIOME_C };
-        int v = code < 0.0 ? 0 : (int)(code + 0.5) % 128;
+        int v = code < 0.0 ? (code <= -SEA_ROCK_HALF ? 4 : 0) : (int)(code + 0.5) % 128;
         int m = v % 8;
         int biome = min(v / 8, 11);
         a = BA[biome]; b = BB[biome]; c = BC[biome];
@@ -396,7 +408,8 @@ def struct_hlsl(biomes):
         return ", ".join(values)
     return (STRUCT_HLSL.replace("BLEND_FUNCTIONS", blend_code.BLEND_HLSL)
             .replace("BIOME_A", rows(0, 4)).replace("BIOME_B", rows(1, 4))
-            .replace("BIOME_C", rows(2, 2)).replace("TEXELS", str(TILE_BLEND_TEXELS)))
+            .replace("BIOME_C", rows(2, 2)).replace("TEXELS", str(TILE_BLEND_TEXELS))
+            .replace("SEA_ROCK_HALF", f"{0.5 * SEA_ROCK_CODE:.1f}"))
 
 
 def ground_layer(index, scale, detail, saturation, dunes=False):
