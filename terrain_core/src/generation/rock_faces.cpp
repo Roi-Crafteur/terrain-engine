@@ -224,10 +224,22 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
 }
 
 // The density of the step of a face at height y: the rock below its top behind the face and below
-// its foot in front of it, its edges rounded.
+// its foot in front of it, its edges rounded. Above its top or below its foot by reach (its
+// rounding, its distance to the face and its cap: its offset there lies within its cap of 0, the
+// grain, the undercut and the joint faded out), the rounding blends nothing (smoothMin and
+// smoothMax are min and max: h = 0): the step is the plane of its top or of its foot there, the
+// same value without its offset (most of the samples of a tile on a wall).
 double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
-    const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
     const double round = roundOf(f);
+    const double reach = std::max(round, 0.0) + std::abs(static_cast<double>(f.distance)) +
+                         std::abs(static_cast<double>(f.cap));
+    if (v >= f.top + reach) {
+        return v - f.top;
+    }
+    if (v <= f.foot - reach) {
+        return v - f.foot;
+    }
+    const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
     if (!(round > 0.0)) {
         return std::min(v - f.foot, std::max(v - f.top, across));
     }
