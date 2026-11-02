@@ -248,8 +248,13 @@ float gravelMask = lerp(mb, gravelSite, PatchRelief) - PatchRarity;
 float bare = PatchAmount * smoothstep(0.0, 0.05, bareMask);
 float gravel = PatchAmount * smoothstep(0.0, 0.05, gravelMask);
 // The desert keeps more of its gravel, still in the hollows first.
-// On the floor of an erg its edges soften (ergFloor: 0 elsewhere, the same patches as before).
-float desertGravel = PatchAmount * smoothstep(0.0, 0.05 + 0.3 * ergFloor, gravelMask + 0.12);
+// On the floor of an erg its edges soften and it leaves the hollows and the foot of the slopes:
+// the foot of every dune is one, the gravel would draw a grey line along them (ergFloor: 0
+// elsewhere, the same patches as before).
+float ergGravelSite = saturate((hollow + 0.6 * saturate(FOOT)) * (1.0 - ergFloor) + 0.25 * incline);
+float ergGravelMask = lerp(mb, ergGravelSite, PatchRelief) - PatchRarity;
+float desertGravel = PatchAmount * smoothstep(0.0, 0.05 + 0.3 * ergFloor,
+                                              lerp(gravelMask, ergGravelMask, ergFloor) + 0.12);
 float dryp = PatchAmount * smoothstep(0.60, 0.68, pb);
 float dark = PatchAmount * (1.0 - smoothstep(0.32, 0.40, pb));
 float outcrop = PatchAmount * smoothstep(0.66, 0.74, pc);
