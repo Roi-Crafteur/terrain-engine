@@ -222,6 +222,70 @@ void testHorizon() {
     TEST_CHECK(same == count);
     TEST_CHECK(flicker <= 0.1 * range);
 }
+
+// A point of a full erg of a character of the default world.
+bool siteOf(ErgCharacter c, double& x0, double& z0) {
+    for (const terrain::ErgSummary& erg : real().ergs.ergs()) {
+        if (erg.character != c) {
+            continue;
+        }
+        for (int j = -10; j <= 10; ++j) {
+            for (int i = -10; i <= 10; ++i) {
+                const double x = erg.x + 65'536.0 * i;
+                const double z = erg.z + 65'536.0 * j;
+                if (!real().ergs.mayHold(x, z)) {
+                    continue;
+                }
+                const terrain::ErgPoint e = real().ergs.at(x, z, 0.0f);
+                const float weight = c == ErgCharacter::Giants
+                                         ? e.giants
+                                         : (c == ErgCharacter::Waves ? e.waves
+                                                                     : 1.0f - e.waves - e.giants);
+                if (weight > 0.99f && e.mask > 0.9f) {
+                    x0 = x;
+                    z0 = z;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// The waves bury the local relief of the geography (base over regional): over a butte or a
+// hollow of 30 m the surface of the sand is the same; the realistic kinds lie on it unchanged.
+void testBuried() {
+    double gx = 0.0;
+    double gz = 0.0;
+    double rx = 0.0;
+    double rz = 0.0;
+    TEST_CHECK(siteOf(ErgCharacter::Giants, gx, gz) && siteOf(ErgCharacter::Realistic, rx, rz));
+    double worst = 0.0;
+    bool realistic = true;
+    for (int k = 0; k < 200; ++k) {
+        terrain::HeightSample flat;
+        const double x = gx + 151.3 * k;
+        const double z = gz + 67.9 * k;
+        const double surface = static_cast<double>(real().ergs.dunesAt(x, z, flat));
+        for (const float local : {-30.0f, 30.0f}) {
+            terrain::HeightSample s;
+            s.base = local;
+            const double sand = static_cast<double>(real().ergs.dunesAt(x, z, s));
+            if (surface >= 30.0) {
+                worst = std::max(worst, std::abs(local + sand - surface));
+            }
+            terrain::HeightSample r = s;
+            realistic = realistic &&
+                        real().ergs.dunesAt(rx + 151.3 * k, rz + 67.9 * k, r) ==
+                            real().ergs.dunesAt(rx + 151.3 * k, rz + 67.9 * k, flat);
+        }
+    }
+    std::printf("buried: over a butte or a hollow of 30 m the sand of the giant waves moves its "
+                "surface by %.4f m at most; the realistic dunes %s\n",
+                worst, realistic ? "unchanged" : "CHANGED");
+    TEST_CHECK(worst < 1e-3);
+    TEST_CHECK(realistic);
+}
 } // namespace
 
 int main() {
@@ -231,5 +295,6 @@ int main() {
     testFarBoundary(ErgCharacter::Waves, 16'000.0, 8.0, 40.0);
     testFarBoundary(ErgCharacter::Giants, 100'000.0, 25.0, 150.0);
     testHorizon();
+    testBuried();
     return test::result();
 }

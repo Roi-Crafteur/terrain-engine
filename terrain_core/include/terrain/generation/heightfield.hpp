@@ -94,6 +94,10 @@ struct HeightSample {
     float mountainMask = 0.0f;         // [0, 1]
     float relief = 0.0f; // [0, 1], the intensity of the relief of the geography on land (else 0)
     float base = 0.0f;                 // continental curve, [kMinBaseHeight, kMaxBaseHeight]
+    // The regional ground under the local relief of the geography (its hills, buttes and forms of
+    // the plains: base less them); base without the geography. The seas of dunes of the waves
+    // bury the local relief down to it (ergs.hpp).
+    float regional = 0.0f;
     float mountain = 0.0f;             // [0, mountainMask * mountainHeight * (1 + boost)]
     float detail = 0.0f; // [-detailAmplitude, detailAmplitude] (with the geography, its own)
     float height = 0.0f;

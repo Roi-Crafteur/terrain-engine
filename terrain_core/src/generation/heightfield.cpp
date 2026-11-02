@@ -278,6 +278,7 @@ HeightSample Heightfield::reliefWith(double worldX, double worldZ, Memos* memos,
     continentalnessAt(x, z, s, memos);
     const float coastOffset = s.continentalness - params_.coastContinentalness;
     s.base = continentalBase(coastOffset);
+    s.regional = s.base;
 
     const float land = noise::smoothstep(kMountainCoastStart, kMountainCoastFull, coastOffset);
     // On the sea and the shore the land factor is 0, and the mask 0 * max(massif, collision)

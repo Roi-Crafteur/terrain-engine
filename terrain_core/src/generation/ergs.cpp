@@ -65,6 +65,7 @@ constexpr double kLakeWavelength = 12'000.0;
 constexpr double kWavesTallest = 300.0;
 constexpr double kGiantsTallest = 800.0;
 constexpr double kFadePerMeter = 7.06; // 1.5 / tan 12 degrees
+constexpr double kBlanket = 40.0; // meters of sand of the troughs of the waves (buried())
 // The weights of the characters from the blocks and the slow noise: the realistic fade out from
 // kRealisticEnd, the giant waves come from kGiantsStart, over kCharacterJoin.
 constexpr float kRealisticEnd = 0.1f;
@@ -373,6 +374,24 @@ std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z) {
     return {d.cosine, d.sine};
 }
 
+// The sand of the waves buries the local relief of the geography (its hills, buttes and plains:
+// HeightSample::base over regional): its surface rides on the regional ground, dunes meters over
+// it, as far as it reaches: a butte taller than the wave stands out of it, a hollow deeper than
+// it keeps some of its depth (at most twice the dunes there). The realistic kinds lie on the
+// relief as it is (the same bits where they weigh 1).
+static float buried(const HeightSample& s, const ErgPoint& e, double dunes) {
+    const double waves = static_cast<double>(e.waves) + static_cast<double>(e.giants);
+    if (!(waves > 0.0) || !(dunes > 0.0)) {
+        return static_cast<float>(dunes);
+    }
+    // Even in their troughs the waves keep a blanket of kBlanket meters of sand over the regional
+    // ground (with the mask: none at the edges of the erg nor along the water).
+    const double sand = std::max(dunes, kBlanket * static_cast<double>(e.mask));
+    const double local = static_cast<double>(s.base) - static_cast<double>(s.regional);
+    const double over = std::clamp(sand - local, 0.0, 2.0 * sand);
+    return static_cast<float>(dunes + (over - dunes) * waves);
+}
+
 float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,
                     float* mask) const {
     if (mask != nullptr) {
@@ -397,11 +416,11 @@ float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,
     const double filtered = hermite(kFilterLow * spacing, kFilterHigh * spacing, footprint);
     const double point = filtered < 1.0 ? static_cast<double>(dunesOf(x, z, e)) : 0.0;
     if (!(filtered > 0.0)) {
-        return static_cast<float>(point);
+        return buried(s, e, point);
     }
     // Their mean over their pattern (closed forms).
     const double mean = dune_field::meanDunes(*impl_, x, z, e);
-    return static_cast<float>(point + (mean - point) * filtered);
+    return buried(s, e, point + (mean - point) * filtered);
 }
 
 float Ergs::dunesOf(double x, double z, const ErgPoint& e) const {
