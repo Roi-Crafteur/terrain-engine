@@ -7,6 +7,7 @@
 //   from the origin, the spacing holds;
 // - the far horizon: the same bits as the tiles below a tenth of their spacing (no seam), their
 //   mean beyond without flicker.
+#include "dune_forms.hpp"
 #include "dune_waves.hpp"
 #include "dunes_support.hpp"
 #include "test_assert.hpp"
@@ -31,7 +32,9 @@ void testProfile() {
             return terrain::dune_waves::profile(t, wavelength, height, backTan);
         };
         const double dt = 0.01 / wavelength;
-        const double brink = (h(0.0) - h(dt)) / 0.01;
+        // The brink: just past the rounding of the crest (dune_forms::kCrestRound).
+        const double past = (2.0 * terrain::dune_forms::kCrestRound / kTan33 + 0.01) / wavelength;
+        const double brink = (h(past) - h(past + dt)) / 0.01;
         double steepestBack = 0.0;
         double low = 0.0;
         for (double t = 0.3; t < 1.0; t += 1e-4) {
@@ -50,7 +53,7 @@ void testProfile() {
         TEST_CHECK(std::abs(brink - kTan33) < 0.01);
         TEST_CHECK(steepestBack <= backTan * 1.01);
         TEST_CHECK(low < 0.05); // the trough only
-        TEST_CHECK(h(0.0) == height);
+        TEST_CHECK(std::abs(h(0.0) - (height - terrain::dune_forms::kCrestRound)) < 1e-9);
     }
 }
 

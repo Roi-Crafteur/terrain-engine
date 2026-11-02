@@ -221,9 +221,32 @@ void testStars() {
     TEST_CHECK(highest > 50.0 && highest <= 300.0);
 }
 
-// (The far boundaries of the planet cells: the chains space too irregularly, forks and ends, for
-// two windows of 8 km to agree within 1.5 times even far from any boundary; the waves keep the
-// test, dunes_waves_test.)
+// Across the boundaries that cut the world (the cells of the planet level, 65,536 m here, the
+// lattice of the pivots of the phase, 16,384 m) and its seam, far from the origin: no step, no
+// seam, whatever the kind of the realistic ergs (the chains space too irregularly for their
+// spacings on each side to be compared).
+void testBoundaries() {
+    double steepest = 0.0;
+    const double period = real().ergs.grid().periodX();
+    for (const double z : {-5'830'000.0, 3'000'000.0, 5'830'000.0}) {
+        for (const double b : {std::floor(19'990'000.0 / 65'536.0) * 65'536.0,
+                               std::floor(-12'345'678.0 / 16'384.0) * 16'384.0,
+                               0.5 * period}) {
+            for (const auto& kind : {std::array<float, 2>{0.0f, kSteady}, {0.2f, kSteady},
+                                     {kChainSand, kSteady}, {0.7f, 0.9f}}) {
+                double last = dunes_test::forcedDunes(real().ergs, b - 50.0, z, kind[0], kind[1]);
+                for (double d = -49.75; d <= 50.0; d += 0.25) {
+                    const double h = dunes_test::forcedDunes(real().ergs, b + d, z, kind[0], kind[1]);
+                    steepest = std::max(steepest, std::abs(h - last) / 0.25);
+                    last = h;
+                }
+            }
+        }
+    }
+    std::printf("boundaries: steepest step across them %.2f m per m (%.1f deg)\n", steepest,
+                std::atan(steepest) * dunes_test::kDegrees);
+    TEST_CHECK(std::atan(steepest) * dunes_test::kDegrees <= 40.0);
+}
 
 // Continuous: no step anywhere, whatever the kind (the steepest pair of points 0.25 m apart).
 void testContinuous() {
@@ -253,6 +276,7 @@ int main() {
     testBarchans();
     testSeifs();
     testStars();
+    testBoundaries();
     testContinuous();
     return test::result();
 }

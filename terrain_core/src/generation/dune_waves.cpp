@@ -59,8 +59,8 @@ constexpr float kCoherenceLow = 0.01f;
 constexpr float kCoherenceHigh = 0.2f;
 // The share of the mean of their profiles the waves keep (measured: along 195 lines of 36 km
 // across the ergs of waves and 31 across the giants, and over 16 and 13 windows of 10 and 30 km).
-constexpr double kWavesKept = 0.9 * 0.79;
-constexpr double kGiantsKept = 0.9 * 0.85;
+constexpr double kWavesKept = 0.9 * 0.84;
+constexpr double kGiantsKept = 0.9 * 0.78;
 
 // The trough between two waves sinks this share of their height below the floor.
 constexpr double kDig = 0.4;
@@ -133,6 +133,14 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
     const double rise = height * dmath::pow(r, kBackCurve);
     Shape out;
     out.height = std::max(face, rise);
+    // The crest rounded (dune_forms::rounded): the face and the back meet flat on top.
+    const double backTop = kBackCurve * height / back;
+    if (d < 2.0 * dune_forms::kCrestRound / dune_forms::kLeeTan) {
+        out.height = std::min(out.height, height - dune_forms::rounded(d, dune_forms::kLeeTan));
+    }
+    if (up < 2.0 * dune_forms::kCrestRound / backTop) {
+        out.height = std::min(out.height, height - dune_forms::rounded(up, backTop));
+    }
     // The slopes the layers read, falling and rising downwind: the face, and the back growing
     // linearly from its foot to its steepest at the crest (its own slope grows as r^0.4, too
     // fast for the layers that read it).

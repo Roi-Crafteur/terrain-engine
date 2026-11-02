@@ -55,6 +55,13 @@ struct Barchan {
 // face on the left).
 [[nodiscard]] double seif(double offset, double height, double slip);
 
+// The crests are rounded: kCrestRound meters under the sharp crest, flat on top, a parabola down
+// to the flank of each side (2 kCrestRound / slope meters away): a sharp crest between the
+// samples of a mesh draws teeth along it (Marching Cubes), a rounded one none.
+inline constexpr double kCrestRound = 2.0;
+// What a flank of slope falls from the sharp crest c meters away from it, rounded.
+[[nodiscard]] double rounded(double c, double slope);
+
 // The star dunes of a lattice of cell meters at the canonical (x, z): a peak at kStarTan with 2 to
 // 6 arms of sharp crests, uneven and bent, on the cells that hold one (occupancy), at most height high. periodX
 // and periodZ: those of the world (whole multiples of cell). key: the hash of the pattern.

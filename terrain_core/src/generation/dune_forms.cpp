@@ -136,10 +136,15 @@ double barchan(const Barchan& b) {
     return best * b.presence;
 }
 
+double rounded(double c, double slope) {
+    const double reach = 2.0 * kCrestRound / slope;
+    return c < reach ? kCrestRound + 0.5 * slope * c * c / reach : slope * c;
+}
+
 double seif(double offset, double height, double slip) {
     const double left = kLeeTan + (kGentleTan - kLeeTan) * slip;
     const double right = kGentleTan + (kLeeTan - kGentleTan) * slip;
-    return std::max(0.0, height - (offset < 0.0 ? left : right) * std::abs(offset));
+    return std::max(0.0, height - rounded(std::abs(offset), offset < 0.0 ? left : right));
 }
 
 namespace {

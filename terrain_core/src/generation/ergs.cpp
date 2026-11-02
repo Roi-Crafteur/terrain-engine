@@ -61,6 +61,8 @@ constexpr double kFadePerMeter = 7.06; // 1.5 / tan 12 degrees
 constexpr double kBuryMost = 60.0; // meters of the local relief the sand buries (buried())
 constexpr float kBuryFade = 0.3f;
 constexpr double kRockFall = 5.0;
+// A hollow keeps this share of what it sinks under kBuryMost: the sand lines its walls, gentler.
+constexpr double kHollowKept = 0.35;
 // The weights of the characters from the blocks and the slow noise: the realistic fade out from
 // kRealisticEnd, the giant waves come from kGiantsStart, over kCharacterJoin.
 constexpr float kRealisticEnd = 0.1f;
@@ -166,6 +168,14 @@ static float potentialOf(const Ergs::Impl& m, double x, double z, double& warpX,
     warpX = reach * static_cast<double>(m.warpX.fbm2D(x, z, memo.warpX));
     warpZ = reach * static_cast<double>(m.warpZ.fbm2D(x, z, memo.warpZ));
     return erg_field::potentialAt(m.field, x + warpX, z + warpZ);
+}
+
+// How arid the climate of the planet is at (x, z), [0, 1] (ErgParams::rainFull and rainNone).
+static float aridOf(const Ergs::Impl& m, double x, double z) {
+    const PlanetBilinear c = planetBilinear(m.planet->grid(), x, z);
+    const double rain = c.blend(m.planet->precipitation(c.cells[0]), m.planet->precipitation(c.cells[1]),
+                                m.planet->precipitation(c.cells[2]), m.planet->precipitation(c.cells[3]));
+    return 1.0f - noise::smoothstep(m.params.rainFull, m.params.rainNone, static_cast<float>(rain));
 }
 
 float Ergs::climateAt(double x, double z) const {
@@ -300,6 +310,10 @@ ErgPoint Ergs::at(double x, double z, float relief) const {
     if (!(dry > 0.0f) || !(flat > 0.0f)) {
         return {};
     }
+    const float arid = aridOf(m, x, z);
+    if (!(arid > 0.0f)) {
+        return {};
+    }
     ErgMemos& memo = memosOf(m);
     const float supplied = noise::smoothstep(m.params.supplyLow, m.params.supplyHigh,
                                              m.supply.fbm2D(x, z, memo.supply));
@@ -312,9 +326,9 @@ ErgPoint Ergs::at(double x, double z, float relief) const {
     if (!(potential > 0.0f)) {
         return {};
     }
-    // The core of the erg: the climate where the sand is supplied; its edges frayed by a noise
+    // The core of the erg: the arid climate where the sand is supplied; its edges frayed by a noise
     // where it passes the threshold, never beyond the climate (the guard).
-    const float core = potential * supplied;
+    const float core = potential * supplied * arid;
     const float frayed = core + m.params.edgeNoise * m.edges.fbm2D(x, z, memo.edges);
     float mask = noise::smoothstep(kMaskLow, kMaskHigh, frayed) *
                  noise::smoothstep(0.0f, kMaskGuard, core) * flat;
@@ -355,7 +369,7 @@ std::array<double, 2> Ergs::windAt(double x, double z) const {
 
 // The sand of the ergs buries the local relief of the geography (its hills, buttes and plains:
 // HeightSample::base over regional): the surface of the dunes rides on the regional ground, a
-// hollow keeps what it sinks under it past kBuryMost; the rock of a butte (lowered by kBuryMost,
+// hollow keeps kHollowKept of what it sinks under it past kBuryMost; the rock of a butte (lowered by kBuryMost,
 // deep under the plains) stands out of the sand where it rises over it (its slopes never add to
 // those of the dunes). Faded with the mask over its first kBuryFade: none at the edges of the erg.
 static float buried(const HeightSample& s, const ErgPoint& e, double dunes) {
@@ -363,7 +377,7 @@ static float buried(const HeightSample& s, const ErgPoint& e, double dunes) {
     if (local == 0.0) {
         return static_cast<float>(dunes);
     }
-    const double hollow = std::min(0.0, local + kBuryMost);
+    const double hollow = kHollowKept * std::min(0.0, local + kBuryMost);
     const double share = static_cast<double>(noise::smoothstep(0.0f, kBuryFade, e.mask));
     // The rock: kBuryMost under the top of a butte, kRockFall times as deep under lower ground
     // (under the troughs of the tallest waves on a plain).
@@ -443,9 +457,10 @@ static void assignCharacters(Ergs::Impl& m) {
             }
             const double x = -0.5 * f.grid.periodX() + (bi + 0.5) * f.blockSize;
             const double z = -0.5 * f.grid.periodZ() + (bj + 0.5) * f.blockSize;
-            const float core = f.potential[b] * noise::smoothstep(m.params.supplyLow,
-                                                                  m.params.supplyHigh,
-                                                                  m.supply.fbm2D(x, z));
+            const float core = f.potential[b] *
+                               noise::smoothstep(m.params.supplyLow, m.params.supplyHigh,
+                                                 m.supply.fbm2D(x, z)) *
+                               aridOf(m, x, z);
             cover[b] = noise::smoothstep(kMaskLow, kMaskHigh, core);
         }
     }

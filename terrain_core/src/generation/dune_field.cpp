@@ -295,7 +295,7 @@ constexpr double kCoherentMean = 0.9;
 constexpr double kBarchanVolume = 6.82;
 constexpr double kBarchanTop = 0.75;   // the mean height of a barchan over its tallest
 constexpr double kBarchanHalfShare = 0.26; // dune_forms: their half width over their cell
-constexpr double kSeifEnds = 0.56; // the share their ends, defects and stars leave (measured)
+constexpr double kSeifEnds = 0.62; // the share their ends, defects and stars leave (measured)
 constexpr double kStarArms = 1.3;      // the volume of a star over that of its cone
 constexpr double kPi = 3.141592653589793;
 

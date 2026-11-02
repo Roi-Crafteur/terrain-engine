@@ -63,6 +63,11 @@ struct ErgParams {
     // the semi-arid lands, away from the sharp lines of the bands of the planet level.
     float humidLow = 0.42f;
     float humidHigh = 0.55f;
+    // The rain of the planet level at the point (mm a year, bilinear): live sand needs an arid
+    // climate, the core of an erg full at or under rainFull, none from rainNone (a savanna holds
+    // its sand with grass). Its edges fray across it.
+    float rainFull = 120.0f;
+    float rainNone = 200.0f;
     // The edge of the deserts the ergs thin out across, from the humidity of the land around the
     // warped point (blocks of the field, blurred over two blocks: no line of the planet level):
     // edgeCool where it is cool, edgeHot where it is hot (around edgeTemperature, joined over

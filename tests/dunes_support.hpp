@@ -57,6 +57,9 @@ inline terrain::ErgParams smallErgParams() {
     // two of them: it mixes dry and wet cells far more than on the real planet.
     p.edgeCool = 0.42f;
     p.edgeHot = 0.52f;
+    // And its climate is wetter: its deserts get far more rain than those of the real planet.
+    p.rainFull = 1'000.0f;
+    p.rainNone = 1'600.0f;
     return p;
 }
 
