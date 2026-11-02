@@ -4,11 +4,22 @@ Custom nodes cannot declare functions: the helpers live in a struct (FTemporaryT
 - Layers: the ground layers of a texel of the horizon (its packed surface, terrain_surface.hpp).
 - BlendLayers: the ground layers of the surface blend of a tile (its texels in the atlas,
   Bridge/tile_blend_atlas.hpp): the weights of 3 biomes and 3 materials per texel.
+- AddBlend, FinishBlend: the sum of the weights of decoded blend texels and its layers, shared by
+  the tiles (BlendLayers) and the horizon (BlendTexelsLayers, TexelBlend: the blend texels of the
+  horizon, Bridge/horizon_blend_texels.hpp, agent 29).
 - Noise: periodic value noise in world space (4096 m period, as the waves of the sea).
 - Bomb: stochastic tiling, each cell of 0.7 texture repeat with its own offset and quarter turn,
   blended over the last quarter of the cell: no repetition can be read near or far.
 - RockPlane: one plane of the triplanar rock, two rock textures mixed by world patches.
 """
+
+import importlib
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import blend_layers_hlsl as blend_code  # noqa: E402  (after the path of this script)
+blend_code = importlib.reload(blend_code)  # the module of this checkout, even if run before
 
 # Texels along each side of a tile (terrain_core stream_manager.hpp: kTileBlendTexels).
 TILE_BLEND_TEXELS = 5
@@ -36,74 +47,7 @@ struct FTemporaryTerrain
         else if (m == 7) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); }                        // scree
     }
 
-    // The layers of the surface blend of a tile (Bridge/tile_blend_atlas.hpp): the 4 texels of
-    // its slot of the atlas T around the point at local (centimeters from the lowest corner of the
-    // tile), pitchCm apart. Each slot of each texel adds its bilinear share of its weight to its
-    // id (biome_blend.hpp: addTexel), never interpolating the ids; the layers are those of every
-    // biome (BIOMES) and the overrides of every material (as in Layers), both linear in the
-    // weights; the sand of the dunes of an erg (the share in the last float) is the smooth sand,
-    // never the stony desert around it, and d that share. False where the tile has no texels
-    // (slot -1, or the texels of no tile).
-    bool BlendLayers(Texture2D T, float slot, float pitchCm, float2 local, out float4 a,
-                     out float4 b, out float2 c, out float d)
-    {
-        const float4 BA[12] = { BIOME_A };
-        const float4 BB[12] = { BIOME_B };
-        const float2 BC[12] = { BIOME_C };
-        a = float4(0.0, 0.0, 0.0, 0.0); b = a; c = float2(0.0, 0.0);
-        if (slot < -0.5) { return false; }
-        uint width, height;
-        T.GetDimensions(width, height);
-        int perSide = max((int)width / TEXELS, 1);
-        int s = (int)(slot + 0.5);
-        int2 corner = int2(s % perSide, s / perSide) * TEXELS;
-        float2 ij = clamp(local / max(pitchCm, 1.0), 0.0, TEXELS - 1.0);
-        float2 base = min(floor(ij), TEXELS - 2.0);
-        float2 f = ij - base;
-        float4 share = float4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-        float wm[8] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-        float ocean = 0.0;
-        float desert = 0.0;
-        float dunes = 0.0;
-        [unroll] for (int t = 0; t < 4; ++t)
-        {
-            float4 x = T.Load(int3(corner + int2(base) + int2(t & 1, t >> 1), 0));
-            if (x.a < 0.5) { return false; }
-            uint ids = (uint)(x.r + 0.5);
-            uint lo = (uint)(x.g + 0.5);
-            uint hi = (uint)(x.b + 0.5);
-            float3 wb = float3(lo & 255u, lo >> 8u, 0.0) / 255.0;
-            wb.z = max(1.0 - wb.x - wb.y, 0.0);
-            float3 wt = float3(hi & 255u, hi >> 8u, 0.0) / 255.0;
-            wt.z = max(1.0 - wt.x - wt.y, 0.0);
-            // The share of the sand of the dunes rides on the last float, 1 + share / 256.
-            dunes += share[t] * saturate((x.a - 1.0) * 256.0 / 255.0);
-            [unroll] for (int k = 0; k < 3; ++k)
-            {
-                int biome = min((int)((ids >> (4u * k)) & 15u), 11);
-                int material = min((int)((ids >> (12u + 4u * k)) & 15u), 7);
-                float w = share[t] * wb[k];
-                a += w * BA[biome]; b += w * BB[biome]; c += w * BC[biome];
-                ocean += biome == 0 ? w : 0.0;
-                desert += biome == 2 ? w : 0.0;
-                wm[material] += share[t] * wt[k];
-            }
-        }
-        float4 A = a, B = b;
-        float4 z = float4(0.0, 0.0, 0.0, 0.0);
-        float4 bed = ocean * BB[0] + (1.0 - ocean) * float4(0.5, 0.0, 0.0, 0.5);       // river bed
-        float soil = wm[3] + wm[6];                                                      // dirt, mud
-        float keep = wm[2] + wm[5];                                                      // grass, snow
-        a = keep * A + 0.3 * soil * A + wm[0] * ocean * BA[0];
-        b = keep * B + soil * (0.3 * B + float4(0.7, 0.0, 0.0, 0.0)) + wm[0] * bed
-          + wm[1] * lerp(float4(0.0, 1.0 - desert, desert, 0.0), float4(0.0, 1.0, 0.0, 0.0), dunes)
-          + (wm[4] + wm[7]) * float4(0.0, 0.0, 0.0, 1.0);
-        c.x = lerp(c.x, 1.0, wm[5]);                                                     // snow
-        c.y = lerp(c.y, 1.0, wm[4]);                                                     // rock
-        d = saturate(dunes);
-        return true;
-    }
-
+BLEND_FUNCTIONS
     // The height of the ground (meters) at the sample coordinates ij of the window of level 0,
     // bilinear between its 4 texels (the tiles: the vertex shader of create_temporary_terrain_
     // material.py; first, side: the toroidal window).
@@ -252,9 +196,15 @@ float pd = Look.Patch(Q, 4.0, 47.0);
 float rock = saturate((slope - (RockStartDeg + jit)) / max(RockFullDeg - RockStartDeg, 1.0));
 rock = smoothstep(0.3, 0.7, rock + (pd - 0.5) * 0.6);
 // The dunes stay sand at any slope: their slip faces stand at 33 degrees, never rock, scree nor
-// stones at their foot. Their share: W4 on the tiles, 0 on the far horizon (it does not carry
-// it yet). Elsewhere the desert keeps its rock and its scree from 30 degrees.
+// stones at their foot, nor the gravel of the desert. DUNES: their share (the surface blends of
+// the tiles and of the horizon). Elsewhere the desert keeps its rock and its scree from 30
+// degrees. The foot of the steep slopes comes from the tiles only.
 float sandLock = saturate(DUNES * 2.0);
+// Their sand has one color near and far: the smooth Sand layer takes the mean color of the
+// Desert layer (the warm orange of the horizon) where the dunes are, its ripples kept.
+float3 duneTint = lerp(float3(1.0, 1.0, 1.0),
+                       (DESERT_MEAN * DESERT_TINT) / max(SAND_MEAN * SAND_TINT, float3(1e-4, 1e-4, 1e-4)),
+                       sandLock);
 rock *= 1.0 - sandLock;
 rock = max(rock, W2.y * CoreRock);
 float cold = saturate((W2.x - 0.5) * 2.5 + (n2 - 0.5) * 1.2 + 0.5);
@@ -286,7 +236,7 @@ float ma = Look.Patch(R, 8.0, 17.0) * 0.7 + Look.Noise(R + 13.0, 128.0) * 0.2
 float mb = Look.Patch(R, 8.0, 71.0) * 0.7 + Look.Noise(R - 13.0, 128.0) * 0.2
          + Look.Noise(R - 3.0, 4.0) * 0.1 + rag;
 float bareSite = saturate(bump + 0.6 * incline);
-float gravelSite = saturate(hollow + 0.6 * saturate(W2.z) + 0.25 * incline);
+float gravelSite = saturate(hollow + 0.6 * saturate(FOOT) + 0.25 * incline);
 float bareMask = lerp(ma, bareSite, PatchRelief) - PatchRarity;
 float gravelMask = lerp(mb, gravelSite, PatchRelief) - PatchRarity;
 float bare = PatchAmount * smoothstep(0.0, 0.05, bareMask);
@@ -306,6 +256,7 @@ g[0] = meadow * (1.0 - dryp * 0.8 - dark * 0.6);
     g[7] += g[v] * gravel * 0.6;
     g[v] *= 1.0 - bare * 0.75 - gravel * 0.6;
 }
+desertGravel *= 1.0 - sandLock;
 g[7] += g[6] * desertGravel * 0.5;
 g[6] *= 1.0 - desertGravel * 0.5;
 snow *= 1.0 - outcrop * 0.85;
@@ -324,7 +275,7 @@ float sandShare = g[5] + g[6];
 float soil = 0.6 * saturate((slope - 26.0 - jit) / 10.0);
 float lowland = g[0] + g[1] + g[2];
 float alpine = g[3];
-float foot = 0.7 * saturate(W2.z) * (1.0 - rock) * (1.0 - sandLock);
+float foot = 0.7 * saturate(FOOT) * (1.0 - rock) * (1.0 - sandLock);
 float sum = 0.0;
 [unroll] for (int s = 0; s < 8; ++s)
 {
@@ -345,7 +296,7 @@ LAYER_FAR = r"""
 BRANCH if (g[I] > 0.01 && cover > 0.02)
 {
     float3 c = TAI.SampleLevel(TAISampler, P / SCALE, 13.0).rgb;
-DETAIL_CODELAYER_SATURATION    ground += (g[I] / sum) * c * TintI;
+DETAIL_CODELAYER_SATURATIONDUNE_TINT    ground += (g[I] / sum) * c * TintI;
 }
 """
 
@@ -414,7 +365,7 @@ if (DebugView > 0.5)
     float3 d = float3(0.0, 0.0, 0.0);
     [unroll] for (int k = 0; k < 8; ++k) { d += (g[k] / sum) * K[k]; }
     d = lerp(lerp(d, float3(0.9, 0.1, 0.1), rock), float3(1.0, 1.0, 1.0), snow);
-    color = DebugView < 1.5 ? d : (DebugView < 2.5 ? float3(rock, snow, saturate(W2.z)) :
+    color = DebugView < 1.5 ? d : (DebugView < 2.5 ? float3(rock, snow, saturate(FOOT)) :
             (DebugView < 3.5 ? float3(sandShare / max(sum, 1e-3), 0.0, 0.0) :
             (DebugView < 4.5 ? float3(hollow, 0.15, bump) : float3(bare, gravel, 0.0))));
 }
@@ -431,15 +382,18 @@ def struct_hlsl(biomes):
             cells = ", ".join(f"{float(x):.2f}" for x in biome[index])
             values.append(f"float{width}({cells})")
         return ", ".join(values)
-    return (STRUCT_HLSL.replace("BIOME_A", rows(0, 4)).replace("BIOME_B", rows(1, 4))
+    return (STRUCT_HLSL.replace("BLEND_FUNCTIONS", blend_code.BLEND_HLSL)
+            .replace("BIOME_A", rows(0, 4)).replace("BIOME_B", rows(1, 4))
             .replace("BIOME_C", rows(2, 2)).replace("TEXELS", str(TILE_BLEND_TEXELS)))
 
 
-def ground_layer(index, scale, detail, saturation):
+def ground_layer(index, scale, detail, saturation, dunes=False):
     """The code of one ground layer: its mean color, or its stochastic texture near the camera."""
     layer = LAYER_FAR.replace("DETAIL_CODE", LAYER_DETAIL if detail else "")
     layer = layer.replace("LAYER_SATURATION", "" if saturation is None else
                           f"    c = Look.Saturate(c, {saturation:.2f});\n")
+    # The sand of the dunes takes the color of the desert (duneTint, SHADE_TOP).
+    layer = layer.replace("DUNE_TINT", "    c *= duneTint;\n" if dunes else "")
     return layer.replace("TAI", f"TA{index}").replace("TNI", f"TN{index}").replace(
         "TintI", f"Tint{index}").replace("[I]", f"[{index}]").replace("SCALE", f"{scale:.1f}")
 
@@ -451,10 +405,20 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
     # The curvature of the ground comes from the vertex shader of the tiles (W3.w); the horizon
     # has none.
     # The share of the dunes comes from the surface blend of the tiles (W4); the horizon has none.
+    # The share of the dunes: W4 on the tiles, W2.z on the horizon (it has no foot of slopes).
+    def mean(name):
+        color = next(layer[3] for layer in layers if layer[0] == name)
+        return "float3(" + ", ".join(f"{x:.3f}" for x in color) + ")"
     code = SHADE_TOP.replace("HAS_DETAIL", "1.0" if detail else "0.0").replace(
-        "CURVATURE", "W3.w" if detail else "0.0").replace("DUNES", "W4" if detail else "0.0")
+        "CURVATURE", "W3.w" if detail else "0.0").replace(
+        "DUNES", "W4" if detail else "W2.z").replace("FOOT", "W2.z" if detail else "0.0").replace(
+        "DESERT_MEAN", mean("Desert")).replace("SAND_MEAN", mean("Sand"))
+    names = [layer[0] for layer in layers]
+    code = code.replace("DESERT_TINT", f"Tint{names.index('Desert')}").replace(
+        "SAND_TINT", f"Tint{names.index('Sand')}")
     for index in range(ground):
-        code += ground_layer(index, layers[index][4], detail, saturations.get(layers[index][0]))
+        code += ground_layer(index, layers[index][4], detail, saturations.get(layers[index][0]),
+                             layers[index][0] == "Sand")
     snow, rock, variant = ground, ground + 1, ground + 2
     scale = f"{layers[rock][4]:.1f}"
     code += ROCK_FAR.replace("TAR", f"TA{rock}").replace("TAV", f"TA{variant}").replace(
@@ -466,5 +430,5 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
                 f"TA{variant}Sampler, TN{variant}, TN{variant}Sampler, Tint{rock}, Tint{variant}, alt")
         code += ROCK_DETAIL.replace("ROCK_ARGS", args).replace("SCALE", scale)
         code += SNOW_DETAIL.replace("TAS", f"TA{snow}").replace("SCALE", f"{layers[snow][4]:.1f}")
-    code += SHADE_BOTTOM.replace("TintS", f"Tint{snow}")
+    code += SHADE_BOTTOM.replace("TintS", f"Tint{snow}").replace("FOOT", "W2.z" if detail else "0.0")
     return struct_hlsl(biomes) + code

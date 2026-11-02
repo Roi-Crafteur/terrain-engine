@@ -7,12 +7,14 @@ with the far horizon (create_horizon_gpu_material.py).
 Vertex shader: the 4 texels of level 0 of the GPU horizon around the vertex (texture
 SurfaceTexels, its window placed by SurfaceOrigin, SurfaceFirstX/Z, SurfacePitchCm, SurfaceCells:
 ATerrainWorld binds them, UTerrainHorizonClipmap::BindSurfaceLook) give the layers of the ground,
-bilinear: the same samples as the horizon, so the near and far ground match. Where the tile has
-its surface blend (the weights of 3 biomes and 3 materials every 4 cells, in the atlas
+bilinear: the same samples as the horizon, so the near and far ground match; with their surface
+blends (SurfaceBlend, agent 29), the weights of their biomes and materials, as the horizon. Where
+the tile has its surface blend (the weights of 3 biomes and 3 materials every 4 cells, in the atlas
 TileBlendTexels at the slot of its custom primitive data, ProceduralMeshTerrainBackend), its 4
 texels around the vertex give the layers instead, faded back into those of the horizon across the
 band of the tiles over level 0 (SurfaceCoveredCm, SurfaceBandCm): no seam at the outer edge of the
-tiles. TileBlend 0 turns the blend off, for comparisons. The far tiles lean
+tiles. TileBlend 0 turns the blend off, for comparisons; SurfaceBlends 0 the blends of level 0
+(Terrain.Blend 0). The far tiles lean
 toward the detail normals of level 0 (horizon_detail_normals.py: 2 m at the default ratio 4,
 SurfaceNormals), or the smooth normals of its samples where the detail is not ready. Without the GPU
 horizon (HasSurface 0), the layers follow the altitude only.
@@ -47,8 +49,8 @@ ASSET_NAME = "M_TemporaryTerrain"
 SURFACE_SCALARS = {"SurfaceFirstX": 0.0, "SurfaceFirstZ": 0.0, "SurfaceCells": 256.0,
                    "SurfacePitchCm": 800.0, "HasSurface": 0.0, "WaveOriginX": 0.0,
                    "WaveOriginY": 0.0, "SmoothNormal": 0.8, "SmoothNearM": 60.0,
-                   "SmoothFarM": 220.0, "TileBlend": 1.0, "SurfaceCoveredCm": 0.0,
-                   "SurfaceBandCm": 0.0, **detail.TILE_SCALARS}
+                   "SmoothFarM": 220.0, "TileBlend": 1.0, "SurfaceBlends": 1.0,
+                   "SurfaceCoveredCm": 0.0, "SurfaceBandCm": 0.0, **detail.TILE_SCALARS}
 # The custom primitive data of a tile (ProceduralMeshTerrainBackend): the slot of its surface
 # blend in the atlas TileBlendTexels (-1: none) and the centimeters between its texels.
 PRIMITIVE_SCALARS = {"BlendSlot": (0, -1.0), "BlendPitchCm": (1, 400.0)}
@@ -79,16 +81,36 @@ BRANCH if (HasSurface > 0.5)
     float4 t10 = Tex.Load(int3((i0 + int2(1, 0) + first) % side, 0));
     float4 t01 = Tex.Load(int3((i0 + int2(0, 1) + first) % side, 0));
     float4 t11 = Tex.Load(int3((i0 + int2(1, 1) + first) % side, 0));
-    float4 a00, a10, a01, a11, b00, b10, b01, b11;
-    float2 c00, c10, c01, c11;
-    Look.Layers(t00.a, a00, b00, c00);
-    Look.Layers(t10.a, a10, b10, c10);
-    Look.Layers(t01.a, a01, b01, c01);
-    Look.Layers(t11.a, a11, b11, c11);
     float4 w = float4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-    a = w.x * a00 + w.y * a10 + w.z * a01 + w.w * a11;
-    b = w.x * b00 + w.y * b10 + w.z * b01 + w.w * b11;
-    c.xy = w.x * c00 + w.y * c10 + w.z * c01 + w.w * c11;
+    // The surface blends of the 4 samples (SurfaceBlend, agent 29), as the horizon blends them:
+    // each texel decoded and added with its bilinear share, its ids never interpolated; their
+    // packed surfaces where a sample has no blend yet.
+    float2 cb = float2(0.0, 0.0);
+    bool blended = false;
+    BRANCH if (SurfaceBlends > 0.5)
+    {
+        blended = Look.BlendTexelsLayers(SBlend.Load(int3((i0 + first) % side, 0)),
+                                         SBlend.Load(int3((i0 + int2(1, 0) + first) % side, 0)),
+                                         SBlend.Load(int3((i0 + int2(0, 1) + first) % side, 0)),
+                                         SBlend.Load(int3((i0 + int2(1, 1) + first) % side, 0)),
+                                         w, a, b, cb, dunes);
+    }
+    BRANCH if (blended)
+    {
+        c.xy = cb;
+    }
+    else
+    {
+        float4 a00, a10, a01, a11, b00, b10, b01, b11;
+        float2 c00, c10, c01, c11;
+        Look.Layers(t00.a, a00, b00, c00);
+        Look.Layers(t10.a, a10, b10, c10);
+        Look.Layers(t01.a, a01, b01, c01);
+        Look.Layers(t11.a, a11, b11, c11);
+        a = w.x * a00 + w.y * a10 + w.z * a01 + w.w * a11;
+        b = w.x * b00 + w.y * b10 + w.z * b01 + w.w * b11;
+        c.xy = w.x * c00 + w.y * c10 + w.z * c01 + w.w * c11;
+    }
     slope = w.x * t00.gb + w.y * t10.gb + w.z * t01.gb + w.w * t11.gb;
     // The foot of steep slopes: the steepest of the 4 samples (rise over run), from 35 degrees.
     float steep = max(max(length(t00.gb), length(t10.gb)), max(length(t01.gb), length(t11.gb)));
@@ -130,7 +152,7 @@ BRANCH if (blendShare > 0.0)
         a = lerp(a, ta, blendShare);
         b = lerp(b, tb, blendShare);
         c.xy = lerp(c.xy, tc, blendShare);
-        dunes = td * blendShare;
+        dunes = lerp(dunes, td, blendShare);
     }
 }
 c.w = altitude / 1000.0;
@@ -217,15 +239,23 @@ def vertex_shader(material, scalars):
     """The layers of the vertex, from the texels of level 0 of the horizon."""
     custom = custom_node(
         material, -1400, 0, "TemporaryTerrainVertex", look.struct_hlsl() + VERTEX_HLSL,
-        ["Tex", "Rel", "SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm",
-         "HasSurface"] + BLEND_INPUTS, [("W1", FLOAT4), ("W2", FLOAT4), ("W3", FLOAT4), ("W4", FLOAT1)],
-        FLOAT4)
+        ["Tex", "SBlend", "Rel", "SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells",
+         "SurfacePitchCm", "HasSurface", "SurfaceBlends"] + BLEND_INPUTS,
+        [("W1", FLOAT4), ("W2", FLOAT4), ("W3", FLOAT4), ("W4", FLOAT1)], FLOAT4)
     texels = expression(material, unreal.MaterialExpressionTextureObjectParameter, -2000, -200)
     texels.set_editor_property("parameter_name", "SurfaceTexels")
     texels.set_editor_property("texture", unreal.EditorAssetLibrary.load_asset(
         "/Engine/EngineResources/Black"))
     texels.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
     connect(texels, "", custom, "Tex")
+    # The surface blends of level 0 (agent 29, UTerrainHorizonClipmap::BindSurfaceLook): black,
+    # no blend, until bound.
+    blends = expression(material, unreal.MaterialExpressionTextureObjectParameter, -2000, -350)
+    blends.set_editor_property("parameter_name", "SurfaceBlend")
+    blends.set_editor_property("texture", unreal.EditorAssetLibrary.load_asset(
+        "/Engine/EngineResources/Black"))
+    blends.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    connect(blends, "", custom, "SBlend")
     origin = expression(material, unreal.MaterialExpressionDoubleVectorParameter, -2200, 0)
     origin.set_editor_property("parameter_name", "SurfaceOrigin")
     position = expression(material, unreal.MaterialExpressionWorldPosition, -2200, 150)
@@ -238,7 +268,7 @@ def vertex_shader(material, scalars):
     connect(relative, "", to_float, "")
     connect(to_float, "", custom, "Rel")
     for name in ["SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm", "HasSurface",
-                 "TileBlend", "SurfaceCoveredCm", "SurfaceBandCm"]:
+                 "SurfaceBlends", "TileBlend", "SurfaceCoveredCm", "SurfaceBandCm"]:
         connect(scalars[name], "", custom, name)
     blend_inputs(material, custom)
     # The position from level 0, also read by the pixel shader (detail_slope), evaluated there.

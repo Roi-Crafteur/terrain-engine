@@ -11,6 +11,7 @@ import json
 import re
 from pathlib import Path
 
+import landings
 import pixels
 import pngio
 import sheet
@@ -107,6 +108,9 @@ def _load_lines(v):
     for s in v.get("sessions", []):
         result = s.get("result") or {}
         lines += [f"    {view['place']} : {_load_text(view)}" for view in result.get("views", [])]
+        lines += [f"    monde de la PIE {k} prêt en {s:.1f} s (premier chargement rapporté, carte "
+                  f"de dev démarrée si la session atterrit)"
+                  for k, s in enumerate(result.get("ready", []), 1)]
         if result.get("beatsSkipped"):
             lines.append(f"    battements de cœur sautés : {result['beatsSkipped']} (fichier tenu "
                          f"ouvert par le lanceur au même moment)")
@@ -139,6 +143,12 @@ def _session_warnings(v, s, n):
         out.append(f"ATTENTION ({label}) : session {n} : l'éditeur s'est fermé avant la fin du "
                    f"pilote (sortie {outcome.get('exit_code')}, dernier battement : phase "
                    f"{beat.get('phase', 'aucun')}, n {beat.get('n', 0)})")
+    stopped = (result or {}).get("stopped")
+    if stopped:
+        out.append(f"ATTENTION ({label}) : session {n} arrêtée : {stopped['misses']} "
+                   f"atterrissages de suite sans issue ou envoyés avant que le monde soit prêt "
+                   f"(le dernier : {stopped['after']}), Unreal fermé ; les lieux suivants de la "
+                   f"session n'ont pas été faits")
     if result is None:
         out.append(f"ATTENTION ({label}) : session {n} sans résultat (result_{n}.json absent)")
     elif not result.get("done"):
@@ -167,7 +177,7 @@ def _missing_outputs(v, run):
         result = s.get("result")
         if result is None:
             continue
-        for place in s.get("places", []):
+        for place in s.get("places", []) if run.get("views", True) else []:
             file = (views.get(place) or (None,))[0]
             if not file or not Path(file).is_file():
                 out.append(f"ATTENTION ({v['label']}) : vue absente : {place}")
@@ -194,7 +204,8 @@ def warnings(run):
             out.append(f"ATTENTION ({v['label']}) : {v['error'].splitlines()[0]}")
         for n, s in enumerate(v.get("sessions", []), 1):
             out += _session_warnings(v, s, n)
-        out += _missing_outputs(v, run)
+        out += _missing_outputs(v, run) + landings.failures(v)
+    out += landings.differences(run)
     safety = run.get("safety")
     if safety is not None and not _untouched(safety):
         changed = safety["changed"] + safety["added"] + safety["removed"]
@@ -216,6 +227,30 @@ def notices(run):
             out.append(f"AVERTISSEMENT ({v['label']}) : Unreal a reconstruit la planète "
                        "(fichier copié refusé ?)")
     return out
+
+
+def no_alert_line(run):
+    """Without an alert: how many warnings of the log the sessions list below (the lines Warning
+    of the plugin, which are no failure: "Aucune alerte." above them read as a contradiction)."""
+    count = sum(len((s.get("scan") or {}).get("terrainProblems", []))
+                for v in run["versions"] for s in v.get("sessions", []))
+    if not count:
+        return "Aucune alerte."
+    return (f"Aucune alerte ({count} avertissement{'s' if count > 1 else ''} du journal, "
+            f"ci-dessous).")
+
+
+def duration_line(run):
+    """How long the run took, the sessions of each version beside."""
+    def minutes(seconds):
+        return f"{int(seconds) // 60} min {int(seconds) % 60:02d} s"
+    each = []
+    for v in run["versions"]:
+        sessions = v.get("sessions", [])
+        unreal = sum((s.get("outcome") or {}).get("seconds") or 0 for s in sessions)
+        each.append(f"{v['label']} {minutes(unreal)} en {len(sessions)} session(s)")
+    total = minutes(run["seconds"]) if run.get("seconds") is not None else "?"
+    return f"Durée totale : {total} (Unreal : {', '.join(each)})"
 
 
 def _untouched(safety):
@@ -257,8 +292,11 @@ def _session_lines(v):
                      f"{len(scan.get('loadReports', []))} ; déterminisme : {determinism}")
         if result.get("reentered"):
             lines.append(f"    ticks venus pendant une étape (ignorés) : {result['reentered']}")
-        for line in (scan.get("shaderErrors", []) + scan.get("terrainProblems", []))[:5]:
+        listed = scan.get("shaderErrors", []) + scan.get("terrainProblems", [])
+        for line in listed[:5]:
             lines.append(f"      {line[:160]}")
+        if len(listed) > 5:
+            lines.append(f"      … et {len(listed) - 5} autre(s) : logs/editor_{n}.log")
         for name in ("missingApi", "errors"):
             for item in result.get(name, [])[:3]:
                 last = (str(item).strip().splitlines() or [""])[-1]
@@ -342,6 +380,9 @@ def version_lines(v, run):
     lines += _noise_lines(v) or ["    (aucune)"]
     lines.append("  marches :")
     lines += _walk_lines(v, run) or ["    (aucune)"]
+    if landings.entries(v):
+        lines.append("  atterrissages (Terrain.Map.Go, le chemin d'un clic sur la carte) :")
+        lines += landings.lines(v)
     lines.append("  sondes du core (sol / eau / œil) :")
     for place, f in v.get("probes", {}).items():
         water = "sec" if f.get("waterLevel") is None else f"eau {f['waterLevel']:.2f} m"
@@ -397,20 +438,23 @@ def write_report(run):
     columns = [f"{v['label']} {_short(v)}" for v in run["versions"]]
     if len(columns) == 2:
         columns.append("ecarts x4")
-    sheet.write_sheet(folder / "planche.png", folder / "planche.html", run["title"], columns,
-                      rows)
+    views = run.get("views", True)
+    if views:
+        sheet.write_sheet(folder / "planche.png", folder / "planche.html", run["title"], columns,
+                          rows)
     alerts, advice = warnings(run), notices(run)
     run["alerts"], run["notices"] = alerts, advice
     lines = [f"Vérification du {run['date']} : {run['title']}"]
-    lines += (alerts + advice) or ["Aucune alerte."]
-    lines += [safety_line(run), ""]
+    lines += (alerts + advice) or [no_alert_line(run)]
+    lines += [safety_line(run), duration_line(run), ""]
     for v in run["versions"]:
         lines += version_lines(v, run) + [""]
-    if len(run["versions"]) == 2:
+    if len(run["versions"]) == 2 and views:
         lines.append("== écarts de pixels avant / après, par vue :")
         lines += diff_lines
         lines.append("")
-    lines.append(f"Planche : {folder / 'planche.png'} (et planche.html)")
+    lines.append(f"Planche : {folder / 'planche.png'} (et planche.html)" if views else
+                 "Planche : aucune (--no-views)")
     text = "\n".join(lines) + "\n"
     (folder / "resume.txt").write_text(text, encoding="utf-8")
     (folder / "run.json").write_text(json.dumps(run, indent=2, default=str), encoding="utf-8")

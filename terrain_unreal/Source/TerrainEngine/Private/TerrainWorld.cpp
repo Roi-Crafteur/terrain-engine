@@ -141,6 +141,7 @@ void ATerrainWorld::ReleaseWorld()
 	}
 	if (State.IsValid())
 	{
+		FTerrainBuildHooks::Stop(*this); // the last save of the edits, before the session goes
 		RemoveTerrainWidget(*this, State->Loading.Cover);
 	}
 	State.Reset(); // the workers stop once their current tile or piece is computed
@@ -190,6 +191,7 @@ void ATerrainWorld::FinishStreamingStart(double StartSeconds)
 	StartAtmosphere();
 	State->Loading.HorizonSeconds = FPlatformTime::Seconds() - HorizonStartSeconds;
 	StartTerrainLoading(*this, *State.Get());
+	FTerrainBuildHooks::Start(*this); // the saved edits of the seed read, with Building.bSaveEdits
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: start-up in %.3f s: the world built on a thread in %.3f s, then the "
 			 "horizon, the water and the sky in %.3f s on the game thread"),
@@ -241,6 +243,7 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 		return;
 	}
 	TickTerrainEdits(*State.Get());
+	FTerrainBuildHooks::Tick(*this, Pawn); // the save of the edits, the build component
 	Focus = BeginTerrainFrame(*this, *State.Get(), Focus); // a prepared point while one is set
 	FTerrainUploads Uploads;
 	try

@@ -58,6 +58,9 @@ namespace
 	const FName WaterParameter(TEXT("HorizonWater"));
 	const FName CoarseWaterParameter(TEXT("CoarseWater"));
 	const FName InlandWaterParameter(TEXT("InlandWater"));
+	// The surface blends (agent 29): of the level, and of level 0 for the tiles.
+	const FName HorizonBlendParameter(TEXT("HorizonBlend"));
+	const FName SurfaceBlendParameter(TEXT("SurfaceBlend"));
 
 	// Parameters of the materials of the tiles that read the surface of level 0
 	// (Scripts/temporary_terrain_look.py).
@@ -135,7 +138,8 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 		BindNormals(Level);
 	}
 	GpuBytes += static_cast<int64>(Levels) * Side * Side *
-		(TerrainHorizonTextures::TexelBytes + TerrainHorizonTextures::WaterTexelBytes);
+		(TerrainHorizonTextures::TexelBytes + TerrainHorizonTextures::WaterTexelBytes +
+			TerrainHorizonTextures::BlendTexelBytes);
 	if (Streamer.normals() != nullptr)
 	{
 		GpuBytes += Streamer.normals()->textureBytes();
@@ -165,6 +169,8 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	Textures.Add(Texture);
 	UTexture2D* Water = TerrainHorizonTextures::CreateWater(Side, Level);
 	WaterTextures.Add(Water);
+	UTexture2D* BlendTexture = TerrainHorizonTextures::CreateBlend(Side, Level);
+	BlendTextures.Add(BlendTexture);
 	if (NormalRatio > 0)
 	{
 		NormalTextures.Add(TerrainHorizonTextures::CreateNormals(Side * NormalRatio, Level));
@@ -174,6 +180,7 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	const double PitchCm = terrain::levelPitch(Streamer.params(), Level) * 100.0;
 	Look->SetTextureParameterValue(TexelsParameter, Texture);
 	Look->SetTextureParameterValue(WaterParameter, Water);
+	Look->SetTextureParameterValue(HorizonBlendParameter, BlendTexture);
 	Look->SetScalarParameterValue(InlandWaterParameter, 1.0f);
 	Look->SetScalarParameterValue(CellsParameter,
 		static_cast<float>(Streamer.params().cellsPerSide));
@@ -232,7 +239,7 @@ UStaticMeshComponent* UTerrainHorizonClipmap::CreateGridComponent(UStaticMesh* M
 void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 	terrain::unreal::HorizonTimings& Timings)
 {
-	if (!Update.regions.empty() || !Update.waterRegions.empty())
+	if (!Update.regions.empty() || !Update.waterRegions.empty() || !Update.blendRegions.empty())
 	{
 		const double Start = FPlatformTime::Seconds();
 		std::size_t Texels = 0;
@@ -246,6 +253,7 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 		{
 			TerrainHorizonTextures::UploadWater(*WaterTextures[Region.level], Region);
 		}
+		UploadBlends(Update.blendRegions); // with the texels: no sample shown without its blend
 		Timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0,
 			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
 	}
@@ -350,7 +358,8 @@ void UTerrainHorizonClipmap::BindSurfaceLook(UMaterialInstanceDynamic* Look)
 		return;
 	}
 	SurfaceLooks.AddUnique(Look);
-	Look->SetTextureParameterValue(SurfaceTexelsParameter, Textures[0]);
+	Look->SetTextureParameterValue(SurfaceTexelsParameter, Textures[0].Get());
+	Look->SetTextureParameterValue(SurfaceBlendParameter, BlendTextures[0].Get());
 	Look->SetScalarParameterValue(SurfaceCellsParameter, static_cast<float>(Side - 1));
 	Look->SetScalarParameterValue(SurfacePitchParameter, static_cast<float>(Level0PitchCm));
 	// The band of the tiles over level 0, where the surface blend of the tiles fades into the

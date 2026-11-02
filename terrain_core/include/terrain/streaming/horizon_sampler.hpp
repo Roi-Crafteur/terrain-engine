@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/generation/biome.hpp"
+#include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/ecology.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/surface_material.hpp"
@@ -22,7 +23,7 @@ inline constexpr std::uint8_t kHorizonEdited = 1U << 1; // changed by a summary 
 // depression below the sea level is not the sea.
 inline constexpr std::uint8_t kHorizonSea = 1U << 2;
 
-// What the far horizon holds at a sample of a level: 20 bytes, for compact level buffers.
+// What the far horizon holds at a sample of a level: 28 bytes, for compact level buffers.
 struct HorizonCell {
     // Top of the ground, meters: Heightfield::heightAt at the sample, bit for bit, plus its
     // lift to the crests of its cells from level 1 on (HorizonCrestSampler, when it rises), then
@@ -48,10 +49,20 @@ struct HorizonCell {
     // present exactly where kHorizonWater is. Neither the lifts of the crests nor the edits change
     // it, so a lifted ground may stand above its water.
     float waterLevel = kNoWaterLevel;
+    // Weights of the 2 or 3 dominant biomes and materials of the ground (packBlend, the texels of
+    // the tiles: TileData::surfaceBlend), for the renderers to blend their layers. Below
+    // HorizonParams::blendFromLevel, Ecology::blendAt at the sample, of the site that classifies
+    // it: its slot 0 is biome and material, and on level 0 it is the texel of the coarsest tiles
+    // at the same point, bit for bit. From that level on, the mean over the footprint of the
+    // sample of the bilinear interpolation between the point blends of its level (the 3 x 3
+    // samples around it), whose dominant slot may differ from the biome and the material of the
+    // center, which stay those of the point. Edits that decide the
+    // material give it all the weight of the materials.
+    BlendTexel blend;
 
     friend bool operator==(const HorizonCell&, const HorizonCell&) = default;
 };
-static_assert(sizeof(HorizonCell) == 20, "a horizon cell holds 20 bytes");
+static_assert(sizeof(HorizonCell) == 28, "a horizon cell holds 28 bytes");
 
 // Square of the world a sample stands for: its canonical position (the center) and half the
 // pitch of its level. A footprint on an edge of the world reaches across it.

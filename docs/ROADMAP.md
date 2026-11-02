@@ -10,8 +10,7 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projets
-eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -259,6 +258,7 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 
   Le pilote d'Unreal est testé contre un faux module `unreal`, et essayé de bout en bout par
   l'orchestrateur sous Windows (UE 5.8)
+- `--landings` du lanceur : `Terrain.Map.Go` (agent 35) à chaque lieu, un à la fois, sa ligne de contrôle lue, l'issue comparée entre deux versions
 
 ### Carte de dev et minicarte (agent 35) : images de la carte dans `terrain_core/map` (relief, biomes, eau, courbes, tout zoom, mêmes octets sur tout fil), minicarte, carte plein écran `M` (jamais en Shipping), clic = pion du jeu sur terre ou vue au-dessus de l'eau, lieux de `data/dev/places.json` (`terrain_unreal/README.md`, section 16)
 
@@ -365,8 +365,8 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   pleine hauteur 600 m plus loin ; un cours plus petit s'arrête au pied de l'erg ; les lacs gardent
   une case libre. 7,4 % de la surface des ergs (et 6,0 % sur savane) tombe sur la prairie de la
   coupure climatique de 30° : à revoir quand le climat sera lissé. Coût : une tuile dans un erg
-  1,1 à 1,5 ms (×2,5 à ×3), ×1,00 ailleurs. La couleur de sable de l'horizon reste à brancher
-  (lire HeightSample::dunes du relief filtré au pas du niveau)
+  1,1 à 1,6 ms (plafond 2 ms), ×1,00 ailleurs. La part de dune (SurfaceBlend::dunes) suit les
+  poids des tuiles et de l'horizon (agent 29) : le sable des dunes, lisse, à toute pente
 - falaises, surplombs et arches dans le monde infini : phase 12A en cours. Une couche de roche 3D
   autour de la surface, là où la géologie fait des parois (couches dures des montagnes, fentes
   des chutes et gorges, escarpements, arches et ponts de roche) ; le reste du monde garde ses
@@ -438,7 +438,7 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   jamais la hauteur. Unreal : fondu des textures fait sur les tuiles (matériau temporaire,
   texels de chaque tuile dans une texture commune) ; l'horizon garde le biome dominant de ses
   échantillons, les tuiles s'y fondent sur leur bande au-dessus du niveau 0. Reste : les poids
-  dans les échantillons de l'horizon (core), la densité de la végétation
+  de l'horizon faits par l'agent 29 (tous les niveaux, `Terrain.Blend`) ; reste la densité de la végétation
 - matériaux depuis les identifiants de matériau du core ; très haut détail par des
   rochers, falaises et arbres Nanite placés par PCG et du relief fin dans le matériau
   (Nanite ne s'applique pas directement aux tuiles générées en jeu)
@@ -575,6 +575,7 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   - reste : casser et poser en jeu dans Unreal (en attendant : `Terrain.Edit`, `Apply Volume
     Edit`), effets de destruction, normales de détail de l'horizon qui suivent les modifications
     (aujourd'hui : les pentes de la grille sur les mailles modifiées)
+  - casser et poser en jeu : fait (agent 28 : bloc, sphères de 2 et 4 m, fantôme, sauvegarde par seed, `terrain_unreal/BREAK_PLACE.md`)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

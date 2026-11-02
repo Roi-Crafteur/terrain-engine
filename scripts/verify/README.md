@@ -192,6 +192,75 @@ qui convient, le contrôle est sauté, avec une note dans `resume.txt` et sans a
   la rotation.
 - Ce sont des avertissements, pas des pannes : ils ne changent pas le code de sortie.
 
+## Les atterrissages (`Terrain.Map.Go`)
+
+`--landings a,b` (ou `all` : tous les lieux de `--places`) fait, dans la PIE, un
+`Terrain.Map.Go <lieu>` par lieu : le chemin exact d'un clic sur la carte de dev (agent 35,
+`terrain_unreal/README.md`). Avec `--no-views`, seuls les atterrissages (et les marches) sont
+faits : ni vue, ni planche.
+
+```bat
+python scripts\verify\verify.py run --machine scripts\verify\machine.json --before main --places all --landings all --no-views --no-materials --planet yes
+```
+
+- **Le monde prêt d'abord** : en PIE, le pion est là dès la première image, alors que le
+  Terrain World se construit encore sur son fil. Une commande envoyée trop tôt est refusée
+  (`Terrain.Map.Go: no world playing (or no dev map)` ; un `Terrain.Goto` sans téléportation,
+  donc sans chargement à attendre). Avant la première vue ou le premier atterrissage de chaque
+  PIE, avec ou sans `--no-views`, le pilote attend donc le premier chargement rapporté (agent
+  38) et, s'il atterrit, la ligne `Terrain Dev Map: started (` (agent 35). Il attend 180 s au plus,
+  puis donne une erreur qui nomme ce qui manque. `resume.txt` donne le temps qu'il a fallu
+  (« monde de la PIE prêt en … s »).
+- **Un atterrissage à la fois** : le pilote lit le journal de l'éditeur à partir de juste avant
+  sa commande. Une ligne plus ancienne (un « OK » d'avant) ne compte jamais. La commande suivante
+  attend l'issue de la précédente : une nouvelle commande remplacerait celle en cours.
+- **L'issue** :
+  - sur la terre, la ligne de contrôle du plugin, 1 s après que le pion du jeu est rendu :
+    `Terrain Dev Map: 1 s after the click: the pawn of the game, Walking, 0.00 m/s, feet at …
+    m (…), … m from the click: OK` ;
+  - au-dessus de l'eau, sans sol sec dans le rayon : la vue des outils reste à 1,8 m au-dessus
+    de l'eau, et il n'y a pas de ligne de contrôle. Le pilote lit alors l'œil, une fois chargé
+    le lieu de la téléportation ;
+  - un repli (« back over water ») ou un refus.
+- **Ce que dit `resume.txt`** : l'issue de chaque lieu (pion du jeu posé, posé près du sol sec,
+  ou vue des outils au-dessus de l'eau), la ligne du plugin, la durée de l'atterrissage, et le
+  sol du core sondé sous les pieds du pion (ou l'eau sous l'œil de la vue). Comme la ligne du
+  pion, celle de la vue finit par « OK » ou « PAS OK » : le contrôle de l'œil a tourné.
+- **Les pannes** (« ATTENTION », sortie 1) :
+  - une ligne `NOT walking still above the water` ;
+  - une ligne qui parle de la vue des outils au lieu du pion du jeu ;
+  - un lieu sec selon le core, mais la vue restée au-dessus de l'eau ;
+  - un pion plus loin du clic que le rayon de `Terrain.PawnRadius` (50 m) ;
+  - un refus, ou aucune issue en `--landing-timeout` secondes (90 par défaut) ;
+  - `no world playing` : la commande est partie avant que le monde soit prêt. Ce n'est pas une
+    issue d'atterrissage mais un problème du lanceur, dit comme tel ;
+  - les pieds du pion à plus de 0,5 m du sol du core sondé sous eux, ou l'œil de la vue des
+    outils à plus de 0,05 m des 1,8 m au-dessus de l'eau du core. L'essai réel de 90c2094 donnait
+    de +0,02 à +0,21 m pour les pieds (le plus au K2) et +1,80 m pile pour l'œil ;
+  - avec `--before` et `--after`, un lieu dont l'issue diffère entre les deux versions : le
+    monde est déterministe, le même clic doit donner la même issue ;
+  - une version sans `Terrain.Map.Go`.
+- **Pas des pannes** :
+  - `k2_paroi` pose le pion à 38 m du clic, à cause de sa paroi à 72° : c'est sous le rayon,
+    donc accepté ;
+  - l'avertissement du plugin quand un lieu a été mesuré avec ou sans le fichier planète et que
+    le monde est l'inverse (`lisiere_tropicale_savane` avec `--planet yes`) : il est recopié
+    dans la ligne du lieu. Sans alerte, la première ligne de `resume.txt` dit combien de lignes
+    `Warning` du journal sont listées plus bas : « Aucune alerte (N avertissements du journal,
+    ci-dessous). ».
+- **Sans fichier planète** (`--planet no`), les lieux mesurés avec la planète sont sautés, et
+  le résumé le dit, sans les compter en panne.
+- **Des sessions courtes** : les lieux sont répartis en sessions d'au plus
+  `--places-per-session` lieux (6 par défaut), aussi égales que possible. Avec les 21 lieux
+  (les 11 du fichier et les 10 ergs de l'agent 34), `--places all --landings all` fait 4
+  sessions de 6, 5, 5 et 5 lieux, chacune avec son éditeur, au lieu de 6, 6, 6 et 3.
+- **Une session arrêtée** : deux atterrissages de suite sans issue, ou envoyés avant que le monde
+  soit prêt, arrêtent la session (Unreal fermé), et le résumé le dit. Avant de fermer, le
+  pilote attend encore 60 s au plus la ligne du contrôle de déterminisme du plugin, écrite par un
+  fil quelques secondes après le départ : `déterminisme` et `chargements rapportés` sont donc
+  remplis même pour une session d'atterrissages seuls. `resume.txt` donne la durée totale du run, et le temps passé
+  dans Unreal pour chaque version.
+
 ## Les jonctions
 
 `linkContent` (dans `machine.json`) liste des dossiers de `Content` à lier par `mklink /J` plutôt

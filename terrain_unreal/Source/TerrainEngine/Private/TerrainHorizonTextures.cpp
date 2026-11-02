@@ -85,6 +85,18 @@ namespace TerrainHorizonTextures
 		return Texture;
 	}
 
+	UTexture2D* CreateBlend(int32 Side, int32 Level)
+	{
+		UTexture2D* Texture =
+			CreateTexture(Side, PF_A16B16G16R16, TEXT("HorizonBlend"), Level, TF_Nearest);
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		void* Texels = Mip.BulkData.Lock(LOCK_READ_WRITE);
+		FMemory::Memzero(Texels, static_cast<SIZE_T>(Side) * Side * BlendTexelBytes);
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+		return Texture;
+	}
+
 	void UploadTexels(UTexture2D& Texture, terrain::unreal::TexelRegion& Region)
 	{
 		Upload(Texture, Region.x, Region.z, Region.width, Region.height, std::move(Region.data),
@@ -95,6 +107,12 @@ namespace TerrainHorizonTextures
 	{
 		Upload(Texture, Region.x, Region.z, Region.width, Region.height, std::move(Region.data),
 			WaterTexelBytes);
+	}
+
+	void UploadBlend(UTexture2D& Texture, terrain::unreal::BlendRegion& Region)
+	{
+		Upload(Texture, Region.x, Region.z, Region.width, Region.height, std::move(Region.data),
+			BlendTexelBytes);
 	}
 
 	void UploadNormals(UTexture2D& Texture, terrain::unreal::NormalRegion& Region)
