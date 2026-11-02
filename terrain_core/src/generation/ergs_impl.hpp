@@ -110,6 +110,8 @@ struct Ergs::Impl {
     noise::FbmOctaves side;
     noise::FbmOctaves ends;
     noise::FbmOctaves scatter; // the barchans, at their own scale: which are there, how tall
+    noise::FbmOctaves shore;     // how far the edge of the dunes wanders from a valley floor
+    noise::FbmOctaves lakeShore; // and from a lake
 };
 
 // The memos of the noises of the ergs on the calling thread: a sequence of close points (a batch
@@ -130,6 +132,8 @@ struct ErgMemos {
     noise::FbmOctaves::Memo ends;
     noise::FbmOctaves::Memo branches; // the ends noise, shifted: where the seifs branch
     noise::FbmOctaves::Memo scatter;
+    noise::FbmOctaves::Memo shore;
+    noise::FbmOctaves::Memo lakeShore;
 };
 [[nodiscard]] ErgMemos& memosOf(const Ergs::Impl& m);
 

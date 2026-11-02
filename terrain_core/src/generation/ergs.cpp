@@ -50,6 +50,13 @@ constexpr double kFilterLow = 0.1;
 constexpr double kFilterHigh = 0.3;
 // The depressions keep their dunes kDepressionMargin of their radius away from their edge.
 constexpr double kDepressionMargin = 0.25;
+// The edges of the dunes along the water wander outward by up to kShoreWander meters (a noise of
+// kShoreWavelength) from the floors of the valleys, kLakeWander (kLakeWavelength) from the
+// lakes: the straight sides of a long reach or of a square cell of a lake never show.
+constexpr double kShoreWander = 1'200.0;
+constexpr double kShoreWavelength = 2'500.0;
+constexpr double kLakeWander = 3'000.0;
+constexpr double kLakeWavelength = 12'000.0;
 
 // Noise streams.
 enum Stream : std::uint64_t {
@@ -66,6 +73,8 @@ enum Stream : std::uint64_t {
     kSide,
     kEnds,
     kScatter,
+    kShore,
+    kLakeShore,
 };
 
 noise::FbmOctaves octaves(std::uint64_t seed, Stream stream, int count, double wavelength,
@@ -118,6 +127,8 @@ Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
     m.side = octaves(m.seed, kSide, 2, 3'000.0, m.world);
     m.ends = octaves(m.seed, kEnds, 2, 7'000.0, m.world);
     m.scatter = octaves(m.seed, kScatter, 2, 1'200.0, m.world);
+    m.shore = octaves(m.seed, kShore, 2, kShoreWavelength, m.world);
+    m.lakeShore = octaves(m.seed, kLakeShore, 2, kLakeWavelength, m.world);
 }
 
 Ergs::~Ergs() = default;
@@ -195,20 +206,41 @@ static double depressionShare(const Ergs::Impl& m, double x, double z) {
     return share;
 }
 
+// How far outward the edge of the dunes wanders from the water, [0, wander] meters.
+static double wanderOf(const noise::FbmOctaves& n, noise::FbmOctaves::Memo& memo, double x,
+                       double z, double wander) {
+    // The noise stretched over its usual range (about -0.5 to 0.5), smoothly.
+    return wander * static_cast<double>(noise::smoothstep(-0.5f, 0.5f, n.fbm2D(x, z, memo)));
+}
+
 // The share of the dunes the water leaves at (x, z): none on a lake nor on the floor of a valley,
-// all beyond their corridors.
+// all beyond their corridors, their edges wandering outward (never closer to the water).
 static double waterShare(const Ergs::Impl& m, double x, double z) {
     const ErgParams& p = m.params;
     const double riverFar = p.corridorClear + p.riverFade;
     const double lakeFar = p.lakeClear + p.lakeFade;
+    ErgMemos& memo = memosOf(m);
     const erg_field::WaterDistance d =
-        erg_field::waterDistance(m.field, x, z, std::max(riverFar, lakeFar));
-    double share = hermite(p.lakeClear, lakeFar, d.lake);
-    if (d.river < riverFar && share > 0.0) {
-        // Near the polyline of a river: the floor of its valley itself, where it is known.
-        share *= m.riverFloor ? hermite(p.riverClear, p.riverClear + p.riverFade,
-                                        m.riverFloor(x, z, p.riverClear + p.riverFade))
-                              : hermite(p.corridorClear, riverFar, d.river);
+        erg_field::waterDistance(m.field, x, z, std::max(riverFar, lakeFar + kLakeWander));
+    double share = 1.0;
+    if (d.lake < lakeFar + kLakeWander) {
+        share = hermite(p.lakeClear, lakeFar,
+                        d.lake - wanderOf(m.lakeShore, memo.lakeShore, x, z, kLakeWander));
+    }
+    if (!(share > 0.0)) {
+        return 0.0;
+    }
+    if (m.riverFloor) {
+        // The floor of the valleys itself, wherever it lies (never a band around the polyline of
+        // the cells: a wide floor reaches past it, and the band would cut the erg along a line).
+        const double far = p.riverClear + p.riverFade + kShoreWander;
+        const double floor = m.riverFloor(x, z, far);
+        if (floor < far) {
+            share *= hermite(p.riverClear, p.riverClear + p.riverFade,
+                             floor - wanderOf(m.shore, memo.shore, x, z, kShoreWander));
+        }
+    } else if (d.river < riverFar) {
+        share *= hermite(p.corridorClear, riverFar, d.river);
     }
     return share;
 }
