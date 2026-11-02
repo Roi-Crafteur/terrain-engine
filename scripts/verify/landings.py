@@ -64,6 +64,7 @@ def outcome(e):
     if e.get("skipped"):
         return "sauté"
     return {"none": "sans issue", "refused": "refusé",
+            "notReady": "envoyé avant que le monde soit prêt (problème du lanceur)",
             "water": "vue des outils au-dessus de l'eau",
             "fallback": "vue des outils au-dessus de l'eau (repli : aucun point ne tient le "
                         "pion)",
@@ -87,6 +88,9 @@ def failures_of(v, e):
         return [f"aucune issue en {e.get('seconds') or 0:.0f} s"]
     if e.get("end") == "refused":
         return [e.get("message") or "refusé"]
+    if e.get("end") == "notReady":
+        return ["Terrain.Map.Go envoyé avant que le monde de la PIE soit prêt (« no world "
+                "playing ») : un problème du lanceur, pas du plugin"]
     if e.get("end") in ("water", "fallback") and _dry(v, e["place"]):
         return ["lieu sec selon le core, mais la vue des outils est restée au-dessus de l'eau"]
     if not check:
@@ -134,8 +138,9 @@ def differences(run):
     before, after = ({e["place"]: outcome(e) for e in entries(v)} for v in run["versions"])
     return [f"ATTENTION : atterrissage {place} : issue différente entre avant ({before[place]}) "
             f"et après ({after[place]})" for place in before
-            if place in after and before[place] != after[place] and "sauté" not in
-            (before[place], after[place])]
+            if place in after and before[place] != after[place] and not any(
+                word in text for word in ("sauté", "lanceur")
+                for text in (before[place], after[place]))]
 
 
 def _details(v, e):

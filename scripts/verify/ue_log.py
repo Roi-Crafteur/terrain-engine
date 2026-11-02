@@ -39,6 +39,8 @@ _WATER = re.compile(r": over water \(no dry ground within " + _NUMBER + r" m\)[^
 _FALLBACK = re.compile(r"Terrain Dev Map: (no spot near the dry ground holds the pawn: back[^\n]*)")
 _REFUSED = re.compile(r"(?:Terrain Dev Map: )?((?:The teleport to |No landing for |The view did not "
                       r"load in time|The view of the tools stays|Terrain\.Map\.Go: )[^\n]*)")
+# Sent before the world of the play was ready: no landing at all, a problem of the launcher.
+_NOT_READY = re.compile(r"(Terrain\.Map\.Go: no world playing[^\n]*)")
 _PLANET_WARNING = re.compile(r"Terrain Dev Map: (\S+) (was measured with(?:out)? the planet "
                              r"file[^\n]*)")
 _TERRAIN_PROBLEM = re.compile(r"LogTerrainEngine: (Error|Warning): (.*)")
@@ -121,8 +123,11 @@ def landing_end(text, name):
         out["message"] = said.group(1)[2:].strip()
     out["check"] = _landing_check(text)
     fallback, refused = _FALLBACK.search(text), _REFUSED.search(text)
+    early = _NOT_READY.search(text)
     if out["check"]:
         out["end"] = "check"
+    elif early:
+        out.update(end="notReady", message=early.group(1).strip())
     elif fallback:
         out.update(end="fallback", message=fallback.group(1).strip())
         water = _WATER.search(": " + fallback.group(1).split("back ", 1)[-1])
@@ -205,5 +210,7 @@ def plugin_features(source_texts):
         "pawn": command("Terrain.Pawn"),
         "pawnLanding": "the pawn of the game stands, spot" in joined,
         "mapGo": command("Terrain.Map.Go"),
+        "mapStarted": "Terrain Dev Map: started (" in joined,
+        "determinism": _DETERMINISM_OK in joined,
         "loadTest": command("Terrain.LoadTest"),
     }

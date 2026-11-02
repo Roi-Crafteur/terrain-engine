@@ -203,6 +203,14 @@ faits : ni vue, ni planche.
 python scripts\verify\verify.py run --machine scripts\verify\machine.json --before main --places all --landings all --no-views --no-materials --planet yes
 ```
 
+- **Le monde prêt d'abord** : en PIE, le pion est là dès la première image, alors que le
+  Terrain World se construit encore sur son fil. Une commande envoyée trop tôt est refusée
+  (`Terrain.Map.Go: no world playing (or no dev map)` ; un `Terrain.Goto` sans téléportation,
+  donc sans chargement à attendre). Avant la première vue ou le premier atterrissage de chaque
+  PIE, avec ou sans `--no-views`, le pilote attend donc le premier chargement rapporté (agent
+  38) et, s'il atterrit, la ligne `Terrain Dev Map: started (` (agent 35). Il attend 180 s au plus,
+  puis donne une erreur qui nomme ce qui manque. `resume.txt` donne le temps qu'il a fallu
+  (« monde de la PIE prêt en … s »).
 - **Un atterrissage à la fois** : le pilote lit le journal de l'éditeur à partir de juste avant
   sa commande. Une ligne plus ancienne (un « OK » d'avant) ne compte jamais. La commande suivante
   attend l'issue de la précédente : une nouvelle commande remplacerait celle en cours.
@@ -223,6 +231,8 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
   - un lieu sec selon le core, mais la vue restée au-dessus de l'eau ;
   - un pion plus loin du clic que le rayon de `Terrain.PawnRadius` (50 m) ;
   - un refus, ou aucune issue en `--landing-timeout` secondes (90 par défaut) ;
+  - `no world playing` : la commande est partie avant que le monde soit prêt. Ce n'est pas une
+    issue d'atterrissage mais un problème du lanceur, dit comme tel ;
   - avec `--before` et `--after`, un lieu dont l'issue diffère entre les deux versions : le
     monde est déterministe, le même clic doit donner la même issue ;
   - une version sans `Terrain.Map.Go`.
@@ -236,8 +246,11 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
     l'eau : « AVERTISSEMENT ».
 - **Sans fichier planète** (`--planet no`), les lieux mesurés avec la planète sont sautés, et
   le résumé le dit, sans les compter en panne.
-- **Une session courte** : deux atterrissages de suite sans issue arrêtent la session (Unreal
-  fermé), et le résumé le dit. `resume.txt` donne la durée totale du run, et le temps passé
+- **Une session courte** : deux atterrissages de suite sans issue, ou envoyés avant que le monde
+  soit prêt, arrêtent la session (Unreal fermé), et le résumé le dit. Avant de fermer, le
+  pilote attend encore 60 s au plus la ligne du contrôle de déterminisme du plugin, écrite par un
+  fil quelques secondes après le départ : `déterminisme` et `chargements rapportés` sont donc
+  remplis même pour une session d'atterrissages seuls. `resume.txt` donne la durée totale du run, et le temps passé
   dans Unreal pour chaque version.
 
 ## Les jonctions

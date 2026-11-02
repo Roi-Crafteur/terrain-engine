@@ -28,14 +28,14 @@ OLD_OK = ("LogTerrainEngine: Terrain Dev Map: 1 s after the click: the pawn of t
           "0.00 m/s, feet at 1.94 m (no water within 3 m), 0.0 m from the click: OK\n")
 
 
-def landings(fake, places, outcomes=None, features=FEATURES, **changes):
+def landings(fake, places, outcomes=None, features=FEATURES, ready_after=0.5, **changes):
     """The driver over places, a landing at each, without the views (--no-views)."""
     folder = fake.folder
     job = job_in(folder, fake, places, materials=False, views=False, pitchCheck=False,
                  landings=[{"place": p["name"], "skip": None} for p in places],
                  landingTimeout=8.0, **changes)
     job["features"] = dict(features)
-    go = fake_map.MapGo(fake, places, outcomes)
+    go = fake_map.MapGo(fake, places, outcomes, ready_after)
     return drive(fake, job).result, go
 
 
@@ -135,6 +135,80 @@ class Landing(unittest.TestCase):
             (entry,) = r["landings"]
             self.assertEqual((entry["end"], entry["planetWarning"]), ("check", warning))
 
+    def test_the_world_not_ready_yet(self):
+        """Real run 6 (9d49fa0, --no-views): Terrain.Map.Go sent 23 ms after the start of the
+        play, while the world still built: "no world playing" for all 11 places. Now the first
+        landing waits for the first load and the dev map started, then lands."""
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder, features=FEATURES)
+            seen = []
+            fake.console_hooks.append(lambda c: seen.append((c, fake.log_path.read_text())))
+            r, go = landings(fake, [EDGE], features=dict(FEATURES, mapStarted=True),
+                             ready_after=6.0)  # longer than the first load (3 s)
+            self.assertTrue(r["done"], r["errors"])
+            self.assertEqual(r["landings"][0]["end"], "check")
+            log = fake.log_path.read_text(encoding="utf-8")
+            self.assertNotIn("no world playing", log)
+            sent = next(text for command, text in seen if command.startswith("Terrain.Map.Go"))
+            self.assertIn("Terrain Dev Map: started (", sent)  # sent once the map was there
+            self.assertIn("load 1 report", sent)
+            self.assertGreaterEqual(r["ready"][0], 5.5)
+
+    def test_the_views_wait_for_the_world_too(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder, features=FEATURES)
+            seen = []
+            fake.console_hooks.append(lambda c: seen.append((c, fake.log_path.read_text())))
+            job = job_in(folder, fake, [EDGE], materials=False, pitchCheck=False,
+                         landings=[{"place": "lisiere", "skip": None}], landingTimeout=8.0)
+            job["features"] = dict(FEATURES, mapStarted=True)
+            fake_map.MapGo(fake, [EDGE], ready_after=6.0)
+            r = drive(fake, job).result
+            self.assertTrue(r["done"], r["errors"])
+            goto = next(text for command, text in seen if command.startswith("Terrain.Goto"))
+            self.assertIn("Terrain Dev Map: started (", goto)
+            self.assertEqual([v["loaded"] for v in r["views"]], ["reported"])
+            self.assertEqual(r["landings"][0]["end"], "check")
+
+    def test_sent_too_early_counts_for_the_stop(self):
+        """ "no world playing" is no outcome of a landing but a problem of the launcher: two in a
+        row stop the session."""
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder, features=FEATURES)
+            early = {"kind": "notready"}
+            r, go = landings(fake, [EDGE, K2, dict(EDGE, name="third", x=EDGE["x"] + 500.0)],
+                             {"lisiere": early, "k2_paroi": early})
+            self.assertEqual([e["end"] for e in r["landings"]], ["notReady", "notReady"])
+            self.assertEqual(r["stopped"], {"misses": 2, "after": "k2_paroi"})
+            self.assertEqual([n for n, _ in go.sent], ["lisiere", "k2_paroi"])
+
+    def test_a_world_never_ready(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder, features=FEATURES)
+            r, go = landings(fake, [EDGE], features=dict(FEATURES, mapStarted=True),
+                             ready_after=1e9, readyTimeout=5.0)
+            self.assertTrue(r["done"])
+            self.assertIn("the world of the play is not ready after 5 s: the dev map started not "
+                          "seen in the log of the editor", r["errors"][0])
+            self.assertFalse(go.sent)  # nothing sent to a world not ready
+
+    def test_the_determinism_and_the_loads_in_the_log(self):
+        """Run 6: "déterminisme : ?" and "chargements rapportés : 0", the session closed 1.3 s
+        after the start. The session now ends after the line of the self-check of the plugin."""
+        import ue_log
+        with tempfile.TemporaryDirectory() as folder:
+            fake = fake_unreal.FakeUnreal(folder, features=FEATURES)
+            job = job_in(folder, fake, [EDGE], materials=False, views=False, pitchCheck=False,
+                         landings=[{"place": "lisiere", "skip": None}], landingTimeout=8.0)
+            job["features"] = dict(FEATURES, mapStarted=True, determinism=True)
+            fake_map.MapGo(fake, [EDGE], determinism_after=25.0)  # after the landing (~5 s)
+            r = drive(fake, job).result
+            self.assertTrue(r["done"], r["errors"])
+            scan = ue_log.scan_editor(fake.log_path.read_text(encoding="utf-8"))
+            self.assertIs(scan["determinism"], True)
+            self.assertTrue(scan["loadReports"])
+            self.assertGreaterEqual(fake.time, 25.0)
+
     def test_skipped_and_unsupported(self):
         with tempfile.TemporaryDirectory() as folder:
             fake = fake_unreal.FakeUnreal(folder, features=FEATURES)
@@ -196,7 +270,7 @@ class Summary(unittest.TestCase):
                        "file: this world has it")
             v = with_landings(folder, "version", [dry, watered("b")],
                               {"a": {"ground": 9.9, "waterLevel": None},
-                               "b": {"ground": 0.0, "waterLevel": 1.0}})
+                               "b": {"ground": 0.0, "waterLevel": 1.0}}, ready=[6.2])
             text, run = summary(folder, v)
             self.assertEqual(text.splitlines()[1], "Aucune alerte.")
             self.assertEqual(verify.exit_code(run), 0)
@@ -207,6 +281,7 @@ class Summary(unittest.TestCase):
                           "1.00 m (5 s)", text)
             self.assertIn("Durée totale : 12 min 34 s (Unreal : version 5 min 00 s en 1 "
                           "session(s))", text)
+            self.assertIn("monde de la PIE 1 prêt en 6.2 s", text)
             self.assertNotIn("vue absente", text)  # --no-views
             self.assertIn("Planche : aucune (--no-views)", text)
 
@@ -223,6 +298,9 @@ class Summary(unittest.TestCase):
              "parle de la vue des outils"),
             ([{"place": "a", "end": "none", "seconds": 90.0}], "atterrissage a : aucune issue en "
              "90 s"),
+            ([{"place": "a", "end": "notReady", "seconds": 0.2}], "atterrissage a : "
+             "Terrain.Map.Go envoyé avant que le monde de la PIE soit prêt (« no world playing ») "
+             ": un problème du lanceur, pas du plugin"),
             ([{"place": "a", "skipped": "no Terrain.Map.Go in this version",
                "unsupported": True}], "atterrissage a : la version n'a pas Terrain.Map.Go : "
              "atterrissage impossible"),
@@ -239,7 +317,8 @@ class Summary(unittest.TestCase):
                               stopped={"misses": 2, "after": "a"})
             text, _ = summary(folder, v)
             self.assertIn("ATTENTION (version) : session 1 arrêtée : 2 atterrissages de suite "
-                          "sans issue (le dernier : a), Unreal fermé", text)
+                          "sans issue ou envoyés avant que le monde soit prêt (le dernier : a), "
+                          "Unreal fermé", text)
 
     def test_an_outcome_that_differs_between_the_versions(self):
         """The world is deterministic: a wet place giving the pawn on one side and the view

@@ -201,8 +201,11 @@ class MapGo(unittest.TestCase):
             with self.subTest(line=line[17:40]):
                 end = ue_log.landing_end(self.L + line + "\n", "k2_paroi")
                 self.assertEqual((end["end"], end["message"]), ("refused", line[17:]))
-        none = self.W + "Terrain.Map.Go: no world playing (or no dev map)\n"
-        self.assertEqual(ue_log.landing_end(none, "k2_paroi")["end"], "refused")
+        # Sent before the world was ready (9d49fa0, real run 6): no landing, the launcher's.
+        early = ue_log.landing_end(self.W + "Terrain.Map.Go: no world playing (or no dev map)\n",
+                                   "k2_paroi")
+        self.assertEqual((early["end"], early["message"]),
+                         ("notReady", "Terrain.Map.Go: no world playing (or no dev map)"))
 
     def test_the_warning_of_the_planet_file(self):
         warning = (self.W + "Terrain Dev Map: lisiere_tropicale_savane was measured without the "
@@ -227,7 +230,8 @@ class Features(unittest.TestCase):
         self.assertEqual(ue_log.plugin_features([main]),
                          {"loadReport": False, "loadStart": False, "goto": False, "look": False,
                           "viewMode": False, "pawn": False, "pawnLanding": False,
-                          "mapGo": False, "loadTest": False})
+                          "mapGo": False, "mapStarted": False, "determinism": False,
+                          "loadTest": False})
         stands = ('TerrainDev::Log(FString::Printf(TEXT("the pawn of the game stands, spot %d of '
                   '%d"), ...')  # TerrainDevPawn.cpp of main (#57)
         self.assertTrue(ue_log.plugin_features([stands])["pawnLanding"])
@@ -238,6 +242,10 @@ class Features(unittest.TestCase):
         map_go = ('FAutoConsoleCommandWithWorldAndArgs MapGoCommand(TEXT("Terrain.Map.Go"),')
         self.assertTrue(ue_log.plugin_features([map_go])["mapGo"])  # TerrainDevMapCommands.cpp
         self.assertFalse(ue_log.plugin_features(['TEXT("Terrain.Map")'])["mapGo"])
+        started = 'TEXT("Terrain Dev Map: started (%d thread(s), %d tiles kept)")'  # TerrainDevMap.cpp
+        check = 'return "the heights and tiles of the default world match terrain_core bit for bit";'
+        f = ue_log.plugin_features([started, check])
+        self.assertTrue(f["mapStarted"] and f["determinism"])
         self.assertFalse(f["viewMode"])  # Terrain.Views alone is not Terrain.View
         self.assertTrue(ue_log.plugin_features(['TEXT("Terrain.View")'])["viewMode"])
 

@@ -33,6 +33,7 @@ import ue_api  # noqa: E402
 import ue_log  # noqa: E402
 from ue_landings import LandingSteps, SessionStopped  # noqa: E402
 from ue_pitch import PitchSteps  # noqa: E402
+from ue_ready import ReadySteps  # noqa: E402
 from ue_walk import Until, Wait, WalkSteps  # noqa: E402
 
 # The heartbeat replaced this many times, this far apart, when the launcher holds the file open
@@ -41,7 +42,7 @@ BEAT_TRIES, BEAT_PAUSE = 5, 0.02
 CAMERA_TAG = "TerrainVerifyCamera"  # the camera put in the level, found again in the play
 
 
-class Driver(WalkSteps, PitchSteps, LandingSteps):
+class Driver(WalkSteps, PitchSteps, LandingSteps, ReadySteps):
     def __init__(self, job, api, clock=time.monotonic, wall=time.time):
         self.job, self.api, self.clock, self.wall = job, api, clock, wall
         self.out = Path(job["out"])
@@ -153,6 +154,7 @@ class Driver(WalkSteps, PitchSteps, LandingSteps):
                 self.result["errors"].append(traceback.format_exc())
                 yield from self.stop_play()
             self.save_result()
+        yield from self.await_determinism()
 
     def check_api(self):
         """Every function the session needs, checked at once before anything: all those that
@@ -275,6 +277,7 @@ class Driver(WalkSteps, PitchSteps, LandingSteps):
             if self.job.get("pitchCheck", True) and self.pitch_place(self.pitch_candidates) is None:
                 self.result["pitchCheck"] = {"place": None, "skipped": "no dry place looking "
                                              "level or down"}
+        yield from self.world_ready(offset)  # the views and the landings alike
         for place in group:
             self.place = place["name"]
             self.set_phase("place")

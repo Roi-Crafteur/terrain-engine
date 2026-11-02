@@ -39,7 +39,7 @@ import walks as walks_module  # noqa: E402
 import workspace  # noqa: E402
 
 DRIVER_FILES = ["ue_driver.py", "ue_api.py", "ue_walk.py", "ue_pitch.py", "ue_landings.py",
-                "ue_log.py", "walks.py",
+                "ue_ready.py", "ue_log.py", "walks.py",
                 "start_driver.py"]
 # The order of terrain_unreal/WATER_LEVEL.md: the horizon material again after the water.
 MATERIAL_SCRIPTS = ["create_temporary_terrain_material.py", "create_horizon_gpu_material.py",

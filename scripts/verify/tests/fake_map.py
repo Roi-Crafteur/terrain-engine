@@ -13,14 +13,18 @@ WATER_TEXT = ("over water (no dry ground within 50 m): the view of the tools 1.8
 
 
 class MapGo:
-    """outcomes: {place: {"kind": land | shallow | water | fallback | refused | silent,
-    "away": m from the click, "feet": altitude, "ok": False for NOT walking, "warning": the
-    warning of the planet file}}; land by default, at the click."""
+    """outcomes: {place: {"kind": land | shallow | water | fallback | refused | silent |
+    notready, "away": m from the click, "feet": altitude, "ok": False for NOT walking,
+    "warning": the warning of the planet file}}; land by default, at the click. ready_after:
+    the seconds after the start of a play before the world and its dev map are ready ("Terrain
+    Dev Map: started"); a command sooner is refused with "no world playing", as in the plugin."""
 
-    def __init__(self, fake, places, outcomes=None):
+    def __init__(self, fake, places, outcomes=None, ready_after=0.5, determinism_after=None):
         self.fake, self.places = fake, {p["name"]: p for p in places}
-        self.outcomes = outcomes or {}
+        self.outcomes, self.ready_after = outcomes or {}, ready_after
+        self.determinism_after, self.determinism_at = determinism_after, None
         self.events, self.sent = [], []  # (time, action); (name, log size at the command)
+        self.game, self.ready_at = None, None
         fake.console_hooks.append(self.console)
         fake.tick_hooks.append(self.tick)
 
@@ -28,6 +32,17 @@ class MapGo:
         self.events.append((self.fake.time + delay, action))
 
     def tick(self):
+        if self.fake.game is not self.game:  # a new play: its world builds first
+            self.game, self.ready_at = self.fake.game, self.fake.time + self.ready_after
+            if self.game is not None and self.determinism_after is not None:
+                self.determinism_at = self.fake.time + self.determinism_after
+        if self.determinism_at is not None and self.fake.time >= self.determinism_at:
+            self.determinism_at = None  # the self-check of the plugin, on its thread
+            self.fake._log("Terrain World: the heights and tiles of the default world match "
+                           "terrain_core bit for bit (checked on a thread in 9.10 s)")
+        if self.ready_at is not None and self.fake.time >= self.ready_at:
+            self.ready_at = None
+            self.fake._log("Terrain Dev Map: started (1 thread(s), 192 tiles kept)")
         for due, action in list(self.events):
             if self.fake.time >= due and (due, action) in self.events:
                 self.events.remove((due, action))
@@ -45,8 +60,11 @@ class MapGo:
             return
         name = command.split(" ", 1)[1]
         self.sent.append((name, self.fake.log_path.stat().st_size))
-        self.events.clear()  # the new click replaces the one running
         spec = dict({"kind": "land", "away": 0.0, "ok": True}, **self.outcomes.get(name, {}))
+        if self.ready_at is not None or spec["kind"] == "notready":  # its world still builds
+            self.fake._log("Warning: Terrain.Map.Go: no world playing (or no dev map)")
+            return
+        self.events.clear()  # the new click replaces the one running
         if spec.get("warning"):
             self.fake._log(f"Warning: Terrain Dev Map: {name} {spec['warning']}")
         place = self.places[name]

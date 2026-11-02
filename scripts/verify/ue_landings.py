@@ -46,12 +46,13 @@ class LandingSteps:
         entry["seconds"] = round(self.clock() - started, 1)
         if until.timed_out:
             entry["end"] = "none"
-            self.landing_misses += 1
-            if self.landing_misses >= self.job.get("landingMisses", 2):
-                raise SessionStopped(self.landing_misses, place["name"])
+            yield from self.missed(place)
+            return
+        entry.update(self.landing)
+        if entry["end"] == "notReady":  # sent too early: a problem of the launcher, a miss
+            yield from self.missed(place)
             return
         self.landing_misses = 0
-        entry.update(self.landing)
         if entry["end"] in ("water", "fallback"):
             # The eye goes above the water once the ground of the point is read: after the
             # report of the load of its teleport.
@@ -65,6 +66,14 @@ class LandingSteps:
                 x, y, z = self.api.location(pawn)
                 entry["feet"] = self.core_point((x, y, z - self.api.half_height(pawn)))
         entry["seconds"] = round(self.clock() - started, 1)
+
+    def missed(self, place):
+        """A landing without an end, or sent before the world was ready: two in a row stop the
+        session."""
+        self.landing_misses += 1
+        if self.landing_misses >= self.job.get("landingMisses", 2):
+            raise SessionStopped(self.landing_misses, place["name"])
+        yield from ()
 
     def landing_seen(self, offset, name):
         self.landing = ue_log.landing_end(self.log_text(offset), name)

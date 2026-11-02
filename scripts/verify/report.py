@@ -108,6 +108,9 @@ def _load_lines(v):
     for s in v.get("sessions", []):
         result = s.get("result") or {}
         lines += [f"    {view['place']} : {_load_text(view)}" for view in result.get("views", [])]
+        lines += [f"    monde de la PIE {k} prêt en {s:.1f} s (premier chargement rapporté, carte "
+                  f"de dev démarrée si la session atterrit)"
+                  for k, s in enumerate(result.get("ready", []), 1)]
         if result.get("beatsSkipped"):
             lines.append(f"    battements de cœur sautés : {result['beatsSkipped']} (fichier tenu "
                          f"ouvert par le lanceur au même moment)")
@@ -143,8 +146,9 @@ def _session_warnings(v, s, n):
     stopped = (result or {}).get("stopped")
     if stopped:
         out.append(f"ATTENTION ({label}) : session {n} arrêtée : {stopped['misses']} "
-                   f"atterrissages de suite sans issue (le dernier : {stopped['after']}), Unreal "
-                   f"fermé ; les lieux suivants de la session n'ont pas été faits")
+                   f"atterrissages de suite sans issue ou envoyés avant que le monde soit prêt "
+                   f"(le dernier : {stopped['after']}), Unreal fermé ; les lieux suivants de la "
+                   f"session n'ont pas été faits")
     if result is None:
         out.append(f"ATTENTION ({label}) : session {n} sans résultat (result_{n}.json absent)")
     elif not result.get("done"):

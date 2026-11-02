@@ -137,6 +137,15 @@ class Errors(unittest.TestCase):
             run("run", "--machine", str(machine_file(folder)), "--before", "main", "--places",
                 "fleuve_plaine", "--landings", "k2_paroi", "--dry-run")
 
+    def test_every_module_of_the_driver_is_copied(self):
+        """The driver runs in Unreal from the copy of DRIVER_FILES: a module left out only
+        breaks there (an ImportError at the start of the session)."""
+        here = Path(verify.__file__).resolve().parent
+        for module in sorted(p.name for p in here.glob("ue_*.py")):
+            self.assertIn(module, verify.DRIVER_FILES)
+        for name in verify.DRIVER_FILES:
+            self.assertTrue((here / name).is_file(), name)
+
     def test_no_machine_file(self):
         code, _, err = run("run", "--machine", "/no/machine.json", "--before", "main",
                            "--dry-run")
