@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace terrain {
 
@@ -345,6 +346,19 @@ RockBounds rockBounds(const RockColumn& c) {
         b.high = std::max(b.high, c.faces[i].top);
     }
     return b;
+}
+
+float rockCeiling(const RockColumn& c) {
+    // rockDensity: rock where the relief before the rivers with its faces holds some, and below
+    // that relief only where the valley with its carved faces does too (their tops, leaned on
+    // their relief by their weights, never above the highest of the two).
+    float faces = -std::numeric_limits<float>::infinity(); // the tops of the faces of the relief
+    float valley = c.ground;                                // the valley and its carved faces
+    for (std::size_t i = 0; i < c.faceCount; ++i) {
+        float& high = c.faces[i].carved ? valley : faces;
+        high = std::max(high, c.faces[i].top);
+    }
+    return std::max({c.ground, std::min(c.uncarved, valley), faces});
 }
 
 float rockShare(const RockColumn& c, double y, const RockDetail& detail) {
