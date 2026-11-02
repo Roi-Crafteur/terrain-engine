@@ -36,6 +36,16 @@ constexpr double kRockBlend = 6.0;
 // The small relief of the rocks (makeRough): 10 m and finer, 25 % of their height (35 % draws
 // teeth at the LOD 1).
 constexpr std::uint64_t kRoughStream = 0x2EEF;
+// One reef in about 1 / kStackShare stands a stack, kStackHeight high and kStackRadius wide at the
+// water: its face in three dimensions drawn fully at the LOD 0 to 2 of the tiles (its run, 2 (1 -
+// kRockTop) of its radius, 35 m and more: kRunCells cells of the LOD 2, and 1.5 times that), in
+// part at the LOD 3 and on the horizon (as their cells draw it); in two dimensions a dome. Its
+// rough relief kRoughMost meters at most (that of the highest rocks of the reefs).
+constexpr std::uint64_t kStackStream = 0x57AC;
+constexpr double kStackShare = 0.1;
+constexpr double kRoughMost = 12.0;
+constexpr std::array<double, 2> kStackHeight{20.0, 60.0};
+constexpr std::array<double, 2> kStackRadius{25.0, 35.0};
 constexpr double kRoughWavelength = 10.0;
 constexpr double kRough = 0.25;
 
@@ -68,6 +78,27 @@ double lobesOf(const Stack& rock, double turns) {
     return 1.0 + kRockLobe * wave;
 }
 
+// Whether the reef at (x, z) stands a stack, how high and how wide (hashes of its middle).
+struct Tall {
+    bool stack = false;
+    double height = 0.0;
+    double radius = 0.0;
+};
+
+Tall tallOf(double x, double z, const WorldSize& world) {
+    const std::uint64_t h = noise::deriveSeed(
+        kStackStream ^ std::bit_cast<std::uint64_t>(wrapCoordinate(x, world.x)),
+        std::bit_cast<std::uint64_t>(wrapCoordinate(z, world.z)));
+    const auto draw = [h](unsigned k) {
+        return static_cast<double>((h >> (21U * k)) & 0x1F'FFFFU) * 0x1.0p-21;
+    };
+    if (!(draw(0) < kStackShare)) {
+        return {};
+    }
+    return {true, between(kStackHeight[0], kStackHeight[1], draw(1)),
+            between(kStackRadius[0], kStackRadius[1], draw(2))};
+}
+
 } // namespace
 
 double rockRadius(double height) {
@@ -85,14 +116,21 @@ std::vector<Stack> reefOf(const coast_inlets::World& w, coast_inlets::Draws& d, 
         !inside(x, z)) {
         return out;
     }
+    // About one reef in kStackShare stands a stack, its first rock (by its middle: no draw taken,
+    // the other reefs keep theirs).
+    const Tall tall = tallOf(x, z, w.size);
     for (int k = 0; k < rocks; ++k) {
         const std::array<double, 2>& range = k == 0 ? kFirstRock : kOtherRock;
-        const double height = between(range[0], range[1], d.next());
+        double height = between(range[0], range[1], d.next());
         const dmath::SineCosine toward = dmath::sinCosTurns(d.next());
         const double away = k == 0 ? 0.0 : spread * std::sqrt(d.next());
         const double rx = x + away * toward.cosine;
         const double rz = z + away * toward.sine;
-        const double radius = rockRadius(height);
+        double radius = rockRadius(height);
+        if (k == 0 && tall.stack) {
+            height = tall.height;
+            radius = tall.radius;
+        }
         if (w.coast(rx, rz) > -kSignalPerMeter * (radius * (1.0 + kRockLobe) + kRockGap)) {
             continue; // out at sea only, never on another shore
         }
@@ -124,14 +162,25 @@ void addRock(const Stack& rock, double x, double z, const WorldSize& world,
     const double r = dmath::hypot(dx, dz);
     const double turns = r > 0.0 ? dmath::atan2(dz, dx) / (2.0 * kPi) : 0.0;
     const double radius = static_cast<double>(rock.radius) * lobesOf(rock, turns);
-    e.islet = std::max(e.islet, r < radius ? radius - r
-                                           : -coast_inlets::reachOf(r - radius, 0.0, kIsletReach));
+    const double islet =
+        r < radius ? radius - r : -coast_inlets::reachOf(r - radius, 0.0, kIsletReach);
     // Overlapping rocks merge rounded (no crease between them), never above the water at their
     // foot: the rounding vanishes there.
     double dome = static_cast<double>(rock.height) * domeOf(1.0 - r / radius);
-    if (dome > 0.0) {
-        dome *= 1.0 + kRough * static_cast<double>(rough.fbm2D(x, z));
+    const double amplitude =
+        kRough * std::min(1.0, kRoughMost / static_cast<double>(rock.height));
+    const double roughness =
+        dome > 0.0 ? 1.0 + amplitude * static_cast<double>(rough.fbm2D(x, z)) : 1.0;
+    dome *= roughness;
+    if (islet > e.islet) {
+        e.rockX = rock.x;
+        e.rockZ = rock.z;
+        e.rockRadius = radius;
+        e.rockHeight = static_cast<double>(rock.height);
+        e.rockTop = static_cast<double>(rock.height) * roughness;
+        e.rockPhase = static_cast<double>(rock.phase);
     }
+    e.islet = std::max(e.islet, islet);
     const double k = std::min({kRockBlend, e.dome, dome});
     if (k > 0.0) {
         const double h = std::max(k - std::abs(e.dome - dome), 0.0) / k;

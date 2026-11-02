@@ -142,7 +142,7 @@ void fillLattice(const Heightfield& field, const FineFrame& frame, const Corners
         }
         zs.assign(xs.size(), frame.z(v));
         out.resize(xs.size());
-        field.heightsAt(xs, zs, out);
+        field.seenHeightsAt(xs, zs, out);
         for (std::size_t n = 0; n < columns.size(); ++n) {
             lattice.at(columns[n], v) = out[n];
         }
@@ -356,7 +356,7 @@ std::vector<float> HorizonCrestSampler::sample(int level, const HorizonRect& rec
     }
     for (std::int64_t k = 0; k < rect.height() + 2; ++k) {
         zs.assign(xs.size(), samplePosition(wrapIndex(rect.z0 - 1 + k, counts.z), pitch));
-        field_->heightsAt(
+        field_->seenHeightsAt(
             xs, zs,
             std::span<float>(margined).subspan(static_cast<std::size_t>(k * side),
                                                static_cast<std::size_t>(side)));

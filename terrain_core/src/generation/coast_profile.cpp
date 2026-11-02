@@ -76,4 +76,13 @@ double faceTop(const Profile& k, const Shore& s, double land) {
     return std::min(high, cap);
 }
 
+Run runOf(const Face& f, bool plunges) {
+    const double b = f.foot + f.width;
+    if (plunges) {
+        return {-b, 0.0, b, true};
+    }
+    const double m = std::max(f.foot, 0.5 * (kBenchFoot + b));
+    return {2.0 * m - b, m, b, false};
+}
+
 } // namespace terrain::coast_profile

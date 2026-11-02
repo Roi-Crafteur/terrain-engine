@@ -75,6 +75,11 @@ constexpr double kGlenRamp = 3'000.0;
 // bare rock kRockMargin meters from it (no sand at its water).
 constexpr double kRockFoot = 0.5;
 constexpr double kRockMargin = 20.0;
+// The rock platforms and the faces of the coasts in three dimensions are bare rock (their
+// columns and kFaceRock meters beyond the middle of the face) where the kinds whose face stands
+// there weigh more than kPlatformRock: never the sand or the grass of the surface on a cliff.
+constexpr double kPlatformRock = 0.5;
+constexpr double kFaceRock = 8.0;
 // Where the shore kinds weigh kHeldShare or more of the weight of the shore and plunging kinds,
 // the plunging kinds keep off their platform.
 constexpr double kHeldShare = 0.5;
@@ -148,13 +153,17 @@ struct Land {
     double mountains = 0.0;
     double ground = 0.0;
     double up = 1.0; // the shore kinds: how far up their face, 0 on the platform, 1 on the top
+    // The shore kinds: how far the point lies on the rock before and under their face in three
+    // dimensions (coast_profile::runOf: up to kFaceRock meters beyond its middle, the rock
+    // platform before it included).
+    double platform = 0.0;
 };
 
 // The rocky coasts, the cliffs, the calanques and the rias: the platform, the screes and the face
 // up to a plateau as high as the height noises want, its hills and vallons coming onto it beyond
 // the top of the face, its mountains later.
 Land shoreOf(const Profile& k, const GeographySample& g, double coast, double d, const Shore& s,
-             double old) {
+             double old, bool plunges) {
     const double high = lerp(k.heightLow, k.heightHigh, s.heightAt);
     const double cap = static_cast<double>(k.landShare) *
                            std::max(0.0, static_cast<double>(g.land)) +
@@ -169,8 +178,10 @@ Land shoreOf(const Profile& k, const GeographySample& g, double coast, double d,
     const double ground = round > 0.0 ? smoothMax(face, screes, round) : std::max(face, screes);
     const double top = f.foot + f.width;
     const double land = smooth(top, top + kPlateauRise, d);
+    const coast_profile::Run run = coast_profile::runOf(f, plunges);
+    const double platform = d >= 0.0 && d < run.m + kFaceRock ? 1.0 : 0.0;
     return {land, land * smooth(0.0, k.hills, coast), std::max(old, ground),
-            smooth(f.foot, top, d)};
+            smooth(f.foot, top, d), platform};
 }
 
 // How far the plunging mountains have risen from the shore of the geography: steepest there, over
@@ -220,10 +231,11 @@ Land blendLand(const coast_kinds::Weights& weights, const GeographySample& g, do
         const auto w = static_cast<double>(weights[k]);
         plungeWeight += plunges(kind) ? w : 0.0;
         if (isShore(kind) && w > 0.0) {
-            const Land l = shoreOf(profileOf(kind), g, coast, d, s, old);
+            const Land l = shoreOf(profileOf(kind), g, coast, d, s, old, kind == CoastKind::Calanque);
             add(w, l);
             shoreWeight += w;
             up += w * l.up;
+            sum.platform += kind == CoastKind::Ria ? 0.0 : w * l.platform;
         }
     }
     const double share = shoreWeight > 0.0 ? shoreWeight / (shoreWeight + plungeWeight) : 0.0;
@@ -355,9 +367,14 @@ Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double 
     const double out = static_cast<double>(groundBase(p, g, inlets.base));
     const auto land = static_cast<float>(sum.land + (outLand - sum.land) * inner);
     const float low = weights[static_cast<std::size_t>(CoastKind::Low)];
-    return {land, static_cast<float>(sum.mountains + (outLand - sum.mountains) * inner),
+    // Bare rock on the rock platforms and under the faces of the rocky coasts, the cliffs and
+    // the calanques (the material only).
+    return {land,
+            static_cast<float>(sum.mountains + (outLand - sum.mountains) * inner),
             static_cast<float>(sum.ground + (out - sum.ground) * inner),
-            low + (1.0f - low) * land, static_cast<float>((1.0 - low) * (1.0 - inner))};
+            low + (1.0f - low) * land,
+            static_cast<float>((1.0 - low) * (1.0 - inner)),
+            sum.platform > kPlatformRock ? 1.0f : 0.0f};
 }
 
 double shoreTop(const Noises& noises, double x, double z, const GeographySample& g,

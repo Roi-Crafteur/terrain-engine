@@ -30,7 +30,9 @@ inline constexpr std::uint32_t kSectionFormatVersion = 2;
 // 5: phase 12A (the rock in three dimensions: vertical walls, overhangs and niches).
 // 6: the coasts of agent 33 (cliffs, mountains plunging into the sea, inlets, reefs, near sea
 // floors).
-inline constexpr std::uint32_t kGeneratorVersion = 6;
+// 7: the faces of the coasts in three dimensions (cliffs, calanques, the lower walls of the fjords,
+// the rocks of the reefs and the stacks: agent 33).
+inline constexpr std::uint32_t kGeneratorVersion = 7;
 // Version of the generator of the relief (Heightfield::heightAt and the planet level built from
 // it): the planet files hold it. The rock in three dimensions leaves the relief as it is, and the
 // planet level is built from the relief without the coasts (Heightfield::withoutCoasts), which

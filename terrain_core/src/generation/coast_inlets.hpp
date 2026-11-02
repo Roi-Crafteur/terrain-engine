@@ -86,6 +86,15 @@ struct Effect {
     // In the reach of the fjords: how far the plunging mountains rise from their water rather than
     // from the shore of the geography (1 in their water and near it, 0 from their wall on).
     double glen = 0.0;
+    // The rock of the reefs the point lies furthest into (that of islet): its middle, its radius
+    // toward the point (its lobes), its height, the top of its dome over the point (its rough
+    // relief) and the phase of its lobes (coast_faces: the faces of the rocks).
+    double rockX = 0.0;
+    double rockZ = 0.0;
+    double rockRadius = 0.0;
+    double rockHeight = 0.0;
+    double rockTop = 0.0;
+    double rockPhase = 0.0;
 };
 
 // The coast signal per meter of the inlets and stacks (about the gradient of the coast signal).

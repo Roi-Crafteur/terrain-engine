@@ -5,7 +5,9 @@
 // would follow the next risers along the face).
 #include "terrain/generation/heightfield.hpp"
 
+#include "coast_faces.hpp"
 #include "heightfield_layers.hpp"
+#include "terrain/generation/noise.hpp"
 #include "wall_faces.hpp"
 
 #include <cstddef>
@@ -61,14 +63,22 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
     Memos memos;
     std::vector<wall_faces::Site> grounds(xs.size()); // the ground of the walls alone
     std::vector<std::pair<std::size_t, wall_faces::Site>> faced;
+    // The faces of the coasts (agent 33, coast_faces.hpp), relative to the ground of the coast.
+    std::vector<std::pair<std::size_t, RockFace>> coastal;
     for (std::size_t i = 0; i < xs.size(); ++i) {
         wall_faces::Site site;
         site.faces = true;
+        coast_faces::Report report;
+        memos.coastFace = &report;
         out[i] = reliefWith(xs[i], zs[i], &memos, &site);
+        memos.coastFace = nullptr;
         grounds[i].walls = site.walls;
         grounds[i].ground = site.ground;
         if (site.count > 0) {
             faced.emplace_back(i, site);
+        }
+        if (report.faced) {
+            coastal.emplace_back(i, report.face);
         }
     }
     const Neighbors neighbors(xs, zs);
@@ -82,6 +92,13 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
         placeFaces(xs[i], zs[i], memos, site, alongX < xs.size() ? &grounds[alongX] : nullptr,
                    alongZ < xs.size() ? &grounds[alongZ] : nullptr, out[i].height, leastRun,
                    rock[i]);
+    }
+    for (auto& [i, face] : coastal) {
+        anchorCoastFace(noise::wrapCanonical(xs[i], world_.x), noise::wrapCanonical(zs[i], world_.z),
+                        out[i].height, face);
+        if (face.run >= leastRun && face.weight > 0.0f) {
+            rock[i].add(face);
+        }
     }
     if (hydrology_) {
         waterOf(xs, zs, out, memos);

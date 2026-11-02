@@ -87,4 +87,19 @@ struct Face {
 // landTop.
 [[nodiscard]] double faceTop(const Profile& k, const Shore& s, double land);
 
+// Where a face of the coasts stands in three dimensions (coast_faces.hpp) before the rock platform
+// of a face f (Face::foot wide, its slope Face::width wide). The faces that plunge (the calanques)
+// stand at the shore, their run reaching as far out under the sea as up the face; the others (the
+// cliffs, the rocky coasts) at the end of their platform, or further up their slope where it
+// leaves no room (the ground before it on the platform, kBenchFoot from the water at least): the
+// sea never stands before them, nor the platform over the face. Its run from a to b along the
+// distance to the shore, the face at its middle m.
+struct Run {
+    double a = 0.0;
+    double m = 0.0;
+    double b = 0.0;
+    bool plunges = false;
+};
+[[nodiscard]] Run runOf(const Face& f, bool plunges);
+
 } // namespace terrain::coast_profile

@@ -156,14 +156,27 @@ public:
     void heightsAt(std::span<const double> xs, std::span<const double> zs,
                    std::span<float> out) const;
     // samplesAt with the rock of each point in three dimensions (rock_faces.hpp, phase 12A): the
-    // same samples, bit for bit, and the faces the walls lay at each point, but those whose run
-    // is shorter than leastRun meters (a detail that would not draw them: kRunCells of its cells;
-    // the others the same whatever leastRun). rockAt: one point, every face. Throws
-    // std::invalid_argument unless the spans have one size.
+    // same samples, bit for bit, and the faces the walls lay at each point (and those of the
+    // coasts, coast_faces.hpp, agent 33), but those whose run is shorter than leastRun meters (a
+    // detail that would not draw them: kRunCells of its cells; the others the same whatever
+    // leastRun). rockAt: one point, every face. Throws std::invalid_argument unless the spans
+    // have one size.
     void samplesAt(std::span<const double> xs, std::span<const double> zs,
                    std::span<HeightSample> out, std::span<RockColumn> rock,
                    float leastRun = 0.0f) const;
     [[nodiscard]] RockColumn rockAt(double x, double z) const;
+    // sampleAt as the horizon shows it (agent 33): where a face of the coasts stands, its height is
+    // the top of the rock seen from above as the tiles of kSeenDetail draw it (the ledge of the
+    // top behind the face, that of its foot in front of it: coast_faces::seenHeight), so that
+    // the cliffs neither jump nor move back where the horizon takes over from the tiles; sampleAt
+    // bit for bit elsewhere (out of the band of the coasts, away from their faces).
+    [[nodiscard]] HeightSample seenAt(double x, double z) const;
+    // heightsAt as the horizon shows them (seenAt), for its fine grids (its detail normals and
+    // crests): the same bits as heightsAt away from the faces of the coasts.
+    void seenHeightsAt(std::span<const double> xs, std::span<const double> zs,
+                       std::span<float> out) const;
+    // The cells of the tiles of the LOD 3, next to the horizon.
+    static constexpr RockDetail kSeenDetail{8.0f};
     // How hard the rock is at height y under (x, z), in [0, 1] (0: soft): the layers the walls of
     // the gorges of the rivers cut there (mountain_walls: the hard and soft great bands of the
     // strata and of their rock steps, the soft ones made of beds a few meters thick, hard and
@@ -243,6 +256,11 @@ private:
     // (Hydrology::clearance), before their water: their corridors keep the relief they were found
     // over, bit for bit (heightfield_coast.cpp).
     void leaveValleys(double x, double z, HeightSample& s, Memos* memos) const;
+    // A face of the coasts reported at the canonical (x, z), its heights relative to the ground
+    // there, anchored on the relief relief there (anchorFace), its weight faded out near the
+    // rivers as the coasts are (Hydrology::clearance: no rock over their water).
+    void anchorCoastFace(double x, double z, float relief, RockFace& face) const;
+    [[nodiscard]] float coastFaceClear(double x, double z, float height) const;
     [[nodiscard]] static std::shared_ptr<const Coasts> makeCoasts(std::uint64_t seed,
                                                                   const WorldSize& world);
     // The inlets of these coasts, stopped before the rivers of hydrology_ (heightfield_coast.cpp).

@@ -41,6 +41,7 @@
 #include <functional>
 #include <map>
 #include <numbers>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -104,8 +105,12 @@ void testLaw() {
     TEST_CHECK(terrain::coast_shape::faceSlopeLimit(1000.0) == 3.0);
 }
 
+// The tiles of the relief alone (no rock in three dimensions): the faces in two dimensions, as the
+// tiles draw them where their rock is not drawn (the LOD too coarse for a face, the faces too low)
+// and as the horizon samples them; the faces in three dimensions of the coasts have their own
+// checks (coast_rock_test).
 const terrain::TerrainTiles& tiles() {
-    static const terrain::TerrainTiles t(kSeed);
+    static const terrain::TerrainTiles t(kSeed, {}, {}, std::nullopt, {}, nullptr, false);
     return t;
 }
 

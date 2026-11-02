@@ -78,7 +78,8 @@ struct Ground {
     // the inner edge of the band (relief_local::Shape::irregular).
     float irregular = 0.0f;
     // Bare rock on the surface, 0 or 1: the rocks of the reefs and the sea kRockMargin meters
-    // around them (HeightSample::rock).
+    // around them, the rock platforms and the faces in three dimensions of the rocky coasts, the
+    // cliffs and the calanques (HeightSample::rock).
     float rock = 0.0f;
 };
 
@@ -100,6 +101,13 @@ struct Inlets {
     double glen = 0.0;
     // Into the rocks of the reefs, meters (coast_inlets::Effect::islet, below 0 out of them).
     double islet = -std::numeric_limits<double>::infinity();
+    // That rock (coast_inlets::Effect::rockX and the next ones): read by its faces only.
+    double rockX = 0.0;
+    double rockZ = 0.0;
+    double rockRadius = 0.0;
+    double rockHeight = 0.0;
+    double rockTop = 0.0;
+    double rockPhase = 0.0;
 };
 
 [[nodiscard]] Ground shapeAt(const GeographyParams& p, const Noises& noises, double x, double z,

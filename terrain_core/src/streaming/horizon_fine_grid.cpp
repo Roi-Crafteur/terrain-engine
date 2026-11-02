@@ -50,7 +50,7 @@ void HorizonFineGrid::readRow(const Heightfield& field, std::int64_t v,
     const std::vector<double> zs(columns.size(),
                                  samplePosition(wrapIndex(v, counts_.z), spacing_));
     std::vector<float> out(columns.size());
-    field.heightsAt(xs, zs, out);
+    field.seenHeightsAt(xs, zs, out);
     for (std::size_t n = 0; n < columns.size(); ++n) {
         set(columns[n], v, out[n]);
     }
