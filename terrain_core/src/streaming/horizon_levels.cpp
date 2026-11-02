@@ -63,6 +63,10 @@ void validate(const HorizonParams& params) {
         throw std::invalid_argument("HorizonParams: crestRatio must be 0 or a power of two from 2 "
                                     "to 16 dividing the pitch of level 1");
     }
+    if (params.blendFromLevel < 0 || params.blendFromLevel > kHorizonMaxLevels) {
+        throw std::invalid_argument("HorizonParams: blendFromLevel must be within 0 and " +
+                                    std::to_string(kHorizonMaxLevels));
+    }
     // The coarsest pitch, as a double: no overflow for any level count.
     const double coarsest = std::ldexp(static_cast<double>(params.basePitch), params.levels - 1);
     if (kWorldAlignmentMeters / (2.0 * coarsest) < 1.0) {
