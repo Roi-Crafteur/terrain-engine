@@ -18,6 +18,8 @@ mais sans blocs : terrain lisse généré par SDF et meshing.
 - Les biomes ne modifient jamais la hauteur du terrain.
 - Les rivières sont générées après le relief.
 - Les cascades apparaissent uniquement aux ruptures de pente des rivières.
+- Le terrain n'a pas de plancher à 0 m : il descend aussi sous le niveau de la mer (bassins, fossés, cratères).
+- Une altitude négative n'est de la mer que si elle est reliée à l'océan.
 
 ## Qualité
 - Chaque module doit avoir des tests unitaires.
