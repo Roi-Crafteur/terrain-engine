@@ -11,6 +11,7 @@ terrain_add_test(tile_rivers_test terrain_core)
 # curtains of the falls; their sides against another tile, a coarser one and the horizon.
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/fall_curtains.cpp
                                              ${unreal_bridge}/fall_edges.cpp
+                                             ${unreal_bridge}/fall_foam.cpp
                                              ${unreal_bridge}/planet_source.cpp
                                              ${unreal_bridge}/tile_water_mesh.cpp)
 terrain_add_test(unreal_tile_water_test terrain_unreal_bridge)

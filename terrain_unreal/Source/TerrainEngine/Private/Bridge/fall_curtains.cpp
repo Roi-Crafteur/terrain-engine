@@ -1,6 +1,7 @@
 #include "fall_curtains.hpp"
 
 #include "fall_edges.hpp"
+#include "fall_foam.hpp"
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/water_kind.hpp"
@@ -28,11 +29,6 @@ constexpr double kFoamAbove = 0.05; // meters over the water below
 // kFoamLevelLeast meters plus kFoamLevelCells cells of its level.
 constexpr double kFoamLevelLeast = 0.25;
 constexpr double kFoamLevelCells = 0.35;
-// The ragged rim of the foam ends within kFoamRim of its radius (the material: 1 - smoothstep(0.3,
-// 1, r + 0.25 (n - 0.5)) is 0 from r = 1.125 on, its noise n in [0, 1]), kFoamClear meters short
-// of the edge of the lip of a fall its pool runs to.
-constexpr double kFoamRim = 1.125;
-constexpr double kFoamClear = 2.0;
 
 // A point in the frame of the tile, meters: (x, z) horizontal, y up.
 struct Point {
@@ -122,11 +118,6 @@ void curtain(Writer& out, const TileFall& f, const Point& lip, double dirX, doub
     }
 }
 
-// The points of the edge of a lip (TileFall::edgeX) and of the foot of its water (footEdgeX):
-// x, z, footX, footZ.
-using EdgePoint = std::array<double, 4>;
-using EdgeRun = std::vector<EdgePoint>;
-
 EdgePoint edgePointAt(const TileFall& f, std::size_t p, double t) {
     return {f.edgeX[p] + t * (f.edgeX[p + 1] - f.edgeX[p]),
             f.edgeZ[p] + t * (f.edgeZ[p + 1] - f.edgeZ[p]),
@@ -163,9 +154,8 @@ EdgeRun channelEdge(const TileFall& f, double dirX, double dirZ) {
     return points;
 }
 
-// The run of the edge of a lip the water falls from (TileFall::wetFrom to wetTo, in points of the
-// edge): one piece from where the water arrives at it to where it stops, never past them over the
-// dry walls of its slot. Without it (none known), the edge within the channel.
+} // namespace
+
 std::vector<EdgeRun> curtainRuns(const TileFall& f, double dirX, double dirZ) {
     const double from = static_cast<double>(f.wetFrom);
     const double to = static_cast<double>(f.wetTo);
@@ -183,6 +173,8 @@ std::vector<EdgeRun> curtainRuns(const TileFall& f, double dirX, double dirZ) {
     run.push_back(at(to));
     return {run};
 }
+
+namespace {
 
 // The curtain of a fall along a run of the edge of its lip (curtainRuns), in the frame of the
 // tile: from each point of the run down to where its water meets the pool (footEdgeX),
@@ -229,36 +221,6 @@ void shapedCurtain(Writer& out, const TileFall& f, const EdgeRun& e,
     }
 }
 
-// The foam at the foot of a fall: kFoamRadiusShare of the width of its channel in radius
-// (kFoamLeastRadius at least), within its pool (TileFall::pool) when known.
-double foamRadius(const TileFall& f) {
-    const double radius =
-        std::max(kFoamLeastRadius, kFoamRadiusShare * static_cast<double>(f.width));
-    if (!(f.pool > 0.0f)) {
-        return radius;
-    }
-    const double room = (static_cast<double>(f.pool) - kCurtainAhead) / (1.0 + kFoamAheadShare);
-    return std::max(0.5, std::min(radius, room));
-}
-
-// The radius of the foam of fall f centered at (cx, cz), radius at most, clear of the edge of the
-// lip of each fall its pool runs to (whose water above stands at the water below f): its rim
-// kFoamClear meters short of it. TileFall::pool runs along the course, a lip across it in a slant
-// or bowed comes nearer on a side. Only where every tile the foam may reach knows that fall (its
-// lip within kFallNear meters of them along x and z): the same radius in every tile.
-double clearOfLips(const FallEdges& edges, const TileFall& f, double cx, double cz, double radius) {
-    double clear = radius;
-    for (std::size_t n = 0; n < edges.size(); ++n) {
-        const double top = edges.top(n);
-        if (std::abs(top - static_cast<double>(f.bottom)) <= kFoamLevelLeast &&
-            top < static_cast<double>(f.top) &&
-            edges.lipDistance(n, cx, cz) + radius <= kFallNear) {
-            clear = std::min(clear, (edges.edgeDistance(n, cx, cz) - kFoamClear) / kFoamRim);
-        }
-    }
-    return std::max(0.5, clear);
-}
-
 // Whether the column (i, k) of the pool of a foam (pool(i, k)) stands inside it: its neighbors
 // (the eight about it, those along the side of the tile on a side, none at a corner: the same in
 // the tile beside) in the pool too. On its border, the foam fades out to nothing: never a step
@@ -283,18 +245,19 @@ bool inside(const Pool& pool, int i, int k) {
     return true;
 }
 
-// The foam of fall f centered at (cx, cz) in the frame of the tile, radius meters around, on the
-// cells of the tile whose four corners stand in the water of its pool (levels: drawnWaterLevels,
-// within kFoamLevelLeast plus kFoamLevelCells cells of the water below the fall), kFoamAbove over
-// it: uv0 meters from the center, uv1.v 0 on the border of the pool (inside) and 1 within, uv2.v
-// the radius (the material fades it out to a ragged rim and toward the border).
+// The foam s of fall f in the frame of the tile (fall_foam.hpp), on the cells of the tile whose
+// four corners stand in the water of its pool (levels: drawnWaterLevels, within kFoamLevelLeast
+// plus kFoamLevelCells cells of the water below the fall) and reach its ellipse, kFoamAbove over
+// it: uv0 its offset from the center (foamOffset), uv1.v 0 on the border of the pool (inside)
+// and 1 within, uv2.v its downstream semi-axis (the material fades it out to a ragged rim and
+// toward the border).
 void poolFoam(Writer& out, const TileData& data, const std::vector<double>& levels,
-              const TileFall& f, double cx, double cz, double radius) {
+              const TileFall& f, const FoamShape& s) {
     const double spacing = tileCellMeters(data.request.key.lod);
     const double side = kChunkCells * spacing;
-    const double nearX = std::clamp(cx, 0.0, side) - cx;
-    const double nearZ = std::clamp(cz, 0.0, side) - cz;
-    if (!(dmath::hypot(nearX, nearZ) <= radius)) {
+    const double nearX = std::clamp(s.centerX, 0.0, side) - s.centerX;
+    const double nearZ = std::clamp(s.centerZ, 0.0, side) - s.centerZ;
+    if (!(dmath::hypot(nearX, nearZ) <= std::max(s.along, s.down))) {
         return; // the foam does not reach the tile
     }
     const double tolerance = kFoamLevelLeast + kFoamLevelCells * spacing;
@@ -302,6 +265,13 @@ void poolFoam(Writer& out, const TileData& data, const std::vector<double>& leve
         const double level = levels[static_cast<std::size_t>(k * kGridSamples + i)];
         return level > static_cast<double>(kNoWaterLevel) &&
                std::abs(level - static_cast<double>(f.bottom)) <= tolerance;
+    };
+    // Within the ellipse: the nearest point of the cell to its center, in the frame of the foam.
+    const auto reaches = [&](int i, int k) {
+        const double x = std::clamp(s.centerX, i * spacing, (i + 1) * spacing);
+        const double z = std::clamp(s.centerZ, k * spacing, (k + 1) * spacing);
+        const std::array<double, 2> o = foamOffset(s, x, z);
+        return dmath::hypot(o[0], o[1]) <= s.down;
     };
     std::vector<std::int32_t> index(levels.size(), -1);
     const auto vertexAt = [&](int i, int k) {
@@ -311,16 +281,15 @@ void poolFoam(Writer& out, const TileData& data, const std::vector<double>& leve
             const double z = k * spacing;
             const double y = levels[static_cast<std::size_t>(k * kGridSamples + i)];
             const UnrealUV kind{kWaterFoam, inside(pool, i, k) ? 1.0f : 0.0f};
+            const std::array<double, 2> o = foamOffset(s, x, z);
             v = out.vertex({x, y - data.originY + kFoamAbove, z}, {0.0, 1.0, 0.0},
-                           {static_cast<float>(x - cx), static_cast<float>(z - cz)}, kind, radius);
+                           {static_cast<float>(o[0]), static_cast<float>(o[1])}, kind, s.down);
         }
         return v;
     };
     for (int k = 0; k < kChunkCells; ++k) {
         for (int i = 0; i < kChunkCells; ++i) {
-            const double dx = std::clamp(cx, i * spacing, (i + 1) * spacing) - cx;
-            const double dz = std::clamp(cz, k * spacing, (k + 1) * spacing) - cz;
-            if (!(dmath::hypot(dx, dz) <= radius) || !pool(i, k) || !pool(i + 1, k) ||
+            if (!reaches(i, k) || !pool(i, k) || !pool(i + 1, k) ||
                 !pool(i, k + 1) || !pool(i + 1, k + 1)) {
                 continue;
             }
@@ -351,9 +320,7 @@ UnrealWaterMesh buildFallCurtains(const TileData& data) {
         if (!(drop > 0.0) || !(run > 0.0)) {
             continue; // no fall (its foot lies below and downstream)
         }
-        // Its curtain in the tile of its lip; the foot of the middle of its water.
-        double footX = f.footX;
-        double footZ = f.footZ;
+        // Its curtain in the tile of its lip.
         const Point lip{f.x - data.originX, static_cast<double>(f.top) - data.originY,
                         f.z - data.originZ};
         if (f.edge == kFallEdge) {
@@ -363,18 +330,12 @@ UnrealWaterMesh buildFallCurtains(const TileData& data) {
                     shapedCurtain(out, f, edge, data.originX, data.originZ, lip.y);
                 }
             }
-            footX = f.footEdgeX[kFallEdge / 2];
-            footZ = f.footEdgeZ[kFallEdge / 2];
         } else if (f.here) {
             curtain(out, f, lip, dx / run, dz / run, run);
         }
         // Its foam on the pool, in every tile it reaches.
-        const double radius = foamRadius(f);
-        const double ahead = kCurtainAhead + kFoamAheadShare * radius;
-        const double cx = footX - data.originX + dx / run * ahead;
-        const double cz = footZ - data.originZ + dz / run * ahead;
         if (!levels.empty()) {
-            poolFoam(out, data, levels, f, cx, cz, clearOfLips(edges, f, cx, cz, radius));
+            poolFoam(out, data, levels, f, foamShape(f, data, edges));
         }
     }
     return mesh;

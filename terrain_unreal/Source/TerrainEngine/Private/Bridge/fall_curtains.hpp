@@ -4,6 +4,9 @@
 
 #include "terrain/streaming/stream_manager.hpp"
 
+#include <array>
+#include <vector>
+
 namespace terrain::unreal {
 
 // The share of the width of the channel at the lip that the curtain of a fall covers, how far in
@@ -19,6 +22,15 @@ inline constexpr double kFoamRadiusShare = 0.75;
 inline constexpr double kFoamLeastRadius = 3.0;
 inline constexpr double kFoamAheadShare = 0.35;
 inline constexpr double kCurtainCurveSlope = 1.5;
+
+// The points of the edge of a lip (TileFall::edgeX) and of the foot of its water (footEdgeX),
+// x, z, footX, footZ, and the run of it the water falls from (TileFall::wetFrom to wetTo, in
+// points of the edge): one piece from where the water arrives at it to where it stops, never past
+// them over the dry walls of its slot; without it (none known), the edge within the channel.
+// dirX, dirZ: downstream (from the lip to the foot).
+using EdgePoint = std::array<double, 4>;
+using EdgeRun = std::vector<EdgePoint>;
+[[nodiscard]] std::vector<EdgeRun> curtainRuns(const TileFall& f, double dirX, double dirZ);
 
 // The water of the falls of a tile (TileData::falls), in the frame of its ground
 // (UnrealWaterMesh: centimeters from the origin of the tile). Only from the data of each fall —
@@ -37,16 +49,14 @@ inline constexpr double kCurtainCurveSlope = 1.5;
 //   share t of the drop: free fall from a lip, outside the face from lip to foot); less steep, it
 //   is straight from lip to foot (a chute). Its front face downstream; uv0 in meters across and
 //   down the fall, uv2.v its width;
-// - every fall here or near draws its foam on the tile: centered kFoamAheadShare of its radius
-//   downstream of its foot (that of the middle of its edge), kFoamRadiusShare of the width of its
-//   channel in radius (kFoamLeastRadius at least), never past the end of its pool
-//   (TileFall::pool), its ragged rim two meters short of the edge of the lip of the fall its pool
-//   runs to (nearer on a side when that lip lies in a slant or bowed), on the cells of the tile
-//   whose four corners stand in the water of its pool (drawnWaterLevels near the water below the
-//   fall), a few centimeters over it: never over a ramp, a bank, a lip or another pool, the same
-//   in the tiles beside (uv0 meters from its center, uv1.v 0 on the border of its pool and 1
-//   within, uv2.v its radius: the material fades it out to a ragged rim and toward the border,
-//   never a step of the cells there).
+// - every fall here or near draws its foam on the tile, an ellipse along the foot of its curtain
+//   (fall_foam.hpp: as wide as the water falling and a little more, shorter downstream, its
+//   ragged rim two meters short of the edge of the lip its pool runs to), on the cells of the
+//   tile whose four corners stand in the water of its pool (drawnWaterLevels near the water below
+//   the fall), a few centimeters over it: never over a ramp, a bank, a lip or another pool, the
+//   same in the tiles beside (uv0 its offset from the center, squeezed along the foot, uv1.v 0 on
+//   the border of its pool and 1 within, uv2.v its downstream semi-axis: the material fades it
+//   out to a ragged rim and toward the border, never a step of the cells there).
 // Every fall gives the same vertices, whatever the tile around it. Deterministic.
 [[nodiscard]] UnrealWaterMesh buildFallCurtains(const TileData& data);
 

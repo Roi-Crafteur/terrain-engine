@@ -364,9 +364,11 @@ bool madeUpCurtains() {
     bool right = std::abs(top - 150.0) < 1e-3 && std::abs(bottom - 96.0) < 1e-3 &&
                  std::abs(across - 1800.0) < 1e-2 && m.normals[0].x > 0.0f && facing(m) &&
                  everyFallDrawn(steep, m);
-    // The center of the foam: kFoamAheadShare of its radius (15 m) downstream of the curtain foot.
+    // The center of the foam: kFoamAheadShare of its downstream semi-axis downstream of the curtain
+    // foot; 12 m: along the foot of the curtain (18 m) and kFoamSideShare of the channel (20 m)
+    // on each side, as long downstream (under its 15 m of kFoamRadiusShare): a circle here.
     const double foamAt = 4.0 + terrain::unreal::kCurtainAhead + 6.0 +
-                          terrain::unreal::kFoamAheadShare * 15.0;
+                          terrain::unreal::kFoamAheadShare * 12.0;
     std::size_t foam = 0;
     for (std::size_t n = 0; n < m.positions.size(); ++n) {
         if (m.uv1[n].u == terrain::unreal::kWaterFoam) {

@@ -74,6 +74,10 @@ public:
     // Meters from (x, z) to the edge of the lip of fall n (its points joined by straight lines),
     // and to its lip along x or z, the farther (as TileData::falls holds the falls near a tile).
     [[nodiscard]] double edgeDistance(std::size_t n, double x, double z) const;
+    // Point p of the edge of the lip of fall n (kFallEdge of them), x and z.
+    [[nodiscard]] std::array<double, 2> edgePoint(std::size_t n, std::size_t p) const {
+        return {edges_[n].x[p], edges_[n].z[p]};
+    }
     [[nodiscard]] double lipDistance(std::size_t n, double x, double z) const;
 
 private:

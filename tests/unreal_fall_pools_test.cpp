@@ -6,15 +6,19 @@
 //     gives a column beside its foot the level of its face just above the foot, a bump whose
 //     slopes light the foam of the rapids. (Between the lip and the foot, under the curtain, the
 //     water runs down the face.)
-//   - Foam clear of the next lip: the ragged rim of the foam of a fall (kFoamRim of its radius,
-//     the material) stays kClearLeast meters short of the edge of the lip of each fall its pool
-//     runs to (whose water above stands at the water under the foam): never a veil hanging over
-//     the edge, the view through it going down the fall. Where a tile the foam may reach does
-//     not know that fall (its lip more than kFallNear meters from the tile along x or z), the
-//     foam keeps its radius in every tile: counted, not checked.
-//   - One radius: a foam has the same radius in every tile that draws it.
+//   - The foam of a fall along the foot of its curtain (fall_foam.hpp): as wide as its water
+//     falling at least or narrowed by a lip at a side, never longer downstream than wide; its
+//     vertices drawn as its shape (uv0, uv2.v).
+//   - Foam clear of the next lip: its ragged rim (kFoamRim of its semi-axes, the material) stays
+//     kClearLeast meters short of the edge of the lip of each fall its pool runs to (whose water
+//     above stands at the water below it): never a veil hanging over the edge, the view through
+//     it going down the fall. Where a tile the foam may reach does not know that fall (its lip
+//     more than kFallNear meters from the tile along x or z), the foam keeps its size in every
+//     tile: counted, not checked.
+//   - One foam: the same shape in every tile that draws it.
 #include "fall_curtains.hpp"
 #include "fall_edges.hpp"
+#include "fall_foam.hpp"
 #include "falls_support.hpp"
 #include "tile_water_mesh.hpp"
 
@@ -45,10 +49,8 @@ constexpr double kPastFoot = 1.5;
 constexpr double kFlat = 0.01;
 constexpr double kAbove = 0.6;
 constexpr double kSideMargin = 2.5;
-constexpr double kFoamAbove = 0.05;
-constexpr double kFoamRim = 1.125;
 constexpr double kClearLeast = 2.0;
-constexpr double kCentimeters = 0.02; // the centers rounded to centimeters, the radii to floats
+constexpr int kRimPoints = 256;
 constexpr int kAround = 2; // tiles of LOD 0 on each side of the tile of the foot of a fall
 
 struct Checks {
@@ -56,12 +58,16 @@ struct Checks {
     std::size_t vertices = 0;   // of the surface in the pools of the falls
     std::size_t bumps = 0;      // of them a little above the water below their fall
     double highest = 0.0;       // meters above it at most
+    std::size_t shapes = 0;     // foams of the falls in the tiles
+    std::size_t longer = 0;     // of them longer downstream than along the foot
+    std::size_t narrowed = 0;   // narrower than the foot of their water falling (a lip beside)
+    std::size_t unmatched = 0;  // vertices of foam drawn as no foam of their tile
     std::size_t foams = 0;      // foams near the lip of a fall their pool runs to
     std::size_t far = 0;        // of them out of reach of the falls of some tile they may reach
     std::size_t farNear = 0;    // of those, whose rim comes within kClearLeast of that edge
     std::size_t near = 0;       // of the others, whose rim comes within kClearLeast of that edge
     double closest = std::numeric_limits<double>::infinity(); // meters from the rim to it
-    std::size_t radii = 0;      // foams drawn with two radii or more
+    std::size_t twice = 0;      // foams drawn with two shapes or more
 };
 
 // How far downstream of the line through the points (px, pz) of the edge of f (lip or foot)
@@ -146,49 +152,95 @@ void checkPools(const TileData& t, Checks& c) {
     }
 }
 
-using Center = std::pair<long long, long long>;
+// A foam in the world (the world wrapped), by the lip of its fall (centimeters).
+using FallKey = std::pair<long long, long long>;
+using WorldFoam = std::array<double, 6>; // center x, z, along x, z, its semi-axes
 
-// The foams of tile t: their radii by center (centimeters, the world wrapped), and how near
-// their rims come to the edge of the lip of a fall their pools run to.
-void checkFoams(const TileData& t, Checks& c, std::map<Center, std::vector<double>>& radii) {
+FallKey keyOf(double x, double z) {
+    return {std::llround(100.0 * terrain::wrapCoordinate(x, golden::kSmallPlanet.x)),
+            std::llround(100.0 * terrain::wrapCoordinate(z, golden::kSmallPlanet.z))};
+}
+
+// Meters from the ragged rim of foam s of tile t to the edge of the lip of g, at the nearest.
+double rimClear(const TileData& t, const terrain::unreal::FoamShape& s, const TileFall& g) {
+    double least = std::numeric_limits<double>::infinity();
+    for (int p = 0; p < kRimPoints; ++p) {
+        const double angle = 2.0 * M_PI * p / kRimPoints;
+        const double u = terrain::unreal::kFoamRim * s.along * std::cos(angle);
+        const double v = terrain::unreal::kFoamRim * s.down * std::sin(angle);
+        least = std::min(least, edgeDistance(g, t.originX + s.centerX + u * s.alongX - v * s.alongZ,
+                                             t.originZ + s.centerZ + u * s.alongZ + v * s.alongX));
+    }
+    return least;
+}
+
+// The foam of fall f of tile t: its shape, how near its rim comes to the lips its pool runs to.
+terrain::unreal::FoamShape checkFoam(const TileData& t, const TileFall& f,
+                                     const terrain::unreal::FallEdges& edges, Checks& c) {
+    const terrain::unreal::FoamShape s = terrain::unreal::foamShape(f, t, edges);
+    ++c.shapes;
+    c.longer += s.down > s.along + 1e-9 ? 1u : 0u;
+    c.narrowed += s.along < s.footHalf ? 1u : 0u;
+    const double cx = t.originX + s.centerX;
+    const double cz = t.originZ + s.centerZ;
+    for (const TileFall& g : t.falls) {
+        if (!shaped(g) || !(std::abs(static_cast<double>(g.top - f.bottom)) <= 0.25) ||
+            !(g.top < f.top)) {
+            continue;
+        }
+        ++c.foams;
+        const double reach = terrain::unreal::kFoamRim * std::max(s.along, s.down);
+        const double clear = rimClear(t, s, g);
+        if (std::max(std::abs(g.x - cx), std::abs(g.z - cz)) + reach > terrain::kFallNear) {
+            ++c.far;
+            c.farNear += clear < kClearLeast ? 1u : 0u;
+            continue;
+        }
+        c.closest = std::min(c.closest, clear);
+        c.near += clear < kClearLeast ? 1u : 0u;
+    }
+    return s;
+}
+
+// The foams of the falls of tile t, by fall for the comparison between tiles, and the vertices
+// of foam its mesh draws: each the shape of a foam of the tile (uv0 its offset, uv2.v its
+// downstream semi-axis).
+void checkFoams(const TileData& t, Checks& c, std::map<FallKey, std::vector<WorldFoam>>& shapes) {
+    const terrain::unreal::FallEdges edges(t);
+    std::vector<terrain::unreal::FoamShape> drawn;
+    for (const TileFall& f : t.falls) {
+        if (!(f.top > f.bottom) || !(std::hypot(f.footX - f.x, f.footZ - f.z) > 0.0)) {
+            continue;
+        }
+        const terrain::unreal::FoamShape s = checkFoam(t, f, edges, c);
+        drawn.push_back(s);
+        // Compared where it may draw (buildFallCurtains: the tile within its larger semi-axis).
+        const double side = terrain::kChunkSizeMeters;
+        const double nearX = std::clamp(s.centerX, 0.0, side) - s.centerX;
+        const double nearZ = std::clamp(s.centerZ, 0.0, side) - s.centerZ;
+        if (!(std::hypot(nearX, nearZ) <= std::max(s.along, s.down))) {
+            continue;
+        }
+        const FallKey center = keyOf(t.originX + s.centerX, t.originZ + s.centerZ);
+        shapes[keyOf(f.x, f.z)].push_back({static_cast<double>(center.first),
+                                           static_cast<double>(center.second), s.alongX,
+                                           s.alongZ, s.along, s.down});
+    }
     const UnrealWaterMesh m = terrain::unreal::buildFallCurtains(t);
-    std::map<Center, std::pair<double, double>> foams; // center -> (radius, water level)
     for (std::size_t v = 0; v < m.positions.size(); ++v) {
         if (m.uv1[v].u != terrain::unreal::kWaterFoam) {
             continue;
         }
-        const double cx = m.positions[v].x / 100.0 - m.uv0[v].u;
-        const double cz = m.positions[v].y / 100.0 - m.uv0[v].v;
-        const Center key{std::llround(100.0 * cx), std::llround(100.0 * cz)};
-        foams[key] = {m.uv2[v].v, t.originY + m.positions[v].z / 100.0 - kFoamAbove};
-    }
-    for (const auto& [key, foam] : foams) {
-        const double cx = t.originX + static_cast<double>(key.first) / 100.0;
-        const double cz = t.originZ + static_cast<double>(key.second) / 100.0;
-        const double wx = terrain::wrapCoordinate(cx, golden::kSmallPlanet.x);
-        const double wz = terrain::wrapCoordinate(cz, golden::kSmallPlanet.z);
-        const Center world{std::llround(100.0 * wx), std::llround(100.0 * wz)};
-        radii[world].push_back(foam.first);
-        bool runsTo = false;
-        for (const TileFall& f : t.falls) {
-            if (!shaped(f) || !(std::abs(static_cast<double>(f.top) - foam.second) <= 0.25)) {
-                continue;
-            }
-            runsTo = true;
-            const double lip = std::max(std::abs(f.x - cx), std::abs(f.z - cz));
-            if (lip + foam.first > terrain::kFallNear) {
-                ++c.far;
-                c.farNear += edgeDistance(f, cx, cz) - kFoamRim * foam.first <
-                                     kClearLeast - kCentimeters
-                                 ? 1u
-                                 : 0u;
-                continue;
-            }
-            const double clear = edgeDistance(f, cx, cz) - kFoamRim * foam.first;
-            c.closest = std::min(c.closest, clear);
-            c.near += clear < kClearLeast - kCentimeters ? 1u : 0u;
+        const double x = m.positions[v].x / 100.0;
+        const double z = m.positions[v].y / 100.0;
+        bool matched = false;
+        for (const terrain::unreal::FoamShape& s : drawn) {
+            const std::array<double, 2> o = terrain::unreal::foamOffset(s, x, z);
+            matched = matched || (std::abs(s.down - m.uv2[v].v) < 1e-3 &&
+                                  std::abs(o[0] - m.uv0[v].u) < 1e-3 &&
+                                  std::abs(o[1] - m.uv0[v].v) < 1e-3);
         }
-        c.foams += runsTo ? 1u : 0u;
+        c.unmatched += matched ? 0u : 1u;
     }
 }
 
@@ -251,27 +303,36 @@ int main() {
         }
     }
     Checks c;
-    std::map<Center, std::vector<double>> radii;
+    std::map<FallKey, std::vector<WorldFoam>> shapes;
     for (const TileData& t : tilesAround(tiles, all)) {
         ++c.tiles;
         checkPools(t, c);
-        checkFoams(t, c, radii);
+        checkFoams(t, c, shapes);
     }
-    for (const auto& [center, list] : radii) {
-        const auto [low, high] = std::minmax_element(list.begin(), list.end());
-        c.radii += *high - *low > 1e-4 ? 1u : 0u;
+    for (const auto& [fall, list] : shapes) {
+        bool same = true;
+        for (const WorldFoam& other : list) {
+            for (std::size_t k = 0; k < other.size(); ++k) {
+                same = same && std::abs(other[k] - list.front()[k]) <= (k < 2 ? 1.0 : 1e-6);
+            }
+        }
+        c.twice += same ? 0u : 1u;
     }
     std::printf("%zu falls, %zu LOD 0 tiles around their feet: %zu vertices of the surface in "
                 "their pools, %zu of them %.2f to %.2f m above the water below their fall "
-                "(%.3f m at most); %zu foams near the lip of a fall their pool runs to (%zu out "
-                "of reach of the falls of a tile, %zu of them with their rims within %.1f m of its "
-                "edge), %zu of the others with their rims within %.1f m of its edge (%.2f m at the "
-                "nearest); %zu foams drawn with two radii\n",
-                all.size(), c.tiles, c.vertices, c.bumps, kFlat, kAbove, c.highest, c.foams, c.far,
-                c.farNear, kClearLeast, c.near, kClearLeast, c.closest, c.radii);
+                "(%.3f m at most)\n",
+                all.size(), c.tiles, c.vertices, c.bumps, kFlat, kAbove, c.highest);
+    std::printf("%zu foams in the tiles: %zu longer downstream than along the foot, %zu narrower "
+                "than the foot of their water falling (a lip beside), %zu vertices of foam not "
+                "drawn as their shape, %zu foams drawn with two shapes; %zu near the lip of a fall "
+                "their pool runs to (%zu out of reach of the falls of a tile, %zu of them with "
+                "their rims within %.1f m of its edge), %zu of the others with their rims within "
+                "%.1f m of its edge (%.2f m at the nearest)\n",
+                c.shapes, c.longer, c.narrowed, c.unmatched, c.twice, c.foams, c.far, c.farNear,
+                kClearLeast, c.near, kClearLeast, c.closest);
     TEST_CHECK(all.size() >= 20 && c.vertices >= 1000 && c.foams >= 10);
     TEST_CHECK(c.bumps == 0);
+    TEST_CHECK(c.longer == 0 && c.unmatched == 0 && c.twice == 0);
     TEST_CHECK(c.near == 0);
-    TEST_CHECK(c.radii == 0);
     return test::result();
 }
