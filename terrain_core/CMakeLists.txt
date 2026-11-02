@@ -50,8 +50,13 @@ add_library(terrain_core STATIC
     src/generation/cliffs.cpp
     src/generation/climate.cpp
     src/generation/depression_forms.cpp
+    src/generation/dune_field.cpp
+    src/generation/dune_forms.cpp
+    src/generation/dune_phase.cpp
     src/generation/depressions.cpp
     src/generation/ecology.cpp
+    src/generation/erg_field.cpp
+    src/generation/ergs.cpp
     src/generation/eroded_region.cpp
     src/generation/geography.cpp
     src/generation/geography_crust.cpp
@@ -143,6 +148,7 @@ add_library(terrain_core STATIC
     src/io/relief_stats_terrain.cpp
     src/io/relief_view.cpp
     src/io/voronoi_png.cpp
+    src/map/map_ergs.cpp
     src/map/map_frame.cpp
     src/map/map_layers.cpp
     src/map/map_probe.cpp

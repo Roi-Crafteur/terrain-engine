@@ -5,7 +5,7 @@
 // --center at --mpp (a power of two), each timed. Without --planet: the relief and the sea only.
 // Prints where the samples came from, their counts, the queries of the hydrology and its courses.
 // Usage: terrain_export_map [--planet <file>] [--seed <seed>] [--threads <n>]
-//        [--layers <a,b,...>] [--max-samples <n>]
+//        [--layers <a,b,...>] [--max-samples <n>]   (layers: relief, biomes, water, contours, ergs)
 //        (--box <x> <z> <width> <height> | --center <x> <z> --mpp <m> | --whole)
 //        (--size <width> <height> | --tiles <n>) <out.png>
 
@@ -13,6 +13,7 @@
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/io/png.hpp"
+#include "terrain/map/map_ergs.hpp"
 #include "terrain/map/map_render.hpp"
 #include "terrain/map/map_source.hpp"
 #include "terrain/map/map_style.hpp"
@@ -166,7 +167,7 @@ bool checkOptions(const Options& o) {
     }
     const terrain::MapLayers layers = terrain::defaultMapLayers();
     for (const std::string& name : o.layers) {
-        if (layers.find(name) == nullptr) {
+        if (layers.find(name) == nullptr && name != terrain::kMapErgsLayer) {
             return fail("layer", name.c_str());
         }
     }
@@ -312,7 +313,8 @@ int main(int argc, char** argv) {
     const terrain::TerrainTiles tiles(o.seed, terrain::HeightfieldParams{},
                                       terrain::EcologyParams{}, std::nullopt, world, hydrology);
     const terrain::MapWorldSource source(tiles);
-    const terrain::MapLayers layers = terrain::defaultMapLayers();
+    terrain::MapLayers layers = terrain::defaultMapLayers();
+    layers.add(terrain::kMapErgsLayer, terrain::ergsLayer(hydrology)); // nothing without a planet
     terrain::MapImage image;
     if (o.tiles > 0) {
         std::printf("source: %s\n", kindName(source.kindFor(o.mpp)));

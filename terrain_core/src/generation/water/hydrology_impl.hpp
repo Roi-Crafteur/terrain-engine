@@ -217,6 +217,7 @@ struct Hydrology::Impl {
     Heightfield relief;
     std::shared_ptr<const PlanetLevel> planet;
     HydrologyParams params;
+    std::unique_ptr<const Ergs> ergs; // or null
     PlanetGrid grid;
     water::LadderParams ladder;
     Bits rivers;                        // the cells of the reaches carved
