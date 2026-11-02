@@ -91,3 +91,51 @@ avec `Terrain.EditStats`.
 - Le matériau filaire du moteur n'est pas garanti dans un jeu empaqueté : donner `GhostMaterial`
   pour un build final.
 - Les messages à l'écran (`AddOnScreenDebugMessage`) n'existent pas en Shipping ; le log reste.
+
+## La vérification dans Unreal
+
+Niveau `TerrainGasp`, `Terrain World` avec **`planet.bin` chargé** (le `PlanetFile` par défaut ;
+seed 20261019, somme `26626564570b0d9e`). Les positions sont celles du core (x vers l'est, z vers
+le sud), le cap en degrés depuis le nord (−Z) dans le sens horaire, l'inclinaison négative vers le
+bas. Pour chaque lieu : `Terrain.Goto x z +1.8`, `Terrain.Look cap inclinaison`, puis
+`Terrain.Pawn` (le personnage GASP posé sur le sol praticable le plus proche : casser et poser ne
+marchent qu'avec lui, jamais avec le pion volant des outils).
+
+| Lieu | x | z | cap | incl. | œil | sol (core) |
+|---|---|---|---|---|---|---|
+| plaine | −240 631 | −86 677 | 90 | −30 | +1,8 m | 6,18 m, pente 0,2°, sec, à 1 km du fleuve de `fleuve_plaine` |
+| paroi (pied de `k2_paroi`) | 416 017 | −11 414 812 | 175 | 10 | +1,8 m | 6 715 m, pente 75° ; roche 3D quand l'agent 20 sera mergé |
+| bord de lac (`lac_montagne`) | 7 370 340 | −7 088 911 | 270 | −20 | +1,8 m | 1 726,9 m, sec ; l'eau (1 725,26 m) commence 30 à 40 m à l'ouest |
+| chute de 388 m | −6 185 124 | 155 984 | 227 | 0 | +1,8 m | 260,1 m, pente 35°, près du bassin de `chute388_bassin` |
+| K2 | voir `Terrain.Goto k2_paroi` puis `Terrain.Pawn` | | | | | |
+
+Sur chaque lieu :
+
+1. Avant tout : `Terrain.EditSave 0` n'est pas nécessaire (coupé par défaut). Le log doit dire
+   `Terrain World: breaking and placing given to <pion>` et, s'il y a des conflits, les lignes
+   `Terrain Build: the key … is also mapped to …` (à me renvoyer, surtout pour la molette, le clic
+   droit et 1/2/3 avec GASP).
+2. **Fantôme** : un cube filaire de 1 m sur le sol visé à moins de 6 m de l'œil ; rien au-delà.
+   Touches 2 et 3 (ou la molette) : une sphère de 2 m puis de 4 m ; `Tool: …` en haut de l'écran.
+3. **Casser** (clic gauche, touche 1) : un creux d'environ 1 m dans l'image du clic ou la suivante.
+   Tenir le bouton : 4 creux par seconde, pas plus. Puis `Terrain.EditStats` : « click -> tile
+   shown » en millisecondes et en images (but : 0 ou 1 image).
+4. **Poser** (clic droit) : un bloc sur la face visée (sur le sol : au-dessus ; sur la paroi : en
+   avant d'elle). Viser ses propres pieds : refus, message « Cannot place: too close to the
+   character ». Monter sur ce qu'on a posé (sauter) : la collision le porte.
+5. **Tomber** : se placer sur la plaine, viser sous ses pieds (inclinaison −80), casser avec la
+   sphère de 4 m : le personnage tombe dans le trou **sans passer à travers le fond**, et peut en
+   ressortir en sautant ou en posant des blocs.
+6. **Plantes** : en plaine, casser sous un arbre ou un buisson : la plante disparaît.
+7. **Eau** (bord de lac) : casser vers l'eau : le fond se creuse sous la nappe, qui ne bouge pas ;
+   casser au bord, sur le sec : un trou sec. Près de la chute : casser la pente, le rideau reste.
+8. **Paroi** : casser plusieurs blocs dans la paroi : aucun trou vers le vide autour du creux (avec
+   la roche 3D de l'agent 20 aussi).
+9. **Pas d'action** : ouvrir la carte de dev (M) et cliquer : rien n'est cassé ; pendant le noir
+   d'un `Terrain.Goto` : rien ; avec le pion volant (après `Terrain.Goto`, avant `Terrain.Pawn`) :
+   ni fantôme ni modification ; fenêtre sans le focus (Alt-Tab) : rien.
+10. **Sauvegarde** : `Terrain.EditSave 1`, casser et poser quelques blocs, arrêter le Play
+    (« edits saved N times this play »), relancer avec `Building.bSaveEdits` coché : « … saved
+    blocks of seed 20261019 read from …\Saved\TerrainEngine\Edits\seed_20261019 » et les trous
+    sont là. Décoché : le monde est intact. Abîmer `world.meta` (et effacer `world.meta.bak`) :
+    message clair, pas de crash, monde intact.
