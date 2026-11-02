@@ -111,6 +111,18 @@ double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve&
     return h;
 }
 
+void Heightfield::addDunes(double x, double z, HeightSample& s) const {
+    const Ergs* ergs = hydrology_->ergs();
+    if (ergs == nullptr) {
+        return;
+    }
+    const float dunes = ergs->dunesAt(x, z, s);
+    if (dunes > 0.0f) {
+        s.dunes = dunes;
+        s.height += dunes;
+    }
+}
+
 void Heightfield::applyHydrology(double x, double z, HeightSample& s, Memos* memos) const {
     const float relief = s.height;
     Hydrology::Region* region = memos != nullptr ? &memos->water : nullptr;
@@ -169,6 +181,7 @@ void Heightfield::waterOf(std::span<const double> xs, std::span<const double> zs
     for (std::size_t i = 0; i < xs.size(); ++i) {
         const double x = noise::wrapCanonical(xs[i], world_.x);
         const double z = noise::wrapCanonical(zs[i], world_.z);
+        addDunes(x, z, samples[i]);
         minX = std::min(minX, x);
         maxX = std::max(maxX, x);
         minZ = std::min(minZ, z);

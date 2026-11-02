@@ -21,11 +21,15 @@
 // climate of the planet level (its bands of winds) never show in the ergs.
 //
 // The rule of the wadis (for the river network, task 11C): a river of the planet level carved by
-// the hydrology (discharge at least ErgParams::minDischarge) crosses an erg in a corridor free of
-// dunes: no dune within corridorClear meters of its cells, full dunes beyond corridorClear +
-// corridorFade. A smaller stream is not carved: it stops at the foot of the erg. The lakes of the
-// planet level (terminal and salt lakes included) take the same corridor, as do the depressions
-// below the sea level.
+// the hydrology (discharge at least ErgParams::minDischarge) crosses an erg: no dune within
+// riverClear meters of the floor of its valley (the course the tiles carve, Hydrology::
+// floorDistance), the dunes rising to their full height over the riverFade meters beyond. The
+// valley is found on the relief without dunes; the dunes never bar it. A smaller stream is not
+// carved: it stops at the foot of the erg. Without the courses (Ergs built alone), the polyline
+// of the centers of the river cells stands for them, widened by how far a course may stray from
+// it (kStray, 2 km) and the widest floor: corridorClear meters. The lakes of the planet level
+// (terminal and salt lakes included) keep lakeClear meters of their cells clear (a lake may
+// flood the cells around its own), lakeFade beyond, as do the depressions below the sea level.
 //
 // Where the mask is 0 the dunes are exactly 0: the world keeps every bit of its relief there.
 // Deterministic, thread-safe, periodic on the world.
@@ -38,6 +42,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -56,6 +61,16 @@ struct ErgParams {
     // the semi-arid lands, away from the sharp lines of the bands of the planet level.
     float humidLow = 0.42f;
     float humidHigh = 0.55f;
+    // The edge of the deserts the ergs thin out across, from the humidity of the land around the
+    // warped point (blocks of the field, blurred over two blocks: no line of the planet level):
+    // edgeCool where it is cool, edgeHot where it is hot (around edgeTemperature, joined over
+    // 8 degrees), the erg fading from edgeBelow under the edge to edgeAbove over it. The same
+    // climate as the biomes (BiomeParams: temperate and hot desert humidities), never the biome.
+    float edgeCool = 0.2f;
+    float edgeHot = 0.3f;
+    float edgeTemperature = 20.0f;
+    float edgeBelow = 0.04f;
+    float edgeAbove = 0.08f;
     // Mean annual temperature of the land, Celsius: none at or below cold, full at warm.
     float coldTemperature = 6.0f;
     float warmTemperature = 14.0f;
@@ -79,10 +94,12 @@ struct ErgParams {
     // The relief at the point (HeightSample::relief): full dunes at or below low, none at high.
     float reliefLow = 0.10f;
     float reliefHigh = 0.28f;
-    // The corridors of the water (above), meters from the course of a river (the polyline of the
-    // centers of its cells) or from the square of a lake cell.
-    double corridorClear = 5'000.0;
-    double corridorFade = 8'000.0;
+    // The corridors of the water (above), meters.
+    double riverClear = 150.0;
+    double riverFade = 600.0;
+    double corridorClear = 4'500.0; // from the polyline of the cells, without the courses
+    double lakeClear = 8'000.0;
+    double lakeFade = 3'000.0;
     double minDischarge = 10.0; // m^3/s: the rivers the hydrology carves (HydrologyParams)
 };
 
@@ -103,8 +120,11 @@ public:
     // The ergs of the planet level of a world, seed drawing their dunes. depressions: those of the
     // relief (Heightfield::depressions). The planet level must outlive the ergs (they read its
     // humidity). Throws std::invalid_argument for an empty planet grid.
+    // floor: the distance to the floor of the valleys of the rivers (Hydrology::floorDistance:
+    // x, z, limit), or empty to read the polyline of the river cells instead.
+    using RiverFloor = std::function<double(double, double, double)>;
     Ergs(std::uint64_t seed, const PlanetLevel& planet, const std::vector<Depression>& depressions,
-         const ErgParams& params = {});
+         const ErgParams& params = {}, RiverFloor floor = {});
     ~Ergs();
     Ergs(const Ergs&) = delete;
     Ergs& operator=(const Ergs&) = delete;

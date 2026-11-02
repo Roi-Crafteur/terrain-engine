@@ -30,6 +30,7 @@ constexpr float kLandHigh = 0.9f;
 constexpr double kOceanShare = 0.5;
 // The climate is blurred across the meridians over kAcross blocks (two passes).
 constexpr int kAcross = 2;
+constexpr int kLocal = 2;
 
 int blockCellsOf(const PlanetGrid& grid) {
     int b = kMostBlockCells;
@@ -40,10 +41,20 @@ int blockCellsOf(const PlanetGrid& grid) {
 }
 
 struct Sums {
-    std::vector<float> land;    // land cells
-    std::vector<float> climate; // sum over the land cells of their climate factor
-    std::vector<float> ocean;   // ocean cells
+    std::vector<float> land;        // land cells
+    std::vector<float> climate;     // sum over the land cells of their climate factor
+    std::vector<float> humidity;    // and of their humidity
+    std::vector<float> temperature; // and of their temperature
+    std::vector<float> ocean;       // ocean cells
 };
+
+double humidityOf(const PlanetLevel& planet, std::size_t c) {
+    const double p = planet.precipitation(c);
+    const double pet = std::max(
+        planet::potentialEvapotranspiration(planet.temperature(c), planet.params().climate),
+        kLeastPet);
+    return p / (p + pet);
+}
 
 // 0: no water, 1: a lake, 2: a river carved.
 int waterOf(const PlanetLevel& planet, std::size_t c, double minDischarge) {
@@ -90,10 +101,7 @@ void indexRivers(const PlanetLevel& planet, Field& f) {
 // The climate factor of a land cell: dry and warm.
 float cellClimate(const PlanetLevel& planet, std::size_t c, const ErgParams& params) {
     const double t = planet.temperature(c);
-    const double p = planet.precipitation(c);
-    const double pet = std::max(
-        planet::potentialEvapotranspiration(t, planet.params().climate), kLeastPet);
-    const auto humidity = static_cast<float>(p / (p + pet));
+    const auto humidity = static_cast<float>(humidityOf(planet, c));
     return (1.0f - noise::smoothstep(params.aridHumidity, params.dryHumidity, humidity)) *
            noise::smoothstep(params.coldTemperature, params.warmTemperature,
                              static_cast<float>(t));
@@ -104,6 +112,8 @@ Sums sumBlocks(const PlanetLevel& planet, const ErgParams& params, Field& f) {
     const std::size_t blocks = static_cast<std::size_t>(f.bx) * static_cast<std::size_t>(f.bz);
     s.land.assign(blocks, 0.0f);
     s.climate.assign(blocks, 0.0f);
+    s.humidity.assign(blocks, 0.0f);
+    s.temperature.assign(blocks, 0.0f);
     s.ocean.assign(blocks, 0.0f);
     f.water.assign(blocks, 0);
     f.lakes.assign(blocks, 0);
@@ -118,6 +128,8 @@ Sums sumBlocks(const PlanetLevel& planet, const ErgParams& params, Field& f) {
             }
             s.land[b] += 1.0f;
             s.climate[b] += cellClimate(planet, c, params);
+            s.humidity[b] += static_cast<float>(humidityOf(planet, c));
+            s.temperature[b] += planet.temperature(c);
             const int water = waterOf(planet, c, params.minDischarge);
             if (water != 0) {
                 const std::uint64_t bit = std::uint64_t{1} << (i % f.blockCells + 8 * (j % f.blockCells));
@@ -174,6 +186,17 @@ std::vector<float> blurredClimate(const Field& f, const Sums& s, int radius) {
     return out;
 }
 
+// The mean of a sum over the land of the blocks, blurred over kLocal blocks on each side (the land
+// around a point, without the sharp lines between the cells of the planet level).
+std::vector<float> localMean(const Field& f, const std::vector<float>& sum, const Sums& s) {
+    std::vector<float> num = boxPass(f, boxPass(f, sum, kLocal, true), kLocal, false);
+    const std::vector<float> den = boxPass(f, boxPass(f, s.land, kLocal, true), kLocal, false);
+    for (std::size_t b = 0; b < num.size(); ++b) {
+        num[b] = den[b] > 0.0f ? num[b] / den[b] : 0.0f;
+    }
+    return num;
+}
+
 // Meters from every block to the nearest block of the sea (Dijkstra over the 8 neighbors), or
 // infinity without any.
 std::vector<double> seaDistance(const Field& f, const Sums& s) {
@@ -208,18 +231,19 @@ std::vector<double> seaDistance(const Field& f, const Sums& s) {
     return d;
 }
 
-// The blocks within r blocks (Chebyshev) of a block of positive potential.
-std::vector<std::uint8_t> dilatedReach(const Field& f, int r) {
+// The blocks within r blocks (Chebyshev) of a block where on holds.
+std::vector<std::uint8_t> dilated(const Field& f, int r,
+                                  const std::function<bool(std::size_t)>& on) {
     std::vector<std::uint8_t> along(f.potential.size(), 0);
     std::vector<std::uint8_t> out(f.potential.size(), 0);
     const auto spread = [&](std::vector<std::uint8_t>& to, bool alongX,
-                            const std::function<bool(std::size_t)>& on) {
+                            const std::function<bool(std::size_t)>& source) {
         const int n = alongX ? f.bx : f.bz;
         const int lines = alongX ? f.bz : f.bx;
         for (int line = 0; line < lines; ++line) {
             for (int k = 0; k < n; ++k) {
                 const std::size_t b = alongX ? f.block(k, line) : f.block(line, k);
-                if (!on(b)) {
+                if (!source(b)) {
                     continue;
                 }
                 for (int o = -std::min(r, n); o <= std::min(r, n); ++o) {
@@ -229,7 +253,7 @@ std::vector<std::uint8_t> dilatedReach(const Field& f, int r) {
             }
         }
     };
-    spread(along, true, [&](std::size_t b) { return f.potential[b] > 0.0f; });
+    spread(along, true, on);
     spread(out, false, [&](std::size_t b) { return along[b] != 0; });
     return out;
 }
@@ -279,6 +303,8 @@ Field build(const PlanetLevel& planet, const ErgParams& params, double warpReach
     const auto radius = static_cast<int>(std::floor(params.blurDegrees * degree / f.blockSize + 0.5));
     const std::vector<float> climate = blurredClimate(f, sums, radius);
     const std::vector<double> sea = seaDistance(f, sums);
+    f.humidity = localMean(f, sums.humidity, sums);
+    f.temperature = localMean(f, sums.temperature, sums);
     const auto cells = static_cast<float>(f.blockCells * f.blockCells);
     f.potential.assign(climate.size(), 0.0f);
     for (std::size_t b = 0; b < climate.size(); ++b) {
@@ -290,12 +316,17 @@ Field build(const PlanetLevel& planet, const ErgParams& params, double warpReach
                                                    static_cast<float>(sea[b]));
         f.potential[b] = climate[b] * land * inland;
     }
-    f.reach = dilatedReach(f, static_cast<int>(std::ceil(warpReach / f.blockSize)) + 1);
+    f.reach = dilated(f, static_cast<int>(std::ceil(warpReach / f.blockSize)) + 1,
+                      [&](std::size_t b) { return f.potential[b] > 0.0f; });
+    const double water = std::max(params.corridorClear + params.riverFade,
+                                  params.lakeClear + params.lakeFade);
+    f.nearWater = dilated(f, static_cast<int>(std::ceil(water / f.blockSize)) + 1,
+                          [&](std::size_t b) { return f.water[b] != 0; });
     indexRivers(planet, f);
     return f;
 }
 
-float potentialAt(const Field& f, double x, double z) {
+float blockAt(const Field& f, const std::vector<float>& values, double x, double z) {
     const double u = (wrapCoordinate(x, f.grid.periodX()) + 0.5 * f.grid.periodX()) / f.blockSize -
                      0.5;
     const double v = (wrapCoordinate(z, f.grid.periodZ()) + 0.5 * f.grid.periodZ()) / f.blockSize -
@@ -309,10 +340,22 @@ float potentialAt(const Field& f, double x, double z) {
     const auto hermite = [](double t) { return t * t * (3.0 - 2.0 * t); };
     const double tx = hermite(u - fu);
     const double tz = hermite(v - fv);
-    const auto p = [&](int i, int j) { return static_cast<double>(f.potential[f.block(i, j)]); };
+    const auto p = [&](int i, int j) { return static_cast<double>(values[f.block(i, j)]); };
     const double top = p(i0, j0) + (p(i1, j0) - p(i0, j0)) * tx;
     const double bottom = p(i0, j1) + (p(i1, j1) - p(i0, j1)) * tx;
     return static_cast<float>(top + (bottom - top) * tz);
+}
+
+float potentialAt(const Field& f, double x, double z) {
+    return blockAt(f, f.potential, x, z);
+}
+
+bool nearWater(const Field& f, double x, double z) {
+    const double u = (wrapCoordinate(x, f.grid.periodX()) + 0.5 * f.grid.periodX()) / f.blockSize;
+    const double v = (wrapCoordinate(z, f.grid.periodZ()) + 0.5 * f.grid.periodZ()) / f.blockSize;
+    const int bi = std::clamp(static_cast<int>(std::floor(u)), 0, f.bx - 1);
+    const int bj = std::clamp(static_cast<int>(std::floor(v)), 0, f.bz - 1);
+    return f.nearWater[f.block(bi, bj)] != 0;
 }
 
 bool reachAt(const Field& f, double x, double z) {
@@ -323,7 +366,10 @@ bool reachAt(const Field& f, double x, double z) {
     return f.reach[f.block(bi, bj)] != 0;
 }
 
-double waterDistance(const Field& f, double x, double z, double limit) {
+WaterDistance waterDistance(const Field& f, double x, double z, double limit) {
+    if (!nearWater(f, x, z)) {
+        return {limit, limit};
+    }
     const double cs = f.grid.cellSize;
     const double u = (wrapCoordinate(x, f.grid.periodX()) + 0.5 * f.grid.periodX()) / cs;
     const double v = (wrapCoordinate(z, f.grid.periodZ()) + 0.5 * f.grid.periodZ()) / cs;
@@ -336,7 +382,7 @@ double waterDistance(const Field& f, double x, double z, double limit) {
     const double oz = (v - fv - 0.5) * cs;
     // One more cell: the course of a river reaches the center of the next cell.
     const int r = static_cast<int>(std::ceil(limit / cs)) + 1;
-    double best = limit;
+    WaterDistance best{limit, limit};
     for (int dj = -r; dj <= r; ++dj) {
         for (int di = -r; di <= r; ++di) {
             const Field::Water w = f.waterCell(ci + di, cj + dj);
@@ -349,10 +395,10 @@ double waterDistance(const Field& f, double x, double z, double limit) {
             if (w.lake) {
                 const double dx = std::max(0.0, std::abs(px) - 0.5 * cs);
                 const double dz = std::max(0.0, std::abs(pz) - 0.5 * cs);
-                best = std::min(best, dmath::hypot(dx, dz));
+                best.lake = std::min(best.lake, dmath::hypot(dx, dz));
                 continue;
             }
-            best = std::min(best, segmentDistance(px, pz, w.receiver, cs));
+            best.river = std::min(best.river, segmentDistance(px, pz, w.receiver, cs));
         }
     }
     return best;

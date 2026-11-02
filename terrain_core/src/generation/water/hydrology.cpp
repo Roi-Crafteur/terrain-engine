@@ -396,7 +396,9 @@ Hydrology::Hydrology(std::uint64_t seed, const Heightfield& relief,
     if (params.ergs.enabled) {
         ErgParams ergs = params.ergs;
         ergs.minDischarge = params.minDischarge;
-        impl_->ergs = std::make_unique<const Ergs>(seed, *impl_->planet, relief.depressions(), ergs);
+        impl_->ergs = std::make_unique<const Ergs>(
+            seed, *impl_->planet, relief.depressions(), ergs,
+            [this](double x, double z, double limit) { return floorDistance(x, z, limit); });
     }
 }
 

@@ -34,6 +34,7 @@ struct SurfaceSite {
     // At a vertical wall of the cliffs: the surface drops by at least half a stratum to a
     // 4-neighbor sample, where the cliff mask is not 0.
     bool cliffWall = false;
+    float dunes = 0.0f; // meters of sand of the seas of dunes (HeightSample::dunes)
 
     [[nodiscard]] bool dry() const { return water == WaterKind::None; }
     [[nodiscard]] float waterDepth() const { return waterLevel - ground; }

@@ -101,6 +101,9 @@ struct HeightSample {
     // dry land).
     WaterKind water = WaterKind::None;
     float waterLevel = 0.0f;
+    // Meters of sand the seas of dunes lay over the relief (ergs.hpp, part of height): 0 outside
+    // them and without hydrology.
+    float dunes = 0.0f;
 };
 
 // A depression below the sea level of the geography (phase 11B): its center (canonical), its mean
@@ -172,6 +175,9 @@ private:
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
     // The depressions below the sea and the sea of a sample at a canonical point.
     void finishWater(double x, double z, HeightSample& s) const;
+    // The seas of dunes of the hydrology (ergs.hpp) over the relief at a canonical point, before
+    // its valleys (heightfield_hydrology): nothing, not a bit, outside them.
+    void addDunes(double x, double z, HeightSample& s) const;
     // The valleys, rivers and lakes of the hydrology at a canonical point, last
     // (heightfield_hydrology), through the memos and the region of a batch call (null otherwise).
     void applyHydrology(double x, double z, HeightSample& s, Memos* memos) const;

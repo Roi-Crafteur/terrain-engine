@@ -31,6 +31,10 @@ struct Field {
     double blockSize = 0.0;
     std::vector<float> potential;      // per block, [0, 1]: climate x distance to the sea x land
     std::vector<std::uint8_t> reach;   // per block: an erg may lie within reach of it
+    // per block: water within the corridors of the ergs (ErgParams) of it, a block more
+    std::vector<std::uint8_t> nearWater;
+    std::vector<float> humidity;       // per block: the mean of its land, blurred over a block
+    std::vector<float> temperature;    // the same of the mean temperature of its land
     std::vector<std::uint64_t> water;  // per block: bit (i % b) + 8 (j % b) of a water cell
     std::vector<std::uint64_t> lakes;  // per block: the same bits, of the lake cells among them
     // The receivers (kPlanetNeighbors index, or kNoNeighbor) of the river cells (water, not lake),
@@ -59,16 +63,26 @@ struct Field {
 // The potential at the canonical (x, z): the blocks interpolated between their centers with
 // smoothstep weights (continuous, with a continuous slope), on the torus.
 [[nodiscard]] float potentialAt(const Field& field, double x, double z);
+// The same interpolation of other values of the blocks (humidity, temperature).
+[[nodiscard]] float blockAt(const Field& field, const std::vector<float>& values, double x,
+                            double z);
+// Whether water may lie within the corridors of the block holding the canonical (x, z).
+[[nodiscard]] bool nearWater(const Field& field, double x, double z);
 // The reach of the block holding the canonical (x, z).
 [[nodiscard]] bool reachAt(const Field& field, double x, double z);
-// The distance from the canonical (x, z) to the nearest water, meters, or limit if none is nearer:
-// the square of a lake cell, the course of a river (from the center of its cell to that of its
-// receiver).
-[[nodiscard]] double waterDistance(const Field& field, double x, double z, double limit);
+// The distances from the canonical (x, z) to the nearest lake (the square of its cells) and to the
+// nearest river (the segment from the center of its cell to that of its receiver), meters, or
+// limit for none nearer (limit at most the corridors of the ergs, ErgParams).
+struct WaterDistance {
+    double lake = 0.0;
+    double river = 0.0;
+};
+[[nodiscard]] WaterDistance waterDistance(const Field& field, double x, double z, double limit);
 
 } // namespace erg_field
 
 struct Ergs::Impl {
+    std::uint64_t id = 0; // unique to this ergs in the process: keys the memos of the threads
     std::uint64_t seed = 0;
     ErgParams params;
     PlanetClimateParams climate;
@@ -76,6 +90,8 @@ struct Ergs::Impl {
     erg_field::Field field;
     const PlanetLevel* planet = nullptr; // read for the humidity at a point: outlives the ergs
     std::vector<Depression> depressions;
+    std::vector<std::uint8_t> nearDepression; // per block of the field: one may reach it
+    Ergs::RiverFloor riverFloor; // or empty
     double degree = 0.0; // meters of one degree of latitude
     // The mask: the warp of the field, the fraying of its edges, the sand, the variability and the
     // turn of the wind.
@@ -93,7 +109,28 @@ struct Ergs::Impl {
     noise::FbmOctaves amplitude;
     noise::FbmOctaves side;
     noise::FbmOctaves ends;
+    noise::FbmOctaves scatter; // the barchans, at their own scale: which are there, how tall
 };
+
+// The memos of the noises of the ergs on the calling thread: a sequence of close points (a batch
+// of the Heightfield, a row of a tile) reuses the gradients of the lattice cells of the last one,
+// with the same bits whatever the memos hold. Dropped when other ergs use the thread.
+struct ErgMemos {
+    std::uint64_t owner = 0;
+    noise::FbmOctaves::Memo warpX;
+    noise::FbmOctaves::Memo warpZ;
+    noise::FbmOctaves::Memo edges;
+    noise::FbmOctaves::Memo supply;
+    noise::FbmOctaves::Memo sand;
+    noise::FbmOctaves::Memo variability;
+    noise::FbmOctaves::Memo sinuosity;
+    noise::FbmOctaves::Memo drift;
+    noise::FbmOctaves::Memo amplitude;
+    noise::FbmOctaves::Memo side;
+    noise::FbmOctaves::Memo ends;
+    noise::FbmOctaves::Memo scatter;
+};
+[[nodiscard]] ErgMemos& memosOf(const Ergs::Impl& m);
 
 // The prevailing wind at the canonical (x, z) (Ergs::windAt).
 [[nodiscard]] std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z);

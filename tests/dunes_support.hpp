@@ -53,6 +53,10 @@ inline terrain::ErgParams smallErgParams() {
     p.coastFar = 80'000.0;
     p.supplyWavelength = 120'000.0;
     p.edgeWavelength = 20'000.0;
+    // Its blocks of 65 km span a tenth of its latitudes and the land around a point is read over
+    // two of them: it mixes dry and wet cells far more than on the real planet.
+    p.edgeCool = 0.42f;
+    p.edgeHot = 0.52f;
     return p;
 }
 

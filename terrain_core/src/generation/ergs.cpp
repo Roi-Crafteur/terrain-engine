@@ -9,7 +9,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <atomic>
 #include <stdexcept>
+#include <utility>
 
 namespace terrain {
 
@@ -56,6 +58,7 @@ enum Stream : std::uint64_t {
     kAmplitude,
     kSide,
     kEnds,
+    kScatter,
 };
 
 noise::FbmOctaves octaves(std::uint64_t seed, Stream stream, int count, double wavelength,
@@ -73,13 +76,17 @@ double hermite(double edge0, double edge1, double v) {
 
 } // namespace
 
+static void markDepressions(Ergs::Impl& m);
+
 Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
-           const std::vector<Depression>& depressions, const ErgParams& params)
+           const std::vector<Depression>& depressions, const ErgParams& params, RiverFloor floor)
     : impl_(std::make_unique<Impl>()) {
     if (planet.grid().cells() == 0) {
         throw std::invalid_argument("Ergs: empty planet grid");
     }
     Impl& m = *impl_;
+    static std::atomic<std::uint64_t> next{1};
+    m.id = next.fetch_add(1);
     m.seed = noise::deriveSeed(seed, 0x45524753ULL); // "ERGS"
     m.params = params;
     m.climate = planet.params().climate;
@@ -87,97 +94,175 @@ Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
     m.degree = m.world.z / 180.0;
     m.depressions = depressions;
     m.planet = &planet;
+    m.riverFloor = std::move(floor);
     const double warpReach = params.warpDegrees * m.degree;
     m.field = erg_field::build(planet, params, warpReach);
+    markDepressions(m);
     m.warpX = octaves(m.seed, kWarpX, 2, params.warpWavelength, m.world);
     m.warpZ = octaves(m.seed, kWarpZ, 2, params.warpWavelength, m.world);
     m.edges = octaves(m.seed, kEdges, 3, params.edgeWavelength, m.world);
-    m.supply = octaves(m.seed, kSupply, 3, params.supplyWavelength, m.world);
+    m.supply = octaves(m.seed, kSupply, 2, params.supplyWavelength, m.world);
     m.sand = octaves(m.seed, kSand, 2, 2.0 * params.edgeWavelength, m.world);
-    m.variability = octaves(m.seed, kVariability, 3, 300'000.0, m.world);
+    m.variability = octaves(m.seed, kVariability, 2, 300'000.0, m.world);
     m.turn = octaves(m.seed, kTurn, 2, 700'000.0, m.world);
-    m.sinuosity = octaves(m.seed, kSinuosity, 3, 5'000.0, m.world);
+    m.sinuosity = octaves(m.seed, kSinuosity, 2, 5'000.0, m.world);
     m.drift = octaves(m.seed, kDrift, 2, 12'000.0, m.world);
     m.amplitude = octaves(m.seed, kAmplitude, 2, 4'000.0, m.world);
     m.side = octaves(m.seed, kSide, 2, 3'000.0, m.world);
     m.ends = octaves(m.seed, kEnds, 2, 7'000.0, m.world);
+    m.scatter = octaves(m.seed, kScatter, 2, 1'200.0, m.world);
 }
 
 Ergs::~Ergs() = default;
+
+ErgMemos& memosOf(const Ergs::Impl& m) {
+    thread_local ErgMemos memos;
+    if (memos.owner != m.id) {
+        memos = ErgMemos{};
+        memos.owner = m.id;
+    }
+    return memos;
+}
 
 bool Ergs::mayHold(double x, double z) const {
     return impl_->params.enabled && erg_field::reachAt(impl_->field, x, z);
 }
 
+// The potential of the climate at the canonical (x, z) and the warp of the point.
+static float potentialOf(const Ergs::Impl& m, double x, double z, double& warpX, double& warpZ) {
+    ErgMemos& memo = memosOf(m);
+    const double reach = m.params.warpDegrees * m.degree;
+    warpX = reach * static_cast<double>(m.warpX.fbm2D(x, z, memo.warpX));
+    warpZ = reach * static_cast<double>(m.warpZ.fbm2D(x, z, memo.warpZ));
+    return erg_field::potentialAt(m.field, x + warpX, z + warpZ);
+}
+
 float Ergs::climateAt(double x, double z) const {
-    const Impl& m = *impl_;
     if (!mayHold(x, z)) {
         return 0.0f;
     }
-    const double reach = m.params.warpDegrees * m.degree;
-    const double wx = reach * static_cast<double>(m.warpX.fbm2D(x, z));
-    const double wz = reach * static_cast<double>(m.warpZ.fbm2D(x, z));
-    return erg_field::potentialAt(m.field, x + wx, z + wz);
+    double warpX = 0.0;
+    double warpZ = 0.0;
+    return potentialOf(*impl_, x, z, warpX, warpZ);
+}
+
+// The blocks of the field a depression may reach (its margin and fade, and a block more).
+static void markDepressions(Ergs::Impl& m) {
+    const erg_field::Field& f = m.field;
+    m.nearDepression.assign(f.potential.size(), 0);
+    for (const Depression& d : m.depressions) {
+        const double reach =
+            d.radius * (1.0 + kDepressionMargin) + m.params.lakeClear + m.params.lakeFade;
+        const int r = static_cast<int>(std::ceil(reach / f.blockSize)) + 1;
+        const int bi = static_cast<int>(std::floor((d.x + 0.5 * m.world.x) / f.blockSize));
+        const int bj = static_cast<int>(std::floor((d.z + 0.5 * m.world.z) / f.blockSize));
+        for (int dj = -r; dj <= r; ++dj) {
+            for (int di = -r; di <= r; ++di) {
+                m.nearDepression[f.block(((bi + di) % f.bx + f.bx) % f.bx,
+                                         ((bj + dj) % f.bz + f.bz) % f.bz)] = 1;
+            }
+        }
+    }
 }
 
 // The share of the dunes the depressions leave at (x, z): none on them, all beyond their margin.
 static double depressionShare(const Ergs::Impl& m, double x, double z) {
+    const erg_field::Field& f = m.field;
+    const int bi = std::clamp(
+        static_cast<int>(std::floor((x + 0.5 * m.world.x) / f.blockSize)), 0, f.bx - 1);
+    const int bj = std::clamp(
+        static_cast<int>(std::floor((z + 0.5 * m.world.z) / f.blockSize)), 0, f.bz - 1);
+    if (m.nearDepression[f.block(bi, bj)] == 0) {
+        return 1.0;
+    }
     double share = 1.0;
     for (const Depression& d : m.depressions) {
         const double dx = nearestImage(d.x, x, m.world.x) - x;
         const double dz = nearestImage(d.z, z, m.world.z) - z;
-        const double edge = d.radius * (1.0 + kDepressionMargin) + m.params.corridorClear;
+        const double edge = d.radius * (1.0 + kDepressionMargin) + m.params.lakeClear;
         const double dist = dmath::hypot(dx, dz);
-        if (dist < edge + m.params.corridorFade) {
-            share = std::min(share, hermite(edge, edge + m.params.corridorFade, dist));
+        if (dist < edge + m.params.lakeFade) {
+            share = std::min(share, hermite(edge, edge + m.params.lakeFade, dist));
         }
     }
     return share;
 }
 
+// The share of the dunes the water leaves at (x, z): none on a lake nor on the floor of a valley,
+// all beyond their corridors.
+static double waterShare(const Ergs::Impl& m, double x, double z) {
+    const ErgParams& p = m.params;
+    const double riverFar = p.corridorClear + p.riverFade;
+    const double lakeFar = p.lakeClear + p.lakeFade;
+    const erg_field::WaterDistance d =
+        erg_field::waterDistance(m.field, x, z, std::max(riverFar, lakeFar));
+    double share = hermite(p.lakeClear, lakeFar, d.lake);
+    if (d.river < riverFar && share > 0.0) {
+        // Near the polyline of a river: the floor of its valley itself, where it is known.
+        share *= m.riverFloor ? hermite(p.riverClear, p.riverClear + p.riverFade,
+                                        m.riverFloor(x, z, p.riverClear + p.riverFade))
+                              : hermite(p.corridorClear, riverFar, d.river);
+    }
+    return share;
+}
+
+// The share of the erg the edge of the deserts leaves at (x, z) (the warped point: the edge bends
+// as the climate of the ergs does, never along a line of the planet level): sand that thins out
+// toward the grass, from the climate of the land around the point.
+static float desertShare(const Ergs::Impl& m, double x, double z) {
+    const ErgParams& p = m.params;
+    const float humidity = erg_field::blockAt(m.field, m.field.humidity, x, z);
+    const float temperature = erg_field::blockAt(m.field, m.field.temperature, x, z);
+    const float edge = p.edgeCool + (p.edgeHot - p.edgeCool) *
+                                        noise::smoothstep(p.edgeTemperature - 4.0f,
+                                                          p.edgeTemperature + 4.0f, temperature);
+    return 1.0f - noise::smoothstep(edge - p.edgeBelow, edge + p.edgeAbove, humidity);
+}
+
 ErgPoint Ergs::at(double x, double z, float relief) const {
     const Impl& m = *impl_;
-    const float potential = climateAt(x, z);
+    if (!mayHold(x, z)) {
+        return {};
+    }
+    double warpX = 0.0;
+    double warpZ = 0.0;
+    const float potential = potentialOf(m, x, z, warpX, warpZ);
     if (!(potential > 0.0f)) {
         return {};
     }
+    ErgMemos& memo = memosOf(m);
     // The core of the erg: the climate where the sand is supplied; its edges frayed by a noise
     // where it passes the threshold, never beyond the climate (the guard).
     const float core = potential * noise::smoothstep(m.params.supplyLow, m.params.supplyHigh,
-                                                     m.supply.fbm2D(x, z));
-    const float frayed = core + m.params.edgeNoise * m.edges.fbm2D(x, z);
+                                                     m.supply.fbm2D(x, z, memo.supply));
+    const float frayed = core + m.params.edgeNoise * m.edges.fbm2D(x, z, memo.edges);
     float mask = noise::smoothstep(kMaskLow, kMaskHigh, frayed) *
                  noise::smoothstep(0.0f, kMaskGuard, core) *
                  (1.0f - noise::smoothstep(m.params.reliefLow, m.params.reliefHigh, relief));
     if (!(mask > 0.0f)) {
         return {};
     }
-    const double far = m.params.corridorClear + m.params.corridorFade;
-    const double water = erg_field::waterDistance(m.field, x, z, far);
-    mask *= static_cast<float>(hermite(m.params.corridorClear, far, water) *
+    mask *= static_cast<float>(waterShare(m, x, z) *
                                depressionShare(m, x, z)) *
             (1.0f - noise::smoothstep(m.params.humidLow, m.params.humidHigh,
-                                      m.planet->humidityAt(x, z)));
+                                      m.planet->humidityAt(x, z))) *
+            desertShare(m, x + warpX, z + warpZ);
     if (!(mask > 0.0f)) {
         return {};
     }
     ErgPoint e;
     e.mask = mask;
     e.sand = mask * noise::smoothstep(kSandLow, kSandHigh,
-                                      potential * (1.0f + kSandNoise * m.sand.fbm2D(x, z)));
+                                      potential * (1.0f + kSandNoise * m.sand.fbm2D(x, z, memo.sand)));
     // The latitude of the warped point: the belts of the variable winds bend as the ergs do.
-    const double warpedZ = wrapCoordinate(
-        z + m.params.warpDegrees * m.degree * static_cast<double>(m.warpZ.fbm2D(x, z)), m.world.z);
+    const double warpedZ = wrapCoordinate(z + warpZ, m.world.z);
     const double latitude = 180.0 * std::abs(warpedZ) / m.world.z;
     const double horse = 1.0 - hermite(kHorseNear, kHorseFar, std::abs(latitude - 30.0));
     const double doldrums = 1.0 - hermite(kDoldrumsNear, kDoldrumsFar, latitude);
     e.variability = std::clamp(kVariabilityLatitude * static_cast<float>(std::max(horse, doldrums)) +
                                    kVariabilityBase +
-                                   kVariabilityNoise * m.variability.fbm2D(x, z),
+                                   kVariabilityNoise * m.variability.fbm2D(x, z, memo.variability),
                                0.0f, 1.0f);
-    const std::array<double, 2> wind = windAt(x, z);
-    e.windX = wind[0];
-    e.windZ = wind[1];
     return e;
 }
 

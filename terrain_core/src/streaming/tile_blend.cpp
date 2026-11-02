@@ -72,10 +72,11 @@ std::vector<BlendTexel> blendTexels(const Heightfield& field, const Ecology& eco
         const double z = lattice.z0 + static_cast<double>(k) * lattice.spacing;
         for (int i = 0; i <= kLastColumn; i += stride) {
             const double x = lattice.x0 + static_cast<double>(i) * lattice.spacing;
-            const SurfaceSite site = heightfieldSite(
+            SurfaceSite site = heightfieldSite(
                 columns.at(i, k), columns.continentalnessAt(i, k),
                 {height(i + 1, k), height(i - 1, k), height(i, k + 1), height(i, k - 1)},
                 lattice.spacing);
+            site.dunes = columns.dunesAt(i, k);
             const ClimateSample climate = ecology.climate().sample(x, z, site);
             result.push_back(packBlend(ecology.blendAt(x, z, site, climate)));
         }

@@ -181,6 +181,11 @@ public:
     // the relief holds none of it.
     [[nodiscard]] float lakeLevel(std::int32_t lake) const;
 
+    // The distance from the canonical (x, z) to the floor of the valley of the nearest reach (its
+    // axis, less the half width of its floor, or of its channel and its meanders where wider),
+    // meters, or limit where none is nearer (hydrology_floor.cpp). Computes the courses it needs.
+    [[nodiscard]] double floorDistance(double x, double z, double limit) const;
+
     // The reaches: one per river cell of the planet level carved, in the order of the cells, then
     // one per outlet of a lake into a river carved, in the order of the cells of their sills.
     [[nodiscard]] std::size_t reachCount() const;
