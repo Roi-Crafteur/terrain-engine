@@ -117,6 +117,7 @@ struct Ergs::Impl {
     std::vector<ErgSummary> ergList;
     noise::FbmOctaves shore;     // how far the edge of the dunes wanders from a valley floor
     noise::FbmOctaves lakeShore; // and from a lake
+    noise::FbmOctaves foot;      // how high the sand climbs the foot of the rock out of it
 };
 
 // The memos of the noises of the ergs on the calling thread: a sequence of close points (a batch
@@ -143,6 +144,7 @@ struct ErgMemos {
     noise::FbmOctaves::Memo waveJoins;
     noise::FbmOctaves::Memo waveEnds;
     noise::FbmOctaves::Memo lakeShore;
+    noise::FbmOctaves::Memo foot;
     // The stars on the chains read at their center (dune_field): the last ones met, by center.
     struct Star {
         double cx = std::numeric_limits<double>::quiet_NaN();

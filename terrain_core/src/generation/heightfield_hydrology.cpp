@@ -8,6 +8,7 @@
 #include "relief_local.hpp"
 #include "wall_faces.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
@@ -163,12 +164,11 @@ void Heightfield::addDunes(double x, double z, HeightSample& s) const {
         return;
     }
     float mask = 0.0f;
-    bool bare = false;
-    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask, &bare);
-    s.erg = mask;
-    if (bare) {
-        s.rock = 1.0f; // the rock out of the sand: bare rock, whatever the share of the erg
-    }
+    float sand = 1.0f;
+    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask, &sand);
+    // The rock out of the sand: the floor of the erg (its stony ground, its rock on the steep
+    // slopes, in the colors of the desert), never the bare rock of the reefs (hard edges).
+    s.erg = mask * (kErgFloorShare + (1.0f - kErgFloorShare) * sand);
     // Negative in the troughs dug between the dunes (ergs.hpp): the ground sinks, the water stays
     // what the geography made it (its flag, never the height); a dry column keeps its water level
     // at its ground (as everywhere on land), never over it.

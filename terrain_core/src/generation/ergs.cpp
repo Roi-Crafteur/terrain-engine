@@ -36,13 +36,6 @@ constexpr double kDoldrumsFar = 8.0;
 constexpr float kVariabilityLatitude = 0.3f;
 constexpr float kVariabilityBase = 0.1f;
 constexpr float kVariabilityNoise = 0.55f;
-// The far horizon: the spacing of the dunes estimated from the sand (kMeanLeast + kMeanRange
-// sand^1.3, as the pivots), the dunes giving way to their mean from kFilterLow to kFilterHigh of
-// it.
-constexpr double kMeanLeast = 1000.0;
-constexpr double kMeanRange = 1900.0;
-constexpr double kFilterLow = 0.1;
-constexpr double kFilterHigh = 0.3;
 // The depressions keep their dunes kDepressionMargin of their radius away from their edge.
 constexpr double kDepressionMargin = 0.25;
 // The edges of the dunes along the water wander outward by up to kShoreWander meters (a noise of
@@ -52,17 +45,15 @@ constexpr double kShoreWander = 1'200.0;
 constexpr double kShoreWavelength = 2'500.0;
 constexpr double kLakeWander = 3'000.0;
 constexpr double kLakeWavelength = 12'000.0;
+// How high the sand climbs the foot of the rock out of it wanders over kFootWavelength meters
+// (ergs_rock.cpp).
+constexpr double kFootWavelength = 90.0;
 // The waves of the ergs of those characters rise this high at most (dune_waves.hpp), and their
 // fades along the water stretch kFadePerMeter meters per meter of it: 12 degrees at most (the
 // steepest of a Hermite curve, 1.5 times its mean).
 constexpr double kWavesTallest = 300.0;
 constexpr double kGiantsTallest = 800.0;
 constexpr double kFadePerMeter = 7.06; // 1.5 / tan 12 degrees
-constexpr double kBuryMost = 60.0; // meters of the local relief the sand buries (buried())
-constexpr float kBuryFade = 0.3f;
-constexpr double kRockFall = 5.0;
-// A hollow keeps this share of what it sinks under kBuryMost: the sand lines its walls, gentler.
-constexpr double kHollowKept = 0.35;
 // No erg in the troughs of the rifts (their walls kilometers high): faded from kRiftLow to
 // kRiftHigh (the field is a little over 0 far from them).
 constexpr float kRiftLow = 0.05f;
@@ -91,6 +82,7 @@ enum Stream : std::uint64_t {
     kShore,
     kLakeShore,
     kCharacter,
+    kFoot,
 };
 
 noise::FbmOctaves octaves(std::uint64_t seed, Stream stream, int count, double wavelength,
@@ -147,6 +139,7 @@ Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
     m.shore = octaves(m.seed, kShore, 2, kShoreWavelength, m.world);
     m.lakeShore = octaves(m.seed, kLakeShore, 2, kLakeWavelength, m.world);
     m.character = octaves(m.seed, kCharacter, 2, params.characterWavelength, m.world);
+    m.foot = octaves(m.seed, kFoot, 3, kFootWavelength, m.world);
     assignCharacters(m);
 }
 
@@ -370,62 +363,6 @@ ErgPoint Ergs::at(double x, double z, float relief, float rift) const {
 
 std::array<double, 2> Ergs::windAt(double x, double z) const {
     return windOf(*impl_, x, z);
-}
-
-// The sand of the ergs buries the local relief of the geography (its hills, buttes and plains:
-// HeightSample::base over regional): the surface of the dunes rides on the regional ground, a
-// hollow keeps kHollowKept of what it sinks under it past kBuryMost; the rock of a butte (lowered by kBuryMost,
-// deep under the plains) stands out of the sand where it rises over it (its slopes never add to
-// those of the dunes). Faded with the mask over its first kBuryFade: none at the edges of the erg.
-static float buried(const HeightSample& s, const ErgPoint& e, double dunes, bool* bare) {
-    const double local = static_cast<double>(s.base) - static_cast<double>(s.regional);
-    if (local == 0.0) {
-        return static_cast<float>(dunes);
-    }
-    const double hollow = kHollowKept * std::min(0.0, local + kBuryMost);
-    const double share = static_cast<double>(noise::smoothstep(0.0f, kBuryFade, e.mask));
-    // The rock: kBuryMost under the top of a butte, kRockFall times as deep under lower ground
-    // (under the troughs of the tallest waves on a plain).
-    const double rock = (local - kBuryMost) * (local > kBuryMost ? 1.0 : kRockFall);
-    const double surface = std::max(dunes + hollow - local, rock - local);
-    if (bare != nullptr) {
-        *bare = share > 0.5 && rock > dunes + hollow;
-    }
-    return static_cast<float>(dunes + (surface - dunes) * share);
-}
-
-float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint, float* mask,
-                    bool* bare) const {
-    if (mask != nullptr) {
-        *mask = 0.0f;
-    }
-    if (bare != nullptr) {
-        *bare = false;
-    }
-    if (s.water == WaterKind::Ocean || !mayHold(x, z)) {
-        return 0.0f;
-    }
-    const ErgPoint e = at(x, z, s.relief, s.rift);
-    if (!(e.mask > 0.0f)) {
-        return 0.0f;
-    }
-    if (mask != nullptr) {
-        *mask = e.mask;
-    }
-    // The spacing of the dunes the sand gives (dune_phase: that of the pivots, smooth).
-    // The waves of the ergs of those characters stand farther apart: their filter starts later.
-    const double spacing =
-        (kMeanLeast + kMeanRange * dmath::pow(static_cast<double>(e.sand), 1.3)) *
-        (1.0 + static_cast<double>(e.waves) * (dune_waves::spacingScale(false) - 1.0) +
-         static_cast<double>(e.giants) * (dune_waves::spacingScale(true) - 1.0));
-    const double filtered = hermite(kFilterLow * spacing, kFilterHigh * spacing, footprint);
-    const double point = filtered < 1.0 ? static_cast<double>(dunesOf(x, z, e)) : 0.0;
-    if (!(filtered > 0.0)) {
-        return buried(s, e, point, bare);
-    }
-    // Their mean over their pattern (closed forms).
-    const double mean = dune_field::meanDunes(*impl_, x, z, e);
-    return buried(s, e, point + (mean - point) * filtered, bare);
 }
 
 float Ergs::dunesOf(double x, double z, const ErgPoint& e) const {

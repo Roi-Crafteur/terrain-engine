@@ -177,9 +177,11 @@ public:
     // forms of their profiles), so that a coarse grid neither aliases them nor flickers when it moves; the same bits
     // as a point below a tenth (the tiles and the finest levels of the horizon).
     // mask: if not null, the mask of the ergs there (ErgPoint::mask, 0 where no dune may be).
-    // bare: if not null, whether the rock of the geography stands out of the sand there.
+    // sand: if not null, the share of the surface the sand covers there: 1 but on the rock of the
+    // geography out of the sand, where it falls to 0 past a few meters over the sand, how many
+    // wandering over tens of meters (the sand climbs the foot of the rock irregularly).
     [[nodiscard]] float dunesAt(double x, double z, const HeightSample& s, double footprint = 0.0,
-                                float* mask = nullptr, bool* bare = nullptr) const;
+                                float* mask = nullptr, float* sand = nullptr) const;
     // The dunes of an erg point, and the kind that weighs most there (the waves where their
     // character weighs most).
     [[nodiscard]] float dunesOf(double x, double z, const ErgPoint& e) const;

@@ -66,9 +66,9 @@ struct SurfaceBlend {
     std::array<float, kBlendSlots> biomeWeights{};
     std::array<SurfaceMaterial, kBlendSlots> materials{};
     std::array<float, kBlendSlots> materialWeights{};
-    // [0, 1]: the mask of the ergs (HeightSample::erg, smooth over kilometers: the same at the
-    // edges of grids of any pitch); their sand is smooth sand at any slope, never the stony
-    // ground of the desert around it, but their rock out of the sand (bare rock). 0 off the
+    // [0, 1]: the share of the ergs (HeightSample::erg: their mask, smooth over kilometers, the
+    // same at the edges of grids of any pitch; their floor on their rock out of the sand); their
+    // sand is smooth sand at any slope, never the stony ground of the desert around it. 0 off the
     // ergs. A reader takes the dunes from the share above kErgFloorShare, the floor of the edges
     // of an erg from the share below.
     float dunes = 0.0f;

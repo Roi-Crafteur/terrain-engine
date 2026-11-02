@@ -110,7 +110,7 @@ SurfaceBlend blendSurface(const ClimateSample& climate, const SurfaceSite& site,
         // The share of an erg is its mask alone (smooth over kilometers): two grids of other
         // pitches (the tiles of two LODs, the horizon) read the same share at their common
         // edge; the height of the dunes there (fast) drew lines and rectangles where they meet.
-        // Its rock out of the sand is bare rock (SurfaceSite::bareRock).
+        // Its rock out of the sand lowers it to the floor of an erg (HeightSample::erg).
         result.dunes = std::min(1.0f, site.erg);
     }
     return result;

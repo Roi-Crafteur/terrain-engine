@@ -290,12 +290,10 @@ void testBuried() {
     TEST_CHECK(worst < 1e-3);
     TEST_CHECK(realistic);
 }
-} // namespace
-
 // The joins of the second system (the straight pale ribbons seen from 1 km at the sixth stop):
 // no fold where they meet the first one (the angle between the slopes either side of the meeting
-// under half a degree, where a plain maximum made 45 on that line), and no lift over the backs and troughs of the
-// second system, only near its crests.
+// under half a degree, where a plain maximum made 45 on that line), and no lift over the backs
+// and troughs of the second system, only near its crests.
 void testJoins() {
     using terrain::dune_waves::joined;
     const double soft = 45.0;
@@ -322,6 +320,57 @@ void testJoins() {
     TEST_CHECK(joined(150.0, 100.0, 0.95, 1.0, soft) == 150.0);
 }
 
+// The rock out of the sand (the grey patches with hard edges of the sixth stop): the share of the
+// surface the sand covers falls from 1 to 0 smoothly (at most 0.4 per meter of ground, along the
+// slip faces too, where a flag made it jump from 1 to 0), past 2 to 28 m of rock over the sand, how many wandering from
+// one place to the next (the sand climbs the foot irregularly: 8 m between the 10th and the 90th
+// percentiles at least); 1 everywhere off the rock (the rock deep under the troughs of the giant
+// waves stands out of them too).
+void testRockFoot() {
+    double gx = 0.0;
+    double gz = 0.0;
+    TEST_CHECK(siteOf(ErgCharacter::Giants, gx, gz));
+    double steepest = 0.0;
+    std::vector<double> climbs;
+    bool off = true;
+    for (int line = 0; line < 32; ++line) {
+        const double z = gz + 397.0 * line;
+        double last = -1.0;
+        for (double d = 0.0; d <= 1300.0; d += 0.5) {
+            const double x = gx + 1733.0 * line + d;
+            terrain::HeightSample s;
+            s.base = static_cast<float>(0.2 * d); // a slope of 11 degrees out of the sand
+            float sand = 0.0f;
+            (void)real().ergs.dunesAt(x, z, s, 0.0, nullptr, &sand);
+            const double share = static_cast<double>(sand);
+            // The rock: kBuryMost under the local relief, kRockFall times as deep under 60 m.
+            const double local = 0.2 * d;
+            const double rock = (local - 60.0) * (local > 60.0 ? 1.0 : 5.0);
+            terrain::HeightSample flat;
+            const double out = rock - static_cast<double>(real().ergs.dunesAt(x, z, flat));
+            if (last >= 0.0) {
+                steepest = std::max(steepest, std::abs(share - last) / 0.5);
+            }
+            if (last >= 0.5 && share < 0.5) {
+                climbs.push_back(out);
+            }
+            off = off && (out > 2.0 || share == 1.0);
+            last = share;
+        }
+    }
+    const double p10 = dunes_test::quantile(climbs, 0.1);
+    const double p90 = dunes_test::quantile(climbs, 0.9);
+    std::printf("rock foot: %zu edges, the sand gives way to the rock %.1f to %.1f m over it (p10, "
+                "p90), at most %.3f of its share per meter\n",
+                climbs.size(), p10, p90, steepest);
+    TEST_CHECK(climbs.size() >= 20);
+    TEST_CHECK(steepest <= 0.4);
+    TEST_CHECK(p10 >= 2.0 && p90 <= 28.0 && p90 - p10 >= 8.0);
+    TEST_CHECK(off);
+}
+
+} // namespace
+
 int main() {
     testProfile();
     testJoins();
@@ -333,5 +382,6 @@ int main() {
     testFarBoundary(ErgCharacter::Giants);
     testHorizon();
     testBuried();
+    testRockFoot();
     return test::result();
 }

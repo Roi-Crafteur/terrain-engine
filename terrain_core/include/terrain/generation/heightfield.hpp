@@ -117,8 +117,10 @@ struct HeightSample {
     // Meters of sand the seas of dunes lay over the relief (ergs.hpp, part of height): 0 outside
     // them and without hydrology.
     float dunes = 0.0f;
-    // The mask of the seas of dunes at the column (ErgPoint::mask, [0, 1]), even between their
-    // dunes: 0 outside them and without hydrology.
+    // The share of the seas of dunes at the column ([0, 1]): their mask (ErgPoint::mask), even
+    // between their dunes, lowered to the floor of an erg (kErgFloorShare of it, biome_blend.hpp)
+    // on the rock of the geography out of the sand, smoothly up its foot (Ergs::dunesAt): 0
+    // outside them and without hydrology.
     float erg = 0.0f;
     // Bare rock the coasts lay on the surface, 0 or 1 (the rocks of the reefs and the sea a few
     // meters around them, coast.hpp): the material only, never the height.

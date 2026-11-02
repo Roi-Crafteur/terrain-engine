@@ -20,4 +20,8 @@ if(Python_Interpreter_FOUND)
     add_test(NAME unreal_dune_ripples_test
         COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_dune_ripples_test.py
                 ${PROJECT_SOURCE_DIR}/terrain_unreal/Scripts)
+    add_test(NAME unreal_erg_rock_test
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_erg_rock_test.py
+                ${PROJECT_SOURCE_DIR}/terrain_unreal/Scripts
+                ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 endif()
