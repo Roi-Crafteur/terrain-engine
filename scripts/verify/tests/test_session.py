@@ -138,8 +138,13 @@ class Command(unittest.TestCase):
             self.assertEqual(linux[-1], "-ExecCmds=py /r/start.py")
 
     def test_sessions(self):
-        self.assertEqual(session.sessions(list(range(7)), 3), [[0, 1, 2], [3, 4, 5], [6]])
+        self.assertEqual(session.sessions(list(range(7)), 3), [[0, 1, 2], [3, 4], [5, 6]])
         self.assertEqual(session.sessions([1], 0), [[1]])
+        self.assertEqual(session.sessions([], 6), [])
+        # 21 places (the 11 of the file and the 10 ergs of agent 34), 6 a session at most.
+        self.assertEqual([len(s) for s in session.sessions(list(range(21)), 6)], [6, 5, 5, 5])
+        self.assertEqual([len(s) for s in session.sessions(list(range(12)), 6)], [6, 6])
+        self.assertEqual(sum(session.sessions(list(range(21)), 6), []), list(range(21)))
 
     def test_the_limits(self):
         limits = session.Limits()

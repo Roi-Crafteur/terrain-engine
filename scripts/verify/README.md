@@ -224,7 +224,8 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
   - un repli (« back over water ») ou un refus.
 - **Ce que dit `resume.txt`** : l'issue de chaque lieu (pion du jeu posé, posé près du sol sec,
   ou vue des outils au-dessus de l'eau), la ligne du plugin, la durée de l'atterrissage, et le
-  sol du core sondé sous les pieds du pion (ou l'eau sous l'œil de la vue).
+  sol du core sondé sous les pieds du pion (ou l'eau sous l'œil de la vue). Comme la ligne du
+  pion, celle de la vue finit par « OK » ou « PAS OK » : le contrôle de l'œil a tourné.
 - **Les pannes** (« ATTENTION », sortie 1) :
   - une ligne `NOT walking still above the water` ;
   - une ligne qui parle de la vue des outils au lieu du pion du jeu ;
@@ -249,7 +250,11 @@ python scripts\verify\verify.py run --machine scripts\verify\machine.json --befo
     ci-dessous). ».
 - **Sans fichier planète** (`--planet no`), les lieux mesurés avec la planète sont sautés, et
   le résumé le dit, sans les compter en panne.
-- **Une session courte** : deux atterrissages de suite sans issue, ou envoyés avant que le monde
+- **Des sessions courtes** : les lieux sont répartis en sessions d'au plus
+  `--places-per-session` lieux (6 par défaut), aussi égales que possible. Avec les 21 lieux
+  (les 11 du fichier et les 10 ergs de l'agent 34), `--places all --landings all` fait 4
+  sessions de 6, 5, 5 et 5 lieux, chacune avec son éditeur, au lieu de 6, 6, 6 et 3.
+- **Une session arrêtée** : deux atterrissages de suite sans issue, ou envoyés avant que le monde
   soit prêt, arrêtent la session (Unreal fermé), et le résumé le dit. Avant de fermer, le
   pilote attend encore 60 s au plus la ligne du contrôle de déterminisme du plugin, écrite par un
   fil quelques secondes après le départ : `déterminisme` et `chargements rapportés` sont donc

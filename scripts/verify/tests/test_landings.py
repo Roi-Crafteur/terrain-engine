@@ -278,7 +278,7 @@ class Summary(unittest.TestCase):
                           "core 9.90 m, no water within 3 m, à 38.0 m du clic : OK (12 s)", text)
             self.assertIn("avertissement du plugin (pas une panne) : was measured without", text)
             self.assertIn("b : vue des outils au-dessus de l'eau : œil à 2.80 m, eau du core "
-                          "1.00 m (5 s)", text)
+                          "1.00 m (+1.80 m au-dessus) : OK (5 s)", text)
             self.assertIn("Durée totale : 12 min 34 s (Unreal : version 5 min 00 s en 1 "
                           "session(s))", text)
             self.assertIn("monde de la PIE 1 prêt en 6.2 s", text)
@@ -370,6 +370,9 @@ class Summary(unittest.TestCase):
                     self.assertIn(f"ATTENTION (version) : atterrissage {entry['place']} : ", text)
                     self.assertIn(failure, text)
                     self.assertEqual(verify.exit_code(run), 1)
+                if entry.get("eye"):  # the mark of the check of the eye, as on the lines of the pawn
+                    self.assertIn(f"({entry['eye'][2] - 1.0:+.2f} m au-dessus) : "
+                                  f"{'OK' if failure is None else 'PAS OK'} (5 s)", text)
 
     def test_no_alert_above_the_warnings_of_the_log(self):
         """resume.txt said "Aucune alerte." above lines Warning of the plugin (the warning of

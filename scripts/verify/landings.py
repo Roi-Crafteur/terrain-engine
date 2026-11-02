@@ -151,9 +151,12 @@ def _details(v, e):
                 f"{under}, {check['water']}, à {check['away']:.1f} m du clic : "
                 f"{'OK' if check['ok'] else 'PAS OK'}")
     if e.get("eye"):
-        water = (f", eau du core {core['waterLevel']:.2f} m" if core.get("waterLevel") is not None
-                 else "")
-        return f" : œil à {e['eye'][2]:.2f} m{water}"
+        if core.get("waterLevel") is None:
+            return f" : œil à {e['eye'][2]:.2f} m (eau du core non sondée)"
+        above = e["eye"][2] - core["waterLevel"]  # the check of the eye ran: its mark, as the pawn
+        mark = "PAS OK" if core_gaps(v, e) else "OK"
+        return (f" : œil à {e['eye'][2]:.2f} m, eau du core {core['waterLevel']:.2f} m "
+                f"({above:+.2f} m au-dessus) : {mark}")
     return f" : {e['message']}" if e.get("message") else ""
 
 
