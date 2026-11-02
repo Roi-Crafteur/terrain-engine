@@ -33,8 +33,9 @@ namespace terrain::unreal {
 // material of the core rock under the sea: the foot of a wall plunging into it, a reef of the
 // coasts, agent 33) it is stored kSeaRockCode lower: the materials draw rock there, not the
 // sand of the shallows, which the ground interpolated between the samples would carry up the
-// foot of the wall (Scripts/temporary_terrain_hlsl.py: SEA_ROCK_CODE, the same value). Its ground
-// comes back within the precision of a float there (1/128 m), whatever the depth of the oceans.
+// foot of the wall (Scripts/temporary_terrain_hlsl.py: SEA_ROCK_CODE, the same value), where a
+// texel holds no blend (horizon_blend_texels.hpp: its blend is all rock there). Its ground comes
+// back within the precision of a float there (1/128 m), whatever the depth of the oceans.
 inline constexpr int kTexelFloats = 4;
 inline constexpr float kSeaRockCode = 100'000.0f;
 

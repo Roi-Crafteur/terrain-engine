@@ -12,9 +12,16 @@ shallows, and still read its ground.
 - Every reader of that ground decodes it: the vertex code of the GPU horizon (HORIZON_GROUND,
   create_horizon_gpu_material.py) and the sea square under the tiles (horizon_sea_hlsl.py); no
   placeholder left.
+- The blends of the GPU horizon (agent 29: its colours come from them, Layers only where a texel
+  holds none): the blend the core gives a texel of the ocean over rock (the ocean, all rock:
+  coast_horizon_rock_test) draws rock and no sand of the shallows through FinishBlend
+  (blend_layers_hlsl.py, by the reference of unreal_horizon_blend_scripts_test, whose terms of the
+  sand, of the scree and of the rock are checked in the HLSL), a texel of the ocean over water
+  the sand of the shallows.
 Usage: coast_rock_scripts_test.py <terrain_unreal/Scripts> <horizon_textures.hpp>
 """
 
+import os
 import re
 import struct
 import sys
@@ -31,6 +38,34 @@ def check(condition, message):
 def as_float(x):
     """x rounded to a float, as the texture holds it."""
     return struct.unpack("f", struct.pack("f", x))[0]
+
+
+def check_blends(struct_code):
+    """FinishBlend draws rock for the blend of a texel of the ocean over rock."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import unreal_horizon_blend_scripts_test as reference
+    sys.modules.setdefault("unreal", reference.Anything())
+    import temporary_terrain_look as look
+
+    for line in ("a = keep * A + 0.3 * soil * A + wm0.x * ocean * BA[0];",
+                 "(wm1.x + wm1.w) * float4(0.0, 0.0, 0.0, 1.0);",
+                 "c.y = lerp(c.y, 1.0, wm1.x);"):
+        check(line in struct_code, f"FinishBlend holds {line}")
+    ocean, rock, water = 0, 4, 0
+    over_rock = reference.channels((ocean, ocean, ocean), (255, 0), (rock, rock, rock), (255, 0))
+    over_water = reference.channels((ocean, ocean, ocean), (255, 0), (water, water, water),
+                                    (255, 0))
+    for alpha in (0.0, 0.5):  # this sample alone, and halfway through the morph of its level
+        la, lb, lc, _, _ = reference.blend_texels_layers(
+            (over_rock, over_rock, over_rock), (1.0 - alpha, 0.5 * alpha, 0.5 * alpha),
+            look.BIOMES)
+        check(all(abs(x) < 1e-9 for x in la), f"no layer of the biomes over rock ({alpha}): {la}")
+        # Layers b: (dirt, sand, desert sand, scree): the scree alone, no sand of the shallows.
+        check(all(abs(x - y) < 1e-9 for x, y in zip(lb, (0.0, 0.0, 0.0, 1.0))),
+              f"the scree alone over rock, no sand ({alpha}): {lb}")
+        check(abs(lc[1] - 1.0) < 1e-9, f"the rock over rock ({alpha}): {lc}")
+    _, lb, lc, _, _ = reference.blend_texels_layers((over_water,), (1.0,), look.BIOMES)
+    check(abs(lb[1] - 1.0) < 1e-9 and lc[1] < 1.0, f"the sand of the shallows over water: {lb}, {lc}")
 
 
 def main():
@@ -90,6 +125,7 @@ def main():
     check("look.struct_hlsl() + vertex_hlsl()" in gpu, "the vertex node takes vertex_hlsl()")
     check("look.struct_hlsl() + VERTEX_HLSL" not in gpu, "no undecoded vertex code left")
 
+    check_blends(terrain.struct_hlsl(biomes))
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 

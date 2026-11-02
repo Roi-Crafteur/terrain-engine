@@ -112,10 +112,11 @@ struct CoastSite {
 // and 20 m around under it: the core marks it (HeightSample::rock, the material only, never the
 // height), whatever its slope. The stacks come with the 3D faces (commit 5).
 // The sea floor at the foot of the walls plunging into the sea (the fjords) is bare rock too in
-// the tiles and the horizon (SurfaceSite::bareRock, the rise read over their pitch), and in the
-// texels of the GPU horizon of Unreal, which hold the ground under the sea instead of a material
-// (Bridge/horizon_textures.hpp: kSeaRockCode): never the sand of the shallows drawn up the foot
-// of a wall between two texels or two samples.
+// the tiles and the horizon (SurfaceSite::bareRock, the rise read over their pitch), in the
+// blends of the horizon (HorizonCell::blend: all rock, from which the GPU horizon of Unreal
+// draws its colours, agent 29), and in its texels, which hold the ground under the sea instead
+// of a material (Bridge/horizon_textures.hpp: kSeaRockCode, for a texel without blend): never
+// the sand of the shallows drawn up the foot of a wall between two texels or two samples.
 struct CoastStack {
     double x = 0.0;
     double z = 0.0;
