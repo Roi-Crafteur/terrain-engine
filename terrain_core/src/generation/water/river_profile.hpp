@@ -6,8 +6,9 @@
 // (a floodplain, the floor of a U, nothing in a gorge) rises gently from just above the water; then
 // the walls, rounded at their foot. The surface of a course is the lowest over its segments (the
 // point nearest to each, its attributes interpolated there): continuous everywhere, smooth along
-// the course, never a step. Pure arithmetic of doubles and hashes: the same bits on every
-// platform.
+// the course, never a step. In a corridor of falls, the valley is drawn in the frame of its slot
+// (river_winding.hpp): aside of the axis where the slot winds, its levels along the axis. Pure
+// arithmetic of doubles and hashes: the same bits on every platform.
 
 #include "river_course.hpp"
 #include "terrain/det_math.hpp"
@@ -30,6 +31,7 @@ struct Valley {
     bool wet = false;     // in its channel: under its water
     float gorge = 0.0f;
     float mountain = 0.0f;
+    float steps = 0.0f;   // down a stretch in steps (CoursePoint::steps)
     double upX = 1.0;     // unit direction away from the axis
     double upZ = 0.0;
     double slope = 0.0;   // of the floor and walls across the valley (meters per meter)
@@ -144,6 +146,10 @@ inline constexpr double kMeanderRate = 9.76;
 // away and floor of valleyAt over the box (where away is positive and floor lies kBlend above
 // the lowest valley found so far, the point skips it), and of their segments those that may
 // change the valley at some point of the box. Every other chunk or segment changes nothing there.
+// What of the valley of a segment may change valleyAt at a point: all of it (its surface joining
+// the blend, its floor filling the relief), only its banks (Valley::bank), or nothing.
+enum class Matters { Nothing, Banks, Valley };
+
 struct BoxCourse {
     struct Chunk {
         std::uint32_t chunk = 0; // in Course::chunks
@@ -156,7 +162,10 @@ struct BoxCourse {
     // meanders and floor, the gentlest walls and the most gorge, the longest foot, the lowest its
     // surface starts from and the highest its floor and its slope, the narrowest channel; its
     // banks within bankFrom of its axis (the meanders at most meander away, the channel stretched
-    // by stretch at most). keep: of a shape these bounds do not hold for, always kept.
+    // by stretch at most, widest at most), never above bankTop. keep: of a shape these bounds do
+    // not hold for, always kept. Near a
+    // corridor of falls (windMost above 0), its valley is drawn in the frame of the slot
+    // (river_winding.hpp): its points are as far as windDistance from it there.
     struct Segment {
         std::uint32_t first = 0; // index of its first point
         SegmentSpan span;
@@ -169,22 +178,51 @@ struct BoxCourse {
         double low = 0.0;
         double lowStart = 0.0; // the lowest its surface starts from at its start, at its end
         double lowEnd = 0.0;
+        double startFloor = 0.0; // its floor and its water less its channel at its start, and
+        double startWater = 0.0; // how fast they rise upstream of it (Course::rises)
+        double floorRise = kLeastRise;
+        double waterRise = kLeastRise;
         double floorTop = 0.0;
         double floorSlope = 0.0;
         double half = 0.0;
         double bankFrom = 0.0;
+        double rim = 0.0; // down a stretch in steps, its walls rise from rim at the nearest
+        double widest = 0.0;
+        double bankTop = 0.0;
         double meander = 0.0;
         double stretch = 1.0;
-        // Whether its valley may change valleyAt at a point d meters from it, beyond meters
-        // beyond its ends (upstream of its start or not), where the relief lies at least
-        // groundLow high, the noise of the walls warp there (or below, as -1 bounds every point
-        // of a box), and the valley joins the blend below threshold.
-        [[nodiscard]] bool mayMatter(double d, double beyond, bool upstream, double groundLow,
-                                     double threshold, double warp) const;
+        double windMost = 0.0;
+        bool falls = false; // both its points on a fall: its floor never fills (no levee there)
+        // What of its valley may change valleyAt at a point d meters from it, beyond meters
+        // beyond its ends (upstream of its start or not), where the relief lies at least groundLow
+        // high, the noise of the walls warp there (or below, as -1 bounds every point of a box),
+        // and the valley joins the blend below threshold.
+        [[nodiscard]] Matters mayMatter(double d, double beyond, bool upstream, double groundLow,
+                                        double threshold, double warp) const;
+        // The highest its banks may stand at a point d meters from it (Valley::bank).
+        [[nodiscard]] double bankAt(double d) const;
     };
     std::vector<Chunk> chunks;
     std::vector<Segment> segments;
+    // The box in blocks x blocks blocks, blockX by blockZ meters from (minX, minZ), kBlockLeast
+    // meters wide at least (none in a smaller box), kBoxBlocks at most: of the segments, those
+    // that may change the valley at some point of each block, by the same bounds (their indices
+    // in segments, in order: blockSegments from blockStart[b] to blockStart[b + 1]).
+    int blocks = 0;
+    double minX = 0.0;
+    double minZ = 0.0;
+    double blockX = 0.0;
+    double blockZ = 0.0;
+    std::vector<std::uint32_t> blockStart;
+    std::vector<std::uint32_t> blockSegments;
+    // The lips of the course that may cut some point of the box (lipsNear, river_lips.hpp).
+    std::vector<std::uint32_t> lips;
+    // The segments of the block holding (x, z), end their end; null outside the box (then all of
+    // them may).
+    [[nodiscard]] const std::uint32_t* blockAt(double x, double z, const std::uint32_t*& end) const;
 };
+inline constexpr int kBoxBlocks = 4;
+inline constexpr double kBlockLeast = 16.0;
 // The box [minX, maxX] x [minZ, maxZ] of points of course c (its images) where the relief stands
 // between groundMin and groundMax meters high (river_box.cpp).
 [[nodiscard]] BoxCourse boxCourse(const Course& c, double minX, double minZ, double maxX,

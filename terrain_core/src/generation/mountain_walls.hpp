@@ -149,6 +149,51 @@ struct Bedding {
 [[nodiscard]] double strataShare(const Noises& noises, double x, double z, float character,
                                  Memo* memo);
 
+// The passes of rockTop, for the faces of the walls in three dimensions (phase 12A,
+// wall_faces.hpp). A pass of strata over a ground: the arguments of strataTop, and the share of
+// the top it takes (0: none).
+struct StrataPass {
+    double slope = 0.0; // of the ground, meters per meter: the recession of the rims
+    double band = 1.0;
+    double offset = 0.0;
+    double rim = 0.0;
+    double run = 0.0; // meters
+    Bedding bedding;
+    double weight = 0.0;
+};
+
+// The passes of rockTop at (x, z) with masks, in its order: the great bands of the strata, their
+// rock steps over the ground the bands leave; the joints of the nearest cell of each scale of the
+// crystalline rock, over the ground lifted by lift meters along their planes (their top is then
+// lowered by it).
+struct WallPasses {
+    std::array<StrataPass, 4> passes{};
+    std::array<double, 4> lift{}; // 0 for the strata
+    // How fast lift grows along x and along z, meters per meter.
+    std::array<double, 4> liftX{};
+    std::array<double, 4> liftZ{};
+    // The share of the nearest cell in the top rockTop blends across the fractures (1 for the
+    // strata, 1/2 on a fracture).
+    std::array<double, 4> share{1.0, 1.0, 1.0, 1.0};
+};
+[[nodiscard]] WallPasses wallPasses(const Noises& noises, const Masks& masks, double x, double z,
+                                    double gradX, double gradZ, Memo* memo);
+
+// The layer of a pass holding ground: its index, as strataTop finds it.
+[[nodiscard]] std::int64_t layerOf(const StrataPass& pass, double ground);
+
+// The face of layer k of a pass (strataTop): where it starts and ends in bands from its offset
+// (the rims receded), and how hard the layer is (0: soft, no face).
+struct LayerFace {
+    double start = 0.0;
+    double end = 0.0;
+    double hardness = 0.0;
+};
+[[nodiscard]] LayerFace layerFace(const StrataPass& pass, std::int64_t k);
+
+// A share in [0, 1) drawn for layer k of a pass, for stream (its overhangs).
+[[nodiscard]] double layerDraw(const StrataPass& pass, std::int64_t k, int stream);
+
 // The density of the rock at height y: the vertical distance to its surface (negative inside).
 [[nodiscard]] double density(const Noises& noises, const Column& column, double x, double z,
                              double y, Memo* memo);

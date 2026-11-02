@@ -1,5 +1,7 @@
 #include "tile_water_mesh.hpp"
 
+#include "fall_edges.hpp"
+
 #include "terrain/det_math.hpp"
 #include "terrain/meshing/density_grid.hpp"
 #include "terrain/streaming/lod.hpp"
@@ -7,6 +9,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -106,6 +110,34 @@ void slopes(std::vector<Column>& columns, double spacing) {
     }
 }
 
+// The water of a corner is that above (or below) a fall within kLevelLeast meters plus
+// kLevelCells cells of its level, near its edge within kReachCells cells (and a meter).
+constexpr double kLevelLeast = 0.25;
+constexpr double kLevelCells = 0.35;
+constexpr double kReachCells = 3.0;
+
+// The water of the pool below a fall at its level where the core sets it a little above
+// (FallEdges::poolLevel: the level of the face just above its foot), within kLevelLeast meters
+// plus kLevelCells cells of it: never a bump of a few centimeters in a still pool, whose slopes
+// would light the foam of the rapids.
+void poolLevels(std::vector<Column>& columns, const TileData& data, double spacing) {
+    const FallEdges edges(data);
+    if (edges.size() == 0) {
+        return;
+    }
+    const double tolerance = kLevelLeast + kLevelCells * spacing;
+    const double reach = kReachCells * spacing + 1.0;
+    for (int k = 0; k <= kCells; ++k) {
+        for (int i = 0; i <= kCells; ++i) {
+            Column& c = columns[at(i, k)];
+            if (c.wet) {
+                c.level = edges.poolLevel(i * spacing, k * spacing, c.level, tolerance, reach)
+                              .value_or(c.level);
+            }
+        }
+    }
+}
+
 std::vector<Column> columnsOf(const TileData& data, double spacing) {
     std::vector<Column> columns(static_cast<std::size_t>(kSide * kSide));
     for (std::size_t n = 0; n < columns.size(); ++n) {
@@ -115,6 +147,7 @@ std::vector<Column> columnsOf(const TileData& data, double spacing) {
             columns[n] = {true, static_cast<double>(w.level), kind, w.flowX, w.flowZ, 0.0, 0.0};
         }
     }
+    poolLevels(columns, data, spacing);
     stitch(columns, data.request.seams);
     slopes(columns, spacing);
     return columns;
@@ -136,21 +169,17 @@ class Builder {
 public:
     Builder(const TileData& data, std::vector<Column> columns, double spacing)
         : columns_(std::move(columns)), spacing_(spacing), originY_(data.originY),
-          shared_(columns_.size(), -1), rim_(columns_.size(), false) {
-        for (int k = 0; k < kCells; ++k) {
-            for (int i = 0; i < kCells; ++i) {
-                if (describe(i, k).cut) {
-                    ++mesh.cutCells;
-                    for (const auto& o : kCorners) {
-                        rim_[at(i + o[0], k + o[1])] = true;
-                    }
-                }
-            }
-        }
-    }
+          shared_(columns_.size(), -1), edges_(data) {}
 
     void cell(int i, int k) {
         const Cell c = describe(i, k);
+        if (c.drawn && c.cut) {
+            ++mesh.cutCells;
+            if (!cutCell(i, k)) {
+                highCell(i, k);
+            }
+            poolCell(i, k);
+        }
         if (!c.drawn || c.cut) {
             return;
         }
@@ -221,7 +250,144 @@ private:
         return index;
     }
 
+    // The fade of the water of corner (i, k) at level: near the edge of the lip of a fall whose
+    // water above stands there, by its distance to it (whether a cut cell of the tile meets the
+    // corner or not: the same in the tile beside); none elsewhere (a cut off the falls fades its
+    // water within its cell: highCell).
+    [[nodiscard]] double fadeAt(int i, int k, double level) const {
+        if (edges_.size() == 0) {
+            return 1.0;
+        }
+        const double tolerance = kLevelLeast + kLevelCells * spacing_;
+        const double reach = kReachCells * spacing_ + 1.0;
+        return edges_.above(i * spacing_, k * spacing_, level, tolerance, reach).value_or(1.0);
+    }
+
+    // Whether the water of corner (i, k) at level runs down the face of a fall (FallEdges::face,
+    // within a cell of its lip and its foot): no layer of a cut cell stands at it, a shelf of
+    // water hanging from the face or over the pool below.
+    [[nodiscard]] bool onFace(int i, int k, double level) const {
+        const double tolerance = kLevelLeast + kLevelCells * spacing_;
+        return edges_.size() > 0 &&
+               edges_.face(i * spacing_, k * spacing_, level, tolerance, spacing_);
+    }
+
+    // A cut cell across the edge of the lip of a fall, a corner of it under the water above the
+    // fall and upstream of the edge: drawn at that water (its corners there within kLevelLeast
+    // plus kLevelCells cells of the level of the fall at their level, the others at that level:
+    // the same on both sides of a side of a tile), faded out to nothing at the edge (its corners
+    // beyond it below 0): the water ends at the edge, not at a side of a cell.
+    bool cutCell(int i, int k) {
+        const double tolerance = kLevelLeast + kLevelCells * spacing_;
+        const auto above = [&](const Column& c, std::size_t n) {
+            return c.wet && edges_.upper(n, c.level, tolerance);
+        };
+        for (std::size_t n = 0; n < edges_.size(); ++n) {
+            const Column* top = nullptr;
+            bool upstream = false;
+            for (const auto& o : kCorners) {
+                const Column& c = columns_[at(i + o[0], k + o[1])];
+                if (above(c, n)) {
+                    const std::optional<double> fade =
+                        edges_.toward(n, (i + o[0]) * spacing_, (k + o[1]) * spacing_);
+                    upstream = upstream || (fade && *fade > 0.0);
+                    top = top == nullptr || c.level > top->level ? &c : top;
+                }
+            }
+            if (!upstream) {
+                continue;
+            }
+            Column fall = *top;
+            fall.level = edges_.top(n);
+            std::array<std::int32_t, 4> v{};
+            for (std::size_t c = 0; c < kCorners.size(); ++c) {
+                const int ci = i + kCorners[c][0];
+                const int ck = k + kCorners[c][1];
+                const Column& own = columns_[at(ci, ck)];
+                const std::optional<double> fade = edges_.toward(n, ci * spacing_, ck * spacing_);
+                const bool level = above(own, n) && own.level <= fall.level + tolerance;
+                v[c] = vertex(ci, ck, level ? own : fall, fade ? *fade : kEdgeBeyond);
+            }
+            for (const std::int32_t index : {v[0], v[3], v[1], v[0], v[2], v[3]}) {
+                mesh.triangles.push_back(index);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // A cut cell off the falls (no edge of a lip across it, nor within kReachCells cells and a
+    // meter of a fall, between its lip and its foot) drawn at its highest water: its corners
+    // within kLevelLeast plus kLevelCells cells of it at their level and shown, the others at its
+    // level and faded out: the water above the cut ends within the cell, never at a side of it,
+    // and never leaves the bed bare before the cut. Never at the water of a face (onFace), never
+    // a shelf hanging over a fall.
+    void highCell(int i, int k) {
+        const double tolerance = kLevelLeast + kLevelCells * spacing_;
+        const Column* highest = nullptr;
+        std::array<int, 2> peak{};
+        for (const auto& o : kCorners) {
+            const Column& c = columns_[at(i + o[0], k + o[1])];
+            if (c.wet && (highest == nullptr || c.level > highest->level)) {
+                highest = &c;
+                peak = {i + o[0], k + o[1]};
+            }
+        }
+        const double x = (i + 0.5) * spacing_;
+        const double z = (k + 0.5) * spacing_;
+        if (highest == nullptr || onFace(peak[0], peak[1], highest->level) ||
+            edges_.within(x, z, kReachCells * spacing_ + 1.0)) {
+            return;
+        }
+        std::array<std::int32_t, 4> v{};
+        for (std::size_t c = 0; c < kCorners.size(); ++c) {
+            const int ci = i + kCorners[c][0];
+            const int ck = k + kCorners[c][1];
+            const Column& own = columns_[at(ci, ck)];
+            const bool high = own.wet && highest->level - own.level <= tolerance;
+            v[c] = high ? sharedVertex(ci, ck) : vertex(ci, ck, *highest, 0.0);
+        }
+        for (const std::int32_t index : {v[0], v[3], v[1], v[0], v[2], v[3]}) {
+            mesh.triangles.push_back(index);
+        }
+    }
+
+    // A cut cell drawn at its lowest water too (its corners within kLevelLeast plus kLevelCells
+    // cells of it at their level, the others at its level, under the face or the curtain), whole:
+    // the pool below a face goes on to it, never a square of bare bed beside the foot of a
+    // curtain. Never at the water of a face (onFace): no step of water on the rock.
+    void poolCell(int i, int k) {
+        const double tolerance = kLevelLeast + kLevelCells * spacing_;
+        const Column* lowest = nullptr;
+        std::array<int, 2> low{};
+        for (const auto& o : kCorners) {
+            const Column& c = columns_[at(i + o[0], k + o[1])];
+            if (c.wet && (lowest == nullptr || c.level < lowest->level)) {
+                lowest = &c;
+                low = {i + o[0], k + o[1]};
+            }
+        }
+        if (lowest == nullptr || onFace(low[0], low[1], lowest->level)) {
+            return;
+        }
+        std::array<std::int32_t, 4> v{};
+        for (std::size_t c = 0; c < kCorners.size(); ++c) {
+            const int ci = i + kCorners[c][0];
+            const int ck = k + kCorners[c][1];
+            const Column& own = columns_[at(ci, ck)];
+            const bool pool = own.wet && own.level - lowest->level <= tolerance;
+            v[c] = vertex(ci, ck, pool ? own : *lowest, 1.0);
+        }
+        for (const std::int32_t index : {v[0], v[3], v[1], v[0], v[2], v[3]}) {
+            mesh.triangles.push_back(index);
+        }
+    }
+
     std::int32_t vertex(int i, int k, const Column& c) {
+        return vertex(i, k, c, fadeAt(i, k, c.level));
+    }
+
+    std::int32_t vertex(int i, int k, const Column& c, double fade) {
         const auto index = static_cast<std::int32_t>(mesh.positions.size());
         const double x = i * spacing_;
         const double z = k * spacing_;
@@ -234,7 +400,7 @@ private:
                                 static_cast<float>(1.0 / length)});
         mesh.uv0.push_back({c.flowX, c.flowZ});
         mesh.uv1.push_back({c.kind, static_cast<float>(dmath::hypot(c.slopeX, c.slopeZ))});
-        mesh.uv2.push_back({static_cast<float>(c.level), rim_[at(i, k)] ? 0.0f : 1.0f});
+        mesh.uv2.push_back({static_cast<float>(c.level), static_cast<float>(fade)});
         return index;
     }
 
@@ -242,10 +408,23 @@ private:
     double spacing_;
     double originY_;
     std::vector<std::int32_t> shared_;
-    std::vector<bool> rim_; // the columns at a corner of a cut cell
+    FallEdges edges_;
 };
 
 } // namespace
+
+std::vector<double> drawnWaterLevels(const TileData& data) {
+    if (data.waterColumns.size() != static_cast<std::size_t>(kSide * kSide)) {
+        return {};
+    }
+    const std::vector<Column> columns =
+        columnsOf(data, tileCellMeters(data.request.key.lod));
+    std::vector<double> levels(columns.size(), static_cast<double>(kNoWaterLevel));
+    for (std::size_t n = 0; n < columns.size(); ++n) {
+        levels[n] = columns[n].wet ? columns[n].level : levels[n];
+    }
+    return levels;
+}
 
 UnrealWaterMesh buildTileWater(const TileData& data) {
     if (data.waterColumns.size() != static_cast<std::size_t>(kSide * kSide)) {
