@@ -7,7 +7,11 @@
 
 #include "heightfield_layers.hpp"
 #include "wall_faces.hpp"
+#include "water/slot_faces.hpp"
 
+#include "terrain/generation/noise.hpp"
+
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
@@ -19,6 +23,8 @@ namespace {
 
 // The slope of the ground of the walls at a column is measured kProbe meters away.
 constexpr double kProbe = 1.0;
+// A wall of a slot shapes a column whose ground lies within kWallGround meters of its heights.
+constexpr float kWallGround = 1.0f;
 
 // The points of a batch kProbe meters along x and along z from each point, when the batch holds
 // them where a lattice of rows of a constant step would (the rows of a tile): the next point, and
@@ -46,6 +52,24 @@ private:
     std::span<const double> zs_;
     std::size_t row_ = 0;
 };
+
+// Places the faces the walls of a gorge laid at a column (Heightfield::gorgeFaces) along the
+// slope of its valley and anchors them on its ground, as the faces of the mountains (placeFaces):
+// carved faces, of the valley.
+void placeGorgeFaces(const wall_faces::Site& site, float leastRun, RockColumn& rock) {
+    for (std::size_t i = 0; i < site.count; ++i) {
+        RockFace face = wall_faces::placeFace(site.pending[i], site.gradX, site.gradZ);
+        if (!(face.run >= leastRun)) {
+            continue;
+        }
+        const float ground = rock.ground;
+        anchorFace(face, ground + face.foot, std::max(ground + face.foot, ground + face.top));
+        face.carved = true;
+        if (face.weight > 0.0f) {
+            rock.add(face);
+        }
+    }
+}
 
 } // namespace
 
@@ -83,11 +107,48 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
                    alongZ < xs.size() ? &grounds[alongZ] : nullptr, out[i].height, leastRun,
                    rock[i]);
     }
+    // The walls of the slots only when their faces are drawn (slot_faces.hpp: kSlotFacesDrawn).
+    std::vector<SlotWall> walls;
+    std::vector<std::pair<std::size_t, wall_faces::Site>> gorges;
     if (hydrology_) {
-        waterOf(xs, zs, out, memos);
+        if constexpr (water::kSlotFacesDrawn) {
+            walls.resize(xs.size());
+        }
+        const WaterRock outputs{walls, &gorges};
+        waterOf(xs, zs, out, memos, &outputs);
     }
     for (std::size_t i = 0; i < xs.size(); ++i) {
         rock[i].ground = out[i].height;
+    }
+    if (!walls.empty()) {
+        placeSlotFaces(xs, zs, walls, leastRun, rock);
+    }
+    for (const auto& [i, site] : gorges) {
+        placeGorgeFaces(site, leastRun, rock[i]);
+    }
+}
+
+void Heightfield::placeSlotFaces(std::span<const double> xs, std::span<const double> zs,
+                                 std::span<const SlotWall> walls, float leastRun,
+                                 std::span<RockColumn> rock) const {
+    for (std::size_t i = 0; i < walls.size(); ++i) {
+        const SlotWall& w = walls[i];
+        // Only where the ground of the column is that of the wall (within kWallGround meters of
+        // its foot and top).
+        const float ground = rock[i].ground;
+        if (!(w.width > 0.0f) || !(w.weight > 0.0f) || !(w.width >= leastRun) ||
+            !(ground >= std::min(w.foot, w.top) - kWallGround) ||
+            !(ground <= std::max(w.foot, w.top) + kWallGround)) {
+            continue;
+        }
+        const double x = noise::wrapCanonical(xs[i], world_.x);
+        const double z = noise::wrapCanonical(zs[i], world_.z);
+        const float hardness =
+            water::notched(w) ? rockHardness(x, z, water::notchHardnessHeight(w)) : 0.0f;
+        const RockFace face = water::slotFace(w, x, z, hardness, world_);
+        if (face.weight > 0.0f) {
+            rock[i].add(face);
+        }
     }
 }
 

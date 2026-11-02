@@ -49,9 +49,11 @@ RockTile::RockTile(const TileColumns& columns, const TileRequest& request,
     }
     bounds_ = {columns.minHeight, columns.maxHeight};
     for (const RockColumn& c : columns.rock) {
+        // Up to the top of its rock only: no level of air above it (rockCeiling: the tops of the
+        // carved faces, of the valleys, never raise the rock).
         const RockBounds b = rockBounds(c);
         bounds_.low = std::min(bounds_.low, b.low);
-        bounds_.high = std::max(bounds_.high, b.high);
+        bounds_.high = std::max(bounds_.high, rockCeiling(c));
     }
 }
 

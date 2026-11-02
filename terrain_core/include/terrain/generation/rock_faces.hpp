@@ -109,6 +109,12 @@ struct RockBounds {
 };
 [[nodiscard]] RockBounds rockBounds(const RockColumn& column);
 
+// The highest the rock of a column stands (rockDensity), above which it is air at every detail:
+// its ground, the tops of the faces of the relief, and the relief before the rivers only as high
+// as the valley of a river with its carved faces rises (their step is taken out of that relief).
+// Not the relief before the rivers alone: a valley carved 1.6 km deep holds no rock up there.
+[[nodiscard]] float rockCeiling(const RockColumn& column);
+
 // The share of bare rock, in [0, 1], of the surface of a column at height y: the weight the
 // detail draws of its faces on them, under their caps and in their undercuts, 0 elsewhere (the
 // material of the ground decides there).
