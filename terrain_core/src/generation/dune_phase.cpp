@@ -153,8 +153,10 @@ double nominalAt(const Ergs::Impl& m, const Shared& s, const Pivots& p) {
     return nominal;
 }
 
-Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind& kind) {
-    const Weights w = weightsWithSlopes(m, s, p);
+namespace {
+
+// The phase of a kind from the weights of the pivots at the point.
+Phase phaseOf(const Shared& s, const Pivots& p, const Weights& w, const Kind& kind) {
     const dmath::SineCosine r = dmath::sinCosTurns(kind.turn);
     // The phasor Z = sum w exp(2 pi i q) and its gradient, both parts.
     double re = 0.0;
@@ -208,6 +210,18 @@ Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind&
     out.coherence = std::clamp(std::sqrt(modulus2), 0.0, 1.0);
     out.nominal = nominal;
     return out;
+}
+
+} // namespace
+
+Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind& kind) {
+    return phaseOf(s, p, weightsWithSlopes(m, s, p), kind);
+}
+
+std::array<Phase, 2> phasesAt(const Ergs::Impl& m, const Shared& s, const Pivots& p,
+                              const Kind& first, const Kind& second) {
+    const Weights w = weightsWithSlopes(m, s, p);
+    return {phaseOf(s, p, w, first), phaseOf(s, p, w, second)};
 }
 
 } // namespace terrain::dune_phase

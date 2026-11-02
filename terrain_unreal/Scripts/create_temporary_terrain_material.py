@@ -65,6 +65,7 @@ float4 b = float4(0.0, 0.0, 0.0, 0.0);
 float4 c = float4(0.0, 0.0, 0.0, 0.0);
 float2 slope = float2(0.0, 0.0);
 float curvature = 0.0;
+float dunes = 0.0;
 float altitude = Rel.z / 100.0;
 BRANCH if (HasSurface > 0.5)
 {
@@ -123,17 +124,20 @@ BRANCH if (blendShare > 0.0)
 {
     float4 ta, tb;
     float2 tc;
-    if (Look.BlendLayers(Blend, BlendSlot, BlendPitchCm, Local.xy, ta, tb, tc))
+    float td;
+    if (Look.BlendLayers(Blend, BlendSlot, BlendPitchCm, Local.xy, ta, tb, tc, td))
     {
         a = lerp(a, ta, blendShare);
         b = lerp(b, tb, blendShare);
         c.xy = lerp(c.xy, tc, blendShare);
+        dunes = td * blendShare;
     }
 }
 c.w = altitude / 1000.0;
 W1 = b;
 W2 = c;
 W3 = float4(slope, HasSurface, curvature);
+W4 = dunes;
 return a;
 """
 
@@ -214,7 +218,8 @@ def vertex_shader(material, scalars):
     custom = custom_node(
         material, -1400, 0, "TemporaryTerrainVertex", look.struct_hlsl() + VERTEX_HLSL,
         ["Tex", "Rel", "SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells", "SurfacePitchCm",
-         "HasSurface"] + BLEND_INPUTS, [("W1", FLOAT4), ("W2", FLOAT4), ("W3", FLOAT4)], FLOAT4)
+         "HasSurface"] + BLEND_INPUTS, [("W1", FLOAT4), ("W2", FLOAT4), ("W3", FLOAT4), ("W4", FLOAT1)],
+        FLOAT4)
     texels = expression(material, unreal.MaterialExpressionTextureObjectParameter, -2000, -200)
     texels.set_editor_property("parameter_name", "SurfaceTexels")
     texels.set_editor_property("texture", unreal.EditorAssetLibrary.load_asset(
@@ -238,7 +243,7 @@ def vertex_shader(material, scalars):
     blend_inputs(material, custom)
     # The position from level 0, also read by the pixel shader (detail_slope), evaluated there.
     interpolated = {"Rel": to_float}
-    for index, output in enumerate(["", "W1", "W2", "W3"]):
+    for index, output in enumerate(["", "W1", "W2", "W3", "W4"]):
         node = expression(material, unreal.MaterialExpressionVertexInterpolator, -1000, 150 * index)
         connect(custom, output, node, "")
         interpolated[f"W{index}"] = node
@@ -290,10 +295,10 @@ def pixel_shader(material, scalars, weights):
     meters = expression(material, unreal.MaterialExpressionMultiply, -650, 400)
     meters.set_editor_property("const_b", 1000.0)
     connect(altitude, "", meters, "A")
-    inputs = look.shade_inputs() + ["W3"] + look.layer_inputs(True)
+    inputs = look.shade_inputs() + ["W3", "W4"] + look.layer_inputs(True)
     shade = custom_node(material, -300, 300, "TemporaryTerrainShade", look.shade_hlsl(True),
                         inputs, [("NormalOut", FLOAT3), ("RoughOut", FLOAT1)], FLOAT3)
-    for name in ("W0", "W1", "W2", "W3"):
+    for name in ("W0", "W1", "W2", "W3", "W4"):
         connect(weights[name], "", shade, name)
     connect(normal, "", shade, "N")
     connect(position, "", shade, "P")

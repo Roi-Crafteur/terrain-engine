@@ -128,6 +128,7 @@ struct ErgMemos {
     noise::FbmOctaves::Memo amplitude;
     noise::FbmOctaves::Memo side;
     noise::FbmOctaves::Memo ends;
+    noise::FbmOctaves::Memo branches; // the ends noise, shifted: where the seifs branch
     noise::FbmOctaves::Memo scatter;
 };
 [[nodiscard]] ErgMemos& memosOf(const Ergs::Impl& m);

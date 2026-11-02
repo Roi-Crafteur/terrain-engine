@@ -145,15 +145,18 @@ double barchanAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_ph
     return dune_forms::barchan(b);
 }
 
-// The seifs: ridges along the wind, on a phase across it.
-double seifLine(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
-                const Point& q, double spacing, std::uint64_t salt, double ends) {
+// The phase of a system of seifs: across the wind, sinuous.
+dune_phase::Kind seifKind(double spacing, std::uint64_t salt) {
     dune_phase::Kind lines;
     lines.across = true;
     lines.spacing = spacing;
     lines.salt = salt;
     lines.sinuous = kSeifSinuous;
-    const dune_phase::Phase line = dune_phase::phaseAt(m, s, p, lines);
+    return lines;
+}
+
+// The seifs of a system: ridges along the wind on the phase line across it.
+double seifLine(const Point& q, const dune_phase::Phase& line, double ends, double slip) {
     const double offset = (line.fraction - 0.5) * line.wavelength;
     const double room = kSeifWidth * line.wavelength /
                         (1.0 / dune_forms::kLeeTan + 1.0 / dune_forms::kGentleTan);
@@ -161,8 +164,6 @@ double seifLine(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_pha
     const double tall = std::max(q.height, heightOf(kSeifSand, q.amplitude));
     const double top = std::min(tall, room) * ramp(kEndsLow, kEndsHigh, ends) *
                        ramp(kCoherenceLow, kCoherenceHigh, line.coherence);
-    const double slip =
-        ramp(-kSlipSoft, kSlipSoft, static_cast<double>(m.side.fbm2D(q.x, q.z, memosOf(m).side)));
     // A sharp crest on a broad, gentle plinth: a ridge, not a line.
     const double plinth =
         kPlinthHeight * top *
@@ -171,17 +172,26 @@ double seifLine(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_pha
 }
 
 // The seifs: ridges along the wind, on a phase across it, sinuous; a second system of another
-// spacing over part of the erg joins and splits them (Y junctions).
+// spacing over part of the erg joins and splits them (Y junctions). Both systems read the same
+// weights of the pivots (dune_phase::phasesAt). Not only where the seifs dominate: where they mix
+// with the stars (seif weight about 0.25) the power mean keeps them, branches and all.
 double seifAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
               const Point& q) {
-    const double ends = static_cast<double>(m.ends.fbm2D(q.x, q.z, memosOf(m).ends));
-    const double first = seifLine(m, s, p, q, kSeifSpacing, 3, ends);
-    const double branches = static_cast<double>(m.ends.fbm2D(q.z + kBranchShift, q.x - kBranchShift));
-    const double share = ramp(kBranchLow, kBranchHigh, branches);
+    ErgMemos& memo = memosOf(m);
+    const double ends = static_cast<double>(m.ends.fbm2D(q.x, q.z, memo.ends));
+    const double slip =
+        ramp(-kSlipSoft, kSlipSoft, static_cast<double>(m.side.fbm2D(q.x, q.z, memo.side)));
+    const dune_phase::Kind first = seifKind(kSeifSpacing, 3);
+    const double share =
+        ramp(kBranchLow, kBranchHigh,
+             static_cast<double>(
+                 m.ends.fbm2D(q.z + kBranchShift, q.x - kBranchShift, memo.branches)));
     if (!(share > 0.0)) {
-        return first;
+        return seifLine(q, dune_phase::phaseAt(m, s, p, first), ends, slip);
     }
-    return std::max(first, share * seifLine(m, s, p, q, kBranchSpacing * kSeifSpacing, 5, ends));
+    const std::array<dune_phase::Phase, 2> lines =
+        dune_phase::phasesAt(m, s, p, first, seifKind(kBranchSpacing * kSeifSpacing, 5));
+    return std::max(seifLine(q, lines[0], ends, slip), share * seifLine(q, lines[1], ends, slip));
 }
 
 // The kinds that follow the wind, around the pivots.

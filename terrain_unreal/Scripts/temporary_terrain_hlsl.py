@@ -42,10 +42,10 @@ struct FTemporaryTerrain
     // id (biome_blend.hpp: addTexel), never interpolating the ids; the layers are those of every
     // biome (BIOMES) and the overrides of every material (as in Layers), both linear in the
     // weights; the sand of the dunes of an erg (the share in the last float) is the smooth sand,
-    // never the stony desert around it. False where the tile has no texels (slot -1, or the
-    // texels of no tile).
+    // never the stony desert around it, and d that share. False where the tile has no texels
+    // (slot -1, or the texels of no tile).
     bool BlendLayers(Texture2D T, float slot, float pitchCm, float2 local, out float4 a,
-                     out float4 b, out float2 c)
+                     out float4 b, out float2 c, out float d)
     {
         const float4 BA[12] = { BIOME_A };
         const float4 BB[12] = { BIOME_B };
@@ -100,6 +100,7 @@ struct FTemporaryTerrain
           + (wm[4] + wm[7]) * float4(0.0, 0.0, 0.0, 1.0);
         c.x = lerp(c.x, 1.0, wm[5]);                                                     // snow
         c.y = lerp(c.y, 1.0, wm[4]);                                                     // rock
+        d = saturate(dunes);
         return true;
     }
 
@@ -250,10 +251,10 @@ float pd = Look.Patch(Q, 4.0, 47.0);
 // meet along ragged edges (a blend of a dark rock and a white snow would read as sand).
 float rock = saturate((slope - (RockStartDeg + jit)) / max(RockFullDeg - RockStartDeg, 1.0));
 rock = smoothstep(0.3, 0.7, rock + (pd - 0.5) * 0.6);
-// The sand stays sand at any slope: the slip faces of the dunes stand at 33 degrees, never rock,
-// scree nor stones at their foot. On the tiles the dunes are the smooth sand (W1.y); on the far
-// horizon, which has no share of the dunes yet, the desert too (the core puts rock on its walls).
-float sandLock = saturate((W1.y + W1.z) * 2.0);
+// The dunes stay sand at any slope: their slip faces stand at 33 degrees, never rock, scree nor
+// stones at their foot. Their share: W4 on the tiles, 0 on the far horizon (it does not carry
+// it yet). Elsewhere the desert keeps its rock and its scree from 30 degrees.
+float sandLock = saturate(DUNES * 2.0);
 rock *= 1.0 - sandLock;
 rock = max(rock, W2.y * CoreRock);
 float cold = saturate((W2.x - 0.5) * 2.5 + (n2 - 0.5) * 1.2 + 0.5);
@@ -311,10 +312,11 @@ snow *= 1.0 - outcrop * 0.85;
 rock = max(rock * (1.0 - gravel * 0.5), outcrop * cold * 0.9);
 float alt = smoothstep(0.42, 0.58, Look.Patch(Q, 16.0, 61.0));
 // No sand on the mountains: above the alpine zone (SandMaxAltitudeM) and on slopes steeper than
-// 38 degrees (steeper than any dune), the desert of any biome becomes scree; the smooth sand (the
-// dunes) stays.
-float sandless = max(saturate((Z - SandMaxAltitudeM) / 300.0), saturate((slope - 38.0) / 5.0));
-g[7] += g[6] * sandless;
+// 30 degrees, the sand and the desert of any biome become scree, except on the dunes.
+float sandless = max(saturate((Z - SandMaxAltitudeM) / 300.0), saturate((slope - 30.0) / 5.0));
+sandless *= 1.0 - sandLock;
+g[7] += (g[5] + g[6]) * sandless;
+g[5] *= 1.0 - sandless;
 g[6] *= 1.0 - sandless;
 float sandShare = g[5] + g[6];
 // Moderate slopes show their soil: dirt under the grass and the forest, scree under the alpine
@@ -448,8 +450,9 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
     first, then the snow, the rock and its variant."""
     # The curvature of the ground comes from the vertex shader of the tiles (W3.w); the horizon
     # has none.
+    # The share of the dunes comes from the surface blend of the tiles (W4); the horizon has none.
     code = SHADE_TOP.replace("HAS_DETAIL", "1.0" if detail else "0.0").replace(
-        "CURVATURE", "W3.w" if detail else "0.0")
+        "CURVATURE", "W3.w" if detail else "0.0").replace("DUNES", "W4" if detail else "0.0")
     for index in range(ground):
         code += ground_layer(index, layers[index][4], detail, saturations.get(layers[index][0]))
     snow, rock, variant = ground, ground + 1, ground + 2

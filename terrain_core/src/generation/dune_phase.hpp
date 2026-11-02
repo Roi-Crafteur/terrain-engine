@@ -76,6 +76,9 @@ struct Phase {
     double nominal = 1.0;    // meters: the spacing of the pivots, weighted (smooth)
 };
 [[nodiscard]] Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind& k);
+// The phases of two kinds at once (the weights of the pivots shared): the same bits as phaseAt.
+[[nodiscard]] std::array<Phase, 2> phasesAt(const Ergs::Impl& m, const Shared& s, const Pivots& p,
+                                            const Kind& first, const Kind& second);
 // The spacing of the pivots at the point, weighted as their phasors (Phase::nominal of the ridges),
 // without their phases.
 [[nodiscard]] double nominalAt(const Ergs::Impl& m, const Shared& s, const Pivots& p);
