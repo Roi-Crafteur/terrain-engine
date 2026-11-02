@@ -67,6 +67,7 @@ constexpr double kGiantsTallest = 800.0;
 constexpr double kFadePerMeter = 7.06; // 1.5 / tan 12 degrees
 constexpr double kBuryMost = 60.0; // meters of the local relief the sand buries (buried())
 constexpr float kBuryFade = 0.3f;
+constexpr double kRockFall = 5.0;
 // The weights of the characters from the blocks and the slow noise: the realistic fade out from
 // kRealisticEnd, the giant waves come from kGiantsStart, over kCharacterJoin.
 constexpr float kRealisticEnd = 0.1f;
@@ -377,9 +378,9 @@ std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z) {
 
 // The sand of the ergs buries the local relief of the geography (its hills, buttes and plains:
 // HeightSample::base over regional): the surface of the dunes rides on the regional ground, a
-// hollow keeps what it sinks under it past kBuryMost; the rock, kBuryMost under the ground of the
-// geography, stands out of the sand where it rises over it (its slopes never add to those of the
-// dunes). Faded with the mask over its first kBuryFade: none at the edges of the erg.
+// hollow keeps what it sinks under it past kBuryMost; the rock of a butte (lowered by kBuryMost,
+// deep under the plains) stands out of the sand where it rises over it (its slopes never add to
+// those of the dunes). Faded with the mask over its first kBuryFade: none at the edges of the erg.
 static float buried(const HeightSample& s, const ErgPoint& e, double dunes) {
     const double local = static_cast<double>(s.base) - static_cast<double>(s.regional);
     if (local == 0.0) {
@@ -387,7 +388,10 @@ static float buried(const HeightSample& s, const ErgPoint& e, double dunes) {
     }
     const double hollow = std::min(0.0, local + kBuryMost);
     const double share = static_cast<double>(noise::smoothstep(0.0f, kBuryFade, e.mask));
-    const double surface = std::max(dunes + hollow - local, -kBuryMost);
+    // The rock: kBuryMost under the top of a butte, kRockFall times as deep under lower ground
+    // (under the troughs of the tallest waves on a plain).
+    const double rock = (local - kBuryMost) * (local > kBuryMost ? 1.0 : kRockFall);
+    const double surface = std::max(dunes + hollow - local, rock - local);
     return static_cast<float>(dunes + (surface - dunes) * share);
 }
 

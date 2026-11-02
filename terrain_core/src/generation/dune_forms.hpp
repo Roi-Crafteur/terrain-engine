@@ -34,8 +34,10 @@ inline constexpr double kStarTan = 0.5773502691896258;   // tan 30 degrees: the 
 // A barchan of a lattice of rows along the wind and cells across it: t in [0, 1) the position
 // past the start of the row along the wind, in rows, of wavelength meters; across in [0, 1) the
 // position in the cell across the wind, of cell meters; height the most it may be; presence in
-// [0, 1] how much of it there is; crest in [0, 1) where its crest lies along the row. A crescent
-// whose horns point downwind, apart from those of the next cells, on the bare floor.
+// [0, 1] how much of it there is (its whole form scaled down: its faces never steeper); crest in
+// [0, 1) where its crest lies along the row. A crescent whose horns point downwind, apart from
+// those of the next cells, on the bare floor; with the ends of the rows before and after it, or
+// alone (single).
 struct Barchan {
     double t = 0.0;
     double wavelength = 1.0;
@@ -44,6 +46,7 @@ struct Barchan {
     double height = 0.0;
     double presence = 0.0;
     double crest = 0.5;
+    bool single = false;
 };
 [[nodiscard]] double barchan(const Barchan& b);
 
@@ -67,10 +70,14 @@ struct StarLattice {
     double depth = 0.0;
 };
 [[nodiscard]] double stars(const StarLattice& lattice, double x, double z);
-// The ground under a star on a pedestal, and the share of its height it takes there ([0, 1]).
+// The ground under a star on a pedestal, the share of its height it takes there ([0, 1]), and
+// its own height and depth (StarLattice::height and depth, at most the lattice's): read at its
+// center only, so that its shape never changes with the point that looks at it.
 struct Pedestal {
     double base = 0.0;
     double presence = 0.0;
+    double height = 0.0;
+    double depth = 0.0;
 };
 // Stars standing on a pedestal: pedestal(cx, cz) gives the ground under the star centered there;
 // the star rises from it, and sinks lattice.depth under it as its presence falls to 0. -infinity

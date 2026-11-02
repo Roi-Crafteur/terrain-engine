@@ -61,9 +61,9 @@ constexpr double kGiantsKept = 0.9 * 0.85;
 // The trough between two waves sinks this share of their height below the floor.
 constexpr double kDig = 0.4;
 // The dunes laid on the waves (dune_layers), where the wave is gentler than kLayersSlope
-// (tangent, 20 degrees) and kCrestClear of the wavelength from its crest: oblique ridges in
+// (tangent, 12 degrees) and kCrestClear of the wavelength from its crest: oblique ridges in
 // segments (a layer of small crests across them drew long straight lines: none).
-constexpr double kLayersSlope = 0.25;
+constexpr double kLayersSlope = 0.22;
 constexpr double kCrestClear = 0.03;
 constexpr dune_layers::Layer kWavesMedium{700.0, 20.0, 0.12, 0.06, 41};
 constexpr dune_layers::Layer kGiantsMedium{1'500.0, 40.0, 0.12, 0.06, 45};
@@ -122,17 +122,16 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
     const double r = up < back ? 1.0 - up / back : 0.0;
     const double rise = height * dmath::pow(r, kBackCurve);
     Shape out;
-    if (face >= rise) {
-        out.height = face;
-        out.slope = dune_forms::kLeeTan * s;
-    } else {
-        out.height = rise;
-        out.slope = kBackCurve * height / back * dmath::pow(r, kBackCurve - 1.0);
-    }
+    out.height = std::max(face, rise);
+    // The slope the layers read: the steeper of the face and the back, the back's growing
+    // linearly from its foot to its steepest at the crest (its own slope grows as r^0.4, too
+    // fast for the layers that read it).
+    out.slope = std::max(dune_forms::kLeeTan * s, kBackCurve * height / back * r);
     // The trough between two waves: from the middle of the face to the middle of the back.
     // Its slope adds to that of the face or the back (the layers read the sum).
+    // It ends at the next crest at the latest (where the phase starts over).
     const double from = 0.5 * lee;
-    const double to = lee + 0.5 * back;
+    const double to = std::min(lee + 0.5 * back, wavelength);
     const double depth = dig * height;
     out.height -= dune_forms::trough(d, from, to, depth);
     out.slope += std::abs(dune_forms::trough(d + 0.5, from, to, depth) -

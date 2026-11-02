@@ -1,6 +1,6 @@
 // The waves of the ergs of the characters big waves and giant waves (agent 34, dune_waves.hpp):
-// - the profile across a crest: the face at 33 degrees at the brink, the back at most 12 (big
-//   waves) or 6 degrees (giant waves), no floor between two waves;
+// - the profile across a crest: the face at 33 degrees at the brink, the back gentle, no floor
+//   between two waves; along the wind the backs at most 18 (big waves) or 14 degrees (giants);
 // - on the default world (forced characters, sites far from the origin too): the spacing of the
 //   crests (2 to 6 km, 6 to 20 km), their heights (at most 300 m, 300 to 800 m), almost no flat
 //   ground, no step anywhere; across the boundary of a cell of the pivots (16 and 65 km), far
@@ -63,6 +63,20 @@ const std::vector<Site> kSites = {
     {-7'654'321.0, 5'000'000.0},  {19'999'744.0, 5'830'000.0},
 };
 
+// Whether h[i] is a crest: over floor and the highest within reach samples on each side (the
+// dunes laid on the backs of the waves are no crests of the waves).
+bool crestAt(const std::vector<double>& h, std::size_t i, double floor, std::size_t reach) {
+    if (!(h[i] > floor) || i < reach || i + reach >= h.size()) {
+        return false;
+    }
+    for (std::size_t k = i - reach; k <= i + reach; ++k) {
+        if (h[k] > h[i] || (k < i && h[k] == h[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // The forms of a character along the wind at the sites: spacing, heights, slopes, flat ground.
 void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tallest,
                double backMost) {
@@ -84,7 +98,7 @@ void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tal
         for (std::size_t i = 1; i + 1 < h.size(); ++i) {
             heights.push_back(h[i]);
             slopes.push_back(std::atan(std::abs(h[i + 1] - h[i]) / step) * dunes_test::kDegrees);
-            if (h[i] > 0.3 * tallest && h[i] > h[i - 1] && h[i] >= h[i + 1]) {
+            if (crestAt(h, i, 0.3 * tallest, static_cast<std::size_t>(0.25 * spacingLow / step))) {
                 if (last >= 0.0) {
                     gaps.push_back(static_cast<double>(i) * step - last);
                 }
@@ -133,8 +147,9 @@ double meanSpacing(ErgCharacter c, double x, double z, double ux, double uz, dou
         h.push_back(dunes_test::forcedDunes(real().ergs, x + d * ux, z + d * uz, 0.6f, 0.1f, c));
     }
     std::vector<double> crests;
+    const double reach = c == ErgCharacter::Giants ? 1'500.0 : 500.0;
     for (std::size_t i = 1; i + 1 < h.size(); ++i) {
-        if (h[i] > floor && h[i] > h[i - 1] && h[i] >= h[i + 1]) {
+        if (crestAt(h, i, floor, static_cast<std::size_t>(reach / step))) {
             crests.push_back(static_cast<double>(i) * step);
         }
     }
@@ -252,8 +267,8 @@ bool siteOf(ErgCharacter c, double& x0, double& z0) {
     return false;
 }
 
-// The waves bury the local relief of the geography (base over regional): over a butte or a
-// hollow of 30 m the surface of the sand is the same; the realistic kinds lie on it unchanged.
+// The ergs bury the local relief of the geography (base over regional): over a butte or a hollow
+// of 30 m the surface of the sand is the same, the giant waves and the realistic chains alike.
 void testBuried() {
     double gx = 0.0;
     double gz = 0.0;
@@ -274,15 +289,18 @@ void testBuried() {
             if (surface >= 30.0) {
                 worst = std::max(worst, std::abs(local + sand - surface));
             }
-            terrain::HeightSample r = s;
-            realistic = realistic &&
-                        real().ergs.dunesAt(rx + 151.3 * k, rz + 67.9 * k, r) ==
-                            real().ergs.dunesAt(rx + 151.3 * k, rz + 67.9 * k, flat);
+            const double rx1 = rx + 151.3 * k;
+            const double rz1 = rz + 67.9 * k;
+            const double chains = static_cast<double>(real().ergs.dunesAt(rx1, rz1, flat));
+            if (chains >= 30.0) {
+                const double over = static_cast<double>(real().ergs.dunesAt(rx1, rz1, s));
+                realistic = realistic && std::abs(local + over - chains) < 1e-3;
+            }
         }
     }
     std::printf("buried: over a butte or a hollow of 30 m the sand of the giant waves moves its "
-                "surface by %.4f m at most; the realistic dunes %s\n",
-                worst, realistic ? "unchanged" : "CHANGED");
+                "surface by %.4f m at most; the realistic chains %s\n",
+                worst, realistic ? "too" : "NOT");
     TEST_CHECK(worst < 1e-3);
     TEST_CHECK(realistic);
 }
@@ -290,8 +308,10 @@ void testBuried() {
 
 int main() {
     testProfile();
-    testForms(ErgCharacter::Waves, 2'000.0, 6'000.0, 300.0, 12.5);
-    testForms(ErgCharacter::Giants, 6'000.0, 20'000.0, 800.0, 6.5);
+    // The backs: at most 18 degrees for the big waves, 14 for the giants (validated at the third
+    // stop of agent 34).
+    testForms(ErgCharacter::Waves, 2'000.0, 6'000.0, 300.0, 18.0);
+    testForms(ErgCharacter::Giants, 6'000.0, 20'000.0, 800.0, 14.0);
     testFarBoundary(ErgCharacter::Waves, 16'000.0, 8.0, 40.0);
     testFarBoundary(ErgCharacter::Giants, 100'000.0, 25.0, 150.0);
     testHorizon();

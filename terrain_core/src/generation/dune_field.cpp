@@ -1,6 +1,8 @@
 // The dunes of an erg (ergs_impl.hpp): the kinds of dunes on the continuous phase of their crests
 // (dune_phase.hpp), blended by a power mean of their heights (exponent 4), so that the crests
 // stay sharp where two kinds meet.
+#include "dune_blend.hpp"
+#include "dune_field_constants.hpp"
 #include "dune_forms.hpp"
 #include "dune_layers.hpp"
 #include "dune_phase.hpp"
@@ -11,99 +13,13 @@
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <cmath>
 
 namespace terrain::dune_field {
 
 namespace {
-
-// Heights: kHeightLow to kHeightLow + kHeightRange (sand^1.5), times kAmpBase + kAmpRange noise,
-// within kHeightLow and kHeightHigh.
-constexpr double kHeightLow = 20.0;
-constexpr double kHeightRange = 280.0;
-constexpr double kHeightHigh = 300.0;
-constexpr double kAmpBase = 0.92;
-constexpr double kAmpRange = 0.25;
-// The bare floor between the dunes: kGapLow of the spacing where the sand is plentiful, kGapLow +
-// kGapRange where it is scarce.
-constexpr double kGapLow = 0.06;
-constexpr double kGapRange = 0.35;
-// The small dunes on the backs of the draas: spacing, height, angle to the wind, and the meters
-// they keep clear of the crest and the slip face of the draa.
-constexpr double kSmallSpacing = 320.0;
-constexpr double kSmallHeightBase = 6.0;
-constexpr double kSmallHeightShare = 0.04;
-constexpr double kSmallTurn = 0.07;
-constexpr double kSmallClear = 60.0;
-// The troughs between the ridges and the chains sink this share of their height below the floor.
-constexpr double kDig = 0.4;
-constexpr double kDigStart = 0.5;   // of the half width of the plinth of the chains
-constexpr double kDigSpacing = 0.08;
-constexpr double kSmallGap = 0.15;
-// Seifs: their spacing over that of the ridges, their width at most at their base (share of the
-// spacing), their ends and the side of their slip faces.
-constexpr double kSeifSpacing = 1.4;
-constexpr double kSeifWidth = 0.8;
-constexpr float kEndsLow = -0.35f;
-constexpr float kEndsHigh = 0.1f;
-constexpr float kSlipSoft = 0.25f;
-constexpr double kSeifSinuous = 1.2;  // their crests wander a little more than the ridges
-constexpr double kPlinthHeight = 0.45; // the plinth under their crest, share of their height
-constexpr double kPlinthWidth = 0.38;  // and its half width, share of their spacing
-constexpr double kSeifSand = 0.7;      // their height at least that of this sand
-// The second system of seifs (the branches): its spacing over the first, where it lies (a noise
-// sampled elsewhere) and how much of it.
-constexpr double kBranchSpacing = 1.27;
-constexpr double kBranchShift = 3'333.0;
-constexpr float kBranchLow = -0.1f;
-constexpr float kBranchHigh = 0.25f;
-// The stars on the chains: their lattice, their height over the chain (share of its height),
-// how many cells hold one, and how high on the chain their center must stand (within
-// kOnChainSoft).
-constexpr double kChainStarCell = 2'600.0;
-constexpr double kChainStarShare = 0.65;
-constexpr double kChainStarOccupancy = 0.75;
-constexpr double kOnChain = 0.6;
-constexpr double kOnChainSoft = 0.1;
-constexpr float kChainCoherenceLow = 0.15f;
-constexpr float kChainCoherenceHigh = 0.45f;
-// Barchans: their cells across the wind (share of the spacing), their presence (an occupancy
-// against a noise) and where their crest lies along the row.
-constexpr double kBarchanCell = 0.75;
-constexpr double kBarchanOccupancy = 0.85;
-constexpr float kPresenceSoft = 0.35f;
-constexpr double kScatterDraw = 1.6;   // the draw of a barchan: 0.5 + this times the scatter noise
-constexpr double kScatterHeight = 0.5; // the shortest barchans: this share of the height
-constexpr double kBarchanLeast = 30.0;
-constexpr double kBarchanMost = 60.0;
-constexpr double kCrestBase = 0.55;
-constexpr double kCrestRange = 0.3;
-constexpr double kScatterShift = 7'777.0; // meters: an independent sample of the scatter noise
-// Stars: their lattice, their height (the tallest dunes: at least kStarLeast) and their
-// occupancy.
-constexpr double kStarCell = 2048.0;
-constexpr double kStarLeast = 150.0;
-constexpr double kStarHigh = 250.0;
-constexpr double kStarOccupancy = 0.35;
-constexpr double kStarOccupancySand = 0.4;
-// Around the defects of the phase (two crests joining), the dunes fade between these coherences.
-constexpr float kCoherenceLow = 0.03f;
-constexpr float kCoherenceHigh = 0.3f;
-// The crests of the ridges break in saddles where the noise of the sides (sampled kBreakShift
-// away, 3 km) is low, about a fifth of their length below half their height: no crest runs on
-// for tens of kilometers (a straight band to the horizon, seen along it).
-constexpr float kBreakLow = -0.45f;
-constexpr float kBreakHigh = 0.05f;
-constexpr double kBreakShift = 5'555.0;
-// The breaks fade out from kBreakFull to kBreakNone meters of height: lowering a tall crest over
-// a few hundred meters would make it steep along its length (the draas keep their long ridges
-// and their small dunes); the crest falls by at most about 22 degrees along it.
-constexpr double kBreakFull = 80.0;
-constexpr double kBreakNone = 180.0;
-constexpr double kBreakMean = 0.78; // the mean of the ramp of the breaks over the noise (measured)
-// The dunes fade out over the first kEdgeFade of the mask.
-constexpr float kEdgeFade = 0.2f;
 
 double ramp(float e0, float e1, double v) {
     return static_cast<double>(noise::smoothstep(e0, e1, static_cast<float>(v)));
@@ -117,35 +33,8 @@ struct Point {
     double sand = 0.0;
     double mask = 0.0;
     double amplitude = 0.0; // the noise of the heights, about [-1, 1]
-};
-
-// The kinds blended: the power mean of their heights above the floor (exponent 4, the crests stay
-// sharp where two kinds meet) weighted by the fourth powers of their weights, times the sum of the
-// weights; the troughs below it by their weights. A kind taking a share w of the weight rises by
-// about w of its height: not w^(1/4), a step where it begins.
-struct Blend {
-    double above = 0.0;  // the sum of the weights^4 times the heights^4
-    double weights = 0.0; // the sum of the weights^4
-    double total = 0.0;  // the sum of the weights
-    double below = 0.0;  // the sum of the weights times the depths (negative)
-    void add(double h, float weight) {
-        const auto w = static_cast<double>(weight);
-        const double w4 = dmath::powInteger(w, 4);
-        above += w4 * dmath::powInteger(std::max(h, 0.0), 4);
-        weights += w4;
-        total += w;
-        below += w * std::min(h, 0.0);
-    }
-    void scale(double k) {
-        const double k4 = dmath::powInteger(k, 4);
-        above *= k4;
-        weights *= k4;
-        total *= k;
-        below *= k;
-    }
-    [[nodiscard]] double value() const {
-        return weights > 0.0 ? total * std::sqrt(std::sqrt(above / weights)) + below : below;
-    }
+    double windX = 1.0;     // toward which the sand moves (ErgPoint)
+    double windZ = 0.0;
 };
 
 // The ridges carry dunes on their backs (dune_layers): oblique ridges in segments, about
@@ -170,26 +59,36 @@ double barchanAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_ph
     cells.salt = 11;
     cells.drift = -1.3;
     const dune_phase::Phase across = dune_phase::phaseAt(m, s, p, cells);
-    dune_forms::Barchan b;
-    b.t = ridge.fraction;
-    b.wavelength = ridge.wavelength;
-    b.across = across.fraction;
-    b.cell = across.wavelength;
-    // Which barchans are there and how tall: a noise at their own scale (clusters and gaps,
-    // never a lattice), the occupancy thinning toward the edge of the erg.
-    const double scatter = static_cast<double>(m.scatter.fbm2D(q.x, q.z, memosOf(m).scatter));
-    const double occupancy = kBarchanOccupancy * q.mask;
-    const double draw = 0.5 + kScatterDraw * scatter;
-    b.presence = ramp(-kPresenceSoft, kPresenceSoft, occupancy - draw) *
-                 ramp(kCoherenceLow, kCoherenceHigh, across.coherence);
-    // Barchans stand about a tenth as high as they are wide (dune_forms: their width caps them),
-    // whatever the little sand around them: kBarchanLeast to kBarchanMost meters at most.
-    b.height = std::clamp(2.0 * q.height, kBarchanLeast, kBarchanMost) *
-               (kScatterHeight + (1.0 - kScatterHeight) * (0.5 + scatter));
-    // Their crests shifted along the rows by the same noise elsewhere: no rank of crescents.
-    b.crest = kCrestBase + kCrestRange * static_cast<double>(m.scatter.fbm2D(
-                                             q.z + kScatterShift, q.x - kScatterShift));
-    return dune_forms::barchan(b);
+    // Each barchan reads its noises at its own middle (estimated from the phases and the wind):
+    // its presence and height never change over it, which would steepen its faces.
+    double best = 0.0;
+    for (int back = -1; back <= 1; ++back) {
+        const double along = (ridge.fraction + back - kCrestBase) * ridge.wavelength;
+        const double lateral = (across.fraction - 0.5) * across.wavelength;
+        const double cx = q.x - along * q.windX + lateral * q.windZ;
+        const double cz = q.z - along * q.windZ - lateral * q.windX;
+        dune_forms::Barchan b;
+        b.t = ridge.fraction + back;
+        b.wavelength = ridge.wavelength;
+        b.across = across.fraction;
+        b.cell = across.wavelength;
+        b.single = true;
+        // Which barchans are there and how tall: a noise at their own scale (clusters and gaps,
+        // never a lattice), the occupancy thinning toward the edge of the erg; their height
+        // (about a tenth of their width, dune_forms), kBarchanLeast to kBarchanMost meters at most
+        // whatever the little sand around them, scaled with their presence.
+        const double scatter = static_cast<double>(m.scatter.fbm2D(cx, cz));
+        const double draw = 0.5 + kScatterDraw * scatter;
+        b.presence = ramp(-kPresenceSoft, kPresenceSoft, kBarchanOccupancy * q.mask - draw) *
+                     ramp(kCoherenceLow, kCoherenceHigh, across.coherence) *
+                     (kScatterHeight + (1.0 - kScatterHeight) * (0.5 + scatter));
+        b.height = std::clamp(2.0 * q.height, kBarchanLeast, kBarchanMost);
+        // Their crests shifted along the rows by the same noise elsewhere: no rank of crescents.
+        b.crest = kCrestBase + kCrestRange * static_cast<double>(m.scatter.fbm2D(
+                                                 cz + kScatterShift, cx - kScatterShift));
+        best = std::max(best, dune_forms::barchan(b));
+    }
+    return best;
 }
 
 // The phase of a system of seifs: across the wind, sinuous.
@@ -226,10 +125,14 @@ double seifLine(const Point& q, const dune_phase::Phase& line, double ends, doub
         kPlinthHeight * top *
         (1.0 - dune_forms::hermite(std::abs(offset) / (kPlinthWidth * spacing)));
     // The corridor between two chains sinks kDig of their height (at most kDigSpacing of their
-    // spacing), from the middle of the plinth to the middle of the corridor: gently enough.
-    const double edge = kDigStart * kPlinthWidth * spacing;
-    const double dig = std::min(kDig * top, kDigSpacing * spacing) *
-                       dune_forms::hermite((std::abs(offset) - edge) / (0.5 * spacing - edge));
+    // spacing), from the middle of the plinth or the foot of their flanks (their slopes never
+    // add) to the middle of the corridor, never steeper than kDigTan.
+    const double edge = std::max(kDigStart * kPlinthWidth * spacing, top / dune_forms::kGentleTan);
+    const double run = 0.5 * spacing - edge;
+    const double dig =
+        run > 0.0 ? std::min({kDig * top, kDigSpacing * spacing, kDigTan * run / 1.5}) *
+                        dune_forms::hermite((std::abs(offset) - edge) / run)
+                  : 0.0;
     return fade * (std::max(dune_forms::seif(offset, top, slip), plinth) - dig);
 }
 
@@ -275,31 +178,54 @@ double unbroken(const Ergs::Impl& m, const Point& q) {
     return 1.0 - strength * (1.0 - ramp(kBreakLow, kBreakHigh, n));
 }
 
+// A star on the chains at (cx, cz): the chain under its center (of a sand of kSeifSand: the
+// same whatever the point that looks at it) and its height there.
+dune_forms::Pedestal pedestalOf(const Ergs::Impl& m, double cx, double cz) {
+    const dune_phase::Shared sc = dune_phase::sharedAt(m, cx, cz);
+    Point qc;
+    qc.x = cx;
+    qc.z = cz;
+    qc.sand = kSeifSand;
+    qc.amplitude = static_cast<double>(m.amplitude.fbm2D(cx, cz));
+    qc.height = heightOf(kSeifSand, qc.amplitude);
+    const double top = qc.height;
+    dune_forms::Pedestal under;
+    under.base = seifAt(m, sc, dune_phase::pivotsAt(m, sc), qc);
+    under.presence = ramp(static_cast<float>(kOnChain - kOnChainSoft),
+                          static_cast<float>(kOnChain + kOnChainSoft), under.base / top);
+    under.height = kChainStarShare * top;
+    // The chains around lie between -kDig times the tallest and top: it ends under them.
+    under.depth = top + kDig * kHeightHigh;
+    return under;
+}
+
 // The chains with their stars: a star of the lattice of kChainStarCell stands on a chain where
 // the chain at its center reaches kOnChain of its height, rising from it (dune_forms::starsOn);
 // the higher of the chain and the stars (their slopes never add up).
 double chainAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
                const Point& q) {
     const double chain = seifAt(m, s, p, q);
-    const double top = std::max(q.height, heightOf(kSeifSand, q.amplitude));
     dune_forms::StarLattice lattice;
     lattice.cell = kChainStarCell;
     lattice.periodX = m.world.x;
     lattice.periodZ = m.world.z;
-    lattice.height = kChainStarShare * top;
+    lattice.height = kChainStarShare * kHeightHigh; // the bounds: the tallest chains
     lattice.occupancy = kChainStarOccupancy;
     lattice.key = noise::deriveSeed(m.seed, 0x43535452ULL);
-    // The chain lies between -kDig and 1 times top: a star ends under its lowest ground.
-    lattice.depth = (1.0 + kDig) * top;
+    lattice.depth = (1.0 + kDig) * kHeightHigh;
+    ErgMemos& memo = memosOf(m);
     const double stars = dune_forms::starsOn(lattice, q.x, q.z, [&](double cx, double cz) {
-        const dune_phase::Shared sc = dune_phase::sharedAt(m, cx, cz);
-        Point qc = q;
-        qc.x = cx;
-        qc.z = cz;
-        dune_forms::Pedestal under;
-        under.base = seifAt(m, sc, dune_phase::pivotsAt(m, sc), qc);
-        under.presence = ramp(static_cast<float>(kOnChain - kOnChainSoft),
-                              static_cast<float>(kOnChain + kOnChainSoft), under.base / top);
+        // Read once per star (they depend on its center only): the last ones met, by center.
+        ErgMemos::Star& seen =
+            memo.stars[noise::deriveSeed(std::bit_cast<std::uint64_t>(cx),
+                                         std::bit_cast<std::uint64_t>(cz)) %
+                       memo.stars.size()];
+        if (seen.cx == cx && seen.cz == cz) {
+            return dune_forms::Pedestal{seen.pedestal[0], seen.pedestal[1], seen.pedestal[2],
+                                        seen.pedestal[3]};
+        }
+        const dune_forms::Pedestal under = pedestalOf(m, cx, cz);
+        seen = {cx, cz, {under.base, under.presence, under.height, under.depth}};
         return under;
     });
     return std::max(chain, stars);
@@ -407,8 +333,12 @@ Means meansOf(const ErgPoint& e, double height, double spacing) {
         std::min(std::max(height, heightOf(kSeifSand, 0.0)), kSeifWidth * seifSpacing / cot);
     // The corridors: the dig rises along a Hermite curve over the outer part of each half
     // spacing (seifLine), half of it on average.
-    const double corridor = std::min(kDig * seifTop, kDigSpacing * seifSpacing) * 0.5 *
-                            (1.0 - 2.0 * kDigStart * kPlinthWidth);
+    const double run = std::max(0.0, 0.5 * seifSpacing -
+                                         std::max(kDigStart * kPlinthWidth * seifSpacing,
+                                                  seifTop / dune_forms::kGentleTan));
+    const double corridor =
+        std::min({kDig * seifTop, kDigSpacing * seifSpacing, kDigTan * run / 1.5}) * run /
+        seifSpacing;
     out.seif = kSeifEnds * (seifTop * seifTop * cot / 2.0 / seifSpacing +
                             kPlinthHeight * kPlinthWidth * seifTop - corridor);
     const double peak = std::clamp(height, kStarLeast, kStarHigh);
@@ -465,6 +395,8 @@ float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
     q.z = z;
     q.sand = static_cast<double>(e.sand);
     q.mask = static_cast<double>(e.mask);
+    q.windX = e.windX;
+    q.windZ = e.windZ;
     q.amplitude = static_cast<double>(m.amplitude.fbm2D(x, z, memosOf(m).amplitude));
     q.height = heightOf(q.sand, q.amplitude);
     const dune_phase::Shared s = dune_phase::sharedAt(m, x, z);

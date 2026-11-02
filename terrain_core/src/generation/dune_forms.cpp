@@ -110,7 +110,7 @@ double barchan(const Barchan& b) {
     if (!(std::abs(lateral) < 1.0)) {
         return 0.0;
     }
-    const double top = std::min(b.height, half / kBarchanAspect) * b.presence;
+    const double top = std::min(b.height, half / kBarchanAspect);
     const double ridge = top * (1.0 - lateral * lateral);
     const double crest = b.wavelength * b.crest + kHorn * half * lateral * lateral;
     // The crest bends downwind toward the horns and falls toward them: the slip face, ridge -
@@ -125,14 +125,15 @@ double barchan(const Barchan& b) {
     const double lee = disc > 0.0 ? std::max(0.0, (bend * r + std::sqrt(disc)) / a) : 0.0;
     double best = 0.0;
     // The barchan of this row, the end of that of the row before and the back of that of the next.
-    for (int back = -1; back <= 1; ++back) {
+    const int rows = b.single ? 0 : 1;
+    for (int back = -rows; back <= rows; ++back) {
         const double along = (b.t + back) * b.wavelength - crest; // downwind of the crest
         const double h = along >= 0.0
                              ? ridge - lee * along
                              : ridge * (1.0 - hermite01(-along / (kBarchanBack * top)));
         best = std::max(best, h);
     }
-    return best;
+    return best * b.presence;
 }
 
 double seif(double offset, double height, double slip) {
@@ -214,9 +215,13 @@ double starOf(const StarLattice& s, std::int64_t i, std::int64_t j, std::int64_t
         return none;
     }
     Pedestal under;
+    double depth = s.depth;
     if (pedestal != nullptr) {
         under = (*pedestal)(cx, cz);
-        peak *= under.presence;
+        peak = std::min(under.height * (kStarLow + kStarSpread * uniform(noise::deriveSeed(h, 3))),
+                        kStarMost) *
+               there * under.presence;
+        depth = under.depth;
     }
     const double radius = peak / kStarTan;
     // The peak: a cone over an ellipse (its long axis stretched, its slopes gentler along it).
@@ -236,7 +241,7 @@ double starOf(const StarLattice& s, std::int64_t i, std::int64_t j, std::int64_t
         return std::max(0.0, best);
     }
     // A star fading off its pedestal sinks under it.
-    return under.base + best - (1.0 - under.presence) * s.depth;
+    return under.base + best - (1.0 - under.presence) * depth;
 }
 
 } // namespace

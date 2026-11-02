@@ -10,6 +10,7 @@
 #include "terrain/world_size.hpp"
 
 #include <array>
+#include <limits>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -142,6 +143,13 @@ struct ErgMemos {
     noise::FbmOctaves::Memo waveJoins;
     noise::FbmOctaves::Memo waveEnds;
     noise::FbmOctaves::Memo lakeShore;
+    // The stars on the chains read at their center (dune_field): the last ones met, by center.
+    struct Star {
+        double cx = std::numeric_limits<double>::quiet_NaN();
+        double cz = 0.0;
+        std::array<double, 4> pedestal{};
+    };
+    std::array<Star, 64> stars;
 };
 [[nodiscard]] ErgMemos& memosOf(const Ergs::Impl& m);
 
