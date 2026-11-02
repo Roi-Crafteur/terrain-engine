@@ -60,6 +60,9 @@
     { "name": "erg_etoile_1km", "x": 766504, "z": 3442516,
       "heading": 291, "pitch": -34, "eye": 1000, "eyeMode": "ground",
       "planet": true, "note": "dune en étoile vue de 1 km de haut, à 1,5 km au vent de son sommet" },
-    { "name": "erg_face_33", "x": 624154, "z": 3343908,
+    { "name": "erg_face_33", "x": 623931, "z": 3344421,
       "heading": 295, "pitch": -25, "eye": 1.8, "eyeMode": "ground",
-      "planet": true, "note": "crête d'une dune transversale de 65 m (sol 245,5 m), face au vent dominant (cap 295) : la face sous le vent à 33,6° commence là ; le pion descend la face (cap 295) et remonte le dos (cap 115)" } ] }
+      "planet": true, "note": "crête d'une dune transversale de 65 m (sol 194,3 m), face au vent dominant (cap 295) : la face sous le vent à 34° commence là ; le pion descend la face (cap 295) et remonte le dos (cap 115)" },
+    { "name": "erg_ruban_300m", "x": 624154, "z": 3340470,
+      "heading": 180, "pitch": -20, "eye": 300, "eyeMode": "ground",
+      "planet": true, "note": "vue de 300 m de haut vers le sud, le long des crêtes des dunes transversales : avant, une crête de 60 m sans coupure sur 30 km (ruban droit jusqu'à l'horizon) ; désormais des cols toutes les quelques km" } ] }

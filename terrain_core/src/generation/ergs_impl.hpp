@@ -131,6 +131,7 @@ struct ErgMemos {
     noise::FbmOctaves::Memo side;
     noise::FbmOctaves::Memo ends;
     noise::FbmOctaves::Memo branches; // the ends noise, shifted: where the seifs branch
+    noise::FbmOctaves::Memo breaks;   // the noise of the sides, shifted: the saddles of the ridges
     noise::FbmOctaves::Memo scatter;
     noise::FbmOctaves::Memo shore;
     noise::FbmOctaves::Memo lakeShore;

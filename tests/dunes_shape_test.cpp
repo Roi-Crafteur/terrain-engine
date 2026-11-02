@@ -77,6 +77,66 @@ void testTransverse() {
     TEST_CHECK(std::sqrt(var) / mean >= 0.1);
 }
 
+// The sand of the ridges of the view of the straight band (624 154, 3 340 470, heading 180, 300 m
+// up): transverse ridges of 50 to 90 m.
+constexpr float kRibbonSand = 0.4f;
+
+// No crest of the transverse ridges runs on for tens of kilometers (from 300 m up, looking along
+// one, a straight band to the horizon): followed along its direction, a crest breaks in saddles
+// or joins another within a few kilometers. 20 km along the crests, crests over half the height.
+void testCrestSegments() {
+    std::vector<double> lengths;
+    for (const Site& s : kSites) {
+        const std::array<double, 2> w = real().ergs.windAt(s.x, s.z);
+        constexpr int kAlong = 400; // along the crests, every 50 m
+        constexpr int kAcross = 300; // across them (along the wind), every 20 m
+        std::vector<double> h(static_cast<std::size_t>(kAlong * kAcross));
+        double top = 0.0;
+        for (int t = 0; t < kAlong; ++t) {
+            for (int u = 0; u < kAcross; ++u) {
+                const double x = s.x + 50.0 * t * -w[1] + 20.0 * u * w[0];
+                const double z = s.z + 50.0 * t * w[0] + 20.0 * u * w[1];
+                const double v = dunes_test::forcedDunes(real().ergs, x, z, kRibbonSand, kSteady);
+                h[static_cast<std::size_t>(t * kAcross + u)] = v;
+                top = std::max(top, v);
+            }
+        }
+        const auto crest = [&](int t, int u) {
+            const double* r = &h[static_cast<std::size_t>(t * kAcross)];
+            return u > 0 && u + 1 < kAcross && r[u] > 0.5 * top && r[u] >= r[u - 1] && r[u] > r[u + 1];
+        };
+        for (int start = 0; start < kAlong; start += 25) {
+            for (int u0 = 1; u0 + 1 < kAcross; ++u0) {
+                if (!crest(start, u0)) {
+                    continue;
+                }
+                int u = u0;
+                int t = start;
+                while (t + 1 < kAlong) {
+                    int next = -1;
+                    for (int du = -3; du <= 3 && next < 0; ++du) {
+                        next = crest(t + 1, u + du) ? u + du : -1;
+                    }
+                    if (next < 0) {
+                        break;
+                    }
+                    u = next;
+                    ++t;
+                }
+                lengths.push_back(0.05 * (t - start + 1));
+            }
+        }
+    }
+    // A crest followed through a junction goes on along the other: the longest may reach the end
+    // of the window; most do not.
+    const double p90 = dunes_test::quantile(lengths, 0.9);
+    const double p95 = dunes_test::quantile(lengths, 0.95);
+    std::printf("crests of the ridges: %zu followed, median %.1f km, p90 %.1f km, p95 %.1f km\n",
+                lengths.size(), dunes_test::quantile(lengths, 0.5), p90, p95);
+    TEST_CHECK(lengths.size() >= 50);
+    TEST_CHECK(p90 <= 10.0 && p95 <= 12.0);
+}
+
 // Barchans where the sand is scarce: crescents apart, the floor bare between them (more than
 // half of the ground), at most 60 m high.
 void testBarchans() {
@@ -205,6 +265,7 @@ void testContinuous() {
 
 int main() {
     testTransverse();
+    testCrestSegments();
     testBarchans();
     testSeifs();
     testStars();

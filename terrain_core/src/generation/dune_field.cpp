@@ -74,6 +74,18 @@ constexpr double kStarOccupancySand = 0.4;
 // Around the defects of the phase (two crests joining), the dunes fade between these coherences.
 constexpr float kCoherenceLow = 0.03f;
 constexpr float kCoherenceHigh = 0.3f;
+// The crests of the ridges break in saddles where the noise of the sides (sampled kBreakShift
+// away, 3 km) is low, about a fifth of their length below half their height: no crest runs on
+// for tens of kilometers (a straight band to the horizon, seen along it).
+constexpr float kBreakLow = -0.45f;
+constexpr float kBreakHigh = 0.05f;
+constexpr double kBreakShift = 5'555.0;
+// The breaks fade out from kBreakFull to kBreakNone meters of height: lowering a tall crest over
+// a few hundred meters would make it steep along its length (the draas keep their long ridges
+// and their small dunes); the crest falls by at most about 22 degrees along it.
+constexpr double kBreakFull = 80.0;
+constexpr double kBreakNone = 180.0;
+constexpr double kBreakMean = 0.78; // the mean of the ramp of the breaks over the noise (measured)
 // The dunes fade out over the first kEdgeFade of the mask.
 constexpr float kEdgeFade = 0.2f;
 
@@ -194,6 +206,22 @@ double seifAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase
     return std::max(seifLine(q, lines[0], ends, slip), share * seifLine(q, lines[1], ends, slip));
 }
 
+// How much the crests of ridges of a height break, [0, 1].
+double breakStrength(double height) {
+    return std::clamp((kBreakNone - height) / (kBreakNone - kBreakFull), 0.0, 1.0);
+}
+
+// The share of the height the crests of the transverse ridges keep at q (their saddles).
+double unbroken(const Ergs::Impl& m, const Point& q) {
+    const double strength = breakStrength(q.height);
+    if (!(strength > 0.0)) {
+        return 1.0;
+    }
+    const double n = static_cast<double>(
+        m.side.fbm2D(q.x + kBreakShift, q.z - kBreakShift, memosOf(m).breaks));
+    return 1.0 - strength * (1.0 - ramp(kBreakLow, kBreakHigh, n));
+}
+
 // The kinds that follow the wind, around the pivots.
 double windKinds(const Ergs::Impl& m, const Point& q, const FormWeights& w) {
     const dune_phase::Shared s = dune_phase::sharedAt(m, q.x, q.z);
@@ -204,8 +232,8 @@ double windKinds(const Ergs::Impl& m, const Point& q, const FormWeights& w) {
     const double coherent = ramp(kCoherenceLow, kCoherenceHigh, ridge.coherence);
     if (w.transverse > 0.0f || w.draa > 0.0f) {
         const double main =
-            dune_forms::transverse(ridge.fraction, ridge.wavelength, q.height * coherent, gap,
-                                   ridge.nominal);
+            dune_forms::transverse(ridge.fraction, ridge.wavelength,
+                                   q.height * coherent * unbroken(m, q), gap, ridge.nominal);
         sum += powerOf(main, w.transverse);
         if (w.draa > 0.0f) {
             sum += powerOf(draaAt(m, s, p, ridge, main, q.height * coherent), w.draa);
@@ -280,7 +308,9 @@ Means meansOf(const ErgPoint& e, double height, double spacing) {
     const double gap = kGapLow + kGapRange * (1.0 - sand);
     const double room = spacing * (1.0 - gap);
     const double tall = std::min(height, room / (1.0 / dune_forms::kLeeTan + 7.0));
-    out.transverse = kCoherentMean * tall * (1.0 - gap) / 2.0;
+    // Their saddles keep kBreakMean of the height on average (the ridges small enough to break).
+    out.transverse = kCoherentMean * tall * (1.0 - gap) / 2.0 *
+                     (1.0 - breakStrength(height) * (1.0 - kBreakMean));
     const double small = kSmallHeightBase + kSmallHeightShare * tall;
     const double on = std::max(0.0, room - tall / dune_forms::kLeeTan - 2.0 * kSmallClear) / spacing;
     out.draa = out.transverse + kCoherentMean * on * small * (1.0 - kSmallGap) / 2.0;
