@@ -25,6 +25,9 @@
 namespace terrain::dune_phase {
 
 inline constexpr double kPivot = 16384.0;
+// The lattice of the giant waves (ergs of that character): crests 5 to 20 km apart need pivots
+// farther apart. A whole multiple of kPivot: it divides the world as kPivot does.
+inline constexpr double kGiantPivot = 4.0 * kPivot;
 inline constexpr double kStep = 1.0; // meters: the differences of the noises and of the phase
 
 // The noises the phases read, at the point and kStep meters east and south of it.
@@ -46,13 +49,16 @@ struct Pivot {
     std::uint64_t key = 0;
 };
 
-// The 4 pivots around a point and their lattice cell.
+// The 4 pivots around a point and their lattice cell; giant: those of the lattice of kGiantPivot
+// (their own draws), else of kPivot.
 struct Pivots {
     std::array<Pivot, 4> pivots{};
     std::int64_t fi = 0;
     std::int64_t fj = 0;
+    bool giant = false;
+    [[nodiscard]] double size() const { return giant ? kGiantPivot : kPivot; }
 };
-[[nodiscard]] Pivots pivotsAt(const Ergs::Impl& m, const Shared& s);
+[[nodiscard]] Pivots pivotsAt(const Ergs::Impl& m, const Shared& s, bool giant = false);
 
 // Which phase of the pivots: along their wind (ridges, rows of barchans, draas) or across it
 // (seifs, cells of the barchans), with the spacing of each pivot scaled, its direction turned

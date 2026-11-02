@@ -74,10 +74,14 @@ inline const SmallWorld& small() {
     return world;
 }
 
-// An erg point of a kind, wherever: a full mask, this sand and variability, the wind of the place.
+// An erg point of a kind, wherever: a full mask, this sand and variability, the wind of the place,
+// the character (the realistic kinds by default).
 inline terrain::ErgPoint forced(const terrain::Ergs& ergs, double x, double z, float sand,
-                                float variability) {
+                                float variability,
+                                terrain::ErgCharacter character = terrain::ErgCharacter::Realistic) {
     terrain::ErgPoint e;
+    e.waves = character == terrain::ErgCharacter::Waves ? 1.0f : 0.0f;
+    e.giants = character == terrain::ErgCharacter::Giants ? 1.0f : 0.0f;
     e.mask = 1.0f;
     e.sand = sand;
     e.variability = variability;
@@ -89,11 +93,13 @@ inline terrain::ErgPoint forced(const terrain::Ergs& ergs, double x, double z, f
 
 // The dunes of a forced kind at (x, z), wrapped onto the world.
 inline double forcedDunes(const terrain::Ergs& ergs, double x, double z, float sand,
-                          float variability) {
+                          float variability,
+                          terrain::ErgCharacter character = terrain::ErgCharacter::Realistic) {
     const terrain::PlanetGrid& g = ergs.grid();
     x = terrain::wrapCoordinate(x, g.periodX());
     z = terrain::wrapCoordinate(z, g.periodZ());
-    return static_cast<double>(ergs.dunesOf(x, z, forced(ergs, x, z, sand, variability)));
+    return static_cast<double>(
+        ergs.dunesOf(x, z, forced(ergs, x, z, sand, variability, character)));
 }
 
 // The slope at (x, z), degrees, from differences over 0.5 m.

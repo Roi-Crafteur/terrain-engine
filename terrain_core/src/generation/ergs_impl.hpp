@@ -110,6 +110,10 @@ struct Ergs::Impl {
     noise::FbmOctaves side;
     noise::FbmOctaves ends;
     noise::FbmOctaves scatter; // the barchans, at their own scale: which are there, how tall
+    noise::FbmOctaves character; // the slow variation of the characters within an erg
+    std::vector<float> waves;    // per block: the character of the nearest erg (erg_characters)
+    std::vector<float> giants;
+    std::vector<ErgSummary> ergList;
     noise::FbmOctaves shore;     // how far the edge of the dunes wanders from a valley floor
     noise::FbmOctaves lakeShore; // and from a lake
 };
@@ -134,6 +138,8 @@ struct ErgMemos {
     noise::FbmOctaves::Memo breaks;   // the noise of the sides, shifted: the saddles of the ridges
     noise::FbmOctaves::Memo scatter;
     noise::FbmOctaves::Memo shore;
+    noise::FbmOctaves::Memo character;
+    noise::FbmOctaves::Memo waveJoins;
     noise::FbmOctaves::Memo lakeShore;
 };
 [[nodiscard]] ErgMemos& memosOf(const Ergs::Impl& m);

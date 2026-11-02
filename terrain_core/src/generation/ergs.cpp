@@ -2,6 +2,8 @@
 // their sand, the variability of their winds and the wind itself.
 #include "terrain/generation/ergs.hpp"
 
+#include "dune_waves.hpp"
+#include "erg_characters.hpp"
 #include "ergs_impl.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -57,6 +59,17 @@ constexpr double kShoreWander = 1'200.0;
 constexpr double kShoreWavelength = 2'500.0;
 constexpr double kLakeWander = 3'000.0;
 constexpr double kLakeWavelength = 12'000.0;
+// The waves of the ergs of those characters rise this high at most (dune_waves.hpp), and their
+// fades along the water stretch kFadePerMeter meters per meter of it: 12 degrees at most (the
+// steepest of a Hermite curve, 1.5 times its mean).
+constexpr double kWavesTallest = 300.0;
+constexpr double kGiantsTallest = 800.0;
+constexpr double kFadePerMeter = 7.06; // 1.5 / tan 12 degrees
+// The weights of the characters from the blocks and the slow noise: the realistic fade out from
+// kRealisticEnd, the giant waves come from kGiantsStart, over kCharacterJoin.
+constexpr float kRealisticEnd = 0.1f;
+constexpr float kGiantsStart = 0.6f;
+constexpr float kCharacterJoin = 0.3f;
 
 // Noise streams.
 enum Stream : std::uint64_t {
@@ -75,6 +88,7 @@ enum Stream : std::uint64_t {
     kScatter,
     kShore,
     kLakeShore,
+    kCharacter,
 };
 
 noise::FbmOctaves octaves(std::uint64_t seed, Stream stream, int count, double wavelength,
@@ -93,6 +107,7 @@ double hermite(double edge0, double edge1, double v) {
 } // namespace
 
 static void markDepressions(Ergs::Impl& m);
+static void assignCharacters(Ergs::Impl& m);
 
 Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
            const std::vector<Depression>& depressions, const ErgParams& params, RiverFloor floor)
@@ -129,6 +144,8 @@ Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
     m.scatter = octaves(m.seed, kScatter, 2, 1'200.0, m.world);
     m.shore = octaves(m.seed, kShore, 2, kShoreWavelength, m.world);
     m.lakeShore = octaves(m.seed, kLakeShore, 2, kLakeWavelength, m.world);
+    m.character = octaves(m.seed, kCharacter, 2, params.characterWavelength, m.world);
+    assignCharacters(m);
 }
 
 Ergs::~Ergs() = default;
@@ -213,10 +230,26 @@ static double wanderOf(const noise::FbmOctaves& n, noise::FbmOctaves::Memo& memo
     return wander * static_cast<double>(noise::smoothstep(-0.5f, 0.5f, n.fbm2D(x, z, memo)));
 }
 
+// The weights of the characters at (x, z): those of the ergs of the blocks, moved by the slow
+// noise toward the next character (realistic, big waves, giant waves), joined smoothly.
+static void characterOf(const Ergs::Impl& m, double x, double z, ErgPoint& e) {
+    const float blocks = 0.5f * erg_field::blockAt(m.field, m.waves, x, z) +
+                         erg_field::blockAt(m.field, m.giants, x, z);
+    const float u = std::clamp(blocks + m.params.characterMix *
+                                            m.character.fbm2D(x, z, memosOf(m).character),
+                               0.0f, 1.0f);
+    const float realistic = 1.0f - noise::smoothstep(kRealisticEnd, kRealisticEnd + kCharacterJoin, u);
+    e.giants = noise::smoothstep(kGiantsStart, kGiantsStart + kCharacterJoin, u);
+    e.waves = std::max(0.0f, 1.0f - realistic - e.giants);
+}
+
 // The share of the dunes the water leaves at (x, z): none on a lake nor on the floor of a valley,
-// all beyond their corridors, their edges wandering outward (never closer to the water).
-static double waterShare(const Ergs::Impl& m, double x, double z) {
-    const ErgParams& p = m.params;
+// all beyond their corridors, their edges wandering outward (never closer to the water). tallest:
+// the height the dunes may reach there; their fades stretch with it.
+static double waterShare(const Ergs::Impl& m, double x, double z, double tallest) {
+    ErgParams p = m.params;
+    p.riverFade = std::max(p.riverFade, kFadePerMeter * tallest);
+    p.lakeFade = std::max(p.lakeFade, kFadePerMeter * tallest);
     const double riverFar = p.corridorClear + p.riverFade;
     const double lakeFar = p.lakeClear + p.lakeFade;
     ErgMemos& memo = memosOf(m);
@@ -281,7 +314,11 @@ ErgPoint Ergs::at(double x, double z, float relief) const {
     if (!(mask > 0.0f)) {
         return {};
     }
-    mask *= static_cast<float>(waterShare(m, x, z) *
+    ErgPoint e;
+    characterOf(m, x, z, e);
+    const double tallest = kWavesTallest * static_cast<double>(e.waves) +
+                           kGiantsTallest * static_cast<double>(e.giants);
+    mask *= static_cast<float>(waterShare(m, x, z, tallest) *
                                depressionShare(m, x, z)) *
             (1.0f - noise::smoothstep(m.params.humidLow, m.params.humidHigh,
                                       m.planet->humidityAt(x, z))) *
@@ -289,7 +326,6 @@ ErgPoint Ergs::at(double x, double z, float relief) const {
     if (!(mask > 0.0f)) {
         return {};
     }
-    ErgPoint e;
     e.mask = mask;
     e.sand = mask * noise::smoothstep(kSandLow, kSandHigh,
                                       potential * (1.0f + kSandNoise * m.sand.fbm2D(x, z, memo.sand)));
@@ -353,7 +389,11 @@ float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,
         *mask = e.mask;
     }
     // The spacing of the dunes the sand gives (dune_phase: that of the pivots, smooth).
-    const double spacing = kMeanLeast + kMeanRange * dmath::pow(static_cast<double>(e.sand), 1.3);
+    // The waves of the ergs of those characters stand farther apart: their filter starts later.
+    const double spacing =
+        (kMeanLeast + kMeanRange * dmath::pow(static_cast<double>(e.sand), 1.3)) *
+        (1.0 + static_cast<double>(e.waves) * (dune_waves::spacingScale(false) - 1.0) +
+         static_cast<double>(e.giants) * (dune_waves::spacingScale(true) - 1.0));
     const double filtered = hermite(kFilterLow * spacing, kFilterHigh * spacing, footprint);
     const double point = filtered < 1.0 ? static_cast<double>(dunesOf(x, z, e)) : 0.0;
     if (!(filtered > 0.0)) {
@@ -372,6 +412,10 @@ DuneKind Ergs::kindOf(const ErgPoint& e) const {
     if (!(e.mask > 0.0f)) {
         return DuneKind::None;
     }
+    const float realistic = 1.0f - e.waves - e.giants;
+    if (e.waves > realistic || e.giants > realistic) {
+        return e.giants > e.waves ? DuneKind::Giants : DuneKind::Waves;
+    }
     const dune_field::FormWeights w = dune_field::weightsOf(e);
     const std::array<std::pair<float, DuneKind>, 5> all = {{{w.barchan, DuneKind::Barchan},
                                                              {w.transverse, DuneKind::Transverse},
@@ -385,6 +429,36 @@ DuneKind Ergs::kindOf(const ErgPoint& e) const {
         }
     }
     return best.second;
+}
+
+// The characters of the ergs (erg_characters.hpp), from the cover of the blocks: their
+// potential where the sand is supplied, through the threshold of the mask (before its edges).
+static void assignCharacters(Ergs::Impl& m) {
+    const erg_field::Field& f = m.field;
+    std::vector<float> cover(f.potential.size(), 0.0f);
+    for (int bj = 0; bj < f.bz; ++bj) {
+        for (int bi = 0; bi < f.bx; ++bi) {
+            const std::size_t b = f.block(bi, bj);
+            if (!(f.potential[b] > 0.0f)) {
+                continue;
+            }
+            const double x = -0.5 * f.grid.periodX() + (bi + 0.5) * f.blockSize;
+            const double z = -0.5 * f.grid.periodZ() + (bj + 0.5) * f.blockSize;
+            const float core = f.potential[b] * noise::smoothstep(m.params.supplyLow,
+                                                                  m.params.supplyHigh,
+                                                                  m.supply.fbm2D(x, z));
+            cover[b] = noise::smoothstep(kMaskLow, kMaskHigh, core);
+        }
+    }
+    erg_characters::Assignment a =
+        erg_characters::assign(f, cover, m.seed, m.params.characterShares);
+    m.waves = std::move(a.waves);
+    m.giants = std::move(a.giants);
+    m.ergList = std::move(a.ergs);
+}
+
+const std::vector<ErgSummary>& Ergs::ergs() const {
+    return impl_->ergList;
 }
 
 const ErgParams& Ergs::params() const {

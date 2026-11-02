@@ -22,6 +22,12 @@ constexpr double kSpacingPower = 1.3;
 constexpr double kSpacingSpread = 0.2;
 constexpr double kSpacingLeast = 1000.0;
 constexpr double kSpacingMost = 3000.0;
+// The giant waves: their pivots stand 65 km apart, where the sand may differ a lot; their spacing
+// comes from a noise of 700 km instead (the next pivots alike), kGiantLeast to kGiantLeast +
+// kGiantRange meters (the noise sampled kGiantShift away from the turn of the wind it shares).
+constexpr double kGiantLeast = 6'000.0;
+constexpr double kGiantRange = 13'000.0;
+constexpr double kGiantShift = 3'000'000.0;
 // The sinuosity of the crests (share of the spacing) and the drift of the phase (cycles).
 constexpr double kSinuous = 0.3;
 constexpr double kDrift = 0.6;
@@ -35,16 +41,18 @@ double hermite01(double t) {
     return t * t * (3.0 - 2.0 * t);
 }
 
-Pivot pivotOf(const Ergs::Impl& m, std::int64_t i, std::int64_t j) {
-    const auto nx = static_cast<std::int64_t>(std::floor(m.world.x / kPivot + 0.5));
-    const auto nz = static_cast<std::int64_t>(std::floor(m.world.z / kPivot + 0.5));
+Pivot pivotOf(const Ergs::Impl& m, std::int64_t i, std::int64_t j, bool giant) {
+    const double size = giant ? kGiantPivot : kPivot;
+    const auto nx = static_cast<std::int64_t>(std::floor(m.world.x / size + 0.5));
+    const auto nz = static_cast<std::int64_t>(std::floor(m.world.z / size + 0.5));
     Pivot p;
-    p.key = dune_forms::cellHash(m.seed, ((i % nx) + nx) % nx, ((j % nz) + nz) % nz);
+    const std::uint64_t key = giant ? noise::deriveSeed(m.seed, 0x4749414E54ULL) : m.seed;
+    p.key = dune_forms::cellHash(key, ((i % nx) + nx) % nx, ((j % nz) + nz) % nz);
     const auto draw = [&](std::uint64_t k) {
         return dune_forms::uniform(noise::deriveSeed(p.key, k));
     };
-    p.cx = (static_cast<double>(i) + 0.5 + kPivotJitter * (draw(1) - 0.5)) * kPivot - 0.5 * m.world.x;
-    p.cz = (static_cast<double>(j) + 0.5 + kPivotJitter * (draw(2) - 0.5)) * kPivot - 0.5 * m.world.z;
+    p.cx = (static_cast<double>(i) + 0.5 + kPivotJitter * (draw(1) - 0.5)) * size - 0.5 * m.world.x;
+    p.cz = (static_cast<double>(j) + 0.5 + kPivotJitter * (draw(2) - 0.5)) * size - 0.5 * m.world.z;
     const double wx = wrapCoordinate(p.cx, m.world.x);
     const double wz = wrapCoordinate(p.cz, m.world.z);
     const std::array<double, 2> wind = windOf(m, wx, wz);
@@ -63,8 +71,22 @@ Pivot pivotOf(const Ergs::Impl& m, std::int64_t i, std::int64_t j) {
     p.spacing = std::clamp(
         (kSpacingLeast + kSpacingRange * dmath::pow(sand, kSpacingPower)) * spread, kSpacingLeast,
         kSpacingMost);
+    if (giant) {
+        const float slow = m.turn.fbm2D(wx + kGiantShift, wz - kGiantShift);
+        p.spacing = kGiantLeast + kGiantRange * static_cast<double>(noise::smoothstep(-0.4f, 0.4f, slow));
+    }
     p.phase = draw(5);
     return p;
+}
+
+} // namespace
+
+namespace {
+
+// The warp of the lattice of the pivots, in cells: the same in meters on both lattices (the noises
+// that warp it keep their wavelengths: a wider lattice warped as much in cells would tear).
+double warpOf(const Pivots& p) {
+    return kLatticeWarp * kPivot / p.size();
 }
 
 } // namespace
@@ -81,24 +103,29 @@ Shared sharedAt(const Ergs::Impl& m, double x, double z) {
     return s;
 }
 
-Pivots pivotsAt(const Ergs::Impl& m, const Shared& s) {
+Pivots pivotsAt(const Ergs::Impl& m, const Shared& s, bool giant) {
     Pivots p;
-    const double gx = (s.x[0] + 0.5 * m.world.x) / kPivot - 0.5 + kLatticeWarp * s.drift[0];
-    const double gz = (s.z[0] + 0.5 * m.world.z) / kPivot - 0.5 + kLatticeWarp * s.sinuosity[0];
+    p.giant = giant;
+    const double size = p.size();
+    const double warp = warpOf(p);
+    const double gx = (s.x[0] + 0.5 * m.world.x) / size - 0.5 + warp * s.drift[0];
+    const double gz = (s.z[0] + 0.5 * m.world.z) / size - 0.5 + warp * s.sinuosity[0];
     p.fi = dmath::floorIndex(gx).index;
     p.fj = dmath::floorIndex(gz).index;
-    // The pivots of the last cell on this thread (a pure function of the cell: the same bits).
+    // The pivots of the last cell of each lattice on this thread (a pure function of the cell:
+    // the same bits).
     struct Last {
         std::uint64_t owner = 0;
         Pivots pivots;
     };
-    thread_local Last last;
+    thread_local std::array<Last, 2> lasts;
+    Last& last = lasts[giant ? 1 : 0];
     if (last.owner == m.id && last.pivots.fi == p.fi && last.pivots.fj == p.fj) {
         return last.pivots;
     }
     for (std::size_t k = 0; k < 4; ++k) {
         p.pivots[k] = pivotOf(m, p.fi + static_cast<std::int64_t>(k % 2),
-                              p.fj + static_cast<std::int64_t>(k / 2));
+                              p.fj + static_cast<std::int64_t>(k / 2), giant);
     }
     last.owner = m.id;
     last.pivots = p;
@@ -115,15 +142,17 @@ struct Weights {
     std::array<double, 4> gz{};
 };
 Weights weightsWithSlopes(const Ergs::Impl& m, const Shared& s, const Pivots& p) {
-    const double ux = (s.x[0] + 0.5 * m.world.x) / kPivot - 0.5 + kLatticeWarp * s.drift[0] -
+    const double size = p.size();
+    const double warp = warpOf(p);
+    const double ux = (s.x[0] + 0.5 * m.world.x) / size - 0.5 + warp * s.drift[0] -
                       static_cast<double>(p.fi);
-    const double uz = (s.z[0] + 0.5 * m.world.z) / kPivot - 0.5 + kLatticeWarp * s.sinuosity[0] -
+    const double uz = (s.z[0] + 0.5 * m.world.z) / size - 0.5 + warp * s.sinuosity[0] -
                       static_cast<double>(p.fj);
     // The lattice coordinates per meter: along x and z, and the warp.
-    const double gxx = 1.0 / kPivot + kLatticeWarp * (s.drift[1] - s.drift[0]) / kStep;
-    const double gxz = kLatticeWarp * (s.drift[2] - s.drift[0]) / kStep;
-    const double gzx = kLatticeWarp * (s.sinuosity[1] - s.sinuosity[0]) / kStep;
-    const double gzz = 1.0 / kPivot + kLatticeWarp * (s.sinuosity[2] - s.sinuosity[0]) / kStep;
+    const double gxx = 1.0 / size + warp * (s.drift[1] - s.drift[0]) / kStep;
+    const double gxz = warp * (s.drift[2] - s.drift[0]) / kStep;
+    const double gzx = warp * (s.sinuosity[1] - s.sinuosity[0]) / kStep;
+    const double gzz = 1.0 / size + warp * (s.sinuosity[2] - s.sinuosity[0]) / kStep;
     const double tx = hermite01(ux);
     const double tz = hermite01(uz);
     const double dtx = ux > 0.0 && ux < 1.0 ? 6.0 * ux * (1.0 - ux) : 0.0;

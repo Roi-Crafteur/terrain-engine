@@ -366,7 +366,12 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   une case libre. 7,4 % de la surface des ergs (et 6,0 % sur savane) tombe sur la prairie de la
   coupure climatique de 30° : à revoir quand le climat sera lissé. Coût : une tuile dans un erg
   1,1 à 1,6 ms (plafond 2 ms), ×1,00 ailleurs. La part de dune (SurfaceBlend::dunes) suit les
-  poids des tuiles et de l'horizon (agent 29) : le sable des dunes, lisse, à toute pente
+  poids des tuiles et de l'horizon (agent 29) : le sable des dunes, lisse, à toute pente.
+  Trois caractères d'ergs, tirés erg par erg (jamais par le biome) : réaliste, grandes vagues
+  (crêtes de 2 à 6 km, jusqu'à 300 m), vagues géantes (6 à 19 km, jusqu'à 800 m) ; 40 / 35 / 25 %
+  de la surface, chacun parmi les 5 plus grands ergs (règle dans `generation/erg_characters.hpp`).
+  Pour l'agent 31 : dans les ergs de vagues, le fondu des dunes le long des oueds et des lacs
+  s'allonge de 7 m par mètre de hauteur (2,1 km pour 300 m, 5,6 km pour 800 m)
 - falaises, surplombs et arches dans le monde infini : phase 12A en cours. Une couche de roche 3D
   autour de la surface, là où la géologie fait des parois (couches dures des montagnes, fentes
   des chutes et gorges, escarpements, arches et ponts de roche) ; le reste du monde garde ses

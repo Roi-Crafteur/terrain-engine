@@ -23,7 +23,9 @@
 // The rule of the wadis (for the river network, task 11C): a river of the planet level carved by
 // the hydrology (discharge at least ErgParams::minDischarge) crosses an erg: no dune within
 // riverClear meters of the floor of its valley (the course the tiles carve, Hydrology::
-// floorDistance), the dunes rising to their full height over the riverFade meters beyond. The
+// floorDistance), the dunes rising to their full height over the riverFade meters beyond (in
+// the ergs of waves, over 7 meters per meter of their height: 2.1 km for big waves of 300 m,
+// 5.6 km for giant waves of 800 m, so that no edge passes 12 degrees). The
 // valley is found on the relief without dunes; the dunes never bar it. A smaller stream is not
 // carved: it stops at the foot of the erg. Without the courses (Ergs built alone), the polyline
 // of the centers of the river cells stands for them, widened by how far a course may stray from
@@ -101,6 +103,27 @@ struct ErgParams {
     double lakeClear = 8'000.0;
     double lakeFade = 3'000.0;
     double minDischarge = 10.0; // m^3/s: the rivers the hydrology carves (HydrologyParams)
+    // The characters of the ergs (ErgCharacter), drawn erg by erg (erg_characters.hpp): their
+    // target shares of the area of the ergs (realistic, big waves, giant waves), and the slow
+    // noise (its wavelength, how far it moves an erg toward the next character) that varies them
+    // within an erg.
+    std::array<double, 3> characterShares{0.40, 0.35, 0.25};
+    double characterWavelength = 800'000.0;
+    float characterMix = 0.55f;
+};
+
+// The character of an erg: realistic (barchans, transverse ridges, seifs, stars, draas), big
+// waves (a continuous sea of smooth forms, crests 2 to 5 km apart, up to 300 m), giant waves
+// (the same, 5 to 20 km apart, up to 800 m).
+enum class ErgCharacter : std::uint8_t { Realistic, Waves, Giants };
+
+// An erg of the planet (Ergs::ergs): its first block (center, meters), its area (in blocks of
+// the field, weighted by how much of each the ergs cover) and its character.
+struct ErgSummary {
+    double x = 0.0;
+    double z = 0.0;
+    double area = 0.0;
+    ErgCharacter character = ErgCharacter::Realistic;
 };
 
 // What the climate and the place make of a point (Ergs::at).
@@ -110,10 +133,14 @@ struct ErgPoint {
     float variability = 0.0f; // [0, 1]: from a steady wind to winds from every side
     double windX = 1.0;       // unit direction toward which the sand moves (+x east, +z south)
     double windZ = 0.0;
+    // The weights of the characters (the rest realistic): the character of the erg, varied by a
+    // slow noise, joined smoothly to that of the next.
+    float waves = 0.0f;
+    float giants = 0.0f;
 };
 
-// The kinds of dunes, for the maps and the tests.
-enum class DuneKind : std::uint8_t { None, Barchan, Transverse, Seif, Star, Draa };
+// The kinds of dunes, for the maps and the tests (the waves: of the ergs of those characters).
+enum class DuneKind : std::uint8_t { None, Barchan, Transverse, Seif, Star, Draa, Waves, Giants };
 
 class Ergs {
 public:
@@ -146,13 +173,17 @@ public:
     // mask: if not null, the mask of the ergs there (ErgPoint::mask, 0 where no dune may be).
     [[nodiscard]] float dunesAt(double x, double z, const HeightSample& s, double footprint = 0.0,
                                 float* mask = nullptr) const;
-    // The dunes of an erg point, and the kind that weighs most there.
+    // The dunes of an erg point, and the kind that weighs most there (the waves where their
+    // character weighs most).
     [[nodiscard]] float dunesOf(double x, double z, const ErgPoint& e) const;
     [[nodiscard]] DuneKind kindOf(const ErgPoint& e) const;
 
     // The prevailing wind at the canonical (x, z): the bands of the planet level, smoothly
     // joined, turned by a slow noise. Unit vector.
     [[nodiscard]] std::array<double, 2> windAt(double x, double z) const;
+
+    // The ergs of the planet, from the largest, with their characters.
+    [[nodiscard]] const std::vector<ErgSummary>& ergs() const;
 
     [[nodiscard]] const ErgParams& params() const;
     [[nodiscard]] const PlanetGrid& grid() const;

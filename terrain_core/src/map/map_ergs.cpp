@@ -28,6 +28,10 @@ MapColor mapDuneColor(DuneKind kind) {
         return {224, 120, 120, 255};
     case DuneKind::Star:
         return {160, 84, 170, 255};
+    case DuneKind::Waves:
+        return {96, 176, 200, 255};
+    case DuneKind::Giants:
+        return {40, 96, 168, 255};
     case DuneKind::None:
         break;
     }

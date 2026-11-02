@@ -53,8 +53,10 @@ add_library(terrain_core STATIC
     src/generation/dune_field.cpp
     src/generation/dune_forms.cpp
     src/generation/dune_phase.cpp
+    src/generation/dune_waves.cpp
     src/generation/depressions.cpp
     src/generation/ecology.cpp
+    src/generation/erg_characters.cpp
     src/generation/erg_field.cpp
     src/generation/ergs.cpp
     src/generation/eroded_region.cpp

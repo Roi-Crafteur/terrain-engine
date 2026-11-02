@@ -3,6 +3,7 @@
 // stay sharp where two kinds meet.
 #include "dune_forms.hpp"
 #include "dune_phase.hpp"
+#include "dune_waves.hpp"
 #include "ergs_impl.hpp"
 
 #include "terrain/det_math.hpp"
@@ -223,8 +224,8 @@ double unbroken(const Ergs::Impl& m, const Point& q) {
 }
 
 // The kinds that follow the wind, around the pivots.
-double windKinds(const Ergs::Impl& m, const Point& q, const FormWeights& w) {
-    const dune_phase::Shared s = dune_phase::sharedAt(m, q.x, q.z);
+double windKinds(const Ergs::Impl& m, const dune_phase::Shared& s, const Point& q,
+                 const FormWeights& w) {
     const dune_phase::Pivots p = dune_phase::pivotsAt(m, s);
     double sum = 0.0;
     const dune_phase::Phase ridge = dune_phase::phaseAt(m, s, p, {});
@@ -335,6 +336,15 @@ Means meansOf(const ErgPoint& e, double height, double spacing) {
     return out;
 }
 
+// The share of their height the dunes keep at the edges of the erg: the realistic kinds fade
+// over the first kEdgeFade of the mask, the waves (far taller) with the whole mask, whose fades
+// stretch with their height (ergs.cpp).
+double edgeOf(const ErgPoint& e) {
+    const double fade = static_cast<double>(noise::smoothstep(0.0f, kEdgeFade, e.mask));
+    const double waves = static_cast<double>(e.waves) + static_cast<double>(e.giants);
+    return fade + (static_cast<double>(e.mask) - fade) * waves;
+}
+
 } // namespace
 
 double meanDunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
@@ -346,11 +356,20 @@ double meanDunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
     const double amplitude = static_cast<double>(m.amplitude.fbm2D(x, z, memosOf(m).amplitude));
     const Means k = meansOf(e, heightOf(static_cast<double>(e.sand), amplitude), spacing);
     const FormWeights w = weightsOf(e);
-    const double mean = static_cast<double>(w.transverse) * k.transverse +
-                        static_cast<double>(w.draa) * k.draa +
-                        static_cast<double>(w.barchan) * k.barchan +
-                        static_cast<double>(w.seif) * k.seif + static_cast<double>(w.star) * k.star;
-    return mean * static_cast<double>(noise::smoothstep(0.0f, kEdgeFade, e.mask));
+    const double realistic = 1.0 - static_cast<double>(e.waves) - static_cast<double>(e.giants);
+    double mean = realistic * (static_cast<double>(w.transverse) * k.transverse +
+                               static_cast<double>(w.draa) * k.draa +
+                               static_cast<double>(w.barchan) * k.barchan +
+                               static_cast<double>(w.seif) * k.seif +
+                               static_cast<double>(w.star) * k.star);
+    const double sand = static_cast<double>(e.sand);
+    if (e.waves > 0.0f) {
+        mean += static_cast<double>(e.waves) * dune_waves::meanWaves(m, s, sand, amplitude, false);
+    }
+    if (e.giants > 0.0f) {
+        mean += static_cast<double>(e.giants) * dune_waves::meanWaves(m, s, sand, amplitude, true);
+    }
+    return mean * edgeOf(e);
 }
 
 float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
@@ -364,16 +383,29 @@ float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
     q.mask = static_cast<double>(e.mask);
     q.amplitude = static_cast<double>(m.amplitude.fbm2D(x, z, memosOf(m).amplitude));
     q.height = heightOf(q.sand, q.amplitude);
-    const FormWeights w = weightsOf(e);
+    const dune_phase::Shared s = dune_phase::sharedAt(m, x, z);
+    // The characters: the realistic kinds, the big waves and the giant waves, by a power mean of
+    // their heights weighted by the characters (the realistic alone: the same bits as before).
+    const float realistic = 1.0f - e.waves - e.giants;
     double sum = 0.0;
-    if (w.star < 1.0f) {
-        sum += windKinds(m, q, w);
+    if (realistic > 0.0f) {
+        const FormWeights w = weightsOf(e);
+        if (w.star < 1.0f) {
+            sum += windKinds(m, s, q, w);
+        }
+        if (w.star > 0.0f) {
+            sum += powerOf(starKind(m, q), w.star);
+        }
+        sum *= static_cast<double>(realistic);
     }
-    if (w.star > 0.0f) {
-        sum += powerOf(starKind(m, q), w.star);
+    if (e.waves > 0.0f) {
+        sum += powerOf(dune_waves::waves(m, s, x, z, q.sand, q.amplitude, false), e.waves);
+    }
+    if (e.giants > 0.0f) {
+        sum += powerOf(dune_waves::waves(m, s, x, z, q.sand, q.amplitude, true), e.giants);
     }
     const double h = std::sqrt(std::sqrt(sum));
-    return static_cast<float>(h * static_cast<double>(noise::smoothstep(0.0f, kEdgeFade, e.mask)));
+    return static_cast<float>(h * edgeOf(e));
 }
 
 } // namespace terrain::dune_field
