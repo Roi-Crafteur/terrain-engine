@@ -182,6 +182,15 @@ class Api:
         r = manager.get_camera_rotation()
         return float(r.pitch), float(r.yaw)
 
+    def camera_location(self, world):
+        """Where the first player sees from: (x, y, z) in cm, or None."""
+        controller = _get(self.ue, "GameplayStatics").get_player_controller(world, 0)
+        manager = getattr(controller, "player_camera_manager", None)
+        if manager is None or not hasattr(manager, "get_camera_location"):
+            return None
+        v = manager.get_camera_location()
+        return float(v.x), float(v.y), float(v.z)
+
     def set_sun(self, world, elevation, yaw):
         cls = _get(self.ue, "DirectionalLight")
         lights = list(_get(self.ue, "GameplayStatics").get_all_actors_of_class(world, cls))
