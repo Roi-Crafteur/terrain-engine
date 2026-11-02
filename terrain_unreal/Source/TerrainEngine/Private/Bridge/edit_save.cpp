@@ -90,6 +90,11 @@ void EditSaver::markEdited(std::span<const ChunkCoord> chunks) {
     }
 }
 
+void EditSaver::markRegions(std::span<const RegionCoord> regions) {
+    const std::lock_guard lock(mutex_);
+    marked_.insert(regions.begin(), regions.end());
+}
+
 std::size_t EditSaver::dirtyRegions() const {
     const std::lock_guard lock(mutex_);
     return marked_.size();

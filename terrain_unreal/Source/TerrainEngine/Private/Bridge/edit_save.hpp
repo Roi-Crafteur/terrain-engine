@@ -65,6 +65,9 @@ public:
     EditSaver& operator=(const EditSaver&) = delete;
 
     void markEdited(std::span<const ChunkCoord> chunks);
+    // Regions written again by the next save whatever they hold (a region without edits loses its
+    // file): the regions of a folder whose save is replaced (savedRegions).
+    void markRegions(std::span<const RegionCoord> regions);
     // Regions marked and not yet handed to a save.
     [[nodiscard]] std::size_t dirtyRegions() const;
     // Hands the regions marked to the thread; false (nothing done) when none is marked.

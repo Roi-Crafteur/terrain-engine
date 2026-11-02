@@ -102,6 +102,19 @@ void testRoundTrip() {
         terrain::unreal::loadEdits(folder, kSeed, terrain::WorldSize{});
     TEST_CHECK(load.found && load.error.empty());
     TEST_CHECK(load.modifications == saved);
+    TEST_CHECK(terrain::savedRegions(folder).size() == 1);
+    {
+        // A save replaced by an empty one (the save started again over this folder while
+        // playing): its regions marked, written without edits, their files gone.
+        EditSaver replace(folder, terrain::unreal::editWorldMeta(kSeed, terrain::WorldSize{}),
+                          [] { return terrain::ModificationStore{}; });
+        const std::vector<terrain::RegionCoord> regions = terrain::savedRegions(folder);
+        replace.markRegions(regions);
+        TEST_CHECK(replace.save());
+        replace.flush();
+        TEST_CHECK(terrain::unreal::loadEdits(folder, kSeed, terrain::WorldSize{})
+                       .modifications.empty());
+    }
     TerrainSession again(smallSession());
     (void)again.replaceModifications(load.modifications);
     const std::optional<TileUpload> reloaded = groundTile(again, again.frameAt(0.0, 0.0));
