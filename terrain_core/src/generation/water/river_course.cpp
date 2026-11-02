@@ -412,6 +412,7 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
         c.slotSeed = noise::deriveSeed(
             noise::deriveSeed(kSlotSeed, static_cast<std::uint64_t>(std::llround(c.points[0].x))),
             static_cast<std::uint64_t>(std::llround(c.points[0].z)));
+        c.narrowKey = narrowKey(c.slotSeed); // before anything reads its frames
         placePools(c);
         windCorridors(c, relief, in.surface, runs);
         placeBlocks(c);

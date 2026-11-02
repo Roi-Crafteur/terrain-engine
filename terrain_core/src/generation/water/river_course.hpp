@@ -304,6 +304,7 @@ struct Course {
     // The noise of the slots of its falls, and the blocks of rock in their pools with their box
     // (river_slot.hpp).
     std::uint64_t slotSeed = 0;
+    std::uint64_t narrowKey = 0; // narrowKey(slotSeed) (slotHalfOf): read by its falls only
     std::vector<FallBlock> blocks;
     double blocksMinX = 0.0;
     double blocksMinZ = 0.0;

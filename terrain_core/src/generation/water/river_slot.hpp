@@ -28,6 +28,11 @@ namespace terrain::water {
 // axis of the course, narrowed (never wider than half).
 [[nodiscard]] double slotHalf(std::uint64_t seed, double s, double half);
 
+// slotHalf from the key of the narrowing of the slots of seed (narrowKey(seed), drawn once per
+// course: Course::narrowKey), the same value bit for bit.
+[[nodiscard]] std::uint64_t narrowKey(std::uint64_t seed);
+[[nodiscard]] double slotHalfOf(std::uint64_t key, double s, double half);
+
 // How far the walls of the slot there reach beyond its channel, base its walls, on the side of a
 // point side meters to the left of the slot (right: negative), the ravine wandering about the
 // channel; less by bowl meters where a bowl widens the channel (bowlAt), as far as they reach.

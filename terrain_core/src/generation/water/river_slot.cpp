@@ -306,8 +306,10 @@ float slotBase(double mean) {
     return static_cast<float>(std::clamp(kSlotShare * mean, kSlotLeast, kSlotMost));
 }
 
-double slotNoise(std::uint64_t seed, std::uint64_t stream, double s, double wave) {
-    const std::uint64_t key = noise::deriveSeed(seed, stream);
+namespace {
+
+// slotNoise of the key of its stream.
+double keyedNoise(std::uint64_t key, double s, double wave) {
     const double phase = s / wave + shareOf(key, 40);
     const double i = std::floor(phase);
     const double f = phase - i;
@@ -324,8 +326,22 @@ double slotNoise(std::uint64_t seed, std::uint64_t stream, double s, double wave
     return std::clamp(kGradientShare * gradient + kValueShare * value, -1.0, 1.0);
 }
 
+} // namespace
+
+double slotNoise(std::uint64_t seed, std::uint64_t stream, double s, double wave) {
+    return keyedNoise(noise::deriveSeed(seed, stream), s, wave);
+}
+
 double slotHalf(std::uint64_t seed, double s, double half) {
-    return half * (1.0 - kNarrowMost * 0.5 * (1.0 + slotNoise(seed, kNarrow, s, kNarrowWave)));
+    return slotHalfOf(narrowKey(seed), s, half);
+}
+
+std::uint64_t narrowKey(std::uint64_t seed) {
+    return noise::deriveSeed(seed, kNarrow);
+}
+
+double slotHalfOf(std::uint64_t key, double s, double half) {
+    return half * (1.0 - kNarrowMost * 0.5 * (1.0 + keyedNoise(key, s, kNarrowWave)));
 }
 
 double slotRun(std::uint64_t seed, double s, double base, double half, double side,

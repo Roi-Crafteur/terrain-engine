@@ -93,7 +93,7 @@ void windFoot(const Course& c, const CoursePoint& a, const CoursePoint& b, const
 constexpr double kFaceDrop = 1.0;
 
 Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double rise,
-              double valleyRise, double warp, const Bowl& bowl, std::uint64_t slotSeed) {
+              double valleyRise, double warp, const Bowl& bowl, std::uint64_t narrowKey) {
     Frame r;
     const double t = f.t;
     r.t = t;
@@ -117,7 +117,7 @@ Frame frameOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, double 
     const double foot = std::max(1.0, lerp(lerp(a.foot, b.foot, t), kStepsFoot, steps));
     if (r.fall > 0.0) {
         r.slot = std::max(a.slot, b.slot);
-        r.channel = slotHalf(slotSeed, r.along, r.half);
+        r.channel = slotHalfOf(narrowKey, r.along, r.half);
     }
     const double d = f.distance;
     // The walls, rounded at their foot, their edge with spurs and re-entrants, but never nearer
@@ -313,7 +313,7 @@ Frame frameAt(const Course& c, std::size_t i, const SegmentSpan& span, double x,
     const double half = lerp(a.half, b.half, f.t);
     const double across = half > 0.0 ? std::min(1.0, f.distance / half) : 1.0;
     const Bowl bowl = a.fall || b.fall ? bowlAt(c, alongOf(a, b, f), i, across) : Bowl{};
-    return frameOf(a, b, f, c.rises[i], c.valleyRises[i], warp, bowl, c.slotSeed);
+    return frameOf(a, b, f, c.rises[i], c.valleyRises[i], warp, bowl, c.narrowKey);
 }
 
 } // namespace terrain::water
