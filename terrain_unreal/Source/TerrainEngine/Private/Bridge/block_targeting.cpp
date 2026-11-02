@@ -34,19 +34,6 @@ BuildGhost blockGhost(BlockCoord block) {
 
 } // namespace
 
-BuildTool nextTool(BuildTool tool, int steps) {
-    const int index = (static_cast<int>(tool) + steps % kBuildToolCount + kBuildToolCount) %
-                      kBuildToolCount;
-    return static_cast<BuildTool>(index);
-}
-
-std::optional<BuildTool> toolOfKey(int number) {
-    if (number < 1 || number > kBuildToolCount) {
-        return std::nullopt;
-    }
-    return static_cast<BuildTool>(number - 1);
-}
-
 const char* toolName(BuildTool tool) {
     switch (tool) {
     case BuildTool::Sphere2:

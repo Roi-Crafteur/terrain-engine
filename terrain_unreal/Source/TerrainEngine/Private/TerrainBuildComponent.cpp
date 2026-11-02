@@ -41,6 +41,7 @@ struct FTerrainBuildRuntime
 	bool bPlaceHeld = false;
 	TWeakObjectPtr<APlayerController> MappedController;
 	bool bDefaultInput = false; // the context and the actions made by MakeDefaultInput
+	FString GhostGate;          // why the ghost is hidden, last logged
 };
 
 namespace
@@ -65,7 +66,27 @@ namespace
 
 	// The default keys, written in the log when they are mapped.
 	constexpr TCHAR DefaultKeys[] = TEXT("break: LeftMouseButton, place: RightMouseButton, tools: "
-		"One, Two, Three, next / previous tool: MouseScrollUp / MouseScrollDown");
+		"One or Ampersand, Two or E_AccentAigu, Three or Quote");
+
+	// The keys of the tools, the one place they are listed. The row of the digits gives One, Two,
+	// Three on a QWERTY keyboard; on an AZERTY one (French), Unreal names its keys by the
+	// character they type without Shift: & for 1 (Ampersand), e acute for 2 (E_AccentAigu), " for 3
+	// (Quote). Both are mapped: the same row of keys chooses the tools on either keyboard.
+	struct FToolKeys
+	{
+		FKey Qwerty;
+		FKey Azerty;
+	};
+
+	FToolKeys BlockToolKeys() { return {EKeys::One, EKeys::Ampersand}; }
+	FToolKeys SmallSphereToolKeys() { return {EKeys::Two, EKeys::E_AccentAigu}; }
+	FToolKeys LargeSphereToolKeys() { return {EKeys::Three, EKeys::Quote}; }
+
+	void MapToolKeys(UInputMappingContext& Context, const UInputAction* Action, const FToolKeys& Keys)
+	{
+		Context.MapKey(Action, Keys.Qwerty);
+		Context.MapKey(Action, Keys.Azerty);
+	}
 
 	// The edit aimed at now, and the hit it comes from.
 	struct FAim
@@ -190,8 +211,6 @@ void UTerrainBuildComponent::MakeDefaultInput()
 	}
 	BreakAction = MakeAction(*this, TEXT("TerrainBreak"));
 	PlaceAction = MakeAction(*this, TEXT("TerrainPlace"));
-	NextToolAction = MakeAction(*this, TEXT("TerrainNextTool"));
-	PreviousToolAction = MakeAction(*this, TEXT("TerrainPreviousTool"));
 	BlockToolAction = MakeAction(*this, TEXT("TerrainBlockTool"));
 	SmallSphereToolAction = MakeAction(*this, TEXT("TerrainSmallSphereTool"));
 	LargeSphereToolAction = MakeAction(*this, TEXT("TerrainLargeSphereTool"));
@@ -199,11 +218,10 @@ void UTerrainBuildComponent::MakeDefaultInput()
 		NewObject<UInputMappingContext>(this, TEXT("TerrainBuildContext"), RF_Transient);
 	Context->MapKey(BreakAction.Get(), EKeys::LeftMouseButton);
 	Context->MapKey(PlaceAction.Get(), EKeys::RightMouseButton);
-	Context->MapKey(NextToolAction.Get(), EKeys::MouseScrollUp);
-	Context->MapKey(PreviousToolAction.Get(), EKeys::MouseScrollDown);
-	Context->MapKey(BlockToolAction.Get(), EKeys::One);
-	Context->MapKey(SmallSphereToolAction.Get(), EKeys::Two);
-	Context->MapKey(LargeSphereToolAction.Get(), EKeys::Three);
+	// No wheel: the camera of the character (GASP) zooms with it.
+	MapToolKeys(*Context, BlockToolAction.Get(), BlockToolKeys());
+	MapToolKeys(*Context, SmallSphereToolAction.Get(), SmallSphereToolKeys());
+	MapToolKeys(*Context, LargeSphereToolAction.Get(), LargeSphereToolKeys());
 	MappingContext = Context;
 	Runtime->bDefaultInput = true;
 }
@@ -225,8 +243,6 @@ void UTerrainBuildComponent::BindInput(APlayerController& Controller)
 	Bind(BreakAction, ETriggerEvent::Completed, &UTerrainBuildComponent::OnBreakReleased);
 	Bind(PlaceAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnPlacePressed);
 	Bind(PlaceAction, ETriggerEvent::Completed, &UTerrainBuildComponent::OnPlaceReleased);
-	Bind(NextToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnNextTool);
-	Bind(PreviousToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnPreviousTool);
 	Bind(BlockToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnBlockTool);
 	Bind(SmallSphereToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnSmallSphereTool);
 	Bind(LargeSphereToolAction, ETriggerEvent::Started, &UTerrainBuildComponent::OnLargeSphereTool);
@@ -311,6 +327,9 @@ FString UTerrainBuildComponent::GateRefusal() const
 	Gate.playing = World != nullptr && FTerrainBuildHooks::State(*World) != nullptr;
 	Gate.devMapOpen = World != nullptr && FTerrainBuildHooks::IsDevMapOpen(*World);
 	Gate.loading = World == nullptr || FTerrainBuildHooks::IsLoadingView(*World);
+	// The dev map (and any menu) shows the mouse cursor: a second sign of it, whatever world
+	// the map belongs to.
+	Gate.cursorShown = Controller != nullptr && Controller->bShowMouseCursor;
 	Gate.controlsOwner = Controller != nullptr && Controller->IsLocalController();
 	// No Unreal call reads the focus here: without it the viewport sends no input, and the keys
 	// held are released (Completed) when it is lost; to check in game (Alt-Tab, a button held).
@@ -330,40 +349,53 @@ void UTerrainBuildComponent::SetTool(ETerrainBuildTool NewTool)
 	}
 }
 
+bool UTerrainBuildComponent::Refuse(const FString& Reason)
+{
+	// In the log once each time the reason changes (a held button tries every frame).
+	if (Reason != LastRefusal)
+	{
+		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain Build: %s refused: %s"),
+			UTF8_TO_TCHAR(terrain::unreal::toolName(ToBridge(Tool))), *Reason);
+	}
+	LastRefusal = Reason;
+	return false;
+}
+
 bool UTerrainBuildComponent::Build(ETerrainBuildAction Action)
 {
 	FindTerrainWorld();
-	LastRefusal = GateRefusal();
+	const FString Gate = GateRefusal();
 	APawn* Pawn = Cast<APawn>(GetOwner());
 	APlayerController* Controller = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
 	FTerrainWorldState* State =
 		TerrainWorld.IsValid() ? FTerrainBuildHooks::State(*TerrainWorld.Get()) : nullptr;
-	if (!LastRefusal.IsEmpty() || Controller == nullptr || State == nullptr)
+	if (!Gate.IsEmpty() || Controller == nullptr || State == nullptr)
 	{
-		return false;
-	}
-	if (!Runtime->Rate.allow(FPlatformTime::Seconds()))
-	{
-		LastRefusal = TEXT("too many edits a second");
-		return false;
+		return Refuse(Gate.IsEmpty() ? FString(TEXT("not playing")) : Gate);
 	}
 	const std::optional<FAim> Aim = AimAt(*Pawn, *Controller, *TerrainWorld.Get(), State->Frame,
 		ReachMeters, Tool, Action);
 	if (!Aim)
 	{
-		LastRefusal = TEXT("no ground within reach");
-		return false;
+		return Refuse(FString::Printf(TEXT("no ground within reach (%.1f m of the eye)"),
+			ReachMeters));
 	}
 	if (Action == ETerrainBuildAction::Place && InCapsule(*Pawn, State->Frame, Aim->Target.edit))
 	{
-		LastRefusal = TEXT("it would close on the pawn");
-		if (GEngine != nullptr)
+		if (GEngine != nullptr && LastRefusal != TEXT("it would close on the pawn"))
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Yellow,
 				TEXT("Cannot place: too close to the character"));
 		}
+		return Refuse(FString(TEXT("it would close on the pawn")));
+	}
+	// Only an edit about to be queued counts for the rate: a refused try never holds the next.
+	if (!Runtime->Rate.allow(FPlatformTime::Seconds()))
+	{
+		LastRefusal = TEXT("too many edits a second"); // every frame of a held button: not logged
 		return false;
 	}
+	LastRefusal.Reset();
 	FTerrainBuildHooks::QueueBuild(*State, Aim->Target.edit,
 		Describe(Action, Tool, Aim->Target.edit));
 	return true;
@@ -395,18 +427,6 @@ void UTerrainBuildComponent::ChangeTool(ETerrainBuildTool NewTool)
 	{
 		SetTool(NewTool);
 	}
-}
-
-void UTerrainBuildComponent::OnNextTool()
-{
-	ChangeTool(static_cast<ETerrainBuildTool>(
-		static_cast<uint8>(terrain::unreal::nextTool(ToBridge(Tool), 1))));
-}
-
-void UTerrainBuildComponent::OnPreviousTool()
-{
-	ChangeTool(static_cast<ETerrainBuildTool>(
-		static_cast<uint8>(terrain::unreal::nextTool(ToBridge(Tool), -1))));
 }
 
 void UTerrainBuildComponent::OnBlockTool()
@@ -448,9 +468,17 @@ void UTerrainBuildComponent::UpdateGhost()
 	FTerrainWorldState* State =
 		TerrainWorld.IsValid() ? FTerrainBuildHooks::State(*TerrainWorld.Get()) : nullptr;
 	std::optional<FAim> Aim;
-	if (bShowGhost && Controller != nullptr && State != nullptr && GateRefusal().IsEmpty())
+	const FString Gate = GateRefusal();
+	if (Gate != Runtime->GhostGate)
 	{
-		// The ghost of a break with the left button held, else of a place: what a click would do.
+		const FString Change = Gate.IsEmpty() ? FString(TEXT("allowed again"))
+											  : FString(TEXT("hidden: ")) + Gate;
+		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain Build: ghost %s"), *Change);
+		Runtime->GhostGate = Gate;
+	}
+	if (bShowGhost && Controller != nullptr && State != nullptr && Gate.IsEmpty())
+	{
+		// The ghost of a place with the right button held, else of a break: what a click does.
 		const ETerrainBuildAction Action = Runtime->bPlaceHeld ? ETerrainBuildAction::Place
 															   : ETerrainBuildAction::Break;
 		Aim = AimAt(*Pawn, *Controller, *TerrainWorld.Get(), State->Frame, ReachMeters, Tool, Action);

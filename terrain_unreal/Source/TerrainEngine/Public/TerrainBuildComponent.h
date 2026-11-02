@@ -23,7 +23,7 @@ struct FTerrainBuildRuntime;
  *
  * A trace from the camera finds the tile aimed at, within ReachMeters of the eye of the pawn; the
  * ghost of the edit shows what a click would remove (left click) or add (right click), with the
- * tool chosen by the keys 1, 2, 3 or the wheel: a block of 1 m, a sphere 2 m or 4 m across. Matter
+ * tool chosen by the keys 1, 2, 3 (their AZERTY keys too): a block of 1 m, a sphere 2 m or 4 m across. Matter
  * is never placed in the capsule of the pawn. The edits go to the edit thread of the session
  * (Bridge/block_targeting.hpp, build_rules.hpp): the tiles are generated again, with their
  * collision and without the plants whose ground is gone. Nothing happens while the dev map is
@@ -68,7 +68,7 @@ public:
 	TObjectPtr<UMaterialInterface> GhostMaterial;
 
 	// The input; none: made at BeginPlay (break: left mouse button, place: right mouse button,
-	// tools: 1, 2, 3, the next or previous tool: the wheel up or down).
+	// tools: 1, 2, 3, also their keys on an AZERTY keyboard; no wheel, which the camera of GASP uses).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
 	TObjectPtr<UInputMappingContext> MappingContext;
 
@@ -82,11 +82,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
 	TObjectPtr<UInputAction> PlaceAction;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
-	TObjectPtr<UInputAction> NextToolAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
-	TObjectPtr<UInputAction> PreviousToolAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Build|Input")
 	TObjectPtr<UInputAction> BlockToolAction;
@@ -122,8 +117,6 @@ private:
 	void OnBreakReleased();
 	void OnPlacePressed();
 	void OnPlaceReleased();
-	void OnNextTool();
-	void OnPreviousTool();
 	void OnBlockTool();
 	void OnSmallSphereTool();
 	void OnLargeSphereTool();
@@ -133,6 +126,8 @@ private:
 	ATerrainWorld* FindTerrainWorld();
 	// The refusal of a click now, or empty when it may edit.
 	FString GateRefusal() const;
+	// Keeps the reason of a refused click and writes it in the log when it changes; false.
+	bool Refuse(const FString& Reason);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> Ghost;

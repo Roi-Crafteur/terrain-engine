@@ -21,6 +21,9 @@ const char* gateRefusal(const BuildGate& gate) {
     if (gate.devMapOpen) {
         return "the dev map is open";
     }
+    if (gate.cursorShown) {
+        return "the mouse cursor is shown (a menu or the dev map)";
+    }
     if (gate.loading) {
         return "the view is loading";
     }

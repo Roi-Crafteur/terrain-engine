@@ -31,6 +31,9 @@ void testGate() {
     gate.devMapOpen = true;
     TEST_CHECK(std::strcmp(gateRefusal(gate), "the dev map is open") == 0);
     gate = openGate();
+    gate.cursorShown = true; // the dev map seen through the controller, or any menu
+    TEST_CHECK(gateRefusal(gate) != nullptr);
+    gate = openGate();
     gate.loading = true;
     TEST_CHECK(std::strcmp(gateRefusal(gate), "the view is loading") == 0);
     gate = openGate();

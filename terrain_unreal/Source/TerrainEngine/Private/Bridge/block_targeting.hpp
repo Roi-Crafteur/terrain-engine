@@ -10,7 +10,6 @@
 #include "terrain/storage/volume_edit.hpp"
 
 #include <cstdint>
-#include <optional>
 
 namespace terrain::unreal {
 
@@ -20,7 +19,6 @@ enum class BuildTool : std::uint8_t {
     Sphere2, // a sphere 2 m across
     Sphere4, // a sphere 4 m across
 };
-inline constexpr int kBuildToolCount = 3;
 
 // What a click does.
 enum class BuildAction : std::uint8_t {
@@ -28,10 +26,6 @@ enum class BuildAction : std::uint8_t {
     Place, // adds rock (EditMode::Add)
 };
 
-// The tool after this one, the last one back to the first (the wheel of the mouse), and the tool
-// of a number key, 1 to kBuildToolCount (nullopt otherwise).
-[[nodiscard]] BuildTool nextTool(BuildTool tool, int steps);
-[[nodiscard]] std::optional<BuildTool> toolOfKey(int number);
 // The name of a tool, for the screen and the log ("block 1 m", "sphere 2 m", "sphere 4 m").
 [[nodiscard]] const char* toolName(BuildTool tool);
 // The radius of a sphere tool, meters (0 for the block).

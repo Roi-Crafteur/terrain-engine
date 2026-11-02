@@ -47,7 +47,7 @@ struct FTerrainBuildSettings
 	GENERATED_BODY()
 
 	// The player pawn gets a UTerrainBuildComponent if it has none (break: left click, place:
-	// right click, tools: 1, 2, 3 and the wheel).
+	// right click, tools: 1, 2, 3, on QWERTY and AZERTY keyboards).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Edits")
 	bool bAddToPlayerPawn = true;
 

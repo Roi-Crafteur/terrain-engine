@@ -32,18 +32,9 @@ BuildHit hitAt(double x, double y, double z, CoreDirection normal, double distan
 }
 
 void testTools() {
-    using terrain::unreal::nextTool;
-    using terrain::unreal::toolOfKey;
-    TEST_CHECK(toolOfKey(1) == BuildTool::Block);
-    TEST_CHECK(toolOfKey(2) == BuildTool::Sphere2);
-    TEST_CHECK(toolOfKey(3) == BuildTool::Sphere4);
-    TEST_CHECK(!toolOfKey(0) && !toolOfKey(4));
-    TEST_CHECK(nextTool(BuildTool::Sphere4, 1) == BuildTool::Block);
-    TEST_CHECK(nextTool(BuildTool::Block, -1) == BuildTool::Sphere4);
-    TEST_CHECK(nextTool(BuildTool::Block, 4) == BuildTool::Sphere2);
-    TEST_CHECK(nextTool(BuildTool::Block, -7) == BuildTool::Sphere4);
     TEST_CHECK(terrain::unreal::toolRadius(BuildTool::Sphere2) == 1.0);
     TEST_CHECK(terrain::unreal::toolRadius(BuildTool::Sphere4) == 2.0);
+    TEST_CHECK(terrain::unreal::toolRadius(BuildTool::Block) == 0.0);
 }
 
 void testFaces() {

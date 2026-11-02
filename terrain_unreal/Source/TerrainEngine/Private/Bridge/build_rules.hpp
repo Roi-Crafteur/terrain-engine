@@ -14,6 +14,7 @@ namespace terrain::unreal {
 struct BuildGate {
     bool playing = false;          // the world streams (a session exists)
     bool devMapOpen = false;       // the dev map takes the clicks and the wheel
+    bool cursorShown = false;      // a menu or the dev map shows the mouse cursor
     bool loading = false;          // a teleport holds the view: the screen black or the pawn held
     bool controlsOwner = false;    // the player controls the pawn of the component (not the
                                    // flying pawn of the tools)
