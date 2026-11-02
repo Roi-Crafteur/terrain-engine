@@ -199,6 +199,10 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
                                                          params_.plates, world_);
     }
     water_ = makeWater(noise::deriveSeed(seed, kDepressions), params_, geography_.get());
+    if (geography_ && params_.geography.coasts) {
+        coasts_ = makeCoasts(seed, world_);
+        inlets_ = makeInlets();
+    }
 }
 
 
@@ -226,8 +230,10 @@ float Heightfield::heightAt(double x, double z) const {
 HeightSample Heightfield::sampleAt(double x, double z) const {
     HeightSample s = reliefWith(x, z, nullptr);
     if (hydrology_) {
-        applyHydrology(noise::wrapCanonical(x, world_.x), noise::wrapCanonical(z, world_.z), s,
-                       nullptr);
+        const double cx = noise::wrapCanonical(x, world_.x);
+        const double cz = noise::wrapCanonical(z, world_.z);
+        leaveValleys(cx, cz, s, nullptr);
+        applyHydrology(cx, cz, s, nullptr);
     }
     return s;
 }

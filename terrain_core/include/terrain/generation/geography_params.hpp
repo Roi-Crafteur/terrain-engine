@@ -139,6 +139,11 @@ struct GeographyParams {
     // The depressions below the sea level of phase 11B, deep in the plains of the continents, only
     // where the mask of the mountains is 0 (depressions.hpp).
     bool depressions = true;
+    // The relief of the coasts (agent 33, coast.hpp): cliffs, mountains plunging into the sea,
+    // fjords, rias, calanques, coves, in the band of the coast signal from kCoastSeaBand at sea to
+    // coastRamp inland. Off: the coastal plains of phase 11R. The planet level and the rivers are
+    // built without it (Heightfield::withoutCoasts).
+    bool coasts = true;
 
     // The ridged mountains of the Heightfield (its warp and octaves) rise up to mountainHeight
     // above the regional elevation under their mask, with their own wavelength, sharpness and

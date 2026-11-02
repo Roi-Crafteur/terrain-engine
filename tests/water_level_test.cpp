@@ -62,7 +62,9 @@ void testLakes(const World& w, Checks& tiles, Checks& horizon) {
         if (!water_level::underLake(s.water)) {
             return false;
         }
-        flat = flat && level == w.hydrology->lakeAt(x, z, w.relief.heightAt(x, z)).level;
+        // Over the relief the lakes were found over (without the coasts, which keep off them).
+        flat = flat &&
+               level == w.hydrology->lakeAt(x, z, w.hydrology->relief().heightAt(x, z)).level;
         return true;
     };
     for (const auto& [x, z] : lakePoints(w, 3)) {
@@ -376,10 +378,13 @@ int main() {
     water_level::report("vertices", tiles);
     water_level::report("samples", horizon);
     water_level::report("vertices with caves", caves);
-    // The tiles: the vertices of those of the slots of the falls and of the gorges moved by their
-    // carved faces (phase 12A, slot_faces.hpp and gorgeFaces), their levels the same rule.
     golden::report("water levels of the small world",
-                   {{"tiles", tiles.sum.value(), 0x91EF886EC68B6616ULL},
+                   // The coasts (agent 33) and the carved faces of the slots of the falls and of
+                   // the gorges (phase 12A) change tiles of their bands (0x0D969F30C054AF39
+                   // without either, 0x0AE9CB3DB169FB79 with the coasts alone, 0x91EF886EC68B6616
+                   // with the faces alone; the horizon and the caves keep theirs).
+                   // Their vertices move, their levels follow the same rule.
+                   {{"tiles", tiles.sum.value(), 0x0BF4F60E1E2AAE46ULL},
                     {"horizon", horizon.sum.value(), 0xCB9F99936D89D887ULL},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();

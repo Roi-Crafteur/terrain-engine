@@ -7,10 +7,14 @@
 // mountains are meant to change.
 // With their water (phase 11B), on the small world whose planet level a test may build: outside
 // the corridors of the rivers, every bit of these samples stays that of the relief alone.
+// The coastal relief (agent 33) shapes the mountains of its zone only, the band of the coast
+// signal along the coasts (coast_zone_support.hpp): no point of the windows lies in it, and the
+// points drawn and those beside the rivers are taken out of it.
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
+#include "coast_zone_support.hpp"
 #include "golden_support.hpp"
 #include "planet_golden_support.hpp"
 #include "test_assert.hpp"
@@ -46,10 +50,13 @@ void addSample(golden::Checksum& sum, const HeightSample& s) {
     sum.add(s.height);
 }
 
-// The samples of the window where the mountain mask is above 0, and how many.
-std::uint64_t windowSum(const terrain::Heightfield& field, const Window& w, int& count) {
+// The samples of the window where the mountain mask is above 0, how many, and how many of them lie
+// in the zone of the coastal relief.
+std::uint64_t windowSum(const terrain::Heightfield& field, const Window& w, int& count,
+                        int& zoned) {
     golden::Checksum sum;
     count = 0;
+    zoned = 0;
     std::vector<double> xs(static_cast<std::size_t>(w.side));
     std::vector<double> zs(static_cast<std::size_t>(w.side));
     std::vector<HeightSample> row(static_cast<std::size_t>(w.side));
@@ -59,17 +66,19 @@ std::uint64_t windowSum(const terrain::Heightfield& field, const Window& w, int&
             zs[static_cast<std::size_t>(i)] = w.z + w.step * (j - w.side / 2);
         }
         field.samplesAt(xs, zs, row);
-        for (const HeightSample& s : row) {
-            if (s.mountainMask > 0.0f) {
-                addSample(sum, s);
+        for (std::size_t i = 0; i < row.size(); ++i) {
+            if (row[i].mountainMask > 0.0f) {
+                addSample(sum, row[i]);
                 ++count;
+                zoned += coast_zone::inZone(coast_zone::coastSignal(field, xs[i], zs[i])) ? 1 : 0;
             }
         }
     }
     return sum.value();
 }
 
-// Points drawn over the whole world, those under the mountains.
+// Points drawn over the whole world, those under the mountains out of the zone of the coastal
+// relief.
 std::uint64_t drawnSum(const terrain::Heightfield& field, int wanted, int& count) {
     golden::Checksum sum;
     count = 0;
@@ -84,7 +93,12 @@ std::uint64_t drawnSum(const terrain::Heightfield& field, int wanted, int& count
         r ^= r >> 7;
         r ^= r << 17;
         const double v = static_cast<double>(r >> 11) * (1.0 / 9007199254740992.0);
-        const HeightSample s = field.sampleAt((u - 0.5) * world.x, (v - 0.5) * world.z);
+        const double x = (u - 0.5) * world.x;
+        const double z = (v - 0.5) * world.z;
+        if (coast_zone::inZone(coast_zone::coastSignal(field, x, z))) {
+            continue;
+        }
+        const HeightSample s = field.sampleAt(x, z);
         if (s.mountainMask > 0.0f) {
             addSample(sum, s);
             ++count;
@@ -133,7 +147,8 @@ void testWithWater() {
                 const double x = c[0] + 125.0 * i + 0.3;
                 const double z = c[1] + 125.0 * j + 0.7;
                 const HeightSample a = relief.sampleAt(x, z);
-                if (!(a.mountainMask > 0.0f)) {
+                if (!(a.mountainMask > 0.0f) ||
+                    coast_zone::inZone(coast_zone::coastSignal(relief, x, z))) {
                     continue;
                 }
                 ++mountains;
@@ -176,12 +191,16 @@ int main() {
     bool same = true;
     for (const Window& w : windows) {
         int count = 0;
-        const std::uint64_t value = windowSum(field, w, count);
-        std::printf("{\"%s\", 0x%016" PRIX64 "ULL}, %d points under the mountains%s\n", w.name,
-                    value, count, value == w.expected ? "" : "  (differs)");
-        same = same && value == w.expected && count > w.side * w.side / 4;
+        int zoned = 0;
+        const std::uint64_t value = windowSum(field, w, count, zoned);
+        std::printf("{\"%s\", 0x%016" PRIX64 "ULL}, %d points under the mountains, %d in the "
+                    "coastal zone%s\n",
+                    w.name, value, count, zoned, value == w.expected ? "" : "  (differs)");
+        same = same && value == w.expected && count > w.side * w.side / 4 && zoned == 0;
     }
-    constexpr std::uint64_t kDrawn = 0xB6C1FF0E32307E10ULL;
+    // Pinned on the code of main (cb64153) once the points of the coastal zone were taken out of
+    // the draw (0xB6C1FF0E32307E10 with them).
+    constexpr std::uint64_t kDrawn = 0x4D77F4B4ADE22B7BULL;
     int count = 0;
     const std::uint64_t drawn = drawnSum(field, 20'000, count);
     std::printf("{\"drawn points\", 0x%016" PRIX64 "ULL}%s\n", drawn,

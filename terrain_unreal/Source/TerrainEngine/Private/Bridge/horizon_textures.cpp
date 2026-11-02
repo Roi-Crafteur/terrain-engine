@@ -62,6 +62,11 @@ std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side)
 
 HorizonTexel horizonTexel(const HorizonCell& cell, bool sea) {
     if (sea && isSeaCell(cell)) {
+        if (cell.material == SurfaceMaterial::Rock) {
+            // The slopes of its ground: the triangles between it and the wall above are lit as
+            // the wall, their normals no longer turning from straight up over one pitch.
+            return {kSeaLevel, cell.gradX, cell.gradZ, cell.height - kSeaLevel - kSeaRockCode};
+        }
         return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel};
     }
     const bool inland = (cell.flags & kHorizonWater) != 0 && (cell.flags & kHorizonSea) == 0;
@@ -72,8 +77,15 @@ bool isSeaTexel(const HorizonTexel& texel) {
     return texel.color < 0.0f;
 }
 
+bool isRockSeaTexel(const HorizonTexel& texel) {
+    return texel.color <= -0.5f * kSeaRockCode;
+}
+
 float texelGround(const HorizonTexel& texel) {
-    return isSeaTexel(texel) ? texel.color : std::max(texel.height - kSeaLevel, 0.0f);
+    if (isSeaTexel(texel)) {
+        return isRockSeaTexel(texel) ? texel.color + kSeaRockCode : texel.color;
+    }
+    return std::max(texel.height - kSeaLevel, 0.0f);
 }
 
 std::vector<float> pieceTexels(const HorizonPiece& piece, bool sea) {

@@ -51,6 +51,9 @@ float steepestSlope(const ClimateSample& climate, const SurfaceSite& site) {
 
 SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate, const SurfaceSite& site,
                                 const MaterialParams& params) {
+    if (site.bareRock) {
+        return SurfaceMaterial::Rock;
+    }
     if (!site.dry()) {
         return SurfaceMaterial::Water;
     }

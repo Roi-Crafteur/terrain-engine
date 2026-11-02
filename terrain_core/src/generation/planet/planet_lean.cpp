@@ -61,8 +61,9 @@ void keepRain(Lean& lean, PlanetClimate&& climate) {
 void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& field, int threads,
                       Stopwatch& watch) {
     const PlanetParams& params = parts.params;
-    CellRelief cells =
-        sampleCells(field, lean.grid, params.samplesPerAxis, threads, params.floorSamples);
+    // The relief without the coasts (agent 33): they never move the planet level.
+    CellRelief cells = sampleCells(field.withoutCoasts(), lean.grid, params.samplesPerAxis,
+                                   threads, params.floorSamples);
     lean.height = std::move(cells.height);
     parts.timings.relief = watch.lap("relief");
     std::vector<std::uint8_t> ocean =

@@ -295,6 +295,15 @@ void testBanks(const World& w, Reaches& reaches, const std::vector<std::size_t>&
     TEST_CHECK(awayPerThousand <= kAwaySteps);
 }
 
+// The relief the ground beside a river is drawn from: in the band of the coasts (agent 33), near
+// the rivers the world fades from the relief of the coasts to the relief without them (that of
+// the hydrology, Heightfield::leaveValleys), the higher of the two at most; elsewhere both are the
+// same bits.
+double reliefAt(const World& w, double x, double z) {
+    return static_cast<double>(
+        std::max(w.relief.heightAt(x, z), w.hydrology->relief().heightAt(x, z)));
+}
+
 // The ground beside the slots down the stretches in steps (their points where the floor of the
 // valley lies more than a meter above the water: its slot), from 5 m beyond the channel to 80 m
 // from its middle, every 2 m on each side, against the relief.
@@ -316,8 +325,8 @@ void testRims(const World& w, Reaches& reaches, const std::vector<std::size_t>& 
                 for (double d = 0.5 * static_cast<double>(p[i].width) + 5.0; d <= 80.0; d += 2.0) {
                     const double x = p[i].x - side * d * dz / length;
                     const double z = p[i].z + side * d * dx / length;
-                    rise = std::max(rise, static_cast<double>(w.field.heightAt(x, z) -
-                                                              w.relief.heightAt(x, z)));
+                    rise = std::max(rise, static_cast<double>(w.field.heightAt(x, z)) -
+                                              reliefAt(w, x, z));
                 }
             }
             ++points;

@@ -47,7 +47,8 @@ struct MaterialParams {
 // Steepest local slope of a column: the larger of |grad H| and the steepness of the site.
 [[nodiscard]] float steepestSlope(const ClimateSample& climate, const SurfaceSite& site);
 
-// Material at the top of a column. Water exactly over the ocean and the rivers; otherwise
+// Material at the top of a column. Rock where the site is bare rock (SurfaceSite::bareRock, even
+// under the water); else water exactly over the ocean and the rivers; otherwise
 // rock on steep ground, walls and rock above air, then by biome: snow, mountain snow, rock
 // and scree, beach sand or pebbles, desert sand, marsh mud, river bank pebbles, tundra dirt,
 // dirt on steeper ground and grass elsewhere. Pure function: it never changes a height.
