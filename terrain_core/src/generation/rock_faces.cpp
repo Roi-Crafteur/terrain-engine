@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace terrain {
 
@@ -35,8 +36,11 @@ constexpr double kFeatureLow = 1.5;
 constexpr double kFeatureHigh = 3.0;
 constexpr double kThickness = 0.5;
 constexpr double kJointCells = 4.0;
-// The edges of a step are rounded over kRound meters, kRoundShare of its height at most.
+// The edges of a step are rounded over kRound meters, kRoundShare of its height at most; those of
+// the faces the rivers carve (their slots, fresh rock) over kCarvedRound meters at most, so that
+// the rounding of their foot leaves their notch (slot_faces.hpp) alone.
 constexpr double kRound = 3.0;
+constexpr double kCarvedRound = 1.0;
 constexpr double kRoundShare = 0.25;
 // The grain and the overhangs of a face come in as its drawn weight runs from kFullLow to 1.
 constexpr double kFullLow = 0.75;
@@ -130,7 +134,8 @@ double drawnFeature(float feature, float extent, const RockDetail& detail) {
 
 // The edges of the step of a face are rounded over this many meters.
 double roundOf(const RockFace& f) {
-    return std::min(kRound, kRoundShare * (static_cast<double>(f.top) - f.foot));
+    return std::min(f.carved ? kCarvedRound : kRound,
+                    kRoundShare * (static_cast<double>(f.top) - f.foot));
 }
 
 // Draw k (0, 1 or 2) in [0, 1) of 21 bits of a hash.
@@ -220,10 +225,22 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
 }
 
 // The density of the step of a face at height y: the rock below its top behind the face and below
-// its foot in front of it, its edges rounded.
+// its foot in front of it, its edges rounded. Above its top or below its foot by reach (its
+// rounding, its distance to the face and its cap: its offset there lies within its cap of 0, the
+// grain, the undercut and the joint faded out), the rounding blends nothing (smoothMin and
+// smoothMax are min and max: h = 0): the step is the plane of its top or of its foot there, the
+// same value without its offset (most of the samples of a tile on a wall).
 double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
-    const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
     const double round = roundOf(f);
+    const double reach = std::max(round, 0.0) + std::abs(static_cast<double>(f.distance)) +
+                         std::abs(static_cast<double>(f.cap));
+    if (v >= f.top + reach) {
+        return v - f.top;
+    }
+    if (v <= f.foot - reach) {
+        return v - f.foot;
+    }
+    const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
     if (!(round > 0.0)) {
         return std::min(v - f.foot, std::max(v - f.top, across));
     }
@@ -329,6 +346,19 @@ RockBounds rockBounds(const RockColumn& c) {
         b.high = std::max(b.high, c.faces[i].top);
     }
     return b;
+}
+
+float rockCeiling(const RockColumn& c) {
+    // rockDensity: rock where the relief before the rivers with its faces holds some, and below
+    // that relief only where the valley with its carved faces does too (their tops, leaned on
+    // their relief by their weights, never above the highest of the two).
+    float faces = -std::numeric_limits<float>::infinity(); // the tops of the faces of the relief
+    float valley = c.ground;                                // the valley and its carved faces
+    for (std::size_t i = 0; i < c.faceCount; ++i) {
+        float& high = c.faces[i].carved ? valley : faces;
+        high = std::max(high, c.faces[i].top);
+    }
+    return std::max({c.ground, std::min(c.uncarved, valley), faces});
 }
 
 float rockShare(const RockColumn& c, double y, const RockDetail& detail) {

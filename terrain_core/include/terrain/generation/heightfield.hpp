@@ -6,6 +6,7 @@
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/rock_faces.hpp"
 #include "terrain/generation/voronoi.hpp"
+#include "terrain/generation/water/slot_wall.hpp"
 #include "terrain/generation/water_kind.hpp"
 #include "terrain/world_size.hpp"
 
@@ -13,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace terrain {
@@ -136,6 +138,10 @@ struct RiverCarve; // what its valleys make of a point (water/hydrology.hpp)
 namespace wall_faces {
 struct Site; // what the walls report at a point (internal, wall_faces.hpp)
 } // namespace wall_faces
+namespace mountain_walls {
+struct Masks; // the masks of the walls at a point (internal, mountain_walls.hpp)
+struct Memo;
+} // namespace mountain_walls
 
 class Heightfield {
 public:
@@ -254,15 +260,37 @@ private:
     void finishWater(double x, double z, HeightSample& s) const;
     // The valleys, rivers and lakes of the hydrology at a canonical point, last
     // (heightfield_hydrology), through the memos and the region of a batch call (null otherwise).
-    void applyHydrology(double x, double z, HeightSample& s, Memos* memos) const;
+    // With wall, the wall of the slot of a fall the ground there follows (width 0 otherwise);
+    // with gorge, the faces the walls of a gorge lay there (heightfield_rock.cpp: placed as
+    // those of the mountains).
+    void applyHydrology(double x, double z, HeightSample& s, Memos* memos,
+                        SlotWall* wall = nullptr, wall_faces::Site* gorge = nullptr) const;
     // The rock of the walls of a valley of the hydrology over its surface h
     // (heightfield_hydrology).
     [[nodiscard]] double valleyRockAt(double x, double z, double h, const RiverCarve& c,
-                                      double show, Memos* memos) const;
+                                      double show, Memos* memos,
+                                      wall_faces::Site* gorge = nullptr) const;
+    // Adds to site the faces of the walls of a gorge at (x, z) over its surface h, of masks the
+    // masks of their strata (kGorgeFaces, kSteepFaces: heightfield_hydrology.cpp).
+    void gorgeFaces(double x, double z, double h, const RiverCarve& c,
+                    const mountain_walls::Masks& masks, mountain_walls::Memo* memo,
+                    wall_faces::Site& site) const;
     // applyHydrology over the samples of a batch, at the canonical points of (xs[i], zs[i]): the
-    // reaches and the lakes of their box found once (Hydrology::Region).
+    // reaches and the lakes of their box found once (Hydrology::Region); with rock, the walls of
+    // the slots of the falls at the points (as many) and the faces of the walls of the gorges
+    // (the points that have some).
+    struct WaterRock {
+        std::span<SlotWall> walls;
+        std::vector<std::pair<std::size_t, wall_faces::Site>>* gorges = nullptr;
+    };
     void waterOf(std::span<const double> xs, std::span<const double> zs,
-                 std::span<HeightSample> samples, Memos& memos) const;
+                 std::span<HeightSample> samples, Memos& memos,
+                 const WaterRock* rock = nullptr) const;
+    // The carved faces of the rock of the slots of the falls (slot_faces.hpp) at the points of a
+    // batch from their walls, those whose run is leastRun meters at least (heightfield_rock.cpp).
+    void placeSlotFaces(std::span<const double> xs, std::span<const double> zs,
+                        std::span<const SlotWall> walls, float leastRun,
+                        std::span<RockColumn> rock) const;
 
     // sampleAt without the hydrology, through the memos during a batch call (null otherwise).
     // With a site, what the walls of the mountains report at the point (their faces, phase 12A).
