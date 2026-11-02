@@ -636,6 +636,9 @@ montre, en GPU comme en CPU.
   sortir du fil de modifications (sans bloquer le jeu), et les modifications suivantes
   attendent leur tour.
 
+Casser et poser en jeu (clic gauche, clic droit, touches 1/2/3), le fantôme et la sauvegarde
+des modifications par seed : voir [`BREAK_PLACE.md`](BREAK_PLACE.md) (agent 28).
+
 ## 16. La carte de dev et la minicarte (agent 35)
 
 Voir le monde, zoomer, cliquer, y être. `terrain_core` rend les images de la carte (données

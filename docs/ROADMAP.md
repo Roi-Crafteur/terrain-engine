@@ -563,6 +563,7 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   - reste : casser et poser en jeu dans Unreal (en attendant : `Terrain.Edit`, `Apply Volume
     Edit`), effets de destruction, normales de détail de l'horizon qui suivent les modifications
     (aujourd'hui : les pentes de la grille sur les mailles modifiées)
+  - casser et poser en jeu : fait (agent 28 : bloc, sphères de 2 et 4 m, fantôme, sauvegarde par seed, `terrain_unreal/BREAK_PLACE.md`)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels
