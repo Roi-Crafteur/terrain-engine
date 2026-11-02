@@ -33,6 +33,7 @@ struct GroundGrid {
     std::vector<float> continentalness;
     std::vector<WaterKind> water;
     std::vector<float> waterLevel;
+    std::vector<float> rock; // HeightSample::rock
 
     [[nodiscard]] std::size_t index(std::int64_t i, std::int64_t k) const {
         return static_cast<std::size_t>((k - rect.z0) * rect.width() + (i - rect.x0));
@@ -41,12 +42,13 @@ struct GroundGrid {
 
 GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
                         const HorizonRect& rect) {
-    GroundGrid grid{rect, {}, {}, {}, {}};
+    GroundGrid grid{rect, {}, {}, {}, {}, {}};
     const auto count = static_cast<std::size_t>(rect.count());
     grid.heights.reserve(count);
     grid.continentalness.reserve(count);
     grid.water.reserve(count);
     grid.waterLevel.reserve(count);
+    grid.rock.reserve(count);
     for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
         const double z = frame.z(k);
         for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
@@ -55,6 +57,7 @@ GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
             grid.continentalness.push_back(sample.continentalness);
             grid.water.push_back(sample.water);
             grid.waterLevel.push_back(sample.waterLevel);
+            grid.rock.push_back(sample.rock);
         }
     }
     return grid;
@@ -72,9 +75,36 @@ SurfaceSite groundSite(const GroundGrid& grid, std::size_t at, const std::array<
     return horizon::pointSite(sample, h, step);
 }
 
+// The height of the sample (i, k): the grid where it holds it, beyond it the field at its
+// canonical position (the same bits).
+float gridHeight(const Heightfield& field, const LevelFrame& frame, const GroundGrid& grid,
+                 std::int64_t i, std::int64_t k) {
+    return grid.rect.contains({i, k}) ? grid.heights[grid.index(i, k)]
+                                      : field.heightAt(frame.x(i), frame.z(k));
+}
+
+// The steepest rise, per meter, from the sample (i, k) to the samples one and two pitches away
+// (the material is drawn between the samples of the level: a wall rising there takes the colour
+// of this sample at its foot).
+float riseAround(const Heightfield& field, const LevelFrame& frame, const GroundGrid& grid,
+                 std::int64_t i, std::int64_t k) {
+    const float ground = grid.heights[grid.index(i, k)];
+    const auto pitch = static_cast<double>(frame.pitch);
+    float rise = 0.0f;
+    for (const auto& [di, dk] : {std::array<int, 2>{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+        const float near = gridHeight(field, frame, grid, i + di, k + dk);
+        const float far = gridHeight(field, frame, grid, i + 2 * di, k + 2 * dk);
+        rise = std::max({rise, static_cast<float>(static_cast<double>(near - ground) / pitch),
+                         static_cast<float>(static_cast<double>(far - ground) / (2.0 * pitch))});
+    }
+    return rise;
+}
+
 // Site and climate of the ground of the sample (i, k), from its natural ground: its neighbors
-// slopeStep meters away, the samples of the grid where slopeStep is the pitch (beyond the grid,
-// the heights of the field at their canonical positions, the same bits).
+// slopeStep meters away, the samples of the grid where slopeStep is the pitch (gridHeight).
+// Bare rock (SurfaceSite::bareRock): the reefs of the coasts, and the foot of the walls under the
+// sea, the rise read over the pitches of the level; it enters the blend (the GPU horizon draws
+// its colours from it, agent 29) and the footprints of the levels 4 and up.
 struct PointClass {
     double x = 0.0;
     double z = 0.0;
@@ -88,17 +118,21 @@ PointClass pointClass(const Heightfield& field, const Ecology& ecology, const Le
     const double z = frame.z(k);
     std::array<float, 4> neighbors{};
     if (slopeStep == frame.pitch) {
-        const auto height = [&](std::int64_t ii, std::int64_t kk) {
-            return grid.rect.contains({ii, kk}) ? grid.heights[grid.index(ii, kk)]
-                                                : field.heightAt(frame.x(ii), frame.z(kk));
-        };
-        neighbors = {height(i + 1, k), height(i - 1, k), height(i, k + 1), height(i, k - 1)};
+        neighbors = {gridHeight(field, frame, grid, i + 1, k),
+                     gridHeight(field, frame, grid, i - 1, k),
+                     gridHeight(field, frame, grid, i, k + 1),
+                     gridHeight(field, frame, grid, i, k - 1)};
     } else {
         neighbors = {field.heightAt(x + slopeStep, z), field.heightAt(x - slopeStep, z),
                      field.heightAt(x, z + slopeStep), field.heightAt(x, z - slopeStep)};
     }
-    const SurfaceSite site = groundSite(grid, grid.index(i, k), neighbors, slopeStep);
-    return {x, z, site, ecology.climate().sample(x, z, site)};
+    const std::size_t at = grid.index(i, k);
+    SurfaceSite site = groundSite(grid, at, neighbors, slopeStep);
+    const ClimateSample climate = ecology.climate().sample(x, z, site);
+    site.bareRock = grid.rock[at] > 0.5f ||
+                    (mayPlunge(site) && barePlunge(site, riseAround(field, frame, grid, i, k),
+                                                   ecology.params().materials.rockSlope));
+    return {x, z, site, climate};
 }
 
 // Material, biome, point blend and water of a sample; returns its point blend. The biome and

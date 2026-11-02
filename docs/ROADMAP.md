@@ -447,6 +447,9 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   streamées : une capitale de plusieurs km n'est jamais générée d'un coup
 - choix des sites par le terrain : gués, confluents, estuaires, ports abrités, éperons
   défendables, vallées fertiles, cols, ressources (mines) ; climat, pente, altitude, eau
+  - côtes (agent 33) : le peuplement V2 lit les ports abrités (`Heightfield::harborsIn` :
+    entrée plus étroite que l'intérieur) et les mouillages (`Heightfield::anchoragesIn` :
+    criques sans goulet entre deux caps), jamais les deux pour un même site (`coast.hpp`)
 - routes : liaisons pondérées par la population et la distance (modèle de gravité), tracées
   par coût (pente, rivières à franchir par pont ou gué, vallées, cols, lacets en montagne),
   regroupées, avec des boucles et pas seulement un arbre

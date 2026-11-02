@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terrain/det_math.hpp" // also refuses fast math in every unit including it
+#include "terrain/generation/coast.hpp"
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/rock_faces.hpp"
@@ -15,6 +16,10 @@
 #include <vector>
 
 namespace terrain {
+
+namespace coast_lattice {
+class Lattices;
+}
 
 // Seed shared by the export tool and the viewer, so both show the same world.
 inline constexpr std::uint64_t kDefaultWorldSeed = 20261019;
@@ -102,6 +107,9 @@ struct HeightSample {
     // dry land).
     WaterKind water = WaterKind::None;
     float waterLevel = 0.0f;
+    // Bare rock the coasts lay on the surface, 0 or 1 (the rocks of the reefs and the sea a few
+    // meters around them, coast.hpp): the material only, never the height.
+    float rock = 0.0f;
 };
 
 // A depression below the sea level of the geography (phase 11B): its center (canonical), its mean
@@ -177,15 +185,68 @@ public:
 
     // The Heightfield of the world (phase 11B): this relief with the water of hydrology, built
     // over it: the valleys of its rivers carved, the water of its rivers and lakes. The same bits
-    // as this relief wherever no valley lies.
+    // as this relief wherever no valley lies, but in the band of the coasts near the valleys,
+    // where its coasts fade out to the relief without them (leaveValleys).
     [[nodiscard]] Heightfield withHydrology(std::shared_ptr<const Hydrology> hydrology) const;
     // The water of the world, or nullptr for the relief alone.
     [[nodiscard]] const Hydrology* hydrology() const { return hydrology_.get(); }
+
+    // The coasts (agent 33, coast.hpp): what they make of the point (x, z), any image of it.
+    [[nodiscard]] CoastSample coastAt(double x, double z) const;
+    // This relief without the coasts (the coastal plains of phase 11R, bit for bit): the relief the
+    // planet level and the rivers are built over. A cheap copy sharing the layers and the map.
+    [[nodiscard]] Heightfield withoutCoasts() const;
+    [[nodiscard]] bool hasCoasts() const { return coasts_ != nullptr; }
+    // The inlets cut in the coasts (coast.hpp, CoastSite) whose site lies in the box (canonical
+    // meters, the box not wrapping), sorted by x, then z, then their other fields; none without the
+    // coasts. Built on demand and kept, from any thread; the same whatever the threads, the order
+    // and the boxes of the queries. With a Hydrology, stopped before its rivers and lakes (not
+    // without one).
+    [[nodiscard]] std::vector<CoastSite> inletsIn(double minX, double minZ, double maxX,
+                                                  double maxZ) const;
+    // Those of them that are harbors (CoastSite::harbor), for the settlements to come.
+    [[nodiscard]] std::vector<CoastSite> harborsIn(double minX, double minZ, double maxX,
+                                                   double maxZ) const;
+    // Those of them that are anchorages (CoastSite::anchorage; never a harbor), the same way.
+    [[nodiscard]] std::vector<CoastSite> anchoragesIn(double minX, double minZ, double maxX,
+                                                      double maxZ) const;
+    // The stacks off the coasts whose middle lies in the box (the same rules as inletsIn).
+    [[nodiscard]] std::vector<CoastStack> stacksIn(double minX, double minZ, double maxX,
+                                                   double maxZ) const;
 
 private:
     struct Layers; // the noises of the layers, built once (heightfield.cpp)
     struct Memos;  // the memos of the noises during a batch call (heightfield.cpp)
     struct Water;  // the depressions and the water (heightfield_water.cpp)
+    struct Coasts; // the noises of the coasts (heightfield_coast.cpp)
+    // What the coasts make of a canonical point of the geography g in reliefWith: its coast
+    // signal, the factor of the land (mountains, hills, forms of the plains) and the ground before
+    // the local relief; those of the geography out of the band or without the coasts.
+    struct CoastPoint {
+        bool active = false; // in the band, with the coasts
+        double signal = 0.0;
+        bool landward = false; // active, on land
+        float land = 0.0f;
+        float mountains = 0.0f; // the factor of the land of the mountains, never above land
+        float ground = 0.0f;
+        float fade = 1.0f;      // coast_shape::Ground::fade
+        float irregular = 0.0f; // coast_shape::Ground::irregular
+        float rock = 0.0f;      // coast_shape::Ground::rock
+    };
+    [[nodiscard]] CoastPoint coastPointAt(double x, double z, const GeographySample& g,
+                                          Memos* memos) const;
+    // The weights of the kinds of coast at a canonical point of the band (coast_kinds).
+    [[nodiscard]] std::array<float, kCoastKindCount>
+    coastKindsAt(double x, double z, const GeographySample& g, Memos* memos) const;
+    // Near the rivers, in the band of the coasts: the relief s of the canonical (x, z) faded from
+    // its coasts to the relief without them as the valleys, ponds and lakes come near
+    // (Hydrology::clearance), before their water: their corridors keep the relief they were found
+    // over, bit for bit (heightfield_coast.cpp).
+    void leaveValleys(double x, double z, HeightSample& s, Memos* memos) const;
+    [[nodiscard]] static std::shared_ptr<const Coasts> makeCoasts(std::uint64_t seed,
+                                                                  const WorldSize& world);
+    // The inlets of these coasts, stopped before the rivers of hydrology_ (heightfield_coast.cpp).
+    [[nodiscard]] std::shared_ptr<const coast_lattice::Lattices> makeInlets() const;
 
     [[nodiscard]] static std::shared_ptr<const Water>
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
@@ -260,7 +321,7 @@ private:
     // The hills, vallons, buttes and terraces of the geography (relief_local).
     [[nodiscard]] float localReliefAt(double x, double z, float amplitude, float buttes,
                                       float region, float plain, float rough,
-                                      Memos* memos) const;
+                                      const CoastPoint& coast, Memos* memos) const;
     [[nodiscard]] float detailAt(double x, double z, float base, Memos* memos) const;
     // The top of the rock with the walls of the mountains (mountain_walls) over ground meters
     // (the base and the great forms of the mountains).
@@ -275,6 +336,10 @@ private:
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
+    std::shared_ptr<const Coasts> coasts_;         // the coasts, or null without them
+    // The inlets and stacks of the coasts, cell by cell on demand (null without the coasts): of
+    // this Heightfield and its copies, but those with another Hydrology (withHydrology).
+    std::shared_ptr<const coast_lattice::Lattices> inlets_;
 };
 
 } // namespace terrain

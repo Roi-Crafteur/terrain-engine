@@ -34,6 +34,10 @@ struct SurfaceSite {
     // At a vertical wall of the cliffs: the surface drops by at least half a stratum to a
     // 4-neighbor sample, where the cliff mask is not 0.
     bool cliffWall = false;
+    // Bare rock, even under the water: the rocks of the reefs of the coasts (HeightSample::rock)
+    // and, in the tiles and the horizon, the sea floor at least as steep as the rock on land at
+    // the foot of the walls plunging into the sea (barePlunge). Set by them, false elsewhere.
+    bool bareRock = false;
 
     [[nodiscard]] bool dry() const { return water == WaterKind::None; }
     [[nodiscard]] float waterDepth() const { return waterLevel - ground; }
@@ -79,6 +83,16 @@ struct SurfaceGrids {
 // water that of HeightSample (the sea where the geography puts it, not below kSeaLevel).
 [[nodiscard]] TerrainSurface surfaceFromHeightfield(const Heightfield& field,
                                                     const HeightmapRegion& region);
+
+// Whether a site may be the foot of a wall plunging into the sea: the ocean near a shore (its
+// continentalness above -kPlungeShore, about 6 km of coast signal: 2 km), no wall rising out of
+// the open sea.
+inline constexpr float kPlungeShore = 0.004f;
+[[nodiscard]] bool mayPlunge(const SurfaceSite& site);
+// Whether such a site is bare rock: the ground around it rising rockSlope meters per meter at
+// least (rise, read over the pitch the material is drawn at, the tiles between their texels, the
+// horizon between its samples: never the sand of the shallows drawn up the foot of a wall).
+[[nodiscard]] bool barePlunge(const SurfaceSite& site, float rise, float rockSlope);
 
 // The site surfaceFromHeightfield gives a sample of this ground and continentalness whose 4
 // neighbors step meters away (east +X, west, south +Z, north) have these heights: the same

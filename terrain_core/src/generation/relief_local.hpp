@@ -48,6 +48,13 @@ struct Shape {
     // [0, 1], from the hills of the plains (shorter, the forms seen at the height of a walker)
     // to those of the rough country (broader, under the foothills and mountains).
     float rough = 0.0f;
+    // (0, 1], the share of the amplitude the coasts leave (the factor of the land): the terraces
+    // step the relief before it, along the hills and not along the shore.
+    float fade = 1.0f;
+    // [0, 1], on the high coasts: the terraces step irregularly (levels and treads moved from one
+    // step to the next, their edges wandering with the noise of the buttes), never in regular
+    // furrows down their hills.
+    float irregular = 0.0f;
 };
 
 // The relief at (x, z), canonical. memos may be null.

@@ -62,7 +62,9 @@ void testLakes(const World& w, Checks& tiles, Checks& horizon) {
         if (!water_level::underLake(s.water)) {
             return false;
         }
-        flat = flat && level == w.hydrology->lakeAt(x, z, w.relief.heightAt(x, z)).level;
+        // Over the relief the lakes were found over (without the coasts, which keep off them).
+        flat = flat &&
+               level == w.hydrology->lakeAt(x, z, w.hydrology->relief().heightAt(x, z)).level;
         return true;
     };
     for (const auto& [x, z] : lakePoints(w, 3)) {
@@ -377,7 +379,9 @@ int main() {
     water_level::report("samples", horizon);
     water_level::report("vertices with caves", caves);
     golden::report("water levels of the small world",
-                   {{"tiles", tiles.sum.value(), 0x0D969F30C054AF39ULL},
+                   // The coasts (agent 33) change tiles of their band (0x0D969F30C054AF39
+                   // without them, as the horizon and the caves).
+                   {{"tiles", tiles.sum.value(), 0x0AE9CB3DB169FB79ULL},
                     {"horizon", horizon.sum.value(), 0xCB9F99936D89D887ULL},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();

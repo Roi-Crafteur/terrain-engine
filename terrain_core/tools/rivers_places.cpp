@@ -59,6 +59,17 @@ bool parseOption(int argc, char** argv, int& i, Options& o) {
         ok = (parse(argv[i + 2], p.x) && parse(argv[i + 3], p.z)) || fail("map", argv[i + 1]);
         o.maps.push_back(p);
         i += 3;
+    } else if (flag == "--without" && need(1) && std::string(argv[i + 1]) == "coasts") {
+        o.coasts = false;
+        ++i;
+    } else if (flag == "--tilted-view" && need(6)) {
+        Place p = placeAt(argv[i + 1], 0.0, 0.0);
+        ok = (parse(argv[i + 2], p.x) && parse(argv[i + 3], p.z) &&
+              parse(argv[i + 4], p.heading) && parse(argv[i + 5], p.above) &&
+              parse(argv[i + 6], p.tilt)) ||
+             fail("tilted view", argv[i + 1]);
+        o.views.push_back(p);
+        i += 6;
     } else if (flag == "--view" && need(5)) {
         Place p = placeAt(argv[i + 1], 0.0, 0.0);
         ok = (parse(argv[i + 2], p.x) && parse(argv[i + 3], p.z) &&

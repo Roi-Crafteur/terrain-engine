@@ -49,6 +49,11 @@ add_library(terrain_core STATIC
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
     src/generation/climate.cpp
+    src/generation/coast_inlets.cpp
+    src/generation/coast_kinds.cpp
+    src/generation/coast_lattice.cpp
+    src/generation/coast_reefs.cpp
+    src/generation/coast_shape.cpp
     src/generation/depression_forms.cpp
     src/generation/depressions.cpp
     src/generation/ecology.cpp
@@ -64,6 +69,7 @@ add_library(terrain_core STATIC
     src/generation/erosion.cpp
     src/generation/height_grid.cpp
     src/generation/heightfield.cpp
+    src/generation/heightfield_coast.cpp
     src/generation/heightfield_density.cpp
     src/generation/heightfield_geography.cpp
     src/generation/heightfield_hydrology.cpp
@@ -115,6 +121,7 @@ add_library(terrain_core STATIC
     src/generation/water/hydrology_region.cpp
     src/generation/water/river_blend.cpp
     src/generation/water/river_box.cpp
+    src/generation/water/river_clearance.cpp
     src/generation/water/river_course.cpp
     src/generation/water/river_falls.cpp
     src/generation/water/river_join.cpp

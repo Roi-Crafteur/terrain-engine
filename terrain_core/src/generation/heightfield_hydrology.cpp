@@ -89,6 +89,9 @@ double bedHardness(std::uint64_t seed, double height) {
 Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrology) const {
     Heightfield out = *this;
     out.hydrology_ = std::move(hydrology);
+    if (out.coasts_) {
+        out.inlets_ = out.makeInlets();
+    }
     return out;
 }
 
@@ -219,6 +222,7 @@ void Heightfield::waterOf(std::span<const double> xs, std::span<const double> zs
     for (std::size_t i = 0; i < xs.size(); ++i) {
         const double x = noise::wrapCanonical(xs[i], world_.x);
         const double z = noise::wrapCanonical(zs[i], world_.z);
+        leaveValleys(x, z, samples[i], &memos);
         minX = std::min(minX, x);
         maxX = std::max(maxX, x);
         minZ = std::min(minZ, z);

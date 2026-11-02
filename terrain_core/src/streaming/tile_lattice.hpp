@@ -59,6 +59,9 @@ struct TileColumns {
     // stride s at index (p / s) * 4 + side (side 0 at i = -1, 1 at i = kGridSamples, 2 at k = -1,
     // 3 at k = kGridSamples).
     std::vector<float> outsideHeights;
+    // The bare rock of each column, 0 or 1 (HeightSample::rock: the material only, the coasts),
+    // apart from the rock in three dimensions above.
+    std::vector<float> bareRocks;
     float minHeight = 0.0f;
     float maxHeight = 0.0f;
 
@@ -70,6 +73,10 @@ struct TileColumns {
     }
     [[nodiscard]] float waterAt(int i, int k) const {
         return waterLevels[static_cast<std::size_t>(k * kGridSamples + i)];
+    }
+    [[nodiscard]] bool bareRockAt(int i, int k) const {
+        return !bareRocks.empty() &&
+               bareRocks[static_cast<std::size_t>(k * kGridSamples + i)] > 0.5f;
     }
 };
 
@@ -129,8 +136,10 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     columns.continentalness.reserve(kCount);
     columns.waterLevels.reserve(kCount);
     columns.waterKinds.reserve(kCount);
+    columns.bareRocks.reserve(kCount);
     for (const HeightSample& sample : samples) {
         columns.waterKinds.push_back(sample.water);
+        columns.bareRocks.push_back(sample.rock);
         columns.heights.push_back(sample.height);
         columns.continentalness.push_back(sample.continentalness);
         columns.waterLevels.push_back(sample.water == WaterKind::None ? kNoWaterLevel
