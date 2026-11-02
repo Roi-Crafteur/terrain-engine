@@ -57,8 +57,10 @@ TerrainSession::TerrainSession(const SessionParams& params)
     : planet_(planetSource(params)),
       tiles_(params.seed, HeightfieldParams{}, EcologyParams{}, caveParams(params), params.world,
              hydrology(params, planet_)),
-      timings_(std::make_shared<TileTimings>()), horizonEdits_(tiles_.heightfield()),
-      streamer_(timedGenerator(tileGenerator(tiles_), timings_), streamParams(params), timings_) {
+      timings_(std::make_shared<TileTimings>()), timeline_(std::make_shared<LoadTimeline>()),
+      horizonEdits_(tiles_.heightfield()),
+      streamer_(timedGenerator(tracedGenerator(tileGenerator(tiles_), timeline_), timings_),
+                streamParams(params), timings_) {
 }
 
 std::vector<ChunkCoord> TerrainSession::applyEdit(const VolumeEdit& edit) {

@@ -7,6 +7,8 @@
 #include "Bridge/horizon_timings.hpp"
 #include "Bridge/terrain_session.hpp"
 #include "Bridge/unreal_frame.hpp"
+#include "TerrainWorldBuild.h"
+#include "TerrainWorldLoading.h"
 
 #include <memory>
 #include <string>
@@ -34,6 +36,11 @@ struct FTerrainWorldState
 	terrain::unreal::StageStats GameThreadFrames;
 	terrain::unreal::StageStats RenderThreadFrames;
 	terrain::unreal::StageStats GpuFrames;
+	// The measures of the loads at the spawn and after the teleports (TerrainWorldLoading.cpp).
+	FTerrainLoadingState Loading;
+	// Breaking and placing in game (TerrainWorldBuild.cpp). Last: its saver writes its last save
+	// from the edits of the session before the session goes.
+	FTerrainBuildState Build;
 };
 
 namespace TerrainWorldConversions

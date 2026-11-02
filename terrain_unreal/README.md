@@ -138,9 +138,11 @@ Limite connue : `RunUAT BuildPlugin` copie le plugin seul ailleurs et ne trouve 
 | `bAsyncCollisionCooking` | non | cuisson des collisions hors du thread de jeu |
 | `bWater` | oui | lacs et fleuves des tuiles à leur niveau, rideaux et écume des chutes, lacs et fleuves de l'horizon GPU (section 14) ; `Terrain.Water 0\|1` les cache ou les montre en jeu |
 | `WaterMaterial`, `FallsMaterial` | aucun | matériaux de la surface de l'eau des tuiles et des chutes ; aucun : `M_TerrainWater`, `M_TerrainFalls` (`Scripts/create_water_materials.py`) |
+| `bDevTools` | oui | les outils de debug en jeu (`DEV_TOOLS.md`) : écran F3, commandes `Terrain.Goto`, `Look`, `Eye`, `Pawn`, `Save`, `Info`, `Shot`, `Views`, `View`, `Seed`, `Hud` ; jamais dans un build Shipping |
 | `FocusActor` | aucun | acteur suivi ; sinon le pion du premier joueur, ou sa caméra |
 | `bSnapPawnToGround` | oui | pose sur le sol un nouveau pion qui est dessous |
 | `WarmUpRadiusChunks`, `WarmUpTimeoutSeconds` | 1, 10 | tuiles LOD 0 générées avant qu'un nouveau pion bouge |
+| `LoadingSettings` | renfort, fondu 2 s, horizon niveau par niveau | chargement au spawn et à la téléportation : renfort des fils et des envois sous un plafond, écran noir jusqu'au sol, 64 m, toutes les tuiles et les niveaux 0 à 3 de l'horizon, pion tenu jusqu'à sa collision (`LOADING.md`) |
 | `TimingLogIntervalSeconds` | 5 | intervalle du résumé des mesures (0 : aucun) |
 | `bHorizon` | oui | horizon lointain (section 10) |
 | `HorizonLevels` | 10 | niveaux de l'horizon : 8 m, puis le double à chaque niveau ; 10 vont à 520 km |
@@ -177,11 +179,15 @@ terrain_unreal/
     TerrainEngine.Build.cs
     Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
     Public/TerrainEdits.h      ETerrainEditShape, ETerrainEditMode
+    Public/TerrainDevTypes.h   ETerrainEyeMode (les lieux des outils de debug)
     Private/
       TerrainWorld.cpp         cycle de vie, tick, démarrage d'un pion, mesures
       TerrainWorldHorizon.cpp  l'horizon lointain d'ATerrainWorld
       TerrainWorldEdits.cpp    les modifications pour essayer (section 15), Terrain.Edit
       TerrainWorldWater.cpp    l'eau (section 14), Terrain.Water, la ligne du fichier planète
+      TerrainWorldDev.cpp      les crochets des outils de debug, TeleportView (DEV_TOOLS.md)
+      TerrainDev*.cpp/.h       les outils de debug : F3, commandes, images, modes de vue, seed
+      ProceduralMeshTerrainLooks.cpp  les couleurs des tuiles dans les modes de vue
       TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
       TerrainHorizonClipmap.*  l'horizon GPU : grilles fixes, placements
       TerrainHorizonTextures.* ses textures (texels, normales, eau) et leurs envois
@@ -253,7 +259,9 @@ Tests ctest de la couche pure (`scripts/run_tests.sh` à la racine) : `unreal_fr
 `unreal_horizon_normals_test`, `unreal_horizon_detail_test`, `unreal_horizon_crests_test`,
 `unreal_horizon_atmosphere_test`, `unreal_terrain_surface_test`, `unreal_tile_water_test`,
 `unreal_water_scripts_test` (les scripts de l'eau, sans Unreal), `unreal_planet_file`,
-`unreal_core_sources`. Mesures à la main : `unreal_horizon_bench` (temps de l'horizon GPU, crêtes
+`unreal_core_sources`, et ceux des outils de debug (`DEV_TOOLS.md`) : `unreal_place_pose_test`,
+`unreal_point_info_test`, `unreal_dev_perf_test`, `unreal_debug_colors_test`,
+`unreal_planet_job_test`, `unreal_dev_tools_guard`. Mesures à la main : `unreal_horizon_bench` (temps de l'horizon GPU, crêtes
 dans l'époque ou après, voir l'en-tête de `tests/unreal_horizon_bench.cpp`).
 
 ## 7. Linux et Mac (non essayés)
@@ -514,7 +522,10 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
   frame, le sommet de sa planète au niveau de la mer sous la caméra : la même sphère que la
   courbure de l'horizon, dont la mer tombe sur son sol et l'horizon sur le sien. Il pose
   l'`ExponentialHeightFog` sous la caméra à sa hauteur au-dessus de la mer, et la `SkyLight` sur la
-  caméra. Après un tour du monde ou un recentrage d'origine, la frame suivante a déjà son ciel
+  caméra. Cette hauteur est le Z du brouillard dans le niveau, lu une fois par Play comme une
+  hauteur au-dessus de la mer (le Z 0 du niveau est la mer, quel que soit le point du core à
+  l'origine) : un brouillard posé pour une plage ne flotte pas 4 km plus haut quand le niveau
+  commence sur une montagne (`CoreOriginX`, `CoreOriginZ` près du K2). Après un tour du monde ou un recentrage d'origine, la frame suivante a déjà son ciel
   (vérifié par les positions et des captures). Coût : 0,0015 ms par frame sur le thread de jeu.
 - **Perspective aérienne** : son volume (`r.SkyAtmosphere.AerialPerspectiveLUT.Depth`, 96 km par
   défaut) est porté à la portée de l'horizon (748 km avec 10 niveaux), rendu à `EndPlay` : les
@@ -570,8 +581,9 @@ aspect de près et de loin : couleur et transparence selon l'épaisseur d'eau et
 bruit dans le sens du courant, reflet du ciel et du soleil, écume des rapides, rives fondues. Il faut un fichier planète (`PlanetFile`, section 5,
 par défaut dans `Saved/TerrainEngine`) et les matériaux de `Scripts/create_water_materials.py`.
 Données, formats, aspect, coût, évolution vers Single Layer Water et limites :
-[`WATER_LEVEL.md`](WATER_LEVEL.md). La sonde `terrain_probe_water` dit ce que le core met en un
-point, `unreal_water_probe` ce que le Bridge en fait (chutes, rideaux, mailles coupées par LOD).
+[`WATER_LEVEL.md`](WATER_LEVEL.md). La sonde `terrain_probe` (qui remplace `terrain_probe_water`)
+dit ce que le core met en un point, `unreal_water_probe` ce que le Bridge en fait (chutes,
+rideaux, mailles coupées par LOD).
 
 ## 15. Les modifications vues de loin (phase 15)
 
@@ -623,3 +635,86 @@ montre, en GPU comme en CPU.
   dessiné en mer ; une très grosse modification met quelques centaines de millisecondes à
   sortir du fil de modifications (sans bloquer le jeu), et les modifications suivantes
   attendent leur tour.
+
+Casser et poser en jeu (clic gauche, clic droit, touches 1/2/3), le fantôme et la sauvegarde
+des modifications par seed : voir [`BREAK_PLACE.md`](BREAK_PLACE.md) (agent 28).
+
+## 16. La carte de dev et la minicarte (agent 35)
+
+Voir le monde, zoomer, cliquer, y être. `terrain_core` rend les images de la carte (données
+seulement, `terrain/map`, `terrain_export_map` pour un PNG) ; le Bridge choisit les tuiles de
+chaque vue et les rend sur des fils à lui, jamais sur le fil du jeu
+(`Bridge/map_tile_cache.hpp`) ; le composant `Terrain Dev Map` (`DevMap` de `Terrain World`) ne
+fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image) et les dessiner
+(Slate).
+
+- **Minicarte** (`bMinimap`, coin `MinimapCorner`, côté `MinimapSize`) : centrée sur le joueur,
+  flèche de direction, le nord en haut ; `bMinimapRotates` (ou `Terrain.Map.MinimapRotate 1`) la
+  fait tourner avec le joueur (un « N » montre alors le nord). Zoom : `MinimapMetersPerPixel`
+  (4 m par pixel : 1 km de côté), les touches `+` et `−` du pavé numérique (deux fois plus près ou
+  plus loin) ou `Terrain.Map.MinimapZoom <m/px>`. Faite pour le jeu aussi : sa vue, ses tuiles et
+  son dessin sont à part de la carte de dev ; le masque des zones découvertes d'une carte de jeu
+  se branchera sur `Bridge/map_reveal.hpp`.
+- **Carte de dev** (touche `M`, `DevMapKey`, ou `Terrain.Map`) : plein écran, curseur visible,
+  le personnage et la caméra ne bougent plus ; `M` ou Échap la ferment. Molette : zoom autour du
+  curseur, de 0,25 m à 65 km par pixel (la planète entière) ; glisser : déplacer. Panneau de
+  droite : le fichier planète (chargé, construit, ou ABSENT : ni fleuves, ni lacs, ni chutes), les
+  calques (relief, biomes, eau, courbes), « Go to x, z » (`-241631, -86277`, ou
+  `-6 185 104 ; 155 924`), « Me » (recentrer sur le joueur), « Add this place » (la vue de la
+  caméra), les lieux enregistrés, et sous le curseur : x, z, sol, eau (type, niveau, profondeur),
+  biome, climat, case de la planète. **Jamais dans un build Shipping** : la carte plein écran, ses
+  lieux, ses clics, la touche `M` et `Terrain.Map` sont sous `#if TERRAIN_DEV_TOOLS`, comme les
+  outils de l'agent 36 (`unreal_dev_map_sources` le vérifie) ; la minicarte et les tuiles restent
+  dans tous les builds.
+- **Les lieux** sont ceux des outils de l'agent 36 : le fichier `Terrain.PlacesFile`
+  (`data/dev/places.json` par défaut), relu à chaque ouverture de la carte. « Add this place » y
+  écrit la vue de la caméra comme `Terrain.Save` (même arrondi ; un lieu du même nom est mis à
+  jour, ses champs inconnus gardés). Un repère jaune (rouge s'il demande le fichier planète
+  absent) : un clic dessus prend la vue du lieu (position, cap, inclinaison, œil) par
+  `ATerrainWorld::TeleportView`.
+- **Clic = y aller**, le cap et l'inclinaison gardés ; « Go to x, z » fait de même :
+  - **sur terre**, le **pion du jeu** : la vue des outils va au point
+    (`ATerrainWorld::TeleportView`, l'écran noir et le pion tenu jusqu'à ce que le monde autour soit
+    là, `LOADING.md`), puis `ATerrainWorld::ReturnToGamePawn` (agent 36) pose le pion du jeu sur le
+    sol praticable le plus proche, vérifié sur la collision des tuiles et surveillé une seconde
+    (`DEV_TOOLS.md`) ;
+  - **dans l'eau peu profonde** (un sol sec à moins de `Terrain.PawnRadius`, 50 m) : la vue va
+    d'abord sur la colonne sèche la plus proche, puis de même ; si aucun point près d'elle ne tient
+    le pion (le pied d'une falaise au bord d'un lac), la vue revient au-dessus de l'eau au point
+    cliqué ;
+  - **sur l'eau sans sol sec dans le rayon** (pleine mer, milieu d'un lac, un large fleuve) : la
+    **vue des outils**, l'œil à 1,8 m au-dessus de la surface de l'eau du core (jamais du fond), et
+    le message « over water (no dry ground within 50 m): the view of the tools 1.8 m above the
+    water; Terrain.Pawn over land ».
+
+  **`Terrain.Map.Go x z`** (ou `x, z`, ou `-6 185 104 ; 155 924` : sans `,` ni `;`, exactement deux
+  nombres) suit exactement ce chemin, le cap et l'inclinaison du joueur gardés ;
+  **`Terrain.Map.Go <lieu>`** fait de même au point du lieu, avec son cap et son inclinaison (un
+  atterrissage, pas la vue du lieu : celle-ci, c'est `Terrain.Goto <lieu>`), avec l'avertissement
+  de `Terrain.Goto` quand le lieu a été mesuré avec le fichier planète et que le monde ne l'a pas,
+  ou l'inverse. De quoi vérifier les atterrissages par script (agent 37).
+
+  Le choix entre les deux (`Bridge/map_landing.hpp`, `clickLanding`) se fait sur le fil de la
+  carte (en pleine mer, il lit environ 2 000 colonnes du core : 0,3 s au milieu de
+  `lac_montagne`), « Loading the terrain » affiché pendant ce temps. Une seconde après que le pion
+  du jeu est rendu, une ligne de contrôle dans le log : « Terrain Dev Map: 1 s after the click: the
+  pawn of the game, Walking, 0.00 m/s, feet at 1.94 m (no water within 3 m), 0.0 m from the click:
+  OK » (un avertissement « NOT walking still above the water » sinon).
+- **Sources selon le zoom** : jusqu'à 64 m/px le relief fin avec ses vallées, fleuves, lacs et
+  chutes ; de 128 m à 1 km/px le relief seul et l'eau du niveau Planète (jamais les tracés de
+  l'hydrologie, trop chers sur de grandes zones) ; à partir de 2 km/px les cases du niveau
+  Planète. Une tuile prend de 0,05 à 0,2 s en plaine et aux zooms larges, 0,4 à 1,6 s près des
+  fleuves et en montagne, 3,9 s au pire mesuré (un fil, monde par défaut avec son fichier
+  planète). En attendant une tuile, une tuile plus grossière déjà là tient sa place.
+- **Fils et mémoire** : `MapThreads` (1) fils de rendu ; `KeptTiles` (192) tuiles gardées, 256 Ko
+  chacune sur le CPU et autant sur le GPU (48 Mo) ; arrêtés avant que le monde ne s'en aille
+  (`ReleaseWorld` : la fin du Play, et `Terrain.Seed` avant le nouveau monde), et refaits pour un
+  nouveau monde. Une tuile en cours s'arrête entre deux de ses
+  lignes et n'est pas gardée : en général quelques millisecondes ; mais une première requête de
+  l'hydrologie près d'un grand fleuve (le calcul de ses tracés) ne se coupe pas et peut durer
+  jusqu'à 3 s, pour la carte comme pour les fils des tuiles.
+- **Échap en PIE** : dans l'éditeur, Échap est aussi le raccourci « Stop » du Play : si la carte
+  n'a pas le focus clavier (un clic hors d'elle), il arrête la session au lieu de fermer la carte.
+  Pour le garder à la carte : Edit > Editor Preferences > General > Keyboard Shortcuts, catégorie
+  « Play World (PIE/SIE) », commande « Stop » : lui donner une autre touche (par exemple Maj+Échap).
+  La touche de la carte (M) la ferme toujours.

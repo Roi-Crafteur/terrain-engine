@@ -158,6 +158,20 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   fleuves ; un fichier périmé ou abîmé est reconstruit, la raison dans le log, jamais lu en
   silence ; scripts des matériaux qui remettent tous leurs réglages à zéro
 
+### Chargement au spawn et à la téléportation (agent 38)
+- mesuré d'abord (journal de chaque tuile, jalons, courbe « distance → instant visible », CSV) :
+  les tuiles autour du joueur étaient là en 0,26 à 0,68 s, mais l'horizon lointain arrivait d'un
+  bloc 3,7 à 24 s après (Unreal, 9950X3D, avec la planète). Avec la planète, une époque complète
+  coûte 74 à 111 s sur un fil, dont 65 s pour les niveaux 8 et 9 (`Hydrology::courseOf`, tâche à
+  part)
+- l'horizon vient niveau par niveau, le niveau 0 d'abord, chacun en fondu, le bord du dernier
+  niveau visible dissous dans le ciel ; l'époque de l'ancien lieu est abandonnée à la téléportation
+- renfort pendant le chargement (fils de tuiles et morceaux d'horizon ensemble sous
+  `min(fils − 4, 12)`, envois par un budget en ms), puis retour au régime normal ; écran noir 2 s au
+  plus jusqu'au sol, 64 m, toutes les tuiles et les niveaux 0 à 3 ; pion tenu jusqu'à sa collision
+- `TeleportWhenReady`, `PrepareLocation` et `OnTerrainLocationReady` ; contrôle de déterminisme
+  sur un fil ; mêmes tuiles et mêmes échantillons au bit près (`terrain_unreal/LOADING.md`)
+
 ### Phase 11D — Niveau Planète créé en 500 Mo
 - création du monde (`terrain_make_planet`, monde par défaut, mesuré sous Linux) : pic de
   1 084 Mo à 412 Mo sur 4 cœurs (1 053 Mo à 411 Mo sur un cœur), pour les mêmes bits (somme du
@@ -206,6 +220,47 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - planète entière, trois presets (`terrain_export_settlement --preset all`) : 77 s, pic de
   960 Mo ; frontières naturelles 66,8 / 61,5 / 55,3 % (sauvage / équilibré / civilisé, seuil
   50 %), tous les tests d'un bon monde passent ; détails dans `docs/PEUPLEMENT.md`, section 9
+
+### Outils de debug en jeu (agent 36)
+- écran F3 en trois pages (joueur, point visé, performance), lignes du core extensibles par
+  d'autres modules (`Bridge/point_info`) ; commandes `Terrain.Goto x z [œil]` et
+  `Terrain.Goto <lieu>`, `Look`, `Eye`, `Pawn`, `Save`, `Info`, `Shot`, `Views`, `View`, `Seed`,
+  `Hud` ; une seule téléportation, `ATerrainWorld::TeleportView` (synchrone, terrain chargé avant
+  de rendre la main), pour la console et la carte de dev
+- fichier des lieux commun `data/dev/places.json` (agents 35, 36, 37), lu et écrit par
+  `terrain_core/dev/places_file` sur le JSON strict de `terrain/json` (aller-retour exact, champs inconnus gardés) ; 11 lieux de test
+- images prises une fois la vue chargée (tuiles, horizon, délai maximum) ; `Terrain.Views` : une
+  image par lieu dans un dossier daté avec `views.txt`, la base des comparaisons avant / après
+- modes de vue : filaire, LOD, roche 3D (sommets hors heightmap), eau seule, sans eau, normales,
+  pente ; `Terrain.Seed` : autre seed et preset sans quitter le Play, planète construite à part
+  sur un fil, jamais sur un fichier de l'utilisateur
+- jamais dans un build Shipping (`TERRAIN_DEV_TOOLS`) ; aucun bit du monde changé
+  (`terrain_unreal/DEV_TOOLS.md`)
+
+### Vérifications automatiques et sonde unique (agent 37)
+- `terrain_probe` remplace `terrain_probe_water` : pour des points ou le long d'une ligne
+  (`--line`), avec ou sans fichier planète, tout ce que le core sait. Une section par module :
+  relief et sol (le sol du repère d'Unreal), géographie, case de la planète (climat, débit), eau
+  (type, niveau, profondeur, vallée, lac, courant), chutes proches et couloir de marches,
+  colonne de roche, côte, surface, ce que reçoit Unreal (tuiles, horizon). Texte ou JSON à schéma
+  stable ; `--planet-check` lit un fichier planète sans jamais l'écrire. Les sections
+  `rock.faces` (12A) et `coast.type` (agent 33) ont leur place prévue
+  (`docs/dev/PROBE_AND_PLACES.md`)
+- `data/dev/places.json` : les lieux de test partagés (lecteur et écrivain de l'agent 36
+  dans `terrain_core/dev/`)
+- `scripts/verify/` : une commande pour vérifier une version, ou la comparer à une autre, dans
+  Unreal :
+  - clones jetables, cache de build par commit, planète vérifiée et copiée à côté ;
+  - sessions courtes sous un chien de garde ;
+  - vues prises en pause (bruit à monde identique mesuré), contrôle du signe de l'inclinaison,
+    marches jusqu'à la première chute ;
+  - planche avant / après, écarts de pixels et `resume.txt`.
+
+  Le pilote d'Unreal est testé contre un faux module `unreal`, et essayé de bout en bout par
+  l'orchestrateur sous Windows (UE 5.8)
+- `--landings` du lanceur : `Terrain.Map.Go` (agent 35) à chaque lieu, un à la fois, sa ligne de contrôle lue, l'issue comparée entre deux versions
+
+### Carte de dev et minicarte (agent 35) : images de la carte dans `terrain_core/map` (relief, biomes, eau, courbes, tout zoom, mêmes octets sur tout fil), minicarte, carte plein écran `M` (jamais en Shipping), clic = pion du jeu sur terre ou vue au-dessus de l'eau, lieux de `data/dev/places.json` (`terrain_unreal/README.md`, section 16)
 
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
@@ -509,6 +564,7 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   - reste : casser et poser en jeu dans Unreal (en attendant : `Terrain.Edit`, `Apply Volume
     Edit`), effets de destruction, normales de détail de l'horizon qui suivent les modifications
     (aujourd'hui : les pentes de la grille sur les mailles modifiées)
+  - casser et poser en jeu : fait (agent 28 : bloc, sphères de 2 et 4 m, fantôme, sauvegarde par seed, `terrain_unreal/BREAK_PLACE.md`)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

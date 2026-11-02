@@ -37,9 +37,24 @@ public class TerrainEngine : ModuleRules
 		PrivateIncludePaths.Add(CoreInclude);
 		PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "Private"));
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
+		// InputCore: the keys of the map are settings of its component (FKey, Public/TerrainDevMap.h).
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
 		// The GPU horizon: static meshes built in game, textures updated by regions, frame times.
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"ProceduralMeshComponent", "MeshDescription", "StaticMeshDescription", "RenderCore", "RHI" });
+		// Breaking and placing in game (agent 28, UTerrainBuildComponent): its actions and keys.
+		PrivateDependencyModuleNames.AddRange(new string[] { "EnhancedInput", "InputCore" });
+		// The message on the black screen while the world builds at the start (TerrainWorldStart.cpp),
+		// the minimap and the dev map (agent 35): widgets written in C++ (the plugin has no content).
+		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
+
+		// The tools of the developers (terrain_unreal/DEV_TOOLS.md): the screen of F3 and the
+		// Terrain.* commands of views, places, view modes and seed. Never in a Shipping build: every
+		// file of them holds its code under #if TERRAIN_DEV_TOOLS (tests/unreal_dev_tools_guard).
+		bool bDevTools = Target.Configuration != UnrealTargetConfiguration.Shipping;
+		PrivateDefinitions.Add(bDevTools ? "TERRAIN_DEV_TOOLS=1" : "TERRAIN_DEV_TOOLS=0");
+		// Their keys (InputCore), the folder of the plugin, where the places lie (Projects), and
+		// the images they write (ImageCore).
+		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "Projects", "ImageCore" });
 	}
 }

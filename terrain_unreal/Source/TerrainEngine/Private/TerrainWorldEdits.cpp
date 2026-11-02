@@ -110,6 +110,7 @@ void TickTerrainEdits(FTerrainWorldState& State)
 	}
 	for (const terrain::unreal::EditOutcome& Outcome : Done)
 	{
+		NoteBuildEdit(State, Outcome); // the chunks to save, the clicks measured
 		const FString What = ToFString(Outcome.label);
 		if (Outcome.error != nullptr)
 		{
