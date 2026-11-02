@@ -48,6 +48,7 @@ RiverCarve carveOf(const water::Valley& v) {
     c.upZ = v.upZ;
     c.slope = v.slope;
     c.above = v.above;
+    c.wall = v.wall;
     return c;
 }
 
@@ -219,6 +220,12 @@ RiverCarve Hydrology::Impl::riversOf(const Candidates& near, double ground) cons
         out.second = second;
         out.reach = found[win].reach;
         out.bank = bank;
+        if (bank > found[win].valley.height) {
+            out.wall = SlotWall{}; // the ground is that of the banks
+        }
+    } else if (!(bank > found[win].valley.height)) {
+        // The wall of the slot reaches the relief beyond the rim of its valley: its rock there.
+        out.wall = found[win].valley.wall;
     }
     out.raise = raise;
     out.pond = pond;

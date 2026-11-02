@@ -12,6 +12,7 @@
 
 #include "river_course.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/generation/water/slot_wall.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 
 #include <algorithm>
@@ -47,6 +48,9 @@ struct Valley {
     // kBankReach meters (-infinity in the channel and beyond): no valley of another river, nor of
     // a stretch below on the same one, leaves the water standing above the ground beside it.
     double bank = -std::numeric_limits<double>::infinity();
+    // The wall of the slot of a fall the point stands on (river_slot.hpp: slotWallAt), its width
+    // 0 elsewhere: the faces of the rock of the slots (slot_faces.hpp).
+    SlotWall wall;
 };
 
 inline constexpr double kBankFlat = 8.0;

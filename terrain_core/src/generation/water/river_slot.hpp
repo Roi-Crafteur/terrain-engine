@@ -11,6 +11,8 @@
 
 #include "river_course.hpp"
 
+#include "terrain/generation/water/slot_wall.hpp"
+
 #include <cstdint>
 
 namespace terrain::water {
@@ -27,6 +29,11 @@ namespace terrain::water {
 // The slot at s meters along a course of slots seed, half its channel there: its channel, on the
 // axis of the course, narrowed (never wider than half).
 [[nodiscard]] double slotHalf(std::uint64_t seed, double s, double half);
+
+// slotHalf from the key of the narrowing of the slots of seed (narrowKey(seed), drawn once per
+// course: Course::narrowKey), the same value bit for bit.
+[[nodiscard]] std::uint64_t narrowKey(std::uint64_t seed);
+[[nodiscard]] double slotHalfOf(std::uint64_t key, double s, double half);
 
 // How far the walls of the slot there reach beyond its channel, base its walls, on the side of a
 // point side meters to the left of the slot (right: negative), the ravine wandering about the
@@ -47,6 +54,14 @@ inline constexpr double kRunLeast = 0.25;
 // meter, never above the floor), then a cliff up to the floor over the last kCliffShare of run:
 // whatever the depth of the steps, the rim stands where the cliff meets the floor.
 [[nodiscard]] double slotWall(double out, double run, double rise);
+
+// The wall of that slot as the rock sees it (slot_wall.hpp) at a point out meters beyond the
+// channel, the water at water: its cliff, kWallWidth meters across at most and never over the
+// channel, its middle that of the cliff, its foot and top the heights of the slot (slotWall, then
+// the floor rising kBankSlope meters per meter beyond the rim) at the edges of that width; width 0
+// where the point lies beyond them. The direction of the air and the weight are the caller's.
+[[nodiscard]] SlotWall slotWallAt(double out, double run, double rise, double water);
+inline constexpr double kWallWidth = 8.0;
 
 // Whether the water of a course of points p comes down a face from point i to the next.
 [[nodiscard]] bool faceAt(const std::vector<CoursePoint>& p, std::size_t i);
