@@ -60,6 +60,30 @@ double smooth(double edge0, double edge1, double v) {
     return t * t * (3.0 - 2.0 * t);
 }
 
+// The layers of the strata are beds kBedBand meters thick (0.3 to 1.7 of it: the bounds of
+// mountain_walls::layerBound), kBedShare of them hard: a soft layer is kHardBeds as hard in its
+// hard beds (a sandstone in a shale), a hard one kSoftBeds softer in its soft ones (the partings
+// of a limestone), a cap a fall wears the rock under (rockHardness). The beds of the layers drawn
+// by seed, height above their offset: 1 for a hard bed, 0 for a soft one.
+constexpr double kBedBand = 6.0;
+constexpr double kBedShare = 0.5;
+constexpr double kHardBeds = 0.6;
+constexpr double kSoftBeds = 0.6;
+constexpr std::uint64_t kBedSalt = 0x626564735f313241ULL;
+
+double bedHardness(std::uint64_t seed, double height) {
+    const std::uint64_t beds = noise::deriveSeed(seed, kBedSalt);
+    const double u = height / kBedBand;
+    auto k = static_cast<std::int64_t>(std::floor(u));
+    if (u < mountain_walls::layerBound(beds, k)) {
+        --k;
+    } else if (!(u < mountain_walls::layerBound(beds, k + 1))) {
+        ++k;
+    }
+    const std::uint64_t draw = noise::deriveSeed(beds, static_cast<std::uint64_t>(k));
+    return static_cast<double>(draw >> 11) * 0x1.0p-53 < kBedShare ? 1.0 : 0.0;
+}
+
 } // namespace
 
 Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrology) const {
@@ -72,17 +96,19 @@ Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrolog
 // ravines of the relief, in a gorge grained, cut by couloirs and laid in strata or crystalline.
 double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve& c, double show,
                                  Memos* memos) const {
+    // Down a stretch in steps, no rock cut into the walls (RiverCarve::steps): only its grain.
+    const double cut = show * (1.0 - static_cast<double>(c.steps));
     const double rock = kRockPlain + (kRockMountain - kRockPlain) * c.mountain +
                         kGorgeRock * c.gorge * c.above;
     if (layers_->geographyRock.octaves() > 0) {
         const float ridged =
             memos != nullptr ? layers_->geographyRock.ridged2D(x, z, kRockSharpness, memos->rock)
                              : layers_->geographyRock.ridged2D(x, z, kRockSharpness);
-        h += show * rock * (static_cast<double>(ridged) - 0.5);
+        h += cut * rock * (static_cast<double>(ridged) - 0.5);
     }
     const double slope = std::min(c.slope, kRavineSlope);
-    float cut = ravines::depth(layers_->ravines, x, z, slope * c.upX, slope * c.upZ, show,
-                               memos != nullptr ? &memos->ravines : nullptr);
+    float down = ravines::depth(layers_->ravines, x, z, slope * c.upX, slope * c.upZ, cut,
+                                memos != nullptr ? &memos->ravines : nullptr);
     if (c.gorge > 0.0f && layers_->wallGrain.octaves() > 0) {
         const float grain = memos != nullptr ? layers_->wallGrain.fbm2D(x, z, memos->grain)
                                              : layers_->wallGrain.fbm2D(x, z);
@@ -92,16 +118,16 @@ double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve&
     if (c.gorge > 0.0f) {
         // The couloirs of the walls of the gorges, down their slope.
         const double steep = std::min(c.slope, kGullySlope);
-        cut += ravines::depth(layers_->gullies, x, z, steep * c.upX, steep * c.upZ,
-                              show * static_cast<double>(c.gorge),
-                              memos != nullptr ? &memos->gullies : nullptr);
+        down += ravines::depth(layers_->gullies, x, z, steep * c.upX, steep * c.upZ,
+                               cut * static_cast<double>(c.gorge),
+                               memos != nullptr ? &memos->gullies : nullptr);
     }
     h += static_cast<double>(
-        relief_local::boundBelow(-cut, static_cast<float>(kRavineRoom * c.above)));
+        relief_local::boundBelow(-down, static_cast<float>(kRavineRoom * c.above)));
     if (c.gorge > 0.0f) {
         mountain_walls::Memo* walls = memos != nullptr ? &memos->walls : nullptr;
         const double share = mountain_walls::strataShare(layers_->walls, x, z, kCharacter, walls);
-        const double wall = show * static_cast<double>(c.gorge);
+        const double wall = cut * static_cast<double>(c.gorge);
         const mountain_walls::Masks masks{wall * share, wall * (1.0 - share), 0.0};
         const double top = mountain_walls::rockTop(layers_->walls, masks, x, z, h,
                                                    kLedge * c.upX, kLedge * c.upZ, walls);
@@ -129,6 +155,30 @@ void Heightfield::addDunes(double x, double z, HeightSample& s) const {
         s.dunes = dunes;
         s.height += dunes;
     }
+}
+
+float Heightfield::rockHardness(double x, double z, double y) const {
+    if (layers_->walls.bands.octaves() == 0) {
+        return 1.0f;
+    }
+    const double cx = noise::wrapCanonical(x, world_.x);
+    const double cz = noise::wrapCanonical(z, world_.z);
+    // As the walls of the gorges (valleyRockAt): their share of strata, over a flat ground (the
+    // layers then hold y as strataTop finds them). A layer is hard where its band or its rock
+    // step is; a soft one is made of beds (bedHardness).
+    const double share = mountain_walls::strataShare(layers_->walls, cx, cz, kCharacter, nullptr);
+    const mountain_walls::WallPasses w =
+        mountain_walls::wallPasses(layers_->walls, {share, 0.0, 0.0}, cx, cz, 0.0, 0.0, nullptr);
+    double strata = 0.0;
+    for (std::size_t p = 0; p < 2; ++p) {
+        const mountain_walls::StrataPass& pass = w.passes[p];
+        strata = std::max(strata, mountain_walls::layerFace(pass, mountain_walls::layerOf(pass, y))
+                                      .hardness);
+    }
+    const double bed = bedHardness(layers_->walls.steps, y - w.passes[1].offset);
+    const double layer =
+        strata * (1.0 - kSoftBeds * (1.0 - bed)) + (1.0 - strata) * kHardBeds * bed;
+    return static_cast<float>(share * layer + (1.0 - share));
 }
 
 void Heightfield::applyHydrology(double x, double z, HeightSample& s, Memos* memos) const {

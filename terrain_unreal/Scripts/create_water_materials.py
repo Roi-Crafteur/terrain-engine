@@ -20,9 +20,10 @@ gets shallow (FoamDepthM), so that it takes the shape of the pool.
 
 The UV channels of the meshes: UV0 the flow (or meters across and down a curtain), UV1 what the
 water is (1 river, 2 lake, 3 salt lake, 4 curtain, 5 foam) and its slope (or the height of the
-fall), UV2 its altitude and, on the surface, its edge (0 at the corners of the cells cut at a fall),
-on a curtain its width, on the foam its radius. ATerrainWorld finds the materials by these paths
-(WaterMaterial, FallsMaterial) and makes an instance of M_TerrainWater for the horizon to place.
+fall), UV2 its altitude and, on the surface, its edge (the fade toward the edge of the lip of a
+fall or a cut, clamped to [0, 1]), on a curtain its width, on the foam its radius. ATerrainWorld
+finds the materials by these paths (WaterMaterial, FallsMaterial) and makes an instance of
+M_TerrainWater for the horizon to place.
 
 The assets belong to the game project, not to this repository. Run the script once per project,
 and again after updating the plugin, in the Unreal Editor (the Python Editor Script Plugin must be
@@ -53,7 +54,8 @@ FLOAT3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
 WATER_INPUTS = ["Flow", "KindSlope", "Altitude", "Edge", "CameraRel", "Time", "SunDir",
                 "SunIlluminance", "SkyView", "SceneDepth", "PixelDepth", "VertexNormal", "Rel"]
 # The band of the tiles over level 0 of the GPU horizon, set by it (TerrainHorizonClipmap.cpp);
-# HasSurface 0 without the horizon: no fade.
+# HasSurface 0 without the horizon, and while its level 0 is hidden (a new place brought level by
+# level, Bridge/horizon_surface.hpp): no fade, the tiles keep all their water.
 SURFACE_SCALARS = {"SurfaceCells": 256.0, "SurfacePitchCm": 800.0, "SurfaceCoveredCm": 0.0,
                    "SurfaceBandCm": 0.0, "HasSurface": 0.0}
 FALLS_INPUTS = ["Fall", "KindDrop", "AltitudeSize", "Time", "SceneDepth", "PixelDepth",

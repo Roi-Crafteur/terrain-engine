@@ -402,6 +402,92 @@ double rockTop(const Noises& n, const Masks& m, double x, double z, double groun
     return h;
 }
 
+WallPasses wallPasses(const Noises& n, const Masks& m, double x, double z, double gradX,
+                      double gradZ, Memo* memo) {
+    WallPasses out;
+    // As rockTop: the noise of the rims, the bands and the steps, the joints.
+    const double noise = fbm(n.rims, x, z, memo ? &memo->rims : nullptr);
+    const double swing = kHardSwing * m.patch;
+    if (m.strata > 0.0) {
+        const double band =
+            kBandLow + (kBandHigh - kBandLow) *
+                           smooth(-0.5, 0.5, fbm(n.bands, x, z, memo ? &memo->bands : nullptr));
+        const double offset = kDip * fbm(n.dip, x, z, memo ? &memo->dip : nullptr);
+        const double rims = 0.5 + 0.5 * noise;
+        const double run = kRunLow + (kRunHigh - kRunLow) * (1.0 - rims);
+        const double slope = dmath::hypot(gradX, gradZ);
+        const double steps = kStepShare * band;
+        out.passes[0] = {slope, band, offset, kRim * rims, run * band,
+                         {n.layers, kHardBands + swing, kTilt, kSpread, kScree}, m.strata};
+        out.passes[1] = {slope, steps, 0.37 * offset, kStepShare * kRim * rims, run * steps,
+                         {n.steps, kHardSteps + swing, kTilt, kSpread, kScree},
+                         kStepMask * m.strata};
+    }
+    if (m.crystal > 0.0) {
+        for (std::size_t s = 0; s < kCellSize.size(); ++s) {
+            Cells local;
+            Cells& memoCells = memo != nullptr ? memo->crystal[s] : local;
+            const double size = kCellSize[s];
+            const double cx = (x + 0.5 * n.world.x) / size;
+            const double cz = (z + 0.5 * n.world.z) / size;
+            const auto i = static_cast<int>(std::floor(cx));
+            const auto j = static_cast<int>(std::floor(cz));
+            Cells& cells = cellsAt(n, static_cast<int>(s), i, j, memoCells);
+            std::array<double, 9> d2{}; // as crystalTopIn: the share of the nearest cell
+            std::size_t first = 0;
+            for (std::size_t k = 0; k < cells.cells.size(); ++k) {
+                const double dx = cx - i - cells.cells[k].x;
+                const double dz = cz - j - cells.cells[k].z;
+                d2[k] = (dx * dx + dz * dz) * size * size;
+                first = d2[k] < d2[first] ? k : first;
+            }
+            double weights = 0.0;
+            for (const double d : d2) {
+                const double e = (d - d2[first]) / (2.0 * size * kRamp);
+                weights += e > kFarWeight ? 0.0 : dmath::exp(-e);
+            }
+            out.share[s + 2] = 1.0 / weights;
+            const Cell& c = detailed(cells.cells[first], s);
+            out.lift[s + 2] = (c.tiltX * (cx - i - c.x) + c.tiltZ * (cz - j - c.z)) * size;
+            out.liftX[s + 2] = c.tiltX;
+            out.liftZ[s + 2] = c.tiltZ;
+            out.passes[s + 2] = {dmath::hypot(gradX + c.tiltX, gradZ + c.tiltZ), c.band,
+                                 c.offset + kJointWave * noise * c.band, 0.0,
+                                 c.band * (kRunLow + (kRunHigh - kRunLow) * 0.35),
+                                 {c.layers, kHardJoints + swing, kJointTilt, kSpread, kJointScree},
+                                 (s == 0 ? 1.0 : kFine) * m.crystal};
+        }
+    }
+    return out;
+}
+
+std::int64_t layerOf(const StrataPass& p, double ground) {
+    const double s = std::max(p.slope, kLeastSlope);
+    const double u = (ground - p.rim * s - p.offset) / p.band;
+    auto k = static_cast<std::int64_t>(std::floor(u));
+    if (u < layerBound(p.bedding.layers, k)) {
+        return k - 1;
+    }
+    return u < layerBound(p.bedding.layers, k + 1) ? k : k + 1;
+}
+
+LayerFace layerFace(const StrataPass& p, std::int64_t k) {
+    const double s = std::max(p.slope, kLeastSlope);
+    const double low = layerBound(p.bedding.layers, k);
+    const double high = layerBound(p.bedding.layers, k + 1);
+    const double thickness = high - low;
+    // As strataTop: the face takes the share of the layer the ground climbs over run meters.
+    const double face = std::clamp(s * p.run / (p.band * thickness), 0.0, kFaceShare);
+    const std::uint64_t draw = noise::deriveSeed(p.bedding.layers, static_cast<std::uint64_t>(k));
+    return {low + thickness * (1.0 - face), high,
+            smooth(-kHardEdge, kHardEdge, p.bedding.hard - field(draw, 0))};
+}
+
+double layerDraw(const StrataPass& p, std::int64_t k, int stream) {
+    const std::uint64_t draw = noise::deriveSeed(p.bedding.layers, static_cast<std::uint64_t>(k));
+    return field(noise::deriveSeed(draw, 100 + static_cast<std::uint64_t>(stream)), 0);
+}
+
 double density(const Noises& n, const Column& c, double x, double z, double y, Memo* memo) {
     return y - surface(n, c, x, z, memo);
 }

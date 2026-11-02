@@ -9,6 +9,7 @@
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include "falls_support.hpp"
 #include "golden_support.hpp"
 #include "planet_golden_support.hpp"
 #include "test_assert.hpp"
@@ -26,62 +27,26 @@
 
 namespace {
 
-using terrain::Heightfield;
-using terrain::Hydrology;
+using falls::depthAt;
+using falls::endsOf;
+using falls::Jumps;
+using falls::jumpsAround;
+using falls::kBedJump;
+using falls::kEndStep;
+using falls::kNeighbors;
+using falls::kWaterJump;
+using falls::RunEnd;
+using falls::kCorridor;
+using falls::kFloorRise;
+using falls::kSteep;
+using falls::makeWorld;
+using falls::quantile;
+using falls::rimsAt;
+using falls::steep;
+using falls::steepReaches;
+using falls::Reaches;
+using falls::World;
 using terrain::RiverReach;
-
-struct World {
-    Heightfield relief;
-    std::shared_ptr<const terrain::PlanetLevel> planet;
-    std::shared_ptr<const Hydrology> hydrology;
-    Heightfield field;
-};
-
-World makeWorld() {
-    const Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
-                             golden::kSmallPlanet);
-    const int threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
-    auto planet = std::make_shared<const terrain::PlanetLevel>(
-        terrain::planet::buildPlanet(relief, golden::smallPlanetParams(threads)),
-        golden::smallPlanetParams(threads));
-    auto hydrology =
-        std::make_shared<const Hydrology>(terrain::kDefaultWorldSeed, relief, planet);
-    return {relief, planet, hydrology, relief.withHydrology(hydrology)};
-}
-
-// The courses of the reaches, each built once.
-class Reaches {
-public:
-    explicit Reaches(const Hydrology& h) : h_(h) {}
-    const RiverReach& operator[](std::size_t r) {
-        auto it = built_.find(r);
-        if (it == built_.end()) {
-            it = built_.emplace(r, h_.reach(r)).first;
-        }
-        return it->second;
-    }
-
-private:
-    const Hydrology& h_;
-    std::map<std::size_t, RiverReach> built_;
-};
-
-// A reach whose water comes down more than kSteep meters per meter between two of its points:
-// on a stretch in steps, or where it would be.
-constexpr double kSteep = 0.12;
-constexpr double kCorridor = 20'000.0;
-
-bool steep(const RiverReach& reach) {
-    for (std::size_t i = 1; i < reach.points.size(); ++i) {
-        const terrain::RiverPoint& a = reach.points[i - 1];
-        const terrain::RiverPoint& b = reach.points[i];
-        const double run = std::hypot(b.x - a.x, b.z - a.z);
-        if (run > 0.0 && static_cast<double>(a.level - b.level) > kSteep * run) {
-            return true;
-        }
-    }
-    return false;
-}
 
 // Places on the rivers (points of the graph, one segment in 9) outside the corridors of the falls.
 std::vector<terrain::RiverVertex> placesOutside(const World& w, Reaches& reaches,
@@ -142,68 +107,6 @@ void testOutsideCorridors(const World& w, Reaches& reaches) {
     TEST_CHECK(sum.value() == kExpected);
 }
 
-// The reaches of the segments of the graph whose water comes down kSteepGraph meters at least
-// between two points: those of the falls, mostly.
-constexpr float kSteepGraph = 50.0f;
-
-std::vector<std::size_t> steepReaches(const World& w, Reaches& reaches) {
-    std::vector<std::size_t> out;
-    const auto& segments = w.planet->rivers().segments;
-    for (std::size_t s = 0; s < segments.size(); ++s) {
-        const auto& v = segments[s].vertices;
-        for (std::size_t k = 0; k + 1 < v.size(); ++k) {
-            if (!(v[k].elevation - v[k + 1].elevation >= kSteepGraph)) {
-                continue;
-            }
-            for (const std::size_t r : w.hydrology->reachesNear(v[k].x, v[k].z, 1.0)) {
-                const RiverReach& reach = reaches[r];
-                if (reach.segment == static_cast<std::int32_t>(s) &&
-                    reach.vertex == static_cast<std::int32_t>(k) && steep(reach)) {
-                    out.push_back(r);
-                }
-            }
-        }
-    }
-    return out;
-}
-
-// The depth of the slot at point i of a reach: the floor of its valley (kFloorRise above the
-// level it is carved from) over its water.
-constexpr double kFloorRise = 0.6;
-
-double depthAt(const RiverReach& reach, std::size_t i) {
-    const terrain::RiverPoint& p = reach.points[i];
-    return static_cast<double>(p.valley) + kFloorRise - static_cast<double>(p.level);
-}
-
-// The rim of the slot at point i of a reach on each side: the first distance from its axis where
-// the ground comes within kRimBelow meters of the floor (0 when it never does within kRimFar).
-constexpr double kRimBelow = 0.3;
-constexpr double kRimFar = 80.0;
-constexpr double kRimStep = 0.25;
-
-std::array<double, 2> rimsAt(const World& w, const RiverReach& reach, std::size_t i) {
-    const terrain::RiverPoint& p = reach.points[i];
-    const terrain::RiverPoint& a = reach.points[i > 0 ? i - 1 : i];
-    const terrain::RiverPoint& b = reach.points[std::min(i + 1, reach.points.size() - 1)];
-    const double length = std::max(1e-6, std::hypot(b.x - a.x, b.z - a.z));
-    const double ux = -(b.z - a.z) / length;
-    const double uz = (b.x - a.x) / length;
-    const double floor = static_cast<double>(p.valley) + kFloorRise - kRimBelow;
-    std::array<double, 2> rims{0.0, 0.0};
-    for (int side = 0; side < 2; ++side) {
-        const double sign = side == 0 ? 1.0 : -1.0;
-        for (double d = kRimStep; d <= kRimFar; d += kRimStep) {
-            if (static_cast<double>(w.field.heightAt(p.x + sign * d * ux, p.z + sign * d * uz)) >=
-                floor) {
-                rims[static_cast<std::size_t>(side)] = d;
-                break;
-            }
-        }
-    }
-    return rims;
-}
-
 // The drops of the water along a reach (more than kDrop meters between two points): each the
 // last point of the pool above it whose slot is kDeep meters deep at least, and the first point
 // below its face (its foot), where the slot is as deep.
@@ -240,13 +143,16 @@ std::vector<Drop> dropsOf(const RiverReach& reach) {
     return out;
 }
 
-// No tooth along the slot: its rim does not stand farther from the axis below the drops than
-// above them, kMeanJumpMost meters at most on average over every side of every drop, and the more
-// so the taller the drop by kGrowthMost meters per meter of it at most (the least squares through
-// 0). A slot as wide as it is deep widens at the foot of each step by about a quarter of its
-// height: a tooth there.
-constexpr double kMeanJumpMost = 0.5;
-constexpr double kGrowthMost = 0.05;
+// No tooth along the slot: where its rim is found on both sides of a drop, it does not stand
+// farther from the axis below the drops than above them, kMeanJumpMost meters at most on average
+// over every side of every drop, and the more so the taller the drop by kGrowthMost meters per
+// meter of it at most (the least squares through 0). A slot as wide as it is deep widens at the
+// foot of each step by about a quarter of its height: a tooth there. Its pools are oval
+// (river_slot.hpp): narrower at the sill above each lip, wider in the bowl below each face, by
+// shares of the channel (about 0.5 m on average), the longer bowls of the taller drops wider
+// farther below their foot (about 0.05 m per meter of drop).
+constexpr double kMeanJumpMost = 0.75;
+constexpr double kGrowthMost = 0.1;
 
 void testTeeth(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
     std::size_t sides = 0;
@@ -260,6 +166,10 @@ void testTeeth(const World& w, Reaches& reaches, const std::vector<std::size_t>&
             const std::array<double, 2> below = rimsAt(w, reach, d.below);
             const auto h = static_cast<double>(d.height);
             for (std::size_t side = 0; side < 2; ++side) {
+                // A rim found on both sides of the drop (rimsAt: 0 when none is within reach).
+                if (!(below[side] > 0.0) || !(above[side] > 0.0)) {
+                    continue;
+                }
                 const double jump = below[side] - above[side];
                 jumps += jump;
                 byHeight += jump * h;
@@ -276,15 +186,6 @@ void testTeeth(const World& w, Reaches& reaches, const std::vector<std::size_t>&
     TEST_CHECK(sides >= 100);
     TEST_CHECK(mean <= kMeanJumpMost);
     TEST_CHECK(growth <= kGrowthMost);
-}
-
-// The p-th quantile of values (sorted in place).
-double quantile(std::vector<double>& values, double p) {
-    std::sort(values.begin(), values.end());
-    if (values.empty()) {
-        return 0.0;
-    }
-    return values[static_cast<std::size_t>(p * static_cast<double>(values.size() - 1))];
 }
 
 // No slot vanishing at the lips of its steps (the last point of a pool above a face, steeper than
@@ -451,6 +352,60 @@ void testBlocks(const World& w, Reaches& reaches, const std::vector<std::size_t>
     TEST_CHECK(c.wrong == 0);
 }
 
+// The ends of the corridors of the falls: where a run of points every few meters (along the water
+// where the slot of the falls winds) meets the course every 128 m before or after it. Along the
+// axis kEndSpan meters on each side of each end, every kEndStep meters, within the valley of the
+// river (riversAt: another may cross the axis), the water and the ground never jump: kWaterJump
+// and kBedJump meters at most from a sample to the next (a slope of 0.4: the water comes down to
+// the first lip of a stretch steeper than the river above it), but within kNearDrop meters of a
+// drop of the water of the course (a fall itself). The same where two corridors lie within
+// kNeighbors meters of each other (on one reach or across the end of a reach), and where a
+// tributary ends within as many meters of one.
+void testCorridorEnds(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
+    std::vector<RunEnd> ends;
+    std::size_t runs = 0;
+    for (const std::size_t r : steeps) {
+        endsOf(reaches[r], r, runs, ends);
+    }
+    // Neighbors: ends of two runs within kNeighbors meters; confluences: the last point of a
+    // tributary (another reach ending on this one) within as many meters of an end.
+    std::size_t neighbors = 0;
+    std::size_t confluences = 0;
+    std::vector<std::pair<std::size_t, std::size_t>> also; // reach, point
+    for (std::size_t a = 0; a < ends.size(); ++a) {
+        for (std::size_t b = a + 1; b < ends.size(); ++b) {
+            neighbors += ends[a].run != ends[b].run &&
+                         std::hypot(ends[a].x - ends[b].x, ends[a].z - ends[b].z) < kNeighbors;
+        }
+        for (const std::size_t r : w.hydrology->reachesNear(ends[a].x, ends[a].z, kNeighbors)) {
+            const RiverReach& t = reaches[r];
+            if (r != ends[a].reach && !t.points.empty() &&
+                std::hypot(t.points.back().x - ends[a].x, t.points.back().z - ends[a].z) <
+                    kNeighbors &&
+                t.points.size() > 1) {
+                ++confluences;
+                also.emplace_back(r, t.points.size() - 1);
+            }
+        }
+    }
+    Jumps most;
+    for (const RunEnd& e : ends) {
+        const Jumps j = jumpsAround(w, reaches[e.reach], e.reach, e.point);
+        most = {std::max(most.water, j.water), std::max(most.bed, j.bed)};
+    }
+    for (const auto& [r, point] : also) {
+        const Jumps j = jumpsAround(w, reaches[r], r, point);
+        most = {std::max(most.water, j.water), std::max(most.bed, j.bed)};
+    }
+    std::printf("%zu ends of %zu corridors of the falls, %zu pairs of them within %.0f m of each "
+                "other, %zu tributaries ending as near: along their axes the water jumps %.3f m "
+                "and the ground %.3f m at most every %.1f m\n",
+                ends.size(), runs, neighbors, kNeighbors, confluences, most.water, most.bed,
+                kEndStep);
+    TEST_CHECK(runs >= 50);
+    TEST_CHECK(most.water <= kWaterJump && most.bed <= kBedJump);
+}
+
 } // namespace
 
 int main() {
@@ -462,5 +417,6 @@ int main() {
     testLips(reaches, steeps);
     testVariety(w, reaches, steeps);
     testBlocks(w, reaches, steeps);
+    testCorridorEnds(w, reaches, steeps);
     return test::result();
 }

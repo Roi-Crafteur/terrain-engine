@@ -6,6 +6,7 @@ the Unreal Editor, so this checks what can be checked here.
   and parentheses balanced, every name of an input a node reads declared among its inputs, every
   output it writes declared among its outputs; the noise of the ripples, run here, repeats every
   4,096 m.
+- The foam of the rapids: unreal_water_foam_test.py.
 - At the edge of the tiles, the water of the tiles and the water of the horizon keep complementary
   pixels with the same share and threshold; the plugin copies the whole look of the water to the
   horizon (its lists of names are the parameters of water_look_hlsl.py).
@@ -15,6 +16,10 @@ the Unreal Editor, so this checks what can be checked here.
   Script, `py <file>`): executed in globals of its own, not as the module __main__, against a
   fake module unreal that records the calls, for a new asset and for one rebuilt in place; the
   parameters it must declare are there.
+- The HLSL of every Custom node of every script, as the script pastes it (its code recorded by
+  the fake module unreal): no name declared twice in one scope (Unreal wraps the code in a
+  function whose parameters are the inputs and the outputs of the node: they count in its outer
+  scope), and no variable named as a word HLSL keeps (half, fixed, sample, linear, point).
 Usage: python3 unreal_water_scripts_test.py <terrain_unreal/Scripts>
 """
 
@@ -49,7 +54,9 @@ def constant(source, name):
 KNOWN = {"BRANCH", "Parameters", "Water", "FTerrainWater", "PERIOD", "K", "Kind",
          "Fresnel", "Glint", "GetTranslatedWorldPosition", "GetPeriodicWorldOrigin",
          "MaterialExpressionSkyAtmosphereViewLuminance", "Load", "Body", "Waves", "Ripples",
-         "Noise", "Hash", "PeriodicHash", "Octave", "HorizonShare", "Dither", "SvPosition",
+         "Noise", "Hash", "PeriodicHash", "Octave", "Rapids", "HorizonShare", "InWindow",
+         "Dither",
+         "SvPosition",
          "INLAND",
          "SURFACE", "DEPTH", "D", "H", "L", "V", "Vis", "Fs", "NoV", "NoL", "NoH", "VoH"}
 
@@ -77,14 +84,16 @@ def frac(x):
     return x - math.floor(x)
 
 
+def hash_of(c):
+    """FTerrainWater::Hash (water_look_hlsl.py), in Python: in [0, 1) for the cell c."""
+    h = [frac(v * 0.1031) for v in (c[0], c[1], c[0])]
+    d = h[0] * (h[1] + 33.33) + h[1] * (h[2] + 33.33) + h[2] * (h[0] + 33.33)
+    h = [v + d for v in h]
+    return frac((h[0] + h[1]) * h[2])
+
+
 def octave(p, a, b, k, drift):
     """FTerrainWater::Octave (water_look_hlsl.py), in Python: the gradient of the noise at p."""
-    def hash_of(c):
-        h = [frac(v * 0.1031) for v in (c[0], c[1], c[0])]
-        d = h[0] * (h[1] + 33.33) + h[1] * (h[2] + 33.33) + h[2] * (h[0] + 33.33)
-        h = [v + d for v in h]
-        return frac((h[0] + h[1]) * h[2])
-
     def periodic(c, g):
         n = g[0] * g[0] + g[1] * g[1]
         q = (round((c[0] * g[0] + c[1] * g[1]) / n), round((c[1] * g[0] - c[0] * g[1]) / n))
@@ -175,6 +184,129 @@ def run_as_unreal(folder, script, exists):
     return record
 
 
+# The types a declaration of HLSL starts with (and the structs the code defines), the qualifiers
+# that may come before them, and the words HLSL keeps that a variable may not be named.
+HLSL_TYPES = {"void", "bool", "int", "uint", "half", "float", "double", "min16float",
+              "FMaterialPixelParameters", "MaterialFloat", "MaterialFloat2", "MaterialFloat3",
+              "MaterialFloat4", "Texture2D", "SamplerState"}
+HLSL_TYPES |= {f"{t}{n}" for t in ("bool", "int", "uint", "half", "float") for n in "234"}
+HLSL_TYPES |= {f"{t}{n}x{m}" for t in ("half", "float") for n in "234" for m in "234"}
+HLSL_QUALIFIERS = {"static", "const", "in", "out", "inout", "uniform", "precise", "nointerpolation"}
+HLSL_KEPT = {"half", "fixed", "sample", "linear", "point"}
+
+
+def hlsl_tokens(code):
+    code = re.sub(r"//[^\n]*|/\*.*?\*/", " ", code, flags=re.S)
+    code = re.sub(r"^\s*#[^\n]*", " ", code, flags=re.M)
+    return re.findall(r"[A-Za-z_]\w*|\d[\w.]*|\S", code)
+
+
+def declarations_clash(code, outer):
+    """The clashes of the declarations of code, Unreal's function around it with the parameters
+    outer: a name declared twice in one scope, or a variable named as a word HLSL keeps. The
+    declarations between parentheses (the parameters of a function, the start of a for) belong to
+    the block that follows them."""
+    tokens = hlsl_tokens(code)
+    types = set(HLSL_TYPES)
+    types |= {tokens[i + 1] for i, t in enumerate(tokens[:-1]) if t == "struct"}
+    scopes = [set(outer)]
+    pending = []  # declared between parentheses, for the next block
+    depth = 0  # of the parentheses
+    clashes = []
+
+    def declare(name, where):
+        if name in HLSL_KEPT:
+            clashes.append(f"a variable named {name}")
+        elif name in where:
+            clashes.append(f"{name} declared twice in one scope")
+        where.add(name)
+
+    for i, token in enumerate(tokens):
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth -= 1
+            if depth == 0 and pending and (i + 1 >= len(tokens) or tokens[i + 1] != "{"):
+                pending = []  # a prototype, a for without a block: no scope of ours
+        elif token == "{":
+            scopes.append(set())
+            for name in pending:
+                declare(name, scopes[-1])
+            pending = []
+        elif token == "}":
+            scopes.pop()
+        elif (token in types and i + 1 < len(tokens) and
+              (i == 0 or tokens[i - 1] not in (".", "::")) and
+              re.match(r"[A-Za-z_]", tokens[i + 1]) and tokens[i + 1] not in types - HLSL_KEPT):
+            name = tokens[i + 1]
+            if i + 2 < len(tokens) and tokens[i + 2] == "(" and name not in HLSL_KEPT:
+                continue  # a function
+            if depth > 0:
+                pending.append(name)
+                continue
+            declare(name, scopes[-1])
+            # The other declarators of the statement: "float3 a, b;".
+            level = 0
+            for j in range(i + 2, len(tokens)):
+                t = tokens[j]
+                level += 1 if t in "([{" else -1 if t in ")]}" else 0
+                if level < 0 or (level == 0 and t == ";"):
+                    break
+                if level == 0 and t == "," and re.match(r"[A-Za-z_]", tokens[j + 1]):
+                    declare(tokens[j + 1], scopes[-1])
+    return clashes
+
+
+def check_scope_checker():
+    """The check of the declarations on made-up code: what Unreal refuses, it refuses; what
+    Unreal compiles, it passes."""
+    refused = {
+        "float3 r = 1; float2 r = 2;": "twice",
+        "float Time = 1;": "twice",  # an input of the node
+        "float3 deep, absorb; float absorb = 1;": "twice",
+        "float half = 0.5;": "named half",
+        "float2 sample = 0;": "named sample",
+        "float f(float point) { return point; }": "named point",
+    }
+    for code, clash in refused.items():
+        found = declarations_clash(code, ["Parameters", "Time"])
+        check(any(clash in c for c in found), f"scopes: not refused: {code} ({found})")
+    passed = ["float3 r = 1; { float2 r = 2; }",
+              "for (int i = 0; i < 2; ++i) { float a = i; } for (int i = 0; i < 3; ++i) {}",
+              "float f(float2 p, float size) { float r = size; return r; } float r = f(1, 2);",
+              "struct S { float a; float Get(float a2) { return a + a2; } }; S s; float a = 1;",
+              "float2 q = float2(1.0, 2.0); float h = q.x; half3 c = half3(0, 0, 0);"]
+    for code in passed:
+        found = declarations_clash(code, ["Parameters", "Time"])
+        check(not found, f"scopes: refused: {code} ({found})")
+
+
+def custom_nodes(record):
+    """The Custom nodes a run of a script made: their code, their inputs and outputs by name."""
+    nodes = []
+    for leaf, args in record["calls"]:
+        if leaf != "set_editor_property" or len(args) < 2:
+            continue
+        if args[0] == "code":
+            nodes.append({"code": args[1], "names": ["Parameters"]})
+        elif args[0] in ("input_name", "output_name") and nodes:
+            nodes[-1]["names"].append(args[1])
+    return nodes
+
+
+def check_scopes(folder):
+    """The declarations of the HLSL of every Custom node of every script that makes one."""
+    checked = 0
+    for path in sorted(folder.glob("create_*.py")):
+        for node in custom_nodes(run_as_unreal(folder, path.name, False)):
+            checked += 1
+            first = node["code"].strip().splitlines()[0][:60] if node["code"].strip() else ""
+            for clash in sorted(set(declarations_clash(node["code"], node["names"]))):
+                check(False, f"{path.name}, node \"{first}\": {clash}")
+    check(checked >= 6, f"HLSL of {checked} Custom nodes only")
+    return checked
+
+
 # Settings UE 5.8 no longer has: set_editor_property fails on them (a warning on every material).
 GONE_IN_UE58 = {"cast_shadow_as_masked", "num_customized_uvs"}
 
@@ -192,6 +324,12 @@ def check_junction(look, horizon_code, plugin):
     check(">= horizon ? 1.0 : 0.0" in tile and ">= share ? 0.0 : 1.0" in horizon_code,
           "the tiles and the horizon do not keep complementary pixels")
     check("1.0 - horizon" not in tile, "the water of the tiles still faded by the share")
+    # Left to the horizon only where its level 0 is placed and holds the pixel
+    # (Bridge/horizon_surface.hpp, horizonWaterShare): never to the window of an old place.
+    check("held = HasSurface > 0.5 && Water.InWindow(Rel, SurfaceCells, SurfacePitchCm)" in tile
+          and "float horizon = held ? Water.HorizonShare(" in tile,
+          "TerrainWater: the share of the horizon not limited to its level 0 placed and holding "
+          "the pixel")
     source = (plugin / "TerrainWorldWater.cpp").read_text(encoding="utf-8")
     copied = {}
     for kind in ("Vectors", "Scalars"):
@@ -252,8 +390,11 @@ def main(folder):
     check_junction(look, horizon.inland_hlsl(look.SKY_HLSL, look.BODY_CALL),
                    folder.parent / "Source" / "TerrainEngine" / "Private")
     worst = check_ripples(look)
+    check_scope_checker()
+    nodes = check_scopes(folder)
     print(f"water scripts: {len(failures)} failure(s), {len(look.OCTAVES)} octaves of ripples "
-          f"({worst:.1e} apart after 4,096 m), {len(look.look_inputs())} look parameters")
+          f"({worst:.1e} apart after 4,096 m), {len(look.look_inputs())} look parameters, the HLSL "
+          f"of {nodes} Custom nodes")
     return 1 if failures else 0
 
 

@@ -4,8 +4,10 @@
 
 #include "river_falls.hpp"
 #include "river_join.hpp"
+#include "river_lips.hpp"
 #include "river_profile.hpp"
 #include "river_slot.hpp"
+#include "river_winding.hpp"
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -150,11 +152,11 @@ void setLevels(std::vector<CoursePoint>& points, float levelA, float levelB) {
     points.back().level = levelB;
 }
 
-// The stretches where the water falls, sampled every kFallStep meters.
-bool refineFalls(const Heightfield& relief, const ReachInput& in,
-                 std::vector<CoursePoint>& points) {
+// The stretches where the water falls, sampled every kFallStep meters; runs: from the first point
+// of each run of such segments to its last, meters along the course.
+bool refineFalls(const Heightfield& relief, const ReachInput& in, std::vector<CoursePoint>& points,
+                 std::vector<std::array<double, 2>>& runs) {
     std::vector<CoursePoint> out;
-    bool refined = false;
     for (std::size_t i = 0; i + 1 < points.size(); ++i) {
         out.push_back(points[i]);
         const CoursePoint& a = points[i];
@@ -165,6 +167,10 @@ bool refineFalls(const Heightfield& relief, const ReachInput& in,
             !(run > 2.0 * kFallStep)) {
             continue;
         }
+        if (runs.empty() || runs.back()[1] != a.s) {
+            runs.push_back({a.s, a.s});
+        }
+        runs.back()[1] = b.s;
         const auto steps = static_cast<int>(std::ceil(run / kFallStep));
         for (int k = 1; k < steps; ++k) {
             const double t = static_cast<double>(k) / steps;
@@ -173,15 +179,15 @@ bool refineFalls(const Heightfield& relief, const ReachInput& in,
             p.z = lerp(a.z, b.z, t);
             out.push_back(p);
         }
-        refined = true;
     }
     out.push_back(points.back());
-    if (refined) {
-        points = std::move(out);
-        measure(points);
-        sampleGround(relief, in, points);
+    if (runs.empty()) {
+        return false;
     }
-    return refined;
+    points = std::move(out);
+    measure(points);
+    sampleGround(relief, in, points);
+    return true;
 }
 
 // The axis of the reach: smoothed, its end bent toward where it joins another river.
@@ -211,7 +217,8 @@ std::vector<CoursePoint> axisOf(const ReachInput& in) {
 
 // The gorge factor of each point from the relief above its valley, smoothed along the course
 // (but at both ends, which other reaches share). A fall cuts a gorge into its slope: the factor
-// rises to 1 over the kFallReach meters before and after its stretch.
+// rises to 1 over the kFallReach meters before and after its stretch; and its share of a stretch
+// in steps (CoursePoint::steps) over kStepsFade meters.
 constexpr double kFallReach = 100.0;
 void setGorges(std::vector<CoursePoint>& points) {
     std::vector<float> raw(points.size());
@@ -246,6 +253,9 @@ void setGorges(std::vector<CoursePoint>& points) {
     for (std::size_t i = 1; i + 1 < points.size(); ++i) {
         const double near = 1.0 - smooth(0.0, kFallReach, nearest[i]);
         points[i].gorge = std::max(points[i].gorge, static_cast<float>(near));
+    }
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        points[i].steps = static_cast<float>(1.0 - smooth(0.0, kStepsFade, nearest[i]));
     }
 }
 
@@ -333,6 +343,7 @@ void setChunks(Course& c) {
     for (std::size_t first = 0; first + 1 < pts.size(); first += kChunk) {
         const std::size_t last = std::min(first + kChunk, pts.size() - 1);
         CourseChunk k;
+        double wind = 0.0;
         k.first = static_cast<std::uint32_t>(first);
         k.last = static_cast<std::uint32_t>(last);
         k.minLevel = std::numeric_limits<float>::infinity();
@@ -344,17 +355,27 @@ void setChunks(Course& c) {
         for (std::size_t i = first; i <= last; ++i) {
             const CoursePoint& p = pts[i];
             k.radius = std::max(k.radius, dmath::hypot(p.x - k.x, p.z - k.z));
+            // A bowl widens and deepens the channel of the segments around it (river_slot.hpp).
+            const CoursePoint& before = pts[i > 0 ? i - 1 : i];
+            const double bowl = 1.0 + static_cast<double>(std::max(p.bowlWide, before.bowlWide));
             k.flat = std::max({k.flat,
                                static_cast<double>(p.floorHalf + p.foot) + wallWarpOf(p.floorHalf) +
                                    kLeveeFade,
-                               1.5 * static_cast<double>(p.half + p.meander)});
+                               1.5 * bowl * static_cast<double>(p.half + p.meander)});
             k.minLevel = std::min(k.minLevel, p.level);
-            k.maxDepth = std::max(k.maxDepth, p.depth);
+            k.maxDepth = std::max(k.maxDepth, p.depth + std::max(p.bowlDeep, before.bowlDeep));
+            wind = std::max(wind, static_cast<double>(p.windMost));
             k.minWall = std::min({k.minWall, p.wall, static_cast<float>(0.5 * kBankSlope)});
             c.minX = std::min(c.minX, p.x);
             c.maxX = std::max(c.maxX, p.x);
             c.minZ = std::min(c.minZ, p.z);
             c.maxZ = std::max(c.maxZ, p.z);
+        }
+        // In the frame of the slot of a corridor (river_winding.hpp): as far again, its walls as
+        // gentle as the frame stretches.
+        if (wind > 0.0) {
+            k.flat = kStretchMost * k.flat + wind;
+            k.minWall = static_cast<float>(k.minWall / kStretchMost);
         }
         c.chunks.push_back(k);
     }
@@ -372,7 +393,8 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     const float levelB = joinEarlier(relief, in, c.points);
     sampleGround(relief, in, c.points);
     setLevels(c.points, in.a.level, levelB);
-    const bool falls = refineFalls(relief, in, c.points);
+    std::vector<std::array<double, 2>> runs;
+    const bool falls = refineFalls(relief, in, c.points, runs);
     if (falls) {
         setLevels(c.points, in.a.level, levelB);
     }
@@ -390,7 +412,10 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
         c.slotSeed = noise::deriveSeed(
             noise::deriveSeed(kSlotSeed, static_cast<std::uint64_t>(std::llround(c.points[0].x))),
             static_cast<std::uint64_t>(std::llround(c.points[0].z)));
+        placePools(c);
+        windCorridors(c, relief, in.surface, runs);
         placeBlocks(c);
+        placeLips(c, relief, in.a.discharge);
     }
     setChunks(c);
     findPonds(relief, c);
@@ -454,6 +479,14 @@ float levelAt(const Course& c, double x, double z) {
         }
     }
     return level;
+}
+
+
+bool CourseChunk::skips(double atX, double atZ, double threshold) const {
+    const double away = dmath::hypot(atX - x, atZ - z) - radius - flat;
+    const double floorOf = static_cast<double>(minLevel - maxDepth) +
+                           static_cast<double>(minWall) * std::max(0.0, away);
+    return away > 0.0 && !(floorOf < threshold);
 }
 
 } // namespace terrain::water

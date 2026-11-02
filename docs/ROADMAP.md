@@ -271,19 +271,19 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 
 ## À venir
 
-### Ordre des prochains travaux (octobre 2026)
-Un seul chantier à la fois change la forme du monde ; les autres prouvent qu'ils ne la changent
-pas (golden du monde, montagnes gelées, somme du niveau Planète).
-- en cours, change le monde : phase 12A, vrais murs verticaux, surplombs, arches et chutes en
-  roche 3D dans le monde streamé
-- en parallèle, sans changer le monde : l'eau dans Unreal à son vrai niveau (lacs, fleuves,
-  chutes), casser et poser en jeu, poids des biomes dans l'horizon lointain
-- fait : peuplement V1 (cartes d'analyse, peuples, royaumes et frontières, dirigeants) ; en
-  pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game
-  design
-- ensuite, l'un après l'autre (chacun change le monde) : réseau hydrographique complet avec la
-  11C, versants convexes / droits / concaves et cirques, relief côtier et falaises marines,
-  mers de dunes
+### Ordre des prochains travaux (2 novembre 2026)
+Les chantiers qui changent la forme du monde restent chacun dans leur zone et prouvent que le reste
+est identique au bit près ; ceux qui la changent partout passent l'un après l'autre.
+- fait : outils de dev (carte, F3, commandes, lanceur de vérification), chargement, casser et poser,
+  poids des biomes dans l'horizon, peuplement V1
+- en cours, change le monde dans sa zone : phase 12A (parois, chutes en roche 3D), relief côtier,
+  mers de dunes ; merge dans cet ordre : 12A, puis côtes et dunes
+- sans changer le monde : hydrologie rapide et interruptible, ménage des tests, terrain modifié par
+  le joueur (creux lisses, blocs visibles de loin, lumière), eau et horizon
+- ensuite, l'un après l'autre : réseau hydrographique complet (11C, en 4 étapes), puis versants
+- puis, chacun dans sa zone : volcans, plateaux et karst, relief glaciaire, tous les milieux
+  (biomes, milieux humides et côtiers, mers), couches de surface, reliefs fantastiques
+- en pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game design
 
 ### Phase 10 — suite
 - Character qui marche, saute et tombe sur le terrain : vérifié avec le Character du
@@ -381,7 +381,7 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
   sommets et épaules arrondis, pieds de versant concaves, cirques et amphithéâtres, éperons ;
   parois droites, bombées ou creusées en grands abris ; chutes devant une paroi droite ou un
   amphithéâtre ; placées par la roche et le climat, jamais par le biome
-- relief côtier (aujourd'hui toutes les côtes sont des plaines de 20 m au plus) : falaises
+- relief côtier : falaises
   marines, montagnes qui plongent dans la mer, fjords, rias, calanques, grottes marines, arches
   et stacks
 - érosion par ondes alignées sur la pente (sillons et ravins ramifiés à toutes les tailles,
@@ -599,6 +599,47 @@ pas (golden du monde, montagnes gelées, somme du niveau Planète).
 ### Chantier parallèle — Gameplay
 - survie : ressources, artisanat, dangers
 - outils d'administration (mode créatif)
+
+### Tous les milieux du monde (minimum voulu)
+- format à élargir d'abord : 12 biomes aujourd'hui, 16 biomes et 8 matériaux au plus par le format
+  actuel
+- un milieu n'est pas toujours un biome : il peut être un biome, un relief, un marquage ou un lieu
+- terrestres : forêts tropicale, tempérée, boréale et sèche, savane, prairie, steppe, plaine, déserts
+  de sable, rocheux et froid, toundra, montagne, haute montagne, vallée, colline, plateau, canyon,
+  falaise, zone volcanique, région polaire, glacier, grottes et cavernes, garrigue et maquis,
+  broussailles
+- aquatiques : océan, mer, abysses, récif corallien, lac, étang, mare, rivière, fleuve, ruisseau,
+  torrent, source, cascade, lagon, lac souterrain
+- côtiers : plages de sable et de galets, côte rocheuse, falaise maritime, dune, île, archipel,
+  atoll, baie, golfe, estuaire, delta, mangrove, marais salant, estran (sans marée), banquise
+- humides et mixtes : marais, marécage, tourbière, marécage forestier, prairie humide, forêt
+  inondée, plaine inondable, oasis, zone de mousson, lagune, zone humide côtière
+- extrêmes : désert de glace, désert de sel, champ de lave, geyser et source chaude, zone
+  géothermique, grotte de glace, fond océanique, source hydrothermale, mont sous-marin, fosse
+  océanique
+
+### Réseau d'eau : décisions de l'utilisateur (2 novembre 2026)
+- la 11C se fait en 4 étapes validées en images : où coule l'eau, vallées, lits et fins, détails
+- le creusement en montagne a sa branche à part, accepté seulement sur images ; il peut être refusé
+- petits cours d'eau : densité réaliste et variable ; pertes dans le calcaire : en surface seulement
+- pas de crues, d'étiage, de régimes ni de marées : ils ne servent pas à former le terrain
+
+### Couches de surface : sable, neige (après les ergs et la 11C)
+- aujourd'hui, le sol est un seul terrain dur : une dune est du relief peint en sable, la neige une
+  simple couleur
+- une vraie couche : une épaisseur de sable ou de neige sur la roche, qu'on peut creuser
+- `terrain_core` décide où elle est, son épaisseur, et sa forme et sa collision si elle est
+  épaisse ; déterministe
+- Unreal l'affiche et joue les effets (traces de pas, poudrerie, sable soufflé)
+- le sable pourra reprendre la hauteur des dunes, déjà connue séparément du sol
+- la neige dépendra des saisons si le jeu en a un jour ; le choix reste à faire
+
+### Plus tard : monde fantastique
+- biomes fantastiques, en plus des biomes réels (après le format élargi) ; toujours placés par le
+  niveau Planète, sans modifier la hauteur
+- structures uniques à l'échelle du monde, par exemple l'arbre-monde : une seule par monde, ou très
+  peu, à un lieu décidé par le core de façon déterministe, visibles de très loin à l'horizon
+- à côté des îles flottantes et des monolithes déjà prévus
 
 ### Plus tard
 - eau physique complète (écoulement, remplissage, interaction avec la destruction)

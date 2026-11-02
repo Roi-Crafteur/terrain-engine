@@ -6,6 +6,7 @@
 
 #include "mountain_forms.hpp"
 #include "mountain_walls.hpp"
+#include "wall_faces.hpp"
 #include "plain_forms.hpp"
 #include "ravines.hpp"
 #include "relief_local.hpp"
@@ -42,6 +43,7 @@ struct Heightfield::Layers {
     // The valleys in U and the dominant summits of the mountains, and their walls.
     mountain_forms::Noises forms;
     mountain_walls::Noises walls;
+    wall_faces::Grain faceGrain; // the grain of their faces in three dimensions (phase 12A)
     plain_forms::Noises plains; // the forms of the plains, where the mountains are not
     // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
     // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the

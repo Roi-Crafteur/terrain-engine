@@ -27,7 +27,10 @@ montrer tout de suite et du plus proche au plus loin, sans jamais le laisser tom
    à 3 (jusqu'à 8 km), puis les autres. Chaque niveau apparaît en fondu tramé en 0,6 s. Tant que
    des niveaux plus lointains manquent, le bord extérieur du dernier niveau visible se dissout dans
    le ciel : pas de bord net. Après une téléportation, les niveaux de l'ancien lieu sont cachés
-   aussitôt, et l'époque en cours pour l'ancien lieu est abandonnée sans attendre.
+   aussitôt, et l'époque en cours pour l'ancien lieu est abandonnée sans attendre. Tant que le
+   niveau 0 est caché, les tuiles ne lisent plus sa surface (`HasSurface` à 0,
+   `Bridge/horizon_surface.hpp`) : elles gardent leur eau et leur surface, au lieu de les céder à
+   la fenêtre de l'ancien lieu (`unreal_horizon_surface_test`).
 4. **Le fondu au noir.** L'écran reste noir jusqu'à ce que soient montrés le sol (avec sa
    collision), l'anneau de 64 m, toutes les tuiles et les niveaux 0 à 3 de l'horizon, **2 s au
    plus**. Si le plafond est atteint, le log dit ce qui manquait, avec les temps. Le retour à

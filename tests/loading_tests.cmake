@@ -4,6 +4,7 @@
 
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/ground_read.cpp
                                              ${unreal_bridge}/horizon_reveal.cpp
+                                             ${unreal_bridge}/horizon_surface.cpp
                                              ${unreal_bridge}/load_frames.cpp
                                              ${unreal_bridge}/load_phase.cpp
                                              ${unreal_bridge}/load_timeline.cpp
@@ -20,6 +21,12 @@ terrain_add_test(horizon_progressive_test terrain_core)
 # at each commit, a jump in the middle of an epoch, more or fewer pieces at once, the same view.
 terrain_add_test(unreal_horizon_progressive_test terrain_unreal_bridge)
 target_include_directories(unreal_horizon_progressive_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# The surface of level 0 the tiles read after a teleport (Bridge): none while level 0 is hidden,
+# level 0 late there, so that no point the tiles cover leaves its water to the horizon; its window
+# once shown.
+terrain_add_test(unreal_horizon_surface_test terrain_unreal_bridge)
+target_include_directories(unreal_horizon_surface_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # The reveal of the levels of the GPU horizon (Bridge): the reveal of a level shown, at once under
 # the black screen, the outer band of the coarsest level shown dissolved, only the changes sent.

@@ -27,7 +27,11 @@ inline constexpr std::uint32_t kSectionFormatVersion = 2;
 // 3: phase 11R (the planetary geography: continents, plate belts, provinces, drained valleys).
 // 4: phase 11B (the sea decided by the geography, depressions below the sea level, the water:
 // rivers carved, lakes, falls).
-inline constexpr std::uint32_t kGeneratorVersion = 4;
+// 5: phase 12A (the rock in three dimensions: vertical walls, overhangs and niches).
+inline constexpr std::uint32_t kGeneratorVersion = 5;
+// Version of the generator of the relief (Heightfield::heightAt and the planet level built from
+// it): the planet files hold it. The rock in three dimensions leaves the relief as it is.
+inline constexpr std::uint32_t kReliefGeneratorVersion = 4;
 
 // Generator of the worlds saved before the world format (TMOD files): the one up to phase 8C-2.
 inline constexpr std::uint32_t kLegacyGeneratorVersion = 1;

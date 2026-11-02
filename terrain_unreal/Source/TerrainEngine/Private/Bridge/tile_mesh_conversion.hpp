@@ -73,12 +73,17 @@ struct TileSea {
 // whose counter-clockwise triangles have (b - a) x (c - a) toward the air. The swap of Y and Z
 // already reverses cross products (unreal_frame.hpp), so the core order is the Unreal one.
 //
+// The alpha of each color is 255 less 255 times the share of bare rock of the vertex (rock, one
+// per vertex: TileData::rock, phase 12A), 255 without rock: the faces of the rock in three
+// dimensions, under their caps and in their niches, for the material.
+//
 // Throws std::invalid_argument unless there is one normal per vertex, no level or one per
-// vertex, three indices per triangle, every index names a vertex, and the vertices fit int32
-// indices.
+// vertex, three indices per triangle, every index names a vertex, the vertices fit int32
+// indices, and rock is empty or holds one share per vertex.
 [[nodiscard]] UnrealMesh convertMesh(const Mesh& mesh, double originY,
                                      std::span<const float> waterLevels = {},
-                                     const TileSea& sea = {});
+                                     const TileSea& sea = {},
+                                     std::span<const float> rock = {});
 
 // Unreal position of the origin of a tile mesh shown at an image of its tile. The world wraps
 // around: the data of a tile lie in the canonical range of the world (data.request.key is

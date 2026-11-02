@@ -20,6 +20,7 @@
 #include "terrain/generation/ergs.hpp"
 #include "terrain/generation/heightfield.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -53,6 +54,9 @@ struct RiverCarve {
     float floor = 0.0f;
     float gorge = 0.0f;   // [0, 1], open valley to narrow gorge
     float mountain = 0.0f; // [0, 1], plains to mountains
+    // [0, 1], down a stretch in steps of a fall and around it: the walls of its valley keep their
+    // slope (no rock cut into them), only the slot of its water is a cliff.
+    float steps = 0.0f;
     double upX = 1.0;     // unit direction away from the river
     double upZ = 0.0;
     double slope = 0.0;   // of the surface across the valley (meters per meter)
@@ -89,9 +93,15 @@ struct RiverPoint {
     float mountain = 0.0f;   // [0, 1]: plains to mountains
     float meander = 0.0f;    // amplitude of the meanders of the channel about this axis
     // The level the valley is carved from: the water, or above the steps of a fall the slope they
-    // come down, raised so that their slot stays cut into the floor at their lips too (its floor
-    // stands kFloorRise, 0.6 m, above it).
+    // come down, their water under it enough for their slot to stay cut into the floor at their
+    // lips too (its floor stands kFloorRise, 0.6 m, above it).
     float valley = 0.0f;
+    // Where the slot of a fall winds: (x, z) lies on the middle of the slot, shift meters left of
+    // the axis of the course (axisX, axisZ: the levels lie along it); elsewhere shift is 0 and
+    // the axis is (x, z).
+    float shift = 0.0f;
+    double axisX = 0.0;
+    double axisZ = 0.0;
 };
 
 // A fall: the stretch of a course where its water drops at once.
@@ -103,9 +113,28 @@ struct RiverFall {
     float width = 0.0f;
     double footX = 0.0; // the foot: the point of the course where the water below begins
     double footZ = 0.0;
+    // The edge its water leaves the rock from (phase 12A, the lips of the falls in steps:
+    // receded, bowed, turned): edge points (kFallEdge, or 0 for a straight lip across at (x, z))
+    // across its channel, from one side to the other, meters; and where the water falling from
+    // each meets the pool below (its face goes back with its lip, less and less down to its
+    // foot).
+    std::array<double, kFallEdge> edgeX{};
+    std::array<double, kFallEdge> edgeZ{};
+    std::array<double, kFallEdge> footEdgeX{};
+    std::array<double, kFallEdge> footEdgeZ{};
+    std::uint8_t edge = 0;
+    // Where the water above it falls from its edge, in edge points (0 to kFallEdge - 1, a
+    // fraction between two): from the first place the water arrives at it to the last, all of it
+    // in between (the pool above may be wider or narrower than its channel at the sill, a rock
+    // may stand in the middle); wetFrom == wetTo without edge points or water known.
+    float wetFrom = 0.0f;
+    float wetTo = 0.0f;
+    // Meters of its pool below its foot, to the next lip down the course (0: none known).
+    float pool = 0.0f;
 };
 
-// A block of rock in a pool of a fall: a dome radius meters wide around (x, z), its top at top.
+// A block of rock in a pool of a fall: radius meters wide around (x, z), its top at top (flatter
+// there and steeper at its sides than a dome).
 struct RiverBlock {
     double x = 0.0; // meters, in the images of the reach
     double z = 0.0;

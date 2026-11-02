@@ -362,7 +362,9 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
     in.segmentLength = lengthOf(s);
     in.taperStart = true;
     in.taperEnd = true;
-    return water::buildCourse(relief, in);
+    water::Course c = water::buildCourse(relief, in);
+    wetLips(c);
+    return c;
 }
 
 bool Hydrology::Impl::mayReach(std::size_t r, double x, double z, double radius) const {

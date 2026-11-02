@@ -3,6 +3,7 @@
 #include "terrain/generation/water_kind.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
@@ -87,8 +88,11 @@ VertexWater vertexWater(float level, double altitude) {
 }
 
 UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> waterLevels,
-                       const TileSea& sea) {
+                       const TileSea& sea, std::span<const float> rock) {
     validate(mesh, waterLevels);
+    if (!rock.empty() && rock.size() != mesh.vertices.size()) {
+        throw std::invalid_argument("convertMesh: one share of rock per vertex expected");
+    }
     const bool flagged = sea.texels != nullptr && !sea.texels->empty();
     const std::vector<double> ocean = flagged ? oceanWeights(sea) : std::vector<double>{};
     const bool anyOcean = std::any_of(ocean.begin(), ocean.end(), [](double w) { return w > 0.0; });
@@ -106,6 +110,10 @@ UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> 
         out.colors.push_back(groundColor(altitude, under));
         out.water.push_back(waterLevels.empty() ? VertexWater{}
                                                 : vertexWater(waterLevels[n], altitude));
+        if (!rock.empty()) {
+            const double share = std::clamp(static_cast<double>(rock[n]), 0.0, 1.0);
+            out.colors.back().a = static_cast<std::uint8_t>(std::lround(255.0 * (1.0 - share)));
+        }
     }
     for (const Vec3f& normal : mesh.normals) {
         out.normals.push_back(toUnrealDirection(normal));
