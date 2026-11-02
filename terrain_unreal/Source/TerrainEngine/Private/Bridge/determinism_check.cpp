@@ -25,11 +25,11 @@ constexpr std::array<HeightProbe, 10> kHeightProbes{{
 
 // Produced and checked the same way.
 constexpr std::array<TileProbe, 5> kTileProbes{{
-    {{{{0, 0}, 0}, 0}, 0x8971119F3AD3CDF3ULL},                      // the origin, a coast
-    {{{{10128, 11760}, 0}, 0}, 0x4D2E17AC4BC81D24ULL},              // a mountain
-    {{{{-9216, 3584}, 0}, 0}, 0x1D8120CE0F8FA9BEULL},               // a plain
-    {{{{-2, 3}, 0}, kSeamNegX | kSeamPosZ}, 0x90BA93745D9FB9FEULL}, // the coast, with seams
-    {{{{1875967, 1093631}, 0}, 0}, 0x80EC1ABA1F475CA5ULL},          // the corner of the world
+    {{{{0, 0}, 0}, 0}, 0xA42BFB167128298DULL},                      // the origin, a coast
+    {{{{10128, 11760}, 0}, 0}, 0xD2EA10134146A391ULL},              // a mountain
+    {{{{-9216, 3584}, 0}, 0}, 0x7B12447D6CEE7B4FULL},               // a plain
+    {{{{-2, 3}, 0}, kSeamNegX | kSeamPosZ}, 0xFCD208B44B4C2806ULL}, // the coast, with seams
+    {{{{1875967, 1093631}, 0}, 0}, 0x92D8F89E36712570ULL},          // the corner of the world
 }};
 
 class Fnv1a {

@@ -14,6 +14,7 @@
 #include "tile_blend.hpp"
 #include "tile_lattice.hpp"
 #include "tile_normals.hpp"
+#include "tile_sides.hpp"
 #include "tile_rivers.hpp"
 #include "tile_water.hpp"
 
@@ -117,10 +118,12 @@ void appendLevel(Mesh& target, const Mesh& part, float scale, float offsetY) {
 // The mesh of a level of a tile: lit by the rock of the tile, if it has some, its normals never
 // against its triangles.
 Mesh levelMesh(const DensityGrid& grid, unsigned seams, const std::optional<tile::RockTile>& rock,
-               int originY) {
+               int originY, const TileColumns& columns, int spacing) {
     Mesh mesh = stitchedMesh(grid, seams);
     if (rock) {
         rock->lightLevel(mesh, grid, originY);
+    } else {
+        tile::lightSides(mesh, columns, seams, spacing); // with its ring only: the ground alone
     }
     tile::agreeWithTriangles(mesh);
     return mesh;
@@ -227,11 +230,13 @@ void addTouchedChunks(const ModificationStore& store, std::vector<ChunkCoord>& c
 void addRockTile(const Heightfield& field, tile::ColumnCache* cache, bool carved,
                  const TileRequest& request, const TileLattice& lattice, TileColumns& columns,
                  std::optional<tile::RockTile>& rock) {
+    if (!carved) {
+        // The ring of the columns beyond the sides, for the normals of the sides (the rock and the
+        // ground alone, tile_sides.hpp), the same the neighbors of the same LOD give there.
+        tile::sampleRing(field, lattice, columns, cache);
+    }
     if (columns.rock.empty()) {
         return;
-    }
-    if (!carved) {
-        tile::sampleRing(field, lattice, columns, cache);
     }
     rock.emplace(columns, request, lattice);
     columns.minHeight = rock->bounds().low;
@@ -327,7 +332,9 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
         if (caveTile && !crossesSurface(grid)) {
             continue; // a level of rock under the ground, between the caves
         }
-        appendLevel(data.mesh, levelMesh(grid, request.seams, rockTile, originY), scale, offsetY);
+        appendLevel(data.mesh,
+                    levelMesh(grid, request.seams, rockTile, originY, columns, lattice.spacing),
+                    scale, offsetY);
     }
     if (caveTile) {
         const bool objects = request.key.lod == kPlantLod;

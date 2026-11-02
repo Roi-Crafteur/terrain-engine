@@ -321,7 +321,7 @@ void testDefaultWorld() {
     std::printf("default world in %.1f s\n", seconds(start));
     golden::report("the default world out of the coastal zone",
                    {{"default world patches", sums.patches.value(), 0x12BBBAA19D5D777FULL},
-                    {"default world tiles", sums.tiles.value(), 0x2D570AEC6B0B6379ULL},
+                    {"default world tiles", sums.tiles.value(), 0x51D8B009355E8A97ULL},
                     {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
 }
 
@@ -343,10 +343,10 @@ void testSmallWorldWithWater() {
     golden::report("the small world with its water out of the coastal zone",
                    {{"small world planet level", planet->checksum(), 0xBFA4DE19A54DAD75ULL},
                     {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
-                    {"small world tiles", sums.tiles.value(), 0xD8A62B6563C902FDULL},
+                    {"small world tiles", sums.tiles.value(), 0x435745D91D4D43D8ULL},
                     {"small world horizon", sums.horizon.value(), 0x159D43BA4E7127E6ULL},
                     {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
-                    {"small world rivers tiles", rivers.tiles.value(), 0x97B050BC63942232ULL},
+                    {"small world rivers tiles", rivers.tiles.value(), 0xE4369B53BAB781ADULL},
                     {"small world rivers horizon", rivers.horizon.value(), 0x810D6B0B60B06611ULL}});
 }
 

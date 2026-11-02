@@ -151,6 +151,38 @@ BLEND_FUNCTIONS
         return albedo;
     }
 
+    // The stochastic tiling of the sand of the dunes (agent 34): the cells turned by 0 or 180
+    // degrees only, so that their ripples keep one direction, and the normal blended over the
+    // cells as the albedo is. Bomb turns them by quarter turns and takes the normal of the
+    // dominant cell: its ripples turned at once along the straight edges of its cells.
+    float3 BombStripes(Texture2D A, SamplerState SA, Texture2D Nm, SamplerState SN, bool withNormal,
+                       float2 uv, float2 dx, float2 dy, out float2 nrm)
+    {
+        float2 q = uv / 0.7;
+        float2 c = floor(q);
+        float2 w = smoothstep(0.5, 1.0, q - c);
+        float3 albedo = float3(0.0, 0.0, 0.0);
+        nrm = float2(0.0, 0.0);
+        [unroll] for (int i = 0; i < 4; ++i)
+        {
+            float2 o = float2(i & 1, i >> 1);
+            float wt = lerp(1.0 - w.x, w.x, o.x) * lerp(1.0 - w.y, w.y, o.y);
+            BRANCH if (wt > 0.01)
+            {
+                float2 h = Hash2(c + o);
+                float turn = h.x < 0.5 ? 1.0 : -1.0;
+                float2 u = turn * uv + h * 37.0;
+                albedo += wt * A.SampleGrad(SA, u, turn * dx, turn * dy).rgb;
+                BRANCH if (withNormal)
+                {
+                    float2 t = Nm.SampleGrad(SN, u, turn * dx, turn * dy).rg * 2.0 - 1.0;
+                    nrm += wt * turn * t;
+                }
+            }
+        }
+        return albedo;
+    }
+
     // One plane of the triplanar rock: the rock texture and its variant, mixed by `alt`.
     float3 RockPlane(Texture2D A, SamplerState SA, Texture2D NA, SamplerState SNA,
                      Texture2D B, SamplerState SB, Texture2D NB, SamplerState SNB,
@@ -327,7 +359,7 @@ DETAIL_CODELAYER_SATURATIONDUNE_TINT    ground += (g[I] / sum) * c * TintI;
 LAYER_DETAIL = r"""    BRANCH if (detail > 0.0)
     {
         float2 nl;
-        float3 cd = Look.Bomb(TAI, TAISampler, TNI, TNISampler, g[I] > 0.35 * sum, P / SCALE, dPx.xy / SCALE, dPy.xy / SCALE, nl);
+        float3 cd = Look.BOMB(TAI, TAISampler, TNI, TNISampler, g[I] > 0.35 * sum, P / SCALE, dPx.xy / SCALE, dPy.xy / SCALE, nl);
         c = lerp(c, cd, detail);
         nts += (g[I] / sum) * nl;
     }
@@ -419,6 +451,8 @@ def ground_layer(index, scale, detail, saturation, dunes=False):
                           f"    c = Look.Saturate(c, {saturation:.2f});\n")
     # The sand of the dunes takes the color of the desert (duneTint, SHADE_TOP).
     layer = layer.replace("DUNE_TINT", "    c *= duneTint;\n" if dunes else "")
+    # Its ripples keep one direction across the cells of its tiling (BombStripes).
+    layer = layer.replace("Look.BOMB(", "Look.BombStripes(" if dunes else "Look.Bomb(")
     return layer.replace("TAI", f"TA{index}").replace("TNI", f"TN{index}").replace(
         "TintI", f"Tint{index}").replace("[I]", f"[{index}]").replace("SCALE", f"{scale:.1f}")
 

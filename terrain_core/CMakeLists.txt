@@ -219,6 +219,7 @@ add_library(terrain_core STATIC
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
     src/streaming/tile_blend.cpp
+    src/streaming/tile_sides.cpp
     src/streaming/tile_normals.cpp
     src/streaming/tile_rivers.cpp
     src/streaming/tile_water.cpp
