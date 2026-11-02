@@ -376,8 +376,10 @@ int main() {
     water_level::report("vertices", tiles);
     water_level::report("samples", horizon);
     water_level::report("vertices with caves", caves);
+    // The tiles: the vertices of those of the slots of the falls and of the gorges moved by their
+    // carved faces (phase 12A, slot_faces.hpp and gorgeFaces), their levels the same rule.
     golden::report("water levels of the small world",
-                   {{"tiles", tiles.sum.value(), 0x0D969F30C054AF39ULL},
+                   {{"tiles", tiles.sum.value(), 0x91EF886EC68B6616ULL},
                     {"horizon", horizon.sum.value(), 0xCB9F99936D89D887ULL},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();

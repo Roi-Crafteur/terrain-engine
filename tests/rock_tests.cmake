@@ -54,3 +54,8 @@ terrain_add_test(river_rapids_test terrain_unreal_bridge)
 # of threads, one world apart from another, the edits never in it, its memory bounded.
 terrain_add_test(column_cache_test terrain_core)
 target_include_directories(column_cache_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
+# The faces of the rock of the slots of the falls: vertical walls, notches by height and hardness,
+# none at LOD 1, a walker in the lowest notch (src/generation/water/slot_faces.hpp).
+terrain_add_test(rock_falls_test terrain_core)
+target_include_directories(rock_falls_test PRIVATE
+                           ${PROJECT_SOURCE_DIR}/terrain_core/src/generation/water)

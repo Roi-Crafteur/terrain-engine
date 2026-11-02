@@ -6,6 +6,7 @@
 #include "mountain_walls.hpp"
 #include "ravines.hpp"
 #include "relief_local.hpp"
+#include "wall_faces.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/water/hydrology.hpp"
@@ -43,6 +44,13 @@ constexpr double kGrainMost = 15.0;
 // The walls of the gorges are rock: strata or crystalline, as the map's walls (character
 // kCharacter), their ledges at most kStrataRoom of the height of the walls deep.
 constexpr float kCharacter = 0.6f;
+// The walls of a gorge lay faces in three dimensions (wall_faces, as the walls of the mountains)
+// where it is a gorge from kGorgeFaces and steeper than kSteepFaces (45 degrees), all of them from
+// kGorgeFull and kSteepFull.
+constexpr double kGorgeFaces = 0.5;
+constexpr double kGorgeFull = 0.6;
+constexpr double kSteepFaces = 1.0;
+constexpr double kSteepFull = 1.2;
 constexpr double kStrataRoom = 0.4;
 constexpr double kLedge = 1.0;
 // The levees fill the floodplain up to kLevee meters (river_course.hpp); the water of a channel
@@ -95,7 +103,7 @@ Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrolog
 // The rock of the walls of a valley over its surface h, show of it showing: rough, cut by the
 // ravines of the relief, in a gorge grained, cut by couloirs and laid in strata or crystalline.
 double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve& c, double show,
-                                 Memos* memos) const {
+                                 Memos* memos, wall_faces::Site* gorge) const {
     // Down a stretch in steps, no rock cut into the walls (RiverCarve::steps): only its grain.
     const double cut = show * (1.0 - static_cast<double>(c.steps));
     const double rock = kRockPlain + (kRockMountain - kRockPlain) * c.mountain +
@@ -129,12 +137,41 @@ double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve&
         const double share = mountain_walls::strataShare(layers_->walls, x, z, kCharacter, walls);
         const double wall = cut * static_cast<double>(c.gorge);
         const mountain_walls::Masks masks{wall * share, wall * (1.0 - share), 0.0};
+        if (gorge != nullptr) {
+            gorgeFaces(x, z, h, c, masks, walls, *gorge);
+        }
         const double top = mountain_walls::rockTop(layers_->walls, masks, x, z, h,
                                                    kLedge * c.upX, kLedge * c.upZ, walls);
         h += static_cast<double>(relief_local::boundBelow(
             static_cast<float>(top - h), static_cast<float>(kStrataRoom * c.above)));
     }
     return h;
+}
+
+void Heightfield::gorgeFaces(double x, double z, double h, const RiverCarve& c,
+                             const mountain_walls::Masks& masks, mountain_walls::Memo* memo,
+                             wall_faces::Site& site) const {
+    const double fade = smooth(kGorgeFaces, kGorgeFull, static_cast<double>(c.gorge)) *
+                        smooth(kSteepFaces, kSteepFull, c.slope);
+    if (!(fade > 0.0)) {
+        return;
+    }
+    // The passes of rockTop below (the same ground and gradient: the faces stand on its risers);
+    // the faces placed along the slope of the valley.
+    mountain_walls::Column column;
+    column.ground = h;
+    column.gradX = kLedge * c.upX;
+    column.gradZ = kLedge * c.upZ;
+    column.character = kCharacter;
+    wall_faces::addFaces(layers_->walls, layers_->faceGrain, masks, column, x, z, memo, site);
+    site.walls = site.count > 0;
+    site.ground = h;
+    site.gradX = c.slope * c.upX;
+    site.gradZ = c.slope * c.upZ;
+    for (std::size_t i = 0; i < site.count; ++i) {
+        site.pending[i].face.weight = static_cast<float>(site.pending[i].face.weight * fade);
+        site.pending[i].face.carved = true;
+    }
 }
 
 float Heightfield::rockHardness(double x, double z, double y) const {
@@ -161,10 +198,14 @@ float Heightfield::rockHardness(double x, double z, double y) const {
     return static_cast<float>(share * layer + (1.0 - share));
 }
 
-void Heightfield::applyHydrology(double x, double z, HeightSample& s, Memos* memos) const {
+void Heightfield::applyHydrology(double x, double z, HeightSample& s, Memos* memos,
+                                 SlotWall* wall, wall_faces::Site* gorge) const {
     const float relief = s.height;
     Hydrology::Region* region = memos != nullptr ? &memos->water : nullptr;
     const RiverCarve c = hydrology_->riversAt(x, z, static_cast<double>(s.height), region);
+    if (wall != nullptr) {
+        *wall = c.wall; // whether the valley carves the column or not: the rock behind its rim too
+    }
     // The levees: the floodplain filled up to the floor of the valley.
     const double filled = static_cast<double>(relief) + c.raise;
     s.height = static_cast<float>(filled);
@@ -176,7 +217,7 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s, Memos* mem
         const double show =
             smooth(0.0, kRockShow, c.above) * smooth(0.0, kEdgeFade, rim - c.height);
         if (show > 0.0) {
-            h = valleyRockAt(x, z, h, c, show, memos);
+            h = valleyRockAt(x, z, h, c, show, memos, gorge);
         }
         // The rock never takes the walls below the floor beside the water (beside a fall, the
         // floor of its valley on the slope), nor below the banks.
@@ -209,7 +250,8 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s, Memos* mem
 }
 
 void Heightfield::waterOf(std::span<const double> xs, std::span<const double> zs,
-                          std::span<HeightSample> samples, Memos& memos) const {
+                          std::span<HeightSample> samples, Memos& memos,
+                          const WaterRock* rock) const {
     double minX = std::numeric_limits<double>::infinity();
     double minZ = minX;
     double maxX = -minX;
@@ -229,9 +271,18 @@ void Heightfield::waterOf(std::span<const double> xs, std::span<const double> zs
     if (!xs.empty()) {
         memos.water = hydrology_->regionOf(minX, minZ, maxX, maxZ, groundMin, groundMax);
     }
+    const bool walls = rock != nullptr && rock->walls.size() == xs.size();
+    const bool gorges = rock != nullptr && rock->gorges != nullptr;
+    wall_faces::Site gorge;
+    gorge.faces = gorges;
     for (std::size_t i = 0; i < xs.size(); ++i) {
+        gorge.count = 0;
         applyHydrology(noise::wrapCanonical(xs[i], world_.x), noise::wrapCanonical(zs[i], world_.z),
-                       samples[i], &memos);
+                       samples[i], &memos, walls ? &rock->walls[i] : nullptr,
+                       gorges ? &gorge : nullptr);
+        if (gorge.count > 0) {
+            rock->gorges->emplace_back(i, gorge);
+        }
     }
 }
 

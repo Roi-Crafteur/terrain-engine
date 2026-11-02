@@ -371,6 +371,33 @@ double slotWall(double out, double run, double rise) {
     return low + (rise - low) * std::min(1.0, (out - ledge) / (run - ledge));
 }
 
+namespace {
+
+// The height of the slot of slotWallAt above its water, beyond the rim too.
+double slotHeight(double out, double run, double rise) {
+    return out < run ? slotWall(out, run, rise) : rise + kBankSlope * (out - run);
+}
+
+} // namespace
+
+SlotWall slotWallAt(double out, double run, double rise, double water) {
+    SlotWall w;
+    // The middle of the face that of the cliff, where the slope of the valley climbs: the tiles of
+    // LOD 1, which draw the cliff, show the wall where those of LOD 0 do.
+    const double middle = (1.0 - 0.5 * kCliffShare) * run;
+    const double width = std::min(2.0 * middle, kWallWidth);
+    const double distance = middle - out;
+    if (!(width > 0.0) || !(std::abs(distance) <= 0.5 * width)) {
+        return w;
+    }
+    w.distance = static_cast<float>(distance);
+    w.width = static_cast<float>(width);
+    w.foot = static_cast<float>(water + slotHeight(middle - 0.5 * width, run, rise));
+    w.top = static_cast<float>(water + slotHeight(middle + 0.5 * width, run, rise));
+    w.water = static_cast<float>(water);
+    return w;
+}
+
 void placeBlocks(Course& c) {
     c.blocks.clear();
     const std::vector<CoursePoint>& p = c.points;

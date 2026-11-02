@@ -186,9 +186,9 @@ namespace {
 // The banks of segment a-b, bank meters high out meters beyond its channel, in the slot of a fall
 // drawn along meters along the course. Beyond the walls of the slot at their widest (slotReach),
 // where the banks rise above the floor whatever their width there, the valley is that of the
-// floor: they are only drawn nearer.
+// floor: they are only drawn nearer. Sets wall to that of the slot there (slotWallAt).
 double slotBank(const Frame& r, const Foot& f, std::uint64_t slotSeed, double along, double out,
-                double bank, double bowl) {
+                double bank, double bowl, SlotWall& wall) {
     const double reach = slotReach(r.slot, r.half);
     if (out >= reach + kFarMargin &&
         lerp(bank, r.floorLevel + kBankSlope * (out - reach), r.fall) >=
@@ -197,9 +197,13 @@ double slotBank(const Frame& r, const Foot& f, std::uint64_t slotSeed, double al
     }
     const double run = slotRun(slotSeed, along, r.slot, r.half, f.side, bowl);
     const double rise = std::max(0.0, r.floorLevel - r.water);
-    const double wall = out < run ? r.water + slotWall(out, run, rise)
-                                  : r.floorLevel + kBankSlope * (out - run);
-    return bank + (wall - bank) * r.fall;
+    wall = slotWallAt(out, run, rise, r.water);
+    wall.airX = static_cast<float>(-f.upX);
+    wall.airZ = static_cast<float>(-f.upZ);
+    wall.weight = static_cast<float>(r.fall);
+    const double height = out < run ? r.water + slotWall(out, run, rise)
+                                    : r.floorLevel + kBankSlope * (out - run);
+    return bank + (height - bank) * r.fall;
 }
 
 } // namespace
@@ -239,7 +243,7 @@ Channel channelReach(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
 namespace {
 
 Channel channelOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, const Frame& r,
-                  std::uint64_t seed, std::uint64_t slotSeed) {
+                  std::uint64_t seed, std::uint64_t slotSeed, SlotWall& wall) {
     Channel c = channelReach(a, b, f, r, seed);
     const double half = c.half;
     if (c.distance < half) {
@@ -249,7 +253,8 @@ Channel channelOf(const CoursePoint& a, const CoursePoint& b, const Foot& f, con
     const double out = c.distance - half;
     c.height = r.water + kBankSlope * out;
     if (r.fall > 0.0) {
-        c.height = slotBank(r, f, slotSeed, r.along, out, c.height, std::max(0.0, c.bowl));
+        c.height =
+            slotBank(r, f, slotSeed, r.along, out, c.height, std::max(0.0, c.bowl), wall);
     }
     return c;
 }
@@ -268,7 +273,8 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
                      std::uint64_t seed, std::uint64_t slotSeed) {
     const double t = r.t;
     const double fall = r.fall;
-    const Channel ch = channelOf(a, b, f, r, seed, slotSeed);
+    SlotWall wall;
+    const Channel ch = channelOf(a, b, f, r, seed, slotSeed, wall);
     const double channelDistance = ch.distance;
     const double half = ch.half;
     const double channel = ch.height;
@@ -278,6 +284,7 @@ Valley segmentValley(const CoursePoint& a, const CoursePoint& b, const Foot& f, 
     const bool face = a.level - b.level > kFaceDrop * (b.s - a.s);
     const double surface = face ? r.water : r.level;
     Valley v;
+    v.wall = wall;
     v.height = r.floorLevel + r.walls - cut;
     v.level = static_cast<float>(surface);
     v.floorLevel = static_cast<float>(r.surfaceLevel);

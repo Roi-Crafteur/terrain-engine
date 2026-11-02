@@ -18,6 +18,7 @@
 
 #include "terrain/generation/climate.hpp"
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/water/slot_wall.hpp"
 
 #include <array>
 #include <cstddef>
@@ -68,6 +69,10 @@ struct RiverCarve {
     double bank = -std::numeric_limits<double>::infinity();
     // The reach whose valley it is (Hydrology::reach), or -1.
     std::size_t reach = static_cast<std::size_t>(-1);
+    // The wall of the slot of a fall the lowest valley draws there (slot_wall.hpp), carved or not
+    // (the rock behind its rim), width 0 elsewhere and where the banks of a channel hold the
+    // ground.
+    SlotWall wall;
 };
 
 // The lake over a point (Hydrology::lakeAt).

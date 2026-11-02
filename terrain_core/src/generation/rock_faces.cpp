@@ -35,8 +35,11 @@ constexpr double kFeatureLow = 1.5;
 constexpr double kFeatureHigh = 3.0;
 constexpr double kThickness = 0.5;
 constexpr double kJointCells = 4.0;
-// The edges of a step are rounded over kRound meters, kRoundShare of its height at most.
+// The edges of a step are rounded over kRound meters, kRoundShare of its height at most; those of
+// the faces the rivers carve (their slots, fresh rock) over kCarvedRound meters at most, so that
+// the rounding of their foot leaves their notch (slot_faces.hpp) alone.
 constexpr double kRound = 3.0;
+constexpr double kCarvedRound = 1.0;
 constexpr double kRoundShare = 0.25;
 // The grain and the overhangs of a face come in as its drawn weight runs from kFullLow to 1.
 constexpr double kFullLow = 0.75;
@@ -130,7 +133,8 @@ double drawnFeature(float feature, float extent, const RockDetail& detail) {
 
 // The edges of the step of a face are rounded over this many meters.
 double roundOf(const RockFace& f) {
-    return std::min(kRound, kRoundShare * (static_cast<double>(f.top) - f.foot));
+    return std::min(f.carved ? kCarvedRound : kRound,
+                    kRoundShare * (static_cast<double>(f.top) - f.foot));
 }
 
 // Draw k (0, 1 or 2) in [0, 1) of 21 bits of a hash.
