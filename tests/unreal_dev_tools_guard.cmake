@@ -67,6 +67,19 @@ foreach(file IN LISTS sources)
     endforeach()
 endforeach()
 
+# Terrain.Blend (agent 29) lives with the blends of the horizon, its registration under
+# #if TERRAIN_DEV_TOOLS.
+file(READ "${plugin}/Private/TerrainHorizonClipmapBlend.cpp" text)
+string(REGEX REPLACE "\r" "" text "${text}")
+string(FIND "${text}" "#if TERRAIN_DEV_TOOLS\n" open)
+string(FIND "${text}" "TEXT(\"Terrain.Blend\")" command)
+string(FIND "${text}" "#endif // TERRAIN_DEV_TOOLS" close)
+if(open EQUAL -1 OR command EQUAL -1 OR close EQUAL -1 OR command LESS open
+   OR command GREATER close)
+    string(APPEND errors "TerrainHorizonClipmapBlend.cpp: Terrain.Blend is not under "
+                         "#if TERRAIN_DEV_TOOLS\n")
+endif()
+
 if(NOT errors STREQUAL "")
     message(FATAL_ERROR "the tools of the developers could reach a Shipping build:\n${errors}")
 endif()

@@ -1,13 +1,16 @@
 #pragma once
 
 // Helpers of the tests of the GPU horizon of the Unreal plugin (Bridge/horizon_gpu_streamer): what
-// the GPU holds (the textures the texel regions write, the placements of the levels), the
-// reference of the texels shown, jobs run when the test says so and a pool of threads.
+// the GPU holds (the textures the texel, water and blend regions write, the placements of the
+// levels), the reference of the texels shown, jobs run when the test says so and a pool of
+// threads.
 
 #include "horizon_gpu_streamer.hpp"
 
 #include "terrain/streaming/horizon_sampler.hpp"
 
+#include <algorithm>
+#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -15,6 +18,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -55,9 +59,41 @@ public:
                 }
             }
         }
+        for (const terrain::unreal::BlendRegion& region : update.blendRegions) {
+            std::vector<std::uint16_t>& blends = blends_[region.level];
+            constexpr int kChannels = terrain::unreal::kBlendChannels;
+            blends.resize(static_cast<std::size_t>(side_ * side_ * kChannels), 0);
+            for (int row = 0; row < region.height; ++row) {
+                for (int column = 0; column < region.width * kChannels; ++column) {
+                    blends[static_cast<std::size_t>(((region.z + row) * side_ + region.x) *
+                                                        kChannels +
+                                                    column)] =
+                        region.data[static_cast<std::size_t>(row * region.width * kChannels +
+                                                             column)];
+                }
+            }
+        }
         for (const LevelPlacement& placement : update.placements) {
             placements_[placement.level] = placement;
         }
+    }
+
+    // The surface blend the material reads for the sample (i, k) of the window of a level:
+    // nothing where no blend was written (the zeros of a texture just created).
+    [[nodiscard]] std::optional<terrain::BlendTexel> blend(int level, int i, int k) const {
+        const auto found = blends_.find(level);
+        if (found == blends_.end()) {
+            return std::nullopt;
+        }
+        const LevelPlacement& placement = placements_.at(level);
+        const auto x = static_cast<int>((placement.firstSlot.x + i) % side_);
+        const auto z = static_cast<int>((placement.firstSlot.z + k) % side_);
+        const auto first =
+            static_cast<std::size_t>((z * side_ + x) * terrain::unreal::kBlendChannels);
+        std::array<std::uint16_t, terrain::unreal::kBlendChannels> channels{};
+        std::copy_n(found->second.begin() + static_cast<std::ptrdiff_t>(first), channels.size(),
+                    channels.begin());
+        return terrain::unreal::blendOfChannels(channels);
     }
 
     // The water code the material reads for the sample (i, k) of the window of a level.
@@ -106,6 +142,7 @@ private:
     int side_;
     std::map<int, std::vector<float>> textures_;
     std::map<int, std::vector<float>> water_;
+    std::map<int, std::vector<std::uint16_t>> blends_;
     std::map<int, LevelPlacement> placements_;
 };
 
@@ -121,7 +158,8 @@ inline bool texelsMatch(const Gpu& gpu, const terrain::HorizonClipmap& clipmap,
                 const terrain::HorizonCell& cell =
                     cells[static_cast<std::size_t>(k * level.side() + i)];
                 if (!(gpu.texel(n, i, k) == terrain::unreal::horizonTexel(cell, true)) ||
-                    !(gpu.water(n, i, k) == terrain::unreal::waterTexel(cell.waterLevel))) {
+                    !(gpu.water(n, i, k) == terrain::unreal::waterTexel(cell.waterLevel)) ||
+                    gpu.blend(n, i, k) != cell.blend) {
                     return false;
                 }
             }

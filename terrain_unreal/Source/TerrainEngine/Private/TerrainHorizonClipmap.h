@@ -80,11 +80,17 @@ public:
 
 	// A material of the tiles that follows level 0 from now on: the material of their ground reads
 	// the surface of the ground (material and biome) from the texels of level 0 (the temporary
-	// terrain material, Bridge/terrain_surface.hpp); the material of their water fades into the
+	// terrain material, Bridge/terrain_surface.hpp), and its blend from the blend texels of level 0
+	// (SurfaceBlend, agent 29); the material of their water fades into the
 	// water of the horizon over the outer band of the tiles (Scripts/water_look_hlsl.py). Both
 	// read the same parameters (SurfaceOrigin, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm,
 	// SurfaceBandCm, HasSurface...); nothing without a look.
 	void BindSurfaceLook(UMaterialInstanceDynamic* Look);
+
+	// The surface blends of the samples (agent 29) drawn (1) or not (0: the dominant biome and
+	// material of each sample, as before them), on every level and on the tiles bound to level 0:
+	// the console command Terrain.Blend 0|1, to compare their cost and their look.
+	void SetSurfaceBlends(bool bShown);
 
 	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
 	// (independent of the visibility the placements set), each level tinted with its own hue or
@@ -109,6 +115,7 @@ private:
 	// The surface the materials of the tiles read (Bridge/horizon_surface.hpp), on every look.
 	void PlaceSurface(const std::optional<terrain::unreal::SurfaceWindow>& Next);
 	void ApplyReveal();
+	void UploadBlends(std::vector<terrain::unreal::BlendRegion>& Regions);
 
 	UPROPERTY()
 	TObjectPtr<AActor> OwnerActor;
@@ -121,6 +128,9 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> WaterTextures; // the water levels, one per level
+
+	UPROPERTY()
+	TArray<TObjectPtr<UTexture2D>> BlendTextures; // the surface blends, one per level
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them

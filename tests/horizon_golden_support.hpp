@@ -10,7 +10,8 @@
 // deep ocean, where nothing rises. The mountains are summed again with crests sought 4 times finer
 // (crestRatio 4), and the detail normals of every level around them (horizon_normals.hpp, ratio 4):
 // the crests and the normals keep these bits whether the crests are computed in the epochs or
-// after them, from the fine grid the normals read.
+// after them, from the fine grid the normals read. The surface blends of the samples (agent 29)
+// are summed apart, around the mountains of both reliefs, at the corner and at a forest border.
 
 #include "terrain/streaming/horizon_epoch.hpp"
 #include "terrain/streaming/horizon_normals.hpp"
@@ -61,6 +62,27 @@ inline std::uint64_t horizonChecksum(const horizon_test::World& world, double x,
     return sum.value();
 }
 
+// The surface blends of every level (HorizonCell::blend, agent 29), from the canonical low corner
+// of each window, sample by sample: a sum of its own, so that the sums above keep their bits.
+inline std::uint64_t blendChecksum(const horizon_test::World& world, double x, double z) {
+    const terrain::HorizonParams params = horizon_test::smallParams();
+    const terrain::HorizonSampler sampler(world.field, world.ecology, params);
+    terrain::HorizonClipmap clipmap(params);
+    horizon_test::settle(clipmap, sampler, x, z);
+    Checksum sum;
+    for (int n = 0; n < clipmap.levelCount(); ++n) {
+        const terrain::HorizonLevel& level = clipmap.level(n);
+        for (int k = 0; k < level.side(); ++k) {
+            for (int i = 0; i < level.side(); ++i) {
+                const terrain::BlendTexel blend = level.atWindow(i, k).blend;
+                sum.add(static_cast<std::uint64_t>(blend.ids), 4);
+                sum.add(static_cast<std::uint64_t>(blend.weights), 4);
+            }
+        }
+    }
+    return sum.value();
+}
+
 // The detail slopes of every window around (x, z), level by level, texel by texel.
 inline std::uint64_t normalsChecksum(const horizon_test::World& world, double x, double z,
                                      int ratio) {
@@ -103,6 +125,17 @@ inline std::vector<Part> horizonParts() {
          0x9C1FAB69C03C7234ULL},
         {"detail normals around mountains, ratio 4", normalsChecksum(world, x, z, 4),
          0x7C759A756899258CULL},
+        {"horizon blends around mountains", horizon_detail::blendChecksum(world, x, z),
+         0xAFA8ABA724DEEE2FULL},
+        {"horizon blends around legacy mountains",
+         horizon_detail::blendChecksum(legacy, horizon_test::kX, horizon_test::kZ),
+         0x96E378BC6B035861ULL},
+        {"horizon blends at the world corner",
+         horizon_detail::blendChecksum(world, size.x / 2.0, size.z / 2.0), 0xE68987A81F6AD875ULL},
+        // A border of the tropical forest and the savanna (without the planet).
+        {"horizon blends at a forest border", horizon_detail::blendChecksum(world, -26'927'500.0,
+                                                                            -270'336.0),
+         0x92DBFC547FFDE514ULL},
     };
 }
 

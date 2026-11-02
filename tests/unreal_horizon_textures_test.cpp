@@ -5,6 +5,7 @@
 // written by the epochs along a walk across the edge of the world holding the texel of every
 // sample of every window at its slot, and the grids: the body without its bounds vertex, the 9
 // trims and their variants.
+#include "horizon_blend_texels.hpp"
 #include "horizon_textures.hpp"
 
 #include "horizon_epochs.hpp"
@@ -202,6 +203,9 @@ void testWaterRegions() {
     const std::vector<float> uploads = terrain::unreal::pieceUploads(piece, true);
     std::vector<float> expected = terrain::unreal::pieceTexels(piece, true);
     expected.insert(expected.end(), {1725.25f, terrain::kNoWaterLevel});
+    // Then the blend channels of each cell (horizon_blend_texels.hpp; none set here).
+    const auto present = static_cast<float>(terrain::unreal::kBlendTexelPresent);
+    expected.insert(expected.end(), {0.0f, present, 0.0f, 0.0f, 0.0f, present, 0.0f, 0.0f});
     TEST_CHECK(uploads == expected);
 }
 
