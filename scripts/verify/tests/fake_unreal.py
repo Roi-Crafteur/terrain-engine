@@ -129,6 +129,9 @@ class PlayerCameraManager:
     def get_camera_rotation(self):
         return self.controller.rotation_seen()
 
+    def get_camera_location(self):
+        return self.controller.fake.camera_point or Vector()
+
 
 class Controller:
     def __init__(self, fake):
@@ -180,6 +183,8 @@ class FakeUnreal:
         # Terrain.Goto reach the file this late (the log of Unreal is written by a thread).
         self.spawn_load_seconds, self.goto_log_lag, self.pending_lines = 3.0, 0.0, []
         self.inputs_while_landing = 0
+        # More of the plugin (fake_map.py: Terrain.Map.Go): its commands and its ticks.
+        self.console_hooks, self.tick_hooks, self.camera_point = [], [], None
         self.pending_shots = []
         self.log_path = self.folder / "Saved" / "Logs" / "TerrainSandbox.log"
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -206,6 +211,8 @@ class FakeUnreal:
             if self.time >= at:
                 self.pending_shots.remove((at, name))
                 self._write_shot(name)
+        for hook in self.tick_hooks:
+            hook()
         for due, line in list(self.pending_lines):
             if self.time >= due:
                 self.pending_lines.remove((due, line))
@@ -397,6 +404,8 @@ class _System:
     def execute_console_command(self, world, command):
         fake = self.fake
         fake.calls.append(("console", command))
+        for hook in fake.console_hooks:
+            hook(command)
         if command.startswith("HighResShot"):
             name = command.split("filename=")[1]
             fake.shot_log_sizes.append(fake.log_path.stat().st_size)
