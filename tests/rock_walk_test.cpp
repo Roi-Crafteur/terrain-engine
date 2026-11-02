@@ -238,7 +238,7 @@ std::vector<char> bankOf(const terrain::Heightfield& relief, const Line& line, s
             const std::size_t from = k > margin ? k - margin : 0;
             std::fill(bank.begin() + static_cast<std::ptrdiff_t>(from),
                       bank.begin() + static_cast<std::ptrdiff_t>(std::min(count, k + margin + 1)),
-                      0);
+                      char{0});
         }
     }
     return bank;
