@@ -10,3 +10,7 @@ terrain_add_test(horizon_blend_cost_test terrain_core)
 # the rectangles and the threads, the edits.
 terrain_add_test(horizon_blend_test terrain_core)
 target_include_directories(horizon_blend_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/streaming)
+
+# The blend texels of the GPU horizon of the Unreal plugin: channels, regions, written with the
+# texels of their samples level by level and after a teleport.
+terrain_add_test(unreal_horizon_blend_test terrain_unreal_bridge)

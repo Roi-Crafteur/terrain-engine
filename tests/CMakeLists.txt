@@ -314,6 +314,7 @@ add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/determinism_check.cpp
     ${unreal_bridge}/edit_thread.cpp
     ${unreal_bridge}/horizon_atmosphere.cpp
+    ${unreal_bridge}/horizon_blend_texels.cpp
     ${unreal_bridge}/horizon_epochs.cpp
     ${unreal_bridge}/horizon_gpu_streamer.cpp
     ${unreal_bridge}/horizon_layout.cpp

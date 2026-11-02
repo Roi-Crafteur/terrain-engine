@@ -68,7 +68,8 @@ static_assert(kNoWaterLevel < kWetWaterTexel, "dry land reads below the wet thre
 [[nodiscard]] float waterTexel(float level);
 
 // What the GPU horizon uploads for a computed piece: the texels of pieceTexels, then the water
-// texel of each of its cells in the same order, one float each.
+// texel of each of its cells in the same order, one float each, then the blend channels of each
+// of its cells (appendBlendUploads, horizon_blend_texels.hpp).
 [[nodiscard]] std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea);
 
 // Texels to write into the texture of a level: slots [x, x + width) x [z, z + height), their

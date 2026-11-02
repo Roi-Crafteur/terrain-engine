@@ -99,17 +99,22 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
             epochStart_.reset();
         }
         for (const PreparedPiece& piece : commit.pieces) {
-            // pieceUploads: the texels, then the water levels.
+            // pieceUploads: the texels, then the water levels, then the blend channels.
             const std::span<const float> data(piece.data);
-            const std::size_t texels = std::min(
-                data.size(), static_cast<std::size_t>(piece.rect.count()) * kTexelFloats);
+            const auto cells = static_cast<std::size_t>(piece.rect.count());
+            const std::size_t texels = std::min(data.size(), cells * kTexelFloats);
+            const std::size_t water = std::min(data.size() - texels, cells);
             for (TexelRegion& region :
                  texelRegions(piece.level, side(), piece.rect, data.first(texels))) {
                 result.regions.push_back(std::move(region));
             }
-            for (WaterRegion& region :
-                 waterRegions(piece.level, side(), piece.rect, data.subspan(texels))) {
+            for (WaterRegion& region : waterRegions(piece.level, side(), piece.rect,
+                                                    data.subspan(texels, water))) {
                 result.waterRegions.push_back(std::move(region));
+            }
+            for (BlendRegion& region : blendRegions(piece.level, side(), piece.rect,
+                                                    data.subspan(texels + water))) {
+                result.blendRegions.push_back(std::move(region));
             }
         }
         if (detail_) {

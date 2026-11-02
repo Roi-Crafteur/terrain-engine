@@ -79,7 +79,8 @@ public:
 
 	// A material of the tiles that follows level 0 from now on: the material of their ground reads
 	// the surface of the ground (material and biome) from the texels of level 0 (the temporary
-	// terrain material, Bridge/terrain_surface.hpp); the material of their water fades into the
+	// terrain material, Bridge/terrain_surface.hpp), and its blend from the blend texels of level 0
+	// (SurfaceBlend, agent 29); the material of their water fades into the
 	// water of the horizon over the outer band of the tiles (Scripts/water_look_hlsl.py). Both
 	// read the same parameters (SurfaceOrigin, SurfaceCells, SurfacePitchCm, SurfaceCoveredCm,
 	// SurfaceBandCm, HasSurface...); nothing without a look.
@@ -119,6 +120,9 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> WaterTextures; // the water levels, one per level
+
+	UPROPERTY()
+	TArray<TObjectPtr<UTexture2D>> BlendTextures; // the surface blends, one per level
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them
