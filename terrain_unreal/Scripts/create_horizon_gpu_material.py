@@ -7,8 +7,11 @@ Vertex shader: it reads the texel of the sample (i, k) of the texture of the lev
 (Bridge/horizon_textures.hpp: height, slopes, packed color or, on the ocean, the ground under the
 sea, at the slot (first slot + (i, k)) mod 257), morphs toward the next coarser level near the
 border of the window (Bridge/horizon_morph.hpp: the same factor and targets, the normals toward
-the texels of the coarser level), lowers the skirt, puts the sea square at the sea level, drops
-everything by HorizonDropCm and curves the planet (d^2 / 2R, d the distance to the camera, as
+the texels of the coarser level), blends the layers of the ground from the surface blends of
+its samples (HorizonBlend, Bridge/horizon_blend_texels.hpp: the weights of 3 biomes and 3
+materials, decoded texel by texel, then mixed with the shares of the morph; SurfaceBlends 0, the
+console command Terrain.Blend 0, leaves them out), lowers the skirt, puts the sea square at the
+sea level, drops everything by HorizonDropCm and curves the planet (d^2 / 2R, d the distance to the camera, as
 M_TerrainHorizon); its normal leans with the curvature. The normal (world space), the color and
 the ground (texelGround) go to the pixel shader through vertex interpolators.
 
@@ -66,6 +69,8 @@ SCALARS = {
     "CoarseFirstX": 0.0, "CoarseFirstZ": 0.0, "HasCoarser": 0.0, "MorphCells": 32.0,
     "SkirtCm": 200.0, "DropCm": 100.0, "PlanetRadiusCm": 60_030_976.0 / (2.0 * math.pi) * 100.0,
     "PitchCm": 800.0, "DropCoveredCm": 0.0, "DropFadeCm": 0.0,
+    # The surface blends drawn (1) or not (0: the dominant biomes; Terrain.Blend 0|1).
+    "SurfaceBlends": 1.0,
 }
 # The look of the sea, tunable on the instances: colors of the water (linear), the strength of the
 # waves and the roughness of the sea between them (GGX alpha).
@@ -113,16 +118,38 @@ float height = lerp(own.r, 0.5 * (ca.r + cb.r), alpha);
 float ground = lerp(HORIZON_GROUND(own), 0.5 * (HORIZON_GROUND(ca) + HORIZON_GROUND(cb)), alpha);
 float2 slope = lerp(own.gb, 0.5 * (ca.gb + cb.gb), alpha);
 #undef HORIZON_GROUND
-// The layers of the ground (the temporary terrain material): its packed surface (material and
-// biome, Bridge/terrain_surface.hpp), morphed as the heights.
-float4 la0, la1, la2, lb0, lb1, lb2;
-float2 lc0, lc1, lc2;
-Look.Layers(own.a, la0, lb0, lc0);
-Look.Layers(a.a, la1, lb1, lc1);
-Look.Layers(b.a, la2, lb2, lc2);
-W0Out = lerp(la0, 0.5 * (la1 + la2), alpha);
-W1Out = lerp(lb0, 0.5 * (lb1 + lb2), alpha);
-W2Out = float4(lerp(lc0, 0.5 * (lc1 + lc2), alpha), 0.0, height / 1000.0);
+// The layers of the ground (the temporary terrain material): the surface blends of the samples
+// (Bridge/horizon_blend_texels.hpp, agent 29), read without filtering, each decoded and added
+// with its share of the morph ((1 - alpha) for this sample, alpha / 2 for each of the two whose
+// mean the coarser level shows), never their ids interpolated: the weights still sum to 1. Where
+// a sample has no blend yet (a texel never written), its packed surface (material and biome,
+// Bridge/terrain_surface.hpp), morphed as the heights.
+float4 wa = float4(0.0, 0.0, 0.0, 0.0);
+float4 wb = wa;
+float2 wc = float2(0.0, 0.0);
+bool blended = false;
+BRANCH if (SurfaceBlends > 0.5)
+{
+    float4 bOwn = Blend.Load(int3((ik + first) % side, 0));
+    float4 bA = Blend.Load(int3((s0 + first) % side, 0));
+    float4 bB = Blend.Load(int3((s1 + first) % side, 0));
+    float4 shares = float4(1.0 - alpha, 0.5 * alpha, 0.5 * alpha, 0.0);
+    blended = Look.BlendTexelsLayers(bOwn, bA, bB, bOwn, shares, wa, wb, wc);
+}
+BRANCH if (!blended)
+{
+    float4 la0, la1, la2, lb0, lb1, lb2;
+    float2 lc0, lc1, lc2;
+    Look.Layers(own.a, la0, lb0, lc0);
+    Look.Layers(a.a, la1, lb1, lc1);
+    Look.Layers(b.a, la2, lb2, lc2);
+    wa = lerp(la0, 0.5 * (la1 + la2), alpha);
+    wb = lerp(lb0, 0.5 * (lb1 + lb2), alpha);
+    wc = lerp(lc0, 0.5 * (lc1 + lc2), alpha);
+}
+W0Out = wa;
+W1Out = wb;
+W2Out = float4(wc, 0.0, height / 1000.0);
 // The drop below the tiles fades out across their band over level 0 (Bridge/terrain_surface.hpp:
 // dropShare): no step at their outer edge, none on the levels 1 and up.
 float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;
@@ -234,6 +261,7 @@ def helpers():
 def parameters(material):
     """The textures and the scalar and vector parameters, shared by both shaders."""
     nodes = {"HorizonTexels": texture_parameter(material, "HorizonTexels", -400),
+             "HorizonBlend": texture_parameter(material, "HorizonBlend", -100),
              "CoarseTexels": texture_parameter(material, "CoarseTexels", -250),
              "HorizonNormals": texture_parameter(material, "HorizonNormals", -1700),
              "CoarseNormals": texture_parameter(material, "CoarseNormals", -1550)}
@@ -260,7 +288,7 @@ def vertex_shader(material, nodes, kind):
     float4 = unreal.CustomMaterialOutputType.CMOT_FLOAT4
     custom = custom_node(
         material, -900, 0, "HorizonVertex", look.struct_hlsl() + vertex_hlsl(),
-        ["Tex", "Coarse", "Local", "Kind", "Viewer", "CameraRel"] + list(SCALARS),
+        ["Tex", "Coarse", "Blend", "Local", "Kind", "Viewer", "CameraRel"] + list(SCALARS),
         [("NormalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
          ("W0Out", float4), ("W1Out", float4), ("W2Out", float4),
          ("GroundOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
@@ -268,6 +296,7 @@ def vertex_shader(material, nodes, kind):
         unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     connect(nodes["HorizonTexels"], "", custom, "Tex")
     connect(nodes["CoarseTexels"], "", custom, "Coarse")
+    connect(nodes["HorizonBlend"], "", custom, "Blend")
     connect(expression(material, unreal.MaterialExpressionPreSkinnedPosition, -1600, -100), "",
             custom, "Local")
     connect(kind, "", custom, "Kind")

@@ -20,7 +20,8 @@ endif()
 
 # Every file of the tools: its code between "#if TERRAIN_DEV_TOOLS" (after its own header) and
 # the "#endif // TERRAIN_DEV_TOOLS" that ends it.
-set(tools TerrainDevCapture.cpp TerrainDevCommands.cpp TerrainDevLooks.cpp TerrainDevPawn.cpp
+set(tools TerrainDevCapture.cpp TerrainDevCommands.cpp TerrainDevEdits.cpp TerrainDevLooks.cpp
+          TerrainDevPawn.cpp
           TerrainDevScreen.cpp TerrainDevSeed.cpp TerrainDevShots.cpp TerrainDevTools.cpp
           TerrainDevView.cpp TerrainDevState.h)
 foreach(name IN LISTS tools)
@@ -58,13 +59,26 @@ foreach(file IN LISTS sources)
     foreach(command Terrain.Goto Terrain.Look Terrain.Eye Terrain.Pawn Terrain.Save Terrain.Info
                     Terrain.Shot Terrain.Views Terrain.View\" Terrain.Seed Terrain.Hud
                     Terrain.PlacesFile Terrain.ShotTimeout Terrain.ShotSettle
-                    Terrain.ShotShowUI Terrain.PawnRadius)
+                    Terrain.ShotShowUI Terrain.PawnRadius Terrain.EditStats)
         string(FIND "${text}" "TEXT(\"${command}" at)
         if(NOT at EQUAL -1)
             string(APPEND errors "${name}: registers ${command} outside the files of the tools\n")
         endif()
     endforeach()
 endforeach()
+
+# Terrain.Blend (agent 29) lives with the blends of the horizon, its registration under
+# #if TERRAIN_DEV_TOOLS.
+file(READ "${plugin}/Private/TerrainHorizonClipmapBlend.cpp" text)
+string(REGEX REPLACE "\r" "" text "${text}")
+string(FIND "${text}" "#if TERRAIN_DEV_TOOLS\n" open)
+string(FIND "${text}" "TEXT(\"Terrain.Blend\")" command)
+string(FIND "${text}" "#endif // TERRAIN_DEV_TOOLS" close)
+if(open EQUAL -1 OR command EQUAL -1 OR close EQUAL -1 OR command LESS open
+   OR command GREATER close)
+    string(APPEND errors "TerrainHorizonClipmapBlend.cpp: Terrain.Blend is not under "
+                         "#if TERRAIN_DEV_TOOLS\n")
+endif()
 
 if(NOT errors STREQUAL "")
     message(FATAL_ERROR "the tools of the developers could reach a Shipping build:\n${errors}")

@@ -1,5 +1,7 @@
 #include "terrain/streaming/horizon_sampler.hpp"
 
+#include "horizon_blend.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -62,81 +64,128 @@ GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
 }
 
 // Site of the ground at a sample from the heights of its 4 neighbors step meters away (east,
-// west, south, north), with the water of the field there.
-//
-// A copy of the site of surfaceFromHeightfield (setSlopes and setWater in
-// generation/terrain_surface.cpp): the same expressions, so that the same inputs give the same
-// bits. horizon_sampler_test (testMaterialOracle) compares the materials and biomes of the
-// horizon with Ecology::map(surfaceFromHeightfield(...)) bit for bit in several regions: it
-// fails if the two ever diverge.
+// west, south, north), with the water of the field there (horizon::pointSite).
 SurfaceSite groundSite(const GroundGrid& grid, std::size_t at, const std::array<float, 4>& h,
                        double step) {
-    SurfaceSite site;
-    site.ground = grid.heights[at];
-    site.continentalness = grid.continentalness[at];
-    const double run = 2.0 * step;
-    site.gradX = static_cast<float>((static_cast<double>(h[0]) - h[1]) / run);
-    site.gradZ = static_cast<float>((static_cast<double>(h[2]) - h[3]) / run);
-    float difference = 0.0f;
-    for (const float height : h) {
-        difference = std::max(difference, std::abs(height - site.ground));
-    }
-    site.steepness = static_cast<float>(difference / step);
-    site.water = grid.water[at];
-    site.waterLevel = grid.waterLevel[at];
-    return site;
+    HeightSample sample;
+    sample.height = grid.heights[at];
+    sample.continentalness = grid.continentalness[at];
+    sample.water = grid.water[at];
+    sample.waterLevel = grid.waterLevel[at];
+    return horizon::pointSite(sample, h, step);
+}
+
+// The height of the sample (i, k): the grid where it holds it, beyond it the field at its
+// canonical position (the same bits).
+float gridHeight(const Heightfield& field, const LevelFrame& frame, const GroundGrid& grid,
+                 std::int64_t i, std::int64_t k) {
+    return grid.rect.contains({i, k}) ? grid.heights[grid.index(i, k)]
+                                      : field.heightAt(frame.x(i), frame.z(k));
 }
 
 // The steepest rise, per meter, from the sample (i, k) to the samples one and two pitches away
 // (the material is drawn between the samples of the level: a wall rising there takes the colour
-// of this sample at its foot): the grid where it holds them (the same bits as the field), the
-// field beyond its margin.
+// of this sample at its foot).
 float riseAround(const Heightfield& field, const LevelFrame& frame, const GroundGrid& grid,
                  std::int64_t i, std::int64_t k) {
     const float ground = grid.heights[grid.index(i, k)];
+    const auto pitch = static_cast<double>(frame.pitch);
     float rise = 0.0f;
     for (const auto& [di, dk] : {std::array<int, 2>{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
-        const float near = grid.heights[grid.index(i + di, k + dk)];
-        const std::int64_t fi = i + 2 * di;
-        const std::int64_t fk = k + 2 * dk;
-        const bool inside = fi >= grid.rect.x0 && fi < grid.rect.x1 && fk >= grid.rect.z0 &&
-                            fk < grid.rect.z1;
-        const float far =
-            inside ? grid.heights[grid.index(fi, fk)] : field.heightAt(frame.x(fi), frame.z(fk));
-        const auto pitch = static_cast<double>(frame.pitch);
+        const float near = gridHeight(field, frame, grid, i + di, k + dk);
+        const float far = gridHeight(field, frame, grid, i + 2 * di, k + 2 * dk);
         rise = std::max({rise, static_cast<float>(static_cast<double>(near - ground) / pitch),
                          static_cast<float>(static_cast<double>(far - ground) / (2.0 * pitch))});
     }
     return rise;
 }
 
-// Material, biome and water of the sample (i, k) of the grid, from its natural ground.
-void classify(const Heightfield& field, const Ecology& ecology, const LevelFrame& frame,
-              const GroundGrid& grid, int slopeStep, std::int64_t i, std::int64_t k,
-              HorizonCell& cell) {
+// Site and climate of the ground of the sample (i, k), from its natural ground: its neighbors
+// slopeStep meters away, the samples of the grid where slopeStep is the pitch (gridHeight).
+// Bare rock (SurfaceSite::bareRock): the reefs of the coasts, and the foot of the walls under the
+// sea, the rise read over the pitches of the level; it enters the blend (the GPU horizon draws
+// its colours from it, agent 29) and the footprints of the levels 4 and up.
+struct PointClass {
+    double x = 0.0;
+    double z = 0.0;
+    SurfaceSite site;
+    ClimateSample climate;
+};
+
+PointClass pointClass(const Heightfield& field, const Ecology& ecology, const LevelFrame& frame,
+                      const GroundGrid& grid, int slopeStep, std::int64_t i, std::int64_t k) {
     const double x = frame.x(i);
     const double z = frame.z(k);
-    const std::size_t at = grid.index(i, k);
     std::array<float, 4> neighbors{};
     if (slopeStep == frame.pitch) {
-        neighbors = {grid.heights[grid.index(i + 1, k)], grid.heights[grid.index(i - 1, k)],
-                     grid.heights[grid.index(i, k + 1)], grid.heights[grid.index(i, k - 1)]};
+        neighbors = {gridHeight(field, frame, grid, i + 1, k),
+                     gridHeight(field, frame, grid, i - 1, k),
+                     gridHeight(field, frame, grid, i, k + 1),
+                     gridHeight(field, frame, grid, i, k - 1)};
     } else {
         neighbors = {field.heightAt(x + slopeStep, z), field.heightAt(x - slopeStep, z),
                      field.heightAt(x, z + slopeStep), field.heightAt(x, z - slopeStep)};
     }
+    const std::size_t at = grid.index(i, k);
     SurfaceSite site = groundSite(grid, at, neighbors, slopeStep);
-    const EcologyParams& params = ecology.params();
     const ClimateSample climate = ecology.climate().sample(x, z, site);
-    // Bare rock: the reefs of the coasts, and the foot of the walls under the sea.
     site.bareRock = grid.rock[at] > 0.5f ||
                     (mayPlunge(site) && barePlunge(site, riseAround(field, frame, grid, i, k),
-                                                   params.materials.rockSlope));
-    cell.biome = classifyBiome(climate, site, params.biomes);
-    cell.material = surfaceMaterial(cell.biome, climate, site, params.materials);
+                                                   ecology.params().materials.rockSlope));
+    return {x, z, site, climate};
+}
+
+// Material, biome, point blend and water of a sample; returns its point blend. The biome and
+// the material are slot 0 of the blend: classifyBiome and surfaceMaterial, the same bits
+// (biome_blend.hpp), computed once.
+SurfaceBlend classify(const Ecology& ecology, const PointClass& point, HorizonCell& cell) {
+    const SurfaceSite& site = point.site;
+    const SurfaceBlend blend = ecology.blendAt(point.x, point.z, site, point.climate);
+    cell.biome = blend.biomes[0];
+    cell.material = blend.materials[0];
+    cell.blend = packBlend(blend);
     cell.flags = static_cast<std::uint8_t>((site.dry() ? 0U : kHorizonWater) |
                                            (site.water == WaterKind::Ocean ? kHorizonSea : 0U));
     cell.waterLevel = site.dry() ? kNoWaterLevel : site.waterLevel;
+    return blend;
+}
+
+// Classifies the samples of the rectangle (the grid holds it and a margin of one sample). With
+// footprint, their blends become the means over their footprints (horizon::footprintBlend) of
+// the point blends of the 3 x 3 samples around them, the margin included.
+void classifyRect(const Heightfield& field, const Ecology& ecology, const LevelFrame& frame,
+                  const GroundGrid& grid, int slopeStep, const HorizonRect& rect,
+                  bool footprint, std::span<HorizonCell> cells) {
+    std::vector<SurfaceBlend> blends(footprint ? cells.size() : 0);
+    const HorizonRect& classified = footprint ? grid.rect : rect;
+    for (std::int64_t k = classified.z0; k < classified.z1; ++k) {
+        for (std::int64_t i = classified.x0; i < classified.x1; ++i) {
+            const PointClass point = pointClass(field, ecology, frame, grid, slopeStep, i, k);
+            const std::size_t at = grid.index(i, k);
+            if (rect.contains({i, k})) {
+                const SurfaceBlend blend = classify(ecology, point, cells[at]);
+                if (footprint) {
+                    blends[at] = blend;
+                }
+            } else {
+                blends[at] = ecology.blendAt(point.x, point.z, point.site, point.climate);
+            }
+        }
+    }
+    if (!footprint) {
+        return;
+    }
+    for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
+        for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
+            std::array<const SurfaceBlend*, 9> around{};
+            for (std::size_t n = 0; n < around.size(); ++n) {
+                const auto di = static_cast<std::int64_t>(n % 3) - 1;
+                const auto dk = static_cast<std::int64_t>(n / 3) - 1;
+                around[n] = &blends[grid.index(i + di, k + dk)];
+            }
+            cells[grid.index(i, k)].blend = packBlend(horizon::footprintBlend(around));
+        }
+    }
 }
 
 // Raises the samples of the rectangle to the crests of their cells (their natural ground).
@@ -168,6 +217,7 @@ void applyEditSummary(const EditSummary& summary, HorizonCell& cell) {
     cell.height = editedHeight(summary, cell.height);
     if (summary.material) {
         cell.material = *summary.material;
+        cell.blend = horizon::withMaterial(cell.blend, *summary.material);
     }
     cell.flags = static_cast<std::uint8_t>(cell.flags | kHorizonEdited);
 }
@@ -203,11 +253,8 @@ void HorizonSampler::fill(int level, const HorizonRect& rect, std::span<HorizonC
     for (std::size_t n = 0; n < cells.size(); ++n) {
         cells[n].height = grid.heights[n];
     }
-    for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
-        for (std::int64_t i = rect.x0; i < rect.x1; ++i) {
-            classify(*field_, *ecology_, frame, grid, slopeStep, i, k, cells[grid.index(i, k)]);
-        }
-    }
+    classifyRect(*field_, *ecology_, frame, grid, slopeStep, rect, level >= params_.blendFromLevel,
+                 cells);
     raiseToCrests(crests_, level, rect, grid, cells);
     // The point heights and their edits, for the gradients: the lifts leave them out.
     std::vector<float> ground = grid.heights;

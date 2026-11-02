@@ -1,5 +1,6 @@
 #pragma once
 
+#include "horizon_blend_texels.hpp"
 #include "horizon_epochs.hpp"
 #include "horizon_layout.hpp"
 #include "horizon_normal_stream.hpp"
@@ -72,6 +73,8 @@ struct HorizonGpuUpdate {
     std::vector<TexelRegion> regions;
     // The water levels of the samples the epochs wrote (the crests rewrite texels only).
     std::vector<WaterRegion> waterRegions;
+    // The surface blends of the samples the epochs wrote (agent 29; the crests leave them).
+    std::vector<BlendRegion> blendRegions;
     std::vector<NormalRegion> normalRegions; // detail normals: pending, then computed
     std::vector<LevelPlacement> placements;  // the levels whose placement changed
     // With an epoch committed: the coarsest level it moved (-1: none), whether it showed the
@@ -86,8 +89,8 @@ struct HorizonGpuUpdate {
     double detailMilliseconds = 0.0;
 
     [[nodiscard]] bool empty() const {
-        return regions.empty() && waterRegions.empty() && normalRegions.empty() &&
-               placements.empty();
+        return regions.empty() && waterRegions.empty() && blendRegions.empty() &&
+               normalRegions.empty() && placements.empty();
     }
 };
 

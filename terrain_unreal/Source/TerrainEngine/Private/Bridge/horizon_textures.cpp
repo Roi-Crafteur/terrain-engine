@@ -1,5 +1,7 @@
 #include "horizon_textures.hpp"
 
+#include "horizon_blend_texels.hpp"
+
 #include "terrain/generation/heightfield.hpp"
 
 #include <algorithm>
@@ -167,7 +169,7 @@ float waterTexel(float level) {
 
 std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea) {
     std::vector<float> data;
-    data.reserve(piece.cells.size() * (kTexelFloats + 1));
+    data.reserve(piece.cells.size() * (kTexelFloats + 1 + kBlendChannels));
     for (const HorizonCell& cell : piece.cells) {
         const HorizonTexel texel = horizonTexel(cell, sea);
         data.insert(data.end(), {texel.height, texel.gradX, texel.gradZ, texel.color});
@@ -175,6 +177,12 @@ std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea) {
     for (const HorizonCell& cell : piece.cells) {
         data.push_back(waterTexel(cell.waterLevel));
     }
+    std::vector<BlendTexel> blends;
+    blends.reserve(piece.cells.size());
+    for (const HorizonCell& cell : piece.cells) {
+        blends.push_back(cell.blend);
+    }
+    appendBlendUploads(blends, data);
     return data;
 }
 

@@ -8,8 +8,11 @@ the same outcome)."""
 import probe as probe_module
 
 RADIUS = 50.0          # Terrain.PawnRadius of the plugin, when its messages do not say it
-FEET_TOLERANCE = 1.0   # m between the feet of the pawn and the ground of the core under them
-EYE_ABOVE_WATER, EYE_TOLERANCE = 1.8, 0.5  # the view of the tools over the water of the core
+# The feet of the pawn against the ground of the core under them, and the eye of the view of the
+# tools against 1.8 m above the water of the core: beyond these, a failure (real run 7 on
+# 90c2094: the feet +0.02 to +0.21 m, the K2 the most; the eye +1.80 m exactly everywhere).
+FEET_TOLERANCE = 0.5   # m
+EYE_ABOVE_WATER, EYE_TOLERANCE = 1.8, 0.05  # m
 SKIPPED_PLANET = "measured with the planet file, the run has none"
 SKIPPED_TEXT = {SKIPPED_PLANET: "mesuré avec le fichier planète, et ce run n'en a pas "
                                 "(--planet no) : sauté, ce n'est pas une panne"}
@@ -94,8 +97,8 @@ def failures_of(v, e):
     if e.get("end") in ("water", "fallback") and _dry(v, e["place"]):
         return ["lieu sec selon le core, mais la vue des outils est restée au-dessus de l'eau"]
     if not check:
-        return []
-    out = [] if check["ok"] else [check["line"]]
+        return core_gaps(v, e)  # the view of the tools above the water: its eye
+    out = ([] if check["ok"] else [check["line"]]) + core_gaps(v, e)
     if check["who"] != "the pawn of the game":
         out.append("la ligne de contrôle parle de la vue des outils, pas du pion du jeu")
     if check["away"] > radius:
@@ -103,32 +106,27 @@ def failures_of(v, e):
     return out
 
 
-def notices_of(v, e):
-    """What deserves a look: the feet or the eye against the core probed there."""
+def core_gaps(v, e):
+    """The feet or the eye too far from the core probed there (a failure), or []."""
     core = (v.get("landingCores") or {}).get(e["place"])
     if not core:
         return []
     if e.get("feet") and core.get("ground") is not None:
         gap = e["feet"][2] - core["ground"]
-        if abs(gap) > FEET_TOLERANCE:
+        if round(abs(gap), 3) > FEET_TOLERANCE:  # rounded: 0.5 m off stays within 0.5 m
             return [f"pieds à {e['feet'][2]:.2f} m, sol du core {core['ground']:.2f} m sous le "
-                    f"pion (écart {gap:+.2f} m)"]
+                    f"pion (écart {gap:+.2f} m, plus de {FEET_TOLERANCE:.2f} m)"]
     if e.get("eye") and core.get("waterLevel") is not None:
         gap = e["eye"][2] - core["waterLevel"] - EYE_ABOVE_WATER
-        if abs(gap) > EYE_TOLERANCE:
+        if round(abs(gap), 3) > EYE_TOLERANCE:
             return [f"œil à {e['eye'][2]:.2f} m, eau du core {core['waterLevel']:.2f} m "
-                    f"(écart {gap:+.2f} m aux 1,8 m attendus)"]
+                    f"(écart {gap:+.2f} m aux 1,8 m attendus, plus de {EYE_TOLERANCE:.2f} m)"]
     return []
 
 
 def failures(v):
     return [f"ATTENTION ({v['label']}) : atterrissage {e['place']} : {why}"
             for e in entries(v) for why in failures_of(v, e)]
-
-
-def notices(v):
-    return [f"AVERTISSEMENT ({v['label']}) : atterrissage {e['place']} : {why}"
-            for e in entries(v) for why in notices_of(v, e)]
 
 
 def differences(run):
@@ -153,9 +151,12 @@ def _details(v, e):
                 f"{under}, {check['water']}, à {check['away']:.1f} m du clic : "
                 f"{'OK' if check['ok'] else 'PAS OK'}")
     if e.get("eye"):
-        water = (f", eau du core {core['waterLevel']:.2f} m" if core.get("waterLevel") is not None
-                 else "")
-        return f" : œil à {e['eye'][2]:.2f} m{water}"
+        if core.get("waterLevel") is None:
+            return f" : œil à {e['eye'][2]:.2f} m (eau du core non sondée)"
+        above = e["eye"][2] - core["waterLevel"]  # the check of the eye ran: its mark, as the pawn
+        mark = "PAS OK" if core_gaps(v, e) else "OK"
+        return (f" : œil à {e['eye'][2]:.2f} m, eau du core {core['waterLevel']:.2f} m "
+                f"({above:+.2f} m au-dessus) : {mark}")
     return f" : {e['message']}" if e.get("message") else ""
 
 

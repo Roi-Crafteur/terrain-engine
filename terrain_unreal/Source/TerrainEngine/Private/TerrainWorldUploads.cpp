@@ -20,8 +20,8 @@ namespace
 	class FTerrainBackendSink final : public terrain::unreal::UploadSink
 	{
 	public:
-		FTerrainBackendSink(UTerrainMeshBackend& InBackend, terrain::unreal::TerrainSession& InSession)
-			: Backend(InBackend), Session(InSession)
+		FTerrainBackendSink(UTerrainMeshBackend& InBackend, FTerrainWorldState& InState)
+			: Backend(InBackend), Session(InState.Session), State(InState)
 		{
 		}
 
@@ -41,6 +41,17 @@ namespace
 				static_cast<int32>(Upload.mesh.triangleCount()),
 				Upload.collision ? TEXT("yes") : TEXT("no"), Upload.conversionMilliseconds,
 				UploadMs);
+#if TERRAIN_DEV_TOOLS
+			// The edits of the players this tile shows: the time from their click (agent 28).
+			if (State.Build.Latency.uploaded(Upload.key, Session.tiles().world(),
+					FPlatformTime::Seconds(), static_cast<int64>(GFrameCounter)) > 0)
+			{
+				const terrain::unreal::EditTiming& Last = State.Build.Latency.timings().back();
+				UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: edit shown %.1f ms after its "
+					"click (%.1f ms to be done), %lld frames later"), Last.shownSeconds * 1000.0,
+					Last.doneSeconds * 1000.0, static_cast<long long>(Last.frames));
+			}
+#endif
 		}
 
 		void move(const terrain::unreal::TileMove& Move) override
@@ -56,6 +67,7 @@ namespace
 	private:
 		UTerrainMeshBackend& Backend;
 		terrain::unreal::TerrainSession& Session;
+		FTerrainWorldState& State;
 	};
 
 	// The update handed to the pacer, its tiles marked converted (they left the streamer).
@@ -88,7 +100,7 @@ FTerrainUploads TickTerrainUploads(UTerrainMeshBackend& Backend, FTerrainWorldSt
 	{ return Costs.estimate(Upload.mesh.positions.size(), Upload.collision); };
 	Budget.measured = [&Costs](const terrain::unreal::TileUpload& Upload, double Milliseconds)
 	{ Costs.record(Upload.mesh.positions.size(), Upload.collision, Milliseconds); };
-	FTerrainBackendSink Sink(Backend, State.Session);
+	FTerrainBackendSink Sink(Backend, State);
 	const terrain::unreal::PacedFrame Frame = Loading.Pacer.apply(Sink, Budget);
 	FTerrainUploads Uploads;
 	Uploads.Count = static_cast<int32>(Frame.uploads);
@@ -98,7 +110,7 @@ FTerrainUploads TickTerrainUploads(UTerrainMeshBackend& Backend, FTerrainWorldSt
 
 void FlushTerrainUploads(UTerrainMeshBackend& Backend, FTerrainWorldState& State)
 {
-	FTerrainBackendSink Sink(Backend, State.Session);
+	FTerrainBackendSink Sink(Backend, State);
 	static_cast<void>(State.Loading.Pacer.flush(Sink));
 }
 

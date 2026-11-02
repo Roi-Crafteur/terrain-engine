@@ -171,7 +171,8 @@ terrain_unreal/
   Scripts/create_horizon_material.py
   Scripts/create_horizon_gpu_material.py
   Scripts/create_temporary_terrain_material.py, temporary_terrain_look.py,
-    temporary_terrain_hlsl.py  le matériau temporaire
+    temporary_terrain_hlsl.py, blend_layers_hlsl.py  le matériau temporaire (les poids des
+    biomes des tuiles et de l'horizon : blend_layers_hlsl.py, agent 29)
   Scripts/create_water_materials.py, water_look_hlsl.py, horizon_water_hlsl.py,
     horizon_water_nodes.py     l'eau des tuiles, des chutes et de l'horizon
   Scripts/material_settings.py  la remise à zéro des réglages des matériaux reconstruits
@@ -189,8 +190,9 @@ terrain_unreal/
       TerrainDev*.cpp/.h       les outils de debug : F3, commandes, images, modes de vue, seed
       ProceduralMeshTerrainLooks.cpp  les couleurs des tuiles dans les modes de vue
       TerrainWorldState.h      la partie terrain_core d'un ATerrainWorld en jeu
-      TerrainHorizonClipmap.*  l'horizon GPU : grilles fixes, placements
-      TerrainHorizonTextures.* ses textures (texels, normales, eau) et leurs envois
+      TerrainHorizonClipmap.*  l'horizon GPU : grilles fixes, placements (Blend.cpp : les
+        poids des biomes, Terrain.Blend 0|1)
+      TerrainHorizonTextures.* ses textures (texels, normales, eau, poids) et leurs envois
       TerrainWorldAtmosphere.cpp, TerrainAtmosphereFollower.*  le ciel qui suit la caméra
       TerrainHorizonGrids.*    les grilles fixes, des UStaticMesh construits en jeu
       TerrainHorizonMeshes.*   l'horizon CPU : un ProceduralMeshComponent par niveau
@@ -635,6 +637,9 @@ montre, en GPU comme en CPU.
   dessiné en mer ; une très grosse modification met quelques centaines de millisecondes à
   sortir du fil de modifications (sans bloquer le jeu), et les modifications suivantes
   attendent leur tour.
+
+Casser et poser en jeu (clic gauche, clic droit, touches 1/2/3), le fantôme et la sauvegarde
+des modifications par seed : voir [`BREAK_PLACE.md`](BREAK_PLACE.md) (agent 28).
 
 ## 16. La carte de dev et la minicarte (agent 35)
 

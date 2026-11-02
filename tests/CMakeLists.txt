@@ -314,6 +314,7 @@ add_library(terrain_unreal_bridge STATIC
     ${unreal_bridge}/determinism_check.cpp
     ${unreal_bridge}/edit_thread.cpp
     ${unreal_bridge}/horizon_atmosphere.cpp
+    ${unreal_bridge}/horizon_blend_texels.cpp
     ${unreal_bridge}/horizon_epochs.cpp
     ${unreal_bridge}/horizon_gpu_streamer.cpp
     ${unreal_bridge}/horizon_layout.cpp
@@ -514,3 +515,5 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/loading_tests.cmake) # agent 38: the load at
 include(${CMAKE_CURRENT_SOURCE_DIR}/dev_tools_tests.cmake) # agent 36: the tools in the game
 include(${CMAKE_CURRENT_SOURCE_DIR}/verify_tests.cmake) # agent 37: the probe and the verification
 include(${CMAKE_CURRENT_SOURCE_DIR}/dev_map_tests.cmake) # agent 35: the dev map
+include(${CMAKE_CURRENT_SOURCE_DIR}/horizon_blend_tests.cmake) # agent 29: the biome weights of the horizon
+include(${CMAKE_CURRENT_SOURCE_DIR}/break_place_tests.cmake) # agent 28: break and place in game

@@ -38,6 +38,11 @@ struct HorizonParams {
     // their cells, sought on a lattice crestRatio times finer than the level. 0: every sample is
     // the point height of the ground (the horizon before the prefilter).
     int crestRatio = 2;
+    // Surface blend of the samples (HorizonCell::blend): from this level on, the mean over the
+    // footprint of each sample of the bilinear interpolation of the point blends of the samples
+    // of its level (the 3 x 3 around it); below it, the blend of the sample itself, as the tiles.
+    // kHorizonMaxLevels: point blends on every level.
+    int blendFromLevel = 4;
     WorldSize world;
 };
 
@@ -46,7 +51,8 @@ struct HorizonParams {
 // powers of two, crestRatio is 0 or a power of two from 2 to kHorizonCrestRatioMax dividing the
 // pitch of level 1 (2 * basePitch), twice the coarsest pitch divides kWorldAlignmentMeters (an
 // even number of samples along each side of the world) and the window of the coarsest level
-// holds no sample twice ((K + 1) * pitch <= each side of the world).
+// holds no sample twice ((K + 1) * pitch <= each side of the world) and blendFromLevel is in
+// [0, kHorizonMaxLevels].
 void validate(const HorizonParams& params);
 
 // As validate, and level 0 reaches beyond every tile the LOD parameters select around the
