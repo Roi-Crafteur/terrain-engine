@@ -62,8 +62,12 @@ std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side)
 
 HorizonTexel horizonTexel(const HorizonCell& cell, bool sea) {
     if (sea && isSeaCell(cell)) {
-        const float rock = cell.material == SurfaceMaterial::Rock ? kSeaRockCode : 0.0f;
-        return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel - rock};
+        if (cell.material == SurfaceMaterial::Rock) {
+            // The slopes of its ground: the triangles between it and the wall above are lit as
+            // the wall, their normals no longer turning from straight up over one pitch.
+            return {kSeaLevel, cell.gradX, cell.gradZ, cell.height - kSeaLevel - kSeaRockCode};
+        }
+        return {kSeaLevel, 0.0f, 0.0f, cell.height - kSeaLevel};
     }
     const bool inland = (cell.flags & kHorizonWater) != 0 && (cell.flags & kHorizonSea) == 0;
     return {cell.height, cell.gradX, cell.gradZ, packSurface(cell.material, cell.biome, inland)};

@@ -12,6 +12,13 @@
 //   packed surface only where a texel holds none): the blend of each of those texels of the ocean
 //   over rock, as the GPU decodes it from its channels (horizon_blend_texels), is all rock
 //   (materials, levels 0 to 3: the point blends); in the open sea no blend weighs rock.
+// - The light at the foot of the wall (the one line of the agent 33 after the check in Unreal of
+//   c96edf7: a regular lace without hue at the foot of the wall of fjord_axe): every texel of the
+//   ocean over rock keeps the slopes of its ground, every other texel of the ocean is flat (its
+//   normal up), and the normals of a texel of the ocean over rock and of a texel of the land next
+//   to it differ by kTurnMedian degrees at most in the median, kTurnHigh at the 90th percentile,
+//   on the levels 1 to 3 (69 and 78 degrees when the ocean was flat everywhere: the triangles
+//   between them were lit from flat to the wall over one pitch, one sample after the other).
 // - Out in the open sea none is.
 // - The samples of the rocks of a reef above the water are texels of the land of rock, and so
 //   are their blends.
@@ -28,6 +35,7 @@
 
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -46,6 +54,8 @@ constexpr std::int64_t kHalf = 24; // samples on either side of the place
 // The ground of a texel of the ocean over rock is given back within the precision of a float
 // near kSeaRockCode (1/128 m); the others exactly.
 constexpr float kRockPrecision = 0.01f;
+constexpr double kTurnMedian = 30.0;
+constexpr double kTurnHigh = 50.0;
 
 struct World {
     terrain::Heightfield field{kSeed};
@@ -66,6 +76,7 @@ struct Window {
     std::vector<HorizonTexel> texels;
     std::vector<float> heights;
     std::vector<terrain::BlendTexel> blends;
+    std::vector<std::array<float, 2>> slopes; // of the ground of the samples
 };
 
 // The share of the weight of the materials of a blend on rock, as the GPU horizon reads it: its
@@ -94,6 +105,7 @@ Window windowOf(double x, double z, int level) {
         win.texels.push_back(terrain::unreal::horizonTexel(cell, true));
         win.heights.push_back(cell.height);
         win.blends.push_back(cell.blend);
+        win.slopes.push_back({cell.gradX, cell.gradZ});
     }
     return win;
 }
@@ -142,6 +154,69 @@ Count countOf(const Window& win) {
         }
     }
     return c;
+}
+
+// The angle between the normals of two texels, degrees (the normal of the GPU horizon from the
+// slopes of a texel: (-gradX, -gradZ, 1)).
+double turnOf(const HorizonTexel& a, const HorizonTexel& b) {
+    const auto dot = static_cast<double>(a.gradX * b.gradX + a.gradZ * b.gradZ + 1.0f);
+    const auto na = static_cast<double>(std::hypot(a.gradX, a.gradZ, 1.0f));
+    const auto nb = static_cast<double>(std::hypot(b.gradX, b.gradZ, 1.0f));
+    return std::acos(std::clamp(dot / (na * nb), -1.0, 1.0)) * 180.0 / 3.14159265358979323846;
+}
+
+// The light at the foot of the walls over the window: the turns of the normals from each texel of
+// the ocean over rock to the texels of the land next to it, and the texels of the ocean whose
+// slopes are not those of their ground over rock, or not flat elsewhere.
+struct Light {
+    std::vector<double> turns;
+    int wrong = 0;
+};
+
+void addLight(const Window& win, Light& light) {
+    const auto at = [&win](std::int64_t i, std::int64_t k) {
+        return static_cast<std::size_t>(k * win.n + i);
+    };
+    for (std::int64_t k = 1; k < win.n - 1; ++k) {
+        for (std::int64_t i = 1; i < win.n - 1; ++i) {
+            const HorizonTexel& t = win.texels[at(i, k)];
+            if (!terrain::unreal::isSeaTexel(t)) {
+                continue;
+            }
+            const bool rock = terrain::unreal::isRockSeaTexel(t);
+            const std::array<float, 2> slope = rock ? win.slopes[at(i, k)]
+                                                    : std::array<float, 2>{0.0f, 0.0f};
+            light.wrong += t.gradX == slope[0] && t.gradZ == slope[1] ? 0 : 1;
+            for (const auto& [di, dk] : {std::array<int, 2>{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                const HorizonTexel& land = win.texels[at(i + di, k + dk)];
+                if (rock && !terrain::unreal::isSeaTexel(land)) {
+                    light.turns.push_back(turnOf(t, land));
+                }
+            }
+        }
+    }
+}
+
+double quantile(std::vector<double> v, double q) {
+    std::sort(v.begin(), v.end());
+    return v.empty() ? 0.0 : v[static_cast<std::size_t>(q * static_cast<double>(v.size() - 1))];
+}
+
+void testLight() {
+    Light light;
+    for (int level = 1; level < 4; ++level) {
+        addLight(windowOf(1'822'300.0, 9'926'500.0, level), light);
+    }
+    const double median = quantile(light.turns, 0.5);
+    const double high = quantile(light.turns, 0.9);
+    std::printf("foot of the wall of fjord_axe, levels 1 to 3: %zu pairs of a texel of the ocean "
+                "over rock and one of the land next to it, their normals turning by %.1f degrees "
+                "(median), %.1f (90th percentile); %d texels of the ocean with wrong slopes\n",
+                light.turns.size(), median, high, light.wrong);
+    TEST_CHECK(!light.turns.empty());
+    TEST_CHECK(median <= kTurnMedian);
+    TEST_CHECK(high <= kTurnHigh);
+    TEST_CHECK(light.wrong == 0);
 }
 
 struct Place {
@@ -223,6 +298,7 @@ void testReef() {
 
 int main() {
     testWalls();
+    testLight();
     testOpenSea();
     testReef();
     return test::result();
