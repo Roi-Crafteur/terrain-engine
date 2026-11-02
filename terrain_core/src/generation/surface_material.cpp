@@ -54,13 +54,14 @@ SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate, const
     if (!site.dry()) {
         return SurfaceMaterial::Water;
     }
+    // The dunes of the ergs are sand whatever their slope and their biome: the core lays them
+    // (ergs.hpp); only the walls of the cliffs and the rock above air stay rock.
+    if (site.dunes >= params.duneSand && !site.cliffWall && !site.rockAboveAir) {
+        return SurfaceMaterial::Sand;
+    }
     const float steepest = steepestSlope(climate, site);
     if (steepest >= params.rockSlope || site.cliffWall || site.rockAboveAir) {
         return SurfaceMaterial::Rock;
-    }
-    // The dunes of the ergs are sand whatever the biome: the core lays them (ergs.hpp).
-    if (site.dunes >= params.duneSand) {
-        return SurfaceMaterial::Sand;
     }
     SurfaceMaterial material = SurfaceMaterial::Grass;
     if (mineralMaterial(biome, climate, steepest, params, material)) {

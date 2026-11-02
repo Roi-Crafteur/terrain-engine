@@ -24,10 +24,11 @@ namespace terrain::unreal {
 inline constexpr int kBlendTexelFloats = 4;
 
 // A texel of the atlas, exact in floats: the ids (24 bits), the low and the high 16 bits of the
-// weights, and 1 (a texel of a tile: the texels of no tile hold 0).
+// weights, and 1 + the share of the dunes in 256ths (bits 24-31 of the ids; at least 1: a texel
+// of a tile, the texels of no tile hold 0).
 [[nodiscard]] std::array<float, kBlendTexelFloats> blendTexelFloats(BlendTexel texel);
-// The texel of floats written by blendTexelFloats; nothing unless the last float is 1 and the
-// others hold integers of their range.
+// The texel of floats written by blendTexelFloats; nothing unless the last float is in [1, 2)
+// with a whole number of 256ths and the others hold integers of their range.
 [[nodiscard]] std::optional<BlendTexel> blendTexelOf(const std::array<float, kBlendTexelFloats>& floats);
 
 // The texels of a tile as a region of the atlas, row after row (the rows of the texels along z),

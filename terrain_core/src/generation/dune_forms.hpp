@@ -45,8 +45,8 @@ struct Barchan {
 // face on the left).
 [[nodiscard]] double seif(double offset, double height, double slip);
 
-// The star dunes of a lattice of cell meters at the canonical (x, z): a peak at kStarTan with 3 to
-// 5 arms of sharp crests, on the cells that hold one (occupancy), at most height high. periodX
+// The star dunes of a lattice of cell meters at the canonical (x, z): a peak at kStarTan with 2 to
+// 6 arms of sharp crests, uneven and bent, on the cells that hold one (occupancy), at most height high. periodX
 // and periodZ: those of the world (whole multiples of cell). key: the hash of the pattern.
 struct StarLattice {
     double cell = 2048.0;
@@ -57,6 +57,9 @@ struct StarLattice {
     std::uint64_t key = 0;
 };
 [[nodiscard]] double stars(const StarLattice& lattice, double x, double z);
+
+// The Hermite curve 3t^2 - 2t^3 of t clamped to [0, 1].
+[[nodiscard]] double hermite(double t);
 
 // A uniform number in [0, 1) of a hash.
 [[nodiscard]] inline double uniform(std::uint64_t h) {

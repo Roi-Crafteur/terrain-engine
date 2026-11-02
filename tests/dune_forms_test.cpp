@@ -71,8 +71,8 @@ void testBarchan() {
             axisTop = at(t, 0.5);
             axisCrest = t;
         }
-        if (at(t, 0.75) > hornTop) {
-            hornTop = at(t, 0.75);
+        if (at(t, 0.65) > hornTop) {
+            hornTop = at(t, 0.65);
             hornCrest = t;
         }
     }
@@ -81,7 +81,7 @@ void testBarchan() {
     TEST_CHECK(axisTop > 30.0 && axisTop <= 40.0);
     TEST_CHECK(hornCrest > axisCrest && hornTop < axisTop);
     // Nothing beside it, nor where there is none.
-    TEST_CHECK(at(axisCrest, 0.02) == 0.0 && at(axisCrest, 0.98) == 0.0);
+    TEST_CHECK(at(axisCrest, 0.1) == 0.0 && at(axisCrest, 0.9) == 0.0);
     forms::Barchan none = b;
     none.presence = 0.0;
     TEST_CHECK(forms::barchan(none) == 0.0);

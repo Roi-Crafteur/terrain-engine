@@ -20,6 +20,10 @@ Rules (kept simple on purpose):
 - rock from about RockStartDeg of slope, fully rock from RockFullDeg, the threshold jittered by
   noise, and wherever the core puts rock (CoreRock of it, at every distance): a cold grey mineral
   (its textures desaturated by RockGrey, brightened by RockAlbedo to about 0.18), never sandy;
+- the sand stays sand at any slope: on the tiles, the sand of the dunes of the ergs (its share in
+  the texels of the surface blend) is the smooth Sand layer, never rock, scree nor the stony
+  Desert layer; on the horizon the Desert layer is spared the rock of the slopes, and only turns
+  to scree above 38 degrees (steeper than any dune);
 - snow where the core says it is cold (snow biome or material, which includes the altitude and the
   exposure), only on slopes gentler than SnowShedDeg: above the snow line, the faces too steep for
   the snow are rock;

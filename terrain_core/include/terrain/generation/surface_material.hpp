@@ -43,7 +43,8 @@ struct MaterialParams {
     // the beaches and the marshes.
     float riverBankWidth = 25.0f;
     // The dunes of the seas of dunes (SurfaceSite::dunes) at least this many meters deep are sand,
-    // whatever the biome; the floor between them keeps the material of its biome.
+    // whatever their slope and their biome; the floor between them keeps the material of its
+    // biome.
     float duneSand = 1.0f;
 };
 
@@ -51,7 +52,8 @@ struct MaterialParams {
 [[nodiscard]] float steepestSlope(const ClimateSample& climate, const SurfaceSite& site);
 
 // Material at the top of a column. Water exactly over the ocean and the rivers; otherwise
-// rock on steep ground, walls and rock above air, sand on the dunes of the ergs, then by biome: snow, mountain snow, rock
+// sand on the dunes of the ergs at any slope (but on walls and rock above air), rock on steep
+// ground, walls and rock above air, then by biome: snow, mountain snow, rock
 // and scree, beach sand or pebbles, desert sand, marsh mud, river bank pebbles, tundra dirt,
 // dirt on steeper ground and grass elsewhere. Pure function: it never changes a height.
 [[nodiscard]] SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate,

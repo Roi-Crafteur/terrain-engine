@@ -41,7 +41,9 @@ struct FTemporaryTerrain
     // tile), pitchCm apart. Each slot of each texel adds its bilinear share of its weight to its
     // id (biome_blend.hpp: addTexel), never interpolating the ids; the layers are those of every
     // biome (BIOMES) and the overrides of every material (as in Layers), both linear in the
-    // weights. False where the tile has no texels (slot -1, or the texels of no tile).
+    // weights; the sand of the dunes of an erg (the share in the last float) is the smooth sand,
+    // never the stony desert around it. False where the tile has no texels (slot -1, or the
+    // texels of no tile).
     bool BlendLayers(Texture2D T, float slot, float pitchCm, float2 local, out float4 a,
                      out float4 b, out float2 c)
     {
@@ -62,6 +64,7 @@ struct FTemporaryTerrain
         float wm[8] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
         float ocean = 0.0;
         float desert = 0.0;
+        float dunes = 0.0;
         [unroll] for (int t = 0; t < 4; ++t)
         {
             float4 x = T.Load(int3(corner + int2(base) + int2(t & 1, t >> 1), 0));
@@ -73,6 +76,8 @@ struct FTemporaryTerrain
             wb.z = max(1.0 - wb.x - wb.y, 0.0);
             float3 wt = float3(hi & 255u, hi >> 8u, 0.0) / 255.0;
             wt.z = max(1.0 - wt.x - wt.y, 0.0);
+            // The share of the sand of the dunes rides on the last float, 1 + share / 256.
+            dunes += share[t] * saturate((x.a - 1.0) * 256.0 / 255.0);
             [unroll] for (int k = 0; k < 3; ++k)
             {
                 int biome = min((int)((ids >> (4u * k)) & 15u), 11);
@@ -91,7 +96,8 @@ struct FTemporaryTerrain
         float keep = wm[2] + wm[5];                                                      // grass, snow
         a = keep * A + 0.3 * soil * A + wm[0] * ocean * BA[0];
         b = keep * B + soil * (0.3 * B + float4(0.7, 0.0, 0.0, 0.0)) + wm[0] * bed
-          + wm[1] * float4(0.0, 1.0 - desert, desert, 0.0) + (wm[4] + wm[7]) * float4(0.0, 0.0, 0.0, 1.0);
+          + wm[1] * lerp(float4(0.0, 1.0 - desert, desert, 0.0), float4(0.0, 1.0, 0.0, 0.0), dunes)
+          + (wm[4] + wm[7]) * float4(0.0, 0.0, 0.0, 1.0);
         c.x = lerp(c.x, 1.0, wm[5]);                                                     // snow
         c.y = lerp(c.y, 1.0, wm[4]);                                                     // rock
         return true;
@@ -244,6 +250,11 @@ float pd = Look.Patch(Q, 4.0, 47.0);
 // meet along ragged edges (a blend of a dark rock and a white snow would read as sand).
 float rock = saturate((slope - (RockStartDeg + jit)) / max(RockFullDeg - RockStartDeg, 1.0));
 rock = smoothstep(0.3, 0.7, rock + (pd - 0.5) * 0.6);
+// The sand stays sand at any slope: the slip faces of the dunes stand at 33 degrees, never rock,
+// scree nor stones at their foot. On the tiles the dunes are the smooth sand (W1.y); on the far
+// horizon, which has no share of the dunes yet, the desert too (the core puts rock on its walls).
+float sandLock = saturate((W1.y + W1.z) * 2.0);
+rock *= 1.0 - sandLock;
 rock = max(rock, W2.y * CoreRock);
 float cold = saturate((W2.x - 0.5) * 2.5 + (n2 - 0.5) * 1.2 + 0.5);
 float hold = saturate((SnowShedDeg + jit - slope) / max(SnowShedDeg - SnowHoldDeg, 1.0));
@@ -300,10 +311,10 @@ snow *= 1.0 - outcrop * 0.85;
 rock = max(rock * (1.0 - gravel * 0.5), outcrop * cold * 0.9);
 float alt = smoothstep(0.42, 0.58, Look.Patch(Q, 16.0, 61.0));
 // No sand on the mountains: above the alpine zone (SandMaxAltitudeM) and on slopes steeper than
-// 30 degrees, the sand and the desert of any biome become scree.
-float sandless = max(saturate((Z - SandMaxAltitudeM) / 300.0), saturate((slope - 30.0) / 5.0));
-g[7] += (g[5] + g[6]) * sandless;
-g[5] *= 1.0 - sandless;
+// 38 degrees (steeper than any dune), the desert of any biome becomes scree; the smooth sand (the
+// dunes) stays.
+float sandless = max(saturate((Z - SandMaxAltitudeM) / 300.0), saturate((slope - 38.0) / 5.0));
+g[7] += g[6] * sandless;
 g[6] *= 1.0 - sandless;
 float sandShare = g[5] + g[6];
 // Moderate slopes show their soil: dirt under the grass and the forest, scree under the alpine
@@ -311,7 +322,7 @@ float sandShare = g[5] + g[6];
 float soil = 0.6 * saturate((slope - 26.0 - jit) / 10.0);
 float lowland = g[0] + g[1] + g[2];
 float alpine = g[3];
-float foot = 0.7 * saturate(W2.z) * (1.0 - rock);
+float foot = 0.7 * saturate(W2.z) * (1.0 - rock) * (1.0 - sandLock);
 float sum = 0.0;
 [unroll] for (int s = 0; s < 8; ++s)
 {

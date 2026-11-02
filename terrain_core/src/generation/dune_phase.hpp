@@ -64,6 +64,7 @@ struct Kind {
     double turn = 0.0;
     std::uint64_t salt = 0;
     double drift = 1.0;
+    double sinuous = 1.0; // the sinuosity of the crests, times that of the ridges
     // A fixed spacing in meters instead of that of the pivots (the small dunes), if positive.
     double fixedSpacing = 0.0;
 };

@@ -182,10 +182,10 @@ Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind&
         const double own =
             kind.salt == 0 ? v.phase : dune_forms::uniform(noise::deriveSeed(v.key, kind.salt));
         const double along = (s.x[0] - v.cx) * ux + (s.z[0] - v.cz) * uz;
-        const double q = (along + kSinuous * spacing * s.sinuosity[0]) / spacing + own +
+        const double q = (along + kind.sinuous * kSinuous * spacing * s.sinuosity[0]) / spacing + own +
                          kind.drift * kDrift * s.drift[0];
-        const double qx = kTurn * ((ux + kSinuous * spacing * sinX) / spacing + driftX);
-        const double qz = kTurn * ((uz + kSinuous * spacing * sinZ) / spacing + driftZ);
+        const double qx = kTurn * ((ux + kind.sinuous * kSinuous * spacing * sinX) / spacing + driftX);
+        const double qz = kTurn * ((uz + kind.sinuous * kSinuous * spacing * sinZ) / spacing + driftZ);
         const dmath::SineCosine c = dmath::sinCosTurns(q);
         re += w.w[k] * c.cosine;
         im += w.w[k] * c.sine;

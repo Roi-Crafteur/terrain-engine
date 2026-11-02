@@ -167,11 +167,32 @@ bool sameMesh(const terrain::TileData& a, const terrain::TileData& b) {
 
 // The tiles of every level far from the ergs are the same to the bit; those on the dunes differ,
 // on dunes of more than 8 m (one per erg met).
+// On the dunes, the texels of the surface blend are sand, never rock: the slip faces too.
+void checkDuneTexels(const terrain::TileData& t, std::size_t& dune, std::size_t& wrong) {
+    for (const terrain::BlendTexel& texel : t.surfaceBlend) {
+        const terrain::SurfaceBlend b = terrain::unpackBlend(texel);
+        if (b.dunes < 0.99f) {
+            continue;
+        }
+        ++dune;
+        float sand = 0.0f;
+        for (std::size_t s = 0; s < terrain::kBlendSlots; ++s) {
+            sand += b.materials[s] == terrain::SurfaceMaterial::Sand ? b.materialWeights[s] : 0.0f;
+            wrong += b.materials[s] == terrain::SurfaceMaterial::Rock && b.materialWeights[s] > 0.0f
+                         ? 1
+                         : 0;
+        }
+        wrong += sand < 0.99f ? 1 : 0;
+    }
+}
+
 void testTiles(const std::vector<std::pair<double, double>>& sites) {
     std::size_t far = 0;
     std::size_t farSame = 0;
     std::size_t near = 0;
     std::size_t nearChanged = 0;
+    std::size_t duneTexels = 0;
+    std::size_t rockOnDunes = 0;
     for (int lod = 0; lod <= 3; ++lod) {
         for (int k = 0; k < 6; ++k) {
             const double x = -900'000.0 + 331'017.0 * k;
@@ -187,16 +208,20 @@ void testTiles(const std::vector<std::pair<double, double>>& sites) {
         }
         for (std::size_t k = 0; k < sites.size() && k < 3; ++k) {
             ++near;
-            nearChanged += sameMesh(tileAt(worlds().withErgs, sites[k].first, sites[k].second, lod),
-                                    tileAt(worlds().without, sites[k].first, sites[k].second, lod))
-                               ? 0
-                               : 1;
+            const terrain::TileData with =
+                tileAt(worlds().withErgs, sites[k].first, sites[k].second, lod);
+            nearChanged +=
+                sameMesh(with, tileAt(worlds().without, sites[k].first, sites[k].second, lod)) ? 0
+                                                                                               : 1;
+            checkDuneTexels(with, duneTexels, rockOnDunes);
         }
     }
     std::printf("tiles: %zu far from the ergs (%zu the same), %zu on the dunes (%zu changed)\n", far,
                 farSame, near, nearChanged);
     TEST_CHECK(far >= 8 && farSame == far);
     TEST_CHECK(near >= 4 && nearChanged == near);
+    std::printf("texels on the dunes: %zu, %zu not all sand\n", duneTexels, rockOnDunes);
+    TEST_CHECK(duneTexels > 20 && rockOnDunes == 0);
 }
 
 // The cost of the samples of a row with the ergs over that without them, in an erg and away.

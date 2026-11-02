@@ -59,6 +59,7 @@ struct Column {
     float temperatureWidth;
     float humidityWidth;
     float relativeWidth;
+    float dunes; // meters of sand of the seas of dunes (SurfaceSite::dunes)
 
     [[nodiscard]] float widthOf(float threshold) const {
         return std::max(relativeWidth * std::abs(threshold), kMinWidth);
@@ -194,23 +195,29 @@ bool mineralMargins(const Column& c, const MaterialParams& p, Biome biome, float
     }
 }
 
-// The regions of surfaceMaterial on dry ground: rock first, then the material of each biome
-// over the region of that biome.
+// The regions of surfaceMaterial on dry ground: the sand of the dunes first (but on walls), then
+// rock, then the material of each biome over the region of that biome.
 std::array<float, kSurfaceMaterialCount>
 dryMaterialMargins(const Column& c, const MaterialParams& p,
                    const std::array<float, kBiomeCount>& biomes) {
     std::array<float, kSurfaceMaterialCount> m{};
     m.fill(kRuledOut);
-    const Test rock = either(c.steepestAtLeast(p.rockSlope), known(c.wall || c.rockAboveAir));
-    m[static_cast<std::size_t>(SurfaceMaterial::Rock)] = rock.holds;
+    // The dunes are sand whatever their slope and their biome, but on walls and rock above air.
+    const Test wall = known(c.wall || c.rockAboveAir);
+    const Test dune = atLeast(c.dunes, p.duneSand, c.widthOf(p.duneSand));
+    m[static_cast<std::size_t>(SurfaceMaterial::Sand)] = std::max(wall.fails, dune.holds);
+    const float open = std::min(wall.holds, dune.fails); // the margin of what is not a dune
+    const Test rock = either(c.steepestAtLeast(p.rockSlope), wall);
+    m[static_cast<std::size_t>(SurfaceMaterial::Rock)] = std::max(open, rock.holds);
     const auto offer = [&m](SurfaceMaterial material, float margin) {
         auto& slot = m[static_cast<std::size_t>(material)];
         slot = std::min(slot, margin);
     };
+    const float beyond = std::max(open, rock.fails);
     const Test bank = atMost(c.riverDistance, p.riverBankWidth, c.widthOf(p.riverBankWidth));
     for (int b = 0; b < kBiomeCount; ++b) {
         const auto biome = static_cast<Biome>(b);
-        const float base = std::max(rock.fails, biomes[static_cast<std::size_t>(b)]);
+        const float base = std::max(beyond, biomes[static_cast<std::size_t>(b)]);
         if (biome == Biome::Ocean || base == kRuledOut || mineralMargins(c, p, biome, base, m)) {
             continue;
         }
@@ -240,7 +247,7 @@ Margins regionMargins(const ClimateSample& climate, const SurfaceSite& site,
                         site.ground - kSeaLevel, site.riverDistance,
                         site.cliffWall,          site.rockAboveAir,
                         params.temperatureWidth, params.humidityWidth,
-                        params.relativeWidth};
+                        params.relativeWidth,    site.dunes};
     margins.biomes = landBiomeMargins(column, biomes);
     if (site.dry()) {
         margins.materials = dryMaterialMargins(column, materials, margins.biomes);

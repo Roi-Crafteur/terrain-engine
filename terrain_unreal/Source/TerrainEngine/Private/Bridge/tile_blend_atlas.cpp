@@ -28,22 +28,25 @@ std::optional<std::uint32_t> wholeUpTo(float value, std::uint32_t limit) {
 } // namespace
 
 std::array<float, kBlendTexelFloats> blendTexelFloats(BlendTexel texel) {
-    // Integers below 2^24 are exact in a float.
+    // Integers below 2^24 are exact in a float; the share of the dunes (bits 24-31 of the ids)
+    // rides on the last float, 1 + share / 256: exact too, and at least 1 for a texel of a tile.
     return {static_cast<float>(texel.ids & kIdMask), static_cast<float>(texel.weights & kHalfMask),
-            static_cast<float>(texel.weights >> 16u), 1.0f};
+            static_cast<float>(texel.weights >> 16u),
+            1.0f + static_cast<float>(texel.ids >> 24u) / 256.0f};
 }
 
 std::optional<BlendTexel> blendTexelOf(const std::array<float, kBlendTexelFloats>& floats) {
-    if (floats[3] != 1.0f) {
+    if (!(floats[3] >= 1.0f && floats[3] < 2.0f)) {
         return std::nullopt;
     }
+    const std::optional<std::uint32_t> dunes = wholeUpTo((floats[3] - 1.0f) * 256.0f, 255u);
     const std::optional<std::uint32_t> ids = wholeUpTo(floats[0], kIdMask);
     const std::optional<std::uint32_t> low = wholeUpTo(floats[1], kHalfMask);
     const std::optional<std::uint32_t> high = wholeUpTo(floats[2], kHalfMask);
-    if (!ids || !low || !high) {
+    if (!dunes || !ids || !low || !high) {
         return std::nullopt;
     }
-    return BlendTexel{*ids, *low | (*high << 16u)};
+    return BlendTexel{*ids | (*dunes << 24u), *low | (*high << 16u)};
 }
 
 std::vector<float> blendRegion(const std::vector<BlendTexel>& texels) {
