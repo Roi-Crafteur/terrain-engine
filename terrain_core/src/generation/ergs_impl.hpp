@@ -119,6 +119,7 @@ struct Ergs::Impl {
     noise::FbmOctaves shore;     // how far the edge of the dunes wanders from a valley floor
     noise::FbmOctaves lakeShore; // and from a lake
     noise::FbmOctaves foot;      // how high the sand climbs the foot of the rock out of it
+    noise::FbmOctaves clusters;  // where the crescents laid on the dunes gather (dune_layers)
 };
 
 // The memos of the noises of the ergs on the calling thread: a sequence of close points (a batch
@@ -147,6 +148,7 @@ struct ErgMemos {
     noise::FbmOctaves::Memo lakeShore;
     noise::FbmOctaves::Memo foot;
     noise::FbmOctaves::Memo wind; // the turn noise of the wind (windOf)
+    noise::FbmOctaves::Memo clusters;
     // The crescents laid on the dunes (dune_layers) read the barchan noise at their middle: by
     // layer (its salt), crescent of the three met (back) and noise read (two per crescent).
     std::array<noise::FbmOctaves::Memo, 24> crescents;

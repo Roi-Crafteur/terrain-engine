@@ -48,6 +48,9 @@ constexpr double kLakeWavelength = 12'000.0;
 // How high the sand climbs the foot of the rock out of it wanders over kFootWavelength meters
 // (ergs_rock.cpp).
 constexpr double kFootWavelength = 90.0;
+// The crescents laid on the dunes gather in groups and leave voids over kClustersWavelength
+// meters (dune_layers).
+constexpr double kClustersWavelength = 9'000.0;
 // The waves of the ergs of those characters rise this high at most (dune_waves.hpp), and their
 // fades along the water stretch kFadePerMeter meters per meter of it: 12 degrees at most (the
 // steepest of a Hermite curve, 1.5 times its mean).
@@ -83,6 +86,7 @@ enum Stream : std::uint64_t {
     kLakeShore,
     kCharacter,
     kFoot,
+    kClusters,
 };
 
 noise::FbmOctaves octaves(std::uint64_t seed, Stream stream, int count, double wavelength,
@@ -142,6 +146,7 @@ Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
     m.lakeShore = octaves(m.seed, kLakeShore, 2, kLakeWavelength, m.world);
     m.character = octaves(m.seed, kCharacter, 2, params.characterWavelength, m.world);
     m.foot = octaves(m.seed, kFoot, 3, kFootWavelength, m.world);
+    m.clusters = octaves(m.seed, kClusters, 2, kClustersWavelength, m.world);
     assignCharacters(m);
 }
 

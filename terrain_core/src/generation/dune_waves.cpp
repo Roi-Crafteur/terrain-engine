@@ -88,7 +88,6 @@ constexpr double kCrestClear = 0.03;
 constexpr dune_layers::Layer kWavesMedium{700.0, 20.0, 0.12, 0.06, 41};
 constexpr dune_layers::Layer kGiantsMedium{1'500.0, 40.0, 0.12, 0.06, 45};
 constexpr dune_layers::Layer kGiantsSecond{900.0, 25.0, 0.08, -0.12, 49};
-constexpr dune_layers::Layer kGiantsSmall{350.0, 6.0, 0.02, 0.1, 53};
 // The ends of the crests: the height falls to kEndsLeast of itself where the noise is low.
 constexpr double kEndsLeast = 0.25;
 constexpr float kEndsLow = -0.35f;
@@ -238,10 +237,7 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
         const double on = std::clamp(1.0 - (shape.slope + shape.rise) / kLayersSlope, 0.0, 1.0) *
                           ramp(0.0f, static_cast<float>(kCrestClear * wavelength), shape.crest);
         const dune_layers::Layer medium = giant ? kGiantsMedium : kWavesMedium;
-        const double second =
-            giant ? std::max(dune_layers::layer(m, s, fine, kGiantsSecond, h, on),
-                             dune_layers::layer(m, s, fine, kGiantsSmall, h, on))
-                  : 0.0;
+        const double second = giant ? dune_layers::layer(m, s, fine, kGiantsSecond, h, on) : 0.0;
         return shape.height + std::max(dune_layers::layer(m, s, fine, medium, h, on), second);
     };
     if (!(joins > 0.0)) {

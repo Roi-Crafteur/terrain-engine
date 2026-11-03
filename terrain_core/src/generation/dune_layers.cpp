@@ -22,17 +22,25 @@ constexpr double kCellShare = 1.1;
 constexpr double kSinuous = 1.5;
 constexpr float kCoherenceLow = 0.03f; // they fade around the defects of their phases
 constexpr float kCoherenceHigh = 0.3f;
-// Each crescent reads at its middle (estimated from the phases and the wind: the same over it)
-// the noise of the barchans (1.2 km) sampled kShift times the salt away: there or not (within
-// kPresenceSoft of kOccupancy), its height (kLowest to 1 of the layer), its width (kNarrowest to
-// kNarrowest + kWidthRange: the widest nearly join their neighbors in curved ridges) and where its
-// crest lies along its row.
+// They gather in groups and leave voids (the clusters noise of the ergs, 9 km): none below
+// kVoidLow, all of the layer above kVoidHigh, faded smoothly over the ground between (a crescent
+// across the edge of a void is lower on one side, never cut). Each crescent reads at its middle
+// (estimated from the phases and the wind: the same over it) the noise of the barchans (1.2 km)
+// sampled kShift times the salt away: there or not (within kPresenceSoft of its occupancy, from
+// kOccupancy at the edges of a group to kOccupancy + kGroupOccupancy in its heart), its size
+// (kSmallest to 1, most of them small: its height and its width together, from kNarrowest to
+// kNarrowest + kWidthRange: the widest nearly join their neighbors in curved ridges) and where
+// its crest lies along its row.
+constexpr float kVoidLow = 0.05f;
+constexpr float kVoidHigh = 0.3f;
 constexpr double kShift = 1'913.0;
-constexpr double kOccupancy = 0.7;
+constexpr double kOccupancy = 0.35;
+constexpr double kGroupOccupancy = 0.45;
 constexpr double kPresenceSoft = 0.3;
-constexpr double kLowest = 0.35;
-constexpr double kNarrowest = 0.7;
-constexpr double kWidthRange = 1.15;
+constexpr double kSmallest = 0.15;
+constexpr double kSizePower = 2.5;
+constexpr double kNarrowest = 0.6;
+constexpr double kWidthRange = 1.25;
 
 double ramp(double e0, double e1, double v) {
     const double t = std::clamp((v - e0) / (e1 - e0), 0.0, 1.0);
@@ -45,6 +53,13 @@ double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase:
              const Layer& l, double height, double share) {
     if (!(share > 0.0)) {
         return 0.0;
+    }
+    ErgMemos& memos = memosOf(m);
+    const double group = ramp(kVoidLow, kVoidHigh,
+                              static_cast<double>(m.clusters.fbm2D(s.x[0], s.z[0], memos.clusters)));
+    share *= group;
+    if (!(share > 0.0)) {
+        return 0.0; // a void
     }
     dune_phase::Kind rowsKind;
     rowsKind.turn = l.turn;
@@ -70,7 +85,7 @@ double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase:
     const double wz = wind[0] * turn.sine + wind[1] * turn.cosine;
     const double shift = kShift * static_cast<double>(l.salt);
     double best = 0.0;
-    ErgMemos& memos = memosOf(m);
+    const double occupancy = kOccupancy + kGroupOccupancy * group;
     const auto memo = static_cast<std::size_t>(((l.salt / 4) % 4) * 6);
     for (int back = -1; back <= 1; ++back) {
         const double along = (rows.fraction + back - 0.6) * rows.wavelength;
@@ -88,9 +103,10 @@ double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase:
         b.cell = cells.wavelength;
         b.single = true;
         b.height = tall;
-        b.presence = coherent * ramp(-kPresenceSoft, kPresenceSoft, kOccupancy - (0.5 + 1.6 * n)) *
-                     (kLowest + (1.0 - kLowest) * std::clamp(0.5 + o, 0.0, 1.0));
-        b.width = kNarrowest + kWidthRange * std::clamp(0.5 - o, 0.0, 1.0);
+        const double size =
+            kSmallest + (1.0 - kSmallest) * dmath::pow(std::clamp(0.5 + o, 0.0, 1.0), kSizePower);
+        b.presence = coherent * ramp(-kPresenceSoft, kPresenceSoft, occupancy - (0.5 + 1.6 * n)) * size;
+        b.width = kNarrowest + kWidthRange * size;
         b.crest = 0.45 + 0.3 * std::clamp(0.5 + n, 0.0, 1.0);
         best = std::max(best, dune_forms::barchan(b));
     }
