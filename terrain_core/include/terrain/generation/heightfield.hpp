@@ -122,6 +122,10 @@ struct HeightSample {
     // on the rock of the geography out of the sand, smoothly up its foot (Ergs::dunesAt): 0
     // outside them and without hydrology.
     float erg = 0.0f;
+    // The kind of the floor of the seas of dunes between their dunes (Ergs::dunesAt): 0 sand, 1
+    // gravel, 2 crust, continuous between them; 0 outside them, where their dunes are 10 m deep or
+    // more (never read there) and without hydrology.
+    float ergFloor = 0.0f;
     // Bare rock the coasts lay on the surface, 0 or 1 (the rocks of the reefs and the sea a few
     // meters around them, coast.hpp): the material only, never the height.
     float rock = 0.0f;

@@ -36,6 +36,9 @@ struct SurfaceSite {
     bool cliffWall = false;
     float dunes = 0.0f; // meters of sand of the seas of dunes (HeightSample::dunes)
     float erg = 0.0f;   // the mask of the seas of dunes there (HeightSample::erg)
+    // The kind of the floor of the seas of dunes between their dunes (HeightSample::ergFloor): 0
+    // sand, 1 gravel, 2 crust.
+    float ergFloor = 0.0f;
     // Bare rock, even under the water: the rocks of the reefs of the coasts (HeightSample::rock)
     // and, in the tiles and the horizon, the sea floor at least as steep as the rock on land at
     // the foot of the walls plunging into the sea (barePlunge). Set by them, false elsewhere.

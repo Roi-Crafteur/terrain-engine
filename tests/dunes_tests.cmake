@@ -17,6 +17,7 @@ terrain_add_test(dunes_mesh_test terrain_core)
 terrain_add_test(dunes_seam_test terrain_core)
 terrain_add_test(dunes_crescents_test terrain_core)
 terrain_add_test(dunes_faces_test terrain_core)
+terrain_add_test(ergs_floor_test terrain_core)
 find_package(Python COMPONENTS Interpreter QUIET)
 if(Python_Interpreter_FOUND)
     add_test(NAME unreal_dune_ripples_test

@@ -84,15 +84,43 @@ float buried(const HeightSample& s, const ErgPoint& e, double dunes, const Cover
     return static_cast<float>(dunes + (surface - dunes) * share);
 }
 
+// The floor of the corridors between the dunes (HeightSample::ergFloor): sand sheets where the
+// sand is plenty (its share over kSandyLow to kSandyHigh), gravel (a reg) where it is scarce,
+// crusts (dry pans) in patches; the floors noise moves the border of the sand by up to
+// kFloorNoise of its share, and lays the crusts where it rises from kCrustLow to kCrustHigh
+// (within the gravel, patches kilometers wide, never following the relief: its buttes and its
+// cliffs would cut them sharply).
+constexpr double kSandyLow = 0.3;
+constexpr double kSandyHigh = 0.75;
+constexpr double kFloorNoise = 1.2;
+constexpr double kCrustLow = 0.45;
+constexpr double kCrustHigh = 0.6;
+// Read where the dunes are less than kFloorReach meters deep only (deeper, the sand of the dunes
+// rules the materials however wide the noise of the borders makes their bands: duneSand and 5
+// times duneSandWidth, 9 m).
+constexpr float kFloorReach = 10.0f;
+
+float floorKind(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
+    const double n = static_cast<double>(m.floors.fbm2D(x, z, memosOf(m).floors));
+    const double sandy =
+        hermite(kSandyLow, kSandyHigh, static_cast<double>(e.sand) - kFloorNoise * n);
+    const double crusty = hermite(kCrustLow, kCrustHigh, n);
+    const double stony = 1.0 - sandy;
+    return static_cast<float>(stony + (2.0 - stony) * crusty);
+}
+
 } // namespace
 
 float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint, float* mask,
-                    float* sand) const {
+                    float* sand, float* floor) const {
     if (mask != nullptr) {
         *mask = 0.0f;
     }
     if (sand != nullptr) {
         *sand = 1.0f;
+    }
+    if (floor != nullptr) {
+        *floor = 0.0f;
     }
     if (s.water == WaterKind::Ocean || !mayHold(x, z)) {
         return 0.0f;
@@ -118,12 +146,15 @@ float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,
     const double filtered = hermite(kFilterLow * spacing, kFilterHigh * spacing, footprint);
     const double point =
         filtered < 1.0 ? static_cast<double>(dune_field::dunes(*impl_, x, z, e, footprint)) : 0.0;
-    if (!(filtered > 0.0)) {
-        return buried(s, e, point, cover, sand);
-    }
     // Their mean over their pattern (closed forms).
-    const double mean = dune_field::meanDunes(*impl_, x, z, e);
-    return buried(s, e, point + (mean - point) * filtered, cover, sand);
+    const float out = filtered > 0.0
+                          ? buried(s, e, point + (dune_field::meanDunes(*impl_, x, z, e) - point) *
+                                                     filtered, cover, sand)
+                          : buried(s, e, point, cover, sand);
+    if (floor != nullptr && out < kFloorReach) {
+        *floor = floorKind(*impl_, x, z, e);
+    }
+    return out;
 }
 
 } // namespace terrain

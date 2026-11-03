@@ -49,6 +49,7 @@ struct TileColumns {
     std::vector<WaterKind> waterKinds; // HeightSample::water of each column
     std::vector<float> dunes;          // HeightSample::dunes of each column
     std::vector<float> erg;            // HeightSample::erg of each column
+    std::vector<float> ergFloors;      // HeightSample::ergFloor of each column
     // The rock of each column in three dimensions (phase 12A), only when a face lies at one of
     // them: empty otherwise, and the tile is that of the relief alone.
     std::vector<RockColumn> rock;
@@ -78,6 +79,9 @@ struct TileColumns {
     }
     [[nodiscard]] float ergAt(int i, int k) const {
         return erg[static_cast<std::size_t>(k * kGridSamples + i)];
+    }
+    [[nodiscard]] float ergFloorAt(int i, int k) const {
+        return ergFloors[static_cast<std::size_t>(k * kGridSamples + i)];
     }
     [[nodiscard]] float waterAt(int i, int k) const {
         return waterLevels[static_cast<std::size_t>(k * kGridSamples + i)];
@@ -146,10 +150,12 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
     columns.waterKinds.reserve(kCount);
     columns.dunes.reserve(kCount);
     columns.erg.reserve(kCount);
+    columns.ergFloors.reserve(kCount);
     columns.bareRocks.reserve(kCount);
     for (const HeightSample& sample : samples) {
         columns.dunes.push_back(sample.dunes);
         columns.erg.push_back(sample.erg);
+        columns.ergFloors.push_back(sample.ergFloor);
         columns.waterKinds.push_back(sample.water);
         columns.bareRocks.push_back(sample.rock);
         columns.heights.push_back(sample.height);

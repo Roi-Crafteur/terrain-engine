@@ -43,10 +43,24 @@ struct MaterialParams {
     // the beaches and the marshes.
     float riverBankWidth = 25.0f;
     // The dunes of the seas of dunes (SurfaceSite::dunes) at least this many meters deep are sand,
-    // whatever their slope and their biome; the floor between them keeps the material of its
-    // biome.
-    float duneSand = 1.0f;
+    // whatever their slope and their biome (in the ergs, their band duneSandWidth meters wide on
+    // either side: the sand thins out over the floor between them, as irregular as the noise of
+    // the borders).
+    float duneSand = 1.5f;
+    float duneSandWidth = 1.5f;
+    // The floor between them (agent 34), where the erg weighs at least ergFloorErg (its mask, and
+    // on its rock out of the sand kErgFloorShare of it: half of that) and the nearest river is
+    // farther than ergGrassReach: sand, gravel (pebbles) or crust (dirt) by its kind
+    // (SurfaceSite::ergFloor: under 0.5, up to 1.5, above; its bands ergFloorWidth wide), never
+    // grass; nearer the water and beyond its edges, the material of its biome.
+    float ergFloorErg = 0.06f;
+    float ergGrassReach = 150.0f;
+    float ergFloorWidth = 0.2f;
 };
+
+// The material of the floor of an erg of that kind (SurfaceSite::ergFloor): sand under 0.5,
+// gravel (pebbles) up to 1.5, crust (dirt) above.
+[[nodiscard]] SurfaceMaterial ergFloorMaterial(float kind);
 
 // Steepest local slope of a column: the larger of |grad H| and the steepness of the site.
 [[nodiscard]] float steepestSlope(const ClimateSample& climate, const SurfaceSite& site);
@@ -54,9 +68,10 @@ struct MaterialParams {
 // Material at the top of a column. Rock where the site is bare rock (SurfaceSite::bareRock, even
 // under the water); else water exactly over the ocean and the rivers; otherwise sand on the dunes
 // of the ergs at any slope (but on walls and rock above air), rock on steep ground, walls and rock
-// above air, then by biome: snow, mountain snow, rock
-// and scree, beach sand or pebbles, desert sand, marsh mud, river bank pebbles, tundra dirt,
-// dirt on steeper ground and grass elsewhere. Pure function: it never changes a height.
+// above air, the floor of the ergs between their dunes away from the water (ergFloorMaterial),
+// then by biome: snow, mountain snow, rock and scree, beach sand or pebbles, desert sand, marsh
+// mud, river bank pebbles, tundra dirt, dirt on steeper ground and grass elsewhere. Pure
+// function: it never changes a height.
 [[nodiscard]] SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate,
                                               const SurfaceSite& site,
                                               const MaterialParams& params = {});

@@ -165,7 +165,9 @@ void Heightfield::addDunes(double x, double z, HeightSample& s) const {
     }
     float mask = 0.0f;
     float sand = 1.0f;
-    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask, &sand);
+    float floor = 0.0f;
+    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask, &sand, &floor);
+    s.ergFloor = floor;
     // The rock out of the sand: the floor of the erg (its stony ground, its rock on the steep
     // slopes, in the colors of the desert), never the bare rock of the reefs (hard edges).
     s.erg = mask * (kErgFloorShare + (1.0f - kErgFloorShare) * sand);

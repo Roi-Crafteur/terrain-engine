@@ -182,8 +182,12 @@ public:
     // sand: if not null, the share of the surface the sand covers there: 1 but on the rock of the
     // geography out of the sand, where it falls to 0 past a few meters over the sand, how many
     // wandering over tens of meters (the sand climbs the foot of the rock irregularly).
+    // floor: if not null, the kind of the floor of the corridors between the dunes there
+    // (HeightSample::ergFloor): 0 sand, 1 gravel, 2 crust, continuous between them; 0 off the ergs
+    // and where the dunes are 10 m deep or more (the sand of the dunes rules there).
     [[nodiscard]] float dunesAt(double x, double z, const HeightSample& s, double footprint = 0.0,
-                                float* mask = nullptr, float* sand = nullptr) const;
+                                float* mask = nullptr, float* sand = nullptr,
+                                float* floor = nullptr) const;
     // The dunes of an erg point, and the kind that weighs most there (the waves where their
     // character weighs most).
     [[nodiscard]] float dunesOf(double x, double z, const ErgPoint& e) const;

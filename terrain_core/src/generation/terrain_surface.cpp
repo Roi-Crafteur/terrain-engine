@@ -264,6 +264,7 @@ TerrainSurface surfaceFromHeightfield(const Heightfield& field, const HeightmapR
             site.continentalness = sample.continentalness;
             site.dunes = sample.dunes;
             site.erg = sample.erg;
+            site.ergFloor = sample.ergFloor;
             const Neighbors neighbors{relief.neighbors[i], 2.0 * step, 2.0 * step};
             setSlopes(site, neighbors, step);
             // The water of the field: the sea where the geography puts it.

@@ -68,6 +68,7 @@ SurfaceSite pointSite(const HeightSample& sample, const std::array<float, 4>& h,
     site.waterLevel = sample.waterLevel;
     site.dunes = sample.dunes;
     site.erg = sample.erg;
+    site.ergFloor = sample.ergFloor;
     return site;
 }
 
