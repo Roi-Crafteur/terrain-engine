@@ -38,7 +38,10 @@ struct Shape {
     double rise = 0.0;  // rising downwind: the back and the far half of the trough
     double crest = 0.0;
 };
-[[nodiscard]] Shape shapeOf(double t, double wavelength, double height, double backTan, double dig);
+// slip: the share of the height the face falls straight at the angle of repose (an avalanche
+// face) before its parabola, 0 for none.
+[[nodiscard]] Shape shapeOf(double t, double wavelength, double height, double backTan, double dig,
+                            double slip = 0.0);
 // The ground where the second system (join meters, already lowered to its share, top its profile
 // over its height) rises over the first (main meters) by share: only near its crests, joined
 // smoothly over soft meters (no fold where they meet; its long backs lift no trough of the first).

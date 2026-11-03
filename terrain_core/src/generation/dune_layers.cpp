@@ -28,9 +28,12 @@ constexpr float kCoherenceHigh = 0.3f;
 // (estimated from the phases and the wind: the same over it) the noise of the barchans (1.2 km)
 // sampled kShift times the salt away: there or not (within kPresenceSoft of its occupancy, from
 // kOccupancy at the edges of a group to kOccupancy + kGroupOccupancy in its heart), its size
-// (kSmallest to 1, most of them small: its height and its width together, from kNarrowest to
-// kNarrowest + kWidthRange: the widest nearly join their neighbors in curved ridges) and where
+// (kSmallest to 1, most of them small: its width up to kWidest, the widest nearly joining their
+// neighbors in curved ridges, and its height with it) and where
 // its crest lies along its row.
+constexpr double kCorridorShare = 0.3;
+constexpr double kCoverOccupancy = 0.3; // more of them where the form below wants them
+constexpr double kCoverSizePower = 0.7;
 constexpr float kVoidLow = 0.05f;
 constexpr float kVoidHigh = 0.3f;
 constexpr double kShift = 1'913.0;
@@ -39,8 +42,7 @@ constexpr double kGroupOccupancy = 0.45;
 constexpr double kPresenceSoft = 0.3;
 constexpr double kSmallest = 0.15;
 constexpr double kSizePower = 2.5;
-constexpr double kNarrowest = 0.6;
-constexpr double kWidthRange = 1.25;
+constexpr double kWidest = 1.85;
 
 double ramp(double e0, double e1, double v) {
     const double t = std::clamp((v - e0) / (e1 - e0), 0.0, 1.0);
@@ -50,13 +52,17 @@ double ramp(double e0, double e1, double v) {
 } // namespace
 
 double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
-             const Layer& l, double height, double share) {
+             const Layer& l, double height, double share, double cover) {
     if (!(share > 0.0)) {
         return 0.0;
     }
     ErgMemos& memos = memosOf(m);
-    const double group = ramp(kVoidLow, kVoidHigh,
-                              static_cast<double>(m.clusters.fbm2D(s.x[0], s.z[0], memos.clusters)));
+    double group = ramp(kVoidLow, kVoidHigh,
+                        static_cast<double>(m.clusters.fbm2D(s.x[0], s.z[0], memos.clusters)));
+    if (cover >= 0.0) {
+        group = std::max(group, cover);
+        share *= kCorridorShare + (1.0 - kCorridorShare) * cover;
+    }
     share *= group;
     if (!(share > 0.0)) {
         return 0.0; // a void
@@ -85,8 +91,11 @@ double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase:
     const double wz = wind[0] * turn.sine + wind[1] * turn.cosine;
     const double shift = kShift * static_cast<double>(l.salt);
     double best = 0.0;
-    const double occupancy = kOccupancy + kGroupOccupancy * group;
+    const double occupancy =
+        kOccupancy + kGroupOccupancy * group + kCoverOccupancy * std::max(cover, 0.0);
     const auto memo = static_cast<std::size_t>(((l.salt / 4) % 4) * 6);
+    // Where the form below wants them, mostly big ones (they cover its flanks).
+    const double sizePower = kSizePower + (kCoverSizePower - kSizePower) * std::max(cover, 0.0);
     for (int back = -1; back <= 1; ++back) {
         const double along = (rows.fraction + back - 0.6) * rows.wavelength;
         const double lateral = (cells.fraction - 0.5) * cells.wavelength;
@@ -103,10 +112,14 @@ double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase:
         b.cell = cells.wavelength;
         b.single = true;
         b.height = tall;
-        const double size =
-            kSmallest + (1.0 - kSmallest) * dmath::pow(std::clamp(0.5 + o, 0.0, 1.0), kSizePower);
-        b.presence = coherent * ramp(-kPresenceSoft, kPresenceSoft, occupancy - (0.5 + 1.6 * n)) * size;
-        b.width = kNarrowest + kWidthRange * size;
+        // Its size and whether it is there both shrink it whole (its width, its height with it:
+        // never more than a fifth of its half width): flattened alone, a small or fading crescent
+        // was a fine thread of a slip face on smooth ground, with no dune around it.
+        const double size = kSmallest + (1.0 - kSmallest) * dmath::pow(std::clamp(0.5 + o, 0.0, 1.0),
+                                                                     sizePower);
+        const double there = ramp(-kPresenceSoft, kPresenceSoft, occupancy - (0.5 + 1.6 * n));
+        b.presence = coherent;
+        b.width = kWidest * size * there;
         b.crest = 0.45 + 0.3 * std::clamp(0.5 + n, 0.0, 1.0);
         best = std::max(best, dune_forms::barchan(b));
     }

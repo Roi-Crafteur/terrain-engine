@@ -23,9 +23,11 @@ struct Layer {
 };
 
 // The meters a layer adds at the point (s, p: its noises and pivots), on a form of height
-// meters, where it lies by share in [0, 1].
+// meters, where it lies by share in [0, 1]. cover in [0, 1], if not negative: how much the form
+// below wants them there (its flanks and crests 1, its corridors 0): no void of the groups
+// where it is 1, kCorridorShare of them where it is 0.
 [[nodiscard]] double layer(const Ergs::Impl& m, const dune_phase::Shared& s,
                            const dune_phase::Pivots& p, const Layer& l, double height,
-                           double share);
+                           double share, double cover = -1.0);
 
 } // namespace terrain::dune_layers

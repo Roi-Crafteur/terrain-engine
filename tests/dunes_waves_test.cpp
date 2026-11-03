@@ -8,6 +8,7 @@
 //   the origin;
 // - the far horizon: the same bits as the tiles below a tenth of their spacing (no seam), their
 //   mean beyond without flicker.
+#include "dune_blend.hpp"
 #include "dune_forms.hpp"
 #include "dune_waves.hpp"
 #include "dunes_support.hpp"
@@ -82,6 +83,9 @@ bool crestAt(const std::vector<double>& h, std::size_t i, double floor, std::siz
 }
 
 // The forms of a character along the wind at the sites: spacing, heights, slopes, flat ground.
+// The backs (backMost, 80th percentile of the slopes along the wind) on the profile smoothed over
+// 300 m: the slope of the wave, not of the crescents laid on it (their slip faces cover the backs
+// of the giant waves since the eighth stop; on the raw profile, 17.4 degrees).
 void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tallest,
                double backMost) {
     const bool giant = c == ErgCharacter::Giants;
@@ -90,6 +94,7 @@ void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tal
     std::vector<double> gaps;
     std::vector<double> heights;
     std::vector<double> slopes;
+    std::vector<double> backs;
     double steepest = 0.0;
     for (const Site& s : kSites) {
         const std::array<double, 2> w = real().ergs.windAt(s.x, s.z);
@@ -97,6 +102,18 @@ void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tal
         for (double d = 0.0; d <= length; d += step) {
             h.push_back(dunes_test::forcedDunes(real().ergs, s.x + d * w[0], s.z + d * w[1], 0.6f,
                                                 0.1f, c));
+        }
+        // The profile smoothed over 300 m (a running mean).
+        const auto half = static_cast<std::size_t>(150.0 / step);
+        std::vector<double> smooth(h.size(), 0.0);
+        for (std::size_t i = half; i + half < h.size(); ++i) {
+            for (std::size_t j = i - half; j <= i + half; ++j) {
+                smooth[i] += h[j] / static_cast<double>(2 * half + 1);
+            }
+        }
+        for (std::size_t i = half; i + half + 1 < h.size(); ++i) {
+            backs.push_back(std::atan(std::abs(smooth[i + 1] - smooth[i]) / step) *
+                            dunes_test::kDegrees);
         }
         double last = -1.0;
         for (std::size_t i = 1; i + 1 < h.size(); ++i) {
@@ -126,18 +143,19 @@ void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tal
     }
     const double flatShare = static_cast<double>(flat) / static_cast<double>(slopes.size());
     std::printf("%s: %zu spacings, median %.0f m (p10 %.0f, p90 %.0f); heights p50 %.0f, highest "
-                "%.0f m; slopes along the wind p80 %.1f p99 %.1f deg; steepest step %.1f deg; flat "
-                "%.1f %%\n",
+                "%.0f m; slopes along the wind p80 %.1f p99 %.1f deg (smoothed over 300 m p80 %.1f); "
+                "steepest step %.1f deg; flat %.1f %%\n",
                 giant ? "giant waves" : "big waves", gaps.size(), dunes_test::quantile(gaps, 0.5),
                 dunes_test::quantile(gaps, 0.1), dunes_test::quantile(gaps, 0.9),
                 dunes_test::quantile(heights, 0.5), top, dunes_test::quantile(slopes, 0.8),
-                dunes_test::quantile(slopes, 0.99), std::atan(steepest) * dunes_test::kDegrees,
+                dunes_test::quantile(slopes, 0.99), dunes_test::quantile(backs, 0.8),
+                std::atan(steepest) * dunes_test::kDegrees,
                 100.0 * flatShare);
     TEST_CHECK(gaps.size() >= 10);
     const double median = dunes_test::quantile(gaps, 0.5);
     TEST_CHECK(median >= spacingLow && median <= spacingHigh);
     TEST_CHECK(top <= tallest + 1e-3 && top >= 0.5 * tallest);
-    TEST_CHECK(dunes_test::quantile(slopes, 0.8) <= backMost); // most of the ground: the backs
+    TEST_CHECK(dunes_test::quantile(backs, 0.8) <= backMost); // most of the ground: the backs
     TEST_CHECK(std::atan(steepest) * dunes_test::kDegrees <= 40.0);
     TEST_CHECK(flatShare <= 0.1);
 }
@@ -293,13 +311,17 @@ void testBuried() {
 // The joins of the second system (the straight pale ribbons seen from 1 km at the sixth stop):
 // no fold where they meet the first one (the angle between the slopes either side of the meeting
 // under half a degree, where a plain maximum made 45 on that line), and no lift over the backs
-// and troughs of the second system, only near its crests.
+// and troughs of the second system, only near its crests. Nor a jump of its curvature (the fine
+// thread left at the seventh stop, the curvature of a quadratic join jumping by 1/(2 soft) at its
+// ends): the second differences either side of any point of the meeting, 0.5 m apart, differ by
+// under a tenth of that jump.
 void testJoins() {
     using terrain::dune_waves::joined;
     const double soft = 45.0;
     double worst = 0.0;
+    double jump = 0.0; // of the curvature, times soft
     for (const double main : {-40.0, 0.0, 120.0, 250.0}) {
-        for (const double top : {0.95, 0.7}) {
+        for (const double top : {1.0, 0.7}) {
             // The join crossing the first system along a line, 1 m of it per meter of ground.
             const auto h = [&](double d) { return joined(main, main + d, top, 1.0, soft); };
             for (double d = -60.0; d <= 60.0; d += 0.5) {
@@ -307,17 +329,21 @@ void testJoins() {
                 const double after = h(d + 0.5) - h(d);
                 worst = std::max(worst, std::abs(std::atan(2.0 * after) - std::atan(2.0 * before)) *
                                             dunes_test::kDegrees);
+                const double curveBefore = h(d) - 2.0 * h(d - 0.5) + h(d - 1.0);
+                const double curveAfter = h(d + 1.0) - 2.0 * h(d + 0.5) + h(d);
+                jump = std::max(jump, std::abs(curveAfter - curveBefore) / 0.25 * soft);
             }
         }
     }
-    std::printf("joins: worst fold %.2f deg\n", worst);
+    std::printf("joins: worst fold %.2f deg, curvature jump %.4f / soft\n", worst, jump);
     TEST_CHECK(worst <= 0.5);
+    TEST_CHECK(jump <= 0.05);
     // Over the back or the trough of the second system: nothing; over its crest: all of it.
-    TEST_CHECK(joined(0.0, 200.0, 0.15, 1.0, soft) == 0.0);
+    TEST_CHECK(joined(0.0, 200.0, 0.05, 1.0, soft) == 0.0);
     TEST_CHECK(joined(-50.0, 180.0, -0.3, 1.0, soft) == -50.0);
-    TEST_CHECK(std::abs(joined(0.0, 200.0, 0.95, 1.0, soft) - 200.0) < 1e-9);
-    TEST_CHECK(std::abs(joined(0.0, 200.0, 0.95, 0.5, soft) - 100.0) < 1e-9);
-    TEST_CHECK(joined(150.0, 100.0, 0.95, 1.0, soft) == 150.0);
+    TEST_CHECK(std::abs(joined(0.0, 200.0, 1.0, 1.0, soft) - 200.0) < 1e-9);
+    TEST_CHECK(std::abs(joined(0.0, 200.0, 1.0, 0.5, soft) - 100.0) < 1e-9);
+    TEST_CHECK(joined(150.0, 100.0, 1.0, 1.0, soft) == 150.0);
 }
 
 // The rock out of the sand (the grey patches with hard edges of the sixth stop): the share of the
@@ -369,11 +395,63 @@ void testRockFoot() {
     TEST_CHECK(off);
 }
 
+// The avalanche face of the giant waves (the eighth stop: their wall of 700 m read as a low smooth
+// hill): straight at the angle of repose down 35 % of their height, then the parabola, its slope
+// continuous where they meet; without it (slip 0) the parabola from the brink, as before.
+void testSlipFace() {
+    const double height = 700.0;
+    const double wavelength = 12'000.0;
+    const double backTan = 0.2867453857588079; // 16 degrees
+    const auto slopeAt = [&](double d, double slip) {
+        const auto h = [&](double v) {
+            return terrain::dune_waves::shapeOf(v / wavelength, wavelength, height, backTan, 0.0,
+                                                slip).height;
+        };
+        return std::atan((h(d) - h(d + 0.5)) / 0.5) * dunes_test::kDegrees;
+    };
+    const double run = 0.35 * height / kTan33;
+    double straightLeast = 90.0;
+    double straightMost = 0.0;
+    for (double d = 0.1 * run; d <= 0.95 * run; d += 0.05 * run) {
+        straightLeast = std::min(straightLeast, slopeAt(d, 0.35));
+        straightMost = std::max(straightMost, slopeAt(d, 0.35));
+    }
+    const double join = std::abs(slopeAt(run + 0.5, 0.35) - slopeAt(run - 1.0, 0.35));
+    std::printf("slip face: %.1f to %.1f deg down %.0f m, %.2f deg change where it meets the curve; "
+                "without it %.1f deg halfway\n",
+                straightLeast, straightMost, 0.35 * height, join, slopeAt(0.5 * run, 0.0));
+    TEST_CHECK(straightLeast >= 32.5 && straightMost <= 33.5);
+    TEST_CHECK(join <= 0.5);
+    TEST_CHECK(slopeAt(0.5 * run, 0.0) < 31.0);
+}
+
+// A kind of a tiny weight in the blend (giants of 208 m at 0.3 % over the big waves, the thread
+// of the seventh stop): as the big waves fall through the floor the surface follows them at their
+// own slope, never held at a terrace of w times the height of the other kind (0.6 m, flat while
+// the big waves stood under it).
+void testMinorKind() {
+    double least = 1.0;
+    for (double h = -3.0; h <= 3.0; h += 0.05) {
+        const auto at = [](double v) {
+            terrain::dune_field::Blend b;
+            b.add(v, 0.997f);
+            b.add(208.0, 0.003f);
+            return b.value();
+        };
+        least = std::min(least, (at(h + 0.05) - at(h)) / 0.05);
+    }
+    std::printf("minor kind: the slope of the blend over the floor %.3f of the main kind's at least\n",
+                least / 0.997);
+    TEST_CHECK(least >= 0.9 * 0.997);
+}
+
 } // namespace
 
 int main() {
     testProfile();
     testJoins();
+    testMinorKind();
+    testSlipFace();
     // The backs: at most 18 degrees for the big waves, 16 for the giants (validated at the fourth
     // stop of agent 34).
     testForms(ErgCharacter::Waves, 1'200.0, 6'000.0, 300.0, 18.0);
