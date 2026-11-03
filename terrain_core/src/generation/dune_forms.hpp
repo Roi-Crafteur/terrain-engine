@@ -73,8 +73,9 @@ inline constexpr double kCrestRound = 2.0;
 // What a flank of slope falls from the sharp crest c meters away from it, rounded.
 [[nodiscard]] double rounded(double c, double slope);
 
-// The star dunes of a lattice of cell meters at the canonical (x, z): a peak at kStarTan with 2 to
-// 6 arms of sharp crests, uneven and bent, on the cells that hold one (occupancy), at most height high. periodX
+// The star dunes of a lattice of cell meters at the canonical (x, z): 2 to 6 arms of sharp crests,
+// uneven, bent and winding, a slip face on one side, meeting at a small summit, on the cells that
+// hold one (occupancy), at most height high (kStarTan: the slope that sets their reach). periodX
 // and periodZ: those of the world (whole multiples of cell). key: the hash of the pattern.
 struct StarLattice {
     double cell = 2048.0;

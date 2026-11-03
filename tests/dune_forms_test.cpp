@@ -1,7 +1,7 @@
 // The forms of the dunes (dune_forms.hpp): a transverse ridge with its slip face at 33 degrees,
 // a sharp crest, a gentle back and a bare floor; its height capped by its spacing; a barchan, a
 // crescent whose horns point downwind, nothing beside it; a seif whose slip face changes side; the
-// stars, periodic on the world, none where the lattice holds none.
+// stars, periodic on the world, none where the lattice holds none, no step over them.
 #include "dune_forms.hpp"
 
 #include "test_assert.hpp"
@@ -114,6 +114,30 @@ void testStars() {
     }
     TEST_CHECK(periodic);
     TEST_CHECK(highest > 100.0 && highest <= 1.2 * 200.0);
+    // No step anywhere over the stars (their arms once ended in a cliff behind their peak): along
+    // each axis, never steeper than 37 degrees between samples 0.5 m apart. Their arms meet at
+    // the summit: the stars hold about kStarArms (1.22, dune_field) times the volume of a cone at
+    // kStarTan of their nominal height, by occupancy.
+    double steepest = 0.0;
+    double sum = 0.0;
+    std::size_t count = 0;
+    for (double z = 0.0; z < 20'480.0; z += 16.0) {
+        for (double x = 0.0; x < 40'960.0; x += 16.0) {
+            const double h = forms::stars(s, x, z);
+            steepest = std::max({steepest, std::abs(forms::stars(s, x + 0.5, z) - h) / 0.5,
+                                 std::abs(forms::stars(s, x, z + 0.5) - h) / 0.5});
+            sum += h;
+            ++count;
+        }
+    }
+    const double radius = s.height / forms::kStarTan;
+    const double cone = s.occupancy * 3.141592653589793 * radius * radius * s.height / 3.0 /
+                        (s.cell * s.cell);
+    const double volume = sum / static_cast<double>(count) / cone;
+    std::printf("stars: steepest %.1f degrees along an axis, volume %.2f cones\n",
+                std::atan(steepest) * kDegrees, volume);
+    TEST_CHECK(steepest <= 0.7536); // tan 37 degrees: the slip faces, with the slack of the winding
+    TEST_CHECK(volume > 1.1 && volume < 1.35);
     forms::StarLattice empty = s;
     empty.occupancy = 0.0;
     TEST_CHECK(forms::stars(empty, 100.0, 100.0) == 0.0);

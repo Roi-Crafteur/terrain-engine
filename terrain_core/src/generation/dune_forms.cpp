@@ -29,21 +29,33 @@ constexpr double kBarchanLeast = 0.15;
 constexpr double kPresenceSoft = 0.12;
 // Stars: their peak within kStarJitter of the center of their cell, kStarLow to kStarLow +
 // kStarSpread of the height (at most kStarMost meters), 2 to 6 arms at uneven angles (kArmTurn of
-// their share of the turn), kArmLow to kArmLow + kArmSpread times the radius of the peak long,
-// their crests from kArmTop to kArmTop + kArmTopSpread of the peak down to the floor at their end,
-// each bent sideways by up to kArmBend of its length at its end: no two alike.
+// their share of the turn), kArmLow to kArmLow + kArmSpread times the radius of the peak
+// (peak / kStarTan) long, their crests from kArmTop to kArmTop + kArmTopSpread of the peak down to
+// the floor at their end, each bent sideways by up to kArmBend of its length at its end and
+// winding by up to kArmWind of it: no two alike. An arm has a slip face on one side (kLeeTan) and
+// a gentler flank on the other (kArmGentle); the arms make the star, its summit a small pyramid
+// where they meet (kSummitTan), so that its skyline steps down along its arms, never a cone.
 constexpr double kStarJitter = 0.6;
 constexpr double kStarLow = 0.35;
 constexpr double kStarSpread = 0.85;
-// Their base an ellipse, up to kStarStretch times as long as wide, turned at random.
-constexpr double kStarStretch = 1.2;
+// Their summit over an ellipse, up to kStarStretch times as long as wide, turned at random.
+constexpr double kStarStretch = 0.5;
+constexpr double kSummitTan = 0.62;
 constexpr double kStarMost = 300.0;
-constexpr double kArmLow = 1.2;
+constexpr double kArmLow = 2.0;
 constexpr double kArmSpread = 1.3;
-constexpr double kArmTop = 0.6;
-constexpr double kArmTopSpread = 0.35;
+constexpr double kArmTop = 0.85;
+constexpr double kArmTopSpread = 0.15;
 constexpr double kArmTurn = 0.6;
 constexpr double kArmBend = 0.35;
+constexpr double kArmWind = 0.05;
+constexpr double kArmGentle = 0.5; // tan 26.6 degrees
+// The crests of the arms concave: falling as (1 - u)^kArmCurve, u along them (steep under the
+// summit, gentle toward their end).
+constexpr double kArmCurve = 1.35;
+constexpr double kPedestalArmLow = 1.4;
+constexpr double kPedestalArmSpread = 1.0;
+constexpr double kTwoPi = 6.283185307179586;
 
 // The trough between two ridges reaches this share of the back of the next; its flanks are never
 // steeper than kTroughTan (14 degrees).
@@ -200,46 +212,70 @@ namespace {
 
 constexpr double kNone = -1.0e30;
 
-// How far from its center a star of this peak reaches down to depth under its foot: its cone
-// (stretched) or the end of its longest arm (bent), then down its flanks at kLeeTan (with the
-// slack of the bend of the arm).
+// The arms of the stars whose pedestals sink depth under them: those of the free stars, else (on
+// a pedestal, the chains) shorter, straight, unwound and at kLeeTan on both sides, which reach no
+// farther and cost no more (the stars of the chains are sought over few cells).
+struct Arms {
+    double low = kArmLow;
+    double spread = kArmSpread;
+    double curve = kArmCurve;
+    double gentle = kArmGentle;
+    double wind = kArmWind;
+};
+Arms armsOf(double depth) {
+    return depth > 0.0 ? Arms{kPedestalArmLow, kPedestalArmSpread, 1.0, kLeeTan, 0.0} : Arms{};
+}
+
+// How far from its center a star of this peak reaches down to depth under its foot: its summit
+// (stretched) or the end of its longest arm (bent and winding), then down its gentler flank (with
+// the slack of the bend of the arm).
 double reachOf(double peak, double depth) {
     const double radius = peak / kStarTan;
-    const double cone = (peak + depth) / kStarTan * (1.0 + kStarStretch);
+    const double summit = (peak + depth) / kSummitTan * (1.0 + kStarStretch);
+    const Arms a = armsOf(depth);
+    const double arms = radius * (a.low + a.spread) * (1.0 + kArmBend + a.wind);
+    // The gentlest flank of an arm: under its steepest crest (armOf); it reaches farthest across
+    // the arm at its root. On a pedestal (depth), both flanks at kLeeTan.
+    const double fall = a.curve * (kArmTop + kArmTopSpread) * kStarTan / a.low;
+    const double flank = std::sqrt(a.gentle * a.gentle - fall * fall);
+    const double tilt = 2.0 * kArmBend + kTwoPi * a.wind;
+    const double across = (peak + depth) / flank * std::sqrt(1.0 + tilt * tilt);
     if (!(depth > 0.0)) {
-        return std::max(cone, radius * (kArmLow + kArmSpread) * (1.0 + kArmBend));
+        return std::max({summit, arms, across});
     }
-    // The gentlest flank of an arm: under its steepest crest (armOf).
-    const double fall = (kArmTop + kArmTopSpread) * kStarTan / kArmLow;
-    const double flank = std::sqrt(kLeeTan * kLeeTan - fall * fall);
-    const double arms = radius * (kArmLow + kArmSpread) * (1.0 + kArmBend) +
-                        (peak + depth) / flank * std::sqrt(1.0 + 4.0 * kArmBend * kArmBend);
-    return std::max(cone, arms);
+    return std::max(summit, arms + across);
 }
 
 // One arm of a star (its hash ka) at (ox, oz) from its center: its crest bends sideways along a
-// parabola and falls from top at the peak to the foot at its end, then on along its axis; its
-// flanks and its crest together at kLeeTan at most. Across the bent crest, the offset from the
-// parabola over its slope, so that the flanks keep their angle.
+// parabola, winds along a wave and falls (concave) from top at the peak to the foot at its end, then on
+// along its axis; behind the peak it ends round. Its slip face and its crest together at kLeeTan
+// at most, its other flank at a.gentle. Across the bent crest, the offset from it over its
+// slope, so that the flanks keep their angle.
 double armOf(std::uint64_t ka, double turn, int k, int arms, double radius, double top,
-             double ox, double oz) {
+             const Arms& a, double ox, double oz) {
     const dmath::SineCosine d = dmath::sinCosTurns(
         turn + (static_cast<double>(k) + kArmTurn * (uniform(ka) - 0.5)) / arms);
     const double along = ox * d.cosine + oz * d.sine;
-    if (!(along > 0.0)) {
-        return kNone;
-    }
-    const double length = radius * (kArmLow + kArmSpread * uniform(noise::deriveSeed(ka, 1)));
+    const double length = radius * (a.low + a.spread * uniform(noise::deriveSeed(ka, 1)));
     const double bend = kArmBend * (2.0 * uniform(noise::deriveSeed(ka, 2)) - 1.0);
-    const double on = std::min(along, length);
-    const double tilt = 2.0 * bend * on / length;
-    const double across = std::abs(oz * d.cosine - ox * d.sine - bend * on * on / length) /
+    const double wind = a.wind * (2.0 * uniform(noise::deriveSeed(ka, 4)) - 1.0);
+    const double u = std::clamp(along, 0.0, length) / length;
+    const dmath::SineCosine w = a.wind > 0.0 ? dmath::sinCosTurns(u) : dmath::SineCosine{0.0, 1.0};
+    const double tilt = 2.0 * bend * u + kTwoPi * wind * w.cosine;
+    const double across = (oz * d.cosine - ox * d.sine - length * (bend * u * u + wind * w.sine)) /
                           std::sqrt(1.0 + tilt * tilt);
-    // The crest falls at top / length: the flanks at their angle with it.
-    const double fall = top / length;
-    const double flank = std::sqrt(std::max(0.0, kLeeTan * kLeeTan - fall * fall));
+    // The crest falls at most at kArmCurve top / length (under the summit): the flanks at their
+    // angle with it there, the slip face on the side the arm draws.
+    const double fall = a.curve * top / length;
+    const bool slip = (across > 0.0) == ((noise::deriveSeed(ka, 5) & 1U) != 0U);
+    const double side = slip ? kLeeTan : a.gentle;
+    const double flank = std::sqrt(std::max(0.0, side * side - fall * fall));
+    if (along < 0.0) {
+        return top - dmath::hypot(kLeeTan * along, flank * across);
+    }
     if (along < length) {
-        return top * (1.0 - along / length) - flank * across;
+        return top * (a.curve == 1.0 ? 1.0 - u : dmath::pow(1.0 - u, a.curve)) -
+               flank * std::abs(across);
     }
     return -dmath::hypot(kLeeTan * (along - length), flank * across);
 }
@@ -278,18 +314,19 @@ double starOf(const StarLattice& s, std::int64_t i, std::int64_t j, std::int64_t
         depth = under.depth;
     }
     const double radius = peak / kStarTan;
-    // The peak: a cone over an ellipse (its long axis stretched, its slopes gentler along it).
+    // The summit: a pyramid over an ellipse (its long axis stretched, its slopes gentler along it).
     const dmath::SineCosine e = dmath::sinCosTurns(uniform(noise::deriveSeed(h, 7)));
     const double stretch = 1.0 + kStarStretch * uniform(noise::deriveSeed(h, 6));
     const double dist = dmath::hypot((ox * e.cosine + oz * e.sine) / stretch,
                                      oz * e.cosine - ox * e.sine);
-    double best = peak - kStarTan * dist;
+    double best = peak - kSummitTan * dist;
     const int arms = 2 + static_cast<int>(noise::deriveSeed(h, 4) % 5);
+    const Arms shape = armsOf(s.depth);
     const double turn = uniform(noise::deriveSeed(h, 5));
     for (int k = 0; k < arms; ++k) {
         const std::uint64_t ka = noise::deriveSeed(h, 10 + static_cast<std::uint64_t>(k));
         const double top = (kArmTop + kArmTopSpread * uniform(noise::deriveSeed(ka, 3))) * peak;
-        best = std::max(best, armOf(ka, turn, k, arms, radius, top, ox, oz));
+        best = std::max(best, armOf(ka, turn, k, arms, radius, top, shape, ox, oz));
     }
     if (pedestal == nullptr) {
         return std::max(0.0, best);
