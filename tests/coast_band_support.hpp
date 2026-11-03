@@ -36,6 +36,11 @@ inline double fract(double x) {
     return x - std::floor(x);
 }
 
+// A draw in [0, 1) of bed k (the hash of Look.Bands).
+inline double bedDraw(double k, double a, double b) {
+    return fract(std::sin(k * a + b) * 43758.5453);
+}
+
 // Look.Bands: the share of its light the rock keeps under its bands, b at the pixel, w the
 // derivative of its strata over a pixel (fwidth; 0: an image fine enough to draw every lamina).
 inline double bandsOf(const terrain::RockBands& b, double w) {
@@ -43,13 +48,18 @@ inline double bandsOf(const terrain::RockBands& b, double w) {
     const double strata = static_cast<double>(b.strata);
     const double beds = static_cast<double>(b.layered) * std::clamp((0.35 - w) / 0.2, 0.0, 1.0);
     const double k = std::floor(strata);
+    const double f = strata - k;
     const double tone = 1.0 + 0.24 * (fract(std::sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5);
+    const double depth = 0.18 + 0.24 * bedDraw(k, 93.989, 0.3);
     const double bedLine =
-        1.0 - 0.32 * (1.0 - smoothstep(0.0, std::max(1.5 * w, 0.03) + 0.06, strata - k));
-    const double lw = std::max(4.0 * w, 1e-4);
+        1.0 - depth * (1.0 - smoothstep(0.0, std::max(1.5 * w, 0.03) + 0.06, f));
+    const double count = 2.0 + std::floor(5.0 * bedDraw(k, 78.233, 1.7));
+    const double warp = 0.8 * (bedDraw(k, 39.425, 2.9) - 0.5);
+    const double l = count * (f + 2.0 * warp * f * (1.0 - f));
+    const double lw = std::max(count * w, 1e-4);
     const double lamina = 1.0 - 0.12 *
                                     (1.0 - smoothstep(0.0, std::max(1.5 * lw, 0.05) + 0.1,
-                                                      fract(4.0 * strata))) *
+                                                      fract(l))) *
                                     std::clamp((0.35 - lw) / 0.2, 0.0, 1.0);
     const double shade = 1.0 + (tone * bedLine * lamina - 1.0) * beds;
     const double nh = static_cast<double>(b.notchHeight);

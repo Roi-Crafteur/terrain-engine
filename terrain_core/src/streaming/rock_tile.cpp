@@ -39,6 +39,49 @@ float derivative(int index, bool ring, const Sample& f) {
     return 0.5f * (f(index + 1) - f(index - 1));
 }
 
+// A column seen from ox, oz meters off its lattice point (a vertex of the tile): its faces at
+// their distance there (it grows along their air) and its spire from there. Without it, a vertex
+// takes the faces of its nearest column as they stand there, up to half a cell off: on a face
+// oblique to the lattice, the vertices whose nearest column lies more than kShareAcross off the
+// face took no rock, a row of stripes of the ground every few cells of LOD 3 down the wall.
+RockColumn movedBy(const RockColumn& c, double ox, double oz) {
+    RockColumn out = c;
+    for (std::size_t f = 0; f < out.faceCount; ++f) {
+        RockFace& face = out.faces[f];
+        face.distance += static_cast<float>(ox * static_cast<double>(face.airX) +
+                                            oz * static_cast<double>(face.airZ));
+    }
+    if (out.spire.radius > 0.0f) {
+        out.spire.dx += static_cast<float>(ox);
+        out.spire.dz += static_cast<float>(oz);
+    }
+    return out;
+}
+
+// The bands of two columns a share t apart (along the grid edge of a vertex): each band where
+// both have it interpolated, where one has it alone its own (the beds fading by their layering).
+RockBands mixBands(const RockBands& a, const RockBands& b, float t) {
+    const auto lerp = [t](float u, float v) { return u + t * (v - u); };
+    const auto pick = [&](bool inA, bool inB, float u, float v) {
+        return inA && inB ? lerp(u, v) : (inA ? u : v);
+    };
+    RockBands out;
+    const float la = (1.0f - t) * a.layered;
+    const float lb = t * b.layered;
+    out.layered = la + lb;
+    out.strata = out.layered > 0.0f ? (la * a.strata + lb * b.strata) / out.layered
+                                    : lerp(a.strata, b.strata);
+    const bool notchA = a.notchHeight > 0.0f;
+    const bool notchB = b.notchHeight > 0.0f;
+    out.notch = pick(notchA, notchB, a.notch, b.notch);
+    out.notchHeight = pick(notchA, notchB, a.notchHeight, b.notchHeight);
+    const bool capA = a.capHeight > 0.0f;
+    const bool capB = b.capHeight > 0.0f;
+    out.cap = pick(capA, capB, a.cap, b.cap);
+    out.capHeight = pick(capA, capB, a.capHeight, b.capHeight);
+    return out;
+}
+
 } // namespace
 
 RockTile::RockTile(const TileColumns& columns, const TileRequest& request,
@@ -240,11 +283,12 @@ void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) con
 std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const {
     std::vector<float> rock;
     rock.reserve(mesh.vertices.size());
-    const auto spacing = static_cast<float>(lattice_.spacing);
+    const double spacing = lattice_.spacing;
     for (const Vec3f& v : mesh.vertices) {
-        const auto i = static_cast<int>(std::lround(v.x / spacing));
-        const auto k = static_cast<int>(std::lround(v.z / spacing));
-        const RockColumn& c = rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast));
+        const auto i = std::clamp(static_cast<int>(std::lround(v.x / spacing)), 0, kLast);
+        const auto k = std::clamp(static_cast<int>(std::lround(v.z / spacing)), 0, kLast);
+        const RockColumn c = movedBy(rockAt(i, k), static_cast<double>(v.x) - i * spacing,
+                                     static_cast<double>(v.z) - k * spacing);
         const double y = originY + static_cast<double>(v.y);
         const double share = fineShare(i, k);
         const float fine = rockShare(c, y, fine_);
@@ -261,12 +305,34 @@ std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const 
 std::vector<RockBands> RockTile::vertexBands(const Mesh& mesh, double originY) const {
     std::vector<RockBands> bands;
     bands.reserve(mesh.vertices.size());
-    const auto spacing = static_cast<float>(lattice_.spacing);
+    const double spacing = lattice_.spacing;
     for (const Vec3f& v : mesh.vertices) {
-        const auto i = static_cast<int>(std::lround(v.x / spacing));
-        const auto k = static_cast<int>(std::lround(v.z / spacing));
-        const RockColumn& c = rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast));
-        bands.push_back(rockBands(c, originY + static_cast<double>(v.y)));
+        const double y = originY + static_cast<double>(v.y);
+        // The columns at both ends of the grid edge the vertex lies on (one on an edge along y),
+        // each seen from the vertex: no step in the beds where the nearest column changes.
+        const double u = static_cast<double>(v.x) / spacing;
+        const double w = static_cast<double>(v.z) / spacing;
+        const bool alongX = std::abs(u - std::round(u)) > 1e-4;
+        const bool alongZ = !alongX && std::abs(w - std::round(w)) > 1e-4;
+        const auto lowest = [](double c, bool along) {
+            return std::clamp(static_cast<int>(along ? std::floor(c) : std::round(c)), 0, kLast);
+        };
+        const int i = lowest(u, alongX);
+        const int k = lowest(w, alongZ);
+        const auto bandsOf = [&](int ci, int ck) {
+            return rockBands(movedBy(rockAt(ci, ck), static_cast<double>(v.x) - ci * spacing,
+                                     static_cast<double>(v.z) - ck * spacing),
+                             y);
+        };
+        const RockBands low = bandsOf(i, k);
+        if (!alongX && !alongZ) {
+            bands.push_back(low);
+            continue;
+        }
+        const int i1 = alongX ? std::min(i + 1, kLast) : i;
+        const int k1 = alongZ ? std::min(k + 1, kLast) : k;
+        const auto t = static_cast<float>(std::clamp(alongX ? u - i : w - k, 0.0, 1.0));
+        bands.push_back(mixBands(low, bandsOf(i1, k1), t));
     }
     return bands;
 }

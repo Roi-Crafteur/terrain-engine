@@ -29,6 +29,9 @@ terrain_add_test(coast_far_test terrain_core)
 # The band channel of the rock (its beds, its notch, its cap) on the tiles and the horizon: the
 # notch on the way to a face at every LOD, the LODs alike, the beds of the stacks seen at 200 m.
 terrain_add_test(coast_bands_test terrain_core)
+# The top of the walls as Unreal draws them: all of their rock on their faces, nothing at the step
+# of the cells along their top (its light, its sky line) nor at the step of their blocks.
+terrain_add_test(coast_top_test terrain_core)
 # The pawn of the game by the faces of the coasts, on the collision of the tiles (the Bridge of the
 # tools: the ground of a teleport, the landing of Terrain.Pawn and of a click on the map).
 terrain_add_test(coast_pawn_test terrain_unreal_bridge)
@@ -51,7 +54,7 @@ add_test(NAME coast_planet_file
     COMMAND terrain_probe --planet ${coast_planet_file} --json 0 0)
 set_tests_properties(coast_planet_file PROPERTIES FIXTURES_SETUP coast_planet TIMEOUT 1800)
 set_tests_properties(coast_rock_test coast_render_test coast_wall_test coast_stack_test
-                     coast_far_test coast_bands_test coast_pawn_test
+                     coast_far_test coast_bands_test coast_top_test coast_pawn_test
                      coast_inlet_shapes_test coast_materials_test coast_patterns_test
                      coast_horizon_rock_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})

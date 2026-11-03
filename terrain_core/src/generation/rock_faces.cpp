@@ -48,6 +48,14 @@ constexpr double kJointCells = 4.0;
 constexpr double kRound = 3.0;
 constexpr double kCarvedRound = 1.0;
 constexpr double kRoundShare = 0.25;
+// The faces of their own rounding (RockFace::roundTenths: the coasts, sharp at a meter) are rounded
+// over kRoundCells cells at least where the cells are coarser than a meter: an edge sharper than
+// its cells is cut by each cell it crosses, more and more along a face oblique to them and back at
+// once at the next one, a row of identical steps along its top (the check in Unreal of 06fd02f:
+// the calanque of the view 5 at 300 m, its tiles of LOD 3). Measured on its sky line from there
+// (coast_top_test): its part at the lattice of the cells from 0.063 m (the edge of a meter) to
+// 0.038 m (a cell), 0.030 m (one and a half) and 0.022 m (two).
+constexpr double kRoundCells = 1.5;
 // The grain and the overhangs of a face come in as its drawn weight runs from kFullLow to 1.
 constexpr double kFullLow = 0.75;
 // The joints come in over kJointEnds meters over the foot of a face (their floor rising out of
@@ -138,10 +146,13 @@ double drawnFeature(float feature, float extent, const RockDetail& detail) {
     return feature * smooth(low, high, feature) * smooth(low, high, kThickness * extent);
 }
 
-// The edges of the step of a face are rounded over this many meters.
-double roundOf(const RockFace& f) {
-    const double round = f.roundTenths > 0 ? 0.1 * static_cast<double>(f.roundTenths)
-                                            : (f.carved ? kCarvedRound : kRound);
+// The edges of the step of a face are rounded over this many meters as cells of the detail draw
+// them.
+double roundOf(const RockFace& f, const RockDetail& detail) {
+    const auto cell = static_cast<double>(detail.cell);
+    const double own = std::max(0.1 * static_cast<double>(f.roundTenths),
+                                cell > 1.0 ? kRoundCells * cell : 0.0);
+    const double round = f.roundTenths > 0 ? own : (f.carved ? kCarvedRound : kRound);
     return std::min(round, kRoundShare * (static_cast<double>(f.top) - f.foot));
 }
 
@@ -207,7 +218,7 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
     }
     // The grain leaves the rounded edges of the step alone (a bed standing out there would be a
     // blade of rock thinner than a cell).
-    const double round = roundOf(f);
+    const double round = roundOf(f, detail);
     double offset = grainAt(f, y, detail) *
                     smooth(static_cast<double>(f.foot), static_cast<double>(f.foot) + round, y) *
                     (1.0 - smooth(static_cast<double>(f.top) - round, static_cast<double>(f.top), y));
@@ -238,7 +249,7 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
 // smoothMax are min and max: h = 0): the step is the plane of its top or of its foot there, the
 // same value without its offset (most of the samples of a tile on a wall).
 double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
-    const double round = roundOf(f);
+    const double round = roundOf(f, detail);
     const double reach = std::max(round, 0.0) + std::abs(static_cast<double>(f.distance)) +
                          std::abs(static_cast<double>(f.cap));
     if (v >= f.top + reach) {
@@ -412,9 +423,12 @@ float rockShare(const RockColumn& c, double y, const RockDetail& detail) {
     for (std::size_t i = 0; i < c.faceCount; ++i) {
         const RockFace& f = c.faces[i];
         const double distance = f.distance;
+        // Behind the face over its undercut and over the rounding of its top (the faces of their
+        // own rounding: no tooth of the ground on their rounded top).
+        const double behind = std::max(0.0f, f.undercut) + kShareAcross +
+                              (f.roundTenths > 0 ? roundOf(f, detail) : 0.0);
         if (y >= f.foot - kShareBelow && y <= f.top + kShareAbove &&
-            distance < std::max(0.0f, f.cap) + kShareAcross &&
-            distance > -(std::max(0.0f, f.undercut) + kShareAcross)) {
+            distance < std::max(0.0f, f.cap) + kShareAcross && distance > -behind) {
             share = std::max(share, std::min(1.0f, drawnWeight(f, detail)));
         }
     }

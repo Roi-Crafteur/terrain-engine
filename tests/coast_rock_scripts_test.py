@@ -124,8 +124,17 @@ def check_bands(scripts, struct_code):
         copy = f.read()
     for hlsl, cpp in (("0.24 * (frac(sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5)",
                        "0.24 * (fract(std::sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5)"),
-                      ("1.0 - 0.32 * (1.0 - smoothstep(0.0, max(1.5 * w, 0.03) + 0.06, f))",
-                       "1.0 - 0.32 * (1.0 - smoothstep(0.0, std::max(1.5 * w, 0.03) + 0.06,"),
+                      ("float depth = 0.18 + 0.24 * frac(sin(k * 93.989 + 0.3) * 43758.5453);",
+                       "const double depth = 0.18 + 0.24 * bedDraw(k, 93.989, 0.3);"),
+                      ("1.0 - depth * (1.0 - smoothstep(0.0, max(1.5 * w, 0.03) + 0.06, f))",
+                       "1.0 - depth * (1.0 - smoothstep(0.0, std::max(1.5 * w, 0.03) + 0.06, f))"),
+                      ("2.0 + floor(5.0 * frac(sin(k * 78.233 + 1.7) * 43758.5453))",
+                       "2.0 + std::floor(5.0 * bedDraw(k, 78.233, 1.7))"),
+                      ("0.8 * (frac(sin(k * 39.425 + 2.9) * 43758.5453) - 0.5)",
+                       "0.8 * (bedDraw(k, 39.425, 2.9) - 0.5)"),
+                      ("count * (f + 2.0 * warp * f * (1.0 - f))",
+                       "count * (f + 2.0 * warp * f * (1.0 - f))"),
+                      ("float lw = max(count * w, 1e-4);", "std::max(count * w, 1e-4)"),
                       ("saturate((0.35 - w) / 0.2)", "std::clamp((0.35 - w) / 0.2, 0.0, 1.0)"),
                       ("1.0 - 0.12 * (1.0 - smoothstep(0.0, max(1.5 * lw, 0.05) + 0.1, frac(l)))",
                        "1.0 - 0.12 *"),
@@ -135,6 +144,17 @@ def check_bands(scripts, struct_code):
                        "smoothstep(-0.4, 0.2, n) * (1.0 - smoothstep(nh - 0.2, nh + 0.4, n))")):
         check(hlsl in struct_code, f"Look.Bands holds {hlsl}")
         check(cpp in copy, f"bandsOf holds {cpp}")
+    # The faces of the rock: no patch of the world position running up them (agent 33, the
+    # stripes of the walls of v5 and v3), and the bands shown raw by the debug view 6.
+    shade = terrain_hlsl.SHADE_TOP + terrain_hlsl.SHADE_BOTTOM + "".join(
+        v for k, v in vars(terrain_hlsl).items() if k.isupper() and isinstance(v, str))
+    check("rock = max(rock * (1.0 - gravel * 0.5 * (1.0 - rockFace)), outcrop * cold * 0.9);"
+          in shade, "no gravel takes the rock of a face")
+    check("Look.Patch(float2(P.y, Z), 16.0, 61.0)" in shade and
+          "Look.Patch(float2(P.x, Z), 16.0, 61.0)" in shade,
+          "the variant of the rock of a face in patches of its planes")
+    check("float3 bands = float3(frac(B.x), B.y" in shade and "(DebugView < 5.5 ?" in shade,
+          "the debug view 6 shows the bands")
     with open(f"{scripts}/create_temporary_terrain_material.py", encoding="utf-8") as f:
         tiles = f.read()
     check('set_editor_property("coordinate_index", index)' in tiles and "(1, 2, 3)" in tiles,

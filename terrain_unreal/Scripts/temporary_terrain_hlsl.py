@@ -117,10 +117,11 @@ BLEND_FUNCTIONS
     // The bands of the rock (agent 33: the core's RockBands, Bridge/tile_mesh_conversion.hpp
     // VertexBands, the band texels of the horizon): B = (strata, layered, notch, notchHeight),
     // C = (cap, capHeight), each height relative to the pixel, in meters. Its beds: each a tone
-    // of its own, a dark line at the foot of each and of each of its four laminae, faded out
-    // where a bed spans less than about three pixels (the derivative of strata) and as layered
-    // as its rock; its notch darker; a dark line under the lip of its cap (the shadow of the
-    // cornice). 1 where the rock has no band (tests/coast_image_support.hpp: bandsOf, the same).
+    // of its own, a dark line at its foot of its own depth, two to six laminae of its own
+    // spacing (no two beds alike: no courses of blocks), faded out where a bed spans less than
+    // about three pixels (the derivative of strata) and as layered as its rock; its notch
+    // darker; a dark line under the lip of its cap (the shadow of the cornice). 1 where the rock
+    // has no band (tests/coast_band_support.hpp: bandsOf, the same).
     float Bands(float4 B, float2 C)
     {
         float w = max(fwidth(B.x), 1e-4);
@@ -128,9 +129,12 @@ BLEND_FUNCTIONS
         float k = floor(B.x);
         float f = B.x - k;
         float tone = 1.0 + 0.24 * (frac(sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5);
-        float bedLine = 1.0 - 0.32 * (1.0 - smoothstep(0.0, max(1.5 * w, 0.03) + 0.06, f));
-        float l = B.x * 4.0;
-        float lw = max(fwidth(l), 1e-4);
+        float depth = 0.18 + 0.24 * frac(sin(k * 93.989 + 0.3) * 43758.5453);
+        float bedLine = 1.0 - depth * (1.0 - smoothstep(0.0, max(1.5 * w, 0.03) + 0.06, f));
+        float count = 2.0 + floor(5.0 * frac(sin(k * 78.233 + 1.7) * 43758.5453));
+        float warp = 0.8 * (frac(sin(k * 39.425 + 2.9) * 43758.5453) - 0.5);
+        float l = count * (f + 2.0 * warp * f * (1.0 - f));
+        float lw = max(count * w, 1e-4);
         float lamina = 1.0 - 0.12 * (1.0 - smoothstep(0.0, max(1.5 * lw, 0.05) + 0.1, frac(l))) *
                        saturate((0.35 - lw) / 0.2);
         float shade = lerp(1.0, tone * bedLine * lamina, beds);
@@ -286,8 +290,20 @@ g[0] = meadow * (1.0 - dryp * 0.8 - dark * 0.6);
 g[7] += g[6] * desertGravel * 0.5;
 g[6] *= 1.0 - desertGravel * 0.5;
 snow *= 1.0 - outcrop * 0.85;
-rock = max(rock * (1.0 - gravel * 0.5), outcrop * cold * 0.9);
+// On the faces of the rock (from 55 degrees, wholly from 70), the patches of the world position
+// would run up the face as stripes, light and dark (agent 33: the walls of the coasts): no gravel
+// taking half of their rock, the variant of the rock in patches of the planes of the face (its
+// width and its height, as the triplanar rock) instead.
+float rockFace = saturate((slope - 55.0) / 15.0);
+rock = max(rock * (1.0 - gravel * 0.5 * (1.0 - rockFace)), outcrop * cold * 0.9);
 float alt = smoothstep(0.42, 0.58, Look.Patch(Q, 16.0, 61.0));
+BRANCH if (rockFace > 0.0)
+{
+    float2 side = abs(N.xy) / max(abs(N.x) + abs(N.y), 1e-3);
+    float onFace = side.x * Look.Patch(float2(P.y, Z), 16.0, 61.0) +
+                   side.y * Look.Patch(float2(P.x, Z), 16.0, 61.0);
+    alt = lerp(alt, smoothstep(0.42, 0.58, onFace), rockFace);
+}
 // No sand on the mountains: above the alpine zone (SandMaxAltitudeM) and on slopes steeper than
 // 30 degrees, the sand and the desert of any biome become scree.
 float sandless = max(saturate((Z - SandMaxAltitudeM) / 300.0), saturate((slope - 30.0) / 5.0));
@@ -400,9 +416,13 @@ if (DebugView > 0.5)
     float3 d = float3(0.0, 0.0, 0.0);
     [unroll] for (int k = 0; k < 8; ++k) { d += (g[k] / sum) * K[k]; }
     d = lerp(lerp(d, float3(0.9, 0.1, 0.1), rock), float3(1.0, 1.0, 1.0), snow);
+    // 6: the bands of the rock as the pixel reads them (agent 33): the place among its beds in
+    // red, their layering in green, its notch in blue (black: none).
+    float3 bands = float3(frac(B.x), B.y, B.w > 0.0 ? saturate(B.z / B.w) : 0.0);
     color = DebugView < 1.5 ? d : (DebugView < 2.5 ? float3(rock, snow, saturate(W2.z)) :
             (DebugView < 3.5 ? float3(sandShare / max(sum, 1e-3), 0.0, 0.0) :
-            (DebugView < 4.5 ? float3(hollow, 0.15, bump) : float3(bare, gravel, 0.0))));
+            (DebugView < 4.5 ? float3(hollow, 0.15, bump) :
+            (DebugView < 5.5 ? float3(bare, gravel, 0.0) : bands))));
 }
 NormalOut = normal;
 return color;
