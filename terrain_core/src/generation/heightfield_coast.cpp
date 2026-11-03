@@ -277,18 +277,31 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
 void Heightfield::leaveValleys(double x, double z, HeightSample& s, Memos* memos) const {
     const double band = static_cast<double>(s.continentalness) * kContinentalScale;
     if (!coasts_ || !hydrology_ || !(band > -kCoastSeaBand - kBandSlack) ||
-        !(band < params_.geography.coastRamp + kBandSlack) || !hydrology_->mayMatter(x, z)) {
+        !(band < params_.geography.coastRamp + kBandSlack)) {
         return;
     }
-    Memos local;
-    Memos& m = memos != nullptr ? *memos : local;
-    m.bare = true;
-    const HeightSample b = reliefWith(x, z, &m);
-    m.bare = false;
+    // Whatever the relief without the coasts, the clearance there is kClearance or more: s stays.
+    const Hydrology::Clearance near = hydrology_->clearanceAt(x, z);
+    if (!(near.away < kClearance) && !(near.floor < std::numeric_limits<double>::infinity())) {
+        return;
+    }
+    const auto without = [this, x, z](Memos& m) {
+        m.bare = true;
+        const HeightSample relief = reliefWith(x, z, &m);
+        m.bare = false;
+        return relief;
+    };
+    HeightSample b;
+    if (memos != nullptr) {
+        b = without(*memos);
+    } else {
+        Memos local; // a point alone (default-initialized, as the memos of a batch)
+        b = without(local);
+    }
     if (sameRelief(b, s)) {
         return;
     }
-    const double clear = hydrology_->clearance(x, z, static_cast<double>(b.height));
+    const double clear = near.over(static_cast<double>(b.height));
     if (!(clear < kClearance)) {
         return;
     }
@@ -323,10 +336,10 @@ double Heightfield::distancePerMeter(double x, double z, double base, double gx,
 }
 
 float Heightfield::coastFaceClear(double x, double z, float height) const {
-    if (!hydrology_ || !hydrology_->mayMatter(x, z)) {
+    if (!hydrology_) {
         return 1.0f;
     }
-    const double clear = hydrology_->clearance(x, z, static_cast<double>(height));
+    const double clear = hydrology_->clearanceAt(x, z).over(static_cast<double>(height));
     if (!(clear < kClearance)) {
         return 1.0f;
     }

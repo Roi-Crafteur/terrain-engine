@@ -276,8 +276,8 @@ Les chantiers qui changent la forme du monde restent chacun dans leur zone et pr
 est identique au bit près ; ceux qui la changent partout passent l'un après l'autre.
 - fait : outils de dev (carte, F3, commandes, lanceur de vérification), chargement, casser et poser,
   poids des biomes dans l'horizon, peuplement V1
-- en cours, change le monde dans sa zone : phase 12A (parois, chutes en roche 3D), relief côtier,
-  mers de dunes ; merge dans cet ordre : 12A, puis côtes et dunes
+- en cours, change le monde dans sa zone : phase 12A (parois, chutes en roche 3D), mers de dunes ;
+  relief côtier fait (agent 33 : #70, puis sa roche en trois dimensions)
 - sans changer le monde : hydrologie rapide et interruptible, ménage des tests, terrain modifié par
   le joueur (creux lisses, blocs visibles de loin, lumière), eau et horizon
 - ensuite, l'un après l'autre : réseau hydrographique complet (11C, en 4 étapes), puis versants
@@ -346,6 +346,18 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   col ou une crête
 - les fleuves de la 11B suivent alors ces vallées : plus de gorges à travers les crêtes, peu
   de lacs (les lacs de haut bassin seulement), des lits de moins de 300 m
+- les côtes (agent 33) : le niveau Planète, les fleuves, leurs chutes et les lacs fins lisent
+  aujourd'hui le relief sans les côtes (`Heightfield::withoutCoasts` dans `buildPlanet`,
+  `buildLevelParts` et `Hydrology`) ; un fleuve tracé sur l'ancienne plaine côtière creuse sa
+  vallée à travers le relief côtier et l'estuaire est court. À faire : retirer `withoutCoasts`
+  de ces trois entrées ; la pluie orographique sur les montagnes côtières (les cases côtières à
+  leur vraie altitude) ; des tracés qui contournent falaises et montagnes et finissent au fond
+  des fjords et des rias, leur niveau descendant jusqu'à 0 m à leur tête (les rias au bout des
+  fleuves sont pour cette phase : choix B du point d'arrêt 2 des côtes) ; puis refaire la somme
+  du niveau Planète et `planet.bin`. Le fondu des côtes près des fleuves
+  (`Heightfield::leaveValleys`, qui y lit le relief une seconde fois, sans les côtes) n'aura alors
+  plus lieu d'être : c'est 45 % du surcoût des côtes sur la marche de la chute de 388 m jusqu'à
+  la mer (LOD 0 : ×1,95 en instructions côtes allumées contre éteintes, ×1,52 sans lui)
 - nouvelle validation des montagnes à l'œil, dans Unreal, avec le personnage
 
 ### Phase 12 — Monde streamé unifié
@@ -366,9 +378,20 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   sommets et épaules arrondis, pieds de versant concaves, cirques et amphithéâtres, éperons ;
   parois droites, bombées ou creusées en grands abris ; chutes devant une paroi droite ou un
   amphithéâtre ; placées par la roche et le climat, jamais par le biome
-- relief côtier : falaises
-  marines, montagnes qui plongent dans la mer, fjords, rias, calanques, grottes marines, arches
-  et stacks
+- relief côtier (agent 33) : fait, dans la seule bande côtière (hors d'elle le monde au bit près,
+  `coast_outside_test`). Types de côte placés par la géologie et le relief, jamais par le biome
+  (côtes basses, rocheuses, falaises, calanques, rias, montagnes qui plongent, fjords en U) ;
+  criques, caps et anses ; ports abrités et mouillages pour le peuplement ; faces en roche 3D
+  (parois verticales, encoches au pied, corniches, bancs), stacks en prismes de roche (aiguilles,
+  piliers, fendus, arches) et rochers des récifs ; canal de bandes (bancs, encoche, corniche) lu
+  par les matériaux des tuiles et de l'horizon. Restent :
+  - grottes marines et tunnels dans les falaises ;
+  - pour l'agent 40 (les tuiles grossières et l'horizon sur les parois raides) : les coulures
+    claires et sombres d'une paroi vue à 800 m (les facettes de la grille de l'horizon, une dent
+    de normale par triangle : `DebugView` 7) ; la rangée de dents d'ombre sous le haut d'une paroi
+    de LOD 3 oblique à la grille (la calanque de la vue 5 à 300 m, son tiers droit ; un biseau
+    plus grand l'efface mais casse la jointure à 512 m ou ramène une scie sur la ligne de ciel :
+    `coast_top_test`) ; les dents au pied de la paroi d'un fjord (vue `fjord_axe`)
 - érosion par ondes alignées sur la pente (sillons et ravins ramifiés à toutes les tailles,
   de 4 m à 256 m, type Big Globe) si elle n'est pas déjà venue avec la 11R bis
 - reliefs fantastiques, rares et spectaculaires (médiéval-fantasy), placés par le niveau
