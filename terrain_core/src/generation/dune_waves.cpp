@@ -102,9 +102,8 @@ constexpr dune_layers::Layer kWavesMedium{700.0, 20.0, 0.12, 0.06, 41};
 // middles: whole, never cut, the smallest fewer, and their sizes varied less than 5 times).
 constexpr dune_layers::Layer kGiantsMedium{1'700.0, 40.0, 0.12, 0.06, 45};
 constexpr dune_layers::Layer kGiantsSecond{900.0, 25.0, 0.08, -0.12, 49};
-// Small ones 250 m apart on their flanks and crests (where they lie: by their bed alone, not its
-// cover; 350 m apart, 20 m and 0.05 of the wave, under the others where it wanted them, the sizes
-// of the crescents of the giant waves varied 4.7 times only on the erg of the site, c1119e3).
+// Small ones 250 m apart on their flanks and crests, by their bed alone (350 m apart, under the
+// others where it wanted them: sizes varied 4.7 times only on the erg of the site, c1119e3).
 constexpr dune_layers::Layer kGiantsSmall{250.0, 8.0, 0.03, 0.1, 53};
 // The ends of the crests: the height falls to kEndsLeast of itself where the noise is low.
 constexpr double kEndsLeast = 0.25;
@@ -198,14 +197,14 @@ struct Bed {
 };
 
 // Near the defects of the phase of the giant waves (its coherence from kLeanLow up to kLeanHigh),
-// their straight slip faces lean back to kDefectLean of their slope: there the distance to their
-// crest grows up to 1.2 times faster than the ground (the local wavelength, unclamped, changes by
-// 4 m a meter) and their fade (by the coherence) tilts them, a face of 31 degrees stood at 38.
-// The coherence varies over kilometers: the lean adds to the slope its own change times the
-// distance to the crest, a few thousandths. The crescents laid on them leave the ground where the
-// fading of the ends of their crests tilts it from kTiltLow to kTiltHigh (the ends noise, 12 km,
-// over 700 m: up to 0.26, unread at their middles; a crescent on it stood at 39 degrees).
+// their straight slip faces lean back to kDefectLean of their slope, the curve of their backs
+// bends by it to the power kBackLean (gentler at their crests): there the distance to their crest grows up to 1.3 times faster
+// than the ground (the local wavelength changes by 4 m a meter) and their fade tilts them (a face
+// of 31 degrees stood at 38, a back of 16 at 21). The coherence varies over kilometers: the lean
+// adds a few thousandths of slope. Their crescents leave the ground the fade of the ends of their
+// crests tilts from kTiltLow to kTiltHigh (up to 0.26 over 700 m; a crescent stood at 39 on it).
 constexpr double kDefectLean = 0.85;
+constexpr double kBackLean = 2.0;
 constexpr double kLeanLow = 0.3;
 constexpr double kLeanHigh = 0.5;
 constexpr double kTiltLow = 0.06;
@@ -242,7 +241,8 @@ Bed bedOf(double fraction, double wavelength, double full, bool giant) {
 
 Shape bedShape(const Bed& b, double fraction) {
     return shapeOf(fraction, b.wavelength, b.full, backTanOf(b.giant), kDig,
-                   b.giant ? kGiantsSlip : 0.0, b.giant ? b.leeTan : dune_forms::kLeeTan);
+                   b.giant ? kGiantsSlip : 0.0, b.giant ? b.leeTan : dune_forms::kLeeTan,
+                   b.giant ? dmath::pow(b.leeTan / kGiantsLeeTan, kBackLean) : 1.0);
 }
 
 // The dunes on the waves: where the wave (its slopes faded by fade) is gentler than kLayersSlope,
@@ -313,10 +313,9 @@ double layersOn(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_pha
     return giantLayers(m, s, fine, bed.full, host, small);
 }
 
-// How much of the crescents the fade of a giant wave leaves on its back at (x, z), its profile
-// unfaded height meters high: the tilt of their bed, that height times the change of the fade per
-// meter by its ends (their noise read 1 m east and south) and the defects of its phase (the
-// gradient of its coherence).
+// How much of the crescents the fade of a giant wave leaves on its back at (x, z), unfaded height
+// meters high: the tilt of their bed, that height times the change of the fade per meter by its
+// ends (their noise read 1 m east and south) and its coherence (its gradient).
 double crescentsLeft(const Ergs::Impl& m, const noise::FbmOctaves& slow, const dune_phase::Phase& ph,
                      double x, double z, double ends, double height) {
     const double coherent = ramp(kCoherenceLow, kCoherenceHigh, ph.coherence);
@@ -341,7 +340,7 @@ double profile(double t, double wavelength, double height, double backTan) {
 }
 
 Shape shapeOf(double t, double wavelength, double height, double backTan, double dig,
-              double slip, double leeTan) {
+              double slip, double leeTan, double backBend) {
     if (!(height > 0.0)) {
         return {};
     }
@@ -356,18 +355,20 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
     const double leeRef = kLeeCurve * height / leeTan;
     // The back: what the face leaves of the wavelength, never shorter than the gentle back needs
     // (where the local wavelength is short, the back and the face overlap: no floor).
-    const double back = std::max({wavelength - leeRef, kBackCurve * height / backTan, 1.0});
+    const double back =
+        std::max({wavelength - leeRef, kBackCurve * height / backTan, 1.0});
     const double d = t * wavelength;
     const double s = d < slipRun ? 1.0 : (d < lee ? 1.0 - (d - slipRun) / curveRun : 0.0);
     const double face =
         d < slipRun ? height - leeTan * d : (height - straight) * s * s;
     const double up = (1.0 - t) * wavelength; // to the next crest, upwind of it
     const double r = up < back ? 1.0 - up / back : 0.0;
-    const double rise = height * dmath::pow(r, kBackCurve);
+    const double curve = kBackCurve * backBend;
+    const double rise = height * dmath::pow(r, curve);
     Shape out;
     out.height = std::max(face, rise);
     // The crest rounded (dune_forms::rounded): the face and the back meet flat on top.
-    const double backTop = kBackCurve * height / back;
+    const double backTop = curve * height / back;
     if (d < 2.0 * dune_forms::kCrestRound / leeTan) {
         out.height = std::min(out.height, height - dune_forms::rounded(d, leeTan));
     }
@@ -378,7 +379,7 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
     // linearly from its foot to its steepest at the crest (its own slope grows as r^0.4, too
     // fast for the layers that read it).
     out.slope = leeTan * s;
-    out.rise = kBackCurve * height / back * r;
+    out.rise = curve * height / back * r;
     // The trough between two waves: from the middle of the face to the middle of the back,
     // ending at the next crest at the latest (where the phase starts over); its near half falls
     // with the face, its far half rises with the back.

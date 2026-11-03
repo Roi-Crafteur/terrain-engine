@@ -40,9 +40,12 @@ struct Shape {
     double crest = 0.0;
 };
 // slip: the share of the height the face falls straight at leeTan (an avalanche face) before its
-// parabola, 0 for none; leeTan: the slope of the face at its brink (the angle of repose).
+// parabola, 0 for none; leeTan: the slope of the face at its brink (the angle of repose);
+// backBend: the curve of its back that many times kBackCurve (under 1: gentler at its crest,
+// steeper toward its trough).
 [[nodiscard]] Shape shapeOf(double t, double wavelength, double height, double backTan, double dig,
-                            double slip = 0.0, double leeTan = dune_forms::kLeeTan);
+                            double slip = 0.0, double leeTan = dune_forms::kLeeTan,
+                            double backBend = 1.0);
 // The ground where the second system (join meters, already lowered to its share, top its profile
 // over its height) rises over the first (main meters) by share: only near its crests, joined
 // smoothly over soft meters (no fold where they meet; its long backs lift no trough of the first).
