@@ -39,6 +39,16 @@ constexpr double kChuteCell = 4'096.0;
 // (beyond 1 km), the festoons alone.
 constexpr double kChuteNear = 8.0;
 constexpr double kChuteFar = 16.0;
+// The lattice of the festoons (festoons): it divides the world.
+constexpr double kFestoonCell = 4'096.0;
+constexpr double kPi = 3.14159265358979323846;
+// The festoons and spurs of the giant waves (crescentic slip faces, as on the megadunes of the
+// Badain Jaran and the Rub al-Khali): their crest and slip face shifted downwind and back by
+// kFestoonSlope times the spacing over 2 pi, about kFestoonSpacing apart along the crest (300 to
+// 600 m): the face turns by up to 24 degrees from one festoon to the next, its slope at most
+// 1.1 times steeper.
+constexpr double kFestoonSpacing = 450.0;
+constexpr double kFestoonSlope = 0.45;
 
 // smoothstep with a continuous curvature, [0, 1].
 double smoother(double e0, double e1, double v) {
@@ -79,7 +89,42 @@ double chuteRow(std::uint64_t cell, double a, double d, double run) {
     return std::sqrt(std::sqrt(depth));
 }
 
+// Waves across the wind at (x, z), about spacing meters apart: from the corners of a lattice of
+// kFestoonCell (dividing the world: no seam where it wraps), each its own offset and spacing (0.7
+// to 1.3 times spacing, from its indices modulo the cells of the world, and salt), blended
+// bilinearly (the blend wanders their amplitude too: irregular, not a comb). The sum of the
+// weights times the cosines, each by its spacing over 2 pi if bySpacing (then the slope of the
+// sum across the wind is at most 1).
+double acrossWaves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double z,
+                   double spacing, double salt, bool bySpacing) {
+    const std::array<double, 2> wind = windOf(m, x, z);
+    const double u = std::floor(x / kFestoonCell);
+    const double v = std::floor(z / kFestoonCell);
+    const double fu = x / kFestoonCell - u;
+    const double fv = z / kFestoonCell - v;
+    const double nu = m.world.x / kFestoonCell;
+    const double nv = m.world.z / kFestoonCell;
+    double c = 0.0;
+    for (int k = 0; k < 4; ++k) {
+        const double dx = wrapCoordinate(x - (u + (k & 1)) * kFestoonCell, m.world.x);
+        const double dz = wrapCoordinate(z - (v + (k >> 1)) * kFestoonCell, m.world.z);
+        const double w = ((k & 1) != 0 ? fu : 1.0 - fu) * ((k >> 1) != 0 ? fv : 1.0 - fv);
+        const double iu = std::fmod(std::fmod(u + (k & 1), nu) + nu, nu);
+        const double iv = std::fmod(std::fmod(v + (k >> 1), nv) + nv, nv);
+        const double offset = 0.37 * iu + 0.61 * iv + 0.123 * salt;
+        const double h = 0.53 * iu + 0.29 * iv + 0.311 * salt;
+        const double own = spacing * (0.7 + 0.6 * (h - std::floor(h)));
+        const double turns = (dz * wind[0] - dx * wind[1]) / own + offset + 2.0 * s.drift[0];
+        c += w * dmath::sinCosTurns(turns).cosine * (bySpacing ? own / (2.0 * kPi) : 1.0);
+    }
+    return c;
+}
+
 } // namespace
+
+double festoons(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double z) {
+    return kFestoonSlope * acrossWaves(m, s, x, z, kFestoonSpacing, 1.0, true);
+}
 
 // The rows of the 4 corners of a lattice of kChuteCell (dividing the world: no seam where it
 // wraps), each its own chutes, blended bilinearly.

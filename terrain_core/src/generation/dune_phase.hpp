@@ -91,6 +91,8 @@ struct Phase {
     double nominal = 1.0;    // meters: the spacing of the pivots, weighted (smooth)
     double gx = 0.0;         // the gradient of the phase, cycles per meter (along x and z)
     double gz = 0.0;
+    double cx = 0.0;         // the gradient of the coherence, per meter (unclamped)
+    double cz = 0.0;
 };
 [[nodiscard]] Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind& k);
 // The phases of two kinds at once (the weights of the pivots shared): the same bits as phaseAt.

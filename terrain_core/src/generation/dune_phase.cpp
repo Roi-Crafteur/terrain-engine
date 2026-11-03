@@ -253,6 +253,9 @@ Phase phaseOf(const Shared& s, const Pivots& p, const Weights& w, const Kind& ki
     out.nominal = nominal;
     out.gx = gx;
     out.gz = gz;
+    const double modulus = std::sqrt(modulus2);
+    out.cx = modulus > 0.0 ? (re * reX + im * imX) / modulus : 0.0;
+    out.cz = modulus > 0.0 ? (re * reZ + im * imZ) / modulus : 0.0;
     return out;
 }
 

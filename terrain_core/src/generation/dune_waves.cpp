@@ -18,20 +18,9 @@ namespace {
 // The giant waves: a straight slip face down kGiantsSlip of their height (an avalanche face
 // readable from kilometers; the parabola alone made the wall of 700 m a low smooth hill).
 constexpr double kGiantsSlip = 0.35;
-// Their faces fall at 31 degrees (slip faces stand at 30 to 34): where their phase varies fast
-// (near its defects, its wavelength unclamped changing by up to 4 m a meter) the distance to
-// their crest grows up to 1.2 times faster than the ground (and a face of 33 degrees reached 40).
+// Their faces fall at 31 degrees (slip faces stand at 30 to 34; near the defects of their phase,
+// less: kDefectLean).
 constexpr double kGiantsLeeTan = 0.6008606190275604;
-// The lattice of the festoons (acrossWaves): it divides the world.
-constexpr double kFestoonCell = 4'096.0;
-constexpr double kPi = 3.14159265358979323846;
-// The festoons and spurs of the giant waves (crescentic slip faces, as on the megadunes of the
-// Badain Jaran and the Rub al-Khali): their crest and slip face shifted downwind and back by
-// kFestoonSlope times the spacing over 2 pi, about kFestoonSpacing apart along the crest (300 to
-// 600 m): the face turns by up to 24 degrees from one festoon to the next, its slope at most
-// 1.1 times steeper.
-constexpr double kFestoonSpacing = 450.0;
-constexpr double kFestoonSlope = 0.45;
 // The face downwind of a crest: H (1 - d / L)^kLeeCurve over L = kLeeCurve H / tan 33 (its slope
 // at the brink tan 33 degrees).
 constexpr double kLeeCurve = 2.0;
@@ -169,37 +158,6 @@ dune_phase::Kind kindOf(bool giant) {
     return k;
 }
 
-// Waves across the wind at (x, z), about spacing meters apart: from the corners of a lattice of
-// kFestoonCell (dividing the world: no seam where it wraps), each its own offset and spacing (0.7
-// to 1.3 times spacing, from its indices modulo the cells of the world, and salt), blended
-// bilinearly (the blend wanders their amplitude too: irregular, not a comb). The sum of the
-// weights times the cosines, each by its spacing over 2 pi if bySpacing (then the slope of the
-// sum across the wind is at most 1).
-double acrossWaves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double z,
-                   double spacing, double salt, bool bySpacing) {
-    const std::array<double, 2> wind = windOf(m, x, z);
-    const double u = std::floor(x / kFestoonCell);
-    const double v = std::floor(z / kFestoonCell);
-    const double fu = x / kFestoonCell - u;
-    const double fv = z / kFestoonCell - v;
-    const double nu = m.world.x / kFestoonCell;
-    const double nv = m.world.z / kFestoonCell;
-    double c = 0.0;
-    for (int k = 0; k < 4; ++k) {
-        const double dx = wrapCoordinate(x - (u + (k & 1)) * kFestoonCell, m.world.x);
-        const double dz = wrapCoordinate(z - (v + (k >> 1)) * kFestoonCell, m.world.z);
-        const double w = ((k & 1) != 0 ? fu : 1.0 - fu) * ((k >> 1) != 0 ? fv : 1.0 - fv);
-        const double iu = std::fmod(std::fmod(u + (k & 1), nu) + nu, nu);
-        const double iv = std::fmod(std::fmod(v + (k >> 1), nv) + nv, nv);
-        const double offset = 0.37 * iu + 0.61 * iv + 0.123 * salt;
-        const double h = 0.53 * iu + 0.29 * iv + 0.311 * salt;
-        const double own = spacing * (0.7 + 0.6 * (h - std::floor(h)));
-        const double turns = (dz * wind[0] - dx * wind[1]) / own + offset + 2.0 * s.drift[0];
-        c += w * dmath::sinCosTurns(turns).cosine * (bySpacing ? own / (2.0 * kPi) : 1.0);
-    }
-    return c;
-}
-
 // How much of the second system rises where its profile is top of its height (joined).
 double joinNear(double top) {
     return smoother(kJoinTopLow, kJoinTopHigh, top);
@@ -210,6 +168,15 @@ double joinNear(double top) {
 double joinDome(double top, double full, double fade) {
     const double t = std::clamp(top, 0.0, 1.0);
     return kJoinHeight * fade * full * t * t * (3.0 - 2.0 * t);
+}
+
+// Where the crests of the waves end (saddles): the height falls to kEndsLeast of itself where
+// the slow noise is low.
+double endsOf(const noise::FbmOctaves& slow, const Ergs::Impl& m, double x, double z) {
+    return kEndsLeast +
+           (1.0 - kEndsLeast) * ramp(kEndsLow, kEndsHigh,
+                                     static_cast<double>(slow.fbm2D(x + kEndsShift, z - kEndsShift,
+                                                                    memosOf(m).waveEnds)));
 }
 
 // The ground a layer of dunes lies on: a wave of height full at fraction of its wavelength, the
@@ -225,8 +192,24 @@ struct Bed {
     double backShare = 1.0;
     double clear = 0.0;
     double face = 0.0;
+    double leeTan = kGiantsLeeTan; // of the straight slip face of the giant waves
+    double defect = 1.0;           // how much of the crescents the defects of the phase leave
     bool giant = false;
 };
+
+// Near the defects of the phase of the giant waves (its coherence from kLeanLow up to kLeanHigh),
+// their straight slip faces lean back to kDefectLean of their slope: there the distance to their
+// crest grows up to 1.2 times faster than the ground (the local wavelength, unclamped, changes by
+// 4 m a meter) and their fade (by the coherence) tilts them, a face of 31 degrees stood at 38.
+// The coherence varies over kilometers: the lean adds to the slope its own change times the
+// distance to the crest, a few thousandths. The crescents laid on them leave the ground where the
+// fading of the ends of their crests tilts it from kTiltLow to kTiltHigh (the ends noise, 12 km,
+// over 700 m: up to 0.26, unread at their middles; a crescent on it stood at 39 degrees).
+constexpr double kDefectLean = 0.85;
+constexpr double kLeanLow = 0.3;
+constexpr double kLeanHigh = 0.5;
+constexpr double kTiltLow = 0.06;
+constexpr double kTiltHigh = 0.15;
 
 // The crescents of the giant waves keep kRoomMargin meters from their crests and from the feet of
 // their slip faces (the festoons shift them by up to 42 m along their crests, which bend: the
@@ -234,10 +217,10 @@ struct Bed {
 constexpr double kRoomMargin = 150.0;
 
 // Where the slip face of a giant wave of height full ends: its parabola as steep as kLayersSlope.
-double faceEnd(double full) {
+double faceEnd(double full, double leeTan) {
     const double straight = kGiantsSlip * full;
-    return straight / kGiantsLeeTan + kLeeCurve * (full - straight) / kGiantsLeeTan *
-                                          (1.0 - kLayersSlope / kGiantsLeeTan);
+    return straight / leeTan +
+           kLeeCurve * (full - straight) / leeTan * (1.0 - kLayersSlope / leeTan);
 }
 
 Bed bedOf(double fraction, double wavelength, double full, bool giant) {
@@ -259,7 +242,7 @@ Bed bedOf(double fraction, double wavelength, double full, bool giant) {
 
 Shape bedShape(const Bed& b, double fraction) {
     return shapeOf(fraction, b.wavelength, b.full, backTanOf(b.giant), kDig,
-                   b.giant ? kGiantsSlip : 0.0, b.giant ? kGiantsLeeTan : dune_forms::kLeeTan);
+                   b.giant ? kGiantsSlip : 0.0, b.giant ? b.leeTan : dune_forms::kLeeTan);
 }
 
 // The dunes on the waves: where the wave (its slopes faded by fade) is gentler than kLayersSlope,
@@ -282,6 +265,7 @@ void bedAt(const void* context, double dx, double dz, double& share, double& cov
     double fraction = b.fraction + dx * b.gx + dz * b.gz;
     fraction -= std::floor(fraction);
     lieOn(b, bedShape(b, fraction), 1.0, share, cover);
+    share *= b.defect;
     ahead = std::max(0.0, (1.0 - fraction) * b.wavelength - kRoomMargin);
     behind = std::max(0.0, fraction * b.wavelength - b.face - kRoomMargin);
 }
@@ -318,7 +302,7 @@ double layersOn(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_pha
     if (!m.params.giantCrescents) {
         return 0.0;
     }
-    bed.face = faceEnd(bed.full);
+    bed.face = faceEnd(bed.full, bed.leeTan);
     if (bed.fraction * bed.wavelength < bed.face) {
         return 0.0;
     }
@@ -327,6 +311,27 @@ double layersOn(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_pha
     const dune_layers::Host host{&bed, bedAt, false};
     const dune_layers::Host small{&bed, bedAt, false}; // where they lie, not by the cover
     return giantLayers(m, s, fine, bed.full, host, small);
+}
+
+// How much of the crescents the fade of a giant wave leaves on its back at (x, z), its profile
+// unfaded height meters high: the tilt of their bed, that height times the change of the fade per
+// meter by its ends (their noise read 1 m east and south) and the defects of its phase (the
+// gradient of its coherence).
+double crescentsLeft(const Ergs::Impl& m, const noise::FbmOctaves& slow, const dune_phase::Phase& ph,
+                     double x, double z, double ends, double height) {
+    const double coherent = ramp(kCoherenceLow, kCoherenceHigh, ph.coherence);
+    double fx = (endsOf(slow, m, x + 1.0, z) - ends) * coherent;
+    double fz = (endsOf(slow, m, x, z + 1.0) - ends) * coherent;
+    if (ph.coherence < static_cast<double>(kCoherenceHigh)) {
+        // The ramp of the coherence (smoothstep) times its gradient (dune_phase).
+        const double width = static_cast<double>(kCoherenceHigh - kCoherenceLow);
+        const double t = (ph.coherence - static_cast<double>(kCoherenceLow)) / width;
+        const double slope = t > 0.0 ? 6.0 * t * (1.0 - t) / width : 0.0;
+        fx += ends * slope * ph.cx;
+        fz += ends * slope * ph.cz;
+    }
+    const double tilt = std::max(0.0, height) * dmath::hypot(fx, fz);
+    return 1.0 - smoother(kTiltLow, kTiltHigh, tilt);
 }
 
 } // namespace
@@ -407,13 +412,10 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
     const double joins = ramp(kJoinLow, kJoinHigh,
                               static_cast<double>(slow.fbm2D(x - kJoinShift, z + kJoinShift,
                                                              memosOf(m).waveJoins)));
-    const double ends = kEndsLeast + (1.0 - kEndsLeast) *
-                        ramp(kEndsLow, kEndsHigh,
-                             static_cast<double>(slow.fbm2D(x + kEndsShift, z - kEndsShift,
-                                                            memosOf(m).waveEnds)));
+    const double ends = endsOf(slow, m, x, z);
     const dune_phase::Pivots fine = giant ? dune_phase::pivotsAt(m, s, false) : p;
     const double festoon =
-        giant ? kFestoonSlope * acrossWaves(m, s, x, z, kFestoonSpacing, 1.0, true) : 0.0;
+        giant ? dune_chutes::festoons(m, s, x, z) : 0.0;
     // The height of the first wave system, with the dunes laid on it.
     const auto waveOf = [&](const dune_phase::Phase& ph) {
         // Faded at the ends of the crests and the defects of the phase: the whole form scaled
@@ -435,14 +437,20 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
             fraction -= std::floor(fraction);
         }
         Bed bed = bedOf(fraction, wavelength, full, giant);
+        if (giant) {
+            const double coherent = smoother(kLeanLow, kLeanHigh, ph.coherence);
+            bed.leeTan = kGiantsLeeTan * (kDefectLean + (1.0 - kDefectLean) * coherent);
+        }
         Shape shape = bedShape(bed, fraction);
         double on = 0.0;
         double cover = -1.0;
         lieOn(bed, shape, fade, on, cover);
+        bed.defect = giant && fraction * wavelength >= faceEnd(full, bed.leeTan)
+                         ? crescentsLeft(m, slow, ph, x, z, ends, shape.height) : 1.0;
         shape.height *= fade;
         if (giant) {
             shape.height -= fade * dune_chutes::depth(m, s, x, z, fraction * wavelength,
-                                                      kGiantsSlip * full / kGiantsLeeTan);
+                                                      kGiantsSlip * full / bed.leeTan);
         }
         return shape.height + layersOn(m, s, fine, bed, ph, h, on, cover);
     };
