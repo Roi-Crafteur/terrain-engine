@@ -32,8 +32,10 @@ constexpr double kBedJitter = 0.42;
 constexpr double kBedEdge = 2.0;
 constexpr double kBedEdgeCells = 1.5;
 constexpr float kGrainCell = 2.0f;
-// The beds of a face show fully in its bands from a grain of kLayeredGrain meters (rockBands).
+// The beds of a face show fully in its bands from a grain of kLayeredGrain meters (rockBands), their
+// coordinates counted from a base every kStrataHeight meters of height.
 constexpr float kLayeredGrain = 0.5f;
+constexpr double kStrataHeight = 256.0;
 constexpr std::uint64_t kGrainSalt = 0x677261696e5f3132ULL;
 constexpr double kRunFade = 1.5;
 constexpr double kFeatureLow = 1.5;
@@ -435,9 +437,11 @@ double bedCoordinate(double t) {
 RockBands faceBands(const RockFace& f, double y) {
     RockBands out;
     if (f.grain > 0.0f) {
-        const auto shift = static_cast<double>(f.grainShift);
-        const double foot = std::floor(bedCoordinate(static_cast<double>(f.foot) + shift));
-        out.strata = static_cast<float>(bedCoordinate(y + shift) - foot);
+        // Counted from a base that changes only every kStrataHeight meters of height (the same for
+        // every column there: no line broken between two columns; small numbers for the half
+        // floats of the meshes).
+        const double base = std::round(std::floor(y / kStrataHeight) * kStrataHeight / kBedWave);
+        out.strata = static_cast<float>(bedCoordinate(y + static_cast<double>(f.grainShift)) - base);
         out.layered = std::min(1.0f, f.grain / kLayeredGrain) * std::min(1.0f, f.weight);
     }
     if (f.undercut >= kBandLeast && f.undercutHeight > 0.0f) {

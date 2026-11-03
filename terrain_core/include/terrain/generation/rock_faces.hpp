@@ -153,8 +153,9 @@ struct RockBounds {
 // relative to y (linear in it within a bed: a triangle interpolates them between its vertices,
 // and the materials draw them at the same heights at every LOD).
 struct RockBands {
-    // Its beds: the coordinate of y among them (bed k from k to k + 1, k counted from the bed
-    // at its foot), and how much they show, in [0, 1] (0: none).
+    // Its beds: the coordinate of y among them (bed k from k to k + 1, k counted from a base
+    // that changes only every few hundred meters of height, the same for every column there),
+    // and how much they show, in [0, 1] (0: none).
     float strata = 0.0f;
     float layered = 0.0f;
     // Its notch (the undercut at the foot of a face, the notch of a spire at the sea): y over its

@@ -3,7 +3,7 @@
 // by the core to every vertex of the tiles (TileData::rockBands) and to the samples of the horizon
 // (horizon_bands.hpp), drawn by the materials (Look.Bands: coast_band_support.hpp, the same
 // formula), on the default world with its planet file:
-// - A face and a spire alone: its beds counted from its foot (one a bed, rising with the height),
+// - A face and a spire alone: its beds (one a bed, rising with the height, alike on two columns),
 //   its notch from its floor, its cap from its underside; the heavier of two faces; none without
 //   rock.
 // - The notch of the notched cliff from a path toward its face, from kPathFar to kPathNear meters,
@@ -69,8 +69,16 @@ void testAlone() {
     c.add(f);
     const terrain::RockBands foot = terrain::rockBands(c, 10.0);
     const terrain::RockBands top = terrain::rockBands(c, 50.0);
-    TEST_CHECK(foot.strata >= 0.0f && foot.strata < 1.0f && foot.layered == 1.0f);
-    TEST_CHECK(top.strata > 3.0f && top.strata < 9.0f); // beds of 6.5 m, 40 m of face
+    TEST_CHECK(foot.layered == 1.0f);
+    TEST_CHECK(top.strata - foot.strata > 3.0f && top.strata - foot.strata < 9.0f); // 6.5 m beds
+    // The same base for the columns around: the beds of two columns whose grain shifts a little
+    // by a meter apart at most.
+    terrain::RockColumn next;
+    terrain::RockFace shifted = f;
+    shifted.grainShift = 0.3f;
+    next.add(shifted);
+    TEST_CHECK(std::abs(terrain::rockBands(next, 30.0).strata -
+                        terrain::rockBands(c, 30.0).strata) < 0.2f);
     float before = -1.0f;
     for (double y = 10.0; y <= 50.0; y += 0.25) {
         const float s = terrain::rockBands(c, y).strata;
