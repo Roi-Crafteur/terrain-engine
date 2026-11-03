@@ -21,6 +21,9 @@ using coast_profile::smooth;
 // the faces of the shore fading out over the kRockFade meters before (no ledge of a face over the
 // rock, no face cut along the coast).
 constexpr double kFarthest = 600.0;
+// The edges of the faces of the coasts rounded over kFaceRoundTenths tenths of a meter (the walls:
+// 3 m, a cushion along their top; rock_faces.cpp).
+constexpr std::uint8_t kFaceRoundTenths = 10;
 constexpr double kRockSide = 30.0;
 constexpr double kRockFade = 10.0;
 constexpr double kPi = 3.14159265358979323846;
@@ -161,6 +164,7 @@ void featuresOf(const wall_faces::Grain& grain, const Point& point, CoastKind ki
                   std::max(0.0, room - static_cast<double>(face.undercut))}));
     face.jointWidth = static_cast<float>(joint.width);
     face.jointSeed = static_cast<float>(joint.seed);
+    face.roundTenths = kFaceRoundTenths;
 }
 
 // What faceAt reads, together.

@@ -114,6 +114,32 @@ BLEND_FUNCTIONS
         return max(lerp(l.xxx, c, s), 0.0);
     }
 
+    // The bands of the rock (agent 33: the core's RockBands, Bridge/tile_mesh_conversion.hpp
+    // VertexBands, the band texels of the horizon): B = (strata, layered, notch, notchHeight),
+    // C = (cap, capHeight), each height relative to the pixel, in meters. Its beds: each a tone
+    // of its own, a dark line at the foot of each and of each of its four laminae, faded out
+    // where a bed spans less than about three pixels (the derivative of strata) and as layered
+    // as its rock; its notch darker; a dark line under the lip of its cap (the shadow of the
+    // cornice). 1 where the rock has no band (tests/coast_image_support.hpp: bandsOf, the same).
+    float Bands(float4 B, float2 C)
+    {
+        float w = max(fwidth(B.x), 1e-4);
+        float beds = B.y * saturate((0.35 - w) / 0.2);
+        float k = floor(B.x);
+        float f = B.x - k;
+        float tone = 1.0 + 0.24 * (frac(sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5);
+        float bedLine = 1.0 - 0.32 * (1.0 - smoothstep(0.0, max(1.5 * w, 0.03) + 0.06, f));
+        float l = B.x * 4.0;
+        float lw = max(fwidth(l), 1e-4);
+        float lamina = 1.0 - 0.12 * (1.0 - smoothstep(0.0, max(1.5 * lw, 0.05) + 0.1, frac(l))) *
+                       saturate((0.35 - lw) / 0.2);
+        float shade = lerp(1.0, tone * bedLine * lamina, beds);
+        float notch = B.w > 0.0 ?
+            smoothstep(-0.4, 0.2, B.z) * (1.0 - smoothstep(B.w - 0.2, B.w + 0.4, B.z)) : 0.0;
+        float cap = C.y > 0.0 ? 1.0 - smoothstep(0.0, 0.6, abs(C.x)) : 0.0;
+        return shade * lerp(1.0, 0.55, notch) * lerp(1.0, 0.7, cap);
+    }
+
     // Stochastic tiling: uv in texture repeats, dx and dy its derivatives. The normal (tangent
     // space, world aligned) comes from the dominant cell only.
     float3 Bomb(Texture2D A, SamplerState SA, Texture2D Nm, SamplerState SN, bool withNormal,
@@ -357,6 +383,9 @@ float3 rockG = Look.Saturate(rockS, 1.0 - RockGrey) * RockAlbedo * (1.0 + 0.4 * 
 float wetTop = WetBandM * (0.5 + 0.7 * Look.Noise(P + 97.0, 12.0) + 0.3 * Look.Noise(P - 41.0, 3.0));
 float wet = 1.0 - smoothstep(wetTop - 0.7, wetTop + 0.3, Z);
 rockG *= lerp(1.0, WetDarken, wet);
+// Its beds, its notch and its cap where the core gives them (Look.Bands), at the same heights on
+// the tiles and on the horizon.
+rockG *= Look.Bands(B, C);
 float3 snowG = lerp(snowC, float3(0.88, 0.91, 0.96), SnowWhiten) * TintS;
 float3 groundN = normalize(float3(N.xy + nts * NormalStrength * detail, N.z));
 float3 color = lerp(lerp(groundC, rockG, rock), snowG, snow);

@@ -110,6 +110,41 @@ def check_wet_band(scripts):
     check(max(tops) - min(tops) >= band, f"a ragged upper edge: {min(tops)} to {max(tops)} m")
 
 
+def check_bands(scripts, struct_code):
+    """The bands of the rock (agent 33): Look.Bands in the shading of the tiles and of the GPU
+    horizon, the same numbers as its copy in the tests (coast_band_support.hpp: bandsOf), fed by
+    the UV channels 1 to 3 of the tiles and by the band texels of the horizon."""
+    check("float Bands(float4 B, float2 C)" in struct_code, "Look.Bands is declared")
+    import temporary_terrain_hlsl as terrain_hlsl
+    check("rockG *= Look.Bands(B, C);" in terrain_hlsl.SHADE_BOTTOM, "the rock takes its bands")
+    import temporary_terrain_look as look
+    check("B" in look.shade_inputs() and "C" in look.shade_inputs(), "the shade node reads B, C")
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "coast_band_support.hpp"),
+              encoding="utf-8") as f:
+        copy = f.read()
+    for hlsl, cpp in (("0.24 * (frac(sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5)",
+                       "0.24 * (fract(std::sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5)"),
+                      ("1.0 - 0.32 * (1.0 - smoothstep(0.0, max(1.5 * w, 0.03) + 0.06, f))",
+                       "1.0 - 0.32 * (1.0 - smoothstep(0.0, std::max(1.5 * w, 0.03) + 0.06,"),
+                      ("saturate((0.35 - w) / 0.2)", "std::clamp((0.35 - w) / 0.2, 0.0, 1.0)"),
+                      ("1.0 - 0.12 * (1.0 - smoothstep(0.0, max(1.5 * lw, 0.05) + 0.1, frac(l)))",
+                       "1.0 - 0.12 *"),
+                      ("lerp(1.0, 0.55, notch)", "(1.0 - 0.45 * notch)"),
+                      ("lerp(1.0, 0.7, cap)", "(1.0 - 0.3 * cap)"),
+                      ("smoothstep(-0.4, 0.2, B.z) * (1.0 - smoothstep(B.w - 0.2, B.w + 0.4, B.z))",
+                       "smoothstep(-0.4, 0.2, n) * (1.0 - smoothstep(nh - 0.2, nh + 0.4, n))")):
+        check(hlsl in struct_code, f"Look.Bands holds {hlsl}")
+        check(cpp in copy, f"bandsOf holds {cpp}")
+    with open(f"{scripts}/create_temporary_terrain_material.py", encoding="utf-8") as f:
+        tiles = f.read()
+    check('set_editor_property("coordinate_index", index)' in tiles and "(1, 2, 3)" in tiles,
+          "the tiles read their bands from the UV channels 1 to 3")
+    with open(f"{scripts}/create_horizon_gpu_material.py", encoding="utf-8") as f:
+        gpu = f.read()
+    check("BandsOut = BandTex.Load(int3((ik + first) % side, 0));" in gpu and
+          '"HorizonBands"' in gpu, "the horizon reads the band texel of its sample")
+
+
 def main():
     scripts, header = sys.argv[1], sys.argv[2]
     sys.path.insert(0, scripts)
@@ -169,6 +204,7 @@ def main():
 
     check_blends(terrain.struct_hlsl(biomes))
     check_wet_band(scripts)
+    check_bands(scripts, terrain.struct_hlsl(biomes))
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 

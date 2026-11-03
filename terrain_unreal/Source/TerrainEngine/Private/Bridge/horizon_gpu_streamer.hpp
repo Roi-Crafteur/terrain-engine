@@ -75,6 +75,9 @@ struct HorizonGpuUpdate {
     std::vector<WaterRegion> waterRegions;
     // The surface blends of the samples the epochs wrote (agent 29; the crests leave them).
     std::vector<BlendRegion> blendRegions;
+    // The bands of the rock of the samples the epochs wrote (agent 33; the crests leave them):
+    // kBandFloats floats per texel, as texels (horizon_textures.hpp).
+    std::vector<TexelRegion> bandRegions;
     std::vector<NormalRegion> normalRegions; // detail normals: pending, then computed
     std::vector<LevelPlacement> placements;  // the levels whose placement changed
     // With an epoch committed: the coarsest level it moved (-1: none), whether it showed the
@@ -90,7 +93,7 @@ struct HorizonGpuUpdate {
 
     [[nodiscard]] bool empty() const {
         return regions.empty() && waterRegions.empty() && blendRegions.empty() &&
-               normalRegions.empty() && placements.empty();
+               bandRegions.empty() && normalRegions.empty() && placements.empty();
     }
 };
 

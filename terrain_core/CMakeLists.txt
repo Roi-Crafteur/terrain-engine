@@ -202,6 +202,7 @@ add_library(terrain_core STATIC
     src/streaming/horizon_fine_grid.cpp
     src/streaming/horizon_grids.cpp
     src/streaming/horizon_levels.cpp
+    src/streaming/horizon_bands.cpp
     src/streaming/horizon_normals.cpp
     src/streaming/horizon_blend.cpp
     src/streaming/horizon_sampler.cpp

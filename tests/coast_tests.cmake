@@ -20,12 +20,15 @@ terrain_add_test(coast_render_test terrain_core)
 # The walls of the coasts as the tiles draw them, seen from afar and from near: lines that move in
 # and out, faces that turn, tops that rise and dip, nothing at a regular step.
 terrain_add_test(coast_wall_test terrain_core)
-# The stacks as the tiles draw them: rock that narrows, irregular, in beds, notched, on an apron,
-# of several kinds (a needle, a pillar, a stack split in two, an arch).
+# The stacks as the tiles draw them: prisms of rock in beds, sharp edges and no right angle, flat
+# tops, notched, blocks at their foot, of several kinds (a needle, a pillar, a split, an arch).
 terrain_add_test(coast_stack_test terrain_core)
-# The coasts seen from afar: the wall of the view 3 at 800 m (no row on its ramp, its bands not
-# alike), the sea painted up the left wall of the view fjord_axe.
+# The coasts seen from afar: the wall of the view 3 at 800 m (no row on its ramp, no comb of
+# strokes on its image under a low sun), the sea painted up the left wall of the view fjord_axe.
 terrain_add_test(coast_far_test terrain_core)
+# The band channel of the rock (its beds, its notch, its cap) on the tiles and the horizon: the
+# notch on the way to a face at every LOD, the LODs alike, the beds of the stacks seen at 200 m.
+terrain_add_test(coast_bands_test terrain_core)
 # The pawn of the game by the faces of the coasts, on the collision of the tiles (the Bridge of the
 # tools: the ground of a teleport, the landing of Terrain.Pawn and of a click on the map).
 terrain_add_test(coast_pawn_test terrain_unreal_bridge)
@@ -48,7 +51,7 @@ add_test(NAME coast_planet_file
     COMMAND terrain_probe --planet ${coast_planet_file} --json 0 0)
 set_tests_properties(coast_planet_file PROPERTIES FIXTURES_SETUP coast_planet TIMEOUT 1800)
 set_tests_properties(coast_rock_test coast_render_test coast_wall_test coast_stack_test
-                     coast_far_test coast_pawn_test
+                     coast_far_test coast_bands_test coast_pawn_test
                      coast_inlet_shapes_test coast_materials_test coast_patterns_test
                      coast_horizon_rock_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})

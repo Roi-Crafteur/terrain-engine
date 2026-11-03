@@ -337,6 +337,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     }
     if (rockTile) {
         data.rock = rockTile->vertexRock(data.mesh, data.originY);
+        data.rockBands = rockTile->vertexBands(data.mesh, data.originY);
     }
     data.waterLevels = tile::vertexWaterLevels(columns, lattice, data.mesh, data.materials);
     tile::addRiverWater(data, field_, lattice, columns);

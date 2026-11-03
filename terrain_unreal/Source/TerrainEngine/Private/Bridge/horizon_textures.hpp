@@ -79,10 +79,18 @@ static_assert(kNoWaterLevel < kWetWaterTexel, "dry land reads below the wet thre
 // The water texel of a level: the level itself, kNoWaterLevel where none (or not a number).
 [[nodiscard]] float waterTexel(float level);
 
+// The bands of the rock of the GPU horizon (agent 33, horizon_bands.hpp): a third texture per
+// level, float RGBA (PF_A32B32G32R32F, as the texels), nearest, at the slots of the texels: the
+// bands of the sample (strata, layered, notch, notchHeight: RockBands, relative to its height, as
+// the vertices of the tiles hand them, VertexBands), all 0 where no rock shows.
+inline constexpr int kBandFloats = 4;
+
 // What the GPU horizon uploads for a computed piece: the texels of pieceTexels, then the water
 // texel of each of its cells in the same order, one float each, then the blend channels of each
-// of its cells (appendBlendUploads, horizon_blend_texels.hpp).
-[[nodiscard]] std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea);
+// of its cells (appendBlendUploads, horizon_blend_texels.hpp), then the kBandFloats floats of the
+// bands of each of its cells (bands: one per cell, or none: all 0).
+[[nodiscard]] std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea,
+                                              std::span<const RockBands> bands = {});
 
 // Texels to write into the texture of a level: slots [x, x + width) x [z, z + height), their
 // floats row by row.

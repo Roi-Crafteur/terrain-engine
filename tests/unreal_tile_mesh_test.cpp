@@ -269,8 +269,39 @@ void testRockAlpha() {
 
 } // namespace
 
+// The bands of the rock of each vertex (agent 33): handed over as given, the heights far from
+// any band clamped (UV channels 1 to 3: half floats), none without them; bands of another count
+// than the vertices rejected.
+void testVertexBands() {
+    using terrain::unreal::VertexBands;
+    Mesh mesh;
+    mesh.vertices = {{0.0f, 0.0f, 0.0f}, {0.0f, 2.0f, 1.0f}, {1.0f, 5.0f, 0.0f}};
+    mesh.normals.assign(3, {0.0f, 1.0f, 0.0f});
+    mesh.indices = {0, 1, 2};
+    const std::vector<terrain::RockBands> bands{{2.5f, 1.0f, 1.0f, 3.0f, -0.5f, 2.0f},
+                                                {3000.0f, 0.5f, 100.0f, 3.0f, -90.0f, 2.0f},
+                                                {}};
+    const UnrealMesh out = terrain::unreal::convertMesh(mesh, 0.0, {}, {}, {}, bands);
+    TEST_CHECK(out.bands.size() == 3);
+    TEST_CHECK(out.bands[0] == (VertexBands{2.5f, 1.0f, 1.0f, 3.0f, -0.5f, 2.0f}));
+    TEST_CHECK(out.bands[1] == (VertexBands{terrain::unreal::kStrataReach, 0.5f,
+                                            terrain::unreal::kBandReach, 3.0f,
+                                            -terrain::unreal::kBandReach, 2.0f}));
+    TEST_CHECK(out.bands[2] == VertexBands{});
+    TEST_CHECK(terrain::unreal::convertMesh(mesh, 0.0).bands.empty());
+    bool threw = false;
+    try {
+        static_cast<void>(terrain::unreal::convertMesh(mesh, 0.0, {}, {}, {},
+                                                       std::span(bands).first(2)));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    TEST_CHECK(threw);
+}
+
 int main() {
     testHandMadeTriangle();
+    testVertexBands();
     testRockAlpha();
     testMountainTile();
     testWorldPositions();

@@ -258,6 +258,19 @@ std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const 
     return rock;
 }
 
+std::vector<RockBands> RockTile::vertexBands(const Mesh& mesh, double originY) const {
+    std::vector<RockBands> bands;
+    bands.reserve(mesh.vertices.size());
+    const auto spacing = static_cast<float>(lattice_.spacing);
+    for (const Vec3f& v : mesh.vertices) {
+        const auto i = static_cast<int>(std::lround(v.x / spacing));
+        const auto k = static_cast<int>(std::lround(v.z / spacing));
+        const RockColumn& c = rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast));
+        bands.push_back(rockBands(c, originY + static_cast<double>(v.y)));
+    }
+    return bands;
+}
+
 namespace {
 
 // Down from far above a spire in strides (the density about the distance to it: kStride of it,

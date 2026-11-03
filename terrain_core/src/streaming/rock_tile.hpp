@@ -71,6 +71,9 @@ public:
     // The share of rock of each vertex of a mesh of the tile whose origin lies at originY: that of
     // the nearest column (rockShare), its details blended as its density (fineShare).
     [[nodiscard]] std::vector<float> vertexRock(const Mesh& mesh, double originY) const;
+    // The bands of the rock of each vertex of such a mesh: those of the nearest column at its
+    // height (rockBands; the same at every detail).
+    [[nodiscard]] std::vector<RockBands> vertexBands(const Mesh& mesh, double originY) const;
 
 private:
     [[nodiscard]] const RockColumn& rockAt(int i, int k) const;

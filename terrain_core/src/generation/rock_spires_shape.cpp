@@ -224,6 +224,30 @@ void drawDetails(Shape& s, std::uint64_t h, double radius, double height) {
     s.apronReach = between(0.2, 0.45, d(53)) * radius;
 }
 
+// What its density reads at every point, drawn once: the cosines and sines of its turns, the taper
+// of its pillars at the bottom of each bed.
+void precompute(Shape& s) {
+    const auto set = [](double turns, double& x, double& z) {
+        const dmath::SineCosine sc = dmath::sinCosTurns(turns);
+        x = sc.cosine;
+        z = sc.sine;
+    };
+    set(s.axis, s.axisX, s.axisZ);
+    set(s.tiltTurns, s.tiltX, s.tiltZ);
+    set(s.stepTurns, s.stepX, s.stepZ);
+    for (int i = 0; i < s.blockCount; ++i) {
+        Block& b = s.blocks[static_cast<std::size_t>(i)];
+        set(b.turns, b.turnX, b.turnZ);
+    }
+    for (int i = 0; i < s.pillarCount; ++i) {
+        Pillar& p = s.pillars[static_cast<std::size_t>(i)];
+        for (int k = 0; k <= s.bedCount; ++k) {
+            p.shrink[static_cast<std::size_t>(k)] =
+                taperOf(p, s.bedBottom[static_cast<std::size_t>(k)]);
+        }
+    }
+}
+
 } // namespace
 
 Shape shapeOf(std::uint32_t seed, double radius, double height) {
@@ -250,6 +274,7 @@ Shape shapeOf(std::uint32_t seed, double radius, double height) {
                              : between(5.0, 9.0, d(12)) * (s.kind == Kind::Needle ? 0.8 : 1.0);
     drawBeds(s, noise::deriveSeed(h, 13), bed, jitter, summitOf(s));
     drawBlocks(s, h, radius, height);
+    precompute(s);
     for (int i = 0; i < s.pillarCount; ++i) {
         const Pillar& p = s.pillars[static_cast<std::size_t>(i)];
         double reach = 0.0;

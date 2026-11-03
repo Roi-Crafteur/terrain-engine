@@ -32,6 +32,8 @@ constexpr double kBedJitter = 0.42;
 constexpr double kBedEdge = 2.0;
 constexpr double kBedEdgeCells = 1.5;
 constexpr float kGrainCell = 2.0f;
+// The beds of a face show fully in its bands from a grain of kLayeredGrain meters (rockBands).
+constexpr float kLayeredGrain = 0.5f;
 constexpr std::uint64_t kGrainSalt = 0x677261696e5f3132ULL;
 constexpr double kRunFade = 1.5;
 constexpr double kFeatureLow = 1.5;
@@ -136,8 +138,9 @@ double drawnFeature(float feature, float extent, const RockDetail& detail) {
 
 // The edges of the step of a face are rounded over this many meters.
 double roundOf(const RockFace& f) {
-    return std::min(f.carved ? kCarvedRound : kRound,
-                    kRoundShare * (static_cast<double>(f.top) - f.foot));
+    const double round = f.roundTenths > 0 ? 0.1 * static_cast<double>(f.roundTenths)
+                                            : (f.carved ? kCarvedRound : kRound);
+    return std::min(round, kRoundShare * (static_cast<double>(f.top) - f.foot));
 }
 
 // Draw k (0, 1 or 2) in [0, 1) of 21 bits of a hash.
@@ -414,6 +417,54 @@ float rockShare(const RockColumn& c, double y, const RockDetail& detail) {
         }
     }
     return share;
+}
+
+namespace {
+
+// The coordinate of t among the beds of the grain (bedStart): bed k from k to k + 1.
+double bedCoordinate(double t) {
+    auto k = static_cast<std::int64_t>(std::floor(t / kBedWave));
+    if (t < bedStart(k)) {
+        --k;
+    } else if (t >= bedStart(k + 1)) {
+        ++k;
+    }
+    return static_cast<double>(k) + (t - bedStart(k)) / (bedStart(k + 1) - bedStart(k));
+}
+
+RockBands faceBands(const RockFace& f, double y) {
+    RockBands out;
+    if (f.grain > 0.0f) {
+        const auto shift = static_cast<double>(f.grainShift);
+        const double foot = std::floor(bedCoordinate(static_cast<double>(f.foot) + shift));
+        out.strata = static_cast<float>(bedCoordinate(y + shift) - foot);
+        out.layered = std::min(1.0f, f.grain / kLayeredGrain) * std::min(1.0f, f.weight);
+    }
+    if (f.undercut >= kBandLeast && f.undercutHeight > 0.0f) {
+        out.notch = static_cast<float>(y - static_cast<double>(f.foot));
+        out.notchHeight = f.undercutHeight;
+    }
+    if (f.cap >= kBandLeast && f.capDepth > 0.0f) {
+        out.cap = static_cast<float>(y - static_cast<double>(f.top - f.capDepth));
+        out.capHeight = f.capDepth;
+    }
+    return out;
+}
+
+} // namespace
+
+RockBands rockBands(const RockColumn& c, double y) {
+    if (c.spire.radius > 0.0f) {
+        return rock_spires::bandsAt(rock_spires::shapeOf(c.spire), static_cast<double>(c.spire.dx),
+                                    static_cast<double>(c.spire.dz), y);
+    }
+    const RockFace* strongest = nullptr;
+    for (std::size_t i = 0; i < c.faceCount; ++i) {
+        if (strongest == nullptr || c.faces[i].weight > strongest->weight) {
+            strongest = &c.faces[i];
+        }
+    }
+    return strongest != nullptr ? faceBands(*strongest, y) : RockBands{};
 }
 
 } // namespace terrain

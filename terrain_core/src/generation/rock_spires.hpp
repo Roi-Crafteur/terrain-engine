@@ -50,6 +50,8 @@ struct Pillar {
     double power = 1.0;
     double stretch = 0.0;
     int sides = 6;
+    // Its taper at the bottom of each bed of its spire (taperOf there), drawn with them.
+    std::array<double, kMaxBeds + 1> shrink{};
     std::array<double, kMaxSides> faceX{};
     std::array<double, kMaxSides> faceZ{};
     std::array<double, kMaxSides> faceReach{};
@@ -80,6 +82,8 @@ struct Block {
     double turns = 0.0;
     double tiltX = 0.0;
     double tiltZ = 0.0;
+    double turnX = 1.0; // the cosine and the sine of its turn
+    double turnZ = 0.0;
 };
 
 struct Shape {
@@ -87,6 +91,12 @@ struct Shape {
     std::array<Pillar, 3> pillars{};
     int pillarCount = 1;
     double axis = 0.0; // turns: the axis of a stretch, of a split, of an arch
+    double axisX = 1.0; // its cosine and its sine, and those of the tilt and of the step of its top
+    double axisZ = 0.0;
+    double tiltX = 1.0;
+    double tiltZ = 0.0;
+    double stepX = 1.0;
+    double stepZ = 0.0;
     // Its beds: bed k from bedBottom[k] to bedBottom[k + 1] meters over the sea, its faces
     // standing out by bedOut[k] (receding where negative) and each face j by bedFace[k][j] more.
     int bedCount = 0;
@@ -125,6 +135,9 @@ struct Shape {
 // them there).
 inline constexpr double kBase = -60.0;
 
+// How much narrower a pillar stands at height y: 1 at the sea level and below.
+[[nodiscard]] double taperOf(const Pillar& p, double y);
+
 // The shape of the spire of seed, radius meters wide at the sea level (its outline, its platform
 // and its blocks within 1.5 of it), height meters high.
 [[nodiscard]] Shape shapeOf(std::uint32_t seed, double radius, double height);
@@ -153,5 +166,9 @@ inline constexpr double kBase = -60.0;
 // its sample, as its crests: a needle narrower than the cell still shows), as cells of cell meters
 // draw it: at the point, the tops of its pillars brought into the square, and a lattice of it.
 [[nodiscard]] double topWithin(const Shape& s, double dx, double dz, double half, double cell);
+
+// Its bands at (dx, dz), y (rock_faces.hpp: RockBands): the coordinate of y among its beds, its
+// notch on its sea side.
+[[nodiscard]] RockBands bandsAt(const Shape& s, double dx, double dz, double y);
 
 } // namespace terrain::rock_spires

@@ -175,7 +175,7 @@ def layer_inputs(detail):
 
 def shade_inputs():
     """Every input of the shade node besides the textures and tints."""
-    return ["W0", "W1", "W2", "N", "P", "Z", "Dist", "Warmth"] + list(SCALARS)
+    return ["W0", "W1", "W2", "N", "P", "Z", "Dist", "Warmth", "B", "C"] + list(SCALARS)
 
 
 def texture_parameter(material, name, path, x, y, normal=False):

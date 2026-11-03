@@ -150,6 +150,9 @@ BRANCH if (!blended)
 W0Out = wa;
 W1Out = wb;
 W2Out = float4(wc, 0.0, height / 1000.0);
+// The bands of the rock of the sample (agent 33, Bridge/horizon_textures.hpp: kBandFloats),
+// relative to its height, as the vertices of the tiles hand theirs.
+BandsOut = BandTex.Load(int3((ik + first) % side, 0));
 // The drop below the tiles fades out across their band over level 0 (Bridge/terrain_surface.hpp:
 // dropShare): no step at their outer edge, none on the levels 1 and up.
 float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;
@@ -160,6 +163,7 @@ if (Kind.g > 0.5)
 {
     z = 0.0; slope = float2(0.0, 0.0); ground = -1.0;
     W0Out = float4(0.0, 0.0, 0.0, 0.0); W1Out = float4(0.0, 1.0, 0.0, 0.0); W2Out = float4(0.0, 0.0, 0.0, 0.0);
+    BandsOut = float4(0.0, 0.0, 0.0, 0.0);
 }
 z -= dot(CameraRel, CameraRel) / (2.0 * PlanetRadiusCm);
 // The normal of the curved ground: its slopes, and the curvature that leans it away from the
@@ -264,6 +268,7 @@ def parameters(material):
              "HorizonBlend": texture_parameter(material, "HorizonBlend", -100),
              "CoarseTexels": texture_parameter(material, "CoarseTexels", -250),
              "HorizonNormals": texture_parameter(material, "HorizonNormals", -1700),
+             "HorizonBands": texture_parameter(material, "HorizonBands", -2000),
              "CoarseNormals": texture_parameter(material, "CoarseNormals", -1550)}
     nodes.update(detail.scalars(material, detail.HORIZON_SCALARS, -1300, -1900))
     scalars = (list(SCALARS.items()) + list(SEA_SCALARS.items()) + list(SHADE_SCALARS.items())
@@ -288,15 +293,17 @@ def vertex_shader(material, nodes, kind):
     float4 = unreal.CustomMaterialOutputType.CMOT_FLOAT4
     custom = custom_node(
         material, -900, 0, "HorizonVertex", look.struct_hlsl() + vertex_hlsl(),
-        ["Tex", "Coarse", "Blend", "Local", "Kind", "Viewer", "CameraRel"] + list(SCALARS),
+        ["Tex", "Coarse", "Blend", "Local", "Kind", "Viewer", "CameraRel", "BandTex"] +
+        list(SCALARS),
         [("NormalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
-         ("W0Out", float4), ("W1Out", float4), ("W2Out", float4),
+         ("W0Out", float4), ("W1Out", float4), ("W2Out", float4), ("BandsOut", float4),
          ("GroundOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
          ("MorphOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1)],
         unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     connect(nodes["HorizonTexels"], "", custom, "Tex")
     connect(nodes["CoarseTexels"], "", custom, "Coarse")
     connect(nodes["HorizonBlend"], "", custom, "Blend")
+    connect(nodes["HorizonBands"], "", custom, "BandTex")
     connect(expression(material, unreal.MaterialExpressionPreSkinnedPosition, -1600, -100), "",
             custom, "Local")
     connect(kind, "", custom, "Kind")
@@ -382,6 +389,10 @@ def land_shader(material, vertex, normal):
     for name in inputs:
         if name in params:
             connect(params[name], "", shade, name)
+    # The bands of the rock (agent 33): of the samples, interpolated; no cap on the horizon.
+    connect(interpolate(material, vertex, "BandsOut", 1850), "", shade, "B")
+    no_cap = expression(material, unreal.MaterialExpressionConstant2Vector, -350, 1950)
+    connect(no_cap, "", shade, "C")
     return shade, position
 
 

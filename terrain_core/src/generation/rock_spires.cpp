@@ -75,11 +75,6 @@ double wrapTurns(double t) {
     return t - std::floor(t + 0.5);
 }
 
-// How much narrower a pillar stands at height y: 1 at the sea level and below.
-double taperAt(const Pillar& p, double y) {
-    const double t = std::clamp(y / p.height, 0.0, 1.0);
-    return 1.0 - p.taper * dmath::pow(t, p.power);
-}
 
 // The distances of the faces of a pillar from its axis at height y, as cells of cell meters draw
 // them: in its beds (each from its bottom, stepping to the next over its last kBedEdge), the beds
@@ -90,12 +85,15 @@ struct Faces {
 
 Faces facesAt(const Shape& s, const Pillar& p, double y, double cell) {
     Faces out;
-    const double smoothShrink = taperAt(p, y);
-    for (int i = 0; i < p.sides; ++i) {
-        out.reach[static_cast<std::size_t>(i)] =
-            p.radius * p.faceReach[static_cast<std::size_t>(i)] * smoothShrink;
-    }
+    const auto smoothed = [&] {
+        const double shrink = taperOf(p, y);
+        for (int i = 0; i < p.sides; ++i) {
+            out.reach[static_cast<std::size_t>(i)] =
+                p.radius * p.faceReach[static_cast<std::size_t>(i)] * shrink;
+        }
+    };
     if (s.bedCount == 0 || !(y > s.bedBottom[0])) {
+        smoothed();
         return out;
     }
     const double* first = s.bedBottom.data();
@@ -105,6 +103,9 @@ Faces facesAt(const Shape& s, const Pillar& p, double y, double cell) {
     const double thick = s.bedBottom[k + 1] - low;
     const double f = std::clamp((y - low) / thick, 0.0, 1.0);
     const double show = smooth(kBedLow * cell, kBedHigh * cell, thick);
+    if (show < 1.0) {
+        smoothed();
+    }
     // Out only between kOverhangOver meters over its notch and kTopKeep of its height.
     const double keep = (1.0 - smooth(kTopKeep, 1.0, y / p.height)) * lowShare(s, y);
     const std::size_t next = std::min(k + 1, static_cast<std::size_t>(s.bedCount - 1));
@@ -112,15 +113,15 @@ Faces facesAt(const Shape& s, const Pillar& p, double y, double cell) {
     const auto outOf = [&](std::size_t bed) {
         return s.bedOut[bed] > 0.0 ? s.bedOut[bed] * keep : s.bedOut[bed];
     };
-    const double shrinkHere = taperAt(p, low);
-    const double shrinkNext = taperAt(p, s.bedBottom[k + 1]);
+    const double shrinkHere = p.shrink[k];
+    const double shrinkNext = p.shrink[k + 1];
     for (int i = 0; i < p.sides; ++i) {
         const auto j = static_cast<std::size_t>(i);
         const double base = p.radius * p.faceReach[j];
         const double here = base * shrinkHere + outOf(k) + s.bedFace[k][j];
         const double there = base * shrinkNext + outOf(next) + s.bedFace[next][j];
         const double beds = here + (there - here) * step;
-        out.reach[j] += show * (beds - out.reach[j]);
+        out.reach[j] = show < 1.0 ? out.reach[j] + show * (beds - out.reach[j]) : beds;
     }
     return out;
 }
@@ -135,9 +136,8 @@ struct Framed {
 };
 
 Framed framed(const Shape& s, double x, double z) {
-    const dmath::SineCosine axis = dmath::sinCosTurns(s.axis);
-    const double u = x * axis.cosine + z * axis.sine;
-    const double v = z * axis.cosine - x * axis.sine;
+    const double u = x * s.axisX + z * s.axisZ;
+    const double v = z * s.axisX - x * s.axisZ;
     const double r = dmath::hypot(u, v);
     return {u, v, r, r > 0.0 ? s.axis + dmath::atan2(v, u) / (2.0 * kPi) : 0.0};
 }
@@ -168,7 +168,7 @@ double carvedAt(const Shape& s, const Pillar& p, const Framed& f, double y, doub
         const double toward = c.turns + c.wander * dmath::sinTurns(1.3 * rise + c.phase);
         const double width = c.width * (0.6 + 0.4 * dmath::sinTurns(2.1 * rise + c.phase));
         const double arc = std::abs(wrapTurns(f.turns - toward)) * 2.0 * kPi * f.r;
-        carve += shown(c.width, cell) * c.depth * taperAt(p, y) *
+        carve += shown(c.width, cell) * c.depth * taperOf(p, y) *
                  (1.0 - smooth(0.0, 0.5 * width, arc)) * smooth(0.0, 0.15, rise) *
                  (1.0 - smooth(0.7, 1.0, rise));
     }
@@ -177,11 +177,9 @@ double carvedAt(const Shape& s, const Pillar& p, const Framed& f, double y, doub
 
 // The top of a pillar over (x, z) meters from its axis: a plane, tilted; its main pillar in steps.
 double topOf(const Shape& s, const Pillar& p, double x, double z, bool main) {
-    const dmath::SineCosine tilt = dmath::sinCosTurns(s.tiltTurns);
-    double top = p.height * (1.0 + s.topTilt * (x * tilt.cosine + z * tilt.sine) / p.radius);
+    double top = p.height * (1.0 + s.topTilt * (x * s.tiltX + z * s.tiltZ) / p.radius);
     if (main && s.topStep > 0.0) {
-        const dmath::SineCosine step = dmath::sinCosTurns(s.stepTurns);
-        const double across = x * step.cosine + z * step.sine - s.stepAt * p.radius;
+        const double across = x * s.stepX + z * s.stepZ - s.stepAt * p.radius;
         top -= s.topStep * smooth(-kStepEdge, kStepEdge, across);
     }
     return top;
@@ -212,8 +210,7 @@ double passageAt(const Shape& s, double dx, double dz, double y, double cell) {
     if (!(open > 0.0)) {
         return 1e9;
     }
-    const dmath::SineCosine axis = dmath::sinCosTurns(s.axis);
-    const double along = dx * axis.cosine + dz * axis.sine;
+    const double along = dx * s.axisX + dz * s.axisZ;
     const double half = open * s.archHalf;
     const double u = std::min(1.0, std::abs(along) / half);
     const double vault = open * s.archHeight * std::sqrt(1.0 - u * u);
@@ -230,11 +227,14 @@ double blocksAt(const Shape& s, double dx, double dz, double y, double cell) {
         if (!(show > 0.0)) {
             continue;
         }
-        const dmath::SineCosine turn = dmath::sinCosTurns(b.turns);
         const double x = dx - b.x;
         const double z = dz - b.z;
-        const double qx = x * turn.cosine + z * turn.sine;
-        const double qz = z * turn.cosine - x * turn.sine;
+        // Its density at least half the distance to its footprint less its half sides.
+        if (0.5 * (std::abs(x) + std::abs(z) - b.halfX - b.halfZ) > d) {
+            continue;
+        }
+        const double qx = x * b.turnX + z * b.turnZ;
+        const double qz = z * b.turnX - x * b.turnZ;
         const double top = b.top + b.tiltX * qx + b.tiltZ * qz;
         const double box = std::max({std::abs(qx) - b.halfX, std::abs(qz) - b.halfZ, y - top,
                                      kBlockFoot - y});
@@ -244,6 +244,11 @@ double blocksAt(const Shape& s, double dx, double dz, double y, double cell) {
 }
 
 } // namespace
+
+double taperOf(const Pillar& p, double y) {
+    const double t = std::clamp(y / p.height, 0.0, 1.0);
+    return 1.0 - p.taper * dmath::pow(t, p.power);
+}
 
 const Shape& shapeOf(const RockSpire& spire) {
     struct Last {
@@ -347,6 +352,26 @@ double topWithin(const Shape& s, double dx, double dz, double half, double cell)
         }
     }
     return top;
+}
+
+RockBands bandsAt(const Shape& s, double dx, double dz, double y) {
+    RockBands out;
+    if (s.bedCount > 0) {
+        const double* first = s.bedBottom.data();
+        const auto k = static_cast<std::size_t>(std::clamp<std::ptrdiff_t>(
+            std::upper_bound(first, first + s.bedCount, y) - first - 1, 0, s.bedCount - 1));
+        const double thick = s.bedBottom[k + 1] - s.bedBottom[k];
+        out.strata = static_cast<float>(static_cast<double>(k) + (y - s.bedBottom[k]) / thick);
+        out.layered = 1.0f;
+    }
+    const double r = dmath::hypot(dx, dz);
+    const double turns = r > 0.0 ? dmath::atan2(dz, dx) / (2.0 * kPi) : 0.0;
+    const double sea = s.apron > 0.0 ? 1.0 - apronAt(s, turns) / s.apron : 1.0;
+    if (sea > 0.5 && s.notchDepth >= static_cast<double>(kBandLeast)) {
+        out.notch = static_cast<float>(y - kNotchLow);
+        out.notchHeight = static_cast<float>(s.notchTop - kNotchLow);
+    }
+    return out;
 }
 
 } // namespace terrain::rock_spires

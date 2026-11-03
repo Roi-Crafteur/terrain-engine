@@ -97,10 +97,28 @@ namespace TerrainHorizonTextures
 		return Texture;
 	}
 
+	UTexture2D* CreateBands(int32 Side, int32 Level)
+	{
+		UTexture2D* Texture =
+			CreateTexture(Side, PF_A32B32G32R32F, TEXT("HorizonBands"), Level, TF_Nearest);
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		void* Texels = Mip.BulkData.Lock(LOCK_READ_WRITE);
+		FMemory::Memzero(Texels, static_cast<SIZE_T>(Side) * Side * BandTexelBytes);
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+		return Texture;
+	}
+
 	void UploadTexels(UTexture2D& Texture, terrain::unreal::TexelRegion& Region)
 	{
 		Upload(Texture, Region.x, Region.z, Region.width, Region.height, std::move(Region.data),
 			TexelBytes);
+	}
+
+	void UploadBands(UTexture2D& Texture, terrain::unreal::TexelRegion& Region)
+	{
+		Upload(Texture, Region.x, Region.z, Region.width, Region.height, std::move(Region.data),
+			BandTexelBytes);
 	}
 
 	void UploadWater(UTexture2D& Texture, terrain::unreal::WaterRegion& Region)
