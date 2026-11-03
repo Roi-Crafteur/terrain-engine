@@ -121,21 +121,21 @@ double seifLine(const Point& q, const dune_phase::Phase& line, double ends, doub
     if (!(fade > 0.0)) {
         return 0.0;
     }
-    const double top = std::min(tall, room);
+    const double crest = std::min(tall, room);
     // A sharp crest on a broad, gentle plinth: a ridge, not a line.
     const double plinth =
-        kPlinthHeight * top *
+        kPlinthHeight * crest *
         (1.0 - dune_forms::hermite(std::abs(offset) / (kPlinthWidth * spacing)));
     // The corridor between two chains sinks kDig of their height (at most kDigSpacing of their
     // spacing), from the middle of the plinth or the foot of their flanks (their slopes never
     // add) to the middle of the corridor, never steeper than kDigTan.
-    const double edge = std::max(kDigStart * kPlinthWidth * spacing, top / dune_forms::kGentleTan);
+    const double edge = std::max(kDigStart * kPlinthWidth * spacing, crest / dune_forms::kGentleTan);
     const double run = 0.5 * spacing - edge;
     const double dig =
-        run > 0.0 ? std::min({kDig * top, kDigSpacing * spacing, kDigTan * run / 1.5}) *
+        run > 0.0 ? std::min({kDig * crest, kDigSpacing * spacing, kDigTan * run / 1.5}) *
                         dune_forms::hermite((std::abs(offset) - edge) / run)
                   : 0.0;
-    return fade * (std::max(dune_forms::seif(offset, top, slip), plinth) - dig);
+    return fade * (std::max(dune_forms::seif(offset, crest, slip), plinth) - dig);
 }
 
 // The seifs: ridges along the wind, on a phase across it, sinuous; a second system of another
@@ -156,12 +156,17 @@ double seifAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase
     if (!(share > 0.0)) {
         return seifLine(q, dune_phase::phaseAt(m, s, p, first), ends, slip);
     }
-    const std::array<dune_phase::Phase, 2> lines =
-        dune_phase::phasesAt(m, s, p, first, seifKind(kBranchSpacing * kSeifSpacing, 5));
-    // The branches rise over the first system by their share (both dig corridors: a share of a
-    // corridor would lift it in a step where the share begins).
+    dune_phase::Kind branches = seifKind(kBranchSpacing * kSeifSpacing, 5);
+    branches.sinuous *= kBranchSinuous;
+    const std::array<dune_phase::Phase, 2> lines = dune_phase::phasesAt(m, s, p, first, branches);
+    // The branches rise over the first system by their share, joined smoothly (a plain maximum
+    // drew a straight fold along the wind where they meet: an edge of light and shade over
+    // kilometers). Wherever they stand (dune_waves::joined at the crest of its profile): gated
+    // near their crests, their flanks of 33 degrees would steepen past 40.
     const double main = seifLine(q, lines[0], ends, slip);
-    return main + share * std::max(0.0, seifLine(q, lines[1], ends, slip) - main);
+    const double branch = seifLine(q, lines[1], ends, slip);
+    return dune_waves::joined(main, branch, 1.0, share,
+                              kBranchSoft * std::max(q.height, heightOf(kSeifSand, q.amplitude)));
 }
 
 // How much the crests of ridges of a height break, [0, 1].

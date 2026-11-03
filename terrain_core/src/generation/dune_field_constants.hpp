@@ -46,6 +46,10 @@ constexpr double kBranchSpacing = 1.27;
 constexpr double kBranchShift = 3'333.0;
 constexpr float kBranchLow = -0.1f;
 constexpr float kBranchHigh = 0.25f;
+// The branches wander kBranchSinuous times as much as the seifs (straight along the wind over
+// kilometers, they read as lines) and join them over kBranchSoft of the height of the seifs.
+constexpr double kBranchSinuous = 1.8;
+constexpr double kBranchSoft = 0.05;
 // The stars on the chains: their lattice, their height over the chain (share of its height),
 // how many cells hold one, and how high on the chain their center must stand (within
 // kOnChainSoft).
