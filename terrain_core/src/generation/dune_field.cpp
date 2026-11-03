@@ -50,6 +50,24 @@ double layered(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phas
     return main + dune_layers::layer(m, s, p, medium, height, on);
 }
 
+// The middle of the barchan of a row (back: 0 this one, -1 and 1 those before and after it) over
+// q: where the phase of the ridges reaches the base of its crest and that of its cells their
+// middle, both taken as linear around q (their cells drift along the wind: from the wind alone,
+// the middle would slide along the barchan); from the wind where the phases run near parallel.
+std::array<double, 2> middleOf(const dune_phase::Phase& ridge, const dune_phase::Phase& across,
+                               int back, const Point& q) {
+    const double toRow = kCrestBase - ridge.fraction - back; // cycles of each phase to go
+    const double toMiddle = 0.5 - across.fraction;
+    const double det = ridge.gx * across.gz - ridge.gz * across.gx;
+    if (std::abs(det) > 0.5 * dmath::hypot(ridge.gx, ridge.gz) * dmath::hypot(across.gx, across.gz)) {
+        return {q.x + (toRow * across.gz - toMiddle * ridge.gz) / det,
+                q.z + (ridge.gx * toMiddle - across.gx * toRow) / det};
+    }
+    const double along = -toRow * ridge.wavelength;
+    const double lateral = -toMiddle * across.wavelength;
+    return {q.x - along * q.windX + lateral * q.windZ, q.z - along * q.windZ - lateral * q.windX};
+}
+
 // The barchans of the rows of the ridges, in the cells of a phase across the wind.
 double barchanAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
                  const dune_phase::Phase& ridge, const Point& q) {
@@ -60,13 +78,12 @@ double barchanAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_ph
     cells.drift = -1.3;
     const dune_phase::Phase across = dune_phase::phaseAt(m, s, p, cells);
     // Each barchan reads its noises at its own middle (estimated from the phases and the wind):
-    // its presence and height never change over it, which would steepen its faces.
+    // its presence, size and height never change over it, which would warp it.
     double best = 0.0;
     for (int back = -1; back <= 1; ++back) {
-        const double along = (ridge.fraction + back - kCrestBase) * ridge.wavelength;
-        const double lateral = (across.fraction - 0.5) * across.wavelength;
-        const double cx = q.x - along * q.windX + lateral * q.windZ;
-        const double cz = q.z - along * q.windZ - lateral * q.windX;
+        const std::array<double, 2> c = middleOf(ridge, across, back, q);
+        const double cx = c[0];
+        const double cz = c[1];
         dune_forms::Barchan b;
         b.t = ridge.fraction + back;
         b.wavelength = ridge.wavelength;
@@ -82,10 +99,19 @@ double barchanAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_ph
         b.presence = ramp(-kPresenceSoft, kPresenceSoft, kBarchanOccupancy * q.mask - draw) *
                      ramp(kCoherenceLow, kCoherenceHigh, across.coherence) *
                      (kScatterHeight + (1.0 - kScatterHeight) * (0.5 + scatter));
-        b.height = std::clamp(2.0 * q.height, kBarchanLeast, kBarchanMost);
+        // Each its own size, narrower and lower together (about ten times as wide as high), slid
+        // across its cell within the room that leaves: no lattice of equal crescents.
+        const double size = std::clamp(
+            kSizeMean + 0.5 * kSizeSpread * static_cast<double>(m.sizes.fbm2D(cx, cz)), kSizeLeast,
+            1.0);
+        const double slide = static_cast<double>(m.sizes.fbm2D(cx + kScatterShift, cz));
+        b.width = size;
+        b.across = across.fraction -
+                   kSlide * (0.5 - kBarchanHalfShare * size) * std::clamp(2.0 * slide, -1.0, 1.0);
+        b.height = size * std::clamp(2.0 * q.height, kBarchanLeast, kBarchanMost);
         // Their crests shifted along the rows by the same noise elsewhere: no rank of crescents.
-        b.crest = kCrestBase + kCrestRange * static_cast<double>(m.scatter.fbm2D(
-                                                 cx + kScatterShift, cz - kScatterShift));
+        b.crest = kCrestBase + kCrestRange * std::clamp(2.0 * static_cast<double>(m.sizes.fbm2D(
+                                                             cx - kScatterShift, cz)), -1.0, 1.0);
         best = std::max(best, dune_forms::barchan(b));
     }
     return best;
@@ -301,7 +327,6 @@ namespace {
 constexpr double kCoherentMean = 0.9;
 constexpr double kBarchanVolume = 6.82;
 constexpr double kBarchanTop = 0.75;   // the mean height of a barchan over its tallest
-constexpr double kBarchanHalfShare = 0.26; // dune_forms: their half width over their cell
 constexpr double kSeifEnds = 0.62; // the share their ends, defects and stars leave (measured)
 constexpr double kStarArms = 1.3;      // the volume of a star over that of its cone
 constexpr double kPi = 3.141592653589793;
@@ -333,7 +358,7 @@ Means meansOf(const ErgPoint& e, double height, double spacing) {
     const double there = std::clamp((kBarchanOccupancy * static_cast<double>(e.mask) - 0.5) /
                                         (2.0 * kScatterDraw * 0.25) + 0.5,
                                     0.0, 1.0);
-    out.barchan = there * kBarchanVolume * half * top * top / (cell * spacing);
+    out.barchan = there * kSizeVolume * kBarchanVolume * half * top * top / (cell * spacing);
     const double seifSpacing = kSeifSpacing * spacing;
     const double cot = 1.0 / dune_forms::kLeeTan + 1.0 / dune_forms::kGentleTan;
     const double seifTop =

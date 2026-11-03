@@ -91,6 +91,7 @@ enum Stream : std::uint64_t {
     kFoot,
     kClusters,
     kFloors,
+    kSizes,
 };
 
 noise::FbmOctaves octaves(std::uint64_t seed, Stream stream, int count, double wavelength,
@@ -146,6 +147,7 @@ Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
     m.side = octaves(m.seed, kSide, 2, 3'000.0, m.world);
     m.ends = octaves(m.seed, kEnds, 2, 7'000.0, m.world);
     m.scatter = octaves(m.seed, kScatter, 2, 1'200.0, m.world);
+    m.sizes = octaves(m.seed, kSizes, 1, 500.0, m.world);
     m.shore = octaves(m.seed, kShore, 2, kShoreWavelength, m.world);
     m.lakeShore = octaves(m.seed, kLakeShore, 2, kLakeWavelength, m.world);
     m.character = octaves(m.seed, kCharacter, 2, params.characterWavelength, m.world);

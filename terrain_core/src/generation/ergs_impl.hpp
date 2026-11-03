@@ -112,6 +112,7 @@ struct Ergs::Impl {
     noise::FbmOctaves side;
     noise::FbmOctaves ends;
     noise::FbmOctaves scatter; // the barchans, at their own scale: which are there, how tall
+    noise::FbmOctaves sizes;   // and at that of one barchan: its own size and place in its cell
     noise::FbmOctaves character; // the slow variation of the characters within an erg
     std::vector<float> waves;    // per block: the character of the nearest erg (erg_characters)
     std::vector<float> giants;

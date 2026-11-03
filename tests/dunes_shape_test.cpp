@@ -6,6 +6,8 @@
 #include "dunes_support.hpp"
 #include "test_assert.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -169,6 +171,45 @@ void testBarchans() {
     TEST_CHECK(highest >= 10.0 && highest <= 60.0);
 }
 
+// Barchans of every size, apart at uneven spacings, never a lattice of equal crescents (agent 34,
+// barchans at 1 km): over 6 km of a field of barchans alone, the crescents (ground over 3 m, apart), their
+// tallest spread (coefficient of variation) and the distances to their nearest neighbours.
+void testBarchanVariety() {
+    constexpr int kSide = 800;
+    constexpr double kStep = 7.5;
+    std::vector<double> tops;
+    std::vector<double> nearest;
+    // A barchan field of the planet of the game (its sand and the variability of its winds), where
+    // every cell holds one: there the crescents stood on a lattice, all alike.
+    for (const Site& s : {Site{12'395'500.0, -5'706'900.0}}) {
+        std::vector<double> h(static_cast<std::size_t>(kSide * kSide));
+        for (int j = 0; j < kSide; ++j) {
+            for (int i = 0; i < kSide; ++i) {
+                h[static_cast<std::size_t>(j * kSide + i)] = dunes_test::forcedDunes(
+                    real().ergs, s.x + kStep * i, s.z + kStep * j, 0.03f, 0.28f);
+            }
+        }
+        const std::vector<std::array<double, 3>> found = dunes_test::blobs(h, kSide, kStep, 3.0);
+        for (const auto& a : found) {
+            double best = 1.0e9;
+            for (const auto& b : found) {
+                if (&a != &b) {
+                    best = std::min(best, std::hypot(a[1] - b[1], a[2] - b[2]));
+                }
+            }
+            tops.push_back(a[0]);
+            nearest.push_back(best);
+        }
+    }
+    const double heights = dunes_test::variation(tops);
+    const double spacings = dunes_test::variation(nearest);
+    std::printf("barchans: %zu crescents, their tallest varies by %.2f, the distances to their "
+                "nearest by %.2f (coefficients of variation)\n",
+                tops.size(), heights, spacings);
+    TEST_CHECK(tops.size() >= 20);
+    TEST_CHECK(heights >= 0.32 && spacings >= 0.25);
+}
+
 // Seifs where the winds come from two sides: crests along the wind, 1 to 3.5 km apart across it.
 void testSeifs() {
     std::vector<double> all;
@@ -274,6 +315,7 @@ int main() {
     testChains();
     testCrestSegments();
     testBarchans();
+    testBarchanVariety();
     testSeifs();
     testStars();
     testBoundaries();

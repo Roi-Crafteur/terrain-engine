@@ -72,6 +72,15 @@ constexpr double kBarchanMost = 60.0;
 constexpr double kCrestBase = 0.55;
 constexpr double kCrestRange = 0.3;
 constexpr double kScatterShift = 7'777.0; // meters: an independent sample of the scatter noise
+// Each barchan its own size (a noise at the scale of one, Impl::sizes): from kSizeLeast of the
+// usual width and height to all of them, about kSizeMean on average; and its own place across its
+// cell, slid by up to kSlide of the room its width leaves there.
+constexpr double kBarchanHalfShare = 0.26; // dune_forms: their half width over their cell
+constexpr double kSizeLeast = 0.3;
+constexpr double kSizeSpread = 1.4; // the size: kSizeMean + this times half the noise, clamped
+constexpr double kSizeMean = 0.7;
+constexpr double kSizeVolume = 0.414; // the mean of the cube of the size (width times height^2)
+constexpr double kSlide = 0.8;
 // Stars: their lattice, their height (the tallest dunes: at least kStarLeast) and their
 // occupancy.
 constexpr double kStarCell = 2048.0;

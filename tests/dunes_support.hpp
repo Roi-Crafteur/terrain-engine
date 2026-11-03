@@ -148,4 +148,59 @@ inline double quantile(std::vector<double> v, double q) {
     return v[std::min(k, v.size() - 1)];
 }
 
+// The blobs of a square grid of side samples step meters apart where it rises over floor meters,
+// those clear of its edges: {their highest, its x, its z} (meters from the first sample).
+inline std::vector<std::array<double, 3>> blobs(const std::vector<double>& h, int side, double step,
+                                                double floor) {
+    std::vector<std::array<double, 3>> out;
+    std::vector<char> seen(h.size(), 0);
+    for (std::size_t start = 0; start < h.size(); ++start) {
+        if (seen[start] != 0 || h[start] <= floor) {
+            continue;
+        }
+        std::array<double, 3> top{0.0, 0.0, 0.0};
+        bool edge = false;
+        std::vector<std::size_t> todo{start};
+        seen[start] = 1;
+        while (!todo.empty()) {
+            const std::size_t p = todo.back();
+            todo.pop_back();
+            const int i = static_cast<int>(p) % side;
+            const int j = static_cast<int>(p) / side;
+            edge = edge || i == 0 || j == 0 || i == side - 1 || j == side - 1;
+            if (h[p] > top[0]) {
+                top = {h[p], step * i, step * j};
+            }
+            for (const int d : {-1, 1, -side, side}) {
+                const long q = static_cast<long>(p) + d;
+                if (q >= 0 && q < static_cast<long>(h.size()) && seen[static_cast<std::size_t>(q)] == 0 &&
+                    h[static_cast<std::size_t>(q)] > floor) {
+                    seen[static_cast<std::size_t>(q)] = 1;
+                    todo.push_back(static_cast<std::size_t>(q));
+                }
+            }
+        }
+        if (!edge) {
+            out.push_back(top);
+        }
+    }
+    return out;
+}
+
+// The coefficient of variation of values (their deviation over their mean), 0 for none.
+inline double variation(const std::vector<double>& v) {
+    if (v.empty()) {
+        return 0.0;
+    }
+    double mean = 0.0;
+    for (const double x : v) {
+        mean += x / static_cast<double>(v.size());
+    }
+    double var = 0.0;
+    for (const double x : v) {
+        var += (x - mean) * (x - mean) / static_cast<double>(v.size());
+    }
+    return mean > 0.0 ? std::sqrt(var) / mean : 0.0;
+}
+
 } // namespace dunes_test
