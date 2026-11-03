@@ -153,10 +153,12 @@ public:
     // relief (Heightfield::depressions). The planet level must outlive the ergs (they read its
     // humidity). Throws std::invalid_argument for an empty planet grid.
     // floor: the distance to the floor of the valleys of the rivers (Hydrology::floorDistance:
-    // x, z, limit), or empty to read the polyline of the river cells instead.
+    // x, z, limit), or empty to read the polyline of the river cells instead. nearCells: the
+    // floors lie near the polyline of the river cells (the courses of the hydrology, of the same
+    // discharges): sought only within three times corridorClear of it, the rest far from any.
     using RiverFloor = std::function<double(double, double, double)>;
     Ergs(std::uint64_t seed, const PlanetLevel& planet, const std::vector<Depression>& depressions,
-         const ErgParams& params = {}, RiverFloor floor = {});
+         const ErgParams& params = {}, RiverFloor floor = {}, bool nearCells = false);
     ~Ergs();
     Ergs(const Ergs&) = delete;
     Ergs& operator=(const Ergs&) = delete;

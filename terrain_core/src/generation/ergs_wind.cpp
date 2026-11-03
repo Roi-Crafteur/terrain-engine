@@ -50,7 +50,8 @@ std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z) {
     const double polars = bandAngle(-1.0, m.climate.polarMeridional, poleward);
     const double angle = trades + shorter(westerlies - trades) * westerly +
                          shorter(polars - westerlies) * polar +
-                         kTurnDegrees / 360.0 * static_cast<double>(m.turn.fbm2D(x, z));
+                         kTurnDegrees / 360.0 *
+                             static_cast<double>(m.turn.fbm2D(x, z, memosOf(m).wind));
     const dmath::SineCosine d = dmath::sinCosTurns(angle);
     return {d.cosine, d.sine};
 }

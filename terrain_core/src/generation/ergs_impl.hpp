@@ -93,6 +93,7 @@ struct Ergs::Impl {
     std::vector<Depression> depressions;
     std::vector<std::uint8_t> nearDepression; // per block of the field: one may reach it
     Ergs::RiverFloor riverFloor; // or empty
+    bool floorNearCells = false; // its floors near the polyline of the river cells (Ergs)
     double degree = 0.0; // meters of one degree of latitude
     // The mask: the warp of the field, the fraying of its edges, the sand, the variability and the
     // turn of the wind.
@@ -145,6 +146,10 @@ struct ErgMemos {
     noise::FbmOctaves::Memo waveEnds;
     noise::FbmOctaves::Memo lakeShore;
     noise::FbmOctaves::Memo foot;
+    noise::FbmOctaves::Memo wind; // the turn noise of the wind (windOf)
+    // The crescents laid on the dunes (dune_layers) read the barchan noise at their middle: by
+    // layer (its salt), crescent of the three met (back) and noise read (two per crescent).
+    std::array<noise::FbmOctaves::Memo, 24> crescents;
     // The stars on the chains read at their center (dune_field): the last ones met, by center.
     struct Star {
         double cx = std::numeric_limits<double>::quiet_NaN();

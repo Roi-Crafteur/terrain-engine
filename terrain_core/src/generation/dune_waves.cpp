@@ -128,6 +128,11 @@ dune_phase::Kind kindOf(bool giant) {
     return k;
 }
 
+// How much of the second system rises where its profile is top of its height (joined).
+double joinNear(double top) {
+    return ramp(static_cast<float>(kJoinTopLow), static_cast<float>(kJoinTopHigh), top);
+}
+
 } // namespace
 
 double profile(double t, double wavelength, double height, double backTan) {
@@ -179,7 +184,7 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
 }
 
 double joined(double main, double join, double top, double share, double soft) {
-    const double near = ramp(static_cast<float>(kJoinTopLow), static_cast<float>(kJoinTopHigh), top);
+    const double near = joinNear(top);
     if (!(near > 0.0) || !(share > 0.0)) {
         return main;
     }
@@ -216,6 +221,9 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
         Shape shape = shapeOf(ph.fraction, wavelength, full, backTanOf(giant), kDig);
         if (top != nullptr) {
             *top = full > 0.0 ? shape.height / full : 0.0;
+            if (!(joinNear(*top) > 0.0)) {
+                return 0.0; // the second system rises nowhere here (joined): no layers to lay
+            }
         }
         shape.height *= fade;
         shape.slope *= fade;

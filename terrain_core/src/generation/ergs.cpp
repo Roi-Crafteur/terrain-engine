@@ -104,7 +104,8 @@ static void markDepressions(Ergs::Impl& m);
 static void assignCharacters(Ergs::Impl& m);
 
 Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
-           const std::vector<Depression>& depressions, const ErgParams& params, RiverFloor floor)
+           const std::vector<Depression>& depressions, const ErgParams& params, RiverFloor floor,
+           bool nearCells)
     : impl_(std::make_unique<Impl>()) {
     if (planet.grid().cells() == 0) {
         throw std::invalid_argument("Ergs: empty planet grid");
@@ -120,6 +121,7 @@ Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
     m.depressions = depressions;
     m.planet = &planet;
     m.riverFloor = std::move(floor);
+    m.floorNearCells = nearCells;
     const double warpReach = params.warpDegrees * m.degree;
     m.field = erg_field::build(planet, params, warpReach);
     markDepressions(m);
@@ -255,9 +257,16 @@ static double waterShare(const Ergs::Impl& m, double x, double z, double tallest
     p.lakeFade = std::max(p.lakeFade, kFadePerMeter * tallest);
     const double riverFar = p.corridorClear + p.riverFade;
     const double lakeFar = p.lakeClear + p.lakeFade;
+    // The floors of the valleys: near the polyline of their cells (a course strays from it by
+    // kStray at most, its floor is narrower than the rest of corridorClear; the outlets of the
+    // lakes stray farther): within three times corridorClear, measured: on 249,318 points over
+    // the ergs of the default world, the same bits as the floor sought everywhere (12 differ with
+    // corridorClear alone, none with twice it).
+    const double floorFar = p.riverClear + p.riverFade + kShoreWander;
+    const double floorNear = floorFar + 3.0 * p.corridorClear;
     ErgMemos& memo = memosOf(m);
-    const erg_field::WaterDistance d =
-        erg_field::waterDistance(m.field, x, z, std::max(riverFar, lakeFar + kLakeWander));
+    const erg_field::WaterDistance d = erg_field::waterDistance(
+        m.field, x, z, std::max({riverFar, lakeFar + kLakeWander, floorNear}));
     double share = 1.0;
     if (d.lake < lakeFar + kLakeWander) {
         share = hermite(p.lakeClear, lakeFar,
@@ -269,8 +278,10 @@ static double waterShare(const Ergs::Impl& m, double x, double z, double tallest
     if (m.riverFloor) {
         // The floor of the valleys itself, wherever it lies (never a band around the polyline of
         // the cells: a wide floor reaches past it, and the band would cut the erg along a line).
-        const double far = p.riverClear + p.riverFade + kShoreWander;
-        const double floor = m.riverFloor(x, z, far);
+        // Sought only near the polyline of the cells (floorNear): beyond, none is that near.
+        const double far = floorFar;
+        const double floor =
+            !m.floorNearCells || d.river < floorNear ? m.riverFloor(x, z, far) : far;
         if (floor < far) {
             share *= hermite(p.riverClear, p.riverClear + p.riverFade,
                              floor - wanderOf(m.shore, memo.shore, x, z, kShoreWander));

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 
 namespace terrain::dune_layers {
 
@@ -69,13 +70,17 @@ double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase:
     const double wz = wind[0] * turn.sine + wind[1] * turn.cosine;
     const double shift = kShift * static_cast<double>(l.salt);
     double best = 0.0;
+    ErgMemos& memos = memosOf(m);
+    const auto memo = static_cast<std::size_t>(((l.salt / 4) % 4) * 6);
     for (int back = -1; back <= 1; ++back) {
         const double along = (rows.fraction + back - 0.6) * rows.wavelength;
         const double lateral = (cells.fraction - 0.5) * cells.wavelength;
         const double cx = s.x[0] - along * wx + lateral * wz + shift;
         const double cz = s.z[0] - along * wz - lateral * wx - shift;
-        const double n = static_cast<double>(m.scatter.fbm2D(cx, cz));
-        const double o = static_cast<double>(m.scatter.fbm2D(cx + shift, cz + shift));
+        const auto at = memo + static_cast<std::size_t>(2 * (back + 1));
+        const double n = static_cast<double>(m.scatter.fbm2D(cx, cz, memos.crescents[at]));
+        const double o =
+            static_cast<double>(m.scatter.fbm2D(cx + shift, cz + shift, memos.crescents[at + 1]));
         dune_forms::Barchan b;
         b.t = rows.fraction + back;
         b.wavelength = rows.wavelength;
