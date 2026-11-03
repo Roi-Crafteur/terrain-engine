@@ -18,7 +18,10 @@
 // - The beds of the stacks at 200 m (the views of the stacks: their LOD 2 tiles), under a sun
 //   kSunHigh degrees high: their light, row by row over the middle of the stack, shows kBands
 //   dark lines at least (each kLineDepth under the light around it), and changes kLayering times
-//   more up the stack than across it (horizontal beds, not vertical streaks).
+//   more up the stack than across it (horizontal beds, not vertical streaks); the normals of its
+//   pixels kSoft degrees off those of its faces at most on average (softnessOf: the vertices of a
+//   spire lit by the gradient of the spire itself, RockTile::spireGradient; 6.8 to 17.1 degrees
+//   with the gradients of the lattice smoothed over a cell or two, its edges soft, 3.8 to 11.3).
 #include "coast_band_support.hpp"
 #include "coast_image_support.hpp"
 #include "coast_planet_support.hpp"
@@ -35,6 +38,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <numbers>
 #include <vector>
 
 namespace {
@@ -55,6 +59,10 @@ constexpr double kSunHigh = 8.0;
 constexpr int kBands = 4;
 constexpr double kLineDepth = 0.03;
 constexpr double kLayering = 1.3;
+constexpr double kSoft = 12.0;
+constexpr double kOnFace = 1.0;
+constexpr double kOnFoot = 6.0;
+constexpr double kAcross = 0.05;
 
 void testAlone() {
     terrain::RockColumn c;
@@ -337,6 +345,42 @@ std::array<double, 2> layersOf(const coast_bands::TileImage& img, const std::vec
     return {static_cast<double>(lines), across > 0.0 ? up / across : 0.0};
 }
 
+// How far the normals of its pixels turn from those of its faces around it, degrees (the mean of
+// the angles of their horizontal parts, on its rock within kOnFace meters of its surface): the
+// normals of the faces of the stack at the pixel (its spire alone, by differences kAcross meters
+// apart across and a cell up, over the steps of its beds), those the tiles draw interpolated from
+// their vertices (melted over a cell or two on either side of its edges, its edges soft).
+double softnessOf(const coast_bands::TileImage& img, const StackView& v, double cell) {
+    const terrain::RockColumn c = coast_planet::field().rockAt(v.x, v.z);
+    if (!(c.spire.radius > 0.0f)) {
+        return 180.0;
+    }
+    const double ax = v.x - static_cast<double>(c.spire.dx);
+    const double az = v.z - static_cast<double>(c.spire.dz);
+    const terrain::RockDetail detail{static_cast<float>(cell)};
+    const auto density = [&](double x, double y, double z) {
+        return static_cast<double>(terrain::spireDensity(c.spire, x - ax, z - az, y, detail));
+    };
+    double sum = 0.0;
+    int n = 0;
+    for (std::size_t at = 0; at < img.lit.size(); ++at) {
+        const V3& q = img.point[at];
+        if (img.lit[at] < 0.0 || q.y < kOnFoot || std::abs(density(q.x, q.y, q.z)) > kOnFace) {
+            continue;
+        }
+        const double gx = density(q.x + kAcross, q.y, q.z) - density(q.x - kAcross, q.y, q.z);
+        const double gz = density(q.x, q.y, q.z + kAcross) - density(q.x, q.y, q.z - kAcross);
+        const V3& m = img.normal[at];
+        if (std::hypot(gx, gz) < 1e-9 || std::hypot(m.x, m.z) < 0.3) {
+            continue; // its top, its ledges
+        }
+        const double turn = std::atan2(gx * m.z - gz * m.x, gx * m.x + gz * m.z);
+        sum += std::abs(turn) * 180.0 / std::numbers::pi;
+        ++n;
+    }
+    return n > 0 ? sum / n : 180.0;
+}
+
 void testStacks() {
     for (const StackView& v : kViews) {
         const std::vector<terrain::TileData> tiles = tilesAround(v.x, v.z, 2, 70.0);
@@ -344,11 +388,12 @@ void testStacks() {
             coast_bands::renderTiles(tiles, v.eye, coast_image::sunOf(v.eye, 60.0, kSunHigh));
         const std::array<double, 2> with = layersOf(img, img.luminance(true), v);
         const std::array<double, 2> without = layersOf(img, img.luminance(false), v);
+        const double soft = softnessOf(img, v, terrain::tileCellMeters(2));
         std::printf("%s at 200 m (LOD 2), a sun %.0f degrees high: %.0f dark lines, its light "
                     "changing %.2f times more up it than across it (without the bands: %.0f, "
-                    "%.2f)\n",
-                    v.name, kSunHigh, with[0], with[1], without[0], without[1]);
-        TEST_CHECK(with[0] >= kBands && with[1] >= kLayering);
+                    "%.2f); its normals %.1f degrees off its faces\n",
+                    v.name, kSunHigh, with[0], with[1], without[0], without[1], soft);
+        TEST_CHECK(with[0] >= kBands && with[1] >= kLayering && soft <= kSoft);
     }
 }
 

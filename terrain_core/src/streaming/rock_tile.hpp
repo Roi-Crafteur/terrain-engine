@@ -78,6 +78,12 @@ public:
     [[nodiscard]] std::vector<RockBands> vertexBands(const Mesh& mesh, double originY) const;
 
 private:
+    // The normal of a vertex v (grid units, its level at originY) on the spire of its column: the
+    // gradient of the spire itself there, its faces lit as the planes they are up to the
+    // triangles over their edges (the gradients of the lattice, smoothed over a cell or two on
+    // either side, melted the edges of a stack into its faces at LOD 1 to 3: the check in Unreal of
+    // 276e6ce). g unchanged elsewhere.
+    void spireGradient(const Vec3f& v, int originY, Vec3f& g) const;
     [[nodiscard]] const RockColumn& rockAt(int i, int k) const;
     [[nodiscard]] bool hasRing() const { return !columns_->ring.empty(); }
     // The column (i, k), i or k one step beyond the tile on the ring; its ground.

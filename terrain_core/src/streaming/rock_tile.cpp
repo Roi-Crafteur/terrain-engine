@@ -16,6 +16,12 @@ constexpr int kLast = kGridSamples - 1;
 // the coarser one's over kSeamBlend cells: the faces the coarser tile does not draw fade out, not
 // cut short at the side (over half as many cells, such a face ends there in a narrow dark flank).
 constexpr double kSeamBlend = 8.0;
+// The vertices of a spire kSpireClear cells over the relief of its column take the gradient of
+// the spire itself (spireGradient), by differences kSpireStep cells apart across (its edges sharp)
+// and kSpireRise cells up (over the steps of its beds, which the cells draw no finer).
+constexpr double kSpireClear = 0.5;
+constexpr double kSpireStep = 0.25;
+constexpr double kSpireRise = 1.0;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -273,11 +279,38 @@ void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) con
             const Vec3f h = smoothed(high[0], high[1], high[2]);
             g = {g.x + t * (h.x - g.x), g.y + t * (h.y - g.y), g.z + t * (h.z - g.z)};
         }
+        spireGradient(v, originY, g);
         const float length = std::sqrt(g.x * g.x + g.y * g.y + g.z * g.z);
         if (length > 1e-12f) {
             level.normals[n] = {g.x / length, g.y / length, g.z / length};
         }
     }
+}
+
+void RockTile::spireGradient(const Vec3f& v, int originY, Vec3f& g) const {
+    const double spacing = lattice_.spacing;
+    const auto i = std::clamp(static_cast<int>(std::lround(v.x)), 0, kLast);
+    const auto k = std::clamp(static_cast<int>(std::lround(v.z)), 0, kLast);
+    const RockColumn& c = rockAt(i, k);
+    if (!(c.spire.radius > 0.0f)) {
+        return;
+    }
+    const double dx = static_cast<double>(c.spire.dx) + (static_cast<double>(v.x) - i) * spacing;
+    const double dz = static_cast<double>(c.spire.dz) + (static_cast<double>(v.z) - k) * spacing;
+    const double y = originY + static_cast<double>(v.y) * spacing;
+    // On the spire only, clear of the relief at its foot.
+    if (!(y - static_cast<double>(c.ground) > kSpireClear * spacing)) {
+        return;
+    }
+    const double h = kSpireStep * spacing;
+    const double rise = kSpireRise * spacing;
+    const auto at = [&](double ox, double oy, double oz) {
+        return static_cast<double>(spireDensity(c.spire, dx + ox, dz + oz, y + oy, fine_));
+    };
+    // In grid units, as the gradients of the lattice (their length does not matter).
+    g = {static_cast<float>((at(h, 0.0, 0.0) - at(-h, 0.0, 0.0)) * spacing / (2.0 * h)),
+         static_cast<float>((at(0.0, rise, 0.0) - at(0.0, -rise, 0.0)) * spacing / (2.0 * rise)),
+         static_cast<float>((at(0.0, 0.0, h) - at(0.0, 0.0, -h)) * spacing / (2.0 * h))};
 }
 
 std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const {
