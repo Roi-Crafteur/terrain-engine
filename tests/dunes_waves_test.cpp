@@ -211,10 +211,12 @@ bool giantSite(double& x0, double& z0) {
 }
 
 // The far horizon over the giant waves: the same bits as a point (the tiles) at a pitch of 8 m (no
-// seam where the tiles meet its first level); up to 512 m, the point but the chutes of the slip
+// seam where the tiles meet its first level); up to 48 m, the point but the chutes of the slip
 // faces (faded out from 8 to 16 m since the ninth stop: a coarser grid drew them as a
-// checkerboard), never more than their depth from it (the crests whole on its near levels);
-// beyond, their mean, which a sample half a pitch away barely changes (no flicker).
+// checkerboard), never more than their depth from it; up to 512 m, the point but the chutes and
+// the crescents (faded out from a fifth to a third of their spacing since the tenth stop: 63 m for
+// the smallest), never more than the tallest of them from it (the giant waves whole on its near
+// levels); beyond, their mean, which a sample half a pitch away barely changes (no flicker).
 void testHorizon() {
     double x0 = 0.0;
     double z0 = 0.0;
@@ -222,7 +224,8 @@ void testHorizon() {
     terrain::HeightSample s;
     std::size_t same = 0;
     std::size_t count = 0;
-    double chutes = 0.0; // the most a sample of 64 to 512 m moves from the point
+    double chutes = 0.0;    // the most a sample of 16 to 48 m moves from the point
+    double crescents = 0.0; // of 64 to 512 m
     double flicker = 0.0;
     double range = 0.0;
     for (int k = 0; k < 400; ++k) {
@@ -231,9 +234,13 @@ void testHorizon() {
         const float point = real().ergs.dunesAt(x, z, s);
         ++count;
         same += real().ergs.dunesAt(x, z, s, 8.0) == point ? 1 : 0;
-        for (const double pitch : {64.0, 256.0, 512.0}) {
+        for (const double pitch : {16.0, 32.0, 48.0}) {
             chutes = std::max(chutes, std::abs(static_cast<double>(
                                           real().ergs.dunesAt(x, z, s, pitch) - point)));
+        }
+        for (const double pitch : {64.0, 256.0, 512.0}) {
+            crescents = std::max(crescents, std::abs(static_cast<double>(
+                                                real().ergs.dunesAt(x, z, s, pitch) - point)));
         }
         const double pitch = 4096.0;
         const double a = static_cast<double>(real().ergs.dunesAt(x, z, s, pitch));
@@ -242,11 +249,12 @@ void testHorizon() {
         range = std::max(range, static_cast<double>(point));
     }
     std::printf("horizon over the giant waves: %zu of %zu samples of 8 m the same bits as the "
-                "points, from 64 to 512 m %.2f m from them at most; at 4096 m, half a pitch moves "
-                "them by %.1f m at most (crests up to %.0f m)\n",
-                same, count, chutes, flicker, range);
+                "points, from 16 to 48 m %.2f m from them at most, from 64 to 512 m %.2f m; at "
+                "4096 m, half a pitch moves them by %.1f m at most (crests up to %.0f m)\n",
+                same, count, chutes, crescents, flicker, range);
     TEST_CHECK(same == count);
-    TEST_CHECK(chutes <= 5.0); // kChuteDepth
+    TEST_CHECK(chutes <= 5.0);       // the deepest chute: kChuteSlope of its widest, 3 m
+    TEST_CHECK(crescents <= 135.0); // the tallest crescent: 40 m and 0.12 of 760
     TEST_CHECK(flicker <= 0.1 * range);
 }
 

@@ -23,6 +23,9 @@ constexpr double kBarchanAspect = 4.5;
 constexpr double kHorn = 0.9;
 constexpr double kBarchanBack = 9.0;
 constexpr double kBarchanLee = 0.6; // tan 31 degrees
+// The gentlest its slip face may fall (barchan: its crest across it, r, under 2 / kBarchanAspect;
+// lee^2 (1 + bend^2) >= kBarchanLee^2 - r^2 with bend under 2 kHorn): 0.2 and a margin.
+constexpr double kBarchanLeast = 0.15;
 constexpr double kPresenceSoft = 0.12;
 // Stars: their peak within kStarJitter of the center of their cell, kStarLow to kStarLow +
 // kStarSpread of the height (at most kStarMost meters), 2 to 6 arms at uneven angles (kArmTurn of
@@ -134,6 +137,52 @@ double barchan(const Barchan& b) {
         best = std::max(best, h);
     }
     return best * b.presence;
+}
+
+bool barchanMayStand(const Barchan& b, double crestLow, double crestHigh) {
+    if (!(b.presence > 0.0) || !(b.height > 0.0) || !(b.width > 0.0)) {
+        return false;
+    }
+    const double half = kBarchanHalf * b.cell * std::min(b.width, 1.9);
+    const double lateral = (b.across - 0.5) * b.cell / half;
+    if (!(std::abs(lateral) < 1.0)) {
+        return false;
+    }
+    // Its slip face falls at lee >= kBarchanLeast (the crest across it under kBarchanLee: r <
+    // 2 / kBarchanAspect), its back kBarchanBack times its height long.
+    const double top = std::min(b.height, half / kBarchanAspect);
+    const double bend = kHorn * half * lateral * lateral;
+    const int rows = b.single ? 0 : 1;
+    for (int back = -rows; back <= rows; ++back) {
+        const double at = (b.t + back) * b.wavelength - bend;
+        if (at - b.wavelength * crestLow > -kBarchanBack * top &&
+            at - b.wavelength * crestHigh < top / kBarchanLeast) {
+            return true;
+        }
+    }
+    return false;
+}
+
+double barchanWidthWithin(const Barchan& b, double from, double ahead, double behind,
+                          double cosine, double sine) {
+    const double c = std::max(cosine, 1.0e-6);
+    const double crest = (b.wavelength * b.crest - from) * c;
+    // Downwind: the tips of the horns, kHorn times the half width downwind of the crest and the
+    // half width across (the slip face reaches less far: under half / kBarchanAspect /
+    // kBarchanLee; the points of the crest between, less far too).
+    const double down = (ahead - crest) / (kHorn * c + std::abs(sine));
+    // Upwind: the back, kBarchanBack times its height behind the crest, and where the crest bends
+    // toward the horns, sine^2 / (4 kHorn cosine) of the half width farther across the turn.
+    const double avail = behind + crest;
+    const double bend = sine * sine / (4.0 * kHorn * c);
+    const double asWide = avail / (kBarchanBack / kBarchanAspect * c + bend); // top: half / aspect
+    double up = asWide;
+    if (asWide > kBarchanAspect * b.height) { // top: its height
+        const double rest = avail - kBarchanBack * b.height * c;
+        up = bend > 0.0 ? rest / bend : (rest >= 0.0 ? 1.0e30 : 0.0);
+        up = std::max(up, kBarchanAspect * b.height);
+    }
+    return std::max(0.0, std::min(down, up) / (kBarchanHalf * b.cell));
 }
 
 double rounded(double c, double slope) {

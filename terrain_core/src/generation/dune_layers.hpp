@@ -30,4 +30,22 @@ struct Layer {
                            const dune_phase::Pivots& p, const Layer& l, double height,
                            double share, double cover = -1.0);
 
+// The form below as each crescent reads it at its middle, dx, dz meters from the point: its share
+// and its cover there (as above), the same over the whole crescent (read at the point, they
+// changed within it, and so did its height and its width: its flanks stood at up to 46 degrees on
+// the backs of the giant waves, f9c3391), and the room downwind of it before the form below falls
+// away (ahead: to its next crest, where its slip face starts) and upwind (behind: to the foot of
+// its last slip face): the crescent narrowed to stand within it (its horns reaching over the
+// brink of a giant wave stood at 46 degrees on its face; within it, none on its slip faces).
+// shareByCover: the share times the cover.
+struct Host {
+    const void* context = nullptr;
+    void (*at)(const void* context, double dx, double dz, double& share, double& cover,
+               double& ahead, double& behind) = nullptr;
+    bool shareByCover = false;
+};
+[[nodiscard]] double layer(const Ergs::Impl& m, const dune_phase::Shared& s,
+                           const dune_phase::Pivots& p, const Layer& l, double height,
+                           const Host& host);
+
 } // namespace terrain::dune_layers

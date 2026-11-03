@@ -50,6 +50,16 @@ struct Barchan {
     double width = 1.0; // times the usual width (at most 1.9: apart from the next cells)
 };
 [[nodiscard]] double barchan(const Barchan& b);
+// Whether b may stand over its point (barchan(b) not 0) with its crest anywhere from crestLow to
+// crestHigh of its row and its width up to b.width: false only where it may not (its noises then
+// need not be read).
+[[nodiscard]] bool barchanMayStand(const Barchan& b, double crestLow, double crestHigh);
+// The widest b may be (Barchan::width) to stand no farther than ahead meters downwind and behind
+// meters upwind of the point of its axis from meters downwind of the start of its row (t = 0),
+// along a direction turned from its row by an angle of that cosine and sine (downwind its horns
+// and its flanks, upwind its back), 0 if none fits.
+[[nodiscard]] double barchanWidthWithin(const Barchan& b, double from, double ahead, double behind,
+                                        double cosine, double sine);
 
 // A longitudinal ridge (seif) at offset meters across its crest line (negative on its left), of
 // a height: one flank at kLeeTan, the other at kGentleTan, swapped by slip in [0, 1] (0: the slip

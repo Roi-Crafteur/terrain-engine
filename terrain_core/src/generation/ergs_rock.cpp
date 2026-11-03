@@ -46,8 +46,8 @@ double hermite(double edge0, double edge1, double v) {
 }
 
 // The sand of the ergs buries the local relief of the geography (its hills, buttes and plains:
-// HeightSample::base over regional): the surface of the dunes rides on the regional ground, a
-// hollow keeps kHollowKept of what it sinks under it past kBuryMost; the rock of a butte
+// HeightSample::base and detail over regional): the surface of the dunes rides on the regional
+// ground, a hollow keeps kHollowKept of what it sinks under it past kBuryMost; the rock of a butte
 // (lowered by kBuryMost, deep under the plains) stands out of the sand where it rises over it
 // (its slopes never add to those of the dunes). Faded with the mask over its first kBuryFade:
 // none at the edges of the erg. sand: the share of the surface the sand covers (cover(): the
@@ -55,7 +55,10 @@ double hermite(double edge0, double edge1, double v) {
 template <typename Cover>
 float buried(const HeightSample& s, const ErgPoint& e, double dunes, const Cover& cover,
              float* sand) {
-    const double local = static_cast<double>(s.base) - static_cast<double>(s.regional);
+    // With its fine detail (a few meters of noise: on the slip faces of the dunes it added 3
+    // degrees, f9c3391).
+    const double local = static_cast<double>(s.base) + static_cast<double>(s.detail) -
+                         static_cast<double>(s.regional);
     if (local == 0.0) {
         return static_cast<float>(dunes);
     }

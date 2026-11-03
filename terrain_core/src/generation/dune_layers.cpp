@@ -41,6 +41,9 @@ constexpr double kOccupancy = 0.35;
 constexpr double kGroupOccupancy = 0.45;
 constexpr double kPresenceSoft = 0.3;
 constexpr double kSmallest = 0.15;
+// Where its crest lies along its row: kCrestLow to kCrestLow + kCrestRange of it.
+constexpr double kCrestLow = 0.45;
+constexpr double kCrestRange = 0.3;
 constexpr double kSizePower = 2.5;
 constexpr double kWidest = 1.85;
 
@@ -49,22 +52,115 @@ double ramp(double e0, double e1, double v) {
     return t * t * (3.0 - 2.0 * t);
 }
 
-} // namespace
+// Where the crescents lie (share) and how much the form below wants them (cover), with the
+// groups and the voids (group: that of the clusters noise, raised to the cover).
+struct Lie {
+    double share = 0.0;
+    double group = 0.0;
+    double cover = -1.0;
+};
 
-double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
-             const Layer& l, double height, double share, double cover) {
-    if (!(share > 0.0)) {
-        return 0.0;
-    }
-    ErgMemos& memos = memosOf(m);
-    double group = ramp(kVoidLow, kVoidHigh,
-                        static_cast<double>(m.clusters.fbm2D(s.x[0], s.z[0], memos.clusters)));
+Lie lieOf(double share, double cover, double groups) {
+    Lie out;
+    out.group = groups;
+    out.cover = cover;
     if (cover >= 0.0) {
-        group = std::max(group, cover);
+        out.group = std::max(out.group, cover);
         share *= kCorridorShare + (1.0 - kCorridorShare) * cover;
     }
-    share *= group;
-    if (!(share > 0.0)) {
+    out.share = share * out.group;
+    return out;
+}
+
+// The layer, its crescents lying by point (the same at the point for all of them), else by the
+// host at their middles.
+// A layer at the point: its rows and cells, the frame of its crescents (its wind turned, wx, wz),
+// how tall they may be, where they lie at the point (here: all of them, or by the host).
+struct Frame {
+    dune_phase::Phase rows;
+    dune_phase::Phase cells;
+    double rowsCoherent = 0.0; // their fades around the defects of their phases
+    double cellsCoherent = 0.0;
+    double tall = 0.0;
+    double wx = 1.0;
+    double wz = 0.0;
+    dmath::SineCosine turn;
+    double groups = 0.0;
+    Lie here;
+};
+
+// The crescent of the row back (-1, 0, 1) of the frame at the point.
+double crescentOf(const Ergs::Impl& m, const dune_phase::Shared& s, const Layer& l, const Frame& f,
+                  int back, const Host* host) {
+    dune_forms::Barchan b;
+    b.t = f.rows.fraction + back;
+    b.wavelength = f.rows.wavelength;
+    b.across = f.cells.fraction;
+    b.cell = f.cells.wavelength;
+    b.single = true;
+    b.height = f.tall;
+    // Whether the crescent of this row may stand here at all, as wide as any (its noises read
+    // only then).
+    b.presence = 1.0;
+    b.width = kWidest;
+    if (!dune_forms::barchanMayStand(b, kCrestLow, kCrestLow + kCrestRange)) {
+        return 0.0;
+    }
+    const double along = (f.rows.fraction + back - 0.6) * f.rows.wavelength;
+    const double lateral = (f.cells.fraction - 0.5) * f.cells.wavelength;
+    Lie lie = f.here;
+    double ahead = -1.0;
+    double behind = -1.0;
+    if (host != nullptr) {
+        double share = 0.0;
+        double cover = 0.0;
+        host->at(host->context, -along * f.wx + lateral * f.wz, -along * f.wz - lateral * f.wx,
+                 share, cover, ahead, behind);
+        lie = lieOf(host->shareByCover ? share * cover : share, cover, f.groups);
+        if (!(lie.share > 0.0)) {
+            return 0.0;
+        }
+    }
+    const double shift = kShift * static_cast<double>(l.salt);
+    const double cx = s.x[0] - along * f.wx + lateral * f.wz + shift;
+    const double cz = s.z[0] - along * f.wz - lateral * f.wx - shift;
+    ErgMemos& memos = memosOf(m);
+    const auto at = static_cast<std::size_t>(((l.salt / 4) % 4) * 6 + 2 * (back + 1));
+    const double n = static_cast<double>(m.scatter.fbm2D(cx, cz, memos.crescents[at]));
+    const double o =
+        static_cast<double>(m.scatter.fbm2D(cx + shift, cz + shift, memos.crescents[at + 1]));
+    // Its size and whether it is there both shrink it whole (its width, its height with it:
+    // never more than a fifth of its half width): flattened alone, a small or fading crescent
+    // was a fine thread of a slip face on smooth ground, with no dune around it. Where the
+    // form below wants them, more of them (kCoverOccupancy), mostly big ones (they cover its
+    // flanks).
+    const double cover = std::max(lie.cover, 0.0);
+    const double occupancy = kOccupancy + kGroupOccupancy * lie.group + kCoverOccupancy * cover;
+    const double sizePower = kSizePower + (kCoverSizePower - kSizePower) * cover;
+    const double size =
+        kSmallest + (1.0 - kSmallest) * dmath::pow(std::clamp(0.5 + o, 0.0, 1.0), sizePower);
+    const double there = ramp(-kPresenceSoft, kPresenceSoft, occupancy - (0.5 + 1.6 * n));
+    b.presence = lie.share * f.rowsCoherent * f.cellsCoherent;
+    b.width = kWidest * size * there;
+    b.crest = kCrestLow + kCrestRange * std::clamp(0.5 + n, 0.0, 1.0);
+    if (ahead >= 0.0) {
+        // Its middle 0.6 of its row downwind of the start of it, its row turned from the wind.
+        b.width = std::min(b.width, dune_forms::barchanWidthWithin(b, 0.6 * b.wavelength, ahead,
+                                                                   behind, f.turn.cosine,
+                                                                   f.turn.sine));
+    }
+    return dune_forms::barchan(b);
+}
+
+// The layer, its crescents lying by point (the same at the point for all of them), else by the
+// host at their middles.
+double layerOf(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
+               const Layer& l, double height, const Lie& point, const Host* host) {
+    Frame f;
+    f.groups = ramp(kVoidLow, kVoidHigh,
+                    static_cast<double>(m.clusters.fbm2D(s.x[0], s.z[0], memosOf(m).clusters)));
+    f.here = host == nullptr ? lieOf(point.share, point.cover, f.groups) : Lie{1.0, 1.0, 0.0};
+    if (!(f.here.share > 0.0)) {
         return 0.0; // a void
     }
     dune_phase::Kind rowsKind;
@@ -77,53 +173,41 @@ double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase:
     cellsKind.spacing = kCellShare * rowsKind.spacing;
     cellsKind.salt = l.salt + 1;
     const std::array<dune_phase::Phase, 2> both = dune_phase::phasesAt(m, s, p, rowsKind, cellsKind);
-    const dune_phase::Phase& rows = both[0];
-    const dune_phase::Phase& cells = both[1];
-    const double coherent = share * ramp(kCoherenceLow, kCoherenceHigh, rows.coherence) *
-                            ramp(kCoherenceLow, kCoherenceHigh, cells.coherence);
-    if (!(coherent > 0.0)) {
+    f.rows = both[0];
+    f.cells = both[1];
+    f.rowsCoherent = ramp(kCoherenceLow, kCoherenceHigh, f.rows.coherence);
+    f.cellsCoherent = ramp(kCoherenceLow, kCoherenceHigh, f.cells.coherence);
+    if (!(f.here.share * f.rowsCoherent * f.cellsCoherent > 0.0)) {
         return 0.0;
     }
-    const double tall = l.base + l.share * std::max(0.0, height);
+    f.tall = l.base + l.share * std::max(0.0, height);
     const std::array<double, 2> wind = windOf(m, s.x[0], s.z[0]);
-    const dmath::SineCosine turn = dmath::sinCosTurns(l.turn);
-    const double wx = wind[0] * turn.cosine - wind[1] * turn.sine;
-    const double wz = wind[0] * turn.sine + wind[1] * turn.cosine;
-    const double shift = kShift * static_cast<double>(l.salt);
+    f.turn = dmath::sinCosTurns(l.turn);
+    f.wx = wind[0] * f.turn.cosine - wind[1] * f.turn.sine;
+    f.wz = wind[0] * f.turn.sine + wind[1] * f.turn.cosine;
     double best = 0.0;
-    const double occupancy =
-        kOccupancy + kGroupOccupancy * group + kCoverOccupancy * std::max(cover, 0.0);
-    const auto memo = static_cast<std::size_t>(((l.salt / 4) % 4) * 6);
-    // Where the form below wants them, mostly big ones (they cover its flanks).
-    const double sizePower = kSizePower + (kCoverSizePower - kSizePower) * std::max(cover, 0.0);
     for (int back = -1; back <= 1; ++back) {
-        const double along = (rows.fraction + back - 0.6) * rows.wavelength;
-        const double lateral = (cells.fraction - 0.5) * cells.wavelength;
-        const double cx = s.x[0] - along * wx + lateral * wz + shift;
-        const double cz = s.z[0] - along * wz - lateral * wx - shift;
-        const auto at = memo + static_cast<std::size_t>(2 * (back + 1));
-        const double n = static_cast<double>(m.scatter.fbm2D(cx, cz, memos.crescents[at]));
-        const double o =
-            static_cast<double>(m.scatter.fbm2D(cx + shift, cz + shift, memos.crescents[at + 1]));
-        dune_forms::Barchan b;
-        b.t = rows.fraction + back;
-        b.wavelength = rows.wavelength;
-        b.across = cells.fraction;
-        b.cell = cells.wavelength;
-        b.single = true;
-        b.height = tall;
-        // Its size and whether it is there both shrink it whole (its width, its height with it:
-        // never more than a fifth of its half width): flattened alone, a small or fading crescent
-        // was a fine thread of a slip face on smooth ground, with no dune around it.
-        const double size = kSmallest + (1.0 - kSmallest) * dmath::pow(std::clamp(0.5 + o, 0.0, 1.0),
-                                                                     sizePower);
-        const double there = ramp(-kPresenceSoft, kPresenceSoft, occupancy - (0.5 + 1.6 * n));
-        b.presence = coherent;
-        b.width = kWidest * size * there;
-        b.crest = 0.45 + 0.3 * std::clamp(0.5 + n, 0.0, 1.0);
-        best = std::max(best, dune_forms::barchan(b));
+        best = std::max(best, crescentOf(m, s, l, f, back, host));
     }
     return best;
+}
+
+} // namespace
+
+double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
+             const Layer& l, double height, double share, double cover) {
+    if (!(share > 0.0)) {
+        return 0.0;
+    }
+    Lie point;
+    point.share = share;
+    point.cover = cover;
+    return layerOf(m, s, p, l, height, point, nullptr);
+}
+
+double layer(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phase::Pivots& p,
+             const Layer& l, double height, const Host& host) {
+    return layerOf(m, s, p, l, height, Lie{}, &host);
 }
 
 } // namespace terrain::dune_layers

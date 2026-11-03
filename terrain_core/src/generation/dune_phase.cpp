@@ -251,6 +251,8 @@ Phase phaseOf(const Shared& s, const Pivots& p, const Weights& w, const Kind& ki
     out.local = g > 0.0 ? 1.0 / g : out.wavelength;
     out.coherence = std::clamp(std::sqrt(modulus2), 0.0, 1.0);
     out.nominal = nominal;
+    out.gx = gx;
+    out.gz = gz;
     return out;
 }
 
