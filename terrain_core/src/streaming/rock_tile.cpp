@@ -1,5 +1,7 @@
 #include "rock_tile.hpp"
 
+#include "terrain/meshing/marching_cubes.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -90,7 +92,7 @@ float RockTile::sample(int i, int j, int k, int originY, bool coarse) const {
 float RockTile::sampleWith(int i, int j, int k, int originY, const RockDetail& detail) const {
     const double sampleY = originY + j * lattice_.spacing;
     const RockColumn& c = columnAt(i, k);
-    if (c.faceCount == 0 || onHorizonSide(i, k)) {
+    if (!c.hasRock() || onHorizonSide(i, k)) {
         // Same expression as tile::levelDensity and TerrainTiles::densityAt.
         return static_cast<float>(sampleY - groundAt(i, k));
     }
@@ -158,8 +160,11 @@ void RockTile::dropPlants(std::vector<Plant>& plants) const {
         const auto i = static_cast<int>(std::lround((plant.x - lattice_.x0) / spacing));
         const auto k = static_cast<int>(std::lround((plant.z - lattice_.z0) / spacing));
         const RockColumn& c = rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast));
+        const double ground = static_cast<double>(columns_->at(std::clamp(i, 0, kLast),
+                                                               std::clamp(k, 0, kLast)));
         return std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
-                           [this](const RockFace& f) { return drawnWeight(f, fine_) > 0.0f; });
+                           [this](const RockFace& f) { return drawnWeight(f, fine_) > 0.0f; }) ||
+               (c.spire.radius > 0.0f && rockDensity(c, ground + 0.5, fine_) < 0.0f);
     });
 }
 
@@ -251,6 +256,61 @@ std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const 
         rock.push_back(static_cast<float>(coarse + share * (fine - coarse)));
     }
     return rock;
+}
+
+namespace {
+
+// Down from far above a spire in strides (the density about the distance to it: kStride of it,
+// whole meters) while kFar meters away at least.
+constexpr double kFar = 3.0;
+constexpr double kStride = 0.6;
+
+} // namespace
+
+float spireGroundAt(const RockColumn& column, double x, double z, const RockDetail& detail) {
+    const double x0 = std::floor(x);
+    const double z0 = std::floor(z);
+    const double fx = x - x0;
+    const double fz = z - z0;
+    const std::array<double, 4> w{(1.0 - fx) * (1.0 - fz), fx * (1.0 - fz), (1.0 - fx) * fz,
+                                  fx * fz};
+    RockColumn relief = column;
+    relief.spire = RockSpire{};
+    const auto densityAt = [&](double y) {
+        double spire = 0.0;
+        for (std::size_t q = 0; q < w.size(); ++q) {
+            if (w[q] > 0.0) {
+                const double dx = static_cast<double>(column.spire.dx) + (x0 - x) +
+                                  static_cast<double>(q & 1U);
+                const double dz = static_cast<double>(column.spire.dz) + (z0 - z) +
+                                  static_cast<double>(q >> 1U);
+                spire += w[q] * static_cast<double>(spireDensity(column.spire, dx, dz, y, detail));
+            }
+        }
+        return std::min(spire, static_cast<double>(rockDensity(relief, y, detail)));
+    };
+    const RockBounds bounds = rockBounds(column);
+    const double low = static_cast<double>(bounds.low);
+    // Down in strides while far from the rock (the density about the distance to it: kStride of
+    // it, whole meters), then a meter at a time.
+    double above = std::ceil(static_cast<double>(bounds.high)) + 1.0;
+    double previous = densityAt(above);
+    while (previous > kFar && above > low) {
+        above -= std::floor(kStride * previous);
+        previous = densityAt(above);
+    }
+    if (!(previous >= kIsoLevel)) {
+        above += std::ceil(kFar);
+        previous = densityAt(above);
+    }
+    for (double y = above - 1.0; y > low - 2.0; y -= 1.0) {
+        const double d = densityAt(y);
+        if (d < kIsoLevel && previous >= kIsoLevel) {
+            return static_cast<float>(y + (kIsoLevel - d) / (previous - d));
+        }
+        previous = d;
+    }
+    return static_cast<float>(low);
 }
 
 } // namespace terrain::tile

@@ -97,4 +97,13 @@ private:
     RockBounds bounds_;
 };
 
+// The top of the rock of a column over a spire (rock_faces.hpp: RockSpire) at (x, z) as the LOD
+// 0 tiles mesh it (TerrainTiles::groundAt): the density of the spire at the four columns of their
+// lattice around it (1 m cells), bilinear, linear between their levels, its relief and its faces
+// as they are at the column, down from above the rock. A spire turns faster than the cells (its
+// beds, its rough top): its exact surface stands up to 0.7 m off the mesh there, and a pawn set
+// on it would stand in the rock of the mesh.
+[[nodiscard]] float spireGroundAt(const RockColumn& column, double x, double z,
+                                  const RockDetail& detail);
+
 } // namespace terrain::tile

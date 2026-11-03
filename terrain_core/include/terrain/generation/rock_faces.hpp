@@ -59,12 +59,31 @@ struct RockFace {
 
 inline constexpr int kMaxRockFaces = 4;
 
+// A spire of rock standing over a column (the stacks of the coasts, agent 33: coast.hpp), a solid
+// of its own in three dimensions (a distance field, rock_spires.hpp) added to the relief: the
+// column lies (dx, dz) meters from its axis; its shape (a pillar, a needle, a stack split in two,
+// an arch, their benches, their notch, their cracks) is drawn from seed and its size, its radius
+// at the sea level and its height above it (0: none).
+struct RockSpire {
+    float dx = 0.0f;
+    float dz = 0.0f;
+    float radius = 0.0f;
+    float height = 0.0f;
+    std::uint32_t seed = 0;
+
+    friend bool operator==(const RockSpire&, const RockSpire&) = default;
+};
+
 // What the rock of a column depends on, apart from y.
 struct RockColumn {
     float ground = 0.0f;   // heightAt: the relief with the valleys of the rivers
     float uncarved = 0.0f; // the relief before the rivers carve or fill it
     std::uint8_t faceCount = 0;
     std::array<RockFace, kMaxRockFaces> faces{};
+    RockSpire spire;
+
+    // Whether it holds a face or a spire (its rock in three dimensions).
+    [[nodiscard]] bool hasRock() const { return faceCount > 0 || spire.radius > 0.0f; }
 
     // Appends a face; past kMaxRockFaces, the face of the greatest weight is kept.
     void add(const RockFace& face);
@@ -91,6 +110,11 @@ inline constexpr float kRunCells = 4.0f;
 // their weights, the air the rivers carve in it taken out (their floor stepped by the faces of
 // their valley) and the levees they fill added.
 [[nodiscard]] float rockDensity(const RockColumn& column, double y, const RockDetail& detail);
+
+// The density of a spire alone at (dx, dz) meters from its axis, height y, as the detail draws
+// it (rockDensity is the least of it and of the relief with the faces).
+[[nodiscard]] float spireDensity(const RockSpire& spire, double dx, double dz, double y,
+                                 const RockDetail& detail);
 
 // How far a detail draws a face: its weight, faded out over runs of kRunCells to 1.5 times that
 // many cells. A column whose faces a detail does not draw is the relief alone there.

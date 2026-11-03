@@ -1,5 +1,7 @@
 #include "terrain/generation/rock_faces.hpp"
 
+#include "rock_spires.hpp"
+
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -297,13 +299,16 @@ RockDetail rockDetailForLod(int lod) {
     return {static_cast<float>(1 << std::clamp(lod, 0, 16))};
 }
 
-float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
+namespace {
+
+// The density of the relief of a column with its faces (rockDensity without its spire).
+double facesDensity(const RockColumn& c, double y, const RockDetail& detail) {
     const bool drawn = std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
                                    [&](const RockFace& f) {
                                        return drawnWeight(f, detail) > 0.0f;
                                    });
     if (!drawn) {
-        return static_cast<float>(y - c.ground);
+        return y - c.ground;
     }
     // The relief before the rivers, then the air of their valleys taken out of it (below the
     // relief, above their floor), then their levees added.
@@ -317,7 +322,35 @@ float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
     if (c.ground > c.uncarved) {
         density = std::min(density, y - static_cast<double>(c.ground));
     }
-    return static_cast<float>(density);
+    return density;
+}
+
+// The highest the spire of a column stands (-infinity without one).
+float spireSummit(const RockColumn& c) {
+    return c.spire.radius > 0.0f
+               ? static_cast<float>(rock_spires::summitOf(rock_spires::shapeOf(c.spire)))
+               : -std::numeric_limits<float>::infinity();
+}
+
+} // namespace
+
+float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
+    const double density = facesDensity(c, y, detail);
+    if (!(c.spire.radius > 0.0f)) {
+        return static_cast<float>(density);
+    }
+    // The spire added to the relief (a union: the least of the two densities).
+    const double spire =
+        rock_spires::densityAt(rock_spires::shapeOf(c.spire), static_cast<double>(c.spire.dx),
+                               static_cast<double>(c.spire.dz), y,
+                               static_cast<double>(detail.cell));
+    return static_cast<float>(std::min(density, spire));
+}
+
+float spireDensity(const RockSpire& spire, double dx, double dz, double y,
+                   const RockDetail& detail) {
+    return static_cast<float>(rock_spires::densityAt(rock_spires::shapeOf(spire), dx, dz, y,
+                                                     static_cast<double>(detail.cell)));
 }
 
 float drawnWeight(const RockFace& f, const RockDetail& detail) {
@@ -345,6 +378,7 @@ RockBounds rockBounds(const RockColumn& c) {
         b.low = std::min(b.low, c.faces[i].foot);
         b.high = std::max(b.high, c.faces[i].top);
     }
+    b.high = std::max(b.high, spireSummit(c));
     return b;
 }
 
@@ -358,11 +392,18 @@ float rockCeiling(const RockColumn& c) {
         float& high = c.faces[i].carved ? valley : faces;
         high = std::max(high, c.faces[i].top);
     }
-    return std::max({c.ground, std::min(c.uncarved, valley), faces});
+    return std::max({c.ground, std::min(c.uncarved, valley), faces, spireSummit(c)});
 }
 
 float rockShare(const RockColumn& c, double y, const RockDetail& detail) {
     float share = 0.0f;
+    // On a spire (and kShareAcross meters around its surface): bare rock.
+    if (c.spire.radius > 0.0f &&
+        rock_spires::densityAt(rock_spires::shapeOf(c.spire), static_cast<double>(c.spire.dx),
+                               static_cast<double>(c.spire.dz), y,
+                               static_cast<double>(detail.cell)) < kShareAcross) {
+        share = 1.0f;
+    }
     for (std::size_t i = 0; i < c.faceCount; ++i) {
         const RockFace& f = c.faces[i];
         const double distance = f.distance;

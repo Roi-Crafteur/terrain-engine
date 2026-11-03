@@ -18,9 +18,9 @@
 //   (steeper than kSteep, within kOnFace meters of its plane, between its ledges) at least
 //   kBareRock rock (TileData::rock), and every sample of the level 0 of the horizon on a face
 //   is rock.
-// - The stacks of the reefs (20 to 60 m) stand in the relief of two dimensions too (heightAt),
-//   in the LOD 3 tiles and on the levels 0 to 2 of the horizon (out to 4 km), kStackSeen of their
-//   height at least (on the level 3, out to 8 km, its samples rise to the crests of a lattice of
+// - The stacks of the reefs (20 to 60 m: their spires, rock_spires.hpp) stand in the LOD 3 tiles
+//   and on the levels 0 to 2 of the horizon (out to 4 km), kStackSeen of their height at least
+//   (the highest over them: a spire may lean off its middle) (on the level 3, out to 8 km, its samples rise to the crests of a lattice of
 //   32 m, which may miss a lobed stack: how many it shows is reported); every rock of the reefs
 //   kReefSeenRadius meters wide at least shows above the sea on the samples of level 0 of the
 //   horizon.
@@ -68,7 +68,7 @@ constexpr double kSteep = 0.5; // the up component of the normal of a vertex on 
 constexpr double kOnFace = 3.0;
 constexpr double kBareRock = 0.9;
 constexpr double kBareShare = 0.95;
-constexpr double kStackSeen = 0.75; // the shoulder of a stack: 79 % of its height (coast_faces.cpp)
+constexpr double kStackSeen = 0.75; // its top, cut at a pitch of the horizon on a needle
 constexpr double kReefSeenRadius = 6.0; // a disc of 8 / sqrt(2) m holds a sample of level 0
 constexpr int kViewChunks = 16;         // the tiles out to 512 m
 constexpr double kLevel0 = 8.0;         // the pitch of the level 0 of the horizon
@@ -401,13 +401,17 @@ double highestOver(int level, const terrain::CoastStack& s) {
     return top;
 }
 
-// The lowest height a stack stands at in two dimensions, on the horizon (its point heights and
-// the samples of the levels 0 to 2 over it: out to 4 km) and on the LOD 3 tiles, at its middle.
+// The lowest of the heights a stack stands at on the horizon (the samples of the levels 0 to 2
+// over it: out to 4 km) and on the LOD 3 tiles (the highest of their top over it, every 2 m).
 double lowestSeen(const terrain::CoastStack& s, Tiles& tiles3) {
-    const terrain::Heightfield& field = world().heightfield();
-    double least = std::min({static_cast<double>(field.heightAt(s.x, s.z)),
-                             static_cast<double>(field.seenAt(s.x, s.z, kLevel0).height),
-                             tiles3.topAt(s.x, s.z)});
+    const double reach = static_cast<double>(s.radius);
+    double tiles = -1e9;
+    for (double dz = -reach; dz <= reach; dz += 2.0) {
+        for (double dx = -reach; dx <= reach; dx += 2.0) {
+            tiles = std::max(tiles, tiles3.topAt(s.x + dx, s.z + dz));
+        }
+    }
+    double least = tiles;
     for (int level = 0; level < 3; ++level) {
         least = std::min(least, highestOver(level, s));
     }
@@ -436,7 +440,7 @@ void testStacks() {
         wide += isWide ? 1 : 0;
         hidden += isWide && !(highestOver(0, s) > 0.0) ? 1 : 0;
     }
-    std::printf("%zu stacks of the reefs, at %.0f%% of their height at least in two dimensions, on "
+    std::printf("%zu stacks of the reefs, at %.0f%% of their height at least on "
                 "the horizon (levels 0 to 2, out to 4 km) and on the LOD 3 tiles, %zu of them on "
                 "the level 3 (out to 8 km); %zu rocks of the reefs out of the water, %zu of them "
                 "%.0f m wide or more, %zu of those hidden on the level 0 of the horizon\n",

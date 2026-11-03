@@ -6,11 +6,13 @@
 // when it holds the planet of this generator) with terrain_probe --planet, given to the tests by
 // the environment variable TERRAIN_COAST_PLANET (tests/coast_tests.cmake).
 
+#include "terrain/generation/coast.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/storage/planet_file.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -80,6 +82,25 @@ inline const terrain::TerrainTiles& reliefTiles() {
     static const terrain::TerrainTiles t(terrain::kDefaultWorldSeed, {}, {}, std::nullopt, {},
                                          hydrology(), false);
     return t;
+}
+
+// The highest the rock of its tiles stands within reach meters of (x, z) along x and z, every
+// 2 m (the top of the spire of a stack, which may lean off its middle).
+inline double highestGround(double x, double z, double reach) {
+    double top = -1e9;
+    for (double dz = -reach; dz <= reach; dz += 2.0) {
+        for (double dx = -reach; dx <= reach; dx += 2.0) {
+            top = std::max(top, static_cast<double>(tiles().groundAt(x + dx, z + dz)));
+        }
+    }
+    return top;
+}
+
+// The top of the spire of a stack: the highest ground within kSpireMiddle of its radius of its
+// middle (a spire may lean off it).
+inline constexpr double kSpireMiddle = 0.6;
+inline double stackTop(const terrain::CoastStack& s) {
+    return highestGround(s.x, s.z, kSpireMiddle * static_cast<double>(s.radius));
 }
 
 } // namespace coast_planet

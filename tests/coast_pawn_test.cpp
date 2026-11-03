@@ -321,9 +321,11 @@ void walksBy(const Place& p, bool notched, std::size_t& holes, double& steepest)
     steepest = std::max({steepest, in.steepest, along.steepest});
 }
 
-// The walk on the shoulder of the stack, from kShoulder of its radius out to its edge (its dome
-// is too steep to walk down).
-constexpr double kShoulder = 0.6;
+// The walk on the top of the stack (its spire, rock_spires.hpp), from its highest point out to its
+// edge, the longest of kSummitWays ways: kSummitWalk meters at least (a needle stands a top of a
+// few meters).
+constexpr int kSummitWays = 8;
+constexpr double kSummitWalk = 2.0;
 
 void walkStack(std::size_t& holes, double& steepest) {
     const Place& p = coast_rock::kStack;
@@ -337,15 +339,33 @@ void walkStack(std::size_t& holes, double& steepest) {
         return a.height < b.height;
     };
     const terrain::CoastStack& s = *std::max_element(stacks.begin(), stacks.end(), lower);
+    double topX = s.x;
+    double topZ = s.z;
+    double top = -1e9;
+    const auto reach = static_cast<double>(s.radius);
+    for (double dz = -reach; dz <= reach; dz += 1.0) {
+        for (double dx = -reach; dx <= reach; dx += 1.0) {
+            const double g = world().groundAt(s.x + dx, s.z + dz);
+            if (g > top) {
+                top = g;
+                topX = s.x + dx;
+                topZ = s.z + dz;
+            }
+        }
+    }
     Tiles tiles(world(), 0);
-    const double from = kShoulder * static_cast<double>(s.radius);
-    const Walk w = walk(tiles, s.x + from, s.z, 1.0, 0.0, 40.0, Capsule{});
-    std::printf("%s: on its shoulder from %.1f m off its middle, %.1f m walked to %s, steps of "
-                "%.2f m at most, %zu holes\n",
-                p.name, from, w.walked, w.drop ? "its edge" : "a stop", w.steepest, w.holes);
-    TEST_CHECK(w.drop && w.walked >= 3.0);
-    holes += w.holes;
-    steepest = std::max(steepest, w.steepest);
+    Walk best;
+    for (int k = 0; k < kSummitWays; ++k) {
+        const double a = k * 2.0 * 3.14159265358979323846 / kSummitWays;
+        const Walk w = walk(tiles, topX, topZ, std::cos(a), std::sin(a), 30.0, Capsule{});
+        best = w.drop && w.walked > best.walked ? w : best;
+        holes += w.holes;
+        steepest = std::max(steepest, w.steepest);
+    }
+    std::printf("%s: on its top from its highest point (%.1f m), %.1f m walked to its edge at "
+                "most, steps of %.2f m at most, %zu holes\n",
+                p.name, top, best.walked, best.steepest, best.holes);
+    TEST_CHECK(best.drop && best.walked >= kSummitWalk);
 }
 
 void testWalks() {

@@ -108,6 +108,7 @@ add_library(terrain_core STATIC
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
     src/generation/rock_faces.cpp
+    src/generation/rock_spires.cpp
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp

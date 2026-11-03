@@ -43,6 +43,9 @@ constexpr std::uint64_t kScreeStream = 0x33B6;
 constexpr std::uint64_t kMeanderStream = 0x33B7;
 constexpr std::uint64_t kDipStream = 0x33B8;
 constexpr std::uint64_t kBlockStream = 0x33B9;
+constexpr std::uint64_t kWideBlockStream = 0x33BA;
+constexpr std::uint64_t kBlockinessStream = 0x33BB;
+constexpr double kBlockinessWavelength = 700.0;
 constexpr double kStretchWavelength = 30'000.0;
 constexpr double kHeightWavelength = 5'000.0;
 constexpr double kPlatformWavelength = 1'700.0;
@@ -338,7 +341,11 @@ Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
             wall(kDipStream, kDipWavelength),
             {noise::deriveSeed(seed, kBlockStream),
              std::max<std::int64_t>(1, std::llround(world.x / kBlockCell)),
-             std::max<std::int64_t>(1, std::llround(world.z / kBlockCell)), world}};
+             std::max<std::int64_t>(1, std::llround(world.z / kBlockCell)), world},
+            {noise::deriveSeed(seed, kWideBlockStream),
+             std::max<std::int64_t>(1, std::llround(world.x / kWideBlockCell)),
+             std::max<std::int64_t>(1, std::llround(world.z / kWideBlockCell)), world},
+            shapeNoise(seed, kBlockinessStream, kBlockinessWavelength, world)};
 }
 
 bool readsShore(const coast_kinds::Weights& weights) {

@@ -42,6 +42,9 @@ constexpr std::uint64_t kRoughStream = 0x2EEF;
 // part at the LOD 3 and on the horizon (as their cells draw it); in two dimensions a dome. Its
 // rough relief kRoughMost meters at most (that of the highest rocks of the reefs).
 constexpr std::uint64_t kStackStream = 0x57AC;
+constexpr std::uint64_t kSpireStream = 0x5F12EULL;
+// Where a stack has no apron, its rock reaches kLeastApron meters beyond its foot (the islet).
+constexpr double kLeastApron = 0.5;
 constexpr double kStackShare = 0.1;
 constexpr double kRoughMost = 12.0;
 constexpr std::array<double, 2> kStackHeight{20.0, 60.0};
@@ -150,6 +153,18 @@ noise::FbmOctaves makeRough(std::uint64_t seed, const WorldSize& world) {
                              world);
 }
 
+std::uint32_t spireSeed(double x, double z) {
+    return static_cast<std::uint32_t>(
+        noise::deriveSeed(kSpireStream ^ std::bit_cast<std::uint64_t>(x),
+                          std::bit_cast<std::uint64_t>(z)) >>
+        32U);
+}
+
+rock_spires::Shape spireOf(const Stack& rock) {
+    return rock_spires::shapeOf(spireSeed(rock.x, rock.z), static_cast<double>(rock.radius),
+                                static_cast<double>(rock.height));
+}
+
 void addRock(const Stack& rock, double x, double z, const WorldSize& world,
              const noise::FbmOctaves& rough, coast_inlets::Effect& e) {
     const double dx = noise::wrapCanonical(x - rock.x, world.x);
@@ -160,22 +175,38 @@ void addRock(const Stack& rock, double x, double z, const WorldSize& world,
     }
     const double r = dmath::hypot(dx, dz);
     const double turns = r > 0.0 ? dmath::atan2(dz, dx) / (2.0 * kPi) : 0.0;
-    const double radius = static_cast<double>(rock.radius) * lobesOf(rock, turns);
+    // A stack: its outline at the sea level, its apron beyond; its spire stands on it.
+    const bool spire = static_cast<double>(rock.height) >= kSpireLeast;
+    const rock_spires::Shape shape = spire ? spireOf(rock) : rock_spires::Shape{};
+    const double inner = spire ? rock_spires::footprintAt(shape, turns) : 0.0;
+    const double radius =
+        spire ? inner + std::max(kLeastApron, rock_spires::apronWidth(shape, turns))
+              : static_cast<double>(rock.radius) * lobesOf(rock, turns);
     const double islet =
         r < radius ? radius - r : -coast_inlets::reachOf(r - radius, 0.0, kIsletReach);
     // Overlapping rocks merge rounded (no crease between them), never above the water at their
     // foot: the rounding vanishes there.
-    double dome = static_cast<double>(rock.height) * domeOf(1.0 - r / radius);
+    double dome = spire ? rock_spires::apronAt(shape, turns) *
+                              domeOf((radius - r) / (radius - inner))
+                        : static_cast<double>(rock.height) * domeOf(1.0 - r / radius);
     const double amplitude =
         kRough * std::min(1.0, kRoughMost / static_cast<double>(rock.height));
     const double roughness =
         dome > 0.0 ? 1.0 + amplitude * static_cast<double>(rough.fbm2D(x, z)) : 1.0;
     dome *= roughness;
+    if (spire && shape.reach - r > e.spireIn) {
+        e.spireX = rock.x;
+        e.spireZ = rock.z;
+        e.spireSize = static_cast<double>(rock.radius);
+        e.spireHeight = static_cast<double>(rock.height);
+        e.spireIn = shape.reach - r;
+    }
     e.nextIslet = std::max(e.nextIslet, std::min(e.islet, islet));
     if (islet > e.islet) {
         e.rockX = rock.x;
         e.rockZ = rock.z;
         e.rockRadius = radius;
+        e.rockSize = static_cast<double>(rock.radius);
         e.rockHeight = static_cast<double>(rock.height);
         e.rockTop = static_cast<double>(rock.height) * roughness;
         e.rockPhase = static_cast<double>(rock.phase);

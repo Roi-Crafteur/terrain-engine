@@ -8,6 +8,7 @@
 #include "coast_lattice.hpp"
 #include "coast_shape.hpp"
 #include "heightfield_layers.hpp"
+#include "rock_spires.hpp"
 #include "mountain_walls.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -15,6 +16,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -29,6 +31,24 @@ struct Heightfield::Coasts {
 };
 
 namespace {
+
+// The top of a spire seen by a level of the horizon of pitch meters: the highest it stands within
+// the cell of the sample (a needle narrower than the cell still shows), its details as cells of
+// that pitch draw them; below every relief without one.
+float spireSeen(const RockSpire& spire, double pitch) {
+    if (!(spire.radius > 0.0f)) {
+        return -std::numeric_limits<float>::infinity();
+    }
+    const rock_spires::Shape& shape = rock_spires::shapeOf(spire);
+    return static_cast<float>(rock_spires::topWithin(shape, static_cast<double>(spire.dx),
+                                                     static_cast<double>(spire.dz), 0.5 * pitch,
+                                                     pitch));
+}
+
+
+// The distance to the shore grows by kMostPerMeter per meter at most (the coast signal over its
+// gradient, or less where the inlets bend it).
+constexpr double kMostPerMeter = 2.0;
 
 // The noises of the coasts derive from the seed of the Heightfield by streams of their own, apart
 // from its layers: no seed of a layer moves.
@@ -197,11 +217,13 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
     const double gradient = std::max(kLeastGradient, length);
     const double distance = coast_inlets::distanceOf(g.coast / gradient, inlet);
     const coast_kinds::Weights kinds = coastKindsAt(x, z, g, memos);
-    const coast_shape::Inlets inlets{g.coast,         inlet.floor,      inlet.rise,
-                                     inlet.dome,      inlet.deep,       inlet.sink,
-                                     inlet.glen,      inlet.islet,      inlet.rockX,
-                                     inlet.rockZ,     inlet.rockRadius, inlet.rockHeight,
-                                     inlet.rockTop,   inlet.rockPhase,  inlet.nextIslet};
+    const coast_shape::Inlets inlets{g.coast,        inlet.floor,      inlet.rise,
+                                     inlet.dome,     inlet.deep,       inlet.sink,
+                                     inlet.glen,     inlet.islet,      inlet.rockX,
+                                     inlet.rockZ,    inlet.rockRadius, inlet.rockSize,
+                                     inlet.rockHeight, inlet.rockTop,  inlet.rockPhase,
+                                     inlet.nextIslet, inlet.spireX,    inlet.spireZ,
+                                     inlet.spireSize, inlet.spireHeight};
     // Toward the sea: down the coast signal (along x where it is flat).
     const coast_faces::Point point{x,
                                    z,
@@ -230,6 +252,14 @@ Heightfield::CoastPoint Heightfield::coastPointAt(double x, double z, const Geog
         }
         const bool beyond = report.front > 0.0f && report.face.distance > report.front;
         report.faced = report.faced && !beyond;
+        // The shore of a level of the horizon: within its ramp only (the distance to the shore
+        // grows by kMostPerMeter per meter at most).
+        if (!report.faced && memos->seenRamp > 0.0 && c.signal > 0.0 && distance > 0.0 &&
+            distance < kMostPerMeter * memos->seenRamp) {
+            const double perMeter = distancePerMeter(x, z, g.coast / gradient, gx / gradient,
+                                                     gz / gradient, distance);
+            report.shore = static_cast<float>(distance / perMeter);
+        }
         *memos->coastFace = report;
     }
     c.landward = c.signal > 0.0;
@@ -316,6 +346,7 @@ HeightSample Heightfield::seenAt(double worldX, double worldZ, double pitch) con
     coast_faces::Report report;
     Memos memos;
     memos.coastFace = &report;
+    memos.seenRamp = coast_faces::shoreRampOf(pitch);
     HeightSample s = reliefWith(worldX, worldZ, &memos);
     const float relief = s.height;
     const double x = noise::wrapCanonical(worldX, world_.x);
@@ -323,6 +354,10 @@ HeightSample Heightfield::seenAt(double worldX, double worldZ, double pitch) con
     if (hydrology_) {
         leaveValleys(x, z, s, nullptr);
         applyHydrology(x, z, s, nullptr);
+    }
+    if (report.shore >= 0.0f && s.water == WaterKind::None) {
+        s.height = coast_faces::seenShore(s.height, report.shore, pitch);
+        s.waterLevel = s.height;
     }
     if (report.faced) {
         RockFace face = report.face;
@@ -333,6 +368,13 @@ HeightSample Heightfield::seenAt(double worldX, double worldZ, double pitch) con
         if (s.water == WaterKind::None) {
             s.waterLevel = s.height;
         }
+    }
+    const float spire = spireSeen(report.spire, pitch);
+    if (spire > s.height) {
+        s.height = spire;
+        s.rock = 1.0f;
+        s.water = WaterKind::None;
+        s.waterLevel = spire;
     }
     return s;
 }
@@ -347,7 +389,10 @@ void Heightfield::seenHeightsAt(std::span<const double> xs, std::span<const doub
     Memos memos;
     std::vector<HeightSample> samples(xs.size());
     std::vector<std::pair<std::size_t, coast_faces::Report>> faced;
+    std::vector<std::pair<std::size_t, RockSpire>> spires;
+    std::vector<std::pair<std::size_t, float>> shores;
     std::vector<float> relief;
+    memos.seenRamp = coast_faces::shoreRampOf(pitch);
     for (std::size_t i = 0; i < xs.size(); ++i) {
         coast_faces::Report report;
         memos.coastFace = &report;
@@ -357,6 +402,12 @@ void Heightfield::seenHeightsAt(std::span<const double> xs, std::span<const doub
             faced.emplace_back(i, report);
             relief.push_back(samples[i].height);
         }
+        if (report.spire.radius > 0.0f) {
+            spires.emplace_back(i, report.spire);
+        }
+        if (report.shore >= 0.0f) {
+            shores.emplace_back(i, report.shore);
+        }
     }
     if (hydrology_) {
         waterOf(xs, zs, samples, memos);
@@ -364,12 +415,20 @@ void Heightfield::seenHeightsAt(std::span<const double> xs, std::span<const doub
     for (std::size_t i = 0; i < xs.size(); ++i) {
         out[i] = samples[i].height;
     }
+    for (const auto& [i, shore] : shores) {
+        out[i] = samples[i].water == WaterKind::None
+                     ? coast_faces::seenShore(out[i], shore, pitch)
+                     : out[i];
+    }
     for (std::size_t n = 0; n < faced.size(); ++n) {
         auto& [i, report] = faced[n];
         anchorCoastFace(noise::wrapCanonical(xs[i], world_.x),
                         noise::wrapCanonical(zs[i], world_.z), relief[n], report.face);
         out[i] += coast_faces::seenOf(report.face, report.plunges, relief[n], pitch).height -
                   relief[n];
+    }
+    for (const auto& [i, spire] : spires) {
+        out[i] = std::max(out[i], spireSeen(spire, pitch));
     }
 }
 

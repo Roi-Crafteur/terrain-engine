@@ -6,9 +6,11 @@
 // law of the tiles; any ledge, saddle or flat top is soil): the rocks stay low domes.
 
 #include "coast_inlets.hpp"
+#include "rock_spires.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -38,6 +40,14 @@ inline constexpr double kRockLobe = 0.4;
 [[nodiscard]] std::vector<coast_inlets::Stack> reefOf(
     const coast_inlets::World& w, coast_inlets::Draws& d, double x, double z,
     const std::function<bool(double x, double z)>& inside);
+
+// A rock kSpireLeast meters high at least is a stack: a spire of rock in three dimensions
+// (rock_spires.hpp: its shape drawn from spireSeed of its middle and from its radius and height)
+// over its scree apron, the relief of its rock (addRock: its outline at the sea level and its
+// apron, no dome).
+inline constexpr double kSpireLeast = 20.0;
+[[nodiscard]] std::uint32_t spireSeed(double x, double z);
+[[nodiscard]] rock_spires::Shape spireOf(const coast_inlets::Stack& rock);
 
 // The relief of the rocks at a small scale: a noise of kRoughWavelength meters (four octaves)
 // scaling their domes by about 1 +- kRough (none at their foot, at the water), as strong as the

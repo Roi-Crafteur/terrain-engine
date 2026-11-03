@@ -280,9 +280,9 @@ void testCoves() {
 
 // The reefs: their rocks (Heightfield::stacksIn) joined into reefs where kReefJoin meters apart
 // at most; the ground in their middle kRockLeast to kRockMost meters high (domes of 3 to 12 m and
-// the detail of the land on them), but for the stacks (kStackLeast meters high and more, their
-// ground kStackLow to kStackHigh meters high: 20 to 60 m and their rough relief) and the rocks
-// merged into them (within the reach of their lobes); at most kReefShare reefs per cove (rare);
+// the detail of the land on them), but for the stacks (kStackLeast meters high and more: their
+// spire kStackLow to kStackHigh meters high over their middle, 20 to 60 m, the needles 15 % more)
+// and the rocks merged into them (within the reach of their lobes); at most kReefShare per cove;
 // their first rock irregular (its reach above the water from its middle varying by kLobes at
 // least).
 constexpr double kReefJoin = 160.0;
@@ -290,7 +290,7 @@ constexpr double kRockLeast = 1.0;
 constexpr double kRockMost = 16.0;
 constexpr float kStackLeast = 20.0f;
 constexpr double kStackLow = 16.0;
-constexpr double kStackHigh = 64.0;
+constexpr double kStackHigh = 80.0;
 constexpr double kReefShare = 0.3;
 constexpr double kLobes = 1.15;
 
@@ -360,8 +360,8 @@ void testReefs() {
             alone += reef.size() < 2 ? 1 : 0;
             round += lobesOf(reef.front()) < kLobes ? 1 : 0;
             for (const terrain::CoastStack& r : reef) {
-                const double h = heightAt(r.x, r.z);
                 const bool stack = r.height >= kStackLeast;
+                const double h = stack ? coast_planet::stackTop(r) : heightAt(r.x, r.z);
                 stacks += stack ? 1 : 0;
                 if (!stack && mergedIntoStack(r, reef)) {
                     ++rocksSeen;

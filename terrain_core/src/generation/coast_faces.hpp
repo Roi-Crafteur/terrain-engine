@@ -66,6 +66,12 @@ struct Report {
     bool alongShore = false;
     // Only within front meters before the plane of the face (in meters, 0: all of its run).
     float front = 0.0f;
+    // A stack: the spire of rock over the point (rock_faces.hpp, coast_reefs::kSpireLeast), no
+    // face (radius 0: none).
+    RockSpire spire;
+    // A point of the land without a face, within the ramp of the shore of a level of the horizon
+    // (Heightfield::Memos::seenRamp): its distance to the shore, meters; -1 elsewhere.
+    float shore = -1.0f;
 };
 
 // The face of the coast at a point of the band of the kinds of coast weights over the geography
@@ -100,5 +106,15 @@ struct Seen {
 inline constexpr float kSeenCell = 8.0f;
 inline constexpr double kSeenRamp = 1.0;
 [[nodiscard]] Seen seenOf(const RockFace& face, bool plunges, float relief, double pitch);
+
+// Every gentle shore of a level of the horizon of pitch meters rises from the sea level over the
+// width of its ramp (twice kSeenRamp pitches, as a face that plunges): the samples of the land at
+// the water stand at the sea level, so that the sea the material of the horizon paints between
+// them and the sea samples does not climb the slope there either (a bank without a face: the
+// walls of a fjord too gentle for one, agent 40 for the rest). A bank as steep as a wall over that
+// width keeps its height (the sea at its foot is drawn as rock). The land shore meters from the
+// water, its relief relief: what that level shows of it.
+[[nodiscard]] double shoreRampOf(double pitch);
+[[nodiscard]] float seenShore(float relief, float shore, double pitch);
 
 } // namespace terrain::coast_faces

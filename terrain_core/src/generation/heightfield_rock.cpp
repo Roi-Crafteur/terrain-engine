@@ -89,6 +89,7 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
     std::vector<std::pair<std::size_t, wall_faces::Site>> faced;
     // The faces of the coasts (agent 33, coast_faces.hpp), relative to the ground of the coast.
     std::vector<std::pair<std::size_t, RockFace>> coastal;
+    std::vector<std::pair<std::size_t, RockSpire>> spires;
     for (std::size_t i = 0; i < xs.size(); ++i) {
         wall_faces::Site site;
         site.faces = true;
@@ -104,6 +105,9 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
         if (report.faced) {
             coastal.emplace_back(i, report.face);
         }
+        if (report.spire.radius > 0.0f) {
+            spires.emplace_back(i, report.spire);
+        }
     }
     const Neighbors neighbors(xs, zs);
     for (std::size_t i = 0; i < xs.size(); ++i) {
@@ -116,6 +120,9 @@ void Heightfield::samplesAt(std::span<const double> xs, std::span<const double> 
         placeFaces(xs[i], zs[i], memos, site, alongX < xs.size() ? &grounds[alongX] : nullptr,
                    alongZ < xs.size() ? &grounds[alongZ] : nullptr, out[i].height, leastRun,
                    rock[i]);
+    }
+    for (const auto& [i, spire] : spires) {
+        rock[i].spire = spire;
     }
     for (auto& [i, face] : coastal) {
         anchorCoastFace(noise::wrapCanonical(xs[i], world_.x), noise::wrapCanonical(zs[i], world_.z),

@@ -40,10 +40,19 @@ constexpr double kScreeLow = 0.45;
 constexpr double kScreeHigh = 0.75;
 // The blocks of the walls: their sites jittered by up to kBlockJitter of a cell (the nearest site
 // always among the nine around the cell); each moves the wall by its own draw, the sites within
-// kBlockEdge meters of the nearest blended in (at their edge, the average: a soft corner, never a
-// seam, and none where three blocks meet).
+// an edge of the nearest blended in (each its own width, from kSmallEdge or kWideEdge meters): at
+// their edge, the average, a corner sharp or soft, never a seam, and none where three blocks meet.
+// The small ones (coast_shape::kBlockCell) weigh kSmallBlocks all along the walls; the wide ones
+// (kWideBlockCell, their corners softer: the views from afar) kWideBlocks where the noise of the
+// blockiness passes kBlockyLow to kBlockyHigh, none elsewhere: stretches of massive blocks among
+// stretches of small ones, their widths unlike (coast_far_test).
 constexpr double kBlockJitter = 0.35;
-constexpr double kBlockEdge = 8.0;
+constexpr std::array<double, 2> kSmallEdge{8.0, 14.0};
+constexpr std::array<double, 2> kWideEdge{12.0, 22.0};
+constexpr double kSmallBlocks = 0.8;
+constexpr double kWideBlocks = 0.9;
+constexpr double kBlockyLow = -0.25;
+constexpr double kBlockyHigh = 0.25;
 // The meanders of the walls: their noise contrasted, whole from kMeanderSpan of it.
 constexpr double kMeanderSpan = 0.5;
 // The dips of the top: where their noise passes kDipLow to kDipHigh.
@@ -54,8 +63,10 @@ double hashUnit(std::uint64_t hash, unsigned shift) {
     return static_cast<double>((hash >> shift) & 0xFF'FFFFU) * 0x1.0p-24;
 }
 
-// The draw of the block of the walls at the canonical (x, z), in [-1, 1].
-double blockAt(const coast_shape::Blocks& b, double x, double z) {
+// The draw of the block of the walls at the canonical (x, z), in [-1, 1], their edges edge[0] to
+// edge[1] meters wide.
+double blockAt(const coast_shape::Blocks& b, double x, double z,
+               const std::array<double, 2>& edges) {
     const double sizeX = b.world.x / static_cast<double>(b.cellsX);
     const double sizeZ = b.world.z / static_cast<double>(b.cellsZ);
     const double cx = (x + 0.5 * b.world.x) / sizeX;
@@ -64,6 +75,7 @@ double blockAt(const coast_shape::Blocks& b, double x, double z) {
     const auto j = static_cast<std::int64_t>(std::floor(cz));
     std::array<double, 9> distance{};
     std::array<double, 9> draw{};
+    std::array<double, 9> edge{};
     double nearest = std::numeric_limits<double>::infinity();
     std::size_t n = 0;
     for (std::int64_t dj = -1; dj <= 1; ++dj) {
@@ -79,13 +91,15 @@ double blockAt(const coast_shape::Blocks& b, double x, double z) {
             distance[n] = dmath::hypot((cx - static_cast<double>(i) - sx) * sizeX,
                                        (cz - static_cast<double>(j) - sz) * sizeZ);
             draw[n] = 2.0 * hashUnit(hash, 0U) - 1.0;
+            edge[n] = edges[0] +
+                      (edges[1] - edges[0]) * hashUnit(noise::deriveSeed(hash, 1U), 0U);
             nearest = std::min(nearest, distance[n]);
         }
     }
     double sum = 0.0;
     double weights = 0.0;
     for (std::size_t k = 0; k < n; ++k) {
-        const double w = 1.0 - smooth(0.0, kBlockEdge, distance[k] - nearest);
+        const double w = 1.0 - smooth(0.0, edge[k], distance[k] - nearest);
         sum += w * draw[k];
         weights += w;
     }
@@ -142,7 +156,10 @@ Shore shoreAt(const coast_shape::Noises& n, double x, double z, const Along& alo
         s.meanderAt = 2.0 * smooth(-kMeanderSpan, kMeanderSpan,
                                    static_cast<double>(n.meander.fbm2D(along.x, along.z))) -
                       1.0;
-        s.blockAt = blockAt(n.blocks, along.x, along.z);
+        const double wide = smooth(kBlockyLow, kBlockyHigh,
+                                   static_cast<double>(n.blockiness.fbm2D(along.x, along.z)));
+        s.blockAt = kSmallBlocks * blockAt(n.blocks, along.x, along.z, kSmallEdge) +
+                    wide * kWideBlocks * blockAt(n.wideBlocks, along.x, along.z, kWideEdge);
         s.dipAt = smooth(kDipLow, kDipHigh, static_cast<double>(n.dip.fbm2D(along.x, along.z)));
     }
     return s;

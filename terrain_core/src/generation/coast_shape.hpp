@@ -46,8 +46,10 @@ namespace terrain::coast_shape {
 [[nodiscard]] double faceSlopeLimit(double height);
 
 // The blocks of the walls of the coasts: jittered cells about kBlockCell meters wide over the
-// world (as many as fit along each side), each drawn by seed (coast_profile::shoreAt).
+// world (as many as fit along each side), each drawn by seed (coast_profile::shoreAt), and wider
+// ones of kWideBlockCell.
 inline constexpr double kBlockCell = 40.0;
+inline constexpr double kWideBlockCell = 140.0;
 struct Blocks {
     std::uint64_t seed = 0;
     std::int64_t cellsX = 1;
@@ -59,7 +61,7 @@ struct Blocks {
 // a coast): the height of the faces (a slow, contrasted noise and a medium one), the width of the
 // rock platforms at their foot, the width of their faces, the edge (capes and hollows of their
 // top) and the screes at their foot; along the walls, read at the shore (coast_profile::Along),
-// the meanders of their line, their blocks and the dips of their top.
+// the meanders of their line, their blocks (of two sizes, in stretches) and the dips of their top.
 struct Noises {
     noise::FbmOctaves stretch;
     noise::FbmOctaves height;
@@ -70,6 +72,9 @@ struct Noises {
     noise::FbmOctaves meander;
     noise::FbmOctaves dip;
     Blocks blocks;
+    Blocks wideBlocks;
+    // Where along the walls the wide blocks stand out, where only the small ones do.
+    noise::FbmOctaves blockiness;
 };
 
 [[nodiscard]] Noises makeNoises(std::uint64_t seed, const WorldSize& world);
@@ -125,11 +130,18 @@ struct Inlets {
     double rockX = 0.0;
     double rockZ = 0.0;
     double rockRadius = 0.0;
+    double rockSize = 0.0;
     double rockHeight = 0.0;
     double rockTop = 0.0;
     double rockPhase = 0.0;
     // Into the next rock (coast_inlets::Effect::nextIslet).
     double nextIslet = -std::numeric_limits<double>::infinity();
+    // The stack whose spire may stand over the point (coast_inlets::Effect::spireX and the next
+    // ones).
+    double spireX = 0.0;
+    double spireZ = 0.0;
+    double spireSize = 0.0;
+    double spireHeight = 0.0;
 };
 
 // Whether the kinds weights read the noises of a shore (coast_profile::shoreAt): the rocky coasts,

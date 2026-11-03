@@ -20,6 +20,12 @@ terrain_add_test(coast_render_test terrain_core)
 # The walls of the coasts as the tiles draw them, seen from afar and from near: lines that move in
 # and out, faces that turn, tops that rise and dip, nothing at a regular step.
 terrain_add_test(coast_wall_test terrain_core)
+# The stacks as the tiles draw them: rock that narrows, irregular, in beds, notched, on an apron,
+# of several kinds (a needle, a pillar, a stack split in two, an arch).
+terrain_add_test(coast_stack_test terrain_core)
+# The coasts seen from afar: the wall of the view 3 at 800 m (no row on its ramp, its bands not
+# alike), the sea painted up the left wall of the view fjord_axe.
+terrain_add_test(coast_far_test terrain_core)
 # The pawn of the game by the faces of the coasts, on the collision of the tiles (the Bridge of the
 # tools: the ground of a teleport, the landing of Terrain.Pawn and of a click on the map).
 terrain_add_test(coast_pawn_test terrain_unreal_bridge)
@@ -41,7 +47,8 @@ set(coast_planet_file ${CMAKE_BINARY_DIR}/coast_planet.bin)
 add_test(NAME coast_planet_file
     COMMAND terrain_probe --planet ${coast_planet_file} --json 0 0)
 set_tests_properties(coast_planet_file PROPERTIES FIXTURES_SETUP coast_planet TIMEOUT 1800)
-set_tests_properties(coast_rock_test coast_render_test coast_wall_test coast_pawn_test
+set_tests_properties(coast_rock_test coast_render_test coast_wall_test coast_stack_test
+                     coast_far_test coast_pawn_test
                      coast_inlet_shapes_test coast_materials_test coast_patterns_test
                      coast_horizon_rock_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})

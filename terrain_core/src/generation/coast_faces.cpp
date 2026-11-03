@@ -23,11 +23,10 @@ using coast_profile::smooth;
 constexpr double kFarthest = 600.0;
 constexpr double kRockSide = 30.0;
 constexpr double kRockFade = 10.0;
-// The rocks: stacks from kStackLeast meters high; the rocks of the reefs upright toward their
+// The rocks of the reefs lower than a stack (coast_reefs::kSpireLeast) stand upright toward their
 // phase, their slope kept beyond kRockSideOpen of the cosine of the angle from it. Where two rocks
 // meet, the face of the one the point lies furthest into fades out over the last kRockMeet meters
 // before the other one does (coast_inlets::Effect::nextIslet): no face cut off at their meeting.
-constexpr double kStackLeast = 20.0;
 constexpr double kRockSideOpen = 0.3;
 constexpr double kRockMeet = 4.0;
 constexpr double kPi = 3.14159265358979323846;
@@ -299,13 +298,28 @@ Report fjordFrontAt(const Context& c, double share, double wall, double here) {
     return out;
 }
 
-// The face of a rock of the reefs or of a stack: standing at its water (its radius toward the
-// point, its lobes), its run from kRockTop of that radius inside (where its dome begins) to as far
-// outside; the shoulder of its dome behind the face (the dome over the inner end of the run, its
-// rough relief: the dome rises on from there), the sea level before it, the floor under the sea as
-// it is (the columns of the rock alone hold the face: those out of it keep their relief).
-// The rocks of the reefs stand upright toward one side only (their phase: the other side keeps
-// its slope), the stacks (kStackLeast meters high at least) all around.
+// The spire of the stack whose reach holds the point, the point from its axis
+// (coast_reefs::spireOf); none (radius 0) out of every reach.
+RockSpire spireAt(const Context& c) {
+    const coast_shape::Inlets& in = c.inlets;
+    RockSpire out;
+    if (!(in.spireSize > 0.0)) {
+        return out;
+    }
+    out.dx = static_cast<float>(noise::wrapCanonical(c.point.x - in.spireX, c.grain.world.x));
+    out.dz = static_cast<float>(noise::wrapCanonical(c.point.z - in.spireZ, c.grain.world.z));
+    out.radius = static_cast<float>(in.spireSize);
+    out.height = static_cast<float>(in.spireHeight);
+    out.seed = coast_reefs::spireSeed(in.spireX, in.spireZ);
+    return out;
+}
+
+// The face of a rock of the reefs: standing at its water (its radius toward the point, its
+// lobes), its run from kRockTop of that radius inside (where its dome begins) to as far outside;
+// the shoulder of its dome behind the face (the dome over the inner end of the run, its rough
+// relief: the dome rises on from there), the sea level before it, the floor under the sea as it
+// is (the columns of the rock alone hold the face: those out of it keep their relief). It stands
+// upright toward one side only (its phase: the other side keeps its slope).
 Report rockFaceAt(const Context& c) {
     const coast_shape::Inlets& in = c.inlets;
     if (!(in.rockRadius > 0.0)) {
@@ -319,12 +333,9 @@ Report rockFaceAt(const Context& c) {
     if (!(r < radius + reach) || !(r > radius - reach)) {
         return {};
     }
-    double weight = 1.0;
-    if (in.rockHeight < kStackLeast) {
-        const double turns = r > 0.0 ? dmath::atan2(dz, dx) / (2.0 * kPi) : 0.0;
-        weight = smooth(-kRockSideOpen, kRockSideOpen,
-                        dmath::sinTurns(turns - in.rockPhase + 0.25));
-    }
+    const double turns = r > 0.0 ? dmath::atan2(dz, dx) / (2.0 * kPi) : 0.0;
+    double weight =
+        smooth(-kRockSideOpen, kRockSideOpen, dmath::sinTurns(turns - in.rockPhase + 0.25));
     weight *= smooth(0.0, kRockMeet, in.islet - in.nextIslet);
     if (!(weight > 0.0)) {
         return {};
@@ -355,9 +366,13 @@ Report faceAt(const GeographyParams& p, const wall_faces::Grain& grain, const Po
               const GeographySample& g, const coast_kinds::Weights& weights,
               const coast_shape::Inlets& inlets, const coast_profile::Shore& shore) {
     const Context c{p, grain, point, g, weights, inlets, shore};
-    // The rocks of the reefs lay their own faces, within kRockSide meters of them.
+    // The rocks of the reefs lay their own faces, within kRockSide meters of them (the stacks
+    // none: their spires, over every point within their reach).
     if (inlets.islet > -kRockSide) {
-        return rockFaceAt(c);
+        Report out =
+            inlets.rockHeight >= coast_reefs::kSpireLeast ? Report{} : rockFaceAt(c);
+        out.spire = spireAt(c);
+        return out;
     }
     if (!(std::abs(point.distance) < kFarthest)) {
         return {};
@@ -391,6 +406,27 @@ bool plungeRock(const Point& point, const GeographySample& g, const coast_kinds:
     const coast_profile::Face f = coast_profile::wallFaceAt(
         k, coast_profile::faceTop(k, shore, static_cast<double>(g.land)), 0.0, shore);
     return d > coast_profile::runOf(f, true).a;
+}
+
+// A bank rising kBankLow meters per meter over the width of the ramp of a level keeps more of its
+// height, from kBankHigh on all of it: a wall (the sea at its foot bare rock, barePlunge: the
+// ramp would draw a shelf at the sea level before it, and hide it from that rule).
+constexpr double kBankLow = 0.6;
+constexpr double kBankHigh = 0.9;
+
+double shoreRampOf(double pitch) {
+    return 2.0 * kSeenRamp * pitch;
+}
+
+float seenShore(float relief, float shore, double pitch) {
+    if (!(shore >= 0.0f) || !(relief > 0.0f)) {
+        return relief;
+    }
+    const double ramp = shoreRampOf(pitch);
+    const auto h = static_cast<double>(relief);
+    const auto d = static_cast<double>(shore);
+    const double wall = smooth(kBankLow, kBankHigh, h / std::max(d, ramp));
+    return static_cast<float>(h * (wall + (1.0 - wall) * smooth(0.0, ramp, d)));
 }
 
 Seen seenOf(const RockFace& face, bool plunges, float relief, double pitch) {

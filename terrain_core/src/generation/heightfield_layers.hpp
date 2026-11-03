@@ -81,6 +81,9 @@ struct Heightfield::Memos {
     // Where set, the face of the coasts at the point the coasts report there (coastPointAt): left
     // as it is by the relief without them.
     coast_faces::Report* coastFace = nullptr;
+    // A level of the horizon reading the relief (seenAt, seenHeightsAt): the width of the ramp its
+    // shores rise from the sea level over (coast_faces::shoreRampOf), 0 for the tiles.
+    double seenRamp = 0.0;
 };
 
 } // namespace terrain
