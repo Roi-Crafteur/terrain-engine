@@ -17,6 +17,11 @@
 //   the phase of each sample in its cell, the root of the mean square of the means of its phases)
 //   kLightMost at most, and for the sky line kSkyPixels of a pixel of Unreal at most (a screen of
 //   kScreen pixels over 90 degrees, at the distance of the face, from peak to peak: a saw).
+// - The shadows of the triangles of the tiles of these faces on their top under suns behind them
+//   (checkShadows: the check in Unreal of d8e97ed, a row of identical teeth of shadow under the
+//   sky line of the calanque, its top rounded over 1.5 cells: under a sun 50 degrees high, 15 to
+//   18 % of its light, at the lattice of the cells 0.004 to 0.008; with the bevel of
+//   rock_faces.cpp at most 7 % and 0.0026 under every sun).
 // - The notched cliff seen from 800 m (the level 0 of the horizon, the view 3), over kLongHalf
 //   meters both ways: the light under its top and its sky line on the image, less their mean over
 //   twice the step of the blocks of its wall (coast_shape::kBlockCell, 150 m), their
@@ -26,6 +31,7 @@
 #include "coast_planet_support.hpp"
 #include "coast_render_support.hpp"
 #include "coast_rock_support.hpp"
+#include "coast_top_support.hpp"
 
 #include "terrain/streaming/lod.hpp"
 
@@ -70,7 +76,6 @@ constexpr double kPeriodic = 0.5;
 constexpr double kBlockStep = 150.0;
 constexpr double kHalf = 150.0;
 constexpr double kLongHalf = 700.0;
-constexpr int kBins = 4;
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 // The eye kAway meters out from a point of a face, kEye meters over the sea, looking at it.
@@ -232,88 +237,6 @@ std::vector<double> skyLine(const std::vector<terrain::TileData>& tiles, const E
     return out;
 }
 
-// v less its mean over trend meters (samples every kStep along the line; NaN where unseen).
-std::vector<double> detrended(const std::vector<double>& v, double trend) {
-    const auto half = static_cast<int>(trend / 2.0 / coast_render::kStep);
-    const auto size = static_cast<int>(v.size());
-    std::vector<double> out(v.size(), kNaN);
-    for (int i = 0; i < size; ++i) {
-        double sum = 0.0;
-        int n = 0;
-        for (int j = std::max(0, i - half); j <= std::min(size - 1, i + half); ++j) {
-            if (!std::isnan(v[static_cast<std::size_t>(j)])) {
-                sum += v[static_cast<std::size_t>(j)];
-                ++n;
-            }
-        }
-        if (n > half && !std::isnan(v[static_cast<std::size_t>(i)])) {
-            out[static_cast<std::size_t>(i)] = v[static_cast<std::size_t>(i)] - sum / n;
-        }
-    }
-    return out;
-}
-
-// The autocorrelation of h at lag meters, and the root of its mean square.
-double autocorrelation(const std::vector<double>& h, double lag, double& rms) {
-    const auto l = static_cast<std::size_t>(std::lround(lag / coast_render::kStep));
-    double power = 0.0, product = 0.0;
-    int n = 0, pairs = 0;
-    for (std::size_t i = 0; i < h.size(); ++i) {
-        if (std::isnan(h[i])) {
-            continue;
-        }
-        power += h[i] * h[i];
-        ++n;
-        if (i + l < h.size() && !std::isnan(h[i + l])) {
-            product += h[i] * h[i + l];
-            ++pairs;
-        }
-    }
-    rms = n > 0 ? std::sqrt(power / n) : 0.0;
-    return pairs > n / 2 && power > 0.0 ? (product / pairs) / (power / n) : 0.0;
-}
-
-// The part of h at the lattice of the cells of its tiles: h folded on the phase of each sample in
-// its cell along x and z (kBins x kBins), the root of the mean square of the means of the phases.
-// A pattern of the cells (a step, a stripe at each cell the face crosses) comes back at the same
-// phase; anything else averages out, to its mean square times the number of phases over the
-// number of samples, taken out (a wall of uneven top shows no part of it at the lattice). Along an
-// axis the face crosses the cells of more slowly than every kTrend meters, no phase (it would fold
-// the shape of the face, longer than kTrend, on a few runs of it).
-double latticePart(const std::vector<Point>& line, const std::vector<double>& h,
-                   const std::vector<double>& cells) {
-    std::vector<double> sum(kBins * kBins, 0.0);
-    std::vector<int> count(kBins * kBins, 0);
-    int n = 0;
-    double all = 0.0;
-    for (std::size_t i = 0; i < line.size(); ++i) {
-        if (std::isnan(h[i]) || !(cells[i] > 0.0)) {
-            continue;
-        }
-        const auto phase = [&](double v) {
-            const double f = v / cells[i] - std::floor(v / cells[i]);
-            return std::min(kBins - 1, static_cast<int>(f * kBins));
-        };
-        const double x = line[i].x + coast_render::kInland * line[i].nx;
-        const double z = line[i].z + coast_render::kInland * line[i].nz;
-        const bool acrossX = cells[i] <= kTrend * std::abs(line[i].nz);
-        const bool acrossZ = cells[i] <= kTrend * std::abs(line[i].nx);
-        const auto bin = static_cast<std::size_t>((acrossX ? phase(x) : 0) * kBins +
-                                                  (acrossZ ? phase(z) : 0));
-        sum[bin] += h[i];
-        ++count[bin];
-        ++n;
-        all += h[i] * h[i];
-    }
-    double power = 0.0;
-    int phases = 0;
-    for (std::size_t b = 0; b < sum.size(); ++b) {
-        power += count[b] > 0 ? sum[b] * sum[b] / count[b] : 0.0;
-        phases += count[b] > 0 ? 1 : 0;
-    }
-    return n > 0 ? std::sqrt(std::max(0.0, power - phases * all / n) / n) : 0.0;
-}
-
 // The cell of the tile under each point of the line (0 off them).
 std::vector<double> cellsOf(const Tiles& tiles, const std::vector<Point>& line) {
     std::vector<double> cells(line.size(), 0.0);
@@ -335,7 +258,7 @@ std::vector<double> cellsOf(const Tiles& tiles, const std::vector<Point>& line) 
 // part at the lattice of the cells, most at most.
 void checkLattice(const char* what, const std::vector<Point>& line, const std::vector<double>& v,
                   const std::vector<double>& cells, double most) {
-    const std::vector<double> h = detrended(v, kTrend);
+    const std::vector<double> h = coast_top::detrended(v, kTrend);
     const double angle = std::atan2(std::abs(line.back().z - line.front().z),
                                     std::abs(line.back().x - line.front().x));
     double rms = 0.0;
@@ -343,11 +266,11 @@ void checkLattice(const char* what, const std::vector<Point>& line, const std::v
     for (const double step : {2.0, 4.0, 8.0, 8.0 / std::max(std::cos(angle), 0.05),
                               8.0 / std::max(std::sin(angle), 0.05)}) {
         if (step <= kTrend) {
-            std::printf(" %.2f at %.1f m,", autocorrelation(h, step, rms), step);
+            std::printf(" %.2f at %.1f m,", coast_top::autocorrelation(h, step, rms), step);
         }
     }
-    autocorrelation(h, 0.0, rms);
-    const double part = latticePart(line, h, cells);
+    coast_top::autocorrelation(h, 0.0, rms);
+    const double part = coast_top::latticePart(line, h, cells, kTrend);
     std::printf(" its part at the lattice of the cells %.4f (of %.4f), at most %.4f\n", part, rms,
                 most);
     TEST_CHECK(part <= most);
@@ -375,6 +298,78 @@ std::vector<double> lightOf(const coast_bands::TileImage& img) {
 double metersOf(const std::vector<double>& v) {
     const auto seen = std::count_if(v.begin(), v.end(), [](double x) { return !std::isnan(x); });
     return static_cast<double>(seen) * coast_render::kStep;
+}
+
+// The light the shadows of the triangles take from the top of the face, from kLipDepth under it
+// to it, under suns behind the wall (kSunsBehind high, the air of the face turned by kTurns): at
+// each point, horizontal rays meet the face every kLipStep meters; the light of the normal of its
+// vertices there (Unreal shades with it) is lost where a ray toward the sun meets a triangle
+// within kShadowReach meters. Its share of all the light there kShadowShare at most, and the
+// part of what it takes at each point at the lattice of the cells kShadowMost at most (a row of
+// teeth of shadow).
+constexpr double kLipDepth = 16.0;
+constexpr double kLipStep = 0.5;
+constexpr double kShadowReach = 60.0;
+constexpr std::array<double, 2> kSunsBehind{35.0, 50.0};
+constexpr std::array<double, 3> kTurns{-30.0, 0.0, 30.0};
+constexpr double kShadowShare = 0.08;
+constexpr double kShadowMost = 0.003;
+constexpr double kAhead = 30.0;
+
+// The light at each point of the line the shadows take, and its sum and that of all the light.
+std::vector<double> lostLight(const coast_top::Triangles& triangles,
+                              const std::vector<Point>& line, V3 sun, double& lost, double& all) {
+    std::vector<double> out;
+    for (const Point& p : line) {
+        double sum = 0.0;
+        int n = 0;
+        for (double y = p.top - kLipDepth; y <= p.top; y += kLipStep) {
+            const V3 o{p.x + kAhead * p.nx, y, p.z + kAhead * p.nz};
+            const coast_top::Hit h = triangles.cast(o, {-p.nx, 0.0, -p.nz}, 2.0 * kAhead);
+            if (h.t < 0.0) {
+                continue;
+            }
+            ++n;
+            const double light = std::max(0.0, coast_image::dot(h.normal, sun));
+            const V3 from{o.x - p.nx * h.t + 0.05 * h.normal.x, y + 0.05 * h.normal.y,
+                          o.z - p.nz * h.t + 0.05 * h.normal.z};
+            const bool shadow = light > 0.0 && triangles.cast(from, sun, kShadowReach).t >= 0.0;
+            sum += shadow ? light : 0.0;
+            lost += shadow ? light : 0.0;
+            all += light;
+        }
+        out.push_back(n > 0 ? sum / n : kNaN);
+    }
+    return out;
+}
+
+void checkShadows(const std::vector<terrain::TileData>& tiles, const std::vector<Point>& line,
+                  const std::vector<double>& cells) {
+    const coast_top::Triangles triangles(tiles);
+    double ax = 0.0, az = 0.0;
+    for (const Point& p : line) {
+        ax += p.nx;
+        az += p.nz;
+    }
+    const double norm = std::hypot(ax, az);
+    for (const double high : kSunsBehind) {
+        for (const double turn : kTurns) {
+            const double c = std::cos(turn * std::numbers::pi / 180.0);
+            const double s = std::sin(turn * std::numbers::pi / 180.0);
+            const double e = high * std::numbers::pi / 180.0;
+            const V3 sun{-(ax * c - az * s) / norm * std::cos(e), std::sin(e),
+                         -(ax * s + az * c) / norm * std::cos(e)};
+            double lost = 0.0, all = 0.0;
+            const std::vector<double> v = lostLight(triangles, line, sun, lost, all);
+            const double share = all > 0.0 ? lost / all : 0.0;
+            const double part =
+                coast_top::latticePart(line, coast_top::detrended(v, kTrend), cells, kTrend);
+            std::printf("    a sun %.0f degrees high behind it, turned by %.0f: the shadows take "
+                        "%.1f %% of the light of its top, at the lattice of the cells %.4f\n",
+                        high, turn, 100.0 * share, part);
+            TEST_CHECK(share <= kShadowShare && part <= kShadowMost);
+        }
+    }
 }
 
 // A wall seen from 300 m on its tiles.
@@ -407,6 +402,7 @@ void testTiles(const coast_rock::Place& place, const Eye* view) {
         std::hypot(middle.x - eye.x, middle.z - eye.z) * std::numbers::pi / 2.0 / kScreen;
     checkLattice("the sky line", line, skyLine(tiles.data, eye, line), cells,
                  kSkyPixels * pixel / std::sqrt(12.0));
+    checkShadows(tiles.data, line, cells);
 }
 
 // The notched cliff of the view 3 at 800 m: the level 0 of the horizon, at the step of its blocks.
@@ -426,7 +422,8 @@ void testBlocks() {
     for (const auto& [what, v] : {std::pair{"the light under the top", &a.light},
                                   std::pair{"the sky line", &a.sky}}) {
         double rms = 0.0;
-        const double r = autocorrelation(detrended(*v, 2.0 * kBlockStep), kBlockStep, rms);
+        const double r = coast_top::autocorrelation(coast_top::detrended(*v, 2.0 * kBlockStep),
+                                                   kBlockStep, rms);
         std::printf("    %s: autocorrelation %.2f at the step of the blocks (%.0f m)\n", what, r,
                     kBlockStep);
         TEST_CHECK(r <= kPeriodic);

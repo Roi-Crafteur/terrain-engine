@@ -4,7 +4,8 @@
 // Unreal of e6f198d: a comb of light vertical strokes along the wall of the view 3, 800 m out to
 // sea, under a sun 8 degrees high): the level 0 of the horizon (its samples every 8 m, two
 // triangles a cell, as its grid) seen from an eye, each pixel lit by the detail normal of the
-// material there (its slopes every 2 m, bilinear), its luminance; along a wall, the luminance of
+// material there (its slopes every 2 m, bilinear; faded into the normal of the grid on its faces,
+// Level0::normalAt, after the check of d8e97ed), its luminance; along a wall, the luminance of
 // each column of pixels over the middle of the wall, and the part of it that varies within a few
 // tens of meters (the strokes, coast_far_test).
 
@@ -85,7 +86,8 @@ inline V3 sunOf(const Eye& e, double azimuth, double elevation) {
 }
 
 // One triangle of the image: projected, rasterized with the world position of each pixel
-// (perspective correct), lit by the detail slopes of l there; steep: a wall.
+// (perspective correct), lit by the normal of the material there (Level0::normalAt); steep: a
+// wall.
 inline void drawTriangle(const Frame& fr, const Level0& l, V3 sun, std::array<V3, 3> v,
                          Image& img, std::vector<double>& depth) {
     const V3 a = v[0], b = v[1], c = v[2];
@@ -131,8 +133,8 @@ inline void drawTriangle(const Frame& fr, const Level0& l, V3 sun, std::array<V3
             depth[at] = zc;
             const double wx = (b0 * a.x * iz[0] + b1 * b.x * iz[1] + b2 * c.x * iz[2]) * zc;
             const double wz = (b0 * a.z * iz[0] + b1 * b.z * iz[1] + b2 * c.z * iz[2]) * zc;
-            const auto [gx, gz] = l.slopeAt(wx, wz, true);
-            const V3 dn = unit({-gx, 1.0, -gz});
+            const auto [nx, ny, nz] = l.normalAt(wx, wz);
+            const V3 dn{nx, ny, nz};
             img.luminance[at] = kAmbient + (1.0 - kAmbient) * std::max(0.0, dot(dn, sun));
             img.wall[at] = steep ? 1 : 0;
         }

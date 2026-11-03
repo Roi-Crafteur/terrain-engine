@@ -31,6 +31,9 @@ inline constexpr double kStep = 0.5;
 inline constexpr int kRatio = 4;
 inline constexpr double kPitch = 8.0; // level 0
 inline constexpr double kDegrees = 180.0 / std::numbers::pi;
+// The detail of the horizon, whole up to 45 degrees, none from 66 (horizon_detail_normals.py).
+inline constexpr double kSteepFull = 0.7;
+inline constexpr double kSteepNone = 0.4;
 
 inline const terrain::Heightfield& field() {
     return coast_planet::field();
@@ -170,6 +173,26 @@ struct Level0 {
             out[1] += w * (fine ? detail[at].gradZ : cells[at].gradZ);
         }
         return out;
+    }
+
+    // The normal the horizon material lights (x, z) with (horizon_detail_normals.py:
+    // HORIZON_HLSL): that of its detail texels, faded into that of its samples where the grid is
+    // steeper than kSteepFull (none from kSteepNone): their texels, read along x and z, would run
+    // up a face as stripes.
+    [[nodiscard]] std::array<double, 3> normalAt(double x, double z) const {
+        const auto unitOf = [](std::array<double, 2> g) {
+            const double l = std::sqrt(g[0] * g[0] + 1.0 + g[1] * g[1]);
+            return std::array<double, 3>{-g[0] / l, 1.0 / l, -g[1] / l};
+        };
+        const std::array<double, 3> n = unitOf(slopeAt(x, z, false));
+        const std::array<double, 3> d = unitOf(slopeAt(x, z, true));
+        const double w = std::clamp((n[1] - kSteepNone) / (kSteepFull - kSteepNone), 0.0, 1.0);
+        std::array<double, 3> out{};
+        for (std::size_t k = 0; k < 3; ++k) {
+            out[k] = n[k] + w * (d[k] - n[k]);
+        }
+        const double l = std::sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+        return {out[0] / l, out[1] / l, out[2] / l};
     }
 };
 

@@ -417,12 +417,14 @@ if (DebugView > 0.5)
     [unroll] for (int k = 0; k < 8; ++k) { d += (g[k] / sum) * K[k]; }
     d = lerp(lerp(d, float3(0.9, 0.1, 0.1), rock), float3(1.0, 1.0, 1.0), snow);
     // 6: the bands of the rock as the pixel reads them (agent 33): the place among its beds in
-    // red, their layering in green, its notch in blue (black: none).
+    // red, their layering in green, its notch in blue (black: none). 7: the normal the pixel is
+    // shaded with (x, y, z to red, green, blue).
     float3 bands = float3(frac(B.x), B.y, B.w > 0.0 ? saturate(B.z / B.w) : 0.0);
     color = DebugView < 1.5 ? d : (DebugView < 2.5 ? float3(rock, snow, saturate(W2.z)) :
             (DebugView < 3.5 ? float3(sandShare / max(sum, 1e-3), 0.0, 0.0) :
             (DebugView < 4.5 ? float3(hollow, 0.15, bump) :
-            (DebugView < 5.5 ? float3(bare, gravel, 0.0) : bands))));
+            (DebugView < 5.5 ? float3(bare, gravel, 0.0) :
+            (DebugView < 6.5 ? bands : N * 0.5 + 0.5)))));
 }
 NormalOut = normal;
 return color;

@@ -155,6 +155,17 @@ def check_bands(scripts, struct_code):
           "the variant of the rock of a face in patches of its planes")
     check("float3 bands = float3(frac(B.x), B.y" in shade and "(DebugView < 5.5 ?" in shade,
           "the debug view 6 shows the bands")
+    check("(DebugView < 6.5 ? bands : N * 0.5 + 0.5)" in shade, "the debug view 7 shows the normal")
+    # The detail normals of the horizon fade out on its faces, whole on gentler ground (agent 33,
+    # the stripes of the wall of v3 at 800 m), as Level0::normalAt (coast_render_support.hpp).
+    import horizon_detail_normals as detail
+    check("w *= saturate((n.z - 0.4) / (0.7 - 0.4));" in detail.HORIZON_HLSL,
+          "the detail of the horizon fades out on its faces")
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "coast_render_support.hpp"),
+              encoding="utf-8") as f:
+        render = f.read()
+    check(f"kSteepFull = {detail.STEEP_FULL};" in render and
+          f"kSteepNone = {detail.STEEP_NONE};" in render, "its copy in the tests, the same")
     with open(f"{scripts}/create_temporary_terrain_material.py", encoding="utf-8") as f:
         tiles = f.read()
     check('set_editor_property("coordinate_index", index)' in tiles and "(1, 2, 3)" in tiles,

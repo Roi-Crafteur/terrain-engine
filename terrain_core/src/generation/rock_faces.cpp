@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <numbers>
 
 namespace terrain {
 
@@ -48,14 +49,19 @@ constexpr double kJointCells = 4.0;
 constexpr double kRound = 3.0;
 constexpr double kCarvedRound = 1.0;
 constexpr double kRoundShare = 0.25;
-// The faces of their own rounding (RockFace::roundTenths: the coasts, sharp at a meter) are rounded
-// over kRoundCells cells at least where the cells are coarser than a meter: an edge sharper than
-// its cells is cut by each cell it crosses, more and more along a face oblique to them and back at
-// once at the next one, a row of identical steps along its top (the check in Unreal of 06fd02f:
-// the calanque of the view 5 at 300 m, its tiles of LOD 3). Measured on its sky line from there
-// (coast_top_test): its part at the lattice of the cells from 0.063 m (the edge of a meter) to
-// 0.038 m (a cell), 0.030 m (one and a half) and 0.022 m (two).
-constexpr double kRoundCells = 1.5;
+// The tops of the faces of their own rounding (RockFace::roundTenths: the coasts, sharp at a
+// meter), where the cells are coarser than a meter: an edge sharper than the cells steps at each
+// one along a face oblique to them (a saw along its top: the check in Unreal of 06fd02f), rounded
+// over a few cells its facets turn too much, each turning from a sun behind the wall in the shadow
+// of the others while its vertices light it (a row of teeth of shadow under its top: d8e97ed). A
+// bevel at 45 degrees kRoundCells cells high, planes the cells draw exactly, its creases with the
+// top and the face rounded over kUpperCrease and kLowerCrease of it. On the calanque of the view 5
+// (coast_top_test): the part of its sky line at the lattice of the cells 0.063 m with an edge of a
+// meter, 0.025 m rounded, 0.033 m bevelled; the shadows under suns behind it up to 18 % of the
+// light of its top rounded (0.008 at the lattice), 7 % bevelled (0.0026).
+constexpr double kRoundCells = 1.0;
+constexpr double kUpperCrease = 0.7;
+constexpr double kLowerCrease = 0.5;
 // The grain and the overhangs of a face come in as its drawn weight runs from kFullLow to 1.
 constexpr double kFullLow = 0.75;
 // The joints come in over kJointEnds meters over the foot of a face (their floor rising out of
@@ -147,7 +153,7 @@ double drawnFeature(float feature, float extent, const RockDetail& detail) {
 }
 
 // The edges of the step of a face are rounded over this many meters as cells of the detail draw
-// them.
+// them (its top bevelled over that much: kRoundCells).
 double roundOf(const RockFace& f, const RockDetail& detail) {
     const auto cell = static_cast<double>(detail.cell);
     const double own = std::max(0.1 * static_cast<double>(f.roundTenths),
@@ -250,8 +256,9 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
 // same value without its offset (most of the samples of a tile on a wall).
 double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
     const double round = roundOf(f, detail);
-    const double reach = std::max(round, 0.0) + std::abs(static_cast<double>(f.distance)) +
-                         std::abs(static_cast<double>(f.cap));
+    const bool bevel = f.roundTenths > 0 && detail.cell > 1.0f; // reaches 1 + sqrt 2 its height
+    const double reach = (bevel ? 2.5 : 1.0) * std::max(round, 0.0) +
+                         std::abs(static_cast<double>(f.distance)) + std::abs(f.cap);
     if (v >= f.top + reach) {
         return v - f.top;
     }
@@ -261,6 +268,11 @@ double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
     const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
     if (!(round > 0.0)) {
         return std::min(v - f.foot, std::max(v - f.top, across));
+    }
+    if (bevel) {
+        const double cut = (v - f.top + across + round) * (1.0 / std::numbers::sqrt2);
+        const double top = smoothMax(v - f.top, cut, kUpperCrease * round);
+        return smoothMin(v - f.foot, smoothMax(top, across, kLowerCrease * round), round);
     }
     return smoothMin(v - f.foot, smoothMax(v - f.top, across, round), round);
 }
@@ -423,10 +435,9 @@ float rockShare(const RockColumn& c, double y, const RockDetail& detail) {
     for (std::size_t i = 0; i < c.faceCount; ++i) {
         const RockFace& f = c.faces[i];
         const double distance = f.distance;
-        // Behind the face over its undercut and over the rounding of its top (the faces of their
-        // own rounding: no tooth of the ground on their rounded top).
-        const double behind = std::max(0.0f, f.undercut) + kShareAcross +
-                              (f.roundTenths > 0 ? roundOf(f, detail) : 0.0);
+        // Behind the face over its undercut and the bevel of its top (no tooth of the ground).
+        const double top = f.roundTenths > 0 ? (1.0 + kUpperCrease) * roundOf(f, detail) : 0.0;
+        const double behind = std::max(0.0f, f.undercut) + kShareAcross + top;
         if (y >= f.foot - kShareBelow && y <= f.top + kShareAbove &&
             distance < std::max(0.0f, f.cap) + kShareAcross && distance > -behind) {
             share = std::max(share, std::min(1.0f, drawnWeight(f, detail)));
