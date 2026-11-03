@@ -6,6 +6,11 @@ and of the horizon (shade_hlsl, both): the grey rock turns to desertRock by ergF
 made and before it is drawn; desertRock, as written there, is warm (red over green over blue,
 saturated) at both ends of its hue, and the core lays no bare rock on the ergs
 (heightfield_hydrology.cpp: no rock flag set by the dunes).
+The floors of the ergs (tenth stop, f405fb7: their gravel, the material pebbles, read from afar as
+grey-blue lakes in the orange sand): their Scree layer alone takes regTint by ergFloor, its mean
+color then that of the local sand under a dark patina (warm, darker than the sand, never blue);
+the smooth sand takes its desert tint wherever the erg lies (by ergFloor too: by the share of its
+dunes only, its pale raw texture showed white as snow by the rock out of the sand).
 Run: python3 unreal_erg_rock_test.py <terrain_unreal/Scripts> <terrain_core/src/generation>
 """
 
@@ -57,6 +62,27 @@ def main():
             ends = [tuple(float(v) for v in hue.group(k).split(",")) for k in (1, 2)]
             print(f"desert rock from {ends[0]} to {ends[1]}")
             check(all(warm(e) for e in ends), f"desert rock ochre to red: {ends}")
+    names = [layer[0] for layer in look.LAYERS]
+    scree = names.index("Scree")
+    for detail in (True, False):
+        code = look.shade_hlsl(detail)
+        start = code.find(f"BRANCH if (g[{scree}] > 0.01")
+        end = code.find("BRANCH if (g[", start + 10)
+        end = end if end >= 0 else len(code)
+        check(code.count("c *= regTint;") == 1 and start < code.find("c *= regTint;") < end,
+              f"the Scree layer alone takes regTint (detail {detail})")
+        check("max(sandLock, ergFloor)" in code,
+              f"the sand of the erg tinted wherever the erg lies (detail {detail})")
+        shade = re.search(r"desertMean \* ([0-9.]+) / max\(screeMean", code)
+        check(shade is not None, f"regTint from the desert mean (detail {detail})")
+    if shade:
+        k = float(shade.group(1))
+        desert = [m * t for m, t in zip(look.LAYERS[names.index("Desert")][3], look.TINTS["Desert"])]
+        reg = [k * d for d in desert]
+        grey = [m * t for m, t in zip(look.LAYERS[scree][3], look.TINTS["Scree"])]
+        print(f"gravel of an erg {tuple(round(v, 3) for v in reg)} (the scree elsewhere "
+              f"{tuple(round(v, 3) for v in grey)}, the desert sand {tuple(round(v, 3) for v in desert)})")
+        check(warm(reg) and sum(reg) < 0.7 * sum(desert), f"the gravel of an erg a dark warm reg: {reg}")
     hydrology = open(os.path.join(sys.argv[2], "heightfield_hydrology.cpp")).read()
     dunes = re.search(r"void Heightfield::addDunes\(.*?\n}\n", hydrology, re.S)
     check(dunes is not None and "s.rock" not in dunes.group(0),

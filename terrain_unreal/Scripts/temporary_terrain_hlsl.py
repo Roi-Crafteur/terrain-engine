@@ -248,13 +248,24 @@ float ergFloor = saturate(DUNES * (127.0 / 16.0));
 float duneShare = saturate((DUNES - 16.0 / 127.0) / (1.0 - 16.0 / 127.0));
 float sandLock = saturate(duneShare * 2.0);
 // Their sand has one color near and far: the smooth Sand layer takes the mean color of the
-// Desert layer (the warm orange of the horizon, both read from their textures) where the dunes
-// are, its ripples kept.
+// Desert layer (the warm orange of the horizon, both read from their textures) wherever the erg
+// lies, its ripples kept (by the share of its dunes only, its pale raw texture showed white as
+// snow where that share falls, by the rock out of the sand).
+float3 desertMean = DESERT_TEX.SampleLevel(DESERT_TEXSampler, P / DESERT_SCALE, 13.0).rgb * DESERT_TINT;
 float3 duneTint = lerp(float3(1.0, 1.0, 1.0),
-                       (DESERT_TEX.SampleLevel(DESERT_TEXSampler, P / DESERT_SCALE, 13.0).rgb * DESERT_TINT) /
+                       desertMean /
                        max(SAND_TEX.SampleLevel(SAND_TEXSampler, P / SAND_SCALE, 13.0).rgb * SAND_TINT,
                            float3(1e-4, 1e-4, 1e-4)),
-                       sandLock);
+                       max(sandLock, ergFloor));
+// The gravel of the floor of an erg (its Scree layer: the material pebbles, ergs_rock.cpp) is a
+// reg, its stones in the hue of the local sand under a dark patina (0.55 of its color: brown to
+// red-brown), near and far, never the cold blue-grey scree of the mountains: its texture keeps its
+// light and dark.
+float3 screeMean = Look.Saturate(SCREE_TEX.SampleLevel(SCREE_TEXSampler, P / SCREE_SCALE, 13.0).rgb,
+                                 SCREE_SATURATION) * SCREE_TINT;
+float3 regTint = lerp(float3(1.0, 1.0, 1.0),
+                      desertMean * 0.55 / max(screeMean, float3(1e-4, 1e-4, 1e-4)),
+                      ergFloor);
 rock *= 1.0 - sandLock;
 rock = max(rock, W2.y * CoreRock);
 float cold = saturate((W2.x - 0.5) * 2.5 + (n2 - 0.5) * 1.2 + 0.5);
@@ -451,13 +462,14 @@ def struct_hlsl(biomes):
             .replace("SEA_ROCK_HALF", f"{0.5 * SEA_ROCK_CODE:.1f}"))
 
 
-def ground_layer(index, scale, detail, saturation, dunes=False):
+def ground_layer(index, scale, detail, saturation, dunes=False, reg=False):
     """The code of one ground layer: its mean color, or its stochastic texture near the camera."""
     layer = LAYER_FAR.replace("DETAIL_CODE", LAYER_DETAIL if detail else "")
     layer = layer.replace("LAYER_SATURATION", "" if saturation is None else
                           f"    c = Look.Saturate(c, {saturation:.2f});\n")
     # The sand of the dunes takes the color of the desert (duneTint, SHADE_TOP).
-    layer = layer.replace("DUNE_TINT", "    c *= duneTint;\n" if dunes else "")
+    layer = layer.replace("DUNE_TINT", "    c *= duneTint;\n" if dunes else
+                          ("    c *= regTint;\n" if reg else ""))
     # Its ripples keep one direction across the cells of its tiling (BombStripes).
     layer = layer.replace("Look.BOMB(", "Look.BombStripes(" if dunes else "Look.Bomb(")
     return layer.replace("TAI", f"TA{index}").replace("TNI", f"TN{index}").replace(
@@ -476,13 +488,14 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
         "CURVATURE", "W3.w" if detail else "0.0").replace(
         "DUNES", "W4" if detail else "W2.z").replace("FOOT", "W2.z" if detail else "0.0")
     names = [layer[0] for layer in layers]
-    for name, key in (("Desert", "DESERT"), ("Sand", "SAND")):
+    for name, key in (("Desert", "DESERT"), ("Sand", "SAND"), ("Scree", "SCREE")):
         index = names.index(name)
         code = code.replace(f"{key}_TEX", f"TA{index}").replace(
-            f"{key}_TINT", f"Tint{index}").replace(f"{key}_SCALE", f"{layers[index][4]:.1f}")
+            f"{key}_TINT", f"Tint{index}").replace(f"{key}_SCALE", f"{layers[index][4]:.1f}").replace(
+            f"{key}_SATURATION", f"{saturations.get(name, 1.0):.2f}")
     for index in range(ground):
         code += ground_layer(index, layers[index][4], detail, saturations.get(layers[index][0]),
-                             layers[index][0] == "Sand")
+                             layers[index][0] == "Sand", layers[index][0] == "Scree")
     snow, rock, variant = ground, ground + 1, ground + 2
     scale = f"{layers[rock][4]:.1f}"
     code += ROCK_FAR.replace("TAR", f"TA{rock}").replace("TAV", f"TA{variant}").replace(
