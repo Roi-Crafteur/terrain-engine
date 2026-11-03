@@ -64,9 +64,7 @@ constexpr double kCapDepth = 6.0;
 constexpr double kBedGrain = 0.35;
 constexpr double kRockyGrain = 0.2;
 constexpr double kBedShift = 3.0;
-// The joints recede the face by kJointRun of its run at most; the overhangs and the grain stay
-// within kWithinRun of the run (as the faces of the walls).
-constexpr double kJointRun = 0.1;
+// The overhangs and the grain stay within kWithinRun of the run (as the faces of the walls).
 constexpr double kWithinRun = 0.45;
 // The lower walls of the fjords: kFjordWallLow to kFjordWallHigh meters over the water.
 constexpr double kFjordWallLow = 30.0;
@@ -129,8 +127,8 @@ double groundAt(const GeographyParams& p, const Point& point, const GeographySam
         coast_shape::shapeAt(p, g, coast, distance, weights, read, shore).ground);
 }
 
-// The notch, the cap, the grain and the joint of a face of kind over its run, its foot at foot
-// meters over the sea level.
+// The notch, the cap and the grain of a face of kind over its run, its foot at foot meters over the
+// sea level.
 void featuresOf(const wall_faces::Grain& grain, const Point& point, CoastKind kind, double foot,
                 bool plunges, RockFace& face) {
     const double run = face.run;
@@ -158,12 +156,9 @@ void featuresOf(const wall_faces::Grain& grain, const Point& point, CoastKind ki
         face.capDepth = static_cast<float>(std::min(
             height, std::max(kCapDepth, kLipShape * static_cast<double>(face.cap))));
     }
-    const wall_faces::Joint joint = wall_faces::jointAt(grain, point.x, point.z);
-    face.joint = static_cast<float>(
-        std::min({joint.depth, kJointRun * run,
-                  std::max(0.0, room - static_cast<double>(face.undercut))}));
-    face.jointWidth = static_cast<float>(joint.width);
-    face.jointSeed = static_cast<float>(joint.seed);
+    // No joint (the check in Unreal of 1b77f95: a straight groove opening over a stretch of the
+    // face, alone, read as a door): the beds draw its rock (rockBands).
+    face.joint = 0.0f;
     face.roundTenths = kFaceRoundTenths;
 }
 
