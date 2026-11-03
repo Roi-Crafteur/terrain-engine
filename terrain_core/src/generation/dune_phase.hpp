@@ -36,6 +36,9 @@ struct Shared {
     std::array<double, 3> z{};
     std::array<double, 3> sinuosity{};
     std::array<double, 3> drift{};
+    // The side of the square the sample stands for (Ergs::dunesAt), meters, 0 for a point: the
+    // chutes of the slip faces of the giant waves fade out from kChuteNear to kChuteFar of it.
+    double footprint = 0.0;
 };
 [[nodiscard]] Shared sharedAt(const Ergs::Impl& m, double x, double z);
 

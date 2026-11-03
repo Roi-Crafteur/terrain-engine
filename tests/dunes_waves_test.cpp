@@ -210,9 +210,11 @@ bool giantSite(double& x0, double& z0) {
     return false;
 }
 
-// The far horizon over the giant waves: the same bits as a point (the tiles) up to a pitch of
-// 512 m (no seam where the tiles meet it, the crests whole on its near levels); beyond, their
-// mean, which a sample half a pitch away barely changes (no flicker).
+// The far horizon over the giant waves: the same bits as a point (the tiles) at a pitch of 8 m (no
+// seam where the tiles meet its first level); up to 512 m, the point but the chutes of the slip
+// faces (faded out from 8 to 16 m since the ninth stop: a coarser grid drew them as a
+// checkerboard), never more than their depth from it (the crests whole on its near levels);
+// beyond, their mean, which a sample half a pitch away barely changes (no flicker).
 void testHorizon() {
     double x0 = 0.0;
     double z0 = 0.0;
@@ -220,15 +222,18 @@ void testHorizon() {
     terrain::HeightSample s;
     std::size_t same = 0;
     std::size_t count = 0;
+    double chutes = 0.0; // the most a sample of 64 to 512 m moves from the point
     double flicker = 0.0;
     double range = 0.0;
     for (int k = 0; k < 400; ++k) {
         const double x = x0 + 97.3 * k;
         const double z = z0 + 41.9 * k;
         const float point = real().ergs.dunesAt(x, z, s);
-        for (const double pitch : {8.0, 64.0, 256.0, 512.0}) {
-            ++count;
-            same += real().ergs.dunesAt(x, z, s, pitch) == point ? 1 : 0;
+        ++count;
+        same += real().ergs.dunesAt(x, z, s, 8.0) == point ? 1 : 0;
+        for (const double pitch : {64.0, 256.0, 512.0}) {
+            chutes = std::max(chutes, std::abs(static_cast<double>(
+                                          real().ergs.dunesAt(x, z, s, pitch) - point)));
         }
         const double pitch = 4096.0;
         const double a = static_cast<double>(real().ergs.dunesAt(x, z, s, pitch));
@@ -236,11 +241,12 @@ void testHorizon() {
         flicker = std::max(flicker, std::abs(b - a));
         range = std::max(range, static_cast<double>(point));
     }
-    std::printf("horizon over the giant waves: %zu of %zu samples up to 512 m the same bits as "
-                "the points; at 4096 m, half a pitch moves them by %.1f m at most (crests up to "
-                "%.0f m)\n",
-                same, count, flicker, range);
+    std::printf("horizon over the giant waves: %zu of %zu samples of 8 m the same bits as the "
+                "points, from 64 to 512 m %.2f m from them at most; at 4096 m, half a pitch moves "
+                "them by %.1f m at most (crests up to %.0f m)\n",
+                same, count, chutes, flicker, range);
     TEST_CHECK(same == count);
+    TEST_CHECK(chutes <= 5.0); // kChuteDepth
     TEST_CHECK(flicker <= 0.1 * range);
 }
 
@@ -352,8 +358,9 @@ void testJoins() {
 // surface the sand covers falls from 1 to 0 smoothly (at most 0.4 per meter of ground, along the
 // slip faces too, where a flag made it jump from 1 to 0), past 2 to 28 m of rock over the sand, how many wandering from
 // one place to the next (the sand climbs the foot irregularly: 8 m between the 10th and the 90th
-// percentiles at least); 1 everywhere off the rock (the rock deep under the troughs of the giant
-// waves stands out of them too).
+// percentiles at least); 1 everywhere 6 m under the rock at least (kFootLow - kFootBlend: since
+// the ninth stop the sand drapes the rock and gives way to it as it shows; the rock deep under the
+// troughs of the giant waves stands out of them too).
 void testRockFoot() {
     double gx = 0.0;
     double gz = 0.0;
@@ -382,7 +389,7 @@ void testRockFoot() {
             if (last >= 0.5 && share < 0.5) {
                 climbs.push_back(out);
             }
-            off = off && (out > 2.0 || share == 1.0);
+            off = off && (out > -6.0 || share == 1.0); // the drape: kFootLow - kFootBlend
             last = share;
         }
     }
@@ -393,7 +400,8 @@ void testRockFoot() {
                 climbs.size(), p10, p90, steepest);
     TEST_CHECK(climbs.size() >= 20);
     TEST_CHECK(steepest <= 0.4);
-    TEST_CHECK(p10 >= 2.0 && p90 <= 28.0 && p90 - p10 >= 8.0);
+    // Half sand kFootBlend / 2 under the cover since the drape: kFootLow - 4 m at least.
+    TEST_CHECK(p10 >= -2.0 && p90 <= 28.0 && p90 - p10 >= 8.0);
     TEST_CHECK(off);
 }
 

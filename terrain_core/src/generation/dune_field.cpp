@@ -393,7 +393,7 @@ double meanDunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
     return sum.value() * edgeOf(e);
 }
 
-float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
+float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e, double footprint) {
     if (!(e.mask > 0.0f)) {
         return 0.0f;
     }
@@ -406,7 +406,8 @@ float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
     q.windZ = e.windZ;
     q.amplitude = static_cast<double>(m.amplitude.fbm2D(x, z, memosOf(m).amplitude));
     q.height = heightOf(q.sand, q.amplitude);
-    const dune_phase::Shared s = dune_phase::sharedAt(m, x, z);
+    dune_phase::Shared s = dune_phase::sharedAt(m, x, z);
+    s.footprint = footprint;
     // The characters: the realistic kinds, the big waves and the giant waves, by a power mean of
     // their heights weighted by the characters (the realistic alone: the same bits as before).
     const float realistic = 1.0f - e.waves - e.giants;

@@ -29,6 +29,12 @@ constexpr double kChuteSpacing = 60.0;
 constexpr double kChuteIn = 0.3;
 constexpr double kChuteOut = 0.4;
 constexpr double kChuteCell = 4'096.0;
+// The far horizon draws them from kChuteNear to kChuteFar of the side of its samples less and less
+// (a grid of 16 m or more would draw rows of spots, a checkerboard, from gullies 40 to 80 m
+// apart): all of them on the tiles and on its first level (the same bits), none from its second
+// (beyond 1 km), the festoons alone.
+constexpr double kChuteNear = 8.0;
+constexpr double kChuteFar = 16.0;
 constexpr double kPi = 3.14159265358979323846;
 // The festoons and spurs of the giant waves (crescentic slip faces, as on the megadunes of the
 // Badain Jaran and the Rub al-Khali): their crest and slip face shifted downwind and back by
@@ -206,12 +212,14 @@ double acrossWaves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, d
 double chutes(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double z, double d,
               double full) {
     const double run = kGiantsSlip * full / kGiantsLeeTan;
-    if (!(d > 0.0) || !(d < run)) {
+    const double near = 1.0 - smoother(kChuteNear, kChuteFar, s.footprint);
+    if (!(d > 0.0) || !(d < run) || !(near > 0.0)) {
         return 0.0;
     }
     const double mask =
         smoother(0.0, kChuteIn * run, d) * (1.0 - smoother((1.0 - kChuteOut) * run, run, d));
-    return kChuteDepth * mask * 0.5 * (1.0 - acrossWaves(m, s, x, z, kChuteSpacing, 0.0, false));
+    return near * kChuteDepth * mask * 0.5 *
+           (1.0 - acrossWaves(m, s, x, z, kChuteSpacing, 0.0, false));
 }
 
 // How much of the second system rises where its profile is top of its height (joined).

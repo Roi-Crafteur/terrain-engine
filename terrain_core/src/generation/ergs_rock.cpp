@@ -32,6 +32,14 @@ constexpr double kFootLow = 2.0;
 constexpr double kFootRange = 18.0;
 constexpr double kFootBlend = 8.0;
 
+// max(0, d), its slope and curvature continuous over [-k, k].
+double softPositive(double d, double k) {
+    if (d <= -k) {
+        return 0.0;
+    }
+    return d >= k ? d : (d + k) * (d + k) * (d + k) * (3.0 * k - d) / (16.0 * k * k * k);
+}
+
 double hermite(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
@@ -56,12 +64,18 @@ float buried(const HeightSample& s, const ErgPoint& e, double dunes, const Cover
     // The rock: kBuryMost under the top of a butte, kRockFall times as deep under lower ground
     // (under the troughs of the tallest waves on a plain).
     const double rock = (local - kBuryMost) * (local > kBuryMost ? 1.0 : kRockFall);
-    const double surface = std::max(dunes + hollow - local, rock - local);
-    if (sand != nullptr) {
-        const double out = rock - (dunes + hollow); // meters of rock over the sand
-        if (out > kFootLow && share > 0.0) {
-            const double c = cover();
-            *sand = static_cast<float>(1.0 - share * hermite(c, c + kFootBlend, out));
+    // The sand drapes the rock up to cover() meters over its own surface (its foot climbs the
+    // rock irregularly): the rock shows past it only, cover() lower, joined to the sand over
+    // kFootBlend meters with a continuous slope and curvature, and takes its color as soon as it
+    // starts to show (never a face of rock, as steep as it is, in the color of the sand).
+    const double sandTop = dunes + hollow - local;
+    const double out = rock - (dunes + hollow); // meters of rock over the sand
+    double surface = sandTop;
+    if (out > kFootLow - kFootBlend) {
+        const double c = cover();
+        surface += softPositive(out - c, kFootBlend);
+        if (sand != nullptr && share > 0.0) {
+            *sand = static_cast<float>(1.0 - share * hermite(c - kFootBlend, c, out));
         }
     }
     return static_cast<float>(dunes + (surface - dunes) * share);
@@ -99,7 +113,8 @@ float Ergs::dunesAt(double x, double z, const HeightSample& s, double footprint,
         (1.0 + static_cast<double>(e.waves) * (dune_waves::spacingScale(false) - 1.0) +
          static_cast<double>(e.giants) * (dune_waves::spacingScale(true) - 1.0));
     const double filtered = hermite(kFilterLow * spacing, kFilterHigh * spacing, footprint);
-    const double point = filtered < 1.0 ? static_cast<double>(dunesOf(x, z, e)) : 0.0;
+    const double point =
+        filtered < 1.0 ? static_cast<double>(dune_field::dunes(*impl_, x, z, e, footprint)) : 0.0;
     if (!(filtered > 0.0)) {
         return buried(s, e, point, cover, sand);
     }
