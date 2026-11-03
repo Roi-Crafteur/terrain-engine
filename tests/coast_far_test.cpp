@@ -1,20 +1,25 @@
-// The coasts seen from afar on the horizon (agent 33, after the check in Unreal of d857a1b: bands
-// of light and dark rather regular along the cliff of the view 3, 800 m out to sea; white teeth at
-// the water by the left wall of the view fjord_axe), on the default world with its planet file:
+// The coasts seen from afar on the horizon (agent 33, after the checks in Unreal of d857a1b and
+// e6f198d: bands and strokes of light along the cliff of the view 3, 800 m out to sea; white teeth
+// at the water by the left wall of the view fjord_axe), on the default world with its planet file:
 // - The wall of the notched cliff as the view 3 shows it (kWall meters on either side of its
 //   place: coast_render_support.hpp, lineOf): on lines along it from kAcrossHigh meters behind
 //   the plane of its face to as far before it (the ramp of the horizon from the top to the foot),
 //   the light of a low sun (behind the eye, and from the side) by the detail normals of the level 0
 //   and by its samples, its part repeating with a wavelength of one to four steps of their lattice
-//   kLightPeriodic at most (no row of triangles anywhere on the ramp). Its bands of light and dark
-//   (the face turning to either side of its mean around, over a bell of kBandSeen meters, as cells
-//   of kBandCell meters draw it) not alike: the standard deviation of their widths kBandSpread of
-//   their mean at least (about 1 at random, 0 for a row; 0.66 on d857a1b: its blocks of one size).
+//   kLightPeriodic at most (no row of triangles anywhere on the ramp). Its image as the GPU horizon
+//   draws it from the eye of the view 3 (its level 0 lit by its detail normals, an image of 1200
+//   columns 50 degrees wide; the check in Unreal of e6f198d: a comb of light strokes down the
+//   wall), under a sun kSunHigh degrees high from either side or from behind (kSunAround): the
+//   light of each column of the wall (over its middle) less its mean over 41 columns around (about
+//   25 m), kComb of the mean light at most (root of the mean square), and kStrokes narrow strokes
+//   of light at most (peaks above 6 % of the mean, at most 10 columns wide); 0.164 and 11 on
+//   d857a1b, 0.137 and 15 on e6f198d, whose walls turned at blocks of 40 m within a few meters.
 // - The left wall of the fjord of the view fjord_axe (a bank without a face): the sea the
 //   material of the horizon paints up it between a sea sample and the land sample next to it (the
 //   ground interpolated between them crosses the sea level there) kPainted meters at most on the
 //   levels 0 and 1 (the shore of the horizon rising from the sea level: coast_faces::seenShore;
 //   1.5 and 3 m on d857a1b). The rest is the mask of the sea of that material (agent 40).
+#include "coast_image_support.hpp"
 #include "coast_render_support.hpp"
 
 #include "test_assert.hpp"
@@ -33,9 +38,11 @@ constexpr double kWall = 400.0;
 constexpr double kAcrossHigh = 14.0;
 constexpr double kAcrossStep = 2.0;
 constexpr double kLightPeriodic = 0.03;
-constexpr double kBandSeen = 300.0;
-constexpr double kBandCell = 2.0;
-constexpr double kBandSpread = 0.8;
+constexpr double kSunHigh = 8.0;
+constexpr std::array<double, 4> kSunAround{-90.0, -60.0, 60.0, 90.0};
+constexpr double kComb = 0.075;
+constexpr int kStrokes = 3;
+constexpr int kLeastColumns = 900;
 constexpr std::array<double, 2> kPainted{1.0, 2.0};
 // The left wall of the view fjord_axe (1 819 677 ; 9 928 285, heading 70): its shore in this box.
 constexpr std::array<double, 4> kFjordWall{1'819'400.0, 9'926'400.0, 1'820'060.0, 9'927'800.0};
@@ -77,61 +84,23 @@ void testRamp(const std::vector<Point>& line, const Level0& l) {
     TEST_CHECK(most <= kLightPeriodic);
 }
 
-// v less its mean around each sample over a bell sigma samples wide (or of it alone: low).
-std::vector<double> bellOf(const std::vector<double>& v, double sigma, bool low) {
-    const auto n = static_cast<std::ptrdiff_t>(v.size());
-    const auto half = static_cast<std::ptrdiff_t>(3.0 * sigma);
-    std::vector<double> out;
-    for (std::ptrdiff_t i = 0; i < n; ++i) {
-        double sum = 0.0, weights = 0.0;
-        for (std::ptrdiff_t j = std::max<std::ptrdiff_t>(0, i - half);
-             j <= std::min(n - 1, i + half); ++j) {
-            const double u = static_cast<double>(j - i) / sigma;
-            const double w = std::exp(-0.5 * u * u);
-            sum += w * v[static_cast<std::size_t>(j)];
-            weights += w;
-        }
-        out.push_back(low ? sum / weights : v[static_cast<std::size_t>(i)] - sum / weights);
+// The image of the wall (coast_image_support.hpp): from the eye of the view 3, under a sun kSunHigh
+// degrees high from either side or from behind.
+void testComb(const Level0& l) {
+    const coast_image::Eye eye{429'427.2, -855'233.8, 15.0, 29.1, 3.0, 50.0};
+    double most = 0.0;
+    int strokes = 0;
+    for (const double azimuth : kSunAround) {
+        const coast_image::Comb c = coast_image::combOf(
+            coast_image::render(l, eye, coast_image::sunOf(eye, azimuth, kSunHigh)));
+        std::printf("its image under a sun %.0f degrees high, %+.0f degrees from behind the eye: "
+                    "its comb %.3f of its light, %d narrow strokes over %d columns\n",
+                    kSunHigh, azimuth, c.share, c.strokes, c.columns);
+        TEST_CHECK(c.columns >= kLeastColumns);
+        most = std::max(most, c.share);
+        strokes = std::max(strokes, c.strokes);
     }
-    return out;
-}
-
-void testBands(const std::vector<Point>& line) {
-    std::vector<double> turns;
-    for (const Point& p : line) {
-        double a = std::atan2(p.nz, p.nx) * kDegrees;
-        while (!turns.empty() && a - turns.back() > 180.0) {
-            a -= 360.0;
-        }
-        while (!turns.empty() && a - turns.back() < -180.0) {
-            a += 360.0;
-        }
-        turns.push_back(a);
-    }
-    const std::vector<double> seen =
-        bellOf(bellOf(turns, 0.25 * kBandSeen / kStep, false), kBandCell / kStep, true);
-    std::vector<double> widths;
-    std::size_t start = 0;
-    for (std::size_t i = 1; i < seen.size(); ++i) {
-        if ((seen[i] > 0.0) != (seen[start] > 0.0)) {
-            if (start > 0) {
-                widths.push_back(static_cast<double>(i - start) * kStep);
-            }
-            start = i;
-        }
-    }
-    double mean = 0.0, var = 0.0;
-    for (const double w : widths) {
-        mean += w / static_cast<double>(widths.size());
-    }
-    for (const double w : widths) {
-        var += (w - mean) * (w - mean) / static_cast<double>(widths.size());
-    }
-    const double spread = mean > 0.0 ? std::sqrt(var) / mean : 0.0;
-    std::printf("its bands of light and dark: %zu, %.1f m wide on average, their widths %.2f of "
-                "it apart\n",
-                widths.size(), mean, spread);
-    TEST_CHECK(widths.size() >= 10 && spread >= kBandSpread);
+    TEST_CHECK(most <= kComb && strokes <= kStrokes);
 }
 
 void testFjordWall() {
@@ -183,7 +152,7 @@ int main() {
     if (line.size() >= 8) {
         const Level0 l = level0Around(line);
         testRamp(line, l);
-        testBands(line);
+        testComb(l);
     }
     testFjordWall();
     return test::result();

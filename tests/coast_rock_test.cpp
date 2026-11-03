@@ -20,8 +20,9 @@
 //   is rock.
 // - The stacks of the reefs (20 to 60 m: their spires, rock_spires.hpp) stand in the LOD 3 tiles
 //   and on the levels 0 to 2 of the horizon (out to 4 km), kStackSeen of their height at least
-//   (the highest over them: a spire may lean off its middle) (on the level 3, out to 8 km, its samples rise to the crests of a lattice of
-//   32 m, which may miss a lobed stack: how many it shows is reported); every rock of the reefs
+//   (the highest over them: a spire may lean off its middle; on the level 3, out to 8 km, its
+//   samples rise to the crests of a lattice of 32 m, which may miss a lobed stack: how many it
+//   shows is reported); every rock of the reefs (a block of rock in three dimensions too)
 //   kReefSeenRadius meters wide at least shows above the sea on the samples of level 0 of the
 //   horizon.
 #include "coast_planet_support.hpp"

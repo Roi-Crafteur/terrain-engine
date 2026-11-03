@@ -45,11 +45,10 @@ namespace terrain::coast_shape {
 // face (LOD 0 to 2 from 8 m on); the LOD 3 of those faces, 256 m away and more, keeps a residue.
 [[nodiscard]] double faceSlopeLimit(double height);
 
-// The blocks of the walls of the coasts: jittered cells about kBlockCell meters wide over the
-// world (as many as fit along each side), each drawn by seed (coast_profile::shoreAt), and wider
-// ones of kWideBlockCell.
-inline constexpr double kBlockCell = 40.0;
-inline constexpr double kWideBlockCell = 140.0;
+// The blocks of the walls of the coasts (their buttresses and recesses): jittered cells about
+// kBlockCell meters wide over the world (as many as fit along each side), each drawn by seed
+// (coast_profile::shoreAt).
+inline constexpr double kBlockCell = 150.0;
 struct Blocks {
     std::uint64_t seed = 0;
     std::int64_t cellsX = 1;
@@ -61,7 +60,7 @@ struct Blocks {
 // a coast): the height of the faces (a slow, contrasted noise and a medium one), the width of the
 // rock platforms at their foot, the width of their faces, the edge (capes and hollows of their
 // top) and the screes at their foot; along the walls, read at the shore (coast_profile::Along),
-// the meanders of their line, their blocks (of two sizes, in stretches) and the dips of their top.
+// the meanders of their line, their blocks and the dips of their top.
 struct Noises {
     noise::FbmOctaves stretch;
     noise::FbmOctaves height;
@@ -72,9 +71,6 @@ struct Noises {
     noise::FbmOctaves meander;
     noise::FbmOctaves dip;
     Blocks blocks;
-    Blocks wideBlocks;
-    // Where along the walls the wide blocks stand out, where only the small ones do.
-    noise::FbmOctaves blockiness;
 };
 
 [[nodiscard]] Noises makeNoises(std::uint64_t seed, const WorldSize& world);

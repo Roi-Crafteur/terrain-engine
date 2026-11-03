@@ -10,19 +10,17 @@
 // - The coves: on the coasts that rise (never a low coast at their mouth, the ground kCoveTop
 //   meters up within kCoveReach meters of their site), opening out to the sea (their mouth at least
 //   kCoveMouth of their widest water inland, for kCoveOpen of them at least).
-// - The reefs: rare (off some capes only), groups of two to four low rocks (kRockLeast to kRockMost
-//   meters high), about one in ten standing a stack (20 to 60 m), never one round dome alone; in
-//   the tiles of LOD 0 to 3, no hole (no open edge of the mesh but on the sides of the tile), with
-//   their rock in three dimensions and without it, and without it no teeth on a rock at the LODs
-//   where it stands two cells high (as the faces of coast_patterns_test: the rocks in two
-//   dimensions, as the tiles draw them where their faces are not drawn and the horizon samples
-//   them; coast_rock_test checks their faces).
+// - The reefs: rare (off some capes only), groups of two to four rocks (kRockLeast to kRockMost
+//   meters high: blocks of rock in three dimensions, rock_spires.hpp), about one in ten standing
+//   a stack (20 to 60 m, alone: the blocks at its foot stand for the other rocks of its reef),
+//   never one block alone otherwise, the first rock irregular; in the tiles of LOD 0 to 3, no hole
+//   (no open edge of the mesh but on the sides of the tile), with their rock in three dimensions
+//   and without it (its low platform alone; coast_stack_test checks the meshes of the stacks).
 #include "coast_planet_support.hpp" // the heightfield and the tiles with the planet file
 #include "terrain/chunk_coord.hpp"
 #include "terrain/generation/coast.hpp"
 #include "terrain/streaming/lod.hpp"
 
-#include "coast_teeth_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -279,12 +277,11 @@ void testCoves() {
 }
 
 // The reefs: their rocks (Heightfield::stacksIn) joined into reefs where kReefJoin meters apart
-// at most; the ground in their middle kRockLeast to kRockMost meters high (domes of 3 to 12 m and
-// the detail of the land on them), but for the stacks (kStackLeast meters high and more: their
-// spire kStackLow to kStackHigh meters high over their middle, 20 to 60 m, the needles 15 % more)
-// and the rocks merged into them (within the reach of their lobes); at most kReefShare per cove;
-// their first rock irregular (its reach above the water from its middle varying by kLobes at
-// least).
+// at most; the top of their rock (coast_planet::stackTop: the tiles) kRockLeast to kRockMost
+// meters high (blocks of 3 to 12 m, their tops tilted), the stacks (kStackLeast meters high and
+// more) kStackLow to kStackHigh meters (20 to 60 m, the needles 15 % more); at most kReefShare
+// per cove; their first rock irregular (its reach above the water from its middle, on the tiles,
+// varying by kLobes at least).
 constexpr double kReefJoin = 160.0;
 constexpr double kRockLeast = 1.0;
 constexpr double kRockMost = 16.0;
@@ -321,24 +318,14 @@ double lobesOf(const terrain::CoastStack& r) {
         const double t = a * std::numbers::pi / 8.0;
         double d = 0.0;
         while (d < 3.0 * static_cast<double>(r.radius) &&
-               heightAt(r.x + std::cos(t) * (d + 0.5), r.z + std::sin(t) * (d + 0.5)) > 0.0) {
+               tiles().groundAt(r.x + std::cos(t) * (d + 0.5), r.z + std::sin(t) * (d + 0.5)) >
+                   0.0f) {
             d += 0.5;
         }
         most = std::max(most, d);
         least = std::min(least, d);
     }
     return least > 0.0 ? most / least : 0.0;
-}
-
-// Whether a rock lies within the reach of the lobes of a stack of its reef (merged into it).
-bool mergedIntoStack(const terrain::CoastStack& r, const std::vector<terrain::CoastStack>& reef) {
-    for (const terrain::CoastStack& s : reef) {
-        if (s.height >= kStackLeast &&
-            std::hypot(r.x - s.x, r.z - s.z) < 1.4 * static_cast<double>(s.radius + r.radius)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 void testReefs() {
@@ -357,16 +344,12 @@ void testReefs() {
         }
         for (const auto& reef : reefsOf(rocks)) {
             ++reefCount;
-            alone += reef.size() < 2 ? 1 : 0;
+            alone += reef.size() < 2 && reef.front().height < kStackLeast ? 1 : 0;
             round += lobesOf(reef.front()) < kLobes ? 1 : 0;
             for (const terrain::CoastStack& r : reef) {
                 const bool stack = r.height >= kStackLeast;
-                const double h = stack ? coast_planet::stackTop(r) : heightAt(r.x, r.z);
+                const double h = coast_planet::stackTop(r);
                 stacks += stack ? 1 : 0;
-                if (!stack && mergedIntoStack(r, reef)) {
-                    ++rocksSeen;
-                    continue;
-                }
                 if (stack ? (h < kStackLow || h > kStackHigh) : (h < kRockLeast || h > kRockMost)) {
                     ++wrongHeight;
                     std::printf("  rock (%.0f, %.0f): %.1f m high drawn, ground %.1f m\n", r.x,
@@ -439,54 +422,18 @@ void testReefTiles() {
         }
     }
     int holes = 0;
-    int teeth = 0;
-    int checked = 0;
     for (const terrain::CoastStack& r : firsts) {
         for (int lod = 0; lod < 4; ++lod) {
-            const double c = terrain::tileCellMeters(lod);
             const terrain::ChunkCoord chunk{
                 static_cast<std::int32_t>(std::floor(r.x / terrain::kChunkSizeMeters)),
                 static_cast<std::int32_t>(std::floor(r.z / terrain::kChunkSizeMeters))};
             holes += holesOf(tiles().generate({terrain::tileContaining(chunk, lod), 0}).mesh);
-            const terrain::TileData data =
-                reliefTiles().generate({terrain::tileContaining(chunk, lod), 0});
-            holes += holesOf(data.mesh);
-            if (static_cast<double>(r.height) < 2.0 * c) {
-                continue; // a rock under two cells high: drawn as a bump, not checked
-            }
-            const coast_teeth::Gradient gradient = [c](double px, double pz) {
-                return std::array<double, 2>{
-                    (heightAt(px + c, pz) - heightAt(px - c, pz)) / (2.0 * c),
-                    (heightAt(px, pz + c) - heightAt(px, pz - c)) / (2.0 * c)};
-            };
-            // The vertices of the rock alone (within twice its radius of its middle).
-            terrain::Mesh rock;
-            for (std::size_t v = 0; v < data.mesh.vertices.size(); ++v) {
-                const double vx = data.originX + data.mesh.vertices[v].x - r.x;
-                const double vz = data.originZ + data.mesh.vertices[v].z - r.z;
-                if (std::hypot(vx, vz) < 2.0 * static_cast<double>(r.radius)) {
-                    rock.vertices.push_back(data.mesh.vertices[v]);
-                    rock.normals.push_back(data.mesh.normals[v]);
-                }
-            }
-            coast_teeth::Teeth t;
-            coast_teeth::addMesh(t, rock, {data.originX, data.originY, data.originZ}, 1.0, c,
-                                 gradient, 0.3);
-            const coast_teeth::Errors e = coast_teeth::errorsOf(t, c);
-            ++checked;
-            if (!coast_teeth::clean(e)) {
-                ++teeth;
-                std::printf("  rock (%.0f, %.0f) %.1f m, LOD %d: %.1f/%.1f/%.1f\n", r.x, r.z,
-                            static_cast<double>(r.height), lod, e.rms, e.p95, e.periodic);
-            }
+            holes += holesOf(reliefTiles().generate({terrain::tileContaining(chunk, lod), 0}).mesh);
         }
     }
-    std::printf("reefs in the tiles of LOD 0 to 3: %zu reefs, %d holes, %d tiles with teeth of %d "
-                "checked\n",
-                firsts.size(), holes, teeth, checked);
+    std::printf("reefs in the tiles of LOD 0 to 3: %zu reefs, %d holes\n", firsts.size(), holes);
     TEST_CHECK(!firsts.empty());
     TEST_CHECK(holes == 0);
-    TEST_CHECK(teeth == 0);
 }
 
 } // namespace

@@ -1,9 +1,9 @@
 #pragma once
 
 // The reefs of the coasts (agent 33, coast.hpp), internal to terrain_core: groups of two to four
-// low rocks off some capes between coves, until the 3D rock of the faces makes stacks of them
-// (commit 5). In 2D a stack cannot be both of rock (a slope of 1 at least) and credible (the slope
-// law of the tiles; any ledge, saddle or flat top is soil): the rocks stay low domes.
+// rocks off some capes between coves, each a solid of rock in three dimensions over a low rock
+// platform (rock_spires.hpp): blocks with flat or stepped tops and sharp edges, one reef in about
+// ten a stack (its own blocks at its foot for the other rocks of its reef).
 
 #include "coast_inlets.hpp"
 #include "rock_spires.hpp"
@@ -41,11 +41,11 @@ inline constexpr double kRockLobe = 0.4;
     const coast_inlets::World& w, coast_inlets::Draws& d, double x, double z,
     const std::function<bool(double x, double z)>& inside);
 
-// A rock kSpireLeast meters high at least is a stack: a spire of rock in three dimensions
-// (rock_spires.hpp: its shape drawn from spireSeed of its middle and from its radius and height)
-// over its scree apron, the relief of its rock (addRock: its outline at the sea level and its
-// apron, no dome).
-inline constexpr double kSpireLeast = 20.0;
+// Every rock of a reef is a spire of rock in three dimensions (rock_spires.hpp: its shape drawn
+// from spireSeed of its middle and from its radius and height; a stack from kSpireLeast meters
+// high, a block below) over its rock platform, the relief of its rock (addRock: its outline at the
+// sea level and its platform, no dome).
+inline constexpr double kSpireLeast = rock_spires::kStackLeast;
 [[nodiscard]] std::uint32_t spireSeed(double x, double z);
 [[nodiscard]] rock_spires::Shape spireOf(const coast_inlets::Stack& rock);
 

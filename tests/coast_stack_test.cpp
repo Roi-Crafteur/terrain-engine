@@ -1,25 +1,29 @@
 // The stacks of the coasts (agent 33) as the tiles of LOD 0 draw them, on the default world with
-// its planet file (coast_planet_support.hpp): no block with plane faces and right angles, but
-// rock that narrows toward its top, its faces irregular, in beds, notched where the sea beats
-// it, a scree apron at its foot; and not one model repeated (rock_spires.hpp).
+// its planet file (coast_planet_support.hpp): no cube and no lump of modelling clay (the checks in
+// Unreal of d857a1b and e6f198d), but prisms of rock in beds, their faces nearly vertical meeting
+// at sharp edges (never at a right angle), their tops flat or in steps, narrowing toward their top,
+// notched where the sea beats them, angular blocks at their foot; and not one model repeated
+// (rock_spires.hpp).
 // Four stacks: the needle of the view of the stacks (coast_rock_support: kStack), a pillar, a stack
 // split in two and an arch. Of each, around its middle, the rock of the tiles (a column holds rock
 // at a height where the nearest surface over it faces up), from its foot to its top H (the
 // highest ground of the tiles over it):
-// - its outline at kLevels heights from 15 % to 75 % of H, every kTurn of a turn from its middle
+// - its outline at kLevels heights from 15 % to 75 % of H, every 5 degrees from its middle
 //   (the furthest rock along each ray; around the middle of each section for its width, a spire
 //   may lean): the root of the mean of its squares at 75 % kTaper of that at 15 % at most (it
-//   narrows: not a prism);
+//   narrows);
 // - no face plane up its height: along each ray, the outline off its straight fit by kBent meters
 //   at least (the root of the mean of the squares, over the rays);
-// - no right angle around: the outline of every section of one piece, from its own middle (a
-//   spire may lean), turns by kCorner degrees at most between two of its stretches of kStretch
-//   rays (a cube turns by 90 at its edges);
+// - its edges: the outline of every section of one piece, from its own middle, refined to kFine
+//   meters along each ray, cut into straight runs (cornersOf): kSharpLeast sharp edges at least
+//   over its sections, no right angle (the cubes of d857a1b had four a section, the rounded
+//   outlines of e6f198d one or two sharp edges in all);
 // - its beds: kLedges ledges at least along its rays (the outline stepping in by kLedge meters
-//   within kLedgeRise meters of height, going up), its notch: on some ray, the outline at
-//   kNotchLow meters over the sea kNotchDeep meters inside that at kNotchOver meters, its apron:
-//   on kApronShare of its rays at least, the ground kApronOut meters out of its foot kApronHigh
-//   meters over the sea;
+//   within kLedgeRise meters of height, going up); its notch: on some ray, the outline at
+//   kNotchLow meters over the sea kNotchDeep meters inside that at kNotchOver meters;
+// - its top flat or in steps: its rock kFlatHigh meters under its top kFlat as wide as kFlatLow
+//   meters under it at least (20 to 33 % on the domes of e6f198d); kBlocks blocks at least at its
+//   foot (pieces of rock apart from it kBlockY meters over the sea);
 // - its kind as its rock shows it: a passage under it (a column by its middle with air over the
 //   sea up to a ceiling kPassage meters high at least: an arch), two pieces at 60 % of H
 //   (split), its top kSlender of its foot at most (a needle), else a pillar: the four of them of
@@ -45,12 +49,22 @@ namespace {
 using coast_rock::Tiles;
 
 constexpr int kRays = 72;
-constexpr int kStretch = 3;
 constexpr int kMedian = 5;
 constexpr std::array<double, 5> kLevels{0.15, 0.3, 0.45, 0.6, 0.75};
 constexpr double kTaper = 0.85;
 constexpr double kBent = 0.4;
-constexpr double kCorner = 60.0;
+constexpr double kStraight = 0.15;
+constexpr double kRunLeast = 4.0;
+constexpr double kRunGap = 4.0;
+constexpr double kSharp = 30.0;
+constexpr double kRightOff = 4.0;
+constexpr double kRightGap = 1.5;
+constexpr double kFlatHigh = 1.5;
+constexpr double kFlatLow = 5.0;
+constexpr double kBlockY = 2.0;
+constexpr int kSharpLeast = 4;
+constexpr double kFlat = 0.4;
+constexpr int kBlocks = 3;
 constexpr int kLedges = 2;
 constexpr double kLedge = 0.8;
 constexpr double kLedgeRise = 2.0;
@@ -58,9 +72,6 @@ constexpr double kBedsFrom = 7.0;
 constexpr double kNotchLow = 1.0;
 constexpr double kNotchOver = 5.5;
 constexpr double kNotchDeep = 1.0;
-constexpr double kApronShare = 0.2;
-constexpr double kApronOut = 1.5;
-constexpr double kApronHigh = 1.5;
 constexpr double kPassage = 8.0;
 constexpr double kPassageMiddle = 3.0;
 constexpr double kPassageLow = 0.5;
@@ -68,6 +79,7 @@ constexpr double kSlender = 0.55;
 constexpr std::size_t kKinds = 3;
 constexpr double kReach = 45.0;
 constexpr double kStep = 0.5;
+constexpr double kFine = 0.03;
 
 struct Named {
     const char* name;
@@ -120,6 +132,26 @@ std::vector<double> outlineAt(Tiles& tiles, double x, double z, double y) {
     return out;
 }
 
+// The same, each ray refined to kFine meters (the faces of a section as straight as they are).
+std::vector<double> fineOutlineAt(Tiles& tiles, double x, double z, double y) {
+    std::vector<double> out = outlineAt(tiles, x, z, y);
+    for (int a = 0; a < kRays; ++a) {
+        double& r = out[static_cast<std::size_t>(a)];
+        if (!(r > 0.0)) {
+            continue;
+        }
+        const double t = 2.0 * std::numbers::pi * a / kRays;
+        double in = r;
+        double air = r + kStep;
+        while (air - in > kFine) {
+            const double mid = 0.5 * (in + air);
+            (rockAt(tiles, x + mid * std::cos(t), z + mid * std::sin(t), y) ? in : air) = mid;
+        }
+        r = 0.5 * (in + air);
+    }
+    return out;
+}
+
 // The middle of the rock at height y within kReach of (x, z) (on a lattice of 1 m), and how many
 // cells of it.
 std::array<double, 3> middleAt(Tiles& tiles, double x, double z, double y) {
@@ -144,11 +176,19 @@ double rmsOf(const std::vector<double>& v) {
     return std::sqrt(sum / static_cast<double>(v.size()));
 }
 
-// The most the outline turns between two stretches of kStretch rays, degrees, its radii the
-// median of kMedian rays around each (a crack narrower than that, a groove in and out, is no
-// corner).
-double cornerOf(const std::vector<double>& raw) {
-    std::vector<double> r(raw.size());
+// The corners of a section between its straight runs: the outline (its points along the rays
+// from its middle, their radii the median of kMedian rays around) cut into runs of points within
+// kStraight meters of the line through their ends, kRunLeast meters long at least; between two
+// runs next to each other (kRunGap meters apart at most), the turn from one to the next: a sharp
+// edge from kSharp degrees, a right angle within kRightOff of 90 between runs meeting within
+// kRightGap meters (as a cube).
+struct Corners {
+    int sharp = 0;
+    int right = 0;
+};
+
+Corners cornersOf(const std::vector<double>& raw) {
+    std::vector<std::array<double, 2>> p(raw.size());
     for (int a = 0; a < kRays; ++a) {
         std::array<double, kMedian> around{};
         for (int k = 0; k < kMedian; ++k) {
@@ -156,24 +196,59 @@ double cornerOf(const std::vector<double>& raw) {
                 raw[static_cast<std::size_t>(((a + k - kMedian / 2) % kRays + kRays) % kRays)];
         }
         std::sort(around.begin(), around.end());
-        r[static_cast<std::size_t>(a)] = around[kMedian / 2];
+        const double t = 2.0 * std::numbers::pi * a / kRays;
+        p[static_cast<std::size_t>(a)] = {around[kMedian / 2] * std::cos(t),
+                                          around[kMedian / 2] * std::sin(t)};
     }
-    const auto point = [&](int a) {
-        const int k = (a % kRays + kRays) % kRays;
-        const double t = 2.0 * std::numbers::pi * k / kRays;
-        return std::array<double, 2>{r[static_cast<std::size_t>(k)] * std::cos(t),
-                                     r[static_cast<std::size_t>(k)] * std::sin(t)};
+    const auto at = [&](int a) { return p[static_cast<std::size_t>((a % kRays + kRays) % kRays)]; };
+    // Whether the points from a to b (b > a) lie within kStraight of the line through them.
+    const auto straight = [&](int a, int b) {
+        const auto u = at(a), v = at(b);
+        const double len = std::hypot(v[0] - u[0], v[1] - u[1]);
+        for (int k = a + 1; k < b && len > 0.0; ++k) {
+            const auto w = at(k);
+            const double cross = (v[0] - u[0]) * (w[1] - u[1]) - (v[1] - u[1]) * (w[0] - u[0]);
+            const double off = std::abs(cross) / len;
+            if (off > kStraight) {
+                return false;
+            }
+        }
+        return len > 0.0;
     };
-    double most = 0.0;
-    for (int a = 0; a < kRays; ++a) {
-        const auto p0 = point(a - kStretch), p1 = point(a), p2 = point(a + kStretch);
-        const double u = std::atan2(p1[1] - p0[1], p1[0] - p0[0]);
-        const double v = std::atan2(p2[1] - p1[1], p2[0] - p1[0]);
+    // The runs: from each start, as far as it stays straight.
+    std::vector<std::array<int, 2>> runs;
+    int a = 0;
+    while (a < kRays) {
+        int b = a + 1;
+        while (b + 1 < a + kRays && straight(a, b + 1)) {
+            ++b;
+        }
+        const auto u = at(a), v = at(b);
+        if (std::hypot(v[0] - u[0], v[1] - u[1]) >= kRunLeast) {
+            runs.push_back({a, b});
+        }
+        a = b;
+    }
+    Corners out;
+    for (std::size_t i = 0; i < runs.size(); ++i) {
+        const auto& r0 = runs[i];
+        const auto& r1 = runs[(i + 1) % runs.size()];
+        const auto e0 = at(r0[1]), s1 = at(r1[0]);
+        if (runs.size() < 2 || std::hypot(s1[0] - e0[0], s1[1] - e0[1]) > kRunGap) {
+            continue;
+        }
+        const auto a0 = at(r0[0]), b1 = at(r1[1]);
+        const double u = std::atan2(e0[1] - a0[1], e0[0] - a0[0]);
+        const double v = std::atan2(b1[1] - s1[1], b1[0] - s1[0]);
         double turn = std::abs(v - u) * 180.0 / std::numbers::pi;
         turn = std::min(turn, 360.0 - turn);
-        most = std::max(most, turn);
+        out.sharp += turn >= kSharp ? 1 : 0;
+        // A right angle between two faces meeting at it (not two corners on either side of a face
+        // shorter than a run).
+        const bool meet = std::hypot(s1[0] - e0[0], s1[1] - e0[1]) <= kRightGap;
+        out.right += meet && std::abs(turn - 90.0) <= kRightOff ? 1 : 0;
     }
-    return most;
+    return out;
 }
 
 // The off of the outline along each ray from its straight fit up the levels, as one root of the
@@ -203,10 +278,12 @@ struct Measures {
     double top = 0.0;
     double taper = 1.0;
     double bent = 0.0;
-    double corner = 0.0;
+    int sharp = 0;
+    int right = 0;
+    double flat = 0.0;
+    int blocks = 0;
     int ledges = 0;
     double notch = 0.0;
-    double apron = 0.0;
     bool passage = false;
     int pieces = 0;
     std::string kind;
@@ -247,19 +324,6 @@ void bedsOf(Tiles& tiles, const terrain::CoastStack& s, Measures& m) {
         m.ledges = std::max(m.ledges, ledges);
         m.notch = std::max(m.notch, along(kNotchOver) - along(kNotchLow));
     }
-}
-
-// The share of the rays along which the ground kApronOut meters out of the foot stands
-// kApronHigh over the sea.
-double apronOf(Tiles& tiles, const terrain::CoastStack& s) {
-    const std::vector<double> foot = outlineAt(tiles, s.x, s.z, kNotchOver);
-    int high = 0;
-    for (int a = 0; a < kRays; ++a) {
-        const double t = 2.0 * std::numbers::pi * a / kRays;
-        const double r = foot[static_cast<std::size_t>(a)] + kApronOut;
-        high += tiles.topAt(s.x + r * std::cos(t), s.z + r * std::sin(t)) >= kApronHigh ? 1 : 0;
-    }
-    return static_cast<double>(high) / kRays;
 }
 
 // How many pieces the rock makes at height y within kReach of (x, z), on a lattice of 1 m joined
@@ -328,17 +392,23 @@ Measures measure(const terrain::CoastStack& s) {
         outlines.push_back(outlineAt(tiles, s.x, s.z, ys.back()));
         // The turns of a section of one piece, around its own middle (a spire may lean).
         const std::array<double, 3> middle = middleAt(tiles, s.x, s.z, ys.back());
-        const std::vector<double> around = outlineAt(tiles, middle[0], middle[1], ys.back());
+        const std::vector<double> around = fineOutlineAt(tiles, middle[0], middle[1], ys.back());
         const bool whole =
             std::all_of(around.begin(), around.end(), [](double r) { return r > 0.0; });
         const bool one = piecesAt(tiles, s.x, s.z, ys.back()) == 1;
-        m.corner = whole && one ? std::max(m.corner, cornerOf(around)) : m.corner;
+        if (whole && one) {
+            const Corners c = cornersOf(around);
+            m.sharp += c.sharp;
+            m.right += c.right;
+        }
         middles.push_back(around);
     }
     m.taper = rmsOf(middles.back()) / std::max(1e-9, rmsOf(middles.front()));
     m.bent = bentOf(outlines, ys);
     bedsOf(tiles, s, m);
-    m.apron = apronOf(tiles, s);
+    m.flat = middleAt(tiles, s.x, s.z, m.top - kFlatHigh)[2] /
+             std::max(1.0, middleAt(tiles, s.x, s.z, m.top - kFlatLow)[2]);
+    m.blocks = piecesAt(tiles, s.x, s.z, kBlockY) - 1;
     m.kind = m.passage       ? "arch"
              : m.pieces >= 2 ? "split"
              : m.taper <= kSlender ? "needle"
@@ -355,18 +425,20 @@ int main() {
         TEST_CHECK(s.height >= 20.0f);
         const Measures m = measure(s);
         std::printf("%s (%.0f, %.0f), %.0f m drawn: its top %.1f m; at 75 %% %.0f %% as wide as at "
-                    "15 %%, off its straight fit up its height by %.2f m, turning by %.0f degrees "
-                    "at most around; %d ledges, a notch %.1f m deep, an apron on %.0f %% of it; "
-                    "%d pieces at 60 %%, %s passage: %s\n",
+                    "15 %%, off its straight fit up its height by %.2f m, %d sharp edges and %d "
+                    "right angles over its sections; %d ledges, a notch %.1f m deep; its top %.0f "
+                    "%% as wide %.0f m under it as %.0f m under it; %d blocks at its foot; %d "
+                    "pieces at 60 %%, %s passage: %s\n",
                     n.name, s.x, s.z, static_cast<double>(s.height), m.top, 100.0 * m.taper,
-                    m.bent, m.corner, m.ledges, m.notch, 100.0 * m.apron, m.pieces,
-                    m.passage ? "a" : "no", m.kind.c_str());
+                    m.bent, m.sharp, m.right, m.ledges, m.notch, 100.0 * m.flat, kFlatHigh,
+                    kFlatLow, m.blocks, m.pieces, m.passage ? "a" : "no", m.kind.c_str());
         TEST_CHECK(m.taper <= kTaper);
         TEST_CHECK(m.bent >= kBent);
-        TEST_CHECK(m.corner <= kCorner);
+        TEST_CHECK(m.sharp >= kSharpLeast && m.right == 0);
         TEST_CHECK(m.ledges >= kLedges);
         TEST_CHECK(m.notch >= kNotchDeep);
-        TEST_CHECK(m.apron >= kApronShare);
+        TEST_CHECK(m.flat >= kFlat);
+        TEST_CHECK(m.blocks >= kBlocks);
         kinds.insert(m.kind);
     }
     std::printf("%zu kinds of stacks among them\n", kinds.size());

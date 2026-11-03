@@ -18,10 +18,10 @@ namespace {
 // The calanques keep a straight wall (the reference calanque, coast_reference_test).
 constexpr std::array<Profile, kCoastKindCount> kProfiles{{
     {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 30'000.0, 0.0f, 1.0, 0.0f, 0.0f, 0.0f},
-    {2.0f, 14.0f, 0.5f, 6.0f, 5.0f, 40.0f, 0.0f, 6.0f, 0.0f, 12'000.0, 0.5f, 300.0, 8.0f, 4.0f,
+    {2.0f, 14.0f, 0.5f, 6.0f, 5.0f, 40.0f, 0.0f, 6.0f, 0.0f, 12'000.0, 0.5f, 300.0, 12.0f, 8.0f,
      0.4f},
-    {4.0f, 180.0f, 0.8f, 25.0f, 10.0f, 120.0f, 0.0f, 10.0f, 0.8f, 15'000.0, 0.8f, 200.0, 24.0f,
-     10.0f, 0.5f},
+    {4.0f, 180.0f, 0.8f, 25.0f, 10.0f, 120.0f, 0.0f, 10.0f, 0.8f, 15'000.0, 0.8f, 200.0, 36.0f,
+     20.0f, 0.5f},
     {8.0f, 200.0f, 0.9f, 40.0f, 0.0f, 10.0f, 0.0f, 10.0f, 0.6f, 10'000.0, 1.0f, 100.0, 0.0f,
      0.0f, 0.0f},
     {4.0f, 50.0f, 0.8f, 15.0f, 0.0f, 5.0f, 40.0f, 120.0f, 0.0f, 10'000.0, 0.5f, 300.0, 0.0f,
@@ -38,21 +38,15 @@ constexpr double kMediumLow = 0.3;
 // The screes stand where their noise passes kScreeLow to kScreeHigh (coast_shape.cpp).
 constexpr double kScreeLow = 0.45;
 constexpr double kScreeHigh = 0.75;
-// The blocks of the walls: their sites jittered by up to kBlockJitter of a cell (the nearest site
-// always among the nine around the cell); each moves the wall by its own draw, the sites within
-// an edge of the nearest blended in (each its own width, from kSmallEdge or kWideEdge meters): at
-// their edge, the average, a corner sharp or soft, never a seam, and none where three blocks meet.
-// The small ones (coast_shape::kBlockCell) weigh kSmallBlocks all along the walls; the wide ones
-// (kWideBlockCell, their corners softer: the views from afar) kWideBlocks where the noise of the
-// blockiness passes kBlockyLow to kBlockyHigh, none elsewhere: stretches of massive blocks among
-// stretches of small ones, their widths unlike (coast_far_test).
+// The blocks of the walls (their buttresses and recesses, coast_shape::kBlockCell): their sites
+// jittered by up to kBlockJitter of a cell (the nearest site always among the nine around the
+// cell); each moves the wall by its own draw, the sites within an edge of the nearest blended in
+// (each its own width, kBlockEdge[0] to kBlockEdge[1] meters): at their edge, the average, never a
+// seam, and none where three blocks meet. Their corners turn the wall over tens of meters, never
+// over a few (from afar under a low sun, each would be a stroke of light down the whole height of
+// the wall, coast_far_test).
 constexpr double kBlockJitter = 0.35;
-constexpr std::array<double, 2> kSmallEdge{8.0, 14.0};
-constexpr std::array<double, 2> kWideEdge{12.0, 22.0};
-constexpr double kSmallBlocks = 0.8;
-constexpr double kWideBlocks = 0.9;
-constexpr double kBlockyLow = -0.25;
-constexpr double kBlockyHigh = 0.25;
+constexpr std::array<double, 2> kBlockEdge{32.0, 52.0};
 // The meanders of the walls: their noise contrasted, whole from kMeanderSpan of it.
 constexpr double kMeanderSpan = 0.5;
 // The dips of the top: where their noise passes kDipLow to kDipHigh.
@@ -63,10 +57,8 @@ double hashUnit(std::uint64_t hash, unsigned shift) {
     return static_cast<double>((hash >> shift) & 0xFF'FFFFU) * 0x1.0p-24;
 }
 
-// The draw of the block of the walls at the canonical (x, z), in [-1, 1], their edges edge[0] to
-// edge[1] meters wide.
-double blockAt(const coast_shape::Blocks& b, double x, double z,
-               const std::array<double, 2>& edges) {
+// The draw of the block of the walls at the canonical (x, z), in [-1, 1].
+double blockAt(const coast_shape::Blocks& b, double x, double z) {
     const double sizeX = b.world.x / static_cast<double>(b.cellsX);
     const double sizeZ = b.world.z / static_cast<double>(b.cellsZ);
     const double cx = (x + 0.5 * b.world.x) / sizeX;
@@ -91,8 +83,8 @@ double blockAt(const coast_shape::Blocks& b, double x, double z,
             distance[n] = dmath::hypot((cx - static_cast<double>(i) - sx) * sizeX,
                                        (cz - static_cast<double>(j) - sz) * sizeZ);
             draw[n] = 2.0 * hashUnit(hash, 0U) - 1.0;
-            edge[n] = edges[0] +
-                      (edges[1] - edges[0]) * hashUnit(noise::deriveSeed(hash, 1U), 0U);
+            edge[n] = kBlockEdge[0] +
+                      (kBlockEdge[1] - kBlockEdge[0]) * hashUnit(noise::deriveSeed(hash, 1U), 0U);
             nearest = std::min(nearest, distance[n]);
         }
     }
@@ -156,10 +148,7 @@ Shore shoreAt(const coast_shape::Noises& n, double x, double z, const Along& alo
         s.meanderAt = 2.0 * smooth(-kMeanderSpan, kMeanderSpan,
                                    static_cast<double>(n.meander.fbm2D(along.x, along.z))) -
                       1.0;
-        const double wide = smooth(kBlockyLow, kBlockyHigh,
-                                   static_cast<double>(n.blockiness.fbm2D(along.x, along.z)));
-        s.blockAt = kSmallBlocks * blockAt(n.blocks, along.x, along.z, kSmallEdge) +
-                    wide * kWideBlocks * blockAt(n.wideBlocks, along.x, along.z, kWideEdge);
+        s.blockAt = blockAt(n.blocks, along.x, along.z);
         s.dipAt = smooth(kDipLow, kDipHigh, static_cast<double>(n.dip.fbm2D(along.x, along.z)));
     }
     return s;

@@ -66,8 +66,8 @@ struct Report {
     bool alongShore = false;
     // Only within front meters before the plane of the face (in meters, 0: all of its run).
     float front = 0.0f;
-    // A stack: the spire of rock over the point (rock_faces.hpp, coast_reefs::kSpireLeast), no
-    // face (radius 0: none).
+    // A rock of the reefs (a block or a stack): the spire of rock over the point (rock_faces.hpp,
+    // coast_reefs::spireOf), no face (radius 0: none).
     RockSpire spire;
     // A point of the land without a face, within the ramp of the shore of a level of the horizon
     // (Heightfield::Memos::seenRamp): its distance to the shore, meters; -1 elsewhere.

@@ -42,22 +42,22 @@ constexpr std::uint64_t kEdgeStream = 0x33B5;
 constexpr std::uint64_t kScreeStream = 0x33B6;
 constexpr std::uint64_t kMeanderStream = 0x33B7;
 constexpr std::uint64_t kDipStream = 0x33B8;
-constexpr std::uint64_t kBlockStream = 0x33B9;
-constexpr std::uint64_t kWideBlockStream = 0x33BA;
-constexpr std::uint64_t kBlockinessStream = 0x33BB;
-constexpr double kBlockinessWavelength = 700.0;
+constexpr std::uint64_t kBlockStream = 0x33BA;
 constexpr double kStretchWavelength = 30'000.0;
 constexpr double kHeightWavelength = 5'000.0;
 constexpr double kPlatformWavelength = 1'700.0;
 constexpr double kFaceWavelength = 900.0;
 constexpr double kEdgeWavelength = 350.0;
 constexpr double kScreeWavelength = 1'200.0;
-// Along the walls: their meanders and the dips of their top, kWallOctaves octaves from their
-// wavelength, each kWallGain as strong as the one before and kWallLacunarity times finer (a
-// spectrum flat enough, and its octaves out of tune, so that no wavelength rules: no rhythm).
+// Along the walls: their meanders and the dips of their top, octaves from their wavelength, each
+// kWallGain as strong as the one before and kWallLacunarity times finer (a spectrum flat enough,
+// and its octaves out of tune, so that no wavelength rules: no rhythm). The meanders keep
+// kMeanderOctaves (no finer than about 100 m: from afar under a low sun, each finer turn of the
+// wall is a stroke of light down its whole height, coast_far_test), the dips kDipOctaves.
 constexpr double kMeanderWavelength = 200.0;
 constexpr double kDipWavelength = 320.0;
-constexpr int kWallOctaves = 4;
+constexpr int kMeanderOctaves = 2;
+constexpr int kDipOctaves = 4;
 constexpr double kWallGain = 0.65;
 constexpr double kWallLacunarity = 1.9;
 
@@ -323,9 +323,9 @@ float groundBase(const GeographyParams& p, const GeographySample& g, double coas
 }
 
 Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
-    const auto wall = [&](std::uint64_t stream, double wavelength) {
+    const auto wall = [&](std::uint64_t stream, double wavelength, int octaves) {
         return noise::FbmOctaves(noise::deriveSeed(seed, stream),
-                                 {.octaves = kWallOctaves,
+                                 {.octaves = octaves,
                                   .frequency = 1.0 / wavelength,
                                   .lacunarity = kWallLacunarity,
                                   .gain = kWallGain},
@@ -337,15 +337,11 @@ Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
             shapeNoise(seed, kFaceStream, kFaceWavelength, world),
             shapeNoise(seed, kEdgeStream, kEdgeWavelength, world),
             shapeNoise(seed, kScreeStream, kScreeWavelength, world),
-            wall(kMeanderStream, kMeanderWavelength),
-            wall(kDipStream, kDipWavelength),
+            wall(kMeanderStream, kMeanderWavelength, kMeanderOctaves),
+            wall(kDipStream, kDipWavelength, kDipOctaves),
             {noise::deriveSeed(seed, kBlockStream),
              std::max<std::int64_t>(1, std::llround(world.x / kBlockCell)),
-             std::max<std::int64_t>(1, std::llround(world.z / kBlockCell)), world},
-            {noise::deriveSeed(seed, kWideBlockStream),
-             std::max<std::int64_t>(1, std::llround(world.x / kWideBlockCell)),
-             std::max<std::int64_t>(1, std::llround(world.z / kWideBlockCell)), world},
-            shapeNoise(seed, kBlockinessStream, kBlockinessWavelength, world)};
+             std::max<std::int64_t>(1, std::llround(world.z / kBlockCell)), world}};
 }
 
 bool readsShore(const coast_kinds::Weights& weights) {
