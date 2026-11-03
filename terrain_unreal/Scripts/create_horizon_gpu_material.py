@@ -533,6 +533,7 @@ def pixel_shader(material, nodes, vertex, kind, with_bands):
 
 
 def create_horizon_gpu_material(asset_name=ASSET_NAME, with_bands=True):
+    """The material (asset_name; with_bands False: without the bands of the rock)."""
     asset_path = f"{PACKAGE_PATH}/{asset_name}"
     if unreal.EditorAssetLibrary.does_asset_exist(asset_path):
         material = unreal.EditorAssetLibrary.load_asset(asset_path)
@@ -558,8 +559,3 @@ def create_horizon_gpu_material(asset_name=ASSET_NAME, with_bands=True):
 
 
 create_horizon_gpu_material()
-# A diagnostic for the check in Unreal of the band channel (agent 33, after DXC refused the
-# material of f79741f): the same material without the bands of the rock, which the plugin does not
-# use; if the first fails to compile and this one compiles, the reading of the bands is the cause.
-# To be removed once the material compiles in Unreal.
-create_horizon_gpu_material(f"{ASSET_NAME}_SansBandes", with_bands=False)
