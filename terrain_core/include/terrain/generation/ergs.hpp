@@ -115,6 +115,9 @@ struct ErgParams {
     std::array<double, 3> characterShares{0.40, 0.35, 0.25};
     double characterWavelength = 800'000.0;
     float characterMix = 0.55f;
+    // The crescents laid on the giant waves (dune_layers.hpp): off, the waves alone (for the
+    // tests that measure the crescents as what they add).
+    bool giantCrescents = true;
 };
 
 // The character of an erg: realistic (barchans, transverse ridges, seifs, stars, draas), big

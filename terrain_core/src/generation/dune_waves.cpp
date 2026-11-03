@@ -113,8 +113,10 @@ constexpr dune_layers::Layer kWavesMedium{700.0, 20.0, 0.12, 0.06, 41};
 // middles: whole, never cut, the smallest fewer, and their sizes varied less than 5 times).
 constexpr dune_layers::Layer kGiantsMedium{1'700.0, 40.0, 0.12, 0.06, 45};
 constexpr dune_layers::Layer kGiantsSecond{900.0, 25.0, 0.08, -0.12, 49};
-// Small ones on their flanks only (where the cover at their middles is high).
-constexpr dune_layers::Layer kGiantsSmall{350.0, 20.0, 0.05, 0.1, 53};
+// Small ones 250 m apart on their flanks and crests (where they lie: by their bed alone, not its
+// cover; 350 m apart, 20 m and 0.05 of the wave, under the others where it wanted them, the sizes
+// of the crescents of the giant waves varied 4.7 times only on the erg of the site, c1119e3).
+constexpr dune_layers::Layer kGiantsSmall{250.0, 8.0, 0.03, 0.1, 53};
 // The ends of the crests: the height falls to kEndsLeast of itself where the noise is low.
 constexpr double kEndsLeast = 0.25;
 constexpr float kEndsLow = -0.35f;
@@ -313,6 +315,9 @@ double layersOn(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_pha
     if (!bed.giant) {
         return dune_layers::layer(m, s, fine, kWavesMedium, h, on, cover);
     }
+    if (!m.params.giantCrescents) {
+        return 0.0;
+    }
     bed.face = faceEnd(bed.full);
     if (bed.fraction * bed.wavelength < bed.face) {
         return 0.0;
@@ -320,7 +325,7 @@ double layersOn(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_pha
     bed.gx = ph.gx;
     bed.gz = ph.gz;
     const dune_layers::Host host{&bed, bedAt, false};
-    const dune_layers::Host small{&bed, bedAt, true};
+    const dune_layers::Host small{&bed, bedAt, false}; // where they lie, not by the cover
     return giantLayers(m, s, fine, bed.full, host, small);
 }
 

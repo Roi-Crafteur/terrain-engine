@@ -15,7 +15,9 @@
 //   per square kilometer as their corridors at least, and 4 per square kilometer at least (67fd069:
 //   2.2, against 0.3 in the corridors);
 // - sizes: the heights of their tops vary by five times at least (90th over 10th percentile); on
-//   the giant waves measured at 10 m (testGiantSizes: at 50 m the grid misses the smallest).
+//   the giant waves measured at 10 m on each of the 3 ergs of giant waves of the world, the
+//   crescents alone (what they add to the waves: testGiantSizes; at 50 m the grid misses the
+//   smallest).
 // Before (44292cd): giant waves 11, 17 and 36 tops per block (25th, 50th and 90th percentiles),
 // big waves 3, 6 and 14; tops 3.2 to 13.4 m on the giant waves.
 #include "dunes_support.hpp"
@@ -154,35 +156,99 @@ bool isTop(const Out& out, int i, int k, int scale = 1) {
     return top && o - ring > 1.5;
 }
 
-// The sizes of the crescents of the giant waves on a grid of 10 m (at 50 m the smallest pass
-// between the samples): three windows of 4 km, the windows of isTop five times finer; the heights
-// of their tops vary by five times at least.
-void testGiantSizes() {
-    std::vector<double> tops;
-    for (const std::array<double, 2> at :
-         {std::array<double, 2>{1'003'000.0, 2'003'000.0}, {1'012'000.0, 2'010'000.0},
-          {1'020'000.0, 2'018'000.0}}) {
-        const Grid g = sample(at[0], at[1], 400, 10.0, ErgCharacter::Giants);
-        const std::vector<double> smooth = smoothed(g, 15);
-        const auto out = [&](int i, int k) {
-            const int ci = std::clamp(i, 0, g.n - 1);
-            const int ck = std::clamp(k, 0, g.n - 1);
-            return g.at(ci, ck) - smooth[static_cast<std::size_t>(ck * g.n + ci)];
-        };
-        for (int k = 20; k < g.n - 20; ++k) {
-            for (int i = 20; i < g.n - 20; ++i) {
-                if (isTop(out, i, k, 5)) {
-                    tops.push_back(out(i, k));
+// Sites of distinct ergs of giant waves of the default world (their giants and mask full).
+std::vector<std::array<double, 2>> giantErgs(std::size_t count) {
+    std::vector<std::array<double, 2>> out;
+    for (const terrain::ErgSummary& erg : real().ergs.ergs()) {
+        bool found = erg.character != ErgCharacter::Giants || out.size() >= count;
+        for (int j = -10; j <= 10 && !found; ++j) {
+            for (int i = -10; i <= 10 && !found; ++i) {
+                const double x = erg.x + 65'536.0 * i;
+                const double z = erg.z + 65'536.0 * j;
+                if (real().ergs.mayHold(x, z)) {
+                    const terrain::ErgPoint e = real().ergs.at(x, z, 0.0f);
+                    found = e.giants > 0.99f && e.mask > 0.99f;
+                    if (found) {
+                        out.push_back({x, z});
+                    }
                 }
             }
         }
     }
-    std::sort(tops.begin(), tops.end());
-    const double p10 = tops.empty() ? 0.0 : dunes_test::quantile(tops, 0.1);
-    const double p90 = tops.empty() ? 0.0 : dunes_test::quantile(tops, 0.9);
-    std::printf("giant waves at 10 m: %zu crescents, tops p10 %.1f p90 %.1f m (%.1f times)\n",
-                tops.size(), p10, p90, p10 > 0.0 ? p90 / p10 : 0.0);
-    TEST_CHECK(tops.size() >= 30 && p90 >= 5.0 * p10);
+    return out;
+}
+
+// The ergs of the default world without the crescents of their giant waves.
+const terrain::Ergs& bareErgs() {
+    static const terrain::Ergs ergs = [] {
+        terrain::ErgParams p;
+        p.giantCrescents = false;
+        return terrain::Ergs{dunes_test::kSeed, *real().planet, {}, p};
+    }();
+    return ergs;
+}
+
+// The crescents of the ergs as they are (their character, sand and wind where they lie): what
+// they add to the giant waves over a flat relief, on a grid of n x n samples step meters apart
+// from (x0, z0).
+Grid crescentsOf(double x0, double z0, int n, double step) {
+    Grid g{n, step, std::vector<double>(static_cast<std::size_t>(n * n))};
+    std::vector<std::thread> threads;
+    const int count = dunes_test::threads();
+    for (int t = 0; t < count; ++t) {
+        threads.emplace_back([&, t] {
+            const terrain::HeightSample flat;
+            for (int k = t; k < n; k += count) {
+                for (int i = 0; i < n; ++i) {
+                    const double x = x0 + i * step;
+                    const double z = z0 + k * step;
+                    g.h[static_cast<std::size_t>(k * n + i)] =
+                        static_cast<double>(real().ergs.dunesAt(x, z, flat)) -
+                        static_cast<double>(bareErgs().dunesAt(x, z, flat));
+                }
+            }
+        });
+    }
+    for (std::thread& t : threads) {
+        t.join();
+    }
+    return g;
+}
+
+// The sizes of the crescents of the giant waves on a grid of 10 m (at 50 m the smallest pass
+// between the samples), on the 3 ergs of giant waves of the world as they are: what they add to
+// the waves (until the tenth stop: the tops of the whole relief over its mean over 300 m, in three
+// windows of the character forced; their crests, festoons and joins counted as crescents), two
+// windows of 4 km on each, the windows of isTop five times finer: the heights of their tops
+// vary by five times at least on each.
+void testGiantSizes() {
+    const std::vector<std::array<double, 2>> ergs = giantErgs(3);
+    TEST_CHECK(ergs.size() == 3);
+    double least = 1.0e9;
+    for (const std::array<double, 2>& erg : ergs) {
+        std::vector<double> tops;
+        for (int w = 0; w < 2; ++w) {
+            const Grid g = crescentsOf(erg[0] + 6'000.0 * w - 4'000.0,
+                                       erg[1] + 4'000.0 * w - 4'000.0, 400, 10.0);
+            const auto out = [&](int i, int k) { return g.at(i, k); };
+            for (int k = 20; k < g.n - 20; ++k) {
+                for (int i = 20; i < g.n - 20; ++i) {
+                    if (out(i, k) > 1.0 && isTop(out, i, k, 2)) {
+                        tops.push_back(out(i, k));
+                    }
+                }
+            }
+        }
+        std::sort(tops.begin(), tops.end());
+        const double p10 = tops.empty() ? 0.0 : dunes_test::quantile(tops, 0.1);
+        const double p90 = tops.empty() ? 0.0 : dunes_test::quantile(tops, 0.9);
+        std::printf("crescents of the giant waves of the erg at (%.0f, %.0f), at 10 m: %zu, tops "
+                    "p10 %.1f p90 %.1f m (%.1f times)\n",
+                    erg[0], erg[1], tops.size(), p10, p90, p10 > 0.0 ? p90 / p10 : 0.0);
+        TEST_CHECK(tops.size() >= 30);
+        least = std::min(least, p10 > 0.0 ? p90 / p10 : 0.0);
+    }
+    TEST_CHECK(least >= 5.0);
 }
 
 void testCrescents(ErgCharacter c, double x0, double z0, int n, double step, int block) {
