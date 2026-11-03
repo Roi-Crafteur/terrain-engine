@@ -150,9 +150,6 @@ BRANCH if (!blended)
 W0Out = wa;
 W1Out = wb;
 W2Out = float4(wc, 0.0, height / 1000.0);
-// The bands of the rock of the sample (agent 33, Bridge/horizon_textures.hpp: kBandFloats),
-// relative to its height, as the vertices of the tiles hand theirs.
-BandsOut = BandTex.Load(int3((ik + first) % side, 0));
 // The drop below the tiles fades out across their band over level 0 (Bridge/terrain_surface.hpp:
 // dropShare): no step at their outer edge, none on the levels 1 and up.
 float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;
@@ -163,7 +160,6 @@ if (Kind.g > 0.5)
 {
     z = 0.0; slope = float2(0.0, 0.0); ground = -1.0;
     W0Out = float4(0.0, 0.0, 0.0, 0.0); W1Out = float4(0.0, 1.0, 0.0, 0.0); W2Out = float4(0.0, 0.0, 0.0, 0.0);
-    BandsOut = float4(0.0, 0.0, 0.0, 0.0);
 }
 z -= dot(CameraRel, CameraRel) / (2.0 * PlanetRadiusCm);
 // The normal of the curved ground: its slopes, and the curvature that leans it away from the
@@ -172,6 +168,23 @@ NormalOut = normalize(float3(-slope + CameraRel / PlanetRadiusCm, 1.0));
 GroundOut = ground;
 MorphOut = alpha;
 return float3(0.0, 0.0, z);
+"""
+
+
+# The bands of the rock under the pixel (agent 33, Bridge/horizon_textures.hpp: kBandFloats): the
+# texels of the four samples around it, bilinear (relative to the heights of the samples, as the
+# vertices of the tiles hand theirs), as the sea square reads its texels (horizon_sea_hlsl.py).
+BANDS_HLSL = r"""
+int side = (int)Cells + 1;
+int2 first = int2((int)FirstSlotX, (int)FirstSlotZ);
+float2 p = clamp(LocalPos.xy, 0.0, Cells - 0.001);
+int2 i0 = int2(floor(p));
+float2 t = p - float2(i0);
+float4 b00 = BandTex.Load(int3((i0 + first) % side, 0));
+float4 b10 = BandTex.Load(int3((i0 + int2(1, 0) + first) % side, 0));
+float4 b01 = BandTex.Load(int3((i0 + int2(0, 1) + first) % side, 0));
+float4 b11 = BandTex.Load(int3((i0 + int2(1, 1) + first) % side, 0));
+return lerp(lerp(b00, b10, t.x), lerp(b01, b11, t.x), t.y);
 """
 
 
@@ -268,7 +281,7 @@ def parameters(material):
              "HorizonBlend": texture_parameter(material, "HorizonBlend", -100),
              "CoarseTexels": texture_parameter(material, "CoarseTexels", -250),
              "HorizonNormals": texture_parameter(material, "HorizonNormals", -1700),
-             "HorizonBands": texture_parameter(material, "HorizonBands", -2000),
+             "HorizonBands": band_texture(material),
              "CoarseNormals": texture_parameter(material, "CoarseNormals", -1550)}
     nodes.update(detail.scalars(material, detail.HORIZON_SCALARS, -1300, -1900))
     scalars = (list(SCALARS.items()) + list(SEA_SCALARS.items()) + list(SHADE_SCALARS.items())
@@ -293,17 +306,15 @@ def vertex_shader(material, nodes, kind):
     float4 = unreal.CustomMaterialOutputType.CMOT_FLOAT4
     custom = custom_node(
         material, -900, 0, "HorizonVertex", look.struct_hlsl() + vertex_hlsl(),
-        ["Tex", "Coarse", "Blend", "Local", "Kind", "Viewer", "CameraRel", "BandTex"] +
-        list(SCALARS),
+        ["Tex", "Coarse", "Blend", "Local", "Kind", "Viewer", "CameraRel"] + list(SCALARS),
         [("NormalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
-         ("W0Out", float4), ("W1Out", float4), ("W2Out", float4), ("BandsOut", float4),
+         ("W0Out", float4), ("W1Out", float4), ("W2Out", float4),
          ("GroundOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
          ("MorphOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1)],
         unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     connect(nodes["HorizonTexels"], "", custom, "Tex")
     connect(nodes["CoarseTexels"], "", custom, "Coarse")
     connect(nodes["HorizonBlend"], "", custom, "Blend")
-    connect(nodes["HorizonBands"], "", custom, "BandTex")
     connect(expression(material, unreal.MaterialExpressionPreSkinnedPosition, -1600, -100), "",
             custom, "Local")
     connect(kind, "", custom, "Kind")
@@ -360,7 +371,32 @@ def sea_shader(material, nodes, kind, ground):
     return custom
 
 
-def land_shader(material, vertex, normal):
+def band_texture(material):
+    """The bands of the rock of the level (agent 33): read without filtering, on a sampler shared
+    with the world (Load takes none; no sampler slot of its own)."""
+    node = texture_parameter(material, "HorizonBands", -2000)
+    node.set_editor_property("sampler_source",
+                             unreal.SamplerSourceMode.SSM_CLAMP_WORLD_GROUP_SETTINGS)
+    return node
+
+
+def bands(material, nodes):
+    """The bands of the rock under the pixel (agent 33), read by the pixel shader from the texels
+    of the four samples around it (no interpolator of the vertex shader: they are taken)."""
+    float4 = unreal.CustomMaterialOutputType.CMOT_FLOAT4
+    node = custom_node(material, -600, 1850, "HorizonBands", BANDS_HLSL,
+                       ["BandTex", "LocalPos", "Cells", "FirstSlotX", "FirstSlotZ"], [], float4)
+    local = local_position(material, -800, 1900)
+    connect(world_position(material, unreal.WorldPositionIncludedOffsets.WPT_DEFAULT, -1000,
+                           1900), "", local, "")
+    connect(local, "", node, "LocalPos")
+    connect(nodes["HorizonBands"], "", node, "BandTex")
+    for name in ["Cells", "FirstSlotX", "FirstSlotZ"]:
+        connect(nodes[name], "", node, name)
+    return node
+
+
+def land_shader(material, nodes, vertex, normal, with_bands):
     """The land of the pixel: the temporary terrain material without its near detail (only the
     mean color of each texture), as the far tiles."""
     float1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
@@ -389,8 +425,12 @@ def land_shader(material, vertex, normal):
     for name in inputs:
         if name in params:
             connect(params[name], "", shade, name)
-    # The bands of the rock (agent 33): of the samples, interpolated; no cap on the horizon.
-    connect(interpolate(material, vertex, "BandsOut", 1850), "", shade, "B")
+    # The bands of the rock (agent 33): of the samples around the pixel; no cap on the horizon.
+    if with_bands:
+        connect(bands(material, nodes), "", shade, "B")
+    else:
+        connect(expression(material, unreal.MaterialExpressionConstant4Vector, -350, 1850), "",
+                shade, "B")
     no_cap = expression(material, unreal.MaterialExpressionConstant2Vector, -350, 1950)
     connect(no_cap, "", shade, "C")
     return shade, position
@@ -442,7 +482,7 @@ def mask_and_depth(material, nodes, kind, ground, attributes):
     return square
 
 
-def pixel_shader(material, nodes, vertex, kind):
+def pixel_shader(material, nodes, vertex, kind, with_bands):
     # The outputs go through one MakeMaterialAttributes node: Python cannot connect the pixel
     # depth offset of the material itself.
     attributes = expression(material, unreal.MaterialExpressionMakeMaterialAttributes, 800, 0)
@@ -450,7 +490,7 @@ def pixel_shader(material, nodes, vertex, kind):
     ground = interpolate(material, vertex, "GroundOut", 250)
     sea = sea_shader(material, nodes, kind, ground)
     square = mask_and_depth(material, nodes, kind, ground, attributes)
-    land, position = land_shader(material, vertex, normal)
+    land, position = land_shader(material, nodes, vertex, normal, with_bands)
     for name in ("WaveOriginX", "WaveOriginY"):
         connect(nodes[name], "", position, name)
     # The default output of a vector parameter is its RGB; its alpha is the amount of the tint.
@@ -492,15 +532,15 @@ def pixel_shader(material, nodes, vertex, kind):
         attributes, "", unreal.MaterialProperty.MP_MATERIAL_ATTRIBUTES)
 
 
-def create_horizon_gpu_material():
-    asset_path = f"{PACKAGE_PATH}/{ASSET_NAME}"
+def create_horizon_gpu_material(asset_name=ASSET_NAME, with_bands=True):
+    asset_path = f"{PACKAGE_PATH}/{asset_name}"
     if unreal.EditorAssetLibrary.does_asset_exist(asset_path):
         material = unreal.EditorAssetLibrary.load_asset(asset_path)
         look.clear_material(material)
         unreal.log(f"{asset_path} exists: rebuilt in place")
     else:
         tools = unreal.AssetToolsHelpers.get_asset_tools()
-        material = tools.create_asset(ASSET_NAME, PACKAGE_PATH, unreal.Material,
+        material = tools.create_asset(asset_name, PACKAGE_PATH, unreal.Material,
                                       unreal.MaterialFactoryNew())
     # Every setting reset (material_settings.py), then: the normal of the pixel shader in world
     # space (the grids are flat, the scale is not); masked, the sea square cut where the core puts
@@ -510,7 +550,7 @@ def create_horizon_gpu_material():
     nodes = parameters(material)
     kind = expression(material, unreal.MaterialExpressionVertexColor, -1600, 0)
     vertex = vertex_shader(material, nodes, kind)
-    pixel_shader(material, nodes, vertex, kind)
+    pixel_shader(material, nodes, vertex, kind, with_bands)
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_asset(asset_path)
     unreal.log(f"{asset_path} created")
@@ -518,3 +558,8 @@ def create_horizon_gpu_material():
 
 
 create_horizon_gpu_material()
+# A diagnostic for the check in Unreal of the band channel (agent 33, after DXC refused the
+# material of f79741f): the same material without the bands of the rock, which the plugin does not
+# use; if the first fails to compile and this one compiles, the reading of the bands is the cause.
+# To be removed once the material compiles in Unreal.
+create_horizon_gpu_material(f"{ASSET_NAME}_SansBandes", with_bands=False)

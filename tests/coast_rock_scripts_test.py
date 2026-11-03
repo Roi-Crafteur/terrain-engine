@@ -141,8 +141,46 @@ def check_bands(scripts, struct_code):
           "the tiles read their bands from the UV channels 1 to 3")
     with open(f"{scripts}/create_horizon_gpu_material.py", encoding="utf-8") as f:
         gpu = f.read()
-    check("BandsOut = BandTex.Load(int3((ik + first) % side, 0));" in gpu and
-          '"HorizonBands"' in gpu, "the horizon reads the band texel of its sample")
+    check("BandTex.Load(int3((i0 + int2(1, 1) + first) % side, 0));" in gpu and
+          '"HorizonBands"' in gpu and "connect(bands(material, nodes), \"\", shade, \"B\")" in gpu,
+          "the horizon reads the band texels around the pixel in its pixel shader")
+
+
+# What the vertex shader of the GPU horizon hands to its pixel shader and reads, as it compiled in
+# Unreal on e6f198d (DXC failed on f79741f, one float4 more and one texture more: agent 33): 22
+# scalars of interpolators, the textures of the texels, of the coarser texels and of the blends.
+INTERPOLATOR_BUDGET = 22
+VERTEX_TEXTURES = ["Tex", "Coarse", "Blend"]
+WIDTHS = {"float4": 4, "CMOT_FLOAT4": 4, "CMOT_FLOAT3": 3, "CMOT_FLOAT2": 2, "CMOT_FLOAT1": 1,
+          "FLOAT4": 4, "FLOAT3": 3, "FLOAT2": 2, "FLOAT1": 1}
+
+
+def check_interpolators(scripts):
+    """The interpolators and the textures of the vertex shader of the GPU horizon, counted in its
+    scripts (create_horizon_gpu_material.py, horizon_water_nodes.py) without Unreal: a static
+    check of what DXC refused."""
+    with open(f"{scripts}/create_horizon_gpu_material.py", encoding="utf-8") as f:
+        gpu = f.read()
+    with open(f"{scripts}/horizon_water_nodes.py", encoding="utf-8") as f:
+        water = f.read()
+    vertex = gpu[gpu.index("def vertex_shader("):gpu.index("\ndef ", gpu.index("def vertex_shader("))]
+    widths = {name: WIDTHS[kind.split(".")[-1]] for name, kind in
+              re.findall(r'\("(\w+Out)", ([\w.]+)\)', vertex)}
+    named = re.findall(r'interpolate\(material, vertex, "(\w+)"', gpu)
+    named += [f"W{i}Out" for i in range(3)] if 'f"W{index}Out"' in gpu else []
+    scalars = sum(widths.get(name, 4) for name in named)
+    outputs = re.search(r"VERTEX_OUTPUTS = \[([^\]]*)\]", water)
+    for name in re.findall(r'"(\w+)"', outputs.group(1) if outputs else ""):
+        scalars += 2 if name == "InlandLocalOut" else 1
+    check(scalars <= INTERPOLATOR_BUDGET,
+          f"the GPU horizon interpolates {scalars} scalars (at most {INTERPOLATOR_BUDGET})")
+    inputs = re.search(r'"HorizonVertex", look\.struct_hlsl\(\) \+ vertex_hlsl\(\),\s*\[([^\]]*)\]',
+                       vertex)
+    read = [n for n in re.findall(r'"(\w+)"', inputs.group(1) if inputs else "")
+            if n in ("Tex", "Coarse", "Blend") or n.endswith("Tex")]
+    check(inputs is not None and read == VERTEX_TEXTURES,
+          f"the vertex shader of the GPU horizon reads the textures {VERTEX_TEXTURES} only ({read})")
+    print(f"the GPU horizon: {scalars} scalars interpolated, its vertex shader reads {read}")
 
 
 def main():
@@ -205,6 +243,7 @@ def main():
     check_blends(terrain.struct_hlsl(biomes))
     check_wet_band(scripts)
     check_bands(scripts, terrain.struct_hlsl(biomes))
+    check_interpolators(scripts)
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 
