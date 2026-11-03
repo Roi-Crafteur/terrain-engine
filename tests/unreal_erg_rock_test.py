@@ -3,8 +3,9 @@ out of the sand (its buttes and mesas, the floor of an erg: HeightSample::erg, b
 is desert rock, ochre to red, not the cold grey mineral of the other rock (b889976: large
 grey-blue patches with hard edges, the bare rock of the reefs). In the shaded HLSL of the tiles
 and of the horizon (shade_hlsl, both): the grey rock turns to desertRock by ergFloor, after it is
-made and before it is drawn; desertRock, as written there, is warm (red over green over blue,
-saturated) at both ends of its hue, and the core lays no bare rock on the ergs
+made and before it is drawn; desertRock, the local sand times its factors, is warm (red over
+green over blue, saturated) at both ends of its hue and never brighter than that sand (twice as
+bright, its faces lit by a low sun showed white, c1119e3), and the core lays no bare rock on the ergs
 (heightfield_hydrology.cpp: no rock flag set by the dunes).
 The floors of the ergs (tenth stop, f405fb7: their gravel, the material pebbles, read from afar as
 grey-blue lakes in the orange sand): their Scree layer alone takes regTint by ergFloor, its mean
@@ -56,12 +57,20 @@ def main():
               f"the rock of the ergs is tinted between its grey and the color (detail {detail})")
         check(code.find("float ergFloor") >= 0 and code.find("float ergFloor") < tinted,
               f"ergFloor is known where the rock is tinted (detail {detail})")
-        hue = re.search(r"float3 desertRock = lerp\(float3\(([^)]*)\), float3\(([^)]*)\)", code)
-        check(hue is not None, f"desertRock as a lerp of two colors (detail {detail})")
+        hue = re.search(r"float3 desertRock = desertMean \* lerp\(float3\(([^)]*)\), float3\(([^)]*)\)",
+                        code)
+        check(hue is not None, f"desertRock as the local sand times a lerp of two factors (detail {detail})")
         if hue:
-            ends = [tuple(float(v) for v in hue.group(k).split(",")) for k in (1, 2)]
-            print(f"desert rock from {ends[0]} to {ends[1]}")
+            names = [layer[0] for layer in look.LAYERS]
+            desert = [m * t for m, t in zip(look.LAYERS[names.index("Desert")][3], look.TINTS["Desert"])]
+            ends = [tuple(d * float(v) for d, v in zip(desert, hue.group(k).split(","))) for k in (1, 2)]
+            lum = lambda c: 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
+            print(f"desert rock from {tuple(round(v, 3) for v in ends[0])} to "
+                  f"{tuple(round(v, 3) for v in ends[1])}, luminance {lum(ends[0]):.3f} to "
+                  f"{lum(ends[1]):.3f} (the sand {lum(desert):.3f})")
             check(all(warm(e) for e in ends), f"desert rock ochre to red: {ends}")
+            check(all(lum(e) <= lum(desert) for e in ends),
+                  f"desert rock never brighter than the sand around it: {ends}")
     names = [layer[0] for layer in look.LAYERS]
     scree = names.index("Scree")
     for detail in (True, False):

@@ -419,10 +419,12 @@ float3 groundC = Look.Saturate(ground * macro * hue, Saturation) * Warmth;
 float3 rockS = max(lerp(rockMean, rockC, RockContrast), 0.0);
 float3 rockG = Look.Saturate(rockS, 1.0 - RockGrey) * RockAlbedo * (1.0 + 0.4 * MacroVariation * (n2 - 0.5));
 // The rock of the ergs (their floor: its buttes and mesas out of the sand) is the rock of a
-// desert, ochre to red sandstone, not the cold grey mineral: the light and dark of the rock
-// texture kept, its hue that of the desert, its albedo about 0.3.
+// desert, ochre to red-brown sandstone, not the cold grey mineral: the light and dark of the rock
+// texture kept, its hue that of the local sand (desertMean), a little darker than it (0.8 to 0.7
+// of its luminance: fixed at 0.34 to 0.45, twice the sand, its faces lit by a low sun showed
+// white, c1119e3).
 float rockLum = dot(rockS, float3(0.3, 0.59, 0.11)) / max(dot(rockMean, float3(0.3, 0.59, 0.11)), 1e-3);
-float3 desertRock = lerp(float3(0.62, 0.40, 0.23), float3(0.55, 0.27, 0.16), smoothstep(0.3, 0.7, n4)) *
+float3 desertRock = desertMean * lerp(float3(0.95, 0.88, 0.8), float3(0.85, 0.62, 0.55), smoothstep(0.3, 0.7, n4)) *
                     rockLum * (1.0 + 0.3 * MacroVariation * (n2 - 0.5));
 rockG = lerp(rockG, desertRock, ergFloor);
 float3 snowG = lerp(snowC, float3(0.88, 0.91, 0.96), SnowWhiten) * TintS;
