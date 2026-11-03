@@ -248,6 +248,7 @@ Phase phaseOf(const Shared& s, const Pivots& p, const Weights& w, const Kind& ki
     const double g = dmath::hypot(gx, gz);
     out.wavelength = g > 0.0 ? std::clamp(1.0 / g, kShortest * nominal, kLongest * nominal)
                              : kLongest * nominal;
+    out.local = g > 0.0 ? 1.0 / g : out.wavelength;
     out.coherence = std::clamp(std::sqrt(modulus2), 0.0, 1.0);
     out.nominal = nominal;
     return out;

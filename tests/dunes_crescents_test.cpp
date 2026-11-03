@@ -15,14 +15,14 @@
 //   per square kilometer as their corridors at least, and 4 per square kilometer at least (67fd069:
 //   2.2, against 0.3 in the corridors);
 // - sizes: the heights of their tops vary by five times at least (90th over 10th percentile); on
-//   the giant waves four times (since the eighth stop the big ones cover their flanks: 6.9 to
-//   29.3 m; at 50 m the grid misses the smallest).
+//   the giant waves measured at 10 m (testGiantSizes: at 50 m the grid misses the smallest).
 // Before (44292cd): giant waves 11, 17 and 36 tops per block (25th, 50th and 90th percentiles),
 // big waves 3, 6 and 14; tops 3.2 to 13.4 m on the giant waves.
 #include "dunes_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <thread>
@@ -127,27 +127,62 @@ std::vector<double> rangePosition(const std::vector<double>& v, int n, int r) {
 // A top of a crescent at (i, k) of what stands out of the smoothed ground (out): 2 m over it, the
 // highest of the 5 x 5 samples around, 1.5 m over the mean of the 9 x 9 and 1 m over the samples
 // 4 away in each of 8 directions.
+// scale: the windows in samples times scale (the same meters on a grid scale times finer).
 template <typename Out>
-bool isTop(const Out& out, int i, int k) {
+bool isTop(const Out& out, int i, int k, int scale = 1) {
     const double o = out(i, k);
     bool top = o > 2.0;
-    for (int dk = -2; dk <= 2 && top; ++dk) {
-        for (int di = -2; di <= 2 && top; ++di) {
+    for (int dk = -2 * scale; dk <= 2 * scale && top; ++dk) {
+        for (int di = -2 * scale; di <= 2 * scale && top; ++di) {
             top = (di == 0 && dk == 0) || out(i + di, k + dk) < o;
         }
     }
     double ring = 0.0;
-    for (int dk = -4; dk <= 4 && top; ++dk) {
-        for (int di = -4; di <= 4; ++di) {
-            ring += out(i + di, k + dk) / 81.0;
+    double count = 0.0;
+    for (int dk = -4 * scale; dk <= 4 * scale && top; dk += scale) {
+        for (int di = -4 * scale; di <= 4 * scale; di += scale) {
+            ring += out(i + di, k + dk);
+            count += 1.0;
         }
     }
+    ring /= std::max(count, 1.0);
     for (int d = 0; d < 8 && top; ++d) {
-        const int di = d < 3 ? -4 : (d < 5 ? 0 : 4);
-        const int dk = d % 3 == 0 ? -4 : (d % 3 == 1 ? 0 : 4);
+        const int di = (d < 3 ? -4 : (d < 5 ? 0 : 4)) * scale;
+        const int dk = (d % 3 == 0 ? -4 : (d % 3 == 1 ? 0 : 4)) * scale;
         top = (di == 0 && dk == 0) || o - out(i + di, k + dk) > 1.0;
     }
     return top && o - ring > 1.5;
+}
+
+// The sizes of the crescents of the giant waves on a grid of 10 m (at 50 m the smallest pass
+// between the samples): three windows of 4 km, the windows of isTop five times finer; the heights
+// of their tops vary by five times at least.
+void testGiantSizes() {
+    std::vector<double> tops;
+    for (const std::array<double, 2> at :
+         {std::array<double, 2>{1'003'000.0, 2'003'000.0}, {1'012'000.0, 2'010'000.0},
+          {1'020'000.0, 2'018'000.0}}) {
+        const Grid g = sample(at[0], at[1], 400, 10.0, ErgCharacter::Giants);
+        const std::vector<double> smooth = smoothed(g, 15);
+        const auto out = [&](int i, int k) {
+            const int ci = std::clamp(i, 0, g.n - 1);
+            const int ck = std::clamp(k, 0, g.n - 1);
+            return g.at(ci, ck) - smooth[static_cast<std::size_t>(ck * g.n + ci)];
+        };
+        for (int k = 20; k < g.n - 20; ++k) {
+            for (int i = 20; i < g.n - 20; ++i) {
+                if (isTop(out, i, k, 5)) {
+                    tops.push_back(out(i, k));
+                }
+            }
+        }
+    }
+    std::sort(tops.begin(), tops.end());
+    const double p10 = tops.empty() ? 0.0 : dunes_test::quantile(tops, 0.1);
+    const double p90 = tops.empty() ? 0.0 : dunes_test::quantile(tops, 0.9);
+    std::printf("giant waves at 10 m: %zu crescents, tops p10 %.1f p90 %.1f m (%.1f times)\n",
+                tops.size(), p10, p90, p10 > 0.0 ? p90 / p10 : 0.0);
+    TEST_CHECK(tops.size() >= 30 && p90 >= 5.0 * p10);
 }
 
 void testCrescents(ErgCharacter c, double x0, double z0, int n, double step, int block) {
@@ -218,7 +253,7 @@ void testCrescents(ErgCharacter c, double x0, double z0, int n, double step, int
     TEST_CHECK(p25 <= 1.0);
     TEST_CHECK(giant ? flankDensity >= 3.0 * corridorDensity && flankDensity >= 4.0
                      : p90b >= 3.0 * std::max(p50, 1.0));
-    TEST_CHECK(tops.size() >= 30 && p90 >= (giant ? 4.0 : 5.0) * p10);
+    TEST_CHECK(tops.size() >= 30 && (giant || p90 >= 5.0 * p10));
 }
 
 } // namespace
@@ -226,5 +261,6 @@ void testCrescents(ErgCharacter c, double x0, double z0, int n, double step, int
 int main() {
     testCrescents(ErgCharacter::Giants, 1'000'000.0, 2'000'000.0, 600, 50.0, 60);
     testCrescents(ErgCharacter::Waves, -3'000'000.0, 1'500'000.0, 600, 25.0, 60);
+    testGiantSizes();
     return test::result();
 }

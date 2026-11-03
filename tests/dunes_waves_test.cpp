@@ -85,7 +85,8 @@ bool crestAt(const std::vector<double>& h, std::size_t i, double floor, std::siz
 // The forms of a character along the wind at the sites: spacing, heights, slopes, flat ground.
 // The backs (backMost, 80th percentile of the slopes along the wind) on the profile smoothed over
 // 300 m: the slope of the wave, not of the crescents laid on it (their slip faces cover the backs
-// of the giant waves since the eighth stop; on the raw profile, 17.4 degrees).
+// of the giant waves since the eighth stop; on the raw profile, 17.4 degrees), the raw profile
+// under 20 degrees still (the measure smoothed may not drift).
 void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tallest,
                double backMost) {
     const bool giant = c == ErgCharacter::Giants;
@@ -156,6 +157,7 @@ void testForms(ErgCharacter c, double spacingLow, double spacingHigh, double tal
     TEST_CHECK(median >= spacingLow && median <= spacingHigh);
     TEST_CHECK(top <= tallest + 1e-3 && top >= 0.5 * tallest);
     TEST_CHECK(dunes_test::quantile(backs, 0.8) <= backMost); // most of the ground: the backs
+    TEST_CHECK(dunes_test::quantile(slopes, 0.8) <= 20.0);    // and with the dunes laid on them
     TEST_CHECK(std::atan(steepest) * dunes_test::kDegrees <= 40.0);
     TEST_CHECK(flatShare <= 0.1);
 }

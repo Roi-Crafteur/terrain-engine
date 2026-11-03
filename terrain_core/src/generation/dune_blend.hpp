@@ -9,12 +9,20 @@
 namespace terrain::dune_field {
 
 inline constexpr double kMinorWeight = 0.1;
+inline constexpr double kMinorLeast = 0.02;
+
+// The weight a kind of weight w takes in the blend: none up to kMinorLeast (nothing to compute),
+// all of it from kMinorWeight, joined smoothly between (its slope and its curvature continuous).
+[[nodiscard]] inline double effectiveWeight(double w) {
+    const double t = std::clamp((w - kMinorLeast) / (kMinorWeight - kMinorLeast), 0.0, 1.0);
+    return w * t * t * t * (t * (6.0 * t - 15.0) + 10.0);
+}
 
 // The kinds blended: the power mean of their heights above the floor (exponent 4, the crests stay
 // sharp where two kinds meet) weighted by the fourth powers of their weights, times the sum of the
 // weights; the troughs below it by their weights. A kind taking a share w of the weight rises by
-// about w of its height: not w^(1/4), a step where it begins. Under kMinorWeight its weight in
-// the power mean fades out (smoothly in w): a tall kind of a tiny weight (giants of 208 m at
+// about w of its height: not w^(1/4), a step where it begins. Under kMinorWeight its weight
+// fades out (effectiveWeight), in the power mean, the sum and the troughs alike: a tall kind of a tiny weight (giants of 208 m at
 // 0.3 %) held the surface at w of its height (0.6 m) wherever the main kind fell to the floor,
 // a terrace edge along the feet of its troughs, a fine thread with no dune around it.
 struct Blend {
@@ -23,9 +31,8 @@ struct Blend {
     double total = 0.0;  // the sum of the weights
     double below = 0.0;  // the sum of the weights times the depths (negative)
     void add(double h, float weight) {
-        const auto w = static_cast<double>(weight);
-        const double t = std::clamp(w / kMinorWeight, 0.0, 1.0);
-        const double w4 = dmath::powInteger(w * t * t * t * (t * (6.0 * t - 15.0) + 10.0), 4);
+        const double w = effectiveWeight(static_cast<double>(weight));
+        const double w4 = dmath::powInteger(w, 4);
         above += w4 * dmath::powInteger(std::max(h, 0.0), 4);
         weights += w4;
         total += w;

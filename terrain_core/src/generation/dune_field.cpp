@@ -411,7 +411,7 @@ float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
     // their heights weighted by the characters (the realistic alone: the same bits as before).
     const float realistic = 1.0f - e.waves - e.giants;
     Blend sum;
-    if (realistic > 0.0f) {
+    if (realistic > kMinorLeast) {
         const FormWeights w = weightsOf(e);
         if (w.star < 1.0f) {
             windKinds(m, s, q, w, sum);
@@ -419,12 +419,13 @@ float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e) {
         if (w.star > 0.0f) {
             sum.add(starKind(m, q), w.star);
         }
-        sum.scale(static_cast<double>(realistic));
+        sum.scale(effectiveWeight(static_cast<double>(realistic)));
     }
-    if (e.waves > 0.0f) {
+    // A character of a weight under kMinorLeast takes none (effectiveWeight): not computed.
+    if (e.waves > kMinorLeast) {
         sum.add(dune_waves::waves(m, s, x, z, q.sand, q.amplitude, false), e.waves);
     }
-    if (e.giants > 0.0f) {
+    if (e.giants > kMinorLeast) {
         sum.add(dune_waves::waves(m, s, x, z, q.sand, q.amplitude, true), e.giants);
     }
     return static_cast<float>(sum.value() * edgeOf(e));

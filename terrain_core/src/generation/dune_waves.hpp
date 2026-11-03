@@ -13,6 +13,7 @@
 // (300 to 800 m). A second system of crests, wider and turned, joins them (Y junctions) where a
 // noise is high, only near their own crests and lower than them. Their height is capped by their spacing, so that the backs stay that gentle.
 
+#include "dune_forms.hpp"
 #include "dune_phase.hpp"
 
 namespace terrain::dune_waves {
@@ -38,10 +39,10 @@ struct Shape {
     double rise = 0.0;  // rising downwind: the back and the far half of the trough
     double crest = 0.0;
 };
-// slip: the share of the height the face falls straight at the angle of repose (an avalanche
-// face) before its parabola, 0 for none.
+// slip: the share of the height the face falls straight at leeTan (an avalanche face) before its
+// parabola, 0 for none; leeTan: the slope of the face at its brink (the angle of repose).
 [[nodiscard]] Shape shapeOf(double t, double wavelength, double height, double backTan, double dig,
-                            double slip = 0.0);
+                            double slip = 0.0, double leeTan = dune_forms::kLeeTan);
 // The ground where the second system (join meters, already lowered to its share, top its profile
 // over its height) rises over the first (main meters) by share: only near its crests, joined
 // smoothly over soft meters (no fold where they meet; its long backs lift no trough of the first).

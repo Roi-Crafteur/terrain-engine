@@ -16,6 +16,10 @@ namespace {
 // The giant waves: a straight slip face down kGiantsSlip of their height (an avalanche face
 // readable from kilometers; the parabola alone made the wall of 700 m a low smooth hill).
 constexpr double kGiantsSlip = 0.35;
+// Their faces fall at 31 degrees (slip faces stand at 30 to 34): where their phase varies fast
+// (near its defects) the distance to their crest grows up to 1.29 times faster than the ground,
+// and a face of 33 degrees reached 40 there.
+constexpr double kGiantsLeeTan = 0.6008606190275604;
 // Down that slip face, the chutes of the avalanches (grain flows): gullies kChuteDepth deep about
 // kChuteSpacing apart across it (wandering with the drift noise), faded in over the first
 // kChuteIn of the slip face from the brink and out over its last kChuteOut (never steeper than
@@ -25,6 +29,14 @@ constexpr double kChuteSpacing = 60.0;
 constexpr double kChuteIn = 0.3;
 constexpr double kChuteOut = 0.4;
 constexpr double kChuteCell = 4'096.0;
+constexpr double kPi = 3.14159265358979323846;
+// The festoons and spurs of the giant waves (crescentic slip faces, as on the megadunes of the
+// Badain Jaran and the Rub al-Khali): their crest and slip face shifted downwind and back by
+// kFestoonSlope times the spacing over 2 pi, about kFestoonSpacing apart along the crest (300 to
+// 600 m): the face turns by up to 24 degrees from one festoon to the next, its slope at most
+// 1.1 times steeper.
+constexpr double kFestoonSpacing = 450.0;
+constexpr double kFestoonSlope = 0.45;
 // The face downwind of a crest: H (1 - d / L)^kLeeCurve over L = kLeeCurve H / tan 33 (its slope
 // at the brink tan 33 degrees).
 constexpr double kLeeCurve = 2.0;
@@ -158,44 +170,48 @@ dune_phase::Kind kindOf(bool giant) {
     return k;
 }
 
-// The depth of the chutes of the slip face of a giant wave of height full at the point (x, z),
-// d meters downwind of its crest.
-double chutes(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double z, double d,
-              double full) {
-    const double run = kGiantsSlip * full / dune_forms::kLeeTan;
-    if (!(d > 0.0) || !(d < run)) {
-        return 0.0;
-    }
-    const double mask =
-        smoother(0.0, kChuteIn * run, d) * (1.0 - smoother((1.0 - kChuteOut) * run, run, d));
-    // Across the wind from the corners of a lattice of kChuteCell (dividing the world: no seam
-    // where it wraps), their patterns blended bilinearly (the blend wanders their depth too).
+// Waves across the wind at (x, z), about spacing meters apart: from the corners of a lattice of
+// kChuteCell (dividing the world: no seam where it wraps), each its own offset and spacing (0.7
+// to 1.3 times spacing, from its indices modulo the cells of the world, and salt), blended
+// bilinearly (the blend wanders their amplitude too: irregular, not a comb). The sum of the
+// weights times the cosines, each by its spacing over 2 pi if bySpacing (then the slope of the
+// sum across the wind is at most 1).
+double acrossWaves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double z,
+                   double spacing, double salt, bool bySpacing) {
     const std::array<double, 2> wind = windOf(m, x, z);
     const double u = std::floor(x / kChuteCell);
     const double v = std::floor(z / kChuteCell);
     const double fu = x / kChuteCell - u;
     const double fv = z / kChuteCell - v;
+    const double nu = m.world.x / kChuteCell;
+    const double nv = m.world.z / kChuteCell;
     double c = 0.0;
     for (int k = 0; k < 4; ++k) {
-        const double cu = (u + (k & 1)) * kChuteCell;
-        const double cv = (v + (k >> 1)) * kChuteCell;
-        const double dx = wrapCoordinate(x - cu, m.world.x);
-        const double dz = wrapCoordinate(z - cv, m.world.z);
+        const double dx = wrapCoordinate(x - (u + (k & 1)) * kChuteCell, m.world.x);
+        const double dz = wrapCoordinate(z - (v + (k >> 1)) * kChuteCell, m.world.z);
         const double w = ((k & 1) != 0 ? fu : 1.0 - fu) * ((k >> 1) != 0 ? fv : 1.0 - fv);
-        // Each corner its own offset (from its indices, modulo the cells of the world).
-        const double nu = m.world.x / kChuteCell;
-        const double nv = m.world.z / kChuteCell;
         const double iu = std::fmod(std::fmod(u + (k & 1), nu) + nu, nu);
         const double iv = std::fmod(std::fmod(v + (k >> 1), nv) + nv, nv);
-        const double offset = 0.37 * iu + 0.61 * iv;
-        // and its own spacing (the blend of several, irregular chutes, not a comb).
-        const double h = 0.53 * iu + 0.29 * iv;
-        const double spacing = kChuteSpacing * (0.7 + 0.6 * (h - std::floor(h)));
-        const double turns =
-            (dz * wind[0] - dx * wind[1]) / spacing + offset + 2.0 * s.drift[0];
-        c += w * dmath::sinCosTurns(turns).cosine;
+        const double offset = 0.37 * iu + 0.61 * iv + 0.123 * salt;
+        const double h = 0.53 * iu + 0.29 * iv + 0.311 * salt;
+        const double own = spacing * (0.7 + 0.6 * (h - std::floor(h)));
+        const double turns = (dz * wind[0] - dx * wind[1]) / own + offset + 2.0 * s.drift[0];
+        c += w * dmath::sinCosTurns(turns).cosine * (bySpacing ? own / (2.0 * kPi) : 1.0);
     }
-    return kChuteDepth * mask * 0.5 * (1.0 - c);
+    return c;
+}
+
+// The depth of the chutes of the slip face of a giant wave of height full at the point (x, z),
+// d meters downwind of its crest.
+double chutes(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double z, double d,
+              double full) {
+    const double run = kGiantsSlip * full / kGiantsLeeTan;
+    if (!(d > 0.0) || !(d < run)) {
+        return 0.0;
+    }
+    const double mask =
+        smoother(0.0, kChuteIn * run, d) * (1.0 - smoother((1.0 - kChuteOut) * run, run, d));
+    return kChuteDepth * mask * 0.5 * (1.0 - acrossWaves(m, s, x, z, kChuteSpacing, 0.0, false));
 }
 
 // How much of the second system rises where its profile is top of its height (joined).
@@ -217,26 +233,26 @@ double profile(double t, double wavelength, double height, double backTan) {
 }
 
 Shape shapeOf(double t, double wavelength, double height, double backTan, double dig,
-              double slip) {
+              double slip, double leeTan) {
     if (!(height > 0.0)) {
         return {};
     }
     // The face: a straight slip face at the angle of repose down slip of the height, then the
     // parabola to the trough, its slope that of the slip face where they meet.
     const double straight = std::clamp(slip, 0.0, 1.0) * height;
-    const double slipRun = straight / dune_forms::kLeeTan;
-    const double curveRun = kLeeCurve * (height - straight) / dune_forms::kLeeTan;
+    const double slipRun = straight / leeTan;
+    const double curveRun = kLeeCurve * (height - straight) / leeTan;
     const double lee = slipRun + curveRun;
     // The back and the trough keep the length of the face without its straight slip face (shorter,
     // the floor between two waves would grow flat).
-    const double leeRef = kLeeCurve * height / dune_forms::kLeeTan;
+    const double leeRef = kLeeCurve * height / leeTan;
     // The back: what the face leaves of the wavelength, never shorter than the gentle back needs
     // (where the local wavelength is short, the back and the face overlap: no floor).
     const double back = std::max({wavelength - leeRef, kBackCurve * height / backTan, 1.0});
     const double d = t * wavelength;
     const double s = d < slipRun ? 1.0 : (d < lee ? 1.0 - (d - slipRun) / curveRun : 0.0);
     const double face =
-        d < slipRun ? height - dune_forms::kLeeTan * d : (height - straight) * s * s;
+        d < slipRun ? height - leeTan * d : (height - straight) * s * s;
     const double up = (1.0 - t) * wavelength; // to the next crest, upwind of it
     const double r = up < back ? 1.0 - up / back : 0.0;
     const double rise = height * dmath::pow(r, kBackCurve);
@@ -244,8 +260,8 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
     out.height = std::max(face, rise);
     // The crest rounded (dune_forms::rounded): the face and the back meet flat on top.
     const double backTop = kBackCurve * height / back;
-    if (d < 2.0 * dune_forms::kCrestRound / dune_forms::kLeeTan) {
-        out.height = std::min(out.height, height - dune_forms::rounded(d, dune_forms::kLeeTan));
+    if (d < 2.0 * dune_forms::kCrestRound / leeTan) {
+        out.height = std::min(out.height, height - dune_forms::rounded(d, leeTan));
     }
     if (up < 2.0 * dune_forms::kCrestRound / backTop) {
         out.height = std::min(out.height, height - dune_forms::rounded(up, backTop));
@@ -253,7 +269,7 @@ Shape shapeOf(double t, double wavelength, double height, double backTan, double
     // The slopes the layers read, falling and rising downwind: the face, and the back growing
     // linearly from its foot to its steepest at the crest (its own slope grows as r^0.4, too
     // fast for the layers that read it).
-    out.slope = dune_forms::kLeeTan * s;
+    out.slope = leeTan * s;
     out.rise = kBackCurve * height / back * r;
     // The trough between two waves: from the middle of the face to the middle of the back,
     // ending at the next crest at the latest (where the phase starts over); its near half falls
@@ -293,6 +309,8 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
                              static_cast<double>(slow.fbm2D(x + kEndsShift, z - kEndsShift,
                                                             memosOf(m).waveEnds)));
     const dune_phase::Pivots fine = giant ? dune_phase::pivotsAt(m, s, false) : p;
+    const double festoon =
+        giant ? kFestoonSlope * acrossWaves(m, s, x, z, kFestoonSpacing, 1.0, true) : 0.0;
     // The height of the first wave system, with the dunes laid on it.
     const auto waveOf = [&](const dune_phase::Phase& ph) {
         // Faded at the ends of the crests and the defects of the phase: the whole form scaled
@@ -303,10 +321,19 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
         // Where the phase stretches (its local wavelength over the nominal one, near its
         // defects), the wavelength varies fast: the distance to the crest, fraction times it,
         // would grow too fast and steepen the faces; the nominal one then (smooth, gentler).
-        const double wavelength = std::min(ph.wavelength, ph.nominal);
+        // Never longer than the local one unclamped either (the phase compressed past
+        // kShortest of its nominal spacing: the faces 1.2 times steeper, at 40 degrees).
+        const double wavelength = std::min({ph.wavelength, ph.nominal, ph.local});
+        // The giant waves: their crests and slip faces in festoons and spurs (the whole profile
+        // shifted downwind by the festoons there: continuous where the phase starts over).
+        double fraction = ph.fraction;
+        if (giant) {
+            fraction -= festoon / wavelength;
+            fraction -= std::floor(fraction);
+        }
         Shape shape =
-            shapeOf(ph.fraction, wavelength, full, backTanOf(giant), kDig,
-                    giant ? kGiantsSlip : 0.0);
+            shapeOf(fraction, wavelength, full, backTanOf(giant), kDig, giant ? kGiantsSlip : 0.0,
+                    giant ? kGiantsLeeTan : dune_forms::kLeeTan);
         // The giant waves: their dunes cover their windward backs and their crests, few in the
         // corridors (their profile over their height, from kCoverLow to kCoverHigh of it).
         const double cover =
@@ -315,7 +342,7 @@ double waves(const Ergs::Impl& m, const dune_phase::Shared& s, double x, double 
         shape.slope *= fade;
         shape.rise *= fade;
         if (giant) {
-            shape.height -= fade * chutes(m, s, x, z, ph.fraction * wavelength, full);
+            shape.height -= fade * chutes(m, s, x, z, fraction * wavelength, full);
         }
         // The dunes on the waves: where the wave is gentler than kLayersSlope, clear of its crest.
         // The giant waves keep them on their backs up to kGiantsBackShare of their slope (at most

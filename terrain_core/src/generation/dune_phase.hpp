@@ -82,6 +82,9 @@ struct Phase {
     double fraction = 0.0;   // [0, 1): the position past the last crest, in wavelengths
     double wavelength = 1.0; // meters, local
     double coherence = 1.0;  // [0, 1]
+    // meters: the local wavelength unclamped (one over the gradient of the phase), the
+    // wavelength the distances to the crests may never exceed (they would steepen the faces)
+    double local = 1.0;
     double nominal = 1.0;    // meters: the spacing of the pivots, weighted (smooth)
 };
 [[nodiscard]] Phase phaseAt(const Ergs::Impl& m, const Shared& s, const Pivots& p, const Kind& k);
