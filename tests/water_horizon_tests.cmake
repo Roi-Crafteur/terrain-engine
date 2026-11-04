@@ -19,3 +19,11 @@ terrain_add_test(horizon_split_test terrain_unreal_bridge)
 target_include_directories(horizon_split_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(horizon_split_test PROPERTIES FIXTURES_REQUIRED coast_planet
                      ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
+
+# A study of the detail of the tiles by the direction of the view (point 10): the tiles, their
+# triangles and their cost with LOD 2 out to 512 m ahead or all around, against the rings of today,
+# and the worst case of a turn of 180 degrees in 0.3 s. Nothing of it is built in Unreal.
+terrain_add_test(view_tiles_study_test terrain_core)
+target_include_directories(view_tiles_study_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(view_tiles_study_test PROPERTIES FIXTURES_REQUIRED coast_planet
+                     ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
