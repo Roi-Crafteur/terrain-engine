@@ -146,8 +146,10 @@ void addFullTile(golden::Checksum& sum, const terrain::TileData& data) {
     golden::addTile(sum, data);
     sum.add(static_cast<std::uint64_t>(data.surfaceBlend.size()));
     for (const terrain::BlendTexel& t : data.surfaceBlend) {
-        sum.add(static_cast<std::uint64_t>(t.ids), 4);
-        sum.add(static_cast<std::uint64_t>(t.weights), 4);
+        sum.add(static_cast<std::uint64_t>(t.biomes), 4);
+        sum.add(static_cast<std::uint64_t>(t.materials), 4);
+        sum.add(static_cast<std::uint64_t>(t.biomeWeights), 4);
+        sum.add(static_cast<std::uint64_t>(t.materialWeights), 4);
     }
     sum.add(static_cast<std::uint64_t>(data.waterLevels.size()));
     for (const float level : data.waterLevels) {
@@ -321,7 +323,10 @@ void testDefaultWorld() {
     std::printf("default world in %.1f s\n", seconds(start));
     golden::report("the default world out of the coastal zone",
                    {{"default world patches", sums.patches.value(), 0x12BBBAA19D5D777FULL},
-                    {"default world tiles", sums.tiles.value(), 0x51D8B009355E8A97ULL},
+                    // The tiles hash their blend texels: those of 16 bytes (agent 49) changed
+                    // their bytes, never their blends (0x51D8B009355E8A97, 0x435745D91D4D43D8 and
+                    // 0xE4369B53BAB781AD for the 3 parts of the tiles before).
+                    {"default world tiles", sums.tiles.value(), 0x33BD195571B453FBULL},
                     {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
 }
 
@@ -343,10 +348,10 @@ void testSmallWorldWithWater() {
     golden::report("the small world with its water out of the coastal zone",
                    {{"small world planet level", planet->checksum(), 0xBFA4DE19A54DAD75ULL},
                     {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
-                    {"small world tiles", sums.tiles.value(), 0x435745D91D4D43D8ULL},
+                    {"small world tiles", sums.tiles.value(), 0x3920923625208FCEULL},
                     {"small world horizon", sums.horizon.value(), 0x159D43BA4E7127E6ULL},
                     {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
-                    {"small world rivers tiles", rivers.tiles.value(), 0xE4369B53BAB781ADULL},
+                    {"small world rivers tiles", rivers.tiles.value(), 0x9B59DD7FA17B37EBULL},
                     {"small world rivers horizon", rivers.horizon.value(), 0x810D6B0B60B06611ULL}});
 }
 

@@ -95,11 +95,10 @@ SurfaceBlend footprintBlend(const std::array<const SurfaceBlend*, 9>& around) {
 
 BlendTexel withMaterial(BlendTexel texel, SurfaceMaterial material) {
     const auto id = static_cast<std::uint32_t>(material);
-    constexpr std::uint32_t kMaterialIds = 0x00FFF000U;
-    const std::uint32_t ids = id << 12U | id << 16U | id << 20U;
-    constexpr std::uint32_t kDunes = 0xFF000000U; // the edits cover the sand of the dunes
-    texel.ids = (texel.ids & ~(kMaterialIds | kDunes)) | ids;
-    texel.weights = (texel.weights & 0x0000FFFFU) | 255U << 16U;
+    // The same material in the 3 slots; no share of the dunes (the edits cover their sand).
+    texel.materials = id | id << kMaterialIdBits | id << (2 * kMaterialIdBits);
+    // All the weight on slot 0; the bits kept for the heat of the ground (16-23) unchanged.
+    texel.materialWeights = (texel.materialWeights & 0x00FF0000U) | 255U;
     return texel;
 }
 
