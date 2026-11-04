@@ -111,7 +111,8 @@ std::size_t floatingPieces(const terrain::Mesh& m, float side) {
     std::vector<std::uint32_t> id(m.vertices.size());
     for (std::size_t v = 0; v < m.vertices.size(); ++v) {
         const terrain::Vec3f& p = m.vertices[v];
-        id[v] = ids.emplace(std::array<float, 3>{p.x, p.y, p.z}, ids.size()).first->second;
+        const auto next = static_cast<std::uint32_t>(ids.size());
+        id[v] = ids.emplace(std::array<float, 3>{p.x, p.y, p.z}, next).first->second;
     }
     std::vector<std::uint32_t> parent(ids.size());
     std::iota(parent.begin(), parent.end(), 0U);
