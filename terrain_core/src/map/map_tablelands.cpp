@@ -11,8 +11,8 @@ namespace terrain {
 namespace {
 
 // The alpha of the layer: kAlphaLow where a province starts, kAlphaLow + kAlphaRange where full.
-constexpr float kAlphaLow = 90.0f;
-constexpr float kAlphaRange = 150.0f;
+constexpr float kAlphaLow = 70.0f;
+constexpr float kAlphaRange = 110.0f;
 // A province shows from kShown of its share; its style rules from kStyle.
 constexpr float kShown = 0.02f;
 constexpr float kStyle = 0.5f;
@@ -35,7 +35,7 @@ MapLayerFn tablelandsLayer(const Heightfield& field) {
         }
         MapColor c;
         if (t.karst >= t.tableland) {
-            c = t.tropical > kStyle ? MapColor{225, 40, 165, 255} : MapColor{40, 185, 225, 255};
+            c = t.tropical > kStyle ? MapColor{225, 40, 165, 255} : MapColor{235, 205, 40, 255};
         } else {
             c = t.arid > kStyle ? MapColor{235, 80, 20, 255} : MapColor{140, 70, 190, 255};
         }

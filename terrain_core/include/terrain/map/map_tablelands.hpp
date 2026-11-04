@@ -12,7 +12,7 @@ namespace terrain {
 class PlanetLevel;
 
 // Where a province lies, tinted by its kind: the mesas of the dry lands (orange), the plateaus of
-// the humid lands (violet), the karst (cyan), the towers of the hot and humid karst (magenta);
+// the humid lands (violet), the karst (yellow), the towers of the hot and humid karst (magenta);
 // more opaque where the province is full.
 inline constexpr const char* kMapTablelandsLayer = "tablelands";
 [[nodiscard]] MapLayerFn tablelandsLayer(const Heightfield& field);
