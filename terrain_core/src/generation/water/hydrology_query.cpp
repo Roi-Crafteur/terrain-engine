@@ -8,6 +8,7 @@
 #include "river_profile.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/work_stop.hpp"
 
 #include <algorithm>
 #include <array>
@@ -171,6 +172,7 @@ const Candidates& Hydrology::Impl::candidatesIn(Region::Data& region, Region::Da
 }
 
 RiverCarve Hydrology::riversAt(double x, double z, double ground, Region* region) const {
+    workStopPoint(); // every sample of a tile, a piece or a map: their work stops there too
     const Impl& m = *impl_;
     Region::Data* d = region != nullptr ? region->data_.get() : nullptr;
     Region::Data::Part* part = d != nullptr ? d->partOf(m.grid, x, z, ground) : nullptr;

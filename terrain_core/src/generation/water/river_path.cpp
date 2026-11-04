@@ -3,6 +3,7 @@
 #include "river_course.hpp"
 
 #include "terrain/det_math.hpp"
+#include "terrain/work_stop.hpp"
 
 #include <algorithm>
 #include <array>
@@ -45,6 +46,7 @@ Ladder ladderOf(const Heightfield& relief, double x0, double z0, double x1, doub
     l.zs.resize(count);
     l.heights.assign(count, std::numeric_limits<float>::infinity());
     for (int k = 0; k < l.sections; ++k) {
+        workStopPoint(); // a section: 25 heights at most
         const double t = static_cast<double>(k) / (l.sections - 1);
         for (int j = 0; j < l.width; ++j) {
             const double aside = (j - p.halfWidth) * p.lateralStep;

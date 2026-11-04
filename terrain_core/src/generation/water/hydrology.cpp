@@ -8,6 +8,7 @@
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
+#include "terrain/work_stop.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -169,6 +170,7 @@ std::size_t Hydrology::Impl::previous(std::size_t r) const {
 
 const Path& Hydrology::Impl::pathOf(std::size_t r) const {
     return paths.get(r, [&] {
+        workStopPoint();
         const water::PathPoint a = startOf(r);
         const water::PathPoint b = endOf(r);
         return water::lowestPath(relief, a.x, a.z, b.x, b.z, ladder);
@@ -177,6 +179,7 @@ const Path& Hydrology::Impl::pathOf(std::size_t r) const {
 
 const Hydrology::Impl::ReachFloor& Hydrology::Impl::floorOf(std::size_t r) const {
     return floors.get(r, [&] {
+        workStopPoint();
         const std::size_t before = previous(r);
         const std::size_t after = next(r);
         const Path axis = water::smoothAxis(before != kNone ? &pathOf(before) : nullptr, pathOf(r),
@@ -309,6 +312,7 @@ water::ReachInput::Join Hydrology::Impl::joinOf(const water::Course& c, double x
 }
 
 water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
+    workStopPoint();
     const RiverSegment& s = segmentOf(r);
     const std::size_t before = previous(r);
     const std::size_t after = next(r);
@@ -364,6 +368,7 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
     in.taperEnd = true;
     water::Course c = water::buildCourse(relief, in);
     wetLips(c);
+    workStopPoint(); // stopped, a thread never publishes the course it was making
     return c;
 }
 

@@ -3,6 +3,7 @@
 // The insides of the Hydrology (hydrology.hpp), shared by hydrology.cpp and hydrology_query.cpp.
 
 #include "fine_lake.hpp"
+#include "hydrology_lazy.hpp"
 #include "river_course.hpp"
 #include "river_profile.hpp"
 #include "terrain/generation/noise.hpp"
@@ -18,7 +19,6 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <vector>
 
 namespace terrain {
@@ -35,8 +35,6 @@ constexpr double kStray = 2'000.0;
 constexpr double kValleyReach = 6'000.0; // water::kReach
 // The meanders: half waves of kHalfWave widths of the river.
 constexpr double kHalfWave = 5.5;
-// The shards of the locks of the caches.
-constexpr std::size_t kShards = 64;
 
 // Ranks of the set bits of a mask of the cells.
 struct Bits {
@@ -60,59 +58,6 @@ struct Bits {
         const std::uint64_t below = (std::uint64_t{1} << (c & 63)) - 1;
         return rank[c >> 6] + static_cast<std::size_t>(std::popcount(words[c >> 6] & below));
     }
-};
-
-// Objects computed once on demand, by index, from any thread: the first to need one computes it
-// (under the lock of its shard), every other reads it.
-template <class T>
-class Lazy {
-public:
-    void resize(std::size_t n) {
-        slots_ = std::make_unique<std::atomic<const T*>[]>(n);
-        for (std::size_t i = 0; i < n; ++i) {
-            slots_[i].store(nullptr, std::memory_order_relaxed);
-        }
-    }
-    [[nodiscard]] bool has(std::size_t i) const {
-        return slots_[i].load(std::memory_order_acquire) != nullptr;
-    }
-    template <class Make>
-    const T& get(std::size_t i, Make&& make) {
-        if (const T* p = slots_[i].load(std::memory_order_acquire)) {
-            return *p;
-        }
-        std::lock_guard<std::mutex> shard(locks_[i % kShards]);
-        if (const T* p = slots_[i].load(std::memory_order_acquire)) {
-            return *p;
-        }
-        auto made = std::make_unique<const T>(make());
-        const T* p = made.get();
-        {
-            std::lock_guard<std::mutex> own(ownedLock_);
-            owned_.push_back(std::move(made));
-        }
-        slots_[i].store(p, std::memory_order_release);
-        return *p;
-    }
-    [[nodiscard]] std::size_t count() const {
-        std::lock_guard<std::mutex> own(ownedLock_);
-        return owned_.size();
-    }
-    template <class Size>
-    [[nodiscard]] std::size_t bytes(Size&& size) const {
-        std::lock_guard<std::mutex> own(ownedLock_);
-        std::size_t total = 0;
-        for (const auto& p : owned_) {
-            total += size(*p);
-        }
-        return total;
-    }
-
-private:
-    std::unique_ptr<std::atomic<const T*>[]> slots_;
-    std::array<std::mutex, kShards> locks_;
-    mutable std::mutex ownedLock_;
-    std::vector<std::unique_ptr<const T>> owned_;
 };
 
 using Path = std::vector<water::PathPoint>;

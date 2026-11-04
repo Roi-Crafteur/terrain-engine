@@ -2,3 +2,11 @@
 
 # The bits of a sample of the hydrology of the small world, pinned before the work of agent 39.
 terrain_add_test(hydrology_bits_test terrain_core)
+
+# The computations of the hydrology stopped from another thread, under load: they measure their
+# latencies, so they run alone.
+terrain_add_test(hydrology_stop_test terrain_core)
+set_tests_properties(hydrology_stop_test PROPERTIES RUN_SERIAL TRUE)
+# The same bits on 1 and 4 threads, and after stops in the middle.
+terrain_add_test(hydrology_threads_test terrain_core)
+
