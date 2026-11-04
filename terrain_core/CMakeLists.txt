@@ -60,6 +60,7 @@ add_library(terrain_core STATIC
     src/generation/dune_layers.cpp
     src/generation/dune_phase.cpp
     src/generation/dune_chutes.cpp
+    src/generation/dune_stars.cpp
     src/generation/dune_waves.cpp
     src/generation/depressions.cpp
     src/generation/ecology.cpp

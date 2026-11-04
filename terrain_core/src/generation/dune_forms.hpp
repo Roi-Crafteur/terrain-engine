@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <vector>
 
 namespace terrain::dune_forms {
 
@@ -73,10 +74,12 @@ inline constexpr double kCrestRound = 2.0;
 // What a flank of slope falls from the sharp crest c meters away from it, rounded.
 [[nodiscard]] double rounded(double c, double slope);
 
-// The star dunes of a lattice of cell meters at the canonical (x, z): 2 to 6 arms of sharp crests,
-// uneven, bent and winding, a slip face on one side, meeting at a small summit, on the cells that
-// hold one (occupancy), at most height high (kStarTan: the slope that sets their reach). periodX
-// and periodZ: those of the world (whole multiples of cell). key: the hash of the pattern.
+// The star dunes of a lattice of cell meters at the canonical (x, z) (dune_stars.cpp): 3 to 5
+// arms of sharp crests from a small summit, of uneven lengths, curling, their crests rising and
+// falling (a saddle and a secondary summit on some), their slip face changing side along them,
+// spreading at their foot, on the cells that hold one (occupancy), at most height high (kStarTan:
+// the slope that sets their reach). periodX and periodZ: those of the world (whole multiples of
+// cell). key: the hash of the pattern.
 struct StarLattice {
     double cell = 2048.0;
     double periodX = 0.0;
@@ -103,6 +106,21 @@ struct Pedestal {
 // where no star reaches (x, z).
 [[nodiscard]] double starsOn(const StarLattice& lattice, double x, double z,
                              const std::function<Pedestal(double, double)>& pedestal);
+
+// The free star of the cell (i, j) of a lattice: its summit, its peak (0 for none) and the
+// crests of its arms from the summit to their end (meters), for the tests.
+struct StarCrest {
+    double x = 0.0;
+    double z = 0.0;
+    double height = 0.0;
+};
+struct StarForm {
+    double x = 0.0;
+    double z = 0.0;
+    double peak = 0.0;
+    std::vector<std::vector<StarCrest>> arms;
+};
+[[nodiscard]] StarForm starFormOf(const StarLattice& lattice, std::int64_t i, std::int64_t j);
 
 // The Hermite curve 3t^2 - 2t^3 of t clamped to [0, 1].
 [[nodiscard]] double hermite(double t);
