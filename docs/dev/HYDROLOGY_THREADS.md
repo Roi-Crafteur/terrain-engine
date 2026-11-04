@@ -48,6 +48,43 @@ Les niveaux de l'horizon passent par `seenAt`, puis `riversAt`, `clearanceAt` et
 Un échantillon à 4 km qui tombe dans une vallée lit la vallée exacte : le tracé entier est
 nécessaire au bit près.
 
+## Le coût du lointain, pour l'agent 31
+
+**Mesure** (callgrind et `unreal_loading_bench --levels`, monde par défaut avec sa planète, au
+spawn) :
+- les niveaux 8 et 9 de l'horizon prennent 47,5 s sur un fil, sur 62 s pour tout l'horizon ;
+- ils demandent 4 631 tracés (76 Mo) ;
+- `courseOf` prend 97 % de leur temps, dont 88 % par `startLevel`, puis `floorOf`, des tronçons
+  d'amont ;
+- `lowestPath` (l'échelle de Viterbi, environ 2 000 hauteurs du relief par tronçon) en prend
+  63 %, `lowestAcross` 19 %, les lacs fins 10 %, `buildCourse` 9 % ;
+- les bandes mouillées des lèvres (`wetLips`) sont négligeables.
+
+**Sans gain au bit près** :
+- différer `wetLips` ;
+- ne plus calculer sous verrou : 13,9 s contre 13,8 s sur 3 fils ;
+- lire l'échelle par lots : dans le bruit.
+
+Il n'y a pas de raccourci au bit près : un échantillon de 2 ou 4 km qui tombe dans une vallée
+lit la vallée exacte au point, donc le tracé entier.
+
+**Refusé par l'orchestrateur** : pas de vallée, ou une vallée simplifiée, aux niveaux ≥ 8.
+C'était 4 à 9 fois plus rapide, mais :
+- les fleuves s'arrêteraient net à la limite du niveau 7 (environ 132 km), une limite qui bouge
+  avec le joueur ;
+- les gorges de 2 km à travers les crêtes creuseraient des créneaux de 0,2 à 0,6° entre 130 et
+  530 km.
+
+C'est un détail qui surgit devant le joueur.
+
+**La voie** : réduire ce coût à la source, avec les mêmes vallées à toutes les distances :
+- des tracés plus économes : moins de hauteurs par tronçon, ou des hauteurs partagées entre
+  tronçons voisins ;
+- ou le graphe de la planète réutilisé pour le lointain, si les vallées restent les mêmes.
+
+`hydrology_bits_test` fige les tracés, les requêtes sur les grilles de 2 et 4 km et des morceaux
+des niveaux 8 et 9. Le bench affiche les tracés calculés, leurs octets et le pic du processus.
+
 ## Où les fils sont arrêtés
 
 | Fil | Drapeau | Levé par |

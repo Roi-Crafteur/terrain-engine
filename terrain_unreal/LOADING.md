@@ -187,7 +187,38 @@ niveaux déjà montrés démarre tout de suite et partage les 4 cœurs avec les 
 111 s à la chute pour toute l'époque, dont 65 s pour les niveaux 8 et 9 (mailles de 2 et 4 km).
 Sans la planète, 3,5 s. La cause est `Hydrology::courseOf` : il construit le tracé de chaque
 tronçon de fleuve, et les niveaux grossiers (fenêtre de 1 000 km) les demandent presque tous.
-C'est l'objet d'une tâche à part, sans changement de bits.
+
+**Ce qu'en a fait l'agent 39** (même machine, Linux, 4 cœurs, `planet.bin` du monde par défaut) :
+- **Profil** (callgrind, deux morceaux du niveau 9 au spawn) :
+  - `courseOf` prend 97 % du temps, dont 88 % pour les fonds des tronçons d'amont
+    (`startLevel` puis `floorOf`) ;
+  - `lowestPath` seul prend 63 % : l'échelle de Viterbi, environ 2 000 hauteurs du relief par
+    tronçon ;
+  - le reste : `lowestAcross` 19 %, lacs fins 10 %, `buildCourse` 9 %.
+  - Au spawn, les niveaux 8 et 9 demandent 4 631 tracés (76 Mo).
+- **Aucun raccourci au bit près.** Un échantillon de 2 ou 4 km qui tombe dans une vallée lit la
+  vallée exacte au point, donc le tracé entier. Ces trois pistes ne changent pas le temps :
+  - différer les bandes mouillées des lèvres : négligeable ;
+  - ne plus calculer sous verrou : 13,9 s contre 13,8 s pour les niveaux 8-9 sur 3 fils ;
+  - lire l'échelle par lots : dans le bruit.
+- **Variante refusée** (pas de vallée aux niveaux ≥ 8) : 4 à 9 fois plus rapide, mais les
+  fleuves s'arrêteraient à la limite du niveau 7 et les gorges de 2 km creuseraient des créneaux
+  (0,2 à 0,6°) : un détail qui surgit devant le joueur.
+- Le coût se réduira à la source, dans le routage de la 11C (agent 31) :
+  `docs/dev/HYDROLOGY_THREADS.md`.
+- **Avant et après** l'agent 39, au spawn :
+
+  | Mesure | Avant (`main`) | Après |
+  |---|---|---|
+  | `--levels`, un fil | 61,8 s, dont 47,5 s pour les niveaux 8 et 9 | 61,4 à 62,0 s |
+  | horizon entier, chargement normal | 42,8 à 44,6 s | 43,4 à 45,1 s |
+  | pic du processus (VmHWM) | 557 Mio | 559 à 560 Mio |
+
+  C'est le même coût, et les mêmes octets aux niveaux 8 et 9.
+- **Ce qui change** : tous ces calculs s'arrêtent en quelques millisecondes
+  (`terrain/work_stop.hpp`). La fin du Play, `Terrain.Seed` et l'arrêt de la carte n'attendent
+  plus la fin d'un tracé (`terrain_unreal/README.md`, section 16). Les morceaux d'une époque
+  abandonnée à une téléportation vont encore au bout.
 
 ## Limites
 

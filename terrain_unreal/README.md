@@ -712,9 +712,12 @@ fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image
   chacune sur le CPU et autant sur le GPU (48 Mo) ; arrêtés avant que le monde ne s'en aille
   (`ReleaseWorld` : la fin du Play, et `Terrain.Seed` avant le nouveau monde), et refaits pour un
   nouveau monde. Une tuile en cours s'arrête entre deux de ses
-  lignes et n'est pas gardée : en général quelques millisecondes ; mais une première requête de
-  l'hydrologie près d'un grand fleuve (le calcul de ses tracés) ne se coupe pas et peut durer
-  jusqu'à 3 s, pour la carte comme pour les fils des tuiles.
+  lignes et n'est pas gardée : en général quelques millisecondes. Le calcul des tracés des
+  fleuves s'arrête aussi (agent 39, `terrain/work_stop.hpp`) : une première requête près d'un
+  grand fleuve, qui pouvait tenir le fil jusqu'à 3 s, sort en quelques millisecondes, pour la
+  carte comme pour les fils des tuiles, de l'horizon et de la lecture du sol (mesuré : médiane 1
+  à 4 ms, `hydrology_stop_test` et `unreal_work_stop_test`). Le log dit le temps de toute la
+  libération du monde : « Terrain World: the world released in X ms ».
 - **Échap en PIE** : dans l'éditeur, Échap est aussi le raccourci « Stop » du Play : si la carte
   n'a pas le focus clavier (un clic hors d'elle), il arrête la session au lieu de fermer la carte.
   Pour le garder à la carte : Edit > Editor Preferences > General > Keyboard Shortcuts, catégorie
