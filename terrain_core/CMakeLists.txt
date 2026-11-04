@@ -530,3 +530,5 @@ target_link_libraries(terrain_export_horizon PRIVATE terrain_core terrain_warnin
 #     [ratio...]
 add_executable(terrain_export_silhouette tools/export_silhouette.cpp)
 target_link_libraries(terrain_export_silhouette PRIVATE terrain_core terrain_warnings)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/lows.cmake) # agent 52: the land below the sea level
