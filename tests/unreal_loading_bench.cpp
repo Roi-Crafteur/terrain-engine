@@ -28,6 +28,9 @@
 #include "terrain_session.hpp"
 
 #include "horizon_gpu_streamer.hpp"
+#include "process_memory.hpp"
+
+#include "terrain/generation/water/hydrology.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -385,6 +388,16 @@ void load(Game& game, const Options& options, int index, LoadReason reason, cons
     writeCsv(options, index, reason, timeline);
 }
 
+// The courses the hydrology has computed so far, their bytes, and the most memory the process
+// has held (agent 39).
+void printHydrology(const Game& game) {
+    const terrain::Hydrology* h = game.session.tiles().heightfield().hydrology();
+    std::printf("hydrology: %zu courses, %.1f MB; process peak %.0f MB\n",
+                h != nullptr ? h->coursesComputed() : 0,
+                h != nullptr ? static_cast<double>(h->courseBytes()) / 1e6 : 0.0,
+                static_cast<double>(process_memory::peakResident()) / 1e6);
+}
+
 // The first epoch around the place, level by level: kPiecesTimed pieces of each level computed on
 // this thread, the level extrapolated from them.
 void levelCosts(const Game& game, const Place& place) {
@@ -433,6 +446,7 @@ int run(const Options& options) {
         std::printf("first epoch of the horizon at (%.1f, %.1f) m, level by level:\n",
                     options.spawn.x, options.spawn.z);
         levelCosts(game, options.spawn);
+        printHydrology(game);
         return EXIT_SUCCESS;
     }
     int index = 0;
@@ -440,6 +454,7 @@ int run(const Options& options) {
     for (const Place& place : options.teleports) {
         load(game, options, index++, LoadReason::Teleport, place);
     }
+    printHydrology(game);
     if (options.schedule) {
         std::vector<load_schedule::Place> places{{options.spawn.x, options.spawn.z}};
         for (const Place& place : options.teleports) {
