@@ -43,6 +43,10 @@ struct MapSample {
     float fallDrop = 0.0f;     // meters: the drop of the fall whose mark covers the pixel
     std::uint8_t fallMark = 0; // 0: no mark, kMapFallRing or kMapFallCenter
     MapSourceKind source = MapSourceKind::Synthetic;
+    // The volcanoes (agent 45, map_volcanoes.hpp): how much of the ground they made, in 255ths,
+    // and the form of the volcano whose reach holds the pixel, plus 1 (0: none).
+    std::uint8_t volcanic = 0;
+    std::uint8_t volcano = 0;
 
     friend bool operator==(const MapSample&, const MapSample&) = default;
 };

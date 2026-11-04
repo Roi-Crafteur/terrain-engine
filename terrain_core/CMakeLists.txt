@@ -195,6 +195,7 @@ add_library(terrain_core STATIC
     src/map/map_render.cpp
     src/map/map_source.cpp
     src/map/map_style.cpp
+    src/map/map_volcanoes.cpp
     src/map/map_water.cpp
     src/meshing/marching_cubes.cpp
     src/storage/block_section.cpp
@@ -403,6 +404,13 @@ target_link_libraries(terrain_export_relief PRIVATE terrain_core terrain_warning
 add_executable(terrain_export_view tools/export_view.cpp tools/view_places.cpp)
 target_link_libraries(terrain_export_view PRIVATE terrain_core terrain_warnings)
 
+# The volcanoes against real ones (agent 45): cuts of the profiles of a stratovolcano, a shield, a
+# caldera and a cinder cone over those of Fuji, Mauna Loa, Crater Lake and Paricutin, and views at
+# the height of a walker. See the comment at the top of tools/export_volcanoes.cpp.
+add_executable(terrain_export_volcanoes tools/export_volcanoes.cpp)
+target_include_directories(terrain_export_volcanoes PRIVATE src/generation)
+target_link_libraries(terrain_export_volcanoes PRIVATE terrain_core terrain_warnings)
+
 # Maps and views of the water of a world (phase 11B): the sea, the depressions below the sea
 # level. See the comment at the top of tools/export_water.cpp.
 # terrain_export_water <output-dir> [--seed <seed>] [--world <x> <z>] [--threads <n>]
@@ -458,6 +466,7 @@ add_library(terrain_probe_lib STATIC
     tools/probe_rock.cpp
     tools/probe_sections.cpp
     tools/probe_surface.cpp
+    tools/probe_volcano.cpp
     tools/probe_water.cpp
     tools/probe_world.cpp
 )
