@@ -1,8 +1,8 @@
 // The section volcano of terrain_probe (probe_sections.hpp, agent 45): the volcano whose reach holds
 // the point (the nearest relative to its reach), its form, its origin in the plate tectonics, its
-// sizes, where its summit lies and how far, and how much of the ground there is its work; the lake
-// of the crater over the point, the geothermal site nearest it. The key of what comes later (the
-// ground of the volcanoes) is kept, absent until then.
+// sizes, where its summit lies and how far, how much of the ground there is its work, the ground
+// it left there and how bare; the lake of the crater over the point, the geothermal site nearest
+// it.
 
 #include "probe_sections.hpp"
 
@@ -124,8 +124,13 @@ Record volcanoSection(const ProbeWorld& w, const Point& p) {
             .number("craterDepth", static_cast<double>(s->craterDepth), 1, "m")
             .number("reach", static_cast<double>(s->reach), 1, "m");
     }
-    // Later: the ground of the volcanoes.
-    r.none("ground");
+    // The ground they left there (VolcanicGround) and how bare it lies.
+    if (p.sample.volcanicShare > 0) {
+        r.text("ground", terrain::volcanicGroundName(p.sample.volcanicGround))
+            .number("groundShare", static_cast<double>(p.sample.volcanicShare) / 255.0, 3);
+    } else {
+        r.none("ground").none("groundShare");
+    }
     lakeAndSpring(w, p, s, r);
     return r;
 }

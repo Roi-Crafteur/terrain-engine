@@ -6,6 +6,7 @@
 #include "terrain/det_math.hpp"
 #include "volcano_fields.hpp"
 #include "volcano_forms.hpp"
+#include "volcano_ground.hpp"
 #include "volcano_sites.hpp"
 #include "volcano_water.hpp"
 
@@ -360,6 +361,7 @@ void applyEdifice(const VolcanoSite& s, const Detail& d, const Frame& f, double 
     p.touched = true;
     const double dominance = cover * vf::smoothstep(-sh.smoothing, sh.smoothing, v - old);
     p.cover = std::max(p.cover, static_cast<float>(dominance));
+    volcano_ground::edifice(s, f.rho, f.r, dominance, p);
     if (s.form == VolcanoForm::CollapsedStrato) {
         digCollapse(s, sh, f, base, rise, p);
     } else if (s.crater > 0.0f && s.form != VolcanoForm::Seamount) {
@@ -406,6 +408,7 @@ void apply(const VolcanoSite& s, const Detail& d, double dx, double dz, double f
     volcano_fields::applyFlows(s, d, dx, dz, footprint, p);
     volcano_fields::applyCones(s, d, dx, dz, p);
     volcano_water::applySprings(d, dx, dz, footprint, p);
+    volcano_ground::springs(d, dx, dz, p);
 }
 
 double surfaceBeforeFlows(const VolcanoSite& s, const Detail& d, double dx, double dz,

@@ -118,8 +118,12 @@ struct HeightSample {
     // dry land).
     WaterKind water = WaterKind::None;
     // How much of the ground at the column the volcanoes made (volcanoes.hpp), in 255ths: 0
-    // outside them (in the padding after water: the sample keeps its 72 bytes).
+    // outside them. The ground they left there (volcanoes.hpp) and how bare it lies, in 255ths (1
+    // where nothing grows over it): None and 0 outside them. In the padding after water: the
+    // sample keeps its 72 bytes.
     std::uint8_t volcanic = 0;
+    VolcanicGround volcanicGround = VolcanicGround::None;
+    std::uint8_t volcanicShare = 0;
     float waterLevel = 0.0f;
     // Meters of sand the seas of dunes lay over the relief (ergs.hpp, part of height): 0 outside
     // them and without hydrology.

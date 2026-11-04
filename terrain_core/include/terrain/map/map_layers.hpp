@@ -44,9 +44,12 @@ struct MapSample {
     std::uint8_t fallMark = 0; // 0: no mark, kMapFallRing or kMapFallCenter
     MapSourceKind source = MapSourceKind::Synthetic;
     // The volcanoes (agent 45, map_volcanoes.hpp): how much of the ground they made, in 255ths,
-    // and the form of the volcano whose reach holds the pixel, plus 1 (0: none).
+    // and the form of the volcano whose reach holds the pixel, plus 1 (0: none); the ground they
+    // left there and how bare it lies, in 255ths (the fine relief only: None and 0 otherwise).
     std::uint8_t volcanic = 0;
     std::uint8_t volcano = 0;
+    VolcanicGround volcanicGround = VolcanicGround::None;
+    std::uint8_t volcanicShare = 0;
 
     friend bool operator==(const MapSample&, const MapSample&) = default;
 };

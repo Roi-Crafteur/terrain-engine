@@ -377,8 +377,8 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   Stratovolcans concaves (30 à 35° sur les 500 m sous
   la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
   la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
-  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Restent : sols,
-  horizon, lieux. Limites : pas de roche 3D sur les parois de caldeira (jusqu'à ~60° en
+  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Restent : horizon,
+  lieux. Limites : pas de roche 3D sur les parois de caldeira (jusqu'à ~60° en
   heightmap), à reprendre avec la roche 3D.
   - eau (avec le niveau Planète) : lacs de cratère, de caldeira et de maar à un seul niveau, sous
     le point le plus bas de la lèvre (ou le fond de la brèche) moins une revanche, plus pleins
@@ -391,6 +391,20 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     25 m sur une terrasse de sinter), geysers (sur leur dôme), mares de boue (sèches) et
     fumerolles des volcans actifs, sans animation. Lecture : `Heightfield::volcanoBasinsIn`,
     `geothermalIn` ; l'agent 31 peut y lire les lacs (exutoires possibles) et les sources.
+  - sols volcaniques, pour l'agent 49 : le core décide le sol (`VolcanicGround`, dans
+    `HeightSample::volcanicGround` et `volcanicShare`, puis `SurfaceSite`, la sonde, la ligne
+    F3 et le calque `volcanoes` de la carte de dev), à lire tel quel ; la part dit combien il
+    est nu (1 : rien n'y pousse). Couleurs réelles et lieux :
+    - basalte, noir à gris sombre : boucliers, parois des caldeiras, vieilles coulées et nappes ;
+    - cendres, gris-noir : hautes pentes des stratovolcans, fonds de caldeira, anneaux de tuf
+      des maars, plateaux d'ignimbrite ;
+    - scories, rouge-brun à noir : cônes de scories, abords des cratères actifs ;
+    - lave refroidie, noire : coulées et nappes des volcans actifs ;
+    - sol géothermique (sinter, sol altéré), blanc à orangé : autour des sources, geysers,
+      mares de boue et fumerolles.
+    En attendant ses couleurs (aucun shader touché) : dès la moitié nue et hors de la neige,
+    basalte et lave en Roche, scories en Galets, cendres en Terre, géothermie en Boue
+    (`volcanicMaterial`) ; plantes multipliées par (1 − part).
   - frontière avec l'agent 51 (mers) : l'agent 45 place seul tous les volcans
     (`settlement::placeVolcanoes`, en mer aussi) et façonne la tête active de chaque point chaud
     océanique, île ou mont sous-marin, dans sa portée (`VolcanoSite::reach`) ; l'agent 51 pose la

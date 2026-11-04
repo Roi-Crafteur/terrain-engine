@@ -48,12 +48,34 @@ MapColor mapVolcanoColor(VolcanoForm form) {
     return {0, 0, 0, 0};
 }
 
+MapColor mapVolcanicGroundColor(VolcanicGround ground) {
+    switch (ground) {
+    case VolcanicGround::Basalt:
+        return {55, 55, 60, 255};
+    case VolcanicGround::Ash:
+        return {95, 95, 100, 255};
+    case VolcanicGround::Scoria:
+        return {130, 50, 30, 255};
+    case VolcanicGround::CooledLava:
+        return {20, 20, 22, 255};
+    case VolcanicGround::Geothermal:
+        return {240, 190, 120, 255};
+    case VolcanicGround::None:
+        break;
+    }
+    return {0, 0, 0, 0};
+}
+
 MapColor volcanoesLayer(const MapPoint& point) {
     const MapSample& s = point.at();
     if (s.volcano == 0 || s.volcanic == 0) {
         return {};
     }
-    MapColor c = mapVolcanoColor(static_cast<VolcanoForm>(s.volcano - 1));
+    // Where its ground lies bare enough to be its material (MaterialParams::volcanicShare), the
+    // real color of that ground; elsewhere the color of the form of the volcano.
+    const bool bare = s.volcanicGround != VolcanicGround::None && s.volcanicShare >= 128;
+    MapColor c = bare ? mapVolcanicGroundColor(s.volcanicGround)
+                      : mapVolcanoColor(static_cast<VolcanoForm>(s.volcano - 1));
     c.a = static_cast<std::uint8_t>(
         std::clamp(kAlphaLow + kAlphaRange * static_cast<int>(s.volcanic) / 255, 0, 255));
     return c;

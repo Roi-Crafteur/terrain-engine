@@ -129,8 +129,12 @@ void Heightfield::addVolcanoes(double x, double z, HeightSample& s, Memos* memos
         const volcano_relief::Detail& d = volcanic_->detail(*this, i);
         volcano_relief::apply(v, d, o.dx, o.dz, footprint_, p);
     }
+    const auto share =
+        static_cast<std::uint8_t>(std::lround(std::clamp(p.groundShare, 0.0f, 1.0f) * 255.0f));
+    s.volcanicShare = share;
+    s.volcanicGround = share > 0 ? p.ground : VolcanicGround::None;
     if (!p.touched) {
-        return;
+        return; // the ground of a fumarole alone
     }
     const auto height = static_cast<float>(p.height);
     s.base += height - s.height;

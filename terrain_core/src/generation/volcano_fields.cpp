@@ -2,6 +2,7 @@
 
 #include "terrain/det_math.hpp"
 #include "volcano_forms.hpp"
+#include "volcano_ground.hpp"
 #include "volcano_sites.hpp"
 
 #include <algorithm>
@@ -86,6 +87,7 @@ void applySheet(const VolcanoSite& s, const Detail& d, double dx, double dz, dou
                        crust(s.seed + kSheetCrust, dx, dz, footprint, 2.0);
     p.height += mask * (top - p.height);
     p.cover = std::max(p.cover, static_cast<float>(mask));
+    volcano_ground::sheet(s, mask, p);
     p.touched = true;
 }
 
@@ -128,12 +130,12 @@ void applyFlows(const VolcanoSite& s, const Detail& d, double dx, double dz, dou
         const double levee = 0.12 * thick * vf::smoothstep(width - 3.0 * edge, width - edge, off);
         p.height += mask * (thick + levee + crust(f.seed + 2, dx, dz, footprint, 2.0));
         p.cover = std::max(p.cover, static_cast<float>(mask));
+        volcano_ground::flow(s, mask, p);
         p.touched = true;
     }
 }
 
 void applyCones(const VolcanoSite& s, const Detail& d, double dx, double dz, Point& p) {
-    (void)s;
     for (const Cone& c : d.cones) {
         const double ox = dx - c.x;
         const double oz = dz - c.z;
@@ -142,16 +144,11 @@ void applyCones(const VolcanoSite& s, const Detail& d, double dx, double dz, Poi
             continue;
         }
         const double r = std::sqrt(r2);
-        if (c.maar) {
-            p.height += vf::maar(r, c.height, c.radius, c.ring);
-            p.cover = std::max(p.cover, static_cast<float>(1.0 - vf::smoothstep(c.radius,
-                                                                                  2.2 * c.radius,
-                                                                                  r)));
-        } else {
-            p.height += coneAt(c, ox, oz, r);
-            p.cover = std::max(p.cover,
-                               static_cast<float>(1.0 - vf::smoothstep(0.7 * c.radius, c.radius, r)));
-        }
+        const double cover = c.maar ? 1.0 - vf::smoothstep(c.radius, 2.2 * c.radius, r)
+                                    : 1.0 - vf::smoothstep(0.7 * c.radius, c.radius, r);
+        p.height += c.maar ? vf::maar(r, c.height, c.radius, c.ring) : coneAt(c, ox, oz, r);
+        p.cover = std::max(p.cover, static_cast<float>(cover));
+        volcano_ground::cone(s, c.maar, cover, p);
         p.touched = true;
     }
 }

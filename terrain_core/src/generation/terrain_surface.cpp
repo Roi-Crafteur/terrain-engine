@@ -265,6 +265,8 @@ TerrainSurface surfaceFromHeightfield(const Heightfield& field, const HeightmapR
             site.dunes = sample.dunes;
             site.erg = sample.erg;
             site.ergFloor = sample.ergFloor;
+            site.volcanicGround = sample.volcanicGround;
+            site.volcanicShare = static_cast<float>(sample.volcanicShare) / 255.0f;
             const Neighbors neighbors{relief.neighbors[i], 2.0 * step, 2.0 * step};
             setSlopes(site, neighbors, step);
             // The water of the field: the sea where the geography puts it.

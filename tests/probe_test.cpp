@@ -313,7 +313,8 @@ points[].surface.plants.tree points[].surface.slope points[].surface.temperature
 points[].volcano points[].volcano.active points[].volcano.atSea points[].volcano.centerX
 points[].volcano.centerZ points[].volcano.cover points[].volcano.crater
 points[].volcano.craterDepth points[].volcano.distance points[].volcano.form
-points[].volcano.geothermal points[].volcano.ground points[].volcano.heading
+points[].volcano.geothermal points[].volcano.ground points[].volcano.groundShare
+points[].volcano.heading
 points[].volcano.height points[].volcano.lakeLevel points[].volcano.large
 points[].volcano.origin points[].volcano.radius points[].volcano.reach
 points[].volcano.summitX points[].volcano.summitZ points[].water points[].water.depth points[].water.flow points[].water.flow.heading

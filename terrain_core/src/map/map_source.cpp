@@ -161,6 +161,8 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
                 s.water = mapWaterOf(h.water, h.height, h.waterLevel);
                 s.waterLevel = s.water == WaterKind::None ? kNoWaterLevel : h.waterLevel;
                 s.volcanic = h.volcanic;
+                s.volcanicGround = h.volcanicGround;
+                s.volcanicShare = h.volcanicShare;
                 continentalness[at] = h.continentalness;
             }
         }

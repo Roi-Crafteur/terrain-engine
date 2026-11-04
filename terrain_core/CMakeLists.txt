@@ -134,6 +134,7 @@ add_library(terrain_core STATIC
     src/generation/volcano_draws.cpp
     src/generation/volcano_fields.cpp
     src/generation/volcano_forms.cpp
+    src/generation/volcano_ground.cpp
     src/generation/volcano_relief.cpp
     src/generation/volcano_sites.cpp
     src/generation/volcano_springs.cpp

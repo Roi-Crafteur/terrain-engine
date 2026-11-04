@@ -80,6 +80,20 @@ inline constexpr int kVolcanoFormCount = 14;
 [[nodiscard]] const char* volcanoFormName(VolcanoForm form);
 [[nodiscard]] const char* volcanoOriginName(VolcanoOrigin origin);
 
+// The ground the volcanoes leave (HeightSample::volcanicGround), decided by the core whatever the
+// biome: the data the materials read, kept as such for the colors to come (agent 49).
+enum class VolcanicGround : std::uint8_t {
+    None,
+    Basalt,     // old lava and the walls of the calderas, weathered: black to dark gray
+    Ash,        // ash and tuff, the upper slopes of the cones, the floors of the calderas: gray-black
+    Scoria,     // the cinders of the cones and of the active craters: red-brown to black
+    CooledLava, // the flows and sheets of the active volcanoes: black
+    Geothermal, // sinter and altered ground around the springs: white to orange
+};
+inline constexpr int kVolcanicGroundCount = 6;
+// Lowercase English names, such as "scoria" or "cooled lava".
+[[nodiscard]] const char* volcanicGroundName(VolcanicGround ground);
+
 // The geothermal features of the active volcanoes: where they are, their pools, pots and
 // terraces; nothing moves (no jet, no steam).
 enum class GeothermalKind : std::uint8_t {

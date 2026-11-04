@@ -11,3 +11,4 @@ terrain_add_test(volcano_cost_test terrain_core)
 # A measure of time: alone, even under ctest -j.
 set_tests_properties(volcano_cost_test PROPERTIES RUN_SERIAL TRUE)
 terrain_add_test(volcano_water_test terrain_core)
+terrain_add_test(volcano_surface_test terrain_core)

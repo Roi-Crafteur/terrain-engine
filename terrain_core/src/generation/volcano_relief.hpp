@@ -167,6 +167,8 @@ struct Point {
     double height = 0.0;   // the ground, in and out
     double regional = 0.0; // the regional ground under it (HeightSample::regional)
     float cover = 0.0f;    // [0, 1]: how much of the ground is their work
+    VolcanicGround ground = VolcanicGround::None; // the ground they left (volcano_ground.hpp)
+    float groundShare = 0.0f; // [0, 1]: how bare it lies
     bool enclosed = false; // in a crater whose rim stays above the sea all around
     bool flooded = false;  // in a caldera the sea floods through its strait, or in that strait
     bool touched = false;  // a volcano changed the height
