@@ -3,6 +3,7 @@
 #include "terrain/det_math.hpp" // also refuses fast math in every unit including it
 #include "terrain/generation/coast.hpp"
 #include "terrain/generation/geography.hpp"
+#include "terrain/generation/lows.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/rock_faces.hpp"
 #include "terrain/generation/voronoi.hpp"
@@ -89,6 +90,9 @@ struct HeightfieldParams {
     // the local, macro and plate terms of the continentalness above are not used (the plates of
     // the geography are its own). Disabled: the relief of generator 2.
     GeographyParams geography;
+
+    // The lows of agent 52 (lows.hpp), laid with the geography only.
+    LowsParams lows;
 };
 
 // Layers of the height at one point: height = base + mountain + detail. In the collision
@@ -218,6 +222,11 @@ public:
     // The depressions below the sea level, deep in the plains (none without the geography or
     // with GeographyParams::depressions off).
     [[nodiscard]] std::vector<Depression> depressions() const;
+    // The lows of the relief (lows.hpp, the depressions among them) whose center lies in the box
+    // (canonical meters, the box not wrapping), sorted by x, then z, then their other fields: the
+    // closed basins the water fills or leaves dry. None without the geography.
+    [[nodiscard]] std::vector<LowSite> lowsIn(double minX, double minZ, double maxX,
+                                              double maxZ) const;
     // Whether dry ground may lie below the sea level at (x, z), any image of it: true within the
     // reach of a low of the relief (the depressions), false elsewhere, where the ground below the
     // sea level is the sea (or the bed of a river near it). Cheap (a lattice lookup): the readers
@@ -305,9 +314,13 @@ private:
     [[nodiscard]] std::shared_ptr<const coast_lattice::Lattices> makeInlets() const;
 
     [[nodiscard]] static std::shared_ptr<const Water>
-    makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
-    // The depressions below the sea and the sea of a sample at a canonical point.
+    makeWater(std::uint64_t seed, std::uint64_t lowSeed, const HeightfieldParams& params,
+              const Geography* geography);
+    // The depressions below the sea, the lows (lows.hpp) and the sea of a sample at a canonical
+    // point.
     void finishWater(double x, double z, HeightSample& s) const;
+    // The lows of agent 52 at a canonical point, after the depressions (heightfield_water.cpp).
+    void lowerToLows(double x, double z, HeightSample& s) const;
     // The seas of dunes of the hydrology (ergs.hpp) over the relief at a canonical point, before
     // its valleys (heightfield_hydrology): nothing, not a bit, outside them.
     void addDunes(double x, double z, HeightSample& s) const;

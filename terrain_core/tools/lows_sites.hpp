@@ -57,7 +57,7 @@ struct BeltTable {
 };
 [[nodiscard]] std::vector<BeltTable> beltTables(const std::vector<LowFigures>& lows);
 
-// The lows of the field: today the depressions of phase 11B.
+// The lows of the field (Heightfield::lowsIn over the whole world).
 [[nodiscard]] std::vector<Low> lowsOf(const terrain::Heightfield& field);
 
 } // namespace lows_tool

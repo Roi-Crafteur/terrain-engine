@@ -7,3 +7,10 @@
 add_executable(terrain_export_lows tools/export_lows.cpp tools/lows_world.cpp
                                    tools/lows_sites.cpp tools/lows_readers.cpp)
 target_link_libraries(terrain_export_lows PRIVATE terrain_core terrain_warnings)
+
+# The sources of the lows in terrain_core (their Unreal sources: TerrainCore/core_generation_*).
+target_sources(terrain_core PRIVATE
+    src/generation/low_basins.cpp
+    src/generation/low_reach.cpp
+    src/generation/low_sites.cpp
+    src/generation/rift_grabens.cpp)

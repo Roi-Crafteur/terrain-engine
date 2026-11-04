@@ -117,6 +117,7 @@ enum Layer : std::uint64_t {
     kGullies,
     kWallGrain,
     kFaceGrain, // the grain of the faces of the rock in three dimensions (phase 12A)
+    kLows,      // the lows of agent 52 (lows.hpp)
 };
 
 // The grain of the rock of the walls of the gorges (phase 11B): an fbm from this wavelength.
@@ -198,7 +199,8 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         plates_ = std::make_shared<const TectonicPlates>(noise::deriveSeed(seed, kPlates),
                                                          params_.plates, world_);
     }
-    water_ = makeWater(noise::deriveSeed(seed, kDepressions), params_, geography_.get());
+    water_ = makeWater(noise::deriveSeed(seed, kDepressions), noise::deriveSeed(seed, kLows),
+                       params_, geography_.get());
     if (geography_ && params_.geography.coasts) {
         coasts_ = makeCoasts(seed, world_);
         inlets_ = makeInlets();

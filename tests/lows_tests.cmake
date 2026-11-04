@@ -1,6 +1,7 @@
 # The land below the sea level (agent 52, terrain_core/lows.cmake): the readers that told the sea
 # from the height, the tool of its measures. Included once from tests/CMakeLists.txt.
 terrain_add_test(lows_readers_test terrain_core)
+terrain_add_test(lows_sites_test terrain_core)
 
 # The measures of the land below the sea level of a small world (32 x 16 cells), its map.
 add_test(NAME export_lows_smoke

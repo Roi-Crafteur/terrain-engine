@@ -105,10 +105,9 @@ std::vector<BeltTable> beltTables(const std::vector<LowFigures>& lows) {
 
 std::vector<Low> lowsOf(const terrain::Heightfield& field) {
     std::vector<Low> out;
-    for (const terrain::Depression& d : field.depressions()) {
-        // The reach of the depressions (depressions.cpp): 1.6 long radii (2.6 times the mean at
-        // most) and their warp.
-        out.push_back({"basin 11B", d.x, d.z, 1.6 * d.radius * std::sqrt(2.6) + 9'000.0});
+    const terrain::WorldSize& w = field.world();
+    for (const terrain::LowSite& s : field.lowsIn(-0.5 * w.x, -0.5 * w.z, 0.5 * w.x, 0.5 * w.z)) {
+        out.push_back({terrain::lowKindName(s.kind), s.x, s.z, s.reach});
     }
     return out;
 }
