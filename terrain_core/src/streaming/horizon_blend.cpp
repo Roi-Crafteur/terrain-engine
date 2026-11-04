@@ -65,7 +65,10 @@ SurfaceSite pointSite(const HeightSample& sample, const std::array<float, 4>& h,
     }
     site.steepness = static_cast<float>(difference / step);
     site.water = sample.water;
-    site.waterLevel = sample.waterLevel;
+    // The top of the column (SurfaceSite::waterLevel): the ground on dry land, never the level a
+    // river nearby leaves in HeightSample::waterLevel there (agent 49: the climate of a dry sample
+    // at its ground, as the texels of the tiles and the map read it).
+    site.waterLevel = sample.water == WaterKind::None ? sample.height : sample.waterLevel;
     site.dunes = sample.dunes;
     site.erg = sample.erg;
     site.ergFloor = sample.ergFloor;

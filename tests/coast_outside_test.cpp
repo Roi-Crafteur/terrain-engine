@@ -351,8 +351,11 @@ void testSmallWorldWithWater() {
                     {"small world tiles", sums.tiles.value(), 0x3920923625208FCEULL},
                     {"small world horizon", sums.horizon.value(), 0x159D43BA4E7127E6ULL},
                     {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
-                    {"small world rivers tiles", rivers.tiles.value(), 0x9B59DD7FA17B37EBULL},
-                    {"small world rivers horizon", rivers.horizon.value(), 0x810D6B0B60B06611ULL}});
+                    // Near the rivers (agent 49): the texels of the tiles read the water of the
+                    // core, and a dry sample its climate at its ground, not at the level of the
+                    // river beside it (0x9B59DD7FA17B37EB and 0x810D6B0B60B06611 before).
+                    {"small world rivers tiles", rivers.tiles.value(), 0x0C052A0A584C2027ULL},
+                    {"small world rivers horizon", rivers.horizon.value(), 0x9D3D6DEECA7F2EF9ULL}});
 }
 
 } // namespace

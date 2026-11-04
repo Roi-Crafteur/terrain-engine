@@ -16,9 +16,10 @@ namespace terrain::tile {
 
 // The texels of a tile, one every stride columns (stride divides kChunkCells), row by row from
 // its lowest corner. The site of a texel is heightfieldSite of its column and of its 4 neighbor
-// columns one cell away (outside the tile, the heights of the field there), its climate and its
-// blend those of the ecology at its position: every texel is a function of its world position
-// and of the cell of the lattice only, never of the tile.
+// columns one cell away (outside the tile, the heights of the field there) with the water of the
+// core at its column (HeightSample::water and waterLevel, as the samples of the horizon), its
+// climate and its blend those of the ecology at its position: every texel is a function of its
+// world position and of the cell of the lattice only, never of the tile.
 [[nodiscard]] std::vector<BlendTexel> blendTexels(const Heightfield& field, const Ecology& ecology,
                                                   const TileLattice& lattice,
                                                   const TileColumns& columns,
