@@ -1,10 +1,13 @@
 // The seas of dunes on the far horizon (agent 34, Ergs::dunesAt with a footprint): a grid as fine
-// as the tiles sees the dunes as they are (the same bits); a coarse grid sees their mean, its
+// as the tiles sees the dunes as they are (the same bits, but the crests of the stars rounded to
+// its footprint); a coarse grid sees their mean, its
 // silhouette right (the mean of the dunes within a tenth), and moving the grid by half a sample
 // barely changes what it shows (no flicker), where the dunes sampled as points alias.
+#include "dune_forms.hpp"
 #include "dunes_support.hpp"
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -88,18 +91,32 @@ double trueMean(const std::vector<Line>& lines) {
     return sum / static_cast<double>(n);
 }
 
+// The fine grids keep the dunes: the same bits as points, but on the crests of the star dunes,
+// rounded over kRoundCells of the footprint (dune_forms.hpp: no teeth where its cells cut them),
+// never higher and lower by at most what that rounding takes off a crest at the angle of repose.
 void testFineGridKeepsTheDunes(const std::vector<Line>& lines) {
-    bool same = true;
+    std::size_t samples = 0;
+    std::size_t same = 0;
+    double lowest = 0.0; // the most a sample is under its point, over the bound of the rounding
     for (const Line& l : lines) {
         for (double s = 0.0; s < 4'000.0; s += 8.0) {
             const double point = dunesAt(l.x + s, l.z, 0.0);
             for (const double footprint : {8.0, 16.0, 64.0}) {
-                same = same && std::bit_cast<std::uint64_t>(dunesAt(l.x + s, l.z, footprint)) ==
-                                   std::bit_cast<std::uint64_t>(point);
+                const double d = dunesAt(l.x + s, l.z, footprint);
+                ++samples;
+                same += std::bit_cast<std::uint64_t>(d) == std::bit_cast<std::uint64_t>(point) ? 1 : 0;
+                const double bound = 0.5 * terrain::dune_forms::kLeeTan *
+                                     terrain::dune_forms::kRoundCells * footprint;
+                lowest = std::max(lowest, (point - d) / bound);
+                TEST_CHECK(d <= point + 1.0e-6);
             }
         }
     }
-    TEST_CHECK(same);
+    std::printf("fine grids: %zu samples, %.1f %% the same bits as points, the others at most %.2f "
+                "of the rounding of the star crests under them\n",
+                samples, 100.0 * static_cast<double>(same) / static_cast<double>(samples), lowest);
+    TEST_CHECK(static_cast<double>(same) >= 0.9 * static_cast<double>(samples));
+    TEST_CHECK(lowest <= 1.0);
 }
 
 void testCoarseGrids(const std::vector<Line>& lines) {

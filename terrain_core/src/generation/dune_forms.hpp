@@ -90,7 +90,12 @@ struct StarLattice {
     // Stars on a pedestal: how far below their pedestal they reach before they end (the lowest
     // ground around them), so that they end under it, never in a step.
     double depth = 0.0;
+    // The side of the samples that draw them (Shared::footprint): their crests rounded over
+    // kRoundCells of it on each side at least (as the cells of a mesh cut them, never in teeth),
+    // kCrestRound under the sharp crest near by.
+    double footprint = 0.0;
 };
+inline constexpr double kRoundCells = 1.5;
 [[nodiscard]] double stars(const StarLattice& lattice, double x, double z);
 // The ground under a star on a pedestal, the share of its height it takes there ([0, 1]), and
 // its own height and depth (StarLattice::height and depth, at most the lattice's): read at its

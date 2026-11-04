@@ -246,6 +246,7 @@ double chainAt(const Ergs::Impl& m, const dune_phase::Shared& s, const dune_phas
     lattice.occupancy = kChainStarOccupancy;
     lattice.key = noise::deriveSeed(m.seed, 0x43535452ULL);
     lattice.depth = (1.0 + kDig) * kHeightHigh;
+    lattice.footprint = s.footprint;
     ErgMemos& memo = memosOf(m);
     const double stars = dune_forms::starsOn(lattice, q.x, q.z, [&](double cx, double cz) {
         // Read once per star (they depend on its center only): the last ones met, by center.
@@ -287,7 +288,7 @@ void windKinds(const Ergs::Impl& m, const dune_phase::Shared& s, const Point& q,
     }
 }
 
-double starKind(const Ergs::Impl& m, const Point& q) {
+double starKind(const Ergs::Impl& m, const Point& q, double footprint) {
     dune_forms::StarLattice lattice;
     lattice.cell = kStarCell;
     lattice.periodX = m.world.x;
@@ -295,6 +296,7 @@ double starKind(const Ergs::Impl& m, const Point& q) {
     lattice.height = std::clamp(q.height, kStarLeast, kStarHigh);
     lattice.occupancy = kStarOccupancy + kStarOccupancySand * q.sand;
     lattice.key = noise::deriveSeed(m.seed, 0x5354ULL);
+    lattice.footprint = footprint;
     return dune_forms::stars(lattice, q.x, q.z);
 }
 
@@ -443,7 +445,7 @@ float dunes(const Ergs::Impl& m, double x, double z, const ErgPoint& e, double f
             windKinds(m, s, q, w, sum);
         }
         if (w.star > 0.0f) {
-            sum.add(starKind(m, q), w.star);
+            sum.add(starKind(m, q, footprint), w.star);
         }
         sum.scale(effectiveWeight(static_cast<double>(realistic)));
     }

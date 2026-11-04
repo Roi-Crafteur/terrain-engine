@@ -7,7 +7,10 @@
 //   summit) and the summits of neighbours vary in height and in the number of their arms.
 // - From the crests of the free stars (dune_forms::starFormOf): every arm strays in plan and in
 //   height (of its top) from the straight line between its ends, the tallest stars carry a secondary summit on
-//   an arm, the arms of a star are of uneven lengths, and the ground stands on the crests.
+//   an arm, the arms of a star are of uneven lengths, and the ground stands on the crests (rounded
+//   kCrestRound under them).
+// - As a mesh of 8 m cells draws their crests (the tiles at 300 to 500 m): no row of teeth along
+//   them (their sharp crests, cut aslant by the cells, drew one tooth per cell).
 #include "dune_forms.hpp"
 
 #include "test_assert.hpp"
@@ -220,15 +223,16 @@ void testCrests() {
             plan = std::min(plan, strayOf(arm, [](const auto& q) { return q.x; },
                                           [](const auto& q) { return q.z; }));
             double run = 0.0;
+            double low = 1.0e9;
             double off = 0.0;
             for (std::size_t n = 0; n < arm.size(); ++n) {
                 run += n > 0 ? std::hypot(arm[n].x - arm[n - 1].x, arm[n].z - arm[n - 1].z) : 0.0;
                 const double u = static_cast<double>(n) / static_cast<double>(arm.size() - 1);
                 off = std::max(off, std::abs(arm[n].height - (1.0 - u) * arm.front().height -
                                              u * arm.back().height));
-                summit = summit || (n > 0 && n + 1 < arm.size() &&
-                                    arm[n].height > arm[n - 1].height + 1.0 &&
-                                    arm[n].height > arm[n + 1].height);
+                // A secondary summit: the crest rises again by 2 % of the peak after a saddle.
+                low = std::min(low, arm[n].height);
+                summit = summit || arm[n].height > low + 0.02 * f.peak;
                 below = std::max(below, arm[n].height - forms::stars(s, arm[n].x, arm[n].z));
             }
             height = std::min(height, off / arm.front().height);
@@ -248,7 +252,90 @@ void testCrests() {
     TEST_CHECK(plan >= 0.02 && height >= 0.04);
     TEST_CHECK(lengths >= 0.15);
     TEST_CHECK(tall >= 3 && second == tall);
-    TEST_CHECK(below <= 0.01);
+    TEST_CHECK(below <= forms::kCrestRound + 0.01); // their crests rounded as the other dunes'
+}
+
+// The crest as a mesh of kCell meter cells draws it (the tiles at 300 to 500 m, LOD 3): the ground
+// at the corners of its cells, linear over the two triangles of each (Marching Cubes over a ground
+// of heights).
+constexpr double kCell = 8.0;
+double meshed(const forms::StarLattice& s, double x, double z) {
+    const double i = std::floor(x / kCell);
+    const double j = std::floor(z / kCell);
+    const double u = x / kCell - i;
+    const double v = z / kCell - j;
+    const double h00 = forms::stars(s, i * kCell, j * kCell);
+    const double h11 = forms::stars(s, (i + 1.0) * kCell, (j + 1.0) * kCell);
+    if (u >= v) {
+        const double h10 = forms::stars(s, (i + 1.0) * kCell, j * kCell);
+        return h00 + u * (h10 - h00) + v * (h11 - h10);
+    }
+    const double h01 = forms::stars(s, i * kCell, (j + 1.0) * kCell);
+    return h00 + v * (h01 - h00) + u * (h11 - h01);
+}
+
+// No teeth along the crests as the mesh draws them: walked 0.5 m apart along the crests of the
+// free stars (their middle half), the meshed crest under the crest itself, less its mean over
+// 16 m, stays within kTeeth meters (root mean square), and what repeats of it from 4 to 24 m (a
+// row of teeth repeats at the spacing of the cells along the crest: the root of its highest
+// autocovariance there) within kRepeat meters. The stars as the tile sees them: their footprint
+// its cells (Heightfield::forFootprint).
+constexpr double kTeeth = 0.2;
+constexpr double kRepeat = 0.3;
+void testMeshedCrests() {
+    forms::StarLattice s = lattice();
+    s.footprint = kCell;
+    double sum = 0.0;
+    std::size_t count = 0;
+    double repeat = 0.0;
+    for (int k = 0; k < 24; ++k) {
+        const forms::StarForm f = forms::starFormOf(s, 100 + k % 6, 50 + k / 6);
+        for (const std::vector<forms::StarCrest>& arm : f.arms) {
+            std::vector<double> h;
+            for (std::size_t n = arm.size() / 4; n + arm.size() / 4 < arm.size(); ++n) {
+                const double dx = arm[n + 1].x - arm[n].x;
+                const double dz = arm[n + 1].z - arm[n].z;
+                const double length = std::hypot(dx, dz);
+                for (double t = 0.0; t < length; t += 0.5) {
+                    const double x = arm[n].x + dx * t / length;
+                    const double z = arm[n].z + dz * t / length;
+                    h.push_back(meshed(s, x, z) - forms::stars(s, x, z));
+                }
+            }
+            constexpr int kHalf = 16; // samples: 8 m on each side
+            std::vector<double> r;
+            for (std::size_t n = kHalf; n + kHalf < h.size(); ++n) {
+                double mean = 0.0;
+                for (std::size_t m = n - kHalf; m <= n + kHalf; ++m) {
+                    mean += h[m] / (2.0 * kHalf + 1.0);
+                }
+                r.push_back(h[n] - mean);
+            }
+            if (r.size() < 100) {
+                continue;
+            }
+            double var = 0.0;
+            for (const double x : r) {
+                var += x * x;
+            }
+            sum += var;
+            count += r.size();
+            for (std::size_t lag = 8; lag <= 48; ++lag) {
+                double c = 0.0;
+                for (std::size_t n = 0; n + lag < r.size(); ++n) {
+                    c += r[n] * r[n + lag];
+                }
+                repeat = std::max(repeat, c / static_cast<double>(r.size() - lag));
+            }
+        }
+    }
+    const double teeth = std::sqrt(sum / static_cast<double>(count));
+    repeat = std::sqrt(repeat);
+    std::printf("crests meshed at %.0f m: %zu samples, teeth %.3f m (root mean square under their "
+                "mean over 16 m), %.3f m of them repeating from 4 to 24 m\n",
+                kCell, count, teeth, repeat);
+    TEST_CHECK(count >= 5'000);
+    TEST_CHECK(teeth <= kTeeth && repeat <= kRepeat);
 }
 
 } // namespace
@@ -256,5 +343,6 @@ void testCrests() {
 int main() {
     testFromTheGround();
     testCrests();
+    testMeshedCrests();
     return test::result();
 }
