@@ -19,7 +19,7 @@ HorizonNormalStream::HorizonNormalStream(const Heightfield& field, const Horizon
 }
 
 HorizonNormalStream::~HorizonNormalStream() {
-    stop_.store(true);
+    raiseWorkStop(stop_); // and the threads waiting in the caches of the hydrology wake
     std::unique_lock lock(mutex_);
     stopping_ = true;
     queue_.clear();

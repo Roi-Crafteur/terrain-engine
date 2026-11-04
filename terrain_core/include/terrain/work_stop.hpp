@@ -8,12 +8,18 @@
 // (water/hydrology_lazy.hpp), so the next query computes it again, the same bits.
 //
 // The flag is the thread's: one thread stopped (the dev map) leaves the others (the tiles)
-// computing. A thread without a scope is never stopped. Header only: the pointer of the thread
-// lives in a function-local thread_local of an inline function, one per program (terrain_core is
-// one library, and in the plugin one module).
+// computing. A thread without a scope is never stopped. A flag raised by raiseWorkStop also wakes
+// at once the threads waiting in the caches for what another thread makes (WorkStopWaking): they
+// see their flag without waiting for the end of their step (2 ms asked, 15.6 ms on Windows).
+// Header only: the pointer of the thread lives in a function-local thread_local of an inline
+// function, and the wakings in a function-local static, one per program (terrain_core is one
+// library, and in the plugin one module).
 
+#include <algorithm>
 #include <atomic>
+#include <mutex>
 #include <stdexcept>
+#include <vector>
 
 namespace terrain {
 
@@ -64,6 +70,61 @@ private:
 inline void workStopPoint() {
     if (workStopRaised()) {
         throw WorkStopped();
+    }
+}
+
+class WorkStopWaking;
+
+namespace work_stop_detail {
+
+struct Wakings {
+    std::mutex mutex;
+    std::vector<WorkStopWaking*> list;
+};
+
+// Never destroyed: no waking outlives it, whatever the order the statics go in.
+[[nodiscard]] inline Wakings& wakings() {
+    static Wakings* all = new Wakings;
+    return *all;
+}
+
+} // namespace work_stop_detail
+
+// While it lives, wake(context) is called whenever a flag is raised by raiseWorkStop, under the
+// lock of the wakings: it wakes the threads that wait (notify_all), taking no lock that a thread
+// holds while it waits for this one (a cache takes the lock of its shard only, never while it
+// makes an object). Declared after what wake() touches, so that it goes first.
+class WorkStopWaking {
+public:
+    using Wake = void (*)(void* context) noexcept;
+    WorkStopWaking(Wake call, void* on) : wake_(call), context_(on) {
+        work_stop_detail::Wakings& all = work_stop_detail::wakings();
+        const std::lock_guard<std::mutex> lock(all.mutex);
+        all.list.push_back(this);
+    }
+    ~WorkStopWaking() {
+        work_stop_detail::Wakings& all = work_stop_detail::wakings();
+        const std::lock_guard<std::mutex> lock(all.mutex);
+        all.list.erase(std::find(all.list.begin(), all.list.end(), this));
+    }
+    WorkStopWaking(const WorkStopWaking&) = delete;
+    WorkStopWaking& operator=(const WorkStopWaking&) = delete;
+
+    void wake() const noexcept { wake_(context_); }
+
+private:
+    Wake wake_;
+    void* context_;
+};
+
+// Raises flag, then wakes the threads that wait in the caches (every WorkStopWaking): those of
+// this flag leave at once by WorkStopped, the others wait again.
+inline void raiseWorkStop(std::atomic<bool>& flag) {
+    flag.store(true);
+    work_stop_detail::Wakings& all = work_stop_detail::wakings();
+    const std::lock_guard<std::mutex> lock(all.mutex);
+    for (const WorkStopWaking* w : all.list) {
+        w->wake();
     }
 }
 

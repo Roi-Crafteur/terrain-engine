@@ -6,9 +6,11 @@
 //
 // - The first thread to need an object marks it as being made and makes it outside of any lock:
 //   two threads make two objects at once, even in the same shard.
-// - The other threads that need the same object wait for it, by steps of kLazyWait, and between
-//   two steps call workStopPoint(): a stopped thread leaves (WorkStopped) even while another one
-//   makes what it waits for (work_stop.hpp).
+// - The other threads that need the same object wait for it, by steps of kLazyWait, and before
+//   each step call workStopPoint(): a stopped thread leaves (WorkStopped) even while another one
+//   makes what it waits for (work_stop.hpp). A flag raised by raiseWorkStop wakes them at once:
+//   the cache wakes every shard (its WorkStopWaking), under the lock of each, so that no thread
+//   misses it between its check and its wait.
 // - An object is published whole (release), or not at all: if its making throws (WorkStopped, or
 //   anything else), its slot is empty again, the waiting threads wake and one of them makes it.
 // - make() must never ask for its own index (the threads would wait for themselves); it may ask
@@ -60,8 +62,8 @@ public:
                 if (!making_[i]) {
                     break;
                 }
-                shard.done.wait_for(lock, kLazyWait);
                 workStopPoint(); // the lock is released as WorkStopped leaves
+                shard.done.wait_for(lock, kLazyWait);
             }
             making_[i] = true;
         }
@@ -98,6 +100,15 @@ private:
         std::condition_variable done;
     };
 
+    // Every waiting thread woken (raiseWorkStop): the locks of the shards are never held while an
+    // object is made.
+    static void wakeAll(void* self) noexcept {
+        for (Shard& shard : static_cast<Lazy*>(self)->shards_) {
+            const std::lock_guard<std::mutex> lock(shard.mutex);
+            shard.done.notify_all();
+        }
+    }
+
     // The end of the making of object i: published (made), or its slot empty again (null).
     void finish(Shard& shard, std::size_t i, const T* made) {
         {
@@ -115,6 +126,7 @@ private:
     std::array<Shard, kShards> shards_;
     mutable std::mutex ownedLock_;
     std::vector<std::unique_ptr<const T>> owned_;
+    WorkStopWaking waking_{&Lazy::wakeAll, this}; // last: it goes before the shards
 };
 
 } // namespace terrain::water_detail

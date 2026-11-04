@@ -130,7 +130,7 @@ int main() {
         std::atomic<bool> stop{false};
         std::thread raiser([&] {
             std::this_thread::sleep_for(std::chrono::milliseconds(400));
-            stop.store(true);
+            terrain::raiseWorkStop(stop);
         });
         fill(*h, all, sums, &stop, stopped);
         raiser.join();

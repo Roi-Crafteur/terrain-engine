@@ -31,7 +31,7 @@ GroundLevel groundLevelAt(const TerrainTiles& tiles, double x, double z) {
 }
 
 GroundRead::~GroundRead() {
-    stop_.store(true); // then the futures wait for their reads, which leave by WorkStopped
+    raiseWorkStop(stop_); // then the futures wait for their reads, which leave by WorkStopped
 }
 
 void GroundRead::ask(const TerrainTiles& tiles, double x, double z) {

@@ -27,7 +27,7 @@ MapTileCache::MapTileCache(Render render, Probe probe, std::vector<std::string> 
 }
 
 MapTileCache::~MapTileCache() {
-    cancel_.store(true, std::memory_order_relaxed);
+    raiseWorkStop(cancel_); // and the threads waiting in the caches of the hydrology wake
     {
         const std::lock_guard lock(mutex_);
         stopping_ = true;

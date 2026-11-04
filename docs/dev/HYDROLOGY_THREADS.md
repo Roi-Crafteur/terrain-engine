@@ -27,8 +27,16 @@ hydrographique). L'API publique de `Hydrology` (`hydrology.hpp`) n'a pas changé
      `grep -rn "catch *(" terrain_core/src/generation terrain_core/src/streaming terrain_core/src/map`.
 4. **Les caches (`water/hydrology_lazy.hpp`, `Lazy<T>`) :**
    - un objet est fait hors de tout verrou ; deux fils font deux objets en même temps ;
-   - un fil qui attend un objet en cours de calcul attend par pas de 2 ms
-     (`condition_variable::wait_for`), puis appelle `workStopPoint()` ;
+   - un fil qui attend un objet en cours de calcul appelle `workStopPoint()`, puis attend par pas
+     de 2 ms (`condition_variable::wait_for`) ;
+   - un drapeau levé par `raiseWorkStop(flag)` réveille tout de suite ces fils :
+     - chaque cache s'inscrit tant qu'il vit (`WorkStopWaking`) ;
+     - la levée fait `notify_all` sur chacune de ses tranches, sous le verrou de la tranche, pour
+       qu'aucun fil ne la manque entre sa vérification et son attente ;
+     - ce verrou n'est jamais tenu pendant un calcul ;
+     - mesuré : le fil qui attend sort en 0,05 à 0,1 ms, au lieu de la fin de son pas
+       (2 ms demandées, 15,6 ms par défaut sous Windows, jusqu'à 89 ms en CI sous charge) ;
+     - un drapeau levé par un simple `store(true)` arrête aussi, mais au pas suivant ;
    - si le calcul lance une exception, la case redevient vide et un autre fil le refait ;
    - `make()` ne demande jamais sa propre case. Les dépendances restent sans cycle :
      - un tracé lit les tracés d'aval (`courseOf(next)`) et les niveaux d'amont (`startLevel`) ;
@@ -87,6 +95,8 @@ des niveaux 8 et 9. Le bench affiche les tracés calculés, leurs octets et le p
 
 ## Où les fils sont arrêtés
 
+Chaque drapeau est levé par `raiseWorkStop`.
+
 | Fil | Drapeau | Levé par |
 |---|---|---|
 | tuiles (`StreamManager`) | `stop_` | son destructeur, avant les `join` |
@@ -107,10 +117,11 @@ Ne sont pas interrompus :
 - `hydrology_bits_test` : les bits d'un échantillon (tracés, requêtes sur les grilles de 2 et
   4 km, morceaux des niveaux 8 et 9), figés avant le travail de l'agent 39.
 - `hydrology_stop_test` (seul, `RUN_SERIAL`) :
-  - les arrêts sous charge ;
+  - les arrêts sous charge, dans les tracés longs de l'échantillon (100 ms ou plus à faire),
+    au milieu du premier ;
   - la médiane ≤ 100 ms ;
   - le plus long < 1/4 du temps de la fin des tracés en cours ;
-  - un fil qui attend ;
+  - un fil qui attend, réveillé par la levée de son drapeau ;
   - rien d'à moitié fait ;
   - les autres fils continuent.
 - `hydrology_threads_test` : mêmes bits sur 1 et 4 fils, et après des arrêts.

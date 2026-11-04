@@ -1,10 +1,12 @@
 // The computations of the hydrology stopped from another thread (agent 39, work_stop.hpp), under
 // load (as many spinning threads as working ones), on the small world:
-// - 4 threads computing courses, their flag raised at drawn instants: every one leaves by
-//   WorkStopped, none finishes the course it was making; the median time to their last exit is
-//   100 ms at most, and the longest a quarter of the time the courses in progress then take to
-//   be finished, at most (measured in the same trial, on the same caches);
-// - a thread waiting for a course another thread makes leaves as soon (the waits of the caches);
+// - 4 threads computing the long courses of the sample (100 ms or more each to make), their flag
+//   raised at drawn instants, in the middle of the first: every one leaves by WorkStopped, none
+//   finishes the course it was making; the median time to their last exit is 100 ms at most, and
+//   the longest a quarter of the time the courses in progress then take to be finished, at most
+//   (measured in the same trial, on the same caches);
+// - a thread waiting for a course another thread makes leaves as soon, woken by the raise of its
+//   flag (raiseWorkStop), never by the end of a step of its wait;
 // - a stopped thread leaves nothing half made: the courses then computed are those of a
 //   hydrology never stopped (the bits of hydrology_bits_test);
 // - a thread stopped leaves the others computing, their results unchanged.
@@ -26,11 +28,14 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 using terrain::Hydrology;
+using terrain::raiseWorkStop;
 using terrain::WorkStopped;
 using terrain::WorkStopScope;
 
 constexpr int kWorkers = 4;
 constexpr int kTrials = 10;
+// A course long to make: what the threads stopped under load compute.
+constexpr double kLongCourse = 100.0; // ms
 // The checksum of the sample reaches (hydrology_bits_test, pinned on main).
 constexpr std::uint64_t kSampleReaches = 0xF1684975E5044E29ULL;
 
@@ -84,9 +89,17 @@ struct Trial {
     int stopped = 0;        // threads that left by WorkStopped
 };
 
-// kWorkers threads computing every course of a fresh hydrology, each in its order, their flag
-// raised after delay ms.
-Trial stopTrial(Hydrology& h, int delay, std::uint64_t seed) {
+// The reaches of the sample and the time each takes to make (with what it needs first) on a
+// fresh hydrology, in the order of the sample.
+struct Timed {
+    std::size_t reach = 0;
+    double ms = 0.0;
+};
+
+// kWorkers threads computing the long courses of a fresh hydrology (thread t from the t-th, in
+// turn), then every other course, their flag raised after delay ms.
+Trial stopTrial(Hydrology& h, const std::vector<std::size_t>& longs, int delay,
+                std::uint64_t seed) {
     std::atomic<bool> stop{false};
     std::array<std::size_t, kWorkers> current{};
     std::array<Clock::time_point, kWorkers> out{};
@@ -96,9 +109,14 @@ Trial stopTrial(Hydrology& h, int delay, std::uint64_t seed) {
         workers.emplace_back([&, t] {
             const WorkStopScope scope(&stop);
             try {
+                const auto first = static_cast<std::size_t>(t);
+                for (std::size_t k = 0; k < longs.size(); ++k) {
+                    current[first] = longs[(first + k) % longs.size()];
+                    (void)h.reach(current[first]);
+                }
                 const std::uint64_t own = seed + 7 * static_cast<std::uint64_t>(t);
                 for (const std::size_t r : orderOf(h.reachCount(), own)) {
-                    current[static_cast<std::size_t>(t)] = r;
+                    current[first] = r;
                     (void)h.reach(r);
                 }
             } catch (const WorkStopped&) {
@@ -109,7 +127,7 @@ Trial stopTrial(Hydrology& h, int delay, std::uint64_t seed) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(delay));
     const Clock::time_point raised = Clock::now();
-    stop.store(true);
+    raiseWorkStop(stop);
     for (std::thread& t : workers) {
         t.join();
     }
@@ -152,15 +170,44 @@ struct World {
     }
 };
 
-void testStopsUnderLoad(const World& w) {
+// The courses of the sample, each with the time it takes to make there.
+std::vector<Timed> timeSample(const World& w) {
+    const auto h = w.fresh();
+    std::vector<Timed> out;
+    for (const std::size_t r : hydrology_sample::sampleReaches(*h)) {
+        const Clock::time_point start = Clock::now();
+        (void)h->reach(r);
+        out.push_back({r, msBetween(start, Clock::now())});
+    }
+    return out;
+}
+
+// The courses of kLongCourse or more, the longest first; the kWorkers longest on a machine so
+// fast that fewer than kWorkers are that long (said).
+std::vector<std::size_t> longCourses(std::vector<Timed> timed) {
+    std::sort(timed.begin(), timed.end(),
+              [](const Timed& a, const Timed& b) { return a.ms > b.ms; });
+    std::vector<std::size_t> out;
+    for (const Timed& t : timed) {
+        if (t.ms >= kLongCourse || out.size() < static_cast<std::size_t>(kWorkers)) {
+            out.push_back(t.reach);
+        }
+    }
+    std::printf("%zu courses of the sample to stop in: %.1f to %.1f ms to make\n", out.size(),
+                timed[out.size() - 1].ms, timed.front().ms);
+    return out;
+}
+
+void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
+    const std::vector<std::size_t> longs = longCourses(timed);
     const Load load;
     std::vector<double> latencies;
     double worst = 0.0;
     for (int k = 0; k < kTrials; ++k) {
         const auto h = w.fresh();
         const auto draw = terrain::noise::deriveSeed(39, static_cast<std::uint64_t>(k));
-        const int delay = 40 + static_cast<int>(draw % 360);
-        const Trial t = stopTrial(*h, delay, 1000 + static_cast<std::uint64_t>(k));
+        const int delay = 10 + static_cast<int>(draw % 80); // in the middle of the first course
+        const Trial t = stopTrial(*h, longs, delay, 1000 + static_cast<std::uint64_t>(k));
         latencies.push_back(t.latency);
         worst = std::max(worst, t.latency / std::max(t.remaining, 1e-3));
         std::printf("stop after %d ms: %d of %d threads by WorkStopped, out in %.2f ms; the "
@@ -180,21 +227,14 @@ void testStopsUnderLoad(const World& w) {
 // A thread waiting for the course another one makes (no flag) leaves once its flag is raised;
 // the other one finishes it, the same bits. The course waited for is the longest to make of the
 // sample (with what it needs first).
-void testWaiter(const World& w) {
+void testWaiter(const World& w, const std::vector<Timed>& timed) {
+    const Timed longest = *std::max_element(
+        timed.begin(), timed.end(), [](const Timed& a, const Timed& b) { return a.ms < b.ms; });
+    const std::size_t r = longest.reach;
     const auto reference = w.fresh();
-    std::size_t r = 0;
-    double longest = 0.0;
-    for (const std::size_t k : hydrology_sample::sampleReaches(*reference)) {
-        const Clock::time_point start = Clock::now();
-        (void)reference->reach(k);
-        if (msBetween(start, Clock::now()) > longest) {
-            longest = msBetween(start, Clock::now());
-            r = k;
-        }
-    }
     hydrology_sample::Checksum expected;
     hydrology_sample::addReach(expected, reference->reach(r));
-    std::printf("the course waited for: reach %zu, %.1f ms to make\n", r, longest);
+    std::printf("the course waited for: reach %zu, %.1f ms to make\n", r, longest.ms);
     const Load load;
     std::vector<double> latencies;
     for (int k = 0; k < 5; ++k) {
@@ -220,7 +260,7 @@ void testWaiter(const World& w) {
         });
         std::this_thread::sleep_for(std::chrono::milliseconds(6));
         const Clock::time_point raised = Clock::now();
-        stop.store(true);
+        raiseWorkStop(stop);
         waiter.join();
         maker.join();
         const double latency = msBetween(raised, out);
@@ -262,7 +302,7 @@ void testOthersGoOn(const World& w) {
         }
     });
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    stopA.store(true);
+    raiseWorkStop(stopA);
     a.join();
     b.join();
     TEST_CHECK(leftA);
@@ -274,8 +314,9 @@ void testOthersGoOn(const World& w) {
 
 int main() {
     const World world;
-    testStopsUnderLoad(world);
-    testWaiter(world);
+    const std::vector<Timed> timed = timeSample(world);
+    testStopsUnderLoad(world, timed);
+    testWaiter(world, timed);
     testOthersGoOn(world);
     return test::result();
 }

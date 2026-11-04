@@ -24,7 +24,7 @@ HorizonStreamer::HorizonStreamer(const HorizonSampler& sampler, const HorizonStr
 }
 
 HorizonStreamer::~HorizonStreamer() {
-    stop_.store(true);
+    raiseWorkStop(stop_); // and the threads waiting in the caches of the hydrology wake
     {
         const std::lock_guard lock(mutex_);
         stopping_ = true;

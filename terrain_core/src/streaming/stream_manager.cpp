@@ -47,7 +47,7 @@ StreamManager::StreamManager(TileGenerator generator, const StreamParams& params
 }
 
 StreamManager::~StreamManager() {
-    stop_.store(true);
+    raiseWorkStop(stop_); // and the threads waiting in the caches of the hydrology wake
     {
         const std::lock_guard lock(mutex_);
         stopping_ = true;
