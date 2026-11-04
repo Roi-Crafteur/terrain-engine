@@ -68,12 +68,13 @@ double sharpnessOf(const VolcanoSite& s) {
     }
 }
 
-// The share of the radius of the crater its wall takes, from the slope of the wall: about 35
-// degrees for a crater, 37 to 60 for a caldera, 50 to 68 for the pit of a shield.
+// The share of the radius of the crater its wall takes, from the mean slope of the wall: about 35
+// degrees for a crater, 31 to 50 for a caldera (Crater Lake: 35 to 40), 50 to 68 for the pit of
+// a shield.
 double wallOf(const VolcanoSite& s) {
     double slope = 0.7;
     if (s.form == VolcanoForm::Caldera || s.form == VolcanoForm::IslandCaldera) {
-        slope = between(s.seed, kWall, 0.75, 1.7);
+        slope = between(s.seed, kWall, 0.6, 1.2);
     } else if (s.form == VolcanoForm::PlateauCaldera) {
         slope = between(s.seed, kWall, 0.5, 1.0);
     } else if (volcano_sites::formRule(s.form).shield) {
@@ -151,7 +152,11 @@ Shape shapeOf(const VolcanoSite& s) {
                                            : (s.form == VolcanoForm::PlateauCaldera ? 0.4 : 0.0));
     sh.breached = unit(s.seed, kBreached) < breachChance;
     sh.breachAngle = vf::kTwoPi * unit(s.seed, kBreachAngle);
-    sh.breachWidth = between(s.seed, kBreachWidth, 0.12, 0.25);
+    // A notch a few hundred meters wide in the rim (at sea, wider: the strait into a drowned
+    // caldera).
+    sh.breachWidth = between(s.seed, kBreachWidth, 0.05, s.form == VolcanoForm::IslandCaldera
+                                                              ? 0.25
+                                                              : 0.1);
     sh.wall = wallOf(s);
     sh.collapseAngle = vf::kTwoPi * unit(s.seed, kCollapseAngle);
     ravinesOf(s, sh);

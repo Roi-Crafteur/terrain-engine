@@ -14,8 +14,8 @@ namespace {
 
 // The alpha of the layer: kAlphaLow where the volcanoes start to make the ground, kAlphaLow +
 // kAlphaRange where they make it all.
-constexpr int kAlphaLow = 70;
-constexpr int kAlphaRange = 150;
+constexpr int kAlphaLow = 50;
+constexpr int kAlphaRange = 100;
 
 } // namespace
 

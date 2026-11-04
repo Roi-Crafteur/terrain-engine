@@ -248,27 +248,57 @@ std::vector<Profile> profiles(const terrain::Heightfield& field, const terrain::
     return out;
 }
 
-// A view toward (tx, tz) from distance meters away along heading turns, the eye eye meters over
-// the ground (or the sea).
-void view(const terrain::Heightfield& field, const fs::path& path, double tx, double tz,
-          double distance, double heading, double eye) {
+// The eye distance meters from (tx, tz) along heading turns, eye meters over the ground (or the
+// sea), its axis toward that point.
+terrain::ViewParams eyeAt(const terrain::Heightfield& field, double tx, double tz,
+                          double distance, double heading, double eye) {
     terrain::ViewParams p;
     p.heading = heading;
     p.eyeX = tx - distance * terrain::dmath::sinTurns(heading);
     p.eyeZ = tz + distance * terrain::dmath::cosTurns(heading);
     const terrain::HeightSample s = field.sampleAt(p.eyeX, p.eyeZ);
     p.eyeHeight = static_cast<double>(std::max(s.height, s.waterLevel)) + eye;
-    const double summit = static_cast<double>(field.heightAt(tx, tz));
-    p.tilt = 0.5 * (summit - p.eyeHeight) / std::max(distance, 1.0);
+    return p;
+}
+
+// A view toward the summit (tx, tz) from distance meters away, at the height of a walker: of 16
+// headings, the one that sees the summit highest over the horizon (the ground before it hides
+// nothing of it); from the rim of a caldera (rim > 0: its radius), toward its floor.
+void view(const terrain::Heightfield& field, const fs::path& path, double tx, double tz,
+          double distance, double rim) {
     const auto ground = [&field](double x, double z) { return field.heightAt(x, z); };
     const auto water = [&field](double x, double z) {
         const terrain::HeightSample h = field.sampleAt(x, z);
         return h.water == terrain::WaterKind::None ? -1e9f : h.waterLevel;
     };
-    (void)terrain::writePng(path, terrain::renderReliefView(ground, water, p, 0));
-    std::printf("%s: eye at %.0f %.0f, %.1f m, heading %.0f degrees, %.1f km from %.0f %.0f\n",
-                path.filename().string().c_str(), p.eyeX, p.eyeZ, p.eyeHeight, heading * 360.0,
-                distance / 1000.0, tx, tz);
+    // The highest point of the rim of the summit: what the eye aims at.
+    double summit = static_cast<double>(field.heightAt(tx, tz));
+    for (int k = 0; k < 32; ++k) {
+        for (const double r : {0.02 * distance, 0.04 * distance}) {
+            summit = std::max(summit, static_cast<double>(field.heightAt(
+                                          tx + r * terrain::dmath::cosTurns(k / 32.0),
+                                          tz + r * terrain::dmath::sinTurns(k / 32.0))));
+        }
+    }
+    terrain::ViewParams best = eyeAt(field, tx, tz, distance, 0.0, 1.8);
+    double bestTangent = -1e9;
+    for (int k = 0; k < 16; ++k) {
+        const terrain::ViewParams p =
+            eyeAt(field, tx, tz, rim > 0.0 ? 0.9 * rim : distance, k / 16.0, 1.8);
+        const terrain::Sightline line =
+            terrain::sightline(ground, water, p, tx, tz, summit, 0.05 * distance);
+        const double tangent = rim > 0.0 ? p.eyeHeight : (line.visible ? line.tangent : -1e9);
+        if (tangent > bestTangent) {
+            bestTangent = tangent;
+            best = p;
+        }
+    }
+    best.tilt = rim > 0.0 ? 0.0 : 0.5 * (summit - best.eyeHeight) / std::max(distance, 1.0);
+    (void)terrain::writePng(path, terrain::renderReliefView(ground, water, best, 0));
+    std::printf("%s: eye at %.0f %.0f, %.1f m, heading %.1f degrees, %.1f km from %.0f %.0f\n",
+                path.filename().string().c_str(), best.eyeX, best.eyeZ, best.eyeHeight,
+                best.heading * 360.0,
+                terrain::dmath::hypot(best.eyeX - tx, best.eyeZ - tz) / 1000.0, tx, tz);
 }
 
 } // namespace
@@ -292,8 +322,13 @@ int main(int argc, char** argv) {
     writeCsv(dir / "profiles.csv", all);
     if (views) {
         for (const Profile& p : all) {
-            const double far = p.name == "cinder_field" ? 2000.0 : 1.2 * p.half;
-            view(field, dir / ("view_" + p.name + ".png"), p.centerX, p.centerZ, far, 0.1, 1.8);
+            const double far = p.name == "cinder_field" ? 1500.0 : 1.5 * p.half;
+            view(field, dir / ("view_" + p.name + ".png"), p.centerX, p.centerZ, far, 0.0);
+            if (p.name == "caldera") {
+                const VolcanoSite* s = pick(*field.volcanoes(), VolcanoForm::Caldera);
+                view(field, dir / "view_caldera_rim.png", p.centerX, p.centerZ, far,
+                     static_cast<double>(s->crater));
+            }
         }
     }
     return 0;

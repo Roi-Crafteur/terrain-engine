@@ -27,6 +27,8 @@ enum Stream : std::uint64_t {
     kCoarseRavines,
     kFineRavines,
     kSwell,
+    kWallNoise,
+    kGullies,
 };
 
 // Beyond the foot of an edifice its apron falls away by this slope (14 degrees): it fills the
@@ -121,6 +123,25 @@ double rimAt(const VolcanoSite& s, const Shape& sh, const Frame& f, double crate
     return rim;
 }
 
+// The couloirs down the wall of a crater, about every 250 m of its rim, deepest at mid wall:
+// gullies, chutes and the fans of their talus, never a smooth cylinder.
+double gulliesAt(const VolcanoSite& s, const Frame& f, double crater, double q, double wall) {
+    const double t = (q - (1.0 - 0.5 * wall)) / (0.6 * wall);
+    if (!(std::abs(t) < 1.0)) {
+        return 0.0;
+    }
+    const int cells = std::max(12, static_cast<int>(vf::kTwoPi * crater / 250.0));
+    const double x = f.turns * cells + 0.3 * vf::lineNoise(s.seed + kGullies + 1, q * 6.0);
+    const dmath::FloorIndex i = dmath::floorIndex(x);
+    const auto cell = static_cast<std::uint64_t>(((i.index % cells) + cells) % cells);
+    const double center = 0.3 + 0.4 * volcano_sites::unit(s.seed + kGullies, cell);
+    const double depth = 0.05 * static_cast<double>(s.craterDepth) *
+                         (0.2 + 0.8 * volcano_sites::unit(s.seed + kGullies, cell + 100'000));
+    const double width = 0.12 + 0.18 * volcano_sites::unit(s.seed + kGullies, cell + 200'000);
+    const double across = std::max(0.0, 1.0 - std::abs(x - i.value - center) / width);
+    return depth * across * across * (1.0 - t * t);
+}
+
 void digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double base, double rise,
                Point& p) {
     const auto mean = static_cast<double>(s.crater);
@@ -136,7 +157,15 @@ void digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double bas
                              vf::planeNoise(s.seed + kFloorNoise, f.u / 1500.0, f.v / 1500.0);
     const double rim = rimAt(s, sh, f, crater, base, rise);
     if (q < 1.25) {
-        const double c = floor + (rim - floor) * vf::craterWall(q, sh.wall);
+        // The wall steeper here, gentler there, cut by couloirs.
+        const double wall = std::clamp(
+            sh.wall * (1.0 + 0.5 * vf::ringNoise(s.seed + kWallNoise, f.turns, 13)), 0.04, 0.95);
+        // Its crest notched here and there, by up to a sixth of its depth, from within.
+        const double notch = 0.16 * static_cast<double>(s.craterDepth) *
+                             std::min(0.0, vf::ringNoise(s.seed + kRimNoise + 50, f.turns, 9)) *
+                             (1.0 - vf::smoothstep(0.92, 1.0, q));
+        const double c = floor + (rim + notch - floor) * vf::craterWall(q, wall) -
+                         gulliesAt(s, f, crater, q, wall);
         const double weight = 1.0 - vf::smoothstep(1.0, 1.25, q);
         p.height += weight * (vf::smin(p.height, c, 0.04 * static_cast<double>(s.craterDepth) +
                                                         2.0) -
@@ -144,7 +173,7 @@ void digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double bas
         p.touched = true;
         p.enclosed = p.enclosed || (q < 1.0 && !(sh.breached && sh.breachBottom < 0.0));
     }
-    if (!sh.breached || !(q > 0.75) || !(q < 1.7)) {
+    if (!sh.breached || !(q > 0.75) || !(q < 1.3)) {
         return;
     }
     // The breach: a notch across the rim down to its bottom, opening onto the outer flank.
@@ -155,7 +184,7 @@ void digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double bas
     }
     const double level = sh.breachBottom - std::max(0.0, q - 1.0) * crater * 0.15;
     const double notch = level + (rim - level) * across * across;
-    const double weight = 1.0 - vf::smoothstep(1.3, 1.7, q);
+    const double weight = 1.0 - vf::smoothstep(1.1, 1.3, q);
     p.height += weight * (std::min(p.height, notch) - p.height);
 }
 
