@@ -10,8 +10,7 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projets
-eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -485,6 +484,17 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - Water branché sur les splines de rivière
 - jour / nuit, météo régionale, aurores, éclipses et phénomènes rares ; saisons et
   aspect de l'horizon lointain (brumeux, net ou selon la météo) à décider plus tard
+- chaleur et mirages (demande de l'utilisateur, novembre 2026) :
+  - carte de température : le core a déjà la température moyenne du climat (niveau Planète,
+    `climate.temperature`, lue par la sonde), mais pas de calque de température sur la carte
+    de dev, ni de chaleur du sol selon l'heure. À faire : le calque, puis une chaleur du sol
+    déterministe (climat, heure du soleil, saison, type de sol : sable, gravier, croûte,
+    sebkha, roche nue ; plus tard routes) ;
+  - Unreal : air qui tremble au ras du sol chaud, et mirage inférieur (le ciel reflété sur les
+    sols plats et chauds au loin, sous un regard rasant, comme une fausse étendue d'eau qui
+    recule quand on avance), surtout dans les déserts, sur les sebkhas et les regs ;
+  - le core donne la chaleur du sol, Unreal fait l'effet ; les canaux des tuiles et de
+    l'horizon sont presque pleins : prévoir sa place avec l'agent 49 (format des biomes)
 
 ### Peuplement — royaumes, villes, villages et routes (après la 11B et la 12)
 - hiérarchie de peuplement générée de haut en bas, jamais une structure posée seule :
