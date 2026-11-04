@@ -206,6 +206,8 @@ void testWaterRegions() {
     // Then the blend channels of each cell (horizon_blend_texels.hpp; none set here).
     const auto present = static_cast<float>(terrain::unreal::kBlendTexelPresent);
     expected.insert(expected.end(), {0.0f, present, 0.0f, 0.0f, 0.0f, present, 0.0f, 0.0f});
+    // Then the bands of the rock of each cell (agent 33; none given here: all 0).
+    expected.insert(expected.end(), 2 * terrain::unreal::kBandFloats, 0.0f);
     TEST_CHECK(uploads == expected);
 }
 

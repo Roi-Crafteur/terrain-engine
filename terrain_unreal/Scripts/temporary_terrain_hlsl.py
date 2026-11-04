@@ -114,6 +114,36 @@ BLEND_FUNCTIONS
         return max(lerp(l.xxx, c, s), 0.0);
     }
 
+    // The bands of the rock (agent 33: the core's RockBands, Bridge/tile_mesh_conversion.hpp
+    // VertexBands, the band texels of the horizon): B = (strata, layered, notch, notchHeight),
+    // C = (cap, capHeight), each height relative to the pixel, in meters. Its beds: each a tone
+    // of its own, a dark line at its foot of its own depth, two to six laminae of its own
+    // spacing (no two beds alike: no courses of blocks), faded out where a bed spans less than
+    // about three pixels (the derivative of strata) and as layered as its rock; its notch
+    // darker; a dark line under the lip of its cap (the shadow of the cornice). 1 where the rock
+    // has no band (tests/coast_band_support.hpp: bandsOf, the same).
+    float Bands(float4 B, float2 C)
+    {
+        float w = max(fwidth(B.x), 1e-4);
+        float beds = B.y * saturate((0.35 - w) / 0.2);
+        float k = floor(B.x);
+        float f = B.x - k;
+        float tone = 1.0 + 0.24 * (frac(sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5);
+        float depth = 0.18 + 0.24 * frac(sin(k * 93.989 + 0.3) * 43758.5453);
+        float bedLine = 1.0 - depth * (1.0 - smoothstep(0.0, max(1.5 * w, 0.03) + 0.06, f));
+        float count = 2.0 + floor(5.0 * frac(sin(k * 78.233 + 1.7) * 43758.5453));
+        float warp = 0.8 * (frac(sin(k * 39.425 + 2.9) * 43758.5453) - 0.5);
+        float l = count * (f + 2.0 * warp * f * (1.0 - f));
+        float lw = max(count * w, 1e-4);
+        float lamina = 1.0 - 0.12 * (1.0 - smoothstep(0.0, max(1.5 * lw, 0.05) + 0.1, frac(l))) *
+                       saturate((0.35 - lw) / 0.2);
+        float shade = lerp(1.0, tone * bedLine * lamina, beds);
+        float notch = B.w > 0.0 ?
+            smoothstep(-0.4, 0.2, B.z) * (1.0 - smoothstep(B.w - 0.2, B.w + 0.4, B.z)) : 0.0;
+        float cap = C.y > 0.0 ? 1.0 - smoothstep(0.0, 0.6, abs(C.x)) : 0.0;
+        return shade * lerp(1.0, 0.55, notch) * lerp(1.0, 0.7, cap);
+    }
+
     // Stochastic tiling: uv in texture repeats, dx and dy its derivatives. The normal (tangent
     // space, world aligned) comes from the dominant cell only.
     float3 Bomb(Texture2D A, SamplerState SA, Texture2D Nm, SamplerState SN, bool withNormal,
@@ -327,8 +357,20 @@ desertGravel *= 1.0 - sandLock;
 g[7] += g[6] * desertGravel * 0.5;
 g[6] *= 1.0 - desertGravel * 0.5;
 snow *= 1.0 - outcrop * 0.85;
-rock = max(rock * (1.0 - gravel * 0.5), outcrop * cold * 0.9);
+// On the faces of the rock (from 55 degrees, wholly from 70), the patches of the world position
+// would run up the face as stripes, light and dark (agent 33: the walls of the coasts): no gravel
+// taking half of their rock, the variant of the rock in patches of the planes of the face (its
+// width and its height, as the triplanar rock) instead.
+float rockFace = saturate((slope - 55.0) / 15.0);
+rock = max(rock * (1.0 - gravel * 0.5 * (1.0 - rockFace)), outcrop * cold * 0.9);
 float alt = smoothstep(0.42, 0.58, Look.Patch(Q, 16.0, 61.0));
+BRANCH if (rockFace > 0.0)
+{
+    float2 side = abs(N.xy) / max(abs(N.x) + abs(N.y), 1e-3);
+    float onFace = side.x * Look.Patch(float2(P.y, Z), 16.0, 61.0) +
+                   side.y * Look.Patch(float2(P.x, Z), 16.0, 61.0);
+    alt = lerp(alt, smoothstep(0.42, 0.58, onFace), rockFace);
+}
 // No sand on the mountains: above the alpine zone (SandMaxAltitudeM) and on slopes steeper than
 // 30 degrees, the sand and the desert of any biome become scree, except on the dunes.
 float sandless = max(saturate((Z - SandMaxAltitudeM) / 300.0), saturate((slope - 30.0) / 5.0));
@@ -427,6 +469,16 @@ float rockLum = dot(rockS, float3(0.3, 0.59, 0.11)) / max(dot(rockMean, float3(0
 float3 desertRock = desertMean * lerp(float3(0.95, 0.88, 0.8), float3(0.85, 0.62, 0.55), smoothstep(0.3, 0.7, n4)) *
                     rockLum * (1.0 + 0.3 * MacroVariation * (n2 - 0.5));
 rockG = lerp(rockG, desertRock, ergFloor);
+// The wet rock at the sea (agent 33): from under the water up to about WetBandM meters, its upper
+// edge ragged by two noises of the world position (from half to one and a half times it, over 3
+// and 12 m: never a straight line along the coast), darker by WetDarken, fading over a meter.
+// The same on the tiles and on the horizon, both shaded here: no step at 512 m.
+float wetTop = WetBandM * (0.5 + 0.7 * Look.Noise(P + 97.0, 12.0) + 0.3 * Look.Noise(P - 41.0, 3.0));
+float wet = 1.0 - smoothstep(wetTop - 0.7, wetTop + 0.3, Z);
+rockG *= lerp(1.0, WetDarken, wet);
+// Its beds, its notch and its cap where the core gives them (Look.Bands), at the same heights on
+// the tiles and on the horizon.
+rockG *= Look.Bands(B, C);
 float3 snowG = lerp(snowC, float3(0.88, 0.91, 0.96), SnowWhiten) * TintS;
 float3 groundN = normalize(float3(N.xy + nts * NormalStrength * detail, N.z));
 float3 color = lerp(lerp(groundC, rockG, rock), snowG, snow);
@@ -441,9 +493,15 @@ if (DebugView > 0.5)
     float3 d = float3(0.0, 0.0, 0.0);
     [unroll] for (int k = 0; k < 8; ++k) { d += (g[k] / sum) * K[k]; }
     d = lerp(lerp(d, float3(0.9, 0.1, 0.1), rock), float3(1.0, 1.0, 1.0), snow);
+    // 6: the bands of the rock as the pixel reads them (agent 33): the place among its beds in
+    // red, their layering in green, its notch in blue (black: none). 7: the normal the pixel is
+    // shaded with (x, y, z to red, green, blue).
+    float3 bands = float3(frac(B.x), B.y, B.w > 0.0 ? saturate(B.z / B.w) : 0.0);
     color = DebugView < 1.5 ? d : (DebugView < 2.5 ? float3(rock, snow, saturate(FOOT)) :
             (DebugView < 3.5 ? float3(sandShare / max(sum, 1e-3), 0.0, 0.0) :
-            (DebugView < 4.5 ? float3(hollow, 0.15, bump) : float3(bare, gravel, 0.0))));
+            (DebugView < 4.5 ? float3(hollow, 0.15, bump) :
+            (DebugView < 5.5 ? float3(bare, gravel, 0.0) :
+            (DebugView < 6.5 ? bands : N * 0.5 + 0.5)))));
 }
 NormalOut = normal;
 return color;

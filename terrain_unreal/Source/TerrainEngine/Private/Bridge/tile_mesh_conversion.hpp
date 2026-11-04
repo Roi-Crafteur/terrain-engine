@@ -31,6 +31,27 @@ struct VertexWater {
 // HorizonCell::waterLevel; kNoWaterLevel: dry).
 [[nodiscard]] VertexWater vertexWater(float level, double altitude);
 
+// The bands of the rock of a vertex (agent 33: TileData::rockBands, rock_faces.hpp RockBands), as
+// the procedural meshes hand them to the materials in their UV channels 1 to 3 (half floats):
+// (strata, layered), (notch, notchHeight), (cap, capHeight), each height relative to the vertex
+// in meters, clamped to kBandReach (beyond it no band is near: the half floats keep their
+// precision where it matters). All 0 without rock.
+struct VertexBands {
+    float strata = 0.0f;
+    float layered = 0.0f;
+    float notch = 0.0f;
+    float notchHeight = 0.0f;
+    float cap = 0.0f;
+    float capHeight = 0.0f;
+
+    friend bool operator==(const VertexBands&, const VertexBands&) = default;
+};
+inline constexpr float kBandReach = 64.0f;
+inline constexpr float kStrataReach = 2048.0f;
+
+// The bands of a vertex from those of the core.
+[[nodiscard]] VertexBands vertexBands(const RockBands& bands);
+
 // A tile mesh as Unreal takes it: positions in centimeters relative to the origin of the tile,
 // Z up; unit normals toward the air; one color per vertex, by altitude; the water over each
 // vertex (UV channel 0); three indices per triangle (int32, as the index arrays of Unreal), front
@@ -40,6 +61,7 @@ struct UnrealMesh {
     std::vector<UnrealVector3f> normals;
     std::vector<VertexColor> colors;
     std::vector<VertexWater> water;
+    std::vector<VertexBands> bands; // one per vertex with rock in three dimensions, else none
     std::vector<std::int32_t> triangles;
 
     [[nodiscard]] std::size_t triangleCount() const { return triangles.size() / 3; }
@@ -75,15 +97,18 @@ struct TileSea {
 //
 // The alpha of each color is 255 less 255 times the share of bare rock of the vertex (rock, one
 // per vertex: TileData::rock, phase 12A), 255 without rock: the faces of the rock in three
-// dimensions, under their caps and in their niches, for the material.
+// dimensions, under their caps and in their niches, for the material; and the bands of the rock
+// of each vertex (bands, one per vertex: TileData::rockBands; none without them).
 //
 // Throws std::invalid_argument unless there is one normal per vertex, no level or one per
 // vertex, three indices per triangle, every index names a vertex, the vertices fit int32
-// indices, and rock is empty or holds one share per vertex.
+// indices, rock is empty or holds one share per vertex, and bands is empty or holds one per
+// vertex.
 [[nodiscard]] UnrealMesh convertMesh(const Mesh& mesh, double originY,
                                      std::span<const float> waterLevels = {},
                                      const TileSea& sea = {},
-                                     std::span<const float> rock = {});
+                                     std::span<const float> rock = {},
+                                     std::span<const RockBands> bands = {});
 
 // Unreal position of the origin of a tile mesh shown at an image of its tile. The world wraps
 // around: the data of a tile lie in the canonical range of the world (data.request.key is

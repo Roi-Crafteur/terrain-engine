@@ -1,5 +1,7 @@
 #include "horizon_textures.hpp"
 
+#include "tile_mesh_conversion.hpp"
+
 #include "horizon_blend_texels.hpp"
 
 #include "terrain/generation/heightfield.hpp"
@@ -171,9 +173,13 @@ float waterTexel(float level) {
     return level > kNoWaterLevel ? level : kNoWaterLevel;
 }
 
-std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea) {
+std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea,
+                                std::span<const RockBands> bands) {
+    if (!bands.empty() && bands.size() != piece.cells.size()) {
+        throw std::invalid_argument("pieceUploads: the bands of every cell or none expected");
+    }
     std::vector<float> data;
-    data.reserve(piece.cells.size() * (kTexelFloats + 1 + kBlendChannels));
+    data.reserve(piece.cells.size() * (kTexelFloats + 1 + kBlendChannels + kBandFloats));
     for (const HorizonCell& cell : piece.cells) {
         const HorizonTexel texel = horizonTexel(cell, sea);
         data.insert(data.end(), {texel.height, texel.gradX, texel.gradZ, texel.color});
@@ -187,6 +193,10 @@ std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea) {
         blends.push_back(cell.blend);
     }
     appendBlendUploads(blends, data);
+    for (std::size_t n = 0; n < piece.cells.size(); ++n) {
+        const VertexBands b = bands.empty() ? VertexBands{} : vertexBands(bands[n]);
+        data.insert(data.end(), {b.strata, b.layered, b.notch, b.notchHeight});
+    }
     return data;
 }
 

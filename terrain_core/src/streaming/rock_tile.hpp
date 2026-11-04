@@ -69,10 +69,21 @@ public:
     void lightLevel(Mesh& level, const DensityGrid& grid, int originY) const;
 
     // The share of rock of each vertex of a mesh of the tile whose origin lies at originY: that of
-    // the nearest column (rockShare), its details blended as its density (fineShare).
+    // the nearest column seen from the vertex (rockShare, its faces at their distance there), its
+    // details blended as its density (fineShare).
     [[nodiscard]] std::vector<float> vertexRock(const Mesh& mesh, double originY) const;
+    // The bands of the rock of each vertex of such a mesh: those of the columns at both ends of
+    // its grid edge seen from it, interpolated, at its height (rockBands; the same at every
+    // detail).
+    [[nodiscard]] std::vector<RockBands> vertexBands(const Mesh& mesh, double originY) const;
 
 private:
+    // The normal of a vertex v (grid units, its level at originY) on the spire of its column: the
+    // gradient of the spire itself there, its faces lit as the planes they are up to the
+    // triangles over their edges (the gradients of the lattice, smoothed over a cell or two on
+    // either side, melted the edges of a stack into its faces at LOD 1 to 3: the check in Unreal of
+    // 276e6ce). g unchanged elsewhere.
+    void spireGradient(const Vec3f& v, int originY, Vec3f& g) const;
     [[nodiscard]] const RockColumn& rockAt(int i, int k) const;
     [[nodiscard]] bool hasRing() const { return !columns_->ring.empty(); }
     // The column (i, k), i or k one step beyond the tile on the ring; its ground.
@@ -96,5 +107,14 @@ private:
     bool resample_ = false;
     RockBounds bounds_;
 };
+
+// The top of the rock of a column over a spire (rock_faces.hpp: RockSpire) at (x, z) as the LOD
+// 0 tiles mesh it (TerrainTiles::groundAt): the density of the spire at the four columns of their
+// lattice around it (1 m cells), bilinear, linear between their levels, its relief and its faces
+// as they are at the column, down from above the rock. A spire turns faster than the cells (its
+// beds, its rough top): its exact surface stands up to 0.7 m off the mesh there, and a pawn set
+// on it would stand in the rock of the mesh.
+[[nodiscard]] float spireGroundAt(const RockColumn& column, double x, double z,
+                                  const RockDetail& detail);
 
 } // namespace terrain::tile

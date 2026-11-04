@@ -142,7 +142,7 @@ void fillLattice(const Heightfield& field, const FineFrame& frame, const Corners
         }
         zs.assign(xs.size(), frame.z(v));
         out.resize(xs.size());
-        field.heightsAt(xs, zs, out);
+        field.seenHeightsAt(xs, zs, out, static_cast<double>(frame.spacing) * ratio);
         for (std::size_t n = 0; n < columns.size(); ++n) {
             lattice.at(columns[n], v) = out[n];
         }
@@ -358,10 +358,13 @@ std::vector<float> HorizonCrestSampler::sample(int level, const HorizonRect& rec
     }
     for (std::int64_t k = 0; k < rect.height() + 2; ++k) {
         zs.assign(xs.size(), samplePosition(wrapIndex(rect.z0 - 1 + k, counts.z), pitch));
-        field_->forFootprint(pitch).heightsAt(
+        // The relief as this level sees it: its dunes filtered to its pitch (forFootprint), the
+        // faces of the coasts as its tiles draw them (seenHeightsAt).
+        field_->forFootprint(pitch).seenHeightsAt(
             xs, zs,
             std::span<float>(margined).subspan(static_cast<std::size_t>(k * side),
-                                               static_cast<std::size_t>(side)));
+                                               static_cast<std::size_t>(side)),
+            pitch);
     }
     fill(level, rect, margined, lifts);
     return lifts;

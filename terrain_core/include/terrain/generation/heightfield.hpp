@@ -179,14 +179,27 @@ public:
     void heightsAt(std::span<const double> xs, std::span<const double> zs,
                    std::span<float> out) const;
     // samplesAt with the rock of each point in three dimensions (rock_faces.hpp, phase 12A): the
-    // same samples, bit for bit, and the faces the walls lay at each point, but those whose run
-    // is shorter than leastRun meters (a detail that would not draw them: kRunCells of its cells;
-    // the others the same whatever leastRun). rockAt: one point, every face. Throws
-    // std::invalid_argument unless the spans have one size.
+    // same samples, bit for bit, and the faces the walls lay at each point (and those of the
+    // coasts, coast_faces.hpp, agent 33), but those whose run is shorter than leastRun meters (a
+    // detail that would not draw them: kRunCells of its cells; the others the same whatever
+    // leastRun). rockAt: one point, every face. Throws std::invalid_argument unless the spans
+    // have one size.
     void samplesAt(std::span<const double> xs, std::span<const double> zs,
                    std::span<HeightSample> out, std::span<RockColumn> rock,
                    float leastRun = 0.0f) const;
     [[nodiscard]] RockColumn rockAt(double x, double z) const;
+    // sampleAt as a level of the horizon of pitch meters shows it (agent 33): where a face of the
+    // coasts stands, its height is the top of the rock seen from above as the tiles of LOD 3 draw
+    // it (the ledge of the top behind the face, that of its foot in front of it), with a ramp
+    // across the face a few pitches of the level wide (coast_faces::seenOf), so that the cliffs
+    // neither jump nor move back where the horizon takes over from the tiles and their line is not
+    // cut into the staircase of its lattice; bare rock over that ramp. sampleAt bit for bit
+    // elsewhere (out of the band of the coasts, away from their faces).
+    [[nodiscard]] HeightSample seenAt(double x, double z, double pitch) const;
+    // heightsAt as a level of pitch meters shows them (seenAt), for its fine grids (its detail
+    // normals and crests): the same bits as heightsAt away from the faces of the coasts.
+    void seenHeightsAt(std::span<const double> xs, std::span<const double> zs,
+                       std::span<float> out, double pitch) const;
     // How hard the rock is at height y under (x, z), in [0, 1] (0: soft): the layers the walls of
     // the gorges of the rivers cut there (mountain_walls: the hard and soft great bands of the
     // strata and of their rock steps, the soft ones made of beds a few meters thick, hard and
@@ -271,6 +284,16 @@ private:
     // (Hydrology::clearance), before their water: their corridors keep the relief they were found
     // over, bit for bit (heightfield_coast.cpp).
     void leaveValleys(double x, double z, HeightSample& s, Memos* memos) const;
+    // A face of the coasts reported at the canonical (x, z), its heights relative to the ground
+    // there, anchored on the relief relief there (anchorFace), its weight faded out near the
+    // rivers as the coasts are (Hydrology::clearance: no rock over their water).
+    void anchorCoastFace(double x, double z, float relief, RockFace& face) const;
+    [[nodiscard]] float coastFaceClear(double x, double z, float height) const;
+    // How fast the distance to the shore distance of the canonical (x, z) grows per meter there:
+    // the base of the geography over its gradient (gx, gz) and the water of the inlets around
+    // (coast_inlets::distanceOf), read a meter away along x and along z.
+    [[nodiscard]] double distancePerMeter(double x, double z, double base, double gx, double gz,
+                                          double distance) const;
     [[nodiscard]] static std::shared_ptr<const Coasts> makeCoasts(std::uint64_t seed,
                                                                   const WorldSize& world);
     // The inlets of these coasts, stopped before the rivers of hydrology_ (heightfield_coast.cpp).

@@ -216,6 +216,16 @@ public:
     // no water; it falls continuously to 0 toward them (river_clearance.cpp). The coasts (agent 33)
     // fade out with it: the corridors of the rivers keep the relief they were found over.
     [[nodiscard]] double clearance(double x, double z, double ground) const;
+    // What clearance reads at the canonical (x, z) whatever the relief, read once for the reliefs
+    // the coasts weigh there: the least distance beyond the valleys, ponds and lakes, and the
+    // least floor of the valleys; over(ground) is clearance(x, z, ground), bit for bit (both
+    // infinite where mayMatter is false).
+    struct Clearance {
+        double away = std::numeric_limits<double>::infinity();
+        double floor = std::numeric_limits<double>::infinity();
+        [[nodiscard]] double over(double ground) const;
+    };
+    [[nodiscard]] Clearance clearanceAt(double x, double z) const;
     // Whether a reach or a lake may reach the canonical (x, z): where it is false, clearance is
     // infinite whatever the relief (a cheap test of the reaches near and of the lakes around).
     [[nodiscard]] bool mayMatter(double x, double z) const;

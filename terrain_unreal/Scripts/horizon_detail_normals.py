@@ -45,6 +45,10 @@ HORIZON_HLSL = STRUCT_HLSL + r"""
 float3 n = normalize(N);
 float2 f = Local.xy * NormalRatio;
 float w = DetailNormals * Detail.Weight(f); // derivatives outside of any branch
+// On the faces of the grid (steeper than STEEP_FULL, none past STEEP_NONE: agent 33), the detail
+// fades out: its texels, read along x and y, run up the whole face as light and dark stripes. The
+// same on gentler ground (the factor exactly 1).
+w *= saturate((n.z - STEEP_NONE) / (STEEP_FULL - STEEP_NONE));
 BRANCH if (HasNormals < 0.5 || w <= 0.0) { return n; }
 float side = (Cells + 1.0) * NormalRatio;
 float2 g = Detail.Read(Tex, TexSampler, f, float2(FirstSlotX, FirstSlotZ), NormalRatio, side);
@@ -58,6 +62,14 @@ if (Detail.Pending(g)) { return n; }
 float3 d = normalize(float3(-g + CameraRel.xy / PlanetRadiusCm, 1.0));
 return normalize(lerp(n, d, w));
 """
+
+# The detail of the horizon whole while the up component of the normal of the grid is STEEP_FULL
+# at least (45 degrees), none from STEEP_NONE (66 degrees): tests/coast_render_support.hpp,
+# Level0::normalAt, the same.
+STEEP_FULL = 0.7
+STEEP_NONE = 0.4
+HORIZON_HLSL = HORIZON_HLSL.replace("STEEP_FULL", f"{STEEP_FULL}").replace("STEEP_NONE",
+                                                                         f"{STEEP_NONE}")
 
 HORIZON_INPUTS = ["N", "Local", "Morph", "Tex", "Coarse", "CameraRel", "Cells", "FirstSlotX",
                   "FirstSlotZ", "CoarseX", "CoarseZ", "CoarseFirstX", "CoarseFirstZ",

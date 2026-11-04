@@ -166,10 +166,14 @@ void testTwoObservers() {
 
 // Along the border of level n, the geomorphing target is the surface of level n + 1: its sample
 // at the even samples, the mean of its two samples around the odd ones. With point samples
-// (crestRatio 0) its samples are the even samples of level n, bit for bit; with crests they
-// differ where the crests lift them: the renderer morphs toward the coarser samples.
+// (crestRatio 0) its samples are the even samples of level n, bit for bit, on the world without
+// its coasts (each level draws their shores and their stacks as its pitch shows them:
+// coast_faces::seenShore); with crests they differ where the crests lift them: the renderer
+// morphs toward the coarser samples.
 void testMorphTargets(int crestRatio) {
-    const World world;
+    terrain::HeightfieldParams relief;
+    relief.geography.coasts = crestRatio != 0;
+    const World world(relief);
     HorizonParams params = smallParams();
     params.crestRatio = crestRatio;
     const HorizonSampler sampler(world.field, world.ecology, params);

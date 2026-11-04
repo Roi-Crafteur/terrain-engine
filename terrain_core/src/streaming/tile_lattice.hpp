@@ -129,7 +129,8 @@ inline TileColumns sampleColumns(const Heightfield& field, const TileLattice& la
         columns.rock.resize(kCount);
         const bool faces =
             std::any_of(columns.rock.begin(), columns.rock.end(), [&](const RockColumn& c) {
-                return std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
+                return c.spire.radius > 0.0f ||
+                       std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
                                    [&](const RockFace& f) {
                                        return drawnWeight(f, detail) > 0.0f;
                                    });

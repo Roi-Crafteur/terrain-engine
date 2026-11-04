@@ -20,7 +20,9 @@ SurfaceNormals), or the smooth normals of its samples where the detail is not re
 horizon (HasSurface 0), the layers follow the altitude only.
 
 Pixel shader: rock on steep slopes, snow on the gentle cold ground, the ground layers, world
-aligned textures near the camera fading to their mean colors far away (temporary_terrain_look.py).
+aligned textures near the camera fading to their mean colors far away (temporary_terrain_look.py);
+on the rock its bands (agent 33: its beds, its notch, its cap) from the UV channels 1 to 3 of the
+vertices (Bridge/tile_mesh_conversion.hpp: VertexBands).
 
 The asset belongs to the game project, not to this repository. Run the script once per project,
 and again after updating the plugin, in the Unreal Editor (the Python Editor Script Plugin must be
@@ -345,10 +347,27 @@ def pixel_shader(material, scalars, weights):
     for name in inputs:
         if name in nodes:
             connect(nodes[name], "", shade, name)
+    bands(material, shade)
     editing = unreal.MaterialEditingLibrary
     editing.connect_material_property(shade, "", unreal.MaterialProperty.MP_BASE_COLOR)
     editing.connect_material_property(shade, "NormalOut", unreal.MaterialProperty.MP_NORMAL)
     editing.connect_material_property(shade, "RoughOut", unreal.MaterialProperty.MP_ROUGHNESS)
+
+
+def bands(material, shade):
+    """The bands of the rock of the vertex (agent 33, Bridge/tile_mesh_conversion.hpp: UV channels
+    1 to 3): B = (strata, layered, notch, notchHeight), C = (cap, capHeight)."""
+    coords = []
+    for index in (1, 2, 3):
+        node = expression(material, unreal.MaterialExpressionTextureCoordinate, -800,
+                          1000 + 80 * index)
+        node.set_editor_property("coordinate_index", index)
+        coords.append(node)
+    append = expression(material, unreal.MaterialExpressionAppendVector, -600, 1100)
+    connect(coords[0], "", append, "A")
+    connect(coords[1], "", append, "B")
+    connect(append, "", shade, "B")
+    connect(coords[2], "", shade, "C")
 
 
 def create_temporary_terrain_material():

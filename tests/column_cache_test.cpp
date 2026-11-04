@@ -48,7 +48,9 @@ constexpr std::uint64_t kOtherSeed = 0x5eed2;
 constexpr double kK2X = 415'839.2;
 constexpr double kK2Z = -11'414'503.0;
 constexpr std::size_t kRockTiles = 20;
-constexpr std::size_t kDefaultBound = 11'000'000; // bytes
+// bytes: 11.6 MB since the columns hold the seas of dunes (HeightSample, 72 bytes: agent 34) and
+// the faces of the coasts (RockColumn, 304 bytes: agent 33), 377 bytes a column with its flag.
+constexpr std::size_t kDefaultBound = 12'000'000;
 
 void testShared() {
     using terrain::tile::sharedColumn;

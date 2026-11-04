@@ -87,11 +87,21 @@ VertexWater vertexWater(float level, double altitude) {
     return {static_cast<float>(static_cast<double>(level) - altitude), 1.0f};
 }
 
+VertexBands vertexBands(const RockBands& b) {
+    const auto clamp = [](float v, float reach) { return std::clamp(v, -reach, reach); };
+    return {clamp(b.strata, kStrataReach), b.layered,     clamp(b.notch, kBandReach),
+            b.notchHeight,                 clamp(b.cap, kBandReach), b.capHeight};
+}
+
 UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> waterLevels,
-                       const TileSea& sea, std::span<const float> rock) {
+                       const TileSea& sea, std::span<const float> rock,
+                       std::span<const RockBands> bands) {
     validate(mesh, waterLevels);
     if (!rock.empty() && rock.size() != mesh.vertices.size()) {
         throw std::invalid_argument("convertMesh: one share of rock per vertex expected");
+    }
+    if (!bands.empty() && bands.size() != mesh.vertices.size()) {
+        throw std::invalid_argument("convertMesh: the bands of every vertex or none expected");
     }
     const bool flagged = sea.texels != nullptr && !sea.texels->empty();
     const std::vector<double> ocean = flagged ? oceanWeights(sea) : std::vector<double>{};
@@ -117,6 +127,10 @@ UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> 
     }
     for (const Vec3f& normal : mesh.normals) {
         out.normals.push_back(toUnrealDirection(normal));
+    }
+    out.bands.reserve(bands.size());
+    for (const RockBands& b : bands) {
+        out.bands.push_back(vertexBands(b));
     }
     out.triangles.reserve(mesh.indices.size());
     for (const std::uint32_t index : mesh.indices) {

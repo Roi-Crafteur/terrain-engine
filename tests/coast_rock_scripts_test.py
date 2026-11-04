@@ -12,6 +12,10 @@ shallows, and still read its ground.
 - Every reader of that ground decodes it: the vertex code of the GPU horizon (HORIZON_GROUND,
   create_horizon_gpu_material.py) and the sea square under the tiles (horizon_sea_hlsl.py); no
   placeholder left.
+- The wet rock at the sea (temporary_terrain_hlsl.py): darker up to about WetBandM meters (3 m),
+  its upper edge ragged by noises of the world position (between half and one and a half the
+  band), in the shading of the tiles and of the GPU horizon alike (look.shade_hlsl): no step at
+  512 m.
 - The blends of the GPU horizon (agent 29: its colours come from them, Layers only where a texel
   holds none): the blend the core gives a texel of the ocean over rock (the ocean, all rock:
   coast_horizon_rock_test) draws rock and no sand of the shallows through FinishBlend
@@ -66,6 +70,148 @@ def check_blends(struct_code):
         check(abs(lc[1] - 1.0) < 1e-9, f"the rock over rock ({alpha}): {lc}")
     _, lb, lc, _, _ = reference.blend_texels_layers((over_water,), (1.0,), look.BIOMES)
     check(abs(lb[1] - 1.0) < 1e-9 and lc[1] < 1.0, f"the sand of the shallows over water: {lb}, {lc}")
+
+
+def check_wet_band(scripts):
+    """The wet rock at the sea, in the shading of the tiles and of the GPU horizon alike."""
+    import temporary_terrain_look as look
+
+    for detail in (False, True):
+        code = look.shade_hlsl(detail)
+        check("float wetTop = WetBandM * (0.5 + 0.7 * Look.Noise(P + 97.0, 12.0) "
+              "+ 0.3 * Look.Noise(P - 41.0, 3.0));" in code, f"the ragged wet edge ({detail})")
+        check("float wet = 1.0 - smoothstep(wetTop - 0.7, wetTop + 0.3, Z);" in code,
+              f"the wet band by the altitude ({detail})")
+        check("rockG *= lerp(1.0, WetDarken, wet);" in code, f"the wet rock darker ({detail})")
+    check("WetBandM" in look.shade_inputs() and "WetDarken" in look.shade_inputs(),
+          "the wet band read by the shading")
+    band, darken = look.SCALARS["WetBandM"], look.SCALARS["WetDarken"]
+    check(band == 3.0 and 0.0 < darken < 1.0, f"a wet band of 3 m, darker: {band}, {darken}")
+    # Both materials shade the land with it.
+    for name, call in (("create_horizon_gpu_material.py", "look.shade_hlsl(False)"),
+                       ("create_temporary_terrain_material.py", "look.shade_hlsl(")):
+        with open(f"{scripts}/{name}", encoding="utf-8") as f:
+            check(call in f.read(), f"{name} shades the land with the look")
+
+    def smoothstep(a, b, x):
+        t = min(max((x - a) / (b - a), 0.0), 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def wet(z, n12, n3):
+        top = band * (0.5 + 0.7 * n12 + 0.3 * n3)
+        return 1.0 - smoothstep(top - 0.7, top + 0.3, z)
+
+    tops = []
+    for n12 in (0.0, 0.25, 0.5, 0.75, 1.0):
+        for n3 in (0.0, 0.5, 1.0):
+            check(wet(0.0, n12, n3) == 1.0, "the rock wet at the sea level")
+            check(wet(1.5 * band + 0.3, n12, n3) == 0.0, "dry above one and a half the band")
+            tops.append(next(z / 10.0 for z in range(0, 100) if wet(z / 10.0, n12, n3) < 0.5))
+    check(max(tops) - min(tops) >= band, f"a ragged upper edge: {min(tops)} to {max(tops)} m")
+
+
+def check_bands(scripts, struct_code):
+    """The bands of the rock (agent 33): Look.Bands in the shading of the tiles and of the GPU
+    horizon, the same numbers as its copy in the tests (coast_band_support.hpp: bandsOf), fed by
+    the UV channels 1 to 3 of the tiles and by the band texels of the horizon."""
+    check("float Bands(float4 B, float2 C)" in struct_code, "Look.Bands is declared")
+    import temporary_terrain_hlsl as terrain_hlsl
+    check("rockG *= Look.Bands(B, C);" in terrain_hlsl.SHADE_BOTTOM, "the rock takes its bands")
+    import temporary_terrain_look as look
+    check("B" in look.shade_inputs() and "C" in look.shade_inputs(), "the shade node reads B, C")
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "coast_band_support.hpp"),
+              encoding="utf-8") as f:
+        copy = f.read()
+    for hlsl, cpp in (("0.24 * (frac(sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5)",
+                       "0.24 * (fract(std::sin(k * 12.9898 + 4.1) * 43758.5453) - 0.5)"),
+                      ("float depth = 0.18 + 0.24 * frac(sin(k * 93.989 + 0.3) * 43758.5453);",
+                       "const double depth = 0.18 + 0.24 * bedDraw(k, 93.989, 0.3);"),
+                      ("1.0 - depth * (1.0 - smoothstep(0.0, max(1.5 * w, 0.03) + 0.06, f))",
+                       "1.0 - depth * (1.0 - smoothstep(0.0, std::max(1.5 * w, 0.03) + 0.06, f))"),
+                      ("2.0 + floor(5.0 * frac(sin(k * 78.233 + 1.7) * 43758.5453))",
+                       "2.0 + std::floor(5.0 * bedDraw(k, 78.233, 1.7))"),
+                      ("0.8 * (frac(sin(k * 39.425 + 2.9) * 43758.5453) - 0.5)",
+                       "0.8 * (bedDraw(k, 39.425, 2.9) - 0.5)"),
+                      ("count * (f + 2.0 * warp * f * (1.0 - f))",
+                       "count * (f + 2.0 * warp * f * (1.0 - f))"),
+                      ("float lw = max(count * w, 1e-4);", "std::max(count * w, 1e-4)"),
+                      ("saturate((0.35 - w) / 0.2)", "std::clamp((0.35 - w) / 0.2, 0.0, 1.0)"),
+                      ("1.0 - 0.12 * (1.0 - smoothstep(0.0, max(1.5 * lw, 0.05) + 0.1, frac(l)))",
+                       "1.0 - 0.12 *"),
+                      ("lerp(1.0, 0.55, notch)", "(1.0 - 0.45 * notch)"),
+                      ("lerp(1.0, 0.7, cap)", "(1.0 - 0.3 * cap)"),
+                      ("smoothstep(-0.4, 0.2, B.z) * (1.0 - smoothstep(B.w - 0.2, B.w + 0.4, B.z))",
+                       "smoothstep(-0.4, 0.2, n) * (1.0 - smoothstep(nh - 0.2, nh + 0.4, n))")):
+        check(hlsl in struct_code, f"Look.Bands holds {hlsl}")
+        check(cpp in copy, f"bandsOf holds {cpp}")
+    # The faces of the rock: no patch of the world position running up them (agent 33, the
+    # stripes of the walls of v5 and v3), and the bands shown raw by the debug view 6.
+    shade = terrain_hlsl.SHADE_TOP + terrain_hlsl.SHADE_BOTTOM + "".join(
+        v for k, v in vars(terrain_hlsl).items() if k.isupper() and isinstance(v, str))
+    check("rock = max(rock * (1.0 - gravel * 0.5 * (1.0 - rockFace)), outcrop * cold * 0.9);"
+          in shade, "no gravel takes the rock of a face")
+    check("Look.Patch(float2(P.y, Z), 16.0, 61.0)" in shade and
+          "Look.Patch(float2(P.x, Z), 16.0, 61.0)" in shade,
+          "the variant of the rock of a face in patches of its planes")
+    check("float3 bands = float3(frac(B.x), B.y" in shade and "(DebugView < 5.5 ?" in shade,
+          "the debug view 6 shows the bands")
+    check("(DebugView < 6.5 ? bands : N * 0.5 + 0.5)" in shade, "the debug view 7 shows the normal")
+    # The detail normals of the horizon fade out on its faces, whole on gentler ground (agent 33,
+    # the stripes of the wall of v3 at 800 m), as Level0::normalAt (coast_render_support.hpp).
+    import horizon_detail_normals as detail
+    check("w *= saturate((n.z - 0.4) / (0.7 - 0.4));" in detail.HORIZON_HLSL,
+          "the detail of the horizon fades out on its faces")
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "coast_render_support.hpp"),
+              encoding="utf-8") as f:
+        render = f.read()
+    check(f"kSteepFull = {detail.STEEP_FULL};" in render and
+          f"kSteepNone = {detail.STEEP_NONE};" in render, "its copy in the tests, the same")
+    with open(f"{scripts}/create_temporary_terrain_material.py", encoding="utf-8") as f:
+        tiles = f.read()
+    check('set_editor_property("coordinate_index", index)' in tiles and "(1, 2, 3)" in tiles,
+          "the tiles read their bands from the UV channels 1 to 3")
+    with open(f"{scripts}/create_horizon_gpu_material.py", encoding="utf-8") as f:
+        gpu = f.read()
+    check("BandTex.Load(int3((i0 + int2(1, 1) + first) % side, 0));" in gpu and
+          '"HorizonBands"' in gpu and "connect(bands(material, nodes), \"\", shade, \"B\")" in gpu,
+          "the horizon reads the band texels around the pixel in its pixel shader")
+
+
+# What the vertex shader of the GPU horizon hands to its pixel shader and reads, as it compiled in
+# Unreal on e6f198d (DXC failed on f79741f, one float4 more and one texture more: agent 33): 22
+# scalars of interpolators, the textures of the texels, of the coarser texels and of the blends.
+INTERPOLATOR_BUDGET = 22
+VERTEX_TEXTURES = ["Tex", "Coarse", "Blend"]
+WIDTHS = {"float4": 4, "CMOT_FLOAT4": 4, "CMOT_FLOAT3": 3, "CMOT_FLOAT2": 2, "CMOT_FLOAT1": 1,
+          "FLOAT4": 4, "FLOAT3": 3, "FLOAT2": 2, "FLOAT1": 1}
+
+
+def check_interpolators(scripts):
+    """The interpolators and the textures of the vertex shader of the GPU horizon, counted in its
+    scripts (create_horizon_gpu_material.py, horizon_water_nodes.py) without Unreal: a static
+    check of what DXC refused."""
+    with open(f"{scripts}/create_horizon_gpu_material.py", encoding="utf-8") as f:
+        gpu = f.read()
+    with open(f"{scripts}/horizon_water_nodes.py", encoding="utf-8") as f:
+        water = f.read()
+    vertex = gpu[gpu.index("def vertex_shader("):gpu.index("\ndef ", gpu.index("def vertex_shader("))]
+    widths = {name: WIDTHS[kind.split(".")[-1]] for name, kind in
+              re.findall(r'\("(\w+Out)", ([\w.]+)\)', vertex)}
+    named = re.findall(r'interpolate\(material, vertex, "(\w+)"', gpu)
+    named += [f"W{i}Out" for i in range(3)] if 'f"W{index}Out"' in gpu else []
+    scalars = sum(widths.get(name, 4) for name in named)
+    outputs = re.search(r"VERTEX_OUTPUTS = \[([^\]]*)\]", water)
+    for name in re.findall(r'"(\w+)"', outputs.group(1) if outputs else ""):
+        scalars += 2 if name == "InlandLocalOut" else 1
+    check(scalars <= INTERPOLATOR_BUDGET,
+          f"the GPU horizon interpolates {scalars} scalars (at most {INTERPOLATOR_BUDGET})")
+    inputs = re.search(r'"HorizonVertex", look\.struct_hlsl\(\) \+ vertex_hlsl\(\),\s*\[([^\]]*)\]',
+                       vertex)
+    read = [n for n in re.findall(r'"(\w+)"', inputs.group(1) if inputs else "")
+            if n in ("Tex", "Coarse", "Blend") or n.endswith("Tex")]
+    check(inputs is not None and read == VERTEX_TEXTURES,
+          f"the vertex shader of the GPU horizon reads the textures {VERTEX_TEXTURES} only ({read})")
+    print(f"the GPU horizon: {scalars} scalars interpolated, its vertex shader reads {read}")
 
 
 def main():
@@ -126,6 +272,9 @@ def main():
     check("look.struct_hlsl() + VERTEX_HLSL" not in gpu, "no undecoded vertex code left")
 
     check_blends(terrain.struct_hlsl(biomes))
+    check_wet_band(scripts)
+    check_bands(scripts, terrain.struct_hlsl(biomes))
+    check_interpolators(scripts)
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 

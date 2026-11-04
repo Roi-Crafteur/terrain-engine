@@ -15,12 +15,14 @@ namespace terrain::unreal {
 // ATerrainWorld::ReturnToGamePawn, Terrain.Pawn; agent 35 for a click on the map): the walkable
 // ground nearest to the column under the view, never a slope it would slide down (73 degrees
 // under the wall of the K2) nor water. Two steps:
-// - the candidates, read on the heightmap of the core (walkableCandidates): dry columns whose
-//   slope is under the walkable angle of the pawn, nearest first;
+// - the candidates, read on the ground of the core (walkableCandidates): dry columns whose
+//   slope is under the walkable angle of the pawn, nearest first. The pawn of the game reads the
+//   top of the rock of the tiles (TerrainTiles::groundAt, UTerrainDevTools::FindGameGround): behind
+//   the faces of the rock in three dimensions (phase 12A, the sea cliffs of agent 33) the
+//   heightmap lies in the rock, and in front of them above the ground;
 // - each candidate checked on the real collision of the tiles (checkStand): rays down at its
 //   center and around the capsule. The tiles are meshed from the 3D SDF (cliffs, overhangs):
 //   their ground may be steeper than the heightmap, or away from it.
-// When the 3D rock of task 12A is on main, the candidates will have to read the real column.
 
 // The search around the column: rings ringStep meters apart up to radius, each walked along in
 // steps of about ringStep meters.
@@ -34,7 +36,7 @@ struct WalkableSearch {
 struct WalkableSpot {
     double x = 0.0;
     double z = 0.0;
-    double ground = 0.0;   // the height of the heightmap there, meters
+    double ground = 0.0;   // the height of the ground there (GroundHeight), meters
     double slope = 0.0;    // its slope, rise over run (groundSlope)
     double distance = 0.0; // from the column, meters: the radius of its ring
 };
@@ -113,7 +115,8 @@ struct StandCheck {
 };
 
 // Whether the pawn stands at a candidate: probes[0] the ray of its center, the others around the
-// capsule; heightmapGround the ground of the heightmap there; waterSurface waterSurfaceAround.
+// capsule; heightmapGround the ground of the candidate there (WalkableSpot::ground: for the pawn of
+// the game, the top of the rock of the tiles); waterSurface waterSurfaceAround.
 [[nodiscard]] StandCheck checkStand(std::span<const FloorProbe> probes, double heightmapGround,
                                     std::optional<double> waterSurface, const StandLimits& limits);
 

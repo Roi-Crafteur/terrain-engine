@@ -1,9 +1,11 @@
 // The detail of the far horizon over the water of the world (phase 11B): on the small planet with
 // its hydrology, around points of its rivers, the point heights and the lifts that
-// HorizonDetailSampler reads in its fine grid (Heightfield::heightsAt in rows of nodes, through the
-// regions of the hydrology) are those of Heightfield::sampleAt, point by point, and of
+// HorizonDetailSampler reads in its fine grid (Heightfield::seenHeightsAt in rows of nodes, through
+// the regions of the hydrology) are those of Heightfield::seenAt, point by point, and of
 // HorizonCrestSampler::fill on them, as the epochs compute them, bit for bit; its slopes are those
-// of HorizonNormalSampler.
+// of HorizonNormalSampler. Those heights are those of Heightfield::sampleAt but on the gentle
+// shores of the coasts at the mouths, which each level lowers toward the sea level
+// (coast_faces::seenShore).
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/streaming/horizon_detail.hpp"
@@ -60,9 +62,12 @@ int compare(const terrain::Heightfield& field, const HorizonParams& params, int 
     std::vector<float> ground;
     for (std::int64_t k = rect.z0 - 1; k <= rect.z1; ++k) {
         for (std::int64_t i = rect.x0 - 1; i <= rect.x1; ++i) {
-            ground.push_back(field.sampleAt(terrain::samplePosition(i, pitch),
-                                            terrain::samplePosition(k, pitch))
-                                 .height);
+            const double sx = terrain::samplePosition(i, pitch);
+            const double sz = terrain::samplePosition(k, pitch);
+            const float relief = field.sampleAt(sx, sz).height;
+            ground.push_back(field.seenAt(sx, sz, pitch).height);
+            TEST_CHECK(ground.back() == relief ||
+                       (relief > 0.0f && ground.back() >= 0.0f && ground.back() < relief));
         }
     }
     std::vector<float> lifts(static_cast<std::size_t>(rect.count()));

@@ -41,7 +41,7 @@ void testRepositoryCopy(const std::filesystem::path& repository, const std::file
     const PlacesFileSource source(copy);
     const std::vector<dev::Place> places = source.places();
     const dev::PlacesFile file = dev::loadPlaces(repository);
-    TEST_CHECK(places.size() >= 11 && places == file.places && source.error().empty());
+    TEST_CHECK(places.size() >= 20 && places == file.places && source.error().empty());
     TEST_CHECK(places.front().name == "chute388_bassin" && places[7].name == "plage_origine");
 
     PlacesFileSource writer(copy);

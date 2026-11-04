@@ -14,13 +14,13 @@ bool finished(const std::future<GroundLevel>& read) {
 
 } // namespace
 
-GroundLevel groundLevelAt(const Heightfield& field, double x, double z) {
+GroundLevel groundLevelAt(const TerrainTiles& tiles, double x, double z) {
     const auto start = std::chrono::steady_clock::now();
-    const HeightSample sample = field.sampleAt(x, z);
+    const HeightSample sample = tiles.heightfield().sampleAt(x, z);
     GroundLevel level;
     level.x = x;
     level.z = z;
-    level.ground = static_cast<double>(sample.height);
+    level.ground = static_cast<double>(tiles.groundAt(x, z));
     level.stand = std::max(level.ground, static_cast<double>(sample.waterLevel));
     level.milliseconds = std::chrono::duration<double, std::milli>(
                              std::chrono::steady_clock::now() - start)
@@ -28,10 +28,10 @@ GroundLevel groundLevelAt(const Heightfield& field, double x, double z) {
     return level;
 }
 
-void GroundRead::ask(const Heightfield& field, double x, double z) {
+void GroundRead::ask(const TerrainTiles& tiles, double x, double z) {
     forget();
     current_ = std::async(std::launch::async,
-                          [&field, x, z] { return groundLevelAt(field, x, z); });
+                          [&tiles, x, z] { return groundLevelAt(tiles, x, z); });
 }
 
 void GroundRead::forget() {
