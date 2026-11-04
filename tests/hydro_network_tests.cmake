@@ -2,3 +2,4 @@
 # infiltration, the routing of the planet level through the passes, the data of its network and the
 # fine network of the streams. Included once from tests/CMakeLists.txt.
 terrain_add_test(climate_bands_test terrain_core)
+terrain_add_test(runoff_partition_test terrain_core)

@@ -121,6 +121,7 @@ add_library(terrain_core STATIC
     src/generation/ravines.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
+    src/generation/runoff_partition.cpp
     src/generation/rock_faces.cpp
     src/generation/rock_spires.cpp
     src/generation/rock_spires_shape.cpp
