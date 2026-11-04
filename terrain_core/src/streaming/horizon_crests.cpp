@@ -14,10 +14,12 @@ namespace {
 
 // The point heights of a rectangle grown by one sample on each side, and its cells: cell
 // (cu, cv) lies between the samples (x0 - 1 + cu, z0 - 1 + cv) and (x0 + cu, z0 + cv), for
-// cu <= width and cv <= height. A corner may rise when it lies in the rectangle, on land.
+// cu <= width and cv <= height. A corner may rise when it lies in the rectangle, on land (land:
+// the same samples, landOf).
 struct Corners {
     HorizonRect rect;
     std::span<const float> heights;
+    std::span<const char> land;
 
     [[nodiscard]] std::int64_t side() const { return rect.width() + 2; }
     [[nodiscard]] std::int64_t cellsX() const { return rect.width() + 1; }
@@ -30,9 +32,34 @@ struct Corners {
         const std::int64_t i = cu + a - 1;
         const std::int64_t k = cv + b - 1;
         return i >= 0 && k >= 0 && i < rect.width() && k < rect.height() &&
-               at(cu, cv, a, b) >= kSeaLevel;
+               land[static_cast<std::size_t>((cv + b) * side() + cu + a)] != 0;
     }
 };
+
+// Which samples of the grown rectangle of a level are land: above the sea level, or below it in a
+// dry low of the relief (Heightfield::mayBeDryBelowSea, then the water of its sample: never the
+// sea). Below the sea level elsewhere, the sea (or the bed of a river near it, a valley floor that
+// never rises anyway).
+std::vector<char> landOf(const Heightfield& field, const HorizonParams& params, int level,
+                         const HorizonRect& rect, std::span<const float> margined) {
+    std::vector<char> land(margined.size(), 0);
+    const std::int64_t side = rect.width() + 2;
+    const int pitch = levelPitch(params, level);
+    const HorizonIndex counts = levelCounts(params, level);
+    for (std::size_t n = 0; n < margined.size(); ++n) {
+        if (margined[n] >= kSeaLevel) {
+            land[n] = 1;
+            continue;
+        }
+        const auto at = static_cast<std::int64_t>(n);
+        const double x = samplePosition(wrapIndex(rect.x0 - 1 + at % side, counts.x), pitch);
+        const double z = samplePosition(wrapIndex(rect.z0 - 1 + at / side, counts.z), pitch);
+        land[n] = field.mayBeDryBelowSea(x, z) && field.sampleAt(x, z).water != WaterKind::Ocean
+                      ? 1
+                      : 0;
+    }
+    return land;
+}
 
 constexpr std::array<std::array<int, 2>, 4> kCorners{{{0, 0}, {1, 0}, {0, 1}, {1, 1}}};
 
@@ -252,7 +279,8 @@ void HorizonCrestSampler::fill(int level, const HorizonRect& rect,
         return;
     }
     const int ratio = params_.crestRatio;
-    const Corners corners{rect, margined};
+    const std::vector<char> land = landOf(*field_, params_, level, rect, margined);
+    const Corners corners{rect, margined, land};
     const std::vector<char> examined = examinedCells(corners);
     const HorizonIndex counts = levelCounts(params_, level);
     const FineFrame frame{{(rect.x0 - 1) * ratio, (rect.z0 - 1) * ratio},
@@ -305,7 +333,8 @@ void HorizonCrestSampler::read(int level, const HorizonRect& rect, HorizonFineGr
         return u % g == 0 && v % g == 0 && samples.contains({u, v}) && !held.contains({u, v});
     });
     const std::vector<float> margined = marginedOf(grid, rect);
-    const Corners corners{rect, margined};
+    const std::vector<char> land = landOf(*field_, params_, level, rect, margined);
+    const Corners corners{rect, margined, land};
     const std::vector<char> examined = examinedCells(corners);
     const int ratio = params_.crestRatio;
     const std::int64_t u0 = (rect.x0 - 1) * ratio;
@@ -333,7 +362,8 @@ void HorizonCrestSampler::fill(int level, const HorizonRect& rect, const Horizon
         return;
     }
     const std::vector<float> margined = marginedOf(grid, rect);
-    const Corners corners{rect, margined};
+    const std::vector<char> land = landOf(*field_, params_, level, rect, margined);
+    const Corners corners{rect, margined, land};
     const std::vector<char> examined = examinedCells(corners);
     const int ratio = params_.crestRatio;
     const GridLattice lattice{grid, (rect.x0 - 1) * ratio, (rect.z0 - 1) * ratio, stride};

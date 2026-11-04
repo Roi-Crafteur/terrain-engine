@@ -218,6 +218,11 @@ public:
     // The depressions below the sea level, deep in the plains (none without the geography or
     // with GeographyParams::depressions off).
     [[nodiscard]] std::vector<Depression> depressions() const;
+    // Whether dry ground may lie below the sea level at (x, z), any image of it: true within the
+    // reach of a low of the relief (the depressions), false elsewhere, where the ground below the
+    // sea level is the sea (or the bed of a river near it). Cheap (a lattice lookup): the readers
+    // that tell the sea from the height read the water of the sample only where it is true.
+    [[nodiscard]] bool mayBeDryBelowSea(double x, double z) const;
 
     // The Heightfield of the world (phase 11B): this relief with the water of hydrology, built
     // over it: the valleys of its rivers carved, the water of its rivers and lakes. The same bits

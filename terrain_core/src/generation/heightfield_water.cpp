@@ -100,6 +100,12 @@ std::vector<Depression> Heightfield::depressions() const {
     return out;
 }
 
+bool Heightfield::mayBeDryBelowSea(double x, double z) const {
+    return water_->depressions &&
+           depressions::mayReach(*water_->depressions, noise::wrapCanonical(x, world_.x),
+                                 noise::wrapCanonical(z, world_.z));
+}
+
 // With the geography the sea is where its coast signal is below 0 (the sign of the
 // continentalness), whatever the height: a depression below the sea level deep inland stays dry
 // land. Without it, the ground below the sea level. The hydrology comes after (applyHydrology).

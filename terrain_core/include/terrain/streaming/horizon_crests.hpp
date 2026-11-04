@@ -26,8 +26,9 @@ namespace terrain {
 // another corner of each of its 4 cells never rises: a valley floor, lower than both of its
 // neighbors along an axis, keeps its point height, whatever crest stands over it. Along a ridge,
 // the higher corner of each cell reaches the crest. A sample never rises above the top of its
-// cells. Samples under the sea (point height below kSeaLevel) never rise, nor do those of level
-// 0, which meets the tiles bit for bit.
+// cells. Samples under the sea never rise (below kSeaLevel, but in a dry low of the relief:
+// Heightfield::mayBeDryBelowSea and the water of the sample, never the sea), nor do those of
+// level 0, which meets the tiles bit for bit.
 //
 // The points of the cells lie on the fine lattice of level n: node (u, v) at (u, v) * pitch / R,
 // sample (i, k) on node (i * R, k * R); each is read at its canonical position, and a sample
