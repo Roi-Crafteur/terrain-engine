@@ -13,20 +13,40 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <string>
 
 namespace coast_planet {
 
+// The value of the variable name of the environment, empty where it is not set (MSVC: _dupenv_s,
+// its getenv being deprecated as unsafe).
+inline std::string environment(const char* name) {
+#ifdef _MSC_VER
+    char* value = nullptr;
+    std::size_t size = 0;
+    std::string out;
+    if (_dupenv_s(&value, &size, name) == 0 && value != nullptr) {
+        out = value;
+    }
+    std::free(value);
+    return out;
+#else
+    const char* value = std::getenv(name);
+    return value != nullptr ? std::string(value) : std::string();
+#endif
+}
+
 inline const char* filePath() {
-    const char* path = std::getenv("TERRAIN_COAST_PLANET");
-    if (path == nullptr) {
+    static const std::string path = environment("TERRAIN_COAST_PLANET");
+    if (path.empty()) {
         std::fprintf(stderr, "TERRAIN_COAST_PLANET: no planet file (the fixture coast_planet)\n");
         std::abort();
     }
-    return path;
+    return path.c_str();
 }
 
 // The water of the default world: its planet level read from the file.
