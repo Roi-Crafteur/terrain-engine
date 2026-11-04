@@ -125,7 +125,7 @@ double crescentOf(const Ergs::Impl& m, const dune_phase::Shared& s, const Layer&
     const double cx = s.x[0] - along * f.wx + lateral * f.wz + shift;
     const double cz = s.z[0] - along * f.wz - lateral * f.wx - shift;
     ErgMemos& memos = memosOf(m);
-    const auto at = static_cast<std::size_t>(((l.salt / 4) % 4) * 6 + 2 * (back + 1));
+    const auto at = static_cast<std::size_t>(((l.salt / 4) % 4) * 6 + static_cast<std::uint64_t>(2 * (back + 1)));
     const double n = static_cast<double>(m.scatter.fbm2D(cx, cz, memos.crescents[at]));
     const double o =
         static_cast<double>(m.scatter.fbm2D(cx + shift, cz + shift, memos.crescents[at + 1]));

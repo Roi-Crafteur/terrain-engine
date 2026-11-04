@@ -140,9 +140,10 @@ void crestOf(Arm& a, std::uint64_t ka, bool second, const ArmKind& kind) {
         const double u = static_cast<double>(i) / kSegments;
         // Up and down from one joint to the next, by half kWobble at least: the crest never runs
         // straight.
-        const double wobble = kWobble * (0.5 + 0.5 * uniform(noise::deriveSeed(ka, 40 + i))) *
+        const double wobble = kWobble * (0.5 + 0.5 * uniform(noise::deriveSeed(ka, static_cast<std::uint64_t>(40 + i)))) *
                               ((i + static_cast<int>(ka & 1U)) % 2 == 0 ? 1.0 : -1.0);
-        a.h[i] = i == kSegments ? 0.0 : a.top * (dmath::pow(1.0 - u, kArmCurve) + wobble * (1.0 - u));
+        a.h[static_cast<std::size_t>(i)] =
+            i == kSegments ? 0.0 : a.top * (dmath::pow(1.0 - u, kArmCurve) + wobble * (1.0 - u));
     }
     if (second) {
         const auto j = static_cast<std::size_t>(2 + noise::deriveSeed(ka, 7) % 3);
@@ -179,12 +180,12 @@ void armOf(Arm& a, std::uint64_t h, int k, int arms, bool big, const ArmKind& ki
     const double step = a.length / kSegments;
     for (int i = 1; i <= kSegments; ++i) {
         const auto n = static_cast<std::size_t>(i);
-        heading += curl / kSegments + kKink * (2.0 * uniform(noise::deriveSeed(ka, 20 + i)) - 1.0);
+        heading += curl / kSegments + kKink * (2.0 * uniform(noise::deriveSeed(ka, static_cast<std::uint64_t>(20 + i))) - 1.0);
         const dmath::SineCosine d = dmath::sinCosTurns(heading);
         a.x[n] = a.x[n - 1] + step * d.cosine;
         a.z[n] = a.z[n - 1] + step * d.sine;
         a.side[n - 1] = side;
-        side = uniform(noise::deriveSeed(ka, 60 + i)) < kFlip ? -side : side;
+        side = uniform(noise::deriveSeed(ka, static_cast<std::uint64_t>(60 + i))) < kFlip ? -side : side;
     }
     crestOf(a, ka, big || uniform(noise::deriveSeed(ka, 6)) < kSecondChance, kind);
     a.cx = 0.5 * (a.x[0] + a.x[kSegments]);

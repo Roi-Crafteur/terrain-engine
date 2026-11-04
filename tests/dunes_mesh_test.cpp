@@ -132,9 +132,10 @@ std::vector<std::array<double, 9>> trianglesAlong(const World& w,
             std::array<double, 9> t{};
             for (int v = 0; v < 3; ++v) {
                 const terrain::Vec3f& q = d.mesh.vertices[d.mesh.indices[k + static_cast<std::size_t>(v)]];
-                t[3 * v] = d.originX + q.x;
-                t[3 * v + 1] = d.originY + q.y;
-                t[3 * v + 2] = d.originZ + q.z;
+                const auto n = static_cast<std::size_t>(3 * v);
+                t[n] = d.originX + q.x;
+                t[n + 1] = d.originY + q.y;
+                t[n + 2] = d.originZ + q.z;
             }
             out.push_back(t);
         }
