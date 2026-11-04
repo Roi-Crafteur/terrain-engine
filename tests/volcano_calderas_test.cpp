@@ -3,7 +3,10 @@
 // the radius where its wall is half way up (its spurs and re-entrants) and the ground at nine
 // tenths of its radius (its couloirs and talus). The crest varies by a few percent of the depth at
 // least, the radius too; and none of the three repeats at a fixed period: past the first lag where
-// its autocorrelation falls below 0, it never climbs back above 0.5.
+// its autocorrelation falls below 0, it never climbs back above 0.5. Measured around the caldera
+// in its own frame, its ellipse (VolcanoSite::elongation, along axis) stretched back to a circle:
+// an elliptical caldera (Crater Lake, 8 by 10 km) is a shape, not a pattern, though its radius
+// repeats every half turn.
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/volcanoes.hpp"
 
@@ -77,10 +80,16 @@ Walls wallsOf(const terrain::Heightfield& field, const terrain::VolcanoSite& s) 
     const double cz = s.z + top.dz;
     const auto crater = static_cast<double>(s.crater);
     Walls w;
+    const auto stretch = static_cast<double>(s.elongation);
+    const double ca = std::cos(static_cast<double>(s.axis));
+    const double sa = std::sin(static_cast<double>(s.axis));
     for (int k = 0; k < kAzimuths; ++k) {
+        // The azimuth a in the frame of the caldera, back in the world.
         const double a = 2.0 * kPi * k / kAzimuths;
-        const double c = std::cos(a);
-        const double sn = std::sin(a);
+        const double u = std::cos(a) * stretch;
+        const double v = std::sin(a);
+        const double c = u * ca - v * sa;
+        const double sn = u * sa + v * ca;
         std::vector<double> xs;
         std::vector<double> zs;
         for (int i = 0; i <= 60; ++i) {

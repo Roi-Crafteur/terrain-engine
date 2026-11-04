@@ -373,13 +373,24 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
 - volcans (agent 45, en cours, `generation/volcanoes.hpp`) : les 3 759 volcans de la géologie du
-  peuplement (mêmes positions, même seed), en relief avant le niveau Planète (sa somme change :
-  `df60a12f83115797` au point d'arrêt 1). Stratovolcans concaves (30 à 35° sur les 500 m sous
+  peuplement (mêmes positions, même seed), en relief avant le niveau Planète (sa somme change).
+  Stratovolcans concaves (30 à 35° sur les 500 m sous
   la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
   la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
-  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Restent : eau, sols,
+  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Restent : sols,
   horizon, lieux. Limites : pas de roche 3D sur les parois de caldeira (jusqu'à ~60° en
   heightmap), à reprendre avec la roche 3D.
+  - eau (avec le niveau Planète) : lacs de cratère, de caldeira et de maar à un seul niveau, sous
+    le point le plus bas de la lèvre (ou le fond de la brèche) moins une revanche, plus pleins
+    sous un climat humide (`PlanetLevel::humidityAt` au centre : aucun sous 0,2, plein à 0,5,
+    salé sous 0,32) ; les maars dont les lèvres se coupent partagent un lac ; un bassin dont une
+    vallée de rivière coupe la lèvre n'a pas de lac (la rivière le vide) ; les grandes caldeiras
+    tiennent souvent un lac du niveau Planète. Île à caldeira : fermée, sa lèvre reste au-dessus
+    de 40 m et son fond sous 0 m est sec ou un lac ; ouverte, un détroit à fond plat coupe le
+    flanc jusqu'à la mer, qui remplit la caldeira (Santorin). Sources chaudes (bassins de 3 à
+    25 m sur une terrasse de sinter), geysers (sur leur dôme), mares de boue (sèches) et
+    fumerolles des volcans actifs, sans animation. Lecture : `Heightfield::volcanoBasinsIn`,
+    `geothermalIn` ; l'agent 31 peut y lire les lacs (exutoires possibles) et les sources.
   - frontière avec l'agent 51 (mers) : l'agent 45 place seul tous les volcans
     (`settlement::placeVolcanoes`, en mer aussi) et façonne la tête active de chaque point chaud
     océanique, île ou mont sous-marin, dans sa portée (`VolcanoSite::reach`) ; l'agent 51 pose la

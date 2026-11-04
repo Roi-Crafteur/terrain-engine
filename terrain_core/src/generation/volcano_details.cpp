@@ -7,6 +7,7 @@
 #include "volcano_cones.hpp"
 #include "volcano_forms.hpp"
 #include "volcano_sites.hpp"
+#include "volcano_water.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -277,6 +278,8 @@ Detail detailOf(const VolcanoSite& s, const GroundAt& ground) {
         cutFlow(s, d, ground, f);
     }
     std::erase_if(d.flows, [](const Flow& f) { return !(f.length > 2.0 * f.width); });
+    volcano_water::addBasins(s, d, ground);
+    volcano_water::addSprings(s, d, ground);
     return d;
 }
 

@@ -88,6 +88,49 @@ struct Flow {
     std::uint64_t seed = 0;
 };
 
+// A crater, caldera or maar that may hold a lake (volcano_water.hpp), (x, z) from the center of
+// its volcano: its lowest ground; the most a lake in it may rise (the lowest point of its rim or
+// the bottom of its breach, less a margin); on rays evenly spaced around it (turns from +x), the
+// radius within which a lake may stand (where its inner wall rises to that height) and that of
+// its crest (both empty for a maar: its radius all around); whether it holds water under a wet
+// climate (drawn). The maars whose rims cut one another share one lake: their floor, spill and
+// the point their climate is read at (wetX, wetZ), and group, the index of the first of them.
+struct Basin {
+    double x = 0.0;
+    double z = 0.0;
+    double radius = 0.0;
+    double floor = 0.0;
+    double spill = 0.0;
+    double wetX = 0.0;
+    double wetZ = 0.0;
+    std::vector<float> within;
+    std::vector<float> crest;
+    std::size_t group = 0;
+    bool lake = false;
+    bool maar = false;
+};
+
+// A hot spring, a geyser, a mud pot or a fumarole, (x, z) from the center of its volcano: the
+// radius of its pool, pot or vent; the level of the water of its pool (absolute meters), the top
+// of its terrace of sinter; how deep its pool or pot; how high the mound of a geyser.
+struct Spring {
+    double x = 0.0;
+    double z = 0.0;
+    GeothermalKind kind = GeothermalKind::HotSpring;
+    double radius = 0.0;
+    double level = 0.0;
+    double depth = 0.0;
+    double mound = 0.0;
+};
+
+// Where the springs of a volcano rise: their ground (center from the center of the volcano,
+// radius; 0 for none).
+struct Zone {
+    double x = 0.0;
+    double z = 0.0;
+    double radius = 0.0;
+};
+
 struct Detail {
     Shape shape;
     // The ground the edifice stands on: the mean of the relief around (on land), its floor (at
@@ -96,6 +139,9 @@ struct Detail {
     double sheetOffset = 0.0;
     std::vector<Cone> cones;
     std::vector<Flow> flows;
+    std::vector<Basin> basins;
+    std::vector<Spring> springs;
+    Zone zone;
 };
 
 // The relief without the volcanoes and the coasts at a point (any image of it): its height and its
@@ -122,6 +168,7 @@ struct Point {
     double regional = 0.0; // the regional ground under it (HeightSample::regional)
     float cover = 0.0f;    // [0, 1]: how much of the ground is their work
     bool enclosed = false; // in a crater whose rim stays above the sea all around
+    bool flooded = false;  // in a caldera the sea floods through its strait, or in that strait
     bool touched = false;  // a volcano changed the height
 };
 

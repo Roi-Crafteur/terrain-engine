@@ -1,8 +1,8 @@
 // The section volcano of terrain_probe (probe_sections.hpp, agent 45): the volcano whose reach holds
 // the point (the nearest relative to its reach), its form, its origin in the plate tectonics, its
-// sizes, where its summit lies and how far, and how much of the ground there is its work. The keys
-// of what comes later (the ground of the volcanoes, their lakes, their geothermal sites) are kept,
-// absent until then.
+// sizes, where its summit lies and how far, and how much of the ground there is its work; the lake
+// of the crater over the point, the geothermal site nearest it. The key of what comes later (the
+// ground of the volcanoes) is kept, absent until then.
 
 #include "probe_sections.hpp"
 
@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace probe {
 
@@ -35,6 +36,53 @@ const terrain::VolcanoSite* volcanoAt(const terrain::Heightfield& field, double 
         }
     }
     return best;
+}
+
+// The lake of the crater, caldera or maar over the point (its level, with the planet level) and
+// the geothermal site nearest the point within kSpringSearch meters (its kind).
+constexpr double kSpringSearch = 100.0;
+
+void lakeAndSpring(const ProbeWorld& w, const Point& p, const terrain::VolcanoSite* s, Record& r) {
+    if (s == nullptr) {
+        r.none("lakeLevel").none("geothermal");
+        return;
+    }
+    const terrain::Heightfield& field = w.field();
+    const double reach = static_cast<double>(s->reach);
+    double best = std::numeric_limits<double>::infinity();
+    float level = std::numeric_limits<float>::quiet_NaN();
+    for (const terrain::VolcanoBasin& b :
+         field.volcanoBasinsIn(p.x - reach, p.z - reach, p.x + reach, p.z + reach)) {
+        const terrain::VolcanoOffset o = terrain::volcanoOffset(w.world(), b.x, b.z, p.x, p.z);
+        const double d = terrain::dmath::hypot(o.dx, o.dz) / static_cast<double>(b.radius);
+        if (d < 1.0 && d < best && p.sample.water != terrain::WaterKind::None &&
+            p.sample.waterLevel == b.level) {
+            best = d;
+            level = b.level;
+        }
+    }
+    if (std::isnan(level)) {
+        r.none("lakeLevel");
+    } else {
+        r.number("lakeLevel", static_cast<double>(level), 2, "m");
+    }
+    const terrain::GeothermalSite* spring = nullptr;
+    best = kSpringSearch;
+    const std::vector<terrain::GeothermalSite> springs =
+        field.geothermalIn(p.x - kSpringSearch, p.z - kSpringSearch, p.x + kSpringSearch,
+                           p.z + kSpringSearch);
+    for (const terrain::GeothermalSite& g : springs) {
+        const double d = terrain::dmath::hypot(g.x - p.x, g.z - p.z);
+        if (d < best) {
+            best = d;
+            spring = &g;
+        }
+    }
+    if (spring == nullptr) {
+        r.none("geothermal");
+    } else {
+        r.text("geothermal", terrain::geothermalKindName(spring->kind));
+    }
 }
 
 } // namespace
@@ -76,8 +124,9 @@ Record volcanoSection(const ProbeWorld& w, const Point& p) {
             .number("craterDepth", static_cast<double>(s->craterDepth), 1, "m")
             .number("reach", static_cast<double>(s->reach), 1, "m");
     }
-    // Later: the ground of the volcanoes, the water of their craters, their geothermal sites.
-    r.none("ground").none("lakeLevel").none("geothermal");
+    // Later: the ground of the volcanoes.
+    r.none("ground");
+    lakeAndSpring(w, p, s, r);
     return r;
 }
 

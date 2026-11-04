@@ -226,6 +226,14 @@ public:
     [[nodiscard]] const Geography* geography() const { return geography_.get(); }
     // The volcanoes of the world (agent 45), or nullptr without the geography or with them off.
     [[nodiscard]] const Volcanoes* volcanoes() const { return volcanoes_.get(); }
+    // The craters, calderas and maars of the volcanoes that may hold a lake, and the springs,
+    // geysers, mud pots and fumaroles of the active ones, whose centers lie in the box (canonical
+    // meters, not wrapping), in the order of their volcanoes. Their lakes need the planet level
+    // (withHydrology): without it VolcanoBasin::level is NaN.
+    [[nodiscard]] std::vector<VolcanoBasin> volcanoBasinsIn(double minX, double minZ, double maxX,
+                                                            double maxZ) const;
+    [[nodiscard]] std::vector<GeothermalSite> geothermalIn(double minX, double minZ, double maxX,
+                                                           double maxZ) const;
     // The depressions below the sea level, deep in the plains (none without the geography or
     // with GeographyParams::depressions off).
     [[nodiscard]] std::vector<Depression> depressions() const;
@@ -272,6 +280,8 @@ private:
     struct Water;  // the depressions and the water (heightfield_water.cpp)
     struct Coasts; // the noises of the coasts (heightfield_coast.cpp)
     struct Volcanic; // the details of the volcanoes, read once (heightfield_volcano.cpp)
+    // The basins of the volcanoes the rivers of hydrology_ drain, read once (the same file).
+    struct VolcanicWater;
     // What the coasts make of a canonical point of the geography g in reliefWith: its coast
     // signal, the factor of the land (mountains, hills, forms of the plains) and the ground before
     // the local relief; those of the geography out of the band or without the coasts.
@@ -321,6 +331,14 @@ private:
     void addVolcanoes(double x, double z, HeightSample& s, Memos* memos,
                       wall_faces::Site* site) const;
     [[nodiscard]] static std::shared_ptr<const Volcanic> makeVolcanic(const Volcanoes& volcanoes);
+    // The lakes of the craters and the pools of the springs of the volcanoes at a canonical point,
+    // at the end of the water (applyHydrology): nothing where none reaches.
+    void volcanoWater(double x, double z, HeightSample& s) const;
+    // The level of the lake of basin b of volcano i (NaN for none: dry, drained by a river, or
+    // without hydrology_), and whether it is salty.
+    [[nodiscard]] double volcanoLake(std::size_t i, std::size_t b, bool& salt) const;
+    [[nodiscard]] static std::shared_ptr<const VolcanicWater>
+    makeVolcanicWater(const Volcanoes& volcanoes);
     // The seas of dunes of the hydrology (ergs.hpp) over the relief at a canonical point, before
     // its valleys (heightfield_hydrology): nothing, not a bit, outside them.
     void addDunes(double x, double z, HeightSample& s) const;
@@ -432,6 +450,7 @@ private:
     std::shared_ptr<const Volcanic> volcanic_;     // shared by copies
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
+    std::shared_ptr<const VolcanicWater> volcanicWater_; // made with hydrology_, shared by copies
     double footprint_ = 0.0;                       // of a sample, for the dunes (forFootprint)
     std::shared_ptr<const Coasts> coasts_;         // the coasts, or null without them
     // The inlets and stacks of the coasts, cell by cell on demand (null without the coasts): of

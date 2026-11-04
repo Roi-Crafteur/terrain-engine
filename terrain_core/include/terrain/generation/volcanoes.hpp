@@ -16,6 +16,7 @@
 // Deterministic, thread-safe, periodic on the world.
 
 #include "terrain/generation/geography_params.hpp"
+#include "terrain/generation/water_kind.hpp"
 #include "terrain/world_size.hpp"
 
 #include <array>
@@ -78,6 +79,46 @@ inline constexpr int kVolcanoFormCount = 14;
 // Lowercase English names, such as "strato" or "island caldera".
 [[nodiscard]] const char* volcanoFormName(VolcanoForm form);
 [[nodiscard]] const char* volcanoOriginName(VolcanoOrigin origin);
+
+// The geothermal features of the active volcanoes: where they are, their pools, pots and
+// terraces; nothing moves (no jet, no steam).
+enum class GeothermalKind : std::uint8_t {
+    HotSpring, // a pool of hot water on its terrace of sinter
+    Geyser,    // a small pool at the top of its mound of sinter
+    MudPot,    // a pit of mud, without standing water
+    Fumarole,  // a vent of steam: its ground alone
+};
+// Lowercase English names, such as "hot spring" or "mud pot".
+[[nodiscard]] const char* geothermalKindName(GeothermalKind kind);
+
+// A geothermal feature (Heightfield::geothermalIn).
+struct GeothermalSite {
+    double x = 0.0; // canonical
+    double z = 0.0;
+    GeothermalKind kind = GeothermalKind::HotSpring;
+    float radius = 0.0f; // of its pool, pot or vent
+    // The water of its pool, meters (hot springs and geysers); the ground at its vent otherwise.
+    float level = 0.0f;
+    std::uint32_t volcano = 0; // in Volcanoes::sites()
+};
+
+// A crater, caldera or maar (Heightfield::volcanoBasinsIn) and its lake.
+struct VolcanoBasin {
+    double x = 0.0; // its center, canonical
+    double z = 0.0;
+    float radius = 0.0f; // of its rim, on average
+    float floor = 0.0f;  // its lowest ground
+    // The most a lake in it may rise: the lowest point of its rim, or the bottom of its breach,
+    // less a margin. A lake never stands above it.
+    float spill = 0.0f;
+    // Its lake under the humidity of the climate of the planet level at its center: a single
+    // level, between its floor and spill; NaN (and water None) when dry or without the planet
+    // level.
+    float level = 0.0f;
+    WaterKind water = WaterKind::None; // Lake or SaltLake
+    bool maar = false;
+    std::uint32_t volcano = 0; // in Volcanoes::sites()
+};
 
 // A volcano and the sizes its form drew (meters, radians).
 struct VolcanoSite {

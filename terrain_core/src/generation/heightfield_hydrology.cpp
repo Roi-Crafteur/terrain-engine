@@ -98,6 +98,8 @@ double bedHardness(std::uint64_t seed, double height) {
 Heightfield Heightfield::withHydrology(std::shared_ptr<const Hydrology> hydrology) const {
     Heightfield out = *this;
     out.hydrology_ = std::move(hydrology);
+    out.volcanicWater_ =
+        out.volcanoes_ && out.hydrology_ ? makeVolcanicWater(*out.volcanoes_) : nullptr;
     if (out.coasts_) {
         out.inlets_ = out.makeInlets();
     }
@@ -282,6 +284,7 @@ void Heightfield::applyHydrology(double x, double z, HeightSample& s, Memos* mem
             s.waterLevel = lake.level;
         }
     }
+    volcanoWater(x, z, s);
 }
 
 void Heightfield::waterOf(std::span<const double> xs, std::span<const double> zs,
