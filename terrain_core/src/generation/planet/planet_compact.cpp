@@ -1,5 +1,6 @@
 #include "terrain/generation/planet/planet_level.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
 
 #include <algorithm>
@@ -36,10 +37,25 @@ const PlanetCells::RiverCell* PlanetCells::riverAt(std::size_t cell) const {
 
 std::size_t PlanetCells::memoryBytes() const {
     return bytesOf(rowTemperature) + bytesOf(elevation) + bytesOf(precipitation) + bytesOf(bits) +
-           bytesOf(lakeCells) + bytesOf(riverCells);
+           bytesOf(lakeCells) + bytesOf(riverCells) + bytesOf(landDischarge);
 }
 
 namespace planet {
+
+std::uint16_t dischargeCode(double discharge) {
+    if (!(discharge > kLeastDischarge)) {
+        return 0;
+    }
+    const double steps = (dmath::log(discharge) / dmath::log(10.0) + 6.0) * kDischargeSteps;
+    return static_cast<std::uint16_t>(std::clamp(std::floor(steps + 0.5) + 1.0, 1.0, 65535.0));
+}
+
+double dischargeOf(std::uint16_t code) {
+    if (code == 0) {
+        return 0.0;
+    }
+    return dmath::exp((static_cast<double>(code - 1) / kDischargeSteps - 6.0) * dmath::log(10.0));
+}
 
 std::int16_t roundedElevation(float height) {
     const double rounded = std::floor(static_cast<double>(height) + 0.5);
@@ -96,6 +112,12 @@ PlanetCells compactCells(const PlanetBuild& build) {
         cells.bits[c] = bits;
     }
     cells.lakeCells.shrink_to_fit();
+    for (std::size_t c = 0; c < count; ++c) {
+        if (build.ocean[c] == kLand) {
+            cells.landDischarge.push_back(dischargeCode(build.discharge[c]));
+        }
+    }
+    cells.landDischarge.shrink_to_fit();
     cells.riverCells = riverCellsOf(build.rivers);
     for (const PlanetCells::RiverCell& river : cells.riverCells) {
         cells.bits[river.cell] |= PlanetCells::kRiverBit;

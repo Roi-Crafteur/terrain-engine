@@ -59,6 +59,10 @@ void addCells(Fnv& f, const PlanetCells& cells) {
         f.add(r.segment);
         f.add(r.vertex);
     }
+    f.add(static_cast<std::uint64_t>(cells.landDischarge.size()), 8);
+    for (const std::uint16_t q : cells.landDischarge) {
+        f.add(static_cast<std::uint64_t>(q), 2);
+    }
 }
 
 void addLakes(Fnv& f, const std::vector<PlanetLake>& lakes) {

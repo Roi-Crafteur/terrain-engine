@@ -15,7 +15,8 @@ namespace terrain {
 // It is written whole or not at all, and its level is checked against its checksum when read.
 
 inline constexpr const char* kPlanetFileName = "planet.bin";
-inline constexpr std::uint32_t kPlanetFileVersion = 1;
+// 2: the discharge of every land cell (task 11C, agent 31).
+inline constexpr std::uint32_t kPlanetFileVersion = 2;
 
 // Writes level, built from seed on world, to file. Throws StorageError (Io).
 void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,

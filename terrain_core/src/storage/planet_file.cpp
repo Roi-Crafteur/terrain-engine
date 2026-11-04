@@ -98,6 +98,10 @@ template <class Out> void writeCells(Out& out, const PlanetCells& c) {
         out.i32(r.segment);
         out.i32(r.vertex);
     }
+    out.count(c.landDischarge.size());
+    for (const std::uint16_t q : c.landDischarge) {
+        out.u16(q);
+    }
 }
 
 PlanetCells readCells(FrameReader& in) {
@@ -132,6 +136,10 @@ PlanetCells readCells(FrameReader& in) {
         r.cell = in.u32();
         r.segment = in.i32();
         r.vertex = in.i32();
+    }
+    c.landDischarge.resize(in.count(2));
+    for (std::uint16_t& q : c.landDischarge) {
+        q = in.u16();
     }
     return c;
 }

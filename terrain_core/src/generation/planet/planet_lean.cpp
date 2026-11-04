@@ -94,7 +94,7 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
 // The compact cells, each full array freed once its compact one is made.
 PlanetCells compactLean(Lean& lean, std::vector<std::uint16_t>& landRain,
                         LandValues<std::uint8_t>& receiver, SparseCells<std::int32_t>& lakeOfCell,
-                        const RiverGraph& rivers) {
+                        const RiverGraph& rivers, std::vector<std::uint16_t>&& landDischarge) {
     const LandIndex& land = *lean.land;
     const std::size_t count = lean.grid.cells();
     PlanetCells cells;
@@ -128,6 +128,7 @@ PlanetCells compactLean(Lean& lean, std::vector<std::uint16_t>& landRain,
     for (const PlanetCells::RiverCell& river : cells.riverCells) {
         cells.bits[river.cell] |= PlanetCells::kRiverBit;
     }
+    cells.landDischarge = std::move(landDischarge);
     return cells;
 }
 
@@ -147,6 +148,11 @@ void riversAndCells(Lean& lean, PlanetLevel::Parts& parts, LandValues<std::uint8
         const float row = lean.rowTemperature[static_cast<std::size_t>(lean.grid.row(c))];
         return CellWater{0, 0, cellFrozen(row, lean.height[c], params.climate)};
     };
+    // The discharge of every land cell, coded as the level keeps it, before the rivers free it.
+    std::vector<std::uint16_t> landDischarge(flow.discharge.values().size());
+    for (std::size_t s = 0; s < landDischarge.size(); ++s) {
+        landDischarge[s] = dischargeCode(flow.discharge.values()[s]);
+    }
     const RiverRelease release{[&flow] { flow.discharge.release(); },
                                [&order] { freeVector(order); }};
     parts.rivers = buildRiverGraph(lean.grid, lean.height, lean.land, receiver, order, lakes, flow,
@@ -163,7 +169,8 @@ void riversAndCells(Lean& lean, PlanetLevel::Parts& parts, LandValues<std::uint8
     parts.features =
         findRiverFeatures(lean.grid, lean.height, *lean.land, parts.rivers, params.features);
     parts.timings.features += watch.lap("features");
-    parts.cells = compactLean(lean, landRain, receiver, lakes.lakeOfCell, parts.rivers);
+    parts.cells = compactLean(lean, landRain, receiver, lakes.lakeOfCell, parts.rivers,
+                              std::move(landDischarge));
     parts.lakes = std::move(lakes.lakes);
 }
 

@@ -341,7 +341,7 @@ void testSmallWorldWithWater() {
     const Sums rivers = riverSums(tiles, *planet);
     std::printf("small world rivers in %.1f s\n", seconds(start));
     golden::report("the small world with its water out of the coastal zone",
-                   {{"small world planet level", planet->checksum(), 0x847DC00F3E35BE83ULL},
+                   {{"small world planet level", planet->checksum(), 0x0C73319338ACC1CBULL},
                     {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
                     {"small world tiles", sums.tiles.value(), 0xAD305C88B5E86650ULL},
                     {"small world horizon", sums.horizon.value(), 0x83F885240245B787ULL},

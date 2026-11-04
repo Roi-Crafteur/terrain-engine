@@ -30,7 +30,8 @@ struct PlanetSample {
 };
 
 // The cells of the planet level as kept after the construction, compact (about 5 bytes per
-// cell plus the sparse lakes and rivers): what the game needs at run time and 11B will use.
+// cell, 2 more per land cell, plus the sparse lakes and rivers): what the game needs at run time
+// and 11B will use.
 struct PlanetCells {
     PlanetGrid grid;
     std::vector<float> rowTemperature;        // sea-level temperature of each row
@@ -50,6 +51,10 @@ struct PlanetCells {
         std::int32_t vertex;
     };
     std::vector<RiverCell> riverCells; // sorted by cell: the point of the segment owning it
+    // The discharge leaving every land cell (not the ocean, the cells without kOceanBit), in the
+    // order of the cells, coded on a logarithmic scale (planet::dischargeCode, task 11C): the
+    // whole network of the planet level, not only its rivers (planet_network.hpp).
+    std::vector<std::uint16_t> landDischarge;
 
     static constexpr std::uint8_t kOceanBit = 1u << 4;
     static constexpr std::uint8_t kLakeBit = 1u << 5;
@@ -141,6 +146,13 @@ namespace planet {
 [[nodiscard]] std::int16_t roundedElevation(float height);
 [[nodiscard]] std::uint16_t roundedPrecipitation(float precipitation);
 [[nodiscard]] std::vector<PlanetCells::RiverCell> riverCellsOf(const RiverGraph& graph);
+// The discharge of a cell as the level keeps it (PlanetCells::landDischarge): 0 for none (at most
+// kLeastDischarge m^3/s), else 1 + round((log10(discharge) + 6) kDischargeSteps), from 10^-6 to
+// 10^7 m^3/s, a step of 0.046 %; and back.
+inline constexpr double kLeastDischarge = 1.0e-6;
+inline constexpr double kDischargeSteps = 5000.0;
+[[nodiscard]] std::uint16_t dischargeCode(double discharge);
+[[nodiscard]] double dischargeOf(std::uint16_t code);
 
 // The level of the relief of field built in little memory (phase 11D): the stages of buildPlanet
 // with each array freed after its last use, the arrays of the hydrology on the land or on a few

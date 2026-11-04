@@ -117,20 +117,17 @@ void testAtOnceIsBefore() {
     terrain::PlanetParams params = golden::smallPlanetParams(1, 2);
     params.climate = atOnce();
     params.links.enabled = false; // the receivers of before too
-    terrain::PlanetBuild build = terrain::planet::buildPlanet(field, params);
-    golden::Checksum climate;
-    for (const float p : build.climate.precipitation) {
-        climate.add(p);
+    const terrain::PlanetBuild build = terrain::planet::buildPlanet(field, params);
+    // The goldens of the small world before the network: its relief, climate and hydrology (the
+    // level itself keeps more since, the discharge of every land cell).
+    const std::vector<golden::Part> parts = golden::planetParts(
+        {"relief", "climate", "hydrology", "level"}, build,
+        {0x3F4264CF06FB5493ULL, 0xAB9EB405E174EAA4ULL, 0x27B5C16AD4EC6D79ULL, 0});
+    for (std::size_t k = 0; k < 3; ++k) {
+        std::printf("bands at once: %s %016llx\n", parts[k].name,
+                    static_cast<unsigned long long>(parts[k].actual));
+        TEST_CHECK(parts[k].actual == parts[k].expected);
     }
-    for (const float t : build.climate.rowTemperature) {
-        climate.add(t);
-    }
-    const terrain::PlanetLevel level(std::move(build), params);
-    std::printf("bands at once: climate %016llx, level %016llx\n",
-                static_cast<unsigned long long>(climate.value()),
-                static_cast<unsigned long long>(level.checksum()));
-    TEST_CHECK(climate.value() == 0xAB9EB405E174EAA4ULL);
-    TEST_CHECK(level.checksum() == 0xCDBFA06D845540C8ULL);
 }
 
 // An ocean 1,000 m deep with two flat continents of 200 m from 70 degrees south to 70 north.
