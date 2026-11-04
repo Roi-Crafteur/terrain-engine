@@ -135,6 +135,8 @@ add_library(terrain_core STATIC
     src/generation/vegetation.cpp
     src/generation/voronoi.cpp
     src/generation/wall_faces.cpp
+    src/generation/water/drainage_network.cpp
+    src/generation/water/drainage_points.cpp
     src/generation/water/fine_lake.cpp
     src/generation/water/hydrology.cpp
     src/generation/water/hydrology_lips.cpp
@@ -142,6 +144,9 @@ add_library(terrain_core STATIC
     src/generation/water/hydrology_query.cpp
     src/generation/water/hydrology_floor.cpp
     src/generation/water/hydrology_region.cpp
+    src/generation/water/network_block.cpp
+    src/generation/water/network_lattice.cpp
+    src/generation/water/network_trunks.cpp
     src/generation/water/river_blend.cpp
     src/generation/water/river_box.cpp
     src/generation/water/river_clearance.cpp

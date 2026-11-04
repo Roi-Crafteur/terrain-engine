@@ -57,9 +57,8 @@ StreamBank bankOf(const PlanetGrid& g, std::size_t c, std::size_t d, std::uint32
 
 } // namespace
 
-void PlanetNetwork::build() {
+std::vector<std::uint32_t> PlanetNetwork::downstream(std::vector<std::uint32_t>& best) {
     const std::size_t count = land_->landCells();
-    const PlanetGrid& grid = level_->grid();
     std::vector<std::uint32_t> pending(count, 0);
     land_->forEachLand([&](std::size_t cell, std::size_t) {
         if (const std::int64_t d = down(cell); d >= 0) {
@@ -68,7 +67,7 @@ void PlanetNetwork::build() {
     });
     std::vector<NetworkInputs> inputs(count);
     std::vector<std::uint32_t> area(count, 0);
-    std::vector<std::uint32_t> best(count, kNoDonor);
+    best.assign(count, kNoDonor);
     std::vector<std::uint32_t> sequence;
     sequence.reserve(count);
     order_.assign(count, 0);
@@ -101,14 +100,17 @@ void PlanetNetwork::build() {
             ready.push_back(static_cast<std::uint32_t>(d));
         }
     }
-    planet::freeVector(pending);
-    planet::freeVector(inputs);
     area_.resize(count);
     for (std::size_t s = 0; s < count; ++s) {
         area_[s] = static_cast<std::uint16_t>(std::min<std::uint32_t>(area[s], 65535));
     }
-    planet::freeVector(area);
-    // Upstream: the basins and the watercourses, from their ends.
+    return sequence;
+}
+
+void PlanetNetwork::upstream(const std::vector<std::uint32_t>& sequence,
+                             const std::vector<std::uint32_t>& best) {
+    const std::size_t count = land_->landCells();
+    const PlanetGrid& grid = level_->grid();
     basin_.assign(count, 0);
     flags_.assign(count, 0);
     std::vector<float> endFlow(count, 0.0f);
@@ -139,6 +141,12 @@ void PlanetNetwork::build() {
             static_cast<std::uint8_t>(kind) | (main ? 0x04 : 0x00) |
             (static_cast<std::uint8_t>(bank) << 3) | (static_cast<std::uint8_t>(own) << 5));
     }
+}
+
+void PlanetNetwork::build() {
+    std::vector<std::uint32_t> best;
+    const std::vector<std::uint32_t> sequence = downstream(best);
+    upstream(sequence, best);
 }
 
 } // namespace terrain

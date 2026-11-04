@@ -69,6 +69,11 @@ public:
 
 private:
     void build();
+    // Downstream: the orders and the areas, the largest donor of each cell; the cells in order.
+    [[nodiscard]] std::vector<std::uint32_t> downstream(std::vector<std::uint32_t>& best);
+    // Upstream, from the ends: the basins, the watercourses, their kinds and banks.
+    void upstream(const std::vector<std::uint32_t>& sequence,
+                  const std::vector<std::uint32_t>& best);
     // Where the water of a land cell ends there (Confluence where it goes on; Lake where it enters
     // a lake that spills on: its watercourse ends, its water goes on from the outlet).
     [[nodiscard]] StreamEnd ownEnd(std::size_t cell) const;
