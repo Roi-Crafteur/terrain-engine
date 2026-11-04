@@ -4,6 +4,7 @@
 #include "terrain/generation/planet/planet_climate.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <queue>
 #include <utility>
@@ -123,6 +124,41 @@ std::uint8_t channelOrder(std::uint8_t most, std::uint8_t twice) {
     return most == 0 ? 1 : static_cast<std::uint8_t>(twice != 0 ? most + 1 : most);
 }
 
+// The lower neighbors of node k (popped before it, not above it) a sheet of water spreads to,
+// weighted by their drop over their distance (multiple flow directions, Freeman): the share of
+// each in shares, their indices in to; their count.
+int spreadOf(const NetworkWindow& w, const Flood& f, const std::vector<std::uint32_t>& rank,
+             std::size_t k, std::array<std::size_t, 8>& to, std::array<double, 8>& shares) {
+    const int x = static_cast<int>(k % static_cast<std::size_t>(w.side));
+    const int y = static_cast<int>(k / static_cast<std::size_t>(w.side));
+    int count = 0;
+    double sum = 0.0;
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            const int nx = x + dx;
+            const int ny = y + dy;
+            if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= w.side || ny >= w.side) {
+                continue;
+            }
+            const std::size_t n = w.index(nx, ny);
+            if (rank[n] >= rank[k] || f.filled[n] > f.filled[k]) {
+                continue;
+            }
+            const double distance = (dx != 0 && dy != 0) ? 1.4142135623730951 : 1.0;
+            const double drop = std::max(static_cast<double>(f.filled[k] - f.filled[n]), 1.0e-3);
+            const double weight = std::pow(drop / distance, 1.1);
+            to[static_cast<std::size_t>(count)] = n;
+            shares[static_cast<std::size_t>(count)] = weight;
+            sum += weight;
+            ++count;
+        }
+    }
+    for (int i = 0; i < count; ++i) {
+        shares[static_cast<std::size_t>(i)] /= sum;
+    }
+    return count;
+}
+
 Gathered gather(const PlanetLevel& level, const NetworkWindow& w, const Outlets& o, const Flood& f) {
     const double nodeArea = kNodeSpacing * kNodeSpacing;
     const double cellArea = level.grid().cellArea();
@@ -131,7 +167,13 @@ Gathered gather(const PlanetLevel& level, const NetworkWindow& w, const Outlets&
                std::vector<std::size_t>(w.count(), kNone), std::vector<float>(w.count(), 0.0f)};
     std::vector<std::uint8_t> most(w.count(), 0);
     std::vector<std::uint8_t> twice(w.count(), 0);
+    std::vector<std::uint32_t> rank(w.count(), 0);
+    for (std::size_t r = 0; r < f.order.size(); ++r) {
+        rank[f.order[r]] = static_cast<std::uint32_t>(r);
+    }
     const RunoffParams runoff;
+    std::array<std::size_t, 8> to{};
+    std::array<double, 8> shares{};
     for (auto it = f.order.rbegin(); it != f.order.rend(); ++it) {
         const std::size_t k = *it;
         const std::uint32_t cell = w.cell[k];
@@ -153,15 +195,27 @@ Gathered gather(const PlanetLevel& level, const NetworkWindow& w, const Outlets&
         if (d == kNone) {
             continue;
         }
+        if (g.channel[k] == 0) {
+            // A sheet of water down the slope: spread over the lower neighbors.
+            const int count = spreadOf(w, f, rank, k, to, shares);
+            for (int i = 0; i < count; ++i) {
+                const std::size_t n = to[static_cast<std::size_t>(i)];
+                g.area[n] += g.area[k] * shares[static_cast<std::size_t>(i)];
+                g.flow[n] += g.flow[k] * shares[static_cast<std::size_t>(i)];
+            }
+            if (count == 0) {
+                g.area[d] += g.area[k];
+                g.flow[d] += g.flow[k];
+            }
+            continue;
+        }
         g.area[d] += g.area[k];
         g.flow[d] += g.flow[k];
-        if (g.channel[k] != 0) {
-            g.channel[d] = o.kind[d] == NodeOutlet::None ? 1 : g.channel[d];
-            twice[d] = g.order[k] > most[d] ? 0 : (g.order[k] == most[d] ? 1 : twice[d]);
-            most[d] = std::max(most[d], g.order[k]);
-            if (g.mainDonor[d] == kNone || g.flow[k] > g.flow[g.mainDonor[d]]) {
-                g.mainDonor[d] = k;
-            }
+        g.channel[d] = o.kind[d] == NodeOutlet::None ? 1 : g.channel[d];
+        twice[d] = g.order[k] > most[d] ? 0 : (g.order[k] == most[d] ? 1 : twice[d]);
+        most[d] = std::max(most[d], g.order[k]);
+        if (g.mainDonor[d] == kNone || g.flow[k] > g.flow[g.mainDonor[d]]) {
+            g.mainDonor[d] = k;
         }
     }
     return g;

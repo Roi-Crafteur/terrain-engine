@@ -541,3 +541,12 @@ target_link_libraries(terrain_export_horizon PRIVATE terrain_core terrain_warnin
 #     [ratio...]
 add_executable(terrain_export_silhouette tools/export_silhouette.cpp)
 target_link_libraries(terrain_export_silhouette PRIVATE terrain_core terrain_warnings)
+
+# Maps of the hydrographic network (task 11C, step 1, agent 31): around each place, the network
+# over the shaded relief at 2,048, 200 and 20 km, colored by the orders of Strahler, and the basins
+# of the planet level (see the comment at the top of the tool):
+# terrain_export_network <output-dir> --planet <file> [--threads <n>] [--pixels <n>]
+#                        [--place <name> <x> <z>]...
+add_executable(terrain_export_network tools/export_network.cpp tools/network_draw.cpp
+                                      tools/network_maps.cpp)
+target_link_libraries(terrain_export_network PRIVATE terrain_core terrain_warnings)

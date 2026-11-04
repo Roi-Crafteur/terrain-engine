@@ -60,7 +60,7 @@ struct RunoffParams {
     // square meters; the slope read at least headSlope; the rain read at least stormRain mm a
     // year (the rare violent rains of the deserts cut wadis).
     double headFlux = 7500.0;
-    double leastHead = 1.0e4;
+    double leastHead = 5.0e4;
     double mostHead = 3.0e5;
     double permeableHead = 5.0e6;
     double headSlope = 0.01;
