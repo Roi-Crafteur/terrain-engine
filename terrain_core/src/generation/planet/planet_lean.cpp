@@ -80,7 +80,8 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
     }
     freeVector(cells.mountain);
     freeVector(ocean); // the land index answers from now on
-    keepRain(lean, computeClimate(lean.grid, lean.height, *lean.land, params.climate, threads));
+    keepRain(lean, computeClimate(lean.grid, lean.height, *lean.land, params.climate, threads,
+                                  field.seed()));
     parts.timings.climate = watch.lap("climate");
 }
 

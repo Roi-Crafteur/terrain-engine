@@ -209,6 +209,9 @@ public:
 
     [[nodiscard]] const HeightfieldParams& params() const { return params_; }
     [[nodiscard]] const WorldSize& world() const { return world_; }
+    // The seed the relief was made of (the planet level draws the waves of its bands of winds
+    // from it).
+    [[nodiscard]] std::uint64_t seed() const { return seed_; }
 
     // The tectonic plates of the continentalness, or nullptr when the layer is disabled
     // (plates.amplitude <= 0, or the geography is enabled).
@@ -407,6 +410,7 @@ private:
 
     HeightfieldParams params_;
     WorldSize world_;
+    std::uint64_t seed_ = 0;
     std::shared_ptr<const Layers> layers_;         // shared by copies, immutable
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields

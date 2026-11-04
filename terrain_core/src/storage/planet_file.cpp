@@ -48,6 +48,9 @@ template <class Out> void writeParams(Out& out, const PlanetParams& p) {
         out.f64(v);
     }
     out.i32(c.blurPasses);
+    for (const double v : {c.bandJoin, c.bandShift, c.bandShiftWavelength}) {
+        out.f64(v);
+    }
     const PlanetRiverParams& r = p.rivers;
     for (const double v :
          {r.minDischarge, r.widthCoefficient, r.depthCoefficient, r.depthExponent}) {

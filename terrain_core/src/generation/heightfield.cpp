@@ -126,7 +126,7 @@ constexpr double kWallGrainWavelength = 64.0;
 
 Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
                          const WorldSize& world)
-    : params_(params), world_(world) {
+    : params_(params), world_(world), seed_(seed) {
     validate(world_);
     const auto layer = [seed, &world](Layer stream, int octaves, double wavelength) {
         return noise::FbmOctaves(noise::deriveSeed(seed, stream),

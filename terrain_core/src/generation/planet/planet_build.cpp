@@ -103,7 +103,8 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params,
             breachDepressions(build.grid, build.height, build.ocean, build.mountain, params.breach);
         build.timings.breach = watch.lap("breach");
     }
-    build.climate = computeClimate(build.grid, build.height, build.ocean, params.climate, threads);
+    build.climate = computeClimate(build.grid, build.height, build.ocean, params.climate, threads,
+                                   field.seed());
     build.timings.climate = watch.lap("climate");
     buildHydrology(build, params, threads, watch);
     return build;

@@ -36,6 +36,12 @@ struct PlanetClimateParams {
     double tradeMeridional = -0.4;
     double westerlyMeridional = 0.3;
     double polarMeridional = -0.3;
+    // The bands join smoothly (planet_bands.hpp): over bandJoin degrees of latitude on each side
+    // of the lines between them (60 and 30 degrees, the equator), lines moved north and south by
+    // up to bandShift degrees by a slow wave of the longitude, about bandShiftWavelength long.
+    double bandJoin = 5.0;
+    double bandShift = 3.0;
+    double bandShiftWavelength = 3.0e6;
 
     // Moisture carried by the wind, in mm/yr x m: over a warm ocean the air holds enough water
     // to rain coastPrecipitation mm/yr at 15 degrees, times exp(moistureGrowth (T - 15)).

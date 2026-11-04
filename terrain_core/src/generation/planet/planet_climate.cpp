@@ -1,6 +1,7 @@
 #include "terrain/generation/planet/planet_climate.hpp"
 
 #include "planet_blur.hpp"
+#include "planet_march.hpp"
 #include "planet_parallel.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
@@ -16,52 +17,6 @@
 namespace terrain::planet {
 
 namespace {
-
-// Moisture and precipitation of every row, chain by chain (the chains are independent), in
-// place: values holds the orographic surface, each row replaced by its precipitation once
-// marched (the march of a row reads its own surface only). The surface of the land cells is
-// kept first, by slot, for the rain of the storms.
-void marchInPlace(const PlanetGrid& grid, std::vector<float>& values, const LandIndex& land,
-                  const std::vector<float>& rowTemperature, const PlanetClimateParams& params,
-                  int threads, std::vector<float>& landSurface) {
-    const MoistureRows rows = moistureRows(grid, params);
-    landSurface.assign(land.landCells(), 0.0f);
-    const auto chainCount = static_cast<int>(rows.chains.size());
-    parallelBlocks(chainCount, 1, threads, [&](int begin, int end) {
-        MoistureOutput previous;
-        MoistureOutput out;
-        std::vector<std::uint8_t> ocean(static_cast<std::size_t>(grid.nx)); // of the row
-        for (int c = begin; c < end; ++c) {
-            for (const int j : rows.chains[static_cast<std::size_t>(c)]) {
-                const bool fed = rows.moistureFrom[static_cast<std::size_t>(j)] >= 0;
-                const std::size_t first = grid.index(0, j);
-                for (std::size_t i = 0; i < ocean.size(); ++i) {
-                    ocean[i] = land.land(first + i) ? kLand : kOcean;
-                }
-                MoistureRow row;
-                row.height = values.data() + first;
-                row.ocean = ocean.data();
-                row.upwindMoisture = fed ? previous.moisture.data() : nullptr;
-                row.upwindAir = fed ? previous.air.data() : nullptr;
-                row.nx = grid.nx;
-                row.cellSize = grid.cellSize;
-                row.temperature = rowTemperature[static_cast<std::size_t>(j)];
-                row.latitude = rowLatitude(grid, j);
-                row.wind = rowWind(grid, j, params);
-                marchMoistureRow(row, params, out);
-                for (std::size_t cell = first; cell < first + static_cast<std::size_t>(grid.nx);
-                     ++cell) {
-                    if (land.land(cell)) {
-                        landSurface[land.slot(cell)] = values[cell];
-                    }
-                }
-                std::copy(out.precipitation.begin(), out.precipitation.end(),
-                          values.begin() + static_cast<std::ptrdiff_t>(first));
-                std::swap(previous, out);
-            }
-        }
-    });
-}
 
 // Adds the rain of the storms over land: the saturation moisture of the nearby sea cells,
 // blurred (stormMoistureRows), faded with the surface of each land cell (by slot).
@@ -152,13 +107,13 @@ std::vector<float> orographicSurface(const PlanetGrid& grid, const std::vector<f
 
 PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                              const std::vector<std::uint8_t>& ocean,
-                             const PlanetClimateParams& params, int threads) {
-    return computeClimate(grid, height, LandIndex(ocean), params, threads);
+                             const PlanetClimateParams& params, int threads, std::uint64_t seed) {
+    return computeClimate(grid, height, LandIndex(ocean), params, threads, seed);
 }
 
 PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                              const LandIndex& land, const PlanetClimateParams& params,
-                             int threads) {
+                             int threads, std::uint64_t seed) {
     const int workers = resolveThreads(threads);
     PlanetClimate climate;
     climate.rowTemperature.resize(static_cast<std::size_t>(grid.nz));
@@ -169,8 +124,8 @@ PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& h
     // One grid: the orographic surface, then the precipitation in its place.
     climate.precipitation = orographicSurface(grid, height, land, params, workers);
     std::vector<float> landSurface;
-    marchInPlace(grid, climate.precipitation, land, climate.rowTemperature, params, workers,
-                 landSurface);
+    marchBands(grid, climate.precipitation, land, climate.rowTemperature, params,
+               WindBands(grid, params, seed), workers, landSurface);
     addEddyRain(grid, landSurface, land, climate.rowTemperature, params, climate.precipitation);
     freeVector(landSurface);
     for (int pass = 0; pass < params.blurPasses; ++pass) {

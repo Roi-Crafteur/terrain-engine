@@ -21,6 +21,9 @@
 #include <thread>
 #include <vector>
 
+// Pinned (agent 31, task 11C step 1): this scene keeps the planet level of before the
+// hydrographic network (golden::beforeNetwork), so that its rivers, falls and ergs stay those the
+// tests were written about; step 2 of task 11C moves it onto the default planet level.
 namespace map_world {
 
 inline constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
@@ -46,8 +49,9 @@ inline std::shared_ptr<const terrain::PlanetLevel> smallPlanet() {
     static const std::shared_ptr<const terrain::PlanetLevel> planet = [] {
         const terrain::Heightfield relief(kSeed, terrain::HeightfieldParams{}, golden::kSmallPlanet);
         return std::make_shared<const terrain::PlanetLevel>(
-            terrain::planet::buildPlanet(relief, golden::smallPlanetParams(threads())),
-            golden::smallPlanetParams(threads()));
+            terrain::planet::buildPlanet(relief,
+                                         golden::beforeNetwork(golden::smallPlanetParams(threads()))),
+            golden::beforeNetwork(golden::smallPlanetParams(threads())));
     }();
     return planet;
 }

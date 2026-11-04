@@ -62,18 +62,21 @@ namespace terrain::planet {
 
 // Climate of the grid: precipitation of every cell (mm/yr) and sea-level temperature of every
 // row. The moisture is carried along the prevailing winds over the orographic surface
-// (planet_moisture), the rain of the eddies is added, then the whole is blurred.
+// (planet_moisture), band by band, the bands joined smoothly along lines whose waves seed draws
+// (planet_bands.hpp); the rain of the eddies is added, then the whole is blurred.
 struct PlanetClimate {
     std::vector<float> precipitation;
     std::vector<float> rowTemperature;
 };
 [[nodiscard]] PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                                            const LandIndex& land,
-                                           const PlanetClimateParams& params, int threads);
+                                           const PlanetClimateParams& params, int threads,
+                                           std::uint64_t seed = 0);
 // The same on the land of an ocean mask.
 [[nodiscard]] PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                                            const std::vector<std::uint8_t>& ocean,
-                                           const PlanetClimateParams& params, int threads);
+                                           const PlanetClimateParams& params, int threads,
+                                           std::uint64_t seed = 0);
 
 // Water of a cell, in units of 1e-6 m^3/s (kWaterUnitsPerCubicMeter): the land runoff (all of the
 // precipitation on a frozen cell, which moves on as ice), the extra evaporation of a lake
