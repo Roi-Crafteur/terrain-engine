@@ -112,6 +112,7 @@ void ATerrainWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void ATerrainWorld::ReleaseWorld()
 {
+	const double ReleaseStartSeconds = FPlatformTime::Seconds();
 	if (Backend != nullptr)
 	{
 		Backend->RemoveAllTiles();
@@ -144,8 +145,10 @@ void ATerrainWorld::ReleaseWorld()
 		FTerrainBuildHooks::Stop(*this); // the last save of the edits, before the session goes
 		RemoveTerrainWidget(*this, State->Loading.Cover);
 	}
-	State.Reset(); // the workers stop once their current tile or piece is computed
+	State.Reset(); // the workers stop at the next stop point of their tile or piece (work_stop.hpp)
 	WarmedPawn.Reset();
+	UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: the world released in %.1f ms"),
+		(FPlatformTime::Seconds() - ReleaseStartSeconds) * 1000.0);
 }
 
 // The session (planetary map, planet level, hydrology, tiles) builds on a thread, the screen

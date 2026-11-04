@@ -8,6 +8,7 @@
 #include "terrain/streaming/horizon_detail.hpp"
 #include "terrain/streaming/horizon_epoch.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -47,7 +48,8 @@ public:
     // below 1.
     HorizonNormalStream(const Heightfield& field, const HorizonParams& params,
                         const HorizonNormalParams& normals, JobLauncher launch);
-    ~HorizonNormalStream(); // waits for the jobs in flight
+    // Waits for the jobs in flight, stopped first (work_stop.hpp: within milliseconds).
+    ~HorizonNormalStream();
 
     HorizonNormalStream(const HorizonNormalStream&) = delete;
     HorizonNormalStream& operator=(const HorizonNormalStream&) = delete;
@@ -114,6 +116,7 @@ private:
     int inFlight_ = 0;
     std::exception_ptr error_;
     bool stopping_ = false;
+    std::atomic<bool> stop_{false}; // raised first by the destructor: the jobs in flight stop
 };
 
 // The texels of the samples `part` (inside rect) out of the detail texels of rect, laid out as

@@ -1,5 +1,7 @@
 #include "horizon_normal_stream.hpp"
 
+#include "terrain/work_stop.hpp"
+
 #include <algorithm>
 #include <stdexcept>
 #include <utility>
@@ -17,6 +19,7 @@ HorizonNormalStream::HorizonNormalStream(const Heightfield& field, const Horizon
 }
 
 HorizonNormalStream::~HorizonNormalStream() {
+    stop_.store(true);
     std::unique_lock lock(mutex_);
     stopping_ = true;
     queue_.clear();
@@ -106,13 +109,19 @@ void HorizonNormalStream::runJob() {
         }
         Result result;
         std::exception_ptr error;
+        bool stopped = false;
         try {
+            const WorkStopScope scope(&stop_);
             result = compute(task);
+        } catch (const WorkStopped&) {
+            stopped = true; // the stream stops: the task is dropped, nothing went wrong
         } catch (...) {
             error = std::current_exception();
         }
         const std::lock_guard lock(mutex_);
-        if (error != nullptr) {
+        if (stopped) {
+            // nothing kept
+        } else if (error != nullptr) {
             if (error_ == nullptr) {
                 error_ = error;
             }

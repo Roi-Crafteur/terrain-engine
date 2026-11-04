@@ -3,6 +3,7 @@
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/map/map_source.hpp"
 #include "terrain/map/map_style.hpp"
+#include "terrain/work_stop.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -214,6 +215,8 @@ void MapTileCache::loop() {
         std::optional<MapTile> tile;
         std::string error;
         try {
+            // The courses of the rivers a job computes stop with the cache too (work_stop.hpp).
+            const WorkStopScope scope(&cancel_);
             if (job.landing) {
                 landed = land_(job.landing->x, job.landing->z, job.landing->radius);
             } else if (job.point) {
@@ -226,6 +229,8 @@ void MapTileCache::loop() {
             }
         } catch (const MapCancelled&) {
             // the cache stops: the tile is dropped, nothing went wrong
+        } catch (const WorkStopped&) {
+            // the same, stopped in the middle of the hydrology
         } catch (const std::exception& e) {
             error = e.what();
         } catch (...) {

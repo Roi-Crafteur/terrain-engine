@@ -1,5 +1,7 @@
 #include "terrain/streaming/horizon_streamer.hpp"
 
+#include "terrain/work_stop.hpp"
+
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -22,6 +24,7 @@ HorizonStreamer::HorizonStreamer(const HorizonSampler& sampler, const HorizonStr
 }
 
 HorizonStreamer::~HorizonStreamer() {
+    stop_.store(true);
     {
         const std::lock_guard lock(mutex_);
         stopping_ = true;
@@ -124,7 +127,10 @@ void HorizonStreamer::runJob(std::unique_lock<std::mutex>& lock) {
     lock.unlock();
     std::exception_ptr error;
     try {
+        const WorkStopScope scope(&stop_);
         computePiece(sampler_, *piece);
+    } catch (const WorkStopped&) {
+        // the streamer stops: the piece is dropped, nothing went wrong
     } catch (...) {
         error = std::current_exception();
     }

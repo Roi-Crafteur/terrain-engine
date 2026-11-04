@@ -1,5 +1,7 @@
 #include "ground_read.hpp"
 
+#include "terrain/work_stop.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <utility>
@@ -28,10 +30,16 @@ GroundLevel groundLevelAt(const TerrainTiles& tiles, double x, double z) {
     return level;
 }
 
+GroundRead::~GroundRead() {
+    stop_.store(true); // then the futures wait for their reads, which leave by WorkStopped
+}
+
 void GroundRead::ask(const TerrainTiles& tiles, double x, double z) {
     forget();
-    current_ = std::async(std::launch::async,
-                          [&tiles, x, z] { return groundLevelAt(tiles, x, z); });
+    current_ = std::async(std::launch::async, [&tiles, x, z, stop = &stop_] {
+        const WorkStopScope scope(stop);
+        return groundLevelAt(tiles, x, z);
+    });
 }
 
 void GroundRead::forget() {

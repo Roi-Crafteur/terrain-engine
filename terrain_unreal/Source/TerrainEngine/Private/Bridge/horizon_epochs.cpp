@@ -1,5 +1,7 @@
 #include "horizon_epochs.hpp"
 
+#include "terrain/work_stop.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -24,6 +26,7 @@ HorizonEpochRunner::HorizonEpochRunner(const HorizonSampler& sampler, JobLaunche
 }
 
 HorizonEpochRunner::~HorizonEpochRunner() {
+    stop_.store(true);
     std::unique_lock lock(mutex_);
     stopping_ = true;
     done_.wait(lock, [this] { return inFlight_ == 0; });
@@ -188,11 +191,14 @@ void HorizonEpochRunner::runPiece(std::size_t index) {
     std::exception_ptr error;
     std::vector<float> data;
     try {
+        const WorkStopScope scope(&stop_);
         HorizonPiece& piece = epoch_->pieces[index];
         computePiece(sampler_, piece);
         if (prepare_) {
             data = prepare_(piece);
         }
+    } catch (const WorkStopped&) {
+        // the runner stops: the piece is dropped, nothing went wrong
     } catch (...) {
         error = std::current_exception();
     }

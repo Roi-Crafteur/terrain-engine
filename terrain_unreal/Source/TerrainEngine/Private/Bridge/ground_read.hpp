@@ -10,6 +10,7 @@
 
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <future>
 #include <optional>
@@ -36,7 +37,9 @@ public:
     GroundRead() = default;
     GroundRead(const GroundRead&) = delete;
     GroundRead& operator=(const GroundRead&) = delete;
-    ~GroundRead() = default; // waits for the reads still running (the tiles must outlive them)
+    // Waits for the reads still running (the tiles must outlive them), stopped first: a read
+    // stops at its next stop point (work_stop.hpp: within milliseconds).
+    ~GroundRead();
 
     // Reads the level of (x, z) on a thread; a read still running is forgotten, never waited for.
     void ask(const TerrainTiles& tiles, double x, double z);
@@ -51,6 +54,7 @@ public:
 private:
     void dropFinished();
 
+    std::atomic<bool> stop_{false}; // first member: it outlives the reads that follow it
     std::future<GroundLevel> current_;
     std::vector<std::future<GroundLevel>> forgotten_;
 };

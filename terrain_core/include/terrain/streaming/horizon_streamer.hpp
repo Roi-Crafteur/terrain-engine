@@ -3,6 +3,7 @@
 #include "terrain/streaming/horizon_edits.hpp"
 #include "terrain/streaming/horizon_epoch.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <exception>
@@ -44,7 +45,9 @@ public:
     // cannot read (HorizonEditMap::validate).
     explicit HorizonStreamer(const HorizonSampler& sampler, const HorizonStreamParams& params = {},
                              HorizonEditMap* edits = nullptr);
-    ~HorizonStreamer(); // stops the workers once their current piece is computed
+    // Stops the workers: a piece being computed stops at its next stop point (work_stop.hpp:
+    // within milliseconds) and is dropped.
+    ~HorizonStreamer();
 
     HorizonStreamer(const HorizonStreamer&) = delete;
     HorizonStreamer& operator=(const HorizonStreamer&) = delete;
@@ -98,6 +101,7 @@ private:
     std::size_t inFlight_ = 0;
     std::exception_ptr error_;
     bool stopping_ = false;
+    std::atomic<bool> stop_{false}; // raised first by the destructor: the pieces in progress stop
     std::vector<std::jthread> workers_; // last member: joined before the others are destroyed
 };
 

@@ -42,8 +42,8 @@ struct SessionParams {
 
 // The streamed world of an Unreal level: its tiles, the timings of their generations and
 // conversions, their streamer, and the thread of its edits. Members are destroyed in reverse
-// order, so the edit thread ends its edit and the workers of the streamer stop (once their
-// current tile is generated) before the tiles they read go away.
+// order, so the edit thread ends its edit and the workers of the streamer stop (at the next stop
+// point of their current tile, work_stop.hpp) before the tiles they read go away.
 class TerrainSession {
 public:
     // Throws std::invalid_argument for an invalid world, like TileStreamer for invalid stream

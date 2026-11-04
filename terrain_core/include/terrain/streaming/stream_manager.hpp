@@ -12,6 +12,7 @@
 #include "terrain/streaming/lod.hpp"
 
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -192,7 +193,9 @@ public:
     // maxLoadsPerUpdate 0, an invalid world (validate) or a world so small that the selection
     // would meet itself around it (fewer than 2 (viewDistance + 8) + 8 chunks along a side).
     explicit StreamManager(TileGenerator generator, const StreamParams& params = {});
-    ~StreamManager(); // stops the workers once their current tile is generated
+    // Stops the workers: a tile being generated stops at its next stop point (work_stop.hpp:
+    // within milliseconds) and is dropped.
+    ~StreamManager();
 
     StreamManager(const StreamManager&) = delete;
     StreamManager& operator=(const StreamManager&) = delete;
@@ -296,6 +299,7 @@ private:
     std::exception_ptr error_;
     int workerLimit_ = 0; // the workers below it take tiles
     bool stopping_ = false;
+    std::atomic<bool> stop_{false}; // raised first by the destructor: the tiles in progress stop
     std::vector<std::jthread> workers_; // last member: joined before the others are destroyed
 };
 
