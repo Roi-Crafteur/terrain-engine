@@ -26,7 +26,6 @@ constexpr double kFarthest = 600.0;
 constexpr std::uint8_t kFaceRoundTenths = 10;
 constexpr double kRockSide = 30.0;
 constexpr double kRockFade = 10.0;
-constexpr double kPi = 3.14159265358979323846;
 // The faced kinds (the rocky coasts, the cliffs and the calanques) lay a face from kFacedLow of
 // the weights of the kinds of coast on, fully from kFacedHigh.
 constexpr double kFacedLow = 0.3;
