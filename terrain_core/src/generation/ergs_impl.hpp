@@ -90,8 +90,6 @@ struct Ergs::Impl {
     WorldSize world;
     erg_field::Field field;
     const PlanetLevel* planet = nullptr; // read for the humidity at a point: outlives the ergs
-    std::vector<Depression> depressions;
-    std::vector<std::uint8_t> nearDepression; // per block of the field: one may reach it
     Ergs::RiverFloor riverFloor; // or empty
     bool floorNearCells = false; // its floors near the polyline of the river cells (Ergs)
     double degree = 0.0; // meters of one degree of latitude

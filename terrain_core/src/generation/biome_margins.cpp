@@ -94,8 +94,11 @@ Test mountainTest(const Column& c, const BiomeParams& p) {
                 either(c.temperatureAtMost(p.treelineTemperature), steep));
 }
 
+// A beach is never below the sea level (dry land there is a depression) nor in a sea of dunes
+// (inland, far from the coasts: ErgParams::coastNear), as in classifyBiome.
 Test beachTest(const Column& c, const BiomeParams& p) {
-    return both(c.altitudeAtMost(p.beachMaxHeight), c.slopeAtMost(p.beachMaxSlope));
+    const Test low = both(negate(c.altitudeAtMost(0.0f)), c.altitudeAtMost(p.beachMaxHeight));
+    return both(both(low, c.slopeAtMost(p.beachMaxSlope)), known(!(c.erg > 0.0f)));
 }
 
 Test marshTest(const Column& c, const BiomeParams& p) {

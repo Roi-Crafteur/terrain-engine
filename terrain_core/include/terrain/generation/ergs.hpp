@@ -31,7 +31,9 @@
 // of the centers of the river cells stands for them, widened by how far a course may stray from
 // it (kStray, 2 km) and the widest floor: corridorClear meters. The lakes of the planet level
 // (terminal and salt lakes included) keep lakeClear meters of their cells clear (a lake may
-// flood the cells around its own), lakeFade beyond, as do the depressions below the sea level.
+// flood the cells around its own), lakeFade beyond. The depressions below the sea level are land
+// like any other: the seas of dunes cover them where dry, their lakes and salt lakes (the planet
+// level fills them) clear as any lake.
 //
 // Where the mask is 0 the dunes are exactly 0: the world keeps every bit of its relief there.
 // Deterministic, thread-safe, periodic on the world.
@@ -153,7 +155,8 @@ enum class DuneKind : std::uint8_t { None, Barchan, Transverse, Seif, Star, Draa
 class Ergs {
 public:
     // The ergs of the planet level of a world, seed drawing their dunes. depressions: those of the
-    // relief (Heightfield::depressions). The planet level must outlive the ergs (they read its
+    // relief (Heightfield::depressions), no longer read (the dunes cover them; their water keeps
+    // clear as any lake of the planet level). The planet level must outlive the ergs (they read its
     // humidity). Throws std::invalid_argument for an empty planet grid.
     // floor: the distance to the floor of the valleys of the rivers (Hydrology::floorDistance:
     // x, z, limit), or empty to read the polyline of the river cells instead. nearCells: the

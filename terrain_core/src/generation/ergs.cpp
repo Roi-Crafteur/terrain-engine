@@ -36,8 +36,6 @@ constexpr double kDoldrumsFar = 8.0;
 constexpr float kVariabilityLatitude = 0.3f;
 constexpr float kVariabilityBase = 0.1f;
 constexpr float kVariabilityNoise = 0.55f;
-// The depressions keep their dunes kDepressionMargin of their radius away from their edge.
-constexpr double kDepressionMargin = 0.25;
 // The edges of the dunes along the water wander outward by up to kShoreWander meters (a noise of
 // kShoreWavelength) from the floors of the valleys, kLakeWander (kLakeWavelength) from the
 // lakes: the straight sides of a long reach or of a square cell of a lake never show.
@@ -109,11 +107,11 @@ double hermite(double edge0, double edge1, double v) {
 
 } // namespace
 
-static void markDepressions(Ergs::Impl& m);
 static void assignCharacters(Ergs::Impl& m);
 
 Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
-           const std::vector<Depression>& depressions, const ErgParams& params, RiverFloor floor,
+           [[maybe_unused]] const std::vector<Depression>& depressions, const ErgParams& params,
+           RiverFloor floor,
            bool nearCells)
     : impl_(std::make_unique<Impl>()) {
     if (planet.grid().cells() == 0) {
@@ -127,13 +125,11 @@ Ergs::Ergs(std::uint64_t seed, const PlanetLevel& planet,
     m.climate = planet.params().climate;
     m.world = WorldSize{planet.grid().periodX(), planet.grid().periodZ()};
     m.degree = m.world.z / 180.0;
-    m.depressions = depressions;
     m.planet = &planet;
     m.riverFloor = std::move(floor);
     m.floorNearCells = nearCells;
     const double warpReach = params.warpDegrees * m.degree;
     m.field = erg_field::build(planet, params, warpReach);
-    markDepressions(m);
     m.warpX = octaves(m.seed, kWarpX, 2, params.warpWavelength, m.world);
     m.warpZ = octaves(m.seed, kWarpZ, 2, params.warpWavelength, m.world);
     m.edges = octaves(m.seed, kEdges, 3, params.edgeWavelength, m.world);
@@ -196,48 +192,6 @@ float Ergs::climateAt(double x, double z) const {
     double warpX = 0.0;
     double warpZ = 0.0;
     return potentialOf(*impl_, x, z, warpX, warpZ);
-}
-
-// The blocks of the field a depression may reach (its margin and fade, and a block more).
-static void markDepressions(Ergs::Impl& m) {
-    const erg_field::Field& f = m.field;
-    m.nearDepression.assign(f.potential.size(), 0);
-    for (const Depression& d : m.depressions) {
-        const double reach =
-            d.radius * (1.0 + kDepressionMargin) + m.params.lakeClear + m.params.lakeFade;
-        const int r = static_cast<int>(std::ceil(reach / f.blockSize)) + 1;
-        const int bi = static_cast<int>(std::floor((d.x + 0.5 * m.world.x) / f.blockSize));
-        const int bj = static_cast<int>(std::floor((d.z + 0.5 * m.world.z) / f.blockSize));
-        for (int dj = -r; dj <= r; ++dj) {
-            for (int di = -r; di <= r; ++di) {
-                m.nearDepression[f.block(((bi + di) % f.bx + f.bx) % f.bx,
-                                         ((bj + dj) % f.bz + f.bz) % f.bz)] = 1;
-            }
-        }
-    }
-}
-
-// The share of the dunes the depressions leave at (x, z): none on them, all beyond their margin.
-static double depressionShare(const Ergs::Impl& m, double x, double z) {
-    const erg_field::Field& f = m.field;
-    const int bi = std::clamp(
-        static_cast<int>(std::floor((x + 0.5 * m.world.x) / f.blockSize)), 0, f.bx - 1);
-    const int bj = std::clamp(
-        static_cast<int>(std::floor((z + 0.5 * m.world.z) / f.blockSize)), 0, f.bz - 1);
-    if (m.nearDepression[f.block(bi, bj)] == 0) {
-        return 1.0;
-    }
-    double share = 1.0;
-    for (const Depression& d : m.depressions) {
-        const double dx = nearestImage(d.x, x, m.world.x) - x;
-        const double dz = nearestImage(d.z, z, m.world.z) - z;
-        const double edge = d.radius * (1.0 + kDepressionMargin) + m.params.lakeClear;
-        const double dist = dmath::hypot(dx, dz);
-        if (dist < edge + m.params.lakeFade) {
-            share = std::min(share, hermite(edge, edge + m.params.lakeFade, dist));
-        }
-    }
-    return share;
 }
 
 // How far outward the edge of the dunes wanders from the water, [0, wander] meters.
@@ -323,7 +277,7 @@ ErgPoint Ergs::at(double x, double z, float relief, float rift) const {
         return {};
     }
     // The cheap shares first (the same product either way): most land within reach of the ergs
-    // is too wet or too rugged for them; their noises, the water and the depressions are dear.
+    // is too wet or too rugged for them; their noises and the water are dear.
     const float dry = 1.0f - noise::smoothstep(m.params.humidLow, m.params.humidHigh,
                                                m.planet->humidityAt(x, z));
     const float flat = (1.0f - noise::smoothstep(m.params.reliefLow, m.params.reliefHigh, relief)) *
@@ -364,7 +318,7 @@ ErgPoint Ergs::at(double x, double z, float relief, float rift) const {
     characterOf(m, x, z, e);
     const double tallest = kWavesTallest * static_cast<double>(e.waves) +
                            kGiantsTallest * static_cast<double>(e.giants);
-    mask *= static_cast<float>(waterShare(m, x, z, tallest) * depressionShare(m, x, z)) * dry *
+    mask *= static_cast<float>(waterShare(m, x, z, tallest)) * dry *
             desert;
     if (!(mask > 0.0f)) {
         return {};
@@ -456,8 +410,7 @@ const PlanetGrid& Ergs::grid() const {
 
 std::size_t Ergs::memoryBytes() const {
     const erg_field::Field& f = impl_->field;
-    return f.potential.size() * sizeof(float) + f.reach.size() + f.water.size() * sizeof(std::uint64_t) +
-           impl_->depressions.size() * sizeof(Depression);
+    return f.potential.size() * sizeof(float) + f.reach.size() + f.water.size() * sizeof(std::uint64_t);
 }
 
 } // namespace terrain
