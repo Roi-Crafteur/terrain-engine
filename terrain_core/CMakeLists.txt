@@ -179,6 +179,7 @@ add_library(terrain_core STATIC
     src/io/relief_stats_peaks.cpp
     src/io/relief_stats_terrain.cpp
     src/io/relief_view.cpp
+    src/io/sea_stats.cpp
     src/io/voronoi_png.cpp
     src/map/map_ergs.cpp
     src/map/map_frame.cpp
@@ -457,6 +458,13 @@ target_include_directories(terrain_probe_lib PUBLIC tools)
 target_link_libraries(terrain_probe_lib PUBLIC terrain_core PRIVATE terrain_warnings)
 add_executable(terrain_probe tools/probe.cpp)
 target_link_libraries(terrain_probe PRIVATE terrain_probe_lib terrain_warnings)
+
+# The figures of the floors of the seas beside those of the Earth (agent 51): hypsometry, depths,
+# shelf, slope, rise, trenches, roughness of the deep floor. See tools/seas_stats.cpp.
+# terrain_seas_stats [--planet <file>] [--seed <seed>] [--threads <n>] [--step <m>]
+#   [--transects <n>] [--list]
+add_executable(terrain_seas_stats tools/seas_stats.cpp)
+target_link_libraries(terrain_seas_stats PRIVATE terrain_core terrain_warnings)
 
 # The dev map of the world in a PNG (agent 35): a box, a point at a spacing or the whole world,
 # or the tiles of the map pyramid around a point, timed. See tools/export_map.cpp.
