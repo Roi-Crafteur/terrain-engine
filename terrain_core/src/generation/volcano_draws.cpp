@@ -176,10 +176,13 @@ void landSizes(VolcanoSite& s) {
         break;
     }
     case F::Caldera: {
-        strato(s, 1200.0, 2800.0, 5.0, 7.0);
+        // Its height is that of its rim over its foot (Crater Lake, Aso, Ngorongoro: 0.5 to 1.8
+        // km), the edifice it collapsed from higher.
+        s.height = static_cast<float>(between(seed, kHeight, 500.0, 1800.0));
         s.crater = static_cast<float>(between(seed, kCrater, 2500.0, 8000.0));
         s.craterDepth = static_cast<float>(between(seed, kCraterDepth, 300.0, 900.0));
-        s.radius = std::max(s.radius, 2.0f * s.crater);
+        s.radius = static_cast<float>(std::max(s.height * between(seed, kRadius, 9.0, 13.0),
+                                               2.2 * static_cast<double>(s.crater)));
         break;
     }
     case F::PlateauCaldera:
@@ -198,8 +201,8 @@ void seaSizes(VolcanoSite& s) {
     const std::uint64_t seed = s.seed;
     switch (s.form) {
     case F::IslandStrato:
-        strato(s, 300.0, 2500.0, 2.3, 3.5);
-        s.radius = static_cast<float>(rise(s, 500.0) * between(seed, kRadius, 2.3, 3.5));
+        strato(s, 300.0, 2500.0, 3.5, 5.0);
+        s.radius = static_cast<float>(rise(s, 500.0) * between(seed, kRadius, 3.5, 5.0));
         break;
     case F::IslandShield: {
         const double summit =
@@ -210,8 +213,8 @@ void seaSizes(VolcanoSite& s) {
         break;
     }
     case F::IslandCaldera:
-        s.height = static_cast<float>(between(seed, kHeight, 300.0, 1100.0));
-        s.radius = static_cast<float>(rise(s, 600.0) * between(seed, kRadius, 3.0, 4.0));
+        s.height = static_cast<float>(between(seed, kHeight, 200.0, 1500.0));
+        s.radius = static_cast<float>(rise(s, 600.0) * between(seed, kRadius, 2.8, 4.5));
         s.crater = static_cast<float>(
             std::min(0.6 * s.radius, between(seed, kCrater, 3000.0, 6000.0)));
         s.craterDepth = s.height + static_cast<float>(between(seed, kCraterDepth, 200.0, 400.0));
@@ -231,7 +234,7 @@ double reachOf(const VolcanoSite& s) {
     const double r = static_cast<double>(s.radius) * static_cast<double>(s.elongation);
     const FormRule rule = formRule(s.form);
     if (rule.edifice) {
-        return rule.apron * (1.0 + kOutline) * r + 1500.0;
+        return rule.apron * (1.0 + rule.outline) * r + 1500.0;
     }
     return (1.0 + kFieldLobes) * (1.0 + kFieldOutline) * r + 1500.0;
 }
@@ -248,11 +251,11 @@ FormRule formRule(VolcanoForm form) {
     case F::IslandStrato:
     case F::IslandCaldera:
     case F::Seamount:
-        return {true, false, 1.45};
+        return {true, false, 1.3, kOutline};
     case F::Shield:
     case F::IslandShield:
     case F::PlateauCaldera:
-        return {true, true, 1.25};
+        return {true, true, 1.2, kOutline + kArms};
     case F::CinderField:
     case F::LavaField:
     case F::FissureRow:
@@ -276,9 +279,32 @@ std::uint64_t siteSeed(std::uint64_t stream, double x, double z) {
     return noise::deriveSeed(noise::deriveSeed(stream, bx), bz);
 }
 
-VolcanoForm drawForm(VolcanoOrigin origin, bool atSea, bool large, std::uint64_t seed) {
+VolcanoForm drawForm(VolcanoOrigin origin, bool atSea, bool large, bool rugged, float floor,
+                     std::uint64_t seed) {
+    using F = VolcanoForm;
     const double u = unit(seed, kForm);
-    return atSea ? seaForm(origin, large, u) : landForm(origin, large, u);
+    if (atSea) {
+        const VolcanoForm form = seaForm(origin, large, u);
+        if (form == F::Seamount && floor > kShelf) {
+            return origin == VolcanoOrigin::Arc ? F::IslandStrato : F::IslandShield;
+        }
+        return form;
+    }
+    const VolcanoForm form = landForm(origin, large, u);
+    if (!rugged) {
+        return form;
+    }
+    switch (form) {
+    case F::PlateauCaldera:
+        return F::Caldera;
+    case F::LavaField:
+    case F::FissureRow:
+        return F::Strato;
+    case F::MaarField:
+        return F::CinderField;
+    default:
+        return form;
+    }
 }
 
 void drawSizes(VolcanoSite& s) {
@@ -287,7 +313,7 @@ void drawSizes(VolcanoSite& s) {
     } else {
         landSizes(s);
     }
-    double elongation = between(s.seed, kElongation, 1.0, 1.25);
+    double elongation = between(s.seed, kElongation, 1.0, s.atSea ? 1.45 : 1.25);
     switch (s.form) {
     case VolcanoForm::TwinStrato:
         elongation = between(s.seed, kElongation, 1.3, 1.6);

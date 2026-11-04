@@ -70,7 +70,8 @@ std::vector<VolcanoSite> placeSites(std::uint64_t worldSeed, const Geography& ge
         s.atSea = g.coast < 0.0;
         s.floor = coast_shape::groundBase(geo.params(), g, g.coast);
         s.seed = volcano_sites::siteSeed(stream, v.x, v.z);
-        s.form = volcano_sites::drawForm(s.origin, s.atSea, s.large, s.seed);
+        s.form = volcano_sites::drawForm(s.origin, s.atSea, s.large,
+                                         g.relief >= volcano_sites::kRugged, s.floor, s.seed);
         volcano_sites::drawSizes(s);
         sites.push_back(s);
     }

@@ -216,7 +216,7 @@ constexpr std::size_t kBoxEvery = 40;
 bool sameBits(const terrain::HeightSample& a, const terrain::HeightSample& b) {
     const auto bits = [](float v) { return std::bit_cast<std::uint32_t>(v); };
     return bits(a.height) == bits(b.height) && bits(a.waterLevel) == bits(b.waterLevel) &&
-           a.water == b.water;
+           a.water == b.water && a.volcanic == b.volcanic;
 }
 
 void testBoxes(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {

@@ -155,5 +155,8 @@ struct VolcanoOffset {
 };
 [[nodiscard]] VolcanoOffset volcanoOffset(const WorldSize& world, double fromX, double fromZ,
                                           double toX, double toZ);
+// Where the summit of a volcano lies from its center (its crater or caldera around it): its shape
+// draws it off the center, never by more than 0.12 of its radius.
+[[nodiscard]] VolcanoOffset volcanoSummit(const VolcanoSite& site);
 
 } // namespace terrain

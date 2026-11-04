@@ -27,17 +27,27 @@ struct FormRule {
     bool edifice = false; // a cone or a dome over its foot (otherwise a field: cones, sheets, maars)
     bool shield = false;  // the dome of a shield, otherwise the concave cone of a stratovolcano
     double apron = 1.0;   // the edifice fades out from its foot (rho 1) to rho apron
+    // The most its outline stretches its radius: its lobes and the noise of its foot (kOutline),
+    // and the arms of the rift zones of a shield.
+    double outline = 0.0;
 };
 [[nodiscard]] FormRule formRule(VolcanoForm form);
-// The most the outline of an edifice stretches its radius (its lobes and the noise of its foot),
-// and that of a field (volcano_fields.cpp: its outline, then the lobes of its sheet).
+// The most the lobes and the noise of the foot of an edifice stretch its radius, the most the
+// arms of the rift zones of a shield do, and those of a field (volcano_fields.cpp: its outline,
+// then the lobes of its sheet).
 inline constexpr double kOutline = 0.15;
+inline constexpr double kArms = 0.6;
 inline constexpr double kFieldOutline = 0.2;
 inline constexpr double kFieldLobes = 0.42;
 
-// The form of a volcano by its origin, whether it stands at sea and whether it is large.
-[[nodiscard]] VolcanoForm drawForm(VolcanoOrigin origin, bool atSea, bool large,
-                                   std::uint64_t seed);
+// The form of a volcano by its origin, whether it stands at sea, whether it is large and whether
+// it stands in rugged land (the intensity of the relief of the geography at least kRugged: no
+// plateau of ash nor sheet of lava, no maar, among the mountains); seamounts on the shelves
+// (floor above kShelf) rise to islands.
+inline constexpr float kRugged = 0.3f;
+inline constexpr float kShelf = -700.0f;
+[[nodiscard]] VolcanoForm drawForm(VolcanoOrigin origin, bool atSea, bool large, bool rugged,
+                                   float floor, std::uint64_t seed);
 
 // The sizes of site (height, radius, crater, craterDepth, elongation, axis, reach) from its
 // form, its largeness, its floor and its seed.

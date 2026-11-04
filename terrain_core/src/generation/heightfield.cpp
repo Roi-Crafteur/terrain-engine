@@ -197,6 +197,7 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         // Before the coasts: their inlets read this relief (makeInlets).
         if (params_.volcanoes.enabled) {
             volcanoes_ = Volcanoes::shared(seed, geography_, params_.volcanoes);
+            volcanic_ = makeVolcanic(*volcanoes_);
         }
     } else if (params_.plates.amplitude > 0.0f) {
         plates_ = std::make_shared<const TectonicPlates>(noise::deriveSeed(seed, kPlates),
@@ -281,6 +282,7 @@ HeightSample Heightfield::reliefWith(double worldX, double worldZ, Memos* memos,
     if (geography_) {
         HeightSample s = geographySample(x, z, memos, site);
         finishWater(x, z, s);
+        addVolcanoes(x, z, s, memos, site);
         return s;
     }
     HeightSample s;

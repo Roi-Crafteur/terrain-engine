@@ -117,6 +117,9 @@ struct HeightSample {
     // without the geography, the ground below kSeaLevel), at the level waterLevel (the height on
     // dry land).
     WaterKind water = WaterKind::None;
+    // How much of the ground at the column the volcanoes made (volcanoes.hpp), in 255ths: 0
+    // outside them (in the padding after water: the sample keeps its 72 bytes).
+    std::uint8_t volcanic = 0;
     float waterLevel = 0.0f;
     // Meters of sand the seas of dunes lay over the relief (ergs.hpp, part of height): 0 outside
     // them and without hydrology.
@@ -134,6 +137,8 @@ struct HeightSample {
     // meters around them, coast.hpp): the material only, never the height.
     float rock = 0.0f;
 };
+// The column cache keeps samples by the hundreds of thousands (column_cache_test: its bound).
+static_assert(sizeof(HeightSample) == 72, "a sample of the relief holds 72 bytes");
 
 // A depression below the sea level of the geography (phase 11B): its center (canonical), its mean
 // radius and the altitude of its floor, meters, and the direction of its escarpment from the
@@ -266,6 +271,7 @@ private:
     struct Memos;  // the memos of the noises during a batch call (heightfield.cpp)
     struct Water;  // the depressions and the water (heightfield_water.cpp)
     struct Coasts; // the noises of the coasts (heightfield_coast.cpp)
+    struct Volcanic; // the details of the volcanoes, read once (heightfield_volcano.cpp)
     // What the coasts make of a canonical point of the geography g in reliefWith: its coast
     // signal, the factor of the land (mountains, hills, forms of the plains) and the ground before
     // the local relief; those of the geography out of the band or without the coasts.
@@ -309,6 +315,12 @@ private:
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
     // The depressions below the sea and the sea of a sample at a canonical point.
     void finishWater(double x, double z, HeightSample& s) const;
+    // The volcanoes over the relief at a canonical point, after the sea (heightfield_volcano.cpp):
+    // nothing, not a bit, where none reaches; the faces of the walls (site) and of the coasts
+    // (Memos::coastFace) they bury fade out; not with Memos::noVolcanoes.
+    void addVolcanoes(double x, double z, HeightSample& s, Memos* memos,
+                      wall_faces::Site* site) const;
+    [[nodiscard]] static std::shared_ptr<const Volcanic> makeVolcanic(const Volcanoes& volcanoes);
     // The seas of dunes of the hydrology (ergs.hpp) over the relief at a canonical point, before
     // its valleys (heightfield_hydrology): nothing, not a bit, outside them.
     void addDunes(double x, double z, HeightSample& s) const;
@@ -417,6 +429,7 @@ private:
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
     std::shared_ptr<const Volcanoes> volcanoes_;   // shared by copies and Heightfields
+    std::shared_ptr<const Volcanic> volcanic_;     // shared by copies
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
     double footprint_ = 0.0;                       // of a sample, for the dunes (forFootprint)

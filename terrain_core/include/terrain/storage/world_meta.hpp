@@ -36,12 +36,16 @@ inline constexpr std::uint32_t kSectionFormatVersion = 2;
 // the rocks of the reefs and the stacks: agent 33).
 // 9: the seas of dunes of agent 34: their three characters, the forms of their dunes (barchans,
 // stars, waves and giant waves), the floors between them, the dry depressions they cover.
-inline constexpr std::uint32_t kGeneratorVersion = 9;
+// 10: the volcanoes of agent 45 (stratovolcanoes, shields, calderas, maars, fields of cones and
+// of lava, flows, islands and seamounts) at the places of the geology of the settlement.
+inline constexpr std::uint32_t kGeneratorVersion = 10;
 // Version of the generator of the relief (Heightfield::heightAt and the planet level built from
 // it): the planet files hold it. The rock in three dimensions leaves the relief as it is, and the
 // planet level is built from the relief without the coasts (Heightfield::withoutCoasts), which
 // they leave as it is too.
-inline constexpr std::uint32_t kReliefGeneratorVersion = 4;
+// 5: the volcanoes of agent 45, part of the relief the planet level is built from (its rivers and
+// lakes find them).
+inline constexpr std::uint32_t kReliefGeneratorVersion = 5;
 
 // Generator of the worlds saved before the world format (TMOD files): the one up to phase 8C-2.
 inline constexpr std::uint32_t kLegacyGeneratorVersion = 1;

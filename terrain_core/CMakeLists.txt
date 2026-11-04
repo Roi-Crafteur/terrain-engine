@@ -89,6 +89,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield_hydrology.cpp
     src/generation/heightfield_rock.cpp
     src/generation/heightfield_water.cpp
+    src/generation/heightfield_volcano.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
@@ -127,7 +128,12 @@ add_library(terrain_core STATIC
     src/generation/surface_material.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
+    src/generation/volcano_cones.cpp
+    src/generation/volcano_details.cpp
     src/generation/volcano_draws.cpp
+    src/generation/volcano_fields.cpp
+    src/generation/volcano_forms.cpp
+    src/generation/volcano_relief.cpp
     src/generation/volcano_sites.cpp
     src/generation/voronoi.cpp
     src/generation/wall_faces.cpp

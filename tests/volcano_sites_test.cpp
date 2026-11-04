@@ -111,7 +111,7 @@ void testForms(const terrain::Volcanoes& volcanoes) {
         consistent = consistent && seaForm == s.atSea;
         // The sizes: positive, the reach beyond the foot, a crater inside the foot.
         consistent = consistent && s.radius > 0.0f && s.reach > s.radius && s.elongation >= 1.0f &&
-                     s.crater >= 0.0f && s.crater < s.radius && s.reach < 200'000.0f;
+                     s.crater >= 0.0f && s.crater < s.radius && s.reach < 250'000.0f;
         if (s.atSea && s.form != terrain::VolcanoForm::Seamount) {
             consistent = consistent && s.height > 0.0f;
         }
