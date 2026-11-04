@@ -3,8 +3,8 @@
 // beyond the capacity, the stale requests dropped, the layers changed, the probe of the cursor,
 // the landing of a click (the last asked, as clickLandingOn the source gives it), a clean stop
 // while tiles render, and a stop in the middle of heavy tiles of the generated world that does
-// not wait for their end: every render in flight ends between two rows (MapCancelled), the tile
-// dropped, in a small part of the time these tiles would still have taken.
+// not wait for their end: every render in flight stops before it (between two rows: MapCancelled),
+// the tile dropped, in a small part of the time these tiles would still have taken.
 #include "map_tile_cache.hpp"
 
 #include "map_test_support.hpp"
@@ -188,11 +188,13 @@ void testStop() {
     TEST_CHECK(counted.calls->load() <= 6);
 }
 
-// The renders of a cache, counted: started, stopped between two rows (MapCancelled), and those
-// that ran to their end once the stop was asked (the stop then waited for them).
+// The renders of a cache, counted: started, stopped before their end once the stop was asked (by
+// MapCancelled between two rows, or by any other exception of the stop, as one raised in the
+// middle of the courses of the hydrology), and those that ran to their end once the stop was
+// asked (the stop then waited for them).
 struct RenderOutcomes {
     std::atomic<int> started{0};
-    std::atomic<int> cancelled{0};
+    std::atomic<int> stopped{0};
     std::atomic<int> finishedAfterStop{0};
     std::atomic<bool> stopAsked{false};
 };
@@ -210,7 +212,12 @@ MapTileCache::Render countedRender(MapTileCache::Render render,
             }
             return image;
         } catch (const MapCancelled&) {
-            ++outcomes->cancelled;
+            ++outcomes->stopped;
+            throw;
+        } catch (...) {
+            if (outcomes->stopAsked.load()) {
+                ++outcomes->stopped;
+            }
             throw;
         }
     };
@@ -249,7 +256,7 @@ double millisecondsToFinish(const std::vector<MapTileKey>& heavy) {
 }
 
 // The cache of the small world with its water, destroyed 40 ms after its threads started on the
-// heavy tiles: no render runs to its end, each one in flight stops between two rows; the best of
+// heavy tiles: no render runs to its end, each one in flight stops before it; the best of
 // 3 stops takes less than a quarter of the time these tiles would still have taken (measured in
 // this test, on this machine as it is loaded now).
 void testStopHeavyTiles() {
@@ -275,11 +282,11 @@ void testStopHeavyTiles() {
         cache.reset();
         const double ms = millisecondsSince(start);
         std::printf("cache stopped in the middle of heavy tiles in %.1f ms: %d renders started, "
-                    "%d stopped between two rows, %d ran to their end\n",
-                    ms, outcomes->started.load(), outcomes->cancelled.load(),
+                    "%d stopped before their end, %d ran to their end\n",
+                    ms, outcomes->started.load(), outcomes->stopped.load(),
                     outcomes->finishedAfterStop.load());
         TEST_CHECK(busy);
-        TEST_CHECK(outcomes->started.load() >= 1 && outcomes->cancelled.load() >= 1);
+        TEST_CHECK(outcomes->started.load() >= 1 && outcomes->stopped.load() >= 1);
         TEST_CHECK(outcomes->finishedAfterStop.load() == 0);
         best = std::min(best, ms);
     }
