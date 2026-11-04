@@ -298,6 +298,7 @@ void Heightfield::waterOf(std::span<const double> xs, std::span<const double> zs
         const double z = noise::wrapCanonical(zs[i], world_.z);
         leaveValleys(x, z, samples[i], &memos);
         addDunes(x, z, samples[i]);
+        addSeas(x, z, samples[i]);
         minX = std::min(minX, x);
         maxX = std::max(maxX, x);
         minZ = std::min(minZ, z);

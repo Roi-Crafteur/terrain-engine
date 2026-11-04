@@ -380,8 +380,9 @@ int main() {
     water_level::report("vertices with caves", caves);
     golden::report("water levels of the small world",
                    // The coasts (agent 33) change tiles of their band (0x0D969F30C054AF39
-                   // without them, as the horizon and the caves).
-                   {{"tiles", tiles.sum.value(), 0x0AE9CB3DB169FB79ULL},
+                   // without them, as the horizon and the caves); the floors of the seas (agent
+                   // 51) the floor of the sea of some of them (0x0AE9CB3DB169FB79 without them).
+                   {{"tiles", tiles.sum.value(), 0x041A356B8E4CC9B9ULL},
                     {"horizon", horizon.sum.value(), 0xCB9F99936D89D887ULL},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();

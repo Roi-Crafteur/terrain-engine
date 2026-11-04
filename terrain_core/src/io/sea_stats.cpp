@@ -3,6 +3,7 @@
 #include "../generation/planet/planet_parallel.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/water/hydrology.hpp"
 #include "terrain/io/relief_png.hpp"
 
 #include <algorithm>
@@ -10,6 +11,8 @@
 #include <cstdint>
 #include <limits>
 #include <queue>
+#include <span>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -29,6 +32,28 @@ std::size_t bandOf(double depth) {
         ++band;
     }
     return band;
+}
+
+// Samples of field at canonical points: with a Hydrology, its relief and its seas over the sea
+// (Seas::apply, as Heightfield::addSeas), without its rivers and lakes, which never take the sea:
+// the figures of the floors do not need the courses of every river of the world.
+void sampleRun(const Heightfield& field, std::span<const double> xs, std::span<const double> zs,
+               std::span<HeightSample> out) {
+    const Hydrology* hydrology = field.hydrology();
+    if (hydrology == nullptr) {
+        field.samplesAt(xs, zs, out);
+        return;
+    }
+    hydrology->relief().samplesAt(xs, zs, out);
+    const Seas* seas = hydrology->seas();
+    if (seas == nullptr) {
+        return;
+    }
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        if (out[i].water == WaterKind::Ocean) {
+            seas->apply(xs[i], zs[i], out[i], field.footprint());
+        }
+    }
 }
 
 // The distance of every cell to the nearest land cell, meters, over the 8 neighbors on the torus
@@ -138,7 +163,7 @@ std::vector<double> profileDepths(const Heightfield& field, const Start& s,
         zs[k] = noise::wrapCanonical(s.z + s.dirZ * along, world.z);
     }
     std::vector<HeightSample> samples(count);
-    field.samplesAt(xs, zs, samples);
+    sampleRun(field, xs, zs, samples);
     std::vector<double> depths;
     depths.reserve(count);
     for (std::size_t k = 0; k < count; ++k) {
@@ -224,7 +249,7 @@ double windowRms(const Heightfield& field, double x, double z, const SeaStatsPar
             zs[i] = noise::wrapCanonical(z + (static_cast<double>(j) - half) * p.hillSpacing,
                                          field.world().z);
         }
-        field.samplesAt(xs, zs, row);
+        sampleRun(field, xs, zs, row);
         for (const HeightSample& s : row) {
             if (s.water != WaterKind::Ocean) {
                 return -1.0;
@@ -389,6 +414,52 @@ void addHills(const Heightfield& field, const ReliefGrid& grid, const std::vecto
     out.hillRmsP90 = spread.p90;
 }
 
+// The grid of the whole world, sampled in short runs along its rows (sampleRun).
+ReliefGrid sampleWorld(const Heightfield& field, double cellSize, int threads) {
+    constexpr int kRun = 32;
+    const WorldSize& world = field.world();
+    if (!(std::isfinite(cellSize) && cellSize > 0.0) || std::fmod(world.x, cellSize) != 0.0 ||
+        std::fmod(world.z, cellSize) != 0.0) {
+        throw std::invalid_argument("sea stats: the cells must divide both sides of the world");
+    }
+    ReliefGrid grid;
+    grid.spacing = cellSize;
+    grid.columns = static_cast<int>(world.x / cellSize);
+    grid.rows = static_cast<int>(world.z / cellSize);
+    grid.originX = -0.5 * world.x;
+    grid.originZ = -0.5 * world.z;
+    grid.wraps = true;
+    const std::size_t count =
+        static_cast<std::size_t>(grid.columns) * static_cast<std::size_t>(grid.rows);
+    grid.heights.assign(count, 0.0f);
+    grid.water.assign(count, WaterKind::None);
+    grid.waterLevels.assign(count, 0.0f);
+    planet::parallelRows(grid.rows, planet::resolveThreads(threads), [&](int begin, int end) {
+        std::vector<double> xs;
+        std::vector<double> zs;
+        std::vector<HeightSample> run;
+        for (int j = begin; j < end; ++j) {
+            for (int i0 = 0; i0 < grid.columns; i0 += kRun) {
+                const int n = std::min(kRun, grid.columns - i0);
+                xs.resize(static_cast<std::size_t>(n));
+                zs.assign(static_cast<std::size_t>(n), grid.z(j));
+                run.resize(static_cast<std::size_t>(n));
+                for (int i = 0; i < n; ++i) {
+                    xs[static_cast<std::size_t>(i)] = grid.x(i0 + i);
+                }
+                sampleRun(field, xs, zs, run);
+                for (int i = 0; i < n; ++i) {
+                    const std::size_t at = grid.index(i0 + i, j);
+                    grid.heights[at] = run[static_cast<std::size_t>(i)].height;
+                    grid.water[at] = run[static_cast<std::size_t>(i)].water;
+                    grid.waterLevels[at] = run[static_cast<std::size_t>(i)].waterLevel;
+                }
+            }
+        }
+    });
+    return grid;
+}
+
 } // namespace
 
 SeaSpread spreadOf(std::vector<double> values) {
@@ -409,7 +480,7 @@ SeaSpread spreadOf(std::vector<double> values) {
 }
 
 SeaStats measureSeas(const Heightfield& field, const SeaStatsParams& params) {
-    const ReliefGrid grid = sampleReliefWorld(field, params.cellSize, params.threads);
+    const ReliefGrid grid = sampleWorld(field, params.cellSize, params.threads);
     const std::vector<double> distance = landDistances(grid);
     SeaStats out;
     addHypsometry(grid, distance, params, out);

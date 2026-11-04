@@ -306,6 +306,9 @@ private:
     // The seas of dunes of the hydrology (ergs.hpp) over the relief at a canonical point, before
     // its valleys (heightfield_hydrology): nothing, not a bit, outside them.
     void addDunes(double x, double z, HeightSample& s) const;
+    // The seas of the hydrology (seas.hpp) over the floor of the sea at a canonical point, after
+    // the dunes (heightfield_seas): nothing, not a bit, out of the sea.
+    void addSeas(double x, double z, HeightSample& s) const;
     // The valleys, rivers and lakes of the hydrology at a canonical point, last
     // (heightfield_hydrology), through the memos and the region of a batch call (null otherwise).
     // With wall, the wall of the slot of a fall the ground there follows (width 0 otherwise);

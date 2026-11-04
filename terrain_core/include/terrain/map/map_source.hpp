@@ -88,6 +88,10 @@ public:
                 MapSampleStats& stats, MapCancel cancel) const override;
 
 private:
+    // The floors of the seas (agent 51, seas.hpp) under the sea of the relief alone and of the
+    // planet level (FineRelief reads them from the field).
+    void addSeaFloors(const MapFrame& frame, std::span<MapSample> out, int threads,
+                      MapCancel cancel) const;
     void sampleRelief(const MapFrame& frame, const Heightfield& field, std::span<MapSample> out,
                       int threads, MapSampleStats& stats, MapCancel cancel) const;
     void samplePlanet(const MapFrame& frame, std::span<MapSample> out, int threads,

@@ -369,6 +369,7 @@ HeightSample Heightfield::seenAt(double worldX, double worldZ, double pitch) con
         // kind of their floor, filtered to the footprint of the field), then the water.
         leaveValleys(x, z, s, nullptr);
         addDunes(x, z, s);
+        addSeas(x, z, s);
         applyHydrology(x, z, s, nullptr);
     }
     if (report.shore >= 0.0f && s.water == WaterKind::None) {

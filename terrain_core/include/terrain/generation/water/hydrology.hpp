@@ -21,6 +21,7 @@
 #include "terrain/generation/climate.hpp"
 #include "terrain/generation/ergs.hpp"
 #include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/seas.hpp"
 #include "terrain/generation/water/slot_wall.hpp"
 
 #include <array>
@@ -41,6 +42,9 @@ struct HydrologyParams {
     // The seas of dunes laid over the relief before the valleys (ergs.hpp); their rivers are those
     // carved here (ErgParams::minDischarge is set to minDischarge).
     ErgParams ergs;
+    // The floors of the seas, their islands and their ice (agent 51, seas.hpp), after the planet
+    // level: it never sees them.
+    SeaParams seas;
 };
 
 // What the valleys of the rivers make of a point of the relief (Hydrology::riversAt).
@@ -180,6 +184,8 @@ public:
     [[nodiscard]] const HydrologyParams& params() const;
     // The ergs of the world, or nullptr where they are disabled (HydrologyParams::ergs).
     [[nodiscard]] const Ergs* ergs() const;
+    // The seas of the world, or nullptr where they are disabled (HydrologyParams::seas).
+    [[nodiscard]] const Seas* seas() const;
 
     // What the queries of the points of a box share (a batch of Heightfield::samplesAt or
     // heightsAt): the reaches and the lakes that may reach it, found once with what of their

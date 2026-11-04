@@ -211,6 +211,34 @@ void coastLines(const InfoQuery& q, std::vector<InfoLine>& out) {
                                 : format("at sea, %.2f km from the shore", -coast / 1000.0)});
 }
 
+// The floor of the sea (agent 51, seas.hpp) under the column: from the geography, as the dev map
+// reads it; nothing on land, in the band of the coasts or without the seas.
+void seaLines(const InfoQuery& q, std::vector<InfoLine>& out) {
+    const Hydrology* hydrology = q.field.hydrology();
+    const Seas* seas = hydrology != nullptr ? hydrology->seas() : nullptr;
+    if (seas == nullptr) {
+        return;
+    }
+    const Canonical c = canonical(q);
+    const SeaPoint s = seas->mapAt(c.x, c.z, 0.0);
+    if (!s.zone) {
+        return;
+    }
+    out.push_back({"sea", "floor",
+                   format("%.0f m (%.0f m before the seas), %.0f km from the shore", s.floor,
+                          s.before, s.shore / 1000.0)});
+    if (s.ridge >= 0) {
+        out.push_back({"sea", "crust",
+                       format("%.1f Myr, %.0f km from ridge %d (spreading %.2f)", s.age,
+                              s.ridgeDistance / 1000.0, s.ridge, s.rate)});
+    }
+    if (s.trench > 0.0 || s.seamount > 0.0 || s.plateau > 0.0) {
+        out.push_back({"sea", "features",
+                       format("trench %.0f m, seamount %.0f m, plateau %.2f, hills %.0f m",
+                              s.trench, s.seamount, s.plateau, s.hills)});
+    }
+}
+
 // A point hit on the heightmap lies on its surface, within the error of the cells of the tile
 // (more on steep ground); off it, the tile is not the heightmap there: the rock of the walls in
 // three dimensions, a cave, an edit.
@@ -246,7 +274,7 @@ void tileLines(const InfoQuery& q, std::vector<InfoLine>& out) {
 
 std::vector<InfoProvider> defaultInfoProviders() {
     return {positionLines, groundLines, ecologyLines, planetLines, riverLines,
-            fallLines,     coastLines,  surfaceLines, tileLines};
+            fallLines,     coastLines,  seaLines,     surfaceLines, tileLines};
 }
 
 std::vector<InfoLine> describePoint(const InfoQuery& query,

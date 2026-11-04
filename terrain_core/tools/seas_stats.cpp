@@ -4,9 +4,11 @@
 // the roughness of the deep floor. With --planet: the world with its water (and its seas).
 //
 // Usage: terrain_seas_stats [--planet <file>] [--seed <seed>] [--threads <n>] [--step <m>]
-//                           [--transects <n>] [--list]
+//                           [--transects <n>] [--list] [--find]
 //   --step: the cells of the grid of the world (16384 by default; they must divide its sides)
 //   --list: one line per profile
+//   --find: places to look at (the deepest trench, a slow ridge, a fracture zone, the highest
+//           seamount, an oceanic plateau), found on a grid of 32 km of the sea of the seas
 
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
@@ -32,6 +34,7 @@ struct Options {
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     terrain::SeaStatsParams stats;
     bool list = false;
+    bool find = false;
 };
 
 template <typename T> bool parse(std::string_view text, T& out) {
@@ -68,6 +71,8 @@ bool parseOptions(int argc, char** argv, Options& o) {
             if (!parse(argv[++i], o.stats.transects) || o.stats.transects < 0) {
                 return false;
             }
+        } else if (flag == "--find") {
+            o.find = true;
         } else if (flag == "--list") {
             o.list = true;
         } else {
@@ -134,6 +139,53 @@ void printStats(const terrain::SeaStats& s, bool list) {
     }
 }
 
+// A best place of a kind and its score.
+struct Found {
+    double score = -1.0;
+    double x = 0.0;
+    double z = 0.0;
+};
+
+void keep(Found& f, double score, double x, double z) {
+    if (score > f.score) {
+        f = {score, x, z};
+    }
+}
+
+// The places of the features of the seas on a grid of 32 km (Seas::mapAt).
+void findPlaces(const terrain::Seas& seas, const terrain::WorldSize& world) {
+    Found trench, ridge, fracture, seamount, plateau;
+    constexpr double kStep = 32'768.0;
+    for (double z = -0.5 * world.z + 0.5 * kStep; z < 0.5 * world.z; z += kStep) {
+        for (double x = -0.5 * world.x + 0.5 * kStep; x < 0.5 * world.x; x += kStep) {
+            const terrain::SeaPoint s = seas.mapAt(x, z, 0.0);
+            if (!s.zone) {
+                continue;
+            }
+            keep(trench, s.trench, x, z);
+            if (s.ridge >= 0 && s.ridgeDistance < 10'000.0) {
+                keep(ridge, 1.0 - s.rate, x, z);
+            }
+            keep(fracture, s.fracture, x, z);
+            keep(seamount, s.seamount, x, z);
+            keep(plateau, s.plateau > 0.99 ? -s.floor : -1.0, x, z);
+        }
+    }
+    const auto print = [&](const char* what, const Found& f) {
+        const terrain::SeaPoint s = seas.mapAt(f.x, f.z, 0.0);
+        std::printf("  %-18s %.0f %.0f: floor %.0f m, trench %.0f m, ridge %d at %.0f m (rate "
+                    "%.2f, age %.1f Myr), fracture %.0f m, seamount %.0f m, plateau %.2f\n",
+                    what, f.x, f.z, s.floor, s.trench, s.ridge, s.ridgeDistance, s.rate, s.age,
+                    s.fracture, s.seamount, s.plateau);
+    };
+    std::printf("places of the seas (grid of 32 km):\n");
+    print("deepest trench", trench);
+    print("slowest ridge axis", ridge);
+    print("fracture zone", fracture);
+    print("highest seamount", seamount);
+    print("shallowest plateau", plateau);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -141,7 +193,7 @@ int main(int argc, char** argv) {
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
                      "Usage: %s [--planet <file>] [--seed <seed>] [--threads <n>] [--step <m>] "
-                     "[--transects <n>] [--list]\n",
+                     "[--transects <n>] [--list] [--find]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -168,6 +220,9 @@ int main(int argc, char** argv) {
                 o.stats.cellSize);
     const terrain::SeaStats stats = terrain::measureSeas(field, o.stats);
     printStats(stats, o.list);
+    if (o.find && field.hydrology() != nullptr && field.hydrology()->seas() != nullptr) {
+        findPlaces(*field.hydrology()->seas(), world);
+    }
     std::printf("in %.1f s\n",
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
     return EXIT_SUCCESS;

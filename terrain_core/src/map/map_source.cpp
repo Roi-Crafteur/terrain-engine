@@ -104,6 +104,9 @@ void MapWorldSource::sample(const MapFrame& frame, std::span<MapSample> out, int
             addPlanetWater(frame, out, threads, cancel);
         }
     }
+    if (kind != MapSourceKind::FineRelief) {
+        addSeaFloors(frame, out, threads, cancel);
+    }
     if (mapCancelled(cancel)) {
         return;
     }
@@ -116,11 +119,9 @@ void MapWorldSource::sample(const MapFrame& frame, std::span<MapSample> out, int
         }
     } else if (planet_ != nullptr) {
         const double least = hydrology_ != nullptr ? hydrology_->params().minDischarge : 0.0;
-        map_water::planetCourses(*planet_, frame,
-                                 std::max(least, params_.planetRiverDischargePerMeter * step),
-                                 std::max(params_.fallLeastDrop,
-                                          params_.planetFallDropPerMeter * step),
-                                 courses, falls);
+        map_water::planetCourses(
+            *planet_, frame, std::max(least, params_.planetRiverDischargePerMeter * step),
+            std::max(params_.fallLeastDrop, params_.planetFallDropPerMeter * step), courses, falls);
     }
     map_water::drawCourses(frame, courses, params_.riverLeastPixels, out);
     map_water::drawFalls(frame, falls, params_.fallCenterPixels, params_.fallRingPixels,
@@ -216,9 +217,9 @@ void MapWorldSource::samplePlanet(const MapFrame& frame, std::span<MapSample> ou
                 const std::span<MapSubPoint> mine(points.data() + at * per, per);
                 for (int b = 0; b < n; ++b) {
                     for (int a = 0; a < n; ++a) {
-                        mine[static_cast<std::size_t>(b * n + a)] = planetPoint(
-                            subX(frame, static_cast<std::int64_t>(i) - 1, a, n),
-                            subZ(frame, row - 1, b, n));
+                        mine[static_cast<std::size_t>(b * n + a)] =
+                            planetPoint(subX(frame, static_cast<std::int64_t>(i) - 1, a, n),
+                                        subZ(frame, row - 1, b, n));
                     }
                 }
                 MapSample& s = out[at];
@@ -263,11 +264,10 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
             for (int i = 0; i < frame.width(); ++i) {
                 const std::size_t at = mapGridIndex(frame, i, j);
                 MapSample& s = out[at];
-                const std::array<float, 4> around = {
-                    out[mapGridIndex(frame, i + 1, j)].ground,
-                    out[mapGridIndex(frame, i - 1, j)].ground,
-                    out[mapGridIndex(frame, i, j + 1)].ground,
-                    out[mapGridIndex(frame, i, j - 1)].ground};
+                const std::array<float, 4> around = {out[mapGridIndex(frame, i + 1, j)].ground,
+                                                     out[mapGridIndex(frame, i - 1, j)].ground,
+                                                     out[mapGridIndex(frame, i, j + 1)].ground,
+                                                     out[mapGridIndex(frame, i, j - 1)].ground};
                 const auto classify = [&](double x, double z, float ground, WaterKind water,
                                           float level) {
                     SurfaceSite site =
@@ -277,8 +277,8 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
                     return classifyBiome(ecology_->climate().sample(x, z, site), site, biomes);
                 };
                 if (points.empty()) {
-                    s.biome = classify(frame.pixelX(i), frame.pixelZ(j), s.ground, s.water,
-                                       s.waterLevel);
+                    s.biome =
+                        classify(frame.pixelX(i), frame.pixelZ(j), s.ground, s.water, s.waterLevel);
                     continue;
                 }
                 std::array<int, kBiomeCount> votes{};
@@ -291,8 +291,8 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
                                                                   p.water, p.waterLevel))];
                     }
                 }
-                s.biome = static_cast<Biome>(std::distance(
-                    votes.begin(), std::max_element(votes.begin(), votes.end())));
+                s.biome = static_cast<Biome>(
+                    std::distance(votes.begin(), std::max_element(votes.begin(), votes.end())));
             }
         }
     });
@@ -322,6 +322,34 @@ void MapWorldSource::addPlanetWater(const MapFrame& frame, std::span<MapSample> 
                 if (s.ground < l.level) {
                     s.water = l.playa ? WaterKind::SaltLake : WaterKind::Lake;
                     s.waterLevel = l.level;
+                }
+            }
+        }
+    });
+}
+
+void MapWorldSource::addSeaFloors(const MapFrame& frame, std::span<MapSample> out, int threads,
+                                  MapCancel cancel) const {
+    const Seas* seas = hydrology_ != nullptr ? hydrology_->seas() : nullptr;
+    if (seas == nullptr) {
+        return;
+    }
+    const std::size_t columns = gridColumns(frame);
+    const double footprint = std::max(frame.stepX(), frame.stepZ());
+    const WorldSize& world = field_->world();
+    planet::parallelRows(frame.height() + 2, threads, [&](int begin, int end) {
+        for (int row = begin; row < end && !mapCancelled(cancel); ++row) {
+            const double z = wrapCoordinate(frame.pixelZ(row - 1), world.z);
+            for (std::size_t i = 0; i < columns; ++i) {
+                MapSample& s = out[static_cast<std::size_t>(row) * columns + i];
+                if (s.water != WaterKind::Ocean) {
+                    continue;
+                }
+                const double x =
+                    wrapCoordinate(frame.pixelX(static_cast<std::int64_t>(i) - 1), world.x);
+                const SeaPoint p = seas->mapAt(x, z, footprint);
+                if (p.zone) {
+                    s.ground = static_cast<float>(p.floor);
                 }
             }
         }

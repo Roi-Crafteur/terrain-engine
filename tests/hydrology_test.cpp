@@ -347,8 +347,9 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
         sum.add(s.waterLevel);
     }
     // The coasts (agent 33) change 1,702 of its 19,208 points, all in their band, out of the
-    // corridors of the rivers (0x3F29B8BF9DA8A0BB without them).
-    constexpr std::uint64_t kExpected = 0xD2DFFB61145C27A3ULL;
+    // corridors of the rivers (0x3F29B8BF9DA8A0BB without them); the floors of the seas (agent
+    // 51) 41 more, all at sea beyond the band (0xD2DFFB61145C27A3 without them).
+    constexpr std::uint64_t kExpected = 0xA9F37D6058FA0622ULL;
     std::printf("{\"hydrology of the small world\", 0x%016llXULL}%s\n",
                 static_cast<unsigned long long>(sum.value()),
                 sum.value() == kExpected ? "" : "  (differs)");

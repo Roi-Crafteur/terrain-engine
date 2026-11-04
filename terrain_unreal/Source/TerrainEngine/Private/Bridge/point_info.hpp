@@ -44,7 +44,8 @@ using InfoProvider = std::function<void(const InfoQuery& query, std::vector<Info
 // The providers of this version, in their order: the position (canonical point, chunk, block,
 // cell of the planet), the ground and the water, the relief before the rivers, the biome, the
 // material and the climate, the planet level, the valleys and lakes of the rivers, the nearest
-// fall, the coast, the surface (on the heightmap or off it: 3D rock, a cave, an edit) and the
+// fall, the coast, the floor of the sea (agent 51), the surface (on the heightmap or off it: 3D
+// rock, a cave, an edit) and the
 // tile shown. A module adds its lines (the type of the coast, the 3D rock of phase 12A, the
 // kingdoms) with one more function of the form of InfoProvider, appended to this list in
 // point_info.cpp: the screen of F3 and Terrain.Info show them with no other change.

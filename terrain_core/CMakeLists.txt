@@ -88,6 +88,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield_geography.cpp
     src/generation/heightfield_hydrology.cpp
     src/generation/heightfield_rock.cpp
+    src/generation/heightfield_seas.cpp
     src/generation/heightfield_water.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
@@ -122,6 +123,11 @@ add_library(terrain_core STATIC
     src/generation/rock_faces.cpp
     src/generation/rock_spires.cpp
     src/generation/rock_spires_shape.cpp
+    src/generation/sea_floor.cpp
+    src/generation/sea_hills.cpp
+    src/generation/sea_plates.cpp
+    src/generation/sea_shore.cpp
+    src/generation/seas.cpp
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp
@@ -182,6 +188,7 @@ add_library(terrain_core STATIC
     src/io/sea_stats.cpp
     src/io/voronoi_png.cpp
     src/map/map_ergs.cpp
+    src/map/map_seas.cpp
     src/map/map_frame.cpp
     src/map/map_layers.cpp
     src/map/map_probe.cpp
@@ -449,6 +456,7 @@ add_library(terrain_probe_lib STATIC
     tools/probe_record.cpp
     tools/probe_relief.cpp
     tools/probe_rock.cpp
+    tools/probe_seas.cpp
     tools/probe_sections.cpp
     tools/probe_surface.cpp
     tools/probe_water.cpp

@@ -76,6 +76,7 @@ terrain_probe --list-sections
   | `falls` | chutes proches (`near[]`) et couloir de marches (`corridor`) |
   | `rock` | pente la plus forte, intervalles pleins de la colonne (`solid[]`), `faces` |
   | `coast` | côte à la mer ou non, distance, cap vers la mer, `type` |
+  | `sea` | les fonds des mers (agent 51) : zone, distance au rivage, fond avant et après, marge, croûte (dorsale, âge, taux d'expansion), plateau, fosse, collines, fractures, monts sous-marins |
   | `surface` | biome, matériau, plantes, climat local, poids du fondu |
   | `render` | ce que reçoit Unreal : sommets des tuiles LOD 0 à 3, horizon |
 

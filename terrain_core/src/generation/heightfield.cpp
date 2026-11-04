@@ -234,6 +234,7 @@ HeightSample Heightfield::sampleAt(double x, double z) const {
         const double cz = noise::wrapCanonical(z, world_.z);
         leaveValleys(cx, cz, s, nullptr);
         addDunes(cx, cz, s);
+        addSeas(cx, cz, s);
         applyHydrology(cx, cz, s, nullptr);
     }
     return s;

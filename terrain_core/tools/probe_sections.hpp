@@ -81,6 +81,7 @@ struct LinePoint {
 [[nodiscard]] Record reliefSection(const ProbeWorld& world, const Point& point);    // probe_relief
 [[nodiscard]] Record geographySection(const ProbeWorld& world, const Point& point); // probe_relief
 [[nodiscard]] Record coastSection(const ProbeWorld& world, const Point& point);     // probe_relief
+[[nodiscard]] Record seaSection(const ProbeWorld& world, const Point& point);       // probe_seas
 [[nodiscard]] Record planetSection(const ProbeWorld& world, const Point& point);    // probe_planet
 [[nodiscard]] Record waterSection(const ProbeWorld& world, const Point& point);     // probe_water
 [[nodiscard]] Record renderSection(const ProbeWorld& world, const Point& point);    // probe_water

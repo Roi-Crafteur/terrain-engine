@@ -4,9 +4,11 @@
 // whole world (--whole), on --size pixels; or --tiles n: the n x n tiles of the map pyramid around
 // --center at --mpp (a power of two), each timed. Without --planet: the relief and the sea only.
 // Prints where the samples came from, their counts, the queries of the hydrology and its courses.
-// --no-ergs: the same world without its seas of dunes (ergs.hpp), to compare.
+// --no-ergs: the same world without its seas of dunes (ergs.hpp), to compare; --no-seas without
+// the floors of its seas (seas.hpp).
 // Usage: terrain_export_map [--planet <file>] [--seed <seed>] [--threads <n>] [--no-ergs]
-//        [--layers <a,b,...>] [--max-samples <n>]   (layers: relief, biomes, water, contours, ergs)
+//        [--no-seas] [--layers <a,b,...>] [--max-samples <n>]
+//        (layers: relief, biomes, water, contours, ergs, seas)
 //        (--box <x> <z> <width> <height> | --center <x> <z> --mpp <m> | --whole)
 //        (--size <width> <height> | --tiles <n>) <out.png>
 
@@ -15,6 +17,7 @@
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/io/png.hpp"
 #include "terrain/map/map_ergs.hpp"
+#include "terrain/map/map_seas.hpp"
 #include "terrain/map/map_render.hpp"
 #include "terrain/map/map_source.hpp"
 #include "terrain/map/map_style.hpp"
@@ -47,6 +50,7 @@ struct Options {
     double mpp = 0.0;
     bool whole = false;
     bool ergs = true; // --no-ergs: the same world without its seas of dunes
+    bool seas = true; // --no-seas: the same world without the floors of its seas
     int width = 0;
     int height = 0;
     int tiles = 0;
@@ -94,6 +98,10 @@ bool parsePlace(const std::string& flag, int argc, char** argv, int& i, Options&
     }
     if (flag == "--mpp" && need(1)) {
         return (parse(argv[++i], o.mpp) && o.mpp > 0.0) || fail("meters per pixel", argv[i]);
+    }
+    if (flag == "--no-seas") {
+        o.seas = false;
+        return true;
     }
     if (flag == "--no-ergs") {
         o.ergs = false;
@@ -173,7 +181,8 @@ bool checkOptions(const Options& o) {
     }
     const terrain::MapLayers layers = terrain::defaultMapLayers();
     for (const std::string& name : o.layers) {
-        if (layers.find(name) == nullptr && name != terrain::kMapErgsLayer) {
+        if (layers.find(name) == nullptr && name != terrain::kMapErgsLayer &&
+            name != terrain::kMapSeasLayer) {
             return fail("layer", name.c_str());
         }
     }
@@ -295,6 +304,7 @@ int main(int argc, char** argv) {
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
                      "Usage: %s [--planet <file>] [--seed <seed>] [--threads <n>] [--no-ergs] "
+                     "[--no-seas] "
                      "[--layers <a,b,...>] [--max-samples <n>] (--box <x> <z> <width> <height> | "
                      "--center <x> <z> --mpp <m> | --whole) (--size <width> <height> | "
                      "--tiles <n>) <out.png>\n",
@@ -314,6 +324,7 @@ int main(int argc, char** argv) {
                     o.planet.string().c_str());
         terrain::HydrologyParams water;
         water.ergs.enabled = o.ergs;
+        water.seas.enabled = o.seas;
         hydrology = std::make_shared<const terrain::Hydrology>(o.seed, relief, planet, water);
     } else {
         std::printf("no planet file: the relief and the sea only, no rivers nor lakes\n");
@@ -323,6 +334,7 @@ int main(int argc, char** argv) {
     const terrain::MapWorldSource source(tiles);
     terrain::MapLayers layers = terrain::defaultMapLayers();
     layers.add(terrain::kMapErgsLayer, terrain::ergsLayer(hydrology)); // nothing without a planet
+    layers.add(terrain::kMapSeasLayer, terrain::seasLayer(hydrology)); // the same
     terrain::MapImage image;
     if (o.tiles > 0) {
         std::printf("source: %s\n", kindName(source.kindFor(o.mpp)));

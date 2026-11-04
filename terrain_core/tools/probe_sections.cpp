@@ -30,6 +30,8 @@ const std::vector<Section>& sections() {
         {"rock", "slope and the solid and empty intervals of the column", &rockSection, true},
         {"coast", "distance and heading to the sea, rugged share, coast type", &coastSection,
          false},
+        {"sea", "the floors of the seas: margin, crust and its age, trench, hills, seamounts",
+         &seaSection, false},
         {"surface", "biome, material, plants, local climate, blend weights", &surfaceSection,
          true},
         {"render", "what Unreal gets: the vertices of the tiles of LOD 0 to 3, the horizon",

@@ -402,6 +402,9 @@ Hydrology::Hydrology(std::uint64_t seed, const Heightfield& relief,
             seed, *impl_->planet, relief.depressions(), ergs,
             [this](double x, double z, double limit) { return floorDistance(x, z, limit); }, true);
     }
+    if (params.seas.enabled && relief.geography() != nullptr) {
+        impl_->seas = std::make_unique<const Seas>(seed, relief, impl_->planet.get(), params.seas);
+    }
 }
 
 Hydrology::~Hydrology() = default;
@@ -420,6 +423,10 @@ const HydrologyParams& Hydrology::params() const {
 
 const Ergs* Hydrology::ergs() const {
     return impl_->ergs.get();
+}
+
+const Seas* Hydrology::seas() const {
+    return impl_->seas.get();
 }
 
 std::size_t Hydrology::reachCount() const {
