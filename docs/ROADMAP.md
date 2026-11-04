@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -326,6 +327,11 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   un lit de 300 m, 19 % encore avec 1 000 m). C'est la phase 11C qui règle cela
 
 ### Phase 11C — Réseau hydrographique complet et vallées qui descendent (après la 12A)
+- pour l'agent 31 (étape 1 ou 2) : `hydrology_test` tolère un seul point sec connu le long des
+  faces des chutes du petit monde, sur un tracé que les volcans ont déplacé (agent 45), loin
+  d'eux : une bosse du lit, en x = 965 046,27, z = −324 838,17 (9 cm à gauche du milieu du
+  lit, sur la face d'une chute, niveau 258,54 m ; `kKnownDry*` dans le test). Le retirer du
+  test quand le réseau sera refait ; tout autre point sec fait échouer le test.
 - aujourd'hui une rivière n'existe qu'à partir de 10 m³/s et naît d'un coup avec 22 m de large ;
   le ruissellement est la pluie moins l'évaporation, sans la roche, le sol, les plantes ni la
   pente ; le delta n'a pas de bras
@@ -366,6 +372,22 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   et côtière (falaises marines, arches, stacks)
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
+- volcans (agent 45, en cours, `generation/volcanoes.hpp`) : les 3 759 volcans de la géologie du
+  peuplement (mêmes positions, même seed), en relief avant le niveau Planète (sa somme change :
+  `df60a12f83115797` au point d'arrêt 1). Stratovolcans concaves (30 à 35° sur les 500 m sous
+  la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
+  la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
+  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Restent : eau, sols,
+  horizon, lieux. Limites : pas de roche 3D sur les parois de caldeira (jusqu'à ~60° en
+  heightmap), à reprendre avec la roche 3D.
+  - frontière avec l'agent 51 (mers) : l'agent 45 place seul tous les volcans
+    (`settlement::placeVolcanoes`, en mer aussi) et façonne la tête active de chaque point chaud
+    océanique, île ou mont sous-marin, dans sa portée (`VolcanoSite::reach`) ; l'agent 51 pose la
+    chaîne plus vieille derrière elle, le long de la dérive de sa plaque
+    (`VolcanoSite::driftX`, `driftZ` : îles qui s'enfoncent, guyots, atolls), dans le relief du
+    fond, avant les volcans : la tête se pose dessus (maximum lissé). Il lit
+    `Volcanoes::oceanHotspots()` (110 têtes sur le monde par défaut : 76 îles boucliers, 34 monts
+    sous-marins) ; il ne place ni ne déplace aucun volcan actif.
 - mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
   province du relief au cœur des continents secs, jamais placée par le biome : faite par
   l'agent 34 (`generation/ergs.hpp`). Posées après le niveau Planète (sa somme ne change pas),

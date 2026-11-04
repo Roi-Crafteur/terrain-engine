@@ -123,7 +123,9 @@ inline Measure measure(const terrain::Heightfield& with, const terrain::Heightfi
                 std::abs(r.with[i + span] - r.with[i]) / (step * static_cast<double>(span));
             if (d > 1.3 * crater) {
                 m.steepest = std::max(m.steepest, degrees(slope));
-                if (d < 0.4 * radius) {
+                // The upper flank: the first 0.4 of the radius, at least a kilometer out of the
+                // rim (a wide amphitheater).
+                if (d < std::max(0.4 * radius, 1.3 * crater + 1000.0)) {
                     upper = std::max(upper, slope);
                 }
             }

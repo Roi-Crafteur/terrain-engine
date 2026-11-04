@@ -99,8 +99,17 @@ struct VolcanoSite {
     float crater = 0.0f;      // the radius of its crater or caldera, 0 for none
     float craterDepth = 0.0f; // how deep its crater or caldera lies under its rim
     float elongation = 1.0f;  // >= 1: the long radius over the short one
+    // The sharpness k of the concave profile of a cone, (e^(-k rho) - e^-k) / (1 - e^-k): its
+    // slope at the summit k / (1 - e^-k) times its mean slope, at its foot e^-k of that at the
+    // summit. 0 for the shields and the fields.
+    float sharpness = 0.0f;
     float axis = 0.0f;        // the direction of the long axis, radians from +x toward +z
     float reach = 0.0f;       // nothing of it lies farther from its center
+    // The velocity of the plate it stands on (the plates of the geography, made again for the
+    // placement: TectonicPlates, their arbitrary units, about 1): where its older volcanoes drift
+    // to. The chains of the oceanic hotspots (agent 51) grow along it.
+    float driftX = 0.0f;
+    float driftZ = 0.0f;
 };
 
 // The volcanoes of a world, placed once (from its geography and its seed) and looked up by a grid
@@ -128,6 +137,16 @@ public:
     // The indices of the volcanoes whose reach touches the bucket of the canonical (x, z), in
     // the order of sites().
     [[nodiscard]] std::span<const std::uint32_t> near(double x, double z) const;
+    // The oceanic hotspots (origin Hotspot, at sea), in the order of sites(): the active heads of
+    // the chains of agent 51 (seas). The boundary between both: this module alone places every
+    // volcano (settlement::placeVolcanoes, at sea too) and shapes the head of each chain, an
+    // island shield or a seamount, within its reach (VolcanoSite::reach: its edifice, crater,
+    // flows and satellite cones, its land above the sea); agent 51 lays the older chain behind it
+    // along the drift of its plate (VolcanoSite::driftX, driftZ: subsiding islands, guyots,
+    // atolls) in the relief of the sea floor, before the volcanoes, so that the head stands on it
+    // (the smooth maximum of the edifice and the ground). Agent 51 places no active volcano and
+    // never moves one; within the reach of a head, the head rules.
+    [[nodiscard]] std::vector<VolcanoSite> oceanHotspots() const;
     // The volcanoes whose center lies in the box (canonical meters, the box not wrapping),
     // sorted by x, then z.
     [[nodiscard]] std::vector<VolcanoSite> in(double minX, double minZ, double maxX,

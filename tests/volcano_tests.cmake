@@ -6,3 +6,7 @@ target_compile_definitions(volcano_sites_test PRIVATE
 terrain_add_test(volcano_forms_test terrain_core)
 terrain_add_test(volcano_outside_test terrain_core)
 terrain_add_test(map_volcanoes_test terrain_core)
+terrain_add_test(volcano_calderas_test terrain_core)
+terrain_add_test(volcano_cost_test terrain_core)
+# A measure of time: alone, even under ctest -j.
+set_tests_properties(volcano_cost_test PROPERTIES RUN_SERIAL TRUE)

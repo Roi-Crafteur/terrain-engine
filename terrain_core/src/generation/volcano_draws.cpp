@@ -42,6 +42,8 @@ enum Draw : std::uint64_t {
     kElongation,
     kAxis,
     kSlope,
+    kSharpness,
+    kTopSlope,
 };
 
 struct Weighted {
@@ -118,10 +120,21 @@ VolcanoForm seaForm(VolcanoOrigin origin, bool large, double u) {
     return pick(std::array<Weighted, 2>{{{F::IslandShield, 0.6}, {F::Seamount, 0.4}}}, u);
 }
 
-// The cones: their height, their foot height times ratio in radius, their crater.
-void strato(VolcanoSite& s, double low, double high, double ratioLow, double ratioHigh) {
+// The radius of a concave cone rising rise meters: its sharpness drawn in [kLow, kHigh], its slope
+// at the summit in [topLow, topHigh] degrees (the radius follows: rise k / (top (1 - e^-k))).
+double cone(VolcanoSite& s, double rise, double kLow, double kHigh, double topLow,
+            double topHigh) {
+    const double k = between(s.seed, kSharpness, kLow, kHigh);
+    const double top = between(s.seed, kTopSlope, topLow, topHigh) * kDegree;
+    s.sharpness = static_cast<float>(k);
+    return rise * k * dmath::cos(top) / (dmath::sin(top) * (1.0 - dmath::exp(-k)));
+}
+
+// A stratovolcano: its height, its concave cone (35 to 39 degrees at its summit, 30 to 35 over the
+// 500 m under its rim; 5 to 10 at its foot: k 1.6 to 2.1, as Mayon), its crater.
+void strato(VolcanoSite& s, double low, double high) {
     s.height = static_cast<float>(between(s.seed, kHeight, low, high));
-    s.radius = static_cast<float>(s.height * between(s.seed, kRadius, ratioLow, ratioHigh));
+    s.radius = static_cast<float>(cone(s, s.height, 1.6, 2.1, 35.0, 39.0));
     s.crater = static_cast<float>(between(s.seed, kCrater, 150.0, s.large ? 600.0 : 450.0));
     s.craterDepth = static_cast<float>(between(s.seed, kCraterDepth, 100.0, 300.0));
 }
@@ -147,14 +160,17 @@ void landSizes(VolcanoSite& s) {
     switch (s.form) {
     case F::Strato:
     case F::CollapsedStrato:
-        strato(s, s.large ? 3000.0 : 1500.0, s.large ? 4500.0 : 3500.0, 5.0, 6.5);
+        // 1.5 to 3 km; the large ones 3.5 to 4.8 km over the ground at their foot (Fuji 3.8,
+        // Kilimanjaro about 4.9 over their plains): drawn a little higher, their crater and their
+        // irregular foot taking some of it.
+        strato(s, s.large ? 3700.0 : 1500.0, s.large ? 5000.0 : 3000.0);
         if (s.form == F::CollapsedStrato) {
             s.crater = static_cast<float>(between(seed, kCrater, 1000.0, 2000.0));
             s.craterDepth = static_cast<float>(between(seed, kCraterDepth, 300.0, 600.0));
         }
         break;
     case F::TwinStrato:
-        strato(s, 1800.0, 3200.0, 6.0, 7.5);
+        strato(s, 1500.0, 3000.0);
         break;
     case F::Shield:
         shield(s, between(seed, kHeight, s.large ? 2000.0 : 500.0, s.large ? 3500.0 : 2000.0), 4.0,
@@ -183,6 +199,7 @@ void landSizes(VolcanoSite& s) {
         s.craterDepth = static_cast<float>(between(seed, kCraterDepth, 300.0, 900.0));
         s.radius = static_cast<float>(std::max(s.height * between(seed, kRadius, 9.0, 13.0),
                                                2.2 * static_cast<double>(s.crater)));
+        s.sharpness = static_cast<float>(between(seed, kSharpness, 2.6, 3.1));
         break;
     }
     case F::PlateauCaldera:
@@ -201,8 +218,9 @@ void seaSizes(VolcanoSite& s) {
     const std::uint64_t seed = s.seed;
     switch (s.form) {
     case F::IslandStrato:
-        strato(s, 300.0, 2500.0, 3.5, 5.0);
-        s.radius = static_cast<float>(rise(s, 500.0) * between(seed, kRadius, 3.5, 5.0));
+        strato(s, 300.0, 2500.0);
+        // From the sea floor: steeper above the sea (30 to 36 degrees at the summit, Stromboli).
+        s.radius = static_cast<float>(cone(s, rise(s, 500.0), 2.0, 2.6, 30.0, 36.0));
         break;
     case F::IslandShield: {
         const double summit =
@@ -218,10 +236,12 @@ void seaSizes(VolcanoSite& s) {
         s.crater = static_cast<float>(
             std::min(0.6 * s.radius, between(seed, kCrater, 3000.0, 6000.0)));
         s.craterDepth = s.height + static_cast<float>(between(seed, kCraterDepth, 200.0, 400.0));
+        s.sharpness = static_cast<float>(between(seed, kSharpness, 2.4, 3.0));
         break;
     case F::Seamount:
         s.height = static_cast<float>(between(seed, kHeight, -2000.0, -300.0));
         s.radius = static_cast<float>(rise(s, 300.0) * between(seed, kRadius, 3.0, 4.5));
+        s.sharpness = 2.2f;
         break;
     default:
         break;

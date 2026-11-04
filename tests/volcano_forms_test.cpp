@@ -48,12 +48,12 @@ struct Range {
 
 Range rangeOf(VolcanoForm f) {
     switch (f) {
-    case VolcanoForm::Strato:
-        return {1000.0, 5200.0, 14.0, 40.0, 15.0, 20.0};
+    case VolcanoForm::Strato: // 30 to 35 degrees over the 500 m under the rim, 5 to 10 at the foot
+        return {1300.0, 5200.0, 28.0, 37.0, 11.0, 20.0};
     case VolcanoForm::TwinStrato: // broader along the axis of its two summits
-        return {1000.0, 5200.0, 10.0, 40.0, 15.0, 20.0};
-    case VolcanoForm::CollapsedStrato:
-        return {1000.0, 5200.0, 12.0, 40.0, 15.0, 100.0};
+        return {1000.0, 5200.0, 24.0, 37.0, 11.0, 20.0};
+    case VolcanoForm::CollapsedStrato: // its summit gone with the collapse
+        return {800.0, 5200.0, 12.0, 37.0, 12.0, 100.0};
     case VolcanoForm::Shield:
         return {300.0, 4200.0, 2.0, 16.0, 15.0, 50.0};
     case VolcanoForm::IslandShield:
@@ -90,6 +90,27 @@ bool inRange(const terrain::VolcanoSite& s, const vm::Measure& m) {
     return ok;
 }
 
+// The large stratovolcanoes: 3.5 to 4.8 km over their foot (Fuji 3.8 km, Kilimanjaro about 4.9).
+void testLarge(const terrain::Heightfield& with, const terrain::Heightfield& bare) {
+    int count = 0;
+    int out = 0;
+    for (const terrain::VolcanoSite& s : with.volcanoes()->sites()) {
+        if (s.form != VolcanoForm::Strato || !s.large || count >= kPerForm) {
+            continue;
+        }
+        ++count;
+        const vm::Measure m = vm::measure(with, bare, s);
+        const bool ok = m.rise >= 3500.0 && m.rise <= 4900.0 && m.upper >= 28.0 &&
+                        m.upper <= 37.0 && m.foot <= 11.0;
+        out += ok ? 0 : 1;
+        std::printf("large strato     base %7.0f summit %6.0f rise %5.0f | upper %4.1f foot %4.1f "
+                    "deg | crater %4.0f | foot %5.0f-%5.0f m%s\n",
+                    m.base, m.summit, m.rise, m.upper, m.foot, m.crater, m.footMin, m.footMax,
+                    ok ? "" : "  OUT");
+    }
+    TEST_CHECK(count >= 3 && out == 0);
+}
+
 void testForms(const terrain::Heightfield& with, const terrain::Heightfield& bare) {
     std::array<int, terrain::kVolcanoFormCount> done{};
     int failed = 0;
@@ -120,7 +141,8 @@ void testForms(const terrain::Heightfield& with, const terrain::Heightfield& bar
     TEST_CHECK(outline > 1.1);
 }
 
-// For volcanoes of the edifices, the nearest of the same form: how unlike they are.
+// For volcanoes of the edifices, the nearest of the same form: how unlike they are (their rise, or
+// at sea the altitude of their summit; the width and the asymmetry of their foot).
 void testNeighbors(const terrain::Heightfield& with, const terrain::Heightfield& bare) {
     const std::vector<terrain::VolcanoSite>& sites = with.volcanoes()->sites();
     const terrain::WorldSize& w = with.world();
@@ -156,7 +178,8 @@ void testNeighbors(const terrain::Heightfield& with, const terrain::Heightfield&
         const auto rel = [](double x, double y) {
             return std::abs(x - y) / std::max({std::abs(x), std::abs(y), 1.0});
         };
-        const double rise = rel(ma.rise, mb.rise);
+        // At sea, what shows: the altitude of the summit (the sea floors around are alike).
+        const double rise = a.atSea ? rel(ma.summit, mb.summit) : rel(ma.rise, mb.rise);
         const double radius = rel(ma.footMin + ma.footMax, mb.footMin + mb.footMax);
         const double asym = rel(ma.footMax / std::max(ma.footMin, 1.0),
                                 mb.footMax / std::max(mb.footMin, 1.0));
@@ -181,6 +204,7 @@ int main() {
     const terrain::Heightfield with(terrain::kDefaultWorldSeed);
     const terrain::Heightfield bare(terrain::kDefaultWorldSeed, without());
     testForms(with, bare);
+    testLarge(with, bare);
     testNeighbors(with, bare);
     return test::result();
 }

@@ -321,7 +321,7 @@ void testDefaultWorld() {
     std::printf("default world in %.1f s\n", seconds(start));
     golden::report("the default world out of the coastal zone",
                    {{"default world patches", sums.patches.value(), 0x12BBBAA19D5D777FULL},
-                    {"default world tiles", sums.tiles.value(), 0x4C436C21D4546281ULL},
+                    {"default world tiles", sums.tiles.value(), 0x51D8B009355E8A97ULL},
                     {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
 }
 

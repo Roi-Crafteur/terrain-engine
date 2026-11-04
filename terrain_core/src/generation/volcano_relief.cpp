@@ -29,6 +29,8 @@ enum Stream : std::uint64_t {
     kSwell,
     kWallNoise,
     kGullies,
+    kRimSwell,
+    kTalus,
 };
 
 // Beyond the foot of an edifice its apron falls away by this slope (14 degrees): it fills the
@@ -80,6 +82,26 @@ Frame frameOf(const VolcanoSite& s, const Shape& sh, double dx, double dz) {
     return f;
 }
 
+// How much higher or lower the rim of a caldera stands along the azimuth of the frame: up to 0.3
+// of its depth, over two layers of noise of 5 and 17 cells (no period); 0 for the craters of the
+// cones. And the band of the flank it lifts or lowers, around the rim.
+double rimSwell(const VolcanoSite& s, const Frame& f) {
+    const auto depth = static_cast<double>(s.craterDepth);
+    if (s.form != VolcanoForm::Caldera && s.form != VolcanoForm::PlateauCaldera &&
+        s.form != VolcanoForm::IslandCaldera) {
+        return 0.0;
+    }
+    return 0.3 * depth *
+           (0.65 * vf::ringNoise(s.seed + kRimSwell, f.turns, 5) +
+            0.35 * vf::ringNoise(s.seed + kRimSwell + 1, f.turns, 17));
+}
+
+double rimBand(const VolcanoSite& s, const Frame& f) {
+    const double t = (f.rho - static_cast<double>(s.crater) / f.radius) / 0.3;
+    const double u = std::max(0.0, 1.0 - t * t);
+    return u * u;
+}
+
 // The surface of the edifice at the frame, absolute.
 double edificeAt(const VolcanoSite& s, const Shape& sh, const Frame& f, double base, double rise) {
     if (!(f.rho < 1.0)) {
@@ -108,14 +130,14 @@ double edificeAt(const VolcanoSite& s, const Shape& sh, const Frame& f, double b
         const double rho2 = dmath::hypot(f.u + 0.55 * f.radius, f.v) / (0.7 * f.radius);
         p = vf::smax(p, 0.8 * profileAt(s, sh, rho2), 0.04);
     }
-    return base + rise * p;
+    return base + rise * p + rimSwell(s, f) * rimBand(s, f);
 }
 
 // The rim of the crater along the azimuth of the frame: the edifice at its radius, and the gaps
 // of the rim of a drowned caldera breached by the sea.
 double rimAt(const VolcanoSite& s, const Shape& sh, const Frame& f, double crater, double base,
              double rise) {
-    double rim = base + rise * profileAt(s, sh, crater / f.radius);
+    double rim = base + rise * profileAt(s, sh, crater / f.radius) + rimSwell(s, f);
     if (s.form == VolcanoForm::IslandCaldera && sh.breached) {
         const double gap = vf::smoothstep(0.3, 0.75, vf::ringNoise(s.seed + kGaps, f.turns, 7));
         rim -= (rim + 40.0) * gap;
@@ -123,21 +145,25 @@ double rimAt(const VolcanoSite& s, const Shape& sh, const Frame& f, double crate
     return rim;
 }
 
-// The couloirs down the wall of a crater, about every 250 m of its rim, deepest at mid wall:
-// gullies, chutes and the fans of their talus, never a smooth cylinder.
+// The couloirs down the wall of a crater, at irregular spacings along its rim (cells of about 180 m,
+// about one in two holding one), deepest at mid wall: gullies and chutes, never a smooth cylinder.
 double gulliesAt(const VolcanoSite& s, const Frame& f, double crater, double q, double wall) {
     const double t = (q - (1.0 - 0.5 * wall)) / (0.6 * wall);
     if (!(std::abs(t) < 1.0)) {
         return 0.0;
     }
-    const int cells = std::max(12, static_cast<int>(vf::kTwoPi * crater / 250.0));
+    const int cells = std::max(16, static_cast<int>(vf::kTwoPi * crater / 180.0));
     const double x = f.turns * cells + 0.3 * vf::lineNoise(s.seed + kGullies + 1, q * 6.0);
     const dmath::FloorIndex i = dmath::floorIndex(x);
     const auto cell = static_cast<std::uint64_t>(((i.index % cells) + cells) % cells);
     const double center = 0.3 + 0.4 * volcano_sites::unit(s.seed + kGullies, cell);
     const double depth = 0.05 * static_cast<double>(s.craterDepth) *
                          (0.2 + 0.8 * volcano_sites::unit(s.seed + kGullies, cell + 100'000));
-    const double width = 0.12 + 0.18 * volcano_sites::unit(s.seed + kGullies, cell + 200'000);
+    // About one cell in two holds a couloir: no fixed spacing.
+    if (!(volcano_sites::unit(s.seed + kGullies, cell + 300'000) < 0.55)) {
+        return 0.0;
+    }
+    const double width = 0.12 + 0.28 * volcano_sites::unit(s.seed + kGullies, cell + 200'000);
     const double across = std::max(0.0, 1.0 - std::abs(x - i.value - center) / width);
     return depth * across * across * (1.0 - t * t);
 }
@@ -145,8 +171,10 @@ double gulliesAt(const VolcanoSite& s, const Frame& f, double crater, double q, 
 void digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double base, double rise,
                Point& p) {
     const auto mean = static_cast<double>(s.crater);
+    // Its outline: spurs and re-entrants over two layers of noise (11 and 29 cells).
     const double crater =
-        mean * (1.0 + sh.rimNoise * vf::ringNoise(s.seed + kRimNoise, f.turns, 11));
+        mean * (1.0 + sh.rimNoise * (vf::ringNoise(s.seed + kRimNoise, f.turns, 11) +
+                                     0.5 * vf::ringNoise(s.seed + kRimNoise + 7, f.turns, 29)));
     const double q = f.r / crater;
     if (!(q < 1.25) && !sh.breached) {
         return;
@@ -159,12 +187,19 @@ void digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double bas
     if (q < 1.25) {
         // The wall steeper here, gentler there, cut by couloirs.
         const double wall = std::clamp(
-            sh.wall * (1.0 + 0.5 * vf::ringNoise(s.seed + kWallNoise, f.turns, 13)), 0.04, 0.95);
+            sh.wall * (1.0 + 0.45 * vf::ringNoise(s.seed + kWallNoise, f.turns, 13) +
+                       0.25 * vf::ringNoise(s.seed + kWallNoise + 1, f.turns, 31)),
+            0.04, 0.95);
+        // The talus at its foot: a fan rising from the floor toward the wall, higher here.
+        const double talus = 0.14 * static_cast<double>(s.craterDepth) *
+                             (0.7 + 0.3 * vf::ringNoise(s.seed + kTalus, f.turns, 23));
+        const double fan = vf::smoothstep(1.0 - 1.5 * wall, 1.0 - 0.4 * wall, q);
+        const double foot = floor + talus * fan * fan;
         // Its crest notched here and there, by up to a sixth of its depth, from within.
         const double notch = 0.16 * static_cast<double>(s.craterDepth) *
                              std::min(0.0, vf::ringNoise(s.seed + kRimNoise + 50, f.turns, 9)) *
                              (1.0 - vf::smoothstep(0.92, 1.0, q));
-        const double c = floor + (rim + notch - floor) * vf::craterWall(q, wall) -
+        const double c = foot + (rim + notch - foot) * vf::craterWall(q, wall) -
                          gulliesAt(s, f, crater, q, wall);
         const double weight = 1.0 - vf::smoothstep(1.0, 1.25, q);
         p.height += weight * (vf::smin(p.height, c, 0.04 * static_cast<double>(s.craterDepth) +

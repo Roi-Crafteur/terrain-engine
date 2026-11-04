@@ -31,7 +31,7 @@ enum Draw : std::uint64_t {
     kCells,
     kOffset,
     kOffsetAngle,
-    kSharpness,
+    kSharpnessUnused, // drawn with the sizes since agent 45's stop 1 (VolcanoSite::sharpness)
     kBreached,
     kBreachAngle,
     kBreachWidth,
@@ -53,19 +53,9 @@ bool isCaldera(VolcanoForm f) {
            f == VolcanoForm::IslandCaldera;
 }
 
+// The sharpness of the profile of a cone (drawn with its sizes), 0 for a dome.
 double sharpnessOf(const VolcanoSite& s) {
-    switch (s.form) {
-    case VolcanoForm::Caldera:
-        return between(s.seed, kSharpness, 2.6, 3.1);
-    case VolcanoForm::IslandStrato:
-    case VolcanoForm::IslandCaldera:
-        return between(s.seed, kSharpness, 2.4, 3.0);
-    case VolcanoForm::Seamount:
-        return 2.2;
-    default:
-        // Fuji: about e^-r / 8.7 km over a foot of 25 km (2.9).
-        return between(s.seed, kSharpness, 2.7, 3.4);
-    }
+    return static_cast<double>(s.sharpness);
 }
 
 // The share of the radius of the crater its wall takes, from the mean slope of the wall: about 35

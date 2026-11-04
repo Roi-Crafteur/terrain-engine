@@ -11,6 +11,7 @@
 #include "volcano_sites.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -50,17 +51,27 @@ std::vector<VolcanoSite> placeSites(std::uint64_t worldSeed, const Geography& ge
                                     const VolcanoParams& params, int threads) {
     const WorldSize& world = geo.world();
     std::vector<settlement::Volcano> placed;
+    std::vector<std::array<float, 2>> drifts;
     {
         // The plates hold references: made, read and dropped here.
         const settlement::GeographyPlates plates(worldSeed, geo, threads);
         const double scale = world.x * world.z / 1.0e6 / params.referenceAreaKm2;
         placed = settlement::placeVolcanoes(plates, worldSeed, ruleOf(params), scale, threads);
+        // The velocity of the plate under each, the nearest after the warp of the geography.
+        for (const settlement::Volcano& v : placed) {
+            const Plate& p = plates.plates().plates()[static_cast<std::size_t>(
+                plates.nearAt(v.x, v.z).a)];
+            drifts.push_back({static_cast<float>(p.velocityX), static_cast<float>(p.velocityZ)});
+        }
     }
     const std::uint64_t stream = noise::deriveSeed(worldSeed, volcano_sites::kShapeStream);
     std::vector<VolcanoSite> sites;
     sites.reserve(placed.size());
-    for (const settlement::Volcano& v : placed) {
+    for (std::size_t k = 0; k < placed.size(); ++k) {
+        const settlement::Volcano& v = placed[k];
         VolcanoSite s;
+        s.driftX = drifts[k][0];
+        s.driftZ = drifts[k][1];
         s.x = v.x;
         s.z = v.z;
         s.origin = static_cast<VolcanoOrigin>(v.kind);
@@ -202,6 +213,16 @@ std::vector<VolcanoSite> Volcanoes::in(double minX, double minZ, double maxX, do
     std::sort(out.begin(), out.end(), [](const VolcanoSite& a, const VolcanoSite& b) {
         return std::tie(a.x, a.z) < std::tie(b.x, b.z);
     });
+    return out;
+}
+
+std::vector<VolcanoSite> Volcanoes::oceanHotspots() const {
+    std::vector<VolcanoSite> out;
+    for (const VolcanoSite& s : sites_) {
+        if (s.origin == VolcanoOrigin::Hotspot && s.atSea) {
+            out.push_back(s);
+        }
+    }
     return out;
 }
 

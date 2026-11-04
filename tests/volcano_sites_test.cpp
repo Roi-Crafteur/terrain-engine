@@ -77,7 +77,8 @@ bool sameSites(const std::vector<terrain::VolcanoSite>& a,
         same = a[k].x == b[k].x && a[k].z == b[k].z && a[k].form == b[k].form &&
                a[k].seed == b[k].seed && sameBits(a[k].height, b[k].height) &&
                sameBits(a[k].floor, b[k].floor) && sameBits(a[k].radius, b[k].radius) &&
-               sameBits(a[k].crater, b[k].crater) && sameBits(a[k].reach, b[k].reach);
+               sameBits(a[k].crater, b[k].crater) && sameBits(a[k].reach, b[k].reach) &&
+               sameBits(a[k].driftX, b[k].driftX) && sameBits(a[k].driftZ, b[k].driftZ);
     }
     return same;
 }
@@ -168,6 +169,28 @@ void testBuckets(const terrain::Volcanoes& volcanoes) {
     TEST_CHECK(held > 1000 && missed == 0);
 }
 
+// The oceanic hotspots, the heads of the chains of agent 51: the hotspots at sea, every one, an
+// island shield or a seamount, its plate drifting.
+void testOceanHotspots(const terrain::Volcanoes& volcanoes) {
+    const std::vector<terrain::VolcanoSite> heads = volcanoes.oceanHotspots();
+    int expected = 0;
+    for (const terrain::VolcanoSite& s : volcanoes.sites()) {
+        expected += s.origin == terrain::VolcanoOrigin::Hotspot && s.atSea ? 1 : 0;
+    }
+    int shields = 0;
+    int seamounts = 0;
+    bool drifting = true;
+    for (const terrain::VolcanoSite& s : heads) {
+        shields += s.form == terrain::VolcanoForm::IslandShield ? 1 : 0;
+        seamounts += s.form == terrain::VolcanoForm::Seamount ? 1 : 0;
+        drifting = drifting && std::hypot(s.driftX, s.driftZ) > 0.0f;
+    }
+    std::printf("oceanic hotspots: %zu (%d island shields, %d seamounts)\n", heads.size(), shields,
+                seamounts);
+    TEST_CHECK(static_cast<int>(heads.size()) == expected && expected > 20);
+    TEST_CHECK(shields + seamounts == expected && drifting);
+}
+
 void testDisabled() {
     terrain::HeightfieldParams params;
     params.volcanoes.enabled = false;
@@ -189,6 +212,7 @@ int main() {
     testThreads(field);
     testForms(*field.volcanoes());
     testBuckets(*field.volcanoes());
+    testOceanHotspots(*field.volcanoes());
     testDisabled();
     return test::result();
 }
