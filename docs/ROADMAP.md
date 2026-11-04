@@ -677,6 +677,24 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - Unreal l'affiche et joue les effets (traces de pas, poudrerie, sable soufflé)
 - le sable pourra reprendre la hauteur des dunes, déjà connue séparément du sol
 - la neige dépendra des saisons si le jeu en a un jour ; le choix reste à faire
+- pour l'agent 44, ce que les ergs donnent déjà (agent 34, `generation/ergs.hpp`) :
+  - où est le sable : HeightSample::dunes, les mètres de sable des dunes au-dessus du relief
+    (négatifs dans les creux creusés entre elles), et HeightSample::erg, la part de l'erg (son
+    masque, au-dessus de kErgFloorShare sur les dunes, en dessous sur le sol de ses bords) ;
+  - son épaisseur supposée : celle des dunes elles-mêmes (le relief est la roche ou le sol dur
+    sous elles), jusqu'à 300 m dans l'erg réaliste et 800 m dans les vagues géantes ; sous un
+    creux (dunes négatives), aucune ;
+  - les sols entre les dunes : HeightSample::ergFloor, 0 sable, 1 gravier, 2 croûte, continu
+    entre eux, lu là où les dunes ont moins de 10 m ; seul le sable (0) est une couche à creuser,
+    le gravier et la croûte sont un sol dur mince ;
+  - les sebkhas (lacs salés du niveau Planète, au fond de dépressions comme la n° 27, lieu
+    depression_seche_fond) restent sans dunes : une croûte de sel sur de la vase, pas du sable
+    (son aspect est pour l'agent 50) ;
+  - les sables suivent la hauteur des tuiles et de l'horizon (Heightfield::forFootprint) : une
+    couche doit partir des mêmes dunes, ou l'horizon ne la verra pas ;
+  - la végétation des ergs reste à faire : aujourd'hui les plantes y suivent le biome (désert,
+    clairsemé) ; touffes sur les sols de gravier et de croûte, rien sur les dunes vives, une
+    bande d'herbe le long des oueds (ergGrassReach, 150 m)
 
 ### Plus tard : monde fantastique
 - biomes fantastiques, en plus des biomes réels (après le format élargi) ; toujours placés par le
