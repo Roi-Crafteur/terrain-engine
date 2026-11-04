@@ -2,8 +2,9 @@
 // renderMap, kept and reused (moving a view renders only its new tiles), the least used dropped
 // beyond the capacity, the stale requests dropped, the layers changed, the probe of the cursor,
 // the landing of a click (the last asked, as clickLandingOn the source gives it), a clean stop
-// while tiles render, and a stop in the middle of heavy tiles of the generated world
-// within 100 ms (their render ends between two rows, the tile dropped).
+// while tiles render, and a stop in the middle of heavy tiles of the generated world that does
+// not wait for their end: every render in flight ends between two rows (MapCancelled), the tile
+// dropped, in a small part of the time these tiles would still have taken.
 #include "map_tile_cache.hpp"
 
 #include "map_test_support.hpp"
@@ -17,7 +18,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace terrain;
@@ -184,34 +188,107 @@ void testStop() {
     TEST_CHECK(counted.calls->load() <= 6);
 }
 
-// The cache of the small world with its water, on a hydrology that has computed nothing yet (the
-// heaviest tiles: their courses to compute), destroyed 40 ms after its threads started on tiles
-// of 2 and 64 m per pixel around a fall: the time the destructor takes, the best of 3 tries.
-void testStopHeavyTiles() {
+// The renders of a cache, counted: started, stopped between two rows (MapCancelled), and those
+// that ran to their end once the stop was asked (the stop then waited for them).
+struct RenderOutcomes {
+    std::atomic<int> started{0};
+    std::atomic<int> cancelled{0};
+    std::atomic<int> finishedAfterStop{0};
+    std::atomic<bool> stopAsked{false};
+};
+
+MapTileCache::Render countedRender(MapTileCache::Render render,
+                                   const std::shared_ptr<RenderOutcomes>& outcomes) {
+    return [render = std::move(render), outcomes](const MapTileKey& key,
+                                                  const std::vector<std::string>& layers,
+                                                  MapCancel cancel) {
+        ++outcomes->started;
+        try {
+            MapImage image = render(key, layers, cancel);
+            if (outcomes->stopAsked.load()) {
+                ++outcomes->finishedAfterStop;
+            }
+            return image;
+        } catch (const MapCancelled&) {
+            ++outcomes->cancelled;
+            throw;
+        }
+    };
+}
+
+double millisecondsSince(std::chrono::steady_clock::time_point start) {
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+        .count();
+}
+
+// Two tiles of 2 and two of 64 m per pixel around a fall of the small world: the heaviest, on a
+// hydrology that has computed nothing yet (their courses to compute).
+std::vector<MapTileKey> heavyTiles() {
     const map_world::FallPlace fall = map_world::firstFall();
+    std::vector<MapTileKey> heavy;
+    for (const int level : {1, 6}) {
+        const MapTileKey k = mapTileAt(level, fall.x, fall.z, golden::kSmallPlanet);
+        heavy.push_back(k);
+        heavy.push_back({level, k.tx + 1, k.tz});
+    }
+    return heavy;
+}
+
+// The time the cache takes to render the heavy tiles to their end, on a new world, with the
+// threads of the stops below.
+double millisecondsToFinish(const std::vector<MapTileKey>& heavy) {
+    const map_world::WetWorld w;
+    MapTileCache cache(renderTilesOf(w.source), probesOf(w.source), defaultMapLayers().names(),
+                       MapCacheParams{64, 2});
+    const auto start = std::chrono::steady_clock::now();
+    cache.want(heavy);
+    cache.waitIdle();
+    const double ms = millisecondsSince(start);
+    TEST_CHECK(cache.kept() == heavy.size());
+    return ms;
+}
+
+// The cache of the small world with its water, destroyed 40 ms after its threads started on the
+// heavy tiles: no render runs to its end, each one in flight stops between two rows; the best of
+// 3 stops takes less than a quarter of the time these tiles would still have taken (measured in
+// this test, on this machine as it is loaded now).
+void testStopHeavyTiles() {
+    const std::vector<MapTileKey> heavy = heavyTiles();
     double best = 1.0e9;
+    double longestBeforeStop = 0.0;
     for (int attempt = 0; attempt < 3; ++attempt) {
         const map_world::WetWorld w;
-        auto cache = std::make_unique<MapTileCache>(renderTilesOf(w.source), probesOf(w.source),
-                                                    defaultMapLayers().names(), MapCacheParams{64, 2});
-        std::vector<MapTileKey> heavy;
-        for (const int level : {1, 6}) {
-            const MapTileKey k = mapTileAt(level, fall.x, fall.z, golden::kSmallPlanet);
-            heavy.push_back(k);
-            heavy.push_back({level, k.tx + 1, k.tz});
-        }
+        const auto outcomes = std::make_shared<RenderOutcomes>();
+        auto cache = std::make_unique<MapTileCache>(countedRender(renderTilesOf(w.source), outcomes),
+                                                    probesOf(w.source), defaultMapLayers().names(),
+                                                    MapCacheParams{64, 2});
+        const auto asked = std::chrono::steady_clock::now();
         cache->want(heavy);
+        while (outcomes->started.load() == 0 && millisecondsSince(asked) < 10000.0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(40));
         const bool busy = cache->waiting() > 0 && cache->kept() == 0;
+        longestBeforeStop = std::max(longestBeforeStop, millisecondsSince(asked));
+        outcomes->stopAsked = true;
         const auto start = std::chrono::steady_clock::now();
         cache.reset();
-        const double ms =
-            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-        std::printf("cache stopped in the middle of heavy tiles in %.1f ms\n", ms);
+        const double ms = millisecondsSince(start);
+        std::printf("cache stopped in the middle of heavy tiles in %.1f ms: %d renders started, "
+                    "%d stopped between two rows, %d ran to their end\n",
+                    ms, outcomes->started.load(), outcomes->cancelled.load(),
+                    outcomes->finishedAfterStop.load());
         TEST_CHECK(busy);
+        TEST_CHECK(outcomes->started.load() >= 1 && outcomes->cancelled.load() >= 1);
+        TEST_CHECK(outcomes->finishedAfterStop.load() == 0);
         best = std::min(best, ms);
     }
-    TEST_CHECK(best < 100.0);
+    const double finish = millisecondsToFinish(heavy);
+    const double remaining = finish - longestBeforeStop;
+    std::printf("the heavy tiles to their end: %.1f ms, %.1f ms left at the stop; best stop "
+                "%.1f ms (%.3f of it)\n",
+                finish, remaining, best, best / remaining);
+    TEST_CHECK(best < remaining / 4.0);
 }
 
 } // namespace

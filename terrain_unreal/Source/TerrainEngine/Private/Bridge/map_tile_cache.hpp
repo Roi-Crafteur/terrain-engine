@@ -66,7 +66,8 @@ public:
     MapTileCache(Render render, Probe probe, std::vector<std::string> layers,
                  const MapCacheParams& params = {}, Land land = {});
     // Stops the threads: the tiles being rendered stop between two of their rows and are dropped
-    // (well under 100 ms), the others never start.
+    // (a small part of the time of a tile, well under 100 ms on a machine not loaded), the others
+    // never start.
     ~MapTileCache();
     MapTileCache(const MapTileCache&) = delete;
     MapTileCache& operator=(const MapTileCache&) = delete;
