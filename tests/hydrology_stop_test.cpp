@@ -96,7 +96,8 @@ Trial stopTrial(Hydrology& h, int delay, std::uint64_t seed) {
         workers.emplace_back([&, t] {
             const WorkStopScope scope(&stop);
             try {
-                for (const std::size_t r : orderOf(h.reachCount(), seed + 7 * t)) {
+                const std::uint64_t own = seed + 7 * static_cast<std::uint64_t>(t);
+                for (const std::size_t r : orderOf(h.reachCount(), own)) {
                     current[static_cast<std::size_t>(t)] = r;
                     (void)h.reach(r);
                 }
@@ -114,7 +115,8 @@ Trial stopTrial(Hydrology& h, int delay, std::uint64_t seed) {
     }
     Trial trial;
     for (int t = 0; t < kWorkers; ++t) {
-        trial.latency = std::max(trial.latency, msBetween(raised, out[static_cast<std::size_t>(t)]));
+        const double ms = msBetween(raised, out[static_cast<std::size_t>(t)]);
+        trial.latency = std::max(trial.latency, ms);
         trial.stopped += left[static_cast<std::size_t>(t)] ? 1 : 0;
     }
     // The end of the courses in progress, as the threads would have made them (one at a time
@@ -156,8 +158,9 @@ void testStopsUnderLoad(const World& w) {
     double worst = 0.0;
     for (int k = 0; k < kTrials; ++k) {
         const auto h = w.fresh();
-        const int delay = 40 + static_cast<int>(terrain::noise::deriveSeed(39, k) % 360);
-        const Trial t = stopTrial(*h, delay, 1000 + k);
+        const auto draw = terrain::noise::deriveSeed(39, static_cast<std::uint64_t>(k));
+        const int delay = 40 + static_cast<int>(draw % 360);
+        const Trial t = stopTrial(*h, delay, 1000 + static_cast<std::uint64_t>(k));
         latencies.push_back(t.latency);
         worst = std::max(worst, t.latency / std::max(t.remaining, 1e-3));
         std::printf("stop after %d ms: %d of %d threads by WorkStopped, out in %.2f ms; the "

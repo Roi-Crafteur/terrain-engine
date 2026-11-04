@@ -97,7 +97,9 @@ int main() {
     const terrain::Heightfield relief(map_world::kSeed, terrain::HeightfieldParams{},
                                       golden::kSmallPlanet);
     const std::shared_ptr<const terrain::PlanetLevel> planet = map_world::smallPlanet();
-    const auto fresh = [&] { return std::make_unique<Hydrology>(map_world::kSeed, relief, planet); };
+    const auto fresh = [&] {
+        return std::make_unique<Hydrology>(map_world::kSeed, relief, planet);
+    };
 
     auto start = std::chrono::steady_clock::now();
     const auto one = fresh();
