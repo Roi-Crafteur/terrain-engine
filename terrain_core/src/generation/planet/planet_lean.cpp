@@ -26,6 +26,7 @@ struct Lean {
     std::shared_ptr<const LandIndex> land;
     LandValues<std::uint8_t> landFloor;
     SparseCells<std::uint8_t> seaFloor;
+    LandValues<std::uint8_t> closed; // the links closed by a crest (planet_links.hpp)
     std::vector<float> rowTemperature;
     LandValues<float> landRain;
     std::vector<std::uint16_t> seaRain;
@@ -70,6 +71,10 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
         markOcean(lean.grid, lean.height, cells.sea, params.minOceanArea);
     freeVector(cells.sea);
     lean.land = std::make_shared<const LandIndex>(ocean);
+    if (params.links.enabled) {
+        lean.closed = closedLinks(lean.grid, cells.exits, lean.land, params.links, threads);
+    }
+    freeVector(cells.exits);
     keepFloors(lean, cells.floor);
     freeVector(cells.floor);
     parts.timings.ocean = watch.lap("ocean");
@@ -78,6 +83,7 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
             breachDepressions(lean.grid, lean.height, ocean, cells.mountain, params.breach);
         parts.timings.breach = watch.lap("breach");
     }
+
     freeVector(cells.mountain);
     freeVector(ocean); // the land index answers from now on
     keepRain(lean, computeClimate(lean.grid, lean.height, *lean.land, params.climate, threads,
@@ -162,10 +168,23 @@ void riversAndCells(Lean& lean, PlanetLevel::Parts& parts, LandValues<std::uint8
 }
 
 // Lakes, discharge, rivers and features, then the compact cells.
+// The receivers of the land, through the passes under the mountains (planet_links.hpp).
+LandValues<std::uint8_t> receiversOf(Lean& lean, const PlanetParams& params, int threads) {
+    if (!params.links.enabled) {
+        return computeReceivers(lean.grid, lean.height, lean.land, threads);
+    }
+    ReceiverLinks links;
+    links.closed = [&lean](std::size_t c) { return lean.closed[c]; };
+    LandValues<std::uint8_t> receiver =
+        computeReceivers(lean.grid, lean.height, lean.land, threads, &links);
+    lean.closed.release();
+    return receiver;
+}
+
 void hydrology(Lean& lean, PlanetLevel::Parts& parts, int threads, Stopwatch& watch) {
     const PlanetGrid& grid = lean.grid;
     std::vector<std::uint32_t> order = sortLandCells(lean.height, *lean.land, threads);
-    LandValues<std::uint8_t> receiver = computeReceivers(grid, lean.height, lean.land, threads);
+    LandValues<std::uint8_t> receiver = receiversOf(lean, parts.params, threads);
     parts.timings.order += watch.lap("order");
     const WaterOf water =
         landWater(grid, lean.height, lean.landRain, lean.rowTemperature, parts.params.climate);

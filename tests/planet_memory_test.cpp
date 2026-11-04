@@ -78,7 +78,7 @@ void testLevel(const char* name, const terrain::HeightfieldParams& relief, int s
 int main() {
     // The golden levels of planet_golden_test: the default relief with 2 x 2 samples per cell,
     // the scaled planetary relief with one.
-    testLevel("default relief", terrain::HeightfieldParams{}, 2, 0x6B7514191E2B4F94ULL);
-    testLevel("planetary relief", golden::smallPlanetaryParams(), 1, 0x7F28BEA82794474AULL);
+    testLevel("default relief", terrain::HeightfieldParams{}, 2, 0x564039DF6B6FB311ULL);
+    testLevel("planetary relief", golden::smallPlanetaryParams(), 1, 0xFAB952517A1A2172ULL);
     return test::result();
 }

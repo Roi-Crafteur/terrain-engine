@@ -48,7 +48,8 @@ inline terrain::PlanetParams smallPlanetParams(int threads, int samplesPerAxis =
 }
 
 // The planet level as phases 11B and 12A built it, before the hydrographic network of task 11C
-// (agent 31): the bands of its winds meeting at once. The scenes of the tests of other agents
+// (agent 31): the bands of its winds meeting at once, the receivers of its cells the steepest
+// neighbor below them (no links through the passes). The scenes of the tests of other agents
 // that stand on the rivers, the falls and the ergs of a planet level keep it, so that they still
 // test, bit for bit and with their thresholds untouched, the rivers, falls and ergs they were
 // written about (the smoothed climate moves them all). Their checks are also run, as measures,
@@ -57,6 +58,7 @@ inline terrain::PlanetParams smallPlanetParams(int threads, int samplesPerAxis =
 inline terrain::PlanetParams beforeNetwork(terrain::PlanetParams params) {
     params.climate.bandJoin = 0.0;
     params.climate.bandShift = 0.0;
+    params.links.enabled = false;
     return params;
 }
 
@@ -120,13 +122,13 @@ inline std::vector<Part> planetGoldenParts() {
                                            "planet default hydrology", "planet default level"},
                                           smallBuild(terrain::HeightfieldParams{}, 1, 2),
                                           {0x3F4264CF06FB5493ULL, 0x523A1AE68E52922EULL,
-                                           0xAEC31FE4A00D543FULL, 0x6B7514191E2B4F94ULL});
+                                           0x6F87ED895801BCEFULL, 0x564039DF6B6FB311ULL});
     const std::vector<Part> planetary =
         planetParts({"planet planetary relief", "planet planetary climate",
                      "planet planetary hydrology", "planet planetary level"},
                     smallBuild(smallPlanetaryParams(), 1),
-                    {0x5567F4879C93953CULL, 0xCDB30A8703052579ULL, 0xD0EAD060E3995518ULL,
-                     0x7F28BEA82794474AULL});
+                    {0x5567F4879C93953CULL, 0xCDB30A8703052579ULL, 0x99089D0C029CEA5AULL,
+                     0xFAB952517A1A2172ULL});
     parts.insert(parts.end(), planetary.begin(), planetary.end());
     return parts;
 }

@@ -4,6 +4,7 @@
 #include "terrain/generation/planet/planet_relief.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 
 namespace terrain::planet {
@@ -69,33 +70,67 @@ std::vector<std::uint32_t> sortLandCells(const std::vector<float>& height, const
     return order;
 }
 
+namespace {
+
+// The neighbors of a land cell below it, steepest first (drop / distance, sqrt(2) on the
+// diagonals; the first in the order of kPlanetNeighbors on a tie).
+struct Lower {
+    double slope = 0.0;
+    std::uint8_t to = kNoNeighbor;
+};
+
+int lowerNeighbors(const PlanetGrid& grid, const std::vector<float>& height, std::size_t c,
+                   std::array<Lower, 8>& lower) {
+    int count = 0;
+    for (int k = 0; k < 8; ++k) {
+        const std::size_t n = grid.neighbor(c, k);
+        if (!lowerCell(height, n, c)) {
+            continue;
+        }
+        const double drop = static_cast<double>(height[c]) - height[n];
+        const double slope =
+            kPlanetNeighbors[static_cast<std::size_t>(k)].diagonal ? drop / kPlanetDiagonal : drop;
+        lower[static_cast<std::size_t>(count++)] = {slope, static_cast<std::uint8_t>(k)};
+    }
+    std::stable_sort(lower.begin(), lower.begin() + count,
+                     [](const Lower& a, const Lower& b) { return a.slope > b.slope; });
+    return count;
+}
+
+// The steepest neighbor below the cell, or with links the steepest whose way from the cell
+// crosses no crest (planet_links.hpp), the steepest one when none does.
+std::uint8_t receiverOf(const PlanetGrid& grid, const std::vector<float>& height, std::size_t c,
+                        const ReceiverLinks* links) {
+    std::array<Lower, 8> lower{};
+    const int count = lowerNeighbors(grid, height, c, lower);
+    if (count == 0) {
+        return kNoNeighbor;
+    }
+    const std::uint8_t closed = links == nullptr ? 0 : links->closed(c);
+    if (closed == 0) {
+        return lower[0].to;
+    }
+    for (int n = 0; n < count; ++n) {
+        const std::uint8_t k = lower[static_cast<std::size_t>(n)].to;
+        if ((closed & (1u << k)) == 0) {
+            return k;
+        }
+    }
+    return lower[0].to;
+}
+
+} // namespace
+
 LandValues<std::uint8_t> computeReceivers(const PlanetGrid& grid, const std::vector<float>& height,
                                           const std::shared_ptr<const LandIndex>& land,
-                                          int threads) {
+                                          int threads, const ReceiverLinks* links) {
     LandValues<std::uint8_t> receiver(land, kNoNeighbor, kNoNeighbor);
     std::vector<std::uint8_t>& values = receiver.values();
     parallelRows(grid.nz, resolveThreads(threads), [&](int first, int last) {
         for (std::size_t c = grid.index(0, first); c < grid.index(0, last); ++c) {
-            if (!land->land(c)) {
-                continue;
+            if (land->land(c)) {
+                values[land->slot(c)] = receiverOf(grid, height, c, links);
             }
-            double best = -1.0;
-            std::uint8_t to = kNoNeighbor;
-            for (int k = 0; k < 8; ++k) {
-                const std::size_t n = grid.neighbor(c, k);
-                if (!lowerCell(height, n, c)) {
-                    continue;
-                }
-                const double drop = static_cast<double>(height[c]) - height[n];
-                const double slope = kPlanetNeighbors[static_cast<std::size_t>(k)].diagonal
-                                         ? drop / kPlanetDiagonal
-                                         : drop;
-                if (slope > best) {
-                    best = slope;
-                    to = static_cast<std::uint8_t>(k);
-                }
-            }
-            values[land->slot(c)] = to;
         }
     });
     return receiver;

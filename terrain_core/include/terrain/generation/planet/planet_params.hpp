@@ -130,6 +130,14 @@ struct PlanetFeatureParams {
     double gorgeMinDepth = 800.0;
 };
 
+// The links of the cells under the mountains through the passes (planet_links.hpp): a link is
+// open where the way between the floors climbs at most tolerance meters above the floor of the
+// cell (read on the samples of the floors). Off: the steepest neighbor below, as before.
+struct PlanetLinkParams {
+    bool enabled = true;
+    double tolerance = 40.0;
+};
+
 // Parameters of the planet level. Lengths are in meters.
 struct PlanetParams {
     // Grid: square cells that divide both sides of the world (makePlanetGrid). 8,192 m gives
@@ -155,6 +163,7 @@ struct PlanetParams {
     PlanetBreachParams breach;
 
     PlanetClimateParams climate;
+    PlanetLinkParams links;
     PlanetRiverParams rivers;
     PlanetFeatureParams features;
 };

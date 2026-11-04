@@ -27,7 +27,14 @@ void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads,
     const WaterOf water =
         climateWater(grid, build.height, build.ocean, build.climate, params.climate);
     const std::vector<std::uint32_t> order = sortLandCells(build.height, *land, threads);
-    const LandValues<std::uint8_t> receiver = computeReceivers(grid, build.height, land, threads);
+    ReceiverLinks links;
+    LandValues<std::uint8_t> closed;
+    if (params.links.enabled) {
+        closed = closedLinks(grid, build.exits, land, params.links, threads);
+        links.closed = [&closed](std::size_t c) { return closed[c]; };
+    }
+    const LandValues<std::uint8_t> receiver = computeReceivers(
+        grid, build.height, land, threads, params.links.enabled ? &links : nullptr);
     build.timings.order += watch.lap("order");
     LakeSolution lakes;
     {
@@ -92,6 +99,7 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params,
         build.height = std::move(cells.height);
         build.floor = std::move(cells.floor);
         build.mountain = std::move(cells.mountain);
+        build.exits = std::move(cells.exits);
         build.timings.relief = watch.lap("relief");
         // The sea where the field puts it: with the geography, a dry depression below the sea
         // level is land.

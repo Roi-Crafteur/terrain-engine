@@ -27,14 +27,34 @@ namespace terrain::planet {
 // the bottom of the sea; its center when there is none) (floor: its index, row by row;
 // kCenterFloor for the center alone or a mean), and mountain says whether the mountain mask is
 // above 0 there.
+// With floorSamples above 1, the cells under the mountains (mountain 1) whose points rise more than
+// kExitLeast above their floor also keep their exits (planet_links.hpp), by row, sorted by column:
+// for each of their 8 neighbors (kPlanetNeighbors), the lowest height a way from their floor point
+// to their side facing that neighbor must climb to, over their floorSamples^2 points
+// (8-connected), in steps of kExitStep meters above their floor (rounded up, at most 255 steps);
+// and their floor, in meters rounded down.
 inline constexpr double kFloorCoast = 16'384.0;
 inline constexpr std::uint8_t kCenterFloor = 255;
+inline constexpr double kExitStep = 8.0;
+inline constexpr double kExitLeast = 20.0;
+struct CellExits {
+    std::uint16_t column = 0;
+    std::int16_t floor = 0;
+    std::array<std::uint8_t, 8> climb{};
+    [[nodiscard]] double exit(std::size_t k) const {
+        return static_cast<double>(floor) + kExitStep * static_cast<double>(climb[k]);
+    }
+};
 struct CellRelief {
     std::vector<float> height;
     std::vector<std::uint8_t> sea;
     std::vector<std::uint8_t> floor;
     std::vector<std::uint8_t> mountain;
+    std::vector<std::vector<CellExits>> exits; // by row
 };
+// The exits of a cell of a column over its n^2 points of heights (row by row), from its floor
+// point floorIndex.
+[[nodiscard]] CellExits cellExits(int column, const float* heights, int n, int floorIndex);
 [[nodiscard]] CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid,
                                      int samplesPerAxis, int threads, int floorSamples = 1);
 

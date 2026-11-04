@@ -341,13 +341,13 @@ void testSmallWorldWithWater() {
     const Sums rivers = riverSums(tiles, *planet);
     std::printf("small world rivers in %.1f s\n", seconds(start));
     golden::report("the small world with its water out of the coastal zone",
-                   {{"small world planet level", planet->checksum(), 0x4B7C08B39BAF95DAULL},
+                   {{"small world planet level", planet->checksum(), 0x847DC00F3E35BE83ULL},
                     {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
                     {"small world tiles", sums.tiles.value(), 0xAD305C88B5E86650ULL},
-                    {"small world horizon", sums.horizon.value(), 0xB77B4792AF11251AULL},
-                    {"small world rivers patches", rivers.patches.value(), 0x568FDE8105A99C85ULL},
-                    {"small world rivers tiles", rivers.tiles.value(), 0x49D46EE7ADC2F576ULL},
-                    {"small world rivers horizon", rivers.horizon.value(), 0x13635C4C2D8B653EULL}});
+                    {"small world horizon", sums.horizon.value(), 0x83F885240245B787ULL},
+                    {"small world rivers patches", rivers.patches.value(), 0x1293C325ADCC25C7ULL},
+                    {"small world rivers tiles", rivers.tiles.value(), 0x0B31969BF80716FAULL},
+                    {"small world rivers horizon", rivers.horizon.value(), 0xC4F3DC270439C8E4ULL}});
 }
 
 } // namespace

@@ -2,6 +2,7 @@
 
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_land.hpp"
+#include "terrain/generation/planet/planet_links.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -21,8 +22,11 @@ namespace terrain::planet {
 // (drop / distance, sqrt(2) on the diagonals) among its neighbors lower in the total order, the
 // first such neighbor in that order on a tie. kNoNeighbor for the pits, the land cells without a
 // lower neighbor, and for the sea (a sink). Every receiver is lower: no cycle.
+// With links (planet_links.hpp), a cell they test takes the steepest of those neighbors whose way
+// from it crosses no crest, the steepest one when none is open.
 [[nodiscard]] LandValues<std::uint8_t>
 computeReceivers(const PlanetGrid& grid, const std::vector<float>& height,
-                 const std::shared_ptr<const LandIndex>& land, int threads);
+                 const std::shared_ptr<const LandIndex>& land, int threads,
+                 const ReceiverLinks* links = nullptr);
 
 } // namespace terrain::planet

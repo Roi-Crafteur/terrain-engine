@@ -116,6 +116,7 @@ void testAtOnceIsBefore() {
                                      golden::kSmallPlanet);
     terrain::PlanetParams params = golden::smallPlanetParams(1, 2);
     params.climate = atOnce();
+    params.links.enabled = false; // the receivers of before too
     terrain::PlanetBuild build = terrain::planet::buildPlanet(field, params);
     golden::Checksum climate;
     for (const float p : build.climate.precipitation) {

@@ -1,8 +1,11 @@
 #include "terrain/generation/planet/planet_relief.hpp"
 
 #include "planet_parallel.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <cstddef>
 #include <deque>
 #include <stdexcept>
@@ -19,25 +22,29 @@ constexpr double kContinentalScale = 1'500'000.0;
 // The floor of a cell: the lowest of its n^2 points of the same water as its center (the land of a
 // cell on the coast, not the bottom of the sea), else its center; its index and whether the
 // mountain mask is above 0 there.
+// The heights of the n^2 points, kept for the exits of the cells under the mountains.
 struct Floor {
     float height = 0.0f;
     std::uint8_t index = kCenterFloor;
     std::uint8_t mountain = 0;
+    std::array<float, kMaxSamplesPerAxis * kMaxSamplesPerAxis> heights{};
 };
 
 Floor cellFloor(const Heightfield& field, const PlanetGrid& grid, std::size_t cell, int n,
                 const HeightSample& center) {
     const bool sea = center.water == WaterKind::Ocean;
-    Floor f{center.height, kCenterFloor, center.mountainMask > 0.0f ? std::uint8_t{1}
-                                                                     : std::uint8_t{0}};
+    Floor f{center.height, kCenterFloor,
+            center.mountainMask > 0.0f ? std::uint8_t{1} : std::uint8_t{0}, {}};
     bool found = false;
     for (int k = 0; k < n * n; ++k) {
         const std::array<double, 2> p = floorPoint(grid, cell, static_cast<std::uint8_t>(k), n);
         const HeightSample s = field.sampleAt(p[0], p[1]);
+        f.heights[static_cast<std::size_t>(k)] = s.height;
         if ((s.water == WaterKind::Ocean) == sea && (!found || s.height < f.height)) {
             found = true;
-            f = {s.height, static_cast<std::uint8_t>(k), s.mountainMask > 0.0f ? std::uint8_t{1}
-                                                                               : std::uint8_t{0}};
+            f.height = s.height;
+            f.index = static_cast<std::uint8_t>(k);
+            f.mountain = s.mountainMask > 0.0f ? std::uint8_t{1} : std::uint8_t{0};
         }
     }
     return f;
@@ -89,6 +96,51 @@ std::size_t floodComponent(const PlanetGrid& grid, std::vector<std::uint8_t>& ma
 
 } // namespace
 
+CellExits cellExits(int column, const float* heights, int n, int floorIndex) {
+    const int count = n * n;
+    std::array<float, kMaxSamplesPerAxis * kMaxSamplesPerAxis> best{};
+    best.fill(std::numeric_limits<float>::infinity());
+    best[static_cast<std::size_t>(floorIndex)] = heights[floorIndex];
+    // The lowest of the highest points of the ways from the floor point: relaxed until stable.
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (int v = 0; v < count; ++v) {
+            float low = best[static_cast<std::size_t>(v)];
+            for (int db = -1; db <= 1; ++db) {
+                for (int da = -1; da <= 1; ++da) {
+                    const int a = v % n + da;
+                    const int b = v / n + db;
+                    if ((da != 0 || db != 0) && a >= 0 && a < n && b >= 0 && b < n) {
+                        low = std::min(low, std::max(best[static_cast<std::size_t>(b * n + a)],
+                                                     heights[v]));
+                    }
+                }
+            }
+            changed = changed || low < best[static_cast<std::size_t>(v)];
+            best[static_cast<std::size_t>(v)] = low;
+        }
+    }
+    CellExits e;
+    e.column = static_cast<std::uint16_t>(column);
+    const float floor = std::floor(heights[floorIndex]);
+    e.floor = static_cast<std::int16_t>(std::clamp(floor, -32768.0f, 32767.0f));
+    for (std::size_t k = 0; k < kPlanetNeighbors.size(); ++k) {
+        float exit = std::numeric_limits<float>::infinity();
+        const int dx = kPlanetNeighbors[k].dx;
+        const int dz = kPlanetNeighbors[k].dz;
+        for (int v = 0; v < count; ++v) {
+            const bool alongX = dx == 0 || v % n == (dx > 0 ? n - 1 : 0);
+            const bool alongZ = dz == 0 || v / n == (dz > 0 ? n - 1 : 0);
+            if (alongX && alongZ) {
+                exit = std::min(exit, best[static_cast<std::size_t>(v)]);
+            }
+        }
+        const double steps = std::ceil((static_cast<double>(exit) - e.floor) / kExitStep);
+        e.climb[k] = static_cast<std::uint8_t>(std::clamp(steps, 0.0, 255.0));
+    }
+    return e;
+}
+
 std::vector<float> sampleRelief(const Heightfield& field, const PlanetGrid& grid,
                                 int samplesPerAxis, int threads) {
     return sampleCells(field, grid, samplesPerAxis, threads).height;
@@ -128,8 +180,9 @@ CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int sam
     }
     CellRelief cells{std::vector<float>(grid.cells()), std::vector<std::uint8_t>(grid.cells()),
                      std::vector<std::uint8_t>(grid.cells(), kCenterFloor),
-                     std::vector<std::uint8_t>(grid.cells())};
+                     std::vector<std::uint8_t>(grid.cells()), {}};
     const auto nearLand = static_cast<float>(-kFloorCoast / kContinentalScale);
+    cells.exits.resize(floorSamples > 1 ? static_cast<std::size_t>(grid.nz) : 0);
     parallelRows(grid.nz, resolveThreads(threads), [&](int begin, int end) {
         for (int j = begin; j < end; ++j) {
             for (int i = 0; i < grid.nx; ++i) {
@@ -142,6 +195,14 @@ CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int sam
                     h = f.height;
                     cells.floor[c] = f.index;
                     cells.mountain[c] = f.mountain;
+                    const auto points = static_cast<std::ptrdiff_t>(floorSamples * floorSamples);
+                    const float top = *std::max_element(f.heights.begin(),
+                                                        f.heights.begin() + points);
+                    if (f.mountain != 0 && f.index != kCenterFloor &&
+                        static_cast<double>(top - f.height) > kExitLeast) {
+                        cells.exits[static_cast<std::size_t>(j)].push_back(
+                            cellExits(i, f.heights.data(), floorSamples, f.index));
+                    }
                 }
                 if (!std::isfinite(h)) {
                     throw std::domain_error("sampleRelief: non-finite altitude");
@@ -151,6 +212,9 @@ CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int sam
             }
         }
     });
+    for (std::vector<CellExits>& row : cells.exits) {
+        row.shrink_to_fit();
+    }
     return cells;
 }
 

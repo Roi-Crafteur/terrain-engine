@@ -6,6 +6,7 @@
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_lakes.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
+#include "terrain/generation/planet/planet_relief.hpp"
 #include "terrain/generation/planet/planet_rivers.hpp"
 
 #include <cstdint>
@@ -56,6 +57,8 @@ struct PlanetBuild {
     // the mountain mask is above 0 there.
     std::vector<std::uint8_t> floor;
     std::vector<std::uint8_t> mountain;
+    // The exits of the cells under the mountains (planet_relief.hpp), by row, sorted by column.
+    std::vector<std::vector<planet::CellExits>> exits; // by row
     PlanetBreach breach;
     planet::PlanetClimate climate;        // precipitation, row temperatures
     std::vector<std::uint8_t> receiver;   // direction, kNoNeighbor
