@@ -366,9 +366,33 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   et côtière (falaises marines, arches, stacks)
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
-- mers de dunes (ergs) de caractères variés selon l'erg : dunes réelles (20 à 300 m de haut, 1 à
-  3 km d'espacement), grandes vagues lisses, vagues géantes,
-  province du relief au cœur des continents secs, jamais placée par le biome
+- mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
+  province du relief au cœur des continents secs, jamais placée par le biome : faite par
+  l'agent 34 (`generation/ergs.hpp`). Posées après le niveau Planète (sa somme ne change pas),
+  hors des ergs le monde garde ses bits. Barkhanes, transversales, seifs, étoiles, draas sur un
+  champ de phase continu ; faces sous le vent à 33° ; 3,7 % des terres. Horizon : au-delà d'un
+  pas d'un dixième de leur espacement, les dunes cèdent la place à leur moyenne (pas de
+  scintillement). Pour l'agent 31 : règle des oueds = un fleuve creusé (au moins 10 m³/s)
+  traverse l'erg, aucune dune à moins de 150 m du fond de sa vallée (Hydrology::floorDistance),
+  pleine hauteur 600 m plus loin ; un cours plus petit s'arrête au pied de l'erg ; les lacs gardent
+  une case libre. 7,4 % de la surface des ergs (et 6,0 % sur savane) tombe sur la prairie de la
+  coupure climatique de 30° : à revoir quand le climat sera lissé. Coût : une tuile dans un erg
+  1,1 à 1,6 ms (plafond 2 ms), ×1,00 ailleurs. La part de dune (SurfaceBlend::dunes) suit les
+  poids des tuiles et de l'horizon (agent 29) : le sable des dunes, lisse, à toute pente.
+  Trois caractères d'ergs, tirés erg par erg (jamais par le biome) : réaliste, grandes vagues
+  (crêtes de 2 à 6 km, jusqu'à 300 m), vagues géantes (6 à 19 km, jusqu'à 800 m) ; 40 / 35 / 25 %
+  de la surface, chacun parmi les 5 plus grands ergs (règle dans `generation/erg_characters.hpp`).
+  Pour l'agent 31 : dans les ergs de vagues, le fondu des dunes le long des oueds et des lacs
+  s'allonge de 7 m par mètre de hauteur (2,1 km pour 300 m, 5,6 km pour 800 m).
+  Pour l'agent 40 : les crêtes vives des dunes en étoile sont arrondies sur 1,5 cellule de la
+  tuile qui les dessine (les tuiles LOD 1 à 3 lisent le relief à la taille de leurs cellules,
+  Heightfield::forFootprint, comme l'horizon) ; à 300–500 m, le LOD 3 (8 m) laisse encore une
+  rangée de dents très fines le long d'une crête (lieu erg_etoile_150m, bras gauche) : un maillage
+  plus fin devant le joueur les ferait disparaître.
+  Pour l'agent 50 : les dépressions sous la mer sèches sont couvertes par les ergs ; leurs sebkhas
+  (lacs salés du niveau Planète, sans eau sur le relief) restent sans dunes par la règle des lacs.
+  Leur aspect de croûte de sel est à faire : au fond de la dépression n° 27 (lieu
+  depression_seche_fond), le fond ressemble à du sable ridé
 - falaises, surplombs et arches dans le monde infini : phase 12A en cours. Une couche de roche 3D
   autour de la surface, là où la géologie fait des parois (couches dures des montagnes, fentes
   des chutes et gorges, escarpements, arches et ponts de roche) ; le reste du monde garde ses
@@ -663,6 +687,24 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - Unreal l'affiche et joue les effets (traces de pas, poudrerie, sable soufflé)
 - le sable pourra reprendre la hauteur des dunes, déjà connue séparément du sol
 - la neige dépendra des saisons si le jeu en a un jour ; le choix reste à faire
+- pour l'agent 44, ce que les ergs donnent déjà (agent 34, `generation/ergs.hpp`) :
+  - où est le sable : HeightSample::dunes, les mètres de sable des dunes au-dessus du relief
+    (négatifs dans les creux creusés entre elles), et HeightSample::erg, la part de l'erg (son
+    masque, au-dessus de kErgFloorShare sur les dunes, en dessous sur le sol de ses bords) ;
+  - son épaisseur supposée : celle des dunes elles-mêmes (le relief est la roche ou le sol dur
+    sous elles), jusqu'à 300 m dans l'erg réaliste et 800 m dans les vagues géantes ; sous un
+    creux (dunes négatives), aucune ;
+  - les sols entre les dunes : HeightSample::ergFloor, 0 sable, 1 gravier, 2 croûte, continu
+    entre eux, lu là où les dunes ont moins de 10 m ; seul le sable (0) est une couche à creuser,
+    le gravier et la croûte sont un sol dur mince ;
+  - les sebkhas (lacs salés du niveau Planète, au fond de dépressions comme la n° 27, lieu
+    depression_seche_fond) restent sans dunes : une croûte de sel sur de la vase, pas du sable
+    (son aspect est pour l'agent 50) ;
+  - les sables suivent la hauteur des tuiles et de l'horizon (Heightfield::forFootprint) : une
+    couche doit partir des mêmes dunes, ou l'horizon ne la verra pas ;
+  - la végétation des ergs reste à faire : aujourd'hui les plantes y suivent le biome (désert,
+    clairsemé) ; touffes sur les sols de gravier et de croûte, rien sur les dunes vives, une
+    bande d'herbe le long des oueds (ergGrassReach, 150 m)
 
 ### Plus tard : monde fantastique
 - biomes fantastiques, en plus des biomes réels (après le format élargi) ; toujours placés par le

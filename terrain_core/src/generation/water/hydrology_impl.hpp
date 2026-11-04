@@ -202,6 +202,12 @@ struct Hydrology::Region::Data {
     }
 };
 
+// A number unique to each hydrology of the process (keys the memos of the threads).
+inline std::uint64_t nextHydrologyId() {
+    static std::atomic<std::uint64_t> next{1};
+    return next.fetch_add(1);
+}
+
 struct Hydrology::Impl {
     // The outlet of a lake into the river leaving it: from the floor of the cell of its sill (in
     // the images of the first point of the river) to that point.
@@ -214,9 +220,11 @@ struct Hydrology::Impl {
     };
 
     std::uint64_t meanderSeed = 0;
+    std::uint64_t memoId = nextHydrologyId(); // floorDistance: the reaches near a cell, per thread
     Heightfield relief;
     std::shared_ptr<const PlanetLevel> planet;
     HydrologyParams params;
+    std::unique_ptr<const Ergs> ergs; // or null
     PlanetGrid grid;
     water::LadderParams ladder;
     Bits rivers;                        // the cells of the reaches carved

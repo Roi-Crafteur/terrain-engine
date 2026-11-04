@@ -8,6 +8,7 @@
 #include "relief_local.hpp"
 #include "wall_faces.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
@@ -151,6 +152,37 @@ double Heightfield::valleyRockAt(double x, double z, double h, const RiverCarve&
     return h;
 }
 
+Heightfield Heightfield::forFootprint(double footprint) const {
+    Heightfield out = *this;
+    out.footprint_ = footprint;
+    return out;
+}
+
+void Heightfield::addDunes(double x, double z, HeightSample& s) const {
+    const Ergs* ergs = hydrology_->ergs();
+    if (ergs == nullptr) {
+        return;
+    }
+    float mask = 0.0f;
+    float sand = 1.0f;
+    float floor = 0.0f;
+    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask, &sand, &floor);
+    s.ergFloor = floor;
+    // The rock out of the sand: the floor of the erg (its stony ground, its rock on the steep
+    // slopes, in the colors of the desert), never the bare rock of the reefs (hard edges).
+    s.erg = mask * (kErgFloorShare + (1.0f - kErgFloorShare) * sand);
+    // Negative in the troughs dug between the dunes (ergs.hpp): the ground sinks, the water stays
+    // what the geography made it (its flag, never the height); a dry column keeps its water level
+    // at its ground (as everywhere on land), never over it.
+    if (dunes != 0.0f) {
+        s.dunes = dunes;
+        s.height += dunes;
+        if (s.water == WaterKind::None) {
+            s.waterLevel = s.height;
+        }
+    }
+}
+
 void Heightfield::gorgeFaces(double x, double z, double h, const RiverCarve& c,
                              const mountain_walls::Masks& masks, mountain_walls::Memo* memo,
                              wall_faces::Site& site) const {
@@ -265,6 +297,7 @@ void Heightfield::waterOf(std::span<const double> xs, std::span<const double> zs
         const double x = noise::wrapCanonical(xs[i], world_.x);
         const double z = noise::wrapCanonical(zs[i], world_.z);
         leaveValleys(x, z, samples[i], &memos);
+        addDunes(x, z, samples[i]);
         minX = std::min(minX, x);
         maxX = std::max(maxX, x);
         minZ = std::min(minZ, z);

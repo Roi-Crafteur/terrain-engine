@@ -42,9 +42,13 @@ void testChannels() {
     TEST_CHECK(channels ==
                (std::array<std::uint16_t, kBlendChannels>{0xCDEF, 0x80AB, 0x5678, 0x1234}));
     TEST_CHECK(terrain::unreal::blendOfChannels(channels) == texel);
-    // The zeros of a new texture, and bits blendChannels never sets.
+    // The share of the dunes of an erg (ids bits 24-30, agent 34) rides in bits 8-14 of G.
+    const BlendTexel dunes{0x7FABCDEFU, 0x12345678U};
+    TEST_CHECK(terrain::unreal::blendChannels(dunes)[1] == 0xFFAB);
+    TEST_CHECK(terrain::unreal::blendOfChannels(terrain::unreal::blendChannels(dunes)) == dunes);
+    // The zeros of a new texture, and a texel without the present bit.
     TEST_CHECK(!terrain::unreal::blendOfChannels({0, 0, 0, 0}).has_value());
-    TEST_CHECK(!terrain::unreal::blendOfChannels({0, 0x81AB, 0, 0}).has_value());
+    TEST_CHECK(!terrain::unreal::blendOfChannels({0, 0x01AB, 0, 0}).has_value());
     // A blend of zeros is a blend (the ocean, all on slot 2).
     TEST_CHECK(terrain::unreal::blendOfChannels(terrain::unreal::blendChannels({})) ==
                BlendTexel{});

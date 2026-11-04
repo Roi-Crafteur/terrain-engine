@@ -365,7 +365,10 @@ HeightSample Heightfield::seenAt(double worldX, double worldZ, double pitch) con
     const double x = noise::wrapCanonical(worldX, world_.x);
     const double z = noise::wrapCanonical(worldZ, world_.z);
     if (hydrology_) {
+        // As sampleAt: the valleys, the seas of dunes (agent 34: their height, their share and the
+        // kind of their floor, filtered to the footprint of the field), then the water.
         leaveValleys(x, z, s, nullptr);
+        addDunes(x, z, s);
         applyHydrology(x, z, s, nullptr);
     }
     if (report.shore >= 0.0f && s.water == WaterKind::None) {

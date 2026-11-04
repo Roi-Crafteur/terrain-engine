@@ -129,8 +129,8 @@ void testWithoutCaves() {
     editCorner(tiles, c.x * 16, c.z * 16);
     std::vector<golden::Part> parts = cornerParts(tiles, c);
     checkEdited(parts, unedited);
-    setExpected(parts, {0xFA759A4827F8081AULL, 0x9DB6444E4434856EULL, 0xD30A977646BF5CB5ULL,
-                        0xD0707F45E9888BF0ULL, 0xC3F45C7C65977905ULL});
+    setExpected(parts, {0xB50FB6F14204BF1BULL, 0x9DB6444E4434856EULL, 0xCF40016B6F105602ULL,
+                        0x717A3CD617B1273EULL, 0xE30C6995B6D563B2ULL});
     golden::report("tiles edited block by block, without caves", parts);
 }
 
@@ -166,7 +166,7 @@ void testAcrossTheEdge() {
     editCorner(tiles, count.x * 8, kRow * 16 + 8);
     std::vector<golden::Part> parts = {{"wrap", tilesChecksum(tiles, requests), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x6FCCC64DC1A5E7A0ULL});
+    setExpected(parts, {0x9A4EED6D3E05622EULL});
     golden::report("tiles edited block by block, across the edge of the world", parts);
 }
 

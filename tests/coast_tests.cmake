@@ -49,6 +49,8 @@ endif()
 # The default world with its planet file, as Unreal loads it: built once (about two minutes on four
 # cores, 247 MB) or read when the file already holds the planet of this generator, for the tests
 # of the places of the coasts (coast_planet_support.hpp: TERRAIN_COAST_PLANET).
+# The seas of dunes and the coasts together on the path of the far horizon (agents 34 and 33).
+terrain_add_test(ergs_coast_horizon_test terrain_core)
 set(coast_planet_file ${CMAKE_BINARY_DIR}/coast_planet.bin)
 add_test(NAME coast_planet_file
     COMMAND terrain_probe --planet ${coast_planet_file} --json 0 0)
@@ -56,5 +58,5 @@ set_tests_properties(coast_planet_file PROPERTIES FIXTURES_SETUP coast_planet TI
 set_tests_properties(coast_rock_test coast_render_test coast_wall_test coast_stack_test
                      coast_far_test coast_bands_test coast_top_test coast_pawn_test
                      coast_inlet_shapes_test coast_materials_test coast_patterns_test
-                     coast_horizon_rock_test PROPERTIES
+                     coast_horizon_rock_test ergs_coast_horizon_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})

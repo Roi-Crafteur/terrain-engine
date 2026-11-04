@@ -31,6 +31,9 @@ namespace terrain {
 // biomes weigh one half each stays the border of the classification.
 
 inline constexpr int kBlendSlots = 3;
+// The share of the floor of an erg in SurfaceBlend::dunes (agent 34): 16 127ths, the
+// shaders read it the same way (Scripts/blend_layers_hlsl.py, temporary_terrain_hlsl.py).
+inline constexpr float kErgFloorShare = 16.0f / 127.0f;
 
 // Widths of the transitions, each on both sides of its threshold.
 struct BlendParams {
@@ -63,6 +66,12 @@ struct SurfaceBlend {
     std::array<float, kBlendSlots> biomeWeights{};
     std::array<SurfaceMaterial, kBlendSlots> materials{};
     std::array<float, kBlendSlots> materialWeights{};
+    // [0, 1]: the share of the ergs (HeightSample::erg: their mask, smooth over kilometers, the
+    // same at the edges of grids of any pitch; their floor on their rock out of the sand); their
+    // sand is smooth sand at any slope, never the stony ground of the desert around it. 0 off the
+    // ergs. A reader takes the dunes from the share above kErgFloorShare, the floor of the edges
+    // of an erg from the share below.
+    float dunes = 0.0f;
 
     friend bool operator==(const SurfaceBlend&, const SurfaceBlend&) = default;
 };
@@ -99,7 +108,9 @@ private:
 // Compact form of a SurfaceBlend, 8 bytes: two 32-bit words, each an RGBA8 texel (R the lowest
 // byte) or one texel of two 32-bit channels.
 // - ids: biome of slot 0 in bits 0-3, of slot 1 in bits 4-7, of slot 2 in bits 8-11; material
-//   of slot 0 in bits 12-15, slot 1 in bits 16-19, slot 2 in bits 20-23; bits 24-31 are 0.
+//   of slot 0 in bits 12-15, slot 1 in bits 16-19, slot 2 in bits 20-23; bits 24-30 the share
+//   of the column under the sand of the dunes (SurfaceBlend::dunes) in 127ths, 0 off the ergs;
+//   bit 31 always 0.
 // - weights: biome weights of slots 0 and 1 in bits 0-7 and 8-15, material weights of slots 0
 //   and 1 in bits 16-23 and 24-31, in 255ths; the weight of slot 2 is 255 minus the two others.
 // A reader blending texels (bilinear between 4 of them, say) adds the weight of each slot to its
@@ -127,6 +138,7 @@ static_assert(kSurfaceMaterialCount <= (1 << kBlendIdBits), "a material id fits 
 struct BlendWeights {
     std::array<float, kBiomeCount> biomes{};
     std::array<float, kSurfaceMaterialCount> materials{};
+    float dunes = 0.0f; // the shares times SurfaceBlend::dunes
 };
 
 // Adds share times the weights of the blend to each id.

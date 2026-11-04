@@ -13,6 +13,10 @@ namespace terrain {
 namespace {
 
 constexpr float kWeightUnits = 255.0f;
+// The share of the sand of the dunes in the ids, bits 24-30, in 127ths (bit 31 stays 0: the 7
+// bits the blend texels of the horizon have free carry it whole, Bridge/horizon_blend_texels).
+constexpr int kDuneShift = 24;
+constexpr float kDuneUnits = 127.0f;
 
 bool positive(double value) {
     return value > 0.0 && std::isfinite(value);
@@ -102,6 +106,13 @@ SurfaceBlend blendSurface(const ClimateSample& climate, const SurfaceSite& site,
     SurfaceBlend result;
     dominants(margins.biomes, biome, widthFactor, result.biomes, result.biomeWeights);
     dominants(margins.materials, material, widthFactor, result.materials, result.materialWeights);
+    if (site.erg > 0.0f) {
+        // The share of an erg is its mask alone (smooth over kilometers): two grids of other
+        // pitches (the tiles of two LODs, the horizon) read the same share at their common
+        // edge; the height of the dunes there (fast) drew lines and rectangles where they meet.
+        // Its rock out of the sand lowers it to the floor of an erg (HeightSample::erg).
+        result.dunes = std::min(1.0f, site.erg);
+    }
     return result;
 }
 
@@ -137,6 +148,9 @@ BlendTexel packBlend(const SurfaceBlend& blend) {
         texel.ids |= static_cast<std::uint32_t>(material) << (shift + kBlendIdBits * kBlendSlots);
     }
     texel.weights = biomes[0] | (biomes[1] << 8) | (materials[0] << 16) | (materials[1] << 24);
+    texel.ids |= static_cast<std::uint32_t>(std::clamp(blend.dunes, 0.0f, 1.0f) * kDuneUnits +
+                                            0.5f)
+                 << kDuneShift;
     return texel;
 }
 
@@ -157,6 +171,7 @@ SurfaceBlend unpackBlend(BlendTexel texel) {
     const auto rest = [](std::uint32_t a, std::uint32_t b) {
         return a + b <= 255U ? 255U - a - b : 0U;
     };
+    blend.dunes = static_cast<float>(field(texel.ids, kDuneShift, 0x7FU)) / kDuneUnits;
     blend.biomeWeights = {share(b0), share(b1), share(rest(b0, b1))};
     blend.materialWeights = {share(m0), share(m1), share(rest(m0, m1))};
     return blend;
@@ -168,6 +183,7 @@ void addBlend(BlendWeights& weights, const SurfaceBlend& blend, float share) {
         weights.materials[static_cast<std::size_t>(blend.materials[s])] +=
             share * blend.materialWeights[s];
     }
+    weights.dunes += share * blend.dunes;
 }
 
 void addTexel(BlendWeights& weights, BlendTexel texel, float share) {

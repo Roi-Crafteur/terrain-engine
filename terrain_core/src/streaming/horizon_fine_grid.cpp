@@ -50,7 +50,10 @@ void HorizonFineGrid::readRow(const Heightfield& field, std::int64_t v,
     const std::vector<double> zs(columns.size(),
                                  samplePosition(wrapIndex(v, counts_.z), spacing_));
     std::vector<float> out(columns.size());
-    field.seenHeightsAt(xs, zs, out, static_cast<double>(spacing_) * ratio_);
+    // The relief as the level of the grid sees it: its dunes filtered to its pitch
+    // (Heightfield::forFootprint), the faces of the coasts as its tiles draw them (seenHeightsAt).
+    const double pitch = static_cast<double>(spacing_) * ratio_;
+    field.forFootprint(pitch).seenHeightsAt(xs, zs, out, pitch);
     for (std::size_t n = 0; n < columns.size(); ++n) {
         set(columns[n], v, out[n]);
     }

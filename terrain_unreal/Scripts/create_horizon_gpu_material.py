@@ -127,6 +127,7 @@ float2 slope = lerp(own.gb, 0.5 * (ca.gb + cb.gb), alpha);
 float4 wa = float4(0.0, 0.0, 0.0, 0.0);
 float4 wb = wa;
 float2 wc = float2(0.0, 0.0);
+float wd = 0.0; // the share of the dunes of an erg (agent 34), 0 without blends
 bool blended = false;
 BRANCH if (SurfaceBlends > 0.5)
 {
@@ -134,7 +135,7 @@ BRANCH if (SurfaceBlends > 0.5)
     float4 bA = Blend.Load(int3((s0 + first) % side, 0));
     float4 bB = Blend.Load(int3((s1 + first) % side, 0));
     float4 shares = float4(1.0 - alpha, 0.5 * alpha, 0.5 * alpha, 0.0);
-    blended = Look.BlendTexelsLayers(bOwn, bA, bB, bOwn, shares, wa, wb, wc);
+    blended = Look.BlendTexelsLayers(bOwn, bA, bB, bOwn, shares, wa, wb, wc, wd);
 }
 BRANCH if (!blended)
 {
@@ -149,7 +150,8 @@ BRANCH if (!blended)
 }
 W0Out = wa;
 W1Out = wb;
-W2Out = float4(wc, 0.0, height / 1000.0);
+// W2.z: the share of the dunes (the foot of the steep slopes of the tiles has no use here).
+W2Out = float4(wc, wd, height / 1000.0);
 // The drop below the tiles fades out across their band over level 0 (Bridge/terrain_surface.hpp:
 // dropShare): no step at their outer edge, none on the levels 1 and up.
 float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;

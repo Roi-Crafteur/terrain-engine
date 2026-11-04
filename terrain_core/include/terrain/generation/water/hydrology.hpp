@@ -19,6 +19,7 @@
 // bits whatever the thread or the order in which they are computed. Thread-safe.
 
 #include "terrain/generation/climate.hpp"
+#include "terrain/generation/ergs.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/water/slot_wall.hpp"
 
@@ -37,6 +38,9 @@ struct HydrologyParams {
     // The rivers carved: their discharge at the upstream end of the reach, m^3/s (the planet
     // level must keep them: PlanetRiverParams::minDischarge at most this).
     double minDischarge = 10.0;
+    // The seas of dunes laid over the relief before the valleys (ergs.hpp); their rivers are those
+    // carved here (ErgParams::minDischarge is set to minDischarge).
+    ErgParams ergs;
 };
 
 // What the valleys of the rivers make of a point of the relief (Hydrology::riversAt).
@@ -174,6 +178,8 @@ public:
     [[nodiscard]] const PlanetLevel& planet() const;
     [[nodiscard]] const Heightfield& relief() const;
     [[nodiscard]] const HydrologyParams& params() const;
+    // The ergs of the world, or nullptr where they are disabled (HydrologyParams::ergs).
+    [[nodiscard]] const Ergs* ergs() const;
 
     // What the queries of the points of a box share (a batch of Heightfield::samplesAt or
     // heightsAt): the reaches and the lakes that may reach it, found once with what of their
@@ -231,6 +237,11 @@ public:
     // then kept): its level, lower where the relief lets its water out sooner; -infinity where
     // the relief holds none of it.
     [[nodiscard]] float lakeLevel(std::int32_t lake) const;
+
+    // The distance from the canonical (x, z) to the floor of the valley of the nearest reach (its
+    // axis, less the half width of its floor, or of its channel and its meanders where wider),
+    // meters, or limit where none is nearer (hydrology_floor.cpp). Computes the courses it needs.
+    [[nodiscard]] double floorDistance(double x, double z, double limit) const;
 
     // The reaches: one per river cell of the planet level carved, in the order of the cells, then
     // one per outlet of a lake into a river carved, in the order of the cells of their sills.

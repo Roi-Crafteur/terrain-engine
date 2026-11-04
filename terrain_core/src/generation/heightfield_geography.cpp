@@ -159,6 +159,7 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
     const float intensity =
         land > 0.0f || coast.landward ? reliefAt(x, z, g.relief, memos) : 0.0f;
     s.relief = intensity; // 0 at sea
+    s.rift = g.rift;
     s.mountainMask = coast.mountains * noise::smoothstep(kMountainLow, kMountainHigh, intensity);
     // Around the regional elevation, the local relief rises and falls.
     const float ground = coast.ground;
@@ -190,6 +191,7 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
         local = plainFormsAt(x, z, g.regions, local, plains, memos);
     }
     s.base = ground + relief_local::boundBelow(local, kLocalRoom * ground);
+    s.regional = ground;
     if (g.rift > 0.0f && params_.geography.ravines) {
         s.base -= riftRavinesAt(x, z, kRavineRoom * std::max(0.0f, s.base - 1.0f), memos);
     }

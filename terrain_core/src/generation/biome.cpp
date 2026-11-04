@@ -76,7 +76,8 @@ Biome classifyBiome(const ClimateSample& climate, const SurfaceSite& site,
     if (isMountain(climate, site, altitude, params)) {
         return Biome::Mountain;
     }
-    if (isBeach(climate, altitude, params)) {
+    // A sea of dunes keeps far from the coasts (ErgParams::coastNear): its low floor is no beach.
+    if (!(site.erg > 0.0f) && isBeach(climate, altitude, params)) {
         return Biome::Beach;
     }
     if (isMarsh(climate, site, altitude, params)) {

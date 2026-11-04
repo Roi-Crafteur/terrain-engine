@@ -22,6 +22,11 @@ Rules (kept simple on purpose):
   (its textures desaturated by RockGrey, brightened by RockAlbedo to about 0.18), never sandy;
   wet and darker (WetDarken) at the sea, up to about WetBandM meters, the upper edge ragged
   (agent 33): the same on the tiles and on the GPU horizon;
+- the dunes of the ergs stay sand at any slope: on the tiles, their share in the texels of the
+  surface blend (carried to the pixel as W4) makes their sand the smooth Sand layer, never rock,
+  scree, stones at their foot nor the stony Desert layer; everywhere else, the far horizon
+  included (it carries no share of the dunes), the sand and the desert turn to scree from 30
+  degrees and to rock as before;
 - snow where the core says it is cold (snow biome or material, which includes the altitude and the
   exposure), only on slopes gentler than SnowShedDeg: above the snow line, the faces too steep for
   the snow are rock;

@@ -100,7 +100,12 @@ struct HeightSample {
     float plateCollision = 0.0f;       // [0, 1], PlateSample::collision, 0 when disabled
     float mountainMask = 0.0f;         // [0, 1]
     float relief = 0.0f; // [0, 1], the intensity of the relief of the geography on land (else 0)
+    float rift = 0.0f;   // [0, 1], GeographySample::rift: the troughs of the rifts (1 on their axis)
     float base = 0.0f;                 // continental curve, [kMinBaseHeight, kMaxBaseHeight]
+    // The regional ground under the local relief of the geography (its hills, buttes and forms of
+    // the plains: base less them); base without the geography. The seas of dunes of the waves
+    // bury the local relief down to it (ergs.hpp).
+    float regional = 0.0f;
     float mountain = 0.0f;             // [0, mountainMask * mountainHeight * (1 + boost)]
     float detail = 0.0f; // [-detailAmplitude, detailAmplitude] (with the geography, its own)
     float height = 0.0f;
@@ -109,6 +114,18 @@ struct HeightSample {
     // dry land).
     WaterKind water = WaterKind::None;
     float waterLevel = 0.0f;
+    // Meters of sand the seas of dunes lay over the relief (ergs.hpp, part of height): 0 outside
+    // them and without hydrology.
+    float dunes = 0.0f;
+    // The share of the seas of dunes at the column ([0, 1]): their mask (ErgPoint::mask), even
+    // between their dunes, lowered to the floor of an erg (kErgFloorShare of it, biome_blend.hpp)
+    // on the rock of the geography out of the sand, smoothly up its foot (Ergs::dunesAt): 0
+    // outside them and without hydrology.
+    float erg = 0.0f;
+    // The kind of the floor of the seas of dunes between their dunes (Ergs::dunesAt): 0 sand, 1
+    // gravel, 2 crust, continuous between them; 0 outside them, where their dunes are 10 m deep or
+    // more (never read there) and without hydrology.
+    float ergFloor = 0.0f;
     // Bare rock the coasts lay on the surface, 0 or 1 (the rocks of the reefs and the sea a few
     // meters around them, coast.hpp): the material only, never the height.
     float rock = 0.0f;
@@ -210,6 +227,11 @@ public:
     // The water of the world, or nullptr for the relief alone.
     [[nodiscard]] const Hydrology* hydrology() const { return hydrology_.get(); }
 
+    // This Heightfield as a grid of samples standing for squares of footprint meters sees it (a
+    // level of the far horizon): the seas of dunes filtered to their mean where the grid is
+    // coarser than them (Ergs::dunesAt), everything else the same bits. 0: points (the tiles).
+    [[nodiscard]] Heightfield forFootprint(double footprint) const;
+    [[nodiscard]] double footprint() const { return footprint_; }
     // The coasts (agent 33, coast.hpp): what they make of the point (x, z), any image of it.
     [[nodiscard]] CoastSample coastAt(double x, double z) const;
     // This relief without the coasts (the coastal plains of phase 11R, bit for bit): the relief the
@@ -281,6 +303,9 @@ private:
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
     // The depressions below the sea and the sea of a sample at a canonical point.
     void finishWater(double x, double z, HeightSample& s) const;
+    // The seas of dunes of the hydrology (ergs.hpp) over the relief at a canonical point, before
+    // its valleys (heightfield_hydrology): nothing, not a bit, outside them.
+    void addDunes(double x, double z, HeightSample& s) const;
     // The valleys, rivers and lakes of the hydrology at a canonical point, last
     // (heightfield_hydrology), through the memos and the region of a batch call (null otherwise).
     // With wall, the wall of the slot of a fall the ground there follows (width 0 otherwise);
@@ -387,6 +412,7 @@ private:
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
+    double footprint_ = 0.0;                       // of a sample, for the dunes (forFootprint)
     std::shared_ptr<const Coasts> coasts_;         // the coasts, or null without them
     // The inlets and stacks of the coasts, cell by cell on demand (null without the coasts): of
     // this Heightfield and its copies, but those with another Hydrology (withHydrology).

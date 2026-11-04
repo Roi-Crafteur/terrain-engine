@@ -15,7 +15,9 @@ namespace terrain::unreal {
 // the texels, holding the blend of each sample (HorizonCell::blend: the weights of its 2 or 3
 // dominant biomes and materials, as the texels of the tiles). A texel is 4 channels of 16 bits
 // (PF_A16B16G16R16 in Unreal: RGBA, unsigned normalized, 8 bytes), R first:
-// - R: bits 0-15 of the ids, G: bits 16-23 of the ids plus kBlendTexelPresent (bit 15);
+// - R: bits 0-15 of the ids, G: bits 16-23 of the ids, bits 24-30 of the ids (the share of the
+//   dunes of the ergs, SurfaceBlend::dunes in 127ths: agent 34) in its bits 8-14, and
+//   kBlendTexelPresent (bit 15);
 // - B: bits 0-15 of the weights, A: bits 16-31 of the weights.
 // The material reads them without filtering and decodes each channel as round(65535 x), the
 // integer it holds: a texel whose G lacks kBlendTexelPresent holds no blend yet (the zeros of a
@@ -25,8 +27,7 @@ inline constexpr int kBlendChannels = 4;
 inline constexpr std::uint16_t kBlendTexelPresent = 0x8000U;
 
 [[nodiscard]] std::array<std::uint16_t, kBlendChannels> blendChannels(BlendTexel texel);
-// The blend of 4 channels written by blendChannels; nothing without kBlendTexelPresent or with
-// bits blendChannels never sets.
+// The blend of 4 channels written by blendChannels; nothing without kBlendTexelPresent.
 [[nodiscard]] std::optional<BlendTexel>
 blendOfChannels(const std::array<std::uint16_t, kBlendChannels>& channels);
 

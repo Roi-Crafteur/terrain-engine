@@ -10,7 +10,8 @@ namespace terrain::unreal {
 
 std::array<std::uint16_t, kBlendChannels> blendChannels(BlendTexel texel) {
     return {static_cast<std::uint16_t>(texel.ids & 0xFFFFU),
-            static_cast<std::uint16_t>(((texel.ids >> 16U) & 0xFFU) | kBlendTexelPresent),
+            static_cast<std::uint16_t>(((texel.ids >> 16U) & 0xFFU) |
+                                       ((texel.ids >> 24U) & 0x7FU) << 8U | kBlendTexelPresent),
             static_cast<std::uint16_t>(texel.weights & 0xFFFFU),
             static_cast<std::uint16_t>(texel.weights >> 16U)};
 }
@@ -18,10 +19,10 @@ std::array<std::uint16_t, kBlendChannels> blendChannels(BlendTexel texel) {
 std::optional<BlendTexel>
 blendOfChannels(const std::array<std::uint16_t, kBlendChannels>& channels) {
     const std::uint32_t high = channels[1];
-    if ((high & kBlendTexelPresent) == 0 || (high & 0x7F00U) != 0) {
+    if ((high & kBlendTexelPresent) == 0) {
         return std::nullopt;
     }
-    return BlendTexel{channels[0] | (high & 0xFFU) << 16U,
+    return BlendTexel{channels[0] | (high & 0xFFU) << 16U | ((high >> 8U) & 0x7FU) << 24U,
                       channels[2] | static_cast<std::uint32_t>(channels[3]) << 16U};
 }
 

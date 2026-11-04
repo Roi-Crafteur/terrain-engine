@@ -116,6 +116,9 @@ std::vector<BlendTexel> blendTexels(const Heightfield& field, const Ecology& eco
                 columns.at(i, k), columns.continentalnessAt(i, k),
                 {height(i + 1, k), height(i - 1, k), height(i, k + 1), height(i, k - 1)},
                 lattice.spacing);
+            site.dunes = columns.dunesAt(i, k);
+            site.erg = columns.ergAt(i, k);
+            site.ergFloor = columns.ergFloorAt(i, k);
             const ClimateSample climate = ecology.climate().sample(x, z, site);
             // Bare rock: the reefs of the coasts, and the foot of the walls under the sea.
             site.bareRock = columns.bareRockAt(i, k) ||

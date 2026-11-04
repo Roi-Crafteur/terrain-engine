@@ -181,6 +181,38 @@ BLEND_FUNCTIONS
         return albedo;
     }
 
+    // The stochastic tiling of the sand of the dunes (agent 34): the cells turned by 0 or 180
+    // degrees only, so that their ripples keep one direction, and the normal blended over the
+    // cells as the albedo is. Bomb turns them by quarter turns and takes the normal of the
+    // dominant cell: its ripples turned at once along the straight edges of its cells.
+    float3 BombStripes(Texture2D A, SamplerState SA, Texture2D Nm, SamplerState SN, bool withNormal,
+                       float2 uv, float2 dx, float2 dy, out float2 nrm)
+    {
+        float2 q = uv / 0.7;
+        float2 c = floor(q);
+        float2 w = smoothstep(0.5, 1.0, q - c);
+        float3 albedo = float3(0.0, 0.0, 0.0);
+        nrm = float2(0.0, 0.0);
+        [unroll] for (int i = 0; i < 4; ++i)
+        {
+            float2 o = float2(i & 1, i >> 1);
+            float wt = lerp(1.0 - w.x, w.x, o.x) * lerp(1.0 - w.y, w.y, o.y);
+            BRANCH if (wt > 0.01)
+            {
+                float2 h = Hash2(c + o);
+                float turn = h.x < 0.5 ? 1.0 : -1.0;
+                float2 u = turn * uv + h * 37.0;
+                albedo += wt * A.SampleGrad(SA, u, turn * dx, turn * dy).rgb;
+                BRANCH if (withNormal)
+                {
+                    float2 t = Nm.SampleGrad(SN, u, turn * dx, turn * dy).rg * 2.0 - 1.0;
+                    nrm += wt * turn * t;
+                }
+            }
+        }
+        return albedo;
+    }
+
     // One plane of the triplanar rock: the rock texture and its variant, mixed by `alt`.
     float3 RockPlane(Texture2D A, SamplerState SA, Texture2D NA, SamplerState SNA,
                      Texture2D B, SamplerState SB, Texture2D NB, SamplerState SNB,
@@ -237,6 +269,34 @@ float pd = Look.Patch(Q, 4.0, 47.0);
 // meet along ragged edges (a blend of a dark rock and a white snow would read as sand).
 float rock = saturate((slope - (RockStartDeg + jit)) / max(RockFullDeg - RockStartDeg, 1.0));
 rock = smoothstep(0.3, 0.7, rock + (pd - 0.5) * 0.6);
+// The dunes stay sand at any slope: their slip faces stand at 33 degrees, never rock, scree nor
+// stones at their foot, nor the gravel of the desert. DUNES: the share of an erg (the surface
+// blends of the tiles and of the horizon; biome_blend.hpp: its floor below 16 127ths, its dunes
+// above). Elsewhere the desert keeps its rock and its scree from 30 degrees. The foot of the
+// steep slopes comes from the tiles only.
+float ergFloor = saturate(DUNES * (127.0 / 16.0));
+float duneShare = saturate((DUNES - 16.0 / 127.0) / (1.0 - 16.0 / 127.0));
+float sandLock = saturate(duneShare * 2.0);
+// Their sand has one color near and far: the smooth Sand layer takes the mean color of the
+// Desert layer (the warm orange of the horizon, both read from their textures) wherever the erg
+// lies, its ripples kept (by the share of its dunes only, its pale raw texture showed white as
+// snow where that share falls, by the rock out of the sand).
+float3 desertMean = DESERT_TEX.SampleLevel(DESERT_TEXSampler, P / DESERT_SCALE, 13.0).rgb * DESERT_TINT;
+float3 duneTint = lerp(float3(1.0, 1.0, 1.0),
+                       desertMean /
+                       max(SAND_TEX.SampleLevel(SAND_TEXSampler, P / SAND_SCALE, 13.0).rgb * SAND_TINT,
+                           float3(1e-4, 1e-4, 1e-4)),
+                       max(sandLock, ergFloor));
+// The gravel of the floor of an erg (its Scree layer: the material pebbles, ergs_rock.cpp) is a
+// reg, its stones in the hue of the local sand under a dark patina (0.55 of its color: brown to
+// red-brown), near and far, never the cold blue-grey scree of the mountains: its texture keeps its
+// light and dark.
+float3 screeMean = Look.Saturate(SCREE_TEX.SampleLevel(SCREE_TEXSampler, P / SCREE_SCALE, 13.0).rgb,
+                                 SCREE_SATURATION) * SCREE_TINT;
+float3 regTint = lerp(float3(1.0, 1.0, 1.0),
+                      desertMean * 0.55 / max(screeMean, float3(1e-4, 1e-4, 1e-4)),
+                      ergFloor);
+rock *= 1.0 - sandLock;
 rock = max(rock, W2.y * CoreRock);
 float cold = saturate((W2.x - 0.5) * 2.5 + (n2 - 0.5) * 1.2 + 0.5);
 float hold = saturate((SnowShedDeg + jit - slope) / max(SnowShedDeg - SnowHoldDeg, 1.0));
@@ -267,13 +327,19 @@ float ma = Look.Patch(R, 8.0, 17.0) * 0.7 + Look.Noise(R + 13.0, 128.0) * 0.2
 float mb = Look.Patch(R, 8.0, 71.0) * 0.7 + Look.Noise(R - 13.0, 128.0) * 0.2
          + Look.Noise(R - 3.0, 4.0) * 0.1 + rag;
 float bareSite = saturate(bump + 0.6 * incline);
-float gravelSite = saturate(hollow + 0.6 * saturate(W2.z) + 0.25 * incline);
+float gravelSite = saturate(hollow + 0.6 * saturate(FOOT) + 0.25 * incline);
 float bareMask = lerp(ma, bareSite, PatchRelief) - PatchRarity;
 float gravelMask = lerp(mb, gravelSite, PatchRelief) - PatchRarity;
 float bare = PatchAmount * smoothstep(0.0, 0.05, bareMask);
 float gravel = PatchAmount * smoothstep(0.0, 0.05, gravelMask);
 // The desert keeps more of its gravel, still in the hollows first.
-float desertGravel = PatchAmount * smoothstep(0.0, 0.05, gravelMask + 0.12);
+// On the floor of an erg its edges soften and it leaves the hollows and the foot of the slopes:
+// the foot of every dune is one, the gravel would draw a grey line along them (ergFloor: 0
+// elsewhere, the same patches as before).
+float ergGravelSite = saturate((hollow + 0.6 * saturate(FOOT)) * (1.0 - ergFloor) + 0.25 * incline);
+float ergGravelMask = lerp(mb, ergGravelSite, PatchRelief) - PatchRarity;
+float desertGravel = PatchAmount * smoothstep(0.0, 0.05 + 0.3 * ergFloor,
+                                              lerp(gravelMask, ergGravelMask, ergFloor) + 0.12);
 float dryp = PatchAmount * smoothstep(0.60, 0.68, pb);
 float dark = PatchAmount * (1.0 - smoothstep(0.32, 0.40, pb));
 float outcrop = PatchAmount * smoothstep(0.66, 0.74, pc);
@@ -287,6 +353,7 @@ g[0] = meadow * (1.0 - dryp * 0.8 - dark * 0.6);
     g[7] += g[v] * gravel * 0.6;
     g[v] *= 1.0 - bare * 0.75 - gravel * 0.6;
 }
+desertGravel *= 1.0 - sandLock;
 g[7] += g[6] * desertGravel * 0.5;
 g[6] *= 1.0 - desertGravel * 0.5;
 snow *= 1.0 - outcrop * 0.85;
@@ -305,8 +372,9 @@ BRANCH if (rockFace > 0.0)
     alt = lerp(alt, smoothstep(0.42, 0.58, onFace), rockFace);
 }
 // No sand on the mountains: above the alpine zone (SandMaxAltitudeM) and on slopes steeper than
-// 30 degrees, the sand and the desert of any biome become scree.
+// 30 degrees, the sand and the desert of any biome become scree, except on the dunes.
 float sandless = max(saturate((Z - SandMaxAltitudeM) / 300.0), saturate((slope - 30.0) / 5.0));
+sandless *= 1.0 - sandLock;
 g[7] += (g[5] + g[6]) * sandless;
 g[5] *= 1.0 - sandless;
 g[6] *= 1.0 - sandless;
@@ -316,7 +384,7 @@ float sandShare = g[5] + g[6];
 float soil = 0.6 * saturate((slope - 26.0 - jit) / 10.0);
 float lowland = g[0] + g[1] + g[2];
 float alpine = g[3];
-float foot = 0.7 * saturate(W2.z) * (1.0 - rock);
+float foot = 0.7 * saturate(FOOT) * (1.0 - rock) * (1.0 - sandLock);
 float sum = 0.0;
 [unroll] for (int s = 0; s < 8; ++s)
 {
@@ -337,14 +405,14 @@ LAYER_FAR = r"""
 BRANCH if (g[I] > 0.01 && cover > 0.02)
 {
     float3 c = TAI.SampleLevel(TAISampler, P / SCALE, 13.0).rgb;
-DETAIL_CODELAYER_SATURATION    ground += (g[I] / sum) * c * TintI;
+DETAIL_CODELAYER_SATURATIONDUNE_TINT    ground += (g[I] / sum) * c * TintI;
 }
 """
 
 LAYER_DETAIL = r"""    BRANCH if (detail > 0.0)
     {
         float2 nl;
-        float3 cd = Look.Bomb(TAI, TAISampler, TNI, TNISampler, g[I] > 0.35 * sum, P / SCALE, dPx.xy / SCALE, dPy.xy / SCALE, nl);
+        float3 cd = Look.BOMB(TAI, TAISampler, TNI, TNISampler, g[I] > 0.35 * sum, P / SCALE, dPx.xy / SCALE, dPy.xy / SCALE, nl);
         c = lerp(c, cd, detail);
         nts += (g[I] / sum) * nl;
     }
@@ -392,6 +460,15 @@ float3 hue = lerp(float3(1.0, 1.0, 1.0), lerp(float3(1.07, 1.02, 0.86), float3(0
 float3 groundC = Look.Saturate(ground * macro * hue, Saturation) * Warmth;
 float3 rockS = max(lerp(rockMean, rockC, RockContrast), 0.0);
 float3 rockG = Look.Saturate(rockS, 1.0 - RockGrey) * RockAlbedo * (1.0 + 0.4 * MacroVariation * (n2 - 0.5));
+// The rock of the ergs (their floor: its buttes and mesas out of the sand) is the rock of a
+// desert, ochre to red-brown sandstone, not the cold grey mineral: the light and dark of the rock
+// texture kept, its hue that of the local sand (desertMean), a little darker than it (0.8 to 0.7
+// of its luminance: fixed at 0.34 to 0.45, twice the sand, its faces lit by a low sun showed
+// white, c1119e3).
+float rockLum = dot(rockS, float3(0.3, 0.59, 0.11)) / max(dot(rockMean, float3(0.3, 0.59, 0.11)), 1e-3);
+float3 desertRock = desertMean * lerp(float3(0.95, 0.88, 0.8), float3(0.85, 0.62, 0.55), smoothstep(0.3, 0.7, n4)) *
+                    rockLum * (1.0 + 0.3 * MacroVariation * (n2 - 0.5));
+rockG = lerp(rockG, desertRock, ergFloor);
 // The wet rock at the sea (agent 33): from under the water up to about WetBandM meters, its upper
 // edge ragged by two noises of the world position (from half to one and a half times it, over 3
 // and 12 m: never a straight line along the coast), darker by WetDarken, fading over a meter.
@@ -420,7 +497,7 @@ if (DebugView > 0.5)
     // red, their layering in green, its notch in blue (black: none). 7: the normal the pixel is
     // shaded with (x, y, z to red, green, blue).
     float3 bands = float3(frac(B.x), B.y, B.w > 0.0 ? saturate(B.z / B.w) : 0.0);
-    color = DebugView < 1.5 ? d : (DebugView < 2.5 ? float3(rock, snow, saturate(W2.z)) :
+    color = DebugView < 1.5 ? d : (DebugView < 2.5 ? float3(rock, snow, saturate(FOOT)) :
             (DebugView < 3.5 ? float3(sandShare / max(sum, 1e-3), 0.0, 0.0) :
             (DebugView < 4.5 ? float3(hollow, 0.15, bump) :
             (DebugView < 5.5 ? float3(bare, gravel, 0.0) :
@@ -445,11 +522,16 @@ def struct_hlsl(biomes):
             .replace("SEA_ROCK_HALF", f"{0.5 * SEA_ROCK_CODE:.1f}"))
 
 
-def ground_layer(index, scale, detail, saturation):
+def ground_layer(index, scale, detail, saturation, dunes=False, reg=False):
     """The code of one ground layer: its mean color, or its stochastic texture near the camera."""
     layer = LAYER_FAR.replace("DETAIL_CODE", LAYER_DETAIL if detail else "")
     layer = layer.replace("LAYER_SATURATION", "" if saturation is None else
                           f"    c = Look.Saturate(c, {saturation:.2f});\n")
+    # The sand of the dunes takes the color of the desert (duneTint, SHADE_TOP).
+    layer = layer.replace("DUNE_TINT", "    c *= duneTint;\n" if dunes else
+                          ("    c *= regTint;\n" if reg else ""))
+    # Its ripples keep one direction across the cells of its tiling (BombStripes).
+    layer = layer.replace("Look.BOMB(", "Look.BombStripes(" if dunes else "Look.Bomb(")
     return layer.replace("TAI", f"TA{index}").replace("TNI", f"TN{index}").replace(
         "TintI", f"Tint{index}").replace("[I]", f"[{index}]").replace("SCALE", f"{scale:.1f}")
 
@@ -460,10 +542,20 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
     first, then the snow, the rock and its variant."""
     # The curvature of the ground comes from the vertex shader of the tiles (W3.w); the horizon
     # has none.
+    # The share of the dunes comes from the surface blend of the tiles (W4); the horizon has none.
+    # The share of the dunes: W4 on the tiles, W2.z on the horizon (it has no foot of slopes).
     code = SHADE_TOP.replace("HAS_DETAIL", "1.0" if detail else "0.0").replace(
-        "CURVATURE", "W3.w" if detail else "0.0")
+        "CURVATURE", "W3.w" if detail else "0.0").replace(
+        "DUNES", "W4" if detail else "W2.z").replace("FOOT", "W2.z" if detail else "0.0")
+    names = [layer[0] for layer in layers]
+    for name, key in (("Desert", "DESERT"), ("Sand", "SAND"), ("Scree", "SCREE")):
+        index = names.index(name)
+        code = code.replace(f"{key}_TEX", f"TA{index}").replace(
+            f"{key}_TINT", f"Tint{index}").replace(f"{key}_SCALE", f"{layers[index][4]:.1f}").replace(
+            f"{key}_SATURATION", f"{saturations.get(name, 1.0):.2f}")
     for index in range(ground):
-        code += ground_layer(index, layers[index][4], detail, saturations.get(layers[index][0]))
+        code += ground_layer(index, layers[index][4], detail, saturations.get(layers[index][0]),
+                             layers[index][0] == "Sand", layers[index][0] == "Scree")
     snow, rock, variant = ground, ground + 1, ground + 2
     scale = f"{layers[rock][4]:.1f}"
     code += ROCK_FAR.replace("TAR", f"TA{rock}").replace("TAV", f"TA{variant}").replace(
@@ -475,5 +567,5 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
                 f"TA{variant}Sampler, TN{variant}, TN{variant}Sampler, Tint{rock}, Tint{variant}, alt")
         code += ROCK_DETAIL.replace("ROCK_ARGS", args).replace("SCALE", scale)
         code += SNOW_DETAIL.replace("TAS", f"TA{snow}").replace("SCALE", f"{layers[snow][4]:.1f}")
-    code += SHADE_BOTTOM.replace("TintS", f"Tint{snow}")
+    code += SHADE_BOTTOM.replace("TintS", f"Tint{snow}").replace("FOOT", "W2.z" if detail else "0.0")
     return struct_hlsl(biomes) + code

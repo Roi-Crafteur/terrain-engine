@@ -233,6 +233,7 @@ HeightSample Heightfield::sampleAt(double x, double z) const {
         const double cx = noise::wrapCanonical(x, world_.x);
         const double cz = noise::wrapCanonical(z, world_.z);
         leaveValleys(cx, cz, s, nullptr);
+        addDunes(cx, cz, s);
         applyHydrology(cx, cz, s, nullptr);
     }
     return s;
@@ -282,6 +283,7 @@ HeightSample Heightfield::reliefWith(double worldX, double worldZ, Memos* memos,
     continentalnessAt(x, z, s, memos);
     const float coastOffset = s.continentalness - params_.coastContinentalness;
     s.base = continentalBase(coastOffset);
+    s.regional = s.base;
 
     const float land = noise::smoothstep(kMountainCoastStart, kMountainCoastFull, coastOffset);
     // On the sea and the shore the land factor is 0, and the mask 0 * max(massif, collision)

@@ -29,7 +29,9 @@ struct HorizonCell {
     // lift to the crests of its cells from level 1 on (HorizonCrestSampler, when it rises), then
     // the height change of the player edits (editedHeight). Without lift nor edit, sample J of
     // level n + 1 is sample 2J of level n: the same bits on both levels (always so with
-    // HorizonParams::crestRatio 0 and no edit).
+    // HorizonParams::crestRatio 0 and no edit), but in the seas of dunes, which every level reads
+    // filtered to its own pitch (Heightfield::forFootprint): level 0 as the tiles, the coarse
+    // levels their mean.
     float height = 0.0f;
     // Gradient of the ground at the scale of the level (rise over run), by central differences
     // of the point heights (and edits) of its neighbor samples, without their lifts: the normal

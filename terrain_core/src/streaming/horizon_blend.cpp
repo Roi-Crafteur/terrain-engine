@@ -66,6 +66,9 @@ SurfaceSite pointSite(const HeightSample& sample, const std::array<float, 4>& h,
     site.steepness = static_cast<float>(difference / step);
     site.water = sample.water;
     site.waterLevel = sample.waterLevel;
+    site.dunes = sample.dunes;
+    site.erg = sample.erg;
+    site.ergFloor = sample.ergFloor;
     return site;
 }
 
@@ -73,6 +76,12 @@ SurfaceBlend dominantBlend(const BlendWeights& weights) {
     SurfaceBlend blend;
     dominant(weights.biomes, blend.biomes, blend.biomeWeights);
     dominant(weights.materials, blend.materials, blend.materialWeights);
+    // The share of the dunes: their mean over the weights summed (those of the materials).
+    float total = 0.0f;
+    for (const float weight : weights.materials) {
+        total += weight;
+    }
+    blend.dunes = total > 0.0f ? std::clamp(weights.dunes / total, 0.0f, 1.0f) : 0.0f;
     return blend;
 }
 
@@ -88,7 +97,8 @@ BlendTexel withMaterial(BlendTexel texel, SurfaceMaterial material) {
     const auto id = static_cast<std::uint32_t>(material);
     constexpr std::uint32_t kMaterialIds = 0x00FFF000U;
     const std::uint32_t ids = id << 12U | id << 16U | id << 20U;
-    texel.ids = (texel.ids & ~kMaterialIds) | ids;
+    constexpr std::uint32_t kDunes = 0xFF000000U; // the edits cover the sand of the dunes
+    texel.ids = (texel.ids & ~(kMaterialIds | kDunes)) | ids;
     texel.weights = (texel.weights & 0x0000FFFFU) | 255U << 16U;
     return texel;
 }

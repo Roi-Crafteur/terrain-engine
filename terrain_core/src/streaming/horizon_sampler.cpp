@@ -33,7 +33,10 @@ struct GroundGrid {
     std::vector<float> continentalness;
     std::vector<WaterKind> water;
     std::vector<float> waterLevel;
-    std::vector<float> rock; // HeightSample::rock
+    std::vector<float> dunes; // HeightSample::dunes (filtered to the pitch of the level)
+    std::vector<float> erg;   // HeightSample::erg
+    std::vector<float> ergFloor; // HeightSample::ergFloor
+    std::vector<float> rock;  // HeightSample::rock
 
     [[nodiscard]] std::size_t index(std::int64_t i, std::int64_t k) const {
         return static_cast<std::size_t>((k - rect.z0) * rect.width() + (i - rect.x0));
@@ -42,12 +45,15 @@ struct GroundGrid {
 
 GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
                         const HorizonRect& rect) {
-    GroundGrid grid{rect, {}, {}, {}, {}, {}};
+    GroundGrid grid{rect, {}, {}, {}, {}, {}, {}, {}, {}};
     const auto count = static_cast<std::size_t>(rect.count());
     grid.heights.reserve(count);
     grid.continentalness.reserve(count);
     grid.water.reserve(count);
     grid.waterLevel.reserve(count);
+    grid.dunes.reserve(count);
+    grid.erg.reserve(count);
+    grid.ergFloor.reserve(count);
     grid.rock.reserve(count);
     for (std::int64_t k = rect.z0; k < rect.z1; ++k) {
         const double z = frame.z(k);
@@ -57,6 +63,9 @@ GroundGrid sampleGround(const Heightfield& field, const LevelFrame& frame,
             grid.continentalness.push_back(sample.continentalness);
             grid.water.push_back(sample.water);
             grid.waterLevel.push_back(sample.waterLevel);
+            grid.dunes.push_back(sample.dunes);
+            grid.erg.push_back(sample.erg);
+            grid.ergFloor.push_back(sample.ergFloor);
             grid.rock.push_back(sample.rock);
         }
     }
@@ -72,6 +81,9 @@ SurfaceSite groundSite(const GroundGrid& grid, std::size_t at, const std::array<
     sample.continentalness = grid.continentalness[at];
     sample.water = grid.water[at];
     sample.waterLevel = grid.waterLevel[at];
+    sample.dunes = grid.dunes[at];
+    sample.erg = grid.erg[at];
+    sample.ergFloor = grid.ergFloor[at];
     return horizon::pointSite(sample, h, step);
 }
 
@@ -249,14 +261,16 @@ void HorizonSampler::fill(int level, const HorizonRect& rect, std::span<HorizonC
     const LevelFrame frame{levelPitch(params_, level), levelCounts(params_, level)};
     const int slopeStep = params_.materialSlopeStep == 0 ? frame.pitch : params_.materialSlopeStep;
     const HorizonRect margin{rect.x0 - 1, rect.z0 - 1, rect.x1 + 1, rect.z1 + 1};
-    const GroundGrid grid = sampleGround(*field_, frame, margin);
+    // The relief as this level sees it: the dunes filtered to its pitch (Heightfield::forFootprint).
+    const Heightfield field = field_->forFootprint(frame.pitch);
+    const GroundGrid grid = sampleGround(field, frame, margin);
 
     // The samples of the margin only need a height, for the gradients.
     std::vector<HorizonCell> cells(grid.heights.size());
     for (std::size_t n = 0; n < cells.size(); ++n) {
         cells[n].height = grid.heights[n];
     }
-    classifyRect(*field_, *ecology_, frame, grid, slopeStep, rect, level >= params_.blendFromLevel,
+    classifyRect(field, *ecology_, frame, grid, slopeStep, rect, level >= params_.blendFromLevel,
                  cells);
     raiseToCrests(crests_, level, rect, grid, cells);
     // The point heights and their edits, for the gradients: the lifts leave them out.

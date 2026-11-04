@@ -57,8 +57,20 @@ add_library(terrain_core STATIC
     src/generation/coast_reefs.cpp
     src/generation/coast_shape.cpp
     src/generation/depression_forms.cpp
+    src/generation/dune_field.cpp
+    src/generation/dune_forms.cpp
+    src/generation/dune_layers.cpp
+    src/generation/dune_phase.cpp
+    src/generation/dune_chutes.cpp
+    src/generation/dune_stars.cpp
+    src/generation/dune_waves.cpp
     src/generation/depressions.cpp
     src/generation/ecology.cpp
+    src/generation/erg_characters.cpp
+    src/generation/erg_field.cpp
+    src/generation/ergs.cpp
+    src/generation/ergs_rock.cpp
+    src/generation/ergs_wind.cpp
     src/generation/eroded_region.cpp
     src/generation/geography.cpp
     src/generation/geography_crust.cpp
@@ -122,6 +134,7 @@ add_library(terrain_core STATIC
     src/generation/water/hydrology_lips.cpp
     src/generation/water/hydrology_lakes.cpp
     src/generation/water/hydrology_query.cpp
+    src/generation/water/hydrology_floor.cpp
     src/generation/water/hydrology_region.cpp
     src/generation/water/river_blend.cpp
     src/generation/water/river_box.cpp
@@ -167,6 +180,7 @@ add_library(terrain_core STATIC
     src/io/relief_stats_terrain.cpp
     src/io/relief_view.cpp
     src/io/voronoi_png.cpp
+    src/map/map_ergs.cpp
     src/map/map_frame.cpp
     src/map/map_layers.cpp
     src/map/map_probe.cpp
@@ -213,6 +227,7 @@ add_library(terrain_core STATIC
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
     src/streaming/tile_blend.cpp
+    src/streaming/tile_sides.cpp
     src/streaming/tile_normals.cpp
     src/streaming/tile_rivers.cpp
     src/streaming/tile_water.cpp
