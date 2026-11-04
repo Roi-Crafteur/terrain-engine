@@ -102,6 +102,26 @@ jobs:
         id: build
         run: cmake --build build --config Release
 
+      # Temporary (agent 42, removed before the merge): the command lines of cl.exe for a source of
+      # terrain_core and a test, read from the tracking logs of MSBuild, to compare the generators.
+      - name: Show the MSVC compile lines (temporary)
+        if: runner.os == 'Windows' && !cancelled()
+        run: |
+          python - <<'EOF'
+          import pathlib
+          wanted = {"terrain_core": "\\HEIGHTFIELD.CPP", "det_math_test": "\\DET_MATH_TEST.CPP"}
+          for tlog in sorted(pathlib.Path("build").rglob("CL.command.1.tlog")):
+              project = tlog.parent.name.split(".")[0]
+              if project not in wanted:
+                  continue
+              lines = tlog.read_text(encoding="utf-16").splitlines()
+              for i, line in enumerate(lines):
+                  sources = line[1:].upper().split("|") if line.startswith("^") else []
+                  if any(s.endswith(wanted[project]) for s in sources) and i + 1 < len(lines):
+                      print(f"{tlog}: {len(sources)} sources compiled with")
+                      print(f"cl.exe {lines[i + 1]}")
+          EOF
+
       # Only when the build above fails: the job stays red, but the tests and the golden
       # checksums of the platform are still obtained.
       - name: Diagnostic rebuild without warnings as errors
