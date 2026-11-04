@@ -164,7 +164,7 @@
       "planet": true, "note": "le cratère du même stratovolcan (590 m de large, 102 m de creux) vu de sa lèvre (sol 4875,4 m)" },
     { "name": "volcan_coulee", "x": 20729823, "z": -12286165,
       "heading": 283, "pitch": -4, "eye": 1.7, "eyeMode": "ground",
-      "planet": true, "note": "le front d'une coulée de lave refroidie d'un stratovolcan actif, vu à 60 m (sol 324,8 m)" },
+      "planet": true, "note": "le bord d'une coulée de lave refroidie d'un stratovolcan actif, vu à 60 m (sol 324,8 m)" },
     { "name": "volcan_caldeira_homme", "x": 21574347, "z": -8948470,
       "heading": 248, "pitch": 12, "eye": 1.7, "eyeMode": "ground",
       "planet": true, "note": "au bord du lac d'une caldeira (lac à 2724 m), vers sa paroi (sol 2764,8 m)" },
