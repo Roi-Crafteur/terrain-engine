@@ -56,15 +56,20 @@ struct RunoffParams {
     // along them).
     float leastSurface = 0.05f;
     // The channel heads: area x slope x surface water a year (m^2 x m/m x m/yr) of headFlux
-    // starts a channel, its area within [leastHead, mostHead + permeability x permeableHead]
-    // square meters; the slope read at least headSlope; the rain read at least stormRain mm a
-    // year (the rare violent rains of the deserts cut wadis).
+    // starts a channel, its area within [leastHead, mostHead + permeability x permeableHead
+    // (+ aridHead in a dry climate)] square meters; the slope read at least headSlope; the rain
+    // read at least stormRain mm a year (the rare violent rains of the deserts cut wadis).
     double headFlux = 7500.0;
     double leastHead = 5.0e4;
     double mostHead = 3.0e5;
     double permeableHead = 5.0e6;
+    // A dry climate: up to aridHead more square meters, all of it at a humidity P / (P + PET) of
+    // aridHumidity or less, none from wetHumidity on (few channels in the deserts).
+    double aridHead = 2.0e7;
+    float aridHumidity = 0.15f;
+    float wetHumidity = 0.45f;
     double headSlope = 0.01;
-    double stormRain = 150.0;
+    double stormRain = 50.0;
     // A channel holds water all year where its base flow reaches wetFlow m^3/s, or its whole
     // flow wetTotal.
     double wetFlow = 0.002;

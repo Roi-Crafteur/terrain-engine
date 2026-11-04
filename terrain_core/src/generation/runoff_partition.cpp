@@ -46,8 +46,11 @@ RunoffShare partitionRunoff(const RunoffSite& site, const RunoffParams& params) 
         static_cast<double>(share.surface) *
         std::max(static_cast<double>(precipitation), params.stormRain) * 1.0e-3; // m/yr
     const double drop = std::max(static_cast<double>(slope), params.headSlope);
-    const double most =
-        params.mostHead + static_cast<double>(site.permeability) * params.permeableHead;
+    const double dry =
+        1.0 - static_cast<double>(runoffStep(params.aridHumidity, params.wetHumidity, humidity));
+    const double most = params.mostHead +
+                        static_cast<double>(site.permeability) * params.permeableHead +
+                        dry * params.aridHead;
     share.headArea = std::clamp(params.headFlux / (water * drop), params.leastHead, most);
     return share;
 }

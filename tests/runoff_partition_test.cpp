@@ -92,7 +92,7 @@ void testHeads() {
     TEST_CHECK(wet < 0.1e6);
     TEST_CHECK(dry > 2.0e6);
     TEST_CHECK(wet >= params.leastHead);
-    TEST_CHECK(dry <= params.mostHead + 0.8 * params.permeableHead + 1.0);
+    TEST_CHECK(dry <= params.mostHead + 0.8 * params.permeableHead + params.aridHead + 1.0);
     // The base flow keeps a brook wet; a desert channel is dry.
     TEST_CHECK(terrain::channelWet(0.01, 0.3f, params));
     TEST_CHECK(!terrain::channelWet(0.0005, 0.3f, params));

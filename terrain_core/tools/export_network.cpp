@@ -3,7 +3,7 @@
 // of Strahler (light to dark: 1 to 8), their width growing with their discharge (a logarithmic
 // scale); at 2,048 km the network of the planet level (its links of 16 cells or 10 m^3/s at least)
 // and its ends (sea: navy squares, terminal lakes: cyan discs, dry basins: brown discs, mouths in a
-// lake: cyan rings, frozen ground: white discs); at 200 km the trunks and the channels of order 3
+// lake: cyan rings, frozen ground: white discs; the dry ones, wadis, brown and dashed); at 200 km the trunks and the channels of order 3
 // and more of the fine network; at 20 km every channel (dry ones dashed), the sources (black dots)
 // and the confluences (white rings). And basins_<name>_2048km.png: the basins of the planet level,
 // their divides in black. Prints, and writes to network.txt, what each map holds and what it cost.
@@ -47,11 +47,11 @@ struct Options {
 };
 
 // The places of the maps without --place: a wet mountain (the fall of 388 m), a plain (the river
-// of the plain), a desert (the ergs of (-1,000 km ; -3,500 km)), the K2.
+// of the plain), a desert (the wall of the giant waves of agent 34, 44 mm of rain a year), the K2.
 std::vector<Place> defaultPlaces() {
     return {{"montagne_humide", -6'185'411.0, 156'218.0},
             {"plaine", -241'631.0, -86'277.0},
-            {"desert", -1'197'516.0, -3'359'230.0},
+            {"desert", -323'111.0, 3'952'778.0},
             {"k2", 416'102.0, -11'414'891.0}};
 }
 

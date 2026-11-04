@@ -21,6 +21,8 @@ constexpr Rgb kSource{0, 0, 0};
 constexpr Rgb kConfluence{255, 255, 255};
 constexpr std::uint32_t kShownCells = 16;
 constexpr double kShownDischarge = 10.0;
+constexpr double kWetLeast = 0.5;
+constexpr std::uint32_t kDryShownCells = 64;
 
 std::array<double, 2> centerNear(const terrain::PlanetGrid& g, std::size_t cell, double x,
                                  double z) {
@@ -71,8 +73,11 @@ void planetMap(const terrain::PlanetNetwork& net, const Canvas& c, double half) 
         for (int di = -reach; di <= reach; ++di) {
             const std::size_t cell = g.index(g.wrapColumn(i0 + di), g.wrapRow(j0 + dj));
             // The cells under a lake drain to its outlet: the lake is drawn by the relief.
+            // Shown: the streams of 0.5 m^3/s at least, the large dry ones (wadis) dashed.
+            const bool dry = net.discharge(cell) < kWetLeast;
             if (!net.land(cell) || (level.cells().bits[cell] & terrain::PlanetCells::kLakeBit) != 0 ||
-                (net.area(cell) < kShownCells && net.discharge(cell) < kShownDischarge)) {
+                (net.area(cell) < kShownCells && net.discharge(cell) < kShownDischarge) ||
+                (dry && net.area(cell) < kDryShownCells)) {
                 continue;
             }
             const std::array<double, 2> a = centerNear(g, cell, x, z);
@@ -86,8 +91,8 @@ void planetMap(const terrain::PlanetNetwork& net, const Canvas& c, double half) 
                 continue;
             }
             const std::array<double, 2> b = centerNear(g, static_cast<std::size_t>(d), x, z);
-            line(c, a[0], a[1], b[0], b[1], 0.8 * halfWidth(net.discharge(cell)),
-                 orderColor(net.order(cell)));
+            line(c, a[0], a[1], b[0], b[1], dry ? 0.5 : 0.8 * halfWidth(net.discharge(cell)),
+                 dry ? kDry : orderColor(net.order(cell)), dry);
             if (!level.water(cell).frozen && level.water(static_cast<std::size_t>(d)).frozen) {
                 disc(c, b[0], b[1], 2.5, kIce);
             }
@@ -143,7 +148,7 @@ void fineMap(const terrain::DrainageNetwork& net, const Canvas& c, double half, 
         length[static_cast<std::size_t>(std::min<int>(p.order, 12))] += l;
         // The rills (order 1) thin, the streams by their discharge.
         const double radius = p.order <= 1 && !p.trunk ? 0.45 : halfWidth(p.discharge);
-        arc(c, p.x0, p.z0, p.cx, p.cz, p.x1, p.z1, radius, orderColor(p.order), all && !p.wet);
+        arc(c, p.x0, p.z0, p.cx, p.cz, p.x1, p.z1, radius, orderColor(p.order), !p.wet);
         ++drawn;
     }
     if (all) {
