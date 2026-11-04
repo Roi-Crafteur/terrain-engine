@@ -123,6 +123,15 @@ struct Spring {
     double mound = 0.0;
 };
 
+// A top of a volcano, (x, z) from its center: the highest point of its summit or the rim of its
+// crater, or of a cone, absolute meters over the real ground (the horizon shows it within the
+// cell of a sample however coarse: Heightfield::seenAt).
+struct Top {
+    double x = 0.0;
+    double z = 0.0;
+    double height = 0.0;
+};
+
 // Where the springs of a volcano rise: their ground (center from the center of the volcano,
 // radius; 0 for none).
 struct Zone {
@@ -142,6 +151,7 @@ struct Detail {
     std::vector<Basin> basins;
     std::vector<Spring> springs;
     Zone zone;
+    std::vector<Top> tops;
 };
 
 // The relief without the volcanoes and the coasts at a point (any image of it): its height and its

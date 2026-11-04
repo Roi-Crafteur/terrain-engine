@@ -377,8 +377,11 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   Stratovolcans concaves (30 à 35° sur les 500 m sous
   la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
   la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
-  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Restent : horizon,
-  lieux. Limites : pas de roche 3D sur les parois de caldeira (jusqu'à ~60° en
+  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Reste : les lieux.
+  Horizon : chaque niveau montre le sommet des volcans et de leurs cônes, aussi fins soient-ils,
+  là où sa maille les tient (crête du cratère sur 48 azimuts, 9 points par cône) ; rugosité de
+  la lave, ravines fines et terrasses des sources s'effacent avec la maille ; silhouette d'un
+  stratovolcan à 0,07-0,13° en moyenne vue de 30 km, 0,2° de 100 km, pic à 0,05° près. Limites : pas de roche 3D sur les parois de caldeira (jusqu'à ~60° en
   heightmap), à reprendre avec la roche 3D.
   - eau (avec le niveau Planète) : lacs de cratère, de caldeira et de maar à un seul niveau, sous
     le point le plus bas de la lèvre (ou le fond de la brèche) moins une revanche, plus pleins

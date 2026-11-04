@@ -258,6 +258,54 @@ void cutFlow(const VolcanoSite& s, const Detail& d, const GroundAt& ground, Flow
     }
 }
 
+// The tops of a volcano over the real ground: its summit and the crest of its crater all around
+// (on each of kRimTops azimuths, the highest of three rings across its rim), the second summit of
+// a twin, and the summit and the rim of each of its cones but the maars: wherever the cell of a
+// sample of the horizon falls on its rim, it holds one of them.
+constexpr int kRimTops = 48;
+constexpr int kConeTops = 8;
+
+void addTops(const VolcanoSite& s, Detail& d, const GroundAt& ground) {
+    const auto real = [&](double dx, double dz) {
+        const Ground g = ground(s.x + dx, s.z + dz);
+        Point p;
+        p.height = g.height;
+        p.regional = g.regional;
+        apply(s, d, dx, dz, 0.0, p);
+        return Top{dx, dz, p.height};
+    };
+    // The center of a summit, then the crest around it.
+    const auto crest = [&](double cx, double cz, double rim, int count, std::vector<Top>& out) {
+        out.push_back(real(cx, cz));
+        for (int k = 0; k < count && rim > 0.0; ++k) {
+            const double c = dmath::cosTurns(static_cast<double>(k) / count);
+            const double sn = dmath::sinTurns(static_cast<double>(k) / count);
+            Top best{0.0, 0.0, -1e30};
+            for (const double ring : {0.85, 1.0, 1.15}) {
+                const Top t = real(cx + ring * rim * c, cz + ring * rim * sn);
+                best = t.height > best.height ? t : best;
+            }
+            out.push_back(best);
+        }
+    };
+    std::vector<Top> tops;
+    if (volcano_sites::formRule(s.form).edifice) {
+        const VolcanoOffset summit = volcanoSummit(s);
+        crest(summit.dx, summit.dz, static_cast<double>(s.crater), kRimTops, tops);
+        if (s.form == VolcanoForm::TwinStrato) {
+            const Offset o = offsetAt(s, d.shape, 0.55, 0.5);
+            crest(summit.dx + o.dx, summit.dz + o.dz, 0.08 * static_cast<double>(s.radius),
+                  kConeTops, tops);
+        }
+    }
+    for (const Cone& c : d.cones) {
+        if (!c.maar) {
+            crest(c.x, c.z, std::max(c.crater, 0.3 * c.radius), kConeTops, tops);
+        }
+    }
+    d.tops = std::move(tops);
+}
+
 } // namespace
 
 Detail detailOf(const VolcanoSite& s, const GroundAt& ground) {
@@ -280,6 +328,7 @@ Detail detailOf(const VolcanoSite& s, const GroundAt& ground) {
     std::erase_if(d.flows, [](const Flow& f) { return !(f.length > 2.0 * f.width); });
     volcano_water::addBasins(s, d, ground);
     volcano_water::addSprings(s, d, ground);
+    addTops(s, d, ground);
     return d;
 }
 

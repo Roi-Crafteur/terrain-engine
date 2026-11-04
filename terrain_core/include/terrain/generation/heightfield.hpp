@@ -338,6 +338,10 @@ private:
     // The lakes of the craters and the pools of the springs of the volcanoes at a canonical point,
     // at the end of the water (applyHydrology): nothing where none reaches.
     void volcanoWater(double x, double z, HeightSample& s) const;
+    // The highest top of the volcanoes (their summits, the rims of their craters, their cones)
+    // within the square of side pitch around the canonical (x, z): what a level of the horizon of
+    // that pitch shows there, however narrow; -infinity where none stands.
+    [[nodiscard]] float volcanoTopSeen(double x, double z, double pitch) const;
     // The level of the lake of basin b of volcano i (NaN for none: dry, drained by a river, or
     // without hydrology_), and whether it is salty.
     [[nodiscard]] double volcanoLake(std::size_t i, std::size_t b, bool& salt) const;

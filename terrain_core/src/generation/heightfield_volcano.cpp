@@ -20,6 +20,8 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <span>
+#include <vector>
 
 namespace terrain {
 
@@ -180,6 +182,43 @@ bool reachesBox(const WorldSize& world, const VolcanoSite& v, double minX, doubl
 }
 
 } // namespace
+
+float Heightfield::volcanoTopSeen(double x, double z, double pitch) const {
+    float seen = -std::numeric_limits<float>::infinity();
+    if (!volcanoes_) {
+        return seen;
+    }
+    const double half = 0.5 * pitch;
+    // The volcanoes of the buckets of the corners of the square: a top inside a reach may stand in
+    // the square of a point beyond it.
+    std::vector<std::uint32_t> near;
+    for (const double cx : {x - half, x + half}) {
+        for (const double cz : {z - half, z + half}) {
+            const double wx = noise::wrapCanonical(cx, world_.x);
+            const double wz = noise::wrapCanonical(cz, world_.z);
+            if (volcanoes_->mayHold(wx, wz)) {
+                const std::span<const std::uint32_t> some = volcanoes_->near(wx, wz);
+                near.insert(near.end(), some.begin(), some.end());
+            }
+        }
+    }
+    std::sort(near.begin(), near.end());
+    near.erase(std::unique(near.begin(), near.end()), near.end());
+    for (const std::uint32_t i : near) {
+        const VolcanoSite& v = volcanoes_->sites()[i];
+        const VolcanoOffset o = volcanoOffset(world_, v.x, v.z, x, z);
+        const double reach = static_cast<double>(v.reach) + pitch;
+        if (!(o.dx * o.dx + o.dz * o.dz < reach * reach)) {
+            continue;
+        }
+        for (const volcano_relief::Top& t : volcanic_->detail(*this, i).tops) {
+            if (!(std::abs(o.dx - t.x) > half) && !(std::abs(o.dz - t.z) > half)) {
+                seen = std::max(seen, static_cast<float>(t.height));
+            }
+        }
+    }
+    return seen;
+}
 
 double Heightfield::volcanoLake(std::size_t i, std::size_t b, bool& salt) const {
     salt = false;
