@@ -9,12 +9,16 @@
 //   unreal_loading_bench [--planet <file>] [--at <x> <z>] [--teleport <x> <z>]... [--workers <n>]
 //                        [--pieces <n>] [--uploads <n>] [--no-horizon] [--schedule]
 //                        [--csv <prefix>] [--timeout <seconds>] [--levels] [--cap <n>]
-//                        [--all-at-once] [--upload-ms <ms>]
+//                        [--all-at-once] [--upload-ms <ms>] [--next-after <seconds>]
 //
 // The horizon is brought level by level, finest first, as in the game (--all-at-once: every level
 // in one epoch, as before agent 38). --cap n: the boost of a load (Bridge/load_phase.hpp), n tile
 // workers and horizon pieces together while loading, uploads by a budget of 6 ms per frame at
 // --upload-ms per upload (0.1 by default, the median measured in Unreal); 0: no boost.
+//
+// --next-after s: each teleport comes s seconds after the start of the load before it, whatever it
+// still loads (the epochs of its coarse levels in flight: agent 40, the second teleport of a
+// session); 0 (default): once the load before it is done.
 //
 // --levels: the cost of the first epoch of the horizon around the spawn, level by level, on one
 // thread (a few pieces of each level timed, the level extrapolated), as the GPU horizon computes
@@ -71,6 +75,7 @@ struct Options {
     double uploadMilliseconds = 0.1;
     std::string csv;
     double timeoutSeconds = 90.0;
+    double nextAfterSeconds = 0.0;
 };
 
 double number(int argc, char** argv, int& i) {
@@ -107,6 +112,8 @@ Options parse(int argc, char** argv) {
             options.uploads = static_cast<int>(number(argc, argv, i));
         } else if (arg == "--timeout") {
             options.timeoutSeconds = number(argc, argv, i);
+        } else if (arg == "--next-after") {
+            options.nextAfterSeconds = number(argc, argv, i);
         } else if (arg == "--no-horizon") {
             options.horizon = false;
         } else if (arg == "--schedule") {
@@ -335,7 +342,8 @@ void writeCsv(const Options& options, int index, LoadReason reason, const LoadTi
 
 // A load at the place: the warm-up of a new pawn at the spawn (as ATerrainWorld::WarmUpAround),
 // nothing more at a teleport (as the game today), then frames of 60 Hz until every milestone.
-void load(Game& game, const Options& options, int index, LoadReason reason, const Place& place) {
+void load(Game& game, const Options& options, int index, LoadReason reason, const Place& place,
+          double limitSeconds) {
     LoadTimeline& timeline = game.session.timeline();
     const terrain::Heightfield& field = game.session.tiles().heightfield();
     // The ground of the place, read on the game thread by TeleportWhenReady: timed.
@@ -365,7 +373,7 @@ void load(Game& game, const Options& options, int index, LoadReason reason, cons
     const auto period = std::chrono::microseconds(16'667);
     LoadClock::time_point next = start;
     Worst worst;
-    while (timeline.active() && secondsSince(start) < options.timeoutSeconds) {
+    while (timeline.active() && secondsSince(start) < limitSeconds) {
         frame(game, position, worst);
         next += period;
         std::this_thread::sleep_until(next);
@@ -436,9 +444,16 @@ int run(const Options& options) {
         return EXIT_SUCCESS;
     }
     int index = 0;
-    load(game, options, index++, LoadReason::Spawn, options.spawn);
-    for (const Place& place : options.teleports) {
-        load(game, options, index++, LoadReason::Teleport, place);
+    const auto limit = [&](bool last) {
+        return !last && options.nextAfterSeconds > 0.0
+                   ? std::min(options.nextAfterSeconds, options.timeoutSeconds)
+                   : options.timeoutSeconds;
+    };
+    load(game, options, index++, LoadReason::Spawn, options.spawn,
+         limit(options.teleports.empty()));
+    for (std::size_t n = 0; n < options.teleports.size(); ++n) {
+        load(game, options, index++, LoadReason::Teleport, options.teleports[n],
+             limit(n + 1 == options.teleports.size()));
     }
     if (options.schedule) {
         std::vector<load_schedule::Place> places{{options.spawn.x, options.spawn.z}};

@@ -70,3 +70,20 @@ void UTerrainHorizonClipmap::SetSurfaceBlends(bool bShown)
 		}
 	}
 }
+
+int32 UTerrainHorizonClipmap::SetLookScalar(FName Name, float Value)
+{
+	int32 Count = 0;
+	for (TArray<TObjectPtr<UMaterialInstanceDynamic>>* Instances : {&Looks, &SurfaceLooks})
+	{
+		for (UMaterialInstanceDynamic* Look : *Instances)
+		{
+			if (Look != nullptr)
+			{
+				Look->SetScalarParameterValue(Name, Value);
+				++Count;
+			}
+		}
+	}
+	return Count;
+}

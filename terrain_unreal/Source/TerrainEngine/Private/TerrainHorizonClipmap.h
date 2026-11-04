@@ -92,6 +92,12 @@ public:
 	// the console command Terrain.Blend 0|1, to compare their cost and their look.
 	void SetSurfaceBlends(bool bShown);
 
+	// A scalar parameter of the look on the materials of every level and of the tiles bound to
+	// level 0 (their ground and their water): the console command Terrain.Param of the tools
+	// (agent 40), to compare a look in game. Returns the number of materials it was set on (those
+	// without the parameter ignore it).
+	int32 SetLookScalar(FName Name, float Value);
+
 	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
 	// (independent of the visibility the placements set), each level tinted with its own hue or
 	// not (bHorizonDebugTint while playing).
