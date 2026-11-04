@@ -28,8 +28,8 @@ UENUM(BlueprintType)
 enum class ETerrainBuildTool : uint8
 {
 	Block UMETA(DisplayName = "Block 1 m"),
-	Sphere2 UMETA(DisplayName = "Sphere 2 m across"),
-	Sphere4 UMETA(DisplayName = "Sphere 4 m across")
+	Sphere2 UMETA(DisplayName = "Sphere 3 m across"),
+	Sphere4 UMETA(DisplayName = "Sphere 5 m across")
 };
 
 // What a click of the player does.

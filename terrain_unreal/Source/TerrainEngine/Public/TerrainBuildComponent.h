@@ -23,7 +23,7 @@ struct FTerrainBuildRuntime;
  *
  * A trace from the camera finds the tile aimed at, within ReachMeters of the eye of the pawn; the
  * ghost of the edit shows what a click would remove (left click) or add (right click), with the
- * tool chosen by the keys 1, 2, 3 (their AZERTY keys too): a block of 1 m, a sphere 2 m or 4 m across. Matter
+ * tool chosen by the keys 1, 2, 3 (their AZERTY keys too): a block of 1 m, a sphere 3 m or 5 m across (19 or 57 blocks). Matter
  * is never placed in the capsule of the pawn. The edits go to the edit thread of the session
  * (Bridge/block_targeting.hpp, build_rules.hpp): the tiles are generated again, with their
  * collision and without the plants whose ground is gone. Nothing happens while the dev map is

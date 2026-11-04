@@ -37,9 +37,9 @@ BuildGhost blockGhost(BlockCoord block) {
 const char* toolName(BuildTool tool) {
     switch (tool) {
     case BuildTool::Sphere2:
-        return "sphere 2 m";
+        return "sphere 3 m";
     case BuildTool::Sphere4:
-        return "sphere 4 m";
+        return "sphere 5 m";
     case BuildTool::Block:
         break;
     }
@@ -49,9 +49,9 @@ const char* toolName(BuildTool tool) {
 double toolRadius(BuildTool tool) {
     switch (tool) {
     case BuildTool::Sphere2:
-        return 1.0;
+        return 26.0 / 16.0;
     case BuildTool::Sphere4:
-        return 2.0;
+        return 39.0 / 16.0;
     case BuildTool::Block:
         break;
     }

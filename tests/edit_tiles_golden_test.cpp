@@ -9,6 +9,9 @@
 // their vertices moved on the seams only, every other part kept its value. "lod 1", "caves lod 0",
 // "caves lod 1" and "wrap" were pinned again when the normals of every tile came to agree with
 // their triangles (phase 12A, tile_normals.hpp): a few normals turned, every vertex kept its bits.
+// The parts of LOD 0 ("lod 0", "lod 0 stitched", "caves lod 0", "wrap") were pinned again when the
+// normals of the vertices the edits move turned toward the smoothed share of the edited blocks
+// (agent 41, tile_edits.hpp: lightEdits): their normals only, every vertex kept its position.
 #include "terrain/storage/modifications.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
@@ -129,7 +132,7 @@ void testWithoutCaves() {
     editCorner(tiles, c.x * 16, c.z * 16);
     std::vector<golden::Part> parts = cornerParts(tiles, c);
     checkEdited(parts, unedited);
-    setExpected(parts, {0xB50FB6F14204BF1BULL, 0x9DB6444E4434856EULL, 0xCF40016B6F105602ULL,
+    setExpected(parts, {0x255698AA1DB72EA9ULL, 0xD77F95E7E33462A7ULL, 0xCF40016B6F105602ULL,
                         0x717A3CD617B1273EULL, 0xE30C6995B6D563B2ULL});
     golden::report("tiles edited block by block, without caves", parts);
 }
@@ -146,7 +149,7 @@ void testWithCaves() {
     std::vector<golden::Part> parts = {{"caves lod 0", tilesChecksum(tiles, lod0), 0},
                                        {"caves lod 1", tilesChecksum(tiles, lod1), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x381A9681107DFE6EULL, 0x5C8A9BF5F9979AC8ULL});
+    setExpected(parts, {0x235DA6B09D3CD4CCULL, 0x5C8A9BF5F9979AC8ULL});
     golden::report("tiles edited block by block, with caves", parts);
 }
 
@@ -166,7 +169,7 @@ void testAcrossTheEdge() {
     editCorner(tiles, count.x * 8, kRow * 16 + 8);
     std::vector<golden::Part> parts = {{"wrap", tilesChecksum(tiles, requests), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x9A4EED6D3E05622EULL});
+    setExpected(parts, {0x8F92836EB1696B62ULL});
     golden::report("tiles edited block by block, across the edge of the world", parts);
 }
 

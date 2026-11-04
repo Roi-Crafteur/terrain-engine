@@ -226,6 +226,7 @@ add_library(terrain_core STATIC
     src/streaming/rock_tile.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
+    src/streaming/tile_edits.cpp
     src/streaming/tile_blend.cpp
     src/streaming/tile_sides.cpp
     src/streaming/tile_normals.cpp

@@ -1,7 +1,7 @@
 # Casser et poser en jeu (agent 28, phase 15)
 
 Le joueur vise le terrain et retire de la matière (clic gauche) ou en ajoute (clic droit), avec
-un bloc de 1 m ou une sphère de 2 ou 4 m de diamètre. Un fantôme montre ce qui sera retiré ou
+un bloc de 1 m ou une sphère d'environ 3 ou 5 m de diamètre (19 ou 57 blocs). Un fantôme montre ce qui sera retiré ou
 posé. Les modifications passent par le fil de modifications de la session : les tuiles sont
 refaites avec leur collision et sans les plantes dont le sol est parti, et l'horizon lointain
 suit. Elles peuvent être sauvegardées par seed.
@@ -11,7 +11,7 @@ suit. Elles peuvent être sauvegardées par seed.
 | Sujet | `terrain_core` et le Bridge (données, déterministe, testé par ctest) | Unreal (affiche, fait jouer) |
 |---|---|---|
 | Visée | `Bridge/block_targeting` : point touché et normale → bloc cassé (le centre du bloc à 0,5 m sous la surface, le long de la normale), bloc posé (son voisin du côté de la face principale de la normale), sphère cassée (centrée sur le point), sphère posée (son centre à un demi-rayon hors de la surface) ; portée ; tout en entiers dans la modification | trace depuis la caméra sur les tuiles (`ECC_Visibility`, collision complexe), distance mesurée depuis l'œil du pion |
-| Outils | bloc 1 m, sphère 2 m, sphère 4 m (rayons 16 et 32 seizièmes de mètre) | touches 1, 2, 3 (aussi `&`, `é`, `"` en AZERTY), écrit à l'écran ; pas de molette |
+| Outils | bloc 1 m, sphère 3 m, sphère 5 m (rayons 26 et 39 seizièmes de mètre : 19 et 57 blocs, aucun bloc seul au bout d'un axe, agent 41 ; avant, 16 et 32 seizièmes donnaient une croix de 7 blocs et un cube de 27 avec 6 blocs seuls, dessinés en pyramides) | touches 1, 2, 3 (aussi `&`, `é`, `"` en AZERTY), écrit à l'écran ; pas de molette |
 | Règles | `Bridge/build_rules` : refus si la carte de dev est ouverte, pendant un chargement, avec un autre pion que celui du composant, sans le focus ; 4 modifications par seconde au plus bouton tenu ; refus d'un volume posé à moins de 5 cm de la capsule | lit la carte, le chargement, le contrôleur, le focus du viewport, la capsule |
 | Application | `applyVolumeEdit` sur le fil de modifications (existant), plantes retirées, coutures fermées, horizon | maillage et collision des tuiles refaites, envoyés dans le budget de 6 ms de la #58 |
 | Fantôme | boîte ou sphère en coordonnées du core puis d'Unreal | `/Engine/BasicShapes/Cube` ou `Sphere` avec le matériau filaire du moteur (aucun `.uasset`) |

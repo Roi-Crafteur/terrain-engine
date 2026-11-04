@@ -1,7 +1,7 @@
 #pragma once
 // Pure C++ layer of the Unreal plugin (no Unreal header): breaking and placing in game (phase 15,
 // agent 28). From the point a trace of the camera hit on the tiles and the normal there, the edit
-// of the tool (a block of 1 m, a sphere of 2 or 4 m across), the ghost shown before the click and
+// of the tool (a block of 1 m, a sphere of 3 or 5 m across), the ghost shown before the click and
 // the refusal of a placed volume inside the capsule of the pawn. Unreal traces, shows and queues;
 // everything computed is here, tested by ctest.
 
@@ -16,8 +16,8 @@ namespace terrain::unreal {
 // The tools of the player.
 enum class BuildTool : std::uint8_t {
     Block,   // one block of 1 m
-    Sphere2, // a sphere 2 m across
-    Sphere4, // a sphere 4 m across
+    Sphere2, // a sphere 3.25 m across, 19 blocks (the small sphere; its name kept for Blueprints)
+    Sphere4, // a sphere 4.9 m across, 57 blocks (the large sphere)
 };
 
 // What a click does.
@@ -26,9 +26,13 @@ enum class BuildAction : std::uint8_t {
     Place, // adds rock (EditMode::Add)
 };
 
-// The name of a tool, for the screen and the log ("block 1 m", "sphere 2 m", "sphere 4 m").
+// The name of a tool, for the screen and the log ("block 1 m", "sphere 3 m", "sphere 5 m").
 [[nodiscard]] const char* toolName(BuildTool tool);
-// The radius of a sphere tool, meters (0 for the block).
+// The radius of a sphere tool, meters (0 for the block): 26 / 16 m (19 blocks) and 39 / 16 m
+// (57 blocks). A sphere centered on a block keeps the blocks within its radius (contains): at
+// 1 m or 2 m, single blocks at the ends of its axes, which Marching Cubes draws as pyramids of
+// 0.5 m (agent 41); at these radii every block but the center has two neighbors by a face in the
+// sphere, and the hollow is round within 0.3 m (edit_hollow_test).
 [[nodiscard]] double toolRadius(BuildTool tool);
 
 // A direction of the core (x east, y up, z south), not necessarily normalized.
