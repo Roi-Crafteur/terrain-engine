@@ -127,6 +127,8 @@ add_library(terrain_core STATIC
     src/generation/surface_material.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
+    src/generation/volcano_draws.cpp
+    src/generation/volcano_sites.cpp
     src/generation/voronoi.cpp
     src/generation/wall_faces.cpp
     src/generation/water/fine_lake.cpp

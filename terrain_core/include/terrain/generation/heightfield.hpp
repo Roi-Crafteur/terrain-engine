@@ -5,6 +5,7 @@
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/rock_faces.hpp"
+#include "terrain/generation/volcanoes.hpp"
 #include "terrain/generation/voronoi.hpp"
 #include "terrain/generation/water/slot_wall.hpp"
 #include "terrain/generation/water_kind.hpp"
@@ -89,6 +90,9 @@ struct HeightfieldParams {
     // the local, macro and plate terms of the continentalness above are not used (the plates of
     // the geography are its own). Disabled: the relief of generator 2.
     GeographyParams geography;
+
+    // The volcanoes (agent 45, volcanoes.hpp), with the geography only.
+    VolcanoParams volcanoes;
 };
 
 // Layers of the height at one point: height = base + mountain + detail. In the collision
@@ -215,6 +219,8 @@ public:
     [[nodiscard]] const TectonicPlates* plates() const { return plates_.get(); }
     // The planetary geography, or nullptr when it is disabled.
     [[nodiscard]] const Geography* geography() const { return geography_.get(); }
+    // The volcanoes of the world (agent 45), or nullptr without the geography or with them off.
+    [[nodiscard]] const Volcanoes* volcanoes() const { return volcanoes_.get(); }
     // The depressions below the sea level, deep in the plains (none without the geography or
     // with GeographyParams::depressions off).
     [[nodiscard]] std::vector<Depression> depressions() const;
@@ -410,6 +416,7 @@ private:
     std::shared_ptr<const Layers> layers_;         // shared by copies, immutable
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
+    std::shared_ptr<const Volcanoes> volcanoes_;   // shared by copies and Heightfields
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
     double footprint_ = 0.0;                       // of a sample, for the dunes (forFootprint)
