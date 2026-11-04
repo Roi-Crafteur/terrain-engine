@@ -78,7 +78,8 @@ jobs:
 
       # Sources of GLFW and glad, kept out of the build directory. The sub-builds that fetched
       # them are cached too and depend on the CMake generator, hence the runner image and the
-      # generator in the key. The cores of the runner run the tests.
+      # generator in the key. The cores of the runner build and run the tests: a --parallel without
+      # a number would start one compiler per source with make, more than the runner can hold.
       - name: Identify the runner image
         id: image
         run: |
@@ -127,7 +128,7 @@ jobs:
 
       - name: Build (warnings as errors)
         id: build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel ${{ steps.image.outputs.cores }}
 
       # Temporary (agent 42, removed before the merge): the command lines of cl.exe for a source of
       # terrain_core and a test, to compare the generators: from the tracking logs of MSBuild with
@@ -164,7 +165,7 @@ jobs:
         run: |
           echo "::error::Build failed with warnings as errors; rebuilt without them for the tests."
           cmake -B build -DTERRAIN_WARNINGS_AS_ERRORS=OFF
-          cmake --build build --config Release --parallel
+          cmake --build build --config Release --parallel ${{ steps.image.outputs.cores }}
 
       # On every core of the runner. The tests that measure a time run alone (RUN_SERIAL,
       # tests/serial_tests.cmake): only their durations compare from one CI to the next, those of
