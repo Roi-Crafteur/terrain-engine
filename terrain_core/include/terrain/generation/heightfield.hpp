@@ -22,6 +22,8 @@ namespace terrain {
 namespace coast_lattice {
 class Lattices;
 }
+class Tablelands;     // the provinces of the plateaus and of the karst (tablelands.hpp)
+struct TablelandPoint; // what they make of a point (tablelands.hpp)
 
 // Seed shared by the export tool and the viewer, so both show the same world.
 inline constexpr std::uint64_t kDefaultWorldSeed = 20261019;
@@ -215,6 +217,11 @@ public:
     [[nodiscard]] const TectonicPlates* plates() const { return plates_.get(); }
     // The planetary geography, or nullptr when it is disabled.
     [[nodiscard]] const Geography* geography() const { return geography_.get(); }
+    // The provinces of the plateaus and of the karst (agent 46, tablelands.hpp), or nullptr
+    // without the geography or with GeographyParams::tablelands and ::karst both off.
+    [[nodiscard]] const Tablelands* tablelands() const { return tablelands_.get(); }
+    // What they make of the point (x, z), any image of it (all 0 without them).
+    [[nodiscard]] TablelandPoint tablelandAt(double x, double z) const;
     // The depressions below the sea level, deep in the plains (none without the geography or
     // with GeographyParams::depressions off).
     [[nodiscard]] std::vector<Depression> depressions() const;
@@ -298,6 +305,8 @@ private:
                                                                   const WorldSize& world);
     // The inlets of these coasts, stopped before the rivers of hydrology_ (heightfield_coast.cpp).
     [[nodiscard]] std::shared_ptr<const coast_lattice::Lattices> makeInlets() const;
+    // Builds the provinces of the geography (constructor): tablelands_, water_, the coasts.
+    void attachProvinces(std::uint64_t seed);
 
     [[nodiscard]] static std::shared_ptr<const Water>
     makeWater(std::uint64_t seed, const HeightfieldParams& params, const Geography* geography);
@@ -410,6 +419,7 @@ private:
     std::shared_ptr<const Layers> layers_;         // shared by copies, immutable
     std::shared_ptr<const TectonicPlates> plates_; // shared by copies, immutable
     std::shared_ptr<const Geography> geography_;   // shared by copies and Heightfields
+    std::shared_ptr<const Tablelands> tablelands_; // the plateaus and the karst, or null
     std::shared_ptr<const Water> water_;           // shared by copies, immutable
     std::shared_ptr<const Hydrology> hydrology_;   // the water of the world, or null
     double footprint_ = 0.0;                       // of a sample, for the dunes (forFootprint)

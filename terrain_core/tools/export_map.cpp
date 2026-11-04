@@ -6,7 +6,8 @@
 // Prints where the samples came from, their counts, the queries of the hydrology and its courses.
 // --no-ergs: the same world without its seas of dunes (ergs.hpp), to compare.
 // Usage: terrain_export_map [--planet <file>] [--seed <seed>] [--threads <n>] [--no-ergs]
-//        [--layers <a,b,...>] [--max-samples <n>]   (layers: relief, biomes, water, contours, ergs)
+//        [--layers <a,b,...>] [--max-samples <n>]   (layers: relief, biomes, water, contours, ergs,
+//        tablelands, tableland_errors: the plateaus and the karst, the errors of their pre-climate)
 //        (--box <x> <z> <width> <height> | --center <x> <z> --mpp <m> | --whole)
 //        (--size <width> <height> | --tiles <n>) <out.png>
 
@@ -18,6 +19,7 @@
 #include "terrain/map/map_render.hpp"
 #include "terrain/map/map_source.hpp"
 #include "terrain/map/map_style.hpp"
+#include "terrain/map/map_tablelands.hpp"
 #include "terrain/storage/planet_file.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
@@ -173,7 +175,8 @@ bool checkOptions(const Options& o) {
     }
     const terrain::MapLayers layers = terrain::defaultMapLayers();
     for (const std::string& name : o.layers) {
-        if (layers.find(name) == nullptr && name != terrain::kMapErgsLayer) {
+        if (layers.find(name) == nullptr && name != terrain::kMapErgsLayer &&
+            name != terrain::kMapTablelandsLayer && name != terrain::kMapTablelandErrorsLayer) {
             return fail("layer", name.c_str());
         }
     }
@@ -304,11 +307,12 @@ int main(int argc, char** argv) {
     const terrain::WorldSize world;
     const terrain::Heightfield relief(o.seed, terrain::HeightfieldParams{}, world);
     std::shared_ptr<const terrain::Hydrology> hydrology;
+    std::shared_ptr<const terrain::PlanetLevel> planet;
     if (!o.planet.empty()) {
         terrain::PlanetParams params;
         params.threads = o.threads;
         bool built = false;
-        auto planet = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
+        planet = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
             o.planet, o.seed, terrain::HeightfieldParams{}, params, world, &built));
         std::printf("planet level %s %s\n", built ? "built and written to" : "read from",
                     o.planet.string().c_str());
@@ -323,6 +327,8 @@ int main(int argc, char** argv) {
     const terrain::MapWorldSource source(tiles);
     terrain::MapLayers layers = terrain::defaultMapLayers();
     layers.add(terrain::kMapErgsLayer, terrain::ergsLayer(hydrology)); // nothing without a planet
+    layers.add(terrain::kMapTablelandsLayer, terrain::tablelandsLayer(relief));
+    layers.add(terrain::kMapTablelandErrorsLayer, terrain::tablelandErrorsLayer(relief, planet));
     terrain::MapImage image;
     if (o.tiles > 0) {
         std::printf("source: %s\n", kindName(source.kindFor(o.mpp)));

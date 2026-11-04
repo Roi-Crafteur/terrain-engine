@@ -116,6 +116,7 @@ add_library(terrain_core STATIC
     src/generation/mountain_forms.cpp
     src/generation/mountain_walls.cpp
     src/generation/plain_forms.cpp
+    src/generation/pre_climate.cpp
     src/generation/ravines.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
@@ -125,10 +126,12 @@ add_library(terrain_core STATIC
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp
+    src/generation/tablelands.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
     src/generation/voronoi.cpp
     src/generation/wall_faces.cpp
+    src/generation/wall_joints.cpp
     src/generation/water/fine_lake.cpp
     src/generation/water/hydrology.cpp
     src/generation/water/hydrology_lips.cpp
@@ -187,6 +190,7 @@ add_library(terrain_core STATIC
     src/map/map_render.cpp
     src/map/map_source.cpp
     src/map/map_style.cpp
+    src/map/map_tablelands.cpp
     src/map/map_water.cpp
     src/meshing/marching_cubes.cpp
     src/storage/block_section.cpp
@@ -448,6 +452,7 @@ add_library(terrain_probe_lib STATIC
     tools/probe_record.cpp
     tools/probe_relief.cpp
     tools/probe_rock.cpp
+    tools/probe_tablelands.cpp
     tools/probe_sections.cpp
     tools/probe_surface.cpp
     tools/probe_water.cpp

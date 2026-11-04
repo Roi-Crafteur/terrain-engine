@@ -34,6 +34,8 @@ const std::vector<Section>& sections() {
          true},
         {"render", "what Unreal gets: the vertices of the tiles of LOD 0 to 3, the horizon",
          &renderSection, false},
+        {"tablelands", "the plateaus and the karst, the pre-climate that places them",
+         &tablelandsSection, false},
     };
     return table;
 }

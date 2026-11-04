@@ -98,6 +98,16 @@ void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
               const mountain_walls::Masks& masks, const mountain_walls::Column& column, double x,
               double z, mountain_walls::Memo* memo, Site& site);
 
+// The same with the passes given instead of those of the walls of the mountains (the walls of
+// other forms: the escarpments of the plateaus, agent 46), steps the mask the rock steps (pass 1)
+// stand in, as masks.strata for the walls of the mountains.
+void addFaces(const mountain_walls::WallPasses& passes, const Grain& grain, double steps,
+              const mountain_walls::Column& column, double x, double z, Site& site);
+
+// The top of the walls of passes over ground: each pass laid over the top the one before leaves
+// (as mountain_walls::rockTop lays its own).
+[[nodiscard]] double passesTop(const mountain_walls::WallPasses& passes, double ground);
+
 // The face of pending over a ground of the walls of gradient (gradX, gradZ) at the column: its
 // distance and run in meters, the direction of the air, its overhangs and its grain within its
 // run. Its heights stay relative, to anchor (anchorFace).

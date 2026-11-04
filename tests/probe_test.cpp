@@ -310,6 +310,10 @@ points[].surface.plants points[].surface.plants.boulder points[].surface.plants.
 points[].surface.plants.cactus points[].surface.plants.flower
 points[].surface.plants.seaweed points[].surface.plants.tallGrass
 points[].surface.plants.tree points[].surface.slope points[].surface.temperature
+points[].tablelands points[].tablelands.arid points[].tablelands.available
+points[].tablelands.carbonate points[].tablelands.karst points[].tablelands.preHumidity
+points[].tablelands.prePrecipitation points[].tablelands.preTemperature
+points[].tablelands.tableland points[].tablelands.tropical
 points[].water points[].water.depth points[].water.flow points[].water.flow.heading
 points[].water.flow.x points[].water.flow.z points[].water.hydrology points[].water.kind
 points[].water.lake points[].water.lake.id points[].water.lake.kind

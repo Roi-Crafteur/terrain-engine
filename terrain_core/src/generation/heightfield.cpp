@@ -5,6 +5,7 @@
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
+#include "terrain/generation/tablelands.hpp"
 
 #include <algorithm>
 #include <array>
@@ -117,6 +118,7 @@ enum Layer : std::uint64_t {
     kGullies,
     kWallGrain,
     kFaceGrain, // the grain of the faces of the rock in three dimensions (phase 12A)
+    kTablelands, // the provinces of the plateaus and of the karst (agent 46)
 };
 
 // The grain of the rock of the walls of the gorges (phase 11B): an fbm from this wavelength.
@@ -198,6 +200,17 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         plates_ = std::make_shared<const TectonicPlates>(noise::deriveSeed(seed, kPlates),
                                                          params_.plates, world_);
     }
+    attachProvinces(seed);
+}
+
+// The provinces the geography carries: the plateaus and the karst, the depressions, the coasts.
+void Heightfield::attachProvinces(std::uint64_t seed) {
+    if (geography_ && (params_.geography.tablelands || params_.geography.karst)) {
+        tablelands_ = Tablelands::shared({noise::deriveSeed(seed, kTablelands),
+                                          noise::deriveSeed(seed, kGeography),
+                                          noise::deriveSeed(seed, kMountainWalls)},
+                                         params_.geography, world_);
+    }
     water_ = makeWater(noise::deriveSeed(seed, kDepressions), params_, geography_.get());
     if (geography_ && params_.geography.coasts) {
         coasts_ = makeCoasts(seed, world_);
@@ -222,6 +235,13 @@ void requireOneSize(std::size_t xs, std::size_t zs, std::size_t out) {
 }
 
 } // namespace
+
+TablelandPoint Heightfield::tablelandAt(double x, double z) const {
+    if (!tablelands_) {
+        return {};
+    }
+    return tablelands_->at(noise::wrapCanonical(x, world_.x), noise::wrapCanonical(z, world_.z));
+}
 
 float Heightfield::heightAt(double x, double z) const {
     return sampleAt(x, z).height;

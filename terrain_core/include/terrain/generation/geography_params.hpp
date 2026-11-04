@@ -144,6 +144,11 @@ struct GeographyParams {
     // coastRamp inland. Off: the coastal plains of phase 11R. The planet level and the rivers are
     // built without it (Heightfield::withoutCoasts).
     bool coasts = true;
+    // The provinces of the plateaus (plateaus, mesas, buttes, canyons) and of the karst (towers,
+    // cockpits, dolines, poljes, dry valleys) of agent 46 (tablelands.hpp), placed by the geology
+    // and the pre-climate (pre_climate.hpp). Off: the world keeps every bit of its relief there.
+    bool tablelands = true;
+    bool karst = true;
 
     // The ridged mountains of the Heightfield (its warp and octaves) rise up to mountainHeight
     // above the regional elevation under their mask, with their own wavelength, sharpness and
