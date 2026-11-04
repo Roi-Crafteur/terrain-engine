@@ -3,8 +3,8 @@
 // Internal to the settlement: the tectonic plates of the planetary geography, which it drops once
 // built, made again from its own stages and seed, untouched (geography_boundaries.hpp): the warp
 // of their boundaries at the nodes of its map, the kind of each boundary, the overriding plate of
-// each collision, the share of land of each plate. Read only, for the geology in data: the relief
-// never depends on it.
+// each collision, the share of land of each plate. Read only, for the geology in data and for the
+// volcanoes of the relief (agent 45, volcano_sites.cpp), which place theirs through it.
 
 #include "../geography_boundaries.hpp"
 #include "terrain/generation/geography.hpp"

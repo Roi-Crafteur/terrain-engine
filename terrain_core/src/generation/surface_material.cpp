@@ -48,6 +48,22 @@ SurfaceMaterial ergFloorMaterial(float kind) {
     return kind <= 1.5f ? SurfaceMaterial::Pebbles : SurfaceMaterial::Dirt;
 }
 
+SurfaceMaterial volcanicMaterial(VolcanicGround ground) {
+    switch (ground) {
+    case VolcanicGround::Scoria:
+        return SurfaceMaterial::Pebbles;
+    case VolcanicGround::Ash:
+        return SurfaceMaterial::Dirt;
+    case VolcanicGround::Geothermal:
+        return SurfaceMaterial::Mud;
+    case VolcanicGround::Basalt:
+    case VolcanicGround::CooledLava:
+    case VolcanicGround::None:
+        break;
+    }
+    return SurfaceMaterial::Rock;
+}
+
 const char* materialName(SurfaceMaterial material) {
     return kMaterialNames[static_cast<std::size_t>(material)];
 }
@@ -75,6 +91,11 @@ SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate, const
     }
     if (site.erg >= params.ergFloorErg && site.riverDistance > params.ergGrassReach) {
         return ergFloorMaterial(site.ergFloor);
+    }
+    const bool snow = biome == Biome::Snow || (biome == Biome::Mountain &&
+                                               climate.temperature <= params.mountainSnowTemperature);
+    if (!snow && site.volcanicShare >= params.volcanicShare) {
+        return volcanicMaterial(site.volcanicGround);
     }
     SurfaceMaterial material = SurfaceMaterial::Grass;
     if (mineralMaterial(biome, climate, steepest, params, material)) {

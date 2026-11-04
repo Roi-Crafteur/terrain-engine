@@ -53,7 +53,7 @@ void testRegistry() {
     TEST_CHECK(refused == 3);
     const MapLayers builtin = defaultMapLayers();
     TEST_CHECK((builtin.names() ==
-                std::vector<std::string>{"relief", "biomes", "water", "contours"}));
+                std::vector<std::string>{"relief", "biomes", "water", "contours", "volcanoes"}));
 }
 
 void testOver() {

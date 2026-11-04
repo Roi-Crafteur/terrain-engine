@@ -8,6 +8,7 @@
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/terrain_surface.hpp"
 #include "terrain/generation/water/hydrology.hpp"
+#include "terrain/map/map_volcanoes.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include <algorithm>
@@ -107,6 +108,9 @@ void MapWorldSource::sample(const MapFrame& frame, std::span<MapSample> out, int
     if (mapCancelled(cancel)) {
         return;
     }
+    if (const Volcanoes* volcanoes = relief_->volcanoes()) {
+        markVolcanoes(*volcanoes, frame, out, kind == MapSourceKind::PlanetCells, threads);
+    }
     std::vector<map_water::Course> courses;
     std::vector<map_water::Fall> falls;
     if (kind == MapSourceKind::FineRelief) {
@@ -156,6 +160,9 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
                 s.ground = h.height;
                 s.water = mapWaterOf(h.water, h.height, h.waterLevel);
                 s.waterLevel = s.water == WaterKind::None ? kNoWaterLevel : h.waterLevel;
+                s.volcanic = h.volcanic;
+                s.volcanicGround = h.volcanicGround;
+                s.volcanicShare = h.volcanicShare;
                 continentalness[at] = h.continentalness;
             }
         }

@@ -159,7 +159,8 @@ inline bool same(const terrain::HeightSample& a, const terrain::HeightSample& b)
            same(a.plateContinentalness, b.plateContinentalness) &&
            same(a.plateCollision, b.plateCollision) && same(a.mountainMask, b.mountainMask) &&
            same(a.base, b.base) && same(a.mountain, b.mountain) && same(a.detail, b.detail) &&
-           same(a.height, b.height);
+           same(a.height, b.height) && a.volcanic == b.volcanic &&
+           a.volcanicGround == b.volcanicGround && a.volcanicShare == b.volcanicShare;
 }
 
 // The water of two samples (the frozen references predate it).

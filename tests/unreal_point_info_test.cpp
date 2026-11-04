@@ -4,6 +4,7 @@
 // of the camera marched to the ground, and the LOD of the tile shown at a chunk.
 #include "ground_ray.hpp"
 #include "point_info.hpp"
+#include "terrain/generation/volcanoes.hpp"
 
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
@@ -67,6 +68,16 @@ void testLines(const water_level::World& world) {
         TEST_CHECK(lineOf(lines, label) != nullptr);
     }
     TEST_CHECK(contains(lines, "water", "river at"));
+    // The volcano whose reach holds a point (agent 45), and the ground it left there.
+    TEST_CHECK(lineOf(lines, "volcano") != nullptr);
+    const terrain::VolcanoSite& volcano = world.field().volcanoes()->sites().front();
+    const terrain::VolcanoOffset summit = terrain::volcanoSummit(volcano);
+    const InfoQuery atVolcano{world.field(), world.tiles.ecology(), nullptr,
+                              volcano.x + summit.dx, volcano.z + summit.dz, {}};
+    const std::vector<InfoLine> volcanic = terrain::unreal::describePoint(atVolcano, providers);
+    TEST_CHECK(contains(volcanic, "volcano", terrain::volcanoFormName(volcano.form)));
+    TEST_CHECK(contains(volcanic, "volcano", "summit 0.00 km away"));
+    TEST_CHECK(lineOf(volcanic, "volcanic ground") != nullptr);
     TEST_CHECK(contains(lines, "valley", "in the channel"));
     TEST_CHECK(lineOf(lines, "altitude") == nullptr && lineOf(lines, "surface") == nullptr);
     TEST_CHECK(lineOf(lines, "tile") == nullptr); // no streamer

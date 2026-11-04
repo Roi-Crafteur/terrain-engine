@@ -1,5 +1,7 @@
 #include "terrain/map/map_style.hpp"
 
+#include "terrain/map/map_volcanoes.hpp"
+
 #include "terrain/det_math.hpp"
 #include "terrain/io/ecology_png.hpp"
 
@@ -196,6 +198,7 @@ MapLayers defaultMapLayers() {
     layers.add(kMapBiomesLayer, biomeLayer);
     layers.add(kMapWaterLayer, waterLayer);
     layers.add(kMapContoursLayer, contourLayer);
+    layers.add(kMapVolcanoesLayer, volcanoesLayer); // agent 45
     return layers;
 }
 

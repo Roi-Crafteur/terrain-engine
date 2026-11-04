@@ -69,6 +69,8 @@ SurfaceSite pointSite(const HeightSample& sample, const std::array<float, 4>& h,
     site.dunes = sample.dunes;
     site.erg = sample.erg;
     site.ergFloor = sample.ergFloor;
+    site.volcanicGround = sample.volcanicGround;
+    site.volcanicShare = static_cast<float>(sample.volcanicShare) / 255.0f;
     return site;
 }
 

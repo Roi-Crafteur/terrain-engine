@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -326,6 +327,11 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   un lit de 300 m, 19 % encore avec 1 000 m). C'est la phase 11C qui règle cela
 
 ### Phase 11C — Réseau hydrographique complet et vallées qui descendent (après la 12A)
+- pour l'agent 31 (étape 1 ou 2) : `hydrology_test` tolère un seul point sec connu le long des
+  faces des chutes du petit monde, sur un tracé que les volcans ont déplacé (agent 45), loin
+  d'eux : une bosse du lit, en x = 965 046,27, z = −324 838,17 (9 cm à gauche du milieu du
+  lit, sur la face d'une chute, niveau 258,54 m ; `kKnownDry*` dans le test). Le retirer du
+  test quand le réseau sera refait ; tout autre point sec fait échouer le test.
 - aujourd'hui une rivière n'existe qu'à partir de 10 m³/s et naît d'un coup avec 22 m de large ;
   le ruissellement est la pluie moins l'évaporation, sans la roche, le sol, les plantes ni la
   pente ; le delta n'a pas de bras
@@ -366,6 +372,52 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   et côtière (falaises marines, arches, stacks)
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
+- volcans (agent 45, en cours, `generation/volcanoes.hpp`) : les 3 759 volcans de la géologie du
+  peuplement (mêmes positions, même seed), en relief avant le niveau Planète (sa somme change).
+  Stratovolcans concaves (30 à 35° sur les 500 m sous
+  la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
+  la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
+  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Pas de dunes sur leur
+  sol. Lieux `volcan_*` de `data/dev/places.json` (stratovolcan, cratère, coulée, caldeira,
+  île, champ de lave, geyser, maar), ligne F3 `volcano` et `volcanic ground`.
+  Horizon : chaque niveau montre le sommet des volcans et de leurs cônes, aussi fins soient-ils,
+  là où sa maille les tient (crête du cratère sur 48 azimuts, 9 points par cône) ; rugosité de
+  la lave, ravines fines et terrasses des sources s'effacent avec la maille ; silhouette d'un
+  stratovolcan à 0,07-0,13° en moyenne vue de 30 km, 0,2° de 100 km, pic à 0,05° près. Limites : pas de roche 3D sur les parois de caldeira (jusqu'à ~60° en
+  heightmap), à reprendre avec la roche 3D.
+  - eau (avec le niveau Planète) : lacs de cratère, de caldeira et de maar à un seul niveau, sous
+    le point le plus bas de la lèvre (ou le fond de la brèche) moins une revanche, plus pleins
+    sous un climat humide (`PlanetLevel::humidityAt` au centre : aucun sous 0,2, plein à 0,5,
+    salé sous 0,32) ; les maars dont les lèvres se coupent partagent un lac ; un bassin dont une
+    vallée de rivière coupe la lèvre n'a pas de lac (la rivière le vide) ; les grandes caldeiras
+    tiennent souvent un lac du niveau Planète. Île à caldeira : fermée, sa lèvre reste au-dessus
+    de 40 m et son fond sous 0 m est sec ou un lac ; ouverte, un détroit à fond plat coupe le
+    flanc jusqu'à la mer, qui remplit la caldeira (Santorin). Sources chaudes (bassins de 3 à
+    25 m sur une terrasse de sinter), geysers (sur leur dôme), mares de boue (sèches) et
+    fumerolles des volcans actifs, sans animation. Lecture : `Heightfield::volcanoBasinsIn`,
+    `geothermalIn` ; l'agent 31 peut y lire les lacs (exutoires possibles) et les sources.
+  - sols volcaniques, pour l'agent 49 : le core décide le sol (`VolcanicGround`, dans
+    `HeightSample::volcanicGround` et `volcanicShare`, puis `SurfaceSite`, la sonde, la ligne
+    F3 et le calque `volcanoes` de la carte de dev), à lire tel quel ; la part dit combien il
+    est nu (1 : rien n'y pousse). Couleurs réelles et lieux :
+    - basalte, noir à gris sombre : boucliers, parois des caldeiras, vieilles coulées et nappes ;
+    - cendres, gris-noir : hautes pentes des stratovolcans, fonds de caldeira, anneaux de tuf
+      des maars, plateaux d'ignimbrite ;
+    - scories, rouge-brun à noir : cônes de scories, abords des cratères actifs ;
+    - lave refroidie, noire : coulées et nappes des volcans actifs ;
+    - sol géothermique (sinter, sol altéré), blanc à orangé : autour des sources, geysers,
+      mares de boue et fumerolles.
+    En attendant ses couleurs (aucun shader touché) : dès la moitié nue et hors de la neige,
+    basalte et lave en Roche, scories en Galets, cendres en Terre, géothermie en Boue
+    (`volcanicMaterial`) ; plantes multipliées par (1 − part).
+  - frontière avec l'agent 51 (mers) : l'agent 45 place seul tous les volcans
+    (`settlement::placeVolcanoes`, en mer aussi) et façonne la tête active de chaque point chaud
+    océanique, île ou mont sous-marin, dans sa portée (`VolcanoSite::reach`) ; l'agent 51 pose la
+    chaîne plus vieille derrière elle, le long de la dérive de sa plaque
+    (`VolcanoSite::driftX`, `driftZ` : îles qui s'enfoncent, guyots, atolls), dans le relief du
+    fond, avant les volcans : la tête se pose dessus (maximum lissé). Il lit
+    `Volcanoes::oceanHotspots()` (110 têtes sur le monde par défaut : 76 îles boucliers, 34 monts
+    sous-marins) ; il ne place ni ne déplace aucun volcan actif.
 - mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
   province du relief au cœur des continents secs, jamais placée par le biome : faite par
   l'agent 34 (`generation/ergs.hpp`). Posées après le niveau Planète (sa somme ne change pas),

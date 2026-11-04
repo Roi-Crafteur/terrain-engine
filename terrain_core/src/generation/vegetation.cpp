@@ -86,6 +86,8 @@ PlantDensities VegetationField::densities(double x, double z, Biome biome, Surfa
         if (type != PlantType::Seaweed) {
             const float maxSlope = params_.rules[i].maxSlope;
             density *= 1.0f - noise::smoothstep(0.5f * maxSlope, maxSlope, steepest);
+            // Few plants on the bare ground of the volcanoes (agent 45): none where it lies bare.
+            density *= 1.0f - site.volcanicShare;
         }
         result[i] = density;
         total += density;

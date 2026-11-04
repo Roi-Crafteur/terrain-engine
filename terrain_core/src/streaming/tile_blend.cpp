@@ -119,6 +119,8 @@ std::vector<BlendTexel> blendTexels(const Heightfield& field, const Ecology& eco
             site.dunes = columns.dunesAt(i, k);
             site.erg = columns.ergAt(i, k);
             site.ergFloor = columns.ergFloorAt(i, k);
+            site.volcanicGround = columns.volcanicGroundAt(i, k);
+            site.volcanicShare = columns.volcanicShareAt(i, k);
             const ClimateSample climate = ecology.climate().sample(x, z, site);
             // Bare rock: the reefs of the coasts, and the foot of the walls under the sea.
             site.bareRock = columns.bareRockAt(i, k) ||
