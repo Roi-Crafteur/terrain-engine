@@ -41,13 +41,13 @@ void testRepositoryCopy(const std::filesystem::path& repository, const std::file
     const PlacesFileSource source(copy);
     const std::vector<dev::Place> places = source.places();
     const dev::PlacesFile file = dev::loadPlaces(repository);
-    TEST_CHECK(places.size() == 11 && places == file.places && source.error().empty());
+    TEST_CHECK(places.size() == 20 && places == file.places && source.error().empty());
     TEST_CHECK(places.front().name == "chute388_bassin" && places[7].name == "plage_origine");
 
     PlacesFileSource writer(copy);
     TEST_CHECK(writer.add(newPlace()) && writer.error().empty());
     const std::vector<dev::Place> after = writer.places();
-    TEST_CHECK(after.size() == 12 && after.back() == newPlace());
+    TEST_CHECK(after.size() == 21 && after.back() == newPlace());
     TEST_CHECK(std::vector<dev::Place>(after.begin(), after.end() - 1) == file.places);
 }
 
