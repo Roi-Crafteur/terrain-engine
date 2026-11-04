@@ -116,7 +116,7 @@
       "planet": true, "note": "étoiles vues de 120 m (E2) : voisines toutes différentes (sol 146,1 m)" },
     { "name": "erg_etoile_300m", "x": -26543080, "z": 5119072,
       "heading": 0, "pitch": 8, "eye": 1.8, "eyeMode": "ground",
-      "planet": true, "note": "la plus grande étoile du secteur (140 m, sommet −26543080 ; 5118772) vue à 300 m (E3, sol 147,8 m)" },
+      "planet": true, "note": "la plus grande étoile du secteur (140 m, sommet −26543080 ; 5118772) vue à 300 m (E3, sol 148,2 m)" },
     { "name": "erg_etoile_150m", "x": -26543080, "z": 5119222,
       "heading": 0, "pitch": -20, "eye": 150, "eyeMode": "ground",
       "planet": true, "note": "la même étoile vue de 150 m de haut (E4, sol 147,7 m) : bras, sommets secondaires, crêtes arrondies" },

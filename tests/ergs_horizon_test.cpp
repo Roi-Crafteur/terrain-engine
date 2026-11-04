@@ -115,7 +115,7 @@ void testFineGridKeepsTheDunes(const std::vector<Line>& lines) {
     std::printf("fine grids: %zu samples, %.1f %% the same bits as points, the others at most %.2f "
                 "of the rounding of the star crests under them\n",
                 samples, 100.0 * static_cast<double>(same) / static_cast<double>(samples), lowest);
-    TEST_CHECK(static_cast<double>(same) >= 0.9 * static_cast<double>(samples));
+    TEST_CHECK(static_cast<double>(same) >= 0.98 * static_cast<double>(samples));
     TEST_CHECK(lowest <= 1.0);
 }
 
