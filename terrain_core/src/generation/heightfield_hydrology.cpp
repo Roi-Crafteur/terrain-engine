@@ -168,7 +168,13 @@ void Heightfield::addDunes(double x, double z, HeightSample& s) const {
     float mask = 0.0f;
     float sand = 1.0f;
     float floor = 0.0f;
-    const float dunes = ergs->dunesAt(x, z, s, footprint_, &mask, &sand, &floor);
+    float dunes = ergs->dunesAt(x, z, s, footprint_, &mask, &sand, &floor);
+    // No sand over the ground the volcanoes made (agent 45): it thins out over their cover.
+    if (s.volcanic > 0) {
+        const float keep = 1.0f - static_cast<float>(s.volcanic) / 255.0f;
+        dunes *= keep;
+        mask *= keep;
+    }
     s.ergFloor = floor;
     // The rock out of the sand: the floor of the erg (its stony ground, its rock on the steep
     // slopes, in the colors of the desert), never the bare rock of the reefs (hard edges).

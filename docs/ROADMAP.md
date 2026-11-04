@@ -377,7 +377,9 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   Stratovolcans concaves (30 à 35° sur les 500 m sous
   la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
   la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
-  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Reste : les lieux.
+  et monts sous-marins ; hors de leur portée, le monde garde ses bits. Pas de dunes sur leur
+  sol. Lieux `volcan_*` de `data/dev/places.json` (stratovolcan, cratère, coulée, caldeira,
+  île, champ de lave, geyser, maar), ligne F3 `volcano` et `volcanic ground`.
   Horizon : chaque niveau montre le sommet des volcans et de leurs cônes, aussi fins soient-ils,
   là où sa maille les tient (crête du cratère sur 48 azimuts, 9 points par cône) ; rugosité de
   la lave, ravines fines et terrasses des sources s'effacent avec la maille ; silhouette d'un
