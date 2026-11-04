@@ -54,8 +54,9 @@ HorizonCell cellAt(const HorizonSampler& sampler, int level, double x, double z)
 }
 
 bool sumsTo255(BlendTexel texel) {
-    const std::uint32_t w = texel.weights;
-    return (w & 255U) + ((w >> 8U) & 255U) <= 255U && ((w >> 16U) & 255U) + (w >> 24U) <= 255U;
+    const std::uint32_t b = texel.biomeWeights;
+    const std::uint32_t m = texel.materialWeights;
+    return (b & 255U) + ((b >> 8U) & 255U) <= 255U && (m & 255U) + ((m >> 8U) & 255U) <= 255U;
 }
 
 // Level 0 against the texels of the LOD 3 tiles around the chunk, and the levels 1 to 3 at the
