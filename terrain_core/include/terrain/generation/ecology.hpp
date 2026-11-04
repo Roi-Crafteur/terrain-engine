@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace terrain {
@@ -90,12 +91,16 @@ public:
     // Plants of the lattice cells of area, row by row: the candidate of each cell, its type
     // drawn from densitiesAt, standing at y = surface(x, z). surface must be the exact surface
     // the map was built from (Heightfield::heightAt, ErodedRegion::heightAt or
-    // SculptedRegion::surfaceAt). A land plant is dropped below sea level, seaweed outside the
+    // SculptedRegion::surfaceAt). A land plant is dropped under the sea, seaweed outside the
     // seaweed depths, and any plant where the surface probed around it is steeper than its
     // type allows. The plants of a cell never depend on the area, so placing two adjacent
-    // areas gives exactly the plants of their union.
+    // areas gives exactly the plants of their union. A land plant below the sea level is under
+    // the sea where sea(x, z) says so; without sea, wherever it stands below the sea level (the
+    // finite regions, whose sea is their ground below it).
+    using SeaTest = std::function<bool(double x, double z)>;
     [[nodiscard]] std::vector<Plant> placePlants(const EcologyMap& map, const ReliefHeight& surface,
-                                                 const PlantArea& area) const;
+                                                 const PlantArea& area,
+                                                 const SeaTest& sea = {}) const;
 
     [[nodiscard]] const ClimateField& climate() const { return climate_; }
     [[nodiscard]] const VegetationField& vegetation() const { return vegetation_; }
@@ -104,7 +109,8 @@ public:
     [[nodiscard]] const WorldSize& world() const { return climate_.world(); }
 
 private:
-    [[nodiscard]] bool keepPlant(const Plant& plant, const ReliefHeight& surface) const;
+    [[nodiscard]] bool keepPlant(const Plant& plant, const ReliefHeight& surface,
+                                 const SeaTest& sea) const;
 
     EcologyParams params_;
     ClimateField climate_;
