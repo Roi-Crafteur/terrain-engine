@@ -20,6 +20,8 @@ Rules (kept simple on purpose):
 - rock from about RockStartDeg of slope, fully rock from RockFullDeg, the threshold jittered by
   noise, and wherever the core puts rock (CoreRock of it, at every distance): a cold grey mineral
   (its textures desaturated by RockGrey, brightened by RockAlbedo to about 0.18), never sandy;
+  wet and darker (WetDarken) at the sea, up to about WetBandM meters, the upper edge ragged
+  (agent 33): the same on the tiles and on the GPU horizon;
 - snow where the core says it is cold (snow biome or material, which includes the altitude and the
   exposure), only on slopes gentler than SnowShedDeg: above the snow line, the faces too steep for
   the snow are rock;
@@ -92,6 +94,7 @@ SCALARS = {
     "SnowWhiten": 0.92, "MacroVariation": 1.0, "PatchAmount": 1.0, "CoreRock": 0.8,
     "RockGrey": 0.85, "RockAlbedo": 1.15, "RockContrast": 1.4, "SandMaxAltitudeM": 1800.0,
     "PatchRarity": 0.6, "PatchRelief": 0.45, "CurvatureGain": 50.0, "DebugView": 0.0,
+    "WetBandM": 3.0, "WetDarken": 0.55,
 }
 WARMTH = (1.03, 1.0, 0.95)
 
@@ -172,7 +175,7 @@ def layer_inputs(detail):
 
 def shade_inputs():
     """Every input of the shade node besides the textures and tints."""
-    return ["W0", "W1", "W2", "N", "P", "Z", "Dist", "Warmth"] + list(SCALARS)
+    return ["W0", "W1", "W2", "N", "P", "Z", "Dist", "Warmth", "B", "C"] + list(SCALARS)
 
 
 def texture_parameter(material, name, path, x, y, normal=False):

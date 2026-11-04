@@ -1,5 +1,7 @@
 // Samples of the far horizon: the ground of the point samples (crestRatio 0; horizon_crests_test
-// tests the crests) is Heightfield::heightAt bit for bit, the material and the biome are those
+// tests the crests) is Heightfield::heightAt bit for bit (but on the gentle shores of the coasts,
+// which each level lowers toward the sea level over the width of its ramp: Heightfield::seenAt,
+// coast_faces::seenShore), the material and the biome are those
 // of Ecology::map(surfaceFromHeightfield(...)) at the same points bit for bit on every level
 // (the oracle that guards the copy of the site in horizon_sampler.cpp), in an
 // ocean, on a coast, in mountains, in a desert, at a pole and at the corner of the world of the
@@ -75,6 +77,7 @@ struct RegionStats {
     int compared = 0;
     int water = 0;
     int land = 0;
+    int lowered = 0; // by the ramp of a shore of the coasts
     float highest = -1.0e9f;
 };
 
@@ -95,7 +98,10 @@ void compareLevel(const HorizonSampler& sampler, const terrain::EcologyMap& map,
             const auto row = static_cast<int>((z - region.z0) / kOracleSpacing);
             const terrain::EcologySample& expected = map.at(column, row);
             const float ground = sampler.heightfield().heightAt(x, z);
-            TEST_CHECK(cell.height == ground);
+            const float seen = sampler.heightfield().seenAt(x, z, pitch).height;
+            TEST_CHECK(cell.height == seen);
+            TEST_CHECK(seen == ground || (ground > 0.0f && seen >= 0.0f && seen < ground));
+            stats.lowered += seen == ground ? 0 : 1;
             TEST_CHECK(cell.material == expected.material);
             TEST_CHECK(cell.biome == expected.biome);
             TEST_CHECK(((cell.flags & terrain::kHorizonWater) != 0) == (ground < 0.0f));
@@ -172,8 +178,10 @@ void testDefaultWorldCoast() {
     for (int level = 0; level < params.levels; ++level) {
         compareLevel(sampler, map, region, level, stats);
     }
-    std::printf("oracle %s at (%.0f, %.0f) m: %d samples (%d water, %d land)\n", region.name,
-                coast->x, coast->z, stats.compared, stats.water, stats.land);
+    std::printf("oracle %s at (%.0f, %.0f) m: %d samples (%d water, %d land, %d of it lowered "
+                "by the ramp of its shore)\n",
+                region.name, coast->x, coast->z, stats.compared, stats.water, stats.land,
+                stats.lowered);
     TEST_CHECK(stats.water > 300 && stats.land > 300);
 }
 

@@ -1,5 +1,7 @@
 #include "terrain/generation/rock_faces.hpp"
 
+#include "rock_spires.hpp"
+
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -8,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <numbers>
 
 namespace terrain {
 
@@ -30,6 +33,10 @@ constexpr double kBedJitter = 0.42;
 constexpr double kBedEdge = 2.0;
 constexpr double kBedEdgeCells = 1.5;
 constexpr float kGrainCell = 2.0f;
+// The beds of a face show fully in its bands from a grain of kLayeredGrain meters (rockBands), their
+// coordinates counted from a base every kStrataHeight meters of height.
+constexpr float kLayeredGrain = 0.5f;
+constexpr double kStrataHeight = 256.0;
 constexpr std::uint64_t kGrainSalt = 0x677261696e5f3132ULL;
 constexpr double kRunFade = 1.5;
 constexpr double kFeatureLow = 1.5;
@@ -42,6 +49,19 @@ constexpr double kJointCells = 4.0;
 constexpr double kRound = 3.0;
 constexpr double kCarvedRound = 1.0;
 constexpr double kRoundShare = 0.25;
+// The tops of the faces of their own rounding (RockFace::roundTenths: the coasts, sharp at a
+// meter), where the cells are coarser than a meter: an edge sharper than the cells steps at each
+// one along a face oblique to them (a saw along its top: the check in Unreal of 06fd02f), rounded
+// over a few cells its facets turn too much, each turning from a sun behind the wall in the shadow
+// of the others while its vertices light it (a row of teeth of shadow under its top: d8e97ed). A
+// bevel at 45 degrees kRoundCells cells high, planes the cells draw exactly, its creases with the
+// top and the face rounded over kUpperCrease and kLowerCrease of it. On the calanque of the view 5
+// (coast_top_test): the part of its sky line at the lattice of the cells 0.063 m with an edge of a
+// meter, 0.025 m rounded, 0.033 m bevelled; the shadows under suns behind it up to 18 % of the
+// light of its top rounded (0.008 at the lattice), 7 % bevelled (0.0026).
+constexpr double kRoundCells = 1.0;
+constexpr double kUpperCrease = 0.7;
+constexpr double kLowerCrease = 0.5;
 // The grain and the overhangs of a face come in as its drawn weight runs from kFullLow to 1.
 constexpr double kFullLow = 0.75;
 // The joints come in over kJointEnds meters over the foot of a face (their floor rising out of
@@ -132,10 +152,14 @@ double drawnFeature(float feature, float extent, const RockDetail& detail) {
     return feature * smooth(low, high, feature) * smooth(low, high, kThickness * extent);
 }
 
-// The edges of the step of a face are rounded over this many meters.
-double roundOf(const RockFace& f) {
-    return std::min(f.carved ? kCarvedRound : kRound,
-                    kRoundShare * (static_cast<double>(f.top) - f.foot));
+// The edges of the step of a face are rounded over this many meters as cells of the detail draw
+// them (its top bevelled over that much: kRoundCells).
+double roundOf(const RockFace& f, const RockDetail& detail) {
+    const auto cell = static_cast<double>(detail.cell);
+    const double own = std::max(0.1 * static_cast<double>(f.roundTenths),
+                                cell > 1.0 ? kRoundCells * cell : 0.0);
+    const double round = f.roundTenths > 0 ? own : (f.carved ? kCarvedRound : kRound);
+    return std::min(round, kRoundShare * (static_cast<double>(f.top) - f.foot));
 }
 
 // Draw k (0, 1 or 2) in [0, 1) of 21 bits of a hash.
@@ -200,7 +224,7 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
     }
     // The grain leaves the rounded edges of the step alone (a bed standing out there would be a
     // blade of rock thinner than a cell).
-    const double round = roundOf(f);
+    const double round = roundOf(f, detail);
     double offset = grainAt(f, y, detail) *
                     smooth(static_cast<double>(f.foot), static_cast<double>(f.foot) + round, y) *
                     (1.0 - smooth(static_cast<double>(f.top) - round, static_cast<double>(f.top), y));
@@ -231,9 +255,10 @@ double offsetAt(const RockFace& f, double y, const RockDetail& detail) {
 // smoothMax are min and max: h = 0): the step is the plane of its top or of its foot there, the
 // same value without its offset (most of the samples of a tile on a wall).
 double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
-    const double round = roundOf(f);
-    const double reach = std::max(round, 0.0) + std::abs(static_cast<double>(f.distance)) +
-                         std::abs(static_cast<double>(f.cap));
+    const double round = roundOf(f, detail);
+    const bool bevel = f.roundTenths > 0 && detail.cell > 1.0f; // reaches 1 + sqrt 2 its height
+    const double reach = (bevel ? 2.5 : 1.0) * std::max(round, 0.0) +
+                         std::abs(static_cast<double>(f.distance)) + std::abs(f.cap);
     if (v >= f.top + reach) {
         return v - f.top;
     }
@@ -243,6 +268,11 @@ double stepDensity(const RockFace& f, double v, const RockDetail& detail) {
     const double across = static_cast<double>(f.distance) - offsetAt(f, v, detail);
     if (!(round > 0.0)) {
         return std::min(v - f.foot, std::max(v - f.top, across));
+    }
+    if (bevel) {
+        const double cut = (v - f.top + across + round) * (1.0 / std::numbers::sqrt2);
+        const double top = smoothMax(v - f.top, cut, kUpperCrease * round);
+        return smoothMin(v - f.foot, smoothMax(top, across, kLowerCrease * round), round);
     }
     return smoothMin(v - f.foot, smoothMax(v - f.top, across, round), round);
 }
@@ -297,13 +327,16 @@ RockDetail rockDetailForLod(int lod) {
     return {static_cast<float>(1 << std::clamp(lod, 0, 16))};
 }
 
-float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
+namespace {
+
+// The density of the relief of a column with its faces (rockDensity without its spire).
+double facesDensity(const RockColumn& c, double y, const RockDetail& detail) {
     const bool drawn = std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
                                    [&](const RockFace& f) {
                                        return drawnWeight(f, detail) > 0.0f;
                                    });
     if (!drawn) {
-        return static_cast<float>(y - c.ground);
+        return y - c.ground;
     }
     // The relief before the rivers, then the air of their valleys taken out of it (below the
     // relief, above their floor), then their levees added.
@@ -317,7 +350,35 @@ float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
     if (c.ground > c.uncarved) {
         density = std::min(density, y - static_cast<double>(c.ground));
     }
-    return static_cast<float>(density);
+    return density;
+}
+
+// The highest the spire of a column stands (-infinity without one).
+float spireSummit(const RockColumn& c) {
+    return c.spire.radius > 0.0f
+               ? static_cast<float>(rock_spires::summitOf(rock_spires::shapeOf(c.spire)))
+               : -std::numeric_limits<float>::infinity();
+}
+
+} // namespace
+
+float rockDensity(const RockColumn& c, double y, const RockDetail& detail) {
+    const double density = facesDensity(c, y, detail);
+    if (!(c.spire.radius > 0.0f)) {
+        return static_cast<float>(density);
+    }
+    // The spire added to the relief (a union: the least of the two densities).
+    const double spire =
+        rock_spires::densityAt(rock_spires::shapeOf(c.spire), static_cast<double>(c.spire.dx),
+                               static_cast<double>(c.spire.dz), y,
+                               static_cast<double>(detail.cell));
+    return static_cast<float>(std::min(density, spire));
+}
+
+float spireDensity(const RockSpire& spire, double dx, double dz, double y,
+                   const RockDetail& detail) {
+    return static_cast<float>(rock_spires::densityAt(rock_spires::shapeOf(spire), dx, dz, y,
+                                                     static_cast<double>(detail.cell)));
 }
 
 float drawnWeight(const RockFace& f, const RockDetail& detail) {
@@ -345,6 +406,7 @@ RockBounds rockBounds(const RockColumn& c) {
         b.low = std::min(b.low, c.faces[i].foot);
         b.high = std::max(b.high, c.faces[i].top);
     }
+    b.high = std::max(b.high, spireSummit(c));
     return b;
 }
 
@@ -358,21 +420,80 @@ float rockCeiling(const RockColumn& c) {
         float& high = c.faces[i].carved ? valley : faces;
         high = std::max(high, c.faces[i].top);
     }
-    return std::max({c.ground, std::min(c.uncarved, valley), faces});
+    return std::max({c.ground, std::min(c.uncarved, valley), faces, spireSummit(c)});
 }
 
 float rockShare(const RockColumn& c, double y, const RockDetail& detail) {
     float share = 0.0f;
+    // On a spire (and kShareAcross meters around its surface): bare rock.
+    if (c.spire.radius > 0.0f &&
+        rock_spires::densityAt(rock_spires::shapeOf(c.spire), static_cast<double>(c.spire.dx),
+                               static_cast<double>(c.spire.dz), y,
+                               static_cast<double>(detail.cell)) < kShareAcross) {
+        share = 1.0f;
+    }
     for (std::size_t i = 0; i < c.faceCount; ++i) {
         const RockFace& f = c.faces[i];
         const double distance = f.distance;
+        // Behind the face over its undercut and the bevel of its top (no tooth of the ground).
+        const double top = f.roundTenths > 0 ? (1.0 + kUpperCrease) * roundOf(f, detail) : 0.0;
+        const double behind = std::max(0.0f, f.undercut) + kShareAcross + top;
         if (y >= f.foot - kShareBelow && y <= f.top + kShareAbove &&
-            distance < std::max(0.0f, f.cap) + kShareAcross &&
-            distance > -(std::max(0.0f, f.undercut) + kShareAcross)) {
+            distance < std::max(0.0f, f.cap) + kShareAcross && distance > -behind) {
             share = std::max(share, std::min(1.0f, drawnWeight(f, detail)));
         }
     }
     return share;
+}
+
+namespace {
+
+// The coordinate of t among the beds of the grain (bedStart): bed k from k to k + 1.
+double bedCoordinate(double t) {
+    auto k = static_cast<std::int64_t>(std::floor(t / kBedWave));
+    if (t < bedStart(k)) {
+        --k;
+    } else if (t >= bedStart(k + 1)) {
+        ++k;
+    }
+    return static_cast<double>(k) + (t - bedStart(k)) / (bedStart(k + 1) - bedStart(k));
+}
+
+RockBands faceBands(const RockFace& f, double y) {
+    RockBands out;
+    if (f.grain > 0.0f) {
+        // Counted from a base that changes only every kStrataHeight meters of height (the same for
+        // every column there: no line broken between two columns; small numbers for the half
+        // floats of the meshes).
+        const double base = std::round(std::floor(y / kStrataHeight) * kStrataHeight / kBedWave);
+        out.strata = static_cast<float>(bedCoordinate(y + static_cast<double>(f.grainShift)) - base);
+        out.layered = std::min(1.0f, f.grain / kLayeredGrain) * std::min(1.0f, f.weight);
+    }
+    if (f.undercut >= kBandLeast && f.undercutHeight > 0.0f) {
+        out.notch = static_cast<float>(y - static_cast<double>(f.foot));
+        out.notchHeight = f.undercutHeight;
+    }
+    if (f.cap >= kBandLeast && f.capDepth > 0.0f) {
+        out.cap = static_cast<float>(y - static_cast<double>(f.top - f.capDepth));
+        out.capHeight = f.capDepth;
+    }
+    return out;
+}
+
+} // namespace
+
+RockBands rockBands(const RockColumn& c, double y) {
+    if (c.spire.radius > 0.0f) {
+        return rock_spires::bandsAt(rock_spires::shapeOf(c.spire), static_cast<double>(c.spire.dx),
+                                    static_cast<double>(c.spire.dz), y);
+    }
+    const RockFace* strongest = nullptr;
+    for (std::size_t i = 0; i < c.faceCount; ++i) {
+        if (strongest == nullptr || c.faces[i].weight > strongest->weight) {
+            strongest = &c.faces[i];
+        }
+    }
+    return strongest != nullptr ? faceBands(*strongest, y) : RockBands{};
 }
 
 } // namespace terrain

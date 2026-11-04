@@ -4,6 +4,7 @@
 #include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/cave_flora.hpp"
 #include "terrain/generation/cave_materials.hpp"
+#include "terrain/generation/rock_faces.hpp"
 #include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/vegetation.hpp"
 #include "terrain/generation/water_kind.hpp"
@@ -128,6 +129,10 @@ struct TileData {
     // of bare rock of each vertex of mesh, in [0, 1] (its faces, under their caps, in their
     // niches), for the material.
     std::vector<float> rock;
+    // With rock in three dimensions only, empty otherwise: the bands of the rock of each vertex of
+    // mesh (rockBands: its beds, its notch, its cap, relative to the height of the vertex: the
+    // same heights at every LOD), for the material (agent 33).
+    std::vector<RockBands> rockBands;
 
     friend bool operator==(const TileData&, const TileData&) = default;
 };

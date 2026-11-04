@@ -1,5 +1,7 @@
 #include "rock_tile.hpp"
 
+#include "terrain/meshing/marching_cubes.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -14,6 +16,12 @@ constexpr int kLast = kGridSamples - 1;
 // the coarser one's over kSeamBlend cells: the faces the coarser tile does not draw fade out, not
 // cut short at the side (over half as many cells, such a face ends there in a narrow dark flank).
 constexpr double kSeamBlend = 8.0;
+// The vertices of a spire kSpireClear cells over the relief of its column take the gradient of
+// the spire itself (spireGradient), by differences kSpireStep cells apart across (its edges sharp)
+// and kSpireRise cells up (over the steps of its beds, which the cells draw no finer).
+constexpr double kSpireClear = 0.5;
+constexpr double kSpireStep = 0.25;
+constexpr double kSpireRise = 1.0;
 
 double smooth(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -35,6 +43,49 @@ float derivative(int index, bool ring, const Sample& f) {
         return 0.5f * (3.0f * f(kLast) - 4.0f * f(kLast - 1) + f(kLast - 2));
     }
     return 0.5f * (f(index + 1) - f(index - 1));
+}
+
+// A column seen from ox, oz meters off its lattice point (a vertex of the tile): its faces at
+// their distance there (it grows along their air) and its spire from there. Without it, a vertex
+// takes the faces of its nearest column as they stand there, up to half a cell off: on a face
+// oblique to the lattice, the vertices whose nearest column lies more than kShareAcross off the
+// face took no rock, a row of stripes of the ground every few cells of LOD 3 down the wall.
+RockColumn movedBy(const RockColumn& c, double ox, double oz) {
+    RockColumn out = c;
+    for (std::size_t f = 0; f < out.faceCount; ++f) {
+        RockFace& face = out.faces[f];
+        face.distance += static_cast<float>(ox * static_cast<double>(face.airX) +
+                                            oz * static_cast<double>(face.airZ));
+    }
+    if (out.spire.radius > 0.0f) {
+        out.spire.dx += static_cast<float>(ox);
+        out.spire.dz += static_cast<float>(oz);
+    }
+    return out;
+}
+
+// The bands of two columns a share t apart (along the grid edge of a vertex): each band where
+// both have it interpolated, where one has it alone its own (the beds fading by their layering).
+RockBands mixBands(const RockBands& a, const RockBands& b, float t) {
+    const auto lerp = [t](float u, float v) { return u + t * (v - u); };
+    const auto pick = [&](bool inA, bool inB, float u, float v) {
+        return inA && inB ? lerp(u, v) : (inA ? u : v);
+    };
+    RockBands out;
+    const float la = (1.0f - t) * a.layered;
+    const float lb = t * b.layered;
+    out.layered = la + lb;
+    out.strata = out.layered > 0.0f ? (la * a.strata + lb * b.strata) / out.layered
+                                    : lerp(a.strata, b.strata);
+    const bool notchA = a.notchHeight > 0.0f;
+    const bool notchB = b.notchHeight > 0.0f;
+    out.notch = pick(notchA, notchB, a.notch, b.notch);
+    out.notchHeight = pick(notchA, notchB, a.notchHeight, b.notchHeight);
+    const bool capA = a.capHeight > 0.0f;
+    const bool capB = b.capHeight > 0.0f;
+    out.cap = pick(capA, capB, a.cap, b.cap);
+    out.capHeight = pick(capA, capB, a.capHeight, b.capHeight);
+    return out;
 }
 
 } // namespace
@@ -90,7 +141,7 @@ float RockTile::sample(int i, int j, int k, int originY, bool coarse) const {
 float RockTile::sampleWith(int i, int j, int k, int originY, const RockDetail& detail) const {
     const double sampleY = originY + j * lattice_.spacing;
     const RockColumn& c = columnAt(i, k);
-    if (c.faceCount == 0 || onHorizonSide(i, k)) {
+    if (!c.hasRock() || onHorizonSide(i, k)) {
         // Same expression as tile::levelDensity and TerrainTiles::densityAt.
         return static_cast<float>(sampleY - groundAt(i, k));
     }
@@ -158,8 +209,11 @@ void RockTile::dropPlants(std::vector<Plant>& plants) const {
         const auto i = static_cast<int>(std::lround((plant.x - lattice_.x0) / spacing));
         const auto k = static_cast<int>(std::lround((plant.z - lattice_.z0) / spacing));
         const RockColumn& c = rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast));
+        const double ground = static_cast<double>(columns_->at(std::clamp(i, 0, kLast),
+                                                               std::clamp(k, 0, kLast)));
         return std::any_of(c.faces.begin(), c.faces.begin() + c.faceCount,
-                           [this](const RockFace& f) { return drawnWeight(f, fine_) > 0.0f; });
+                           [this](const RockFace& f) { return drawnWeight(f, fine_) > 0.0f; }) ||
+               (c.spire.radius > 0.0f && rockDensity(c, ground + 0.5, fine_) < 0.0f);
     });
 }
 
@@ -225,6 +279,7 @@ void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) con
             const Vec3f h = smoothed(high[0], high[1], high[2]);
             g = {g.x + t * (h.x - g.x), g.y + t * (h.y - g.y), g.z + t * (h.z - g.z)};
         }
+        spireGradient(v, originY, g);
         const float length = std::sqrt(g.x * g.x + g.y * g.y + g.z * g.z);
         if (length > 1e-12f) {
             level.normals[n] = {g.x / length, g.y / length, g.z / length};
@@ -232,14 +287,41 @@ void RockTile::lightLevel(Mesh& level, const DensityGrid& grid, int originY) con
     }
 }
 
+void RockTile::spireGradient(const Vec3f& v, int originY, Vec3f& g) const {
+    const double spacing = lattice_.spacing;
+    const auto i = std::clamp(static_cast<int>(std::lround(v.x)), 0, kLast);
+    const auto k = std::clamp(static_cast<int>(std::lround(v.z)), 0, kLast);
+    const RockColumn& c = rockAt(i, k);
+    if (!(c.spire.radius > 0.0f)) {
+        return;
+    }
+    const double dx = static_cast<double>(c.spire.dx) + (static_cast<double>(v.x) - i) * spacing;
+    const double dz = static_cast<double>(c.spire.dz) + (static_cast<double>(v.z) - k) * spacing;
+    const double y = originY + static_cast<double>(v.y) * spacing;
+    // On the spire only, clear of the relief at its foot.
+    if (!(y - static_cast<double>(c.ground) > kSpireClear * spacing)) {
+        return;
+    }
+    const double h = kSpireStep * spacing;
+    const double rise = kSpireRise * spacing;
+    const auto at = [&](double ox, double oy, double oz) {
+        return static_cast<double>(spireDensity(c.spire, dx + ox, dz + oz, y + oy, fine_));
+    };
+    // In grid units, as the gradients of the lattice (their length does not matter).
+    g = {static_cast<float>((at(h, 0.0, 0.0) - at(-h, 0.0, 0.0)) * spacing / (2.0 * h)),
+         static_cast<float>((at(0.0, rise, 0.0) - at(0.0, -rise, 0.0)) * spacing / (2.0 * rise)),
+         static_cast<float>((at(0.0, 0.0, h) - at(0.0, 0.0, -h)) * spacing / (2.0 * h))};
+}
+
 std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const {
     std::vector<float> rock;
     rock.reserve(mesh.vertices.size());
-    const auto spacing = static_cast<float>(lattice_.spacing);
+    const double spacing = lattice_.spacing;
     for (const Vec3f& v : mesh.vertices) {
-        const auto i = static_cast<int>(std::lround(v.x / spacing));
-        const auto k = static_cast<int>(std::lround(v.z / spacing));
-        const RockColumn& c = rockAt(std::clamp(i, 0, kLast), std::clamp(k, 0, kLast));
+        const auto i = std::clamp(static_cast<int>(std::lround(v.x / spacing)), 0, kLast);
+        const auto k = std::clamp(static_cast<int>(std::lround(v.z / spacing)), 0, kLast);
+        const RockColumn c = movedBy(rockAt(i, k), static_cast<double>(v.x) - i * spacing,
+                                     static_cast<double>(v.z) - k * spacing);
         const double y = originY + static_cast<double>(v.y);
         const double share = fineShare(i, k);
         const float fine = rockShare(c, y, fine_);
@@ -251,6 +333,96 @@ std::vector<float> RockTile::vertexRock(const Mesh& mesh, double originY) const 
         rock.push_back(static_cast<float>(coarse + share * (fine - coarse)));
     }
     return rock;
+}
+
+std::vector<RockBands> RockTile::vertexBands(const Mesh& mesh, double originY) const {
+    std::vector<RockBands> bands;
+    bands.reserve(mesh.vertices.size());
+    const double spacing = lattice_.spacing;
+    for (const Vec3f& v : mesh.vertices) {
+        const double y = originY + static_cast<double>(v.y);
+        // The columns at both ends of the grid edge the vertex lies on (one on an edge along y),
+        // each seen from the vertex: no step in the beds where the nearest column changes.
+        const double u = static_cast<double>(v.x) / spacing;
+        const double w = static_cast<double>(v.z) / spacing;
+        const bool alongX = std::abs(u - std::round(u)) > 1e-4;
+        const bool alongZ = !alongX && std::abs(w - std::round(w)) > 1e-4;
+        const auto lowest = [](double c, bool along) {
+            return std::clamp(static_cast<int>(along ? std::floor(c) : std::round(c)), 0, kLast);
+        };
+        const int i = lowest(u, alongX);
+        const int k = lowest(w, alongZ);
+        const auto bandsOf = [&](int ci, int ck) {
+            return rockBands(movedBy(rockAt(ci, ck), static_cast<double>(v.x) - ci * spacing,
+                                     static_cast<double>(v.z) - ck * spacing),
+                             y);
+        };
+        const RockBands low = bandsOf(i, k);
+        if (!alongX && !alongZ) {
+            bands.push_back(low);
+            continue;
+        }
+        const int i1 = alongX ? std::min(i + 1, kLast) : i;
+        const int k1 = alongZ ? std::min(k + 1, kLast) : k;
+        const auto t = static_cast<float>(std::clamp(alongX ? u - i : w - k, 0.0, 1.0));
+        bands.push_back(mixBands(low, bandsOf(i1, k1), t));
+    }
+    return bands;
+}
+
+namespace {
+
+// Down from far above a spire in strides (the density about the distance to it: kStride of it,
+// whole meters) while kFar meters away at least.
+constexpr double kFar = 3.0;
+constexpr double kStride = 0.6;
+
+} // namespace
+
+float spireGroundAt(const RockColumn& column, double x, double z, const RockDetail& detail) {
+    const double x0 = std::floor(x);
+    const double z0 = std::floor(z);
+    const double fx = x - x0;
+    const double fz = z - z0;
+    const std::array<double, 4> w{(1.0 - fx) * (1.0 - fz), fx * (1.0 - fz), (1.0 - fx) * fz,
+                                  fx * fz};
+    RockColumn relief = column;
+    relief.spire = RockSpire{};
+    const auto densityAt = [&](double y) {
+        double spire = 0.0;
+        for (std::size_t q = 0; q < w.size(); ++q) {
+            if (w[q] > 0.0) {
+                const double dx = static_cast<double>(column.spire.dx) + (x0 - x) +
+                                  static_cast<double>(q & 1U);
+                const double dz = static_cast<double>(column.spire.dz) + (z0 - z) +
+                                  static_cast<double>(q >> 1U);
+                spire += w[q] * static_cast<double>(spireDensity(column.spire, dx, dz, y, detail));
+            }
+        }
+        return std::min(spire, static_cast<double>(rockDensity(relief, y, detail)));
+    };
+    const RockBounds bounds = rockBounds(column);
+    const double low = static_cast<double>(bounds.low);
+    // Down in strides while far from the rock (the density about the distance to it: kStride of
+    // it, whole meters), then a meter at a time.
+    double above = std::ceil(static_cast<double>(bounds.high)) + 1.0;
+    double previous = densityAt(above);
+    while (previous > kFar && above > low) {
+        above -= std::floor(kStride * previous);
+        previous = densityAt(above);
+    }
+    if (!(previous >= kIsoLevel)) {
+        above += std::ceil(kFar);
+        previous = densityAt(above);
+    }
+    for (double y = above - 1.0; y > low - 2.0; y -= 1.0) {
+        const double d = densityAt(y);
+        if (d < kIsoLevel && previous >= kIsoLevel) {
+            return static_cast<float>(y + (kIsoLevel - d) / (previous - d));
+        }
+        previous = d;
+    }
+    return static_cast<float>(low);
 }
 
 } // namespace terrain::tile

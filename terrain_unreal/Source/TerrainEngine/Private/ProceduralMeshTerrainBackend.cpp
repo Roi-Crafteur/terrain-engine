@@ -156,12 +156,27 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 	{
 		Water.Emplace(Over.depth, Over.wet);
 	}
+	// The bands of the rock of each vertex in UV channels 1 to 3 (agent 33,
+	// Bridge/tile_mesh_conversion.hpp: VertexBands): (strata, layered), (notch, notchHeight),
+	// (cap, capHeight); without rock in three dimensions none (the procedural mesh puts 0 there).
+	TArray<FVector2D> Strata;
+	TArray<FVector2D> Notch;
+	TArray<FVector2D> Cap;
+	Strata.Reserve(static_cast<int32>(Mesh.bands.size()));
+	Notch.Reserve(static_cast<int32>(Mesh.bands.size()));
+	Cap.Reserve(static_cast<int32>(Mesh.bands.size()));
+	for (const terrain::unreal::VertexBands& Bands : Mesh.bands)
+	{
+		Strata.Emplace(Bands.strata, Bands.layered);
+		Notch.Emplace(Bands.notch, Bands.notchHeight);
+		Cap.Emplace(Bands.cap, Bands.capHeight);
+	}
 	TArray<int32> Triangles;
 	Triangles.Append(Mesh.triangles.data(), static_cast<int32>(Mesh.triangles.size()));
 
 	Component->SetWorldLocation(FVector(Tile.origin.x, Tile.origin.y, Tile.origin.z));
-	Component->CreateMeshSection(0, Vertices, Triangles, Normals, Water, Colors,
-		TArray<FProcMeshTangent>(), Tile.collision);
+	Component->CreateMeshSection(0, Vertices, Triangles, Normals, Water, Strata, Notch, Cap,
+		Colors, TArray<FProcMeshTangent>(), Tile.collision);
 	Component->SetCollisionEnabled(
 		Tile.collision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
 	SetWaterSection(*Component, WaterSection, Tile.water, WaterMaterial);

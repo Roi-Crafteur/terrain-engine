@@ -4,6 +4,7 @@
 // terrain_core: heightfield.cpp builds them, heightfield_geography.cpp reads those of the
 // planetary geography.
 
+#include "coast_faces.hpp"
 #include "mountain_forms.hpp"
 #include "mountain_walls.hpp"
 #include "wall_faces.hpp"
@@ -77,6 +78,12 @@ struct Heightfield::Memos {
     Hydrology::Region water;
     // The relief without the coasts (Heightfield::leaveValleys reads both).
     bool bare = false;
+    // Where set, the face of the coasts at the point the coasts report there (coastPointAt): left
+    // as it is by the relief without them.
+    coast_faces::Report* coastFace = nullptr;
+    // A level of the horizon reading the relief (seenAt, seenHeightsAt): the width of the ramp its
+    // shores rise from the sea level over (coast_faces::shoreRampOf), 0 for the tiles.
+    double seenRamp = 0.0;
 };
 
 } // namespace terrain

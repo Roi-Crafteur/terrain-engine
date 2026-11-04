@@ -49,9 +49,11 @@ add_library(terrain_core STATIC
     src/generation/cliff_region.cpp
     src/generation/cliffs.cpp
     src/generation/climate.cpp
+    src/generation/coast_faces.cpp
     src/generation/coast_inlets.cpp
     src/generation/coast_kinds.cpp
     src/generation/coast_lattice.cpp
+    src/generation/coast_profile.cpp
     src/generation/coast_reefs.cpp
     src/generation/coast_shape.cpp
     src/generation/depression_forms.cpp
@@ -106,6 +108,8 @@ add_library(terrain_core STATIC
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
     src/generation/rock_faces.cpp
+    src/generation/rock_spires.cpp
+    src/generation/rock_spires_shape.cpp
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp
@@ -198,6 +202,7 @@ add_library(terrain_core STATIC
     src/streaming/horizon_fine_grid.cpp
     src/streaming/horizon_grids.cpp
     src/streaming/horizon_levels.cpp
+    src/streaming/horizon_bands.cpp
     src/streaming/horizon_normals.cpp
     src/streaming/horizon_blend.cpp
     src/streaming/horizon_sampler.cpp

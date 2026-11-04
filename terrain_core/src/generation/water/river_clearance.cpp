@@ -35,26 +35,24 @@ double windowClearance(const water::FineLake& lake, double x, double z) {
     return std::max(dx, dz);
 }
 
-// The clearance of a course at (px, pz) in its images over relief ground meters high: of each of
-// its chunks, the least of how far beyond its floors the point lies and how far above the relief
-// raised by the levees and the blend its gentlest walls stand there (valleyAt skips the chunk
+// What the clearance of a course at (px, pz) in its images reads, into out: of each of its chunks,
+// how far beyond its floors the point lies and how high its gentlest walls stand there, the relief
+// raised by the levees and the blend to come off it (Clearance::over: valleyAt skips the chunk
 // wherever both are positive); of each of its ponds, the distance to its window.
-double courseClearance(const water::Course& c, double px, double pz, double ground) {
-    double least = std::numeric_limits<double>::infinity();
+void addCourse(const water::Course& c, double px, double pz, Hydrology::Clearance& out) {
     for (const water::FineLake& pond : c.ponds) {
-        least = std::min(least, windowClearance(pond, px, pz));
+        out.away = std::min(out.away, windowClearance(pond, px, pz));
     }
     if (px < c.minX || px > c.maxX || pz < c.minZ || pz > c.maxZ) {
-        return least; // valleyAt finds no valley out of the box of the course
+        return; // valleyAt finds no valley out of the box of the course
     }
-    const double bound = ground + water::kLevee + water::kBlend;
     for (const water::CourseChunk& k : c.chunks) {
         const double away = dmath::hypot(px - k.x, pz - k.z) - k.radius - k.flat;
         const double floorOf = static_cast<double>(k.minLevel - k.maxDepth) +
                                static_cast<double>(k.minWall) * std::max(0.0, away);
-        least = std::min(least, std::min(away, floorOf - bound));
+        out.away = std::min(out.away, away);
+        out.floor = std::min(out.floor, floorOf);
     }
-    return least;
 }
 
 } // namespace
@@ -78,12 +76,20 @@ bool Hydrology::mayMatter(double x, double z) const {
     return m.lakesAround(cell).count > 0;
 }
 
-double Hydrology::clearance(double x, double z, double ground) const {
+// The least, over the chunks, of min(away, floorOf - bound) is min(least away, least floorOf -
+// bound): the rounding of a difference never reverses an order, so the least difference is that of
+// the least floor, the same bits.
+double Hydrology::Clearance::over(double ground) const {
+    const double bound = ground + water::kLevee + water::kBlend;
+    return std::min(away, floor - bound);
+}
+
+Hydrology::Clearance Hydrology::clearanceAt(double x, double z) const {
     const Impl& m = *impl_;
     const std::size_t cell = planetCellAt(m.grid, x, z);
     const int ci = m.grid.column(cell);
     const int cj = m.grid.row(cell);
-    double least = std::numeric_limits<double>::infinity();
+    Clearance out;
     for (int dj = -kSearch; dj <= kSearch; ++dj) {
         for (int di = -kSearch; di <= kSearch; ++di) {
             const Impl::CellReaches here = m.reachesOfCell(
@@ -96,15 +102,19 @@ double Hydrology::clearance(double x, double z, double ground) const {
                 const water::PathPoint start = m.startOf(r);
                 const double px = start.x + noise::wrapCanonical(x - start.x, m.grid.periodX());
                 const double pz = start.z + noise::wrapCanonical(z - start.z, m.grid.periodZ());
-                least = std::min(least, courseClearance(m.courseOf(r), px, pz, ground));
+                addCourse(m.courseOf(r), px, pz, out);
             }
         }
     }
     const LakeList around = m.lakesAround(cell);
     for (std::size_t k = 0; k < around.count; ++k) {
-        least = std::min(least, windowClearance(m.fineLakeOf(around.ids[k]), x, z));
+        out.away = std::min(out.away, windowClearance(m.fineLakeOf(around.ids[k]), x, z));
     }
-    return least;
+    return out;
+}
+
+double Hydrology::clearance(double x, double z, double ground) const {
+    return clearanceAt(x, z).over(ground);
 }
 
 } // namespace terrain

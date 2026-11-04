@@ -337,6 +337,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     }
     if (rockTile) {
         data.rock = rockTile->vertexRock(data.mesh, data.originY);
+        data.rockBands = rockTile->vertexBands(data.mesh, data.originY);
     }
     data.waterLevels = tile::vertexWaterLevels(columns, lattice, data.mesh, data.materials);
     tile::addRiverWater(data, field_, lattice, columns);
@@ -371,14 +372,17 @@ float TerrainTiles::densityAt(int worldX, int y, int worldZ) const {
 
 float TerrainTiles::groundAt(double x, double z) const {
     const RockColumn column = rock_ ? field_.rockAt(x, z) : RockColumn{};
-    if (!rock_ || column.faceCount == 0) {
+    if (!rock_ || !column.hasRock()) {
         return field_.heightAt(x, z);
+    }
+    const RockDetail detail = rockDetailForLod(0);
+    const RockBounds bounds = rockBounds(column);
+    if (column.spire.radius > 0.0f) {
+        return tile::spireGroundAt(column, x, z, detail);
     }
     // Down from above the rock in steps, then the last step halved to the surface.
     constexpr double kStep = 0.25;
     constexpr int kHalvings = 24;
-    const RockDetail detail = rockDetailForLod(0);
-    const RockBounds bounds = rockBounds(column);
     double above = static_cast<double>(bounds.high) + kStep;
     double below = above;
     while (below > static_cast<double>(bounds.low) - kStep) {

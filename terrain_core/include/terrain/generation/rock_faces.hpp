@@ -53,11 +53,30 @@ struct RockFace {
     // A face of the valley of a river (its slot, its gorge, the face of a fall): its step shapes
     // the floor the river carves; otherwise a face of the relief before the rivers.
     bool carved = false;
+    // The edges of its step rounded over roundTenths tenths of a meter at most (0: the rounding of
+    // the walls, or of the carved faces); the faces of the coasts are sharper (agent 33: no
+    // cushion at their top). A byte by carved: the size of a face stays (the column cache).
+    std::uint8_t roundTenths = 0;
 
     friend bool operator==(const RockFace&, const RockFace&) = default;
 };
 
 inline constexpr int kMaxRockFaces = 4;
+
+// A spire of rock standing over a column (the stacks of the coasts, agent 33: coast.hpp), a solid
+// of its own in three dimensions (a distance field, rock_spires.hpp) added to the relief: the
+// column lies (dx, dz) meters from its axis; its shape (a pillar, a needle, a stack split in two,
+// an arch, their benches, their notch, their cracks) is drawn from seed and its size, its radius
+// at the sea level and its height above it (0: none).
+struct RockSpire {
+    float dx = 0.0f;
+    float dz = 0.0f;
+    float radius = 0.0f;
+    float height = 0.0f;
+    std::uint32_t seed = 0;
+
+    friend bool operator==(const RockSpire&, const RockSpire&) = default;
+};
 
 // What the rock of a column depends on, apart from y.
 struct RockColumn {
@@ -65,6 +84,10 @@ struct RockColumn {
     float uncarved = 0.0f; // the relief before the rivers carve or fill it
     std::uint8_t faceCount = 0;
     std::array<RockFace, kMaxRockFaces> faces{};
+    RockSpire spire;
+
+    // Whether it holds a face or a spire (its rock in three dimensions).
+    [[nodiscard]] bool hasRock() const { return faceCount > 0 || spire.radius > 0.0f; }
 
     // Appends a face; past kMaxRockFaces, the face of the greatest weight is kept.
     void add(const RockFace& face);
@@ -91,6 +114,11 @@ inline constexpr float kRunCells = 4.0f;
 // their weights, the air the rivers carve in it taken out (their floor stepped by the faces of
 // their valley) and the levees they fill added.
 [[nodiscard]] float rockDensity(const RockColumn& column, double y, const RockDetail& detail);
+
+// The density of a spire alone at (dx, dz) meters from its axis, height y, as the detail draws
+// it (rockDensity is the least of it and of the relief with the faces).
+[[nodiscard]] float spireDensity(const RockSpire& spire, double dx, double dz, double y,
+                                 const RockDetail& detail);
 
 // How far a detail draws a face: its weight, faded out over runs of kRunCells to 1.5 times that
 // many cells. A column whose faces a detail does not draw is the relief alone there.
@@ -119,5 +147,34 @@ struct RockBounds {
 // detail draws of its faces on them, under their caps and in their undercuts, 0 elsewhere (the
 // material of the ground decides there).
 [[nodiscard]] float rockShare(const RockColumn& column, double y, const RockDetail& detail);
+
+// The bands of the rock of a column at height y for the materials (agent 33): what the cells of
+// the coarse tiles and of the horizon do not draw of its faces and its spire, each as a height
+// relative to y (linear in it within a bed: a triangle interpolates them between its vertices,
+// and the materials draw them at the same heights at every LOD).
+struct RockBands {
+    // Its beds: the coordinate of y among them (bed k from k to k + 1, k counted from a base
+    // that changes only every few hundred meters of height, the same for every column there),
+    // and how much they show, in [0, 1] (0: none).
+    float strata = 0.0f;
+    float layered = 0.0f;
+    // Its notch (the undercut at the foot of a face, the notch of a spire at the sea): y over its
+    // floor, inside it from 0 to notchHeight (0: none).
+    float notch = 0.0f;
+    float notchHeight = 0.0f;
+    // Its cap (the cornice at the top of a face): y over its underside, inside it from 0 to
+    // capHeight (0: none).
+    float cap = 0.0f;
+    float capHeight = 0.0f;
+
+    friend bool operator==(const RockBands&, const RockBands&) = default;
+};
+
+// The bands of a column at height y: those of its spire where it holds one, else those of its
+// face of the greatest weight, none without either. Its beds show where its rock has a grain (the
+// beds of a face: grainAt; a spire: its beds), its notch and its cap as deep as a few cells at
+// least would draw them (kBandLeast meters).
+[[nodiscard]] RockBands rockBands(const RockColumn& column, double y);
+inline constexpr float kBandLeast = 0.5f;
 
 } // namespace terrain

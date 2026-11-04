@@ -114,7 +114,8 @@ public:
 
     // The top of the generated rock at (x, z), meters, the edits aside: heightAt where no face
     // lies, else the highest height where the density of the LOD 0 tiles turns from air to rock
-    // (on an overhang, its top; in front of a cap, the ground under it). Thread-safe.
+    // (on an overhang, its top; in front of a cap, the ground under it); over a spire (the stacks
+    // of the coasts), where the density of their lattice does, as their mesh draws it. Thread-safe.
     [[nodiscard]] float groundAt(double x, double z) const;
 
     // Edits, thread-safe with generate. Each returns the chunks whose tiles must be generated

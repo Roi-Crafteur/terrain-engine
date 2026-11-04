@@ -22,6 +22,7 @@
 // - Out in the open sea none is.
 // - The samples of the rocks of a reef above the water are texels of the land of rock, and so
 //   are their blends.
+#include "coast_planet_support.hpp"
 #include "horizon_blend_texels.hpp"
 #include "horizon_mesh.hpp"
 #include "horizon_textures.hpp"
@@ -57,8 +58,9 @@ constexpr float kRockPrecision = 0.01f;
 constexpr double kTurnMedian = 30.0;
 constexpr double kTurnHigh = 50.0;
 
+// The default world with its planet file (coast_planet_support.hpp).
 struct World {
-    terrain::Heightfield field{kSeed};
+    const terrain::Heightfield& field = coast_planet::field();
     terrain::Ecology ecology{kSeed};
     terrain::HorizonParams params{};
     terrain::HorizonSampler sampler{field, ecology, params};

@@ -1,5 +1,7 @@
 #include "horizon_gpu_streamer.hpp"
 
+#include "terrain/streaming/horizon_bands.hpp"
+
 #include "horizon_mesh.hpp"
 
 #include <algorithm>
@@ -69,7 +71,13 @@ HorizonGpuStreamer::HorizonGpuStreamer(const Heightfield& field, const Ecology& 
       shown_(static_cast<std::size_t>(horizonParams_.levels)),
       detail_(detailStream(field, horizonParams_, params, launch)),
       runner_(sampler_, std::move(launch),
-              [sea = params.sea](const HorizonPiece& piece) { return pieceUploads(piece, sea); },
+              [sea = params.sea, rock = &field, levels = horizonParams_](
+                  const HorizonPiece& piece) {
+                  // The bands of the rock of its samples (agent 33), on the same job.
+                  return pieceUploads(piece, sea,
+                                      horizonBands(*rock, levels, piece.level, piece.rect,
+                                                   piece.cells));
+              },
               HorizonEpochParams{params.maxPiecesInFlight, kHorizonPieceSamples,
                                  params.progressive},
               edits) {}
@@ -99,11 +107,15 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
             epochStart_.reset();
         }
         for (const PreparedPiece& piece : commit.pieces) {
-            // pieceUploads: the texels, then the water levels, then the blend channels.
+            // pieceUploads: the texels, then the water levels, then the blend channels, then
+            // the bands.
             const std::span<const float> data(piece.data);
             const auto cells = static_cast<std::size_t>(piece.rect.count());
             const std::size_t texels = std::min(data.size(), cells * kTexelFloats);
             const std::size_t water = std::min(data.size() - texels, cells);
+            const std::size_t blends = std::min(data.size() - texels - water,
+                                                cells * static_cast<std::size_t>(kBlendChannels));
+            const std::size_t bands = data.size() - texels - water - blends;
             for (TexelRegion& region :
                  texelRegions(piece.level, side(), piece.rect, data.first(texels))) {
                 result.regions.push_back(std::move(region));
@@ -113,8 +125,14 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
                 result.waterRegions.push_back(std::move(region));
             }
             for (BlendRegion& region : blendRegions(piece.level, side(), piece.rect,
-                                                    data.subspan(texels + water))) {
+                                                    data.subspan(texels + water, blends))) {
                 result.blendRegions.push_back(std::move(region));
+            }
+            if (bands > 0) {
+                for (TexelRegion& region : texelRegions(piece.level, side(), piece.rect,
+                                                        data.subspan(texels + water + blends))) {
+                    result.bandRegions.push_back(std::move(region));
+                }
             }
         }
         if (detail_) {

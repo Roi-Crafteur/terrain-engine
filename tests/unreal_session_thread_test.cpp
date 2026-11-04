@@ -75,7 +75,7 @@ void testCheckOnThread() {
 // given once, the same as read on this thread; a read asked again or forgotten is never given.
 void testGroundRead() {
     const TerrainSession session(smallSession());
-    const terrain::Heightfield& field = session.tiles().heightfield();
+    const terrain::TerrainTiles& field = session.tiles();
     GroundRead read;
     TEST_CHECK(!read.pending() && !read.poll().has_value());
     read.ask(field, 1000.0, -2000.0);
@@ -96,8 +96,9 @@ void testGroundRead() {
     TEST_CHECK(!read.pending() && !read.poll().has_value());
 }
 
-// The level to stand at: the ground on dry land, the surface of the water over it elsewhere (the
-// sea, a lake, a river): a pawn placed there is never under the water.
+// The level to stand at: the ground on dry land (the top of the rock of the tiles), the surface of
+// the water over it elsewhere (the sea, a lake, a river): a pawn placed there is never under the
+// water.
 void testStandLevel() {
     const TerrainSession session(smallSession());
     const terrain::Heightfield& field = session.tiles().heightfield();
@@ -107,11 +108,11 @@ void testStandLevel() {
         const double x = -1.5e6 + 125000.0 * i;
         const double z = 0.37 * x + 2500.0;
         const terrain::HeightSample sample = field.sampleAt(x, z);
-        const GroundLevel level = terrain::unreal::groundLevelAt(field, x, z);
-        TEST_CHECK(level.ground == static_cast<double>(sample.height));
+        const GroundLevel level = terrain::unreal::groundLevelAt(session.tiles(), x, z);
+        TEST_CHECK(level.ground == static_cast<double>(session.tiles().groundAt(x, z)));
         TEST_CHECK(level.stand >= level.ground);
         if (sample.water != terrain::WaterKind::None &&
-            sample.waterLevel > sample.height) {
+            static_cast<double>(sample.waterLevel) > level.ground) {
             ++wet;
             TEST_CHECK(level.stand == static_cast<double>(sample.waterLevel));
         } else {

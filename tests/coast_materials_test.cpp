@@ -10,6 +10,7 @@
 //   there and on the reefs.
 // - The reefs of bare rock: every texel of the tiles of LOD 0 and 1 over a rock of the reefs
 //   (above the water) is rock, no sand, grass or water, down to the water.
+#include "coast_planet_support.hpp"
 #include "terrain/chunk_coord.hpp"
 #include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/coast.hpp"
@@ -28,13 +29,12 @@ namespace {
 
 using terrain::SurfaceMaterial;
 
-constexpr std::uint64_t kSeed = terrain::kDefaultWorldSeed;
 // Texels per side of a tile.
 constexpr int kTexels = terrain::kChunkCells / terrain::kTileBlendStride + 1;
 
+// The default world with its planet file (coast_planet_support.hpp).
 const terrain::TerrainTiles& tiles() {
-    static const terrain::TerrainTiles t(kSeed);
-    return t;
+    return coast_planet::tiles();
 }
 
 double heightAt(double x, double z) {

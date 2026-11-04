@@ -18,6 +18,7 @@
 // - Along the coasts of the cliffs: the height of their top, from a few meters to the highest,
 //   with no regular pattern (once its autocorrelation has fallen below 0, it never comes back
 //   above kRebound).
+#include "coast_planet_support.hpp"
 #include "coast_shape.hpp"
 #include "relief_local.hpp"
 
@@ -41,6 +42,7 @@
 #include <functional>
 #include <map>
 #include <numbers>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -104,9 +106,12 @@ void testLaw() {
     TEST_CHECK(terrain::coast_shape::faceSlopeLimit(1000.0) == 3.0);
 }
 
+// The tiles of the relief alone (no rock in three dimensions): the faces in two dimensions, as the
+// tiles draw them where their rock is not drawn (the LOD too coarse for a face, the faces too low)
+// and as the horizon samples them; the faces in three dimensions of the coasts have their own
+// checks (coast_rock_test).
 const terrain::TerrainTiles& tiles() {
-    static const terrain::TerrainTiles t(kSeed);
-    return t;
+    return coast_planet::reliefTiles(); // the default world with its planet file
 }
 
 const Heightfield& field() {
@@ -208,7 +213,9 @@ std::vector<Place> findFaces() {
         p.kind = c.kind;
         const bool high = p.kind == CoastKind::Cliff && at + 1 != wanted.end() &&
                           (at + 1)->kind == CoastKind::Cliff;
-        if (!faceOf(p) || (high && p.height < kHighCliff)) {
+        // Not in the valley of a river (the relief without the coasts there).
+        if (!faceOf(p) || (high && p.height < kHighCliff) ||
+            coast_planet::nearRiver(p.x, p.z) || coast_planet::nearRiver(p.shoreX, p.shoreZ)) {
             continue;
         }
         found.push_back(p);

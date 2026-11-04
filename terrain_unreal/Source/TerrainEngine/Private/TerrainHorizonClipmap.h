@@ -133,6 +133,9 @@ private:
 	TArray<TObjectPtr<UTexture2D>> BlendTextures; // the surface blends, one per level
 
 	UPROPERTY()
+	TArray<TObjectPtr<UTexture2D>> BandTextures; // the bands of the rock, one per level
+
+	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them
 
 	UPROPERTY()
