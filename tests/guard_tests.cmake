@@ -26,3 +26,21 @@ foreach(bench horizon_cost_bench horizon_blend_cost_bench map_cost_bench)
     target_link_libraries(${bench} PRIVATE terrain_core terrain_warnings)
     add_dependencies(check ${bench})
 endforeach()
+
+# The tests whose time was an absolute limit: each now proves the behavior it protects (a stop, an
+# order) or compares two times it measures itself, alone on the machine (RUN_SERIAL). Their goals in
+# time are printed by the test and checked only by a bench built from the same source with
+# TERRAIN_TIME_GOALS (time_goal_support.hpp), run by hand on a quiet machine: <test>_bench. The
+# goal of the Python watchdog: TERRAIN_TIME_GOALS=1 python -m unittest test_session.
+set_tests_properties(horizon_edits_cost_test unreal_horizon_edits_cost_test unreal_planet_job_test
+                     unreal_terrain_session_test PROPERTIES RUN_SERIAL TRUE)
+if(TEST verify_session_test)
+    set_tests_properties(verify_session_test PROPERTIES RUN_SERIAL TRUE)
+endif()
+foreach(timed horizon_edits_cost_test unreal_horizon_edits_cost_test unreal_planet_job_test
+        unreal_terrain_session_test)
+    add_executable(${timed}_bench ${timed}.cpp)
+    target_link_libraries(${timed}_bench PRIVATE terrain_unreal_bridge terrain_warnings)
+    target_compile_definitions(${timed}_bench PRIVATE TERRAIN_TIME_GOALS)
+    add_dependencies(check ${timed}_bench)
+endforeach()
