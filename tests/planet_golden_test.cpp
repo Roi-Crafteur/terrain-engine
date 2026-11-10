@@ -3,7 +3,8 @@
 
 #include "test_assert.hpp"
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     golden::report("planet level", golden::planetGoldenParts());
     return test::result();
 }

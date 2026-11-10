@@ -20,3 +20,12 @@ target_include_directories(volcano_positions_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 target_compile_definitions(volcano_positions_test PRIVATE
     TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
+# The goldens with the volcanoes on (golden_support.hpp: the same executables run with --flags
+# volcanoes), their values pinned for R1, which turns every new relief on together. Not in ctest:
+# the planet level of the default seed with them on, e1db9106a2b0b923 (terrain_make_planet, about
+# 90 s on 4 cores), and planet_file_test, whose bytes carry the versions R1 raises.
+foreach(golden heightfield_golden_test planet_golden_test planet_memory_test river_falls_test
+        hydrology_test water_level_test coast_outside_test mountain_freeze_test
+        unreal_determinism_check_test)
+    add_test(NAME ${golden}_volcanoes COMMAND ${golden} --flags volcanoes)
+endforeach()

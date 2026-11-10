@@ -75,10 +75,13 @@ void testLevel(const char* name, const terrain::HeightfieldParams& relief, int s
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     // The golden levels of planet_golden_test: the default relief with 2 x 2 samples per cell,
     // the scaled planetary relief with one.
-    testLevel("default relief", terrain::HeightfieldParams{}, 2, 0xCDBFA06D845540C8ULL);
-    testLevel("planetary relief", golden::smallPlanetaryParams(), 1, 0x4B75A8B9F9E442BFULL);
+    testLevel("default relief", golden::reliefParams(), 2,
+              golden::pick("volcanoes", 0xCDBFA06D845540C8ULL, 0x0C1281D1779D2A90ULL));
+    testLevel("planetary relief", golden::reliefParams(golden::smallPlanetaryParams()), 1,
+              0x4B75A8B9F9E442BFULL);
     return test::result();
 }

@@ -70,7 +70,7 @@ std::vector<terrain::RiverVertex> placesOutside(const World& w, Reaches& reaches
 // places, every bit of them.
 void testOutsideCorridors(const World& w, Reaches& reaches) {
     const std::vector<terrain::RiverVertex> places = placesOutside(w, reaches, 24);
-    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
+    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed, golden::reliefParams(),
                                       terrain::EcologyParams{}, std::nullopt,
                                       golden::kSmallPlanet, w.hydrology);
     golden::Checksum sum;
@@ -99,7 +99,9 @@ void testOutsideCorridors(const World& w, Reaches& reaches) {
         golden::addMesh(sum, tile.mesh);
         golden::addMesh(sum, tile.water);
     }
-    constexpr std::uint64_t kExpected = 0x2E197EA56775370AULL;
+    // The volcanoes (agent 45, the flag "volcanoes") move a river of the small world.
+    const std::uint64_t kExpected =
+        golden::pick("volcanoes", 0x2E197EA56775370AULL, 0x5F2A8B4F5A6B2C6AULL);
     std::printf("%zu places outside the corridors of the falls: "
                 "{\"outside the falls\", 0x%016" PRIX64 "ULL}%s\n",
                 places.size(), sum.value(), sum.value() == kExpected ? "" : "  (differs)");
@@ -326,7 +328,7 @@ void checkBlockTile(const terrain::TerrainTiles& tiles, const World& w,
 }
 
 void testBlocks(const World& w, Reaches& reaches, const std::vector<std::size_t>& steeps) {
-    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
+    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed, golden::reliefParams(),
                                       terrain::EcologyParams{}, std::nullopt,
                                       golden::kSmallPlanet, w.hydrology);
     BlockChecks c;
@@ -408,7 +410,8 @@ void testCorridorEnds(const World& w, Reaches& reaches, const std::vector<std::s
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     const World w = makeWorld();
     Reaches reaches(*w.hydrology);
     testOutsideCorridors(w, reaches);

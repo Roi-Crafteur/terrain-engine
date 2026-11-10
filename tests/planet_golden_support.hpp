@@ -105,13 +105,19 @@ inline std::vector<Part> planetParts(const std::array<const char*, 4>& names,
 inline std::vector<Part> planetGoldenParts() {
     std::vector<Part> parts = planetParts({"planet default relief", "planet default climate",
                                            "planet default hydrology", "planet default level"},
-                                          smallBuild(terrain::HeightfieldParams{}, 1, 2),
-                                          {0x3F4264CF06FB5493ULL, 0xAB9EB405E174EAA4ULL,
-                                           0x27B5C16AD4EC6D79ULL, 0xCDBFA06D845540C8ULL});
+                                          smallBuild(reliefParams(), 1, 2),
+                                          {pick("volcanoes", 0x3F4264CF06FB5493ULL,
+                                                0x32DCD88A5985AC1DULL),
+                                           pick("volcanoes", 0xAB9EB405E174EAA4ULL,
+                                                0xDDE0E95DC26C9A08ULL),
+                                           pick("volcanoes", 0x27B5C16AD4EC6D79ULL,
+                                                0x0DA1EA261734C76EULL),
+                                           pick("volcanoes", 0xCDBFA06D845540C8ULL,
+                                                0x0C1281D1779D2A90ULL)});
     const std::vector<Part> planetary =
         planetParts({"planet planetary relief", "planet planetary climate",
                      "planet planetary hydrology", "planet planetary level"},
-                    smallBuild(smallPlanetaryParams(), 1),
+                    smallBuild(reliefParams(smallPlanetaryParams()), 1),
                     {0x5567F4879C93953CULL, 0xC810421090695B0AULL, 0x3E2EEAEDCF06B9B4ULL,
                      0x4B75A8B9F9E442BFULL});
     parts.insert(parts.end(), planetary.begin(), planetary.end());

@@ -36,13 +36,14 @@ struct World {
 };
 
 World makeWorld() {
-    const Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
+    const Heightfield relief(terrain::kDefaultWorldSeed, golden::reliefParams(),
                              golden::kSmallPlanet);
     auto planet = std::make_shared<const terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(2)),
         golden::smallPlanetParams(2));
     auto hydrology =
-        std::make_shared<const Hydrology>(terrain::kDefaultWorldSeed, relief, planet);
+        std::make_shared<const Hydrology>(terrain::kDefaultWorldSeed, relief, planet,
+                                          golden::waterParams());
     return {relief, planet, hydrology, relief.withHydrology(hydrology)};
 }
 
@@ -222,18 +223,18 @@ std::optional<bool> dryBelow(const World& w, const RiverReach& reach,
     return std::nullopt;
 }
 
-// A known dry point (agent 45): the volcanoes changed the planet level, which moved the course of
-// this river (thirteen reaches of the nearest volcano away from it); 9 cm left of the middle of its
-// channel, down the face of one of its falls, the ground is dry. Only this point, at
-// these exact coordinates, is let through: any other dry point fails. À retirer par l'agent 31,
-// étape 1 ou 2.
+// A known dry point, with the volcanoes on (agent 45, the flag "volcanoes"; all of them at R1):
+// they change the planet level, which moves the course of this river (thirteen reaches of the
+// nearest volcano away from it); 9 cm left of the middle of its channel, down the face of one of
+// its falls, the ground is dry. Only this point, at these exact coordinates and with them on, is
+// let through: any other dry point fails. À retirer par l'agent 31, étape 1 ou 2.
 constexpr double kKnownDryX = 965046.27484900411;
 constexpr double kKnownDryZ = -324838.17140333529;
 constexpr double kKnownDrySide = 0.089200973510742188;
 constexpr float kKnownDryLevel = 258.543701171875f;
 
 bool knownDry(double x, double z, double side, float level) {
-    return std::abs(x - kKnownDryX) < 0.01 && std::abs(z - kKnownDryZ) < 0.01 &&
+    return golden::flagOn("volcanoes") && std::abs(x - kKnownDryX) < 0.01 && std::abs(z - kKnownDryZ) < 0.01 &&
            std::abs(side - kKnownDrySide) < 0.01 && level == kKnownDryLevel;
 }
 
@@ -370,7 +371,8 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
     }
     // The coasts (agent 33) change 1,702 of its 19,208 points, all in their band, out of the
     // corridors of the rivers (0x3F29B8BF9DA8A0BB without them).
-    constexpr std::uint64_t kExpected = 0xD2DFFB61145C27A3ULL;
+    const std::uint64_t kExpected =
+        golden::pick("volcanoes", 0xD2DFFB61145C27A3ULL, 0x0A4438D5531DA59AULL);
     std::printf("{\"hydrology of the small world\", 0x%016llXULL}%s\n",
                 static_cast<unsigned long long>(sum.value()),
                 sum.value() == kExpected ? "" : "  (differs)");
@@ -379,7 +381,8 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     const World w = makeWorld();
     const std::vector<std::array<double, 2>> points = pointsNearRivers(w, 8);
     testDeterminism(w, points);

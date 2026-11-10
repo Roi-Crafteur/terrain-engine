@@ -365,7 +365,8 @@ void testCaves(const World& w, const std::vector<std::array<double, 2>>& places,
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     const World w;
     Checks tiles;
     Checks horizon;
@@ -381,8 +382,11 @@ int main() {
     golden::report("water levels of the small world",
                    // The coasts (agent 33) change tiles of their band (0x0D969F30C054AF39
                    // without them, as the horizon and the caves).
-                   {{"tiles", tiles.sum.value(), 0x0AE9CB3DB169FB79ULL},
-                    {"horizon", horizon.sum.value(), 0xCB9F99936D89D887ULL},
+                   // The volcanoes (agent 45, the flag "volcanoes") change them too.
+                   {{"tiles", tiles.sum.value(),
+                     golden::pick("volcanoes", 0x0AE9CB3DB169FB79ULL, 0x395985CF70824ADBULL)},
+                    {"horizon", horizon.sum.value(),
+                     golden::pick("volcanoes", 0xCB9F99936D89D887ULL, 0xE686D9FA64BC49D0ULL)},
                     {"tiles with caves", caves.sum.value(), 0x00F88BBE88F2AFC5ULL}});
     return test::result();
 }
