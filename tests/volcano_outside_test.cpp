@@ -12,6 +12,7 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -267,7 +268,7 @@ void testHorizon(const terrain::TerrainTiles& on, const terrain::TerrainTiles& o
 } // namespace
 
 int main() {
-    const terrain::TerrainTiles on(terrain::kDefaultWorldSeed);
+    const terrain::TerrainTiles on(terrain::kDefaultWorldSeed, volcano_test::on());
     const terrain::TerrainTiles off(terrain::kDefaultWorldSeed, without());
     testSamples(on.heightfield(), off.heightfield());
     testBatches(on.heightfield());

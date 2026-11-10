@@ -10,6 +10,7 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 #include "volcano_zone_support.hpp"
 
 #include <algorithm>
@@ -108,7 +109,7 @@ void testNear(const terrain::TerrainTiles& tiles, const terrain::MapWorldSource&
 
 int main() {
     testDefault();
-    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed);
+    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed, volcano_test::on());
     const terrain::MapWorldSource source(tiles);
     const terrain::Volcanoes& v = *tiles.heightfield().volcanoes();
     testWhole(source, v);

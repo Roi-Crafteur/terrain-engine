@@ -15,6 +15,7 @@
 #include "bit_exact_support.hpp"
 #include "planet_golden_support.hpp"
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 
 #include <algorithm>
 #include <array>
@@ -37,7 +38,7 @@ constexpr double kPi = 3.14159265358979323846;
 
 // The small world of the planet tests with a hundred times as many volcanoes (376).
 terrain::HeightfieldParams manyVolcanoes() {
-    terrain::HeightfieldParams params;
+    terrain::HeightfieldParams params = volcano_test::on();
     params.volcanoes.referenceAreaKm2 = 2.2e7;
     return params;
 }
@@ -284,7 +285,7 @@ bool openToSea(const Heightfield& field, double x, double z, double crater) {
 // On the default world (its relief alone): the land of the islands is dry; the floor of an island
 // caldera below 0 m is the sea when the sea reaches it, dry land otherwise.
 void testIslands() {
-    const Heightfield field(terrain::kDefaultWorldSeed);
+    const Heightfield field(terrain::kDefaultWorldSeed, volcano_test::on());
     int land = 0;
     int sea = 0;
     int open = 0;

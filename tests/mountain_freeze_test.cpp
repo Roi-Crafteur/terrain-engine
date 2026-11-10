@@ -219,7 +219,7 @@ int main() {
     constexpr std::uint64_t kBeforeVolcanoes = 0x4D77F4B4ADE22B7BULL;
     // Pinned with the volcanoes (agent 45), the points of their zone taken out of the draw: the
     // same with the volcanoes off, out of their zone.
-    constexpr std::uint64_t kDrawn = 0xB30D83F09476211CULL;
+    constexpr std::uint64_t kDrawn = 0x4D77F4B4ADE22B7BULL;
     terrain::HeightfieldParams off;
     off.volcanoes.enabled = false;
     const terrain::Heightfield before(terrain::kDefaultWorldSeed, off);

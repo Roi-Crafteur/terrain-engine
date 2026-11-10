@@ -8,6 +8,7 @@
 #include "terrain/generation/volcanoes.hpp"
 
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 #include "volcano_measure_support.hpp"
 
 #include <algorithm>
@@ -201,7 +202,7 @@ void testNeighbors(const terrain::Heightfield& with, const terrain::Heightfield&
 } // namespace
 
 int main() {
-    const terrain::Heightfield with(terrain::kDefaultWorldSeed);
+    const terrain::Heightfield with(terrain::kDefaultWorldSeed, volcano_test::on());
     const terrain::Heightfield bare(terrain::kDefaultWorldSeed, without());
     testForms(with, bare);
     testLarge(with, bare);

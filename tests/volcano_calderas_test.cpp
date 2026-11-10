@@ -11,6 +11,7 @@
 #include "terrain/generation/volcanoes.hpp"
 
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -118,7 +119,7 @@ Walls wallsOf(const terrain::Heightfield& field, const terrain::VolcanoSite& s) 
 } // namespace
 
 int main() {
-    const terrain::Heightfield field(terrain::kDefaultWorldSeed);
+    const terrain::Heightfield field(terrain::kDefaultWorldSeed, volcano_test::on());
     int calderas = 0;
     int regular = 0;
     int caldera = 0;

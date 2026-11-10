@@ -16,6 +16,7 @@
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 
 #include <array>
 #include <cmath>
@@ -196,7 +197,7 @@ void testPlants() {
 // The tiles of LOD 0 on the bare ground of active lava fields and cinder fields: their blends show
 // rock, pebbles or mud.
 void testTiles() {
-    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed, {}, {}, std::nullopt, {},
+    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed, volcano_test::on(), {}, std::nullopt, {},
                                       nullptr, true, 0);
     int volcanic = 0;
     int texels = 0;
@@ -239,7 +240,7 @@ void testTiles() {
 } // namespace
 
 int main() {
-    const terrain::Heightfield field(terrain::kDefaultWorldSeed);
+    const terrain::Heightfield field(terrain::kDefaultWorldSeed, volcano_test::on());
     testGrounds(field);
     testMaterials();
     testPlants();

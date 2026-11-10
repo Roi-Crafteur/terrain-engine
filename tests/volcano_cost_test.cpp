@@ -9,6 +9,7 @@
 
 #include "cost_ratio_support.hpp"
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 #include "volcano_zone_support.hpp"
 
 #include <chrono>
@@ -31,8 +32,8 @@ terrain::HeightfieldParams without() {
 }
 
 struct Worlds {
-    terrain::TerrainTiles with{terrain::kDefaultWorldSeed, {}, {}, std::nullopt, {}, nullptr, true,
-                               0};
+    terrain::TerrainTiles with{terrain::kDefaultWorldSeed, volcano_test::on(), {}, std::nullopt,
+                               {}, nullptr, true, 0};
     terrain::TerrainTiles off{terrain::kDefaultWorldSeed, without(), {}, std::nullopt, {}, nullptr,
                               true, 0};
 };
@@ -127,7 +128,7 @@ void onVolcanoes(const Worlds& w) {
 
 void construction() {
     const auto start = std::chrono::steady_clock::now();
-    const terrain::Heightfield on(terrain::kDefaultWorldSeed + 1);
+    const terrain::Heightfield on(terrain::kDefaultWorldSeed + 1, volcano_test::on());
     const double a = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     const auto again = std::chrono::steady_clock::now();
     const terrain::Heightfield off(terrain::kDefaultWorldSeed + 1, without());

@@ -311,7 +311,9 @@ int main(int argc, char** argv) {
     const fs::path dir(argv[1]);
     const bool views = argc > 2 && std::string(argv[2]) == "--views";
     fs::create_directories(dir);
-    const terrain::Heightfield field(terrain::kDefaultWorldSeed);
+    terrain::HeightfieldParams on;
+    on.volcanoes.enabled = true; // off by default until R1
+    const terrain::Heightfield field(terrain::kDefaultWorldSeed, on);
     terrain::HeightfieldParams off;
     off.volcanoes.enabled = false;
     const terrain::Heightfield bare(terrain::kDefaultWorldSeed, off);

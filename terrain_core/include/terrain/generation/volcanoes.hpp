@@ -40,8 +40,10 @@ struct VolcanoParams {
         int max = 0;
         friend bool operator==(const Count&, const Count&) = default;
     };
-    // Off: no volcano, not even placed (the world before agent 45, bit for bit).
-    bool enabled = true;
+    // Off: no volcano, not even placed (the world before agent 45, bit for bit). Off by default
+    // until R1, the pull request that turns the relief of the agents of wave 9 on together; the
+    // flag "volcanoes" of the experimental flags turns it on before.
+    bool enabled = false;
     double referenceAreaKm2 = 2'101'000'000.0;
     Count volcanoes{3000, 6000};
     Count active{300, 800};

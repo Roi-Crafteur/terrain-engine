@@ -14,6 +14,7 @@
 
 #include "horizon_test_support.hpp"
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -266,7 +267,7 @@ void testLods(const terrain::TerrainTiles& tiles) {
 } // namespace
 
 int main() {
-    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed);
+    const terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed, volcano_test::on());
     testTops(tiles.heightfield());
     testSilhouettes(tiles);
     testFootprint(tiles.heightfield());

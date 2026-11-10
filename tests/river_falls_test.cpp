@@ -99,7 +99,7 @@ void testOutsideCorridors(const World& w, Reaches& reaches) {
         golden::addMesh(sum, tile.mesh);
         golden::addMesh(sum, tile.water);
     }
-    constexpr std::uint64_t kExpected = 0x5F2A8B4F5A6B2C6AULL;
+    constexpr std::uint64_t kExpected = 0x2E197EA56775370AULL;
     std::printf("%zu places outside the corridors of the falls: "
                 "{\"outside the falls\", 0x%016" PRIX64 "ULL}%s\n",
                 places.size(), sum.value(), sum.value() == kExpected ? "" : "  (differs)");

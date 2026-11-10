@@ -12,6 +12,7 @@
 #include "terrain/world_size.hpp"
 
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 
 #include <array>
 #include <bit>
@@ -85,7 +86,7 @@ bool sameSites(const std::vector<terrain::VolcanoSite>& a,
 
 void testThreads(const terrain::Heightfield& field) {
     const terrain::Geography& geo = *field.geography();
-    const terrain::VolcanoParams params;
+    const terrain::VolcanoParams params = volcano_test::onVolcanoes();
     const auto start = std::chrono::steady_clock::now();
     const terrain::Volcanoes one(kSeed, geo, params, 1);
     const double oneSeconds = secondsSince(start);
@@ -202,7 +203,7 @@ void testDisabled() {
 
 int main() {
     const auto start = std::chrono::steady_clock::now();
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, volcano_test::on());
     std::printf("default Heightfield with its volcanoes in %.2f s\n", secondsSince(start));
     TEST_CHECK(field.volcanoes() != nullptr);
     if (field.volcanoes() == nullptr) {

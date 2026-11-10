@@ -8,6 +8,7 @@
 
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
+#include "volcano_on_support.hpp"
 #include "water_level_support.hpp"
 
 #include <chrono>
@@ -68,11 +69,14 @@ void testLines(const water_level::World& world) {
         TEST_CHECK(lineOf(lines, label) != nullptr);
     }
     TEST_CHECK(contains(lines, "water", "river at"));
-    // The volcano whose reach holds a point (agent 45), and the ground it left there.
-    TEST_CHECK(lineOf(lines, "volcano") != nullptr);
-    const terrain::VolcanoSite& volcano = world.field().volcanoes()->sites().front();
+    // The volcanoes (agent 45) are off by default: no line; with them on, the volcano whose reach
+    // holds a point and the ground it left there.
+    TEST_CHECK(lineOf(lines, "volcano") == nullptr);
+    const terrain::Heightfield withVolcanoes(terrain::kDefaultWorldSeed, volcano_test::on(),
+                                             golden::kSmallPlanet);
+    const terrain::VolcanoSite& volcano = withVolcanoes.volcanoes()->sites().front();
     const terrain::VolcanoOffset summit = terrain::volcanoSummit(volcano);
-    const InfoQuery atVolcano{world.field(), world.tiles.ecology(), nullptr,
+    const InfoQuery atVolcano{withVolcanoes, world.tiles.ecology(), nullptr,
                               volcano.x + summit.dx, volcano.z + summit.dz, {}};
     const std::vector<InfoLine> volcanic = terrain::unreal::describePoint(atVolcano, providers);
     TEST_CHECK(contains(volcanic, "volcano", terrain::volcanoFormName(volcano.form)));
