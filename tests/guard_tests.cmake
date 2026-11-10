@@ -10,3 +10,9 @@
 set_tests_properties(coast_planet_file PROPERTIES
     PASS_REGULAR_EXPRESSION "\"checksum\": \"0x26626564570b0d9e\"")
 
+# The world as the game plays it (TerrainSession of the Bridge on the planet file of the fixture):
+# the tiles of LOD 0 to 3 and the far horizon at five places, and the checksum of the planet level,
+# bit for bit (played_world_golden_test.cpp).
+terrain_add_test(played_world_golden_test terrain_unreal_bridge)
+set_tests_properties(played_world_golden_test PROPERTIES
+    FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
