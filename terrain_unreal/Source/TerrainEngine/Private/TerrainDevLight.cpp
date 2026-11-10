@@ -7,10 +7,15 @@
 //   without arguments, the sun of the first one. A light that is not movable is left as it is.
 // - Terrain.HorizonShadows <levels>: the levels of the GPU horizon that cast shadows
 //   (FTerrainHorizonDrawing::ShadowLevels, 0 to 4), to compare their look and their cost.
+// - Terrain.Fog <density> [end km] [height falloff]: the ExponentialHeightFog of the world (its
+//   density, the distance where it stops gathering, its falloff with the height), to find what
+//   takes the blue band off the far ground seen from high up without losing the haze of the
+//   views from the ground (points 6 and 7 of the orchestrator); without arguments, logs them.
 #include "TerrainHorizonClipmap.h"
 
 #if TERRAIN_DEV_TOOLS
 
+#include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/World.h"
@@ -105,6 +110,52 @@ namespace
 			Levels - 1);
 	}
 
+	// Terrain.Fog [<density> [end km] [height falloff]]
+	void RunTerrainFog(const TArray<FString>& Args, UWorld* World)
+	{
+		if (World == nullptr)
+		{
+			return;
+		}
+		for (const FString& Arg : Args)
+		{
+			if (!Arg.IsNumeric())
+			{
+				UE_LOG(LogTerrainEngine, Warning,
+					TEXT("Terrain.Fog [<density> [end km] [height falloff]]"));
+				return;
+			}
+		}
+		int32 Fogs = 0;
+		for (TObjectIterator<UExponentialHeightFogComponent> It; It; ++It)
+		{
+			if (It->GetWorld() != World)
+			{
+				continue;
+			}
+			++Fogs;
+			if (Args.Num() > 0)
+			{
+				It->SetFogDensity(FCString::Atof(*Args[0]));
+			}
+			if (Args.Num() > 1)
+			{
+				It->SetEndDistance(FCString::Atof(*Args[1]) * 1.0e5f);
+			}
+			if (Args.Num() > 2)
+			{
+				It->SetFogHeightFalloff(FCString::Atof(*Args[2]));
+			}
+			UE_LOG(LogTerrainEngine, Log,
+				TEXT("Terrain.Fog: %s, density %g, end %.1f km (0: none), height falloff %g"),
+				*It->GetName(), It->FogDensity, It->EndDistance / 1.0e5, It->FogHeightFalloff);
+		}
+		if (Fogs == 0)
+		{
+			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.Fog: no ExponentialHeightFog in the world"));
+		}
+	}
+
 	FAutoConsoleCommandWithWorldAndArgs TerrainSunCommand(TEXT("Terrain.Sun"),
 		TEXT("Turns the sun: Terrain.Sun <elevation> <heading> (degrees above the horizon, degrees "
 			 "clockwise from the north); without arguments, logs it"),
@@ -115,6 +166,11 @@ namespace
 		TEXT("The levels of the far horizon that cast shadows, finest first: "
 			 "Terrain.HorizonShadows <0 to 4>"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainHorizonShadows));
+
+	FAutoConsoleCommandWithWorldAndArgs TerrainFogCommand(TEXT("Terrain.Fog"),
+		TEXT("The height fog of the world: Terrain.Fog <density> [end km] [height falloff]; "
+			 "without arguments, logs it"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainFog));
 } // namespace
 
 #endif // TERRAIN_DEV_TOOLS
