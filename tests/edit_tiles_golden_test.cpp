@@ -12,6 +12,10 @@
 // The parts of LOD 0 ("lod 0", "lod 0 stitched", "caves lod 0", "wrap") were pinned again when the
 // normals of the vertices the edits move turned toward the smoothed share of the edited blocks
 // (agent 41, tile_edits.hpp: lightEdits): their normals only, every vertex kept its position.
+// Every part but "lod 0" was pinned again when the tiles of LOD 1 to 3 came to read the edits by
+// the cells of their lattice points (agent 41, edit_coarse.hpp: the cover of the cells and the
+// relay of the small edits), and the stitched sides of the finer tiles as the coarser LOD reads
+// them: the unstitched tiles of LOD 0 kept their bits.
 #include "terrain/storage/modifications.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
@@ -132,8 +136,8 @@ void testWithoutCaves() {
     editCorner(tiles, c.x * 16, c.z * 16);
     std::vector<golden::Part> parts = cornerParts(tiles, c);
     checkEdited(parts, unedited);
-    setExpected(parts, {0x255698AA1DB72EA9ULL, 0xD77F95E7E33462A7ULL, 0xCF40016B6F105602ULL,
-                        0x717A3CD617B1273EULL, 0xE30C6995B6D563B2ULL});
+    setExpected(parts, {0x255698AA1DB72EA9ULL, 0xA26F6769BC6267FFULL, 0x6B2265593D3A5458ULL,
+                        0x95467F109D9D7814ULL, 0xDA16D05275639F86ULL});
     golden::report("tiles edited block by block, without caves", parts);
 }
 
@@ -149,7 +153,7 @@ void testWithCaves() {
     std::vector<golden::Part> parts = {{"caves lod 0", tilesChecksum(tiles, lod0), 0},
                                        {"caves lod 1", tilesChecksum(tiles, lod1), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x235DA6B09D3CD4CCULL, 0x5C8A9BF5F9979AC8ULL});
+    setExpected(parts, {0x491E084064A1F76CULL, 0xDCAF99855E61E86EULL});
     golden::report("tiles edited block by block, with caves", parts);
 }
 
@@ -169,7 +173,7 @@ void testAcrossTheEdge() {
     editCorner(tiles, count.x * 8, kRow * 16 + 8);
     std::vector<golden::Part> parts = {{"wrap", tilesChecksum(tiles, requests), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x8F92836EB1696B62ULL});
+    setExpected(parts, {0x6D229334A88ED255ULL});
     golden::report("tiles edited block by block, across the edge of the world", parts);
 }
 

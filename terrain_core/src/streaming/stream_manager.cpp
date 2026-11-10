@@ -5,6 +5,7 @@
 #include <limits>
 #include <stdexcept>
 #include <tuple>
+#include <unordered_set>
 #include <utility>
 
 namespace terrain {
@@ -18,6 +19,34 @@ bool overlapsAny(const TileKey& tile, std::span<const ChunkCoord> chunks) {
     return std::any_of(chunks.begin(), chunks.end(),
                        [&tile](ChunkCoord chunk) { return tileContains(tile, chunk); });
 }
+
+// The tiles the edits of some chunks change. A tile of LOD 0 reads the blocks within kBlockReach
+// of its lattice, which the chunks of an edit already cover. The other tiles, and the sides of a
+// tile of LOD 0 stitched to a coarser one, read them up to 12 m beyond (agent 41, tile_edits.hpp:
+// editReach): the tiles within a chunk of one.
+class ReachedTiles {
+public:
+    ReachedTiles(std::span<const ChunkCoord> chunks, const WorldSize& world) {
+        for (const ChunkCoord chunk : chunks) {
+            held_.insert({wrapChunk(chunk, world), 0}); // a tile of LOD 0 is its chunk
+            for (int dz = -1; dz <= 1; ++dz) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const ChunkCoord near = wrapChunk({chunk.x + dx, chunk.z + dz}, world);
+                    for (int lod = 0; lod < kLodCount; ++lod) {
+                        near_.insert(tileContaining(near, lod));
+                    }
+                }
+            }
+        }
+    }
+    [[nodiscard]] bool reaches(const TileKey& key, unsigned seams) const {
+        return key.lod == 0 && seams == 0 ? held_.contains(key) : near_.contains(key);
+    }
+
+private:
+    std::unordered_set<TileKey, TileKeyHash> held_; // the tiles of LOD 0 of the chunks
+    std::unordered_set<TileKey, TileKeyHash> near_; // the tiles within a chunk, every LOD
+};
 
 // Unloading order, for deterministic changes.
 bool keyOrder(const TileKey& a, const TileKey& b) {
@@ -139,6 +168,22 @@ void StreamManager::invalidate(std::span<const ChunkCoord> chunks) {
     }
     for (auto& [key, loaded] : loaded_) {
         if (overlapsAny(key, canonical)) {
+            loaded.ticket = kStale;
+        }
+    }
+    rebuildQueue();
+}
+
+void StreamManager::invalidateEdits(std::span<const ChunkCoord> chunks) {
+    const ReachedTiles reached(chunks, params_.world);
+    for (auto& [key, wanted] : wanted_) {
+        if (reached.reaches(key, wanted.request.seams)) {
+            wanted.ticket = nextTicket_++;
+        }
+    }
+    for (auto& [key, loaded] : loaded_) {
+        const unsigned seams = loaded.data != nullptr ? loaded.data->request.seams : 0U;
+        if (reached.reaches(key, seams)) {
             loaded.ticket = kStale;
         }
     }

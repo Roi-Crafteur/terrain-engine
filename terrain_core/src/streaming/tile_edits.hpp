@@ -6,6 +6,7 @@
 
 #include "terrain/meshing/density_grid.hpp"
 #include "terrain/meshing/mesh.hpp"
+#include "terrain/storage/edit_coarse.hpp"
 #include "terrain/storage/edit_window.hpp"
 #include "tile_lattice.hpp"
 
@@ -15,36 +16,44 @@
 
 namespace terrain::tile {
 
+// Meters from the lattice of a tile to the farthest block its edited density reads: kBlockReach
+// at LOD 0, CoarseEdits::reach of its spacing beyond; on its stitched sides, the reach of the
+// lattice of the coarser LOD (seams: TileSeam bits).
+[[nodiscard]] int editReach(int lod, unsigned seams);
+
 // Levels holding the ground of the columns, the caves down to caveDepth below it, or a lattice
-// point an edited block reaches.
+// point an edited block reaches (within reach meters of it).
 [[nodiscard]] std::vector<int> levelsToMesh(const TileColumns& columns, const EditWindow& edits,
-                                            int height, double caveDepth);
+                                            int height, double caveDepth, int reach);
 
 // True if the edits leave no surface in the level: every block within reach of its samples lies
 // in filled sections of one edit, or the level lies above the ground without an added block
 // within reach (all air), or under it without a removed one (all rock). Tiles without caves
 // only: the caves carve the rock.
 [[nodiscard]] bool filledLevel(const EditWindow& edits, const TileLattice& lattice,
-                               const TileColumns& columns, int originY);
+                               const TileColumns& columns, int originY, int reach);
 
-// The edits of a level: the blocks around each of its samples, and how they changed each sample
-// (kRaised by removed blocks, kLowered by added ones, kKept otherwise), sample (i, j, k) at
-// (k * kGridSamples + j) * kGridSamples + i.
+// The edits of a level: the blocks around each of its samples (LOD 0), and how they changed each
+// sample (kRaised by removed blocks, kLowered by added ones, kKept otherwise), sample (i, j, k)
+// at (k * kGridSamples + j) * kGridSamples + i.
 struct LevelEdits {
     static constexpr std::int8_t kKept = 0;
     static constexpr std::int8_t kRaised = 1;
     static constexpr std::int8_t kLowered = -1;
 
-    EditLattice blocks;
+    std::optional<EditLattice> blocks; // LOD 0 only
     std::vector<std::int8_t> changes;
     int spacing = 1;
 };
 
-// Applies the edits to the density of a level, every added block first, then every removed one,
-// as ModificationStore::editedDensity. Returns what they changed, or nothing when no edited block
+// Applies the edits to the density of a level, every added block first, then every removed one:
+// block by block at LOD 0 (ModificationStore::editedDensity), by the cells of the coarse lattices
+// beyond (CoarseEdits); the even samples of the stitched sides (seams) as the coarser LOD gives
+// them, which stitchSeams needs. Returns what they changed, or nothing when no edited block
 // reaches the level (the grid kept bit for bit).
 [[nodiscard]] std::optional<LevelEdits> applyBlocks(DensityGrid& grid, const TileLattice& lattice,
-                                                    int originY, const EditWindow& edits);
+                                                    int originY, const EditWindow& edits, int lod,
+                                                    unsigned seams);
 
 // The normals of the vertices of a level of LOD 0 (its mesh in cells, lit as the tile lights it)
 // on an edge with a sample the edits changed: turned toward the gradient of the smoothed share of

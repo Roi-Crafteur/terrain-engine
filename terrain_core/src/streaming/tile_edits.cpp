@@ -46,7 +46,7 @@ VertexEdge edgeOf(const Vec3f& v) {
 // The direction of the air of the edits at a changed sample: up the smoothed share of the
 // removed blocks, or down that of the added ones (the density rises away from them).
 std::array<float, 3> editDirection(const LevelEdits& edits, std::size_t at, int i, int j, int k) {
-    const auto [removed, added] = edits.blocks.blocksAround(i, j, k);
+    const auto [removed, added] = edits.blocks->blocksAround(i, j, k);
     const bool raised = edits.changes[at] == LevelEdits::kRaised;
     const std::array<float, 3> g = edit_cubes::shareGradient(raised ? removed : added);
     return raised ? g : std::array<float, 3>{-g[0], -g[1], -g[2]};
@@ -58,27 +58,54 @@ Vec3f normalized(float x, float y, float z, bool& ok) {
     return ok ? Vec3f{x / length, y / length, z / length} : Vec3f{};
 }
 
+// The sample (i, j, k) is an even sample of a stitched side: the coarser neighbor samples it.
+bool coarseSample(int i, int j, int k, unsigned seams) {
+    if (j % 2 != 0) {
+        return false;
+    }
+    const bool lowX = i == 0;
+    const bool highX = i == kLast;
+    const bool lowZ = k == 0;
+    const bool highZ = k == kLast;
+    const bool evenX = i % 2 == 0;
+    const bool evenZ = k % 2 == 0;
+    const auto has = [seams](unsigned bit) { return (seams & bit) != 0; };
+    return (has(kSeamNegX) && lowX && evenZ) || (has(kSeamPosX) && highX && evenZ) ||
+           (has(kSeamNegZ) && lowZ && evenX) || (has(kSeamPosZ) && highZ && evenX) ||
+           (has(kSeamNegXNegZ) && lowX && lowZ) || (has(kSeamPosXNegZ) && highX && lowZ) ||
+           (has(kSeamNegXPosZ) && lowX && highZ) || (has(kSeamPosXPosZ) && highX && highZ);
+}
+
 } // namespace
 
+int editReach(int lod, unsigned seams) {
+    const auto spacing = static_cast<int>(tileCellMeters(lod));
+    const int own =
+        lod == 0 ? kBlockReach : CoarseEdits::reach(spacing, CoarseEdits::relayOfLod(lod));
+    if (seams == 0 || lod >= kMaxLod) {
+        return own;
+    }
+    return std::max(own, CoarseEdits::reach(2 * spacing, CoarseEdits::relayOfLod(lod + 1)));
+}
+
 std::vector<int> levelsToMesh(const TileColumns& columns, const EditWindow& edits, int height,
-                              double caveDepth) {
+                              double caveDepth, int reach) {
     std::set<int> levels;
     addLevels(levels, columns.minHeight - caveDepth, columns.maxHeight, height);
     // The edited blocks of a section span its edited heights: their levels are those of its
     // lowest and highest blocks and every level between, as block by block.
     for (const auto& [low, high] : edits.editedSpans()) {
-        addLevels(levels, low - kBlockReach, high + kBlockReach, height);
+        addLevels(levels, low - reach, high + reach, height);
     }
     return {levels.begin(), levels.end()};
 }
 
 bool filledLevel(const EditWindow& edits, const TileLattice& lattice, const TileColumns& columns,
-                 int originY) {
+                 int originY, int reach) {
     const int side = lattice.levelHeight;
-    const BlockCoord min{lattice.x0 - kBlockReach, originY - kBlockReach,
-                         lattice.z0 - kBlockReach};
-    const BlockCoord max{lattice.x0 + side + kBlockReach, originY + side + kBlockReach,
-                         lattice.z0 + side + kBlockReach};
+    const BlockCoord min{lattice.x0 - reach, originY - reach, lattice.z0 - reach};
+    const BlockCoord max{lattice.x0 + side + reach, originY + side + reach,
+                         lattice.z0 + side + reach};
     if (static_cast<double>(originY) > columns.maxHeight &&
         !edits.holds(BlockEdit::Added, min, max)) {
         return true;
@@ -91,9 +118,26 @@ bool filledLevel(const EditWindow& edits, const TileLattice& lattice, const Tile
 }
 
 std::optional<LevelEdits> applyBlocks(DensityGrid& grid, const TileLattice& lattice, int originY,
-                                      const EditWindow& edits) {
-    EditLattice samples(edits, lattice.x0, originY, lattice.z0, lattice.spacing, kGridSamples);
-    if (samples.empty()) {
+                                      const EditWindow& edits, int lod, unsigned seams) {
+    const int s = lattice.spacing;
+    std::optional<EditLattice> fine;
+    std::optional<CoarseEdits> coarse;
+    std::optional<CoarseEdits> sides;
+    if (lod == 0) {
+        fine.emplace(edits, lattice.x0, originY, lattice.z0, s, kGridSamples);
+    } else {
+        coarse.emplace(edits, lattice.x0, originY, lattice.z0, s,
+                       std::array<int, 3>{kGridSamples, kGridSamples, kGridSamples},
+                       CoarseEdits::relayOfLod(lod));
+    }
+    if (seams != 0 && lod < kMaxLod) {
+        constexpr int kCoarse = kGridSamples / 2 + 1;
+        sides.emplace(edits, lattice.x0, originY, lattice.z0, 2 * s,
+                      std::array<int, 3>{kCoarse, kCoarse, kCoarse},
+                      CoarseEdits::relayOfLod(lod + 1));
+    }
+    const bool own = fine ? !fine->empty() : !coarse->empty();
+    if (!own && (!sides || sides->empty())) {
         return std::nullopt;
     }
     std::vector<std::int8_t> changes(static_cast<std::size_t>(kGridSamples) * kGridSamples *
@@ -103,7 +147,11 @@ std::optional<LevelEdits> applyBlocks(DensityGrid& grid, const TileLattice& latt
         for (int j = 0; j < kGridSamples; ++j) {
             for (int i = 0; i < kGridSamples; ++i) {
                 const float generated = grid.at(i, j, k);
-                const float edited = samples.density(generated, i, j, k);
+                float edited = fine ? fine->density(generated, i, j, k)
+                                    : coarse->density(generated, i, j, k);
+                if (sides && coarseSample(i, j, k, seams)) {
+                    edited = sides->density(generated, i / 2, j / 2, k / 2);
+                }
                 grid.set(i, j, k, edited);
                 if (edited != generated) {
                     changes[sampleAt(i, j, k)] =
@@ -112,11 +160,14 @@ std::optional<LevelEdits> applyBlocks(DensityGrid& grid, const TileLattice& latt
             }
         }
     }
-    return LevelEdits{std::move(samples), std::move(changes), lattice.spacing};
+    if (fine && fine->empty()) {
+        fine.reset();
+    }
+    return LevelEdits{std::move(fine), std::move(changes), s};
 }
 
 void lightEdits(Mesh& level, const LevelEdits& edits) {
-    if (edits.spacing != 1) {
+    if (edits.spacing != 1 || !edits.blocks) {
         return;
     }
     for (std::size_t n = 0; n < level.vertices.size(); ++n) {

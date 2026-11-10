@@ -59,7 +59,9 @@ std::optional<double> tileTop(const TerrainTiles& tiles, int x, int z) {
 }
 
 std::optional<float> columnGround(const TerrainTiles& tiles, int x, int z) {
-    const terrain::EditWindow window = tiles.editWindow(x - 1, x + 1, z - 1, z + 1);
+    constexpr int kReach = terrain::kEditColumnReach; // the blocks a column reads (agent 41)
+    const terrain::EditWindow window =
+        tiles.editWindow(x - kReach, x + kReach, z - kReach, z + kReach);
     return terrain::editedColumnGround(window, tiles.heightfield().heightAt(x, z), x, z);
 }
 

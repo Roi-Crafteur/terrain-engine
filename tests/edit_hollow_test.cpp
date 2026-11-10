@@ -153,7 +153,8 @@ Hollow breakGround(double x, double z, std::uint16_t sixteenths, bool expectRoun
     terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed);
     const double ground = tiles.heightfield().heightAt(x, z);
     terrain::unreal::BuildHit hit{{x, ground, z}, {0.0, 1.0, 0.0}, 3.0};
-    VolumeEdit edit = terrain::unreal::buildTarget(hit, BuildTool::Sphere4, BuildAction::Break).edit;
+    VolumeEdit edit =
+        terrain::unreal::buildTarget(hit, BuildTool::Sphere4, BuildAction::Break).edit;
     edit.radius = sixteenths;
     const terrain::TileKey key{chunkOf(x, z), 0};
     const TileData before = tiles.generate({key, 0});
@@ -169,7 +170,8 @@ Hollow breakGround(double x, double z, std::uint16_t sixteenths, bool expectRoun
         return after.originY + v.y < old - kRimDepth;
     });
     std::printf("radius %.4f m at (%.1f, %.1f), ground %.2f m: %d vertices, %.2f m out, %.2f m "
-                "in, normals turn %.1f degrees, %.1f from the center (%.1f at most); %d lone blocks\n",
+                "in, normals turn %.1f degrees, %.1f from the center (%.1f at most); %d lone "
+                "blocks\n",
                 radius, x, z, ground, h.vertices, h.out, h.in, h.turn, h.radialMean, h.radialMax,
                 loneBlocks(edit));
     TEST_CHECK(h.vertices > 10);

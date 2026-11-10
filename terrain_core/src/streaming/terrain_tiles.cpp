@@ -245,13 +245,14 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     data.minHeight = columns.minHeight;
     data.maxHeight = columns.maxHeight;
     data.surfaceBlend = tile::blendTexels(field, ecology_, lattice, columns);
+    // The blocks the edited density of the tile reads (tile_edits.hpp: editReach).
+    const int reach = tile::editReach(request.key.lod, request.seams);
     EditWindow edits;
     {
         const std::shared_lock lock(mutex_);
-        edits =
-            blocksAround(modifications_, lattice.x0 - kBlockReach,
-                         lattice.x0 + lattice.levelHeight + kBlockReach, lattice.z0 - kBlockReach,
-                         lattice.z0 + lattice.levelHeight + kBlockReach, world());
+        edits = blocksAround(modifications_, lattice.x0 - reach,
+                             lattice.x0 + lattice.levelHeight + reach, lattice.z0 - reach,
+                             lattice.z0 + lattice.levelHeight + reach, world());
         if (request.key.lod == kPlantLod) {
             data.plants = placeChunkPlants(field_, ecology_, lattice.x0, lattice.z0);
             dropPlants(carved ? &*caves_ : nullptr, caveGround_, lattice,
@@ -262,7 +263,7 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     }
     const double caveDepth = carved ? tile::caveDepthReach(*caves_, lattice) : 0.0;
     const std::vector<int> levels =
-        tile::levelsToMesh(columns, edits, lattice.levelHeight, caveDepth);
+        tile::levelsToMesh(columns, edits, lattice.levelHeight, caveDepth, reach);
     const int bottom = levels.front() * lattice.levelHeight; // the ground always has a level
     data.originY = bottom;
     std::optional<tile::CaveTile> caveTile;
@@ -273,14 +274,14 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
     const auto scale = static_cast<float>(lattice.spacing);
     for (const int level : levels) {
         const int originY = level * lattice.levelHeight;
-        if (!caveTile && tile::filledLevel(edits, lattice, columns, originY)) {
+        if (!caveTile && tile::filledLevel(edits, lattice, columns, originY, reach)) {
             continue; // inside a filled or emptied volume: no surface
         }
         DensityGrid grid = caveTile   ? caveTile->levelDensity(originY)
                            : rockTile ? rockTile->levelDensity(originY)
                                       : tile::levelDensity(columns, lattice, originY);
         const std::optional<tile::LevelEdits> levelEdits =
-            tile::applyBlocks(grid, lattice, originY, edits);
+            tile::applyBlocks(grid, lattice, originY, edits, request.key.lod, request.seams);
         stitchSeams(grid, request.seams);
         const auto offsetY = static_cast<float>(originY - bottom);
         if (caveTile && caveTile->holdsWater()) {

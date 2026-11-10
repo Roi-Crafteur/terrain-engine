@@ -226,6 +226,11 @@ public:
     // Renews the tickets of the selected tiles overlapping these chunks (and marks the loaded
     // ones stale): they are generated again, their old data shown until the new one is loaded.
     void invalidate(std::span<const ChunkCoord> chunks);
+    // The same for the tiles the edits of these chunks reach (the chunks an edit returns): those
+    // holding a chunk and, as their lattices read the edits beyond their cells (tile_edits.hpp:
+    // editReach), the tiles of LOD 1 to 3 and the tiles of LOD 0 stitched to a coarser one within
+    // a chunk of one (agent 41).
+    void invalidateEdits(std::span<const ChunkCoord> chunks);
 
     // Data of a loaded tile, or nullptr. Valid until the next update or invalidate.
     [[nodiscard]] const TileData* find(const TileKey& key) const;

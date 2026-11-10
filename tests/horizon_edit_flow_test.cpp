@@ -345,8 +345,10 @@ void testDeterminism() {
         sums.push_back(contentChecksum(session.streamer.clipmap()));
     }
     TEST_CHECK(sums[0] == sums[1]);
+    // Pinned again when the columns of level 0 came to read the edits by the cells of the LOD 3
+    // lattice, as the tiles of LOD 3 do (agent 41, edit_coarse.hpp).
     golden::report("the horizon with a razed mountain, a crater and a heap",
-                   {{"edited horizon", sums[0], 0x75963890668CF506ULL}});
+                   {{"edited horizon", sums[0], 0xE2CB2F6FE45F88B1ULL}});
 }
 
 } // namespace
