@@ -366,6 +366,25 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   et côtière (falaises marines, arches, stacks)
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
+- plateaux, mesas, karst et pitons (agent 46, en cours) : derrière `GeographyParams::tablelands` et
+  `karst`, éteints par défaut jusqu'à l'allumage commun du relief de la vague 9 (R1) ; éteints, le
+  monde garde ses bits.
+  - Provinces placées par la géologie (part régionale de roche litée, calcaire) et par le
+    pré-climat (`generation/pre_climate.hpp`, partagé avec l'agent 52), jamais par le biome
+    (`tablelands.hpp`).
+  - Hautes surfaces des plateaux derrière les collisions (Tibet, Altiplano) : cœur sous le seuil des
+    montagnes, chaîne de la collision d'un côté, chaîne de bordure de l'autre, chaînes intérieures
+    sur ~15 % de la surface. La part des hautes terres à moins de 300 m de relief sur 10 km
+    (`terrain_export_relief`) passe de 0,2 % à plusieurs % des hautes terres.
+  - Les outils prennent `--flags tablelands,karst` (provisoire, remplacé par le mécanisme commun de
+    l'agent 51).
+  - Pour l'agent 52, règle : aucun creux dans ces provinces, surfaces de plateau comprises. Un site
+    de centre (x, z) et de rayon d'action r est refusé si `field.tablelandAt(px, pz).any()`
+    (`Heightfield::tablelandAt`) est vrai au centre ou en un point des anneaux à r / 2 et à r, tous
+    les 45°.
+  - Pour l'agent 40 : sur l'horizon lointain, les couches de roche (canal des bandes) n'apparaissent
+    que sur les cases d'une face (`horizon_bands.hpp`). Une paroi de plateau vue à 3 km n'a donc ses
+    strates que là ; pour les montrer sur toute la paroi, il faudrait un canal des bandes sans face.
 - mers de dunes (ergs) à l'échelle réelle (20 à 300 m de haut, 1 à 3 km d'espacement),
   province du relief au cœur des continents secs, jamais placée par le biome : faite par
   l'agent 34 (`generation/ergs.hpp`). Posées après le niveau Planète (sa somme ne change pas),

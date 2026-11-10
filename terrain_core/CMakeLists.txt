@@ -88,6 +88,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield_geography.cpp
     src/generation/heightfield_hydrology.cpp
     src/generation/heightfield_rock.cpp
+    src/generation/heightfield_tablelands.cpp
     src/generation/heightfield_water.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
@@ -126,6 +127,7 @@ add_library(terrain_core STATIC
     src/generation/sculpted_region.cpp
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp
+    src/generation/tableland_forms.cpp
     src/generation/tablelands.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
@@ -388,6 +390,7 @@ add_custom_target(export_planet_maps
 # 200 and 20 km on a chain, a plain and a coast, land masses, chains, hypsometry, coasts:
 # terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
 #                       [zoom-pixels] [threads] [world-x] [world-z] [--at <name> <x> <z>]...
+#                       [--flags <a,b,...>]
 add_executable(terrain_export_relief tools/export_relief.cpp)
 target_link_libraries(terrain_export_relief PRIVATE terrain_core terrain_warnings)
 
@@ -431,6 +434,7 @@ target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
 # The planet level of a world written to its file, as the game reads it (phase 11B); --memory
 # prints the time and memory of each stage (its own operator new counts the heap):
 # terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>] [--memory]
+#                     [--flags <a,b,...>]
 add_executable(terrain_make_planet tools/make_planet.cpp tools/heap_counter.cpp
                                    tools/process_memory.cpp)
 target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
@@ -442,6 +446,7 @@ target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
 # See tools/probe.cpp; a section is added in tools/probe_sections.hpp.
 # terrain_probe [--planet <file>] [--seed <seed>] [--world <x> <z>] [--threads <n>] [--json]
 #               [--sections <a,b,...>] [--radius <meters>] [--falls <meters>] [--caves]
+#               [--flags <a,b,...>]
 #               (<x> <z> [<x> <z>]... | --line <x1> <z1> <x2> <z2> <step>)
 # terrain_probe --planet-check <file> [--seed <seed>] [--world <x> <z>] [--json]
 # terrain_probe --list-sections
@@ -466,7 +471,8 @@ target_link_libraries(terrain_probe PRIVATE terrain_probe_lib terrain_warnings)
 # The dev map of the world in a PNG (agent 35): a box, a point at a spacing or the whole world,
 # or the tiles of the map pyramid around a point, timed. See tools/export_map.cpp.
 # terrain_export_map [--planet <file>] [--seed <seed>] [--threads <n>] [--layers <a,b,...>]
-#   [--max-samples <n>] (--box <x> <z> <w> <h> | --center <x> <z> --mpp <m> | --whole)
+#   [--max-samples <n>] [--flags <a,b,...>]
+#   (--box <x> <z> <w> <h> | --center <x> <z> --mpp <m> | --whole)
 #   (--size <w> <h> | --tiles <n>) <out.png>
 add_executable(terrain_export_map tools/export_map.cpp)
 target_link_libraries(terrain_export_map PRIVATE terrain_core terrain_warnings)

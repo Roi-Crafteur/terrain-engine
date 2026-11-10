@@ -371,6 +371,13 @@ private:
                                                wall_faces::Site* site = nullptr) const;
     // The intensity of the relief at the point: that of the map with the spurs of the chains.
     [[nodiscard]] float reliefAt(double x, double z, float mapRelief, Memos* memos) const;
+    // The intensity of the relief at (x, z), canonical, of geography g: reliefAt, and the inner
+    // ranges of the high surfaces of the plateaus where they are on (heightfield_tablelands.cpp).
+    [[nodiscard]] float intensityAt(double x, double z, const GeographySample& g,
+                                    Memos* memos) const;
+    // Adds to the local relief at (x, z), canonical, the swells, basins and hills of the high
+    // surfaces of the plateaus where they are on (heightfield_tablelands.cpp).
+    void addSurfaceRelief(double x, double z, const GeographySample& g, float& local) const;
     // The mountains at a point: their height above the base, that of their great forms alone
     // (without the rock and the ravines) and its gradient (meters per meter, up), how much the
     // point lies on the floor of a valley, within a valley and on a crest of the massif, in

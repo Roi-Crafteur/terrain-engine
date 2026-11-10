@@ -180,6 +180,8 @@ struct TerrainFigures {
     ReliefZone widestFlat;  // the widest zone of them
     double dullShare = 0.0; // of the highland cells below 300 m
     ReliefZone widestDull;
+    double highlandShare = 0.0; // of the land cells: the highlands
+    double dullLandShare = 0.0; // of the land cells: the highlands below 300 m
     // Shares of the land cells by the intensity of the relief of the geography at their center
     // (HeightSample::relief), in the classes bounded by kReliefClasses; all 0 without it.
     std::array<double, 5> reliefShares{};

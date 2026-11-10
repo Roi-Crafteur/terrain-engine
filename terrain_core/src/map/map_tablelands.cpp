@@ -29,12 +29,14 @@ MapLayerFn tablelandsLayer(const Heightfield& field) {
             return {};
         }
         const TablelandPoint t = field.tablelandAt(p.x, p.z);
-        const float share = std::max(t.tableland, t.karst);
+        const float share = std::max({t.tableland, t.karst, t.surface});
         if (!(share > kShown)) {
             return {};
         }
         MapColor c;
-        if (t.karst >= t.tableland) {
+        if (t.surface >= std::max(t.tableland, t.karst)) {
+            c = MapColor{0, 150, 140, 255};
+        } else if (t.karst >= t.tableland) {
             c = t.tropical > kStyle ? MapColor{225, 40, 165, 255} : MapColor{235, 205, 40, 255};
         } else {
             c = t.arid > kStyle ? MapColor{235, 80, 20, 255} : MapColor{140, 70, 190, 255};

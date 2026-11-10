@@ -339,6 +339,8 @@ void measureZones(const Heightfield& field, const ReliefGrid& world, const Relie
     }
     f.flatShare = land > 0.0 ? flats / land : 0.0;
     f.dullShare = highlands > 0.0 ? dulls / highlands : 0.0;
+    f.highlandShare = land > 0.0 ? highlands / land : 0.0;
+    f.dullLandShare = land > 0.0 ? dulls / land : 0.0;
     f.widestFlat = widestZone(world, flat);
     f.widestDull = widestZone(world, dull);
 }

@@ -15,7 +15,8 @@
 //     buttes, the hot and humid ones towers.
 // A slow noise of the supply of each province (patches, never bands of latitude), a warp and a
 // noise of their edges (no line of the coarse grid), and a fade from the coast (the coasts are
-// agent 33's band). Computed once per seed on the grid of the pre-climate (the nodes of the map of
+// agent 33's band). With the plateaus come the high surfaces of the plateaus behind the collisions
+// (the geography keeps their heart below the mountains, tableland_forms.hpp). Computed once per seed on the grid of the pre-climate (the nodes of the map of
 // the geography), read at every point. Where mayHold is false (one byte read) every share is
 // exactly 0: the world keeps every bit of its relief there. Deterministic, thread-safe, periodic
 // on the world.
@@ -48,6 +49,9 @@ struct TablelandCell {
     float karst = 0.0f;
     float arid = 0.0f;     // the style of the dry lands (1 - humid)
     float tropical = 0.0f; // the hot and humid lands
+    // 1 where a high surface of a plateau may lie near the center of the cell (its land high
+    // enough, out of the belts and the rifts), else 0: the reach of mayHold.
+    float surface = 0.0f;
 
     friend bool operator==(const TablelandCell&, const TablelandCell&) = default;
 };
@@ -59,8 +63,13 @@ struct TablelandPoint {
     float arid = 0.0f;      // how dry: sharp mesas and buttes of the deserts
     float tropical = 0.0f;  // how hot and humid: the towers
     float carbonate = 0.0f; // the share of limestone of the cover
+    // The high surface of a plateau behind a collision (tableland_forms: surfaceShare): its heart
+    // below the mountains, its inner ranges (the plateaus of the tablelands flag).
+    float surface = 0.0f;
 
-    [[nodiscard]] bool any() const { return tableland > 0.0f || karst > 0.0f; }
+    [[nodiscard]] bool any() const {
+        return tableland > 0.0f || karst > 0.0f || surface > 0.0f;
+    }
 };
 
 class Tablelands {

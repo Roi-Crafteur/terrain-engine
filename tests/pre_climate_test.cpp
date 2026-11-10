@@ -4,6 +4,7 @@
 // karst (tablelands.hpp) lies on land the planet level makes humid enough, the mesas of the dry lands
 // on land it makes dry. Prints where they err most (karst on a dry land, mesas on a humid one).
 #include "coast_planet_support.hpp"
+#include "tablelands_support.hpp"
 #include "test_assert.hpp"
 
 #include "terrain/generation/pre_climate.hpp"
@@ -139,7 +140,7 @@ void testProvinces(const std::vector<Point>& ps) {
 } // namespace
 
 int main() {
-    const terrain::Heightfield field(terrain::kDefaultWorldSeed);
+    const terrain::Heightfield& field = tablelands_test::field();
     const terrain::PlanetLevel planet(terrain::loadPlanetFile(coast_planet::filePath(),
                                                               terrain::kDefaultWorldSeed,
                                                               terrain::PlanetParams{},

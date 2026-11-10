@@ -50,6 +50,19 @@ constexpr float kRiftRelief = 0.25f;
 constexpr float kRiftFloorLow = 0.4f;
 constexpr float kRiftFloorHigh = 0.75f;
 
+// The high surfaces of the plateaus behind the collisions (agent 46, with
+// GeographyParams::tablelands): their heart below the mountains (kSurfaceRelief, varied as the
+// chains, from kSurfaceLow to kSurfaceHigh of the plateau), a range on their edges where the plateau
+// rises (from kRimLow to kRimPeak, down to kRimEnd: up to plateauRelief): the chain of the collision
+// on one side (the belt), a marginal range on the far one. Without the flag, the whole plateau at
+// plateauRelief (mountains).
+constexpr float kSurfaceRelief = 0.07f;
+constexpr float kSurfaceLow = 0.45f;
+constexpr float kSurfaceHigh = 0.8f;
+constexpr float kRimLow = 0.05f;
+constexpr float kRimPeak = 0.3f;
+constexpr float kRimEnd = 0.7f;
+
 // The value of a tail at a node and the decays of the node it comes from, along x, z and the
 // diagonals.
 struct Tail {
@@ -141,6 +154,17 @@ struct NodeInputs {
     float riftWalls;
 };
 
+// The intensity of the relief of a plateau of share plateau, varied by variation.
+float plateauRelief(const GeographyParams& p, float plateau, float variation) {
+    if (!p.tablelands) {
+        return p.plateauRelief * plateau * variation;
+    }
+    const float rim = noise::smoothstep(kRimLow, kRimPeak, plateau) *
+                      (1.0f - noise::smoothstep(kRimPeak, kRimEnd, plateau));
+    const float surface = kSurfaceRelief * noise::smoothstep(kSurfaceLow, kSurfaceHigh, plateau);
+    return std::max(p.plateauRelief * rim, surface) * variation;
+}
+
 // The intensity and character of the relief at a node of the map, (x, z).
 std::array<float, 3> nodeRelief(const GeographyParams& p, const Noises& n, const NodeInputs& in,
                                 double x, double z) {
@@ -148,12 +172,19 @@ std::array<float, 3> nodeRelief(const GeographyParams& p, const Noises& n, const
     const float basin = noise::smoothstep(kBasinLow, kBasinHigh, n.basins.fbm2D(x, z)) *
                         noise::smoothstep(kCoreLow, kCoreHigh, in.tail);
     const float belts = in.tail * variation * (1.0f - kBasinDepth * basin);
-    const float plateaus = p.plateauRelief * in.plateau * variation;
-    const float massifs =
+    const float plateaus = plateauRelief(p, in.plateau, variation);
+    float massifs =
         p.massifRelief * noise::smoothstep(kMassifLow, kMassifHigh, n.massifs.fbm2D(x, z));
+    float province = in.provinceRelief;
+    if (p.tablelands) {
+        // The heart of a high surface keeps neither the relief of its province nor isolated massifs:
+        // its ranges are those of its edges and its inner ranges (tableland_forms.hpp).
+        const float heart = noise::smoothstep(kSurfaceLow, kSurfaceHigh, in.plateau);
+        massifs *= 1.0f - heart;
+        province *= 1.0f - heart;
+    }
     const float relief = std::clamp(
-        std::max({belts, plateaus, massifs, in.riftWalls, in.provinceRelief, p.reliefFloor}),
-        0.0f, 1.0f);
+        std::max({belts, plateaus, massifs, in.riftWalls, province, p.reliefFloor}), 0.0f, 1.0f);
     const float sharp = noise::smoothstep(kSharpLow, kSharpHigh, in.tail);
     const float character = std::clamp(
         in.provinceCharacter + (kBeltCharacter - in.provinceCharacter) * sharp +
@@ -170,7 +201,13 @@ ReliefFields reliefFields(std::uint64_t seed, const GeographyParams& params,
     const std::vector<float> near = beltTails(grid, tectonics.belt, tectonics.reach, 1.0);
     std::vector<float> tails = beltTails(grid, tectonics.belt, {}, params.beltReach);
     for (std::size_t k = 0; k < tails.size(); ++k) {
-        tails[k] = std::max(near[k], kHillTail * tails[k]);
+        // The high surfaces of the plateaus keep the chains of their edges, not their foothills.
+        const float hills = params.tablelands
+                                ? kHillTail * tails[k] *
+                                      (1.0f - noise::smoothstep(kSurfaceLow, kSurfaceHigh,
+                                                                tectonics.plateau[k]))
+                                : kHillTail * tails[k];
+        tails[k] = std::max(near[k], hills);
     }
     const Noises noises = makeNoises(noise::deriveSeed(seed, kRelief), world);
     ReliefFields out;

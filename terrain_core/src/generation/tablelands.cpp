@@ -2,6 +2,7 @@
 
 #include "mountain_walls.hpp"
 #include "planet/planet_parallel.hpp"
+#include "tableland_forms.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 
@@ -90,6 +91,11 @@ constexpr double kEdgeWavelength = 70'000.0;
 constexpr float kEdge = 0.12f;
 constexpr float kShareLow = 0.35f;
 constexpr float kShareHigh = 0.6f;
+// A high surface may reach the points of a cell from a center whose land is kSurfaceReach meters
+// high (the surface starts higher, tableland_forms.cpp), out of the belts and the rifts.
+constexpr float kSurfaceReach = 1800.0f;
+constexpr float kSurfaceBelt = 0.5f;
+constexpr float kSurfaceRift = 0.1f;
 // None within kCoastNear meters of the coast of the geography, full from kCoastFar (the coasts are
 // the band of agent 33, 30 km inland at most).
 constexpr double kCoastNear = 60'000.0;
@@ -211,6 +217,10 @@ TablelandCell Tablelands::Impl::potentials(std::size_t c, double x, double z,
     const float humidity = climate->humidity(c);
     const float temperature = climate->temperature(c);
     TablelandCell out;
+    out.surface = tablelands && g.land > kSurfaceReach && g.belt < kSurfaceBelt &&
+                          g.rift < kSurfaceRift
+                      ? 1.0f
+                      : 0.0f;
     out.arid = 1.0f - noise::smoothstep(kAridLow, kAridHigh, humidity);
     out.tropical = noise::smoothstep(kHotLow, kHotHigh, temperature) *
                    noise::smoothstep(kWetLow, kWetHigh, humidity);
@@ -258,7 +268,8 @@ void Tablelands::Impl::markReach() {
     std::vector<std::uint8_t> over(grid.cells(), 0);
     for (std::size_t c = 0; c < grid.cells(); ++c) {
         const float most = std::max(cells[c].tableland, cells[c].karst);
-        over[c] = most + kEdge > kShareLow ? std::uint8_t{1} : std::uint8_t{0};
+        over[c] = most + kEdge > kShareLow || cells[c].surface > 0.0f ? std::uint8_t{1}
+                                                                       : std::uint8_t{0};
     }
     const int reach = static_cast<int>(std::ceil(kWarp / grid.cellSize)) + 1;
     may.assign(grid.cells(), 0);
@@ -294,9 +305,13 @@ bool Tablelands::mayHold(double x, double z) const {
 
 TablelandPoint Tablelands::at(double x, double z, const GeographySample& g) const {
     const Impl& m = *impl_;
-    if (!mayHold(x, z) || !(g.coast > kCoastNear)) {
+    if (!mayHold(x, z)) {
         return {};
     }
+    TablelandPoint p;
+    // The high surfaces at the point itself (the geography holds them); the provinces from the
+    // cells around the warped point, away from the coast.
+    p.surface = m.tablelands ? tableland_forms::surfaceShare(g) : 0.0f;
     const std::array<float, 2> warp = m.warpX.fbm2DPair(m.warpZ, x, z);
     const double qx = noise::wrapCanonical(x + kWarp * warp[0], m.world().x);
     const double qz = noise::wrapCanonical(z + kWarp * warp[1], m.world().z);
@@ -305,19 +320,21 @@ TablelandPoint Tablelands::at(double x, double z, const GeographySample& g) cons
         return static_cast<float>(b.blend(m.cells[b.cells[0]].*field, m.cells[b.cells[1]].*field,
                                           m.cells[b.cells[2]].*field, m.cells[b.cells[3]].*field));
     };
-    const float coast = static_cast<float>(
-        noise::smoothstep(static_cast<float>(kCoastNear), static_cast<float>(kCoastFar),
-                          static_cast<float>(g.coast)));
-    TablelandPoint p;
-    const float tableland = blend(&TablelandCell::tableland);
-    if (tableland + kEdge > kShareLow) {
-        p.tableland = coast * noise::smoothstep(kShareLow, kShareHigh,
-                                                tableland + kEdge * m.edgeTableland.fbm2D(x, z));
-    }
-    const float karst = blend(&TablelandCell::karst);
-    if (karst + kEdge > kShareLow) {
-        p.karst =
-            coast * noise::smoothstep(kShareLow, kShareHigh, karst + kEdge * m.edgeKarst.fbm2D(x, z));
+    if (g.coast > kCoastNear) {
+        const float coast = static_cast<float>(
+            noise::smoothstep(static_cast<float>(kCoastNear), static_cast<float>(kCoastFar),
+                              static_cast<float>(g.coast)));
+        const float tableland = blend(&TablelandCell::tableland);
+        if (tableland + kEdge > kShareLow) {
+            p.tableland = coast * noise::smoothstep(
+                                      kShareLow, kShareHigh,
+                                      tableland + kEdge * m.edgeTableland.fbm2D(x, z));
+        }
+        const float karst = blend(&TablelandCell::karst);
+        if (karst + kEdge > kShareLow) {
+            p.karst = coast * noise::smoothstep(kShareLow, kShareHigh,
+                                                karst + kEdge * m.edgeKarst.fbm2D(x, z));
+        }
     }
     if (!p.any()) {
         return {};
@@ -367,7 +384,7 @@ std::uint64_t Tablelands::checksum() const {
     std::uint64_t hash = 14695981039346656037ULL;
     for (std::size_t c = 0; c < impl_->cells.size(); ++c) {
         const TablelandCell& t = impl_->cells[c];
-        for (const float v : {t.tableland, t.karst, t.arid, t.tropical}) {
+        for (const float v : {t.tableland, t.karst, t.arid, t.tropical, t.surface}) {
             addBits(hash, std::bit_cast<std::uint32_t>(v));
         }
         addBits(hash, impl_->may[c]);

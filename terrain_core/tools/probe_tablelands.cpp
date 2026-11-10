@@ -18,6 +18,7 @@ Record tablelandsSection(const ProbeWorld& w, const Point& p) {
             .none("arid")
             .none("tropical")
             .none("carbonate")
+            .none("surface")
             .none("preHumidity")
             .none("preTemperature")
             .none("prePrecipitation");
@@ -30,6 +31,7 @@ Record tablelandsSection(const ProbeWorld& w, const Point& p) {
         .number("arid", at.arid, 4)
         .number("tropical", at.tropical, 4)
         .number("carbonate", at.carbonate, 4)
+        .number("surface", at.surface, 4)
         .number("preHumidity", c.humidityAt(p.x, p.z), 4)
         .number("preTemperature", c.temperatureAt(p.x, p.z), 2, "C")
         .number("prePrecipitation", c.precipitationAt(p.x, p.z), 1, "mm/yr");

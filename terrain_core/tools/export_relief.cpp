@@ -5,15 +5,19 @@
 // terrain::measureRelief, measureLocalRelief, measureTerrain and measurePeaks (printed, and
 // written to stats.txt). --without ravines, --without lively or --without coasts switches off a
 // step of the relief of the geography (GeographyParams::ravines, livelyPlains, coasts), to compare
-// them. Without the optional arguments: seed 20261019, the default relief, cells of 16,384 m for
+// them. --flags tablelands,karst switches on the relief of wave 9 that is off by default
+// (relief_flags.hpp, provisional). Without the optional arguments: seed 20261019, the default
+// relief, cells of 16,384 m for
 // the planet, zooms of 2,048 px, all the hardware threads, the default world.
 // Usage: terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
 //        [zoom-pixels] [threads] [world-x] [world-z] [--at <name> <x> <z>]...
-//        [--without ravines|lively|coasts]...
+//        [--without ravines|lively|coasts]... [--flags <a,b,...>]
 
 #include "terrain/generation/planet/planet_params.hpp"
 #include "terrain/io/relief_png.hpp"
 #include "terrain/io/relief_stats.hpp"
+
+#include "relief_flags.hpp"
 
 #include <algorithm>
 #include <array>
@@ -55,6 +59,7 @@ struct Options {
     bool ravines = true; // GeographyParams::ravines, livelyPlains
     bool lively = true;
     bool coasts = true; // GeographyParams::coasts
+    std::string flags;  // --flags: the relief of wave 9 switched on (relief_flags.hpp)
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     std::string relief = "default";
     double cellSize = 16384.0;
@@ -81,6 +86,10 @@ terrain::HeightfieldParams reliefParams(const Options& options) {
     params.geography.ravines = options.ravines;
     params.geography.livelyPlains = options.lively;
     params.geography.coasts = options.coasts;
+    std::string bad;
+    if (!options.flags.empty()) {
+        static_cast<void>(terrain_tools::setReliefFlags(options.flags, params, bad));
+    }
     return params;
 }
 
@@ -127,14 +136,24 @@ bool parseWithout(int argc, char** argv, int k, Options& options) {
     return true;
 }
 
-// Moves the --at triples and --without <step> out of the arguments into options; the other
-// arguments stay in order in kept (the program name first).
+// Moves the --at triples, --without <step> and --flags <list> out of the arguments into options;
+// the other arguments stay in order in kept (the program name first).
 bool parsePlaces(int argc, char** argv, Options& options, std::vector<char*>& kept) {
     for (int k = 0; k < argc; ++k) {
         if (std::strcmp(argv[k], "--without") == 0) {
             if (!parseWithout(argc, argv, k, options)) {
                 return false;
             }
+            ++k;
+            continue;
+        }
+        if (std::strcmp(argv[k], "--flags") == 0) {
+            terrain::HeightfieldParams check;
+            std::string bad;
+            if (k + 1 >= argc || !terrain_tools::setReliefFlags(argv[k + 1], check, bad)) {
+                return fail("flags", k + 1 < argc ? argv[k + 1] : "", "tablelands or karst");
+            }
+            options.flags = argv[k + 1];
             ++k;
             continue;
         }
@@ -316,6 +335,9 @@ void reportTerrain(Report& r, const terrain::TerrainFigures& f, bool geography) 
     printZone(r, "land with less than 10 m of relief over 10 km", f.flatShare, f.widestFlat);
     printZone(r, "highlands (belts or 2,500 m) with less than 300 m of relief over 10 km",
               f.dullShare, f.widestDull);
+    r.add("highlands: %.1f%% of the land; those with less than 300 m of relief over 10 km: "
+          "%.2f%% of the land\n",
+          100.0 * f.highlandShare, 100.0 * f.dullLandShare);
     if (geography) {
         r.add("land by intensity of the relief: below %.2f %.1f%%",
               static_cast<double>(terrain::kReliefClasses[0]), 100.0 * f.reliefShares[0]);
@@ -400,7 +422,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [seed] [default|planetary|legacy|geography] "
                      "[cell-size] [zoom-pixels] [threads] [world-x] [world-z] "
-                     "[--at <name> <x> <z>]... [--without ravines|lively|coasts]...\n",
+                     "[--at <name> <x> <z>]... [--without ravines|lively|coasts]... "
+                     "[--flags <a,b,...>]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
