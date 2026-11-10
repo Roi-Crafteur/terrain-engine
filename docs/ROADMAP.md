@@ -285,6 +285,15 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   - l'horizon entier au spawn prend 43 à 45 s, comme avant.
 - Pas de raccourci au bit près pour le lointain. Le coût est dans le routage (`lowestPath`), à
   reprendre à la source dans la 11C (`docs/dev/HYDROLOGY_THREADS.md`, `terrain_unreal/LOADING.md`).
+- Après l'audit de l'agent 53 :
+  - la mémoire de l'hydrologie est bornée : `HydrologyParams::cacheBytes`, 256 Mio par défaut
+    (tracés 70 %, chemins 20 %, lacs fins 10 %). Les objets lus il y a le plus longtemps sont
+    lâchés, puis refaits aux mêmes bits (`hydrology_cache_test`) ;
+  - pic du processus, `main` contre la branche : 565 contre 572 Mio sur une marche de 20 km le
+    long d'un fleuve (sous le budget) ; 951 à 957 contre 734 à 740 Mio sur un tour de 6 lieux,
+    sans tracé refait et dans le même temps ;
+  - une lecture du sol laissée par une nouvelle téléportation s'arrête aussitôt (0,1 ms) ;
+  - la couture du monde, plus lente mais aux mêmes bits, va à la 11C.
 
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
@@ -372,7 +381,13 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     plus économes, ou le graphe de la planète réutilisé pour le lointain ;
   - jamais par des vallées absentes ou simplifiées aux niveaux ≥ 8 (refusé : des fleuves qui
     s'arrêtent à la limite du niveau 7) ;
-  - règles des fils et des arrêts : `docs/dev/HYDROLOGY_THREADS.md`
+  - règles des fils, des arrêts et des caches bornés (`HydrologyParams::cacheBytes`, des `Ref` à
+    garder pendant la lecture) : `docs/dev/HYDROLOGY_THREADS.md`
+- la couture du monde (audit de l'agent 53, `heightfield_hydrology.cpp`, l'appel de `regionOf`) :
+  - une tuile à cheval sur x = ±X/2 ou z = ±Z/2 a une boîte canonique large de tout le monde, et
+    lit l'eau point par point, sans `Region` : mêmes bits, 1,1 à 1,7 fois le temps d'une voisine ;
+  - à reprendre avec la réécriture : la boîte dans les images du premier point, comme les
+    tronçons (`docs/dev/HYDROLOGY_THREADS.md`)
 - refaire les vallées des montagnes en un vrai réseau qui descend vers les plaines : un arbre
   de vallées qui draine, leurs fonds toujours en pente vers l'aval, de la crête à la plaine. Les
   vallées de la 11R bis sont des tronçons fermés (boucles des lignes de bruit, fonds qui montent

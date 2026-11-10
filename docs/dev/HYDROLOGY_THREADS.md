@@ -41,6 +41,31 @@ hydrographique). L'API publique de `Hydrology` (`hydrology.hpp`) n'a pas changé
    - `make()` ne demande jamais sa propre case. Les dépendances restent sans cycle :
      - un tracé lit les tracés d'aval (`courseOf(next)`) et les niveaux d'amont (`startLevel`) ;
      - un niveau ne lit jamais un tracé.
+5. **La mémoire des caches est bornée** (après l'audit de l'agent 53) :
+   - `HydrologyParams::cacheBytes`, 256 Mio par défaut, borne les octets tenus : 70 % pour les
+     tracés, 20 % pour les chemins, 10 % pour les lacs fins, jamais moins de 4, 1 et 4 Mio. Il ne
+     change que la mémoire, jamais un résultat ;
+   - au-delà de sa part, un cache lâche les objets lus il y a le plus longtemps, jusqu'aux trois
+     quarts de sa part, mais jamais celui qu'il vient de faire ;
+   - `get` rend un `Ref` compté (`CourseRef`, `PathRef`, `LakeRef`) : **le garder tant qu'on lit
+     l'objet**, jamais un pointeur brut au-delà. Un objet lâché vit tant qu'un `Ref` le tient :
+     - `makeCourse` garde ses chemins et les tracés qu'il rejoint jusqu'à la fin de
+       `buildCourse` (les `Join` tiennent des pointeurs bruts) ;
+     - `Region::Data::Reach::course` garde le tracé pour tout le lot ;
+   - un objet lâché est refait, aux mêmes bits, quand on le redemande : il ne dépend que de son
+     index. `hydrology_cache_test` le vérifie avec un budget de 1 Mio ;
+   - les fonds (`floors`) et les niveaux de départ (`startLevels`) ne sont jamais lâchés : un
+     petit objet par tronçon demandé, borné par le nombre de tronçons du monde ;
+   - l'horloge des lectures n'avance qu'à chaque objet fait : une lecture n'écrit que le tic de
+     son objet, sans contention mesurable sur l'horizon ;
+   - `coursesComputed()` compte les tracés faits depuis le début, refaits compris ;
+     `courseBytes()` compte les octets tenus maintenant ;
+   - mesuré avec le bench (`planet.bin` du monde par défaut), pic du processus, `main` contre la
+     branche :
+     - marche de 20 km le long d'un fleuve : 565 contre 572 Mio. Elle reste sous le budget
+       (92 Mo de tracés tenus), rien n'est lâché ;
+     - tour de 6 lieux lointains : 951 à 957 contre 734 à 740 Mio. Les mêmes 11 380 tracés sont
+       faits avec et sans budget : aucun n'est refait, le temps est le même.
 
 ## Ce que lisent les requêtes du lointain
 
@@ -93,6 +118,25 @@ C'est un détail qui surgit devant le joueur.
 `hydrology_bits_test` fige les tracés, les requêtes sur les grilles de 2 et 4 km et des morceaux
 des niveaux 8 et 9. Le bench affiche les tracés calculés, leurs octets et le pic du processus.
 
+## La couture du monde, pour l'agent 31
+
+Relevée par l'audit (agent 53), hors du champ de l'agent 39 :
+
+- `Heightfield::waterOf` (`heightfield_hydrology.cpp`, l'appel de `regionOf`) prend la boîte des
+  points d'un lot une fois ramenés dans le monde canonique (`wrapCanonical`). Une tuile à cheval
+  sur la couture (x = ±X/2 ou z = ±Z/2) a donc une boîte large de tout le monde.
+- `Hydrology::regionOf` refuse une boîte de plus de 4 096 m : la tuile lit alors l'eau point par
+  point, sans `Region`. Ce sont les mêmes bits, plus lentement, et sur une ligne du monde
+  seulement.
+- Mesuré sur un fleuve de 12 000 m³/s qui traverse la couture, les tracés déjà faits : une
+  tuile à cheval coûte 1,1 à 1,7 fois sa voisine (32 m au pas de 1 m : 5 à 8 ms contre 5 à 7 ;
+  256 m au pas de 4 m : 18 à 20 ms contre 15 à 17).
+- La réparer change le contrat de `regionOf` (une boîte canonique) et de
+  `Region::Data::partOf` : mieux vaut le faire dans la réécriture du réseau.
+- Piste : prendre la boîte dans les images du premier point (chaque point ramené à moins d'une
+  demi-largeur du monde de celui-ci), comme les tronçons le font déjà, et faire chercher à
+  `partOf` l'image du point dans la boîte.
+
 ## Où les fils sont arrêtés
 
 Chaque drapeau est levé par `raiseWorkStop`.
@@ -103,7 +147,7 @@ Chaque drapeau est levé par `raiseWorkStop`.
 | horizon CPU (`HorizonStreamer`) | `stop_` | son destructeur |
 | horizon GPU (`HorizonEpochRunner`, `HorizonNormalStream`) | `stop_` | leur destructeur, avant d'attendre les jobs |
 | carte de dev (`MapTileCache`) | `cancel_` | son destructeur (rendus, atterrissages, sondes) |
-| sol d'une téléportation (`GroundRead`) | `stop_` | son destructeur, avant que les `future` n'attendent |
+| sol d'une téléportation (`GroundRead`) | un par lecture (`Read::stop`) | `forget()` à la téléportation suivante ; le destructeur |
 | boucles parallèles (`planet::parallelBlocks`) | celui du fil appelant | — |
 
 Ne sont pas interrompus :
@@ -125,5 +169,8 @@ Ne sont pas interrompus :
   - rien d'à moitié fait ;
   - les autres fils continuent.
 - `hydrology_threads_test` : mêmes bits sur 1 et 4 fils, et après des arrêts.
+- `hydrology_cache_test` : avec un budget de 1 Mio, les tracés lâchés puis refaits donnent les
+  mêmes bits, les octets tenus restent sous la part des tracés, et 4 fils qui lâchent et lisent
+  en même temps donnent les bits d'un seul.
 - `unreal_work_stop_test` (seul) : chaque fil du plugin, puis les quatre dans l'ordre de
-  `ReleaseWorld`.
+  `ReleaseWorld` ; une lecture de sol oubliée à la téléportation suivante sort aussitôt.

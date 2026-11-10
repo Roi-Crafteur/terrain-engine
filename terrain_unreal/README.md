@@ -716,8 +716,9 @@ fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image
   fleuves s'arrête aussi (agent 39, `terrain/work_stop.hpp`) : une première requête près d'un
   grand fleuve, qui pouvait tenir le fil jusqu'à 3 s, sort en quelques millisecondes, pour la
   carte comme pour les fils des tuiles, de l'horizon et de la lecture du sol (mesuré : médiane 1
-  à 4 ms, `hydrology_stop_test` et `unreal_work_stop_test`). Le log dit le temps de toute la
-  libération du monde : « Terrain World: the world released in X ms ».
+  à 4 ms, `hydrology_stop_test` et `unreal_work_stop_test`). Une lecture du sol laissée par une
+  nouvelle téléportation s'arrête aussitôt (0,1 ms). Le log dit le temps de toute la libération
+  du monde : « Terrain World: the world released in X ms ».
 - **Échap en PIE** : dans l'éditeur, Échap est aussi le raccourci « Stop » du Play : si la carte
   n'a pas le focus clavier (un clic hors d'elle), il arrête la session au lieu de fermer la carte.
   Pour le garder à la carte : Edit > Editor Preferences > General > Keyboard Shortcuts, catégorie

@@ -215,6 +215,23 @@ tronçon de fleuve, et les niveaux grossiers (fenêtre de 1 000 km) les demanden
   | pic du processus (VmHWM) | 557 Mio | 559 à 560 Mio |
 
   C'est le même coût, et les mêmes octets aux niveaux 8 et 9.
+- **La mémoire de l'hydrologie est bornée** (après l'audit de l'agent 53) :
+  `HydrologyParams::cacheBytes`, 256 Mio par défaut. Au-delà, les tracés, chemins et lacs fins
+  lus il y a le plus longtemps sont lâchés, puis refaits aux mêmes bits s'ils sont redemandés.
+  Pic du processus (VmHWM) avec le bench :
+
+  | Parcours | `main` | Après |
+  |---|---|---|
+  | marche de 20 km le long d'un fleuve de 1 930 m³/s, un lieu tous les km | 565 Mio | 572 Mio |
+  | tour de 6 lieux lointains, l'horizon entier à chacun | 951 à 957 Mio | 734 à 740 Mio |
+
+  - La marche reste sous le budget : 5 248 tracés, 92 Mo tenus, rien n'est lâché.
+  - Le tour : `plage_origine`, `chute388_bassin`, `k2_paroi`, `falaise_cotiere`, `lac_montagne`,
+    `cote_fjord_axe`. Il fait 11 380 tracés avec et sans budget, donc aucun n'est refait. Les
+    tracés tenus passent de 394 à 158 Mo. L'horizon entier des 6 lieux prend 264 à 288 s,
+    contre 267 à 271 s avant : c'est le bruit.
+  - Le tic de lecture n'apporte pas de contention : l'horizon entier au spawn, alterné trois
+    fois, prend 36,3 s contre 36,1 s avant (+0,6 %, alors que `main` seul va de 34,9 à 37,3 s).
 - **Ce qui change** : tous ces calculs s'arrêtent en quelques millisecondes
   (`terrain/work_stop.hpp`). La fin du Play, `Terrain.Seed` et l'arrêt de la carte n'attendent
   plus la fin d'un tracé (`terrain_unreal/README.md`, section 16). Les morceaux d'une époque
