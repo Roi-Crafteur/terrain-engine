@@ -101,21 +101,21 @@ std::vector<float> pieceTexels(const HorizonPiece& piece, bool sea) {
 }
 
 std::vector<TexelRegion> texelRegions(int level, int side, const HorizonRect& rect,
-                                      std::span<const float> data) {
-    if (rect.width() > side || rect.height() > side ||
-        data.size() != static_cast<std::size_t>(rect.count()) * kTexelFloats) {
+                                      std::span<const float> data, int floats) {
+    if (rect.width() > side || rect.height() > side || floats < 1 ||
+        data.size() != static_cast<std::size_t>(rect.count()) * static_cast<std::size_t>(floats)) {
         throw std::invalid_argument("texelRegions: the texels do not fit the rectangle");
     }
     std::vector<TexelRegion> regions;
     for (const SlotSpan& z : slotSpans(rect.z0, rect.z1, side)) {
         for (const SlotSpan& x : slotSpans(rect.x0, rect.x1, side)) {
             TexelRegion region{level, x.slot, z.slot, x.length, z.length, {}};
-            region.data.reserve(static_cast<std::size_t>(x.length * z.length * kTexelFloats));
+            region.data.reserve(static_cast<std::size_t>(x.length * z.length * floats));
             for (int row = 0; row < z.length; ++row) {
                 const std::int64_t first =
-                    ((z.sample - rect.z0 + row) * rect.width() + (x.sample - rect.x0)) * kTexelFloats;
+                    ((z.sample - rect.z0 + row) * rect.width() + (x.sample - rect.x0)) * floats;
                 const auto begin = data.begin() + static_cast<std::ptrdiff_t>(first);
-                region.data.insert(region.data.end(), begin, begin + x.length * kTexelFloats);
+                region.data.insert(region.data.end(), begin, begin + x.length * floats);
             }
             regions.push_back(std::move(region));
         }
@@ -179,7 +179,8 @@ std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea,
         throw std::invalid_argument("pieceUploads: the bands of every cell or none expected");
     }
     std::vector<float> data;
-    data.reserve(piece.cells.size() * (kTexelFloats + 1 + kBlendChannels + kBandFloats));
+    data.reserve(piece.cells.size() *
+                 (kTexelFloats + 1 + kBlendChannels + kBandFloats + kCapFloats));
     for (const HorizonCell& cell : piece.cells) {
         const HorizonTexel texel = horizonTexel(cell, sea);
         data.insert(data.end(), {texel.height, texel.gradX, texel.gradZ, texel.color});
@@ -193,10 +194,14 @@ std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea,
         blends.push_back(cell.blend);
     }
     appendBlendUploads(blends, data);
+    std::vector<float> caps;
+    caps.reserve(piece.cells.size() * kCapFloats);
     for (std::size_t n = 0; n < piece.cells.size(); ++n) {
         const VertexBands b = bands.empty() ? VertexBands{} : vertexBands(bands[n]);
         data.insert(data.end(), {b.strata, b.layered, b.notch, b.notchHeight});
+        caps.insert(caps.end(), {b.cap, b.capHeight});
     }
+    data.insert(data.end(), caps.begin(), caps.end());
     return data;
 }
 

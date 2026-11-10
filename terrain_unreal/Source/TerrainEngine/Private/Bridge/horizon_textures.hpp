@@ -84,11 +84,16 @@ static_assert(kNoWaterLevel < kWetWaterTexel, "dry land reads below the wet thre
 // bands of the sample (strata, layered, notch, notchHeight: RockBands, relative to its height, as
 // the vertices of the tiles hand them, VertexBands), all 0 where no rock shows.
 inline constexpr int kBandFloats = 4;
+// The cap of the rock of a sample (agent 40: the cornice at the top of a face, RockBands::cap and
+// capHeight, relative to its height as VertexBands hands them), a fourth texture per level, RG
+// float, nearest, at the slots of the texels; both 0 where no cap is near.
+inline constexpr int kCapFloats = 2;
 
 // What the GPU horizon uploads for a computed piece: the texels of pieceTexels, then the water
 // texel of each of its cells in the same order, one float each, then the blend channels of each
 // of its cells (appendBlendUploads, horizon_blend_texels.hpp), then the kBandFloats floats of the
-// bands of each of its cells (bands: one per cell, or none: all 0).
+// bands of each of its cells, then the kCapFloats floats of its cap (bands: one per cell, or
+// none: all 0).
 [[nodiscard]] std::vector<float> pieceUploads(const HorizonPiece& piece, bool sea,
                                               std::span<const RockBands> bands = {});
 
@@ -115,10 +120,12 @@ struct SlotSpan {
 [[nodiscard]] std::vector<SlotSpan> slotSpans(std::int64_t first, std::int64_t last, int side);
 
 // The regions of the texels of a rectangle of samples of a level, given as pieceTexels lays
-// them out: at most 4, split where the slots wrap around. Throws std::invalid_argument for data
-// of another size or a rectangle wider than the texture.
+// them out (floats per texel: kTexelFloats; kBandFloats for the bands, kCapFloats for the caps):
+// at most 4, split where the slots wrap around. Throws std::invalid_argument for data of another
+// size or a rectangle wider than the texture.
 [[nodiscard]] std::vector<TexelRegion> texelRegions(int level, int side, const HorizonRect& rect,
-                                                    std::span<const float> data);
+                                                    std::span<const float> data,
+                                                    int floats = kTexelFloats);
 
 // Water texels to write into the water texture of a level, as a TexelRegion.
 struct WaterRegion {

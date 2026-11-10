@@ -27,3 +27,10 @@ terrain_add_test(view_tiles_study_test terrain_core)
 target_include_directories(view_tiles_study_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(view_tiles_study_test PROPERTIES FIXTURES_REQUIRED coast_planet
                      ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
+
+# The bands of the rock beyond the tiles: the same bits as before where they were read, more of the
+# rock faces banded (the foot of the walls under the sea), their caps sent to the GPU, their cost.
+terrain_add_test(horizon_bands_far_test terrain_unreal_bridge)
+target_include_directories(horizon_bands_far_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(horizon_bands_far_test PROPERTIES FIXTURES_REQUIRED coast_planet
+                     ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
