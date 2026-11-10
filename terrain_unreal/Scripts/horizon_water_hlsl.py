@@ -75,7 +75,7 @@ float code = INLAND(t, w) ? t.a : (INLAND(ta, wa) ? ta.a : tb.a);
 #undef SURFACE
 #undef DEPTH
 int packed = (int)(code + 0.5) % 2048;
-InlandKindOut = packed % 32 == 0 ? 1.0 : (packed / 32 == 2 ? 3.0 : 2.0);
+InlandKindOut = packed % 32 == 0 ? 1.0 : (packed / 32 == 2 || packed / 32 == 14 || packed / 32 == 15 ? 3.0 : 2.0);
 float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;
 float open = fromCenter >= DropCoveredCm - DropFadeCm - PitchCm - 1.0 ? 1.0 : 0.0;
 // The drop of the ground under the tiles (HorizonVertex), taken back on the water.

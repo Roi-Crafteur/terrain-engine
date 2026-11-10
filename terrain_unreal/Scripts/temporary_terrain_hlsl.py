@@ -52,11 +52,11 @@ struct FTemporaryTerrain
         a = BA[biome]; b = BB[biome]; c = BC[biome];
         float4 z = float4(0.0, 0.0, 0.0, 0.0);
         if (m == 0 && biome != 0) { a = z; b = float4(0.5, 0.0, 0.0, 0.5); }           // river bed
-        else if (m == 1) { a = z; b = biome == 2 ? float4(0, 0, 1, 0) : float4(0, 1, 0, 0); }
-        else if (m == 3 || m == 6) { a *= 0.3; b = b * 0.3 + float4(0.7, 0.0, 0.0, 0.0); } // dirt, mud
+        else if (m == 1 || m == 8) { a = z; b = m == 8 ? float4(0, 0, 0.65, 0.35) : (biome == 2 ? float4(0, 0, 1, 0) : float4(0, 1, 0, 0)); }
+        else if (m == 3 || m == 6 || m == 10) { a *= 0.3; b = b * 0.3 + float4(0.7, 0.0, 0.0, 0.0); } // dirt, mud, crust
         else if (m == 4) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); c.y = 1.0; }            // rock
         else if (m == 5) { c.x = 1.0; }                                                    // snow
-        else if (m == 7) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); }                        // scree
+        else if (m == 7 || m == 9) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); }              // scree, stone
     }
 
 BLEND_FUNCTIONS

@@ -94,8 +94,10 @@ private:
                       MapSampleStats& stats, MapCancel cancel) const;
     [[nodiscard]] int planetSubPoints(const MapFrame& frame) const;
     [[nodiscard]] MapSubPoint planetPoint(double x, double z) const;
+    // ergs: the share of the seas of dunes of every sample (one per pixel, its points too).
     void addBiomes(const MapFrame& frame, std::span<const float> continentalness,
-                   std::span<MapSample> out, int threads, MapCancel cancel,
+                   std::span<const float> ergs, std::span<MapSample> out, int threads,
+                   MapCancel cancel,
                    std::span<const MapSubPoint> points, int n) const;
     void addPlanetWater(const MapFrame& frame, std::span<MapSample> out, int threads,
                         MapCancel cancel) const;

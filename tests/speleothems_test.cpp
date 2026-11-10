@@ -250,7 +250,7 @@ void testFrequency() {
     const auto in = [](Biome biome, float humidity) {
         return environmentOf(biome, 12.0f, humidity);
     };
-    const std::vector<Speleothem> desert = placeWith(noLakes, in(Biome::Desert, 0.05f), square);
+    const std::vector<Speleothem> desert = placeWith(noLakes, in(Biome::RockyDesert, 0.05f), square);
     const std::vector<Speleothem> forest =
         placeWith(noLakes, in(Biome::TemperateForest, 0.9f), square);
     const std::vector<Speleothem> middle =
@@ -275,13 +275,13 @@ void testFrequency() {
     TEST_CHECK(desert.size() < middle.size() && middle.size() < forest.size());
     // The dry biomes keep the same ones whatever the humidity, and a dry humidity gives them to
     // the other biomes.
-    TEST_CHECK(desert == placeWith(noLakes, in(Biome::Desert, 0.9f), square));
+    TEST_CHECK(desert == placeWith(noLakes, in(Biome::RockyDesert, 0.9f), square));
     TEST_CHECK(desert == placeWith(noLakes, in(Biome::Savanna, 0.9f), square));
     TEST_CHECK(desert == placeWith(noLakes, in(Biome::Beach, 0.5f), square));
     TEST_CHECK(desert == placeWith(noLakes, in(Biome::Grassland, p.dryHumidity), square));
     // With the lakes of the default climate, the desert still has clearly fewer.
     const CaveParams standard;
-    const std::size_t dry = placeWith(standard, in(Biome::Desert, 0.05f), square).size();
+    const std::size_t dry = placeWith(standard, in(Biome::RockyDesert, 0.05f), square).size();
     const std::size_t wet = placeWith(standard, in(Biome::TemperateForest, 0.9f), square).size();
     std::printf("frequency with the lakes of the climate: %zu in a desert, %zu in a forest\n", dry,
                 wet);

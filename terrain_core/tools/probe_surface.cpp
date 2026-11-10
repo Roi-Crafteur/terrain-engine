@@ -38,9 +38,18 @@ terrain::SurfaceSite siteOf(const ProbeWorld& w, const Point& p) {
         return w.field().heightAt(wrapX(w, p.x + dx), wrapZ(w, p.z + dz));
     };
     // East (+x), west, south (+z), north.
-    return terrain::heightfieldSite(p.ground, p.sample.continentalness,
-                                    {h(step, 0.0), h(-step, 0.0), h(0.0, step), h(0.0, -step)},
-                                    step);
+    terrain::SurfaceSite site =
+        terrain::heightfieldSite(p.ground, p.sample.continentalness,
+                                 {h(step, 0.0), h(-step, 0.0), h(0.0, step), h(0.0, -step)}, step);
+    // The water and the seas of dunes of the core at the point, as the tiles and the horizon read
+    // them (agent 49): a dry depression is no ocean, a sea of dunes a sand desert.
+    site.water = p.sample.water;
+    site.waterLevel =
+        p.sample.water == terrain::WaterKind::None ? site.ground : p.sample.waterLevel;
+    site.dunes = p.sample.dunes;
+    site.erg = p.sample.erg;
+    site.ergFloor = p.sample.ergFloor;
+    return site;
 }
 
 template <class Id, class Name>

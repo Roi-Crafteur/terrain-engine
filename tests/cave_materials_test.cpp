@@ -72,7 +72,7 @@ void testSurfaceIceAndMudRules() {
 
     // Everything that triggers a rule: the surface, ice, mud, sandstone, moss, gravel, deep
     // stone and limestone, in a cold desert (moss aside), on a floor by a frozen lake.
-    CaveWallSite all = withBiome(stoneWall(), Biome::Desert, cold, 0.9f);
+    CaveWallSite all = withBiome(stoneWall(), Biome::RockyDesert, cold, 0.9f);
     all.normalY = 1.0f;
     all.aboveWater = 0.0f;
     all.frozenWater = true;
@@ -121,7 +121,8 @@ void testRockRules() {
     CaveWallSite floorDeep = stoneWall();
     floorDeep.normalY = 1.0f;
     floorDeep.depth = p.deepDepth + 10.0f;
-    for (const Biome dry : {Biome::Desert, Biome::Savanna, Biome::Beach}) {
+    for (const Biome dry : {Biome::RockyDesert, Biome::SandDesert, Biome::ColdDesert,
+                            Biome::Savanna, Biome::Beach, Biome::Steppe, Biome::Shrubland}) {
         TEST_CHECK(pick(withBiome(floorDeep, dry, 12.0f, 0.9f)) == CaveMaterial::Sandstone);
     }
     for (const Biome other : {Biome::Grassland, Biome::Tundra, Biome::Mountain, Biome::Snow}) {

@@ -82,7 +82,7 @@ void testGroundColor() {
 
 terrain::BlendTexel pure(terrain::Biome biome) {
     terrain::SurfaceBlend blend;
-    blend.biomes = {biome, terrain::Biome::Desert, terrain::Biome::Grassland};
+    blend.biomes = {biome, terrain::Biome::RockyDesert, terrain::Biome::Grassland};
     blend.biomeWeights = {1.0f, 0.0f, 0.0f};
     blend.materialWeights = {1.0f, 0.0f, 0.0f};
     return terrain::packBlend(blend);
@@ -92,7 +92,7 @@ terrain::BlendTexel pure(terrain::Biome biome) {
 // elsewhere.
 void testOceanShare() {
     constexpr int kSide = terrain::kTileBlendTexels;
-    std::vector<terrain::BlendTexel> texels(kSide * kSide, pure(terrain::Biome::Desert));
+    std::vector<terrain::BlendTexel> texels(kSide * kSide, pure(terrain::Biome::RockyDesert));
     for (int k = 0; k < kSide; ++k) {
         texels[static_cast<std::size_t>(k * kSide)] = pure(terrain::Biome::Ocean);
     }

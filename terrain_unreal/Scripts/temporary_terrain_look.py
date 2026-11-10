@@ -108,7 +108,7 @@ WARMTH = (1.03, 1.0, 0.95)
 BIOMES = [
     ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0)),          # ocean: sand under the shallows
     ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0)),          # beach
-    ((0, 0, 0, 0), (0, 0, 1, 0), (0, 0)),          # desert
+    ((0, 0, 0, 0), (0, 0, 0.85, 0.15), (0, 0)),    # rocky desert: the stony desert, regs and hamadas
     ((0.2, 0.8, 0, 0), (0, 0, 0, 0), (0, 0)),      # savanna
     ((0.75, 0.25, 0, 0), (0, 0, 0, 0), (0, 0)),    # grassland
     ((0.35, 0, 0.65, 0), (0, 0, 0, 0), (0, 0)),    # temperate forest
@@ -118,6 +118,16 @@ BIOMES = [
     ((0, 0, 0, 0.6), (0, 0, 0, 0.4), (0, 0)),      # mountain
     ((0, 0, 0, 0.4), (0, 0, 0, 0.6), (1, 0)),      # snow
     ((0.6, 0, 0, 0), (0.4, 0, 0, 0), (0, 0)),      # marsh
+    # Agent 49.
+    ((0.1, 0.45, 0.45, 0), (0, 0, 0, 0), (0, 0)),   # dry forest
+    ((0.15, 0.6, 0, 0), (0.25, 0, 0, 0), (0, 0)),   # steppe
+    ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0)),           # sand desert: the smooth sand
+    ((0, 0.1, 0, 0), (0.2, 0, 0.25, 0.45), (0, 0)), # cold desert
+    ((0, 0, 0, 0.25), (0, 0, 0, 0.75), (0, 0)),     # high mountain
+    ((0, 0, 0, 0.2), (0.2, 0, 0, 0.6), (0.25, 0)),  # polar region: frozen gravel, patches of snow
+    ((0, 0, 0, 0.4), (0, 0, 0, 0.6), (1, 0)),       # ice desert
+    ((0.05, 0.3, 0.2, 0), (0.3, 0, 0, 0.15), (0, 0)),  # garrigue and maquis
+    ((0, 0.4, 0, 0), (0.2, 0, 0.4, 0), (0, 0)),     # shrubland
 ]
 # One row per biome of the core, in its order: the tables of the HLSL hold that many.
 assert len(BIOMES) == hlsl.blend_code.BIOME_COUNT, "BIOMES needs a row per biome of the core"

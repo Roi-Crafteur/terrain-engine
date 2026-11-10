@@ -100,7 +100,11 @@ SurfaceSite siteOf(const InfoQuery& q, const HeightSample& s) {
     }
     site.steepness = static_cast<float>(difference / kSlopeStep);
     site.water = s.water;
-    site.waterLevel = s.waterLevel;
+    // The ground on dry land (agent 49), and the seas of dunes of the core.
+    site.waterLevel = s.water == WaterKind::None ? s.height : s.waterLevel;
+    site.dunes = s.dunes;
+    site.erg = s.erg;
+    site.ergFloor = s.ergFloor;
     return site;
 }
 

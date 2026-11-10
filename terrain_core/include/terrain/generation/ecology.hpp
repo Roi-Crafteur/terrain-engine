@@ -11,6 +11,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <vector>
 
 namespace terrain {
@@ -21,6 +23,9 @@ struct EcologyParams {
     MaterialParams materials;
     VegetationParams vegetation;
     BlendParams blend; // the transitions between the biomes and the materials
+    // The worlds of tiles with a hydrology give their ecology the distance to its rivers near the
+    // deserts (Ecology::RiverFloor, agent 49); false: never (to measure what it costs).
+    bool desertRivers = true;
 };
 
 // Everything the ecology gives a column.
@@ -62,12 +67,21 @@ struct PlantArea {
 // is ever changed, and every plant stands on the exact surface it is given.
 class Ecology {
 public:
+    // The distance from the canonical (x, z) to the nearest river, meters, or limit where none is
+    // nearer (Hydrology::floorDistance): asked live, so that it follows whatever rivers the
+    // hydrology carves.
+    using RiverFloor = std::function<double(double x, double z, double limit)>;
+
     // Periodic on the world, as its climate and vegetation. Throws std::invalid_argument for an
     // invalid world (validate).
-    // With a humidity source, its climate reads the humidity there (ClimateField).
+    // With a humidity source, its climate reads the humidity there (ClimateField). With a river
+    // floor, the columns whose climate may make a desert (or that lie in a sea of dunes) take
+    // their distance to the rivers from it (SurfaceSite::riverDistance, when nearer than the site
+    // says): the grass of the deserts near the water (agent 49); elsewhere nothing is asked.
     explicit Ecology(std::uint64_t seed, const EcologyParams& params = {},
                      const WorldSize& world = {},
-                     std::shared_ptr<const HumiditySource> humidity = nullptr);
+                     std::shared_ptr<const HumiditySource> humidity = nullptr,
+                     RiverFloor riverFloor = {});
 
     [[nodiscard]] EcologySample sampleAt(double x, double z, const SurfaceSite& site) const;
     [[nodiscard]] EcologyMap map(const TerrainSurface& surface) const;
@@ -105,11 +119,15 @@ public:
 
 private:
     [[nodiscard]] bool keepPlant(const Plant& plant, const ReliefHeight& surface) const;
+    // The site with its distance to the rivers (riverFloor_) where a desert may be.
+    [[nodiscard]] SurfaceSite wateredSite(double x, double z, const SurfaceSite& site,
+                                          const ClimateSample& climate) const;
 
     EcologyParams params_;
     ClimateField climate_;
     VegetationField vegetation_;
     BlendField blend_;
+    RiverFloor riverFloor_;
 };
 
 } // namespace terrain

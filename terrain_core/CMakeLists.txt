@@ -466,6 +466,11 @@ target_link_libraries(terrain_probe PRIVATE terrain_probe_lib terrain_warnings)
 add_executable(terrain_export_map tools/export_map.cpp)
 target_link_libraries(terrain_export_map PRIVATE terrain_core terrain_warnings)
 
+# The places of the biomes of the land on the real planet, for the views in Unreal (agent 49):
+# terrain_biome_places --planet <file> [--step <meters>] [--threads <n>]
+add_executable(terrain_biome_places tools/biome_places.cpp)
+target_link_libraries(terrain_biome_places PRIVATE terrain_core terrain_warnings)
+
 # The maps of the default world (seed 20261019) with the default and the planetary relief, into
 # <build-dir>/relief_maps/default and <build-dir>/relief_maps/planetary. Not part of the tests
 # (about a minute each in Release):

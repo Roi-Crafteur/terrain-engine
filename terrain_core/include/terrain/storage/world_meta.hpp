@@ -36,7 +36,9 @@ inline constexpr std::uint32_t kSectionFormatVersion = 2;
 // the rocks of the reefs and the stacks: agent 33).
 // 9: the seas of dunes of agent 34: their three characters, the forms of their dunes (barchans,
 // stars, waves and giant waves), the floors between them, the dry depressions they cover.
-inline constexpr std::uint32_t kGeneratorVersion = 9;
+// 10: the biomes of the land of agent 49 (21 biomes, the soils of the deserts, the beaches and
+// the coastal marshes near the sea only), the water in the blend texels; the relief unchanged.
+inline constexpr std::uint32_t kGeneratorVersion = 10;
 // Version of the generator of the relief (Heightfield::heightAt and the planet level built from
 // it): the planet files hold it. The rock in three dimensions leaves the relief as it is, and the
 // planet level is built from the relief without the coasts (Heightfield::withoutCoasts), which

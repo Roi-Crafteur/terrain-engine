@@ -144,7 +144,7 @@ void testMaterialOracle() {
     TEST_CHECK(allStats[1].water > 300 && allStats[1].land > 300); // coast
     TEST_CHECK(allStats[2].highest > 2000.0f);                     // mountain
     TEST_CHECK(oracleMap(field, ecology, regions[2]).at(16, 16).biome == terrain::Biome::Mountain);
-    TEST_CHECK(oracleMap(field, ecology, regions[3]).at(16, 16).biome == terrain::Biome::Desert);
+    TEST_CHECK(oracleMap(field, ecology, regions[3]).at(16, 16).biome == terrain::Biome::RockyDesert);
 }
 
 // A coast of the default world: the first point of a lattice of 4096 m (a sample of every level)

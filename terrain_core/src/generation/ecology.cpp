@@ -52,19 +52,48 @@ double EcologyMap::sampleZ(int row) const {
 }
 
 Ecology::Ecology(std::uint64_t seed, const EcologyParams& params, const WorldSize& world,
-                 std::shared_ptr<const HumiditySource> humidity)
+                 std::shared_ptr<const HumiditySource> humidity, RiverFloor riverFloor)
     : params_(params),
       climate_(noise::deriveSeed(seed, kClimateStream), params.climate, world, std::move(humidity)),
       vegetation_(noise::deriveSeed(seed, kVegetationStream), params.vegetation, world),
-      blend_(noise::deriveSeed(seed, kBlendStream), params.blend, world) {}
+      blend_(noise::deriveSeed(seed, kBlendStream), params.blend, world),
+      riverFloor_(std::move(riverFloor)) {}
+
+SurfaceSite Ecology::wateredSite(double x, double z, const SurfaceSite& site,
+                                 const ClimateSample& climate) const {
+    if (!riverFloor_ || !site.dry()) {
+        return site;
+    }
+    // A desert weighs in the blend of a column up to a band of widths of its humidity, the
+    // widest where the border noise narrows the margins most (BlendField::widthFactor at
+    // 1 - noiseAmplitude); a sea of dunes holds its floor near the water too.
+    const BiomeParams& b = params_.biomes;
+    const float driest = std::max(
+        {b.hotDesertHumidity, b.temperateDesertHumidity, b.coldDesertHumidity, b.polarDryHumidity});
+    const float band = params_.blend.humidityWidth / (1.0f - params_.blend.noiseAmplitude);
+    if (!(climate.humidity < driest + band) && !(site.erg > 0.0f)) {
+        return site;
+    }
+    // Every band of the materials near the water ends within twice its distance.
+    const MaterialParams& m = params_.materials;
+    const double limit = 2.0 * std::max(m.desertGrassReach, m.ergGrassReach);
+    const double distance = riverFloor_(wrapCoordinate(x, world().x), wrapCoordinate(z, world().z),
+                                        limit);
+    SurfaceSite watered = site;
+    if (distance < limit && distance < static_cast<double>(site.riverDistance)) {
+        watered.riverDistance = static_cast<float>(std::max(distance, 0.0));
+    }
+    return watered;
+}
 
 EcologySample Ecology::sampleAt(double x, double z, const SurfaceSite& site) const {
     EcologySample sample;
     sample.climate = climate_.sample(x, z, site);
-    sample.biome = classifyBiome(sample.climate, site, params_.biomes);
-    sample.material = surfaceMaterial(sample.biome, sample.climate, site, params_.materials);
+    const SurfaceSite watered = wateredSite(x, z, site, sample.climate);
+    sample.biome = classifyBiome(sample.climate, watered, params_.biomes);
+    sample.material = surfaceMaterial(sample.biome, sample.climate, watered, params_.materials);
     sample.densities =
-        vegetation_.densities(x, z, sample.biome, sample.material, sample.climate, site);
+        vegetation_.densities(x, z, sample.biome, sample.material, sample.climate, watered);
     return sample;
 }
 
@@ -82,7 +111,8 @@ EcologyMap Ecology::map(const TerrainSurface& surface) const {
 
 SurfaceBlend Ecology::blendAt(double x, double z, const SurfaceSite& site,
                               const ClimateSample& climate) const {
-    return blend_.blend(x, z, climate, site, params_.biomes, params_.materials);
+    return blend_.blend(x, z, climate, wateredSite(x, z, site, climate), params_.biomes,
+                        params_.materials);
 }
 
 std::vector<SurfaceBlend> Ecology::blendMap(const TerrainSurface& surface,

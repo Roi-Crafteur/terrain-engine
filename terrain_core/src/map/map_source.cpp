@@ -4,6 +4,7 @@
 
 #include "../generation/planet/planet_parallel.hpp"
 #include "terrain/generation/ecology.hpp"
+#include "terrain/generation/ergs.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/terrain_surface.hpp"
@@ -48,6 +49,22 @@ void validateParams(const MapSourceParams& p) {
         !(p.fallStretchMeters >= 0.0) || !(p.planetFallDropPerMeter >= 0.0)) {
         throw std::invalid_argument("map source: invalid parameters");
     }
+}
+
+// The share of the seas of dunes at a point of the land (agent 49: the sand desert follows them),
+// over the relief of s (its intensity and rifts): the mask of the ergs of the hydrology, 0
+// without them. Their corridors along the polyline of the river cells: never a course of the
+// hydrology (the relief alone and the cells of the planet level, from 64 m per pixel). Read once
+// per pixel, never per point of a pixel.
+float ergShare(const Hydrology* hydrology, double x, double z, const HeightSample& s) {
+    const Ergs* ergs = hydrology != nullptr ? hydrology->ergs() : nullptr;
+    if (ergs == nullptr) {
+        return 0.0f;
+    }
+    const WorldSize world = hydrology->relief().world();
+    const double cx = wrapCoordinate(x, world.x);
+    const double cz = wrapCoordinate(z, world.z);
+    return ergs->mayHold(cx, cz) ? ergs->at(cx, cz, s.relief, s.rift, false).mask : 0.0f;
 }
 
 } // namespace
@@ -138,6 +155,7 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
                                   MapCancel cancel) const {
     const std::size_t columns = gridColumns(frame);
     std::vector<float> continentalness(out.size());
+    std::vector<float> ergs(out.size());
     planet::parallelRows(frame.height() + 2, threads, [&](int begin, int end) {
         std::vector<double> xs(columns);
         std::vector<double> zs(columns);
@@ -157,6 +175,11 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
                 s.water = mapWaterOf(h.water, h.height, h.waterLevel);
                 s.waterLevel = s.water == WaterKind::None ? kNoWaterLevel : h.waterLevel;
                 continentalness[at] = h.continentalness;
+                // The field with its hydrology holds the ergs (the mask of its samples, as the
+                // tiles read it); the relief alone does not.
+                ergs[at] = field.hydrology() != nullptr || h.water == WaterKind::Ocean
+                               ? h.erg
+                               : ergShare(hydrology_, xs[i], zs[i], h);
             }
         }
     });
@@ -164,7 +187,7 @@ void MapWorldSource::sampleRelief(const MapFrame& frame, const Heightfield& fiel
     if (field.hydrology() != nullptr) {
         stats.hydrologyCalls += out.size();
     }
-    addBiomes(frame, continentalness, out, threads, cancel, {}, 1);
+    addBiomes(frame, continentalness, ergs, out, threads, cancel, {}, 1);
 }
 
 int MapWorldSource::planetSubPoints(const MapFrame& frame) const {
@@ -209,6 +232,7 @@ void MapWorldSource::samplePlanet(const MapFrame& frame, std::span<MapSample> ou
     const auto per = static_cast<std::size_t>(n * n);
     std::vector<MapSubPoint> points(out.size() * per);
     std::vector<float> continentalness(out.size());
+    std::vector<float> ergs(out.size());
     planet::parallelRows(frame.height() + 2, threads, [&](int begin, int end) {
         for (int row = begin; row < end && !mapCancelled(cancel); ++row) {
             for (std::size_t i = 0; i < columns; ++i) {
@@ -226,11 +250,17 @@ void MapWorldSource::samplePlanet(const MapFrame& frame, std::span<MapSample> ou
                 aggregate(mine, s);
                 continentalness[at] = s.water == WaterKind::Ocean ? kPlanetSeaContinentalness
                                                                   : kPlanetLandContinentalness;
+                const double x = frame.pixelX(static_cast<std::int64_t>(i) - 1);
+                const double z = frame.pixelZ(row - 1);
+                ergs[at] = s.water == WaterKind::Ocean || hydrology_ == nullptr
+                               ? 0.0f
+                               : ergShare(hydrology_, x, z, relief_->sampleAt(x, z));
             }
         }
     });
     stats.planetSamples += points.size();
-    addBiomes(frame, continentalness, out, threads, cancel, {points.data(), points.size()}, n);
+    addBiomes(frame, continentalness, ergs, out, threads, cancel, {points.data(), points.size()},
+              n);
 }
 
 MapSubPoint MapWorldSource::planetPoint(double x, double z) const {
@@ -252,9 +282,11 @@ MapSubPoint MapWorldSource::planetPoint(double x, double z) const {
 // site of its ground with the slopes of its 4 neighbor pixels and its water, its climate, then
 // classifyBiome (streaming/horizon_sampler.cpp, at the spacing of the pixels). With points
 // (n x n per pixel, the cells of the planet level), the biome most of them have, each classified
-// with its own ground and water and the slopes of the pixel (ties to the first biome).
+// with its own ground and water and the slopes of the pixel (ties to the first biome). The share
+// of the seas of dunes is that of the pixel (ergs: the sand desert follows the ergs).
 void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> continentalness,
-                               std::span<MapSample> out, int threads, MapCancel cancel,
+                               std::span<const float> ergs, std::span<MapSample> out, int threads,
+                               MapCancel cancel,
                                std::span<const MapSubPoint> points, int n) const {
     const BiomeParams& biomes = ecology_->params().biomes;
     const auto per = static_cast<std::size_t>(n * n);
@@ -272,6 +304,7 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
                                           float level) {
                     SurfaceSite site =
                         heightfieldSite(ground, continentalness[at], around, frame.stepX());
+                    site.erg = ergs[at];
                     site.water = water;
                     site.waterLevel = water == WaterKind::None ? ground : level;
                     return classifyBiome(ecology_->climate().sample(x, z, site), site, biomes);

@@ -102,8 +102,11 @@ inline std::vector<Part> heightfieldParts() {
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},
-        {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0xF80ECB03DD6E059BULL},
-        {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0xDA1CC601D3290B08ULL},
+        // The biomes of the land of agent 49 (21 biomes, the soils of the deserts) changed the 2
+        // parts of the ecology (0xF80ECB03DD6E059B, 0xDA1CC601D3290B08 before them); the heights
+        // and the corner kept theirs.
+        {"ecology 50 m", ecologyChecksum(field, ecology, mx, mz, 50.0), 0x8D28289F889E7200ULL},
+        {"ecology 2 km", ecologyChecksum(field, ecology, 0.0, 0.0, 2000.0), 0xA92AFFA24A4B0E10ULL},
         {"corner heights 250 m",
          heightsChecksum(planet, kCornerX - 4000.0, kCornerZ - 4000.0, 250.0, 32),
          0xC90D77A823F59462ULL},

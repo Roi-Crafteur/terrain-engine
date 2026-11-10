@@ -329,8 +329,12 @@ void testDefaultWorld() {
                     // The water in the texels (agent 49, PR 2) changed the tiles of the sea and of
                     // the rivers: 0x33BD195571B453FB, 0x3920923625208FCE and 0x0C052A0A584C2027
                     // before it.
-                    {"default world tiles", sums.tiles.value(), 0xFF3128B624AB9C63ULL},
-                    {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
+                    // The biomes of the land of agent 49 (PR 2) changed the 6 parts of the tiles
+                    // and of the horizon: 0xFF3128B624AB9C63, 0x784F4CC234FCB46E,
+                    // 0xE1E027C592519CA2, 0x44A5616EC0F93A2E, 0x6576F30A41D8BC67 and
+                    // 0x9D3D6DEECA7F2EF9 before them.
+                    {"default world tiles", sums.tiles.value(), 0x3E50BC55A6A202E5ULL},
+                    {"default world horizon", sums.horizon.value(), 0x732961EEF31D2FFEULL}});
 }
 
 void testSmallWorldWithWater() {
@@ -353,14 +357,14 @@ void testSmallWorldWithWater() {
                     {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
                     // The humidity of the planet read at a warped point (agent 49, PR 2) moves
                     // its biomes: 0x2D3A6A8A7D597236 and 0x159D43BA4E7127E6 before it.
-                    {"small world tiles", sums.tiles.value(), 0xE1E027C592519CA2ULL},
-                    {"small world horizon", sums.horizon.value(), 0x44A5616EC0F93A2EULL},
+                    {"small world tiles", sums.tiles.value(), 0xFC65AD41FF23A82AULL},
+                    {"small world horizon", sums.horizon.value(), 0x9AE887BC41AC9C14ULL},
                     {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
                     // Near the rivers (agent 49): the texels of the tiles read the water of the
                     // core, and a dry sample its climate at its ground, not at the level of the
                     // river beside it (0x9B59DD7FA17B37EB and 0x810D6B0B60B06611 before).
-                    {"small world rivers tiles", rivers.tiles.value(), 0x6576F30A41D8BC67ULL},
-                    {"small world rivers horizon", rivers.horizon.value(), 0x9D3D6DEECA7F2EF9ULL}});
+                    {"small world rivers tiles", rivers.tiles.value(), 0x3E93E5F33CD78841ULL},
+                    {"small world rivers horizon", rivers.horizon.value(), 0x22ADFDF560140346ULL}});
 }
 
 } // namespace

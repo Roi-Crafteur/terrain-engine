@@ -16,3 +16,28 @@ terrain_add_test(biome_humidity_test terrain_core)
 terrain_add_test(biome_tiles_water_test terrain_core)
 set_tests_properties(biome_tiles_water_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${CMAKE_BINARY_DIR}/coast_planet.bin)
+
+# The share of every biome of the land on the real planet (the table of the report of agent 49),
+# every biome present, and the soils of its deserts: the fixture coast_planet.
+terrain_add_test(biome_planet_test terrain_core)
+set_tests_properties(biome_planet_test PROPERTIES
+    FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${CMAKE_BINARY_DIR}/coast_planet.bin)
+
+# The grass of a desert within 150 m of a river on its way to the screen: in the texels of the
+# tiles, the samples of the horizon (levels 0 to 5) and the channels of the GPU (the fixture
+# coast_planet).
+terrain_add_test(biome_desert_river_test terrain_unreal_bridge)
+set_tests_properties(biome_desert_river_test PROPERTIES
+    FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${CMAKE_BINARY_DIR}/coast_planet.bin)
+
+# Its cost, paired with and without the distance to the rivers: tiles along a river of a desert,
+# tiles away from the deserts (the fixture coast_planet).
+terrain_add_test(biome_cost_test terrain_core)
+set_tests_properties(biome_cost_test PROPERTIES
+    FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${CMAKE_BINARY_DIR}/coast_planet.bin)
+
+# The biomes of the dev map over the real planet: the sand desert at 200 m and 4 km per pixel,
+# never a course of the hydrology (the guard of map_cost_test; the fixture coast_planet).
+terrain_add_test(biome_map_test terrain_core)
+set_tests_properties(biome_map_test PROPERTIES
+    FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${CMAKE_BINARY_DIR}/coast_planet.bin)
