@@ -44,3 +44,13 @@ foreach(timed horizon_edits_cost_test unreal_horizon_edits_cost_test unreal_plan
     target_compile_definitions(${timed}_bench PRIVATE TERRAIN_TIME_GOALS)
     add_dependencies(check ${timed}_bench)
 endforeach()
+
+# The rules of the project in report mode (scripts/rules_report.py): the files too long that the
+# blocking check leaves out and the functions too long, C++ and Python, reported as warnings by
+# scripts/check_project_rules.py, never failing it; its detection of the functions, tested.
+find_package(Python COMPONENTS Interpreter QUIET)
+if(Python_Interpreter_FOUND)
+    add_test(NAME project_rules_test
+        COMMAND ${Python_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/project_rules_test.py
+                ${PROJECT_SOURCE_DIR}/scripts)
+endif()
