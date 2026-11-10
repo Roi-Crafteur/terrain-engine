@@ -143,7 +143,8 @@ Candidates Hydrology::Impl::candidatesAt(double x, double z, double ground) cons
             for (std::size_t k = 0; k < here.count; ++k) {
                 const std::size_t r = here.reach[k];
                 if (mayReach(r, x, z, kValleyReach)) {
-                    takeReach(r, startOf(r), courseOf(r), nullptr, x, z, ground, warp, out);
+                    const CourseRef course = courseOf(r);
+                    takeReach(r, startOf(r), *course, nullptr, x, z, ground, warp, out);
                 }
             }
         }
@@ -162,7 +163,7 @@ const Candidates& Hydrology::Impl::candidatesIn(Region::Data& region, Region::Da
             continue;
         }
         if (e.course == nullptr) {
-            e.course = &courseOf(e.reach);
+            e.course = courseOf(e.reach);
             e.box = water::boxCourse(*e.course, e.minX, e.minZ, e.maxX, e.maxZ, region.groundMin,
                                      region.groundMax);
         }
@@ -260,7 +261,8 @@ std::vector<std::size_t> Hydrology::reachesNear(double x, double z, double radiu
 
 RiverReach Hydrology::reach(std::size_t index) const {
     const Impl& m = *impl_;
-    const water::Course& c = m.courseOf(index);
+    const CourseRef held = m.courseOf(index);
+    const water::Course& c = *held;
     RiverReach out;
     out.segment = m.segmentIndex(index);
     out.vertex = m.vertexIndex(index);
@@ -309,19 +311,34 @@ RiverReach Hydrology::reach(std::size_t index) const {
 }
 
 std::size_t Hydrology::coursesComputed() const {
-    return impl_->courses.count();
+    return impl_->courses.made();
 }
 
 std::size_t Hydrology::courseBytes() const {
-    return impl_->courses.bytes([](const water::Course& c) {
-        return sizeof(c) +
-               (c.points.capacity() + c.line.capacity()) * sizeof(water::CoursePoint) +
-               c.lineAxis.capacity() * sizeof(water::PathPoint) +
-               c.windings.capacity() * sizeof(water::SlotWinding) +
-               c.pools.capacity() * sizeof(water::FallPool) +
-               (c.rises.capacity() + c.valleyRises.capacity()) * sizeof(float) +
-               c.chunks.capacity() * sizeof(water::CourseChunk);
-    });
+    return impl_->courses.bytes();
+}
+
+std::size_t Hydrology::Impl::courseBytes(const water::Course& c) {
+    std::size_t bytes =
+        sizeof(c) + (c.points.capacity() + c.line.capacity()) * sizeof(water::CoursePoint) +
+        c.lineAxis.capacity() * sizeof(water::PathPoint) +
+        c.windings.capacity() * sizeof(water::SlotWinding) +
+        c.pools.capacity() * sizeof(water::FallPool) +
+        (c.rises.capacity() + c.valleyRises.capacity()) * sizeof(float) +
+        c.chunks.capacity() * sizeof(water::CourseChunk) +
+        c.ponds.capacity() * sizeof(water::FineLake) +
+        c.blocks.capacity() * sizeof(water::FallBlock) +
+        c.lips.capacity() * sizeof(water::FallLip) + c.poolOf.capacity() * sizeof(std::int32_t);
+    for (const water::FineLake& pond : c.ponds) {
+        bytes += pond.bytes();
+    }
+    for (const water::SlotWinding& w : c.windings) {
+        bytes += w.table.capacity() * sizeof(double);
+    }
+    for (const std::vector<float>& level : c.windTable.levels) {
+        bytes += level.capacity() * sizeof(float);
+    }
+    return bytes;
 }
 
 } // namespace terrain

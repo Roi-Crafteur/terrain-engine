@@ -49,7 +49,8 @@ double Hydrology::floorDistance(double x, double z, double limit) const {
     const Impl& m = *impl_;
     double best = limit;
     for (const std::size_t r : reachesOfCell(*this, m.memoId, m.grid, x, z, limit)) {
-        const water::Course& c = m.courseOf(r);
+        const CourseRef held = m.courseOf(r);
+        const water::Course& c = *held;
         const water::PathPoint a = m.startOf(r);
         // The point in the images of the course.
         const double px = a.x + noise::wrapCanonical(x - a.x, m.grid.periodX());

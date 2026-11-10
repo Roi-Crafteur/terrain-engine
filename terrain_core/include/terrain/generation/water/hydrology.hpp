@@ -41,6 +41,11 @@ struct HydrologyParams {
     // The seas of dunes laid over the relief before the valleys (ergs.hpp); their rivers are those
     // carved here (ErgParams::minDischarge is set to minDischarge).
     ErgParams ergs;
+    // The most bytes the caches of the courses, their paths and the fine lakes hold (agent 39):
+    // past it, the least recently read are dropped, and made again (the same bits) when asked
+    // again. Memory only: never a result. The courses take 70 %, the paths 20 %, the fine lakes
+    // 10 %, never under 4, 1 and 4 MiB (a smaller budget would make them again and again).
+    std::size_t cacheBytes = std::size_t{256} << 20;
 };
 
 // What the valleys of the rivers make of a point of the relief (Hydrology::riversAt).
@@ -248,9 +253,10 @@ public:
     [[nodiscard]] std::size_t reachCount() const;
     // Those whose course may come within radius meters of (x, z), by index.
     [[nodiscard]] std::vector<std::size_t> reachesNear(double x, double z, double radius) const;
-    // The course of a reach (computed on demand, then kept).
+    // The course of a reach (computed on demand, then kept while the cache has room).
     [[nodiscard]] RiverReach reach(std::size_t index) const;
-    // How many courses are computed so far, and the bytes they hold.
+    // How many courses are computed so far (those made again after a drop counted again), and
+    // the bytes of those the cache holds now (HydrologyParams::cacheBytes).
     [[nodiscard]] std::size_t coursesComputed() const;
     [[nodiscard]] std::size_t courseBytes() const;
 

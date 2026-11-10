@@ -15,3 +15,6 @@ terrain_add_test(hydrology_threads_test terrain_core)
 # their latencies, so they run alone.
 terrain_add_test(unreal_work_stop_test terrain_unreal_bridge)
 set_tests_properties(unreal_work_stop_test PROPERTIES RUN_SERIAL TRUE)
+
+# The caches of the hydrology bounded in bytes: dropped and made again, the same bits.
+terrain_add_test(hydrology_cache_test terrain_core)

@@ -69,10 +69,13 @@ void Hydrology::Impl::index() {
     }
     indexLakes();
     indexOutlets();
-    paths.resize(reachCount());
+    // The budgets of the caches (HydrologyParams::cacheBytes); the fine lakes: indexLakes.
+    paths.resize(reachCount(), std::max(params.cacheBytes / 10 * 2, kLeastPaths),
+                 &Impl::pathBytes);
     floors.resize(reachCount());
     startLevels.resize(reachCount());
-    courses.resize(reachCount());
+    courses.resize(reachCount(), std::max(params.cacheBytes / 10 * 7, kLeastCourses),
+                   &Impl::courseBytes);
 }
 
 // The outlets: every lake spilling into a river carved, from the floor of the cell of its sill.
@@ -168,7 +171,7 @@ std::size_t Hydrology::Impl::previous(std::size_t r) const {
     return best;
 }
 
-const Path& Hydrology::Impl::pathOf(std::size_t r) const {
+PathRef Hydrology::Impl::pathOf(std::size_t r) const {
     return paths.get(r, [&] {
         workStopPoint();
         const water::PathPoint a = startOf(r);
@@ -177,13 +180,15 @@ const Path& Hydrology::Impl::pathOf(std::size_t r) const {
     });
 }
 
-const Hydrology::Impl::ReachFloor& Hydrology::Impl::floorOf(std::size_t r) const {
-    return floors.get(r, [&] {
+Hydrology::Impl::ReachFloor Hydrology::Impl::floorOf(std::size_t r) const {
+    return *floors.get(r, [&] {
         workStopPoint();
         const std::size_t before = previous(r);
         const std::size_t after = next(r);
-        const Path axis = water::smoothAxis(before != kNone ? &pathOf(before) : nullptr, pathOf(r),
-                                            after != kNone ? &pathOf(after) : nullptr);
+        const PathRef own = pathOf(r);
+        const PathRef up = before != kNone ? pathOf(before) : nullptr;
+        const PathRef down = after != kNone ? pathOf(after) : nullptr;
+        const Path axis = water::smoothAxis(up.get(), *own, down.get());
         // The relief of its course (water::buildCourse): the lowest across its channel.
         const RiverSegment& s = segmentOf(r);
         const auto v = static_cast<std::size_t>(vertexIndex(r) + 1);
@@ -237,7 +242,7 @@ float Hydrology::Impl::startLevel(std::size_t r) const {
     float level = 0.0f;
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         const std::size_t k = *it;
-        level = startLevels.get(k, [&] {
+        level = *startLevels.get(k, [&] {
             const float here =
                 segmentOf(k).vertices[static_cast<std::size_t>(vertexIndex(k))].elevation;
             const std::size_t up = previous(k);
@@ -254,17 +259,10 @@ float Hydrology::Impl::startLevel(std::size_t r) const {
     return level;
 }
 
-const water::Course& Hydrology::Impl::courseOf(std::size_t r) const {
-    // A tributary ends at the water of the river it joins: those courses first (before the
-    // confluence and after it), outside the lock of this one (they never depend on their
-    // tributaries).
-    const std::size_t after = next(r);
-    if (after != kNone && previous(after) != r) {
-        if (previous(after) != kNone) {
-            (void)courseOf(previous(after));
-        }
-        (void)courseOf(after);
-    }
+// A tributary ends at the water of the river it joins: makeCourse asks for those courses (before
+// the confluence and after it) once each, and holds them while it makes this one (they never
+// depend on their tributaries; no lock is held while a course is made).
+CourseRef Hydrology::Impl::courseOf(std::size_t r) const {
     return courses.get(r, [&] { return makeCourse(r); });
 }
 
@@ -334,16 +332,21 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
         in.a.level = startLevel(r);
         in.b.level = std::min(in.b.level, in.a.level);
     }
-    in.own = &pathOf(r);
-    in.before = before != kNone ? &pathOf(before) : nullptr;
-    in.after = after != kNone ? &pathOf(after) : nullptr;
+    // What it is made from, held while it is made (the caches may drop them meanwhile).
+    const PathRef own = pathOf(r);
+    const PathRef up = before != kNone ? pathOf(before) : nullptr;
+    const PathRef downstream = after != kNone ? pathOf(after) : nullptr;
+    std::array<CourseRef, 2> joined;
+    in.own = own.get();
+    in.before = up.get();
+    in.after = downstream.get();
     if (after != kNone && previous(after) != r) {
         // A tributary: it ends where the main river passes, in the images of this reach, at the
         // water of the main river there.
         const std::size_t main = previous(after);
-        const Path& down = pathOf(after);
+        const Path& down = *downstream;
         water::PathPoint joint =
-            main != kNone ? water::smoothedJoint(pathOf(main), down) : down.front();
+            main != kNone ? water::smoothedJoint(*pathOf(main), down) : down.front();
         joint.x += in.b.x - down.front().x;
         joint.z += in.b.z - down.front().z;
         in.endAt = joint;
@@ -351,11 +354,13 @@ water::Course Hydrology::Impl::makeCourse(std::size_t r) const {
         in.b.width = in.a.width;
         in.b.depth = in.a.depth;
         in.b.discharge = in.a.discharge;
-        in.joins[1] = joinOf(courseOf(after), down.front().x - in.b.x, down.front().z - in.b.z);
+        joined[1] = courseOf(after);
+        in.joins[1] = joinOf(*joined[1], down.front().x - in.b.x, down.front().z - in.b.z);
         if (main != kNone) {
             const water::PathPoint m = startOf(main);
+            joined[0] = courseOf(main);
             in.joins[0] =
-                joinOf(courseOf(main), m.x + wrapCoordinate(in.b.x - m.x, grid.periodX()) - in.b.x,
+                joinOf(*joined[0], m.x + wrapCoordinate(in.b.x - m.x, grid.periodX()) - in.b.x,
                        m.z + wrapCoordinate(in.b.z - m.z, grid.periodZ()) - in.b.z);
             const water::ReachInput::Join& j = in.joins[0];
             in.b.level =
