@@ -85,6 +85,7 @@ SurfaceBlend dominantBlend(const BlendWeights& weights) {
         total += weight;
     }
     blend.dunes = total > 0.0f ? std::clamp(weights.dunes / total, 0.0f, 1.0f) : 0.0f;
+    blend.cover = total > 0.0f ? std::clamp(weights.cover / total, 0.0f, 1.0f) : 0.0f;
     return blend;
 }
 
@@ -93,13 +94,19 @@ SurfaceBlend footprintBlend(const std::array<const SurfaceBlend*, 9>& around) {
     for (std::size_t n = 0; n < around.size(); ++n) {
         addBlend(sum, *around[n], kFootprintShares[n]);
     }
-    return dominantBlend(sum);
+    // The water and the kind of the cover are those of the sample itself (never blended).
+    SurfaceBlend blend = dominantBlend(sum);
+    blend.water = around[4]->water;
+    blend.coverKind = around[4]->coverKind;
+    return blend;
 }
 
 BlendTexel withMaterial(BlendTexel texel, SurfaceMaterial material) {
     const auto id = static_cast<std::uint32_t>(material);
-    // The same material in the 3 slots; no share of the dunes (the edits cover their sand).
+    // The same material in the 3 slots; no share of the dunes nor cover (the edits cover their
+    // sand, and the cover with it); the water unchanged.
     texel.materials = id | id << kMaterialIdBits | id << (2 * kMaterialIdBits);
+    texel.biomeWeights &= 0x0000FFFFU;
     // All the weight on slot 0; the bits kept for the heat of the ground (16-23) unchanged.
     texel.materialWeights = (texel.materialWeights & 0x00FF0000U) | 255U;
     return texel;

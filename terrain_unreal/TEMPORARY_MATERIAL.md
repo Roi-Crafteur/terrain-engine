@@ -23,7 +23,8 @@
   LOD 0, puis 8, 16, 32 m ; les mêmes bits sur les bords partagés). Le texel (agent 49) a quatre
   champs de 24 bits au plus, exacts en flottants : les 3 biomes (6 bits chacun, 64 biomes), les 3
   matériaux (5 bits chacun, 32 matériaux) et la part des dunes, les poids des biomes, les poids
-  des matériaux et un octet réservé à la chaleur du sol (`biome_blend.hpp`). Le backend des tuiles
+  des matériaux et un octet réservé à la chaleur du sol (`biome_blend.hpp`) ; depuis la PR 2, le
+  type d'eau de la colonne (4 bits) et une couverture réservée (part sur 8 bits, type sur 2). Le backend des tuiles
   (`ProceduralMeshTerrainBackend`) les copie dans une texture commune de flottants
   (`TileBlendTexels`, 64 × 64 emplacements de 5 × 5 texels, 1,6 Mo ; un champ par flottant, le
   bit 23 du premier dit « présent ») et donne à chaque tuile son emplacement et le pas de ses texels par ses

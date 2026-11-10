@@ -4,6 +4,7 @@
 #include "terrain/generation/climate.hpp"
 #include "terrain/generation/surface_material.hpp"
 #include "terrain/generation/terrain_surface.hpp"
+#include "terrain/generation/water_kind.hpp"
 #include "terrain/world_size.hpp"
 
 #include <array>
@@ -58,6 +59,11 @@ struct BlendParams {
 // positive and finite, the octaves are in [1, 16] and the amplitude is in [0, 1).
 void validate(const BlendParams& params);
 
+// What covers the ground over its material (agent 44: a layer of sand, snow, ash or salt): kept in
+// the texels for it, none laid yet.
+enum class CoverKind : std::uint8_t { Sand, Snow, Ash, Salt };
+inline constexpr int kCoverKindCount = 4;
+
 // The dominant biomes and materials of a column. Slot 0 holds the dominant one (classifyBiome,
 // surfaceMaterial); the weights decrease from slot to slot, lie in [0, 1] and sum to 1; a slot of
 // weight 0 repeats the id of slot 0.
@@ -72,6 +78,14 @@ struct SurfaceBlend {
     // ergs. A reader takes the dunes from the share above kErgFloorShare, the floor of the edges
     // of an erg from the share below.
     float dunes = 0.0f;
+    // The water over the column (SurfaceSite::water), for the renderers to tell the sea, the
+    // rivers, the lakes and the salt lakes apart (agent 40); never blended: the footprints of the
+    // far horizon keep that of their sample.
+    WaterKind water = WaterKind::None;
+    // [0, 1]: the share of the column under a cover, and its kind (agent 44). 0 until the covers
+    // come: the format carries them already.
+    float cover = 0.0f;
+    CoverKind coverKind = CoverKind::Sand;
 
     friend bool operator==(const SurfaceBlend&, const SurfaceBlend&) = default;
 };
@@ -109,12 +123,15 @@ private:
 // that every field is an exact integer in a 32-bit float (the GPU reads a texel as 4 floats, one
 // per field, in this order: Bridge/tile_blend_atlas.hpp, Bridge/horizon_blend_texels.hpp).
 // - biomes: the biome of slot 0 in bits 0-5, of slot 1 in bits 6-11, of slot 2 in bits 12-17
-//   (64 biomes); bits 18-22 free; bit 23 kept 0 for the readers (kBlendPresentBit).
+//   (64 biomes); bits 18-21 the water (SurfaceBlend::water, 16 kinds); bit 22 free; bit 23 kept 0
+//   for the readers (kBlendPresentBit).
 // - materials: the material of slot 0 in bits 0-4, of slot 1 in bits 5-9, of slot 2 in bits
 //   10-14 (32 materials); bits 15-21 the share of the column under the sand of the dunes
-//   (SurfaceBlend::dunes) in 127ths, 0 off the ergs; bits 22-23 free.
+//   (SurfaceBlend::dunes) in 127ths, 0 off the ergs; bits 22-23 the kind of the cover
+//   (SurfaceBlend::coverKind).
 // - biomeWeights: the weights of the biomes of slots 0 and 1 in bits 0-7 and 8-15, in 255ths (the
-//   weight of slot 2 is 255 minus the two others); bits 16-23 free.
+//   weight of slot 2 is 255 minus the two others); bits 16-23 the share of the cover
+//   (SurfaceBlend::cover) in 255ths.
 // - materialWeights: the same for the materials; bits 16-23 kept for the heat of the ground
 //   (roadmap, phase 14), 0 until it comes.
 // A reader blending texels (bilinear between 4 of them, say) adds the weight of each slot to its
@@ -141,8 +158,17 @@ inline constexpr int kBlendFieldBits = 24;
 inline constexpr int kBlendPresentBit = 23;
 // The first bit of the share of the dunes in BlendTexel::materials (7 bits, in 127ths).
 inline constexpr int kBlendDuneShift = kMaterialIdBits * kBlendSlots;
-static_assert(kBiomeIdBits * kBlendSlots <= kBlendPresentBit, "the biome ids leave bit 23 free");
-static_assert(kBlendDuneShift + 7 <= kBlendFieldBits, "the share of the dunes fits in 24 bits");
+// The water in BlendTexel::biomes (4 bits), the kind of the cover in BlendTexel::materials (2
+// bits) and its share in BlendTexel::biomeWeights (8 bits, in 255ths).
+inline constexpr int kBlendWaterShift = 18;
+inline constexpr int kBlendCoverKindShift = 22;
+inline constexpr int kBlendCoverShift = 16;
+static_assert(kBiomeIdBits * kBlendSlots <= kBlendWaterShift, "the biome ids end below the water");
+static_assert(kWaterKindCount <= 16 && kBlendWaterShift + 4 < kBlendPresentBit,
+              "the water fits in 4 bits below the present bit");
+static_assert(kBlendDuneShift + 7 <= kBlendCoverKindShift, "the share of the dunes fits in 7 bits");
+static_assert(kCoverKindCount <= 4 && kBlendCoverKindShift + 2 <= kBlendFieldBits,
+              "the kind of the cover fits in 2 bits");
 
 // The weights rounded to 255ths (slot 0 takes what the rounding of the others leaves, never
 // less than slot 1): they sum to exactly 255.
@@ -155,6 +181,7 @@ struct BlendWeights {
     std::array<float, kBiomeCount> biomes{};
     std::array<float, kSurfaceMaterialCount> materials{};
     float dunes = 0.0f; // the shares times SurfaceBlend::dunes
+    float cover = 0.0f; // the shares times SurfaceBlend::cover
 };
 
 // Adds share times the weights of the blend to each id.

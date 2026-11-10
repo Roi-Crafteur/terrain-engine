@@ -326,7 +326,10 @@ void testDefaultWorld() {
                     // The tiles hash their blend texels: those of 16 bytes (agent 49) changed
                     // their bytes, never their blends (0x51D8B009355E8A97, 0x435745D91D4D43D8 and
                     // 0xE4369B53BAB781AD for the 3 parts of the tiles before).
-                    {"default world tiles", sums.tiles.value(), 0x33BD195571B453FBULL},
+                    // The water in the texels (agent 49, PR 2) changed the tiles of the sea and of
+                    // the rivers: 0x33BD195571B453FB, 0x3920923625208FCE and 0x0C052A0A584C2027
+                    // before it.
+                    {"default world tiles", sums.tiles.value(), 0xFF3128B624AB9C63ULL},
                     {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
 }
 
@@ -348,13 +351,13 @@ void testSmallWorldWithWater() {
     golden::report("the small world with its water out of the coastal zone",
                    {{"small world planet level", planet->checksum(), 0xBFA4DE19A54DAD75ULL},
                     {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
-                    {"small world tiles", sums.tiles.value(), 0x3920923625208FCEULL},
+                    {"small world tiles", sums.tiles.value(), 0x2D3A6A8A7D597236ULL},
                     {"small world horizon", sums.horizon.value(), 0x159D43BA4E7127E6ULL},
                     {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
                     // Near the rivers (agent 49): the texels of the tiles read the water of the
                     // core, and a dry sample its climate at its ground, not at the level of the
                     // river beside it (0x9B59DD7FA17B37EB and 0x810D6B0B60B06611 before).
-                    {"small world rivers tiles", rivers.tiles.value(), 0x0C052A0A584C2027ULL},
+                    {"small world rivers tiles", rivers.tiles.value(), 0x6576F30A41D8BC67ULL},
                     {"small world rivers horizon", rivers.horizon.value(), 0x9D3D6DEECA7F2EF9ULL}});
 }
 

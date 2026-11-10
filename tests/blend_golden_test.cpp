@@ -93,7 +93,9 @@ std::vector<golden::Part> blendParts() {
     for (int lod = 0; lod < terrain::kLodCount; ++lod) {
         addTexels(cornerSum, tiles.generate({terrain::tileContaining(corner, lod), 0}));
     }
-    parts.push_back({"tile blend at the corner", cornerSum.value(), 0xDDB37E2A2A9CBE65ULL});
+    // The water of the texels (agent 49, PR 2: the ocean around the corner) changed it from
+    // 0xDDB37E2A2A9CBE65; the tiles of the mountain above hold no water and kept theirs.
+    parts.push_back({"tile blend at the corner", cornerSum.value(), 0x3C80656F01278D65ULL});
     return parts;
 }
 

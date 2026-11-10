@@ -129,14 +129,16 @@ inline std::vector<Part> horizonParts() {
          0x7C759A756899258CULL},
         // The blend texels of 16 bytes (agent 49) changed the bytes of the blends of the 4 parts
         // below, never the blends they decode to (0xAFA8ABA724DEEE2F, 0x96E378BC6B035861,
-        // 0xE68987A81F6AD875, 0x92DBFC547FFDE514 with the texels of 8 bytes).
+        // 0xE68987A81F6AD875, 0x92DBFC547FFDE514 with the texels of 8 bytes). The water in the
+        // texels (agent 49, PR 2) changed the 2 parts that hold the sea (0xBC746EBCF51CBE2D,
+        // 0x084B5B9186401745 before it); the 2 dry ones kept theirs.
         {"horizon blends around mountains", horizon_detail::blendChecksum(world, x, z),
          0x9A84A8FE3C20D313ULL},
         {"horizon blends around legacy mountains",
          horizon_detail::blendChecksum(legacy, horizon_test::kX, horizon_test::kZ),
-         0xBC746EBCF51CBE2DULL},
+         0xC213D78F8C3D4CB1ULL},
         {"horizon blends at the world corner",
-         horizon_detail::blendChecksum(world, size.x / 2.0, size.z / 2.0), 0x084B5B9186401745ULL},
+         horizon_detail::blendChecksum(world, size.x / 2.0, size.z / 2.0), 0x86D04563E7E49C45ULL},
         // A border of the tropical forest and the savanna (without the planet).
         {"horizon blends at a forest border", horizon_detail::blendChecksum(world, -26'927'500.0,
                                                                             -270'336.0),

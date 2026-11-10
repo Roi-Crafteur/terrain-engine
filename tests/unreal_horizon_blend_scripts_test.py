@@ -104,12 +104,13 @@ def check_code(look_hlsl, loading, scripts):
                       {"VERTEX_HLSL", "BLEND_INPUTS"})
     tiles_source = (scripts / "create_temporary_terrain_material.py").read_text(encoding="utf-8")
     struct = strip(look_hlsl)
-    members = re.findall(r"\n    (?:bool|void|float[1-4]?|int) ([A-Z][A-Za-z0-9]*)\(", struct)
+    members = re.findall(r"\n    (?:bool|void|float[1-4]?|uint[1-4]?|int) ([A-Z][A-Za-z0-9]*)\(", struct)
     check(len(members) == len(set(members)), f"a member of the struct twice: {members}")
-    for name in ("AddBlend", "FinishBlend", "BlendLayers", "TexelBlend", "BlendTexelsLayers"):
+    for name in ("AddBlend", "FinishBlend", "BlendLayers", "TexelBlend", "TexelWater",
+                 "BlendTexelsLayers"):
         check(members.count(name) == 1, f"the struct has no {name}")
     declared = 0
-    bodies = re.split(r"\n    (?=(?:bool|void|float[1-4]?|int) [A-Z][A-Za-z0-9]*\()", struct)
+    bodies = re.split(r"\n    (?=(?:bool|void|float[1-4]?|uint[1-4]?|int) [A-Z][A-Za-z0-9]*\()", struct)
     for body in bodies[1:]:
         declared += check_scopes(body, declaration, f"struct member {body.split('(')[0]}", False)
     for what, code in (("horizon vertex", gpu["VERTEX_HLSL"]),
@@ -163,6 +164,7 @@ def f32(x):
 
 PRESENT = 1 << 23  # biome_blend.hpp: kBlendPresentBit
 DUNE = 15  # biome_blend.hpp: kBlendDuneShift
+WATER = 18  # biome_blend.hpp: kBlendWaterShift
 
 
 def whole(channel):
@@ -270,6 +272,18 @@ def check_reference(biomes):
     check(blend_texels_layers((forest, [0, 0, 0, 0]), (1.0, 0.0), biomes) is not None,
           "a texel without blend and of no share refused")
     check_dunes(biomes)
+    check_water()
+
+
+def check_water():
+    """TexelWater reads every kind of water (4 bits from WATER_SHIFT of the biomes) under the
+    present bit and beside the biome ids of the 3 slots, never one of their bits."""
+    wrong = 0
+    for kind in range(16):
+        for ids in (0, (1 << 18) - 1):
+            v, _ = texel_blend([float(PRESENT | ids | kind << WATER), 0.0, 0.0, 0.0])
+            wrong += (v[0] >> WATER) & 15 != kind or v[0] & ((1 << 18) - 1) != ids
+    check(wrong == 0, f"{wrong} kinds of water decode wrong")
 
 
 def check_dunes(biomes):
@@ -308,7 +322,8 @@ def check_dunes(biomes):
 def header_constant(path, name):
     """The integer of an inline constexpr of a header of the core (a literal or a sum of them)."""
     found = re.search(rf"constexpr int {name} = ([^;]+);", path.read_text(encoding="utf-8"))
-    return eval(found.group(1), {"kBlendSlots": 3, "kMaterialIdBits": 5}) if found else None
+    return eval(found.group(1), {"kBlendSlots": 3, "kMaterialIdBits": 5, "kBiomeIdBits": 6}) \
+        if found else None
 
 
 def check_counts(root, blend):
@@ -319,12 +334,16 @@ def check_counts(root, blend):
                 "BIOME_ID_BITS": ("biome_blend.hpp", "kBiomeIdBits"),
                 "MATERIAL_ID_BITS": ("biome_blend.hpp", "kMaterialIdBits"),
                 "PRESENT_BIT": ("biome_blend.hpp", "kBlendPresentBit"),
-                "DUNE_SHIFT": ("biome_blend.hpp", "kBlendDuneShift")}
+                "DUNE_SHIFT": ("biome_blend.hpp", "kBlendDuneShift"),
+                "WATER_SHIFT": ("biome_blend.hpp", "kBlendWaterShift"),
+                "COVER_SHIFT": ("biome_blend.hpp", "kBlendCoverShift"),
+                "COVER_KIND_SHIFT": ("biome_blend.hpp", "kBlendCoverKindShift")}
     for name, (header, constant) in expected.items():
         value = header_constant(generation / header, constant)
         check(value == getattr(blend, name), f"{name} of blend_layers_hlsl.py is "
               f"{getattr(blend, name)}, {constant} of {header} is {value}")
-    check(PRESENT == 1 << blend.PRESENT_BIT and DUNE == blend.DUNE_SHIFT,
+    check(PRESENT == 1 << blend.PRESENT_BIT and DUNE == blend.DUNE_SHIFT
+          and WATER == blend.WATER_SHIFT,
           "the reference decodes other fields than the HLSL")
     check(blend.SURFACE_BIOME_STRIDE == 32 and blend.SURFACE_WATER_CODE == 2048,
           "the packed surface of Bridge/terrain_surface.hpp")

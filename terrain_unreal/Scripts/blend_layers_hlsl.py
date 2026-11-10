@@ -31,6 +31,13 @@ BIOME_ID_BITS = 6
 MATERIAL_ID_BITS = 5
 PRESENT_BIT = 23
 DUNE_SHIFT = MATERIAL_ID_BITS * 3
+# The water of the texel in its biomes (4 bits: biome_blend.hpp kBlendWaterShift, WaterKind 0 dry,
+# 1 ocean, 2 river, 3 lake, 4 salt lake), for the water of the horizon (agent 40); the share of
+# the cover in its biomeWeights (8 bits, kBlendCoverShift) and its kind in its materials (2 bits,
+# kBlendCoverKindShift: sand, snow, ash, salt), for the covers (agent 44). None is drawn yet.
+WATER_SHIFT = 18
+COVER_SHIFT = 16
+COVER_KIND_SHIFT = 22
 # The packed surface of a texel of the horizon (Bridge/terrain_surface.hpp): material +
 # SURFACE_BIOME_STRIDE x biome, + SURFACE_WATER_CODE under a lake or a river.
 SURFACE_BIOME_STRIDE = 1 << MATERIAL_ID_BITS
@@ -87,6 +94,13 @@ _ADD = r"""
     {
         v = (uint4)max(t, 0.0);
         return (v.x & PRESENTu) != 0u;
+    }
+
+    // The water over a decoded texel (biome_blend.hpp: SurfaceBlend::water; WaterKind 0 dry, 1
+    // ocean, 2 river, 3 lake, 4 salt lake), for the water of the horizon (agent 40).
+    uint TexelWater(uint4 v)
+    {
+        return (v.x >> WATER_SHIFTu) & 15u;
     }
 
     // Adds one blend texel, its share times its weights (biome_blend.hpp: addTexel), never
@@ -217,7 +231,7 @@ def _generate():
     numbers = {"PRESENT": 1 << PRESENT_BIT, "DUNE": DUNE_SHIFT, "BIOME_BITS": BIOME_ID_BITS,
                "BIOME_MASK": (1 << BIOME_ID_BITS) - 1, "BIOME_LAST": BIOME_COUNT - 1,
                "MATERIAL_BITS": MATERIAL_ID_BITS, "MATERIAL_MASK": (1 << MATERIAL_ID_BITS) - 1,
-               "MATERIAL_LAST": MATERIAL_COUNT - 1}
+               "MATERIAL_LAST": MATERIAL_COUNT - 1, "WATER_SHIFT": WATER_SHIFT}
     for name in sorted(numbers, key=len, reverse=True):
         code = code.replace(f"{name}u", f"{numbers[name]}u")
     return fill(code) + "\n"
