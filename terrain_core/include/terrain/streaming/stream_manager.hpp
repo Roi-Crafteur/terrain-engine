@@ -133,6 +133,11 @@ struct TileData {
     // mesh (rockBands: its beds, its notch, its cap, relative to the height of the vertex: the
     // same heights at every LOD), for the material (agent 33).
     std::vector<RockBands> rockBands;
+    // With player edits within reach of the tile only (agent 41), empty otherwise: how much the
+    // edits made each vertex of mesh, in [0, 1]: the part of its edge on the side of the samples
+    // they changed (1 on the floor and the walls of a hole, 0 on the ground they left), at every
+    // LOD; for the light floor of the edited surfaces (Unreal: the blue of the vertex color).
+    std::vector<float> editWeights;
 
     friend bool operator==(const TileData&, const TileData&) = default;
 };

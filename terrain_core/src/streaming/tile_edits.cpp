@@ -239,4 +239,30 @@ void lightEdits(Mesh& level, const LevelEdits& edits) {
     }
 }
 
+void addEditWeights(const Mesh& level, const std::optional<LevelEdits>& edits,
+                    std::size_t vertices, std::vector<float>& weights) {
+    if (!edits) {
+        if (!weights.empty()) {
+            weights.resize(weights.size() + level.vertices.size(), 0.0f);
+        }
+        return;
+    }
+    weights.resize(vertices, 0.0f); // the levels before without edits
+    weights.reserve(vertices + level.vertices.size());
+    for (const Vec3f& vertex : level.vertices) {
+        const VertexEdge edge = edgeOf(vertex);
+        const bool low = edits->changes[sampleAt(edge.low[0], edge.low[1], edge.low[2])] !=
+                         LevelEdits::kKept;
+        float weight = low ? 1.0f - (edge.axis >= 0 ? edge.t : 0.0f) : 0.0f;
+        if (edge.axis >= 0) {
+            std::array<int, 3> high = edge.low;
+            ++high[static_cast<std::size_t>(edge.axis)];
+            if (edits->changes[sampleAt(high[0], high[1], high[2])] != LevelEdits::kKept) {
+                weight += edge.t;
+            }
+        }
+        weights.push_back(std::clamp(weight, 0.0f, 1.0f));
+    }
+}
+
 } // namespace terrain::tile

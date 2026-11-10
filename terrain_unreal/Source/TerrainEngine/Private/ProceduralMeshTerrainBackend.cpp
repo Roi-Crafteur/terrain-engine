@@ -22,6 +22,9 @@ namespace
 	// The custom primitive data of a tile: its slot, and the centimeters between its texels.
 	constexpr int32 BlendSlotData = 0;
 	constexpr int32 BlendPitchData = 1;
+	// 1 on a tile whose colors hold the edit weights in their blue (UnrealMesh::edited), for the
+	// light floor of the edited surfaces (terrain_edit_light_nodes.py); 0 on the others.
+	constexpr int32 EditedTileData = 2;
 	// The sections of the water of a tile.
 	constexpr int32 WaterSection = 1;
 	constexpr int32 FallsSection = 2;
@@ -182,6 +185,7 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 	SetWaterSection(*Component, WaterSection, Tile.water, WaterMaterial);
 	SetWaterSection(*Component, FallsSection, Tile.falls, FallsMaterial);
 	UploadBlend(*Component, Tile);
+	Component->SetCustomPrimitiveDataFloat(EditedTileData, Mesh.edited ? 1.0f : 0.0f);
 	// The tools of the developers (ProceduralMeshTerrainLooks.cpp): a new mesh in their mode.
 	Component->SetMeshSectionVisible(0, bGroundVisible);
 	OwnColors.Remove(Key);

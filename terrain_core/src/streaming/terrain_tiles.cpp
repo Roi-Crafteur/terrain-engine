@@ -290,10 +290,10 @@ TileData TerrainTiles::generate(const TileRequest& asked) const {
         if (caveTile && !crossesSurface(grid)) {
             continue; // a level of rock under the ground, between the caves
         }
-        appendLevel(data.mesh,
-                    levelMesh(grid, request.seams, rockTile, originY, columns, lattice.spacing,
-                              levelEdits),
-                    scale, offsetY);
+        const Mesh part = levelMesh(grid, request.seams, rockTile, originY, columns,
+                                    lattice.spacing, levelEdits);
+        tile::addEditWeights(part, levelEdits, data.mesh.vertices.size(), data.editWeights);
+        appendLevel(data.mesh, part, scale, offsetY);
     }
     if (caveTile) {
         const bool objects = request.key.lod == kPlantLod;

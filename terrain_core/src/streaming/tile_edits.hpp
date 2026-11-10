@@ -10,6 +10,7 @@
 #include "terrain/storage/edit_window.hpp"
 #include "tile_lattice.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -70,5 +71,12 @@ struct LevelEdits {
 // the blocks; their light turns smoothly over the steps and corners of the blocks, the same on
 // both sides of a tile. Every other vertex keeps its normal bit for bit.
 void lightEdits(Mesh& level, const LevelEdits& edits);
+
+// The weights of the vertices of a level (its mesh in cells) appended to those of the tile
+// (TileData::editWeights), whose mesh held vertices before it: with edits, each vertex the part
+// of its edge on the side of the samples they changed; without, 0 for each, and nothing at all
+// while no level of the tile had edits (weights stays empty).
+void addEditWeights(const Mesh& level, const std::optional<LevelEdits>& edits,
+                    std::size_t vertices, std::vector<float>& weights);
 
 } // namespace terrain::tile

@@ -52,6 +52,10 @@ struct FTerrainBuildHooks
 		const FString& What);
 	// Starts or stops the save while playing (Terrain.EditSave): false outside play.
 	static bool SetSave(ATerrainWorld& World, bool bSave);
+	// The light floor of the edited surfaces from Building (bEditLightFloor, EditLightFloor) to
+	// the material of the tiles (TerrainWorldEditLight.cpp): false when the tiles have no
+	// material instance of M_TemporaryTerrain to take it.
+	static bool ApplyEditLight(ATerrainWorld& World);
 };
 
 // The edits done this frame (TickTerrainEdits): the chunks to save, the clicks measured.

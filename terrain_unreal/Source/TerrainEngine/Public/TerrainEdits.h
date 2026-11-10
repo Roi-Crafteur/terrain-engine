@@ -67,4 +67,17 @@ struct FTerrainBuildSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Edits",
 		meta = (EditCondition = "bSaveEdits", ClampMin = "1"))
 	float SaveIntervalSeconds = 10.0f;
+
+	// A light floor on the surfaces the edits made (agent 41): they emit EditLightFloor times
+	// their base color (M_TemporaryTerrain, the blue of the vertex colors of the edited tiles),
+	// against holes the lighting of the level leaves near black. Off by default: check the
+	// lighting of the level first (BREAK_PLACE.md, the Lumen settings). Also the console commands
+	// Terrain.EditLight 0|1 and Terrain.EditLightFloor <share>.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Edits")
+	bool bEditLightFloor = false;
+
+	// The share of its base color an edited surface emits, with bEditLightFloor.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Edits",
+		meta = (EditCondition = "bEditLightFloor", ClampMin = "0", ClampMax = "1"))
+	float EditLightFloor = 0.15f;
 };

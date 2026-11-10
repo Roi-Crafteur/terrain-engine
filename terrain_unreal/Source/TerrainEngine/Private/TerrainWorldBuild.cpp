@@ -192,6 +192,7 @@ void NoteBuildEdit(FTerrainWorldState& State, const terrain::unreal::EditOutcome
 
 void FTerrainBuildHooks::Start(ATerrainWorld& World)
 {
+	ApplyEditLight(World);
 	if (World.State.IsValid() && World.Building.bSaveEdits)
 	{
 		StartSaver(World, *World.State.Get(), true);

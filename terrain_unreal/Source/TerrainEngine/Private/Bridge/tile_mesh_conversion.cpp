@@ -95,8 +95,11 @@ VertexBands vertexBands(const RockBands& b) {
 
 UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> waterLevels,
                        const TileSea& sea, std::span<const float> rock,
-                       std::span<const RockBands> bands) {
+                       std::span<const RockBands> bands, std::span<const float> editWeights) {
     validate(mesh, waterLevels);
+    if (!editWeights.empty() && editWeights.size() != mesh.vertices.size()) {
+        throw std::invalid_argument("convertMesh: the edit weights of every vertex or none");
+    }
     if (!rock.empty() && rock.size() != mesh.vertices.size()) {
         throw std::invalid_argument("convertMesh: one share of rock per vertex expected");
     }
@@ -124,7 +127,12 @@ UnrealMesh convertMesh(const Mesh& mesh, double originY, std::span<const float> 
             const double share = std::clamp(static_cast<double>(rock[n]), 0.0, 1.0);
             out.colors.back().a = static_cast<std::uint8_t>(std::lround(255.0 * (1.0 - share)));
         }
+        if (!editWeights.empty()) {
+            const double weight = std::clamp(static_cast<double>(editWeights[n]), 0.0, 1.0);
+            out.colors.back().b = static_cast<std::uint8_t>(std::lround(255.0 * weight));
+        }
     }
+    out.edited = !editWeights.empty();
     for (const Vec3f& normal : mesh.normals) {
         out.normals.push_back(toUnrealDirection(normal));
     }
