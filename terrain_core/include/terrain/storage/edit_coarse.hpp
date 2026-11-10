@@ -37,9 +37,13 @@ using CoarseCell = std::array<CoarsePart, 2>; // 0: added, 1: removed
 //   b with P - s / 2 <= b < P + s / 2 on each axis), at its true size, with the generated density
 //   by its true distance. A box thinner than the cell along x or z, with no block of its edit in
 //   the cells beside it along that axis, is moved onto the column of its cell (at most s / 2,
-//   never along y): a hole or a wall of one block keeps its depth or its height and its
-//   thickness, and its place within s / 2. Its weight: relay (1 at LOD 1, 1/2 at LOD 2, 0 at
-//   LOD 3), the relay fading out.
+//   never along y). On that column the ground side of the box is the edit's: the last sample
+//   before its far face (the bottom of a hole open to the sky, the top of a block standing on the
+//   ground) reads its distance to that face along y, so the face falls where it is whatever row
+//   of the lattice the box lies on. A hole or a wall of one block keeps its depth or its height,
+//   and its place within s / 2. Its weight: relay (1 at LOD 1, 1/2 at LOD 2, 0 at LOD 3), the
+//   height of the box kept from the ground side: a wall of 3 m stands 1.5 m high at LOD 2, the
+//   relay fading out.
 // - Every added block first, then every removed one, as the LOD 0 does (ModificationStore).
 //
 // A pure function of the blocks within reach(s) of a point and of the generated density there:
@@ -56,6 +60,14 @@ public:
 
     [[nodiscard]] bool empty() const { return cells_.empty(); }
     [[nodiscard]] float density(float generated, int i, int j, int k) const;
+    // The same, and whether a relay set it (rather than the cover of the cells or nothing).
+    [[nodiscard]] float density(float generated, int i, int j, int k, bool& relayed) const;
+    // The direction of the air of the relay of an edit (removed or added blocks) at the point at
+    // (in samples from the first, any point near the sample (i, j, k)): into the nearest box of
+    // a removed block, out of that of an added one, read from the cells around the sample. Zero
+    // without a box there.
+    [[nodiscard]] std::array<float, 3> relayDirection(bool removing, int i, int j, int k,
+                                                      const std::array<double, 3>& at) const;
 
     // Meters from a point to the farthest block its density reads: the cells around it (1.5 s),
     // and with a relay the cells beside them (2.5 s: it moves a box only when they hold none of
@@ -79,7 +91,9 @@ private:
     [[nodiscard]] const CoarseCell& cell(int i, int j, int k) const {
         return cells_[index(i, j, k)];
     }
-    [[nodiscard]] float applyEdit(float density, std::size_t edit, int i, int j, int k) const;
+    [[nodiscard]] float applyEdit(float density, std::size_t edit, int i, int j, int k,
+                                  bool& relayed) const;
+    [[nodiscard]] bool relays(const CoarsePart& part) const;
     [[nodiscard]] bool inRegion(int i, int j, int k) const;
     void markNear(int i, int j, int k);
     void snapBoxes();

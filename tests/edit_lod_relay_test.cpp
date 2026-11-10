@@ -2,8 +2,9 @@
 // read only the blocks touching it: a block of 1 m vanished between two points and grew to a bump
 // of a whole cell on one (2.2 m at LOD 1, 8.7 m at LOD 3). Now:
 // - a single block, broken or placed at every place of a cell, leaves a relay at LOD 1 (a hollow
-//   or a bump near it, never a cell), weaker at LOD 2, nothing at LOD 3;
-// - a wall one block thick keeps its height at LOD 1;
+//   or a bump near it, never a cell) of its true depth or height wherever it lies (the column of
+//   its box), about half of it at LOD 2, nothing at LOD 3;
+// - a wall one block thick keeps its height at LOD 1, about half of it at LOD 2;
 // - a large hole keeps its walls within half a cell at every LOD;
 // - the stitched sides of tiles of two LODs still meet over the edits.
 #include "block_targeting.hpp"
@@ -128,8 +129,8 @@ void testSingleBlocks() {
                         "the block\n",
                         placing ? "placed" : "broken", lod, smallest[l], largest[l], farthest[l]);
         }
-        TEST_CHECK(smallest[1] >= 0.2 && largest[1] <= 1.5 && farthest[1] <= 2.0);
-        TEST_CHECK(largest[2] <= largest[1] + 1e-6);
+        TEST_CHECK(smallest[1] >= 0.6 && largest[1] <= 1.5 && farthest[1] <= 2.0);
+        TEST_CHECK(largest[2] <= largest[1] + 1e-6 && smallest[2] >= 0.25 * largest[1]);
         TEST_CHECK(largest[3] <= 0.05);
     }
 }
@@ -161,6 +162,7 @@ void testWall() {
                     top - base);
     }
     TEST_CHECK(std::abs(tops[1] - tops[0]) <= 0.5);
+    TEST_CHECK(tops[2] >= 0.3 * tops[0] && tops[2] <= 0.7 * tops[0]);
 }
 
 // A hole of 16 x 8 x 16 blocks: its floor and its walls at every LOD.

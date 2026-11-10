@@ -43,21 +43,6 @@ VertexEdge edgeOf(const Vec3f& v) {
     return edge;
 }
 
-// The direction of the air of the edits at a changed sample: up the smoothed share of the
-// removed blocks, or down that of the added ones (the density rises away from them).
-std::array<float, 3> editDirection(const LevelEdits& edits, std::size_t at, int i, int j, int k) {
-    const auto [removed, added] = edits.blocks->blocksAround(i, j, k);
-    const bool raised = edits.changes[at] == LevelEdits::kRaised;
-    const std::array<float, 3> g = edit_cubes::shareGradient(raised ? removed : added);
-    return raised ? g : std::array<float, 3>{-g[0], -g[1], -g[2]};
-}
-
-Vec3f normalized(float x, float y, float z, bool& ok) {
-    const float length = std::sqrt(x * x + y * y + z * z);
-    ok = length > 1e-6f;
-    return ok ? Vec3f{x / length, y / length, z / length} : Vec3f{};
-}
-
 // The sample (i, j, k) is an even sample of a stitched side: the coarser neighbor samples it.
 bool coarseSample(int i, int j, int k, unsigned seams) {
     if (j % 2 != 0) {
@@ -74,6 +59,42 @@ bool coarseSample(int i, int j, int k, unsigned seams) {
            (has(kSeamNegZ) && lowZ && evenX) || (has(kSeamPosZ) && highZ && evenX) ||
            (has(kSeamNegXNegZ) && lowX && lowZ) || (has(kSeamPosXNegZ) && highX && lowZ) ||
            (has(kSeamNegXPosZ) && lowX && highZ) || (has(kSeamPosXPosZ) && highX && highZ);
+}
+
+// The direction of the air of the edits at a changed sample, seen from the vertex v (in cells):
+// at LOD 0 up the smoothed share of the removed blocks, or down that of the added ones (the
+// density rises away from them); beyond, toward the face of the nearest box of the relay that
+// set the sample, on a stitched side that of the coarser LOD.
+std::array<float, 3> editDirection(const LevelEdits& edits, std::size_t at, int i, int j, int k,
+                                   const Vec3f& v) {
+    const bool raised = edits.changes[at] > 0;
+    if (edits.blocks) {
+        const auto [removed, added] = edits.blocks->blocksAround(i, j, k);
+        const std::array<float, 3> g = edit_cubes::shareGradient(raised ? removed : added);
+        return raised ? g : std::array<float, 3>{-g[0], -g[1], -g[2]};
+    }
+    const std::array<double, 3> p{static_cast<double>(v.x), static_cast<double>(v.y),
+                                  static_cast<double>(v.z)};
+    if (edits.sides && coarseSample(i, j, k, edits.seams)) {
+        return edits.sides->relayDirection(raised, i / 2, j / 2, k / 2,
+                                           {p[0] / 2.0, p[1] / 2.0, p[2] / 2.0});
+    }
+    return edits.coarse ? edits.coarse->relayDirection(raised, i, j, k, p)
+                        : std::array<float, 3>{};
+}
+
+// A sample whose change turns the normals: any change at LOD 0, a relay beyond.
+bool turnsNormals(const LevelEdits& edits, std::size_t at) {
+    const std::int8_t change = edits.changes[at];
+    return edits.blocks ? change != LevelEdits::kKept
+                        : change == LevelEdits::kRelayRaised ||
+                              change == LevelEdits::kRelayLowered;
+}
+
+Vec3f normalized(float x, float y, float z, bool& ok) {
+    const float length = std::sqrt(x * x + y * y + z * z);
+    ok = length > 1e-6f;
+    return ok ? Vec3f{x / length, y / length, z / length} : Vec3f{};
 }
 
 } // namespace
@@ -147,15 +168,16 @@ std::optional<LevelEdits> applyBlocks(DensityGrid& grid, const TileLattice& latt
         for (int j = 0; j < kGridSamples; ++j) {
             for (int i = 0; i < kGridSamples; ++i) {
                 const float generated = grid.at(i, j, k);
+                bool relayed = false;
                 float edited = fine ? fine->density(generated, i, j, k)
-                                    : coarse->density(generated, i, j, k);
+                                    : coarse->density(generated, i, j, k, relayed);
                 if (sides && coarseSample(i, j, k, seams)) {
-                    edited = sides->density(generated, i / 2, j / 2, k / 2);
+                    edited = sides->density(generated, i / 2, j / 2, k / 2, relayed);
                 }
                 grid.set(i, j, k, edited);
                 if (edited != generated) {
                     changes[sampleAt(i, j, k)] =
-                        edited > generated ? LevelEdits::kRaised : LevelEdits::kLowered;
+                        static_cast<std::int8_t>((edited > generated ? 1 : -1) * (relayed ? 2 : 1));
                 }
             }
         }
@@ -163,11 +185,12 @@ std::optional<LevelEdits> applyBlocks(DensityGrid& grid, const TileLattice& latt
     if (fine && fine->empty()) {
         fine.reset();
     }
-    return LevelEdits{std::move(fine), std::move(changes), s};
+    return LevelEdits{std::move(fine), std::move(coarse), std::move(sides), std::move(changes), s,
+                      seams};
 }
 
 void lightEdits(Mesh& level, const LevelEdits& edits) {
-    if (edits.spacing != 1 || !edits.blocks) {
+    if (!edits.blocks && !edits.coarse && !edits.sides) {
         return;
     }
     for (std::size_t n = 0; n < level.vertices.size(); ++n) {
@@ -178,8 +201,8 @@ void lightEdits(Mesh& level, const LevelEdits& edits) {
         }
         const std::size_t a = sampleAt(edge.low[0], edge.low[1], edge.low[2]);
         const std::size_t b = sampleAt(high[0], high[1], high[2]);
-        const bool lowChanged = edits.changes[a] != LevelEdits::kKept;
-        const bool highChanged = edge.axis >= 0 && edits.changes[b] != LevelEdits::kKept;
+        const bool lowChanged = turnsNormals(edits, a);
+        const bool highChanged = edge.axis >= 0 && turnsNormals(edits, b);
         if (!lowChanged && !highChanged) {
             continue;
         }
@@ -188,7 +211,8 @@ void lightEdits(Mesh& level, const LevelEdits& edits) {
         std::array<float, 3> sum{};
         float weight = 0.0f;
         const auto add = [&](std::size_t at, const std::array<int, 3>& p, float share) {
-            const std::array<float, 3> d = editDirection(edits, at, p[0], p[1], p[2]);
+            const std::array<float, 3> d =
+                editDirection(edits, at, p[0], p[1], p[2], level.vertices[n]);
             for (std::size_t u = 0; u < 3; ++u) {
                 sum[u] += share * d[u];
             }

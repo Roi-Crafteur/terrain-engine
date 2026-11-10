@@ -15,7 +15,11 @@
 // Every part but "lod 0" was pinned again when the tiles of LOD 1 to 3 came to read the edits by
 // the cells of their lattice points (agent 41, edit_coarse.hpp: the cover of the cells and the
 // relay of the small edits), and the stitched sides of the finer tiles as the coarser LOD reads
-// them: the unstitched tiles of LOD 0 kept their bits.
+// them: the unstitched tiles of LOD 0 kept their bits. The same parts were pinned again when the
+// relay came to keep the depth of a hole open to the sky and the height of a block standing on
+// the ground (the column of its box), to fade by the height of its box at LOD 2 rather than by
+// its density, and to turn the normals of the faces it makes toward its box: "lod 0" and "lod 3"
+// (no relay) kept their bits.
 #include "terrain/storage/modifications.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
@@ -136,8 +140,8 @@ void testWithoutCaves() {
     editCorner(tiles, c.x * 16, c.z * 16);
     std::vector<golden::Part> parts = cornerParts(tiles, c);
     checkEdited(parts, unedited);
-    setExpected(parts, {0x255698AA1DB72EA9ULL, 0xA26F6769BC6267FFULL, 0x6B2265593D3A5458ULL,
-                        0x95467F109D9D7814ULL, 0xDA16D05275639F86ULL});
+    setExpected(parts, {0x255698AA1DB72EA9ULL, 0x90A33C2761DDF67CULL, 0xDB70ADEA3417FC69ULL,
+                        0x96F1405B0659797DULL, 0xDA16D05275639F86ULL});
     golden::report("tiles edited block by block, without caves", parts);
 }
 
@@ -153,7 +157,7 @@ void testWithCaves() {
     std::vector<golden::Part> parts = {{"caves lod 0", tilesChecksum(tiles, lod0), 0},
                                        {"caves lod 1", tilesChecksum(tiles, lod1), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x491E084064A1F76CULL, 0xDCAF99855E61E86EULL});
+    setExpected(parts, {0x26126FDBA1A07786ULL, 0xD024C9538ECDFB4CULL});
     golden::report("tiles edited block by block, with caves", parts);
 }
 
@@ -173,7 +177,7 @@ void testAcrossTheEdge() {
     editCorner(tiles, count.x * 8, kRow * 16 + 8);
     std::vector<golden::Part> parts = {{"wrap", tilesChecksum(tiles, requests), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x6D229334A88ED255ULL});
+    setExpected(parts, {0x8DB23CC79EB07765ULL});
     golden::report("tiles edited block by block, across the edge of the world", parts);
 }
 
