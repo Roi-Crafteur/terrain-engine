@@ -16,3 +16,13 @@ set_tests_properties(coast_planet_file PROPERTIES
 terrain_add_test(played_world_golden_test terrain_unreal_bridge)
 set_tests_properties(played_world_golden_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
+
+# Benches run by hand, not tests: they assert nothing and print times (each source says how to read
+# them). horizon_cost_bench and horizon_blend_cost_bench were horizon_cost_test and
+# horizon_blend_cost_test; map_cost_bench holds the times map_cost_test printed. The coverage of
+# the horizon they checked is asserted by horizon_levels_test.
+foreach(bench horizon_cost_bench horizon_blend_cost_bench map_cost_bench)
+    add_executable(${bench} ${bench}.cpp)
+    target_link_libraries(${bench} PRIVATE terrain_core terrain_warnings)
+    add_dependencies(check ${bench})
+endforeach()
