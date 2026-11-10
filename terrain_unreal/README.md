@@ -178,8 +178,7 @@ terrain_unreal/
   Scripts/material_settings.py  la remise à zéro des réglages des matériaux reconstruits
   Source/TerrainEngine/
     TerrainEngine.Build.cs
-    Public/TerrainWorld.h      ATerrainWorld
-    Public/TerrainWorldTypes.h ETerrainMeshType, ETerrainHorizonRenderer
+    Public/TerrainWorld.h      ATerrainWorld, ETerrainMeshType, ETerrainHorizonRenderer
     Public/TerrainEdits.h      ETerrainEditShape, ETerrainEditMode
     Public/TerrainDevTypes.h   ETerrainEyeMode (les lieux des outils de debug)
     Private/
