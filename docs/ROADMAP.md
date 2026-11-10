@@ -327,7 +327,8 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   un lit de 300 m, 19 % encore avec 1 000 m). C'est la phase 11C qui règle cela
 
 ### Phase 11C — Réseau hydrographique complet et vallées qui descendent (après la 12A)
-- pour l'agent 31 (étape 1 ou 2) : `hydrology_test` tolère un seul point sec connu le long des
+- pour l'agent 31 (étape 1 ou 2) : `hydrology_test`, avec les volcans allumés (sa variante
+  `hydrology_test_volcanoes` jusqu'à R1), tolère un seul point sec connu le long des
   faces des chutes du petit monde, sur un tracé que les volcans ont déplacé (agent 45), loin
   d'eux : une bosse du lit, en x = 965 046,27, z = −324 838,17 (9 cm à gauche du milieu du
   lit, sur la face d'une chute, niveau 258,54 m ; `kKnownDry*` dans le test). Le retirer du
@@ -374,7 +375,12 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   karst et pitons, volcans
 - volcans (agent 45, en cours, `generation/volcanoes.hpp`) : 3 759 volcans placés par le core
   (`generation/volcano_placement.hpp`, ses constantes, les positions d'avant au bit près), que
-  lit aussi le peuplement, en relief avant le niveau Planète.
+  lit aussi le peuplement, en relief avant le niveau Planète. **Éteints par défaut**
+  (`VolcanoParams::enabled`) : fusionnés sans rien changer au monde de `main` ; allumés à R1 avec
+  les autres reliefs de la vague 9 (drapeau expérimental `volcanoes` avant). Leurs sommes
+  allumées sont dans les variantes `<test>_volcanoes` des goldens (`--flags volcanoes`,
+  `tests/golden_support.hpp`), et la somme Planète allumée est `e1db9106a2b0b923` ; le point sec
+  de `hydrology_test` à retirer par l'agent 31 n'existe qu'allumé.
   Stratovolcans concaves (30 à 35° sur les 500 m sous
   la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
   la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
