@@ -98,6 +98,10 @@ public:
 	// without the parameter ignore it).
 	int32 SetLookScalar(FName Name, float Value);
 
+	// The levels that cast shadows (FTerrainHorizonDrawing::ShadowLevels, agent 40): the levels 0 to
+	// Levels - 1, or every level with bHorizonShadows (FTerrainHorizonLook::bShadows).
+	void SetShadowLevels(int32 Levels);
+
 	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
 	// (independent of the visibility the placements set), each level tinted with its own hue or
 	// not (bHorizonDebugTint while playing).

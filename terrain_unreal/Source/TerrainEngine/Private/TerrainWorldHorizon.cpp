@@ -144,6 +144,7 @@ bool ATerrainWorld::StartGpuHorizon()
 	Look.RevealSeconds = FMath::Max(0.0f, LoadingSettings.HorizonRevealSeconds);
 	HorizonClipmap = NewObject<UTerrainHorizonClipmap>(this);
 	HorizonClipmap->Initialize(*this, GpuLook, Horizon, Look);
+	HorizonClipmap->SetShadowLevels(HorizonDrawing.ShadowLevels);
 	HorizonClipmap->BindSurfaceLook(TileSurfaceLook);
 	HorizonClipmap->SetWaveOrigin(terrain::unreal::seaWaveOrigin(State->Frame));
 	State->HorizonStartSeconds = FPlatformTime::Seconds();

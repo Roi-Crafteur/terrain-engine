@@ -5,6 +5,7 @@
 #include "Templates/PimplPtr.h"
 #include "TerrainDevTypes.h"
 #include "TerrainEdits.h"
+#include "TerrainHorizonDrawing.h"
 #include "TerrainLoadingSettings.h"
 
 #include "TerrainWorld.generated.h"
@@ -260,11 +261,14 @@ public:
 		meta = (EditCondition = "bHorizon"))
 	bool bHorizonShadows = false;
 
-	// Detail normals of the GPU horizon (Bridge/horizon_normal_stream.hpp): the slopes of the
-	// ground HorizonNormalRatio times finer than the grid of each level (2 m on level 0, 16 m on
-	// level 3 at 4), which light the levels and the far tiles: crests, walls and gullies stay
-	// visible kilometers away. Computed after the samples, by HorizonNormalJobs low priority
-	// tasks; the grid normals show until then. Off: the normals of the grids, as before.
+	// How the horizon is drawn (TerrainHorizonDrawing.h, agent 40): the levels casting shadows.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
+		meta = (EditCondition = "bHorizon"))
+	FTerrainHorizonDrawing HorizonDrawing;
+
+	// Detail normals of the GPU horizon (Bridge/horizon_normal_stream.hpp): slopes HorizonNormalRatio
+	// times finer than each grid, lighting crests and walls kilometers away; computed after the
+	// samples by HorizonNormalJobs low priority tasks. Off: the normals of the grids, as before.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
 		meta = (EditCondition = "bHorizon"))
 	bool bHorizonDetailNormals = true;
@@ -280,13 +284,9 @@ public:
 			ClampMax = "8"))
 	int32 HorizonNormalJobs = 2;
 
-	// Crests of the far mountains (terrain_core streaming/horizon_crests.hpp): from level 1 on, the
-	// samples rise to the crests of their cells, sought HorizonCrestRatio times finer than each
-	// level, so that the summits and ridges keep their height against the sky. 4 by default: the
-	// GPU horizon computes them after its epochs, from the grid of the detail normals, and shows
-	// the point samples until they arrive (the CPU horizon computes them in its epochs, twice
-	// their cost at 4). 2 or 8 seek them coarser or finer. 0: the point samples, the horizon as
-	// before.
+	// Crests of the far mountains (streaming/horizon_crests.hpp): from level 1 on, the samples rise
+	// to the crests of their cells, sought HorizonCrestRatio times finer (4: computed by the GPU
+	// horizon after its epochs, the point samples shown until then; 0: the point samples).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon",
 		meta = (EditCondition = "bHorizon", ClampMin = "0", ClampMax = "8"))
 	int32 HorizonCrestRatio = 4;
