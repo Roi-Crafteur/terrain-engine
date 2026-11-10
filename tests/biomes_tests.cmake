@@ -6,6 +6,10 @@
 # spilling into another.
 terrain_add_test(biome_format_test terrain_core)
 
+# The humidity the biomes read from the planet level, at a warped point: no fold of its bilinear
+# grid of 8 km left on the lines of the cell centers (the small planet).
+terrain_add_test(biome_humidity_test terrain_core)
+
 # The texels of the tiles take the water of the core (a dry depression is no ocean, the lakes and
 # rivers are water), level 0 of the horizon equal to them: on the default world with its planet
 # file (the fixture coast_planet of coast_tests.cmake).

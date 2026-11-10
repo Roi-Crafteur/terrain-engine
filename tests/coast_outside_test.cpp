@@ -351,8 +351,10 @@ void testSmallWorldWithWater() {
     golden::report("the small world with its water out of the coastal zone",
                    {{"small world planet level", planet->checksum(), 0xBFA4DE19A54DAD75ULL},
                     {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
-                    {"small world tiles", sums.tiles.value(), 0x2D3A6A8A7D597236ULL},
-                    {"small world horizon", sums.horizon.value(), 0x159D43BA4E7127E6ULL},
+                    // The humidity of the planet read at a warped point (agent 49, PR 2) moves
+                    // its biomes: 0x2D3A6A8A7D597236 and 0x159D43BA4E7127E6 before it.
+                    {"small world tiles", sums.tiles.value(), 0xE1E027C592519CA2ULL},
+                    {"small world horizon", sums.horizon.value(), 0x44A5616EC0F93A2EULL},
                     {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
                     // Near the rivers (agent 49): the texels of the tiles read the water of the
                     // core, and a dry sample its climate at its ground, not at the level of the

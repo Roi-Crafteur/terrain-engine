@@ -302,7 +302,9 @@ void testLakes(const World& w) {
 
 // The humidity of the planet level: P / (P + PET) of the cell at its center (PET 300 mm/yr at
 // least), within [0, 1]
-// everywhere, and what the climate of the world reads with it (planetHumidity), the same bits.
+// everywhere, and what the climate of the world reads with it (planetHumidity), the same bits
+// where the climate reads it unwarped (ClimateParams::humidityWarp 0: agent 49 reads it at a
+// warped point, biome_humidity_test).
 void testHumidity(const World& w) {
     const terrain::PlanetLevel& level = *w.planet;
     const terrain::PlanetGrid& grid = level.grid();
@@ -312,7 +314,9 @@ void testHumidity(const World& w) {
     double dry = 1.0;
     double wet = 0.0;
     const terrain::ClimateField own(terrain::kDefaultWorldSeed, {}, golden::kSmallPlanet);
-    const terrain::ClimateField planet(terrain::kDefaultWorldSeed, {}, golden::kSmallPlanet,
+    terrain::ClimateParams unwarped;
+    unwarped.humidityWarp = 0.0;
+    const terrain::ClimateField planet(terrain::kDefaultWorldSeed, unwarped, golden::kSmallPlanet,
                                        terrain::planetHumidity(w.hydrology));
     for (std::size_t cell = 0; cell < grid.cells(); cell += 97) {
         const double x = grid.centerX(grid.column(cell));

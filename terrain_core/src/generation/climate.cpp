@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 #include <utility>
 
 namespace terrain {
@@ -12,7 +13,7 @@ namespace terrain {
 namespace {
 
 // New layers go at the end so that the seeds of the existing ones never change.
-enum Layer : std::uint64_t { kTemperature, kHumidity };
+enum Layer : std::uint64_t { kTemperature, kHumidity, kWarpX, kWarpZ };
 
 } // namespace
 
@@ -29,8 +30,14 @@ float exposureOf(float gradX, float gradZ) {
 ClimateField::ClimateField(std::uint64_t seed, const ClimateParams& params, const WorldSize& world,
                            std::shared_ptr<const HumiditySource> humidity)
     : params_(params), world_(world), temperatureSeed_(noise::deriveSeed(seed, kTemperature)),
-      humiditySeed_(noise::deriveSeed(seed, kHumidity)), humidity_(std::move(humidity)) {
+      humiditySeed_(noise::deriveSeed(seed, kHumidity)),
+      warpXSeed_(noise::deriveSeed(seed, kWarpX)), warpZSeed_(noise::deriveSeed(seed, kWarpZ)),
+      humidity_(std::move(humidity)) {
     validate(world_);
+    if (!(params_.humidityWarp >= 0.0) ||
+        (params_.humidityWarp > 0.0 && !(params_.humidityWarpWavelength > 0.0))) {
+        throw std::invalid_argument("ClimateParams: invalid warp of the humidity");
+    }
 }
 
 float ClimateField::latitudeTemperatureAt(double z) const {
@@ -50,8 +57,16 @@ float ClimateField::baseTemperatureAt(double x, double z) const {
 
 float ClimateField::humidityAt(double x, double z, float continentalness) const {
     if (humidity_) {
-        return std::clamp(humidity_->humidityAt(wrapCoordinate(x, world_.x),
-                                                wrapCoordinate(z, world_.z)),
+        double wx = 0.0;
+        double wz = 0.0;
+        if (params_.humidityWarp > 0.0) {
+            const noise::FbmParams warp{.octaves = 2,
+                                        .frequency = 1.0 / params_.humidityWarpWavelength};
+            wx = params_.humidityWarp * noise::fbm2D(x, z, warpXSeed_, warp, world_);
+            wz = params_.humidityWarp * noise::fbm2D(x, z, warpZSeed_, warp, world_);
+        }
+        return std::clamp(humidity_->humidityAt(wrapCoordinate(x + wx, world_.x),
+                                                wrapCoordinate(z + wz, world_.z)),
                           0.0f, 1.0f);
     }
     const noise::FbmParams fbm{.octaves = 4, .frequency = 1.0 / params_.humidityWavelength};
