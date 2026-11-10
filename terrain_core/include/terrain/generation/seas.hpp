@@ -26,8 +26,10 @@ namespace terrain {
 class PlanetLevel;
 
 struct SeaParams {
-    // Off: no seas, not even built (the world before agent 51, bit for bit).
-    bool enabled = true;
+    // Off: no seas, not even built (the world before agent 51, bit for bit). Off by default until
+    // the relief of the wave is switched on together (R1); on with the experimental flag "seas"
+    // (experimental_flags.hpp).
+    bool enabled = false;
     // The steps that the comparisons can switch off: the margins, the ages of the crust, the
     // ridges and trenches; the abyssal hills and the fracture zones; the seamounts.
     bool floors = true;

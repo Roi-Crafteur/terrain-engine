@@ -4,10 +4,11 @@
 // whole world (--whole), on --size pixels; or --tiles n: the n x n tiles of the map pyramid around
 // --center at --mpp (a power of two), each timed. Without --planet: the relief and the sea only.
 // Prints where the samples came from, their counts, the queries of the hydrology and its courses.
-// --no-ergs: the same world without its seas of dunes (ergs.hpp), to compare; --no-seas without
-// the floors of its seas (seas.hpp).
+// --no-ergs: the same world without its seas of dunes (ergs.hpp), to compare; --flags: the
+// experimental flags of the world (experimental_flags.hpp), such as "seas" for the floors of its
+// seas (seas.hpp).
 // Usage: terrain_export_map [--planet <file>] [--seed <seed>] [--threads <n>] [--no-ergs]
-//        [--no-seas] [--layers <a,b,...>] [--max-samples <n>]
+//        [--flags <a,b>] [--layers <a,b,...>] [--max-samples <n>]
 //        (layers: relief, biomes, water, contours, ergs, seas)
 //        (--box <x> <z> <width> <height> | --center <x> <z> --mpp <m> | --whole)
 //        (--size <width> <height> | --tiles <n>) <out.png>
@@ -24,12 +25,15 @@
 #include "terrain/storage/planet_file.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include "tool_flags.hpp"
+
 #include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -50,7 +54,7 @@ struct Options {
     double mpp = 0.0;
     bool whole = false;
     bool ergs = true; // --no-ergs: the same world without its seas of dunes
-    bool seas = true; // --no-seas: the same world without the floors of its seas
+    std::string flags; // --flags: the experimental flags of the world
     int width = 0;
     int height = 0;
     int tiles = 0;
@@ -99,10 +103,6 @@ bool parsePlace(const std::string& flag, int argc, char** argv, int& i, Options&
     if (flag == "--mpp" && need(1)) {
         return (parse(argv[++i], o.mpp) && o.mpp > 0.0) || fail("meters per pixel", argv[i]);
     }
-    if (flag == "--no-seas") {
-        o.seas = false;
-        return true;
-    }
     if (flag == "--no-ergs") {
         o.ergs = false;
         return true;
@@ -123,6 +123,12 @@ bool parseOption(int argc, char** argv, int& i, Options& o) {
     }
     if (flag == "--seed" && need(1)) {
         return parse(argv[++i], o.seed) || fail("seed", argv[i]);
+    }
+    if (flag == "--flags" && need(1)) {
+        o.flags = argv[++i];
+        terrain::WorldParams params;
+        std::string canonical;
+        return tool_flags::apply(o.flags, params, canonical) || fail("flags", argv[i]);
     }
     if (flag == "--threads" && need(1)) {
         return (parse(argv[++i], o.threads) && o.threads >= 0) || fail("threads", argv[i]);
@@ -304,7 +310,7 @@ int main(int argc, char** argv) {
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
                      "Usage: %s [--planet <file>] [--seed <seed>] [--threads <n>] [--no-ergs] "
-                     "[--no-seas] "
+                     "[--flags <a,b>] "
                      "[--layers <a,b,...>] [--max-samples <n>] (--box <x> <z> <width> <height> | "
                      "--center <x> <z> --mpp <m> | --whole) (--size <width> <height> | "
                      "--tiles <n>) <out.png>\n",
@@ -312,25 +318,33 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     const terrain::WorldSize world;
-    const terrain::Heightfield relief(o.seed, terrain::HeightfieldParams{}, world);
+    terrain::WorldParams params;
+    std::string flags;
+    (void)tool_flags::apply(o.flags, params, flags); // checked with the options
+    params.planet.threads = o.threads;
+    params.water.ergs.enabled = params.water.ergs.enabled && o.ergs;
+    const terrain::Heightfield relief(o.seed, params.relief, world);
     std::shared_ptr<const terrain::Hydrology> hydrology;
     if (!o.planet.empty()) {
-        terrain::PlanetParams params;
-        params.threads = o.threads;
         bool built = false;
-        auto planet = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
-            o.planet, o.seed, terrain::HeightfieldParams{}, params, world, &built));
+        std::shared_ptr<const terrain::PlanetLevel> planet;
+        try {
+            planet = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
+                o.planet, o.seed, params.relief, params.planet, world, &built, {}, flags));
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "%s\n", e.what());
+            return EXIT_FAILURE;
+        }
         std::printf("planet level %s %s\n", built ? "built and written to" : "read from",
                     o.planet.string().c_str());
-        terrain::HydrologyParams water;
-        water.ergs.enabled = o.ergs;
-        water.seas.enabled = o.seas;
-        hydrology = std::make_shared<const terrain::Hydrology>(o.seed, relief, planet, water);
+        hydrology =
+            std::make_shared<const terrain::Hydrology>(o.seed, relief, planet, params.water);
     } else {
         std::printf("no planet file: the relief and the sea only, no rivers nor lakes\n");
     }
-    const terrain::TerrainTiles tiles(o.seed, terrain::HeightfieldParams{},
-                                      terrain::EcologyParams{}, std::nullopt, world, hydrology);
+    std::printf("experimental flags: \"%s\"\n", flags.c_str());
+    const terrain::TerrainTiles tiles(o.seed, params.relief, terrain::EcologyParams{},
+                                      std::nullopt, world, hydrology);
     const terrain::MapWorldSource source(tiles);
     terrain::MapLayers layers = terrain::defaultMapLayers();
     layers.add(terrain::kMapErgsLayer, terrain::ergsLayer(hydrology)); // nothing without a planet

@@ -238,22 +238,14 @@ void testPlanetFile() {
     if (hydrology != nullptr) {
         bool never = true;
         std::size_t carved = 0;
-        std::size_t atSea = 0;
         for (std::size_t r = 0; r < hydrology->reachCount(); r += 97) {
             for (const terrain::RiverPoint& p : hydrology->reach(r).points) {
                 // Carved, or filled by the levees 5 m at most.
-                // The points of a course out at sea are no river: the seas move their floor.
-                if (field.sampleAt(p.x, p.z).water == terrain::WaterKind::Ocean) {
-                    ++atSea;
-                    continue;
-                }
                 const float relief = hydrology->relief().heightAt(p.x, p.z);
                 never = never && !(field.heightAt(p.x, p.z) > relief + 5.0f);
                 carved += field.heightAt(p.x, p.z) < relief ? 1u : 0u;
             }
         }
-        std::printf("planet file: %zu points of the courses carved, %zu at sea left out\n", carved,
-                    atSea);
         TEST_CHECK(never && carved > 0);
         long long checked = 0;
         for (std::size_t r = 0; r < hydrology->reachCount() && checked == 0; r += 97) {

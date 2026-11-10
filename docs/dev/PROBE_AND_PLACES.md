@@ -50,9 +50,12 @@ terrain_probe --planet-check <fichier> [--json]
 terrain_probe --list-sections
 ```
 
+Chacune prend `--flags seas,...` : les drapeaux expérimentaux du monde (`experimental_flags.hpp`),
+aussi écrits dans le fichier planète ; un nom inconnu arrête l'outil.
+
 - **En-tête** :
   - `tool` (`"terrain_probe"`) et `format` (1) ;
-  - `world` : `seed`, `x`, `z`, `generatorVersion` ;
+  - `world` : `seed`, `x`, `z`, `generatorVersion`, `flags` (texte canonique, `""` sans drapeau) ;
   - `planet` : `file`, `status` (`none`, `read` ou `built`), `checksum` (`"0x…"`, 16 chiffres).
 - Puis l'un des deux :
   - `points` : une entrée par point, avec `x` et `z` ramenés dans le monde, puis une section par
@@ -90,7 +93,8 @@ terrain_probe --list-sections
 - `--planet-check` :
   - il lit le fichier **sans jamais l'écrire ni le construire** ;
   - il répond `ok`, `missing`, `stale` (autre seed, monde, version du générateur ou
-    paramètres), `damaged`, `newer` ou `unreadable`, avec la somme du niveau si c'est `ok` ;
+    paramètres), `flags` (construit avec d'autres drapeaux), `damaged`, `newer` ou `unreadable`,
+    avec la somme du niveau si c'est `ok` ;
   - code de sortie 0 si `ok`, 2 sinon, 1 pour des arguments invalides.
 - Le schéma (la liste des clés) est figé dans `tests/probe_test.cpp`.
 

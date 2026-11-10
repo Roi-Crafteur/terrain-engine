@@ -1,10 +1,11 @@
 // The figures of the floors of the seas of a world beside those of the Earth (agent 51): the
 // hypsometry of the ocean, its mean and median depths, the deepest point, the open floor far from
 // the land, profiles from the shores out to sea (shelf break, continental slope, rise, trench) and
-// the roughness of the deep floor. With --planet: the world with its water (and its seas).
+// the roughness of the deep floor. With --planet: the world with its water; --flags seas: with
+// the floors of its seas (experimental_flags.hpp), laid over the relief alone without --planet.
 //
-// Usage: terrain_seas_stats [--planet <file>] [--seed <seed>] [--threads <n>] [--step <m>]
-//                           [--transects <n>] [--list] [--find]
+// Usage: terrain_seas_stats [--planet <file>] [--seed <seed>] [--flags <a,b>] [--threads <n>]
+//                           [--step <m>] [--transects <n>] [--list] [--find]
 //   --step: the cells of the grid of the world (16384 by default; they must divide its sides)
 //   --list: one line per profile
 //   --find: places to look at (the deepest trench, a slow ridge, a fracture zone, the highest
@@ -12,16 +13,19 @@
 
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
+#include "terrain/generation/seas.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/io/sea_stats.hpp"
 #include "terrain/storage/planet_file.hpp"
 #include "terrain/storage/world_meta.hpp"
+#include "tool_flags.hpp"
 
 #include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -33,6 +37,7 @@ struct Options {
     std::filesystem::path planet;
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     terrain::SeaStatsParams stats;
+    std::string flags; // --flags, as written
     bool list = false;
     bool find = false;
 };
@@ -57,6 +62,13 @@ bool parseOptions(int argc, char** argv, Options& o) {
             o.planet = argv[++i];
         } else if (flag == "--seed" && more) {
             if (!parse(argv[++i], o.seed)) {
+                return false;
+            }
+        } else if (flag == "--flags" && more) {
+            o.flags = argv[++i];
+            terrain::WorldParams params;
+            std::string canonical;
+            if (!tool_flags::apply(o.flags, params, canonical)) {
                 return false;
             }
         } else if (flag == "--threads" && more) {
@@ -192,36 +204,52 @@ int main(int argc, char** argv) {
     Options o;
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
-                     "Usage: %s [--planet <file>] [--seed <seed>] [--threads <n>] [--step <m>] "
-                     "[--transects <n>] [--list] [--find]\n",
+                     "Usage: %s [--planet <file>] [--seed <seed>] [--flags <a,b>] [--threads <n>] "
+                     "[--step <m>] [--transects <n>] [--list] [--find]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
     const auto start = std::chrono::steady_clock::now();
     const terrain::WorldSize world;
-    const terrain::Heightfield relief(o.seed, terrain::HeightfieldParams{}, world);
+    terrain::WorldParams params;
+    std::string flags;
+    (void)tool_flags::apply(o.flags, params, flags); // checked with the options
+    params.planet.threads = o.stats.threads;
+    const terrain::Heightfield relief(o.seed, params.relief, world);
     terrain::Heightfield field = relief;
-    if (!o.planet.empty()) {
-        terrain::PlanetParams params;
-        params.threads = o.stats.threads;
-        bool built = false;
-        auto planet = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
-            o.planet, o.seed, terrain::HeightfieldParams{}, params, world, &built));
-        std::printf("planet level %s %s (checksum %016llx)\n",
-                    built ? "built and written to" : "read from", o.planet.string().c_str(),
-                    static_cast<unsigned long long>(planet->checksum()));
-        auto hydrology = std::make_shared<const terrain::Hydrology>(o.seed, relief, planet);
-        field = relief.withHydrology(hydrology);
-    } else {
-        std::printf("no planet file: the relief and the sea of the geography only\n");
+    std::unique_ptr<const terrain::Seas> alone;
+    try {
+        if (!o.planet.empty()) {
+            bool built = false;
+            auto planet = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
+                o.planet, o.seed, params.relief, params.planet, world, &built, {}, flags));
+            std::printf("planet level %s %s (checksum %016llx)\n",
+                        built ? "built and written to" : "read from", o.planet.string().c_str(),
+                        static_cast<unsigned long long>(planet->checksum()));
+            auto hydrology = std::make_shared<const terrain::Hydrology>(o.seed, relief, planet,
+                                                                        params.water);
+            field = relief.withHydrology(hydrology);
+        } else {
+            std::printf("no planet file: the relief and the sea of the geography only\n");
+            if (params.water.seas.enabled && relief.geography() != nullptr) {
+                alone = std::make_unique<const terrain::Seas>(o.seed, relief, nullptr,
+                                                              params.water.seas, o.stats.threads);
+                o.stats.seas = alone.get();
+            }
+        }
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "%s\n", e.what());
+        return EXIT_FAILURE;
     }
-    std::printf("seed %llu, generator %u, cells of %.0f m\n",
+    std::printf("seed %llu, generator %u, flags \"%s\", cells of %.0f m\n",
                 static_cast<unsigned long long>(o.seed), terrain::kGeneratorVersion,
-                o.stats.cellSize);
+                flags.c_str(), o.stats.cellSize);
     const terrain::SeaStats stats = terrain::measureSeas(field, o.stats);
     printStats(stats, o.list);
-    if (o.find && field.hydrology() != nullptr && field.hydrology()->seas() != nullptr) {
-        findPlaces(*field.hydrology()->seas(), world);
+    const terrain::Seas* seas =
+        field.hydrology() != nullptr ? field.hydrology()->seas() : o.stats.seas;
+    if (o.find && seas != nullptr) {
+        findPlaces(*seas, world);
     }
     std::printf("in %.1f s\n",
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());

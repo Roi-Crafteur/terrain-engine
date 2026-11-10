@@ -1,5 +1,10 @@
 # The seas (agent 51): the figures of their floors beside the bathymetry of the Earth. Included
 # once from tests/CMakeLists.txt.
+# F1: the experimental flags of the world, in the planet file, and the world without any flag
+# that of main, bit for bit.
+terrain_add_test(experimental_flags_test terrain_core)
+terrain_add_test(planet_flags_test terrain_core)
+terrain_add_test(seas_off_test terrain_core)
 terrain_add_test(seas_bathymetry_test terrain_core)
 terrain_add_test(sea_floor_test terrain_core)
 target_include_directories(sea_floor_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

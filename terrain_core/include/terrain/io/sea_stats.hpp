@@ -8,6 +8,8 @@
 
 namespace terrain {
 
+class Seas;
+
 // Figures of the floors of the seas (agent 51), to compare them with the bathymetry of the Earth:
 // the hypsometry of the ocean (the share of its area in bands of depth), its mean and median
 // depths, the deepest point, the floor far from every land (the high floors of the ridges among
@@ -56,6 +58,9 @@ struct SeaStatsParams {
     double hillSpacing = 250.0;
     double hillDepth = 3'000.0;
     int threads = 0; // 0: all the cores
+    // The seas laid over the sea of a field without hydrology (built without a planet level:
+    // terrain_seas_stats); nullptr: those of the hydrology of the field, if any.
+    const Seas* seas = nullptr;
 };
 
 // A profile from a cell of the sea next to the land, away from it (down the distance to the land).

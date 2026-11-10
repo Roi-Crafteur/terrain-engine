@@ -81,6 +81,7 @@ add_library(terrain_core STATIC
     src/generation/geography_boundaries.cpp
     src/generation/geography_tectonics.cpp
     src/generation/erosion.cpp
+    src/generation/experimental_flags.cpp
     src/generation/height_grid.cpp
     src/generation/heightfield.cpp
     src/generation/heightfield_coast.cpp

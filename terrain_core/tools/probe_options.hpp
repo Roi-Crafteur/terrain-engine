@@ -29,6 +29,7 @@ struct Options {
     std::filesystem::path planetCheck; // --planet-check: read only, never written
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     terrain::WorldSize world;
+    std::string flags; // --flags: the experimental flags of the world (experimental_flags.hpp)
     int threads = 0;
     double radius = 6.0;   // meters: the vertices of the tiles around a point (render)
     double falls = 1000.0; // meters: the lips of the falls around a point (falls)

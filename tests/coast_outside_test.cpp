@@ -332,11 +332,7 @@ void testSmallWorldWithWater() {
     auto planet = std::make_shared<const terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(threads)),
         golden::smallPlanetParams(threads));
-    // The seas (agent 51) change the open sea of the sides beyond the band: they are off here,
-    // this test keeping the world of the coasts alone (seas_world_test checks the seas).
-    terrain::HydrologyParams water;
-    water.seas.enabled = false;
-    auto hydrology = std::make_shared<const terrain::Hydrology>(kSeed, relief, planet, water);
+    auto hydrology = std::make_shared<const terrain::Hydrology>(kSeed, relief, planet);
     const terrain::TerrainTiles tiles(kSeed, terrain::HeightfieldParams{}, {}, std::nullopt,
                                       golden::kSmallPlanet, hydrology);
     std::printf("small world planet level and water in %.1f s\n", seconds(start));

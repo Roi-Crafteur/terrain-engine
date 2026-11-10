@@ -36,16 +36,14 @@ std::size_t bandOf(double depth) {
 
 // Samples of field at canonical points: with a Hydrology, its relief and its seas over the sea
 // (Seas::apply, as Heightfield::addSeas), without its rivers and lakes, which never take the sea:
-// the figures of the floors do not need the courses of every river of the world.
-void sampleRun(const Heightfield& field, std::span<const double> xs, std::span<const double> zs,
-               std::span<HeightSample> out) {
+// the figures of the floors do not need the courses of every river of the world. Without its
+// seas, those of p (SeaStatsParams::seas).
+void sampleRun(const Heightfield& field, const SeaStatsParams& p, std::span<const double> xs,
+               std::span<const double> zs, std::span<HeightSample> out) {
     const Hydrology* hydrology = field.hydrology();
-    if (hydrology == nullptr) {
-        field.samplesAt(xs, zs, out);
-        return;
-    }
-    hydrology->relief().samplesAt(xs, zs, out);
-    const Seas* seas = hydrology->seas();
+    (hydrology != nullptr ? hydrology->relief() : field).samplesAt(xs, zs, out);
+    const Seas* seas =
+        hydrology != nullptr && hydrology->seas() != nullptr ? hydrology->seas() : p.seas;
     if (seas == nullptr) {
         return;
     }
@@ -163,7 +161,7 @@ std::vector<double> profileDepths(const Heightfield& field, const Start& s,
         zs[k] = noise::wrapCanonical(s.z + s.dirZ * along, world.z);
     }
     std::vector<HeightSample> samples(count);
-    sampleRun(field, xs, zs, samples);
+    sampleRun(field, p, xs, zs, samples);
     std::vector<double> depths;
     depths.reserve(count);
     for (std::size_t k = 0; k < count; ++k) {
@@ -249,7 +247,7 @@ double windowRms(const Heightfield& field, double x, double z, const SeaStatsPar
             zs[i] = noise::wrapCanonical(z + (static_cast<double>(j) - half) * p.hillSpacing,
                                          field.world().z);
         }
-        sampleRun(field, xs, zs, row);
+        sampleRun(field, p, xs, zs, row);
         for (const HeightSample& s : row) {
             if (s.water != WaterKind::Ocean) {
                 return -1.0;
@@ -415,8 +413,9 @@ void addHills(const Heightfield& field, const ReliefGrid& grid, const std::vecto
 }
 
 // The grid of the whole world, sampled in short runs along its rows (sampleRun).
-ReliefGrid sampleWorld(const Heightfield& field, double cellSize, int threads) {
+ReliefGrid sampleWorld(const Heightfield& field, const SeaStatsParams& p) {
     constexpr int kRun = 32;
+    const double cellSize = p.cellSize;
     const WorldSize& world = field.world();
     if (!(std::isfinite(cellSize) && cellSize > 0.0) || std::fmod(world.x, cellSize) != 0.0 ||
         std::fmod(world.z, cellSize) != 0.0) {
@@ -434,7 +433,7 @@ ReliefGrid sampleWorld(const Heightfield& field, double cellSize, int threads) {
     grid.heights.assign(count, 0.0f);
     grid.water.assign(count, WaterKind::None);
     grid.waterLevels.assign(count, 0.0f);
-    planet::parallelRows(grid.rows, planet::resolveThreads(threads), [&](int begin, int end) {
+    planet::parallelRows(grid.rows, planet::resolveThreads(p.threads), [&](int begin, int end) {
         std::vector<double> xs;
         std::vector<double> zs;
         std::vector<HeightSample> run;
@@ -447,7 +446,7 @@ ReliefGrid sampleWorld(const Heightfield& field, double cellSize, int threads) {
                 for (int i = 0; i < n; ++i) {
                     xs[static_cast<std::size_t>(i)] = grid.x(i0 + i);
                 }
-                sampleRun(field, xs, zs, run);
+                sampleRun(field, p, xs, zs, run);
                 for (int i = 0; i < n; ++i) {
                     const std::size_t at = grid.index(i0 + i, j);
                     grid.heights[at] = run[static_cast<std::size_t>(i)].height;
@@ -480,7 +479,7 @@ SeaSpread spreadOf(std::vector<double> values) {
 }
 
 SeaStats measureSeas(const Heightfield& field, const SeaStatsParams& params) {
-    const ReliefGrid grid = sampleWorld(field, params.cellSize, params.threads);
+    const ReliefGrid grid = sampleWorld(field, params);
     const std::vector<double> distance = landDistances(grid);
     SeaStats out;
     addHypsometry(grid, distance, params, out);
