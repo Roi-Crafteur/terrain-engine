@@ -87,6 +87,12 @@ public:
     [[nodiscard]] std::vector<EditOutcome> takeEdits();
     // Until the queued edits are done; takeEdits still stages them.
     void waitEdits() { editThread_.wait(); }
+    // Every edit queued, done: waits for the edit thread, then takeEdits. For the last save of a
+    // play, which must hold the edits still on the thread when it ends (agent 41).
+    [[nodiscard]] std::vector<EditOutcome> takeAllEdits() {
+        waitEdits();
+        return takeEdits();
+    }
     // Edits queued and not done.
     [[nodiscard]] std::size_t editsPending() const { return editThread_.pending(); }
 

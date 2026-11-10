@@ -13,6 +13,7 @@
 #include "GameFramework/SpectatorPawn.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
+#include "Misc/DateTime.h"
 #include "Misc/Paths.h"
 #include "TerrainBuildComponent.h"
 #include "TerrainDevMap.h"
@@ -25,6 +26,7 @@
 
 #include <exception>
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 namespace
@@ -62,10 +64,11 @@ namespace
 		}
 	}
 
-	// Reads the saved edits of the seed into the session: false, nothing changed, when they are
-	// refused (the reason told, the save then never written over this play).
+	// Reads the saved edits of the seed into the session, and the metadata of their world into
+	// Meta (kept by the saves of this play): false, nothing changed, when they are refused (the
+	// reason told, the save then never written over this play).
 	bool LoadSaved(FTerrainWorldState& State, const ATerrainWorld& World,
-		const terrain::WorldSize& WorldSize)
+		const terrain::WorldSize& WorldSize, std::optional<terrain::WorldMeta>& Meta)
 	{
 		const uint64 Seed = static_cast<uint64>(World.Seed);
 		terrain::unreal::EditLoad Load =
@@ -84,11 +87,15 @@ namespace
 			const std::size_t Blocks = Load.modifications.blockCount();
 			const std::vector<terrain::ChunkCoord> Chunks =
 				State.Session.replaceModifications(std::move(Load.modifications));
-			Tell(FString::Printf(TEXT("%d saved blocks of seed %llu read from %s (%d chunks)"),
+			const int64 Created = Load.meta.has_value() ? Load.meta->createdAt : 0;
+			Tell(FString::Printf(TEXT("%d saved blocks of seed %llu read from %s (%d chunks; its "
+						 "world created %s)"),
 					 static_cast<int32>(Blocks), Seed, *SaveFolderText(World),
-					 static_cast<int32>(Chunks.size())),
+					 static_cast<int32>(Chunks.size()),
+					 *FDateTime::FromUnixTimestamp(Created).ToIso8601()),
 				false);
 		}
+		Meta = std::move(Load.meta);
 		return true;
 	}
 
@@ -96,14 +103,20 @@ namespace
 	{
 		const std::filesystem::path Folder = SaveFolderOf(World);
 		const terrain::WorldSize WorldSize = State.Session.tiles().world();
-		if (bLoad && !LoadSaved(State, World, WorldSize))
+		const uint64 Seed = static_cast<uint64>(World.Seed);
+		std::optional<terrain::WorldMeta> Loaded;
+		if (bLoad && !LoadSaved(State, World, WorldSize, Loaded))
 		{
 			State.Build.bSaveRefused = true;
 			return;
 		}
+		// The metadata of the world read, or of the world already in the folder: the saves keep
+		// its name, creation, spawn and play time, never the defaults over them.
+		terrain::WorldMeta Meta = Loaded.has_value()
+									  ? std::move(*Loaded)
+									  : terrain::unreal::keptWorldMeta(Folder, Seed, WorldSize);
 		terrain::unreal::TerrainSession& Session = State.Session;
-		State.Build.Saver = std::make_unique<terrain::unreal::EditSaver>(Folder,
-			terrain::unreal::editWorldMeta(static_cast<uint64>(World.Seed), WorldSize),
+		State.Build.Saver = std::make_unique<terrain::unreal::EditSaver>(Folder, std::move(Meta),
 			[&Session] { return Session.tiles().modifications(); });
 		State.Build.LastSaveSeconds = FPlatformTime::Seconds();
 	}
@@ -215,6 +228,21 @@ void FTerrainBuildHooks::Stop(ATerrainWorld& World)
 {
 	if (World.State.IsValid() && World.State->Build.Saver != nullptr)
 	{
+		// The edits still on the edit thread (a click just before the end): done, then marked for
+		// the last save, which would otherwise leave them out.
+		FTerrainWorldState& Playing = *World.State.Get();
+		try
+		{
+			for (const terrain::unreal::EditOutcome& Outcome : Playing.Session.takeAllEdits())
+			{
+				NoteBuildEdit(Playing, Outcome);
+			}
+		}
+		catch (const std::exception& Exception)
+		{
+			UE_LOG(LogTerrainEngine, Error, TEXT("Terrain World: the last edits not staged: %s"),
+				*ToFString(Exception.what()));
+		}
 		World.State->Build.Saver->save();
 		World.State->Build.Saver->flush();
 		const terrain::unreal::EditSaver::Report Last = World.State->Build.Saver->report();

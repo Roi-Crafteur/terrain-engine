@@ -27,7 +27,11 @@ Sur `Terrain World`, catégorie `Terrain|Edits`, structure `Building` :
 - `bSaveEdits` (**non**) : les modifications de la seed sont lues au début du Play dans
   `Saved/<SaveFolder>/seed_<seed>/` et écrites là toutes les `SaveIntervalSeconds` (10 s) s'il y a
   eu des modifications, et à la fin du Play ; `SaveFolder` vaut `TerrainEngine/Edits`. Jamais le
-  fichier planète.
+  fichier planète. La dernière sauvegarde attend d'abord les modifications encore sur le fil (un
+  clic juste avant la fin du Play est gardé), et le world.meta d'un monde déjà là est gardé (nom,
+  création, point d'apparition, temps de jeu, version du générateur, champs d'une version plus
+  récente) : seule sa date de sauvegarde change (agent 41 ; avant, la première sauvegarde le
+  réécrivait depuis les valeurs par défaut). Le log de lecture donne la date de création du monde.
 
 Sur le composant `Terrain Build` (catégorie `Terrain|Build`) : `ReachMeters` (6 m, depuis l'œil du
 pion, pas depuis la caméra de troisième personne), `Tool`, `EditsPerSecond` (4), `bShowGhost`,
