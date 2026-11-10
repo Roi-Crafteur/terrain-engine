@@ -1,8 +1,8 @@
-#include "geology_plates.hpp"
+#include "geography_plates.hpp"
 
-#include "../geography_grid.hpp"
-#include "../geography_stages.hpp"
-#include "../planet/planet_parallel.hpp"
+#include "geography_grid.hpp"
+#include "geography_stages.hpp"
+#include "planet/planet_parallel.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/world_size.hpp"
@@ -12,7 +12,7 @@
 #include <limits>
 #include <memory>
 
-namespace terrain::settlement {
+namespace terrain {
 
 namespace {
 
@@ -136,4 +136,4 @@ GeographyPlates::Near GeographyPlates::nearAt(double x, double z) const {
     return nearWarped(gx + blend(offsetX_), gz + blend(offsetZ_));
 }
 
-} // namespace terrain::settlement
+} // namespace terrain

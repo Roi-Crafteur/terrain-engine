@@ -13,3 +13,10 @@ set_tests_properties(volcano_cost_test PROPERTIES RUN_SERIAL TRUE)
 terrain_add_test(volcano_water_test terrain_core)
 terrain_add_test(volcano_surface_test terrain_core)
 terrain_add_test(volcano_horizon_test terrain_core)
+# Where the volcanoes stand: 100 positions pinned before the draw moved into generation/, and the
+# settlement reading the same list whatever its data.
+terrain_add_test(volcano_positions_test terrain_core)
+target_include_directories(volcano_positions_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+target_compile_definitions(volcano_positions_test PRIVATE
+    TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")

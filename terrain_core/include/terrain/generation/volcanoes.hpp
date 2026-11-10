@@ -1,10 +1,11 @@
 #pragma once
 
 // The volcanoes of the world (agent 45, phase 12): a province of the relief at the places the
-// plate tectonics of the geology puts them (generation/settlement/geology.hpp, placeVolcanoes:
-// the arcs behind the subductions of oceanic plates, island arcs included, the continental
-// rifts, the ridges reaching the land, the hotspots anywhere), the same positions and the same
-// active and large ones as the settlement reads, from the same seed. Never placed by the biome.
+// plate tectonics puts them (src/generation/volcano_placement.hpp: the arcs behind the
+// subductions of oceanic plates, island arcs included, the continental rifts, the ridges reaching
+// the land, the hotspots anywhere), drawn from the seed with the constants of the core: the same
+// positions and the same active and large ones the settlement reads. Never placed by the biome,
+// never read from data.
 //
 // Each volcano draws its form from its own seed, by its origin, whether it stands at sea (the
 // coast signal of the geography at its center below 0) and whether it is large: stratovolcanoes,
@@ -30,10 +31,9 @@ namespace terrain {
 
 class Geography;
 
-// The counts of the reference planet and the rules of the placement: those of the geology of the
-// settlement (data/settlement/world.json, "geology"), which the relief never reads, so that the
-// relief depends on the seed and the code alone (volcano_sites_test checks that both give the
-// same volcanoes).
+// The counts of the reference planet and the rules of the placement: the constants of the core
+// (their defaults), with which the settlement places its volcanoes too (volcano_positions_test
+// keeps their positions), whatever the data. A Heightfield may change them for itself.
 struct VolcanoParams {
     struct Count {
         int min = 0;
@@ -194,7 +194,7 @@ public:
     [[nodiscard]] std::span<const std::uint32_t> near(double x, double z) const;
     // The oceanic hotspots (origin Hotspot, at sea), in the order of sites(): the active heads of
     // the chains of agent 51 (seas). The boundary between both: this module alone places every
-    // volcano (settlement::placeVolcanoes, at sea too) and shapes the head of each chain, an
+    // volcano (volcano_placement.hpp, at sea too) and shapes the head of each chain, an
     // island shield or a seamount, within its reach (VolcanoSite::reach: its edifice, crater,
     // flows and satellite cones, its land above the sea); agent 51 lays the older chain behind it
     // along the drift of its plate (VolcanoSite::driftX, driftZ: subsiding islands, guyots,

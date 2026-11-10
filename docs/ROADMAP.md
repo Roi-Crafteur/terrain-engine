@@ -372,8 +372,9 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   et côtière (falaises marines, arches, stacks)
 - reliefs emblématiques : chaînes alpines / himalayennes, plateaux et mesas,
   karst et pitons, volcans
-- volcans (agent 45, en cours, `generation/volcanoes.hpp`) : les 3 759 volcans de la géologie du
-  peuplement (mêmes positions, même seed), en relief avant le niveau Planète (sa somme change).
+- volcans (agent 45, en cours, `generation/volcanoes.hpp`) : 3 759 volcans placés par le core
+  (`generation/volcano_placement.hpp`, ses constantes, les positions d'avant au bit près), que
+  lit aussi le peuplement, en relief avant le niveau Planète.
   Stratovolcans concaves (30 à 35° sur les 500 m sous
   la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
   la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
@@ -411,7 +412,7 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     basalte et lave en Roche, scories en Galets, cendres en Terre, géothermie en Boue
     (`volcanicMaterial`) ; plantes multipliées par (1 − part).
   - frontière avec l'agent 51 (mers) : l'agent 45 place seul tous les volcans
-    (`settlement::placeVolcanoes`, en mer aussi) et façonne la tête active de chaque point chaud
+    (`generation/volcano_placement.hpp`, en mer aussi) et façonne la tête active de chaque point chaud
     océanique, île ou mont sous-marin, dans sa portée (`VolcanoSite::reach`) ; l'agent 51 pose la
     chaîne plus vieille derrière elle, le long de la dérive de sa plaque
     (`VolcanoSite::driftX`, `driftZ` : îles qui s'enfoncent, guyots, atolls), dans le relief du

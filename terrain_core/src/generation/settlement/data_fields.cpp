@@ -164,11 +164,19 @@ std::optional<Fields> Fields::optionalObject(std::string_view key) const {
 }
 
 void Fields::only(std::initializer_list<std::string_view> allowed) const {
+    only(allowed, {});
+}
+
+void Fields::only(std::initializer_list<std::string_view> allowed,
+                  std::initializer_list<std::string_view> retired) const {
     for (std::size_t k = 0; k < value_->keys().size(); ++k) {
         const std::string& key = value_->keys()[k];
         bool known = false;
         for (const std::string_view a : allowed) {
             known = known || a == key;
+        }
+        for (const std::string_view r : retired) {
+            known = known || r == key;
         }
         if (!known) {
             std::string list;

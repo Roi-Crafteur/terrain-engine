@@ -76,6 +76,7 @@ add_library(terrain_core STATIC
     src/generation/geography_crust.cpp
     src/generation/geography_flood.cpp
     src/generation/geography_grid.cpp
+    src/generation/geography_plates.cpp
     src/generation/geography_provinces.cpp
     src/generation/geography_relief.cpp
     src/generation/geography_boundaries.cpp
@@ -117,6 +118,7 @@ add_library(terrain_core STATIC
     src/generation/mountain_forms.cpp
     src/generation/mountain_walls.cpp
     src/generation/plain_forms.cpp
+    src/generation/point_spacing.cpp
     src/generation/ravines.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
@@ -135,6 +137,7 @@ add_library(terrain_core STATIC
     src/generation/volcano_fields.cpp
     src/generation/volcano_forms.cpp
     src/generation/volcano_ground.cpp
+    src/generation/volcano_placement.cpp
     src/generation/volcano_relief.cpp
     src/generation/volcano_sites.cpp
     src/generation/volcano_springs.cpp

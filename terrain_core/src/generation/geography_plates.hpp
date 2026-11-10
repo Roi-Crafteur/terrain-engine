@@ -1,12 +1,13 @@
 #pragma once
 
-// Internal to the settlement: the tectonic plates of the planetary geography, which it drops once
+// Internal to terrain_core: the tectonic plates of the planetary geography, which it drops once
 // built, made again from its own stages and seed, untouched (geography_boundaries.hpp): the warp
 // of their boundaries at the nodes of its map, the kind of each boundary, the overriding plate of
-// each collision, the share of land of each plate. Read only, for the geology in data and for the
-// volcanoes of the relief (agent 45, volcano_sites.cpp), which place theirs through it.
+// each collision, the share of land of each plate. Read only: the volcanoes are placed on it
+// (volcano_placement.hpp, for the relief and the settlement alike), and the settlement draws its
+// faults along it.
 
-#include "../geography_boundaries.hpp"
+#include "geography_boundaries.hpp"
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/voronoi.hpp"
 
@@ -14,7 +15,7 @@
 #include <memory>
 #include <vector>
 
-namespace terrain::settlement {
+namespace terrain {
 
 // The geography seed of a world: the layer kGeography (8) of the Heightfield.
 [[nodiscard]] std::uint64_t geographySeed(std::uint64_t worldSeed);
@@ -73,4 +74,4 @@ private:
     std::vector<double> offsetZ_;
 };
 
-} // namespace terrain::settlement
+} // namespace terrain

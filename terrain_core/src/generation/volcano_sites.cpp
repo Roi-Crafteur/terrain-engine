@@ -1,13 +1,12 @@
-// The volcanoes of a world (volcanoes.hpp): the positions of the geology of the settlement
-// (settlement/geology_points.cpp, placeVolcanoes, on the plates made again from the geography),
-// their forms and sizes drawn, and the grid of buckets that finds them.
+// The volcanoes of a world (volcanoes.hpp): their positions drawn on the plates made again from
+// the geography (volcano_placement.hpp, the same list the settlement reads), their forms and sizes
+// drawn, and the grid of buckets that finds them.
 #include "terrain/generation/volcanoes.hpp"
 
 #include "coast_shape.hpp"
-#include "settlement/geology_plates.hpp"
-#include "settlement/geology_points.hpp"
+#include "geography_plates.hpp"
 #include "terrain/generation/geography.hpp"
-#include "terrain/generation/settlement/settlement_config.hpp"
+#include "volcano_placement.hpp"
 #include "volcano_sites.hpp"
 
 #include <algorithm>
@@ -24,41 +23,17 @@ namespace terrain {
 
 namespace {
 
-static_assert(static_cast<int>(settlement::VolcanoKind::Arc) ==
-                  static_cast<int>(VolcanoOrigin::Arc) &&
-              static_cast<int>(settlement::VolcanoKind::Rift) ==
-                  static_cast<int>(VolcanoOrigin::Rift) &&
-              static_cast<int>(settlement::VolcanoKind::Ridge) ==
-                  static_cast<int>(VolcanoOrigin::Ridge) &&
-              static_cast<int>(settlement::VolcanoKind::Hotspot) ==
-                  static_cast<int>(VolcanoOrigin::Hotspot),
-              "the origins of the volcanoes follow the kinds of the geology");
-
-// The rule of the geology of the settlement that these parameters stand for.
-settlement::GeologyRule ruleOf(const VolcanoParams& p) {
-    settlement::GeologyRule rule;
-    rule.volcanoes = {p.volcanoes.min, p.volcanoes.max};
-    rule.activeVolcanoes = {p.active.min, p.active.max};
-    rule.largeVolcanoes = {p.large.min, p.large.max};
-    rule.arcDistanceKm = {p.arcMinKm, p.arcMaxKm};
-    rule.riftShare = p.riftShare;
-    rule.hotspotShare = p.hotspotShare;
-    rule.volcanoSpacingKm = p.spacingKm;
-    return rule;
-}
-
 std::vector<VolcanoSite> placeSites(std::uint64_t worldSeed, const Geography& geo,
                                     const VolcanoParams& params, int threads) {
     const WorldSize& world = geo.world();
-    std::vector<settlement::Volcano> placed;
+    std::vector<PlacedVolcano> placed;
     std::vector<std::array<float, 2>> drifts;
     {
         // The plates hold references: made, read and dropped here.
-        const settlement::GeographyPlates plates(worldSeed, geo, threads);
-        const double scale = world.x * world.z / 1.0e6 / params.referenceAreaKm2;
-        placed = settlement::placeVolcanoes(plates, worldSeed, ruleOf(params), scale, threads);
+        const GeographyPlates plates(worldSeed, geo, threads);
+        placed = placeVolcanoes(plates, worldSeed, params, volcanoScale(world, params), threads);
         // The velocity of the plate under each, the nearest after the warp of the geography.
-        for (const settlement::Volcano& v : placed) {
+        for (const PlacedVolcano& v : placed) {
             const Plate& p = plates.plates().plates()[static_cast<std::size_t>(
                 plates.nearAt(v.x, v.z).a)];
             drifts.push_back({static_cast<float>(p.velocityX), static_cast<float>(p.velocityZ)});
@@ -68,13 +43,13 @@ std::vector<VolcanoSite> placeSites(std::uint64_t worldSeed, const Geography& ge
     std::vector<VolcanoSite> sites;
     sites.reserve(placed.size());
     for (std::size_t k = 0; k < placed.size(); ++k) {
-        const settlement::Volcano& v = placed[k];
+        const PlacedVolcano& v = placed[k];
         VolcanoSite s;
         s.driftX = drifts[k][0];
         s.driftZ = drifts[k][1];
         s.x = v.x;
         s.z = v.z;
-        s.origin = static_cast<VolcanoOrigin>(v.kind);
+        s.origin = v.origin;
         s.active = v.active;
         s.large = v.large;
         const GeographySample g = geo.sampleAt(v.x, v.z);

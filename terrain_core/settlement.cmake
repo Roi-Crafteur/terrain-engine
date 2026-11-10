@@ -13,7 +13,6 @@ target_sources(terrain_core PRIVATE
     src/generation/settlement/expansion.cpp
     src/generation/settlement/expansion_terrain.cpp
     src/generation/settlement/geology.cpp
-    src/generation/settlement/geology_plates.cpp
     src/generation/settlement/geology_points.cpp
     src/generation/settlement/kingdoms.cpp
     src/generation/settlement/map_influences.cpp
