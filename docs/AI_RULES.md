@@ -25,3 +25,17 @@ mais sans blocs : terrain lisse généré par SDF et meshing.
 - Aucune fonction ne dépasse 80 lignes.
 - Aucune dépendance graphique dans terrain_core.
 - Chaque tâche doit compiler et passer les tests.
+
+## Goldens recollés
+- Un golden est une somme `0x…` figée dans un test (imprimée par `golden::report`, prête à
+  recoller). On ne le recolle que si le monde change exprès ; sinon on corrige le code.
+- Un golden recollé porte dans son commentaire, à côté de sa valeur :
+  - le commit qui le recolle (son titre, puisque le hash n'existe qu'après ; ou le hash s'il est
+    déjà poussé) ;
+  - les parties changées (leurs noms dans le test) ;
+  - la cause : ce qui a changé dans le monde, et pourquoi.
+- Exemple :
+  `// Recollé par « Ergs: seamless ripples and tile sides » (agent 34) : "world tiles LOD 0" à`
+  `// "LOD 3" ; les normales des tuiles lisent l'anneau de colonnes autour d'elles (tile_sides).`
+- La PR liste les goldens recollés avec leur cause. Si le monde généré change,
+  `kGeneratorVersion` augmente aussi (`terrain_core/include/terrain/storage/world_meta.hpp`).
