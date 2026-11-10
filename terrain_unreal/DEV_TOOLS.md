@@ -59,6 +59,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Blend 0\|1` | (outils de dev seulement) les poids des biomes de l'horizon et du niveau 0 sous les tuiles (agent 29) : 0 le biome dominant de chaque échantillon, comme avant eux ; comparer leur coût GPU et leur aspect (après avoir relancé les scripts des matériaux de l'horizon GPU et temporaire) |
 | `Terrain.Seed <n> [surface\|caves\|regions]` | le monde d'une autre seed et d'un autre preset, sans quitter le Play |
 | `Terrain.Hud [0-3]` | la page de l'écran F3 |
+| `Terrain.EditLight 0\|1`, `Terrain.EditLightFloor <part>` | (tous les builds, comme `Terrain.EditSave`) le plancher de lumière des surfaces faites par les modifications, éteint par défaut, et la part de leur couleur de base qu'elles émettent (0,15) ; à passer après la liste des réglages de Lumen de `BREAK_PLACE.md` (« La lumière des creux », agent 41) |
 
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),

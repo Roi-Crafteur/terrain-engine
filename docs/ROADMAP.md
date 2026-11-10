@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -627,6 +628,23 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     Edit`), effets de destruction, normales de détail de l'horizon qui suivent les modifications
     (aujourd'hui : les pentes de la grille sur les mailles modifiées)
   - casser et poser en jeu : fait (agent 28 : bloc, sphères de 2 et 4 m, fantôme, sauvegarde par seed, `terrain_unreal/BREAK_PLACE.md`)
+  - le monde modifié, vague 9 (agent 41, `terrain_unreal/BREAK_PLACE.md`, « Le monde modifié ») :
+    - creux lisses : les sphères des outils passent à 19 et 57 blocs (3 et 5 m), sans bloc seul
+      au bout d'un axe (les pointes) ; les normales des surfaces modifiées suivent la part lissée
+      des 27 blocs voisins ; les positions restent au bloc près
+    - blocs vus de loin : aux LOD 1 à 3, ce qui couvre la moitié d'une cellule est dessiné à sa
+      taille ; en dessous, un relais à la vraie profondeur ou hauteur de sa boîte (poids 1, ½, 0
+      aux LOD 1, 2, 3) ; coutures fermées ; vues de contrôle de 30 à 300 m
+      (`terrain_export_edit_lods`)
+    - lumière : un poids « modifié » par sommet et un plancher de lumière dans
+      `M_TemporaryTerrain`, éteint par défaut (`Terrain.EditLight`) ; la liste des réglages de
+      Lumen à passer d'abord
+    - sauvegarde : le world.meta d'un monde gardé, les modifications encore sur le fil sauvegardées
+      à la fin du Play
+    - reste : le tunnel 1 × 2 (il manque 4 à 27 cm à la capsule : écarter le bas et le haut des
+      parois, ou une collision au bloc près, à décider avec la vraie capsule) ; la lumière des
+      creux dans Unreal (la vraie correction est dans la lumière du niveau si les creux naturels
+      ont le même noir)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels
@@ -715,6 +733,9 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 
 ### Plus tard
 - eau physique complète (écoulement, remplissage, interaction avec la destruction)
+- LOD 0 autour des modifications : garder les tuiles fines sur les modifications des joueurs au-delà
+  de 64 m, pour qu'un bloc de 1 m reste à sa taille de loin (aujourd'hui un relais de 2 à 4 m de
+  large aux LOD 1 et 2, rien de plus petit qu'une demi-cellule au LOD 3 ; agent 41)
 - intégrité structurelle et effondrements
 - liaison fleuves de surface / rivières souterraines
 - consoles
