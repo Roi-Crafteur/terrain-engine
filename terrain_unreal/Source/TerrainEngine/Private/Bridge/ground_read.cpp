@@ -10,8 +10,8 @@ namespace terrain::unreal {
 
 namespace {
 
-bool finished(const std::future<GroundLevel>& read) {
-    return read.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+bool finished(const std::future<GroundLevel>& result) {
+    return result.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
 }
 
 } // namespace
@@ -31,42 +31,50 @@ GroundLevel groundLevelAt(const TerrainTiles& tiles, double x, double z) {
 }
 
 GroundRead::~GroundRead() {
-    raiseWorkStop(stop_); // then the futures wait for their reads, which leave by WorkStopped
+    // Every read stopped; then the futures wait for them, which leave by WorkStopped.
+    forget();
+    for (Read& read : forgotten_) {
+        raiseWorkStop(*read.stop);
+    }
 }
 
 void GroundRead::ask(const TerrainTiles& tiles, double x, double z) {
     forget();
-    current_ = std::async(std::launch::async, [&tiles, x, z, stop = &stop_] {
-        const WorkStopScope scope(stop);
-        return groundLevelAt(tiles, x, z);
-    });
+    current_.stop = std::make_shared<std::atomic<bool>>(false);
+    current_.result =
+        std::async(std::launch::async, [&tiles, x, z, stop = current_.stop] {
+            const WorkStopScope scope(stop.get());
+            return groundLevelAt(tiles, x, z);
+        });
 }
 
 void GroundRead::forget() {
     dropFinished();
-    if (current_.valid()) {
+    if (current_.result.valid()) {
+        raiseWorkStop(*current_.stop); // nobody reads it: it stops at once
         forgotten_.push_back(std::move(current_));
+        current_ = Read{};
     }
 }
 
 std::optional<GroundLevel> GroundRead::poll() {
     dropFinished();
-    if (!current_.valid() || !finished(current_)) {
+    if (!current_.result.valid() || !finished(current_.result)) {
         return std::nullopt;
     }
-    return current_.get(); // the future is empty afterwards
+    return current_.result.get(); // the future is empty afterwards
 }
 
 std::size_t GroundRead::running() const {
-    std::size_t count = current_.valid() && !finished(current_) ? 1 : 0;
-    for (const std::future<GroundLevel>& read : forgotten_) {
-        count += finished(read) ? 0 : 1;
+    std::size_t count = current_.result.valid() && !finished(current_.result) ? 1 : 0;
+    for (const Read& read : forgotten_) {
+        count += finished(read.result) ? 0 : 1;
     }
     return count;
 }
 
 void GroundRead::dropFinished() {
-    std::erase_if(forgotten_, [](const std::future<GroundLevel>& read) { return finished(read); });
+    std::erase_if(forgotten_, [](const Read& read) { return finished(read.result); });
 }
 
 } // namespace terrain::unreal

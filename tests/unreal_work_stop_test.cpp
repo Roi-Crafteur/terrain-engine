@@ -25,6 +25,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -268,6 +269,58 @@ std::vector<Run> releaseWorld() {
     return runs;
 }
 
+// The ground reads are real ones (no Heavy in them): the time of one alone, then a read
+// destroyed in the middle, then a read forgotten in the middle (a teleport asking another place):
+// it stops at once, never waited for, and the next read gives the ground of a read on this
+// thread.
+void testGroundReads() {
+    const map_world::FallPlace fall = map_world::firstFall();
+    double alone = 0.0;
+    {
+        const Session s;
+        const Clock::time_point start = Clock::now();
+        (void)groundLevelAt(s.world.tiles, fall.x, fall.z);
+        alone = msSince(start);
+    }
+    std::vector<double> destroyed;
+    std::vector<double> forgotten;
+    for (int k = 0; k < kTries; ++k) {
+        {
+            const Session s;
+            auto read = groundRead(s);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            const Clock::time_point start = Clock::now();
+            read.reset();
+            destroyed.push_back(msSince(start));
+        }
+        const Session s;
+        GroundRead read;
+        read.ask(s.world.tiles, fall.x, fall.z);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        const Clock::time_point start = Clock::now();
+        read.forget();
+        while (read.running() > 0) {
+            std::this_thread::yield();
+        }
+        forgotten.push_back(msSince(start));
+        read.ask(s.world.tiles, fall.x, fall.z);
+        std::optional<GroundLevel> level;
+        while (!level.has_value()) {
+            level = read.poll();
+        }
+        const GroundLevel here = groundLevelAt(s.world.tiles, fall.x, fall.z);
+        TEST_CHECK(level->ground == here.ground && level->stand == here.stand);
+    }
+    for (std::vector<double>* ms : {&destroyed, &forgotten}) {
+        std::sort(ms->begin(), ms->end());
+        std::printf("the ground read %s in %.2f ms (median), %.2f ms at most, alone %.0f ms\n",
+                    ms == &destroyed ? "destroyed" : "forgotten, out", (*ms)[ms->size() / 2],
+                    ms->back(), alone);
+        TEST_CHECK((*ms)[ms->size() / 2] <= 100.0);
+        TEST_CHECK(ms->back() < 0.25 * alone);
+    }
+}
+
 } // namespace
 
 int main() {
@@ -289,32 +342,7 @@ int main() {
         }
         check("the GPU horizon", runs, work);
     }
-    {
-        // The ground read is a real one: its time alone, then its stops (no Heavy in it).
-        std::vector<double> ms;
-        double alone = 0.0;
-        {
-            const Session s;
-            const map_world::FallPlace fall = map_world::firstFall();
-            const Clock::time_point start = Clock::now();
-            (void)groundLevelAt(s.world.tiles, fall.x, fall.z);
-            alone = msSince(start);
-        }
-        for (int k = 0; k < kTries; ++k) {
-            const Session s;
-            auto read = groundRead(s);
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            const Clock::time_point start = Clock::now();
-            read.reset();
-            ms.push_back(msSince(start));
-        }
-        std::sort(ms.begin(), ms.end());
-        std::printf("the ground read: destroyed in %.2f ms (median), %.2f ms at most, alone "
-                    "%.0f ms\n",
-                    ms[ms.size() / 2], ms.back(), alone);
-        TEST_CHECK(ms[ms.size() / 2] <= 100.0);
-        TEST_CHECK(ms.back() < 0.25 * alone);
-    }
+    testGroundReads();
     check("all four, as ReleaseWorld", releaseWorld(), work);
     return test::result();
 }
