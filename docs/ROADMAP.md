@@ -379,11 +379,15 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   (`VolcanoParams::enabled`) : fusionnés sans rien changer au monde de `main` ; allumés à R1 avec
   les autres reliefs de la vague 9 (drapeau expérimental `volcanoes` avant). Leurs sommes
   allumées sont dans les variantes `<test>_volcanoes` des goldens (`--flags volcanoes`,
-  `tests/golden_support.hpp`), et la somme Planète allumée est `e1db9106a2b0b923` ; le point sec
+  `tests/golden_support.hpp`), et la somme Planète allumée est `eb4c8edbc592e7b6` ; le point sec
   de `hydrology_test` à retirer par l'agent 31 n'existe qu'allumé.
   Stratovolcans concaves (30 à 35° sur les 500 m sous
-  la lèvre, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers, caldeiras (fond sous
-  la plaine, parois irrégulières sans période), maars, champs de cônes et de lave, coulées, îles
+  la lèvre, 29° au moins, 5 à 10° au pied ; 1,5 à 3 km, les grands 3,5 à 4,8 km), boucliers,
+  caldeiras (fond sous la plaine, parois irrégulières sans période ; un côté bas et un côté haut
+  face à face, puis des cols et des sommets plus petits : la crête de 1,8 fois au moins plus haute
+  au-dessus du fond en son point haut qu'à son col le plus bas, comme Crater Lake ; la brèche, par
+  le col le plus bas, ouvre une gorge qui serpente sur le flanc, étroite à la lèvre, plus large et
+  plus profonde vers l'aval, au fond qui descend toujours, `generation/volcano_gorge.cpp`), maars, champs de cônes et de lave, coulées, îles
   et monts sous-marins ; hors de leur portée, le monde garde ses bits. Pas de dunes sur leur
   sol. Lieux `volcan_*` de `data/dev/places.json` (stratovolcan, cratère, coulée, caldeira,
   île, champ de lave, geyser, maar), ligne F3 `volcano` et `volcanic ground`.
