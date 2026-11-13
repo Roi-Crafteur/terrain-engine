@@ -68,8 +68,10 @@ est en file ; sinon `Get Last Refusal` dit pourquoi).
 | `Terrain.EditSave 1` | sauvegarde à partir de maintenant : la sauvegarde de la seed est **remplacée** par les modifications de ce Play (régions écrites à nouveau, régions sans modification supprimées) | tous |
 | `Terrain.EditSave 0` | une dernière sauvegarde, puis plus rien | tous |
 | `Terrain.EditStats` | les dernières modifications du joueur : clic → fait, clic → tuile affichée (médiane, p95, max), images, et les sauvegardes | outils de debug seulement |
-| `Terrain.EditLight 1` / `0` | le plancher de lumière des surfaces modifiées allumé / éteint (éteint par défaut) | tous |
+| `Terrain.EditLight 1` / `0` | le plancher de lumière des surfaces modifiées allumé / éteint (éteint par défaut) ; sans argument, son état | tous |
 | `Terrain.EditLightFloor 0.15` | la part de sa couleur de base qu'une surface modifiée émet (0 à 1) | tous |
+| `Terrain.EditAim <dig\|place> <block\|sphere> [rayon] [at x y z]` | un clic du joueur pour les scripts, par le code du clic (`BuildRequested` : règles, visée depuis la caméra, portée de 6 m depuis l'œil, capsule, 4 par seconde, file, donc sauvegarde). `sphere` sans rayon : la sphère de 3 m (1,625 m de rayon) ; un rayon de 1/16 à 32 m. `at x y z` : un point du core par lequel passe la trace (sinon le centre de l'écran) ; refus si elle touche à plus de 0,25 m de ce point. Une ligne dans le log à chaque appel (voir « Les scènes ») | outils de debug seulement |
+| `Terrain.EditRead 1` / `0` | dans l'éditeur, entre deux Play : le prochain Play relit et sauvegarde les modifications de la seed comme avec `Building.bSaveEdits`, sans toucher l'acteur ni la carte ; sans argument, l'état | outils de debug seulement |
 
 Chaque modification du joueur affichée écrit aussi dans le log (outils de debug seulement) :
 `Terrain World: edit shown 12.3 ms after its click (1.1 ms to be done), 1 frames later`.
@@ -125,7 +127,9 @@ avec `Terrain.EditStats`.
   dépendent) : le bord d'un creux garde des facettes de 1 m ; seules ses normales sont lissées.
 - **D'autres rayons de sphère** (`Terrain.Edit`, `Apply Volume Edit`) peuvent encore laisser un
   bloc seul au bout d'un axe, donc une pointe. Les outils du joueur n'en ont pas.
-- **Tunnel 1 × 2.** Voir « Tunnels » plus bas : il ne passe pas encore.
+- **Les parois latérales des creux reculent de 3,1 cm** (la règle des parois, voir « Tunnels ») :
+  un trou d'un bloc fait 1,06 m de large à hauteur de son centre ; les sols et les plafonds ne
+  bougent pas, les blocs posés non plus.
 - **Un trou d'un bloc vu de loin** fait au LOD 1 un creux de 4 m de large au lieu de 2 (la maille
   de 2 m) ; à 60 m c'est un trait de 2 à 3 pixels de haut au lieu de 1 à 2.
 - **Au LOD 3** (au-delà d'environ 290 m), rien de plus petit que la moitié d'une cellule (4 m) ne
@@ -160,20 +164,45 @@ change loin du creux.
 
 ### Tunnels
 
-`edit_tunnel_test` fait glisser une capsule dans des tunnels creusés bloc par bloc (LOD 0) :
+`edit_tunnel_test` : sous le sol, une salle à sol plat, et depuis sa paroi est un tunnel de 2 × 2,
+1 × 3 ou 1 × 2 blocs, creusé bloc par bloc sur 6 blocs. Une capsule va du milieu de la salle au
+dernier bloc et revient, tous les 5 cm :
+- elle tient : aucun triangle plus près que son rayon ;
+- le sol la porte comme le décide le `CharacterMovement` d'Unreal (`ComputeFloorDist`) : le contact
+  de sa sphère basse s'il est marchable, sinon la surface que touche une ligne verticale sous son
+  centre ;
+- elle ne monte jamais de plus de 45 cm d'un pas à l'autre.
 
-| Tunnel | 34/88 cm | 35/90 cm | 42/96 cm |
-|---|---|---|---|
-| 2 × 2 | passe, sol plat | passe | passe |
-| 1 × 3 | passe, sol à 45° (trop raide pour marcher) | passe, 45° | passe, 45° |
-| 1 × 2 | il manque 4,4 cm | il manque 9,2 cm | il manque 26,8 cm |
+Une capsule tourne sur son axe sans changer de forme : tenir au fond, c'est pouvoir y faire
+demi-tour. La capsule du jeu (`SandboxCharacter_CMC` de GASP, lue dans Unreal : rayon 30 cm,
+demi-hauteur 86 cm) avec les réglages par défaut que le jeu garde (angle marchable 44,765°,
+marche 45 cm), dans le tunnel 1 × 2 :
 
-Un trait d'un bloc de large a un sol en V et un plafond en ∧ à 45° : Marching Cubes relie le bas
-des parois (au centre du bloc du bas) au milieu du sol. Aplatir le V sans écarter les parois
-remonte le sol, et il manque plus de place ; le creuser rend le sol trop raide. Pour faire passer
-le 1 × 2 : (a) écarter seulement le bas et le haut des parois à ±0,75 m (passent 34/88 et 35/90,
-pas 42/96), ou (b) une collision au bloc près, à part du maillage dessiné. **À décider avec la
-vraie capsule du personnage** (rayon et demi-hauteur, lus dans Unreal).
+| | Marge (place − besoin) | Sol dans le tunnel | Sol au plus (l'embouchure) | Murs |
+|---|---|---|---|---|
+| avant | +3,1 cm (calcul : 2 − 2√2 × 0,30 = 1,1515 m pour 1,12 m) | 45,0° : pas marchable | 45,0° | ±0,500 m |
+| après | +5,5 cm | 43,3° : marchable | 44,1° | ±0,531 m |
+
+**La règle des parois (option a, au plus juste).** À côté d'un bloc retiré, le long de x ou de z,
+un point du réseau prend la distance 0,5 (1 − 0,531) / 0,531 au lieu des 0,5 de son cube :
+Marching Cubes met la paroi à 0,531 m du centre du bloc. Le V d'un tunnel d'un bloc de large
+penche alors de atan(0,5 / 0,531) = 43,3°, soit 1,5° sous l'angle marchable. Le sol et le
+plafond ne bougent pas ; les blocs posés gardent leurs cubes. Les trois chemins de la densité
+(`ModificationStore`, `EditWindow`, `EditLattice`) donnent les mêmes bits. Revers : **toutes** les
+parois latérales des creux reculent de 3,1 cm. N'écarter que celles des creux d'un bloc de large
+demanderait de lire les blocs à 2 m, ou de baisser une densité au retrait d'un bloc. Si l'angle
+marchable du jeu valait 46° ou plus (`Terrain.Pawn` l'écrit dans le log), on annulerait cet
+écartement.
+
+Les autres tunnels :
+- **2 × 2** : toutes les capsules passent, sol plat, sans changement ;
+- **1 × 3** : sol à 43,3° au lieu de 45° ; il devient marchable lui aussi ;
+- **1 × 2 avec les anciennes capsules** : il manque encore 1,4 cm (34/88), 6,2 cm (35/90) et
+  23,5 cm (42/96), contre 4,3, 9,1 et 26,9 cm avant.
+
+La scène b de la vérification dans Unreal y est aussi : depuis le fond d'une sphère de 5 m, un
+tunnel 1 × 2 de 6 blocs. La capsule du jeu y entre et en ressort (marge +5,5 cm, sol à 44,1° au
+plus).
 
 ### Blocs vus de loin
 
@@ -194,9 +223,9 @@ touchent : un bloc de 1 m disparaissait entre deux points, ou devenait une bosse
 
 `edit_lod_views_test` et l'outil `terrain_export_edit_lods <dossier>` (vues de 30 à 300 m, soleil
 à 30° et à 6°) : au passage du LOD 0 au LOD 1 vu de 60 m, un mur d'un bloc (9 068 pixels) garde
-94 à 96 % de son contour à 2 pixels près et sa luminance à 3,7/255 près ; un trou d'un bloc (97 pixels,
+94 à 96 % de son contour à 2 pixels près et sa luminance à 3,7/255 près ; un trou d'un bloc (90 pixels,
 un trait de 1 à 2 pixels de haut) reste visible (285 pixels, voir les limites), sa luminance à
-6/255 près. De 100 à 300 m, le mur garde 92 à 100 % de ses pixels au LOD 1, 27 à 35 % au LOD 2,
+5/255 près. De 100 à 300 m, le mur garde 92 à 100 % de ses pixels au LOD 1, 27 à 35 % au LOD 2,
 aucun au LOD 3 (contre les mêmes vues sur des tuiles de LOD 0). Ce rendu de contrôle ne remplace pas Unreal.
 
 ### La lumière des creux
@@ -220,6 +249,29 @@ Revenir ensuite à `viewmode lit`, `ShowFlag.DirectLighting 1` et
 `r.DynamicGlobalIlluminationMethod 1`. **Si les grottes et les surplombs naturels ont le même noir,
 la vraie correction est dans la lumière du niveau, pas un plancher sur les seules modifications.**
 
+**Les réglages à lire d'abord**, sans rien changer : leurs valeurs dans un projet Lumen par
+défaut. En Python : `unreal.SystemLibrary.get_console_variable_int_value("r.ReflectionMethod")`.
+Dans la console : le nom seul affiche la valeur.
+
+| Réglage | Attendu | Ce qu'un autre dit |
+|---|---|---|
+| `r.DynamicGlobalIlluminationMethod` | 1 (Lumen) | 0 : pas de lumière indirecte, les creux ne reçoivent que le ciel direct ; 2 : SSGI |
+| `r.ReflectionMethod` | 1 (Lumen) | 0 ou 2 : réflexions sans Lumen |
+| `r.Lumen.DiffuseIndirect.Allow` | 1 | 0 : Lumen coupé pour la lumière indirecte |
+| `r.Lumen.Reflections.Allow` | 1 | 0 : réflexions de Lumen coupées |
+| `r.Lumen.HardwareRayTracing` | 0 (1 si le projet l'active et que la carte le permet) | 1 : Lumen voit les tuiles par le ray tracing matériel |
+| `r.Lumen.HardwareRayTracing.LightingMode` | 0 | 2 : l'éclairage au point touché, le plus juste dans un creux |
+| `r.Lumen.TraceMeshSDFs` | 1 | 0 : Lumen logiciel sans les distance fields des maillages |
+| `r.GenerateMeshDistanceFields` | 1 (réglage du projet) | 0 : aucun distance field ; de toute façon, les tuiles (`ProceduralMeshComponent`) n'en ont pas |
+| `r.Lumen.ScreenProbeGather.ScreenTraces` | 1 | 0 : plus de traces d'écran, le seul moyen du Lumen logiciel de voir les tuiles |
+| `r.Lumen.ScreenProbeGather.ShortRangeAO` | 1 | 0 : sans l'occlusion de près qui assombrit les creux |
+| `ShowFlag.DirectLighting` | 1 | 0 : sans le soleil |
+| `Terrain.EditLight` (sans argument) | « light floor of the edits off (0.15 of the base color) » | on : le plancher allumé |
+
+Sans distance field, le Lumen logiciel ne voit les tuiles que par les traces d'écran : un creux
+dont le ciel n'est pas à l'écran reste noir. Le ray tracing matériel (`r.Lumen.HardwareRayTracing
+1`, `LightingMode 2`) voit les tuiles.
+
 `unreal_edit_light_test` : sans modification, aucune tuile n'a de poids (et reste au bit près) ;
 au fond d'un trou le poids vaut 1 aux LOD 0 à 2, 0 sur le sol à 8 m et deux cellules ; la
 conversion met le poids dans le bleu, garde le rouge, le vert et l'alpha. `unreal_edit_light_scripts_test`
@@ -238,7 +290,7 @@ marchent qu'avec lui, jamais avec le pion volant des outils).
 | Lieu | x | z | cap | incl. | œil | sol (core) |
 |---|---|---|---|---|---|---|
 | plaine | −240 631 | −86 677 | 90 | −30 | +1,8 m | 6,18 m, pente 0,2°, sec, à 1 km du fleuve de `fleuve_plaine` |
-| paroi (pied de la chute de 388 m) | −6 185 120 | 155 968 | 90 | 10 | +1,8 m | 180,16 m, pente 2,9°, sec ; la paroi (88°, 207,7 m à 4 m) commence 4 m à l'est et monte aussi au sud ; le bassin (eau à 180,03 m) 4 m au nord. Paroi du heightmap : roche 3D quand l'agent 20 sera mergé |
+| paroi (pied de la chute de 388 m) | −6 185 120 | 155 968 | 90 | 10 | +1,8 m | 180,16 m, pente 2,9°, sec ; la paroi (88°, 207,7 m à 4 m) commence 4 m à l'est et monte aussi au sud ; le bassin (eau à 180,03 m) 4 m au nord. Paroi du heightmap : roche 3D quand l'agent 20 sera mergé. **Plus une paroi** (sonde du 13 novembre, agent 41) : le sol y est à 245,6 m, sur une pente de 40° ; le tunnel de l'agent 41 se creuse dans la plaine (scène b) |
 | bord de lac (`lac_montagne`) | 7 370 322 | −7 088 911 | 270 | −35 | +1,8 m | 1 725,4 m, sec, pente 3° ; l'eau (1 725,26 m, quelques cm de fond) commence 4 m à l'ouest |
 | chute de 388 m | −6 185 124 | 155 984 | 227 | 0 | +1,8 m | 260,1 m, pente 35°, près du bassin de `chute388_bassin` |
 | K2 | voir `Terrain.Goto k2_paroi` puis `Terrain.Pawn` | | | | | |
@@ -285,43 +337,209 @@ Sur chaque lieu :
     sont là. Décoché : le monde est intact. Abîmer `world.meta` (et effacer `world.meta.bak`) :
     message clair, pas de crash, monde intact.
 
-### Le monde modifié (agent 41)
 
-Avec `planet.bin`, sur la plaine (`Terrain.Goto plaine_casser`, puis `Terrain.Pawn`) : le sol est
-le fond sec d'une vallée, à 6,18 m, pente 0,2° ; la ligne de recul vers l'ouest descend
-régulièrement à 5,22 m à 300 m, sèche. C'est un marais (sonde : herbes hautes 0,57 à 0,71, arbres
-0,03 à 0,04, buissons 0,06 à 0,09) : si une plante cache les modifications, se décaler de quelques
-mètres en z, ou casser autour.
+### Les scènes du monde modifié (agent 41)
 
-| Lieu (`places.json`) | x | z | cap | incl. | œil | sol (core) |
-|---|---|---|---|---|---|---|
-| `plaine_casser` | −240 631 | −86 677 | 90 | −30 | +1,8 m | 6,18 m ; le sol visé à 3 m à l'est (−240 628) |
-| `modif_recul_30m` | −240 658 | −86 677 | 90 | −2 | +1,8 m | 6,09 m |
-| `modif_recul_60m` | −240 688 | −86 677 | 90 | −2 | +1,8 m | 5,99 m |
-| `modif_recul_90m` | −240 718 | −86 677 | 90 | −2 | +1,8 m | 5,90 m |
-| `modif_recul_150m` | −240 778 | −86 677 | 90 | −2 | +1,8 m | 5,70 m |
-| `modif_recul_300m` | −240 928 | −86 677 | 90 | −2 | +1,8 m | 5,22 m |
-| `cote_falaise_encoche` (agent 33) | 429 778,8 | −855 913,3 | 61,1 | 10 | 4 m d'altitude | une encoche naturelle au pied d'une falaise (tuiles de LOD 0) |
-| `stack_arche` (agent 33) | −26 488 769,4 | 7 401 625,9 | 30 | 6 | 6 m d'altitude | une arche naturelle au niveau de la mer |
+Toutes avec **`planet.bin`** (seed 20261019, somme `26626564570b0d9e`), sur la plaine de
+`plaine_casser` : le fond sec d'une vallée de 1,6 km de large, sol de 5,3 à 6,4 m, pente 0,2°.
+Chaque scène peut avoir son propre Play ; la scène e suit la scène c dans le même Play. Les lieux
+sont dans `data/dev/places.json` : `Terrain.Goto <lieu>` pose la vue (x, z, cap, inclinaison, œil
+au-dessus du sol), puis `Terrain.Pawn` y pose le personnage. Les coordonnées de `at` sont celles
+du core (x vers l'est, y l'altitude, z vers le sud), au centre de la face visée.
 
-1. **Creux lisses** (`plaine_casser`, touche 3) : casser une sphère de 5 m. Un creux rond, sans
-   pointe ni angle vif, dont la lumière tourne sans marches ; même chose avec la touche 2 (3 m).
-2. **Tunnels** : depuis le fond du creux, casser vers l'est un tunnel de 2 de large et 2 de haut
-   (bloc par bloc, touche 1) : le personnage y marche. Puis un tunnel de 1 de large et 2 de haut :
-   me dire s'il passe, et me donner la capsule du personnage (rayon et demi-hauteur en cm).
-3. **Blocs de loin** : sur le sol visé de `plaine_casser`, casser un bloc (un trou d'un bloc), et
-   poser à côté un mur d'un bloc d'épaisseur, de 3 de haut et 8 de long, en travers de la vue
-   (cap 0 ou 180). Puis `Terrain.Goto modif_recul_30m`, `60m`, `90m`, `150m` et `300m` (avec les
-   réglages de LOD par défaut, la tuile des modifications passe au LOD 1 vers 64 m, au LOD 2 entre
-   128 et 190 m, au LOD 3 entre 256 et 290 m, selon sa place ; dans la vue de contrôle : LOD 0 à
-   60 m, LOD 1 à 90 et 150 m, LOD 2 à 200 et 256 m, LOD 3 à 300 m) : le mur reste
-   droit et en roche au LOD 1, perd la moitié de sa hauteur au LOD 2, s'efface au LOD 3 ; le trou
-   reste un trait au passage du LOD 0 au LOD 1. Le passage ne doit pas se voir : me dire si un saut
-   se voit, à quelle distance, au soleil normal et bas.
-4. **Lumière** : au fond du creux, puis sous `cote_falaise_encoche` et `stack_arche`, et dans une
-   grotte (`Terrain.Seed 20261019 caves`) : les commandes de « La lumière des creux », une par une.
-   Me dire si les creux naturels ont le même noir que les modifications, puis seulement
-   `Terrain.EditLight 1` (et `Terrain.EditLightFloor 0.1` à `0.3`).
-5. **Sauvegarde** : `Building.bSaveEdits` coché, casser puis arrêter le Play **dans la seconde du
-   clic** ; relancer : le dernier creux est là, et le log de lecture donne la même date de création
-   du monde (« its world created … ») d'un Play à l'autre.
+**Les attentes entre deux commandes :**
+- après `Terrain.Goto` : la ligne `Terrain World: load N report` (le lanceur l'attend déjà) ;
+- après `Terrain.Pawn` : `Terrain dev: the pawn of the game stands, spot 1 of …`, précédée de
+  `Terrain dev: the pawn of the game: capsule radius 30.0 cm, half height 86.0 cm; walkable floor
+  angle 44.765 degrees, step 45.0 cm` (à relever : si l'angle vaut 46° ou plus, on annule la règle
+  des parois) ;
+- entre deux `Terrain.EditAim` : **0,3 s** (4 modifications par seconde au plus) ;
+- avant de viser une surface qu'un appel a créée (le bloc suivant d'un tunnel, le 2e rang d'un
+  mur) : la ligne `Terrain World: edit shown … after its click` du précédent ;
+- après `Terrain.Shot <nom>` : `Terrain dev: image …: ready after … s`, avant la commande suivante
+  (une image à la fois ; ne pas mettre le jeu en pause).
+
+Chaque `Terrain.EditAim` écrit une ligne : `Terrain dev: EditAim <dig|place> <forme> at (x, y, z):
+hit (x, y, z), block (x, y, z) | sphere at (x, y, z) radius r m, accepted | refused: <pourquoi>`.
+Le point touché (`hit`) est à quelques cm du point demandé ; le bloc ou la sphère doit être
+**exactement** celui attendu ci-dessous. Si la ligne dit `refused: the ray hits … m from the point
+aimed at`, la caméra de GASP voit la face de biais ou un obstacle est sur la trace : avancer ou
+tourner le pion (`Terrain.Look`) et recommencer.
+
+**a) Un creux en sphère** (lieu `modif_sphere` : −240 632 ; −86 717, cap 90, inclinaison −30,
+œil +1,8 m ; sol 6,08 m)
+
+```
+Terrain.Goto modif_sphere
+Terrain.Pawn
+Terrain.EditAim dig sphere 2.4375 at -240628 6.09 -86717
+    -> sphere at (-240628, 6, -86717) radius 2.438 m, accepted
+Terrain.Goto modif_vue_sphere
+Terrain.Shot a_sphere
+```
+
+À voir : un creux rond de 5 m, sans pointe ni angle vif, dont la lumière tourne sans marches.
+
+**b) Un tunnel 1 × 2 de 6 blocs** (lieu `modif_tunnel` : −240 614 ; −86 697, cap 90, inclinaison
+−20, œil +1,8 m ; sol 6,18 m). La plaine n'a pas de paroi : on casse une sphère de 5 m, puis le
+tunnel part vers l'est depuis son fond, aux rangs 4 et 5 (sol du tunnel à 3,5 m), sous 0,7 m de
+sol. `edit_tunnel_test` vérifie la même scène dans le core.
+
+```
+Terrain.Goto modif_tunnel
+Terrain.Pawn
+Terrain.EditAim dig sphere 2.4375 at -240610 6.19 -86697
+    -> sphere at (-240610, 6, -86697) radius 2.438 m, accepted
+(marche de 3,5 m au cap 90 : le pion descend au fond de la sphère, sol 3,5 m)
+Terrain.Look 90 -10
+Terrain.EditAim dig block at -240608.469 4 -86697    -> block (-240608, 4, -86697), accepted
+Terrain.EditAim dig block at -240607.469 4 -86697    -> block (-240607, 4, -86697), accepted
+Terrain.EditAim dig block at -240607.469 5 -86697    -> block (-240607, 5, -86697), accepted
+Terrain.EditAim dig block at -240606.469 4 -86697    -> block (-240606, 4, -86697), accepted
+Terrain.EditAim dig block at -240606.469 5 -86697    -> block (-240606, 5, -86697), accepted
+Terrain.EditAim dig block at -240605.469 4 -86697    -> block (-240605, 4, -86697), accepted
+Terrain.EditAim dig block at -240605.469 5 -86697    -> block (-240605, 5, -86697), accepted
+Terrain.EditAim dig block at -240604.469 4 -86697    -> block (-240604, 4, -86697), accepted
+Terrain.EditAim dig block at -240604.469 5 -86697    -> block (-240604, 5, -86697), accepted
+(marche de 2 m au cap 90, dans le tunnel)
+Terrain.EditAim dig block at -240603.469 4 -86697    -> block (-240603, 4, -86697), accepted
+Terrain.EditAim dig block at -240603.469 5 -86697    -> block (-240603, 5, -86697), accepted
+Terrain.Shot b_tunnel
+(marche de 3 m au cap 90 : le pion s'arrête au fond, x vers -240603,2)
+Terrain.Look 270 -10
+Terrain.Shot b_demi_tour
+(marche de 8 m au cap 270 : il ressort au fond de la sphère, x vers -240610)
+```
+
+Le bloc (−240 608, 5) appartient déjà à la sphère. À voir et à me renvoyer :
+- le pion marche dans le tunnel, fait demi-tour au fond et ressort, sans rester coincé ni glisser
+  (sol en V à 43,3°) ;
+- si un bloc n'est pas atteint (`refused: no ground within reach (6.0 m of the eye)`), avancer
+  d'un mètre et recommencer.
+
+**c) Un trou d'un bloc et un mur d'un bloc** (lieux `plaine_casser` : −240 631 ; −86 677, et
+`modif_mur` : −240 631 ; −86 668 ; cap 90, inclinaison −30, œil +1,8 m). Le mur fait 1 bloc
+d'épaisseur, 2 de haut et 8 de long, nord-sud, de z −86 671 à −86 664. Il n'a que 2 rangs : un
+3e rang se poserait en visant le dessus du 2e (3,3 m au-dessus des pieds), peut-être plus haut
+que la caméra, qui toucherait alors une face latérale et poserait le bloc de côté.
+
+```
+Terrain.Goto plaine_casser
+Terrain.Pawn
+Terrain.EditAim dig block at -240628 6.18 -86677     -> block (-240628, 6, -86677), accepted
+Terrain.Goto modif_mur
+Terrain.Pawn
+Terrain.EditAim place block at -240628 6.20 -86671   -> block (-240628, 7, -86671), accepted
+Terrain.EditAim place block at -240628 6.20 -86670   -> block (-240628, 7, -86670), accepted
+Terrain.EditAim place block at -240628 6.20 -86669   -> block (-240628, 7, -86669), accepted
+Terrain.EditAim place block at -240628 6.21 -86668   -> block (-240628, 7, -86668), accepted
+Terrain.EditAim place block at -240628 6.21 -86667   -> block (-240628, 7, -86667), accepted
+Terrain.EditAim place block at -240628 6.21 -86666   -> block (-240628, 7, -86666), accepted
+Terrain.EditAim place block at -240628 6.21 -86665   -> block (-240628, 7, -86665), accepted
+Terrain.EditAim place block at -240628 6.22 -86664   -> block (-240628, 7, -86664), accepted
+Terrain.EditAim place block at -240628 7.5 -86671    -> block (-240628, 8, -86671), accepted
+Terrain.EditAim place block at -240628 7.5 -86670    -> block (-240628, 8, -86670), accepted
+Terrain.EditAim place block at -240628 7.5 -86669    -> block (-240628, 8, -86669), accepted
+Terrain.EditAim place block at -240628 7.5 -86668    -> block (-240628, 8, -86668), accepted
+Terrain.EditAim place block at -240628 7.5 -86667    -> block (-240628, 8, -86667), accepted
+Terrain.EditAim place block at -240628 7.5 -86666    -> block (-240628, 8, -86666), accepted
+Terrain.EditAim place block at -240628 7.5 -86665    -> block (-240628, 8, -86665), accepted
+Terrain.EditAim place block at -240628 7.5 -86664    -> block (-240628, 8, -86664), accepted
+Terrain.Goto modif_vue_trou_mur
+Terrain.Shot c_trou_mur
+```
+
+**d) Un bloc posé dans la capsule** (lieu `modif_capsule` : −240 610 ; −86 650, cap 90,
+inclinaison −60, œil +1,8 m ; sol 6,31 m ; le pion se pose sous la vue, spot 1)
+
+```
+Terrain.Goto modif_capsule
+Terrain.Pawn
+Terrain.EditAim place block at -240610 6.31 -86650
+    -> block (-240610, 7, -86650), refused: it would close on the pawn
+Terrain.EditAim place block at -240612 6.30 -86650   -> block (-240612, 7, -86650), accepted
+```
+
+Le refus s'écrit aussi à l'écran : « Cannot place: too close to the character ». Si `Terrain.Pawn`
+a posé le pion ailleurs que sous la vue (un autre spot que le 1), le premier bloc peut être
+accepté : le dire.
+
+**e) Les blocs vus de loin**, juste après la scène c, dans le même Play. Avec les anneaux de LOD
+par défaut (4, 8, 16 et 32 chunks : le log de démarrage écrit `LOD rings 4/8/16/32`), la tuile du
+trou et du mur passe au LOD 1 à 60 m à l'ouest du trou, au LOD 2 à 124 m, au LOD 3 à 252 m. Ces
+distances sont vérifiées par la sélection des tuiles du core. Les lieux sont au milieu d'un chunk,
+de part et d'autre de chaque passage : cap 90, inclinaison −2, œil +1,8 m, z −86 677.
+
+| Lieu | x | Distance au trou | LOD |
+|---|---|---|---|
+| `modif_lod0_52m` | −240 680 | 52 m | 0 |
+| `modif_lod1_68m` | −240 696 | 68 m | 1 |
+| `modif_lod1_116m` | −240 744 | 116 m | 1 |
+| `modif_lod2_132m` | −240 760 | 132 m | 2 |
+| `modif_lod2_244m` | −240 872 | 244 m | 2 |
+| `modif_lod3_260m` | −240 888 | 260 m | 3 |
+
+```
+Terrain.Goto modif_lod0_52m
+Terrain.Shot e_lod0_52m
+Terrain.Goto modif_lod1_68m
+Terrain.Shot e_lod1_68m
+Terrain.Goto modif_lod1_116m
+Terrain.Shot e_lod1_116m
+Terrain.Goto modif_lod2_132m
+Terrain.Shot e_lod2_132m
+Terrain.Goto modif_lod2_244m
+Terrain.Shot e_lod2_244m
+Terrain.Goto modif_lod3_260m
+Terrain.Shot e_lod3_260m
+Terrain.View lod
+Terrain.Goto modif_lod1_68m
+Terrain.Shot e_couleurs_lod_68m
+Terrain.View normal
+```
+
+À voir, au soleil normal puis bas :
+- de 52 à 68 m, le passage du LOD 0 au LOD 1 ne se voit pas : le mur reste droit, en roche, à sa
+  hauteur ; le trou reste un trait de quelques pixels ;
+- au LOD 2 le mur garde la moitié de sa hauteur ; au LOD 3 il disparaît ;
+- `e_couleurs_lod_68m` colore les tuiles par LOD.
+
+**f) La sauvegarde**, sans toucher l'acteur ni la carte (lieux `modif_sauvegarde` : −240 611 ;
+−86 621, cap 90, inclinaison −40, œil +1,8 m ; et `modif_vue_sauvegarde`)
+
+Play 1 :
+
+```
+Terrain.EditSave 1
+    -> Terrain World: the edits of seed 20261019 are saved in … from now on
+Terrain.Goto modif_sauvegarde
+Terrain.Pawn
+Terrain.EditAim dig sphere at -240610 6.37 -86625
+    -> sphere at (-240610, 6, -86625) radius 1.625 m, accepted
+Terrain.EditAim place block at -240607 6.38 -86622   -> block (-240607, 7, -86622), accepted
+```
+
+Arrêter le Play **moins d'une seconde** après le dernier appel. Le log dit alors `Terrain World:
+edits saved N times this play, …`.
+
+Dans l'éditeur, hors Play :
+
+```
+Terrain.EditRead 1
+    -> Terrain dev: the next play reads the saved edits: yes
+```
+
+Play 2 : le log dit d'abord `Terrain World: the saved edits read and saved this play, as with
+Building.bSaveEdits (asked by Terrain.EditRead 1)`, puis `Terrain World: N saved blocks of seed
+20261019 read from … (C chunks; its world created …)`. La date de création est celle du monde.
+
+```
+Terrain.Goto modif_vue_sauvegarde
+Terrain.Shot f_relue
+Terrain.EditRead 0
+    -> Terrain dev: the next play reads the saved edits: no
+```
+
+À voir sur `f_relue` : le creux de la sphère de 3 m et le bloc posé, le dernier compris (il était
+encore sur le fil quand le Play s'est arrêté). Les modifications restent dans le dossier de
+sauvegarde de la seed. Pour le vider : un Play avec `Terrain.EditSave 1` et aucune modification.

@@ -26,6 +26,7 @@
 #include "test_assert.hpp"
 
 #include "terrain/storage/modifications.hpp"
+#include "terrain/storage/volume_edit.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include <algorithm>
@@ -242,6 +243,31 @@ struct Dug {
     int bottom = 0;             // the lowest row of blocks
 };
 
+// The triangles of the LOD 0 tile of the chunk (0, 0) around the dug blocks, in world meters.
+std::vector<Triangle> meshAround(const terrain::TerrainTiles& tiles) {
+    std::vector<Triangle> out;
+    const terrain::TileData data = tiles.generate({{{0, 0}, 0}, 0});
+    const terrain::Mesh& mesh = data.mesh;
+    for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+        Triangle tri;
+        for (std::size_t e = 0; e < 3; ++e) {
+            const Vec3f& v = mesh.vertices[mesh.indices[t + e]];
+            tri.v[e] = {static_cast<float>(data.originX + v.x),
+                        static_cast<float>(data.originY + v.y),
+                        static_cast<float>(data.originZ + v.z)};
+        }
+        tri.low = {std::min({tri.v[0].x, tri.v[1].x, tri.v[2].x}),
+                   std::min({tri.v[0].z, tri.v[1].z, tri.v[2].z})};
+        tri.high = {std::max({tri.v[0].x, tri.v[1].x, tri.v[2].x}),
+                    std::max({tri.v[0].z, tri.v[1].z, tri.v[2].z})};
+        if (tri.high[0] > kRoomX0 - 2.0f && tri.low[0] < kTunnelX1 + 2.0f &&
+            tri.high[1] > kRoomZ0 - 2.0f && tri.low[1] < kRoomZ1 + 2.0f) {
+            out.push_back(tri);
+        }
+    }
+    return out;
+}
+
 Dug dig(const Tunnel& tunnel) {
     terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed);
     Dug dug;
@@ -260,25 +286,38 @@ Dug dig(const Tunnel& tunnel) {
             }
         }
     }
-    const terrain::TileData data = tiles.generate({{{0, 0}, 0}, 0});
-    const terrain::Mesh& mesh = data.mesh;
-    for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
-        Triangle tri;
-        for (std::size_t e = 0; e < 3; ++e) {
-            const Vec3f& v = mesh.vertices[mesh.indices[t + e]];
-            tri.v[e] = {static_cast<float>(data.originX + v.x),
-                        static_cast<float>(data.originY + v.y),
-                        static_cast<float>(data.originZ + v.z)};
-        }
-        tri.low = {std::min({tri.v[0].x, tri.v[1].x, tri.v[2].x}),
-                   std::min({tri.v[0].z, tri.v[1].z, tri.v[2].z})};
-        tri.high = {std::max({tri.v[0].x, tri.v[1].x, tri.v[2].x}),
-                    std::max({tri.v[0].z, tri.v[1].z, tri.v[2].z})};
-        if (tri.high[0] > kRoomX0 - 2.0f && tri.low[0] < kTunnelX1 + 2.0f &&
-            tri.high[1] > kRoomZ0 - 2.0f && tri.low[1] < kRoomZ1 + 2.0f) {
-            dug.mesh.push_back(tri);
-        }
+    dug.mesh = meshAround(tiles);
+    return dug;
+}
+
+// Scene b of the checks in Unreal (terrain_unreal/BREAK_PLACE.md), on the ground of the world
+// here: a sphere of 5 m broken on the ground (Terrain.EditAim dig sphere 2.4375 at a point of
+// the ground: centered on the block of that point), then from its east wall a tunnel of 1 x 2
+// blocks dug block by block at the two lowest rows of the sphere, its 6 blocks east of the
+// center from 2 to 7 m (the block at 2 m of the upper row is the sphere's). On the plain of the
+// scene the ground stands 0.19 m over the center of its block: the tunnel keeps a roof of
+// ground 0.7 m thick. Here the sphere is centered on the block under the ground (floor), for the
+// same roof whatever the height of the ground.
+constexpr int kCraterX = 3;
+constexpr int kCraterZ = 8;
+
+Dug digCrater() {
+    terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed);
+    const int center =
+        static_cast<int>(std::floor(tiles.heightfield().heightAt(kCraterX, kCraterZ)));
+    terrain::VolumeEdit sphere;
+    sphere.mode = terrain::EditMode::Remove;
+    sphere.shape = terrain::EditShape::Sphere;
+    sphere.anchor = {kCraterX, center, kCraterZ};
+    sphere.radius = 39; // sixteenths of a meter: the sphere of 5 m of the player
+    (void)tiles.applyEdit(sphere);
+    for (int x = kCraterX + 2; x <= kCraterX + 7; ++x) {
+        tiles.setBlock({x, center - 2, kCraterZ}, BlockEdit::Removed);
+        tiles.setBlock({x, center - 1, kCraterZ}, BlockEdit::Removed);
     }
+    Dug dug;
+    dug.bottom = center - 2;
+    dug.mesh = meshAround(tiles);
     return dug;
 }
 
@@ -291,18 +330,17 @@ struct Walk {
     double tunnelFloor = 0.0; // the steepest floor inside the tunnel, degrees
 };
 
-// From the middle of the room to the end of the tunnel: into its last block, the front of the
-// capsule 45 cm from the end wall, at the foot of the slope Marching Cubes draws there (the
-// sphere would stand on it a few cm further). The walk back goes through the same places, its
-// climbs being the descents of the walk in.
-Walk walk(const Dug& dug, const Tunnel& tunnel, const Capsule& capsule) {
-    const double z = kTunnelZ0 + (tunnel.width - 1) / 2.0;
-    const double middle = dug.bottom + (tunnel.height - 1) / 2.0;
+// Along the line z from x = from to x = to, every kPathStep: into the last block of a tunnel, the
+// front of the capsule 45 cm from its end wall, at the foot of the slope Marching Cubes draws
+// there (the sphere would stand on it a few cm further). The walk back goes through the same
+// places, its climbs being the descents of the walk in. The tunnel begins at tunnelFrom.
+Walk walkAlong(const Dug& dug, double z, double middle, double from, double to, double tunnelFrom,
+               const Capsule& capsule) {
     const double needed = 2.0 * (capsule.halfHeight - capsule.radius);
     Walk w;
     double previous = 0.0;
     bool first = true;
-    for (double x = (kRoomX0 + kRoomX1) / 2.0; x <= kTunnelX1 - 0.25 + 1e-9; x += kPathStep) {
+    for (double x = from; x <= to + 1e-9; x += kPathStep) {
         const Stand s = standAt(dug.mesh, x, z, middle, capsule);
         w.fits = w.fits && s.fits;
         w.margin = std::min(w.margin, s.room - needed);
@@ -310,7 +348,7 @@ Walk walk(const Dug& dug, const Tunnel& tunnel, const Capsule& capsule) {
         // The contact when walkable, else the line under the center (ComputeFloorDist).
         const double floor = s.floor <= kWalkableDegrees ? s.floor : s.under;
         w.floor = std::max(w.floor, floor);
-        if (x >= kTunnelX0) {
+        if (x >= tunnelFrom) {
             w.tunnelFloor = std::max(w.tunnelFloor, floor);
         }
         if (!first) {
@@ -320,6 +358,27 @@ Walk walk(const Dug& dug, const Tunnel& tunnel, const Capsule& capsule) {
         first = false;
     }
     return w;
+}
+
+// From the middle of the room to the end of the tunnel.
+Walk walk(const Dug& dug, const Tunnel& tunnel, const Capsule& capsule) {
+    return walkAlong(dug, kTunnelZ0 + (tunnel.width - 1) / 2.0,
+                     dug.bottom + (tunnel.height - 1) / 2.0, (kRoomX0 + kRoomX1) / 2.0,
+                     kTunnelX1 - 0.25, kTunnelX0, capsule);
+}
+
+void printWalk(const Capsule& capsule, const Walk& w) {
+    std::printf("  capsule %s, %.0f / %.0f cm: %s (margin %+.1f cm), floor at most "
+                "%.1f degrees (%.1f in the tunnel, %s; contacts up to %.1f), climbs "
+                "%.0f cm at most%s\n",
+                capsule.name, capsule.radius * 100.0, capsule.halfHeight * 100.0,
+                w.fits ? "walks in and out" : "does not fit", w.margin * 100.0, w.floor,
+                w.tunnelFloor, w.floor <= kWalkableDegrees ? "walkable" : "too steep",
+                w.contact, w.climb * 100.0, w.climb <= kStepMeters ? "" : " (too high a step)");
+}
+
+bool passes(const Walk& w) {
+    return w.fits && w.floor <= kWalkableDegrees && w.climb <= kStepMeters;
 }
 
 // How far the walls of a tunnel stand from its axis at the middle of its height, halfway along:
@@ -355,22 +414,21 @@ int main() {
                     tunnel.width, tunnel.height, wallAt(dug, tunnel));
         for (const Capsule& capsule : capsules) {
             const Walk w = walk(dug, tunnel, capsule);
-            const bool walkable = w.floor <= kWalkableDegrees;
-            const bool steps = w.climb <= kStepMeters;
-            std::printf("  capsule %s, %.0f / %.0f cm: %s (margin %+.1f cm), floor at most "
-                        "%.1f degrees (%.1f in the tunnel, %s; contacts up to %.1f), climbs "
-                        "%.0f cm at most%s\n",
-                        capsule.name, capsule.radius * 100.0, capsule.halfHeight * 100.0,
-                        w.fits ? "walks in and out" : "does not fit", w.margin * 100.0, w.floor,
-                        w.tunnelFloor, walkable ? "walkable" : "too steep", w.contact,
-                        w.climb * 100.0, steps ? "" : " (too high a step)");
-            const bool passes = w.fits && walkable && steps;
+            printWalk(capsule, w);
             if (&capsule == &capsules[0] || tunnel.width == 2) {
-                TEST_CHECK(passes);
+                TEST_CHECK(passes(w));
             } else if (tunnel.height == 3) {
                 TEST_CHECK(w.fits);
             }
         }
     }
+    // Scene b of the checks in Unreal: from the bottom of the sphere to the end of the tunnel.
+    const Dug scene = digCrater();
+    const Walk w = walkAlong(scene, kCraterZ, scene.bottom + 0.5, kCraterX, kCraterX + 7 - 0.25,
+                             kCraterX + 2, game);
+    std::printf("scene b: from the bottom of a sphere of 5 m into a tunnel of 1 x 2 blocks, 6 "
+                "long:\n");
+    printWalk(game, w);
+    TEST_CHECK(passes(w));
     return test::result();
 }

@@ -641,10 +641,13 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
       Lumen à passer d'abord
     - sauvegarde : le world.meta d'un monde gardé, les modifications encore sur le fil sauvegardées
       à la fin du Play
-    - reste : le tunnel 1 × 2 (il manque 4 à 27 cm à la capsule : écarter le bas et le haut des
-      parois, ou une collision au bloc près, à décider avec la vraie capsule) ; la lumière des
-      creux dans Unreal (la vraie correction est dans la lumière du niveau si les creux naturels
-      ont le même noir)
+    - tunnels : un tunnel 1 × 2 laisse passer la capsule du jeu (GASP, 30/86 cm) ; les parois
+      latérales des blocs retirés sont à 0,531 m de leur centre, et le sol en V passe de 45° à
+      43,3°, sous l'angle marchable de 44,765°
+    - `Terrain.EditAim` et `Terrain.EditRead` : les clics et la relecture d'une sauvegarde pour les
+      scripts de vérification (les scènes de `BREAK_PLACE.md`)
+    - reste : la lumière des creux dans Unreal (la vraie correction est dans la lumière du niveau
+      si les creux naturels ont le même noir)
 
 ### Phase 16 — Multijoueur
 - LAN, serveur dédié communautaire (Windows, Linux, Mac), serveurs officiels

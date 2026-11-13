@@ -120,7 +120,7 @@ void testEditRead() {
 }
 
 // The sphere of a radius given is the tool's at the tool's radius; another radius is rounded to
-// the sixteenth of the edit; a trace edits only within 1 m of the point it was aimed through.
+// the sixteenth of the edit; a trace edits only within 0.25 m of the point it was aimed through.
 void testTargeting() {
     using terrain::unreal::buildTarget;
     const terrain::unreal::BuildHit hit{{10.2, 5.4, -3.7}, {0.0, 1.0, 0.0}, 3.0};
@@ -135,8 +135,10 @@ void testTargeting() {
     TEST_CHECK(terrain::unreal::shapeName(BuildTool::Sphere2, 1.5) == "sphere of radius 1.5 m");
     TEST_CHECK(terrain::unreal::shapeName(BuildTool::Block, 3.0) == "block 1 m");
     TEST_CHECK(terrain::unreal::aimsAt(hit, {10.2, 5.4, -3.7}));
-    TEST_CHECK(terrain::unreal::aimsAt(hit, {10.2, 6.3, -3.7}));
-    TEST_CHECK(!terrain::unreal::aimsAt(hit, {10.2, 6.5, -3.7}));
+    TEST_CHECK(terrain::unreal::aimsAt(hit, {10.2, 5.6, -3.7}));
+    TEST_CHECK(terrain::unreal::aimsAt(hit, {10.35, 5.4, -3.55}));
+    TEST_CHECK(!terrain::unreal::aimsAt(hit, {10.2, 5.7, -3.7}));
+    TEST_CHECK(!terrain::unreal::aimsAt(hit, {10.7, 5.4, -3.7}));
 }
 
 } // namespace

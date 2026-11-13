@@ -114,7 +114,10 @@ inline constexpr double kBreakDepthMeters = 0.5;
 
 // A trace aimed through a point (Terrain.EditAim ... at x y z, agent 41) edits only where it
 // hits within kAimToleranceMeters of that point: an obstacle on the way is refused, never edited.
-inline constexpr double kAimToleranceMeters = 1.0;
+// A quarter of a block: the scripts aim at the centers of faces (the surface within a few cm of
+// them); a trace grazing the side wall of a tunnel half a block before its end face is refused,
+// never digging the block beside.
+inline constexpr double kAimToleranceMeters = 0.25;
 [[nodiscard]] bool aimsAt(const BuildHit& hit, const CorePoint& point);
 
 // The ghost in Unreal: its center (centimeters, the frame of the session) and its half sizes
