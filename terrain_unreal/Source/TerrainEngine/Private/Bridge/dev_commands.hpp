@@ -27,6 +27,11 @@ struct EyeArgument {
 };
 [[nodiscard]] std::optional<EyeArgument> parseEyeArgument(const std::string& text);
 
+// A number of a command: a JSON number, the whole text ("182.03", "-6185104", "5e-05", "-1E3";
+// not ".5", "5.", "0,5" nor spaces around it), whatever the locale; nullopt otherwise. The
+// commands of the light of agent 40 (TerrainDevLight.cpp, TerrainDevParam.cpp) read theirs here.
+[[nodiscard]] std::optional<double> parseNumber(const std::string& text);
+
 // Terrain.Goto x z [eye] | Terrain.Goto <place>.
 struct GotoCommand {
     std::string place; // the name of a place, or empty for x and z

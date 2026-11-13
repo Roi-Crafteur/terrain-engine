@@ -11,8 +11,11 @@
 
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
+#include "TerrainDevState.h"
 #include "TerrainEngineLog.h"
 #include "UObject/UObjectIterator.h"
+
+#include <optional>
 
 namespace
 {
@@ -20,13 +23,16 @@ namespace
 	// with it; the materials made later keep their default).
 	void RunTerrainParam(const TArray<FString>& Args, UWorld* World)
 	{
-		if (World == nullptr || Args.Num() < 2 || !Args[1].IsNumeric())
+		const std::optional<double> Number = Args.Num() == 2
+			? terrain::unreal::parseNumber(TerrainDev::ToUtf8(Args[1]))
+			: std::nullopt;
+		if (World == nullptr || !Number)
 		{
 			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.Param <name> <value>"));
 			return;
 		}
 		const FName Name(*Args[0]);
-		const float Value = FCString::Atof(*Args[1]);
+		const float Value = static_cast<float>(*Number);
 		int32 Count = 0;
 		for (TObjectIterator<UTerrainHorizonClipmap> It; It; ++It)
 		{

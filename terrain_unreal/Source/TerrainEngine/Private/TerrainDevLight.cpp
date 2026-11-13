@@ -1,6 +1,7 @@
 // The console commands of the light of the tools of the developers (agent 40), never in a Shipping
 // build. They change the world only while playing (PIE or a game): the map of the editor is never
-// touched, and nothing they set is saved.
+// touched, and nothing they set is saved. Their numbers are JSON numbers ("5e-05" too:
+// Bridge/dev_commands.hpp, parseNumber).
 // - Terrain.Sun <elevation> <heading>: the sun that many degrees above the horizon, at that heading
 //   (degrees clockwise from the north, as the places): every DirectionalLight of the world turned
 //   to FRotator(-elevation, heading + 90, 0), as the launcher of the checks turns them
@@ -14,7 +15,7 @@
 //   takes the blue band off the far ground seen from high up without losing the haze of the views
 //   from the ground (points 6 and 7 of the orchestrator). Every height fog of the world is logged
 //   with its values read back (a second fog shows there: the renderer draws only one), its second
-//   fog and its volumetric fog.
+//   fog, its volumetric fog and its height under the eye.
 // - Terrain.Aerial [<view distance scale> [height fog contribution]]: the aerial perspective of
 //   the SkyAtmosphere (AerialPespectiveViewDistanceScale, HeightFogContribution), read and set by
 //   the names of its properties (the log names one this version would not have), its render state
@@ -23,16 +24,21 @@
 
 #if TERRAIN_DEV_TOOLS
 
+#include "Camera/PlayerCameraManager.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "TerrainDevState.h"
 #include "TerrainEngineLog.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
+
+#include <optional>
 
 namespace
 {
@@ -78,14 +84,20 @@ namespace
 		return false;
 	}
 
-	bool AllNumeric(const TArray<FString>& Args)
+	// Every argument a number (Bridge/dev_commands.hpp: parseNumber, "5e-05" as "0.00005"), or
+	// false.
+	bool LightNumbers(const TArray<FString>& Args, TArray<double>& OutNumbers)
 	{
+		OutNumbers.Reset();
 		for (const FString& Arg : Args)
 		{
-			if (!Arg.IsNumeric())
+			const std::optional<double> Number =
+				terrain::unreal::parseNumber(TerrainDev::ToUtf8(Arg));
+			if (!Number)
 			{
 				return false;
 			}
+			OutNumbers.Add(*Number);
 		}
 		return true;
 	}
@@ -110,7 +122,8 @@ namespace
 			}
 			return;
 		}
-		if (Args.Num() < 2 || !Args[0].IsNumeric() || !Args[1].IsNumeric())
+		TArray<double> Numbers;
+		if (Args.Num() != 2 || !LightNumbers(Args, Numbers))
 		{
 			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.Sun <elevation> <heading>"));
 			return;
@@ -119,8 +132,8 @@ namespace
 		{
 			return;
 		}
-		const double Elevation = FMath::Clamp(FCString::Atod(*Args[0]), -90.0, 90.0);
-		const double Heading = SunWrappedDegrees(FCString::Atod(*Args[1]));
+		const double Elevation = FMath::Clamp(Numbers[0], -90.0, 90.0);
+		const double Heading = SunWrappedDegrees(Numbers[1]);
 		const FRotator Rotation(-Elevation, SunWrappedDegrees(Heading + 90.0), 0.0);
 		int32 Turned = 0;
 		int32 MadeMovable = 0;
@@ -154,12 +167,13 @@ namespace
 	// Terrain.HorizonShadows <levels>
 	void RunTerrainHorizonShadows(const TArray<FString>& Args, UWorld* World)
 	{
-		if (World == nullptr || Args.Num() < 1 || !Args[0].IsNumeric())
+		TArray<double> Numbers;
+		if (World == nullptr || Args.Num() != 1 || !LightNumbers(Args, Numbers))
 		{
 			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.HorizonShadows <levels, 0 to 4>"));
 			return;
 		}
-		const int32 Levels = FMath::Clamp(FCString::Atoi(*Args[0]), 0, 4);
+		const int32 Levels = FMath::Clamp(FMath::RoundToInt32(Numbers[0]), 0, 4);
 		for (TObjectIterator<UTerrainHorizonClipmap> It; It; ++It)
 		{
 			if (It->GetWorld() == World)
@@ -188,21 +202,42 @@ namespace
 			Fog.SecondFogData.FogHeightFalloff, Fog.bEnableVolumetricFog ? TEXT("on") : TEXT("off"));
 	}
 
-	// Terrain.Fog <density> [end km] [height falloff] [cutoff km], on one registered fog.
-	void SetTerrainFog(UExponentialHeightFogComponent& Fog, const TArray<FString>& Args)
+	// Where a height fog acts: its height under the eye (the camera of the first player), and how
+	// fast it thins above it (Unreal: its density times 2^(-falloff / 1000 per cm of height), so
+	// halved every 10 / falloff m).
+	void LogTerrainFogHeight(const UWorld& World, const UExponentialHeightFogComponent& Fog)
 	{
-		Fog.SetFogDensity(FCString::Atof(*Args[0]));
-		if (Args.Num() > 1)
+		const APlayerController* Controller = World.GetFirstPlayerController();
+		const APlayerCameraManager* Camera =
+			Controller != nullptr ? Controller->PlayerCameraManager.Get() : nullptr;
+		if (Camera == nullptr)
 		{
-			Fog.SetEndDistance(FCString::Atof(*Args[1]) * 1.0e5f);
+			return;
 		}
-		if (Args.Num() > 2)
+		const double UnderEye =
+			(Camera->GetCameraLocation().Z - Fog.GetComponentLocation().Z) / 100.0;
+		const double Halving = Fog.FogHeightFalloff > 0.0f ? 10.0 / Fog.FogHeightFalloff : 0.0;
+		UE_LOG(LogTerrainEngine, Log,
+			TEXT("Terrain.Fog: %s at %.0f m under the eye; its density halves every %.0f m above "
+				 "it (0: never)"),
+			*Fog.GetName(), UnderEye, Halving);
+	}
+
+	// Terrain.Fog <density> [end km] [height falloff] [cutoff km], on one registered fog.
+	void SetTerrainFog(UExponentialHeightFogComponent& Fog, const TArray<double>& Numbers)
+	{
+		Fog.SetFogDensity(static_cast<float>(Numbers[0]));
+		if (Numbers.Num() > 1)
 		{
-			Fog.SetFogHeightFalloff(FCString::Atof(*Args[2]));
+			Fog.SetEndDistance(static_cast<float>(Numbers[1] * 1.0e5));
 		}
-		if (Args.Num() > 3)
+		if (Numbers.Num() > 2)
 		{
-			Fog.SetFogCutoffDistance(FCString::Atof(*Args[3]) * 1.0e5f);
+			Fog.SetFogHeightFalloff(static_cast<float>(Numbers[2]));
+		}
+		if (Numbers.Num() > 3)
+		{
+			Fog.SetFogCutoffDistance(static_cast<float>(Numbers[3] * 1.0e5));
 		}
 		Fog.MarkRenderStateDirty();
 	}
@@ -214,7 +249,8 @@ namespace
 		{
 			return;
 		}
-		if (!AllNumeric(Args))
+		TArray<double> Numbers;
+		if (Args.Num() > 4 || !LightNumbers(Args, Numbers))
 		{
 			UE_LOG(LogTerrainEngine, Warning,
 				TEXT("Terrain.Fog [<density> [end km] [height falloff] [cutoff km]]"));
@@ -233,10 +269,11 @@ namespace
 			++Fogs;
 			if (bSet && Fog->IsRegistered())
 			{
-				SetTerrainFog(*Fog, Args);
+				SetTerrainFog(*Fog, Numbers);
 				++Changed;
 			}
 			LogTerrainFog(*Fog); // read back
+			LogTerrainFogHeight(*World, *Fog);
 		}
 		UE_LOG(LogTerrainEngine, Log,
 			TEXT("Terrain.Fog: %d height fog component(s) in the world (the renderer draws one), %d "
@@ -251,7 +288,8 @@ namespace
 		{
 			return;
 		}
-		if (!AllNumeric(Args))
+		TArray<double> Numbers;
+		if (Args.Num() > 2 || !LightNumbers(Args, Numbers))
 		{
 			UE_LOG(LogTerrainEngine, Warning,
 				TEXT("Terrain.Aerial [<view distance scale> [height fog contribution]]"));
@@ -279,9 +317,9 @@ namespace
 					Values += FString::Printf(TEXT(", %s: no such float property"), Names[N]);
 					continue;
 				}
-				if (bSetThis && Args.Num() > N)
+				if (bSetThis && Numbers.Num() > N)
 				{
-					Property->SetPropertyValue_InContainer(Sky, FCString::Atof(*Args[N]));
+					Property->SetPropertyValue_InContainer(Sky, static_cast<float>(Numbers[N]));
 				}
 				Values += FString::Printf(
 					TEXT(", %s %g"), Names[N], Property->GetPropertyValue_InContainer(Sky));

@@ -1,6 +1,7 @@
 // The poses of the views of the tools of the developers (Bridge/place_pose.hpp) and the arguments
 // of their console commands (Bridge/dev_commands.hpp): the yaw of a heading and back, the eye
-// above the ground or the water, a saved view posed again where it was, and every refusal.
+// above the ground or the water, a saved view posed again where it was, the numbers of the
+// commands, and every refusal.
 #include "dev_commands.hpp"
 #include "ground_ray.hpp"
 #include "place_pose.hpp"
@@ -189,6 +190,17 @@ void testGotoLookEye() {
     TEST_CHECK(!terrain::unreal::parseEye(Args{"1", "2"}, error));
 }
 
+// The numbers of the commands of the light (agent 40): "Terrain.Fog 5e-05" was refused.
+void testNumbers() {
+    using terrain::unreal::parseNumber;
+    TEST_CHECK(parseNumber("5e-05") == 5e-05 && parseNumber("1E3") == 1000.0);
+    TEST_CHECK(parseNumber("-0.5") == -0.5 && parseNumber("0.0005") == 0.0005);
+    TEST_CHECK(parseNumber("254") == 254.0 && parseNumber("-6185104") == -6185104.0);
+    for (const char* bad : {"", "abc", "5e", ".5", "5.", "0,5", " 1", "1 ", "+1", "1e3x"}) {
+        TEST_CHECK(!parseNumber(bad));
+    }
+}
+
 void testSaveShotViews() {
     std::string error;
     const auto save =
@@ -259,6 +271,7 @@ int main() {
     testEyes();
     testSavedViews();
     testGotoLookEye();
+    testNumbers();
     testSaveShotViews();
     testSeed();
     testModesAndPages();

@@ -1,8 +1,13 @@
 # The water and the far horizon as Unreal draws them (agent 40). Included once, at the end of
 # tests/CMakeLists.txt (after the Bridge library and the fixture of the planet of the coasts).
 
-target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/horizon_sea_line.cpp
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/dev_ab_cost.cpp
+                                             ${unreal_bridge}/horizon_sea_line.cpp
                                              ${unreal_bridge}/horizon_split.cpp)
+
+# The measure of Terrain.Cost: its arguments, the order A B B A A B of its phases, the frames thrown
+# away after each switch, the means, spreads and difference of A and B.
+terrain_add_test(unreal_dev_ab_cost_test terrain_unreal_bridge)
 
 # The line of the sea of the GPU horizon along the coasts: the sea painted up the ground the grid
 # shows, and the distance from its coast to the true shore, on the levels 0 to 5 of four places of

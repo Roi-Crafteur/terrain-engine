@@ -9,11 +9,7 @@
 
 namespace terrain::unreal {
 
-namespace {
-
-// A JSON number, the whole text (terrain/json: an exact decimal, the same bits everywhere), or
-// nullopt: spaces, signs, letters or a byte order mark around it, or anything else.
-std::optional<double> numberOf(const std::string& text) {
+std::optional<double> parseNumber(const std::string& text) {
     const auto digit = [](char c) { return c >= '0' && c <= '9'; };
     if (text.empty() || !(text.front() == '-' || digit(text.front())) || !digit(text.back())) {
         return std::nullopt;
@@ -27,6 +23,8 @@ std::optional<double> numberOf(const std::string& text) {
     }
     return std::nullopt;
 }
+
+namespace {
 
 template <class T>
 std::optional<T> refuse(std::string& error, std::string message) {
@@ -58,13 +56,13 @@ constexpr std::array<std::string_view, kHudPageCount> kPages = {"off", "player",
 
 std::optional<EyeArgument> parseEyeArgument(const std::string& text) {
     if (!text.empty() && text.front() == '+') {
-        const std::optional<double> height = numberOf(text.substr(1));
+        const std::optional<double> height = parseNumber(text.substr(1));
         if (!height || *height < 0.0) {
             return std::nullopt;
         }
         return EyeArgument{*height, dev::EyeMode::Ground};
     }
-    const std::optional<double> altitude = numberOf(text);
+    const std::optional<double> altitude = parseNumber(text);
     if (!altitude) {
         return std::nullopt;
     }
@@ -86,8 +84,8 @@ std::optional<GotoCommand> parseGoto(std::span<const std::string> args, std::str
     if (args.size() != 2 && args.size() != 3) {
         return refuse<GotoCommand>(error, kUsage);
     }
-    const std::optional<double> x = numberOf(args[0]);
-    const std::optional<double> z = numberOf(args[1]);
+    const std::optional<double> x = parseNumber(args[0]);
+    const std::optional<double> z = parseNumber(args[1]);
     if (!x || !z) {
         return refuse<GotoCommand>(error, kUsage);
     }
@@ -106,8 +104,8 @@ std::optional<LookCommand> parseLook(std::span<const std::string> args, std::str
     constexpr const char* kUsage =
         "expected Terrain.Look <heading: degrees clockwise from the north> <pitch: degrees up, "
         "-90 to 90>";
-    const std::optional<double> heading = args.size() == 2 ? numberOf(args[0]) : std::nullopt;
-    const std::optional<double> pitch = args.size() == 2 ? numberOf(args[1]) : std::nullopt;
+    const std::optional<double> heading = args.size() == 2 ? parseNumber(args[0]) : std::nullopt;
+    const std::optional<double> pitch = args.size() == 2 ? parseNumber(args[1]) : std::nullopt;
     if (!heading || !pitch || *pitch < -90.0 || *pitch > 90.0) {
         return refuse<LookCommand>(error, kUsage);
     }
