@@ -7,7 +7,8 @@
 //   (measured in the same trial, on the same caches, as a join would wait for them: the four
 //   finished at once under the same load);
 // - a thread waiting for a course another thread makes leaves as soon, woken by the raise of its
-//   flag (raiseWorkStop), never by the end of a step of its wait;
+//   flag (raiseWorkStop), never by the end of a step of its wait: at rest, its median exit under
+//   half that of the same thread whose flag is only stored;
 // - a stopped thread leaves nothing half made: the courses then computed are those of a
 //   hydrology never stopped (the bits of hydrology_bits_test);
 // - a thread stopped leaves the others computing, their results unchanged.
@@ -37,6 +38,10 @@ constexpr int kWorkers = 4;
 constexpr int kTrials = 10;
 // A course long to make: what the threads stopped under load compute.
 constexpr double kLongCourse = 100.0; // ms
+// The trials of the waking of a waiting thread, each way, and the least time of the course it
+// waits for.
+constexpr int kWakes = 15;
+constexpr double kWakeCourse = 50.0; // ms
 // The checksum of the sample reaches (hydrology_bits_test, pinned on main).
 constexpr std::uint64_t kSampleReaches = 0xF1684975E5044E29ULL;
 
@@ -281,6 +286,68 @@ void testWaiter(const World& w, const std::vector<Timed>& timed) {
     TEST_CHECK(median(latencies) <= 100.0);
 }
 
+// One thread waiting for the course r another one makes on a fresh hydrology, its flag raised
+// delay µs after it started: by raiseWorkStop (wake) or by a store alone (then seen at the end of
+// a step of its wait). The ms from the raise to its exit; negative if it got the course instead.
+double waiterOut(const World& w, std::size_t r, int delayUs, bool wake) {
+    const auto h = w.fresh();
+    std::atomic<bool> stop{false};
+    bool left = false;
+    Clock::time_point out;
+    std::thread maker([&] { (void)h->reach(r); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    std::thread waiter([&] {
+        const WorkStopScope scope(&stop);
+        try {
+            (void)h->reach(r);
+        } catch (const WorkStopped&) {
+            left = true;
+        }
+        out = Clock::now();
+    });
+    std::this_thread::sleep_for(std::chrono::microseconds(delayUs));
+    const Clock::time_point raised = Clock::now();
+    if (wake) {
+        raiseWorkStop(stop);
+    } else {
+        stop.store(true);
+    }
+    waiter.join();
+    maker.join();
+    return left ? msBetween(raised, out) : -1.0;
+}
+
+// The waiting thread is woken by the raise of its flag, not by the end of a step of its wait: at
+// rest, kWakes trials raised by raiseWorkStop against kWakes whose flag is only stored, in turn,
+// at instants spread over 2 ms; the median of the first under half the median of the second (no
+// bound in milliseconds: a step is 2 ms asked, 15.6 ms under Windows).
+void testWokenNotStepped(const World& w, const std::vector<Timed>& timed) {
+    // The shortest course of kWakeCourse ms or more (the longest if none): made after the end of
+    // a step of the wait.
+    Timed course = *std::max_element(
+        timed.begin(), timed.end(), [](const Timed& a, const Timed& b) { return a.ms < b.ms; });
+    for (const Timed& t : timed) {
+        if (t.ms >= kWakeCourse && t.ms < course.ms) {
+            course = t;
+        }
+    }
+    std::vector<double> woken;
+    std::vector<double> stored;
+    for (int k = 0; k < kWakes; ++k) {
+        const int delayUs = 5000 + 2000 * k / kWakes;
+        woken.push_back(waiterOut(w, course.reach, delayUs, true));
+        stored.push_back(waiterOut(w, course.reach, delayUs, false));
+    }
+    const auto allLeft = [](const std::vector<double>& v) {
+        return std::all_of(v.begin(), v.end(), [](double ms) { return ms >= 0.0; });
+    };
+    std::printf("waiting for reach %zu (%.1f ms to make), at rest: out in %.2f ms woken by the "
+                "raise, %.2f ms with the flag only stored (medians of %d)\n",
+                course.reach, course.ms, median(woken), median(stored), kWakes);
+    TEST_CHECK(allLeft(woken) && allLeft(stored));
+    TEST_CHECK(median(woken) < 0.5 * median(stored));
+}
+
 // One thread stopped, the other one going on: its courses those of the sample.
 void testOthersGoOn(const World& w) {
     const auto h = w.fresh();
@@ -323,6 +390,7 @@ int main() {
     const std::vector<Timed> timed = timeSample(world);
     testStopsUnderLoad(world, timed);
     testWaiter(world, timed);
+    testWokenNotStepped(world, timed);
     testOthersGoOn(world);
     return test::result();
 }

@@ -164,10 +164,22 @@ Ne sont pas interrompus :
   - les arrêts sous charge, dans les tracés longs de l'échantillon (100 ms ou plus à faire),
     au milieu du premier ;
   - la médiane ≤ 100 ms ;
-  - le plus long < 1/4 du temps de la fin des tracés en cours ;
-  - un fil qui attend, réveillé par la levée de son drapeau ;
+  - le plus long < 1/4 du temps de la fin des tracés en cours, mesurée comme un `join`
+    l'attendrait : les quatre finis en même temps, sous la même charge ;
+  - un fil qui attend, réveillé par la levée de son drapeau : au calme, sa sortie médiane est
+    sous la moitié de celle du même fil dont le drapeau est seulement stocké (il ne le voit
+    alors qu'à la fin d'un pas de son attente) ;
   - rien d'à moitié fait ;
   - les autres fils continuent.
+  - Ce qu'il attrape (expériences non commitées, 3 fois chacune) :
+    - `raiseWorkStop` sans effet : aucun fil ne sort par `WorkStopped` ;
+    - tous les points d'arrêt d'un tracé retirés, entrées des chemins, fonds et tracés
+      comprises : idem ;
+    - l'attente d'un cache sans point d'arrêt : le fil qui attend ne sort qu'avec le tracé ;
+    - le réveil retiré : les deux médianes se rejoignent (environ 1 ms).
+  - Ce qu'il ne voit pas : un seul point d'arrêt retiré dans une boucle (les sections de
+    `lowestPath`, ou tous ceux du corps d'un tracé). Les entrées des chemins et des fonds
+    d'amont restent, et le trou ne fait qu'environ 10 ms, sous le quart de la fin des tracés.
 - `hydrology_threads_test` : mêmes bits sur 1 et 4 fils, et après des arrêts.
 - `hydrology_cache_test` : avec un budget de 1 Mio, les tracés lâchés puis refaits donnent les
   mêmes bits, les octets tenus restent sous la part des tracés, et 4 fils qui lâchent et lisent

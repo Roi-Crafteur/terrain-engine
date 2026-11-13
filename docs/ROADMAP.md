@@ -274,7 +274,7 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 
   | Test | Médiane | Autres mesures |
   |---|---|---|
-  | `hydrology_stop_test` | 1 à 4 ms | plus long ≤ 0,16 de la fin du tracé en cours |
+  | `hydrology_stop_test` | 1 à 4 ms | plus long ≤ 0,10 de la fin des tracés en cours (finis ensemble, sous la même charge) |
   | `unreal_work_stop_test` | 2,4 ms | 4 fils, ordre de `ReleaseWorld` ; 5,5 ms au plus |
 
   ThreadSanitizer ne signale rien. Les mêmes bits sur 1 et 4 fils (`hydrology_threads_test`).
