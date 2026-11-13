@@ -346,7 +346,9 @@ void testDeterminism() {
     }
     TEST_CHECK(sums[0] == sums[1]);
     golden::report("the horizon with a razed mountain, a crater and a heap",
-                   // The biomes of agent 49 in its samples (0x75963890668CF506 before them).
+                   // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and marshes
+                   // near the sea" (b1da378, agent 49): "edited horizon" (0x75963890668CF506
+                   // before); the 21 biomes in its samples.
                    {{"edited horizon", sums[0], 0xC01A71DBEE4D464DULL}});
 }
 
