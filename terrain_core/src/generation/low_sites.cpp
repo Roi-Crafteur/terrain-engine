@@ -2,6 +2,8 @@
 #include "low_sites.hpp"
 
 #include "terrain/det_math.hpp"
+#include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/planet/planet_params.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <array>
@@ -62,6 +64,10 @@ namespace terrain {
 
 const char* lowKindName(LowKind kind) {
     return lows::kNames[static_cast<std::size_t>(kind)];
+}
+
+void lowsOn(HeightfieldParams& relief, PlanetParams& /*planet*/) {
+    relief.lows.enabled = true;
 }
 
 } // namespace terrain

@@ -45,4 +45,11 @@ struct LowsParams {
     double density = 1.0;
 };
 
+struct HeightfieldParams;
+struct PlanetParams;
+
+// Switches every low on (the experimental flag "lows", experimental_flags.hpp): the families of
+// LowsParams. Off by default: the world of main, bit for bit.
+void lowsOn(HeightfieldParams& relief, PlanetParams& planet);
+
 } // namespace terrain

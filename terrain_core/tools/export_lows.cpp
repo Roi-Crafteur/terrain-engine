@@ -10,14 +10,18 @@
 //   of the tiles over it; the low land far from the sea taken for a beach or a marsh (agent 49);
 //   the river points held at the sea level over a dry low (agent 31);
 // - with --list, every low (family, center, reach, lowest point, water, belt).
+// --flags switches on experimental parts of the world by name (experimental_flags.hpp: "lows"
+// lays the lows of agent 52); give then a planet file built with the same flags.
 // With --planet, the world has its planet level (read from the file, or built and written there):
 // its rivers, lakes and climate. The figures are the same whatever the threads.
 // Usage: terrain_export_lows <output-dir> [--planet <file>] [--seed <seed>] [--world <x> <z>]
 //        [--threads <n>] [--cell <meters>] [--width <pixels>] [--readers <n>] [--list]
+//        [--flags <names>]
 
 #include "lows_readers.hpp"
 #include "lows_sites.hpp"
 #include "lows_world.hpp"
+#include "tool_flags.hpp"
 
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/storage/planet_file.hpp"
@@ -64,6 +68,8 @@ struct Options {
     int width = 1832;
     std::size_t readers = 400;
     bool list = false;
+    terrain::WorldParams params; // the world of --flags
+    std::string flags;           // their canonical text
 };
 
 class Report {
@@ -118,6 +124,9 @@ bool parseOption(int argc, char** argv, int& i, Options& o) {
     }
     if (flag == "--readers" && need(1)) {
         return parse(argv[++i], o.readers) || fail("readers", argv[i]);
+    }
+    if (flag == "--flags" && need(1)) {
+        return tool_flags::apply(argv[++i], o.params, o.flags) || fail("flags", argv[i]);
     }
     if (flag == "--list") {
         o.list = true;
@@ -234,11 +243,11 @@ std::shared_ptr<const terrain::PlanetLevel> planetOf(const Options& o, Report& r
         r.add("no planet level: the relief alone, no rivers, lakes nor climate\n");
         return nullptr;
     }
-    terrain::PlanetParams params;
+    terrain::PlanetParams params = o.params.planet;
     params.threads = o.threads;
     bool built = false;
     auto level = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
-        o.planet, o.seed, terrain::HeightfieldParams{}, params, o.world, &built));
+        o.planet, o.seed, o.params.relief, params, o.world, &built));
     r.add("planet level %s %s, checksum %016llx\n", built ? "built into" : "read from",
           o.planet.string().c_str(), static_cast<unsigned long long>(level->checksum()));
     return level;
@@ -250,11 +259,13 @@ int run(const Options& o) {
     Report r;
     r.add("lows of seed %llu, world %.0f x %.0f km\n", static_cast<unsigned long long>(o.seed),
           o.world.x / 1000.0, o.world.z / 1000.0);
-    const terrain::Heightfield relief(o.seed, terrain::HeightfieldParams{}, o.world);
+    r.add("experimental flags: %s\n", o.flags.empty() ? "none" : o.flags.c_str());
+    const terrain::Heightfield relief(o.seed, o.params.relief, o.world);
     const std::shared_ptr<const terrain::PlanetLevel> planet = planetOf(o, r);
     std::shared_ptr<const terrain::Hydrology> hydrology;
     if (planet) {
-        hydrology = std::make_shared<const terrain::Hydrology>(o.seed, relief, planet);
+        hydrology =
+            std::make_shared<const terrain::Hydrology>(o.seed, relief, planet, o.params.water);
     }
     const terrain::Heightfield field = hydrology ? relief.withHydrology(hydrology) : relief;
     terrain::ReliefGrid grid = terrain::sampleReliefWorld(relief, o.cell, o.threads);
@@ -274,7 +285,7 @@ int run(const Options& o) {
         centers.push_back({low.x, low.z});
     }
     reportLows(lows, o.list, r);
-    const terrain::TerrainTiles tiles(o.seed, terrain::HeightfieldParams{},
+    const terrain::TerrainTiles tiles(o.seed, o.params.relief,
                                       terrain::EcologyParams{}, std::nullopt, o.world, hydrology);
     std::vector<Point> dry;
     std::vector<Point> low;
@@ -301,7 +312,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
                      "Usage: %s <output-dir> [--planet <file>] [--seed <seed>] [--world <x> <z>] "
                      "[--threads <n>] [--cell <meters>] [--width <pixels>] [--readers <n>] "
-                     "[--list]\n",
+                     "[--list] [--flags <names>]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
