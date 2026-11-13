@@ -55,10 +55,15 @@ namespace terrain::planet {
 
 // The ground the air flows over: the altitude of every cell (0 over the sea) blurred over
 // orographyRadius (two box passes along each axis, periodic).
+// The meters the climate of a land cell reads above its floor (PlanetClimateParams::meanAltitude:
+// the mean altitude of its points, PlanetCells::climateRise), or none (empty: the floor).
+using CellRise = std::function<float(std::size_t cell)>;
+
 [[nodiscard]] std::vector<float> orographicSurface(const PlanetGrid& grid,
                                                    const std::vector<float>& height,
                                                    const LandIndex& land,
-                                                   const PlanetClimateParams& params, int threads);
+                                                   const PlanetClimateParams& params, int threads,
+                                                   const CellRise& rise = {});
 
 // Climate of the grid: precipitation of every cell (mm/yr) and sea-level temperature of every
 // row. The moisture is carried along the prevailing winds over the orographic surface
@@ -71,12 +76,12 @@ struct PlanetClimate {
 [[nodiscard]] PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                                            const LandIndex& land,
                                            const PlanetClimateParams& params, int threads,
-                                           std::uint64_t seed = 0);
+                                           std::uint64_t seed = 0, const CellRise& rise = {});
 // The same on the land of an ocean mask.
 [[nodiscard]] PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                                            const std::vector<std::uint8_t>& ocean,
                                            const PlanetClimateParams& params, int threads,
-                                           std::uint64_t seed = 0);
+                                           std::uint64_t seed = 0, const CellRise& rise = {});
 
 // Water of a cell, in units of 1e-6 m^3/s (kWaterUnitsPerCubicMeter): the land runoff (all of the
 // precipitation on a frozen cell, which moves on as ice), the extra evaporation of a lake
@@ -97,14 +102,15 @@ using WaterOf = std::function<CellWater(std::size_t cell)>;
 // The water of the cells of a grid from its climate (the vectors must outlive the result).
 [[nodiscard]] WaterOf climateWater(const PlanetGrid& grid, const std::vector<float>& height,
                                    const std::vector<std::uint8_t>& ocean,
-                                   const PlanetClimate& climate, const PlanetClimateParams& params);
+                                   const PlanetClimate& climate, const PlanetClimateParams& params,
+                                   const CellRise& rise = {});
 
 // The same from the precipitation of the land cells alone, by land slot (the lean build keeps
 // no precipitation of the sea in float).
 [[nodiscard]] WaterOf landWater(const PlanetGrid& grid, const std::vector<float>& height,
                                 const LandValues<float>& precipitation,
                                 const std::vector<float>& rowTemperature,
-                                const PlanetClimateParams& params);
+                                const PlanetClimateParams& params, const CellRise& rise = {});
 
 // Water units of a flow of mmPerYear over area square meters, rounded to the nearest unit.
 [[nodiscard]] std::int64_t waterUnits(double mmPerYear, double area);

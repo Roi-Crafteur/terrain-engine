@@ -76,7 +76,7 @@ void marchOneBand(const BandMarchInputs& in, int band) {
         row.nx = grid.nx;
         row.cellSize = grid.cellSize;
         row.temperature = in.rowTemperature[static_cast<std::size_t>(j)];
-        row.latitude = rowLatitude(grid, j);
+        row.latitude = rowLatitude(grid, j, in.params.sphereLatitude);
         row.wind = in.bands.wind(band);
         marchMoistureRow(row, in.params, out);
         storeRowRain(in, band, j, out.precipitation, weighted);

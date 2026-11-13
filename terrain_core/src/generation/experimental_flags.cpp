@@ -9,6 +9,19 @@ namespace terrain {
 
 namespace {
 
+// sphere_latitude (task 11C, after the audit): the latitude of a sphere for every reader of the
+// climate (climate_latitude.hpp), one threshold of the frost (the ice of the planet level at the
+// snow of the biomes), the climate of a cell at the mean altitude of its points, the rivers going
+// on under the ice.
+void sphereLatitude(WorldParams& p) {
+    p.relief.sphereLatitude = true;
+    p.planet.climate.sphereLatitude = true;
+    p.planet.climate.meanAltitude = true;
+    p.planet.climate.iceTemperature = p.ecology.biomes.snowTemperature;
+    p.planet.rivers.underIce = true;
+    p.ecology.climate.sphereLatitude = true;
+}
+
 // One row per flag, sorted by name: see experimental_flags.hpp to add one.
 constexpr std::array kFlags = {
     ExperimentalFlag{"pass_routing",
@@ -21,6 +34,10 @@ constexpr std::array kFlags = {
                      [](WorldParams& p) { p.planet.landDischarge = true; }},
     ExperimentalFlag{"smooth_bands", "the bands of the winds joined smoothly (agent 31)",
                      [](WorldParams& p) { p.planet.climate.smoothBands = true; }},
+    ExperimentalFlag{"sphere_latitude",
+                     "the climate reads the latitude of a sphere, one threshold of the frost, the "
+                     "mean altitude of the cells, rivers under the ice (agent 31)",
+                     sphereLatitude},
 };
 
 bool separator(char c) {

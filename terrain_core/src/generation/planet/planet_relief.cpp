@@ -23,23 +23,31 @@ constexpr double kContinentalScale = 1'500'000.0;
 // cell on the coast, not the bottom of the sea), else its center; its index and whether the
 // mountain mask is above 0 there.
 // The heights of the n^2 points, kept for the exits of the cells under the mountains.
+// mean: the mean of its points of the same water as its center (its floor without any).
 struct Floor {
     float height = 0.0f;
     std::uint8_t index = kCenterFloor;
     std::uint8_t mountain = 0;
     std::array<float, kMaxSamplesPerAxis * kMaxSamplesPerAxis> heights{};
+    float mean = 0.0f;
 };
 
 Floor cellFloor(const Heightfield& field, const PlanetGrid& grid, std::size_t cell, int n,
                 const HeightSample& center) {
     const bool sea = center.water == WaterKind::Ocean;
     Floor f{center.height, kCenterFloor,
-            center.mountainMask > 0.0f ? std::uint8_t{1} : std::uint8_t{0}, {}};
+            center.mountainMask > 0.0f ? std::uint8_t{1} : std::uint8_t{0}, {}, 0.0f};
     bool found = false;
+    double sum = 0.0;
+    int same = 0;
     for (int k = 0; k < n * n; ++k) {
         const std::array<double, 2> p = floorPoint(grid, cell, static_cast<std::uint8_t>(k), n);
         const HeightSample s = field.sampleAt(p[0], p[1]);
         f.heights[static_cast<std::size_t>(k)] = s.height;
+        if ((s.water == WaterKind::Ocean) == sea) {
+            sum += static_cast<double>(s.height);
+            ++same;
+        }
         if ((s.water == WaterKind::Ocean) == sea && (!found || s.height < f.height)) {
             found = true;
             f.height = s.height;
@@ -47,6 +55,7 @@ Floor cellFloor(const Heightfield& field, const PlanetGrid& grid, std::size_t ce
             f.mountain = s.mountainMask > 0.0f ? std::uint8_t{1} : std::uint8_t{0};
         }
     }
+    f.mean = same > 0 ? static_cast<float>(sum / same) : f.height;
     return f;
 }
 
@@ -169,7 +178,7 @@ std::array<double, 2> floorPoint(const PlanetGrid& grid, std::size_t cell, std::
 }
 
 CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int samplesPerAxis,
-                       int threads, int floorSamples, bool exits) {
+                       int threads, int floorSamples, bool exits, bool rise) {
     if (samplesPerAxis < 1 || samplesPerAxis > kMaxSamplesPerAxis || floorSamples < 1 ||
         floorSamples > kMaxSamplesPerAxis) {
         throw std::invalid_argument("sampleRelief: samplesPerAxis and floorSamples must be from 1 "
@@ -180,8 +189,9 @@ CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int sam
     }
     CellRelief cells{std::vector<float>(grid.cells()), std::vector<std::uint8_t>(grid.cells()),
                      std::vector<std::uint8_t>(grid.cells(), kCenterFloor),
-                     std::vector<std::uint8_t>(grid.cells()), {}};
+                     std::vector<std::uint8_t>(grid.cells()), {}, {}};
     const auto nearLand = static_cast<float>(-kFloorCoast / kContinentalScale);
+    cells.rise.resize(rise && floorSamples > 1 ? grid.cells() : 0);
     cells.exits.resize(exits && floorSamples > 1 ? static_cast<std::size_t>(grid.nz) : 0);
     parallelRows(grid.nz, resolveThreads(threads), [&](int begin, int end) {
         for (int j = begin; j < end; ++j) {
@@ -195,6 +205,9 @@ CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int sam
                     h = f.height;
                     cells.floor[c] = f.index;
                     cells.mountain[c] = f.mountain;
+                    if (!cells.rise.empty()) {
+                        cells.rise[c] = riseSteps(f.mean - f.height);
+                    }
                     if (exits && f.mountain != 0 && f.index != kCenterFloor) {
                         const auto points =
                             static_cast<std::ptrdiff_t>(floorSamples * floorSamples);

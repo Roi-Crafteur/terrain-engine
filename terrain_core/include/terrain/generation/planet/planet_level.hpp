@@ -2,11 +2,13 @@
 
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_build.hpp"
+#include "terrain/generation/planet/planet_land.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
 #include "terrain/generation/planet/planet_wind.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace terrain {
@@ -55,6 +57,10 @@ struct PlanetCells {
     // order of the cells, coded on a logarithmic scale (planet::dischargeCode, task 11C): the
     // whole network of the planet level, not only its rivers (planet_network.hpp).
     std::vector<std::uint16_t> landDischarge;
+    // With PlanetClimateParams::meanAltitude (flag sphere_latitude), how far the mean altitude of
+    // every land cell lies above its elevation, in steps of planet::kRiseStep (planet_relief.hpp),
+    // in the order of the cells: the altitude its climate reads (climateElevation); else empty.
+    std::vector<std::uint8_t> climateRise;
 
     static constexpr std::uint8_t kOceanBit = 1u << 4;
     static constexpr std::uint8_t kLakeBit = 1u << 5;
@@ -104,8 +110,11 @@ public:
     // (HumiditySource).
     [[nodiscard]] float humidityAt(double x, double z) const;
 
-    // The climate of a cell, recomputed from its compact altitude and precipitation.
+    // The climate of a cell, recomputed from its compact altitude and precipitation. Its climate
+    // reads climateElevation: its elevation (its floor), plus with PlanetClimateParams::meanAltitude
+    // the rise of its land to the mean of its points (PlanetCells::climateRise).
     [[nodiscard]] float elevation(std::size_t cell) const { return cells_.elevation[cell]; }
+    [[nodiscard]] float climateElevation(std::size_t cell) const;
     [[nodiscard]] float precipitation(std::size_t cell) const { return cells_.precipitation[cell]; }
     [[nodiscard]] float temperature(std::size_t cell) const;
     [[nodiscard]] planet::CellWater water(std::size_t cell) const;
@@ -134,6 +143,10 @@ private:
     PlanetWaterBudget budget_;
     PlanetTimings timings_;
     PlanetBreach breach_;
+    // The land of the cells, to read PlanetCells::climateRise; null without it.
+    std::shared_ptr<const planet::LandIndex> riseLand_;
+
+    void indexRise();
 };
 
 namespace planet {
@@ -147,6 +160,9 @@ namespace planet {
 [[nodiscard]] std::int16_t roundedElevation(float height);
 [[nodiscard]] std::uint16_t roundedPrecipitation(float precipitation);
 [[nodiscard]] std::vector<PlanetCells::RiverCell> riverCellsOf(const RiverGraph& graph);
+// The land of the cells (those without kOceanBit): the order of PlanetCells::landDischarge and
+// climateRise.
+[[nodiscard]] std::shared_ptr<const LandIndex> landIndexOf(const PlanetCells& cells);
 // The discharge of a cell as the level keeps it (PlanetCells::landDischarge): 0 for none (at most
 // kLeastDischarge m^3/s), else 1 + round((log10(discharge) + 6) kDischargeSteps), from 10^-6 to
 // 10^7 m^3/s, a step of 0.046 %; and back.

@@ -241,7 +241,8 @@ CriterionValues SettlementMaps::criteria(const PlanetLevel& level, std::size_t c
     c[static_cast<std::size_t>(Criterion::Roughness)] = unquantize(roughness[cell]);
     c[static_cast<std::size_t>(Criterion::WaterDistance)] = waterKm[cell];
     c[static_cast<std::size_t>(Criterion::CoastDistance)] = coastKm[cell];
-    c[static_cast<std::size_t>(Criterion::Latitude)] = planet::rowLatitude(grid, grid.row(cell));
+    c[static_cast<std::size_t>(Criterion::Latitude)] = planet::rowLatitude(
+        grid, grid.row(cell), level.params().climate.sphereLatitude);
     return c;
 }
 

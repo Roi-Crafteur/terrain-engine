@@ -2,6 +2,7 @@
 #include "ergs_impl.hpp"
 
 #include "terrain/det_math.hpp"
+#include "terrain/generation/climate_latitude.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -37,7 +38,7 @@ double shorter(double turns) {
 } // namespace
 
 std::array<double, 2> windOf(const Ergs::Impl& m, double x, double z) {
-    const double latitude = 180.0 * std::abs(z) / m.world.z;
+    const double latitude = std::abs(climateLatitude(z, m.world.z, m.climate.sphereLatitude));
     const double westerly = hermite(30.0 - kBandJoin, 30.0 + kBandJoin, latitude);
     const double polar = hermite(60.0 - kBandJoin, 60.0 + kBandJoin, latitude);
     // Poleward is -z in the north (z < 0), +z in the south, joined across the equator.

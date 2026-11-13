@@ -34,7 +34,7 @@ waterFlags(const PlanetLevel& level, const std::shared_ptr<const planet::LandInd
             for (int i = 0; i < grid.nx; ++i) {
                 const std::size_t c = grid.index(i, j);
                 if (land->land(c) &&
-                    planet::cellFrozen(row, level.elevation(c), level.params().climate)) {
+                    planet::cellFrozen(row, level.climateElevation(c), level.params().climate)) {
                     water.at(c) = kFrozenBit;
                 }
             }

@@ -4,6 +4,7 @@
 #include "planet_march.hpp"
 #include "planet_parallel.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/generation/climate_latitude.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/planet/planet_land.hpp"
 #include "terrain/generation/planet/planet_moisture.hpp"
@@ -35,7 +36,7 @@ void addEddyRain(const PlanetGrid& grid, const std::vector<float>& landSurface,
     }
     stormMoistureRows(grid, land, rowMoisture, radius, [&](int j, const std::vector<double>& sea) {
         const double rate =
-            params.eddyShare * rainFactor(rowLatitude(grid, j), params) / params.rainLength;
+            params.eddyShare * rainFactor(rowLatitude(grid, j, params.sphereLatitude), params) / params.rainLength;
         for (int i = 0; i < grid.nx; ++i) {
             const std::size_t c = grid.index(i, j);
             if (!land.land(c)) {
@@ -53,7 +54,7 @@ void addEddyRain(const PlanetGrid& grid, const std::vector<float>& landSurface,
 
 float latitudeTemperature(double z, double periodZ, const PlanetClimateParams& params) {
     // The formula of ClimateField::latitudeTemperatureAt, which needs a valid WorldSize.
-    const double sine = dmath::sinTurns(wrapCoordinate(z, periodZ) / (2.0 * periodZ));
+    const double sine = climateSine(wrapCoordinate(z, periodZ), periodZ, params.sphereLatitude);
     const double s = sine * sine;
     const double equator = params.equatorTemperature;
     return static_cast<float>(equator - (equator - params.poleTemperature) * s * std::sqrt(s));
@@ -91,10 +92,12 @@ double saturationMoisture(double temperature, const PlanetClimateParams& params)
 
 std::vector<float> orographicSurface(const PlanetGrid& grid, const std::vector<float>& height,
                                      const LandIndex& land, const PlanetClimateParams& params,
-                                     int threads) {
+                                     int threads, const CellRise& rise) {
     std::vector<float> surface(grid.cells());
     for (std::size_t c = 0; c < grid.cells(); ++c) {
-        surface[c] = !land.land(c) || height[c] < 0.0f ? 0.0f : height[c];
+        const bool onLand = land.land(c);
+        const float h = onLand && rise ? height[c] + rise(c) : height[c];
+        surface[c] = !onLand || h < 0.0f ? 0.0f : h;
     }
     const int radius = static_cast<int>(std::floor(params.orographyRadius / grid.cellSize));
     if (radius > 0) {
@@ -107,13 +110,14 @@ std::vector<float> orographicSurface(const PlanetGrid& grid, const std::vector<f
 
 PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                              const std::vector<std::uint8_t>& ocean,
-                             const PlanetClimateParams& params, int threads, std::uint64_t seed) {
-    return computeClimate(grid, height, LandIndex(ocean), params, threads, seed);
+                             const PlanetClimateParams& params, int threads, std::uint64_t seed,
+                             const CellRise& rise) {
+    return computeClimate(grid, height, LandIndex(ocean), params, threads, seed, rise);
 }
 
 PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& height,
                              const LandIndex& land, const PlanetClimateParams& params,
-                             int threads, std::uint64_t seed) {
+                             int threads, std::uint64_t seed, const CellRise& rise) {
     const int workers = resolveThreads(threads);
     PlanetClimate climate;
     climate.rowTemperature.resize(static_cast<std::size_t>(grid.nz));
@@ -122,7 +126,7 @@ PlanetClimate computeClimate(const PlanetGrid& grid, const std::vector<float>& h
             latitudeTemperature(grid.centerZ(j), grid.periodZ(), params);
     }
     // One grid: the orographic surface, then the precipitation in its place.
-    climate.precipitation = orographicSurface(grid, height, land, params, workers);
+    climate.precipitation = orographicSurface(grid, height, land, params, workers, rise);
     std::vector<float> landSurface;
     marchBands(grid, climate.precipitation, land, climate.rowTemperature, params,
                WindBands(grid, params, seed), workers, landSurface);
@@ -161,24 +165,25 @@ CellWater cellWater(const PlanetGrid& grid, float rowTemperature, float height, 
 
 WaterOf climateWater(const PlanetGrid& grid, const std::vector<float>& height,
                      const std::vector<std::uint8_t>& ocean, const PlanetClimate& climate,
-                     const PlanetClimateParams& params) {
-    return [&grid, &height, &ocean, &climate, &params](std::size_t cell) {
+                     const PlanetClimateParams& params, const CellRise& rise) {
+    return [&grid, &height, &ocean, &climate, &params, rise](std::size_t cell) {
         const auto row = static_cast<std::size_t>(grid.row(cell));
-        return cellWater(grid, climate.rowTemperature[row], height[cell],
+        const float h = rise && ocean[cell] == kLand ? height[cell] + rise(cell) : height[cell];
+        return cellWater(grid, climate.rowTemperature[row], h,
                          climate.precipitation[cell], ocean[cell], params);
     };
 }
 
 WaterOf landWater(const PlanetGrid& grid, const std::vector<float>& height,
                   const LandValues<float>& precipitation, const std::vector<float>& rowTemperature,
-                  const PlanetClimateParams& params) {
-    return [&grid, &height, &precipitation, &rowTemperature, &params](std::size_t cell) {
+                  const PlanetClimateParams& params, const CellRise& rise) {
+    return [&grid, &height, &precipitation, &rowTemperature, &params, rise](std::size_t cell) {
         const LandIndex& land = precipitation.index();
         if (!land.land(cell)) {
             return CellWater{};
         }
         const auto row = static_cast<std::size_t>(grid.row(cell));
-        return cellWater(grid, rowTemperature[row], height[cell],
+        return cellWater(grid, rowTemperature[row], rise ? height[cell] + rise(cell) : height[cell],
                          precipitation.values()[land.slot(cell)], kLand, params);
     };
 }

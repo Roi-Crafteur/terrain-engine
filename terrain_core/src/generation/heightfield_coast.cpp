@@ -5,6 +5,7 @@
 #include "coast_faces.hpp"
 #include "coast_inlets.hpp"
 #include "coast_kinds.hpp"
+#include "terrain/generation/climate_latitude.hpp"
 #include "coast_lattice.hpp"
 #include "coast_shape.hpp"
 #include "heightfield_layers.hpp"
@@ -109,9 +110,9 @@ namespace {
 // The kinds of coast at a canonical point of the geography g, and the share of strata there.
 coast_inlets::Site kindsOf(const coast_kinds::Noises& kinds, const mountain_walls::Noises& walls,
                            const WorldSize& world, double x, double z, const GeographySample& g,
-                           mountain_walls::Memo* memo) {
-    // sin(pi z / world.z) is the sine of z / (2 world.z) turns, as the climate reads the latitude.
-    const double sine = dmath::sinTurns(z / (2.0 * world.z));
+                           mountain_walls::Memo* memo, bool sphere) {
+    // The sine of the latitude as the climate reads it (climate_latitude.hpp).
+    const double sine = climateSine(z, world.z, sphere);
     const double strata = mountain_walls::strataShare(walls, x, z, g.character, memo);
     const coast_kinds::Ground ground{g.relief, g.character, g.rugged, static_cast<float>(strata),
                                      sine * sine};
@@ -138,11 +139,13 @@ std::shared_ptr<const coast_lattice::Lattices> Heightfield::makeInlets() const {
     w.height = [bare](double x, double z) { return static_cast<double>(bare->heightAt(x, z)); };
     const auto layers = layers_;
     const auto coasts = coasts_;
-    w.site = [geography, layers, coasts, world](double x, double z) {
+    const bool sphere = params_.sphereLatitude;
+    w.site = [geography, layers, coasts, world, sphere](double x, double z) {
         const double cx = wrapCoordinate(x, world.x);
         const double cz = wrapCoordinate(z, world.z);
         const GeographySample g = geography->sampleAt(cx, cz);
-        coast_inlets::Site site = kindsOf(coasts->kinds, layers->walls, world, cx, cz, g, nullptr);
+        coast_inlets::Site site =
+            kindsOf(coasts->kinds, layers->walls, world, cx, cz, g, nullptr, sphere);
         site.top = static_cast<float>(coast_shape::shoreTop(coasts->shapes, cx, cz, g,
                                                             site.weights));
         return site;
@@ -189,7 +192,7 @@ std::vector<CoastSite> Heightfield::anchoragesIn(double minX, double minZ, doubl
 coast_kinds::Weights Heightfield::coastKindsAt(double x, double z, const GeographySample& g,
                                               Memos* memos) const {
     return kindsOf(coasts_->kinds, layers_->walls, world_, x, z, g,
-                   memos != nullptr ? &memos->walls : nullptr)
+                   memos != nullptr ? &memos->walls : nullptr, params_.sphereLatitude)
         .weights;
 }
 

@@ -7,6 +7,7 @@
 #include <array>
 #include <bit>
 #include <cstddef>
+#include <stdexcept>
 #include <utility>
 
 namespace terrain {
@@ -63,6 +64,12 @@ void addCells(Fnv& f, const PlanetCells& cells) {
         f.add(static_cast<std::uint64_t>(cells.landDischarge.size()), 8);
         for (const std::uint16_t q : cells.landDischarge) {
             f.add(static_cast<std::uint64_t>(q), 2);
+        }
+    }
+    if (!cells.climateRise.empty()) { // kept with PlanetClimateParams::meanAltitude only
+        f.add(static_cast<std::uint64_t>(cells.climateRise.size()), 8);
+        for (const std::uint8_t r : cells.climateRise) {
+            f.add(static_cast<std::uint64_t>(r), 1);
         }
     }
 }
@@ -133,26 +140,49 @@ PlanetLevel::PlanetLevel(std::uint64_t seed, const HeightfieldParams& heightfiel
     : PlanetLevel(planet::buildLevelParts(Heightfield(seed, heightfield, world), params, probe)) {}
 
 PlanetLevel::PlanetLevel(PlanetBuild&& build, const PlanetParams& params)
-    : params_(params), cells_(planet::compactCells(build, params.landDischarge)), lakes_(std::move(build.lakes)),
+    : params_(params), cells_(planet::compactCells(build, params.landDischarge)),
+      lakes_(std::move(build.lakes)),
       rivers_(std::move(build.rivers)), features_(std::move(build.features)), budget_(build.budget),
       timings_(build.timings), breach_(build.breach) {
     build = PlanetBuild{}; // the full-precision cells are not kept
+    indexRise();
 }
 
 PlanetLevel::PlanetLevel(Parts&& parts)
     : params_(parts.params), cells_(std::move(parts.cells)), lakes_(std::move(parts.lakes)),
       rivers_(std::move(parts.rivers)), features_(std::move(parts.features)),
-      budget_(parts.budget), timings_(parts.timings), breach_(parts.breach) {}
+      budget_(parts.budget), timings_(parts.timings), breach_(parts.breach) {
+    indexRise();
+}
+
+void PlanetLevel::indexRise() {
+    if (!cells_.climateRise.empty()) {
+        riseLand_ = planet::landIndexOf(cells_);
+        if (riseLand_->landCells() != cells_.climateRise.size()) {
+            throw std::invalid_argument("PlanetLevel: a rise of the climate not of every land cell");
+        }
+    }
+}
+
+float PlanetLevel::climateElevation(std::size_t cell) const {
+    const float floor = elevation(cell);
+    if (riseLand_ == nullptr || !riseLand_->land(cell)) {
+        return floor;
+    }
+    return floor + planet::kRiseStep *
+                       static_cast<float>(cells_.climateRise[riseLand_->slot(cell)]);
+}
 
 float PlanetLevel::temperature(std::size_t cell) const {
     return planet::cellTemperature(
-        cells_.rowTemperature[static_cast<std::size_t>(grid().row(cell))], elevation(cell),
+        cells_.rowTemperature[static_cast<std::size_t>(grid().row(cell))], climateElevation(cell),
         params_.climate);
 }
 
 planet::CellWater PlanetLevel::water(std::size_t cell) const {
     return planet::cellWater(
-        grid(), cells_.rowTemperature[static_cast<std::size_t>(grid().row(cell))], elevation(cell),
+        grid(), cells_.rowTemperature[static_cast<std::size_t>(grid().row(cell))],
+        climateElevation(cell),
         precipitation(cell), cells_.ocean(cell) ? planet::kOcean : planet::kLand, params_.climate);
 }
 

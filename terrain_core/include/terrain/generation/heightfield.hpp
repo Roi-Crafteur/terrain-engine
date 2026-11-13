@@ -89,6 +89,10 @@ struct HeightfieldParams {
     // the local, macro and plate terms of the continentalness above are not used (the plates of
     // the geography are its own). Disabled: the relief of generator 2.
     GeographyParams geography;
+
+    // The climate reads the latitude of a sphere (climate_latitude.hpp; flag sphere_latitude): the
+    // relief reads it for the fjords of the coasts only. Off, the latitude of main.
+    bool sphereLatitude = false;
 };
 
 // Layers of the height at one point: height = base + mountain + detail. In the collision

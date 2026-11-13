@@ -26,8 +26,14 @@ struct PlanetClimateParams {
     float poleTemperature = -23.0f;
     float lapseRate = 0.0065f;
     // Below this mean temperature a cell is frozen: its water moves on as ice, no liquid river
-    // flows there and its lakes do not evaporate.
+    // flows there and its lakes do not evaporate. The flag sphere_latitude makes it the snow of
+    // the biomes (BiomeParams::snowTemperature, -6): one threshold of the frost.
     float iceTemperature = -10.0f;
+    // The latitude of a sphere (climate_latitude.hpp; flag sphere_latitude): sin(lat) = z / zmax.
+    bool sphereLatitude = false;
+    // The climate of a land cell reads the mean altitude of its points (PlanetCells::climateRise),
+    // its water the floor (flag sphere_latitude). Off, the floor for both, as main.
+    bool meanAltitude = false;
 
     // Prevailing winds, one direction per latitude band: the trades (0 to 30 degrees) blow to
     // the west, the westerlies (30 to 60) to the east, the polar easterlies (60 to 90) to the
@@ -105,6 +111,9 @@ struct PlanetRiverParams {
     double widthCoefficient = 7.0;
     double depthCoefficient = 0.3;
     double depthExponent = 0.4;
+    // The rivers go on under the ice (flag sphere_latitude): a frozen cell is a river as any
+    // other. Off, as main: no river on frozen ground.
+    bool underIce = false;
 };
 
 // Places of the river graph where 11B carves remarkable forms. Discharges in m^3/s, lengths in

@@ -2,6 +2,7 @@
 // and the fine network.
 #include "network_draw.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/water/drainage_network.hpp"
 
 #include <array>
@@ -144,7 +145,7 @@ void fineMap(const terrain::DrainageNetwork& net, const Canvas& c, double half, 
         if (!all && !p.trunk && p.order < 3) {
             continue;
         }
-        const double l = std::hypot(p.x1 - p.x0, p.z1 - p.z0);
+        const double l = terrain::dmath::hypot(p.x1 - p.x0, p.z1 - p.z0);
         length[static_cast<std::size_t>(std::min<int>(p.order, 12))] += l;
         // The rills (order 1) thin, the streams by their discharge.
         const double radius = p.order <= 1 && !p.trunk ? 0.45 : halfWidth(p.discharge);

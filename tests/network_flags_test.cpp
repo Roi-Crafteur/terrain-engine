@@ -52,6 +52,17 @@ void testTable() {
         TEST_CHECK(p.planet.climate.smoothBands == c.bands && p.planet.links.enabled == c.links &&
                    p.planet.landDischarge == c.discharge);
     }
+    // sphere_latitude: the latitude of a sphere everywhere the climate reads it, one threshold of
+    // the frost, the mean altitude, the rivers under the ice (sphere_latitude_test).
+    WorldParams sphere;
+    TEST_CHECK(terrain::applyExperimentalFlags("sphere_latitude", sphere).text == "sphere_latitude");
+    TEST_CHECK(sphere.relief.sphereLatitude && sphere.ecology.climate.sphereLatitude &&
+               sphere.planet.climate.sphereLatitude && sphere.planet.climate.meanAltitude &&
+               sphere.planet.rivers.underIce && !sphere.planet.links.enabled);
+    TEST_CHECK(sphere.planet.climate.iceTemperature == sphere.ecology.biomes.snowTemperature);
+    TEST_CHECK(!none.relief.sphereLatitude && !none.ecology.climate.sphereLatitude &&
+               !none.planet.climate.meanAltitude && !none.planet.rivers.underIce &&
+               none.planet.climate.iceTemperature == -10.0f);
     WorldParams all;
     const terrain::AppliedFlags applied =
         terrain::applyExperimentalFlags(" Smooth_Bands;planet_network pass_routing,lows ", all);

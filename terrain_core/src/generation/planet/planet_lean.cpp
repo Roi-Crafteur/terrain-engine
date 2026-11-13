@@ -27,10 +27,27 @@ struct Lean {
     LandValues<std::uint8_t> landFloor;
     SparseCells<std::uint8_t> seaFloor;
     LandValues<std::uint8_t> closed; // the links closed by a crest (planet_links.hpp)
+    LandValues<std::uint8_t> rise;   // the rise of the climate (meanAltitude), else empty
     std::vector<float> rowTemperature;
     LandValues<float> landRain;
     std::vector<std::uint16_t> seaRain;
 };
+
+// The rise of the climate of the land (PlanetClimateParams::meanAltitude), else none.
+CellRise riseOf(const Lean& lean) {
+    if (lean.rise.values().empty()) {
+        return {};
+    }
+    return [&lean](std::size_t c) { return kRiseStep * static_cast<float>(lean.rise[c]); };
+}
+
+void keepRise(Lean& lean, const std::vector<std::uint8_t>& rise) {
+    if (rise.empty()) {
+        return;
+    }
+    lean.rise = LandValues<std::uint8_t>(lean.land, 0, 0);
+    lean.land->forEachLand([&](std::size_t c, std::size_t) { lean.rise.at(c) = rise[c]; });
+}
 
 void keepFloors(Lean& lean, const std::vector<std::uint8_t>& floor) {
     lean.landFloor = LandValues<std::uint8_t>(lean.land, kCenterFloor, kCenterFloor);
@@ -64,7 +81,8 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
     const PlanetParams& params = parts.params;
     // The relief without the coasts (agent 33): they never move the planet level.
     CellRelief cells = sampleCells(field.withoutCoasts(), lean.grid, params.samplesPerAxis,
-                                   threads, params.floorSamples, params.links.enabled);
+                                   threads, params.floorSamples, params.links.enabled,
+                                   params.climate.meanAltitude);
     lean.height = std::move(cells.height);
     parts.timings.relief = watch.lap("relief");
     std::vector<std::uint8_t> ocean =
@@ -75,6 +93,8 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
         lean.closed = closedLinks(lean.grid, cells.exits, lean.land, params.links, threads);
     }
     freeVector(cells.exits);
+    keepRise(lean, cells.rise);
+    freeVector(cells.rise);
     keepFloors(lean, cells.floor);
     freeVector(cells.floor);
     parts.timings.ocean = watch.lap("ocean");
@@ -87,7 +107,7 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
     freeVector(cells.mountain);
     freeVector(ocean); // the land index answers from now on
     keepRain(lean, computeClimate(lean.grid, lean.height, *lean.land, params.climate, threads,
-                                  field.seed()));
+                                  field.seed(), riseOf(lean)));
     parts.timings.climate = watch.lap("climate");
 }
 
@@ -129,6 +149,8 @@ PlanetCells compactLean(Lean& lean, std::vector<std::uint16_t>& landRain,
         cells.bits[river.cell] |= PlanetCells::kRiverBit;
     }
     cells.landDischarge = std::move(landDischarge);
+    cells.climateRise = lean.rise.values();
+    lean.rise.release();
     return cells;
 }
 
@@ -146,7 +168,8 @@ void riversAndCells(Lean& lean, PlanetLevel::Parts& parts, LandValues<std::uint8
     lean.landRain.release();
     const WaterOf frozen = [&lean, &params](std::size_t c) {
         const float row = lean.rowTemperature[static_cast<std::size_t>(lean.grid.row(c))];
-        return CellWater{0, 0, cellFrozen(row, lean.height[c], params.climate)};
+        const float rise = lean.rise.values().empty() ? 0.0f : kRiseStep * lean.rise[c];
+        return CellWater{0, 0, cellFrozen(row, lean.height[c] + rise, params.climate)};
     };
     // The discharge of every land cell, coded as the level keeps it (PlanetParams::landDischarge),
     // before the rivers free it.
@@ -196,8 +219,8 @@ void hydrology(Lean& lean, PlanetLevel::Parts& parts, int threads, Stopwatch& wa
     std::vector<std::uint32_t> order = sortLandCells(lean.height, *lean.land, threads);
     LandValues<std::uint8_t> receiver = receiversOf(lean, parts.params, threads);
     parts.timings.order += watch.lap("order");
-    const WaterOf water =
-        landWater(grid, lean.height, lean.landRain, lean.rowTemperature, parts.params.climate);
+    const WaterOf water = landWater(grid, lean.height, lean.landRain, lean.rowTemperature,
+                                    parts.params.climate, riseOf(lean));
     LakeSolution lakes;
     {
         DepressionHierarchy hierarchy =

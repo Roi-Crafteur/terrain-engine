@@ -1,5 +1,7 @@
 #include "terrain/generation/climate.hpp"
 
+#include "terrain/generation/climate_latitude.hpp"
+
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 
@@ -36,7 +38,8 @@ ClimateField::ClimateField(std::uint64_t seed, const ClimateParams& params, cons
 float ClimateField::latitudeTemperatureAt(double z) const {
     // sin(pi z / world.z) is the sine of z / (2 world.z) turns: within [-1/4, 1/4) of a turn
     // over the canonical range, -1 or 1 at the poles.
-    const double sine = dmath::sinTurns(wrapCoordinate(z, world_.z) / (2.0 * world_.z));
+    // With sphereLatitude, the latitude of a sphere (climate_latitude.hpp).
+    const double sine = climateSine(wrapCoordinate(z, world_.z), world_.z, params_.sphereLatitude);
     const double s = sine * sine;
     const double equator = params_.equatorTemperature;
     return static_cast<float>(equator - (equator - params_.poleTemperature) * s * std::sqrt(s));

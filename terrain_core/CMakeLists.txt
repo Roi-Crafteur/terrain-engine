@@ -551,3 +551,10 @@ target_link_libraries(terrain_export_silhouette PRIVATE terrain_core terrain_war
 add_executable(terrain_export_network tools/export_network.cpp tools/network_draw.cpp
                                       tools/network_maps.cpp)
 target_link_libraries(terrain_export_network PRIVATE terrain_core terrain_warnings)
+
+# The shares of the climates of the land of whole worlds, with or without experimental flags
+# (task 11C, sphere_latitude): snow, tundra, desert, arid and frozen land, every biome.
+# terrain_climate_shares <output-dir> [--seeds <a,b,...>] [--flags <a,b>] [--frost <celsius>]
+#                        [--step <cells>] [--threads <n>]
+add_executable(terrain_climate_shares tools/climate_shares.cpp)
+target_link_libraries(terrain_climate_shares PRIVATE terrain_core terrain_warnings)

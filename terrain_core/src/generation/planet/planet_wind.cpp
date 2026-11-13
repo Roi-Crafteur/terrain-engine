@@ -1,5 +1,7 @@
 #include "terrain/generation/planet/planet_wind.hpp"
 
+#include "terrain/generation/climate_latitude.hpp"
+
 #include <cmath>
 #include <cstddef>
 
@@ -13,12 +15,12 @@ int signOf(double v) {
 
 } // namespace
 
-double rowLatitude(const PlanetGrid& grid, int row) {
-    return 180.0 * std::abs(grid.centerZ(row)) / grid.periodZ();
+double rowLatitude(const PlanetGrid& grid, int row, bool sphere) {
+    return std::abs(climateLatitude(grid.centerZ(row), grid.periodZ(), sphere));
 }
 
 PlanetWind rowWind(const PlanetGrid& grid, int row, const PlanetClimateParams& params) {
-    const double latitude = rowLatitude(grid, row);
+    const double latitude = rowLatitude(grid, row, params.sphereLatitude);
     double zonal = -1.0;
     double meridional = params.tradeMeridional;
     if (latitude >= 60.0) {

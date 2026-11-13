@@ -1,5 +1,6 @@
 #include "terrain/generation/planet/planet_bands.hpp"
 
+#include "terrain/generation/climate_latitude.hpp"
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
@@ -73,7 +74,7 @@ WindBands::WindBands(const PlanetGrid& grid, const PlanetClimateParams& params, 
 }
 
 double WindBands::latitude(int row) const {
-    return -180.0 * grid_.centerZ(row) / grid_.periodZ();
+    return -climateLatitude(grid_.centerZ(row), grid_.periodZ(), params_.sphereLatitude);
 }
 
 double WindBands::line(int k, int column) const {

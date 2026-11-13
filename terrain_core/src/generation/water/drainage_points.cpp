@@ -98,7 +98,7 @@ NetworkPoint DrainageNetwork::at(double x, double z, double limit) const {
                 continue;
             }
             const std::array<double, 2> p = m.near(gi, gj, x, z);
-            const double d = std::hypot(p[0] - x, p[1] - z);
+            const double d = dmath::hypot(p[0] - x, p[1] - z);
             if (d < best || (!point.stream && d <= limit)) {
                 best = d;
                 bi = gi;

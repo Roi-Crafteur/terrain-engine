@@ -19,13 +19,21 @@ namespace terrain::planet {
 
 namespace {
 
+// The rise of the climate of every cell (empty: none).
+CellRise riseOf(const std::vector<std::uint8_t>& rise) {
+    if (rise.empty()) {
+        return {};
+    }
+    return [&rise](std::size_t c) { return kRiseStep * static_cast<float>(rise[c]); };
+}
+
 // Lakes, discharge, rivers and features, once the relief, the ocean and the climate are known;
 // the arrays of the land spread over every cell for the build.
 void buildHydrology(PlanetBuild& build, const PlanetParams& params, int threads, Stopwatch& watch) {
     const PlanetGrid& grid = build.grid;
     const auto land = std::make_shared<const LandIndex>(build.ocean);
-    const WaterOf water =
-        climateWater(grid, build.height, build.ocean, build.climate, params.climate);
+    const WaterOf water = climateWater(grid, build.height, build.ocean, build.climate,
+                                       params.climate, riseOf(build.rise));
     const std::vector<std::uint32_t> order = sortLandCells(build.height, *land, threads);
     ReceiverLinks links;
     LandValues<std::uint8_t> closed;
@@ -95,8 +103,10 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params,
     {
         // The relief without the coasts (agent 33): they never move the planet level.
         CellRelief cells = sampleCells(field.withoutCoasts(), build.grid, params.samplesPerAxis,
-                                       threads, params.floorSamples, params.links.enabled);
+                                       threads, params.floorSamples, params.links.enabled,
+                                       params.climate.meanAltitude);
         build.height = std::move(cells.height);
+        build.rise = std::move(cells.rise);
         build.floor = std::move(cells.floor);
         build.mountain = std::move(cells.mountain);
         build.exits = std::move(cells.exits);
@@ -112,7 +122,7 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params,
         build.timings.breach = watch.lap("breach");
     }
     build.climate = computeClimate(build.grid, build.height, build.ocean, params.climate, threads,
-                                   field.seed());
+                                   field.seed(), riseOf(build.rise));
     build.timings.climate = watch.lap("climate");
     buildHydrology(build, params, threads, watch);
     return build;

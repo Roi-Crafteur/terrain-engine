@@ -59,6 +59,9 @@ struct PlanetBuild {
     std::vector<std::uint8_t> mountain;
     // The exits of the cells under the mountains (planet_relief.hpp), by row, sorted by column.
     std::vector<std::vector<planet::CellExits>> exits; // by row
+    // With PlanetClimateParams::meanAltitude, the rise of the climate of every cell above its
+    // floor, in steps of kRiseStep (planet_relief.hpp); else empty.
+    std::vector<std::uint8_t> rise;
     PlanetBreach breach;
     planet::PlanetClimate climate;        // precipitation, row temperatures
     std::vector<std::uint8_t> receiver;   // direction, kNoNeighbor

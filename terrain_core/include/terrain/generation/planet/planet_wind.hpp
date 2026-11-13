@@ -10,7 +10,8 @@ namespace terrain::planet {
 // Latitude of a row of the grid, in degrees from the equator: 180 |z| / periodZ, so that
 // sin^2 of it is the s = sin^2(pi z / world.z) of the climate. 0 on the equator (z = 0), 90 on
 // the polar line.
-[[nodiscard]] double rowLatitude(const PlanetGrid& grid, int row);
+// With sphere (PlanetClimateParams::sphereLatitude), the latitude of climate_latitude.hpp.
+[[nodiscard]] double rowLatitude(const PlanetGrid& grid, int row, bool sphere = false);
 
 // Unit direction toward which the prevailing wind of a row blows (+x east, +z south), from
 // the band of its latitude (PlanetClimateParams). The northern hemisphere is z < 0.

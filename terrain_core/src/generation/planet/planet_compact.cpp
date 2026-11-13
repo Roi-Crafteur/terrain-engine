@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 
 namespace terrain {
 
@@ -37,7 +38,8 @@ const PlanetCells::RiverCell* PlanetCells::riverAt(std::size_t cell) const {
 
 std::size_t PlanetCells::memoryBytes() const {
     return bytesOf(rowTemperature) + bytesOf(elevation) + bytesOf(precipitation) + bytesOf(bits) +
-           bytesOf(lakeCells) + bytesOf(riverCells) + bytesOf(landDischarge);
+           bytesOf(lakeCells) + bytesOf(riverCells) + bytesOf(landDischarge) +
+           bytesOf(climateRise);
 }
 
 namespace planet {
@@ -55,6 +57,14 @@ double dischargeOf(std::uint16_t code) {
         return 0.0;
     }
     return dmath::exp((static_cast<double>(code - 1) / kDischargeSteps - 6.0) * dmath::log(10.0));
+}
+
+std::shared_ptr<const LandIndex> landIndexOf(const PlanetCells& cells) {
+    std::vector<std::uint8_t> ocean(cells.grid.cells());
+    for (std::size_t c = 0; c < ocean.size(); ++c) {
+        ocean[c] = cells.ocean(c) ? kOcean : kLand;
+    }
+    return std::make_shared<const LandIndex>(ocean);
 }
 
 std::int16_t roundedElevation(float height) {
@@ -118,6 +128,11 @@ PlanetCells compactCells(const PlanetBuild& build, bool landDischarge) {
         }
     }
     cells.landDischarge.shrink_to_fit();
+    for (std::size_t c = 0; !build.rise.empty() && c < count; ++c) {
+        if (build.ocean[c] == kLand) {
+            cells.climateRise.push_back(build.rise[c]);
+        }
+    }
     cells.riverCells = riverCellsOf(build.rivers);
     for (const PlanetCells::RiverCell& river : cells.riverCells) {
         cells.bits[river.cell] |= PlanetCells::kRiverBit;

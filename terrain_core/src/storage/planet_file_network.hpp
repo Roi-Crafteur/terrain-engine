@@ -6,7 +6,8 @@
 // - The parameters of the flags smooth_bands, pass_routing and planet_network, after the others
 //   (PlanetParams): each behind its tag, only when on.
 // - The sections after the level, each behind its tag, in a file of version 2 (its flags first):
-//   planet_network, the discharge of every land cell (PlanetCells::landDischarge).
+//   planet_network, the discharge of every land cell (PlanetCells::landDischarge); sphere_latitude,
+//   the rise of the climate of every land cell (PlanetCells::climateRise).
 
 #include "frame_reader.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
@@ -17,6 +18,7 @@
 namespace terrain::planet_file_network {
 
 inline constexpr std::uint32_t kNetworkSection = 0x5754454EU; // "NETW"
+inline constexpr std::uint32_t kClimateSection = 0x4D494C43U; // "CLIM"
 
 template <class Out> void writeFlagParams(Out& out, const PlanetParams& p) {
     const PlanetClimateParams& c = p.climate;
@@ -32,6 +34,15 @@ template <class Out> void writeFlagParams(Out& out, const PlanetParams& p) {
     }
     if (p.landDischarge) {
         out.u8(3);
+    }
+    if (c.sphereLatitude) {
+        out.u8(4);
+    }
+    if (c.meanAltitude) {
+        out.u8(5);
+    }
+    if (p.rivers.underIce) {
+        out.u8(6);
     }
 }
 
@@ -50,6 +61,24 @@ inline void readNetwork(storage::FrameReader& in, PlanetCells& c) {
     c.landDischarge.resize(in.count(2));
     for (std::uint16_t& q : c.landDischarge) {
         q = in.u16();
+    }
+}
+
+template <class Out> void writeClimate(Out& out, const PlanetCells& c) {
+    out.u32(kClimateSection);
+    out.count(c.climateRise.size());
+    for (const std::uint8_t r : c.climateRise) {
+        out.u8(r);
+    }
+}
+
+inline void readClimate(storage::FrameReader& in, PlanetCells& c) {
+    if (in.u32() != kClimateSection) {
+        in.fail("the section of the climate (sphere_latitude) missing");
+    }
+    c.climateRise.resize(in.count(1));
+    for (std::uint8_t& r : c.climateRise) {
+        r = in.u8();
     }
 }
 

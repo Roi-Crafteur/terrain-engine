@@ -59,18 +59,10 @@ NetworkNext nextOf(const PlanetLevel& level, std::size_t c) {
     return {static_cast<std::int64_t>(n), StreamEnd::Confluence};
 }
 
-std::shared_ptr<const planet::LandIndex> landOf(const PlanetCells& cells) {
-    std::vector<std::uint8_t> ocean(cells.grid.cells());
-    for (std::size_t c = 0; c < ocean.size(); ++c) {
-        ocean[c] = cells.ocean(c) ? planet::kOcean : planet::kLand;
-    }
-    return std::make_shared<const planet::LandIndex>(ocean);
-}
-
 } // namespace
 
 PlanetNetwork::PlanetNetwork(const PlanetLevel& level, const PlanetNetworkParams& params)
-    : level_(&level), params_(params), land_(landOf(level.cells())) {
+    : level_(&level), params_(params), land_(planet::landIndexOf(level.cells())) {
     if (level.cells().landDischarge.size() != land_->landCells()) {
         throw std::invalid_argument("PlanetNetwork: a level without the discharge of its land (flag planet_network)");
     }

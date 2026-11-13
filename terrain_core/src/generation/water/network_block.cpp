@@ -1,6 +1,7 @@
 #include "network_block.hpp"
 
 #include "network_window.hpp"
+#include "terrain/det_math.hpp"
 #include "terrain/generation/planet/planet_climate.hpp"
 
 #include <algorithm>
@@ -146,7 +147,7 @@ int spreadOf(const NetworkWindow& w, const Flood& f, const std::vector<std::uint
             }
             const double distance = (dx != 0 && dy != 0) ? 1.4142135623730951 : 1.0;
             const double drop = std::max(static_cast<double>(f.filled[k] - f.filled[n]), 1.0e-3);
-            const double weight = std::pow(drop / distance, 1.1);
+            const double weight = dmath::pow(drop / distance, 1.1);
             to[static_cast<std::size_t>(count)] = n;
             shares[static_cast<std::size_t>(count)] = weight;
             sum += weight;

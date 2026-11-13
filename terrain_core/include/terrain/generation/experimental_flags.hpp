@@ -10,6 +10,7 @@
 // in experimental_flags_test. The name stays the same for as long as the flag lives: it is written
 // in the planet files (planet_file.hpp) and in the settings of the Unreal levels.
 
+#include "terrain/generation/ecology.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
 #include "terrain/generation/water/hydrology.hpp"
@@ -21,11 +22,13 @@
 
 namespace terrain {
 
-// Every parameter a flag may set: the relief, the planet level, the water (the seas with it).
+// Every parameter a flag may set: the relief, the planet level, the water (the seas with it), the
+// ecology (the climate of the tiles, the biomes).
 struct WorldParams {
     HeightfieldParams relief;
     PlanetParams planet;
     HydrologyParams water;
+    EcologyParams ecology;
 };
 
 struct ExperimentalFlag {

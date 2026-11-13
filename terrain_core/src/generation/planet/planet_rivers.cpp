@@ -98,7 +98,7 @@ void GraphBuilder::markRivers(const PlanetFlow& flow, const WaterOf& water) {
     std::vector<std::uint32_t> cells;
     land_.forEachLand([&](std::size_t c, std::size_t slot) {
         if (!lakes_.lakeOfCell.has(c) && flow.discharge.values()[slot] >= params_.minDischarge &&
-            !water(c).frozen) {
+            (params_.underIce || !water(c).frozen)) {
             cells.push_back(static_cast<std::uint32_t>(c));
         }
     });

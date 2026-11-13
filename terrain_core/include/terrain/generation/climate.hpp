@@ -18,7 +18,10 @@ struct ClimateParams {
     // north-south seam). Cold at both edges, warm in the middle, with neither a jump nor a kink
     // at the seam: s is periodic and flat at the poles. About 9 degrees at 45 degrees of
     // latitude.
+    // With sphereLatitude (flag sphere_latitude), s is the square of the sine of the latitude of
+    // a sphere instead, (2 z / world.z)^2 (climate_latitude.hpp).
     double temperatureWavelength = 100000.0;
+    bool sphereLatitude = false;
     float equatorTemperature = 27.0f;
     float poleTemperature = -23.0f;
     float temperatureAmplitude = 15.0f;

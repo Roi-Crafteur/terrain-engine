@@ -4,6 +4,7 @@
 #include "terrain/generation/planet/planet_grid.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -52,13 +53,23 @@ struct CellRelief {
     std::vector<std::uint8_t> floor;
     std::vector<std::uint8_t> mountain;
     std::vector<std::vector<CellExits>> exits; // by row
+    std::vector<std::uint8_t> rise;            // every cell, with rise (riseSteps), else empty
 };
+// With floorSamples above 1 and rise (PlanetClimateParams::meanAltitude, flag sphere_latitude),
+// each cell also keeps how far the mean of its points of the same water as its center lies above
+// its floor, in steps of kRiseStep meters (rounded, at most 255 steps): the altitude its climate
+// reads (PlanetCells::climateRise).
+inline constexpr float kRiseStep = 8.0f;
+[[nodiscard]] inline std::uint8_t riseSteps(float meters) {
+    const float steps = std::floor(meters / kRiseStep + 0.5f);
+    return static_cast<std::uint8_t>(steps < 0.0f ? 0.0f : (steps > 255.0f ? 255.0f : steps));
+}
 // The exits of a cell of a column over its n^2 points of heights (row by row), from its floor
 // point floorIndex.
 [[nodiscard]] CellExits cellExits(int column, const float* heights, int n, int floorIndex);
 [[nodiscard]] CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid,
                                      int samplesPerAxis, int threads, int floorSamples = 1,
-                                     bool exits = false);
+                                     bool exits = false, bool rise = false);
 
 // The floor index of a cell as sampleCells gives it (kCenterFloor with one sample).
 [[nodiscard]] std::uint8_t floorOf(const Heightfield& field, const PlanetGrid& grid,

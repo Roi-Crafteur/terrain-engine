@@ -384,6 +384,9 @@ void writeLevel(Out& out, const PlanetLevel& level, std::uint64_t checksum, std:
     if (!level.cells().landDischarge.empty()) { // PlanetParams::landDischarge (planet_network)
         planet_file_network::writeNetwork(out, level.cells());
     }
+    if (!level.cells().climateRise.empty()) { // PlanetClimateParams::meanAltitude
+        planet_file_network::writeClimate(out, level.cells());
+    }
 }
 
 } // namespace
@@ -421,6 +424,9 @@ PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed
     readTotals(in, parts);
     if (params.landDischarge) {
         planet_file_network::readNetwork(in, parts.cells);
+    }
+    if (params.climate.meanAltitude) {
+        planet_file_network::readClimate(in, parts.cells);
     }
     in.expectEnd("bytes after the level");
     in.finish();

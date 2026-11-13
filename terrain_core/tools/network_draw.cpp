@@ -1,5 +1,7 @@
 #include "network_draw.hpp"
 
+#include "terrain/det_math.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -51,7 +53,8 @@ Rgb orderColor(int order) {
 }
 
 double halfWidth(double discharge) {
-    return 0.45 + 0.55 * std::log10(1.0 + std::max(discharge, 0.0) * 10.0);
+    const double tenfold = 1.0 + std::max(discharge, 0.0) * 10.0;
+    return 0.45 + 0.55 * terrain::dmath::log(tenfold) / terrain::dmath::log(10.0);
 }
 
 void disc(const Canvas& c, double x, double z, double radius, Rgb color) {
@@ -64,7 +67,8 @@ void ring(const Canvas& c, double x, double z, double radius, Rgb color) {
     const int steps = std::max(12, static_cast<int>(radius * 8.0));
     for (int k = 0; k < steps; ++k) {
         const double a = 6.283185307179586 * k / steps;
-        dot(c, px + radius * std::cos(a), pz + radius * std::sin(a), 0.6, color);
+        dot(c, px + radius * terrain::dmath::cos(a), pz + radius * terrain::dmath::sin(a), 0.6,
+            color);
     }
 }
 
@@ -85,7 +89,7 @@ void line(const Canvas& c, double ax, double az, double bx, double bz, double ra
     const double paz = pixelZ(c, az);
     const double pbx = pixelX(c, bx);
     const double pbz = pixelZ(c, bz);
-    const double length = std::hypot(pbx - pax, pbz - paz);
+    const double length = terrain::dmath::hypot(pbx - pax, pbz - paz);
     const int steps = std::max(1, static_cast<int>(std::ceil(length * 2.0)));
     for (int k = 0; k <= steps; ++k) {
         const double t = static_cast<double>(k) / steps;
