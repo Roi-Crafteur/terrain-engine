@@ -377,10 +377,22 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     montagnes, chaîne de la collision d'un côté, chaîne de bordure de l'autre, chaînes intérieures
     sur ~15 % de la surface. La part des hautes terres à moins de 300 m de relief sur 10 km
     (`terrain_export_relief`) passe de 0,2 % à plusieurs % des hautes terres.
-  - Les outils (`terrain_export_relief`, `terrain_export_map`) prennent `--flags tablelands,karst` :
-    les drapeaux de l'agent 51 (`experimental_flags.hpp`, copié en attendant sa PR ; mes deux lignes
-    passent dans sa table). Les sommes allumées sont dans les variantes des goldens
-    (`--flags tablelands` : `heightfield_golden_test`, `coast_outside_test`,
+  - Plateaux, mesas, buttes et canyons (`generation/tableland_relief.hpp`) : un escarpement qui
+    suit le bord de la province, découpé (rentrants, promontoires), ses buttes-témoins jusqu'à
+    15 km devant lui (150 à 450 m de haut au loin, Monument Valley), des canyons à méandres
+    jusqu'à 1,6 km de profondeur dont le fond rejoint le bas pays à l'escarpement et remonte vers
+    l'intérieur (Grand Canyon), leurs branches suspendues, des talus concaves ravinés. Les couches
+    sont celles des murs de l'agent 20 (`mountain_walls::strataTop`, faces 3D par
+    `wall_faces::addFaces`, `tableland_strata.cpp`) : formations de 40 à 240 m, plus de bancs durs
+    en pays sec, une seconde pile de membres, toutes parallèles au dessus du plateau (surfaces
+    structurales). Les dunes ne recouvrent pas la roche des plateaux (`HeightSample::tableland`).
+    Limite : des tronçons de canyon fermés à l'intérieur (cuvettes sèches), les lacs de la Planète
+    les traitent comme tout creux ; les gorges des fleuves ne lisent pas encore ces couches.
+  - Les outils (`terrain_export_relief`, `terrain_export_map`, `terrain_export_rock`) prennent
+    `--flags tablelands,karst` ; avec des drapeaux, `terrain_export_rock` construit sa planète en
+    mémoire, sans l'écrire. Ce sont les drapeaux de l'agent 51 (`experimental_flags.hpp`, copié en
+    attendant sa PR ; mes deux lignes passent dans sa table). Les sommes allumées sont dans les
+    variantes des goldens (`--flags tablelands` : `heightfield_golden_test`, `coast_outside_test`,
     `mountain_freeze_test`).
   - Pour l'agent 52, règle : aucun creux dans ces provinces, surfaces de plateau comprises. Un site
     de centre (x, z) et de rayon d'action r est refusé si `field.tablelandAt(px, pz).any()`

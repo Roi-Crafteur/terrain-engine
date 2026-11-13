@@ -6,8 +6,10 @@
 #include "mountain_forms.hpp"
 #include "mountain_walls.hpp"
 #include "relief_local.hpp"
+#include "tableland_relief.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/tablelands.hpp"
 
 #include <algorithm>
 #include <array>
@@ -50,6 +52,9 @@ constexpr float kButteHigh = 0.25f;
 constexpr float kHillsUnderMassifs = 0.92f;
 constexpr float kPlainLow = 0.3f;
 constexpr float kPlainHigh = 0.6f;
+// The hills keep 1 - kPlateauHills of their amplitude where the plateaus take over
+// (tableland_relief::calm): their tops are their own.
+constexpr float kPlateauHills = 0.95f;
 // The hills of the plains give way to those of the rough country as the intensity passes
 // kRoughLow to kRoughHigh (relief_local::Shape::rough).
 constexpr float kRoughLow = 0.12f;
@@ -160,7 +165,11 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
         land > 0.0f || coast.landward ? intensityAt(x, z, g, memos) : 0.0f;
     s.relief = intensity; // 0 at sea
     s.rift = g.rift;
-    s.mountainMask = coast.mountains * noise::smoothstep(kMountainLow, kMountainHigh, intensity);
+    // The plateaus take over the other forms where they rise (all 0 out of them, and off).
+    const TablelandPoint plateau = provincesAt(x, z, g);
+    const float calm = tableland_relief::calm(plateau);
+    s.mountainMask = coast.mountains * noise::smoothstep(kMountainLow, kMountainHigh, intensity) *
+                     (1.0f - calm);
     // Around the regional elevation, the local relief rises and falls.
     const float ground = coast.ground;
     const MountainForm mountain =
@@ -170,7 +179,8 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
     const float amplitude =
         land * (kPlainHills + kHillsRange * noise::smoothstep(kHillsLow, kHillsHigh, intensity)) *
         (1.0f - kHillsUnderMassifs * s.mountainMask) *
-        (1.0f - kFloorHills * std::max(mountain.floor, mountain.valley) * s.mountainMask);
+        (1.0f - kFloorHills * std::max(mountain.floor, mountain.valley) * s.mountainMask) *
+        (1.0f - kPlateauHills * calm);
     const float buttes = std::min(kButteShare * amplitude, kButteMax) *
                          (1.0f - noise::smoothstep(kButteLow, kButteHigh, intensity));
     const float plain = 1.0f - noise::smoothstep(kPlainLow, kPlainHigh, s.mountainMask);
@@ -185,7 +195,8 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
     // kMountainLow on, and the local relief keeps its bits there.
     const float plains =
         params_.geography.plainForms
-            ? land * (1.0f - noise::smoothstep(kPlainFormsLow, kMountainLow, intensity))
+            ? land * (1.0f - noise::smoothstep(kPlainFormsLow, kMountainLow, intensity)) *
+                  (1.0f - calm)
             : 0.0f;
     if (plains > 0.0f) {
         local = plainFormsAt(x, z, g.regions, local, plains, memos);
@@ -193,6 +204,9 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
     addSurfaceRelief(x, z, g, local);
     s.base = ground + relief_local::boundBelow(local, kLocalRoom * ground);
     s.regional = ground;
+    if (plateau.tableland > 0.0f) {
+        addTablelands(x, z, plateau, g.coast, s, site);
+    }
     if (g.rift > 0.0f && params_.geography.ravines) {
         s.base -= riftRavinesAt(x, z, kRavineRoom * std::max(0.0f, s.base - 1.0f), memos);
     }

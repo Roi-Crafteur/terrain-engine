@@ -345,6 +345,28 @@ TablelandPoint Tablelands::at(double x, double z, const GeographySample& g) cons
     return p;
 }
 
+float Tablelands::tablelandShare(double x, double z, double coast) const {
+    const Impl& m = *impl_;
+    if (!m.tablelands || !mayHold(x, z) || !(coast > kCoastNear)) {
+        return 0.0f;
+    }
+    // As at.
+    const std::array<float, 2> warp = m.warpX.fbm2DPair(m.warpZ, x, z);
+    const double qx = noise::wrapCanonical(x + kWarp * warp[0], m.world().x);
+    const double qz = noise::wrapCanonical(z + kWarp * warp[1], m.world().z);
+    const PlanetBilinear b = planetBilinear(m.climate->grid(), qx, qz);
+    const auto tableland = static_cast<float>(
+        b.blend(m.cells[b.cells[0]].tableland, m.cells[b.cells[1]].tableland,
+                m.cells[b.cells[2]].tableland, m.cells[b.cells[3]].tableland));
+    if (!(tableland + kEdge > kShareLow)) {
+        return 0.0f;
+    }
+    const float near = static_cast<float>(noise::smoothstep(
+        static_cast<float>(kCoastNear), static_cast<float>(kCoastFar), static_cast<float>(coast)));
+    return near * noise::smoothstep(kShareLow, kShareHigh,
+                                    tableland + kEdge * m.edgeTableland.fbm2D(x, z));
+}
+
 TablelandPoint Tablelands::at(double x, double z) const {
     if (!mayHold(x, z)) {
         return {};

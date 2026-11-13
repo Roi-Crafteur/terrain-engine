@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
     // the draw (0xB6C1FF0E32307E10 with them).
     // The flag "tablelands" (agent 46) changes 407 of them (the high surfaces of the plateaus).
     const std::uint64_t kDrawn =
-        golden::pick("tablelands", 0x4D77F4B4ADE22B7BULL, 0x474D2BE034EA195BULL);
+        golden::pick("tablelands", 0x4D77F4B4ADE22B7BULL, 0x8429A2CEE91A9E62ULL);
     int count = 0;
     const std::uint64_t drawn = drawnSum(field, 20'000, count);
     std::printf("{\"drawn points\", 0x%016" PRIX64 "ULL}%s\n", drawn,

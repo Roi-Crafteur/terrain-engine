@@ -124,6 +124,8 @@ enum Layer : std::uint64_t {
 // The forms of the plateaus and of the karst draw from this stream of the layer kTablelands (its
 // first streams are the draws of their provinces, tablelands.cpp).
 constexpr std::uint64_t kTablelandForms = 1000;
+// The plateaus, mesas, buttes and canyons, from this one (tableland_relief.hpp).
+constexpr std::uint64_t kTablelandRelief = 1001;
 
 // The grain of the rock of the walls of the gorges (phase 11B): an fbm from this wavelength.
 constexpr double kWallGrainWavelength = 64.0;
@@ -195,6 +197,10 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
         if (params_.geography.tablelands || params_.geography.karst) {
             layers->tablelandForms = tableland_forms::makeNoises(
                 noise::deriveSeed(noise::deriveSeed(seed, kTablelands), kTablelandForms), world);
+        }
+        if (params_.geography.tablelands) {
+            layers->tablelandRelief = tableland_relief::makeNoises(
+                noise::deriveSeed(noise::deriveSeed(seed, kTablelands), kTablelandRelief), world);
         }
     }
     layers->maskSkippable = std::isfinite(params_.maskLow) && std::isfinite(params_.maskHigh) &&

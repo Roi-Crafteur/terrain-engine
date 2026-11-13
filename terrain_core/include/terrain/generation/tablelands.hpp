@@ -96,6 +96,10 @@ public:
     [[nodiscard]] TablelandPoint at(double x, double z, const GeographySample& g) const;
     // The same, reading the geography.
     [[nodiscard]] TablelandPoint at(double x, double z) const;
+    // The share of the plateaus at the canonical (x, z) for a distance coast to the coast of the
+    // geography (GeographySample::coast): TablelandPoint::tableland of at with that coast, the same
+    // bits (the shape of the plateaus reads it around a point, with the coast of the point).
+    [[nodiscard]] float tablelandShare(double x, double z, double coast) const;
 
     [[nodiscard]] const TablelandSeeds& seeds() const;
     [[nodiscard]] std::shared_ptr<const Geography> sharedGeography() const;

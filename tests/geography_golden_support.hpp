@@ -59,7 +59,7 @@ inline std::vector<Part> geographyParts() {
         // The coasts (agent 33) change 9 of its 1,024 points, all in their band (0x96F897D9B46A5FE7
         // without them).
         {"geography 1000 km", samplesChecksum(field, -16e6, -16e6, 1e6, 32),
-         pick("tablelands", 0xA21476850ABE032DULL, 0x9D6817F26196B46BULL)},
+         pick("tablelands", 0xA21476850ABE032DULL, 0xED772591EEB84311ULL)},
         {"geography 10 km", samplesChecksum(field, -320e3, -320e3, 10e3, 64),
          0xF0D18E01F55AD1F9ULL},
         {"geography coast 25 m", samplesChecksum(field, -800.0, -800.0, 25.0, 64),

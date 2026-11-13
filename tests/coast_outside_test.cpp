@@ -321,11 +321,12 @@ void testDefaultWorld() {
     std::printf("default world in %.1f s\n", seconds(start));
     golden::report("the default world out of the coastal zone",
                    {{"default world patches", sums.patches.value(), 0x12BBBAA19D5D777FULL},
-                    // A place of the tiles lies on a high surface of a plateau (agent 46, the
-                    // flag "tablelands").
+                    // A place of the tiles lies on a high surface of a plateau, its horizon sees
+                    // plateaus, mesas and canyons (agent 46, the flag "tablelands").
                     {"default world tiles", sums.tiles.value(),
                      golden::pick("tablelands", 0x51D8B009355E8A97ULL, 0xAEE381B859A94B1FULL)},
-                    {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
+                    {"default world horizon", sums.horizon.value(),
+                     golden::pick("tablelands", 0x784F4CC234FCB46EULL, 0xDE555D6EB4B70D6AULL)}});
 }
 
 void testSmallWorldWithWater() {

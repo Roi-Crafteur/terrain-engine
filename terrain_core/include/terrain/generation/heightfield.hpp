@@ -115,6 +115,10 @@ struct HeightSample {
     // without the geography, the ground below kSeaLevel), at the level waterLevel (the height on
     // dry land).
     WaterKind water = WaterKind::None;
+    // The share of the rock of the plateaus at the column (agent 46, tableland_relief.hpp), in
+    // 255ths: their cliffs, ledges and tops, where the sand of the ergs never lies. 0 out of them
+    // and when they are off (in the padding after water: the size of the sample is unchanged).
+    std::uint8_t tableland = 0;
     float waterLevel = 0.0f;
     // Meters of sand the seas of dunes lay over the relief (ergs.hpp, part of height): 0 outside
     // them and without hydrology.
@@ -378,6 +382,15 @@ private:
     // Adds to the local relief at (x, z), canonical, the swells, basins and hills of the high
     // surfaces of the plateaus where they are on (heightfield_tablelands.cpp).
     void addSurfaceRelief(double x, double z, const GeographySample& g, float& local) const;
+    // The provinces of the plateaus and of the karst at (x, z), canonical, of geography g: all 0
+    // where they are off (heightfield_tablelands.cpp).
+    [[nodiscard]] TablelandPoint provincesAt(double x, double z, const GeographySample& g) const;
+    // Lays the plateaus, mesas, buttes and canyons of the provinces p at (x, z), canonical, coast
+    // meters from the coast (GeographySample::coast), over the base of s (its ground, hills and
+    // buttes faded: tableland_relief::calm) and their rock; with a site, their walls (their
+    // ground, their faces when wanted) (heightfield_tablelands.cpp).
+    void addTablelands(double x, double z, const TablelandPoint& p, double coast, HeightSample& s,
+                       wall_faces::Site* site) const;
     // The mountains at a point: their height above the base, that of their great forms alone
     // (without the rock and the ravines) and its gradient (meters per meter, up), how much the
     // point lies on the floor of a valley, within a valley and on a crest of the massif, in

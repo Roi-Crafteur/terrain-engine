@@ -100,7 +100,7 @@ inline std::vector<Part> heightfieldParts() {
         // without them).
         // The high surfaces of the plateaus (agent 46, the flag "tablelands") change it too.
         {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32),
-         pick("tablelands", 0xA21476850ABE032DULL, 0x9D6817F26196B46BULL)},
+         pick("tablelands", 0xA21476850ABE032DULL, 0xED772591EEB84311ULL)},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},

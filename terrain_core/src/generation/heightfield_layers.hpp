@@ -12,6 +12,7 @@
 #include "ravines.hpp"
 #include "relief_local.hpp"
 #include "tableland_forms.hpp"
+#include "tableland_relief.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/voronoi.hpp"
@@ -49,6 +50,7 @@ struct Heightfield::Layers {
     plain_forms::Noises plains; // the forms of the plains, where the mountains are not
     // The forms of the plateaus and of the karst (agent 46), only built when they are on.
     tableland_forms::Noises tablelandForms;
+    tableland_relief::Noises tablelandRelief; // their plateaus, mesas, buttes and canyons
     // Mask edges finite and at least a normal float apart: smoothstep then divides by a nonzero
     // finite number, and the massif is finite, in [+0, 1] and never -0 for every value of the
     // mask noise (heightfield_shortcuts_test), so the noise can be skipped where the land

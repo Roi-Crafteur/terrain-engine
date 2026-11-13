@@ -8,7 +8,7 @@
 // Usage: terrain_export_rock <output-dir> [--planet <file>] [--threads <n>] [--width <pixels>]
 //        [--view-distance <chunks>] [--only <name>]... [--no-rock]
 //        [--at <x> <z> <heading degrees> <tilt> <meters above the ground>] [--sun <turns>]
-//        [--cost] [--check] [--face <x> <z>] [--walk <x> <z>] [--steps]
+//        [--cost] [--check] [--face <x> <z>] [--walk <x> <z>] [--steps] [--flags <a,b>]
 // --cost: the cost of the rock in the tiles around a wall, the rivers, the plains and crests.
 // --check: also check_<name>.png, the same view with the openings of the tiles in yellow, their
 // inverted triangles in red and the triangles seen from behind in cyan (mesh_checks.hpp), and
@@ -24,8 +24,12 @@
 // --no-rock: the tiles of the relief alone (a height per column), the views before phase 12A.
 // The planet level is read from --planet (or <output-dir>/planet.bin), built and written there
 // when it does not hold it (about 100 s on 4 cores).
+// --flags: the experimental flags of the world (tool_flags.hpp); with any, its planet level is
+// built in memory, never written (rock_planet.hpp), and --planet is refused.
 
 #include "rock_cost.hpp"
+#include "rock_planet.hpp"
+#include "tool_flags.hpp"
 #include "rock_places.hpp"
 #include "rock_report.hpp"
 #include "rock_spots.hpp"
@@ -93,6 +97,7 @@ struct Options {
     double sunLeft = 0.3; // --sun <turns>: of the sun of the view --at, left of its axis
     std::optional<std::array<double, 2>> face; // --face <x> <z>
     std::optional<std::array<double, 2>> walk; // --walk <x> <z>
+    std::string flags;                         // --flags <a,b>
 };
 
 bool parseOptions(int argc, char** argv, Options& o) {
@@ -146,6 +151,8 @@ bool parseOptions(int argc, char** argv, Options& o) {
             o.sunLeft = std::atof(value);
         } else if (flag == "--only") {
             o.only.emplace_back(value);
+        } else if (flag == "--flags") {
+            o.flags = value;
         } else {
             return false;
         }
@@ -433,28 +440,36 @@ int main(int argc, char** argv) {
                      "[--view-distance <chunks>] [--only <name>]... [--no-rock] "
                      "[--at <x> <z> <heading degrees> <tilt: a tangent> <above>] [--sun <turns>] "
                      "[--cost] [--check] "
-                     "[--face <x> <z>] [--walk <x> <z>] [--steps]\n",
+                     "[--face <x> <z>] [--walk <x> <z>] [--steps] [--flags <a,b>]\n",
                      argv[0]);
+        return EXIT_FAILURE;
+    }
+    terrain::WorldParams world;
+    std::string canonical;
+    if (!tool_flags::apply(o.flags, world, canonical)) {
+        return EXIT_FAILURE;
+    }
+    if (!canonical.empty() && !o.planet.empty()) {
+        std::fprintf(stderr, "--planet with --flags: the planet files do not hold their flags yet\n");
         return EXIT_FAILURE;
     }
     std::error_code error;
     std::filesystem::create_directories(o.directory, error);
     const auto start = std::chrono::steady_clock::now();
-    terrain::PlanetParams params;
-    params.threads = o.threads;
     const std::filesystem::path planetFile =
-        o.planet.empty() ? o.directory / terrain::kPlanetFileName : o.planet;
+        canonical.empty() ? (o.planet.empty() ? o.directory / terrain::kPlanetFileName : o.planet)
+                          : std::filesystem::path("(memory, flags \"" + canonical + "\")");
     const std::uint64_t seed = terrain::kDefaultWorldSeed;
     bool built = false;
-    auto planet = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
-        planetFile, seed, terrain::HeightfieldParams{}, params, terrain::WorldSize{}, &built));
-    const terrain::Heightfield relief(seed);
+    const auto planet = rock_tool::openPlanet(world, canonical, planetFile, o.threads, built);
+    const terrain::Heightfield relief(seed, world.relief);
     auto hydrology = std::make_shared<const terrain::Hydrology>(seed, relief, planet);
     const World w{relief, hydrology, relief.withHydrology(hydrology),
-                  terrain::TerrainTiles(seed, {}, {}, std::nullopt, {}, hydrology, o.rock)};
+                  terrain::TerrainTiles(seed, world.relief, {}, std::nullopt, {}, hydrology, o.rock)};
     Report r;
     r.add(format("rock of seed %llu: planet level %s %s in %.1f s; tiles to %d chunks%s\n",
-                 static_cast<unsigned long long>(seed), built ? "built and written to" : "read from",
+                 static_cast<unsigned long long>(seed),
+                 built ? (canonical.empty() ? "built and written to" : "built in") : "read from",
                  planetFile.string().c_str(),
                  std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(),
                  o.viewDistance, o.rock ? "" : ", without the rock (--no-rock)"));

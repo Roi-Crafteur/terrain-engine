@@ -15,8 +15,15 @@ terrain_add_test(tablelands_on_golden_test terrain_core)
 terrain_add_test(tablelands_flags_test terrain_core)
 # The goldens with the plateaus on (golden_support.hpp: the same executables run with --flags
 # tablelands), their values pinned for R1, which turns every new relief on together. Only those the
-# high surfaces of the plateaus reach: the horizon, the streamed world and the small world of the
-# planet level keep the values of main with the flag.
+# plateaus reach (their high surfaces, mesas and canyons): the horizon, the streamed world and the
+# small world of the planet level keep the values of main with the flag.
 foreach(golden heightfield_golden_test coast_outside_test mountain_freeze_test)
     add_test(NAME ${golden}_tablelands COMMAND ${golden} --flags tablelands)
 endforeach()
+# The shapes of the plateaus against real cases: buttes (Monument Valley), a canyon (the Grand
+# Canyon), tops never flat (tableland_relief.hpp).
+terrain_add_test(tablelands_shapes_test terrain_core)
+target_include_directories(tablelands_shapes_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+# The world out of the zone of the plateaus keeps every bit with them switched on: samples, rock,
+# tiles of LOD 0 to 3 and horizon windows near the zone and anywhere.
+terrain_add_test(tablelands_outside_test terrain_core)
