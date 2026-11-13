@@ -49,8 +49,9 @@ struct Range {
 
 Range rangeOf(VolcanoForm f) {
     switch (f) {
-    case VolcanoForm::Strato: // 30 to 35 degrees over the 500 m under the rim, 5 to 10 at the foot
-        return {1300.0, 5200.0, 28.0, 37.0, 11.0, 20.0};
+    case VolcanoForm::Strato: // 30 to 35 degrees over the 500 m under the rim (29 at least), 5 to 10
+                              // at the foot
+        return {1300.0, 5200.0, 29.0, 37.0, 11.0, 20.0};
     case VolcanoForm::TwinStrato: // broader along the axis of its two summits
         return {1000.0, 5200.0, 24.0, 37.0, 11.0, 20.0};
     case VolcanoForm::CollapsedStrato: // its summit gone with the collapse
@@ -101,7 +102,7 @@ void testLarge(const terrain::Heightfield& with, const terrain::Heightfield& bar
         }
         ++count;
         const vm::Measure m = vm::measure(with, bare, s);
-        const bool ok = m.rise >= 3500.0 && m.rise <= 4900.0 && m.upper >= 28.0 &&
+        const bool ok = m.rise >= 3500.0 && m.rise <= 4900.0 && m.upper >= 29.0 &&
                         m.upper <= 37.0 && m.foot <= 11.0;
         out += ok ? 0 : 1;
         std::printf("large strato     base %7.0f summit %6.0f rise %5.0f | upper %4.1f foot %4.1f "

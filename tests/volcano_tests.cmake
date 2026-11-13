@@ -7,6 +7,7 @@ terrain_add_test(volcano_forms_test terrain_core)
 terrain_add_test(volcano_outside_test terrain_core)
 terrain_add_test(map_volcanoes_test terrain_core)
 terrain_add_test(volcano_calderas_test terrain_core)
+target_include_directories(volcano_calderas_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 terrain_add_test(volcano_cost_test terrain_core)
 # A measure of time: alone, even under ctest -j.
 set_tests_properties(volcano_cost_test PROPERTIES RUN_SERIAL TRUE)
@@ -32,3 +33,6 @@ foreach(golden heightfield_golden_test planet_golden_test planet_memory_test riv
         unreal_determinism_check_test)
     add_test(NAME ${golden}_volcanoes COMMAND ${golden} --flags volcanoes)
 endforeach()
+# The breaches of the calderas: gorges down the flank, measured along their thalweg.
+terrain_add_test(volcano_breach_test terrain_core)
+target_include_directories(volcano_breach_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
