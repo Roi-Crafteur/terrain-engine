@@ -140,20 +140,36 @@ Generated generatedSoFar(TerrainSession& session) {
     return g;
 }
 
-// A session destroyed while its workers generate the queued tiles (the default rings, with
-// caves and their regions) stops once their current tiles are done: it takes less than a quarter
-// of the time its workers would still take for the queued tiles (the mean time of the tiles they
-// generated first, times the queue, over the workers), measured here. Without caves its tiles take
-// about 1 ms: on one worker, the queue (about 0.3 s) is told apart from the wake of the threads of
-// a loaded machine (up to 20 ms measured with 8 processes on 4 cores); with caves, 3 workers. The
-// goal of 60 s is checked by the bench unreal_terrain_session_test_bench (time_goal_support.hpp),
-// never by ctest.
+// The rings of the LODs k times wider than the default ones: the same structure, about k * k
+// times the tiles (231 by default).
+terrain::LodParams widerRings(int k) {
+    terrain::LodParams lod;
+    for (int& distance : lod.splitDistance) {
+        distance *= k;
+    }
+    lod.viewDistance *= k;
+    return lod;
+}
+
+// A session destroyed while its 3 workers generate the queued tiles (with caves and their
+// regions, and without) stops once their current tiles are done: it takes less than a quarter of
+// the time its workers would still take for the queued tiles (the mean time of the tiles they
+// generated first, times the queue, over the workers), measured here. Without caves a tile takes
+// about 1.5 ms: rings 5 times wider (about 5,300 tiles queued) make the queue last more than 1 s
+// (2.3 to 2.8 s here; 4 times wider gave 1.4 s, 3 times 0.8 s), far from the wake of the threads
+// of a loaded machine (up to 20 ms measured with 8 processes on 4 cores); with caves, the default
+// rings (0.7 to 3 s). The goal of 60 s is checked by the bench
+// unreal_terrain_session_test_bench (time_goal_support.hpp), never by ctest.
 void testDestroyWhileGenerating() {
+    constexpr int kWider = 5;
     for (const bool caves : {false, true}) {
         SessionParams params;
         params.caves = caves;
         params.caveRegions = caves;
-        params.stream.workerThreads = caves ? 3 : 1;
+        params.stream.workerThreads = 3;
+        if (!caves) {
+            params.stream.lod = widerRings(kWider);
+        }
         auto session = std::make_unique<TerrainSession>(params);
         const UnrealFrame frame = session->frameAt(0.0, 0.0);
         static_cast<void>(session->streamer().update(centerOf(frame, {0, 0}), frame));
