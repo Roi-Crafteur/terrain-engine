@@ -414,8 +414,9 @@ Shape shapeAt(const Noises& n, double x, double z, const Province& q) {
     // The plateau the canyons leave (an outlier lower), raised by the profile from the low ground.
     const double held = parts.held;
     out.rise = f.profile * held;
-    // d(u^1.5)/du = 1.5 u^0.5 = 1.5 profile^(1/3).
-    const double ramp = f.profile < 1.0 ? 1.5 * std::cbrt(f.profile) * held / f.talus : 0.0;
+    // The profile u^1.5 of the outline it holds to (profileOf): its slope 1.5 u^0.5 per talus.
+    const double u = std::clamp(1.0 + f.outline / f.talus, 0.0, 1.0);
+    const double ramp = f.profile < 1.0 ? 1.5 * std::sqrt(u) * held / f.talus : 0.0;
     out.gradX = ramp * parts.outline.dirX - f.profile * parts.cut.gradX;
     out.gradZ = ramp * parts.outline.dirZ - f.profile * parts.cut.gradZ;
     // The gullies down the taluses and the walls of the canyons.
