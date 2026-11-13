@@ -284,6 +284,12 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - puis, chacun dans sa zone : volcans, plateaux et karst, relief glaciaire, tous les milieux
   (biomes, milieux humides et côtiers, mers), couches de surface, reliefs fantastiques
 - en pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game design
+- relief de la vague 9 fusionné éteint, allumé ensemble par l'orchestrateur (R1), par les drapeaux
+  expérimentaux (agent 51) : un agent ajoute son nom par une ligne de la table de
+  `experimental_flags.cpp` (nom en minuscules, ce qu'il fait, les paramètres qu'il pose) et un cas
+  de test ; ce qu'il ajoute au niveau Planète va dans une section du fichier planète
+  (`src/storage/planet_sections.hpp`) ; outils `--flags`, Unreal `Experimental.ExperimentalFlags` ;
+  aucun drapeau = `main` au bit près (`experimental_off_test`)
 
 ### Phase 10 — suite
 - Character qui marche, saute et tombe sur le terrain : vérifié avec le Character du

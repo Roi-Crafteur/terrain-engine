@@ -519,4 +519,5 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/dev_map_tests.cmake) # agent 35: the dev map
 include(${CMAKE_CURRENT_SOURCE_DIR}/horizon_blend_tests.cmake) # agent 29: the biome weights of the horizon
 include(${CMAKE_CURRENT_SOURCE_DIR}/break_place_tests.cmake) # agent 28: break and place in game
 include(${CMAKE_CURRENT_SOURCE_DIR}/dunes_tests.cmake) # agent 34: the seas of dunes
+include(${CMAKE_CURRENT_SOURCE_DIR}/experimental_flags_tests.cmake) # agent 51: the experimental flags
 include(${CMAKE_CURRENT_SOURCE_DIR}/serial_tests.cmake) # agent 42: the tests that run alone, after the tests it names
