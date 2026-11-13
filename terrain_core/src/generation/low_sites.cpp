@@ -14,10 +14,10 @@ namespace terrain::lows {
 namespace {
 
 // The streams of the seeds of the families: new ones go at the end.
-enum Stream : std::uint64_t { kGrabens, kBasins, kCraters };
+enum Stream : std::uint64_t { kGrabens, kBasins, kCraters, kHollows };
 
 constexpr std::array<const char*, kLowKindCount> kNames = {"depression", "basin", "graben",
-                                                           "crater"};
+                                                           "crater",     "kettle", "pan"};
 
 } // namespace
 
@@ -50,10 +50,19 @@ Sites makeSites(std::uint64_t seed, const LowsParams& params, const Geography& g
         out.craters = makeCraters(noise::deriveSeed(seed, kCraters), geography, climate,
                                   params.density, taken, excluded);
     }
+    if (params.hollows && climate != nullptr) {
+        out.hollows = makeHollows(noise::deriveSeed(seed, kHollows), geography, *climate,
+                                  params.density, excluded);
+    }
     return out;
 }
 
 bool mayReach(const Sites& sites, double x, double z) {
+    return mayReachListed(sites, x, z) ||
+           (sites.hollows && hollowAt(*sites.hollows, x, z).profile > 0.0);
+}
+
+bool mayReachListed(const Sites& sites, double x, double z) {
     return (sites.grabens && !sites.grabens->reach.at(x, z).empty()) ||
            (sites.basins && !sites.basins->reach.at(x, z).empty()) ||
            (sites.craters && !sites.craters->reach.at(x, z).empty());

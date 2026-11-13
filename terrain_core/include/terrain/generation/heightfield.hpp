@@ -227,6 +227,10 @@ public:
     // closed basins the water fills or leaves dry. None without the geography.
     [[nodiscard]] std::vector<LowSite> lowsIn(double minX, double minZ, double maxX,
                                               double maxZ) const;
+    // The hollows of the plains (kettles, pans: too many for lowsIn) whose center lies in the box,
+    // kettles then pans, row by row of their cells. None without them.
+    [[nodiscard]] std::vector<LowSite> hollowsIn(double minX, double minZ, double maxX,
+                                                 double maxZ) const;
     // Whether dry ground may lie below the sea level at (x, z), any image of it: true within the
     // reach of a low of the relief (the depressions), false elsewhere, where the ground below the
     // sea level is the sea (or the bed of a river near it). Cheap (a lattice lookup): the readers
@@ -326,6 +330,9 @@ private:
     // The craters of agent 52 over the ground base at a canonical point, weight of the way: the new
     // base; the detail of s buried by the sediment of their floors.
     [[nodiscard]] double toCraters(double x, double z, double base, double weight,
+                                   HeightSample& s) const;
+    // The same for the hollows of the plains.
+    [[nodiscard]] double toHollows(double x, double z, double base, double weight,
                                    HeightSample& s) const;
     // The seas of dunes of the hydrology (ergs.hpp) over the relief at a canonical point, before
     // its valleys (heightfield_hydrology): nothing, not a bit, outside them.

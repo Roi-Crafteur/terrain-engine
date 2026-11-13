@@ -9,15 +9,17 @@
 // - basins: more of them, smaller (Qattara, Death Valley), on the forms of the depressions;
 // - grabens: sunken troughs along the axes of the rifts (the Dead Sea), fault walls in steps;
 // - craters: rare impact craters, placed by the seed alone, most of them worn (the humidity of
-//   the pre-climate, the softness of the rock), their rims and ejecta raised over the plains.
+//   the pre-climate, the softness of the rock), their rims and ejecta raised over the plains;
+// - hollows of the plains, too many to list (implicit, Heightfield::hollowsIn): kettles in the
+//   cold plains once under the ice, pans and playas in the dry lands, by the pre-climate.
 // Out of the reach of every low, the relief keeps every bit (lows_outside_test).
 
 #include <cstdint>
 
 namespace terrain {
 
-enum class LowKind : std::uint8_t { Depression, Basin, Graben, Crater };
-inline constexpr int kLowKindCount = 4;
+enum class LowKind : std::uint8_t { Depression, Basin, Graben, Crater, Kettle, Pan };
+inline constexpr int kLowKindCount = 6;
 [[nodiscard]] const char* lowKindName(LowKind kind);
 
 // A low of the relief: its center (canonical), its mean radius (a graben: its half length; a
@@ -48,6 +50,7 @@ struct LowsParams {
     bool basins = true;
     bool grabens = true;
     bool craters = true;
+    bool hollows = true;
     double density = 1.0;
 };
 

@@ -15,4 +15,5 @@ target_sources(terrain_core PRIVATE
     src/generation/low_basins.cpp
     src/generation/low_reach.cpp
     src/generation/low_sites.cpp
+    src/generation/plain_hollows.cpp
     src/generation/rift_grabens.cpp)

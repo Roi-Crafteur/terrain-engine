@@ -7,6 +7,8 @@ terrain_add_test(lows_flags_test terrain_core)
 terrain_add_test(lows_craters_test terrain_core)
 target_include_directories(lows_craters_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+# The hollows of the plains: kettles and pans by the pre-climate, never raising the ground.
+terrain_add_test(lows_hollows_test terrain_core)
 
 # The measures of the land below the sea level of a small world (32 x 16 cells), its map.
 add_test(NAME export_lows_smoke

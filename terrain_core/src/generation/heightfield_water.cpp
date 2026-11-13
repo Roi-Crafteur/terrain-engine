@@ -21,7 +21,7 @@ namespace terrain {
 
 struct Heightfield::Water {
     std::optional<depressions::Sites> depressions;
-    std::shared_ptr<const PreClimate> climate; // with the craters only
+    std::shared_ptr<const PreClimate> climate; // with the craters or the hollows only
     lows::Sites lows;
 };
 
@@ -49,6 +49,8 @@ constexpr float kLowCoastHigh = 40'000.0f;
 // over the regional elevation): almost flat, never a plane.
 constexpr double kKeep = 0.35;
 constexpr double kHead = 1.5;
+// The relief of the plains a hollow takes away from its floor, meters at most.
+constexpr double kHollowLocal = 30.0;
 
 void setSea(HeightSample& s, bool sea) {
     s.water = sea ? WaterKind::Ocean : WaterKind::None;
@@ -99,7 +101,8 @@ Heightfield::makeWater(std::uint64_t seed, std::uint64_t lowSeed, std::uint64_t 
     if (geography != nullptr && params.geography.depressions) {
         water->depressions = depressions::makeSites(seed, *geography);
     }
-    if (geography != nullptr && params.lows.enabled && params.lows.craters) {
+    if (geography != nullptr && params.lows.enabled &&
+        (params.lows.craters || params.lows.hollows)) {
         water->climate = PreClimate::shared(geographySeed, params.geography, geography->world());
     }
     if (geography != nullptr) {
@@ -135,6 +138,14 @@ std::vector<LowSite> Heightfield::lowsIn(double minX, double minZ, double maxX,
     return out;
 }
 
+std::vector<LowSite> Heightfield::hollowsIn(double minX, double minZ, double maxX,
+                                             double maxZ) const {
+    if (!water_->lows.hollows) {
+        return {};
+    }
+    return lows::hollowsIn(*water_->lows.hollows, minX, minZ, maxX, maxZ);
+}
+
 std::vector<Depression> Heightfield::depressions() const {
     std::vector<Depression> out;
     if (water_->depressions) {
@@ -154,7 +165,7 @@ bool Heightfield::mayBeDryBelowSea(double x, double z) const {
 
 void Heightfield::lowerToLows(double x, double z, HeightSample& s) const {
     if (!(s.relief < kDepressionHigh && s.continentalness > 0.0f &&
-          lows::mayReach(water_->lows, x, z))) {
+          (water_->lows.hollows || lows::mayReachListed(water_->lows, x, z)))) {
         return;
     }
     const auto coast = static_cast<float>(static_cast<double>(s.continentalness) *
@@ -166,8 +177,9 @@ void Heightfield::lowerToLows(double x, double z, HeightSample& s) const {
         return;
     }
     // The grabens and the basins bring the regional ground down with the ground: the seas of dunes
-    // see the low as land, not as a hollow to fill.
+    // see the low as land, not as a hollow to fill. Nothing written where no low lies.
     double base = static_cast<double>(s.base);
+    const float detail = s.detail;
     if (water_->lows.grabens) {
         const lows::GrabenPlace g = lows::grabenAt(*water_->lows.grabens, world_, x, z);
         if (g.share > 0.0) {
@@ -188,7 +200,13 @@ void Heightfield::lowerToLows(double x, double z, HeightSample& s) const {
     if (water_->lows.craters) {
         base = toCraters(x, z, base, weight, s);
     }
+    if (water_->lows.hollows) {
+        base = toHollows(x, z, base, weight, s);
+    }
     const auto lowered = static_cast<float>(base);
+    if (lowered == s.base && s.detail == detail) {
+        return;
+    }
     s.regional += lowered - s.base;
     s.base = lowered;
     s.height = s.base + s.mountain + s.detail;
@@ -207,6 +225,21 @@ double Heightfield::toCraters(double x, double z, double base, double weight,
     const double target = base + c.delta - c.inside * (1.0 - kKeep) * local;
     s.detail = static_cast<float>(static_cast<double>(s.detail) * (1.0 - weight * c.flat));
     return base + weight * (target - base);
+}
+
+// In a hollow of the plains the ground goes down by its depth, its floor keeping its share of the
+// relief of the plains (bounded: a hollow never raises the ground in a dip of the plains).
+double Heightfield::toHollows(double x, double z, double base, double weight,
+                              HeightSample& s) const {
+    const lows::HollowShape h = lows::hollowAt(*water_->lows.hollows, x, z);
+    const double local = std::clamp(static_cast<double>(s.base - s.regional), -kHollowLocal,
+                                    kHollowLocal);
+    const double drop = h.profile * (h.depth + (1.0 - h.keep) * local);
+    if (!(drop > 0.0)) {
+        return base;
+    }
+    s.detail = static_cast<float>(static_cast<double>(s.detail) * (1.0 - weight * h.flat));
+    return base - weight * drop;
 }
 
 // With the geography the sea is where its coast signal is below 0 (the sign of the
