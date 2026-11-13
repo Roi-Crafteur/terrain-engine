@@ -6,14 +6,19 @@
 //   plant under the sea (the tiles of the coast at the origin);
 // - the far horizon raises the buttes of their floors to their crests below the sea level, and
 //   still never raises a sample of the sea;
-// - the caves are carved under them (no deep sea there), as they are not under the deep sea.
+// - the caves are carved under them (no deep sea there), as they are not under the deep sea;
+// - dry ground below the sea level warms by the lapse rate (ClimateParams::dryBelowSeaWarming):
+//   the same code with it on and off changes the ecology of no column of the sea, of a lake or
+//   above the sea level (random columns over the world), only dry columns below it.
 #include "terrain/generation/caves.hpp"
+#include "terrain/generation/ecology.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/streaming/horizon_crests.hpp"
 #include "terrain/streaming/horizon_levels.hpp"
 #include "terrain/streaming/lod.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include "bit_exact_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -166,6 +171,67 @@ void testCaves() {
     TEST_CHECK(deepest.ground > -200.0f || old.exclusion > 0.0f);
 }
 
+// The column (x, z) as the biomes read it, its true water.
+terrain::SurfaceSite siteAt(double x, double z) {
+    constexpr double kStep = 8.0;
+    const HeightSample s = field().sampleAt(x, z);
+    terrain::SurfaceSite site;
+    site.ground = s.height;
+    site.continentalness = s.continentalness;
+    const float east = field().heightAt(x + kStep, z);
+    const float west = field().heightAt(x - kStep, z);
+    const float south = field().heightAt(x, z + kStep);
+    const float north = field().heightAt(x, z - kStep);
+    site.gradX = (east - west) / static_cast<float>(2.0 * kStep);
+    site.gradZ = (south - north) / static_cast<float>(2.0 * kStep);
+    site.water = s.water;
+    site.waterLevel = s.waterLevel;
+    return site;
+}
+
+bool sameEcology(const terrain::EcologySample& a, const terrain::EcologySample& b) {
+    return bit_exact::same(a.climate.temperature, b.climate.temperature) && a.biome == b.biome &&
+           a.material == b.material;
+}
+
+// The ecology with the warming of dry ground below the sea level on and off.
+void testClimate() {
+    terrain::EcologyParams off;
+    off.climate.dryBelowSeaWarming = false;
+    const terrain::Ecology warm(kSeed, terrain::EcologyParams{}, field().world());
+    const terrain::Ecology cold(kSeed, off, field().world());
+    const Floor& deepest = *std::min_element(
+        floors().begin(), floors().end(),
+        [](const Floor& a, const Floor& b) { return a.ground < b.ground; });
+    const terrain::SurfaceSite floor = siteAt(deepest.x, deepest.z);
+    const float gain = warm.sampleAt(deepest.x, deepest.z, floor).climate.temperature -
+                       cold.sampleAt(deepest.x, deepest.z, floor).climate.temperature;
+    const float expected = terrain::ClimateParams{}.lapseRate * -floor.ground;
+    std::printf("the deepest dry floor (%.1f m) warmer by %.2f C\n",
+                static_cast<double>(floor.ground), static_cast<double>(gain));
+    TEST_CHECK(std::abs(gain - expected) < 0.01f);
+    std::size_t changed = 0;
+    std::size_t elsewhere = 0;
+    std::size_t sea = 0;
+    for (const bit_exact::Point& p : bit_exact::randomPoints(20'000, 3e7)) {
+        const terrain::SurfaceSite site = siteAt(p.x, p.z);
+        sea += site.water == WaterKind::Ocean ? 1 : 0;
+        if (sameEcology(warm.sampleAt(p.x, p.z, site), cold.sampleAt(p.x, p.z, site))) {
+            continue;
+        }
+        ++changed;
+        elsewhere += site.dry() && site.ground < terrain::kSeaLevel ? 0 : 1;
+    }
+    for (const Floor& f : floors()) {
+        const terrain::SurfaceSite site = siteAt(f.x, f.z);
+        changed += sameEcology(warm.sampleAt(f.x, f.z, site), cold.sampleAt(f.x, f.z, site)) ? 0 : 1;
+    }
+    std::printf("%zu columns changed (%zu of the sea among the random ones), %zu elsewhere than "
+                "on dry ground below the sea level\n",
+                changed, sea, elsewhere);
+    TEST_CHECK(changed >= floors().size() && elsewhere == 0 && sea > 5'000);
+}
+
 } // namespace
 
 int main() {
@@ -173,5 +239,6 @@ int main() {
     testPlants();
     testCrests();
     testCaves();
+    testClimate();
     return test::result();
 }

@@ -76,6 +76,10 @@ ClimateSample ClimateField::sample(double x, double z, const SurfaceSite& site) 
     climate.exposure = exposureOf(site.gradX, site.gradZ);
     const float warming = site.dry() ? climate.exposure : 0.0f;
     climate.temperature = temperatureAt(climate.baseTemperature, site.waterLevel, warming);
+    if (params_.dryBelowSeaWarming && site.dry() && site.waterLevel < kSeaLevel) {
+        // The lapse rate goes on below the sea level over dry ground (ClimateParams).
+        climate.temperature += params_.lapseRate * (kSeaLevel - site.waterLevel);
+    }
     return climate;
 }
 

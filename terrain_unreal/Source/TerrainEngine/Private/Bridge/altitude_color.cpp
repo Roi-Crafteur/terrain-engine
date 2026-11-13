@@ -28,6 +28,14 @@ constexpr std::array<ColorKey, 6> kKeys{{
     {kSnowFull, 0.95, 0.95, 0.97},
 }};
 
+// Dry ground below the sea level, from the sea level down: the sand of the sea level, then the
+// salt and clay of the dev map (196, 168, 128 at -100 m; 150, 112, 82 at kDryBelowDepth).
+constexpr std::array<ColorKey, 3> kDryKeys{{
+    {kSeaLevel, 0.76, 0.70, 0.50},
+    {-100.0, 196.0 / 255.0, 168.0 / 255.0, 128.0 / 255.0},
+    {kDryBelowDepth, 150.0 / 255.0, 112.0 / 255.0, 82.0 / 255.0},
+}};
+
 std::uint8_t toByte(double value) {
     return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0, 1.0) * 255.0));
 }
@@ -55,8 +63,21 @@ VertexColor altitudeColor(double altitude) {
 }
 
 VertexColor groundColor(double altitude, bool sea) {
-    const bool dryBelow = !sea && altitude < kSeaLevel;
-    return altitudeColor(dryBelow ? static_cast<double>(kSeaLevel) : altitude);
+    if (sea || !(altitude < kSeaLevel)) {
+        return altitudeColor(altitude);
+    }
+    // Dry ground below the sea level: clay and salt, from the sand of the sea level down to
+    // kDryBelowDepth (the tints of the dev map, map_style.cpp kBelowSea), never the sea floor.
+    for (std::size_t i = 1; i < kDryKeys.size(); ++i) {
+        const ColorKey& high = kDryKeys[i - 1];
+        const ColorKey& low = kDryKeys[i];
+        if (altitude >= low.altitude) {
+            const double t = (altitude - low.altitude) / (high.altitude - low.altitude);
+            return colorOf(low.r + t * (high.r - low.r), low.g + t * (high.g - low.g),
+                           low.b + t * (high.b - low.b));
+        }
+    }
+    return colorOf(kDryKeys.back().r, kDryKeys.back().g, kDryKeys.back().b);
 }
 
 } // namespace terrain::unreal

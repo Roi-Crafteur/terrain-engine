@@ -653,6 +653,18 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - grands bassins secs sous le niveau de la mer, fossés d'effondrement avec lac salé, cratères d'impact rares
 - plaines et bas plateaux avec de vrais creux, sans plancher visible
 - à faire avant l'étape 1 de la 11C : le réseau d'eau doit voir ces creux
+- contrat « sous 0 m » (agent 52), pour tout code qui lit la mer (agents 40, 51 et suivants) :
+  1. la mer, c'est `HeightSample::water == WaterKind::Ocean` (signal de côte de la géographie, relié à l'océan),
+     jamais l'altitude ; un sol sec sous 0 m est `None`, un lac sous 0 m `Lake` ou `SaltLake` ;
+  2. `waterLevel` vaut 0 m seulement sous la mer ; ailleurs c'est le sol, ou le niveau du lac ou du fleuve, qui peut
+     être négatif ;
+  3. vers Unreal : texel de l'horizon, dernier float < 0 ⇔ mer (`kHorizonSea`) ; un sol sec sous 0 m garde sa hauteur
+     négative et un dernier float ≥ 0 ; les tuiles suivent l'eau de leurs colonnes ;
+  4. pour savoir si un point bas peut être sec : `Heightfield::mayBeDryBelowSea` (bon marché), puis l'eau de
+     l'échantillon ; un seuil `h < 0` ne sert plus qu'à une mer déjà connue (sa profondeur, sa couleur)
+- fait (agent 52, PR 52a) : l'outil `terrain_export_lows` (mesures et carte des terres sous 0 m) ; les statistiques du
+  relief, les plantes, les crêtes de l'horizon, les grottes et les couleurs d'altitude lisent la mer, plus l'altitude ;
+  un sol sec sous 0 m se réchauffe du gradient (+2,8 °C à −430 m)
 
 ### Tous les milieux du monde (minimum voulu)
 - format à élargir d'abord : 12 biomes aujourd'hui, 16 biomes et 8 matériaux au plus par le format

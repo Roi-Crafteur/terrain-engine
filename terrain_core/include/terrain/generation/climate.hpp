@@ -34,7 +34,13 @@ struct ClimateParams {
     float inlandHigh = 0.6f;
 
     // Altitude correction: the temperature drops by lapseRate degrees per meter above sea level.
+    // Dry ground below the sea level (a depression: never the sea, whose level is 0 m) warms by
+    // as much per meter below it with dryBelowSeaWarming (the floor of the Dead Sea, 430 m below
+    // it, 2.8 degrees warmer); the sea and the lakes keep the temperature of their level, at
+    // least the sea level. Off: the dry ground below the sea level as at the sea level (before
+    // agent 52).
     float lapseRate = 0.0065f;
+    bool dryBelowSeaWarming = true;
 
     // Exposure: dry ground facing the sun (south, +Z) gains up to exposureWarming degrees, ground
     // facing away from it loses as much.
