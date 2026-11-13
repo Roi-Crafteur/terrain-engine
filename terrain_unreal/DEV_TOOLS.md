@@ -13,7 +13,7 @@ Shipping, tout le code des outils est sous `#if TERRAIN_DEV_TOOLS` (vérifié pa
 
 | Sujet | `terrain_core` et le Bridge (données, déterministe, testé par ctest) | Unreal (affiche, fait jouer) |
 |---|---|---|
-| Infos d'un point | `Bridge/point_info` lit le core : sol, eau (type, niveau, profondeur), relief avant les fleuves, biome, matériau, climat, case et climat de la planète, vallée et lac, chute la plus proche, distance à la côte, LOD de la tuile affichée, chunk, bloc | l'écran F3, `Terrain.Info` |
+| Infos d'un point | `Bridge/point_info` lit le core : sol, eau (type, niveau, profondeur), relief avant les fleuves, biome, les 2 biomes du fondu et leurs poids (`biome weights`), matériau, climat, case et climat de la planète, vallée et lac, chute la plus proche, distance à la côte, LOD de la tuile affichée, chunk, bloc | l'écran F3, `Terrain.Info` |
 | Point visé | `Bridge/ground_ray` : marche du rayon sur le sol du core jusqu'à 30 km ; « hors heightmap » quand le point touché s'écarte du relief | trace sur les tuiles qui ont une collision (LOD 0, ~64 m) d'abord |
 | Lieux | `terrain_core/dev/places_file` : le fichier des lieux, sur le JSON strict de `terrain/json` (#56) ; `Bridge/place_pose` : yaw = cap − 90, œil selon `eyeMode` | `Terrain.Goto`, `Look`, `Eye`, `Save`, `Pawn` ; le pion volant des outils |
 | Images | `Bridge/shot_waiter` : quand tout est chargé, délai maximum, noms, `views.txt` | `FScreenshotRequest`, l'enchaînement de `Terrain.Views` |
