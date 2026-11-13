@@ -51,7 +51,8 @@ void UTerrainDevTools::RunSeed(const std::vector<std::string>& Args)
 		return;
 	}
 	Dev->Planet = std::make_unique<terrain::unreal::PlanetJob>(Choice, NewSeed,
-		World->State.IsValid() ? World->State->Session.tiles().world() : terrain::WorldSize{});
+		World->State.IsValid() ? World->State->Session.tiles().world() : terrain::WorldSize{},
+		TerrainDev::ToUtf8(World->Experimental.ExperimentalFlags));
 	TerrainDev::Log(FString::Printf(TEXT("Terrain.Seed %lld (%s): the planet file %s%s is read, or "
 		"built on a thread of its own (minutes for the whole planet), the world playing meanwhile"),
 		static_cast<long long>(Command->seed),

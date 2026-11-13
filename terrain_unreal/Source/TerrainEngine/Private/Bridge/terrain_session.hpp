@@ -3,6 +3,7 @@
 #include "edit_thread.hpp"
 #include "load_timeline.hpp"
 #include "planet_source.hpp"
+#include "session_flags.hpp"
 #include "terrain_edits.hpp"
 #include "tile_streamer.hpp"
 #include "tile_timings.hpp"
@@ -38,6 +39,11 @@ struct SessionParams {
     // lakes of the tiles and the horizon. Empty: the relief alone, without rivers or lakes.
     // UTF-8, as resolvePlanetPath gives it.
     std::string planetFile;
+    // The experimental flags of the world (session_flags.hpp), as written: they set the relief,
+    // the planet level (a planet file of other flags is refused: PlanetFlagsError), the water and
+    // the ecology. flagTable: their rows, the table of the world but in the tests.
+    std::string experimental;
+    std::span<const ExperimentalFlag> flagTable = experimentalFlags();
 };
 
 // The streamed world of an Unreal level: its tiles, the timings of their generations and
@@ -56,6 +62,8 @@ public:
     [[nodiscard]] const TerrainTiles& tiles() const { return tiles_; }
     // How the planet level was read or built (empty without a planet file).
     [[nodiscard]] const PlanetSource& planet() const { return planet_; }
+    // The experimental flags of the world and the parameters they set.
+    [[nodiscard]] const SessionFlags& flags() const { return flags_; }
     [[nodiscard]] TileTimings& timings() { return *timings_; }
     // The timeline of the loads (load_timeline.hpp): every generation of a tile is recorded in it.
     [[nodiscard]] LoadTimeline& timeline() { return *timeline_; }
@@ -103,7 +111,8 @@ private:
     void stageDone();
     void finishQueued();
 
-    PlanetSource planet_; // first: the tiles read its hydrology
+    SessionFlags flags_;  // first: the parameters of the world
+    PlanetSource planet_; // the tiles read its hydrology
     TerrainTiles tiles_;
     std::shared_ptr<TileTimings> timings_;
     std::shared_ptr<LoadTimeline> timeline_;
