@@ -10,8 +10,7 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projets
-eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -285,11 +284,12 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - puis, chacun dans sa zone : volcans, plateaux et karst, relief glaciaire, tous les milieux
   (biomes, milieux humides et côtiers, mers), couches de surface, reliefs fantastiques
 - en pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game design
-- relief de la vague 9 fusionné éteint, allumé ensemble par l'orchestrateur (R1) ; drapeaux
-  expérimentaux (F1, agent 51) : un agent ajoute son nom par une ligne de `kFlags`
-  (`src/generation/experimental_flags.cpp`, nom en minuscules, ce qu'il fait, les paramètres qu'il
-  pose) et un cas dans `experimental_flags_test` ; outils `--flags seas,...`, fichier planète
-  marqué de ses drapeaux (refusé sinon) ; texte vide = `main` au bit près (`seas_off_test`)
+- relief de la vague 9 fusionné éteint, allumé ensemble par l'orchestrateur (R1), par les drapeaux
+  expérimentaux (agent 51) : un agent ajoute son nom par une ligne de la table de
+  `experimental_flags.cpp` (nom en minuscules, ce qu'il fait, les paramètres qu'il pose) et un cas
+  de test ; ce qu'il ajoute au niveau Planète va dans une section du fichier planète
+  (`src/storage/planet_sections.hpp`) ; outils `--flags`, Unreal `Experimental.ExperimentalFlags` ;
+  aucun drapeau = `main` au bit près (`experimental_off_test`)
 
 ### Phase 10 — suite
 - Character qui marche, saute et tombe sur le terrain : vérifié avec le Character du

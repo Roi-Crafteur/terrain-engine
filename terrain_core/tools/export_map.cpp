@@ -323,6 +323,7 @@ int main(int argc, char** argv) {
     (void)tool_flags::apply(o.flags, params, flags); // checked with the options
     params.planet.threads = o.threads;
     params.water.ergs.enabled = params.water.ergs.enabled && o.ergs;
+    std::printf("experimental flags: \"%s\"\n", flags.c_str());
     const terrain::Heightfield relief(o.seed, params.relief, world);
     std::shared_ptr<const terrain::Hydrology> hydrology;
     if (!o.planet.empty()) {
@@ -342,9 +343,8 @@ int main(int argc, char** argv) {
     } else {
         std::printf("no planet file: the relief and the sea only, no rivers nor lakes\n");
     }
-    std::printf("experimental flags: \"%s\"\n", flags.c_str());
-    const terrain::TerrainTiles tiles(o.seed, params.relief, terrain::EcologyParams{},
-                                      std::nullopt, world, hydrology);
+    const terrain::TerrainTiles tiles(o.seed, params.relief, params.ecology, std::nullopt, world,
+                                      hydrology);
     const terrain::MapWorldSource source(tiles);
     terrain::MapLayers layers = terrain::defaultMapLayers();
     layers.add(terrain::kMapErgsLayer, terrain::ergsLayer(hydrology)); // nothing without a planet

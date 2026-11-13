@@ -208,6 +208,7 @@ add_library(terrain_core STATIC
     src/storage/frame_reader.cpp
     src/storage/modifications.cpp
     src/storage/planet_file.cpp
+    src/storage/planet_sections.cpp
     src/storage/region_file.cpp
     src/storage/section_codec.cpp
     src/storage/storage_codec.cpp

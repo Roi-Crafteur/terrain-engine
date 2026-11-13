@@ -5,6 +5,7 @@
 #include "file_commit.hpp"
 #include "frame_reader.hpp"
 #include "frame_stream.hpp"
+#include "planet_sections.hpp"
 #include "storage_codec.hpp"
 #include "terrain/storage/world_meta.hpp"
 
@@ -314,33 +315,6 @@ void readTotals(FrameReader& in, PlanetLevel::Parts& p) {
     s.deepestCut = in.f32();
 }
 
-// The version of a file of the flags flags: 1 without any (the file of main, bit for bit), 2 with.
-std::uint32_t versionFor(const std::string& flags) {
-    return flags.empty() ? 1U : kPlanetFileVersion;
-}
-
-std::span<const std::uint8_t> bytesOf(const std::string& text) {
-    return {reinterpret_cast<const std::uint8_t*>(text.data()), text.size()};
-}
-
-// The flags the file was built with ("" before version 2), which must be wanted: otherwise
-// PlanetFlagsError once its checksum holds (a damaged file is Corrupt).
-void checkFlags(FrameReader& in, const std::string& wanted, const std::string& file) {
-    std::string stored;
-    if (in.version() >= 2) {
-        const std::span<const std::uint8_t> text = in.take(in.count(1));
-        stored.assign(text.begin(), text.end());
-    }
-    if (stored != wanted) {
-        in.finish();
-        throw PlanetFlagsError(file + ": the planet level of the experimental flags \"" + stored +
-                                   "\", not \"" + wanted +
-                                   "\" as asked: never read nor replaced (build it with these "
-                                   "flags in another file, or ask for its flags)",
-                               stored, wanted);
-    }
-}
-
 // What the file says it holds: the level of seed on world, with these parameters, this
 // generator; otherwise stale.
 void checkOrigin(FrameReader& in, std::uint64_t seed, const PlanetParams& params,
@@ -358,13 +332,14 @@ void checkOrigin(FrameReader& in, std::uint64_t seed, const PlanetParams& params
     }
 }
 
-// The body of the planet file.
+// The body of the planet file: in version 2 its flags first and its sections last.
 template <class Out>
 void writeLevel(Out& out, const PlanetLevel& level, std::uint64_t checksum, std::uint64_t seed,
-                const WorldSize& world, const std::string& flags) {
-    if (versionFor(flags) >= 2) {
-        out.count(flags.size());
-        out.bytes(bytesOf(flags));
+                const WorldSize& world, const std::string& flags,
+                const std::vector<storage::SectionBytes>& sections) {
+    const bool second = storage::planetFileVersion(flags, sections) >= 2;
+    if (second) {
+        storage::writeFlags(out, flags);
     }
     out.u64(seed);
     out.u32(kReliefGeneratorVersion);
@@ -379,32 +354,43 @@ void writeLevel(Out& out, const PlanetLevel& level, std::uint64_t checksum, std:
     writeRivers(out, level.rivers());
     writeFeatures(out, level.features());
     writeTotals(out, level);
+    if (second) {
+        storage::writeSections(out, sections);
+    }
 }
 
 } // namespace
 
-void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
-                    std::uint64_t seed, const WorldSize& world, const std::string& flags) {
-    // Written in pieces, never whole in memory: its size counted first, for its header.
+void storage::savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
+                             std::uint64_t seed, const WorldSize& world, const std::string& flags,
+                             std::span<const PlanetSection> table) {
+    // Written in pieces, never whole in memory (but its sections): its size counted first.
     const std::uint64_t checksum = level.checksum();
-    storage::ByteCounter size;
-    writeLevel(size, level, checksum, seed, world, flags);
-    storage::commitStreamedFile(
+    const std::vector<SectionBytes> sections = encodeSections(level, table);
+    ByteCounter size;
+    writeLevel(size, level, checksum, seed, world, flags, sections);
+    commitStreamedFile(
         file,
-        [&](storage::DurableWriter& durable) {
-            storage::FrameStream out(durable, kMagic, versionFor(flags), size.size());
-            writeLevel(out, level, checksum, seed, world, flags);
+        [&](DurableWriter& durable) {
+            FrameStream out(durable, kMagic, planetFileVersion(flags, sections), size.size());
+            writeLevel(out, level, checksum, seed, world, flags, sections);
             out.finish();
         },
         {.keepBackups = false, .createDirectories = true});
 }
 
-PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
-                           const PlanetParams& params, const WorldSize& world,
-                           const std::string& flags) {
+void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
+                    std::uint64_t seed, const WorldSize& world, const std::string& flags) {
+    storage::savePlanetFile(file, level, seed, world, flags, storage::planetSections());
+}
+
+PlanetLevel storage::loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
+                                    const PlanetParams& params, const WorldSize& world,
+                                    const std::string& flags,
+                                    std::span<const PlanetSection> table) {
     // Read in pieces: only the level in memory, never the bytes of the file with it.
-    FrameReader in(file, kMagic, kPlanetFileVersion, storage::pathText(file));
-    checkFlags(in, flags, storage::pathText(file));
+    FrameReader in(file, kMagic, kPlanetFileVersion, pathText(file));
+    checkFlags(in, flags, pathText(file));
     checkOrigin(in, seed, params, world);
     const std::uint64_t checksum = in.u64();
     PlanetLevel::Parts parts;
@@ -414,14 +400,23 @@ PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed
     parts.rivers = readRivers(in);
     parts.features = readFeatures(in);
     readTotals(in, parts);
+    if (in.version() >= 2) {
+        readSections(in, parts, table);
+    }
     in.expectEnd("bytes after the level");
     in.finish();
     PlanetLevel level(std::move(parts));
     if (level.checksum() != checksum) {
         throw StorageError(StorageErrorKind::Corrupt,
-                           storage::pathText(file) + ": a level unlike its checksum");
+                           pathText(file) + ": a level unlike its checksum");
     }
     return level;
+}
+
+PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
+                           const PlanetParams& params, const WorldSize& world,
+                           const std::string& flags) {
+    return storage::loadPlanetFile(file, seed, params, world, flags, storage::planetSections());
 }
 
 PlanetLevel openPlanetLevel(const std::filesystem::path& file, std::uint64_t seed,

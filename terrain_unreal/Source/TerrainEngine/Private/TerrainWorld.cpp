@@ -2,6 +2,7 @@
 
 #include "Bridge/determinism_check.hpp"
 #include "Bridge/planet_source.hpp"
+#include "Bridge/session_flags.hpp"
 #include "Bridge/terrain_session.hpp"
 #include "Bridge/tile_streamer.hpp"
 #include "Bridge/tile_timings.hpp"
@@ -28,6 +29,7 @@
 #include "TerrainWorldStart.h"
 #include "TerrainWorldUploads.h"
 #include "TerrainWorldState.h"
+#include "TerrainWorldDevFlags.h"
 #include "TerrainWorldWater.h"
 
 #include <chrono>
@@ -71,7 +73,28 @@ namespace
 			World.LoadingSettings.bBoost ? TerrainLoadingCap(World) : 0);
 		Params.stream.maxLoadsPerUpdate =
 			static_cast<std::size_t>(FMath::Max(1, World.MaxTileUploadsPerFrame));
+		// The experimental flags of the world (agent 51, Bridge/session_flags.hpp).
+		Params.experimental = TCHAR_TO_UTF8(*World.Experimental.ExperimentalFlags);
 		return Params;
+	}
+
+	// The experimental flags of the session in the log: a line (From: where they come from, if not
+	// the actor), and a warning per unknown name.
+	void LogExperimentalFlags(const std::string& Text, const std::string& From)
+	{
+		const terrain::unreal::SessionFlags Flags = terrain::unreal::sessionFlags(Text);
+		for (const terrain::unreal::FlagLine& Line :
+			terrain::unreal::flagLines(Flags.applied, terrain::experimentalFlags(), From))
+		{
+			if (Line.warning)
+			{
+				UE_LOG(LogTerrainEngine, Warning, TEXT("%s"), *ToFString(Line.text));
+			}
+			else
+			{
+				UE_LOG(LogTerrainEngine, Log, TEXT("%s"), *ToFString(Line.text));
+			}
+		}
 	}
 } // namespace
 
@@ -164,6 +187,9 @@ bool ATerrainWorld::StartStreaming()
 			*ToFString(Exception.what()));
 		return false;
 	}
+	// Terrain.Flags (the tools) over the flags of the actor, and their planet file aside.
+	const std::string FlagsFrom = ApplyTerrainDevFlags(Params);
+	LogExperimentalFlags(Params.experimental, FlagsFrom);
 	if (!Params.planetFile.empty())
 	{
 		UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: opening the planet level of seed %lld "

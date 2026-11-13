@@ -50,7 +50,7 @@ terrain_probe --planet-check <fichier> [--json]
 terrain_probe --list-sections
 ```
 
-Chacune prend `--flags seas,...` : les drapeaux expérimentaux du monde (`experimental_flags.hpp`),
+Chacune prend `--flags a,b` : les drapeaux expérimentaux du monde (`experimental_flags.hpp`),
 aussi écrits dans le fichier planète ; un nom inconnu arrête l'outil.
 
 - **En-tête** :

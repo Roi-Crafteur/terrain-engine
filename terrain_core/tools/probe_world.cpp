@@ -57,7 +57,7 @@ ProbeWorld::ProbeWorld(const Options& options, std::shared_ptr<const terrain::Pl
         caves = terrain::CaveParams{};
     }
     tiles_ = std::make_unique<terrain::TerrainTiles>(seed_, params.relief,
-                                                     terrain::EcologyParams{}, caves,
+                                                     params.ecology, caves,
                                                      options.world, hydrology_);
 }
 

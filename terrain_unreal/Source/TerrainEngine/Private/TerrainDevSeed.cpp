@@ -9,6 +9,7 @@
 
 #if TERRAIN_DEV_TOOLS
 
+#include "Bridge/dev_flags.hpp"
 #include "Misc/Paths.h"
 #include "TerrainDevState.h"
 #include "TerrainWorld.h"
@@ -36,8 +37,11 @@ void UTerrainDevTools::RunSeed(const std::vector<std::string>& Args)
 	const auto NewSeed = static_cast<std::uint64_t>(Command->seed);
 	const std::string Base =
 		TerrainDev::ToUtf8(FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()));
-	const terrain::unreal::PlanetChoice Choice = terrain::unreal::choosePlanetFile(
+	terrain::unreal::PlanetChoice Choice = terrain::unreal::choosePlanetFile(
 		TerrainDev::ToUtf8(Dev->ConfiguredPlanetFile), NewSeed, Base);
+	// The flags of the actor, or of Terrain.Flags with their planet file aside (Bridge/dev_flags).
+	std::string Experimental = TerrainDev::ToUtf8(World->Experimental.ExperimentalFlags);
+	terrain::unreal::applyDevFlags(Choice, Experimental, NewSeed, Base);
 	Dev->PendingSeed = *Command;
 	// A world stopped on an error is released: the tools tick on without it until the new one.
 	if (!World->IsActorTickEnabled() && World->State.IsValid())
@@ -51,7 +55,8 @@ void UTerrainDevTools::RunSeed(const std::vector<std::string>& Args)
 		return;
 	}
 	Dev->Planet = std::make_unique<terrain::unreal::PlanetJob>(Choice, NewSeed,
-		World->State.IsValid() ? World->State->Session.tiles().world() : terrain::WorldSize{});
+		World->State.IsValid() ? World->State->Session.tiles().world() : terrain::WorldSize{},
+		Experimental);
 	TerrainDev::Log(FString::Printf(TEXT("Terrain.Seed %lld (%s): the planet file %s%s is read, or "
 		"built on a thread of its own (minutes for the whole planet), the world playing meanwhile"),
 		static_cast<long long>(Command->seed),

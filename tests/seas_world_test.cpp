@@ -7,6 +7,7 @@
 #include "seas_support.hpp"
 #include "test_assert.hpp"
 
+#include "terrain/generation/experimental_flags.hpp"
 #include "terrain/streaming/horizon_sampler.hpp"
 
 #include <algorithm>
@@ -184,6 +185,19 @@ void testHorizon() {
     TEST_CHECK(seaCells > 500 && seaChanged > seaCells / 2);
 }
 
+// The flag "seas" (experimental_flags.hpp) switches the seas on, and nothing else; off by default.
+void testFlag() {
+    terrain::WorldParams p;
+    const terrain::AppliedFlags a = terrain::applyExperimentalFlags("Seas", p);
+    const terrain::WorldParams d;
+    TEST_CHECK(a.text == "seas" && a.unknown.empty());
+    TEST_CHECK(p.water.seas.enabled && !d.water.seas.enabled);
+    TEST_CHECK(p.water.ergs.enabled == d.water.ergs.enabled &&
+               p.relief.geography.enabled == d.relief.geography.enabled &&
+               p.ecology.biomes.snowTemperature == d.ecology.biomes.snowTemperature);
+    TEST_CHECK(terrain::knownFlagNames().find("seas") != std::string::npos);
+}
+
 // The planet level is built before the seas and without them: its checksum is that of main.
 void testPlanet() {
     const std::uint64_t sum = dunes_test::small().planet->checksum();
@@ -216,6 +230,7 @@ void testThreads() {
 } // namespace
 
 int main() {
+    testFlag();
     testPlanet();
     testThreads();
     testSamples();
