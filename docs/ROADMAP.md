@@ -655,8 +655,38 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - à faire avant l'étape 1 de la 11C : le réseau d'eau doit voir ces creux
 
 ### Tous les milieux du monde (minimum voulu)
-- format à élargir d'abord : 12 biomes aujourd'hui, 16 biomes et 8 matériaux au plus par le format
-  actuel
+- format élargi (agent 49, #76) : biomes sur 6 bits (64), matériaux sur 5 bits (32), texels de
+  fondu de 16 octets. Le texel porte aussi le type d'eau de la colonne (pour l'agent 40) et garde
+  la place d'une couverture, part et type (sable, neige, cendre, sel : agent 44), et de la chaleur
+  du sol (phase 14)
+- fait (agent 49) : 21 biomes terrestres (forêt sèche, steppe, désert de sable, désert rocheux avec
+  regs et hamadas, désert froid, haute montagne, région polaire, désert de glace, garrigue et
+  maquis, broussailles), herbe des déserts à moins de 150 m d'un fleuve, plage et marais côtier
+  seulement près de la mer ; seuils froids réglés sur `snowTemperature` par des écarts nommés
+- places réservées aux autres agents (identifiants seulement, rien de codé) :
+
+  | Agent | Matériaux | Biomes |
+  |---|---|---|
+  | 45 (volcans) | 11-14 : cendre, basalte, scories, soufre | 21-22 : champ de lave, zone géothermique |
+  | 46 (plateaux, karst) | 15-16 : calcaire, grès rouge | — |
+  | 47 (glaciaire) | 17-18 : glace de glacier, moraine | 23 : glacier |
+  | 50 (humides et côtiers) | 19-22 : tourbe, croûte de sel, vasière, galets de plage | 24-33 |
+  | 51 (mers) | 23-25 : corail, glace de mer, vase des abysses | 34-39 |
+  | libres | 26-31 | 40-63 |
+
+- à R1, réglage fin des seuils des biomes sur la table des 6 seeds. Le climat de la planète bouge
+  alors (latitude « sphère » et bandes fondues de l'agent 31). Écarts mesurés sur le climat actuel
+  (planète réelle, 38 071 points de terre ; réglage grossier jusque-là) :
+  - trop de froid : désert de glace, neige et région polaire couvrent 24 % des terres, contre
+    environ 11 % sur Terre (inlandsis) ;
+  - trop peu de forêt tropicale humide : 2,5 % contre environ 14 % ;
+  - garrigue et maquis trop larges (4,8 % contre 2,2 %), prairies et steppes aussi (10,6 % contre
+    6,9 %) ;
+  - lignes droites de l'humidité de la planète (bandes de vent, ligne à 30°), encore visibles à
+    200 km : le gauchissement de ±12 km ne casse que les plis de la grille de 8 km. L'agent 31
+    les lisse à la source ;
+  - pour information : le sable couvre 5 % des déserts, contre environ 20 % sur Terre, car le
+    masque des ergs (agent 34) ne couvre que 0,87 % des terres
 - un milieu n'est pas toujours un biome : il peut être un biome, un relief, un marquage ou un lieu
 - terrestres : forêts tropicale, tempérée, boréale et sèche, savane, prairie, steppe, plaine, déserts
   de sable, rocheux et froid, toundra, montagne, haute montagne, vallée, colline, plateau, canyon,
