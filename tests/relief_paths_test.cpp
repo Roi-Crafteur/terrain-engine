@@ -48,8 +48,9 @@ using terrain::WaterKind;
 using Known = Tally::Known;
 
 constexpr std::array<double, 8> kFootprints = {0.0, 1.0, 2.0, 4.0, 8.0, 32.0, 128.0, 512.0};
-constexpr std::size_t kHorizonEvery = 8; // the horizon on one point in 8
-constexpr std::size_t kTileEvery = 32;   // a LOD 3 tile around one point in 32
+// The horizon on one point in 2 of each stratum, a LOD 3 tile around one in 8.
+constexpr std::size_t kHorizonEvery = 2;
+constexpr std::size_t kTileEvery = 8;
 
 std::optional<FieldDiff> heightDiff(const char* name, float expected, float read) {
     return same(expected, read) ? std::nullopt
@@ -184,14 +185,16 @@ void testHorizon(const terrain::TerrainTiles& tiles, const std::vector<Point>& p
         const int pitch = terrain::levelPitch(params, level);
         const Heightfield field = tiles.heightfield().forFootprint(pitch);
         const terrain::HorizonIndex counts = terrain::levelCounts(params, level);
-        for (std::size_t n = 0; n < points.size(); n += kHorizonEvery) {
-            const Point& p = points[n];
+        for (const Point& p : points) {
+            if (p.rank % kHorizonEvery != 0) {
+                continue;
+            }
             const terrain::HorizonIndex at = terrain::canonicalSample(
                 {static_cast<std::int64_t>(std::floor(p.x / pitch)),
                  static_cast<std::int64_t>(std::floor(p.z / pitch))},
                 counts);
             const Point q{terrain::samplePosition(at.x, pitch),
-                          terrain::samplePosition(at.z, pitch), p.stratum, p.inBand};
+                          terrain::samplePosition(at.z, pitch), p.stratum, p.inBand, p.rank};
             const HorizonCell read = sampler.sample(level, {at.x, at.z, at.x + 1, at.z + 1})[0];
             const HorizonCell expected = expectedCell(field, tiles.ecology(), q.x, q.z, pitch,
                                                       params.materialSlopeStep);
@@ -216,7 +219,7 @@ void compareColumns(const Heightfield& level, const terrain::TileData& data,
             const auto at = static_cast<std::size_t>(k * terrain::kGridSamples + i);
             const Point q{lattice.x0 + static_cast<double>(i) * lattice.spacing,
                           lattice.z0 + static_cast<double>(k) * lattice.spacing, p.stratum,
-                          p.inBand};
+                          p.inBand, p.rank};
             const HeightSample ref = level.sampleAt(q.x, q.z);
             HeightSample read = ref; // the fields the columns keep, from them
             read.height = columns.heights[at];
@@ -245,8 +248,12 @@ void compareColumns(const Heightfield& level, const terrain::TileData& data,
 }
 
 // Whether the faces, ramps and spires of the coasts move the ground of horizon level 0 around
-// the texel at (x, z) (its site, its rise): the tiles keep the relief there, by design.
+// the texel at (x, z) (its site, its rise): the tiles keep the relief there, by design. Only in
+// the band of the coasts, where seenAt may differ from sampleAt.
 bool facedAround(const Heightfield& level, double x, double z) {
+    if (!level.coastAt(x, z).inBand) {
+        return false;
+    }
     for (const auto& [dx, dz] : {std::array<double, 2>{0, 0}, {8, 0}, {-8, 0}, {0, 8}, {0, -8},
                                  {16, 0}, {-16, 0}, {0, 16}, {0, -16}}) {
         if (!same(level.sampleAt(x + dx, z + dz).height,
@@ -276,7 +283,8 @@ void compareTexels(const Heightfield& level, const terrain::HorizonSampler& samp
         for (int i = 0; i < terrain::kTileBlendTexels; ++i) {
             const int stride = terrain::kTileBlendStride;
             const Point q{data.originX + i * stride * kTilePitch,
-                          data.originZ + k * stride * kTilePitch, p.stratum, p.inBand};
+                          data.originZ + k * stride * kTilePitch, p.stratum, p.inBand,
+                          p.rank};
             const terrain::BlendTexel texel =
                 data.surfaceBlend[static_cast<std::size_t>(k * terrain::kTileBlendTexels + i)];
             const HorizonCell& cell = cells[static_cast<std::size_t>(stride * k * side + stride * i)];
@@ -301,8 +309,10 @@ void testTiles(const terrain::TerrainTiles& tiles, const std::vector<Point>& poi
     params.crestRatio = 0;
     const terrain::HorizonSampler sampler(tiles.heightfield(), tiles.ecology(), params);
     const Heightfield level = tiles.heightfield().forFootprint(kTilePitch);
-    for (std::size_t n = 0; n < points.size(); n += kTileEvery) {
-        const Point& p = points[n];
+    for (const Point& p : points) {
+        if (p.rank % kTileEvery != 0) {
+            continue;
+        }
         const terrain::ChunkCoord chunk{
             static_cast<int>(std::floor(p.x / terrain::kChunkSizeMeters)),
             static_cast<int>(std::floor(p.z / terrain::kChunkSizeMeters))};

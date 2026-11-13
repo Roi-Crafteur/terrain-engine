@@ -24,10 +24,10 @@
 namespace relief_paths {
 
 // The kinds of ground the paths go through. A point takes the first that holds (classify).
-enum class Stratum : std::uint8_t { River, Erg, Depression, Coast, Wall, Sea, Land };
+enum class Stratum : std::uint8_t { River, Wall, Depression, Erg, Coast, Sea, Land };
 inline constexpr std::size_t kStrata = 7;
 inline constexpr std::array<const char*, kStrata> kStratumNames = {
-    "river corridor", "erg", "dry depression", "coast band", "wall", "sea", "land"};
+    "river corridor", "wall", "dry depression", "erg", "coast band", "sea", "land"};
 inline constexpr std::size_t kQuota = 285; // points per stratum: about 2,000 in all
 
 [[nodiscard]] inline std::size_t indexOf(Stratum s) {
@@ -38,29 +38,38 @@ struct Point {
     double x = 0.0; // canonical
     double z = 0.0;
     Stratum stratum = Stratum::Land;
-    bool inBand = false; // in the band of the coasts (CoastSample::inBand): seenAt may move it
+    bool inBand = false;   // in the band of the coasts (CoastSample::inBand): seenAt may move it
+    std::size_t rank = 0;  // among the points of its stratum, in the order they were drawn
 };
 
-// A window of the world where a stratum is drawn: a place of data/dev/places.json (copied here:
-// a rebuilt planet moves them, the test says which stratum then lacks points), half its side.
+// A window of the world where a stratum is drawn, half its side: places of data/dev/places.json
+// and dry depressions of Heightfield::depressions (no lake on their floor), copied here as
+// measured on the planet of main 8cfd1cf (the list costs seconds to build). A rebuilt planet or
+// another relief may move them: the test then says which stratum lacks points.
 struct Anchor {
     double x = 0.0;
     double z = 0.0;
     double half = 0.0;
     Stratum stratum = Stratum::Land;
 };
-inline constexpr std::array<Anchor, 10> kAnchors = {{
+inline constexpr std::array<Anchor, 12> kAnchors = {{
     {-323'111.0, 3'952'778.0, 20'000.0, Stratum::Erg},        // geantes_pied_mur
     {-1'197'516.0, -3'359'230.0, 20'000.0, Stratum::Erg},     // erg_barchanes_homme
     {-241'631.0, -86'277.0, 1'500.0, Stratum::River},         // fleuve_plaine
     {-6'185'104.0, 155'924.0, 1'500.0, Stratum::River},       // chute388_bassin
     {416'102.0, -11'414'891.0, 2'000.0, Stratum::Wall},       // k2_paroi
-    {-410'000.0, 4'589'844.0, 15'000.0, Stratum::Depression}, // depression_seche_fond
+    {-401'704.0, 4'589'844.0, 20'000.0, Stratum::Depression}, // depression_seche_fond
+    {779'833.0, 3'979'302.0, 27'000.0, Stratum::Depression},  // floor -94 m
+    {7'840'870.0, 4'794'944.0, 24'000.0, Stratum::Depression}, // floor -322 m
     {429'778.8, -855'913.3, 4'000.0, Stratum::Coast},         // cote_falaise_encoche
     {160.0, 0.0, 4'000.0, Stratum::Coast},                    // plage_origine
     {1'819'677.0, 9'928'285.0, 4'000.0, Stratum::Coast},      // cote_fjord_axe
     {-26'488'769.4, 7'401'625.9, 2'000.0, Stratum::Coast},    // stack_arche
 }};
+// The draws over the whole world: sites, and kSiteDraws points within kSiteReach of each (the
+// first point of a region of the planet costs far more than the next ones).
+inline constexpr int kSiteDraws = 8;
+inline constexpr double kSiteReach = 1'000.0;
 
 // Deterministic draws in [-1, 1).
 class Draws {
@@ -74,34 +83,43 @@ private:
     std::uint64_t state_ = 55;
 };
 
-// The stratum of the point (x, z) of field (the world with its water, footprint 0); walls are
-// sought only where asked (the rock of a column costs more).
+[[nodiscard]] inline bool inland(terrain::WaterKind w) {
+    return w == terrain::WaterKind::River || w == terrain::WaterKind::Lake;
+}
+
+// The stratum of the point (x, z) of field (the world with its water, footprint 0). A river
+// corridor: a river or a lake at the point or 30 m from it (its banks). Walls are sought only
+// where asked (the rock of a column costs more).
 [[nodiscard]] inline Stratum classify(const terrain::Heightfield& field, double x, double z,
                                       bool walls) {
     const terrain::HeightSample s = field.sampleAt(x, z);
-    using terrain::WaterKind;
-    if (s.water == WaterKind::River || s.water == WaterKind::Lake ||
-        coast_planet::nearRiver(x, z)) {
+    constexpr double kBank = 30.0;
+    if (inland(s.water) || inland(field.sampleAt(x + kBank, z).water) ||
+        inland(field.sampleAt(x - kBank, z).water) ||
+        inland(field.sampleAt(x, z + kBank).water) ||
+        inland(field.sampleAt(x, z - kBank).water)) {
         return Stratum::River;
+    }
+    if (walls && field.rockAt(x, z).hasRock() && !field.coastAt(x, z).inBand) {
+        return Stratum::Wall;
+    }
+    using terrain::WaterKind;
+    if (s.height < 0.0f && (s.water == WaterKind::None || s.water == WaterKind::SaltLake)) {
+        return Stratum::Depression;
     }
     if (s.erg > 0.5f) {
         return Stratum::Erg;
     }
-    if (s.height < 0.0f && (s.water == WaterKind::None || s.water == WaterKind::SaltLake)) {
-        return Stratum::Depression;
-    }
     if (field.coastAt(x, z).inBand) {
         return Stratum::Coast;
-    }
-    if (walls && field.rockAt(x, z).hasRock()) {
-        return Stratum::Wall;
     }
     return s.water == WaterKind::Ocean ? Stratum::Sea : Stratum::Land;
 }
 
 // About kQuota points of each stratum: round after round, a draw in the window of each anchor
-// whose stratum still lacks points, and one over the whole world, each kept by the stratum it
-// falls in while that one lacks points.
+// whose stratum still lacks points, and while the sea or the land lacks points, a site over the
+// whole world with kSiteDraws draws around it; each kept by the stratum it falls in while that
+// one lacks points.
 [[nodiscard]] inline std::vector<Point> drawPoints(const terrain::Heightfield& field) {
     std::array<std::size_t, kStrata> counts{};
     std::vector<Point> points;
@@ -112,8 +130,7 @@ private:
         z = terrain::noise::wrapCanonical(z, world.z);
         const Stratum s = classify(field, x, z, walls);
         if (counts[indexOf(s)] < kQuota) {
-            ++counts[indexOf(s)];
-            points.push_back({x, z, s, field.coastAt(x, z).inBand});
+            points.push_back({x, z, s, field.coastAt(x, z).inBand, counts[indexOf(s)]++});
         }
     };
     for (int round = 0; round < 4'000 && points.size() < kQuota * kStrata; ++round) {
@@ -123,8 +140,14 @@ private:
                 keep(a.x + dx, a.z + a.half * draws.next(), a.stratum == Stratum::Wall);
             }
         }
-        const double gx = 0.5 * world.x * draws.next();
-        keep(gx, 0.5 * world.z * draws.next(), false);
+        if (counts[indexOf(Stratum::Sea)] < kQuota || counts[indexOf(Stratum::Land)] < kQuota) {
+            const double sx = 0.5 * world.x * draws.next();
+            const double sz = 0.5 * world.z * draws.next();
+            for (int n = 0; n < kSiteDraws; ++n) {
+                const double dx = kSiteReach * draws.next();
+                keep(sx + dx, sz + kSiteReach * draws.next(), false);
+            }
+        }
     }
     for (std::size_t s = 0; s < kStrata; ++s) {
         std::printf("stratum %-15s %4zu points\n", kStratumNames[s], counts[s]);
