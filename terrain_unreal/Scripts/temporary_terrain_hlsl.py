@@ -37,18 +37,18 @@ def sea_ground_hlsl(code):
 STRUCT_HLSL = r"""
 struct FTemporaryTerrain
 {
-    // The layers of a texel: its packed surface (material + 8 biome, plus 128 under a lake or a
+    // The layers of a texel: its packed surface (material + 32 biome, plus 2048 under a lake or a
     // river, Bridge/terrain_surface.hpp) or, on the ocean, a negative ground: the water of the
     // ocean (the sand of the shallows), or the rock (4) where it lies kSeaRockCode lower (from
     // half of it on, Bridge/horizon_textures.hpp).
     void Layers(float code, out float4 a, out float4 b, out float2 c)
     {
-        const float4 BA[12] = { BIOME_A };
-        const float4 BB[12] = { BIOME_B };
-        const float2 BC[12] = { BIOME_C };
-        int v = code < 0.0 ? (code <= -SEA_ROCK_HALF ? 4 : 0) : (int)(code + 0.5) % 128;
-        int m = v % 8;
-        int biome = min(v / 8, 11);
+        const float4 BA[NBIOMES] = { BIOME_A };
+        const float4 BB[NBIOMES] = { BIOME_B };
+        const float2 BC[NBIOMES] = { BIOME_C };
+        int v = code < 0.0 ? (code <= -SEA_ROCK_HALF ? 4 : 0) : (int)(code + 0.5) % 2048;
+        int m = v % 32;
+        int biome = min(v / 32, LASTBIOME);
         a = BA[biome]; b = BB[biome]; c = BC[biome];
         float4 z = float4(0.0, 0.0, 0.0, 0.0);
         if (m == 0 && biome != 0) { a = z; b = float4(0.5, 0.0, 0.0, 0.5); }           // river bed
@@ -516,7 +516,7 @@ def struct_hlsl(biomes):
             cells = ", ".join(f"{float(x):.2f}" for x in biome[index])
             values.append(f"float{width}({cells})")
         return ", ".join(values)
-    return (STRUCT_HLSL.replace("BLEND_FUNCTIONS", blend_code.BLEND_HLSL)
+    return blend_code.fill(STRUCT_HLSL.replace("BLEND_FUNCTIONS", blend_code.BLEND_HLSL)
             .replace("BIOME_A", rows(0, 4)).replace("BIOME_B", rows(1, 4))
             .replace("BIOME_C", rows(2, 2)).replace("TEXELS", str(TILE_BLEND_TEXELS))
             .replace("SEA_ROCK_HALF", f"{0.5 * SEA_ROCK_CODE:.1f}"))

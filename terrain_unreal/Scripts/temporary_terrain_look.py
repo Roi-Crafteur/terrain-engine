@@ -119,6 +119,8 @@ BIOMES = [
     ((0, 0, 0, 0.4), (0, 0, 0, 0.6), (1, 0)),      # snow
     ((0.6, 0, 0, 0), (0.4, 0, 0, 0), (0, 0)),      # marsh
 ]
+# One row per biome of the core, in its order: the tables of the HLSL hold that many.
+assert len(BIOMES) == hlsl.blend_code.BIOME_COUNT, "BIOMES needs a row per biome of the core"
 
 POSITION_HLSL = hlsl.POSITION_HLSL
 
