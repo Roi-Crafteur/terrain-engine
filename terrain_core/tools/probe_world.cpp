@@ -26,7 +26,7 @@ terrain::PlanetParams planetParams(const Options& o) {
 
 ProbeWorld::ProbeWorld(const Options& options, std::shared_ptr<const terrain::PlanetLevel> planet)
     : options_(options), seed_(options.seed),
-      relief_(options.seed, options.relief, options.world),
+      relief_(options.seed, terrain::HeightfieldParams{}, options.world),
       planet_(std::move(planet)) {
     if (planet_ != nullptr) {
         hydrology_ = std::make_shared<const terrain::Hydrology>(seed_, relief_, planet_);
@@ -35,7 +35,7 @@ ProbeWorld::ProbeWorld(const Options& options, std::shared_ptr<const terrain::Pl
     if (options.caves) {
         caves = terrain::CaveParams{};
     }
-    tiles_ = std::make_unique<terrain::TerrainTiles>(seed_, options.relief,
+    tiles_ = std::make_unique<terrain::TerrainTiles>(seed_, terrain::HeightfieldParams{},
                                                      terrain::EcologyParams{}, caves,
                                                      options.world, hydrology_);
 }
@@ -60,7 +60,7 @@ OpenedPlanet openPlanet(const Options& o) {
     }
     bool built = false;
     out.level = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
-        o.planet, o.seed, o.relief, planetParams(o), o.world, &built));
+        o.planet, o.seed, terrain::HeightfieldParams{}, planetParams(o), o.world, &built));
     out.status = built ? "built" : "read";
     return out;
 }

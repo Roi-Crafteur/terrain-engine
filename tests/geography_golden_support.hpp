@@ -48,14 +48,18 @@ inline std::uint64_t samplesChecksum(const terrain::Heightfield& field, double x
 
 inline std::vector<Part> geographyParts() {
     using namespace geography_detail;
-    const terrain::Heightfield field(kSeed, geographyParams());
-    const terrain::Heightfield small(kSeed, geographyParams(), kSmallWorld);
+    const terrain::Heightfield field(kSeed, reliefParams(geographyParams()));
+    const terrain::Heightfield small(kSeed, reliefParams(geographyParams()), kSmallWorld);
     return {
-        {"geography map", field.geography()->checksum(), 0xDFACFE2A9CEDBB3DULL},
+        // The high surfaces of the plateaus (agent 46, the flag "tablelands") change the
+        // intensity of the relief of the map, and so the samples below.
+        {"geography map", field.geography()->checksum(),
+         pick("tablelands", 0xDFACFE2A9CEDBB3DULL, 0xB38C98FC17E1D718ULL)},
         {"geography map, small world", small.geography()->checksum(), 0xA0514511395504C4ULL},
         // The coasts (agent 33) change 9 of its 1,024 points, all in their band (0x96F897D9B46A5FE7
         // without them).
-        {"geography 1000 km", samplesChecksum(field, -16e6, -16e6, 1e6, 32), 0xA21476850ABE032DULL},
+        {"geography 1000 km", samplesChecksum(field, -16e6, -16e6, 1e6, 32),
+         pick("tablelands", 0xA21476850ABE032DULL, 0x9D6817F26196B46BULL)},
         {"geography 10 km", samplesChecksum(field, -320e3, -320e3, 10e3, 64),
          0xF0D18E01F55AD1F9ULL},
         {"geography coast 25 m", samplesChecksum(field, -800.0, -800.0, 25.0, 64),

@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -376,8 +377,11 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     montagnes, chaîne de la collision d'un côté, chaîne de bordure de l'autre, chaînes intérieures
     sur ~15 % de la surface. La part des hautes terres à moins de 300 m de relief sur 10 km
     (`terrain_export_relief`) passe de 0,2 % à plusieurs % des hautes terres.
-  - Les outils prennent `--flags tablelands,karst` (provisoire, remplacé par le mécanisme commun de
-    l'agent 51).
+  - Les outils (`terrain_export_relief`, `terrain_export_map`) prennent `--flags tablelands,karst` :
+    les drapeaux de l'agent 51 (`experimental_flags.hpp`, copié en attendant sa PR ; mes deux lignes
+    passent dans sa table). Les sommes allumées sont dans les variantes des goldens
+    (`--flags tablelands` : `heightfield_golden_test`, `coast_outside_test`,
+    `mountain_freeze_test`).
   - Pour l'agent 52, règle : aucun creux dans ces provinces, surfaces de plateau comprises. Un site
     de centre (x, z) et de rayon d'action r est refusé si `field.tablelandAt(px, pz).any()`
     (`Heightfield::tablelandAt`) est vrai au centre ou en un point des anneaux à r / 2 et à r, tous

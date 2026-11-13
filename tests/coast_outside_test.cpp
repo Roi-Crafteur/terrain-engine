@@ -316,24 +316,27 @@ double seconds(std::chrono::steady_clock::time_point since) {
 
 void testDefaultWorld() {
     const auto start = std::chrono::steady_clock::now();
-    const terrain::TerrainTiles tiles(kSeed);
+    const terrain::TerrainTiles tiles(kSeed, golden::reliefParams());
     const Sums sums = worldSums("default world", tiles, 0x33C0A5711ULL, 10);
     std::printf("default world in %.1f s\n", seconds(start));
     golden::report("the default world out of the coastal zone",
                    {{"default world patches", sums.patches.value(), 0x12BBBAA19D5D777FULL},
-                    {"default world tiles", sums.tiles.value(), 0x51D8B009355E8A97ULL},
+                    // A place of the tiles lies on a high surface of a plateau (agent 46, the
+                    // flag "tablelands").
+                    {"default world tiles", sums.tiles.value(),
+                     golden::pick("tablelands", 0x51D8B009355E8A97ULL, 0xAEE381B859A94B1FULL)},
                     {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
 }
 
 void testSmallWorldWithWater() {
     const auto start = std::chrono::steady_clock::now();
-    const Heightfield relief(kSeed, terrain::HeightfieldParams{}, golden::kSmallPlanet);
+    const Heightfield relief(kSeed, golden::reliefParams(), golden::kSmallPlanet);
     const int threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     auto planet = std::make_shared<const terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(threads)),
         golden::smallPlanetParams(threads));
     auto hydrology = std::make_shared<const terrain::Hydrology>(kSeed, relief, planet);
-    const terrain::TerrainTiles tiles(kSeed, terrain::HeightfieldParams{}, {}, std::nullopt,
+    const terrain::TerrainTiles tiles(kSeed, golden::reliefParams(), {}, std::nullopt,
                                       golden::kSmallPlanet, hydrology);
     std::printf("small world planet level and water in %.1f s\n", seconds(start));
     const Sums sums = worldSums("small world", tiles, 0x33C0A5722ULL, 8);
@@ -352,7 +355,8 @@ void testSmallWorldWithWater() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     testDefaultWorld();
     testSmallWorldWithWater();
     return test::result();

@@ -5,10 +5,9 @@
 // terrain::measureRelief, measureLocalRelief, measureTerrain and measurePeaks (printed, and
 // written to stats.txt). --without ravines, --without lively or --without coasts switches off a
 // step of the relief of the geography (GeographyParams::ravines, livelyPlains, coasts), to compare
-// them. --flags tablelands,karst switches on the relief of wave 9 that is off by default
-// (relief_flags.hpp, provisional). Without the optional arguments: seed 20261019, the default
-// relief, cells of 16,384 m for
-// the planet, zooms of 2,048 px, all the hardware threads, the default world.
+// them. --flags: the experimental flags of the world (experimental_flags.hpp), such as
+// "tablelands,karst". Without the optional arguments: seed 20261019, the default relief, cells of
+// 16,384 m for the planet, zooms of 2,048 px, all the hardware threads, the default world.
 // Usage: terrain_export_relief <output-dir> [seed] [default|planetary|legacy|geography] [cell-size]
 //        [zoom-pixels] [threads] [world-x] [world-z] [--at <name> <x> <z>]...
 //        [--without ravines|lively|coasts]... [--flags <a,b,...>]
@@ -17,7 +16,7 @@
 #include "terrain/io/relief_png.hpp"
 #include "terrain/io/relief_stats.hpp"
 
-#include "relief_flags.hpp"
+#include "tool_flags.hpp"
 
 #include <algorithm>
 #include <array>
@@ -59,7 +58,7 @@ struct Options {
     bool ravines = true; // GeographyParams::ravines, livelyPlains
     bool lively = true;
     bool coasts = true; // GeographyParams::coasts
-    std::string flags;  // --flags: the relief of wave 9 switched on (relief_flags.hpp)
+    std::string flags;  // --flags: the experimental flags of the world
     std::uint64_t seed = terrain::kDefaultWorldSeed;
     std::string relief = "default";
     double cellSize = 16384.0;
@@ -86,11 +85,11 @@ terrain::HeightfieldParams reliefParams(const Options& options) {
     params.geography.ravines = options.ravines;
     params.geography.livelyPlains = options.lively;
     params.geography.coasts = options.coasts;
-    std::string bad;
-    if (!options.flags.empty()) {
-        static_cast<void>(terrain_tools::setReliefFlags(options.flags, params, bad));
-    }
-    return params;
+    terrain::WorldParams world;
+    world.relief = params;
+    std::string canonical;
+    (void)tool_flags::apply(options.flags, world, canonical); // checked with the options
+    return world.relief;
 }
 
 bool parseWorld(int argc, char** argv, Options& options) {
@@ -148,10 +147,11 @@ bool parsePlaces(int argc, char** argv, Options& options, std::vector<char*>& ke
             continue;
         }
         if (std::strcmp(argv[k], "--flags") == 0) {
-            terrain::HeightfieldParams check;
-            std::string bad;
-            if (k + 1 >= argc || !terrain_tools::setReliefFlags(argv[k + 1], check, bad)) {
-                return fail("flags", k + 1 < argc ? argv[k + 1] : "", "tablelands or karst");
+            terrain::WorldParams check;
+            std::string canonical;
+            if (k + 1 >= argc || !tool_flags::apply(argv[k + 1], check, canonical)) {
+                return fail("flags", k + 1 < argc ? argv[k + 1] : "",
+                            terrain::knownFlagNames().c_str());
             }
             options.flags = argv[k + 1];
             ++k;

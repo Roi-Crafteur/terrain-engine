@@ -3,16 +3,11 @@
 // minutes for the whole planet), unless the file already holds it; then reads it back to check it.
 // With --memory, prints for each stage its seconds, the heap at its end and at its peak, and the
 // peak of the process (MiB), then the peaks of the whole run.
-// --flags tablelands,karst: the relief of wave 9 switched on (relief_flags.hpp, provisional): the
-// file holds the planet level of that relief, but its header does not hold the flags.
 // Usage: terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>] [--memory]
-//        [--flags <a,b,...>]
 
 #include "heap_counter.hpp"
 #include "process_memory.hpp"
 #include "terrain/storage/planet_file.hpp"
-
-#include "relief_flags.hpp"
 
 #include <charconv>
 #include <chrono>
@@ -40,7 +35,6 @@ struct Options {
     terrain::WorldSize world;
     int threads = 0;
     bool memory = false;
-    terrain::HeightfieldParams relief; // --flags
 };
 
 bool parseOptions(int argc, char** argv, Options& o) {
@@ -61,9 +55,6 @@ bool parseOptions(int argc, char** argv, Options& o) {
         } else if (flag == "--memory") {
             o.memory = true;
             ok = true;
-        } else if (flag == "--flags" && i + 1 < argc) {
-            std::string bad;
-            ok = terrain_tools::setReliefFlags(argv[++i], o.relief, bad);
         }
         if (!ok) {
             std::fprintf(stderr, "Invalid option '%s'\n", argv[i]);
@@ -117,7 +108,7 @@ int main(int argc, char** argv) {
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
                      "Usage: %s <file> [--seed <seed>] [--world <x> <z>] [--threads <n>] "
-                     "[--memory] [--flags <a,b,...>]\n",
+                     "[--memory]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
@@ -138,7 +129,7 @@ int main(int argc, char** argv) {
         {
             // Only its checksum is kept: the file is read back without the level in memory.
             const terrain::PlanetLevel level = terrain::openPlanetLevel(
-                o.file, o.seed, o.relief, params, o.world, &built, probe);
+                o.file, o.seed, terrain::HeightfieldParams{}, params, o.world, &built, probe);
             checksum = level.checksum();
         }
         const double seconds =

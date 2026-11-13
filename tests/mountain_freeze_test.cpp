@@ -122,7 +122,7 @@ bool sameBits(const HeightSample& a, const HeightSample& b) {
 // a river lies below the relief or its floor fills it, Hydrology::riversAt) are left out; every
 // other one keeps every bit of the relief alone, the lakes only laying their water over it.
 void testWithWater() {
-    const terrain::Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
+    const terrain::Heightfield relief(terrain::kDefaultWorldSeed, golden::reliefParams(),
                                       golden::kSmallPlanet);
     auto planet = std::make_shared<const terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(2)),
@@ -178,13 +178,16 @@ void testWithWater() {
 
 } // namespace
 
-int main() {
-    const terrain::Heightfield field(terrain::kDefaultWorldSeed);
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
+    const terrain::Heightfield field(terrain::kDefaultWorldSeed, golden::reliefParams());
     const Window windows[] = {
         {"k2 scene, 8 km at 25 m", 416'857.0, -11'405'966.0, 25.0, 321, 0xF9B398B8FB28A571ULL},
         {"highest wall, 1 km at 4 m", 416'000.0, -11'414'800.0, 4.0, 251, 0x1D45408B42DF87EEULL},
+        // On a high plateau: its surface comes down to the rim range with the flag "tablelands"
+        // (agent 46).
         {"foot of the fixed chain, 24 km at 100 m", -27'744'000.0, 4'734'000.0, 100.0, 241,
-         0x03E397534BA52149ULL},
+         golden::pick("tablelands", 0x03E397534BA52149ULL, 0x37CD027033511143ULL)},
         {"foot of the default chain, 24 km at 100 m", 9'630'245.0, -11'029'895.0, 100.0, 241,
          0x923AADA4496FDE08ULL},
     };
@@ -200,7 +203,9 @@ int main() {
     }
     // Pinned on the code of main (cb64153) once the points of the coastal zone were taken out of
     // the draw (0xB6C1FF0E32307E10 with them).
-    constexpr std::uint64_t kDrawn = 0x4D77F4B4ADE22B7BULL;
+    // The flag "tablelands" (agent 46) changes 407 of them (the high surfaces of the plateaus).
+    const std::uint64_t kDrawn =
+        golden::pick("tablelands", 0x4D77F4B4ADE22B7BULL, 0x474D2BE034EA195BULL);
     int count = 0;
     const std::uint64_t drawn = drawnSum(field, 20'000, count);
     std::printf("{\"drawn points\", 0x%016" PRIX64 "ULL}%s\n", drawn,

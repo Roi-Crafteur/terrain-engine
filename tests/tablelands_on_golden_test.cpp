@@ -1,24 +1,19 @@
-// The default world with the plateaus and the karst switched on (agent 46; off by default until the
-// relief of wave 9 is switched on all at once, R1): the checksums of what they make of it, apart
-// from the goldens of the world of every day (unchanged: they are off there). And what switching
-// them on does to the frozen mountains (mountain_freeze_test), for R1: how many of its points drawn
-// under the mountains change, the share of the mountains their zone covers; its four windows stay
-// out of it. A sum that changes prints its new value; it must not be pasted back unless the
-// plateaus or the karst are meant to change.
+// What switching the plateaus and the karst on (agent 46; off by default until the relief of wave 9
+// is switched on all at once, R1) does to the frozen mountains (mountain_freeze_test), for R1: how
+// many of its points drawn under the mountains change (at most a fifth), the share of the mountains
+// their zone covers; three of its four windows keep every bit. Their checksums switched on are in
+// the variants of the goldens (golden_support.hpp: --flags tablelands, tablelands_tests.cmake).
 #include "coast_zone_support.hpp"
 #include "golden_support.hpp"
 #include "tablelands_support.hpp"
 #include "test_assert.hpp"
 
-#include "terrain/generation/pre_climate.hpp"
 #include "terrain/generation/tablelands.hpp"
 
 #include <array>
 #include <bit>
-#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
-#include <vector>
 
 namespace {
 
@@ -120,17 +115,6 @@ int main() {
     const Heightfield off(terrain::kDefaultWorldSeed);
     const Heightfield& on = tablelands_test::field();
     TEST_CHECK(off.tablelands() == nullptr);
-    const terrain::WorldSize world{};
-    const std::vector<golden::Part> parts = {
-        {"geography map", on.geography()->checksum(), 0xB38C98FC17E1D718ULL},
-        {"pre-climate", on.tablelands()->climate().checksum(), 0xECC31F82FD095DCBULL},
-        {"provinces", on.tablelands()->checksum(), 0xAFFDD27A321F0ED3ULL},
-        {"heights 1000 km", latticeSum(on, 0.0, 0.0, world.z / 32.0, 32), 0x4EB047AFF9FBE6E2ULL},
-        {"a high surface, 200 km at 6.25 km", latticeSum(on, 19'554'304.0, -13'131'776.0,
-                                                         6'250.0, 32),
-         0x809DBFE5CCBED885ULL},
-    };
-    golden::report("the plateaus and the karst switched on", parts);
     testFrozen(off, on);
     return test::result();
 }

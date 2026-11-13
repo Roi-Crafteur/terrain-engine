@@ -33,9 +33,6 @@ struct Options {
     double radius = 6.0;   // meters: the vertices of the tiles around a point (render)
     double falls = 1000.0; // meters: the lips of the falls around a point (falls)
     bool caves = false;    // the caves of the default parameters carved (none by default)
-    // --flags a,b: the relief of wave 9 switched on (relief_flags.hpp, provisional); with a planet
-    // file, the file must have been built with the same flags (its header does not hold them).
-    terrain::HeightfieldParams relief;
     bool json = false;
     bool listSections = false;
     std::vector<std::string> sections; // --sections a,b: empty for the defaults

@@ -1,8 +1,6 @@
 // The command line of terrain_probe (probe_options.hpp).
 #include "probe_options.hpp"
 
-#include "relief_flags.hpp"
-
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -102,10 +100,6 @@ bool parseValue(int argc, char** argv, int& i, const std::vector<std::string>& k
     if (flag == "--sections" && has) {
         return parseSections(argv[++i], known, o);
     }
-    if (flag == "--flags" && has) {
-        std::string bad;
-        return terrain_tools::setReliefFlags(argv[++i], o.relief, bad) || fail("flags", argv[i]);
-    }
     if (flag == "--line") {
         return parseLine(argc, argv, i, o);
     }
@@ -181,7 +175,6 @@ std::string usage(const char* tool) {
     return std::string("Usage: ") + tool +
            " [--planet <file>] [--seed <seed>] [--world <x> <z>] [--threads <n>] [--json] "
            "[--sections <a,b,...>] [--radius <meters>] [--falls <meters>] [--caves] "
-           "[--flags <a,b,...>] "
            "(<x> <z> [<x> <z>]... | --line <x1> <z1> <x2> <z2> <step>)\n"
            "       " +
            tool + " --planet-check <file> [--seed <seed>] [--world <x> <z>] [--json]\n" +

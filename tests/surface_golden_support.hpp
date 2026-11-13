@@ -73,7 +73,7 @@ inline terrain::Heightfield planetField() {
     terrain::HeightfieldParams params = test_relief::legacyRelief();
     params.macroContinent = 0.25f;
     params.plates.amplitude = 0.5f;
-    return terrain::Heightfield(kSeed, params);
+    return terrain::Heightfield(kSeed, reliefParams(params));
 }
 
 // The corner of the canonical range of the default world, (world.x / 2, world.z / 2): also
@@ -86,7 +86,7 @@ inline constexpr double kCornerZ = terrain::WorldSize{}.z / 2.0;
 // Computes the parts of the Heightfield and the Ecology with their expected values.
 inline std::vector<Part> heightfieldParts() {
     using namespace surface_detail;
-    const terrain::Heightfield field(kSeed);
+    const terrain::Heightfield field(kSeed, reliefParams());
     const terrain::Heightfield planet = planetField();
     const terrain::Ecology ecology(kSeed);
     const terrain::ChunkCoord mountain = streaming_test::mountainChunk(field);
@@ -98,7 +98,9 @@ inline std::vector<Part> heightfieldParts() {
          0x00687ACED72B3163ULL},
         // The coasts (agent 33) change 9 of its 1,024 points, all in their band (0x96F897D9B46A5FE7
         // without them).
-        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32), 0xA21476850ABE032DULL},
+        // The high surfaces of the plateaus (agent 46, the flag "tablelands") change it too.
+        {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32),
+         pick("tablelands", 0xA21476850ABE032DULL, 0x9D6817F26196B46BULL)},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},
@@ -117,7 +119,7 @@ inline std::vector<Part> heightfieldParts() {
 // plants.
 inline std::vector<Part> worldParts() {
     using namespace surface_detail;
-    const terrain::TerrainTiles tiles(kSeed);
+    const terrain::TerrainTiles tiles(kSeed, reliefParams());
     const terrain::ChunkCoord mountain = streaming_test::mountainChunk(tiles.heightfield());
     const terrain::ChunkCoord plants = streaming_test::plantChunk(tiles, 10);
     constexpr std::array<std::uint64_t, terrain::kLodCount> kExpected = {

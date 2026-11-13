@@ -81,6 +81,7 @@ add_library(terrain_core STATIC
     src/generation/geography_boundaries.cpp
     src/generation/geography_tectonics.cpp
     src/generation/erosion.cpp
+    src/generation/experimental_flags.cpp
     src/generation/height_grid.cpp
     src/generation/heightfield.cpp
     src/generation/heightfield_coast.cpp
@@ -434,7 +435,6 @@ target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
 # The planet level of a world written to its file, as the game reads it (phase 11B); --memory
 # prints the time and memory of each stage (its own operator new counts the heap):
 # terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>] [--memory]
-#                     [--flags <a,b,...>]
 add_executable(terrain_make_planet tools/make_planet.cpp tools/heap_counter.cpp
                                    tools/process_memory.cpp)
 target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
@@ -446,7 +446,6 @@ target_link_libraries(terrain_make_planet PRIVATE terrain_core terrain_warnings)
 # See tools/probe.cpp; a section is added in tools/probe_sections.hpp.
 # terrain_probe [--planet <file>] [--seed <seed>] [--world <x> <z>] [--threads <n>] [--json]
 #               [--sections <a,b,...>] [--radius <meters>] [--falls <meters>] [--caves]
-#               [--flags <a,b,...>]
 #               (<x> <z> [<x> <z>]... | --line <x1> <z1> <x2> <z2> <step>)
 # terrain_probe --planet-check <file> [--seed <seed>] [--world <x> <z>] [--json]
 # terrain_probe --list-sections
