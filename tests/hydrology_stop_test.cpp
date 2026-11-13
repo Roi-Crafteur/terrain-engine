@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -166,6 +167,16 @@ std::uint64_t sampleSum(const Hydrology& h) {
     return sum.value();
 }
 
+// The lines of each trial, printed only when a check failed since `from`: ctest keeps 1 KB of the
+// output of a test that passes, its summary lines.
+void printOnFailure(int from, const std::vector<std::string>& lines) {
+    if (test::failures > from) {
+        for (const std::string& line : lines) {
+            std::printf("%s\n", line.c_str());
+        }
+    }
+}
+
 double median(std::vector<double> v) {
     std::sort(v.begin(), v.end());
     return v.empty() ? 0.0 : v[v.size() / 2];
@@ -212,6 +223,8 @@ std::vector<std::size_t> longCourses(std::vector<Timed> timed) {
 void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
     const std::vector<std::size_t> longs = longCourses(timed);
     const Load load;
+    const int before = test::failures;
+    std::vector<std::string> lines;
     std::vector<double> latencies;
     double worst = 0.0;
     for (int k = 0; k < kTrials; ++k) {
@@ -221,9 +234,12 @@ void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
         const Trial t = stopTrial(*h, longs, delay, 1000 + static_cast<std::uint64_t>(k));
         latencies.push_back(t.latency);
         worst = std::max(worst, t.latency / std::max(t.remaining, 1e-3));
-        std::printf("stop after %d ms: %d of %d threads by WorkStopped, out in %.2f ms; the "
-                    "courses in progress finished in %.1f ms\n",
-                    delay, t.stopped, kWorkers, t.latency, t.remaining);
+        std::array<char, 160> line{};
+        std::snprintf(line.data(), line.size(),
+                      "stop after %d ms: %d of %d threads by WorkStopped, out in %.2f ms; the "
+                      "courses in progress finished in %.1f ms",
+                      delay, t.stopped, kWorkers, t.latency, t.remaining);
+        lines.emplace_back(line.data());
         TEST_CHECK(t.stopped == kWorkers);
         if (k == 0) {
             TEST_CHECK(sampleSum(*h) == kSampleReaches); // nothing half made
@@ -233,6 +249,7 @@ void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
                 median(latencies), *std::max_element(latencies.begin(), latencies.end()), worst);
     TEST_CHECK(median(latencies) <= 100.0);
     TEST_CHECK(worst < 0.25);
+    printOnFailure(before, lines);
 }
 
 // A thread waiting for the course another one makes (no flag) leaves once its flag is raised;
@@ -247,7 +264,10 @@ void testWaiter(const World& w, const std::vector<Timed>& timed) {
     hydrology_sample::addReach(expected, reference->reach(r));
     std::printf("the course waited for: reach %zu, %.1f ms to make\n", r, longest.ms);
     const Load load;
+    const int before = test::failures;
+    std::vector<std::string> lines;
     std::vector<double> latencies;
+    double worst = 0.0;
     for (int k = 0; k < 5; ++k) {
         const auto h = w.fresh();
         std::atomic<bool> stop{false};
@@ -277,19 +297,33 @@ void testWaiter(const World& w, const std::vector<Timed>& timed) {
         const double latency = msBetween(raised, out);
         const double remaining = msBetween(raised, made);
         latencies.push_back(latency);
-        std::printf("waiting thread out in %.2f ms; the course made %.1f ms after the stop\n",
-                    latency, remaining);
+        worst = std::max(worst, latency / std::max(remaining, 1e-3));
+        std::array<char, 160> line{};
+        std::snprintf(line.data(), line.size(),
+                      "waiting thread out in %.2f ms; the course made %.1f ms after the stop",
+                      latency, remaining);
+        lines.emplace_back(line.data());
         TEST_CHECK(left);
         TEST_CHECK(remaining <= 0.0 || latency < 0.25 * remaining);
         TEST_CHECK(got.value() == expected.value());
     }
+    std::printf("waiting thread out in %.2f ms (median of 5), at most %.3f of the course made "
+                "after the stop\n",
+                median(latencies), worst);
     TEST_CHECK(median(latencies) <= 100.0);
+    printOnFailure(before, lines);
 }
 
 // One thread waiting for the course r another one makes on a fresh hydrology, its flag raised
 // delay µs after it started: by raiseWorkStop (wake) or by a store alone (then seen at the end of
-// a step of its wait). The ms from the raise to its exit; negative if it got the course instead.
-double waiterOut(const World& w, std::size_t r, int delayUs, bool wake) {
+// a step of its wait). The ms from the raise to its exit, and whether it left by WorkStopped (or
+// got the course first).
+struct WaiterOut {
+    double ms = 0.0;
+    bool left = false;
+};
+
+WaiterOut waiterOut(const World& w, std::size_t r, int delayUs, bool wake) {
     const auto h = w.fresh();
     std::atomic<bool> stop{false};
     bool left = false;
@@ -314,13 +348,15 @@ double waiterOut(const World& w, std::size_t r, int delayUs, bool wake) {
     }
     waiter.join();
     maker.join();
-    return left ? msBetween(raised, out) : -1.0;
+    return {msBetween(raised, out), left};
 }
 
 // The waiting thread is woken by the raise of its flag, not by the end of a step of its wait: at
 // rest, kWakes trials raised by raiseWorkStop against kWakes whose flag is only stored, in turn,
 // at instants spread over 2 ms; the median of the first under half the median of the second (no
-// bound in milliseconds: a step is 2 ms asked, 15.6 ms under Windows).
+// bound in milliseconds: a step is 2 ms asked, 15.6 ms under Windows, 15 ms or more under
+// macOS). Every woken thread leaves by WorkStopped; one whose flag is only stored may get the
+// course first (a long step): its exit then counts as is, which only lowers its median.
 void testWokenNotStepped(const World& w, const std::vector<Timed>& timed) {
     // The shortest course of kWakeCourse ms or more (the longest if none): made after the end of
     // a step of the wait.
@@ -333,18 +369,18 @@ void testWokenNotStepped(const World& w, const std::vector<Timed>& timed) {
     }
     std::vector<double> woken;
     std::vector<double> stored;
+    int left = 0;
     for (int k = 0; k < kWakes; ++k) {
         const int delayUs = 5000 + 2000 * k / kWakes;
-        woken.push_back(waiterOut(w, course.reach, delayUs, true));
-        stored.push_back(waiterOut(w, course.reach, delayUs, false));
+        const WaiterOut raised = waiterOut(w, course.reach, delayUs, true);
+        woken.push_back(raised.ms);
+        left += raised.left ? 1 : 0;
+        stored.push_back(waiterOut(w, course.reach, delayUs, false).ms);
     }
-    const auto allLeft = [](const std::vector<double>& v) {
-        return std::all_of(v.begin(), v.end(), [](double ms) { return ms >= 0.0; });
-    };
     std::printf("waiting for reach %zu (%.1f ms to make), at rest: out in %.2f ms woken by the "
                 "raise, %.2f ms with the flag only stored (medians of %d)\n",
                 course.reach, course.ms, median(woken), median(stored), kWakes);
-    TEST_CHECK(allLeft(woken) && allLeft(stored));
+    TEST_CHECK(left == kWakes);
     TEST_CHECK(median(woken) < 0.5 * median(stored));
 }
 
