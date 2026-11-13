@@ -520,3 +520,4 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/horizon_blend_tests.cmake) # agent 29: the b
 include(${CMAKE_CURRENT_SOURCE_DIR}/break_place_tests.cmake) # agent 28: break and place in game
 include(${CMAKE_CURRENT_SOURCE_DIR}/dunes_tests.cmake) # agent 34: the seas of dunes
 include(${CMAKE_CURRENT_SOURCE_DIR}/edit_world_tests.cmake) # agent 41: the world the player edits
+include(${CMAKE_CURRENT_SOURCE_DIR}/serial_tests.cmake) # agent 42: the tests that run alone, after the tests it names
