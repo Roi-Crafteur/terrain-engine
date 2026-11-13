@@ -1,8 +1,8 @@
 // The surface blend of the GPU horizon of the Unreal plugin (agent 29,
 // Bridge/horizon_blend_texels):
-// - the 4 channels of 16 bits of a blend (ids, weights, the present bit) and back, the zeros of a
-//   new texture read as no blend, the regions split where the slots wrap around, a channel that
-//   is not an integer of 16 bits refused;
+// - the 4 channels of a blend (agent 49: the 4 fields of a texel as exact floats, the present
+//   bit in the first) and back, the zeros of a new texture read as no blend, the regions split
+//   where the slots wrap around, a channel that is not an integer below 2^24 refused;
 // - the blends written in the same update as the texels of their samples: while a new place is
 //   brought level by level (agent 38) and after a teleport, every sample of a level shown has its
 //   blend, the one of the clipmap, at every update (the material never shows a sample without
@@ -37,18 +37,21 @@ using terrain::unreal::UnrealFrame;
 using terrain::unreal::UnrealPoint;
 
 void testChannels() {
-    const BlendTexel texel{0x00ABCDEFU, 0x12345678U};
+    const BlendTexel texel{0x03ABCDU, 0x3F7FFFU, 0x00FF80U, 0x12017FU};
     const auto channels = terrain::unreal::blendChannels(texel);
-    TEST_CHECK(channels ==
-               (std::array<std::uint16_t, kBlendChannels>{0xCDEF, 0x80AB, 0x5678, 0x1234}));
+    TEST_CHECK(channels == (std::array<float, kBlendChannels>{
+                               static_cast<float>(0x83ABCDU), static_cast<float>(0x3F7FFFU),
+                               static_cast<float>(0x00FF80U), static_cast<float>(0x12017FU)}));
     TEST_CHECK(terrain::unreal::blendOfChannels(channels) == texel);
-    // The share of the dunes of an erg (ids bits 24-30, agent 34) rides in bits 8-14 of G.
-    const BlendTexel dunes{0x7FABCDEFU, 0x12345678U};
-    TEST_CHECK(terrain::unreal::blendChannels(dunes)[1] == 0xFFAB);
-    TEST_CHECK(terrain::unreal::blendOfChannels(terrain::unreal::blendChannels(dunes)) == dunes);
+    // Every field at its widest (24 bits but the present bit) comes back exactly.
+    const BlendTexel full{0x7FFFFFU, 0xFFFFFFU, 0xFFFFFFU, 0xFFFFFFU};
+    TEST_CHECK(terrain::unreal::blendOfChannels(terrain::unreal::blendChannels(full)) == full);
     // The zeros of a new texture, and a texel without the present bit.
-    TEST_CHECK(!terrain::unreal::blendOfChannels({0, 0, 0, 0}).has_value());
-    TEST_CHECK(!terrain::unreal::blendOfChannels({0, 0x01AB, 0, 0}).has_value());
+    TEST_CHECK(!terrain::unreal::blendOfChannels({0.0f, 0.0f, 0.0f, 0.0f}).has_value());
+    TEST_CHECK(!terrain::unreal::blendOfChannels({427.0f, 1.0f, 0.0f, 0.0f}).has_value());
+    // A channel that is no integer below 2^24.
+    TEST_CHECK(!terrain::unreal::blendOfChannels({8388608.0f, 2.5f, 0.0f, 0.0f}).has_value());
+    TEST_CHECK(!terrain::unreal::blendOfChannels({8388608.0f, 16777216.0f, 0.0f, 0.0f}));
     // A blend of zeros is a blend (the ocean, all on slot 2).
     TEST_CHECK(terrain::unreal::blendOfChannels(terrain::unreal::blendChannels({})) ==
                BlendTexel{});
@@ -59,7 +62,7 @@ void testRegions() {
     const HorizonRect rect{6, -1, 10, 1}; // wraps along x (slots 6, 7 | 0, 1) and z (7 | 0)
     std::vector<BlendTexel> blends;
     for (std::uint32_t n = 0; n < static_cast<std::uint32_t>(rect.count()); ++n) {
-        blends.push_back({n, 0x01000000U * n + 7U});
+        blends.push_back({n, 0x010000U * n + 7U, n << 8U, 255U - n});
     }
     std::vector<float> data = {1.5f}; // what comes before the blends is left as it is
     terrain::unreal::appendBlendUploads(blends, data);
@@ -74,7 +77,7 @@ void testRegions() {
         for (int k = 0; k < region.height; ++k) {
             for (int i = 0; i < region.width; ++i) {
                 const auto at = static_cast<std::size_t>((k * region.width + i) * kBlendChannels);
-                std::array<std::uint16_t, kBlendChannels> texel{};
+                std::array<float, kBlendChannels> texel{};
                 std::copy_n(region.data.begin() + static_cast<std::ptrdiff_t>(at), kBlendChannels,
                             texel.begin());
                 // The sample of this slot.
