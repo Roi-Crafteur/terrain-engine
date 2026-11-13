@@ -31,11 +31,13 @@ struct FlagLine {
     friend bool operator==(const FlagLine&, const FlagLine&) = default;
 };
 
-// "Terrain World: experimental flags: none", or ...: "seas,volcanoes" (the canonical text, quoted);
-// then a warning per unknown name: "Terrain World: unknown experimental flag 'x' (known: a, b)",
-// "(no flag known yet)" when table is empty.
+// "Terrain World: experimental flags: none", or ...: "seas,volcanoes" (the canonical text, quoted),
+// followed by " (from <from>)" when from is not empty (from Terrain.Flags); then a warning per
+// unknown name: "Terrain World: unknown experimental flag 'x' (known: a, b)", "(no flag known
+// yet)" when table is empty.
 [[nodiscard]] std::vector<FlagLine> flagLines(const AppliedFlags& applied,
                                               std::span<const ExperimentalFlag> table =
-                                                  experimentalFlags());
+                                                  experimentalFlags(),
+                                              const std::string& from = {});
 
 } // namespace terrain::unreal

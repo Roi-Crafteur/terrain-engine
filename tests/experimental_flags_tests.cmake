@@ -10,8 +10,12 @@ terrain_add_test(experimental_off_test terrain_core)
 # The flags of an Unreal level (Bridge/session_flags.hpp, F2): its lines in the log, its session,
 # its planet file refused when of other flags; and ATerrainWorld::Experimental reaching the session
 # (the plugin itself is only built by Unreal).
-target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/session_flags.cpp)
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/session_flags.cpp
+                                             ${unreal_bridge}/dev_flags.cpp)
 terrain_add_test(unreal_experimental_flags_test terrain_unreal_bridge)
+# Terrain.Flags of the tools: its arguments, its state, the flags and planet file it lays over
+# those of the actor (Bridge/dev_flags.hpp).
+terrain_add_test(unreal_dev_flags_test terrain_unreal_bridge)
 add_test(NAME unreal_experimental_flags
     COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/unreal_experimental_flags.cmake)

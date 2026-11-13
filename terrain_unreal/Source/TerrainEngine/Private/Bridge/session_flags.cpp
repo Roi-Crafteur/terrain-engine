@@ -9,11 +9,12 @@ SessionFlags sessionFlags(const std::string& text, std::span<const ExperimentalF
 }
 
 std::vector<FlagLine> flagLines(const AppliedFlags& applied,
-                                std::span<const ExperimentalFlag> table) {
+                                std::span<const ExperimentalFlag> table, const std::string& from) {
     std::vector<FlagLine> lines;
     lines.push_back({false, "Terrain World: experimental flags: " +
                                 (applied.text.empty() ? std::string("none")
-                                                      : "\"" + applied.text + "\"")});
+                                                      : "\"" + applied.text + "\"") +
+                                (from.empty() ? std::string() : " (from " + from + ")")});
     const std::string known = knownFlagNames(table);
     for (const std::string& name : applied.unknown) {
         lines.push_back({true, "Terrain World: unknown experimental flag '" + name + "' (" +
