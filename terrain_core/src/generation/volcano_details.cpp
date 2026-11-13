@@ -6,6 +6,7 @@
 #include "terrain/det_math.hpp"
 #include "volcano_cones.hpp"
 #include "volcano_forms.hpp"
+#include "volcano_gorge.hpp"
 #include "volcano_sites.hpp"
 #include "volcano_water.hpp"
 
@@ -35,8 +36,8 @@ enum Draw : std::uint64_t {
     kSharpnessUnused, // drawn with the sizes since agent 45's stop 1 (VolcanoSite::sharpness)
     kBreached,
     kBreachAngle,
-    kBreachWidth,
-    kBreachBottom,
+    kBreachWidthUnused, // the notch before the gorges (volcano_gorge.cpp)
+    kBreachBottomUnused, // drawn by the gorges since (volcano_gorge.cpp)
     kWall,
     kCollapseAngle,
     kRavineSpacing,
@@ -47,6 +48,14 @@ enum Draw : std::uint64_t {
     kArmTurn,
     kArmReach = kArmTurn + 4,
     kArmWidth = kArmReach + 3,
+    // The cols and high points of the rims of the calderas (those of the gorges: 160 on).
+    kCols = 170,
+    kColTurn,
+    kColWidth = kColTurn + 3,
+    kColHeight = kColWidth + 3,
+    kPeakTurn = kColHeight + 3,
+    kPeakWidth = kPeakTurn + 3,
+    kPeakHeight = kPeakWidth + 3,
 };
 
 bool isCaldera(VolcanoForm f) {
@@ -73,6 +82,43 @@ double wallOf(const VolcanoSite& s) {
     }
     const double crater = std::max(1.0, static_cast<double>(s.crater));
     return std::clamp(static_cast<double>(s.craterDepth) / (slope * crater), 0.05, 0.95);
+}
+
+// The cols and high points of the rim of a caldera: two or three cols around it at uneven
+// spacings, a high point somewhere in each gap between two of them. One col and one high point
+// stand out (a low side and a high side, as at Crater Lake, never two alike facing each other):
+// the first col, where its breach is, lowers the crest by 0.35 to 0.45 of the depth over 0.07 to
+// 0.12 turn on each side, the first high point lifts it by 0.3 to 0.45 over 0.05 to 0.09; the
+// others by 0.1 to 0.25 over 0.03 to 0.06.
+void rimOf(const VolcanoSite& s, Shape& sh) {
+    if (!isCaldera(s.form)) {
+        return;
+    }
+    sh.colCount = 2 + static_cast<int>(2.0 * unit(s.seed, kCols));
+    sh.peakCount = sh.colCount;
+    const double first = sh.breached ? sh.breachAngle / vf::kTwoPi : unit(s.seed, kColTurn);
+    const auto count = static_cast<std::size_t>(sh.colCount);
+    for (std::size_t k = 0; k < count; ++k) {
+        RimBump& c = sh.cols[k];
+        c.turns = first + (k == 0 ? 0.0
+                                  : (static_cast<double>(k) +
+                                     0.7 * (unit(s.seed, kColTurn + k) - 0.5)) /
+                                        sh.colCount);
+        c.width = k == 0 ? between(s.seed, kColWidth + k, 0.07, 0.12)
+                         : between(s.seed, kColWidth + k, 0.03, 0.06);
+        c.height = k == 0 ? between(s.seed, kColHeight + k, 0.35, 0.45)
+                          : between(s.seed, kColHeight + k, 0.1, 0.25);
+    }
+    for (std::size_t k = 0; k < count; ++k) {
+        const double from = sh.cols[k].turns;
+        const double to = k + 1 < count ? sh.cols[k + 1].turns : first + 1.0;
+        RimBump& p = sh.peaks[k];
+        p.turns = from + (to - from) * between(s.seed, kPeakTurn + k, 0.25, 0.75);
+        p.width = k == 0 ? between(s.seed, kPeakWidth + k, 0.05, 0.09)
+                         : between(s.seed, kPeakWidth + k, 0.03, 0.06);
+        p.height = k == 0 ? between(s.seed, kPeakHeight + k, 0.3, 0.45)
+                          : between(s.seed, kPeakHeight + k, 0.1, 0.25);
+    }
 }
 
 void ravinesOf(const VolcanoSite& s, Shape& sh) {
@@ -143,11 +189,12 @@ Shape shapeOf(const VolcanoSite& s) {
                                            : (s.form == VolcanoForm::PlateauCaldera ? 0.4 : 0.0));
     sh.breached = unit(s.seed, kBreached) < breachChance;
     sh.breachAngle = vf::kTwoPi * unit(s.seed, kBreachAngle);
-    // A notch a few hundred meters wide in the rim (at sea, wider: the strait into a drowned
-    // caldera).
-    sh.breachWidth = between(s.seed, kBreachWidth, 0.05, s.form == VolcanoForm::IslandCaldera
-                                                              ? 0.25
-                                                              : 0.1);
+    // A gorge down the flank, 80 to 240 m wide at its lip (at sea, the strait into a drowned
+    // caldera, 300 to 800 m).
+    if (sh.breached) {
+        sh.gorge = volcano_gorge::gorgeOf(s);
+    }
+    rimOf(s, sh);
     sh.wall = wallOf(s);
     sh.collapseAngle = vf::kTwoPi * unit(s.seed, kCollapseAngle);
     ravinesOf(s, sh);
@@ -221,18 +268,6 @@ double groundUnder(const VolcanoSite& s, const Shape& sh, const GroundAt& ground
     }
     const double high = *std::max_element(heart.begin(), heart.end());
     return std::max(low, high - 0.5 * static_cast<double>(s.height));
-}
-
-// The bottom of the breach of a crater: on land, part way up its wall (where a lake spills); at
-// sea, under the sea (the sea fills a drowned caldera).
-double breachBottomOf(const VolcanoSite& s, const Detail& d) {
-    if (s.form == VolcanoForm::IslandCaldera) {
-        return -between(s.seed, kBreachBottom, 20.0, 80.0);
-    }
-    const double rimRho = static_cast<double>(s.crater) / static_cast<double>(s.radius);
-    const double rim = edificeBase(s, d) + edificeRise(s, d.shape) * profileOf(s, d.shape, rimRho);
-    const double floor = rim - static_cast<double>(s.craterDepth);
-    return floor + (rim - floor) * between(s.seed, kBreachBottom, 0.35, 0.85);
 }
 
 // Cuts a flow where the surface ahead of it rises above what it can climb, and where it would
@@ -318,7 +353,7 @@ Detail detailOf(const VolcanoSite& s, const GroundAt& ground) {
         d.sheetOffset = d.base - ground(s.x, s.z).regional;
     }
     if (d.shape.breached) {
-        d.shape.breachBottom = breachBottomOf(s, d);
+        volcano_gorge::readBreach(s, d, ground);
     }
     volcano_cones::addCones(s, d);
     volcano_cones::addFlows(s, d);

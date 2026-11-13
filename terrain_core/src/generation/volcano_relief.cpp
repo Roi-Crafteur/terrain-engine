@@ -7,6 +7,7 @@
 #include "volcano_fields.hpp"
 #include "volcano_forms.hpp"
 #include "volcano_ground.hpp"
+#include "volcano_gorge.hpp"
 #include "volcano_sites.hpp"
 #include "volcano_water.hpp"
 
@@ -84,25 +85,16 @@ Frame frameOf(const VolcanoSite& s, const Shape& sh, double dx, double dz) {
     return f;
 }
 
-// How much higher or lower the rim of a caldera stands along the azimuth of the frame: up to 0.3
-// of its depth, over two layers of noise of 5 and 17 cells (no period); 0 for the craters of the
-// cones. The rim of an island caldera the sea does not breach never sinks below kDryRim: the sea
-// stays out of it. And the band of the flank it lifts or lowers, around the rim.
+// How much higher or lower the rim of a caldera stands along the azimuth of the frame
+// (rimSwellAt): its cols and high points (Crater Lake: its rim 150 to 600 m over its lake), over
+// two layers of noise of 5 and 17 cells (no period); 0 for the craters of the cones. The rim of an
+// island caldera the sea does not breach never sinks below kDryRim: the sea stays out of it. And
+// the band of the flank it lifts or lowers, around the rim: a col is a saddle, a high point a
+// summit.
 constexpr double kDryRim = 40.0;
 
 double rimSwell(const VolcanoSite& s, const Shape& sh, const Frame& f) {
-    const auto depth = static_cast<double>(s.craterDepth);
-    if (s.form != VolcanoForm::Caldera && s.form != VolcanoForm::PlateauCaldera &&
-        s.form != VolcanoForm::IslandCaldera) {
-        return 0.0;
-    }
-    const double swell = 0.3 * depth *
-                         (0.65 * vf::ringNoise(s.seed + kRimSwell, f.turns, 5) +
-                          0.35 * vf::ringNoise(s.seed + kRimSwell + 1, f.turns, 17));
-    if (s.form == VolcanoForm::IslandCaldera && !sh.breached) {
-        return std::max(swell, kDryRim - static_cast<double>(s.height));
-    }
-    return swell;
+    return rimSwellAt(s, sh, f.turns);
 }
 
 double rimBand(const VolcanoSite& s, const Frame& f) {
@@ -209,13 +201,15 @@ double gulliesAt(const VolcanoSite& s, const Frame& f, double crater, double q, 
     return depth * across * across * (1.0 - t * t);
 }
 
-void digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double base, double rise,
-               Point& p) {
+// The crater or caldera at the frame; returns how much of the point lies in the gorge of its
+// breach (volcano_gorge.hpp).
+double digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double base, double rise,
+                 double footprint, Point& p) {
     const auto mean = static_cast<double>(s.crater);
     const double crater = mean * craterOutline(s, sh, f);
     const double q = f.r / crater;
     if (!(q < 1.25) && !sh.breached) {
-        return;
+        return 0.0;
     }
     const double floor = base + rise * profileAt(s, sh, mean / static_cast<double>(s.radius)) -
                          static_cast<double>(s.craterDepth) +
@@ -246,25 +240,15 @@ void digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double bas
         p.touched = true;
         p.enclosed = p.enclosed || (q < 1.0 && !(sh.breached && sh.breachBottom < 0.0));
     }
-    // The breach: a notch across the wall down to its bottom, opening onto the outer flank; that
-    // of an island caldera, a strait with a flat bottom cut down the flank out to the sea, which
-    // floods the caldera through it.
+    // The breach: a notch through the wall down to its bottom, then a gorge down the flank; at
+    // sea, a strait out to the sea, which floods the caldera through it.
     const bool strait = s.form == VolcanoForm::IslandCaldera && sh.breachBottom < 0.0;
     p.flooded = p.flooded || (strait && sh.breached && q < 1.0);
-    if (!sh.breached || !(q > 0.3) || (!strait && !(q < 1.3))) {
-        return;
+    if (!sh.breached) {
+        return 0.0;
     }
-    const double across =
-        vf::angleBetween(vf::kTwoPi * f.turns, sh.breachAngle) / sh.breachWidth;
-    if (!(std::abs(across) < 1.0)) {
-        return;
-    }
-    const double level = sh.breachBottom - std::max(0.0, q - 1.0) * crater * 0.15;
-    const double side = strait ? vf::smoothstep(0.5, 1.0, std::abs(across)) : across * across;
-    const double notch = level + (std::max(rim, p.height) - level) * side;
-    const double weight = strait ? 1.0 : 1.0 - vf::smoothstep(1.1, 1.3, q);
-    p.height += weight * (std::min(p.height, notch) - p.height);
-    p.flooded = p.flooded || (strait && p.height < 0.0);
+    const double lip = craterRadiusAt(s, sh, sh.breachAngle / vf::kTwoPi);
+    return volcano_gorge::cut(s, sh, {f.r, f.turns, lip}, footprint, p);
 }
 
 // The horseshoe amphitheater of a collapse, open down the flank toward collapseAngle.
@@ -362,13 +346,15 @@ void applyEdifice(const VolcanoSite& s, const Detail& d, const Frame& f, double 
     const double dominance = cover * vf::smoothstep(-sh.smoothing, sh.smoothing, v - old);
     p.cover = std::max(p.cover, static_cast<float>(dominance));
     volcano_ground::edifice(s, f.rho, f.r, dominance, p);
+    double gorge = 0.0;
     if (s.form == VolcanoForm::CollapsedStrato) {
         digCollapse(s, sh, f, base, rise, p);
     } else if (s.crater > 0.0f && s.form != VolcanoForm::Seamount) {
-        digCrater(s, sh, f, base, rise, p);
+        gorge = digCrater(s, sh, f, base, rise, footprint, p);
     }
     if (details) {
-        carveRavines(s, sh, f, dominance, footprint, p);
+        // Not across the gorge of a breach: its floor keeps falling.
+        carveRavines(s, sh, f, dominance * (1.0 - gorge), footprint, p);
     }
 }
 
@@ -377,6 +363,55 @@ void applyEdifice(const VolcanoSite& s, const Detail& d, const Frame& f, double 
 double profileOf(const VolcanoSite& s, const Shape& sh, double rho) {
     return volcano_sites::formRule(s.form).shield ? vf::shieldProfile(rho)
                                                  : vf::stratoProfile(rho, sh.sharpness);
+}
+
+double craterRadiusAt(const VolcanoSite& s, const Shape& sh, double turns) {
+    Frame f;
+    f.turns = turns - std::floor(turns);
+    return static_cast<double>(s.crater) * craterOutline(s, sh, f);
+}
+
+FrameOffset offsetOfFrame(const VolcanoSite& s, const Shape& sh, double u, double v) {
+    // frameOf shifts a point by the offset of the summit, fading with its distance before the
+    // shift: a few steps of a fixed point find it.
+    const auto radius = static_cast<double>(s.radius);
+    double u0 = u + sh.offsetU;
+    double v0 = v + sh.offsetV;
+    for (int k = 0; k < 4; ++k) {
+        const double shift = 1.0 - vf::smoothstep(0.0, 1.0, dmath::hypot(u0, v0) / radius);
+        u0 = u + sh.offsetU * shift;
+        v0 = v + sh.offsetV * shift;
+    }
+    const double stretched = u0 * static_cast<double>(s.elongation);
+    return {stretched * sh.cosAxis - v0 * sh.sinAxis, stretched * sh.sinAxis + v0 * sh.cosAxis};
+}
+
+double rimSwellAt(const VolcanoSite& s, const Shape& sh, double turns) {
+    const auto depth = static_cast<double>(s.craterDepth);
+    if (s.form != VolcanoForm::Caldera && s.form != VolcanoForm::PlateauCaldera &&
+        s.form != VolcanoForm::IslandCaldera) {
+        return 0.0;
+    }
+    // A bump of half width w at x turns from its azimuth: 1 there, 0 from w on.
+    const auto bump = [turns](const RimBump& b) {
+        const double x = (turns - b.turns - std::round(turns - b.turns)) / b.width;
+        const double u = std::max(0.0, 1.0 - x * x);
+        return u * u;
+    };
+    double swell = 0.12 * (0.65 * vf::ringNoise(s.seed + kRimSwell, turns, 5) +
+                           0.35 * vf::ringNoise(s.seed + kRimSwell + 1, turns, 17));
+    for (int k = 0; k < sh.colCount; ++k) {
+        swell -= sh.cols[static_cast<std::size_t>(k)].height * bump(sh.cols[static_cast<std::size_t>(k)]);
+    }
+    for (int k = 0; k < sh.peakCount; ++k) {
+        const double b = bump(sh.peaks[static_cast<std::size_t>(k)]);
+        swell += sh.peaks[static_cast<std::size_t>(k)].height * b * b;
+    }
+    swell *= depth;
+    if (s.form == VolcanoForm::IslandCaldera && !sh.breached) {
+        return std::max(swell, kDryRim - static_cast<double>(s.height));
+    }
+    return swell;
 }
 
 double edificeBase(const VolcanoSite& s, const Detail& d) {

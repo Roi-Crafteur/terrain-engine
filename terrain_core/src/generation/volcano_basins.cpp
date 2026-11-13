@@ -86,13 +86,9 @@ double freeboardOf(double depth) {
     return std::max(4.0, 0.05 * depth);
 }
 
-// The rays of a crater: one every kSpacing meters of its rim, two at least across its breach.
-int raysOf(const VolcanoSite& s, const Detail& d) {
-    double n = vf::kTwoPi * static_cast<double>(s.crater) / kSpacing;
-    if (d.shape.breached) {
-        n = std::max(n, 2.0 * vf::kTwoPi * static_cast<double>(s.elongation) /
-                            d.shape.breachWidth);
-    }
+// The rays of a crater: one every kSpacing meters of its rim (its breach: summitBasin).
+int raysOf(const VolcanoSite& s) {
+    const double n = vf::kTwoPi * static_cast<double>(s.crater) / kSpacing;
     return std::clamp(static_cast<int>(std::ceil(n)), kLeastRays, kMostRays);
 }
 
@@ -100,7 +96,7 @@ int raysOf(const VolcanoSite& s, const Detail& d) {
 bool summitBasin(const VolcanoSite& s, const Detail& d, Basin& b) {
     const VolcanoOffset top = volcanoSummit(s);
     const auto crater = static_cast<double>(s.crater);
-    const int rays = raysOf(s, d);
+    const int rays = raysOf(s);
     const std::size_t stride = kSteps + 1;
     std::vector<double> heights(static_cast<std::size_t>(rays) * stride);
     const double center = alone(s, d, top.dx, top.dz);
@@ -118,6 +114,10 @@ bool summitBasin(const VolcanoSite& s, const Detail& d, Basin& b) {
             crest = std::max(crest, h[i]);
         }
         spill = std::min(spill, crest);
+    }
+    // The bottom of its breach on land, whatever the rays: its gorge winds away from them.
+    if (d.shape.breached && !(d.shape.breachBottom < 0.0)) {
+        spill = std::min(spill, d.shape.breachBottom);
     }
     // On each ray, its crest and the radius where the inner wall rises to the spill below it.
     b.within.resize(static_cast<std::size_t>(rays));

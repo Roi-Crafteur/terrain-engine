@@ -19,6 +19,31 @@
 
 namespace terrain::volcano_relief {
 
+// The gorge the breach of a caldera opens down its flank (volcano_gorge.hpp): narrow at its lip,
+// wider and deeper down, winding. Drawn with the shape; its depths read with the details.
+struct GorgeShape {
+    double lipHalf = 60.0;  // its half width at the lip, meters
+    double length = 0.0;    // from the lip down the flank, meters
+    double widen = 3.0;     // its width 0.6 of the way down over that at its lip
+    double deepen = 1.6;    // its depth under the flank 0.4 of the way down over that at its lip
+    double lipDepth = 0.0;  // under the crest at its lip, meters (the details)
+    double depth = 0.0;     // under the flank at its deepest, meters (the details)
+    double wave = 1000.0;   // the wavelength of its bends, meters
+    double swing = 0.0;     // how far its axis swings off the line, meters
+    // On land, its floor along its axis every kGorgeStep meters from its lip (absolute meters,
+    // never rising), out to where the flank comes down to it (the details).
+    std::vector<float> floor;
+};
+inline constexpr double kGorgeStep = 50.0;
+
+// A col or a high point of the rim of a caldera: its azimuth, its half width (turns), how far it
+// lowers or lifts the crest (in depths of the caldera).
+struct RimBump {
+    double turns = 0.0;
+    double width = 0.05;
+    double height = 0.0;
+};
+
 // The shape a volcano draws from its seed, before any relief is read.
 struct Shape {
     double cosAxis = 1.0; // its long axis (VolcanoSite::axis)
@@ -44,12 +69,18 @@ struct Shape {
     double offsetV = 0.0;
     double sharpness = 3.5;  // of the concave profile of a stratovolcano
     double smoothing = 40.0; // the width of the smooth maximum of the edifice and the ground
-    // The rim of its crater: its noise; its breach (azimuth, half width in radians, bottom).
+    // The rim of its crater: its noise; its breach (azimuth in radians, bottom) and its gorge.
     double rimNoise = 0.08;
     bool breached = false;
     double breachAngle = 0.0;
-    double breachWidth = 0.2;
     double breachBottom = 0.0;
+    GorgeShape gorge;
+    // The cols (the deepest first: the breach goes through it) and the high points of the rim of a
+    // caldera.
+    std::array<RimBump, 3> cols{};
+    std::array<RimBump, 3> peaks{};
+    int colCount = 0;
+    int peakCount = 0;
     double wall = 0.5; // the share of the crater radius its wall takes
     // The amphitheater of a collapse, its azimuth.
     double collapseAngle = 0.0;
@@ -171,6 +202,19 @@ using GroundAt = std::function<Ground(double, double)>;
 [[nodiscard]] double edificeRise(const VolcanoSite& site, const Shape& shape);
 // The profile of its edifice at rho (1 at the summit, 0 at the foot).
 [[nodiscard]] double profileOf(const VolcanoSite& site, const Shape& shape, double rho);
+// How much higher or lower the rim of a caldera stands at the azimuth turns than its mean (0 for
+// the craters of the cones).
+[[nodiscard]] double rimSwellAt(const VolcanoSite& site, const Shape& shape, double turns);
+// The radius of its crater at the azimuth turns (its spurs and re-entrants), meters.
+[[nodiscard]] double craterRadiusAt(const VolcanoSite& site, const Shape& shape, double turns);
+// The offset from its center of the point (u, v) of its frame (around the summit, the long axis
+// shrunk to the short one: what the relief reads at a point, inverted).
+struct FrameOffset {
+    double dx = 0.0;
+    double dz = 0.0;
+};
+[[nodiscard]] FrameOffset offsetOfFrame(const VolcanoSite& site, const Shape& shape, double u,
+                                        double v);
 
 // What the volcanoes make of a point, gathered over those that reach it.
 struct Point {
