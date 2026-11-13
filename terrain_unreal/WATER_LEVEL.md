@@ -216,7 +216,7 @@ Mesuré sur `9db1286` (8 sinusoïdes) : fleuve +0,21 ms, lac +0,10, chute +0,42,
   sec : un matériau prend un texel sous −1e8 (`kWetWaterTexel`) pour du sec. Avant : un code de
   16 bits par pas de 0,25 m (jusqu'à 12,5 cm d'écart avec les tuiles).
 - Paramètres : `HorizonWater` (le niveau) et `CoarseWater` (le niveau plus grossier), lus par
-  `Load`. Les texels du sol ne changent pas : leur 4e flottant garde le code d'eau (≥ 128 sous un
+  `Load`. Les texels du sol ne changent pas : leur 4e flottant garde le code d'eau (≥ 2 048 depuis l'agent 49, 128 avant, sous un
   lac ou un fleuve, le sol sous la mer, négatif, sur l'océan).
 
 **Mémoire** : textures d'eau 2,6 Mo sur le GPU (10 niveaux, 4 octets par texel, +1,3 Mo), +2
