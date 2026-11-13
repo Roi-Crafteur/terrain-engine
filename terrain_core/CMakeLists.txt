@@ -558,3 +558,10 @@ target_link_libraries(terrain_export_network PRIVATE terrain_core terrain_warnin
 #                        [--step <cells>] [--threads <n>]
 add_executable(terrain_climate_shares tools/climate_shares.cpp)
 target_link_libraries(terrain_climate_shares PRIVATE terrain_core terrain_warnings)
+
+# What a world of experimental flags changes for the other agents (task 11C): the shares of the
+# characters of the ergs, the ergs on grassland and savanna, the wall of the giant waves and the
+# field of stars, the places of the views.
+# terrain_world_changes <output-dir> [--flags <a,b>] [--places <file>] [--step <cells>]
+add_executable(terrain_world_changes tools/world_changes.cpp)
+target_link_libraries(terrain_world_changes PRIVATE terrain_core terrain_warnings)
