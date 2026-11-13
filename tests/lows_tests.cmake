@@ -3,6 +3,10 @@
 terrain_add_test(lows_readers_test terrain_core)
 terrain_add_test(lows_sites_test terrain_core)
 terrain_add_test(lows_flags_test terrain_core)
+# The impact craters: their forms, their wear, their sites on the default world.
+terrain_add_test(lows_craters_test terrain_core)
+target_include_directories(lows_craters_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 
 # The measures of the land below the sea level of a small world (32 x 16 cells), its map.
 add_test(NAME export_lows_smoke

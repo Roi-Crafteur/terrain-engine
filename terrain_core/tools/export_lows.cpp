@@ -190,10 +190,31 @@ void reportLows(const std::vector<lows_tool::LowFigures>& lows, bool list, Repor
     }
     for (std::size_t k = 0; list && k < lows.size(); ++k) {
         const lows_tool::LowFigures& f = lows[k];
-        r.add("  #%zu %s at (%.0f, %.0f), reach %.0f m: lowest %.1f m at (%.0f, %.0f), %s, %s\n",
-              k, f.low.family.c_str(), f.low.x, f.low.z, f.low.reach,
+        r.add("  #%zu %s at (%.0f, %.0f), radius %.0f m, reach %.0f m, floor %.0f m, wear %.2f: "
+              "lowest %.1f m at (%.0f, %.0f), %s, %s\n",
+              k, f.low.family.c_str(), f.low.x, f.low.z, f.low.radius, f.low.reach,
+              static_cast<double>(f.low.floor), static_cast<double>(f.low.wear),
               static_cast<double>(f.lowest), f.lowX, f.lowZ, lows_tool::lowWaterName(f.water),
               lows_tool::beltName(f.belt));
+    }
+}
+
+void reportCraters(const lows_tool::CraterTable& t, Report& r) {
+    constexpr std::array<const char*, lows_tool::kCraterClasses> kClasses = {
+        "0.4-2 km", "2-10 km", "10-60 km"};
+    r.add("craters by diameter (fresh / worn / worn out), %zu with their lowest point below 0 m:\n",
+          t.belowSea);
+    for (std::size_t k = 0; k < lows_tool::kCraterClasses; ++k) {
+        const auto& c = t.byClass[k];
+        r.add("    %-10s %4zu %4zu %4zu\n", kClasses[k], c[0], c[1], c[2]);
+    }
+    r.add("  craters by belt (fresh / worn / worn out):\n");
+    for (std::size_t b = 0; b < lows_tool::kBelts; ++b) {
+        const auto& c = t.byBelt[b];
+        if (c[0] + c[1] + c[2] > 0) {
+            r.add("    %-10s %4zu %4zu %4zu\n",
+                  lows_tool::beltName(static_cast<lows_tool::Belt>(b)), c[0], c[1], c[2]);
+        }
     }
 }
 
@@ -285,6 +306,7 @@ int run(const Options& o) {
         centers.push_back({low.x, low.z});
     }
     reportLows(lows, o.list, r);
+    reportCraters(lows_tool::craterTable(lows), r);
     const terrain::TerrainTiles tiles(o.seed, o.params.relief,
                                       terrain::EcologyParams{}, std::nullopt, o.world, hydrology);
     std::vector<Point> dry;

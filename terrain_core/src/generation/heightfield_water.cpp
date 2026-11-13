@@ -8,6 +8,7 @@
 #include "ravines.hpp"
 #include "relief_local.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/generation/pre_climate.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -20,6 +21,7 @@ namespace terrain {
 
 struct Heightfield::Water {
     std::optional<depressions::Sites> depressions;
+    std::shared_ptr<const PreClimate> climate; // with the craters only
     lows::Sites lows;
 };
 
@@ -90,20 +92,22 @@ Lowered inDepression(const depressions::Forms& forms, const ravines::Network& ne
 
 } // namespace
 
-std::shared_ptr<const Heightfield::Water> Heightfield::makeWater(std::uint64_t seed,
-                                                                std::uint64_t lowSeed,
-                                                                const HeightfieldParams& params,
-                                                                const Geography* geography) {
+std::shared_ptr<const Heightfield::Water>
+Heightfield::makeWater(std::uint64_t seed, std::uint64_t lowSeed, std::uint64_t geographySeed,
+                       const HeightfieldParams& params, const Geography* geography) {
     auto water = std::make_shared<Water>();
     if (geography != nullptr && params.geography.depressions) {
         water->depressions = depressions::makeSites(seed, *geography);
+    }
+    if (geography != nullptr && params.lows.enabled && params.lows.craters) {
+        water->climate = PreClimate::shared(geographySeed, params.geography, geography->world());
     }
     if (geography != nullptr) {
         const std::vector<depressions::Site> none;
         // The zone of agent 46 (plateaus, mesas, karst) excludes the lows: whichever branch is
         // merged second wires Heightfield::tablelandAt(x, z).any() here (low_footprint.hpp).
         const lows::Exclusion tablelands;
-        water->lows = lows::makeSites(lowSeed, params.lows, *geography,
+        water->lows = lows::makeSites(lowSeed, params.lows, *geography, water->climate.get(),
                                       water->depressions ? water->depressions->sites : none,
                                       tablelands);
     }
@@ -115,9 +119,7 @@ std::vector<LowSite> Heightfield::lowsIn(double minX, double minZ, double maxX,
     std::vector<LowSite> all = lows::listOf(water_->lows);
     if (water_->depressions) {
         for (const depressions::Site& s : water_->depressions->sites) {
-            all.push_back({LowKind::Depression, s.x, s.z, s.radius,
-                           1.6 * s.radius * std::sqrt(s.elongation) + 9'000.0,
-                           static_cast<float>(s.floor), s.angle});
+            all.push_back(lows::siteOf(s));
         }
     }
     std::vector<LowSite> out;
@@ -183,10 +185,28 @@ void Heightfield::lowerToLows(double x, double z, HeightSample& s) const {
             s.detail = static_cast<float>(static_cast<double>(s.detail) * (1.0 - lowered.flat));
         }
     }
+    if (water_->lows.craters) {
+        base = toCraters(x, z, base, weight, s);
+    }
     const auto lowered = static_cast<float>(base);
     s.regional += lowered - s.base;
     s.base = lowered;
     s.height = s.base + s.mountain + s.detail;
+}
+
+// In a crater the ground takes its form over the ground before it, the relief of the plains
+// brought down to kKeep of itself on its floor and walls (the sediment, the breccia): almost
+// flat, never a plane; the sediment of a worn floor buries the detail too.
+double Heightfield::toCraters(double x, double z, double base, double weight,
+                              HeightSample& s) const {
+    const lows::CraterShape c = lows::craterAt(*water_->lows.craters, world_, x, z);
+    if (!(c.delta != 0.0 || c.inside > 0.0)) {
+        return base;
+    }
+    const double local = base - static_cast<double>(s.regional);
+    const double target = base + c.delta - c.inside * (1.0 - kKeep) * local;
+    s.detail = static_cast<float>(static_cast<double>(s.detail) * (1.0 - weight * c.flat));
+    return base + weight * (target - base);
 }
 
 // With the geography the sea is where its coast signal is below 0 (the sign of the

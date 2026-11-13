@@ -7,20 +7,29 @@
 #include "terrain/generation/noise.hpp"
 
 #include <array>
+#include <cmath>
 
 namespace terrain::lows {
 
 namespace {
 
 // The streams of the seeds of the families: new ones go at the end.
-enum Stream : std::uint64_t { kGrabens, kBasins };
+enum Stream : std::uint64_t { kGrabens, kBasins, kCraters };
 
-constexpr std::array<const char*, kLowKindCount> kNames = {"depression", "basin", "graben"};
+constexpr std::array<const char*, kLowKindCount> kNames = {"depression", "basin", "graben",
+                                                           "crater"};
 
 } // namespace
 
+LowSite siteOf(const depressions::Site& s) {
+    return {LowKind::Depression, s.x, s.z, s.radius,
+            1.6 * s.radius * std::sqrt(s.elongation) + 9'000.0, static_cast<float>(s.floor),
+            s.angle};
+}
+
 Sites makeSites(std::uint64_t seed, const LowsParams& params, const Geography& geography,
-                const std::vector<depressions::Site>& depressions, const Exclusion& excluded) {
+                const PreClimate* climate, const std::vector<depressions::Site>& depressions,
+                const Exclusion& excluded) {
     Sites out;
     if (!params.enabled) {
         return out;
@@ -33,12 +42,21 @@ Sites makeSites(std::uint64_t seed, const LowsParams& params, const Geography& g
         out.basins = makeBasins(noise::deriveSeed(seed, kBasins), geography, params.density,
                                 depressions, excluded);
     }
+    if (params.craters) {
+        std::vector<LowSite> taken = listOf(out);
+        for (const depressions::Site& s : depressions) {
+            taken.push_back(siteOf(s));
+        }
+        out.craters = makeCraters(noise::deriveSeed(seed, kCraters), geography, climate,
+                                  params.density, taken, excluded);
+    }
     return out;
 }
 
 bool mayReach(const Sites& sites, double x, double z) {
     return (sites.grabens && !sites.grabens->reach.at(x, z).empty()) ||
-           (sites.basins && !sites.basins->reach.at(x, z).empty());
+           (sites.basins && !sites.basins->reach.at(x, z).empty()) ||
+           (sites.craters && !sites.craters->reach.at(x, z).empty());
 }
 
 std::vector<LowSite> listOf(const Sites& sites) {
@@ -54,6 +72,12 @@ std::vector<LowSite> listOf(const Sites& sites) {
         for (const depressions::Site& s : sites.basins->sites) {
             out.push_back({LowKind::Basin, s.x, s.z, s.radius, basinReach(s),
                            static_cast<float>(s.floor), s.angle});
+        }
+    }
+    if (sites.craters) {
+        for (const Crater& c : sites.craters->sites) {
+            out.push_back({LowKind::Crater, c.x, c.z, c.radius, c.reach,
+                           static_cast<float>(craterFloor(c)), 0.0, static_cast<float>(c.wear)});
         }
     }
     return out;

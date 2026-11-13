@@ -200,7 +200,7 @@ Heightfield::Heightfield(std::uint64_t seed, const HeightfieldParams& params,
                                                          params_.plates, world_);
     }
     water_ = makeWater(noise::deriveSeed(seed, kDepressions), noise::deriveSeed(seed, kLows),
-                       params_, geography_.get());
+                       noise::deriveSeed(seed, kGeography), params_, geography_.get());
     if (geography_ && params_.geography.coasts) {
         coasts_ = makeCoasts(seed, world_);
         inlets_ = makeInlets();

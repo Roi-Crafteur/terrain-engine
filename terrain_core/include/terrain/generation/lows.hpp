@@ -7,20 +7,24 @@
 // water (dry, salt lake or lake). Families:
 // - depressions: those of phase 11B, deep in the plains (depressions.hpp), their bits kept;
 // - basins: more of them, smaller (Qattara, Death Valley), on the forms of the depressions;
-// - grabens: sunken troughs along the axes of the rifts (the Dead Sea), fault walls in steps.
+// - grabens: sunken troughs along the axes of the rifts (the Dead Sea), fault walls in steps;
+// - craters: rare impact craters, placed by the seed alone, most of them worn (the humidity of
+//   the pre-climate, the softness of the rock), their rims and ejecta raised over the plains.
 // Out of the reach of every low, the relief keeps every bit (lows_outside_test).
 
 #include <cstdint>
 
 namespace terrain {
 
-enum class LowKind : std::uint8_t { Depression, Basin, Graben };
-inline constexpr int kLowKindCount = 3;
+enum class LowKind : std::uint8_t { Depression, Basin, Graben, Crater };
+inline constexpr int kLowKindCount = 4;
 [[nodiscard]] const char* lowKindName(LowKind kind);
 
-// A low of the relief: its center (canonical), its mean radius (a graben: its half length), how
-// far its ground may move from the center, the altitude its floor aims at, and the direction of
-// its long axis (turns from +x toward +z).
+// A low of the relief: its center (canonical), its mean radius (a graben: its half length; a
+// crater: that of the crest of its rim), how far its ground may move from the center, the
+// altitude its floor aims at (a crater: how far its floor lies under the ground around it, below
+// 0), the direction of its long axis (turns from +x toward +z) and its wear (a crater: 0 fresh, 1
+// worn out).
 struct LowSite {
     LowKind kind = LowKind::Depression;
     double x = 0.0;
@@ -29,6 +33,7 @@ struct LowSite {
     double reach = 0.0;
     float floor = 0.0f;
     double axis = 0.0;
+    float wear = 0.0f;
 
     friend bool operator==(const LowSite&, const LowSite&) = default;
 };
@@ -42,6 +47,7 @@ struct LowsParams {
     bool enabled = false;
     bool basins = true;
     bool grabens = true;
+    bool craters = true;
     double density = 1.0;
 };
 

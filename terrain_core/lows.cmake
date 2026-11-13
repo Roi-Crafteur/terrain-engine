@@ -10,6 +10,8 @@ target_link_libraries(terrain_export_lows PRIVATE terrain_core terrain_warnings)
 
 # The sources of the lows in terrain_core (their Unreal sources: TerrainCore/core_generation_*).
 target_sources(terrain_core PRIVATE
+    src/generation/crater_forms.cpp
+    src/generation/impact_craters.cpp
     src/generation/low_basins.cpp
     src/generation/low_reach.cpp
     src/generation/low_sites.cpp

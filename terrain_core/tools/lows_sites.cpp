@@ -11,6 +11,7 @@ namespace {
 constexpr std::array<const char*, kBelts> kBeltNames = {
     "cold", "hyper-arid", "arid", "semi-arid", "sub-humid", "humid", "unknown"};
 constexpr std::array<const char*, kLowWaters> kWaterNames = {"dry", "salt lake", "lake", "other"};
+constexpr std::array<const char*, kWears> kWearNames = {"fresh", "worn", "worn out"};
 
 // The grid of the lowest point: kSide x kSide points over twice the reach.
 constexpr int kSide = 65;
@@ -103,11 +104,32 @@ std::vector<BeltTable> beltTables(const std::vector<LowFigures>& lows) {
     return out;
 }
 
+const char* wearName(std::size_t wear) {
+    return kWearNames[wear];
+}
+
+CraterTable craterTable(const std::vector<LowFigures>& lows) {
+    CraterTable out;
+    for (const LowFigures& f : lows) {
+        if (f.low.family != terrain::lowKindName(terrain::LowKind::Crater)) {
+            continue;
+        }
+        const double diameter = 2.0 * f.low.radius;
+        const std::size_t cls = diameter < 2'000.0 ? 0 : diameter < 10'000.0 ? 1 : 2;
+        const std::size_t wear = f.low.wear < 1.0f / 3.0f ? 0 : f.low.wear < 2.0f / 3.0f ? 1 : 2;
+        ++out.byClass[cls][wear];
+        ++out.byBelt[static_cast<std::size_t>(f.belt)][wear];
+        out.belowSea += f.lowest < 0.0f ? 1 : 0;
+    }
+    return out;
+}
+
 std::vector<Low> lowsOf(const terrain::Heightfield& field) {
     std::vector<Low> out;
     const terrain::WorldSize& w = field.world();
     for (const terrain::LowSite& s : field.lowsIn(-0.5 * w.x, -0.5 * w.z, 0.5 * w.x, 0.5 * w.z)) {
-        out.push_back({terrain::lowKindName(s.kind), s.x, s.z, s.reach});
+        out.push_back({terrain::lowKindName(s.kind), s.x, s.z, s.reach, s.radius, s.floor,
+                       s.wear});
     }
     return out;
 }

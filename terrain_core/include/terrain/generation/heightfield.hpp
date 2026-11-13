@@ -313,14 +313,20 @@ private:
     // The inlets of these coasts, stopped before the rivers of hydrology_ (heightfield_coast.cpp).
     [[nodiscard]] std::shared_ptr<const coast_lattice::Lattices> makeInlets() const;
 
+    // The depressions of seed, the lows of lowSeed over geography (of geographySeed: its
+    // pre-climate wears the craters).
     [[nodiscard]] static std::shared_ptr<const Water>
-    makeWater(std::uint64_t seed, std::uint64_t lowSeed, const HeightfieldParams& params,
-              const Geography* geography);
+    makeWater(std::uint64_t seed, std::uint64_t lowSeed, std::uint64_t geographySeed,
+              const HeightfieldParams& params, const Geography* geography);
     // The depressions below the sea, the lows (lows.hpp) and the sea of a sample at a canonical
     // point.
     void finishWater(double x, double z, HeightSample& s) const;
     // The lows of agent 52 at a canonical point, after the depressions (heightfield_water.cpp).
     void lowerToLows(double x, double z, HeightSample& s) const;
+    // The craters of agent 52 over the ground base at a canonical point, weight of the way: the new
+    // base; the detail of s buried by the sediment of their floors.
+    [[nodiscard]] double toCraters(double x, double z, double base, double weight,
+                                   HeightSample& s) const;
     // The seas of dunes of the hydrology (ergs.hpp) over the relief at a canonical point, before
     // its valleys (heightfield_hydrology): nothing, not a bit, outside them.
     void addDunes(double x, double z, HeightSample& s) const;

@@ -28,12 +28,16 @@ enum class LowWater : int { Dry, Salt, Lake, Other };
 inline constexpr std::size_t kLowWaters = 4;
 [[nodiscard]] const char* lowWaterName(LowWater water);
 
-// A low to measure: its family, center and how far it reaches (meters).
+// A low to measure: its family, center, how far it reaches (meters), and its radius, floor and
+// wear (terrain::LowSite).
 struct Low {
     std::string family;
     double x = 0.0;
     double z = 0.0;
     double reach = 0.0;
+    double radius = 0.0;
+    float floor = 0.0f;
+    float wear = 0.0f;
 };
 
 struct LowFigures {
@@ -56,6 +60,18 @@ struct BeltTable {
     std::array<std::array<std::size_t, kLowWaters>, kBelts> counts{};
 };
 [[nodiscard]] std::vector<BeltTable> beltTables(const std::vector<LowFigures>& lows);
+
+// The craters by class of diameter (0.4 to 2, 2 to 10, 10 to 60 km: impact_craters.hpp) and by
+// wear (fresh under 1/3, worn, worn out from 2/3), and by belt and wear.
+inline constexpr std::size_t kCraterClasses = 3;
+inline constexpr std::size_t kWears = 3;
+[[nodiscard]] const char* wearName(std::size_t wear);
+struct CraterTable {
+    std::array<std::array<std::size_t, kWears>, kCraterClasses> byClass{};
+    std::array<std::array<std::size_t, kWears>, kBelts> byBelt{};
+    std::size_t belowSea = 0; // whose lowest point lies below 0 m
+};
+[[nodiscard]] CraterTable craterTable(const std::vector<LowFigures>& lows);
 
 // The lows of the field (Heightfield::lowsIn over the whole world).
 [[nodiscard]] std::vector<Low> lowsOf(const terrain::Heightfield& field);

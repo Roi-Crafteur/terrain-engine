@@ -1,5 +1,5 @@
 // The sites of the lows of agent 52 (lows.hpp) on the default world, the lows on:
-// - basins and grabens, the depressions of phase 11B among the lows; the same sites on every
+// - basins, grabens and craters, the depressions of phase 11B among the lows; the same sites on every
 //   build, Heightfield::lowsIn sorted and the same whatever the boxes asked;
 // - Heightfield::mayBeDryBelowSea true at the center of every low;
 // - the same code with the lows on and off: every sample out of their reach keeps every bit
@@ -52,8 +52,9 @@ void testSites() {
     for (const LowSite& s : sites) {
         ++count[static_cast<int>(s.kind)];
     }
-    std::printf("%zu depressions, %zu basins, %zu grabens\n", count[0], count[1], count[2]);
-    TEST_CHECK(count[0] >= 20 && count[1] >= 100 && count[2] >= 1);
+    std::printf("%zu depressions, %zu basins, %zu grabens, %zu craters\n", count[0], count[1],
+                count[2], count[3]);
+    TEST_CHECK(count[0] >= 20 && count[1] >= 100 && count[2] >= 1 && count[3] >= 250);
     TEST_CHECK(std::is_sorted(sites.begin(), sites.end(), [](const LowSite& a, const LowSite& b) {
         return a.x < b.x || (a.x == b.x && a.z < b.z);
     }));
