@@ -23,29 +23,44 @@ bool overlapsAny(const TileKey& tile, std::span<const ChunkCoord> chunks) {
 // The tiles the edits of some chunks change. A tile of LOD 0 reads the blocks within kBlockReach
 // of its lattice, which the chunks of an edit already cover. The other tiles, and the sides of a
 // tile of LOD 0 stitched to a coarser one, read them up to 12 m beyond (agent 41, tile_edits.hpp:
-// editReach): the tiles within a chunk of one.
+// editReach): the tiles within a chunk of one, those whose chunks widened by one hold one. The
+// chunks are kept sorted, once: on the game thread, a razed mountain (thousands of chunks) costs
+// a few lookups per tile wanted, no set of tiles per chunk.
 class ReachedTiles {
 public:
-    ReachedTiles(std::span<const ChunkCoord> chunks, const WorldSize& world) {
+    ReachedTiles(std::span<const ChunkCoord> chunks, const WorldSize& world) : world_(world) {
+        chunks_.reserve(chunks.size());
         for (const ChunkCoord chunk : chunks) {
-            held_.insert({wrapChunk(chunk, world), 0}); // a tile of LOD 0 is its chunk
-            for (int dz = -1; dz <= 1; ++dz) {
-                for (int dx = -1; dx <= 1; ++dx) {
-                    const ChunkCoord near = wrapChunk({chunk.x + dx, chunk.z + dz}, world);
-                    for (int lod = 0; lod < kLodCount; ++lod) {
-                        near_.insert(tileContaining(near, lod));
-                    }
+            chunks_.push_back(wrapChunk(chunk, world));
+        }
+        std::sort(chunks_.begin(), chunks_.end(), before);
+        chunks_.erase(std::unique(chunks_.begin(), chunks_.end()), chunks_.end());
+    }
+    [[nodiscard]] bool reaches(const TileKey& key, unsigned seams) const {
+        if (key.lod == 0 && seams == 0) {
+            return holds(key.origin); // a tile of LOD 0 is its chunk
+        }
+        const int side = tileChunks(key.lod);
+        for (int dz = -1; dz <= side; ++dz) {
+            for (int dx = -1; dx <= side; ++dx) {
+                if (holds(wrapChunk({key.origin.x + dx, key.origin.z + dz}, world_))) {
+                    return true;
                 }
             }
         }
-    }
-    [[nodiscard]] bool reaches(const TileKey& key, unsigned seams) const {
-        return key.lod == 0 && seams == 0 ? held_.contains(key) : near_.contains(key);
+        return false;
     }
 
 private:
-    std::unordered_set<TileKey, TileKeyHash> held_; // the tiles of LOD 0 of the chunks
-    std::unordered_set<TileKey, TileKeyHash> near_; // the tiles within a chunk, every LOD
+    static bool before(const ChunkCoord& a, const ChunkCoord& b) {
+        return a.z != b.z ? a.z < b.z : a.x < b.x;
+    }
+    [[nodiscard]] bool holds(ChunkCoord chunk) const {
+        return std::binary_search(chunks_.begin(), chunks_.end(), chunk, before);
+    }
+
+    WorldSize world_;
+    std::vector<ChunkCoord> chunks_; // the chunks of the edits, canonical, sorted by z then x
 };
 
 // Unloading order, for deterministic changes.
