@@ -1,5 +1,7 @@
 #pragma once
 
+#include "block_targeting.hpp"
+
 #include "terrain/dev/places_file.hpp"
 
 #include <cstddef>
@@ -92,5 +94,44 @@ inline constexpr std::size_t kHudPageCount = 4;
 [[nodiscard]] std::optional<HudPage> parseHud(std::span<const std::string> args, HudPage current,
                                               std::string& error);
 [[nodiscard]] std::string_view hudPageName(HudPage page);
+
+// Terrain.EditAim <dig|place> <block|sphere> [radius] [at x y z] (agent 41): what a click of the
+// player does, through the code of a click (UTerrainBuildComponent): the action, the tool, the
+// radius of a sphere in meters (rounded to the sixteenth of the edit, from 1/16 to
+// kEditAimMaxRadius; none: the small sphere of the player, 26/16 m), and the point of the core
+// the trace from the camera passes through (none: the center of the screen). A block takes no
+// radius.
+inline constexpr double kEditAimMaxRadius = 32.0;
+struct EditAimCommand {
+    BuildAction action = BuildAction::Break;
+    BuildTool tool = BuildTool::Block; // Block, or Sphere2 for a sphere of any radius
+    double radius = 0.0;               // meters, a sphere only
+    std::optional<CorePoint> at;
+};
+[[nodiscard]] std::optional<EditAimCommand> parseEditAim(std::span<const std::string> args,
+                                                         std::string& error);
+
+// What an EditAim did, for its line in the log: the point the trace hit (none: refused before
+// the trace or nothing hit), the edit aimed at (none: refused before it), and the refusal (empty:
+// queued as a click).
+struct EditAimOutcome {
+    std::optional<CorePoint> hit;
+    std::optional<VolumeEdit> edit;
+    std::string refusal;
+};
+// "EditAim dig block at (x, y, z): hit (x, y, z), block (x, y, z), accepted" or
+// "..., refused: <why>"; "at the center of the screen" without a point; a sphere by its center
+// and radius.
+[[nodiscard]] std::string editAimLine(const EditAimCommand& command,
+                                      const EditAimOutcome& outcome);
+
+// Terrain.EditRead [0|1] (agent 41): 1, the next play of this session of the editor reads the
+// saved edits of its seed as with Building.bSaveEdits; 0, it does not; without an argument the
+// state is asked (read empty).
+struct EditReadCommand {
+    std::optional<bool> read;
+};
+[[nodiscard]] std::optional<EditReadCommand> parseEditRead(std::span<const std::string> args,
+                                                           std::string& error);
 
 } // namespace terrain::unreal

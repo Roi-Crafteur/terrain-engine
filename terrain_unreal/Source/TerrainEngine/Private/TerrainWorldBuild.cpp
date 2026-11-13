@@ -190,11 +190,35 @@ void NoteBuildEdit(FTerrainWorldState& State, const terrain::unreal::EditOutcome
 #endif
 }
 
+namespace
+{
+	// Terrain.EditRead 1 (TerrainDevEdits.cpp, tools of the developers): the next play of this
+	// session of the editor reads the saved edits of its seed, without Building.bSaveEdits.
+	bool GReadSavedEditsOnce = false;
+} // namespace
+
+void FTerrainBuildHooks::SetReadOnce(bool bRead)
+{
+	GReadSavedEditsOnce = bRead;
+}
+
+bool FTerrainBuildHooks::ReadOnce()
+{
+	return GReadSavedEditsOnce;
+}
+
 void FTerrainBuildHooks::Start(ATerrainWorld& World)
 {
 	ApplyEditLight(World);
-	if (World.State.IsValid() && World.Building.bSaveEdits)
+	const bool bReadOnce = GReadSavedEditsOnce;
+	GReadSavedEditsOnce = false; // this play only
+	if (World.State.IsValid() && (World.Building.bSaveEdits || bReadOnce))
 	{
+		if (!World.Building.bSaveEdits)
+		{
+			UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: the saved edits read and saved "
+				"this play, as with Building.bSaveEdits (asked by Terrain.EditRead 1)"));
+		}
 		StartSaver(World, *World.State.Get(), true);
 	}
 }

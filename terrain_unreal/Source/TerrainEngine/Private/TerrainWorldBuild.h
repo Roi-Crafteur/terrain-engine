@@ -35,8 +35,13 @@ struct FTerrainBuildState
 struct FTerrainBuildHooks
 {
 	// Once the world is built (FinishStreamingStart): the saved edits of the seed read and the
-	// saver started, with Building.bSaveEdits.
+	// saver started, with Building.bSaveEdits or after Terrain.EditRead 1 (once).
 	static void Start(ATerrainWorld& World);
+	// Terrain.EditRead (agent 41, tools of the developers): the next play of this session of the
+	// editor reads and saves the edits of its seed as with Building.bSaveEdits, the actor and the
+	// map untouched; the next Start takes it back to false.
+	static void SetReadOnce(bool bRead);
+	static bool ReadOnce();
 	// Each frame: a save asked when its interval passed, the build component on the player pawn.
 	static void Tick(ATerrainWorld& World, APawn* Pawn);
 	// Before the world is released: a last save, written before the session goes.

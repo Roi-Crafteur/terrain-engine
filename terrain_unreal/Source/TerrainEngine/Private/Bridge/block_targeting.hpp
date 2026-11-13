@@ -10,6 +10,7 @@
 #include "terrain/storage/volume_edit.hpp"
 
 #include <cstdint>
+#include <string>
 
 namespace terrain::unreal {
 
@@ -28,6 +29,9 @@ enum class BuildAction : std::uint8_t {
 
 // The name of a tool, for the screen and the log ("block 1 m", "sphere 3 m", "sphere 5 m").
 [[nodiscard]] const char* toolName(BuildTool tool);
+// The name of a tool with the radius of its sphere (meters, ignored for the block): the name of
+// the tool at its own radius, "sphere of radius 1.5 m" at another (Terrain.EditAim, agent 41).
+[[nodiscard]] std::string shapeName(BuildTool tool, double radius);
 // The radius of a sphere tool, meters (0 for the block): 26 / 16 m (19 blocks) and 39 / 16 m
 // (57 blocks). A sphere centered on a block keeps the blocks within its radius (contains): at
 // 1 m or 2 m, single blocks at the ends of its axes, which Marching Cubes draws as pyramids of
@@ -99,9 +103,19 @@ inline constexpr double kBreakDepthMeters = 0.5;
 // - Place, sphere: centered half its radius out of the surface, along the normal.
 // Only integers in the edit: the same hit gives the same edit on every machine.
 [[nodiscard]] BuildTarget buildTarget(const BuildHit& hit, BuildTool tool, BuildAction action);
+// The same with the radius of a sphere given (meters, rounded to the sixteenth of the edit; the
+// block ignores it): the sphere of Terrain.EditAim (agent 41). buildTarget(hit, tool, action) is
+// buildTarget(hit, tool, action, toolRadius(tool)).
+[[nodiscard]] BuildTarget buildTarget(const BuildHit& hit, BuildTool tool, BuildAction action,
+                                      double radius);
 
 // True if a hit lies within reach of the eye (meters, the reach of the player, 6 m by default).
 [[nodiscard]] bool withinReach(const BuildHit& hit, double reachMeters);
+
+// A trace aimed through a point (Terrain.EditAim ... at x y z, agent 41) edits only where it
+// hits within kAimToleranceMeters of that point: an obstacle on the way is refused, never edited.
+inline constexpr double kAimToleranceMeters = 1.0;
+[[nodiscard]] bool aimsAt(const BuildHit& hit, const CorePoint& point);
 
 // The ghost in Unreal: its center (centimeters, the frame of the session) and its half sizes
 // along Unreal X, Y and Z (centimeters).

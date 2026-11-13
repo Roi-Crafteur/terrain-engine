@@ -16,6 +16,8 @@ class UMaterialInterface;
 class UStaticMesh;
 class UStaticMeshComponent;
 struct FTerrainBuildRuntime;
+struct FTerrainBuildAim;
+struct FTerrainBuildRequest;
 
 /**
  * Breaking and placing in game (agent 28, phase 15), on the pawn of the player: ATerrainWorld gives
@@ -103,6 +105,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Build")
 	FString GetLastRefusal() const { return LastRefusal; }
+
+	// What a click does, asked by code (Terrain.EditAim, agent 41: TerrainBuildAim.h): the action
+	// and the tool of the request, the radius of a sphere and a point the trace goes through when
+	// given. The same gate, aim, capsule, rate and queue as a click: Build is BuildRequested with
+	// the tool of the component, toward the center of the screen.
+	bool BuildRequested(const FTerrainBuildRequest& Request);
+
+	// What the last Build or BuildRequested touched and aimed at (no hit nor target when refused
+	// before the trace), or null before the play.
+	const FTerrainBuildAim* GetLastAim() const;
 
 protected:
 	virtual void BeginPlay() override;

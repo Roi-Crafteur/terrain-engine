@@ -231,7 +231,7 @@ class Features(unittest.TestCase):
                          {"loadReport": False, "loadStart": False, "goto": False, "look": False,
                           "viewMode": False, "pawn": False, "pawnLanding": False,
                           "mapGo": False, "mapStarted": False, "determinism": False,
-                          "loadTest": False})
+                          "loadTest": False, "editAim": False, "editRead": False})
         stands = ('TerrainDev::Log(FString::Printf(TEXT("the pawn of the game stands, spot %d of '
                   '%d"), ...')  # TerrainDevPawn.cpp of main (#57)
         self.assertTrue(ue_log.plugin_features([stands])["pawnLanding"])
@@ -248,6 +248,11 @@ class Features(unittest.TestCase):
         self.assertTrue(f["mapStarted"] and f["determinism"])
         self.assertFalse(f["viewMode"])  # Terrain.Views alone is not Terrain.View
         self.assertTrue(ue_log.plugin_features(['TEXT("Terrain.View")'])["viewMode"])
+        edits = ('EditAimConsoleCommand(TEXT("Terrain.EditAim"), ...); '
+                 'EditReadConsoleCommand(TEXT("Terrain.EditRead"), ...)')  # TerrainDevEdits.cpp
+        f = ue_log.plugin_features([edits])
+        self.assertTrue(f["editAim"] and f["editRead"])
+        self.assertFalse(ue_log.plugin_features(['TEXT("Terrain.EditStats")'])["editAim"])
 
 
 if __name__ == "__main__":

@@ -37,12 +37,22 @@ namespace
 		}
 	}
 
-	// Terrain.EditLight 0|1
+	// Terrain.EditLight [0|1]: without an argument, the state.
 	void RunEditLight(const TArray<FString>& Args, UWorld* World)
 	{
+		if (World != nullptr && Args.Num() == 0)
+		{
+			for (TActorIterator<ATerrainWorld> It(World); It; ++It)
+			{
+				UE_LOG(LogTerrainEngine, Log, TEXT("Terrain World: light floor of the edits %s "
+					"(%.2f of the base color)"), It->Building.bEditLightFloor ? TEXT("on") : TEXT("off"),
+					It->Building.EditLightFloor);
+			}
+			return;
+		}
 		if (World == nullptr || Args.Num() != 1 || (Args[0] != TEXT("0") && Args[0] != TEXT("1")))
 		{
-			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.EditLight 0|1"));
+			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.EditLight [0|1]"));
 			return;
 		}
 		for (TActorIterator<ATerrainWorld> It(World); It; ++It)
@@ -69,7 +79,8 @@ namespace
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs EditLightCommand(TEXT("Terrain.EditLight"),
-		TEXT("The light floor of the surfaces the edits made (1: on, 0: off, the default)"),
+		TEXT("The light floor of the surfaces the edits made (1: on, 0: off, the default; "
+			 "nothing: the state)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunEditLight));
 	FAutoConsoleCommandWithWorldAndArgs EditLightFloorCommand(TEXT("Terrain.EditLightFloor"),
 		TEXT("The share of their base color the surfaces the edits made emit with "
