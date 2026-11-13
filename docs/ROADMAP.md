@@ -674,6 +674,11 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   | 51 (mers) | 23-25 : corail, glace de mer, vase des abysses | 34-39 |
   | libres | 26-31 | 40-63 |
 
+- zone de mousson : un marquage, jamais un biome (agent 49, `monsoon.hpp`). Sa part en [0, 1] est
+  chaude × humide × bande tropicale aux bords gauchis, et couvre 4 % des terres à 0,5 au moins.
+  On la lit sur la carte de dev (calque `monsoon`), dans F3 (`monsoon`) et dans la sonde
+  (`surface.monsoon`). À reprendre par l'agent 50 (plaines inondables, forêts inondées, prairies
+  humides)
 - à R1, réglage fin des seuils des biomes sur la table des 6 seeds. Le climat de la planète bouge
   alors (latitude « sphère » et bandes fondues de l'agent 31). Écarts mesurés sur le climat actuel
   (planète réelle, 38 071 points de terre ; réglage grossier jusque-là) :

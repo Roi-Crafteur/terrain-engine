@@ -306,10 +306,12 @@ points[].surface.baseTemperature points[].surface.biome points[].surface.biomes
 points[].surface.biomes[].name points[].surface.biomes[].weight points[].surface.exposure
 points[].surface.humidity points[].surface.material points[].surface.materials
 points[].surface.materials[].name points[].surface.materials[].weight
+points[].surface.monsoon
 points[].surface.plants points[].surface.plants.boulder points[].surface.plants.bush
 points[].surface.plants.cactus points[].surface.plants.flower
 points[].surface.plants.seaweed points[].surface.plants.tallGrass
-points[].surface.plants.tree points[].surface.slope points[].surface.temperature
+points[].surface.plants.tree points[].surface.riverDistance points[].surface.slope
+points[].surface.temperature
 points[].water points[].water.depth points[].water.flow points[].water.flow.heading
 points[].water.flow.x points[].water.flow.z points[].water.hydrology points[].water.kind
 points[].water.lake points[].water.lake.id points[].water.lake.kind

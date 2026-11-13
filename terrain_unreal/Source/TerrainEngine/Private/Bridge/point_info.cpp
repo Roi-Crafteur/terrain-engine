@@ -130,6 +130,9 @@ void ecologyLines(const InfoQuery& q, std::vector<InfoLine>& out) {
     out.push_back({"biome", "biome weights",
                    biomeWeights(q.ecology.blendAt(q.x, q.z, site, e.climate))});
     out.push_back({"biome", "material", materialName(e.material)});
+    // A marking, never a biome (agent 49, monsoon.hpp): 0 away from the wet tropics.
+    const float monsoon = q.ecology.monsoon().shareAt(q.x, q.z, e.climate);
+    out.push_back({"biome", "monsoon", format("%.2f", static_cast<double>(monsoon))});
     out.push_back({"biome", "climate",
                    format("%.1f C, humidity %.2f, slope %.2f",
                           static_cast<double>(e.climate.temperature),

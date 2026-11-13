@@ -63,7 +63,7 @@ void testLines(const water_level::World& world) {
                     line.value.c_str());
     }
     for (const char* label : {"x, z", "chunk", "ground", "water", "relief", "biome",
-                              "biome weights", "material", "climate", "planet cell",
+                              "biome weights", "material", "monsoon", "climate", "planet cell",
                               "planet climate", "coast"}) {
         TEST_CHECK(lineOf(lines, label) != nullptr);
     }

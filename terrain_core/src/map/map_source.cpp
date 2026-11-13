@@ -283,7 +283,8 @@ MapSubPoint MapWorldSource::planetPoint(double x, double z) const {
 // classifyBiome (streaming/horizon_sampler.cpp, at the spacing of the pixels). With points
 // (n x n per pixel, the cells of the planet level), the biome most of them have, each classified
 // with its own ground and water and the slopes of the pixel (ties to the first biome). The share
-// of the seas of dunes is that of the pixel (ergs: the sand desert follows the ergs).
+// of the seas of dunes is that of the pixel (ergs: the sand desert follows the ergs). The share of
+// the monsoon (monsoon.hpp) is the mean of the points of the land, from the same climate.
 void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> continentalness,
                                std::span<const float> ergs, std::span<MapSample> out, int threads,
                                MapCancel cancel,
@@ -300,6 +301,7 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
                     out[mapGridIndex(frame, i - 1, j)].ground,
                     out[mapGridIndex(frame, i, j + 1)].ground,
                     out[mapGridIndex(frame, i, j - 1)].ground};
+                float monsoon = 0.0f; // summed over the points of the pixel
                 const auto classify = [&](double x, double z, float ground, WaterKind water,
                                           float level) {
                     SurfaceSite site =
@@ -307,11 +309,16 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
                     site.erg = ergs[at];
                     site.water = water;
                     site.waterLevel = water == WaterKind::None ? ground : level;
-                    return classifyBiome(ecology_->climate().sample(x, z, site), site, biomes);
+                    const ClimateSample climate = ecology_->climate().sample(x, z, site);
+                    if (water != WaterKind::Ocean) {
+                        monsoon += ecology_->monsoon().shareAt(x, z, climate);
+                    }
+                    return classifyBiome(climate, site, biomes);
                 };
                 if (points.empty()) {
                     s.biome = classify(frame.pixelX(i), frame.pixelZ(j), s.ground, s.water,
                                        s.waterLevel);
+                    s.monsoon = monsoon;
                     continue;
                 }
                 std::array<int, kBiomeCount> votes{};
@@ -326,6 +333,7 @@ void MapWorldSource::addBiomes(const MapFrame& frame, std::span<const float> con
                 }
                 s.biome = static_cast<Biome>(std::distance(
                     votes.begin(), std::max_element(votes.begin(), votes.end())));
+                s.monsoon = monsoon / static_cast<float>(per);
             }
         }
     });

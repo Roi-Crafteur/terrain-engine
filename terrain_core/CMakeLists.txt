@@ -89,6 +89,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield_hydrology.cpp
     src/generation/heightfield_rock.cpp
     src/generation/heightfield_water.cpp
+    src/generation/monsoon.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp

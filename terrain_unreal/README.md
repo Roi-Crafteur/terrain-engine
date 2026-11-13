@@ -668,7 +668,7 @@ fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image
   le personnage et la caméra ne bougent plus ; `M` ou Échap la ferment. Molette : zoom autour du
   curseur, de 0,25 m à 65 km par pixel (la planète entière) ; glisser : déplacer. Panneau de
   droite : le fichier planète (chargé, construit, ou ABSENT : ni fleuves, ni lacs, ni chutes), les
-  calques (relief, biomes, eau, courbes), « Go to x, z » (`-241631, -86277`, ou
+  calques (relief, biomes, mousson, eau, courbes), « Go to x, z » (`-241631, -86277`, ou
   `-6 185 104 ; 155 924`), « Me » (recentrer sur le joueur), « Add this place » (la vue de la
   caméra), les lieux enregistrés, et sous le curseur : x, z, sol, eau (type, niveau, profondeur),
   biome, climat, case de la planète. **Jamais dans un build Shipping** : la carte plein écran, ses

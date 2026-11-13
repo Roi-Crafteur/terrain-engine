@@ -66,6 +66,7 @@ int main() {
     std::array<std::size_t, terrain::kSurfaceMaterialCount> desertSoils{};
     std::size_t land = 0;
     std::size_t deserts = 0;
+    std::size_t monsoon = 0; // land in a zone of the monsoon (a marking, never a biome)
     for (int k = 0; k < kRows; ++k) {
         for (int i = 0; i < kColumns; ++i) {
             const auto ui = static_cast<std::uint64_t>(i);
@@ -80,6 +81,7 @@ int main() {
             const Biome biome = terrain::classifyBiome(climate, site, params.biomes);
             ++land;
             ++biomes[static_cast<std::size_t>(biome)];
+            monsoon += ecology.monsoon().shareAt(x, z, climate) >= 0.5f ? 1U : 0U;
             if (terrain::isDesert(biome)) {
                 ++deserts;
                 ++desertSoils[static_cast<std::size_t>(
@@ -112,7 +114,10 @@ int main() {
                         100.0 * static_cast<double>(n) / static_cast<double>(deserts));
         }
     }
+    std::printf("zones of the monsoon (share 0.5 or more): %.2f %% of the land\n",
+                100.0 * static_cast<double>(monsoon) / static_cast<double>(land));
     TEST_CHECK(land > 30'000); // about 37 % of the planet
+    TEST_CHECK(monsoon > 0);
     TEST_CHECK(everyBiome);
     TEST_CHECK(newBiomes);
     return test::result();

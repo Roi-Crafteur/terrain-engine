@@ -15,6 +15,7 @@ namespace {
 constexpr std::uint64_t kClimateStream = 0x434C494D;    // "CLIM"
 constexpr std::uint64_t kVegetationStream = 0x56454745; // "VEGE"
 constexpr std::uint64_t kBlendStream = 0x424C4E44;      // "BLND"
+constexpr std::uint64_t kMonsoonStream = 0x4D4E534E;    // "MNSN"
 
 double sampleCoordinate(double center, int index, const HeightmapRegion& region) {
     return center + (index + 0.5 - region.size / 2.0) * region.metersPerPixel;
@@ -57,6 +58,7 @@ Ecology::Ecology(std::uint64_t seed, const EcologyParams& params, const WorldSiz
       climate_(noise::deriveSeed(seed, kClimateStream), params.climate, world, std::move(humidity)),
       vegetation_(noise::deriveSeed(seed, kVegetationStream), params.vegetation, world),
       blend_(noise::deriveSeed(seed, kBlendStream), params.blend, world),
+      monsoon_(noise::deriveSeed(seed, kMonsoonStream), world, params.monsoon),
       riverFloor_(std::move(riverFloor)) {}
 
 SurfaceSite Ecology::wateredSite(double x, double z, const SurfaceSite& site,

@@ -41,3 +41,7 @@ set_tests_properties(biome_cost_test PROPERTIES
 terrain_add_test(biome_map_test terrain_core)
 set_tests_properties(biome_map_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${CMAKE_BINARY_DIR}/coast_planet.bin)
+
+# The zones of the monsoon (monsoon.hpp): a marking, none where it is cold or dry, full in the heart
+# of the band of the tropics, an edge that is no parallel.
+terrain_add_test(biome_monsoon_test terrain_core)

@@ -8,6 +8,7 @@
 #include "terrain/generation/surface_material.hpp"
 #include "terrain/generation/terrain_surface.hpp"
 #include "terrain/generation/vegetation.hpp"
+#include "terrain/generation/water/hydrology.hpp"
 #include "terrain/streaming/lod.hpp"
 
 #include <array>
@@ -52,6 +53,10 @@ terrain::SurfaceSite siteOf(const ProbeWorld& w, const Point& p) {
     return site;
 }
 
+// How far the distance to the floor of the rivers is sought (the grass of the deserts reaches
+// 150 m from it).
+constexpr double kRiverReach = 3000.0;
+
 template <class Id, class Name>
 std::vector<Record> slots(const std::array<Id, terrain::kBlendSlots>& ids,
                           const std::array<float, terrain::kBlendSlots>& weights, Name name) {
@@ -91,7 +96,14 @@ Record surfaceSection(const ProbeWorld& w, const Point& p) {
         .number("exposure", climate.exposure, 4)
         .add("plants", std::move(plants))
         .list("biomes", slots(blend.biomes, blend.biomeWeights, terrain::biomeName))
-        .list("materials", slots(blend.materials, blend.materialWeights, terrain::materialName));
+        .list("materials", slots(blend.materials, blend.materialWeights, terrain::materialName))
+        // A marking, never a biome (agent 49, monsoon.hpp).
+        .number("monsoon", ecology.monsoon().shareAt(p.x, p.z, climate), 4);
+    // The distance to the floor of the nearest river (Hydrology::floorDistance), kRiverReach
+    // where none is nearer or without a planet: the same keys at every point.
+    const terrain::Hydrology* h = w.tiles().heightfield().hydrology();
+    r.number("riverDistance", h != nullptr ? h->floorDistance(p.x, p.z, kRiverReach) : kRiverReach,
+             1, "m");
     return r;
 }
 
