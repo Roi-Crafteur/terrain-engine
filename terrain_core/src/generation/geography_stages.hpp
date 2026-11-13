@@ -91,6 +91,8 @@ struct Provinces {
     std::vector<float> uplift;    // meters, added to the floor of the land
     std::vector<float> relief;    // the intensity of their relief
     std::vector<float> character; // [0, 1], worn (0) to sharp (1)
+    // [0, 1], the bowl of a sedimentary basin around its site (sunkenBasins only, or empty).
+    std::vector<float> sunken;
 };
 
 // Sites on a jittered grid, each of a kind drawn from its shares (those of the forelands within
@@ -115,10 +117,16 @@ struct Provinces {
 struct LandFloor {
     std::vector<float> floor;
     std::vector<float> rift;
+    std::vector<float> sunken; // the floor without its bound of 1 m (sunkenBasins only, or empty)
 };
 
 [[nodiscard]] LandFloor landFloor(const GeographyParams& params, const Crust& crust,
                                   const Tectonics& tectonics, const Provinces& provinces);
+
+// With sunkenBasins, the drained elevation of the land of the sedimentary basins brought back
+// down toward their floor without its bound (GeographyParams::sunkenBasins); nothing without.
+void sinkBasins(const GeographyParams& params, const Crust& crust, const Provinces& provinces,
+                const LandFloor& floor, std::vector<float>& elevation);
 
 // The share of its height a shoulder keeps at the rim of the trough (bump(1 / kShoulders)).
 inline constexpr double kRimShare = 0.7056;

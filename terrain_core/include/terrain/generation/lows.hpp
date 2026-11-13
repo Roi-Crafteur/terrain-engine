@@ -58,7 +58,9 @@ struct HeightfieldParams;
 struct PlanetParams;
 
 // Switches every low on (the experimental flag "lows", experimental_flags.hpp): the families of
-// LowsParams. Off by default: the world of main, bit for bit.
+// LowsParams, the sunken sedimentary basins of the geography (GeographyParams::sunkenBasins) and
+// the depressions below the sea level breached toward lower land by the planet level
+// (PlanetBreachParams::sealByOutlet). Off by default: the world of main, bit for bit.
 void lowsOn(HeightfieldParams& relief, PlanetParams& planet);
 
 } // namespace terrain

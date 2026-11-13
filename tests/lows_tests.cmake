@@ -9,6 +9,12 @@ target_include_directories(lows_craters_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 # The hollows of the plains: kettles and pans by the pre-climate, never raising the ground.
 terrain_add_test(lows_hollows_test terrain_core)
+# The points of the audit: the sunken sedimentary basins of the geography, the depressions below
+# the sea level of the planet level sealed by their way out.
+terrain_add_test(lows_sunken_test terrain_core)
+terrain_add_test(lows_breach_test terrain_core)
+# Every low on: the sea never moves; the cost of the samples on the plains and in the mountains.
+terrain_add_test(lows_sea_cost_test terrain_core)
 
 # The measures of the land below the sea level of a small world (32 x 16 cells), its map.
 add_test(NAME export_lows_smoke

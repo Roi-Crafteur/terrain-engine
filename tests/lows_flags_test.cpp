@@ -18,7 +18,8 @@ void testOff() {
     WorldParams p;
     const AppliedFlags a = terrain::applyExperimentalFlags(" , ", p);
     TEST_CHECK(a.text.empty() && a.unknown.empty());
-    TEST_CHECK(!p.relief.lows.enabled);
+    TEST_CHECK(!p.relief.lows.enabled && !p.relief.geography.sunkenBasins &&
+               !p.planet.breach.sealByOutlet);
 }
 
 void testLows() {
@@ -26,7 +27,9 @@ void testLows() {
         WorldParams p;
         const AppliedFlags a = terrain::applyExperimentalFlags(text, p);
         TEST_CHECK(a.text == "lows" && a.unknown.empty());
-        TEST_CHECK(p.relief.lows.enabled && p.relief.lows.basins && p.relief.lows.grabens);
+        TEST_CHECK(p.relief.lows.enabled && p.relief.lows.basins && p.relief.lows.grabens &&
+                   p.relief.lows.craters && p.relief.lows.hollows);
+        TEST_CHECK(p.relief.geography.sunkenBasins && p.planet.breach.sealByOutlet);
         TEST_CHECK(p.relief.geography.enabled && p.water.ergs.enabled);
     }
     TEST_CHECK(terrain::canonicalFlags("Lows") == "lows");

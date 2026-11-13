@@ -100,8 +100,10 @@ const char* lowKindName(LowKind kind) {
     return lows::kNames[static_cast<std::size_t>(kind)];
 }
 
-void lowsOn(HeightfieldParams& relief, PlanetParams& /*planet*/) {
+void lowsOn(HeightfieldParams& relief, PlanetParams& planet) {
     relief.lows.enabled = true;
+    relief.geography.sunkenBasins = true;
+    planet.breach.sealByOutlet = true;
 }
 
 } // namespace terrain

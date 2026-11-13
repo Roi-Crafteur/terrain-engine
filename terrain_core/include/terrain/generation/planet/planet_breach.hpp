@@ -24,6 +24,13 @@ struct PlanetBreachParams {
     double areaLow = 1.0e9;  // 1,000 km^2
     double areaHigh = 1.0e11; // 100,000 km^2
     double mountainDepth = 300.0;
+    // Sealed by its way out (agent 52, the audit of the lows): a depression whose lowest cell lies
+    // below the sea level stays sealed only when the way from one of its pits below the sea level
+    // toward the ocean reaches the ocean; when every such way meets land lower still first
+    // (another basin), it is breached like the others, its cuts going below the sea level toward
+    // that land, never to the sea. Off: every depression below the sea level is sealed, the level
+    // of before bit for bit. Written in the parameters of the planet file only when on.
+    bool sealByOutlet = false;
 };
 
 // What breachDepressions did.

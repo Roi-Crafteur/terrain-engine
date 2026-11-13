@@ -97,6 +97,9 @@ LandFloor landFloor(const GeographyParams& params, const Crust& crust, const Tec
     LandFloor out;
     out.floor.assign(crust.coast.size(), 1.0f);
     out.rift.assign(crust.coast.size(), 0.0f);
+    if (params.sunkenBasins) {
+        out.sunken.assign(crust.coast.size(), 1.0f);
+    }
     for (std::size_t k = 0; k < out.floor.size(); ++k) {
         if (crust.land[k] == 0) {
             continue;
@@ -105,7 +108,11 @@ LandFloor landFloor(const GeographyParams& params, const Crust& crust, const Tec
         const float uplift = tectonics.uplift[k];
         const double province = static_cast<double>(provinces.uplift[k]) *
                                 (1.0 - step(0.0, kProvincesUnder, static_cast<double>(uplift)));
-        const double base = std::max(1.0, 1.0 + tilt + static_cast<double>(uplift) + province);
+        const double unbound = 1.0 + tilt + static_cast<double>(uplift) + province;
+        const double base = std::max(1.0, unbound);
+        if (params.sunkenBasins) {
+            out.sunken[k] = static_cast<float>(unbound);
+        }
         double shoulders = 0.0;
         if (tectonics.shoulder[k] > 0.0f) {
             const double depth = static_cast<double>(tectonics.riftDepth[k]);
@@ -118,6 +125,24 @@ LandFloor landFloor(const GeographyParams& params, const Crust& crust, const Tec
         out.floor[k] = static_cast<float>(base + shoulders);
     }
     return out;
+}
+
+void sinkBasins(const GeographyParams& params, const Crust& crust, const Provinces& provinces,
+                const LandFloor& floor, std::vector<float>& elevation) {
+    if (!params.sunkenBasins) {
+        return;
+    }
+    for (std::size_t k = 0; k < elevation.size(); ++k) {
+        const double share =
+            static_cast<double>(provinces.sunken[k]) *
+            static_cast<double>(step(params.sunkCoast[0], params.sunkCoast[1],
+                                     static_cast<double>(crust.coast[k])));
+        if (crust.land[k] == 0 || !(share > 0.0) || !(floor.sunken[k] < elevation[k])) {
+            continue;
+        }
+        const double e = static_cast<double>(elevation[k]);
+        elevation[k] = static_cast<float>(e + share * (static_cast<double>(floor.sunken[k]) - e));
+    }
 }
 
 namespace {

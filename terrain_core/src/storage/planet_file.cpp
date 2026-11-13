@@ -60,6 +60,11 @@ template <class Out> void writeParams(Out& out, const PlanetParams& p) {
         out.f64(v);
     }
     out.i32(f.mouthReach);
+    // The parameters added since, written only when they differ from the level of before: its
+    // files keep their bytes.
+    if (p.breach.sealByOutlet) {
+        out.u8(1);
+    }
 }
 
 std::vector<std::uint8_t> paramsBytes(const PlanetParams& p) {

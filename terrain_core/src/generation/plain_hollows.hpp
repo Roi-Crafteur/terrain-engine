@@ -41,6 +41,7 @@ struct Hollows {
     Exclusion excluded;
     std::array<PeriodicCells, 2> kettles; // along x, then z
     std::array<PeriodicCells, 2> pans;
+    std::array<std::uint64_t, 2> kindSeeds{}; // the seed of each kind (kettles, pans)
 };
 
 // The hollows of seed on the geography, their kinds read on its climate (both kept by pointer).

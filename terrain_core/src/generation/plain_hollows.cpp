@@ -60,8 +60,10 @@ double smooth(double edge0, double edge1, double x) {
 }
 
 // The candidate of a cell (unwrapped indices i, j): its center in the image of the query and on
-// the canonical range, its draw and its form.
+// the canonical range, its draw and its form. Built in two steps: its seat (hash, draw, center in
+// the image of the query: cheap), then the rest once it may reach the point (formOf).
 struct Candidate {
+    std::uint64_t hash = 0;
     double x = 0.0;
     double z = 0.0;
     double cx = 0.0;
@@ -80,33 +82,50 @@ const std::array<PeriodicCells, 2>& cellsOf(const Hollows& h, std::size_t kind) 
     return kind == kKettle ? h.kettles : h.pans;
 }
 
-Candidate candidateOf(const Hollows& h, std::size_t kind, std::int64_t i, std::int64_t j) {
+// The canonical index of a cell: i itself in the canonical range (no division).
+std::int64_t canonical(const PeriodicCells& cells, std::int64_t i) {
+    const std::int64_t half = cells.count / 2;
+    return i >= -half && i < cells.count - half ? i : cells.wrap(i);
+}
+
+Candidate seatOf(const Hollows& h, std::size_t kind, std::int64_t i, std::int64_t j) {
     const auto& [cellsX, cellsZ] = cellsOf(h, kind);
-    const Kind& k = kKinds[kind];
-    const std::int64_t ci = cellsX.wrap(i);
-    const std::int64_t cj = cellsZ.wrap(j);
+    const std::int64_t ci = canonical(cellsX, i);
+    const std::int64_t cj = canonical(cellsZ, j);
     const auto key = static_cast<std::uint64_t>(cj + cellsZ.count / 2) *
                          static_cast<std::uint64_t>(cellsX.count) +
                      static_cast<std::uint64_t>(ci + cellsX.count / 2);
-    const std::uint64_t a = noise::deriveSeed(noise::deriveSeed(h.seed, kind), key);
     Candidate c;
-    c.draw = field(a, 0);
-    const double u = field(a, 1);
-    const double v = field(a, 2);
-    c.cx = wrapCoordinate((static_cast<double>(ci) + u) * cellsX.size, cellsX.period);
-    c.cz = wrapCoordinate((static_cast<double>(cj) + v) * cellsZ.size, cellsZ.period);
+    c.hash = noise::deriveSeed(h.kindSeeds[kind], key);
+    c.draw = field(c.hash, 0);
+    const double u = field(c.hash, 1);
+    const double v = field(c.hash, 2);
     c.x = (static_cast<double>(i) + u) * cellsX.size;
     c.z = (static_cast<double>(j) + v) * cellsZ.size;
-    const std::uint64_t b = noise::deriveSeed(a, 1);
-    const double size = field(a, 3);
+    c.cx = (static_cast<double>(ci) + u) * cellsX.size;
+    c.cz = (static_cast<double>(cj) + v) * cellsZ.size;
+    return c;
+}
+
+void formOf(const Hollows& h, std::size_t kind, Candidate& c) {
+    const auto& [cellsX, cellsZ] = cellsOf(h, kind);
+    const Kind& k = kKinds[kind];
+    c.cx = wrapCoordinate(c.cx, cellsX.period);
+    c.cz = wrapCoordinate(c.cz, cellsZ.period);
+    const std::uint64_t b = noise::deriveSeed(c.hash, 1);
+    const double size = field(c.hash, 3);
     c.radius = k.radiusLow * dmath::pow(k.radiusHigh / k.radiusLow, size * size);
     c.depth = k.depthLow + (k.depthHigh - k.depthLow) * field(b, 0);
     c.stretch = std::sqrt(1.0 + (k.elongation - 1.0) * field(b, 1));
     c.angle = field(b, 2);
     c.lobes = k.lobes * field(b, 3);
-    c.phase = field(noise::deriveSeed(a, 2), 0);
+    c.phase = field(noise::deriveSeed(c.hash, 2), 0);
     c.reach = c.radius * c.stretch * (1.0 + c.lobes);
-    return c;
+}
+
+// The largest reach of a kind.
+double reachOf(const Kind& k) {
+    return k.radiusHigh * std::sqrt(k.elongation) * (1.0 + k.lobes);
 }
 
 // Whether the candidate is laid: on a plain far from the sea, its draw under the share of its
@@ -163,22 +182,28 @@ Hollows makeHollows(std::uint64_t seed, const Geography& geography, const PreCli
     h.kettles = {periodicCells(world.x, kKinds[kKettle].cell),
                  periodicCells(world.z, kKinds[kKettle].cell)};
     h.pans = {periodicCells(world.x, kKinds[kPan].cell), periodicCells(world.z, kKinds[kPan].cell)};
+    for (std::size_t kind = 0; kind < kKinds.size(); ++kind) {
+        h.kindSeeds[kind] = noise::deriveSeed(seed, kind);
+    }
     return h;
 }
 
 HollowShape hollowAt(const Hollows& hollows, double x, double z) {
     HollowShape best;
     for (std::size_t kind = 0; kind < kKinds.size(); ++kind) {
-        const Kind& k = kKinds[kind];
         const auto& [cellsX, cellsZ] = cellsOf(hollows, kind);
-        const double reach = k.radiusHigh * std::sqrt(k.elongation) * (1.0 + k.lobes);
-        const double share = k.share * hollows.density;
+        const double reach = reachOf(kKinds[kind]);
+        const double share = kKinds[kind].share * hollows.density;
         for (std::int64_t j = cellsZ.cellOf(z - reach); j <= cellsZ.cellOf(z + reach); ++j) {
             for (std::int64_t i = cellsX.cellOf(x - reach); i <= cellsX.cellOf(x + reach); ++i) {
-                const Candidate c = candidateOf(hollows, kind, i, j);
+                Candidate c = seatOf(hollows, kind, i, j);
                 const double dx = x - c.x;
                 const double dz = z - c.z;
-                if (!(c.draw < share) || !(dx * dx + dz * dz < c.reach * c.reach)) {
+                if (!(c.draw < share) || !(dx * dx + dz * dz < reach * reach)) {
+                    continue;
+                }
+                formOf(hollows, kind, c);
+                if (!(dx * dx + dz * dz < c.reach * c.reach)) {
                     continue;
                 }
                 const HollowShape s = shapeOf(kind, c, dx, dz);
@@ -198,9 +223,13 @@ std::vector<LowSite> hollowsIn(const Hollows& hollows, double minX, double minZ,
         const auto& [cellsX, cellsZ] = cellsOf(hollows, kind);
         for (std::int64_t j = cellsZ.cellOf(minZ); j <= cellsZ.cellOf(maxZ); ++j) {
             for (std::int64_t i = cellsX.cellOf(minX); i <= cellsX.cellOf(maxX); ++i) {
-                const Candidate c = candidateOf(hollows, kind, i, j);
+                Candidate c = seatOf(hollows, kind, i, j);
+                if (!(c.draw < kKinds[kind].share * hollows.density)) {
+                    continue;
+                }
+                formOf(hollows, kind, c);
                 if (c.cx >= minX && c.cx < maxX && c.cz >= minZ && c.cz < maxZ &&
-                    c.draw < kKinds[kind].share * hollows.density && laid(hollows, kind, c)) {
+                    laid(hollows, kind, c)) {
                     out.push_back({kKinds[kind].kind, c.cx, c.cz, c.radius, c.reach,
                                    static_cast<float>(-c.depth), c.angle, 0.0f});
                 }
