@@ -4,7 +4,8 @@
 //   raised at drawn instants, in the middle of the first: every one leaves by WorkStopped, none
 //   finishes the course it was making; the median time to their last exit is 100 ms at most, and
 //   the longest a quarter of the time the courses in progress then take to be finished, at most
-//   (measured in the same trial, on the same caches);
+//   (measured in the same trial, on the same caches, as a join would wait for them: the four
+//   finished at once under the same load);
 // - a thread waiting for a course another thread makes leaves as soon, woken by the raise of its
 //   flag (raiseWorkStop), never by the end of a step of its wait;
 // - a stopped thread leaves nothing half made: the courses then computed are those of a
@@ -137,13 +138,18 @@ Trial stopTrial(Hydrology& h, const std::vector<std::size_t>& longs, int delay,
         trial.latency = std::max(trial.latency, ms);
         trial.stopped += left[static_cast<std::size_t>(t)] ? 1 : 0;
     }
-    // The end of the courses in progress, as the threads would have made them (one at a time
-    // here: the slowest bounds the wait of a join).
+    // The end of the courses in progress, as a join would wait for it: each finished by its own
+    // thread, the four at once, under the same load as the stop; until the last one.
+    std::vector<std::thread> finishers;
+    const Clock::time_point start = Clock::now();
     for (int t = 0; t < kWorkers; ++t) {
-        const Clock::time_point start = Clock::now();
-        (void)h.reach(current[static_cast<std::size_t>(t)]);
-        trial.remaining = std::max(trial.remaining, msBetween(start, Clock::now()));
+        finishers.emplace_back(
+            [&h, r = current[static_cast<std::size_t>(t)]] { (void)h.reach(r); });
     }
+    for (std::thread& f : finishers) {
+        f.join();
+    }
+    trial.remaining = msBetween(start, Clock::now());
     return trial;
 }
 
