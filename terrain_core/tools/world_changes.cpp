@@ -95,16 +95,17 @@ private:
 struct World {
     std::shared_ptr<const terrain::PlanetLevel> level;
     std::shared_ptr<const terrain::Hydrology> hydrology;
-    std::unique_ptr<terrain::Heightfield> field; // with its water
+    std::unique_ptr<terrain::Heightfield> field; // with its water (the valleys: at the places only)
+    std::unique_ptr<terrain::Heightfield> bare;  // without (the ergs read its relief and rifts)
     std::unique_ptr<terrain::Ecology> ecology;
 };
 
-terrain::Biome biomeAt(const World& w, double x, double z) {
+terrain::Biome biomeAt(const World& w, const terrain::Heightfield& field, double x, double z) {
     constexpr double kStep = 64.0;
-    const terrain::HeightSample h = w.field->sampleAt(x, z);
+    const terrain::HeightSample h = field.sampleAt(x, z);
     const std::array<float, 4> around = {
-        w.field->heightAt(x + kStep, z), w.field->heightAt(x - kStep, z),
-        w.field->heightAt(x, z + kStep), w.field->heightAt(x, z - kStep)};
+        field.heightAt(x + kStep, z), field.heightAt(x - kStep, z),
+        field.heightAt(x, z + kStep), field.heightAt(x, z - kStep)};
     terrain::SurfaceSite site = terrain::heightfieldSite(h.height, h.continentalness, around, kStep);
     site.water = h.water;
     site.waterLevel = h.waterLevel;
@@ -137,12 +138,12 @@ void ergLines(const World& w, int step, std::FILE* out) {
             if (w.level->cells().ocean(g.index(i, j)) || !ergs->mayHold(x, z)) {
                 continue;
             }
-            const terrain::HeightSample s = w.field->sampleAt(x, z);
+            const terrain::HeightSample s = w.bare->sampleAt(x, z);
             if (ergs->at(x, z, s.relief, s.rift).mask < 0.5f) {
                 continue;
             }
             ++points;
-            const terrain::Biome b = biomeAt(w, x, z);
+            const terrain::Biome b = biomeAt(w, *w.bare, x, z);
             grass += b == terrain::Biome::Grassland ? 1 : 0;
             savanna += b == terrain::Biome::Savanna ? 1 : 0;
         }
@@ -154,7 +155,7 @@ void ergLines(const World& w, int step, std::FILE* out) {
     const std::array<Place, 2> named = {Place{"giant_wall", -323'111.0, 3'952'778.0},
                                         Place{"star_field", -26'543'080.0, 5'119'222.0}};
     for (const Place& p : named) {
-        const terrain::HeightSample s = w.field->sampleAt(p.x, p.z);
+        const terrain::HeightSample s = w.bare->sampleAt(p.x, p.z);
         const terrain::ErgPoint e = ergs->at(p.x, p.z, s.relief, s.rift);
         std::fprintf(out, "%s: mask %.2f, kind %d, rain %.0f mm/yr\n", p.name.c_str(),
                      static_cast<double>(e.mask), static_cast<int>(ergs->kindOf(e)),
@@ -179,7 +180,7 @@ void placeLine(const World& w, const Place& p, std::FILE* out) {
                  h.water == terrain::WaterKind::None ? 0.0 : static_cast<double>(h.waterLevel),
                  static_cast<double>(moves), cell.discharge > 0.0f ? 1 : 0, cell.lake,
                  static_cast<double>(cell.discharge),
-                 terrain::biomeName(biomeAt(w, p.x, p.z)));
+                 terrain::biomeName(biomeAt(w, *w.field, p.x, p.z)));
 }
 
 } // namespace
@@ -203,27 +204,27 @@ int main(int argc, char** argv) {
     const terrain::Heightfield relief(seed, params.relief);
     w.hydrology = std::make_shared<const terrain::Hydrology>(seed, relief, w.level, params.water);
     w.field = std::make_unique<terrain::Heightfield>(relief.withHydrology(w.hydrology));
+    w.bare = std::make_unique<terrain::Heightfield>(relief);
     w.ecology = std::make_unique<terrain::Ecology>(seed, params.ecology, relief.world(),
                                                    std::make_shared<const LevelHumidity>(w.level));
     std::filesystem::create_directories(o.directory);
-    std::FILE* file = std::fopen((o.directory / "changes.txt").string().c_str(), "w");
-    for (std::FILE* out : {stdout, file}) {
-        if (out == nullptr) {
-            continue;
-        }
-        std::fprintf(out, "flags \"%s\", planet checksum %016llx\n", canonical.c_str(),
-                     static_cast<unsigned long long>(w.level->checksum()));
+    const std::filesystem::path path = o.directory / "changes.txt";
+    std::FILE* file = std::fopen(path.string().c_str(), "w");
+    if (file == nullptr) {
+        std::fprintf(stderr, "cannot write %s\n", path.string().c_str());
+        return 1;
     }
-    ergLines(w, o.step, stdout);
+    std::fprintf(file, "flags \"%s\", planet checksum %016llx\n", canonical.c_str(),
+                 static_cast<unsigned long long>(w.level->checksum()));
+    ergLines(w, o.step, file);
     for (const Place& p : o.places) {
-        placeLine(w, p, stdout);
+        placeLine(w, p, file);
     }
-    if (file != nullptr) {
-        ergLines(w, o.step, file);
-        for (const Place& p : o.places) {
-            placeLine(w, p, file);
-        }
-        std::fclose(file);
+    std::fclose(file);
+    std::ifstream back(path);
+    std::string line;
+    while (std::getline(back, line)) {
+        std::printf("%s\n", line.c_str());
     }
     return 0;
 }
