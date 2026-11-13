@@ -16,6 +16,7 @@
 
 #include <array>
 #include <bit>
+#include <span>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -48,12 +49,15 @@ SessionParams smallSession(const std::string& experimental) {
     return params;
 }
 
+// The lines on an empty table (the table of the world before its rows) and on a table of test:
+// they do not depend on the rows of the world.
 void testLines() {
     using terrain::unreal::flagLines;
     using terrain::unreal::sessionFlags;
-    TEST_CHECK((flagLines(sessionFlags("").applied) ==
+    constexpr std::span<const ExperimentalFlag> kNone{};
+    TEST_CHECK((flagLines(sessionFlags("", kNone).applied, kNone) ==
                 std::vector<FlagLine>{{false, "Terrain World: experimental flags: none"}}));
-    TEST_CHECK((flagLines(sessionFlags("volcanoes").applied) ==
+    TEST_CHECK((flagLines(sessionFlags("volcanoes", kNone).applied, kNone) ==
                 std::vector<FlagLine>{
                     {false, "Terrain World: experimental flags: none"},
                     {true, "Terrain World: unknown experimental flag 'volcanoes' (no flag known "
@@ -81,8 +85,8 @@ bool sameHeights(const TerrainSession& a, const TerrainSession& b) {
 void testSessions() {
     const TerrainSession none(smallSession(""));
     TEST_CHECK(none.flags().applied.text.empty() && none.flags().applied.unknown.empty());
-    const TerrainSession unknown(smallSession("volcanoes"));
-    TEST_CHECK((unknown.flags().applied.unknown == std::vector<std::string>{"volcanoes"}));
+    const TerrainSession unknown(smallSession("no-such-flag"));
+    TEST_CHECK((unknown.flags().applied.unknown == std::vector<std::string>{"no-such-flag"}));
     TEST_CHECK(sameHeights(none, unknown));
     SessionParams params = smallSession("alpha,beta");
     params.flagTable = kTable;

@@ -307,7 +307,8 @@ int main(int argc, char** argv) {
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
                      "Usage: %s [--planet <file>] [--seed <seed>] [--threads <n>] [--no-ergs] "
-                     "[--flags <a,b>] [--layers <a,b,...>] [--max-samples <n>] (--box <x> <z> <width> <height> | "
+                     "[--flags <a,b>] "
+                     "[--layers <a,b,...>] [--max-samples <n>] (--box <x> <z> <width> <height> | "
                      "--center <x> <z> --mpp <m> | --whole) (--size <width> <height> | "
                      "--tiles <n>) <out.png>\n",
                      argv[0]);
