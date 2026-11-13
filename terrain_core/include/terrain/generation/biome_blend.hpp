@@ -105,28 +105,44 @@ private:
     std::uint64_t seed_;
 };
 
-// Compact form of a SurfaceBlend, 8 bytes: two 32-bit words, each an RGBA8 texel (R the lowest
-// byte) or one texel of two 32-bit channels.
-// - ids: biome of slot 0 in bits 0-3, of slot 1 in bits 4-7, of slot 2 in bits 8-11; material
-//   of slot 0 in bits 12-15, slot 1 in bits 16-19, slot 2 in bits 20-23; bits 24-30 the share
-//   of the column under the sand of the dunes (SurfaceBlend::dunes) in 127ths, 0 off the ergs;
-//   bit 31 always 0.
-// - weights: biome weights of slots 0 and 1 in bits 0-7 and 8-15, material weights of slots 0
-//   and 1 in bits 16-23 and 24-31, in 255ths; the weight of slot 2 is 255 minus the two others.
+// Compact form of a SurfaceBlend, 16 bytes (agent 49): four fields of at most 24 bits each, so
+// that every field is an exact integer in a 32-bit float (the GPU reads a texel as 4 floats, one
+// per field, in this order: Bridge/tile_blend_atlas.hpp, Bridge/horizon_blend_texels.hpp).
+// - biomes: the biome of slot 0 in bits 0-5, of slot 1 in bits 6-11, of slot 2 in bits 12-17
+//   (64 biomes); bits 18-22 free; bit 23 kept 0 for the readers (kBlendPresentBit).
+// - materials: the material of slot 0 in bits 0-4, of slot 1 in bits 5-9, of slot 2 in bits
+//   10-14 (32 materials); bits 15-21 the share of the column under the sand of the dunes
+//   (SurfaceBlend::dunes) in 127ths, 0 off the ergs; bits 22-23 free.
+// - biomeWeights: the weights of the biomes of slots 0 and 1 in bits 0-7 and 8-15, in 255ths (the
+//   weight of slot 2 is 255 minus the two others); bits 16-23 free.
+// - materialWeights: the same for the materials; bits 16-23 kept for the heat of the ground
+//   (roadmap, phase 14), 0 until it comes.
 // A reader blending texels (bilinear between 4 of them, say) adds the weight of each slot to its
 // id, never interpolating the ids themselves (addTexel is the reference).
 struct BlendTexel {
-    std::uint32_t ids = 0;
-    std::uint32_t weights = 0;
+    std::uint32_t biomes = 0;
+    std::uint32_t materials = 0;
+    std::uint32_t biomeWeights = 0;
+    std::uint32_t materialWeights = 0;
 
     friend bool operator==(const BlendTexel&, const BlendTexel&) = default;
 };
-static_assert(sizeof(BlendTexel) == 8, "a blend texel holds 8 bytes");
+static_assert(sizeof(BlendTexel) == 16, "a blend texel holds 16 bytes");
 
-// Bits of an id in a texel. Ids that no longer fit need wider fields, never truncated ones.
-inline constexpr int kBlendIdBits = 4;
-static_assert(kBiomeCount <= (1 << kBlendIdBits), "a biome id fits in 4 bits");
-static_assert(kSurfaceMaterialCount <= (1 << kBlendIdBits), "a material id fits in 4 bits");
+// Bits of the ids in a texel. Ids that no longer fit need wider fields, never truncated ones.
+inline constexpr int kBiomeIdBits = 6;
+inline constexpr int kMaterialIdBits = 5;
+static_assert(kBiomeCount <= (1 << kBiomeIdBits), "a biome id fits in 6 bits");
+static_assert(kSurfaceMaterialCount <= (1 << kMaterialIdBits), "a material id fits in 5 bits");
+// Every field holds at most this many bits: an exact integer in a float.
+inline constexpr int kBlendFieldBits = 24;
+// The bit of BlendTexel::biomes a reader may set to tell a texel it wrote from an empty one (the
+// GPU textures: Bridge/tile_blend_atlas.hpp); always 0 in the texels of the core.
+inline constexpr int kBlendPresentBit = 23;
+// The first bit of the share of the dunes in BlendTexel::materials (7 bits, in 127ths).
+inline constexpr int kBlendDuneShift = kMaterialIdBits * kBlendSlots;
+static_assert(kBiomeIdBits * kBlendSlots <= kBlendPresentBit, "the biome ids leave bit 23 free");
+static_assert(kBlendDuneShift + 7 <= kBlendFieldBits, "the share of the dunes fits in 24 bits");
 
 // The weights rounded to 255ths (slot 0 takes what the rounding of the others leaves, never
 // less than slot 1): they sum to exactly 255.

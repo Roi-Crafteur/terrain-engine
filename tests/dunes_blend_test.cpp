@@ -1,8 +1,8 @@
 // The share of the dunes of the ergs (SurfaceBlend::dunes, agent 34) on its way to the horizon
-// (agent 29): packed in 127ths in bits 24-30 of the ids (bit 31 free), read back exactly; summed
-// with the weights (addBlend) and averaged over the footprint of a sample (footprintBlend); taken
-// from the relief by the site of a sample (pointSite, as surfaceFromHeightfield); dropped where
-// the edits of the player cover the ground (withMaterial).
+// (agent 29): packed in 127ths in bits 15-21 of the materials of a texel (agent 49), read back
+// exactly; summed with the weights (addBlend) and averaged over the footprint of a sample
+// (footprintBlend); taken from the relief by the site of a sample (pointSite, as
+// surfaceFromHeightfield); dropped where the edits of the player cover the ground (withMaterial).
 #include "horizon_blend.hpp"
 
 #include "test_assert.hpp"
@@ -30,11 +30,12 @@ void testPacking() {
     for (int units = 0; units <= 127; ++units) {
         const float share = static_cast<float>(units) / 127.0f;
         const terrain::BlendTexel t = terrain::packBlend(desertSand(share));
-        exact = exact && (t.ids >> 31U) == 0U && terrain::unpackBlend(t).dunes == share;
+        exact = exact && (t.materials >> terrain::kBlendDuneShift) == static_cast<unsigned>(units) &&
+                terrain::unpackBlend(t).dunes == share;
     }
     TEST_CHECK(exact);
     // Off the ergs, the ids are those of a blend without dunes.
-    TEST_CHECK((terrain::packBlend(desertSand(0.0f)).ids >> 24U) == 0U);
+    TEST_CHECK((terrain::packBlend(desertSand(0.0f)).materials >> terrain::kBlendDuneShift) == 0U);
 }
 
 void testFootprint() {

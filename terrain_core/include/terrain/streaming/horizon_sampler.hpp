@@ -23,7 +23,8 @@ inline constexpr std::uint8_t kHorizonEdited = 1U << 1; // changed by a summary 
 // depression below the sea level is not the sea.
 inline constexpr std::uint8_t kHorizonSea = 1U << 2;
 
-// What the far horizon holds at a sample of a level: 28 bytes, for compact level buffers.
+// What the far horizon holds at a sample of a level: 36 bytes (28 before the blend texels of 16
+// bytes of agent 49), for compact level buffers.
 struct HorizonCell {
     // Top of the ground, meters: Heightfield::heightAt at the sample, bit for bit, plus its
     // lift to the crests of its cells from level 1 on (HorizonCrestSampler, when it rises), then
@@ -62,7 +63,7 @@ struct HorizonCell {
 
     friend bool operator==(const HorizonCell&, const HorizonCell&) = default;
 };
-static_assert(sizeof(HorizonCell) == 28, "a horizon cell holds 28 bytes");
+static_assert(sizeof(HorizonCell) == 36, "a horizon cell holds 36 bytes");
 
 // Square of the world a sample stands for: its canonical position (the center) and half the
 // pitch of its level. A footprint on an edge of the world reaches across it.
