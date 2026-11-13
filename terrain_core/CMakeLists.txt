@@ -192,6 +192,8 @@ add_library(terrain_core STATIC
     src/storage/block_section.cpp
     src/storage/chunk_record.cpp
     src/storage/durable_file.cpp
+    src/storage/edit_coarse.cpp
+    src/storage/edit_coarse_cache.cpp
     src/storage/edit_lattice.cpp
     src/storage/edit_summary.cpp
     src/storage/edit_window.cpp
@@ -226,6 +228,7 @@ add_library(terrain_core STATIC
     src/streaming/rock_tile.cpp
     src/streaming/stream_manager.cpp
     src/streaming/terrain_tiles.cpp
+    src/streaming/tile_edits.cpp
     src/streaming/tile_blend.cpp
     src/streaming/tile_sides.cpp
     src/streaming/tile_normals.cpp
@@ -423,6 +426,16 @@ add_executable(terrain_export_rock tools/export_rock.cpp tools/rock_places.cpp
                                    tools/rock_cost.cpp tools/rock_spots.cpp tools/rock_steps.cpp
                                    tools/view_places.cpp)
 target_link_libraries(terrain_export_rock PRIVATE terrain_core terrain_warnings)
+
+# Views of the player edits from far away (agent 41): a hole of one block and a wall one block
+# thick seen from 30 to 300 m, at each LOD the tiles of a player there take, under a sun at 30 and
+# at 6 degrees; and the change of their look when their tile switches from LOD 0 to 1:
+# terrain_export_edit_lods <output-dir> [--width <pixels>]
+add_library(terrain_edit_views STATIC tools/edit_views.cpp)
+target_include_directories(terrain_edit_views PUBLIC tools)
+target_link_libraries(terrain_edit_views PUBLIC terrain_core PRIVATE terrain_warnings)
+add_executable(terrain_export_edit_lods tools/export_edit_lods.cpp)
+target_link_libraries(terrain_export_edit_lods PRIVATE terrain_edit_views terrain_warnings)
 
 # The planet level of a world written to its file, as the game reads it (phase 11B); --memory
 # prints the time and memory of each stage (its own operator new counts the heap):

@@ -63,6 +63,9 @@ struct UnrealMesh {
     std::vector<VertexWater> water;
     std::vector<VertexBands> bands; // one per vertex with rock in three dimensions, else none
     std::vector<std::int32_t> triangles;
+    // The blue of the colors holds the edit weight of each vertex (TileData::editWeights), for the
+    // light floor of the edited surfaces; false: the blue of the altitude color.
+    bool edited = false;
 
     [[nodiscard]] std::size_t triangleCount() const { return triangles.size() / 3; }
     [[nodiscard]] bool empty() const { return triangles.empty(); }
@@ -100,15 +103,22 @@ struct TileSea {
 // dimensions, under their caps and in their niches, for the material; and the bands of the rock
 // of each vertex (bands, one per vertex: TileData::rockBands; none without them).
 //
+// With edit weights (one per vertex: TileData::editWeights, agent 41), the blue of each color is
+// 255 times the weight of the vertex instead of the blue of its altitude (edited set): the light
+// floor of M_TemporaryTerrain reads it on the tiles the custom primitive data marks as edited
+// only (ProceduralMeshTerrainBackend), and no other material of the tiles reads the blue. A tile
+// without edits keeps the colors of its altitude.
+//
 // Throws std::invalid_argument unless there is one normal per vertex, no level or one per
 // vertex, three indices per triangle, every index names a vertex, the vertices fit int32
-// indices, rock is empty or holds one share per vertex, and bands is empty or holds one per
-// vertex.
+// indices, rock is empty or holds one share per vertex, bands is empty or holds one per vertex,
+// and editWeights is empty or holds one per vertex.
 [[nodiscard]] UnrealMesh convertMesh(const Mesh& mesh, double originY,
                                      std::span<const float> waterLevels = {},
                                      const TileSea& sea = {},
                                      std::span<const float> rock = {},
-                                     std::span<const RockBands> bands = {});
+                                     std::span<const RockBands> bands = {},
+                                     std::span<const float> editWeights = {});
 
 // Unreal position of the origin of a tile mesh shown at an image of its tile. The world wraps
 // around: the data of a tile lie in the canonical range of the world (data.request.key is

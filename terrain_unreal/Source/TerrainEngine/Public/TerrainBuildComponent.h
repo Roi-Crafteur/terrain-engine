@@ -16,6 +16,8 @@ class UMaterialInterface;
 class UStaticMesh;
 class UStaticMeshComponent;
 struct FTerrainBuildRuntime;
+struct FTerrainBuildAim;
+struct FTerrainBuildRequest;
 
 /**
  * Breaking and placing in game (agent 28, phase 15), on the pawn of the player: ATerrainWorld gives
@@ -23,7 +25,7 @@ struct FTerrainBuildRuntime;
  *
  * A trace from the camera finds the tile aimed at, within ReachMeters of the eye of the pawn; the
  * ghost of the edit shows what a click would remove (left click) or add (right click), with the
- * tool chosen by the keys 1, 2, 3 (their AZERTY keys too): a block of 1 m, a sphere 2 m or 4 m across. Matter
+ * tool chosen by the keys 1, 2, 3 (their AZERTY keys too): a block of 1 m, a sphere 3 m or 5 m across (19 or 57 blocks). Matter
  * is never placed in the capsule of the pawn. The edits go to the edit thread of the session
  * (Bridge/block_targeting.hpp, build_rules.hpp): the tiles are generated again, with their
  * collision and without the plants whose ground is gone. Nothing happens while the dev map is
@@ -103,6 +105,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Terrain|Build")
 	FString GetLastRefusal() const { return LastRefusal; }
+
+	// What a click does, asked by code (Terrain.EditAim, agent 41: TerrainBuildAim.h): the action
+	// and the tool of the request, the radius of a sphere and a point the trace goes through when
+	// given. The same gate, aim, capsule, rate and queue as a click: Build is BuildRequested with
+	// the tool of the component, toward the center of the screen.
+	bool BuildRequested(const FTerrainBuildRequest& Request);
+
+	// What the last Build or BuildRequested touched and aimed at (no hit nor target when refused
+	// before the trace), or null before the play.
+	const FTerrainBuildAim* GetLastAim() const;
 
 protected:
 	virtual void BeginPlay() override;

@@ -194,8 +194,8 @@ def read_text(path):
 
 def plugin_features(source_texts):
     """What the plugin of a version offers to the driver, from the texts of its sources: the
-    start and the report of each load (agent 38) and the console commands of the dev tools (agent 36), each
-    found by the text of its registration (TEXT("Terrain.Goto")...)."""
+    start and the report of each load (agent 38) and the console commands of the dev tools (agent 36,
+    agent 41), each found by the text of its registration (TEXT("Terrain.Goto")...)."""
     joined = "\n".join(source_texts)
 
     def command(name):
@@ -213,4 +213,8 @@ def plugin_features(source_texts):
         "mapStarted": "Terrain Dev Map: started (" in joined,
         "determinism": _DETERMINISM_OK in joined,
         "loadTest": command("Terrain.LoadTest"),
+        # The edits of the scripts (agent 41, TerrainDevEdits.cpp): a click by its code, and the
+        # saved edits read by the next play.
+        "editAim": command("Terrain.EditAim"),
+        "editRead": command("Terrain.EditRead"),
     }

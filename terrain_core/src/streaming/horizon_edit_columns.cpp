@@ -1,7 +1,9 @@
 #include "terrain/streaming/horizon_edit_columns.hpp"
 
 #include "terrain/meshing/marching_cubes.hpp"
+#include "terrain/storage/edit_coarse.hpp"
 #include "terrain/storage/modifications.hpp"
+#include "terrain/streaming/lod.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -16,6 +18,12 @@ namespace {
 constexpr int kSpacing = kEditColumnSpacing;
 constexpr int kGroupChunks = 32;    // the chunks of a region of the world format, per side
 constexpr int kColumnsPerChunk = 2; // kChunkSizeMeters / kSpacing
+// The blocks a lattice point of LOD 3 reads (edit_coarse.hpp, without relay): 12 m, within the
+// chunks around its own.
+constexpr float kRelay = CoarseEdits::relayOfLod(kMaxLod);
+constexpr int kReach = CoarseEdits::reach(kSpacing, kRelay);
+static_assert(kReach == kEditColumnReach && kReach <= kChunkSizeMeters,
+              "an edited block reaches the columns of the chunks around its own");
 
 std::int64_t floorDiv(std::int64_t a, std::int64_t b) {
     const std::int64_t q = a / b;
@@ -32,10 +40,10 @@ float generatedDensity(std::int64_t j, float ground) {
     return static_cast<float>(static_cast<double>(j * kSpacing) - ground);
 }
 
-// The density of a point among removed (added) blocks only: the cube of the block centered on it
-// (blockDistance -0.5), as editDensity applies it.
-constexpr float kAllRemoved = 0.5f;
-constexpr float kAllAdded = -0.5f;
+// The density of a point of LOD 3 among removed (added) blocks only, its cells and theirs full:
+// s (1 - 1/2), as CoarseEdits gives it.
+constexpr float kAllRemoved = 0.5f * static_cast<float>(kSpacing);
+constexpr float kAllAdded = -0.5f * static_cast<float>(kSpacing);
 
 // The highest lattice point under the generated ground (rock: density below the iso level).
 std::int64_t generatedTop(float ground) {
@@ -52,15 +60,16 @@ std::int64_t generatedTop(float ground) {
 using Group = std::pair<std::int64_t, std::int64_t>;
 using ColumnSet = std::set<EditColumn>; // the columns of a group, in its image
 
-// The columns of the lattice points of each chunk, by group of chunks.
+// The columns of the lattice points of each chunk and of the chunks around it (a lattice point of
+// LOD 3 reads the blocks within kReach of it), by group of chunks.
 std::map<Group, ColumnSet> columnsByGroup(std::span<const ChunkCoord> chunks,
                                           const WorldSize& world) {
     std::map<Group, ColumnSet> groups;
     for (const ChunkCoord chunk : chunks) {
         const ChunkCoord c = wrapChunk(chunk, world);
         ColumnSet& columns = groups[{floorDiv(c.x, kGroupChunks), floorDiv(c.z, kGroupChunks)}];
-        for (int dz = 0; dz <= kColumnsPerChunk; ++dz) {
-            for (int dx = 0; dx <= kColumnsPerChunk; ++dx) {
+        for (int dz = -kColumnsPerChunk; dz <= 2 * kColumnsPerChunk; ++dz) {
+            for (int dx = -kColumnsPerChunk; dx <= 2 * kColumnsPerChunk; ++dx) {
                 columns.insert({std::int64_t{c.x} * kColumnsPerChunk + dx,
                                 std::int64_t{c.z} * kColumnsPerChunk + dz});
             }
@@ -82,10 +91,10 @@ void addGroup(const Heightfield& field, const ColumnSet& columns, const EditWind
         z0 = std::min(z0, column.z);
         z1 = std::max(z1, column.z);
     }
-    const EditWindow window = windows(static_cast<int>(x0 * kSpacing - kBlockReach),
-                                      static_cast<int>(x1 * kSpacing + kBlockReach),
-                                      static_cast<int>(z0 * kSpacing - kBlockReach),
-                                      static_cast<int>(z1 * kSpacing + kBlockReach));
+    const EditWindow window = windows(static_cast<int>(x0 * kSpacing - kReach),
+                                      static_cast<int>(x1 * kSpacing + kReach),
+                                      static_cast<int>(z0 * kSpacing - kReach),
+                                      static_cast<int>(z1 * kSpacing + kReach));
     // The heights of the columns near an edited block, in one batch.
     std::vector<EditColumn> near;
     std::vector<double> xs;
@@ -97,8 +106,7 @@ void addGroup(const Heightfield& field, const ColumnSet& columns, const EditWind
         const auto x = static_cast<int>(column.x * kSpacing);
         const auto z = static_cast<int>(column.z * kSpacing);
         const EditColumn canonical{wrapIndex(column.x, countX), wrapIndex(column.z, countZ)};
-        if (!window.editedSpan(x - kBlockReach, x + kBlockReach, z - kBlockReach,
-                               z + kBlockReach)) {
+        if (!window.editedSpan(x - kReach, x + kReach, z - kReach, z + kReach)) {
             out.push_back({canonical, std::nullopt, 0.0f});
             continue;
         }
@@ -108,11 +116,12 @@ void addGroup(const Heightfield& field, const ColumnSet& columns, const EditWind
     }
     std::vector<float> grounds(near.size());
     field.heightsAt(xs, zs, grounds);
+    CoarseCellCache cells(window, kSpacing); // the cells shared by the columns of the group
     for (std::size_t n = 0; n < near.size(); ++n) {
         const auto x = static_cast<int>(near[n].x * kSpacing);
         const auto z = static_cast<int>(near[n].z * kSpacing);
         const EditColumn canonical{wrapIndex(near[n].x, countX), wrapIndex(near[n].z, countZ)};
-        const std::optional<float> edited = editedColumnGround(window, grounds[n], x, z);
+        const std::optional<float> edited = editedColumnGround(window, cells, grounds[n], x, z);
         out.push_back({canonical, edited, edited ? grounds[n] : 0.0f});
     }
 }
@@ -120,28 +129,43 @@ void addGroup(const Heightfield& field, const ColumnSet& columns, const EditWind
 } // namespace
 
 std::optional<float> editedColumnGround(const EditWindow& window, float ground, int x, int z) {
+    CoarseCellCache cells(window, kSpacing);
+    return editedColumnGround(window, cells, ground, x, z);
+}
+
+std::optional<float> editedColumnGround(const EditWindow& window, CoarseCellCache& cells,
+                                        float ground, int x, int z) {
     const std::optional<std::pair<int, int>> span =
-        window.editedSpan(x - kBlockReach, x + kBlockReach, z - kBlockReach, z + kBlockReach);
+        window.editedSpan(x - kReach, x + kReach, z - kReach, z + kReach);
     if (!span) {
         return std::nullopt;
     }
-    // The lattice points an edited block may reach (kBlockReach of its center).
-    const std::int64_t low = ceilDiv(std::int64_t{span->first} - kBlockReach, kSpacing);
-    const std::int64_t high = floorDiv(std::int64_t{span->second} + kBlockReach, kSpacing);
+    // The lattice points the edited blocks reach (kReach of their centers), read as the tiles of
+    // LOD 3 read them (CoarseEdits without relay: the cells of the cache).
+    const std::int64_t low = ceilDiv(std::int64_t{span->first} - kReach, kSpacing);
+    const std::int64_t high = floorDiv(std::int64_t{span->second} + kReach, kSpacing);
+    std::map<std::int64_t, CoarseCellCache::Level> levels; // the covers of the heights read
     const auto density = [&](std::int64_t j) {
         const float generated = generatedDensity(j, ground);
         if (j < low || j > high) {
             return generated;
         }
         const int y = static_cast<int>(j * kSpacing);
-        // Within sections filled with one edit (a razed volume, a heap), the 27 blocks around
-        // the point share it: EditWindow::density there, without reading them one by one.
-        if (window.filled({x - kBlockReach, y - kBlockReach, z - kBlockReach},
-                          {x + kBlockReach, y + kBlockReach, z + kBlockReach})) {
+        // Within sections filled with one edit (a razed volume, a heap) the cells around the
+        // point are full: CoarseEdits there, without reading them.
+        if (window.filled({x - kReach, y - kReach, z - kReach},
+                          {x + kReach, y + kReach, z + kReach})) {
             return window.blockAt(x, y, z) == BlockEdit::Removed ? std::max(generated, kAllRemoved)
                                                                  : std::min(generated, kAllAdded);
         }
-        return window.density(generated, x, y, z);
+        const auto at = [&](std::int64_t n) -> const CoarseCellCache::Level& {
+            const auto [it, added] = levels.try_emplace(n);
+            if (added) {
+                it->second = cells.level(x, static_cast<int>(n * kSpacing), z);
+            }
+            return it->second;
+        };
+        return cells.density(generated, at(j - 1), at(j), at(j + 1));
     };
     // From the air over the generated rock and over every edited point, down to the first rock:
     // under the lowest edited point, the generated rock at the latest.

@@ -163,9 +163,11 @@ Change compare(const terrain::Mesh& before, const terrain::Mesh& after) {
     return change;
 }
 
-// A block of 1 m placed on the ground, seen by the tiles of LOD 0 to 3 over it: from LOD 1 on,
-// the lattice samples the edited density every 2, 4 or 8 m, so a block of 1 m changes a whole
-// cell when it reaches one of its lattice points (printed for the report; facets and spikes).
+// A block of 1 m placed on the ground, seen by the tiles of LOD 0 to 3 over it. The lattice
+// samples the edited density every 2, 4 or 8 m: a block of 1 m used to change a whole cell when it
+// reached one of its lattice points (2.2 m at LOD 1, 8.7 m at LOD 3) and nothing between them.
+// Agent 41 (edit_coarse.hpp): a relay at LOD 1 and 2 wherever the block lies, never a whole cell
+// of LOD 2 or 3, nothing at LOD 3.
 void measureLods(double x, double z) {
     terrain::TerrainTiles tiles(terrain::kDefaultWorldSeed);
     const double ground = tiles.heightfield().heightAt(x, z);
@@ -189,6 +191,10 @@ void measureLods(double x, double z) {
                     change.longestEdge);
         if (lod == 0) {
             TEST_CHECK(change.vertices > 0 && change.longestEdge < 2.0f);
+        } else if (lod < terrain::kMaxLod) {
+            TEST_CHECK(change.vertices > 0 && change.extent <= 3.0f);
+        } else {
+            TEST_CHECK(change.vertices == 0);
         }
     }
 }

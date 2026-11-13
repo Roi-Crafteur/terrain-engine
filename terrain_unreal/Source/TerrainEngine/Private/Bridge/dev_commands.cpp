@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <utility>
 
@@ -241,6 +242,110 @@ std::optional<HudPage> parseHud(std::span<const std::string> args, HudPage curre
 
 std::string_view hudPageName(HudPage page) {
     return kPages[static_cast<std::size_t>(page)];
+}
+
+namespace {
+
+constexpr const char* kEditAimUsage =
+    "expected Terrain.EditAim <dig|place> <block|sphere> [radius m] [at x y z]";
+
+std::string pointText(const CorePoint& p) {
+    char text[96];
+    std::snprintf(text, sizeof(text), "(%.2f, %.2f, %.2f)", p.x, p.y, p.z);
+    return text;
+}
+
+std::string blockText(const BlockCoord& b) {
+    char text[64];
+    std::snprintf(text, sizeof(text), "(%d, %d, %d)", static_cast<int>(b.x), static_cast<int>(b.y),
+                  static_cast<int>(b.z));
+    return text;
+}
+
+} // namespace
+
+std::optional<EditAimCommand> parseEditAim(std::span<const std::string> args, std::string& error) {
+    if (args.size() < 2) {
+        return refuse<EditAimCommand>(error, kEditAimUsage);
+    }
+    EditAimCommand command;
+    if (args[0] == "dig" || args[0] == "place") {
+        command.action = args[0] == "dig" ? BuildAction::Break : BuildAction::Place;
+    } else {
+        return refuse<EditAimCommand>(error, std::string(kEditAimUsage) + ": dig or place");
+    }
+    if (args[1] != "block" && args[1] != "sphere") {
+        return refuse<EditAimCommand>(error, std::string(kEditAimUsage) + ": block or sphere");
+    }
+    const bool sphere = args[1] == "sphere";
+    command.tool = sphere ? BuildTool::Sphere2 : BuildTool::Block;
+    command.radius = sphere ? toolRadius(BuildTool::Sphere2) : 0.0;
+    std::size_t next = 2;
+    if (next < args.size() && args[next] != "at") {
+        const std::optional<double> radius = numberOf(args[next]);
+        if (!radius) {
+            return refuse<EditAimCommand>(error,
+                                          std::string(kEditAimUsage) + ": not " + args[next]);
+        }
+        if (!sphere) {
+            return refuse<EditAimCommand>(error,
+                                          std::string(kEditAimUsage) + ": a block takes no radius");
+        }
+        if (*radius * 16.0 < 0.5 || *radius > kEditAimMaxRadius) {
+            return refuse<EditAimCommand>(
+                error, std::string(kEditAimUsage) + ": the radius of a sphere, 1/16 to 32 m");
+        }
+        command.radius = static_cast<double>(std::lround(*radius * 16.0)) / 16.0;
+        ++next;
+    }
+    if (next < args.size()) {
+        if (args[next] != "at" || args.size() != next + 4) {
+            return refuse<EditAimCommand>(error,
+                                          std::string(kEditAimUsage) + ": at and three numbers");
+        }
+        const std::optional<double> x = numberOf(args[next + 1]);
+        const std::optional<double> y = numberOf(args[next + 2]);
+        const std::optional<double> z = numberOf(args[next + 3]);
+        if (!x || !y || !z) {
+            return refuse<EditAimCommand>(error,
+                                          std::string(kEditAimUsage) + ": at and three numbers");
+        }
+        command.at = CorePoint{*x, *y, *z};
+    }
+    return command;
+}
+
+std::string editAimLine(const EditAimCommand& command, const EditAimOutcome& outcome) {
+    std::string line = "EditAim ";
+    line += command.action == BuildAction::Break ? "dig " : "place ";
+    line += shapeName(command.tool, command.radius);
+    line += command.at ? " at " + pointText(*command.at)
+                       : std::string(" at the center of the screen");
+    line += ": hit ";
+    line += outcome.hit ? pointText(*outcome.hit) : std::string("none");
+    if (outcome.edit) {
+        if (outcome.edit->shape == EditShape::Sphere) {
+            char radius[48];
+            std::snprintf(radius, sizeof(radius), " radius %.4g m",
+                          static_cast<double>(outcome.edit->radius) / 16.0);
+            line += ", sphere at " + blockText(outcome.edit->anchor) + radius;
+        } else {
+            line += ", block " + blockText(outcome.edit->anchor);
+        }
+    }
+    line += outcome.refusal.empty() ? ", accepted" : ", refused: " + outcome.refusal;
+    return line;
+}
+
+std::optional<EditReadCommand> parseEditRead(std::span<const std::string> args,
+                                             std::string& error) {
+    if (args.empty()) {
+        return EditReadCommand{};
+    }
+    if (args.size() == 1 && (args[0] == "0" || args[0] == "1")) {
+        return EditReadCommand{args[0] == "1"};
+    }
+    return refuse<EditReadCommand>(error, "expected Terrain.EditRead [0|1]");
 }
 
 } // namespace terrain::unreal

@@ -1,8 +1,8 @@
-// Breaking and placing in game (agent 28): Enhanced Input bound on an input component of its own, the
-// trace of the
-// camera, the ghost of the edit, the click queued on the edit thread of the session. Everything
-// computed (the aim, the face, the tool, the capsule, the gate, the rate) is in the Bridge
-// (block_targeting.hpp, build_rules.hpp), tested by ctest.
+// Breaking and placing in game (agent 28): Enhanced Input bound on an input component of its own,
+// the trace of the camera (TerrainBuildAim.cpp, shared with Terrain.EditAim), the ghost of the
+// edit, the click queued on the edit thread of the session. Everything computed (the aim, the
+// face, the tool, the capsule, the gate, the rate) is in the Bridge (block_targeting.hpp,
+// build_rules.hpp), tested by ctest.
 #include "TerrainBuildComponent.h"
 
 #include "Bridge/block_targeting.hpp"
@@ -26,6 +26,7 @@
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
 #include "Materials/MaterialInterface.h"
+#include "TerrainBuildAim.h"
 #include "TerrainEngineLog.h"
 #include "TerrainWorld.h"
 #include "TerrainWorldBuild.h"
@@ -42,21 +43,17 @@ struct FTerrainBuildRuntime
 	TWeakObjectPtr<APlayerController> MappedController;
 	bool bDefaultInput = false; // the context and the actions made by MakeDefaultInput
 	FString GhostGate;          // why the ghost is hidden, last logged
+	FTerrainBuildAim LastAim;   // what the last edit touched and aimed at (Terrain.EditAim)
 };
 
 namespace
 {
-	using TerrainWorldConversions::ToUnrealPoint;
+	using TerrainBuildAim::ToBridge;
 
 	constexpr TCHAR CubeMesh[] = TEXT("/Engine/BasicShapes/Cube.Cube");       // 100 cm, centered
 	constexpr TCHAR SphereMesh[] = TEXT("/Engine/BasicShapes/Sphere.Sphere"); // 100 cm across
 	constexpr TCHAR WireframeMaterial[] =
 		TEXT("/Engine/EngineDebugMaterials/WireframeMaterial.WireframeMaterial");
-
-	terrain::unreal::BuildTool ToBridge(ETerrainBuildTool Tool)
-	{
-		return static_cast<terrain::unreal::BuildTool>(static_cast<uint8>(Tool));
-	}
 
 	// An action of a button (a new UInputAction holds a boolean value).
 	UInputAction* MakeAction(UObject& Outer, const TCHAR* Name)
@@ -86,72 +83,6 @@ namespace
 	{
 		Context.MapKey(Action, Keys.Qwerty);
 		Context.MapKey(Action, Keys.Azerty);
-	}
-
-	// The edit aimed at now, and the hit it comes from.
-	struct FAim
-	{
-		terrain::unreal::BuildTarget Target;
-		terrain::unreal::BuildHit Hit;
-	};
-
-	// The trace of the camera on the tiles of the world: the first tile hit within reach of the eye.
-	std::optional<FAim> AimAt(APawn& Pawn, APlayerController& Controller, ATerrainWorld& World,
-		const terrain::unreal::UnrealFrame& Frame, float ReachMeters, ETerrainBuildTool Tool,
-		ETerrainBuildAction Action)
-	{
-		if (Controller.PlayerCameraManager == nullptr || Pawn.GetWorld() == nullptr)
-		{
-			return std::nullopt;
-		}
-		const FVector Camera = Controller.PlayerCameraManager->GetCameraLocation();
-		const FVector Forward = Controller.PlayerCameraManager->GetCameraRotation().Vector();
-		const FVector Eye = Pawn.GetPawnViewLocation();
-		// From the camera (behind the pawn in third person) to the reach of the eye beyond it.
-		const double Length = ReachMeters * 100.0 + FVector::Dist(Camera, Eye);
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(TerrainBuild), true, &Pawn);
-		FHitResult Hit;
-		if (!Pawn.GetWorld()->LineTraceSingleByChannel(Hit, Camera, Camera + Forward * Length,
-				ECC_Visibility, Params) ||
-			Hit.GetActor() != &World)
-		{
-			return std::nullopt;
-		}
-		FAim Aim;
-		Aim.Hit = terrain::unreal::hitFromUnreal(Frame, ToUnrealPoint(Hit.ImpactPoint),
-			Hit.ImpactNormal.X, Hit.ImpactNormal.Y, Hit.ImpactNormal.Z,
-			FVector::Dist(Hit.ImpactPoint, Eye));
-		if (!terrain::unreal::withinReach(Aim.Hit, ReachMeters))
-		{
-			return std::nullopt;
-		}
-		Aim.Target = terrain::unreal::buildTarget(Aim.Hit, ToBridge(Tool),
-			Action == ETerrainBuildAction::Break ? terrain::unreal::BuildAction::Break
-												 : terrain::unreal::BuildAction::Place);
-		return Aim;
-	}
-
-	// True if a placed volume would close on the capsule of the pawn.
-	bool InCapsule(const APawn& Pawn, const terrain::unreal::UnrealFrame& Frame,
-		const terrain::VolumeEdit& Edit)
-	{
-		const UCapsuleComponent* Capsule = Cast<UCapsuleComponent>(Pawn.GetRootComponent());
-		if (Capsule == nullptr)
-		{
-			return false;
-		}
-		const terrain::unreal::CoreCapsule Core = terrain::unreal::capsuleFromUnreal(Frame,
-			ToUnrealPoint(Capsule->GetComponentLocation()), Capsule->GetScaledCapsuleHalfHeight(),
-			Capsule->GetScaledCapsuleRadius());
-		return terrain::unreal::touchesCapsule(Edit, Core);
-	}
-
-	FString Describe(ETerrainBuildAction Action, ETerrainBuildTool Tool, const terrain::VolumeEdit& Edit)
-	{
-		return FString::Printf(TEXT("%s %s at (%d, %d, %d)"),
-			Action == ETerrainBuildAction::Break ? TEXT("break") : TEXT("place"),
-			UTF8_TO_TCHAR(terrain::unreal::toolName(ToBridge(Tool))), Edit.anchor.x,
-			Edit.anchor.y, Edit.anchor.z);
 	}
 } // namespace
 
@@ -363,24 +294,37 @@ bool UTerrainBuildComponent::Refuse(const FString& Reason)
 
 bool UTerrainBuildComponent::Build(ETerrainBuildAction Action)
 {
+	FTerrainBuildRequest Request;
+	Request.Action = Action;
+	Request.Tool = Tool;
+	return BuildRequested(Request);
+}
+
+bool UTerrainBuildComponent::BuildRequested(const FTerrainBuildRequest& Request)
+{
+	if (Runtime.IsValid())
+	{
+		Runtime->LastAim = FTerrainBuildAim{}; // a refusal before the trace touches nothing
+	}
 	FindTerrainWorld();
 	const FString Gate = GateRefusal();
 	APawn* Pawn = Cast<APawn>(GetOwner());
 	APlayerController* Controller = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
 	FTerrainWorldState* State =
 		TerrainWorld.IsValid() ? FTerrainBuildHooks::State(*TerrainWorld.Get()) : nullptr;
-	if (!Gate.IsEmpty() || Controller == nullptr || State == nullptr)
+	if (!Runtime.IsValid() || !Gate.IsEmpty() || Controller == nullptr || State == nullptr)
 	{
 		return Refuse(Gate.IsEmpty() ? FString(TEXT("not playing")) : Gate);
 	}
-	const std::optional<FAim> Aim = AimAt(*Pawn, *Controller, *TerrainWorld.Get(), State->Frame,
-		ReachMeters, Tool, Action);
-	if (!Aim)
+	Runtime->LastAim = TerrainBuildAim::AimAt(*Pawn, *Controller, *TerrainWorld.Get(),
+		State->Frame, ReachMeters, Request);
+	const FTerrainBuildAim& Aim = Runtime->LastAim;
+	if (!Aim.Target)
 	{
-		return Refuse(FString::Printf(TEXT("no ground within reach (%.1f m of the eye)"),
-			ReachMeters));
+		return Refuse(Aim.Refusal);
 	}
-	if (Action == ETerrainBuildAction::Place && InCapsule(*Pawn, State->Frame, Aim->Target.edit))
+	if (Request.Action == ETerrainBuildAction::Place &&
+		TerrainBuildAim::InCapsule(*Pawn, State->Frame, Aim.Target->edit))
 	{
 		if (GEngine != nullptr && LastRefusal != TEXT("it would close on the pawn"))
 		{
@@ -396,9 +340,14 @@ bool UTerrainBuildComponent::Build(ETerrainBuildAction Action)
 		return false;
 	}
 	LastRefusal.Reset();
-	FTerrainBuildHooks::QueueBuild(*State, Aim->Target.edit,
-		Describe(Action, Tool, Aim->Target.edit));
+	FTerrainBuildHooks::QueueBuild(*State, Aim.Target->edit,
+		TerrainBuildAim::Describe(Request, Aim.Target->edit));
 	return true;
+}
+
+const FTerrainBuildAim* UTerrainBuildComponent::GetLastAim() const
+{
+	return Runtime.IsValid() ? &Runtime->LastAim : nullptr;
 }
 
 void UTerrainBuildComponent::OnBreakPressed()
@@ -467,7 +416,7 @@ void UTerrainBuildComponent::UpdateGhost()
 	APlayerController* Controller = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
 	FTerrainWorldState* State =
 		TerrainWorld.IsValid() ? FTerrainBuildHooks::State(*TerrainWorld.Get()) : nullptr;
-	std::optional<FAim> Aim;
+	std::optional<terrain::unreal::BuildTarget> Aim;
 	const FString Gate = GateRefusal();
 	if (Gate != Runtime->GhostGate)
 	{
@@ -481,7 +430,11 @@ void UTerrainBuildComponent::UpdateGhost()
 		// The ghost of a place with the right button held, else of a break: what a click does.
 		const ETerrainBuildAction Action = Runtime->bPlaceHeld ? ETerrainBuildAction::Place
 															   : ETerrainBuildAction::Break;
-		Aim = AimAt(*Pawn, *Controller, *TerrainWorld.Get(), State->Frame, ReachMeters, Tool, Action);
+		FTerrainBuildRequest Request;
+		Request.Action = Action;
+		Request.Tool = Tool;
+		Aim = TerrainBuildAim::AimAt(*Pawn, *Controller, *TerrainWorld.Get(), State->Frame,
+			ReachMeters, Request).Target;
 	}
 	if (!Aim)
 	{
@@ -489,7 +442,7 @@ void UTerrainBuildComponent::UpdateGhost()
 		return;
 	}
 	const terrain::unreal::UnrealGhost Shape =
-		terrain::unreal::toUnrealGhost(State->Frame, Aim->Target.ghost);
+		terrain::unreal::toUnrealGhost(State->Frame, Aim->ghost);
 	UStaticMesh* Mesh = Shape.sphere ? SphereShape.Get() : CubeShape.Get();
 	if (Mesh != nullptr && Ghost->GetStaticMesh() != Mesh)
 	{

@@ -59,6 +59,9 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Blend 0\|1` | (outils de dev seulement) les poids des biomes de l'horizon et du niveau 0 sous les tuiles (agent 29) : 0 le biome dominant de chaque échantillon, comme avant eux ; comparer leur coût GPU et leur aspect (après avoir relancé les scripts des matériaux de l'horizon GPU et temporaire) |
 | `Terrain.Seed <n> [surface\|caves\|regions]` | le monde d'une autre seed et d'un autre preset, sans quitter le Play |
 | `Terrain.Hud [0-3]` | la page de l'écran F3 |
+| `Terrain.EditAim <dig\|place> <block\|sphere> [rayon] [at x y z]` | (agent 41) un clic du joueur pour les scripts, par le code du clic : mêmes règles, même visée depuis la caméra, même portée, même capsule, même limite de 4 par seconde, même file et donc même sauvegarde ; `at` : un point du core par lequel passe la trace (refus si elle touche à plus de 0,25 m de ce point). Une ligne dans le log par appel. Les scènes de `BREAK_PLACE.md` (« Les scènes du monde modifié ») |
+| `Terrain.EditRead [0\|1]` | (agent 41) dans l'éditeur : le prochain Play relit et sauvegarde les modifications de la seed comme avec `Building.bSaveEdits`, sans toucher l'acteur ni la carte ; sans argument, l'état |
+| `Terrain.EditLight 0\|1`, `Terrain.EditLightFloor <part>` | (tous les builds, comme `Terrain.EditSave`) le plancher de lumière des surfaces faites par les modifications, éteint par défaut, et la part de leur couleur de base qu'elles émettent (0,15) ; à passer après la liste des réglages de Lumen de `BREAK_PLACE.md` (« La lumière des creux », agent 41) |
 
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),

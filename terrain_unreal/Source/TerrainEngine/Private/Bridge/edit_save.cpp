@@ -43,6 +43,21 @@ WorldMeta editWorldMeta(std::uint64_t seed, const WorldSize& world) {
     return meta;
 }
 
+WorldMeta keptWorldMeta(const fs::path& folder, std::uint64_t seed, const WorldSize& world) {
+    if (worldThere(folder)) {
+        try {
+            WorldMeta meta = loadWorldMeta(folder).meta;
+            if (meta.seed == seed && static_cast<double>(meta.sizeX) == world.x &&
+                static_cast<double>(meta.sizeZ) == world.z) {
+                return meta;
+            }
+        } catch (const std::exception&) {
+            // Unreadable: the defaults, as for a folder without a world.
+        }
+    }
+    return editWorldMeta(seed, world);
+}
+
 EditLoad loadEdits(const fs::path& folder, std::uint64_t seed, const WorldSize& world) {
     EditLoad load;
     if (!worldThere(folder)) {
@@ -63,6 +78,7 @@ EditLoad loadEdits(const fs::path& folder, std::uint64_t seed, const WorldSize& 
             return load;
         }
         load.modifications = std::move(loaded.modifications);
+        load.meta = std::move(loaded.meta);
         load.warnings = std::move(loaded.warnings);
     } catch (const std::exception& exception) {
         load.error = refusal(folder, exception.what());

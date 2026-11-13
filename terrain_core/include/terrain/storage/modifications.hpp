@@ -43,8 +43,24 @@ inline constexpr int kBlockReach = 1;
 // Signed distance from the lattice point (x, y, z) to the cube of the block, in meters.
 [[nodiscard]] float blockDistance(BlockCoord block, int x, int y, int z);
 
+// The side walls of the removed blocks (agent 41). Next to a removed block along x or z, a lattice
+// point takes the distance kRemovedSideFace instead of the 0.5 of its cube, so that Marching
+// Cubes puts the wall kSideWallMeters from the center of the block (0.5 / (0.5 + kRemovedSideFace))
+// rather than 0.5: in a tunnel one block wide the floor in V and the ceiling in A, from the foot
+// of the walls to the middle half a block lower, slope atan(0.5 / 0.531) = 43.3 degrees, under the
+// walkable angle of the characters (44.765), where they had 45. Every side wall of a hollow stands
+// 3.1 cm further out; floors and ceilings keep their place. Above and below a removed block, and
+// for the added blocks, the cubes as they are.
+inline constexpr float kSideWallMeters = 0.531f;
+inline constexpr float kRemovedSideFace = 0.4416196f; // 0.5 (1 - 0.531) / 0.531
+
+// The distance a removed block gives the lattice point (x, y, z): blockDistance, kRemovedSideFace
+// at a face of it along x or z.
+[[nodiscard]] float removedDistance(BlockCoord block, int x, int y, int z);
+
 // Density at the lattice point (x, y, z) after the edit of one block: unchanged beyond
-// kBlockReach of its center.
+// kBlockReach of its center; an added block by its cube (min), a removed one by removedDistance
+// (max).
 [[nodiscard]] float editDensity(float density, BlockCoord block, BlockEdit edit, int x, int y,
                                 int z);
 

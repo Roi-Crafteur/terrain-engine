@@ -59,7 +59,8 @@ foreach(file IN LISTS sources)
     foreach(command Terrain.Goto Terrain.Look Terrain.Eye Terrain.Pawn Terrain.Save Terrain.Info
                     Terrain.Shot Terrain.Views Terrain.View\" Terrain.Seed Terrain.Hud
                     Terrain.PlacesFile Terrain.ShotTimeout Terrain.ShotSettle
-                    Terrain.ShotShowUI Terrain.PawnRadius Terrain.EditStats)
+                    Terrain.ShotShowUI Terrain.PawnRadius Terrain.EditStats Terrain.EditAim
+                    Terrain.EditRead)
         string(FIND "${text}" "TEXT(\"${command}" at)
         if(NOT at EQUAL -1)
             string(APPEND errors "${name}: registers ${command} outside the files of the tools\n")

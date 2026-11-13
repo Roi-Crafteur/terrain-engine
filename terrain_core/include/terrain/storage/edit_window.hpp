@@ -93,6 +93,10 @@ public:
     // No edited block reaches the samples.
     [[nodiscard]] bool empty() const { return kinds_.empty(); }
     [[nodiscard]] float density(float generated, int i, int j, int k) const;
+    // The removed and the added blocks within reach of the sample (i, j, k), as bits of the 27
+    // offsets around it (bit ((dz + 1) * 3 + (dy + 1)) * 3 + (dx + 1)); 0 and 0 when no edited
+    // block reaches the lattice.
+    [[nodiscard]] std::pair<std::uint32_t, std::uint32_t> blocksAround(int i, int j, int k) const;
     [[nodiscard]] std::size_t heapBytes() const {
         return (removed_.capacity() + added_.capacity()) * sizeof(std::uint64_t) +
                kinds_.capacity();

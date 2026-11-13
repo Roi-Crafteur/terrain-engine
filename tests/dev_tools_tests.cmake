@@ -17,6 +17,9 @@ target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/dev_commands.cpp
 # The poses of the views (the yaw of a heading, the eye above the ground or the water, a saved
 # view posed again) and the arguments of the console commands.
 terrain_add_test(unreal_place_pose_test terrain_unreal_bridge)
+# The commands that edit the world as a click (agent 41): Terrain.EditAim and Terrain.EditRead,
+# the line of an EditAim in the log, the sphere of a radius given, the point a trace must hit.
+terrain_add_test(unreal_dev_commands_test terrain_unreal_bridge)
 
 # What the screen of F3 and Terrain.Info say of a point: the lines of each provider on the small
 # world with its water and without it, the surface on or off the heightmap, the ray of the camera

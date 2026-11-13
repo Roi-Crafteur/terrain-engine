@@ -16,6 +16,7 @@ set_tests_properties(
     # A ratio of measured times.
     water_cost_test
     ergs_world_test
+    edit_lod_cost_test
     # A threshold on a measured time.
     horizon_edits_cost_test
     unreal_horizon_edits_cost_test
