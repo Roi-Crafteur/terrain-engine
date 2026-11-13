@@ -39,10 +39,8 @@ constexpr int kWorkers = 4;
 constexpr int kTrials = 10;
 // A course long to make: what the threads stopped under load compute.
 constexpr double kLongCourse = 100.0; // ms
-// The trials of the waking of a waiting thread, each way, and the least time of the course it
-// waits for.
+// The trials of the waking of a waiting thread, each way.
 constexpr int kWakes = 15;
-constexpr double kWakeCourse = 50.0; // ms
 // The checksum of the sample reaches (hydrology_bits_test, pinned on main).
 constexpr std::uint64_t kSampleReaches = 0xF1684975E5044E29ULL;
 
@@ -317,7 +315,7 @@ void testWaiter(const World& w, const std::vector<Timed>& timed) {
 // One thread waiting for the course r another one makes on a fresh hydrology, its flag raised
 // delay µs after it started: by raiseWorkStop (wake) or by a store alone (then seen at the end of
 // a step of its wait). The ms from the raise to its exit, and whether it left by WorkStopped (or
-// got the course first).
+// got the course first). The maker is stopped once the waiter is out: a trial lasts a few ms.
 struct WaiterOut {
     double ms = 0.0;
     bool left = false;
@@ -326,9 +324,17 @@ struct WaiterOut {
 WaiterOut waiterOut(const World& w, std::size_t r, int delayUs, bool wake) {
     const auto h = w.fresh();
     std::atomic<bool> stop{false};
+    std::atomic<bool> makerStop{false};
     bool left = false;
     Clock::time_point out;
-    std::thread maker([&] { (void)h->reach(r); });
+    std::thread maker([&] {
+        const WorkStopScope scope(&makerStop);
+        try {
+            (void)h->reach(r);
+        } catch (const WorkStopped&) {
+            // the course no longer needed once the waiter is out
+        }
+    });
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
     std::thread waiter([&] {
         const WorkStopScope scope(&stop);
@@ -347,6 +353,7 @@ WaiterOut waiterOut(const World& w, std::size_t r, int delayUs, bool wake) {
         stop.store(true);
     }
     waiter.join();
+    raiseWorkStop(makerStop);
     maker.join();
     return {msBetween(raised, out), left};
 }
@@ -355,18 +362,13 @@ WaiterOut waiterOut(const World& w, std::size_t r, int delayUs, bool wake) {
 // rest, kWakes trials raised by raiseWorkStop against kWakes whose flag is only stored, in turn,
 // at instants spread over 2 ms; the median of the first under half the median of the second (no
 // bound in milliseconds: a step is 2 ms asked, 15.6 ms under Windows, 15 ms or more under
-// macOS). Every woken thread leaves by WorkStopped; one whose flag is only stored may get the
-// course first (a long step): its exit then counts as is, which only lowers its median.
+// macOS). The course waited for is the longest of the sample, as for testWaiter: made long after
+// the raise everywhere, so that every woken thread leaves by WorkStopped; one whose flag is only
+// stored may still get it first (a long step): its exit then counts as is, which only lowers its
+// median.
 void testWokenNotStepped(const World& w, const std::vector<Timed>& timed) {
-    // The shortest course of kWakeCourse ms or more (the longest if none): made after the end of
-    // a step of the wait.
-    Timed course = *std::max_element(
+    const Timed course = *std::max_element(
         timed.begin(), timed.end(), [](const Timed& a, const Timed& b) { return a.ms < b.ms; });
-    for (const Timed& t : timed) {
-        if (t.ms >= kWakeCourse && t.ms < course.ms) {
-            course = t;
-        }
-    }
     std::vector<double> woken;
     std::vector<double> stored;
     int left = 0;
