@@ -36,17 +36,12 @@ inline constexpr std::uint32_t kSectionFormatVersion = 2;
 // the rocks of the reefs and the stacks: agent 33).
 // 9: the seas of dunes of agent 34: their three characters, the forms of their dunes (barchans,
 // stars, waves and giant waves), the floors between them, the dry depressions they cover.
-// 10: the hydrographic network of agent 31 (task 11C, step 1): the bands of the winds of the
-// planet level joined smoothly (no straight line of the rain every 30 degrees), and what follows
-// from it (the rivers, the lakes, the humidity of the biomes, the ergs).
-inline constexpr std::uint32_t kGeneratorVersion = 10;
+inline constexpr std::uint32_t kGeneratorVersion = 9;
 // Version of the generator of the relief (Heightfield::heightAt and the planet level built from
 // it): the planet files hold it. The rock in three dimensions leaves the relief as it is, and the
 // planet level is built from the relief without the coasts (Heightfield::withoutCoasts), which
 // they leave as it is too.
-// 5: the planet level of task 11C (agent 31): the bands of its winds joined smoothly; a file of
-// version 4 holds the climate of before and is stale.
-inline constexpr std::uint32_t kReliefGeneratorVersion = 5;
+inline constexpr std::uint32_t kReliefGeneratorVersion = 4;
 
 // Generator of the worlds saved before the world format (TMOD files): the one up to phase 8C-2.
 inline constexpr std::uint32_t kLegacyGeneratorVersion = 1;

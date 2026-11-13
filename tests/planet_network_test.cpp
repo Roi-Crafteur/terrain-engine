@@ -4,6 +4,7 @@
 #include "terrain/generation/planet/planet_network.hpp"
 #include "terrain/storage/planet_file.hpp"
 
+#include "network_flags_support.hpp"
 #include "planet_golden_support.hpp"
 
 #include "test_assert.hpp"
@@ -34,7 +35,8 @@ void testCodes() {
 void testSmallWorld() {
     const terrain::Heightfield field(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
                                      golden::kSmallPlanet);
-    const terrain::PlanetParams params = golden::smallPlanetParams(2, 2);
+    const terrain::PlanetParams params =
+        network_flags::flagged(golden::smallPlanetParams(2, 2), network_flags::kStepOne);
     terrain::PlanetBuild build = terrain::planet::buildPlanet(field, params);
     const std::vector<float> discharge = build.discharge;
     const terrain::PlanetLevel level(std::move(build), params);

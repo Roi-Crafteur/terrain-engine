@@ -21,9 +21,6 @@
 #include <thread>
 #include <vector>
 
-// Pinned (agent 31, task 11C step 1): this scene keeps the planet level of before the
-// hydrographic network (golden::beforeNetwork), so that its rivers, falls and ergs stay those the
-// tests were written about; step 2 of task 11C moves it onto the default planet level.
 namespace {
 
 using terrain::HeightSample;
@@ -42,8 +39,8 @@ World makeWorld() {
     const Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
                              golden::kSmallPlanet);
     auto planet = std::make_shared<const terrain::PlanetLevel>(
-        terrain::planet::buildPlanet(relief, golden::beforeNetwork(golden::smallPlanetParams(2))),
-        golden::beforeNetwork(golden::smallPlanetParams(2)));
+        terrain::planet::buildPlanet(relief, golden::smallPlanetParams(2)),
+        golden::smallPlanetParams(2));
     auto hydrology =
         std::make_shared<const Hydrology>(terrain::kDefaultWorldSeed, relief, planet);
     return {relief, planet, hydrology, relief.withHydrology(hydrology)};

@@ -44,12 +44,12 @@ bool northernBand(int band) {
 } // namespace
 
 WindBands::WindBands(const PlanetGrid& grid, const PlanetClimateParams& params, std::uint64_t seed)
-    : grid_(grid), params_(params) {
+    : grid_(grid), params_(params), join_(params.smoothBands ? params.bandJoin : 0.0),
+      shift_(params.smoothBands ? params.bandShift : 0.0) {
     if (grid.nx <= 0 || grid.nz <= 0) {
         throw std::invalid_argument("WindBands: an empty grid");
     }
-    if (params.bandJoin < 0.0 || params.bandShift < 0.0 ||
-        params.bandJoin + params.bandShift >= 15.0) {
+    if (join_ < 0.0 || shift_ < 0.0 || join_ + shift_ >= 15.0) {
         throw std::invalid_argument("WindBands: the joins of the bands would overlap");
     }
     const double waves = std::max(1.0, std::round(grid.periodX() / params.bandShiftWavelength));
@@ -65,7 +65,7 @@ WindBands::WindBands(const PlanetGrid& grid, const PlanetClimateParams& params, 
             const double wave = (2.0 * bandWave(lineSeed, coarse, turns) +
                                  bandWave(noise::deriveSeed(lineSeed, 1), fine, turns)) /
                                 3.0;
-            line[static_cast<std::size_t>(i)] = nominal(k) + params.bandShift * wave;
+            line[static_cast<std::size_t>(i)] = nominal(k) + shift_ * wave;
         }
         lowest_[static_cast<std::size_t>(k)] = *std::min_element(line.begin(), line.end());
         highest_[static_cast<std::size_t>(k)] = *std::max_element(line.begin(), line.end());
@@ -101,7 +101,7 @@ PlanetWind WindBands::wind(int band) const {
 
 float WindBands::weight(int band, int column, int row) const {
     const double at = latitude(row);
-    const double join = params_.bandJoin;
+    const double join = join_;
     // How far the cell lies past the line below the band, and past the line above it.
     const double above = band == 0 ? 1.0 : bandHermite(-join, join, at - line(band - 1, column));
     const double beyond =
@@ -111,7 +111,7 @@ float WindBands::weight(int band, int column, int row) const {
 
 bool WindBands::reaches(int band, int row) const {
     const double at = latitude(row);
-    const double join = params_.bandJoin;
+    const double join = join_;
     const bool overLow = band == 0 || at > lowest_[static_cast<std::size_t>(band - 1)] - join;
     const bool underHigh =
         band == kWindBands - 1 || at < highest_[static_cast<std::size_t>(band)] + join;

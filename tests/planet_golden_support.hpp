@@ -47,21 +47,6 @@ inline terrain::PlanetParams smallPlanetParams(int threads, int samplesPerAxis =
     return params;
 }
 
-// The planet level as phases 11B and 12A built it, before the hydrographic network of task 11C
-// (agent 31): the bands of its winds meeting at once, the receivers of its cells the steepest
-// neighbor below them (no links through the passes). The scenes of the tests of other agents
-// that stand on the rivers, the falls and the ergs of a planet level keep it, so that they still
-// test, bit for bit and with their thresholds untouched, the rivers, falls and ergs they were
-// written about (the smoothed climate moves them all). Their checks are also run, as measures,
-// on the real planet of the default world (agent 31's report). Step 2 of task 11C moves them onto
-// the default planet level with its new valleys.
-inline terrain::PlanetParams beforeNetwork(terrain::PlanetParams params) {
-    params.climate.bandJoin = 0.0;
-    params.climate.bandShift = 0.0;
-    params.links.enabled = false;
-    return params;
-}
-
 inline terrain::PlanetBuild smallBuild(const terrain::HeightfieldParams& relief, int threads,
                                        int samplesPerAxis = 1) {
     const terrain::Heightfield field(terrain::kDefaultWorldSeed, relief, kSmallPlanet);
@@ -121,14 +106,14 @@ inline std::vector<Part> planetGoldenParts() {
     std::vector<Part> parts = planetParts({"planet default relief", "planet default climate",
                                            "planet default hydrology", "planet default level"},
                                           smallBuild(terrain::HeightfieldParams{}, 1, 2),
-                                          {0x3F4264CF06FB5493ULL, 0x523A1AE68E52922EULL,
-                                           0x6F87ED895801BCEFULL, 0x8A42059DDB85FF7DULL});
+                                          {0x3F4264CF06FB5493ULL, 0xAB9EB405E174EAA4ULL,
+                                           0x27B5C16AD4EC6D79ULL, 0xCDBFA06D845540C8ULL});
     const std::vector<Part> planetary =
         planetParts({"planet planetary relief", "planet planetary climate",
                      "planet planetary hydrology", "planet planetary level"},
                     smallBuild(smallPlanetaryParams(), 1),
-                    {0x5567F4879C93953CULL, 0xCDB30A8703052579ULL, 0x99089D0C029CEA5AULL,
-                     0x9105275536F87574ULL});
+                    {0x5567F4879C93953CULL, 0xC810421090695B0AULL, 0x3E2EEAEDCF06B9B4ULL,
+                     0x4B75A8B9F9E442BFULL});
     parts.insert(parts.end(), planetary.begin(), planetary.end());
     return parts;
 }

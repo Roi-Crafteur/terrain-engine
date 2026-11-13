@@ -5,17 +5,12 @@
 // nothing without them. The file is the one the fixture coast_planet_file builds once (or reads,
 // when it holds the planet of this generator) with terrain_probe --planet, given to the tests by
 // the environment variable TERRAIN_COAST_PLANET (tests/coast_tests.cmake).
-// Pinned (agent 31, task 11C step 1): the planet level of before the hydrographic network
-// (golden::beforeNetwork, built by coast_planet_build), so that the places of the coasts are those
-// the tests were written about; step 2 of task 11C moves them onto the default planet level.
 
 #include "terrain/generation/coast.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/storage/planet_file.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
-
-#include "planet_golden_support.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -59,8 +54,7 @@ inline std::shared_ptr<const terrain::Hydrology> hydrology() {
     static const std::shared_ptr<const terrain::Hydrology> h = [] {
         static const terrain::Heightfield relief(terrain::kDefaultWorldSeed);
         auto level = std::make_shared<const terrain::PlanetLevel>(terrain::loadPlanetFile(
-            filePath(), terrain::kDefaultWorldSeed, golden::beforeNetwork(terrain::PlanetParams{}),
-            terrain::WorldSize{}));
+            filePath(), terrain::kDefaultWorldSeed, terrain::PlanetParams{}, terrain::WorldSize{}));
         return std::make_shared<const terrain::Hydrology>(terrain::kDefaultWorldSeed, relief,
                                                          std::move(level));
     }();

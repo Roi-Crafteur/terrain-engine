@@ -7,10 +7,14 @@
 // and more of the fine network; at 20 km every channel (dry ones dashed), the sources (black dots)
 // and the confluences (white rings). And basins_<name>_2048km.png: the basins of the planet level,
 // their divides in black. Prints, and writes to network.txt, what each map holds and what it cost.
-// Usage: terrain_export_network <output-dir> --planet <file> [--threads <n>] [--pixels <n>]
-//        [--place <name> <x> <z>]...
+// --flags: the experimental flags of the world (experimental_flags.hpp), by default those of step 1
+// (pass_routing, planet_network, smooth_bands); planet_network among them (the network reads the
+// discharge of every land cell). The planet file must hold the level of these flags.
+// Usage: terrain_export_network <output-dir> --planet <file> [--flags <a,b>] [--threads <n>]
+//        [--pixels <n>] [--place <name> <x> <z>]...
 
 #include "network_draw.hpp"
+#include "tool_flags.hpp"
 
 #include "terrain/generation/water/drainage_network.hpp"
 #include "terrain/io/relief_png.hpp"
@@ -41,6 +45,9 @@ struct Place {
 struct Options {
     std::filesystem::path directory;
     std::filesystem::path planet;
+    std::string flags = "pass_routing,planet_network,smooth_bands";
+    terrain::WorldParams world;    // set by the flags
+    std::string canonical;         // their canonical text
     int threads = 0;
     int pixels = 1024;
     std::vector<Place> places;
@@ -64,6 +71,8 @@ bool parse(int argc, char** argv, Options& o) {
         const std::string arg = argv[a];
         if (arg == "--planet" && a + 1 < argc) {
             o.planet = argv[++a];
+        } else if (arg == "--flags" && a + 1 < argc) {
+            o.flags = argv[++a];
         } else if (arg == "--threads" && a + 1 < argc) {
             o.threads = std::atoi(argv[++a]);
         } else if (arg == "--pixels" && a + 1 < argc) {
@@ -77,6 +86,13 @@ bool parse(int argc, char** argv, Options& o) {
     }
     if (o.places.empty()) {
         o.places = defaultPlaces();
+    }
+    if (!tool_flags::apply(o.flags, o.world, o.canonical)) {
+        return false;
+    }
+    if (!o.world.planet.landDischarge) {
+        std::fprintf(stderr, "the network needs the flag planet_network\n");
+        return false;
     }
     return !o.planet.empty() && o.pixels > 0;
 }
@@ -141,15 +157,16 @@ int main(int argc, char** argv) {
     Options o;
     if (!parse(argc, argv, o)) {
         std::fprintf(stderr, "usage: terrain_export_network <output-dir> --planet <file> "
-                             "[--threads <n>] [--pixels <n>] [--place <name> <x> <z>]...\n");
+                             "[--flags <a,b>] [--threads <n>] [--pixels <n>] "
+                             "[--place <name> <x> <z>]...\n");
         return 1;
     }
     std::filesystem::create_directories(o.directory);
     const auto start = std::chrono::steady_clock::now();
     const auto level = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
-        o.planet, terrain::kDefaultWorldSeed, terrain::HeightfieldParams{}, terrain::PlanetParams{},
-        terrain::WorldSize{}));
-    const terrain::Heightfield relief(terrain::kDefaultWorldSeed);
+        o.planet, terrain::kDefaultWorldSeed, o.world.relief, o.world.planet, terrain::WorldSize{},
+        nullptr, {}, o.canonical));
+    const terrain::Heightfield relief(terrain::kDefaultWorldSeed, o.world.relief);
     const terrain::DrainageNetwork net(terrain::kDefaultWorldSeed, relief.withoutCoasts(), level);
     std::printf("planet level and its network in %.1f s, the network %.1f MB\n",
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(),

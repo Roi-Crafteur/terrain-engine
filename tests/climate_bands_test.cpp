@@ -1,6 +1,6 @@
 // The bands of the winds of the planet level joined smoothly (planet_bands.hpp, task 11C step 1):
 // no straight line of the rain where the bands meet, the great zones of the climate kept, the
-// lines waving with the longitude, and with the joins off the climate of before, bit for bit.
+// lines waving with the longitude (flag smooth_bands); without it the climate of main, bit for bit.
 #include "terrain/generation/planet/planet_bands.hpp"
 #include "terrain/generation/planet/planet_climate.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
@@ -28,15 +28,19 @@ using terrain::planet::WindBands;
 const PlanetGrid kGrid{600, 360, 100000.0};
 constexpr std::uint64_t kSeed = 20261019;
 
+// The bands as main marches them (no flag) and joined (flag smooth_bands).
 PlanetClimateParams atOnce() {
+    return PlanetClimateParams{};
+}
+
+PlanetClimateParams joined() {
     PlanetClimateParams params;
-    params.bandJoin = 0.0;
-    params.bandShift = 0.0;
+    params.smoothBands = true;
     return params;
 }
 
 void testWeights() {
-    const PlanetClimateParams params;
+    const PlanetClimateParams params = joined();
     const WindBands bands(kGrid, params, kSeed);
     const double reach = params.bandJoin + params.bandShift;
     bool sums = true;
@@ -83,7 +87,7 @@ void testWeights() {
 }
 
 void testLines() {
-    const PlanetClimateParams params;
+    const PlanetClimateParams params = joined();
     const WindBands bands(kGrid, params, kSeed);
     const WindBands other(kGrid, params, kSeed + 1);
     double differs = 0.0;
@@ -109,24 +113,21 @@ void testLines() {
     TEST_CHECK(differs > 0.5); // the seed draws them
 }
 
-// The march by bands with the joins off is the march of before: the small world of the goldens
-// gives its golden climate and level, bit for bit.
-void testAtOnceIsBefore() {
+// Without the flag, the march by bands is the march of main: the small world of the goldens gives
+// the golden relief, climate, hydrology and level of main, bit for bit.
+void testOffIsMain() {
     const terrain::Heightfield field(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
                                      golden::kSmallPlanet);
-    terrain::PlanetParams params = golden::smallPlanetParams(1, 2);
-    params.climate = atOnce();
-    params.links.enabled = false; // the receivers of before too
-    const terrain::PlanetBuild build = terrain::planet::buildPlanet(field, params);
-    // The goldens of the small world before the network: its relief, climate and hydrology (the
-    // level itself keeps more since, the discharge of every land cell).
+    const terrain::PlanetBuild build =
+        terrain::planet::buildPlanet(field, golden::smallPlanetParams(1, 2));
     const std::vector<golden::Part> parts = golden::planetParts(
         {"relief", "climate", "hydrology", "level"}, build,
-        {0x3F4264CF06FB5493ULL, 0xAB9EB405E174EAA4ULL, 0x27B5C16AD4EC6D79ULL, 0});
-    for (std::size_t k = 0; k < 3; ++k) {
-        std::printf("bands at once: %s %016llx\n", parts[k].name,
-                    static_cast<unsigned long long>(parts[k].actual));
-        TEST_CHECK(parts[k].actual == parts[k].expected);
+        {0x3F4264CF06FB5493ULL, 0xAB9EB405E174EAA4ULL, 0x27B5C16AD4EC6D79ULL,
+         0xCDBFA06D845540C8ULL});
+    for (const golden::Part& part : parts) {
+        std::printf("no flag: %s %016llx\n", part.name,
+                    static_cast<unsigned long long>(part.actual));
+        TEST_CHECK(part.actual == part.expected);
     }
 }
 
@@ -186,12 +187,11 @@ double zoneMean(const PlanetClimate& climate, const WindBands& bands, double fro
 
 void testNoStraightLine() {
     const World world = makeWorld();
-    const PlanetClimateParams joined;
     const PlanetClimate before =
         terrain::planet::computeClimate(kGrid, world.height, world.ocean, atOnce(), 4, kSeed);
     const PlanetClimate after =
-        terrain::planet::computeClimate(kGrid, world.height, world.ocean, joined, 4, kSeed);
-    const WindBands bands(kGrid, joined, kSeed);
+        terrain::planet::computeClimate(kGrid, world.height, world.ocean, joined(), 4, kSeed);
+    const WindBands bands(kGrid, joined(), kSeed);
     const std::vector<double> was = rowJumps(before);
     const std::vector<double> now = rowJumps(after);
     // The jumps at the lines (the rows within a degree of a nominal line), against the others.
@@ -232,7 +232,7 @@ void testNoStraightLine() {
 
 void testThreads() {
     const World world = makeWorld();
-    const PlanetClimateParams params;
+    const PlanetClimateParams params = joined();
     const PlanetClimate one =
         terrain::planet::computeClimate(kGrid, world.height, world.ocean, params, 1, kSeed);
     const PlanetClimate four =
@@ -250,7 +250,7 @@ void testThreads() {
 int main() {
     testWeights();
     testLines();
-    testAtOnceIsBefore();
+    testOffIsMain();
     testNoStraightLine();
     testThreads();
     return test::result();

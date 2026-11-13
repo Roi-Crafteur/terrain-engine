@@ -51,18 +51,8 @@ World makeWorld(const PlanetGrid& grid, bool continent, bool ridge) {
     return world;
 }
 
-// The bands of the winds meet at once on these coarse grids (rows of 5 and 2.5 degrees: their
-// joins of planet_bands.hpp, a few degrees wide, would be one row): the climate of the bands
-// alone, as before the joins (climate_bands_test checks the joins on a finer grid).
-PlanetClimateParams bandsAtOnce() {
-    PlanetClimateParams params;
-    params.bandJoin = 0.0;
-    params.bandShift = 0.0;
-    return params;
-}
-
 PlanetClimate climateOf(const PlanetGrid& grid, const World& world, int threads = 1) {
-    return terrain::planet::computeClimate(grid, world.height, world.ocean, bandsAtOnce(),
+    return terrain::planet::computeClimate(grid, world.height, world.ocean, PlanetClimateParams{},
                                            threads);
 }
 

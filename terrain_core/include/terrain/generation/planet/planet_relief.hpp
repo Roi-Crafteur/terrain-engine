@@ -27,7 +27,8 @@ namespace terrain::planet {
 // the bottom of the sea; its center when there is none) (floor: its index, row by row;
 // kCenterFloor for the center alone or a mean), and mountain says whether the mountain mask is
 // above 0 there.
-// With floorSamples above 1, the cells under the mountains (mountain 1) whose points rise more than
+// With floorSamples above 1 and exits (PlanetLinkParams::enabled, flag pass_routing), the cells
+// under the mountains (mountain 1) whose points rise more than
 // kExitLeast above their floor also keep their exits (planet_links.hpp), by row, sorted by column:
 // for each of their 8 neighbors (kPlanetNeighbors), the lowest height a way from their floor point
 // to their side facing that neighbor must climb to, over their floorSamples^2 points
@@ -56,7 +57,8 @@ struct CellRelief {
 // point floorIndex.
 [[nodiscard]] CellExits cellExits(int column, const float* heights, int n, int floorIndex);
 [[nodiscard]] CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid,
-                                     int samplesPerAxis, int threads, int floorSamples = 1);
+                                     int samplesPerAxis, int threads, int floorSamples = 1,
+                                     bool exits = false);
 
 // The floor index of a cell as sampleCells gives it (kCenterFloor with one sample).
 [[nodiscard]] std::uint8_t floorOf(const Heightfield& field, const PlanetGrid& grid,

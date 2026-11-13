@@ -36,9 +36,11 @@ struct PlanetClimateParams {
     double tradeMeridional = -0.4;
     double westerlyMeridional = 0.3;
     double polarMeridional = -0.3;
-    // The bands join smoothly (planet_bands.hpp): over bandJoin degrees of latitude on each side
-    // of the lines between them (60 and 30 degrees, the equator), lines moved north and south by
-    // up to bandShift degrees by a slow wave of the longitude, about bandShiftWavelength long.
+    // With smoothBands (flag smooth_bands, task 11C), the bands join smoothly (planet_bands.hpp):
+    // over bandJoin degrees of latitude on each side of the lines between them (60 and 30
+    // degrees, the equator), lines moved north and south by up to bandShift degrees by a slow
+    // wave of the longitude, about bandShiftWavelength long. Off, they meet at once, as before.
+    bool smoothBands = false;
     double bandJoin = 5.0;
     double bandShift = 3.0;
     double bandShiftWavelength = 3.0e6;
@@ -132,9 +134,10 @@ struct PlanetFeatureParams {
 
 // The links of the cells under the mountains through the passes (planet_links.hpp): a link is
 // open where the way between the floors climbs at most tolerance meters above the floor of the
-// cell (read on the samples of the floors). Off: the steepest neighbor below, as before.
+// cell (read on the samples of the floors). Off (flag pass_routing, task 11C): the steepest
+// neighbor below, as before, and the exits of the cells are not even sampled.
 struct PlanetLinkParams {
-    bool enabled = true;
+    bool enabled = false;
     double tolerance = 40.0;
 };
 
@@ -166,6 +169,10 @@ struct PlanetParams {
     PlanetLinkParams links;
     PlanetRiverParams rivers;
     PlanetFeatureParams features;
+    // The level keeps the discharge of every land cell (PlanetCells::landDischarge), what the
+    // network of the planet level and the fine network read (planet_network.hpp; flag
+    // planet_network, task 11C). Off, the level, its checksum and its file are as before.
+    bool landDischarge = false;
 };
 
 } // namespace terrain

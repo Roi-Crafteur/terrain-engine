@@ -19,6 +19,10 @@
 //
 // Deterministic: the lines are pure functions of the seed and of the column, periodic on the
 // world (an integer number of waves along x).
+//
+// Without smoothBands (the default until the flag smooth_bands is on), the joins and the shifts
+// are 0: each row belongs to one band, marched as before, and the climate is the one of before,
+// bit for bit.
 
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
@@ -62,6 +66,8 @@ private:
 
     PlanetGrid grid_;
     PlanetClimateParams params_;
+    double join_ = 0.0;  // bandJoin with smoothBands, else 0
+    double shift_ = 0.0; // bandShift with smoothBands, else 0
     // lines_[k][column]: the latitude of line k at the column.
     std::array<std::vector<double>, kBandLines> lines_;
     std::array<double, kBandLines> lowest_{};

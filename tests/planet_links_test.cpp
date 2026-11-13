@@ -5,6 +5,7 @@
 #include "terrain/generation/planet/planet_order.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
 
+#include "network_flags_support.hpp"
 #include "planet_golden_support.hpp"
 
 #include "test_assert.hpp"
@@ -152,9 +153,9 @@ int crestCrossings(const terrain::Heightfield& relief, const terrain::PlanetBuil
 void testSmallWorld() {
     const terrain::Heightfield field(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
                                      golden::kSmallPlanet);
-    terrain::PlanetParams on = golden::smallPlanetParams(1, 1);
-    terrain::PlanetParams off = on;
-    off.links.enabled = false;
+    const terrain::PlanetParams off = golden::smallPlanetParams(1, 1); // main
+    const terrain::PlanetParams on = network_flags::flagged(off, "pass_routing");
+    TEST_CHECK(!off.links.enabled && on.links.enabled);
     terrain::PlanetParams four = on;
     four.threads = 4;
     const terrain::PlanetBuild with = terrain::planet::buildPlanet(field, on);

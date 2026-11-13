@@ -139,7 +139,8 @@ private:
 namespace planet {
 
 // The compact cells of a build.
-[[nodiscard]] PlanetCells compactCells(const PlanetBuild& build);
+// With landDischarge (PlanetParams::landDischarge), the discharge of every land cell too.
+[[nodiscard]] PlanetCells compactCells(const PlanetBuild& build, bool landDischarge = false);
 
 // The values of the compact cells: the altitude rounded to the meter, the precipitation to the
 // mm/yr (at most 65,535); the cells owned by the segments of a graph, sorted by cell.

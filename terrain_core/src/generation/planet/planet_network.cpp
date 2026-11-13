@@ -72,7 +72,7 @@ std::shared_ptr<const planet::LandIndex> landOf(const PlanetCells& cells) {
 PlanetNetwork::PlanetNetwork(const PlanetLevel& level, const PlanetNetworkParams& params)
     : level_(&level), params_(params), land_(landOf(level.cells())) {
     if (level.cells().landDischarge.size() != land_->landCells()) {
-        throw std::invalid_argument("PlanetNetwork: a level without the discharge of its land");
+        throw std::invalid_argument("PlanetNetwork: a level without the discharge of its land (flag planet_network)");
     }
     build();
 }

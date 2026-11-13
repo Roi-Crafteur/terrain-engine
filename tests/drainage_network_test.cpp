@@ -6,6 +6,7 @@
 #include "terrain/generation/water/drainage_network.hpp"
 
 #include "../terrain_core/src/generation/water/network_block.hpp"
+#include "network_flags_support.hpp"
 #include "planet_golden_support.hpp"
 
 #include "test_assert.hpp"
@@ -26,7 +27,8 @@ struct World {
                                                        golden::kSmallPlanet)
                                       .withoutCoasts();
     std::shared_ptr<const terrain::PlanetLevel> planet = [this] {
-        const terrain::PlanetParams params = golden::smallPlanetParams(2, 2);
+        const terrain::PlanetParams params =
+            network_flags::flagged(golden::smallPlanetParams(2, 2), network_flags::kStepOne);
         return std::make_shared<const terrain::PlanetLevel>(
             terrain::planet::buildPlanet(relief, params), params);
     }();

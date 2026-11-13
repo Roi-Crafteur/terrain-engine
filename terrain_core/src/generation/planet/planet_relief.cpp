@@ -169,7 +169,7 @@ std::array<double, 2> floorPoint(const PlanetGrid& grid, std::size_t cell, std::
 }
 
 CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int samplesPerAxis,
-                       int threads, int floorSamples) {
+                       int threads, int floorSamples, bool exits) {
     if (samplesPerAxis < 1 || samplesPerAxis > kMaxSamplesPerAxis || floorSamples < 1 ||
         floorSamples > kMaxSamplesPerAxis) {
         throw std::invalid_argument("sampleRelief: samplesPerAxis and floorSamples must be from 1 "
@@ -182,7 +182,7 @@ CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int sam
                      std::vector<std::uint8_t>(grid.cells(), kCenterFloor),
                      std::vector<std::uint8_t>(grid.cells()), {}};
     const auto nearLand = static_cast<float>(-kFloorCoast / kContinentalScale);
-    cells.exits.resize(floorSamples > 1 ? static_cast<std::size_t>(grid.nz) : 0);
+    cells.exits.resize(exits && floorSamples > 1 ? static_cast<std::size_t>(grid.nz) : 0);
     parallelRows(grid.nz, resolveThreads(threads), [&](int begin, int end) {
         for (int j = begin; j < end; ++j) {
             for (int i = 0; i < grid.nx; ++i) {
@@ -195,13 +195,15 @@ CellRelief sampleCells(const Heightfield& field, const PlanetGrid& grid, int sam
                     h = f.height;
                     cells.floor[c] = f.index;
                     cells.mountain[c] = f.mountain;
-                    const auto points = static_cast<std::ptrdiff_t>(floorSamples * floorSamples);
-                    const float top = *std::max_element(f.heights.begin(),
-                                                        f.heights.begin() + points);
-                    if (f.mountain != 0 && f.index != kCenterFloor &&
-                        static_cast<double>(top - f.height) > kExitLeast) {
-                        cells.exits[static_cast<std::size_t>(j)].push_back(
-                            cellExits(i, f.heights.data(), floorSamples, f.index));
+                    if (exits && f.mountain != 0 && f.index != kCenterFloor) {
+                        const auto points =
+                            static_cast<std::ptrdiff_t>(floorSamples * floorSamples);
+                        const float top = *std::max_element(f.heights.begin(),
+                                                            f.heights.begin() + points);
+                        if (static_cast<double>(top - f.height) > kExitLeast) {
+                            cells.exits[static_cast<std::size_t>(j)].push_back(
+                                cellExits(i, f.heights.data(), floorSamples, f.index));
+                        }
                     }
                 }
                 if (!std::isfinite(h)) {

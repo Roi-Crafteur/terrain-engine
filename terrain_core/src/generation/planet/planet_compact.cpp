@@ -90,7 +90,7 @@ std::vector<PlanetCells::RiverCell> riverCellsOf(const RiverGraph& graph) {
     return cells;
 }
 
-PlanetCells compactCells(const PlanetBuild& build) {
+PlanetCells compactCells(const PlanetBuild& build, bool landDischarge) {
     PlanetCells cells;
     cells.grid = build.grid;
     cells.rowTemperature = build.climate.rowTemperature;
@@ -112,7 +112,7 @@ PlanetCells compactCells(const PlanetBuild& build) {
         cells.bits[c] = bits;
     }
     cells.lakeCells.shrink_to_fit();
-    for (std::size_t c = 0; c < count; ++c) {
+    for (std::size_t c = 0; landDischarge && c < count; ++c) {
         if (build.ocean[c] == kLand) {
             cells.landDischarge.push_back(dischargeCode(build.discharge[c]));
         }

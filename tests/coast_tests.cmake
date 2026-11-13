@@ -51,12 +51,9 @@ endif()
 # of the places of the coasts (coast_planet_support.hpp: TERRAIN_COAST_PLANET).
 # The seas of dunes and the coasts together on the path of the far horizon (agents 34 and 33).
 terrain_add_test(ergs_coast_horizon_test terrain_core)
-# Pinned (agent 31, task 11C step 1): the planet level of before the hydrographic network
-# (coast_planet_build.cpp); step 2 of task 11C moves it back onto the default planet level.
 set(coast_planet_file ${CMAKE_BINARY_DIR}/coast_planet.bin)
-add_executable(coast_planet_build coast_planet_build.cpp)
-target_link_libraries(coast_planet_build PRIVATE terrain_core terrain_warnings)
-add_test(NAME coast_planet_file COMMAND coast_planet_build ${coast_planet_file})
+add_test(NAME coast_planet_file
+    COMMAND terrain_probe --planet ${coast_planet_file} --json 0 0)
 set_tests_properties(coast_planet_file PROPERTIES FIXTURES_SETUP coast_planet TIMEOUT 1800)
 set_tests_properties(coast_rock_test coast_render_test coast_wall_test coast_stack_test
                      coast_far_test coast_bands_test coast_top_test coast_pawn_test

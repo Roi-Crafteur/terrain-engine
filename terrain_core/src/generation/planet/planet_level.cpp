@@ -59,9 +59,11 @@ void addCells(Fnv& f, const PlanetCells& cells) {
         f.add(r.segment);
         f.add(r.vertex);
     }
-    f.add(static_cast<std::uint64_t>(cells.landDischarge.size()), 8);
-    for (const std::uint16_t q : cells.landDischarge) {
-        f.add(static_cast<std::uint64_t>(q), 2);
+    if (!cells.landDischarge.empty()) { // kept with PlanetParams::landDischarge only
+        f.add(static_cast<std::uint64_t>(cells.landDischarge.size()), 8);
+        for (const std::uint16_t q : cells.landDischarge) {
+            f.add(static_cast<std::uint64_t>(q), 2);
+        }
     }
 }
 
@@ -131,7 +133,7 @@ PlanetLevel::PlanetLevel(std::uint64_t seed, const HeightfieldParams& heightfiel
     : PlanetLevel(planet::buildLevelParts(Heightfield(seed, heightfield, world), params, probe)) {}
 
 PlanetLevel::PlanetLevel(PlanetBuild&& build, const PlanetParams& params)
-    : params_(params), cells_(planet::compactCells(build)), lakes_(std::move(build.lakes)),
+    : params_(params), cells_(planet::compactCells(build, params.landDischarge)), lakes_(std::move(build.lakes)),
       rivers_(std::move(build.rivers)), features_(std::move(build.features)), budget_(build.budget),
       timings_(build.timings), breach_(build.breach) {
     build = PlanetBuild{}; // the full-precision cells are not kept

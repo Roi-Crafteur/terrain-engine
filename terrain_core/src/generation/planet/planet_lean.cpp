@@ -64,7 +64,7 @@ void reliefAndClimate(Lean& lean, PlanetLevel::Parts& parts, const Heightfield& 
     const PlanetParams& params = parts.params;
     // The relief without the coasts (agent 33): they never move the planet level.
     CellRelief cells = sampleCells(field.withoutCoasts(), lean.grid, params.samplesPerAxis,
-                                   threads, params.floorSamples);
+                                   threads, params.floorSamples, params.links.enabled);
     lean.height = std::move(cells.height);
     parts.timings.relief = watch.lap("relief");
     std::vector<std::uint8_t> ocean =
@@ -148,8 +148,10 @@ void riversAndCells(Lean& lean, PlanetLevel::Parts& parts, LandValues<std::uint8
         const float row = lean.rowTemperature[static_cast<std::size_t>(lean.grid.row(c))];
         return CellWater{0, 0, cellFrozen(row, lean.height[c], params.climate)};
     };
-    // The discharge of every land cell, coded as the level keeps it, before the rivers free it.
-    std::vector<std::uint16_t> landDischarge(flow.discharge.values().size());
+    // The discharge of every land cell, coded as the level keeps it (PlanetParams::landDischarge),
+    // before the rivers free it.
+    std::vector<std::uint16_t> landDischarge(
+        params.landDischarge ? flow.discharge.values().size() : 0);
     for (std::size_t s = 0; s < landDischarge.size(); ++s) {
         landDischarge[s] = dischargeCode(flow.discharge.values()[s]);
     }
@@ -174,8 +176,8 @@ void riversAndCells(Lean& lean, PlanetLevel::Parts& parts, LandValues<std::uint8
     parts.lakes = std::move(lakes.lakes);
 }
 
-// Lakes, discharge, rivers and features, then the compact cells.
-// The receivers of the land, through the passes under the mountains (planet_links.hpp).
+// The receivers of the land, through the passes under the mountains (planet_links.hpp) with
+// PlanetLinkParams::enabled.
 LandValues<std::uint8_t> receiversOf(Lean& lean, const PlanetParams& params, int threads) {
     if (!params.links.enabled) {
         return computeReceivers(lean.grid, lean.height, lean.land, threads);
@@ -188,6 +190,7 @@ LandValues<std::uint8_t> receiversOf(Lean& lean, const PlanetParams& params, int
     return receiver;
 }
 
+// Lakes, discharge, rivers and features, then the compact cells.
 void hydrology(Lean& lean, PlanetLevel::Parts& parts, int threads, Stopwatch& watch) {
     const PlanetGrid& grid = lean.grid;
     std::vector<std::uint32_t> order = sortLandCells(lean.height, *lean.land, threads);
