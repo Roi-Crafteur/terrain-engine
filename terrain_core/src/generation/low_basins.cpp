@@ -14,17 +14,18 @@ namespace {
 
 // Cells of about kCell meters, kShare of them (times the density) with a candidate within kJitter
 // of a cell from their center.
-constexpr double kCell = 500'000.0;
-constexpr double kShare = 0.6;
+constexpr double kCell = 400'000.0;
+constexpr double kShare = 0.8;
 constexpr double kJitter = 0.35;
 // The geography at the center: a low plain (regional elevation at most kHighest), no belt, no
-// rift; over the footprint: no relief (kPlain at most), kInland meters from the sea at least.
+// rift; over the footprint: no relief (kPlain at most: the mountains begin at 0.12), kInland
+// meters from the sea at least.
 constexpr float kHighest = 400.0f;
-constexpr float kPlain = 0.08f;
+constexpr float kPlain = 0.11f;
 constexpr double kInland = 40'000.0;
 // Mean radii, elongations, floors (most of them shallow) and escarpments.
 constexpr double kRadiusLow = 14'000.0;
-constexpr double kRadiusHigh = 35'000.0;
+constexpr double kRadiusHigh = 45'000.0;
 constexpr double kElongation = 2.2;
 constexpr double kFloorLow = 20.0;
 constexpr double kFloorHigh = 160.0;
@@ -33,8 +34,6 @@ constexpr double kEscarpment = 0.35;
 // and their warp.
 constexpr double kReach = 1.25 + kEscarpment;
 constexpr double kWarp = 9'000.0;
-// The footprint is probed at its center and kProbes points around at its reach.
-constexpr int kProbes = 8;
 // The depressions of phase 11B reach at most this many long radii (depressions.cpp).
 constexpr double kDepressionReach = 1.6;
 
@@ -46,17 +45,17 @@ double wrapped(double d, double period) {
     return d - period * std::floor(d / period + 0.5);
 }
 
-bool footprintTaken(const Geography& g, const depressions::Site& s, double reach) {
-    for (int k = 0; k <= kProbes; ++k) {
-        const double turns = static_cast<double>(k) / kProbes;
-        const double r = k == kProbes ? 0.0 : reach;
-        const GeographySample p =
-            g.sampleAt(s.x + r * dmath::cosTurns(turns), s.z + r * dmath::sinTurns(turns));
+// Over its footprint (low_footprint.hpp): land without relief, far from the sea, out of the belts
+// and the rifts, out of the excluded zone.
+bool footprintTaken(const Geography& g, const Exclusion& excluded, const depressions::Site& s,
+                    double reach) {
+    for (const auto& [x, z] : footprintOf(s.x, s.z, reach)) {
+        const GeographySample p = g.sampleAt(x, z);
         if (!(p.coast >= kInland) || !(p.relief <= kPlain) || p.belt > 0.0f || p.rift > 0.0f) {
             return false;
         }
     }
-    return true;
+    return footprintFree(excluded, s.x, s.z, reach);
 }
 
 bool clearOf(const std::vector<depressions::Site>& others, const WorldSize& w,
@@ -102,7 +101,7 @@ double basinReach(const depressions::Site& s) {
 }
 
 Basins makeBasins(std::uint64_t seed, const Geography& geography, double density,
-                  const std::vector<depressions::Site>& depressions) {
+                  const std::vector<depressions::Site>& depressions, const Exclusion& excluded) {
     const WorldSize& world = geography.world();
     Basins out;
     out.forms = depressions::makeForms(noise::deriveSeed(seed, 1), world);
@@ -114,7 +113,7 @@ Basins makeBasins(std::uint64_t seed, const Geography& geography, double density
             const std::optional<depressions::Site> s =
                 candidate(cells, geography, i, j, cellsX, cellsZ, density);
             if (s && clearOf(depressions, world, *s, basinReach(*s)) &&
-                footprintTaken(geography, *s, basinReach(*s))) {
+                footprintTaken(geography, excluded, *s, basinReach(*s))) {
                 out.sites.push_back(*s);
             }
         }

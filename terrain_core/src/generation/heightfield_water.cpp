@@ -36,8 +36,10 @@ constexpr float kDepressionLow = 0.09f;
 constexpr float kDepressionHigh = 0.12f;
 constexpr float kCoastLow = 150'000.0f;
 constexpr float kCoastHigh = 250'000.0f;
-// The lows of agent 52 fade out with the intensity of the relief as the depressions do, and
-// within kLowCoastLow to kLowCoastHigh meters of the sea (their sites lie past it: a guard).
+// The lows of agent 52 fade out as the intensity of the relief rises from kLowReliefLow to
+// kDepressionHigh, where the mountains begin (their sites lie under kLowReliefLow over their
+// footprint: a guard), and within kLowCoastLow to kLowCoastHigh meters of the sea.
+constexpr float kLowReliefLow = 0.11f;
 constexpr float kLowCoastLow = 30'000.0f;
 constexpr float kLowCoastHigh = 40'000.0f;
 
@@ -98,8 +100,12 @@ std::shared_ptr<const Heightfield::Water> Heightfield::makeWater(std::uint64_t s
     }
     if (geography != nullptr) {
         const std::vector<depressions::Site> none;
+        // The zone of agent 46 (plateaus, mesas, karst) excludes the lows: whichever branch is
+        // merged second wires Heightfield::tablelandAt(x, z).any() here (low_footprint.hpp).
+        const lows::Exclusion tablelands;
         water->lows = lows::makeSites(lowSeed, params.lows, *geography,
-                                      water->depressions ? water->depressions->sites : none);
+                                      water->depressions ? water->depressions->sites : none,
+                                      tablelands);
     }
     return water;
 }
@@ -152,7 +158,7 @@ void Heightfield::lowerToLows(double x, double z, HeightSample& s) const {
     const auto coast = static_cast<float>(static_cast<double>(s.continentalness) *
                                           kContinentalScale);
     const double weight =
-        static_cast<double>((1.0f - noise::smoothstep(kDepressionLow, kDepressionHigh, s.relief)) *
+        static_cast<double>((1.0f - noise::smoothstep(kLowReliefLow, kDepressionHigh, s.relief)) *
                             noise::smoothstep(kLowCoastLow, kLowCoastHigh, coast));
     if (!(weight > 0.0)) {
         return;

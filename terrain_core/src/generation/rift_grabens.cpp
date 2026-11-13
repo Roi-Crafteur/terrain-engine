@@ -18,7 +18,7 @@ namespace {
 // from the others at least.
 constexpr float kAxisNode = 0.9f;
 constexpr float kAxisCenter = 0.85f;
-constexpr double kShare = 0.08;
+constexpr double kShare = 0.5;
 constexpr double kSpacing = 600'000.0;
 // Half lengths, half widths and floors; the floor of the rift there at most kHighestFloor; the
 // footprint without relief (at most kPlain), kInland meters from the sea at least, in the trough
@@ -30,7 +30,7 @@ constexpr double kWidthHigh = 20'000.0;
 constexpr double kFloorLow = 100.0;
 constexpr double kFloorHigh = 450.0;
 constexpr float kHighestFloor = 500.0f;
-constexpr float kPlain = 0.08f;
+constexpr float kPlain = 0.11f; // the mountains begin at 0.12
 constexpr double kInland = 40'000.0;
 constexpr float kInTrough = 0.5f;
 constexpr float kAcross = 0.7f;
@@ -117,8 +117,9 @@ bool accepted(const Geography& g, const Graben& s) {
     return true;
 }
 
-// The graben a candidate node makes, if the geography takes it.
-std::optional<Graben> candidate(std::uint64_t hash, const Geography& g, double x, double z) {
+// The graben a candidate node makes, if the geography takes it and the excluded zone leaves it.
+std::optional<Graben> candidate(std::uint64_t hash, const Geography& g, const Exclusion& excluded,
+                                double x, double z) {
     const GeographySample c = g.sampleAt(x, z);
     if (c.rift < kAxisCenter || !(c.land <= kHighestFloor)) {
         return std::nullopt;
@@ -139,7 +140,7 @@ std::optional<Graben> candidate(std::uint64_t hash, const Geography& g, double x
     const double stepWidth = (1.0 - kFlat) * s.width / s.steps;
     s.faceShare = std::clamp(kFaceRun * drop / s.steps / stepWidth, 0.02, 0.5);
     s.reach = (1.0 + kWidthVary) * dmath::hypot(s.length, s.width) + kBend * s.width;
-    if (!accepted(g, s)) {
+    if (!accepted(g, s) || !footprintFree(excluded, s.x, s.z, s.reach)) {
         return std::nullopt;
     }
     return s;
@@ -183,7 +184,8 @@ double shareOf(const Grabens& grabens, const Graben& s, double x, double z, doub
 
 } // namespace
 
-Grabens makeGrabens(std::uint64_t seed, const Geography& geography, double density) {
+Grabens makeGrabens(std::uint64_t seed, const Geography& geography, double density,
+                    const Exclusion& excluded) {
     const WorldSize& world = geography.world();
     const auto octaves = [&](std::uint64_t stream, int count, double wavelength) {
         return noise::FbmOctaves(noise::deriveSeed(seed, stream),
@@ -212,7 +214,7 @@ Grabens makeGrabens(std::uint64_t seed, const Geography& geography, double densi
             if (!farFromAll(out.sites, world, x, z)) {
                 continue;
             }
-            if (const std::optional<Graben> s = candidate(hash, geography, x, z)) {
+            if (const std::optional<Graben> s = candidate(hash, geography, excluded, x, z)) {
                 out.sites.push_back(*s);
             }
         }

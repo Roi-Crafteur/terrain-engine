@@ -19,10 +19,12 @@ struct Sites {
     std::optional<Basins> basins;
 };
 
-// The sites of seed for these parameters over the geography, the basins clear of the depressions.
+// The sites of seed for these parameters over the geography, the basins clear of the depressions,
+// every site out of the excluded zone (low_footprint.hpp).
 [[nodiscard]] Sites makeSites(std::uint64_t seed, const LowsParams& params,
                               const Geography& geography,
-                              const std::vector<depressions::Site>& depressions);
+                              const std::vector<depressions::Site>& depressions,
+                              const Exclusion& excluded);
 
 // Whether a low of these families may reach the canonical (x, z): false far from all (cheap).
 [[nodiscard]] bool mayReach(const Sites& sites, double x, double z);

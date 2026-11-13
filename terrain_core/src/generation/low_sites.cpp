@@ -20,17 +20,18 @@ constexpr std::array<const char*, kLowKindCount> kNames = {"depression", "basin"
 } // namespace
 
 Sites makeSites(std::uint64_t seed, const LowsParams& params, const Geography& geography,
-                const std::vector<depressions::Site>& depressions) {
+                const std::vector<depressions::Site>& depressions, const Exclusion& excluded) {
     Sites out;
     if (!params.enabled) {
         return out;
     }
     if (params.grabens) {
-        out.grabens = makeGrabens(noise::deriveSeed(seed, kGrabens), geography, params.density);
+        out.grabens =
+            makeGrabens(noise::deriveSeed(seed, kGrabens), geography, params.density, excluded);
     }
     if (params.basins) {
         out.basins = makeBasins(noise::deriveSeed(seed, kBasins), geography, params.density,
-                                depressions);
+                                depressions, excluded);
     }
     return out;
 }

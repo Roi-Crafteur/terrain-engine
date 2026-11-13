@@ -3,7 +3,9 @@
 //   build, Heightfield::lowsIn sorted and the same whatever the boxes asked;
 // - Heightfield::mayBeDryBelowSea true at the center of every low;
 // - the same code with the lows on and off: every sample out of their reach keeps every bit
-//   (random points over the world), and their floors go down below the sea level.
+//   (random points over the world), and their floors go down below the sea level;
+// - the mountains keep every bit: no sample under their mask (above 0) changes, around every low
+//   and over the world (the lows fade out from an intensity of 0.11, the mask begins at 0.12).
 #include "terrain/generation/heightfield.hpp"
 
 #include "bit_exact_support.hpp"
@@ -106,10 +108,36 @@ void testOutside() {
     TEST_CHECK(lowered * 10 >= lows * 9 && below * 2 >= lows);
 }
 
+void testMountains() {
+    std::size_t mountains = 0;
+    std::size_t changed = 0;
+    const auto compare = [&](double x, double z) {
+        const HeightSample b = off().sampleAt(x, z);
+        if (!(b.mountainMask > 0.0f)) {
+            return;
+        }
+        ++mountains;
+        changed += sameSample(on().sampleAt(x, z), b) ? 0 : 1;
+    };
+    for (const bit_exact::Point& p : bit_exact::randomPoints(60'000, 3e7)) {
+        compare(p.x, p.z);
+    }
+    for (const LowSite& s : all(on())) {
+        for (int j = -6; j <= 6; ++j) {
+            for (int i = -6; i <= 6; ++i) {
+                compare(s.x + i * s.reach / 6.0, s.z + j * s.reach / 6.0);
+            }
+        }
+    }
+    std::printf("%zu samples under the mountains, %zu changed\n", mountains, changed);
+    TEST_CHECK(mountains > 8'000 && changed == 0);
+}
+
 } // namespace
 
 int main() {
     testSites();
     testOutside();
+    testMountains();
     return test::result();
 }
