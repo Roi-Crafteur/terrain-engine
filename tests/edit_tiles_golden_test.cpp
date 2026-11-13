@@ -140,7 +140,12 @@ void testWithoutCaves() {
     editCorner(tiles, c.x * 16, c.z * 16);
     std::vector<golden::Part> parts = cornerParts(tiles, c);
     checkEdited(parts, unedited);
-    setExpected(parts, {0x255698AA1DB72EA9ULL, 0x90A33C2761DDF67CULL, 0xDB70ADEA3417FC69ULL,
+    // Recollé par « Edits: side walls of removed blocks at 0.531 m: a 1x2 tunnel walkable by
+    // the game's capsule » (agent 41) :
+    // "lod 0" et "lod 0 stitched" ; la règle des parois : à côté d'un bloc retiré, le long de
+    // x ou de z, un point du réseau prend kRemovedSideFace au lieu de 0,5 (modifications.hpp),
+    // les parois latérales des creux reculent de 3,1 cm. "lod 1" à "lod 3" gardent leurs bits.
+    setExpected(parts, {0x30D920C90E1C54E5ULL, 0xAA73EE986F99C27DULL, 0xDB70ADEA3417FC69ULL,
                         0x96F1405B0659797DULL, 0xDA16D05275639F86ULL});
     golden::report("tiles edited block by block, without caves", parts);
 }
@@ -157,7 +162,10 @@ void testWithCaves() {
     std::vector<golden::Part> parts = {{"caves lod 0", tilesChecksum(tiles, lod0), 0},
                                        {"caves lod 1", tilesChecksum(tiles, lod1), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x26126FDBA1A07786ULL, 0xD024C9538ECDFB4CULL});
+    // Recollé par « Edits: side walls of removed blocks at 0.531 m: a 1x2 tunnel walkable by
+    // the game's capsule » (agent 41) :
+    // "caves lod 0" ; la règle des parois (voir plus haut). "caves lod 1" garde ses bits.
+    setExpected(parts, {0x6F348BE1951811FEULL, 0xD024C9538ECDFB4CULL});
     golden::report("tiles edited block by block, with caves", parts);
 }
 
@@ -177,7 +185,10 @@ void testAcrossTheEdge() {
     editCorner(tiles, count.x * 8, kRow * 16 + 8);
     std::vector<golden::Part> parts = {{"wrap", tilesChecksum(tiles, requests), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x8DB23CC79EB07765ULL});
+    // Recollé par « Edits: side walls of removed blocks at 0.531 m: a 1x2 tunnel walkable by
+    // the game's capsule » (agent 41) :
+    // "wrap" (ses tuiles de LOD 0) ; la règle des parois (voir plus haut).
+    setExpected(parts, {0xC306CDC8BD8AE74FULL});
     golden::report("tiles edited block by block, across the edge of the world", parts);
 }
 

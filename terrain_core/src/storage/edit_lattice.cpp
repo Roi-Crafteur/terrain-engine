@@ -11,6 +11,7 @@ namespace {
 
 using edit_cubes::kCubeDistances;
 using edit_cubes::nearestCube;
+using edit_cubes::nearestRemoved;
 using edit_cubes::offsetIndex;
 
 // The kinds of the samples of a lattice (EditLattice::classify).
@@ -238,7 +239,7 @@ float EditLattice::density(float generated, int i, int j, int k) const {
         density = std::min(density, nearestCube(added));
     }
     if (removed != 0) {
-        density = std::max(density, -nearestCube(removed));
+        density = std::max(density, -nearestRemoved(removed));
     }
     return density;
 }

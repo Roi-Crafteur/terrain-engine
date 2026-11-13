@@ -70,12 +70,24 @@ float blockDistance(BlockCoord block, int x, int y, int z) {
     return static_cast<float>(std::sqrt(outside) + inside);
 }
 
+float removedDistance(BlockCoord block, int x, int y, int z) {
+    const int dx = std::abs(x - block.x);
+    const int dy = std::abs(y - block.y);
+    const int dz = std::abs(z - block.z);
+    if (dy == 0 && dx + dz == 1) {
+        return kRemovedSideFace;
+    }
+    return blockDistance(block, x, y, z);
+}
+
 float editDensity(float density, BlockCoord block, BlockEdit edit, int x, int y, int z) {
     if (chebyshev(block, x, y, z) > kBlockReach) {
         return density;
     }
-    const float cube = blockDistance(block, x, y, z);
-    return edit == BlockEdit::Added ? std::min(density, cube) : std::max(density, -cube);
+    if (edit == BlockEdit::Added) {
+        return std::min(density, blockDistance(block, x, y, z));
+    }
+    return std::max(density, -removedDistance(block, x, y, z));
 }
 
 int blockIndex(BlockCoord block) {

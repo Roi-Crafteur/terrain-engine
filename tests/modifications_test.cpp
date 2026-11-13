@@ -91,7 +91,17 @@ void testBlockDensity() {
     // Added: air becomes rock at the center; removed: rock becomes air.
     TEST_CHECK(terrain::editDensity(0.3f, b, BlockEdit::Added, 10, 20, 30) == -0.5f);
     TEST_CHECK(terrain::editDensity(-3.0f, b, BlockEdit::Removed, 10, 20, 30) == 0.5f);
-    TEST_CHECK(terrain::editDensity(-3.0f, b, BlockEdit::Removed, 11, 20, 30) == -0.5f);
+    // Beside a removed block along x or z its side wall stands at kSideWallMeters (agent 41):
+    // 0.531 m from its center, where Marching Cubes crosses 0.5 / (0.5 + kRemovedSideFace).
+    TEST_CHECK(terrain::editDensity(-3.0f, b, BlockEdit::Removed, 11, 20, 30) ==
+               -terrain::kRemovedSideFace);
+    TEST_CHECK(terrain::editDensity(-3.0f, b, BlockEdit::Removed, 10, 20, 29) ==
+               -terrain::kRemovedSideFace);
+    TEST_CHECK(std::abs(0.5f / (0.5f + terrain::kRemovedSideFace) - terrain::kSideWallMeters) <
+               1e-6f);
+    // Above and below it, and beside an added block, the cube as it is.
+    TEST_CHECK(terrain::editDensity(-3.0f, b, BlockEdit::Removed, 10, 21, 30) == -0.5f);
+    TEST_CHECK(terrain::editDensity(3.0f, b, BlockEdit::Added, 11, 20, 30) == 0.5f);
     // Beyond one meter (Chebyshev), nothing changes.
     TEST_CHECK(terrain::editDensity(9.0f, b, BlockEdit::Added, 12, 20, 30) == 9.0f);
     TEST_CHECK(terrain::editDensity(-9.0f, b, BlockEdit::Removed, 10, 22, 30) == -9.0f);

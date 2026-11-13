@@ -38,6 +38,22 @@ inline std::array<float, 27> makeCubeDistances() {
 
 inline const std::array<float, 27> kCubeDistances = makeCubeDistances();
 
+// The distances of the removed blocks around a lattice point (removedDistance): their side faces
+// at kRemovedSideFace.
+inline std::array<float, 27> makeRemovedDistances() {
+    std::array<float, 27> d{};
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                d[offsetIndex(dx, dy, dz)] = removedDistance({0, 0, 0}, dx, dy, dz);
+            }
+        }
+    }
+    return d;
+}
+
+inline const std::array<float, 27> kRemovedDistances = makeRemovedDistances();
+
 // The blocks around a lattice point by the number of their offsets that are not 0: the center,
 // the 6 faces, the 12 edges and the 8 corners, each class at one distance (kCubeDistances).
 inline constexpr std::array<std::uint32_t, 4> kOffsetClasses = [] {
@@ -64,6 +80,25 @@ inline float nearestCube(std::uint32_t blocks) {
         }
     }
     return kCubeDistances[kFirst[3]];
+}
+
+// The bits (offsetIndex) of the 4 side faces of a lattice point, along x and z.
+inline constexpr std::uint32_t kSideFaces = (1U << offsetIndex(-1, 0, 0)) |
+                                            (1U << offsetIndex(1, 0, 0)) |
+                                            (1U << offsetIndex(0, 0, -1)) |
+                                            (1U << offsetIndex(0, 0, 1));
+
+// The distance to the nearest removed block among the bits, not all 0 (kRemovedDistances): the
+// center, then a side face (kRemovedSideFace), then the faces above and below, the edges, the
+// corners.
+inline float nearestRemoved(std::uint32_t blocks) {
+    if ((blocks & kOffsetClasses[0]) != 0) {
+        return kRemovedDistances[offsetIndex(0, 0, 0)];
+    }
+    if ((blocks & kSideFaces) != 0) {
+        return kRemovedSideFace;
+    }
+    return nearestCube(blocks);
 }
 
 // The gradient of the smoothed share of the blocks of the bits (offsetIndex) around a lattice
@@ -94,20 +129,21 @@ inline std::array<float, 3> shareGradient(std::uint32_t blocks) {
             static_cast<float>(sum[2]) * kScale};
 }
 
-// The nearest cubes of the added and of the removed blocks around a lattice point. Every added
-// block first (min), then every removed one (max), as editDensity block by block: min and max
-// are exact, so their order never changes a bit.
+// The nearest cubes of the added and of the removed blocks around a lattice point (the removed
+// ones by kRemovedDistances). Every added block first (min), then every removed one (max), as
+// editDensity block by block: min and max are exact, so their order never changes a bit.
 class NearestCubes {
 public:
     void add(std::uint8_t state, std::size_t offset) {
         if (state == 0) {
             return;
         }
-        const float cube = kCubeDistances[offset];
         if (state == kAddedState) {
+            const float cube = kCubeDistances[offset];
             added_ = anyAdded_ ? std::min(added_, cube) : cube;
             anyAdded_ = true;
         } else {
+            const float cube = kRemovedDistances[offset];
             removed_ = anyRemoved_ ? std::min(removed_, cube) : cube;
             anyRemoved_ = true;
         }
