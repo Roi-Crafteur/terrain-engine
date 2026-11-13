@@ -277,7 +277,8 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   `seenAt` (hors faces, rampes et aiguilles des côtes), `seenHeightsAt`, cellule de l'horizon,
   colonnes, eau et texels des tuiles LOD 3 ; il nomme la première étape qui diffère. À lancer
   par toute branche qui touche `heightfield*.cpp`, `horizon_sampler.cpp`, `tile_blend.cpp` ou
-  `terrain_surface.cpp`
+  `terrain_surface.cpp` ; quiconque ajoute un chemin d'échantillonnage du relief l'ajoute à ce
+  test
 - `terrain_probe` : la section `render` lit l'horizon par son vrai chemin
 
 ## À venir

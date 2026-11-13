@@ -161,9 +161,7 @@ private:
 }
 
 // Every field of a HeightSample, in the order of its declaration. A field added to it must be
-// added here (the size below stops the build until then, unless it fits in the padding).
-static_assert(sizeof(terrain::HeightSample) == 72,
-              "relief_paths_support.hpp: a field was added to HeightSample: compare it");
+// added here (relief_paths_test pins the size of the structure, to force reading this list).
 struct FloatField {
     const char* name;
     float terrain::HeightSample::* member;
@@ -259,15 +257,13 @@ public:
             first_ = Difference{stage, *diff, p, footprint};
         }
     }
-    // A difference explained, counted apart, never failing: by the design of seenAt (the faces,
-    // ramps and spires of the coasts), or known and left to another branch (Water76).
-    enum class Known : std::uint8_t { CoastFaces, Water76 };
-    void known(Known why, Stage stage, const Point& p) {
-        ++known_[static_cast<std::size_t>(why)][static_cast<std::size_t>(stage)]
-                [indexOf(p.stratum)];
+    // A difference by the design of seenAt (the faces, ramps and spires of the coasts, in their
+    // band), counted apart, never failing.
+    void byDesign(Stage stage, const Point& p) {
+        ++design_[static_cast<std::size_t>(stage)][indexOf(p.stratum)];
     }
 
-    // The table stage x stratum ("compared/differing", "+n known"), the first difference.
+    // The table stage x stratum ("compared/differing", "+nc" by design), the first difference.
     void report() const;
 
     [[nodiscard]] std::size_t compared(Stage stage) const {
@@ -283,7 +279,7 @@ private:
     using Counts = std::array<std::array<std::size_t, kStrata>, kStages>;
     Counts compared_{};
     Counts differ_{};
-    std::array<Counts, 2> known_{};
+    Counts design_{};
     std::optional<Difference> first_;
 };
 
@@ -297,19 +293,18 @@ inline void Tally::report() const {
         std::printf("%-20s", kStageNames[st]);
         for (std::size_t s = 0; s < kStrata; ++s) {
             char cell[64];
-            int n = std::snprintf(cell, sizeof cell, "%zu/%zu", compared_[st][s], differ_[st][s]);
-            for (std::size_t why = 0; why < known_.size() && n > 0; ++why) {
-                if (known_[why][st][s] > 0 && static_cast<std::size_t>(n) < sizeof cell) {
-                    n += std::snprintf(cell + n, sizeof cell - static_cast<std::size_t>(n),
-                                       "+%zu%s", known_[why][st][s], why == 0 ? "c" : "w");
-                }
+            if (design_[st][s] > 0) {
+                std::snprintf(cell, sizeof cell, "%zu/%zu+%zuc", compared_[st][s], differ_[st][s],
+                              design_[st][s]);
+            } else {
+                std::snprintf(cell, sizeof cell, "%zu/%zu", compared_[st][s], differ_[st][s]);
             }
             std::printf(" %15s", cell);
         }
         std::printf("\n");
     }
     std::printf("(compared/differing; +nc: moved by the faces, ramps and spires of the coasts, by "
-                "design; +nw: the water of the tile texels, known, fixed by #76)\n");
+                "design)\n");
     if (first_) {
         const Difference& d = *first_;
         std::printf("first stage that differs: %s, field %s, %s, footprint %g m, at (%.3f, "

@@ -34,9 +34,16 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <optional>
+#include <utility>
 #include <vector>
+
+// Every field of HeightSample is compared (relief_paths_support.hpp, kFloatFields): a change of
+// the structure must be read there first. The same size is pinned by agent 46.
+static_assert(sizeof(terrain::HeightSample) == 72,
+              "HeightSample changed: compare the new field in relief_paths_test (kFloatFields)");
 
 namespace {
 
@@ -45,7 +52,6 @@ using terrain::Heightfield;
 using terrain::HeightSample;
 using terrain::HorizonCell;
 using terrain::WaterKind;
-using Known = Tally::Known;
 
 constexpr std::array<double, 8> kFootprints = {0.0, 1.0, 2.0, 4.0, 8.0, 32.0, 128.0, 512.0};
 // The horizon on one point in 2 of each stratum, a LOD 3 tile around one in 8.
@@ -82,7 +88,7 @@ void comparePoint(const Heightfield& level, double f, const Point& p, Tally& tal
     const std::optional<FieldDiff> diff = firstField(ref, seen, p.inBand);
     tally.add(Stage::SeenAt, p, f, diff);
     if (!diff && p.inBand && firstField(ref, seen)) {
-        tally.known(Known::CoastFaces, Stage::SeenAt, p);
+        tally.byDesign(Stage::SeenAt, p);
     }
     level.seenHeightsAt(b.xs, b.zs, heights, f);
     tally.add(Stage::SeenHeightsAt, p, f, heightDiff("height", seen.height, heights[0]));
@@ -147,6 +153,25 @@ HorizonCell expectedCell(const Heightfield& level, const terrain::Ecology& ecolo
     return cell;
 }
 
+// The first field of the blend texel that differs from the expected one, if any.
+std::optional<FieldDiff> blendDiff(const terrain::BlendTexel& expected,
+                                   const terrain::BlendTexel& read) {
+    using Field = std::uint32_t terrain::BlendTexel::*;
+    const std::array<std::pair<const char*, Field>, 4> fields = {{
+        {"blend.biomes", &terrain::BlendTexel::biomes},
+        {"blend.materials", &terrain::BlendTexel::materials},
+        {"blend.biomeWeights", &terrain::BlendTexel::biomeWeights},
+        {"blend.materialWeights", &terrain::BlendTexel::materialWeights},
+    }};
+    for (const auto& [name, field] : fields) {
+        if (expected.*field != read.*field) {
+            return FieldDiff{name, static_cast<double>(expected.*field),
+                             static_cast<double>(read.*field)};
+        }
+    }
+    return std::nullopt;
+}
+
 // The first field of the cell that differs from the expected one: the blend only below
 // blendFromLevel (above it, the mean over the footprint of the samples around it).
 std::optional<FieldDiff> cellDiff(const HorizonCell& expected, const HorizonCell& read,
@@ -169,11 +194,7 @@ std::optional<FieldDiff> cellDiff(const HorizonCell& expected, const HorizonCell
         return FieldDiff{"material", static_cast<double>(expected.material),
                          static_cast<double>(read.material)};
     }
-    if (pointBlend && !(expected.blend == read.blend)) {
-        return FieldDiff{"blend", static_cast<double>(expected.blend.weights),
-                         static_cast<double>(read.blend.weights)};
-    }
-    return std::nullopt;
+    return pointBlend ? blendDiff(expected.blend, read.blend) : std::nullopt;
 }
 
 void testHorizon(const terrain::TerrainTiles& tiles, const std::vector<Point>& points,
@@ -264,15 +285,6 @@ bool facedAround(const Heightfield& level, double x, double z) {
     return false;
 }
 
-// Whether the texel and the horizon read another water there: the texels take it from the
-// height (the ground below 0 m is the ocean), the horizon from the water of the core (#76).
-bool otherWater(const HeightSample& s) {
-    const bool sea = s.height < terrain::kSeaLevel;
-    const WaterKind tile = sea ? WaterKind::Ocean : WaterKind::None;
-    const float tileLevel = sea ? terrain::kSeaLevel : s.height;
-    return tile != s.water || !same(tileLevel, s.waterLevel);
-}
-
 void compareTexels(const Heightfield& level, const terrain::HorizonSampler& sampler,
                    const terrain::TileData& data, const Point& p, Tally& tally) {
     const auto i0 = static_cast<std::int64_t>(data.originX / kTilePitch);
@@ -288,16 +300,11 @@ void compareTexels(const Heightfield& level, const terrain::HorizonSampler& samp
             const terrain::BlendTexel texel =
                 data.surfaceBlend[static_cast<std::size_t>(k * terrain::kTileBlendTexels + i)];
             const HorizonCell& cell = cells[static_cast<std::size_t>(stride * k * side + stride * i)];
-            if (cell.blend == texel) {
-                tally.add(Stage::Lod3Texels, q, kTilePitch, std::nullopt);
-            } else if (facedAround(level, q.x, q.z)) {
-                tally.known(Known::CoastFaces, Stage::Lod3Texels, q);
-            } else if (otherWater(level.seenAt(q.x, q.z, kTilePitch))) {
-                tally.known(Known::Water76, Stage::Lod3Texels, q);
+            const std::optional<FieldDiff> diff = blendDiff(cell.blend, texel);
+            if (diff && facedAround(level, q.x, q.z)) {
+                tally.byDesign(Stage::Lod3Texels, q);
             } else {
-                tally.add(Stage::Lod3Texels, q, kTilePitch,
-                          FieldDiff{"blend", static_cast<double>(cell.blend.weights),
-                                    static_cast<double>(texel.weights)});
+                tally.add(Stage::Lod3Texels, q, kTilePitch, diff);
             }
         }
     }
