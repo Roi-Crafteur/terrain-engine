@@ -164,8 +164,10 @@ Ne sont pas interrompus :
   (`hydrology_stop_test stops` et `hydrology_stop_test waits`), seuls sur la machine
   (`RUN_SERIAL`, posé dans `tests/serial_tests.cmake` par l'agent 42).
   - `hydrology_stop_test` :
-    - les arrêts sous charge, dans les tracés longs de l'échantillon (100 ms ou plus à faire),
-      au milieu du premier ;
+    - les arrêts sous charge, au milieu du premier de quatre tracés longs nommés
+      (`kStopCourses`, 220 à 320 ms à faire seuls, choisis sur un balayage de tous les tronçons) :
+      les tracés longs de l'échantillon, chronométrés une fois à froid, se faisaient en quelques
+      ms sur une hydrologie neuve sous macOS, finis avant la levée ;
     - le plus long < 1/4 du temps de la fin des tracés en cours, mesurée comme un `join`
       l'attendrait : les quatre finis en même temps, sous la même charge ;
     - rien d'à moitié fait : l'échantillon relu sur l'hydrologie du premier essai donne les bits

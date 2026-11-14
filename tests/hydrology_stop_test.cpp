@@ -2,7 +2,7 @@
 // load (as many spinning threads as working ones), on the small world. Two tests of this
 // executable (hydrology_stop_tests.cmake), each alone on the machine (serial_tests.cmake):
 // - hydrology_stop_test (argument stops):
-//   - 4 threads computing the long courses of the sample (100 ms or more each to make), their
+//   - 4 threads computing long courses (kStopCourses, 220 to 320 ms each to make alone), their
 //     flag raised at drawn instants, in the middle of the first: every one leaves by WorkStopped,
 //     none finishes the course it was making; the longest time to their last exit is a quarter
 //     of the time the courses in progress then take to be finished, at most (measured in the
@@ -43,7 +43,13 @@ using terrain::WorkStopScope;
 
 constexpr int kWorkers = 4;
 constexpr int kTrials = 10;
-// A course long to make: what the threads stopped under load compute.
+// The courses the threads stopped under load compute first, one each: among the longest of the
+// small world to make alone on a fresh hydrology (220 to 320 ms here; every reach timed once by
+// agent 39), so that a flag raised 10 to 89 ms in falls in the middle of the first one on every
+// runner. The long courses of the sample timed once, cold, were not that: on a fresh hydrology
+// they took a few ms on the macOS runner, done before the raise. A world without these reaches:
+// the courses of the sample of kLongCourse or more, timed.
+constexpr std::array<std::size_t, kWorkers> kStopCourses{821, 2230, 3610, 4193};
 constexpr double kLongCourse = 100.0; // ms
 // The course a thread waits for in testWaiter: among the longest of the small world to make alone
 // on a fresh hydrology (310 to 380 ms here; every reach timed once by agent 39).
@@ -225,8 +231,14 @@ std::vector<std::size_t> longCourses(std::vector<Timed> timed) {
     return out;
 }
 
-void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
-    const std::vector<std::size_t> longs = longCourses(timed);
+void testStopsUnderLoad(const World& w) {
+    std::vector<std::size_t> longs(kStopCourses.begin(), kStopCourses.end());
+    if (*std::max_element(longs.begin(), longs.end()) >= w.fresh()->reachCount()) {
+        longs = longCourses(timeSample(w));
+    } else {
+        std::printf("the courses to stop in: reaches %zu, %zu, %zu and %zu\n", longs[0], longs[1],
+                    longs[2], longs[3]);
+    }
     std::optional<Load> load;
     load.emplace();
     const int before = test::failures;
@@ -376,7 +388,7 @@ int main(int argc, char** argv) {
     const std::string part = argc > 1 ? argv[1] : "";
     const World world;
     if (part.empty() || part == "stops") {
-        testStopsUnderLoad(world, timeSample(world));
+        testStopsUnderLoad(world);
     }
     if (part.empty() || part == "waits") {
         testWaiter(world);
