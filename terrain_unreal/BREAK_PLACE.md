@@ -273,6 +273,12 @@ Sans distance field, le Lumen logiciel ne voit les tuiles que par les traces d'�
 dont le ciel n'est pas à l'écran reste noir. Le ray tracing matériel (`r.Lumen.HardwareRayTracing
 1`, `LightingMode 2`) voit les tuiles.
 
+**Lu dans le projet (test Unreal de a20d435)** : `r.Lumen.HardwareRayTracing` vaut 1 et
+`r.Lumen.TraceMeshSDFs` 0, les autres comme attendu. C'est normal avec le ray tracing matériel :
+Lumen voit alors les tuiles par leurs triangles, sans distance field. La valeur à relever en plus
+est `r.Lumen.HardwareRayTracing.LightingMode` (0 : le cache de surface, que les tuiles n'ont pas ;
+2 : l'éclairage au point touché).
+
 `unreal_edit_light_test` : sans modification, aucune tuile n'a de poids (et reste au bit près) ;
 au fond d'un trou le poids vaut 1 aux LOD 0 à 2, 0 sur le sol à 8 m et deux cellules ; la
 conversion met le poids dans le bleu, garde le rouge, le vert et l'alpha. `unreal_edit_light_scripts_test`
@@ -360,6 +366,37 @@ du core (x vers l'est, y l'altitude, z vers le sud), au centre de la face visée
 - après `Terrain.Shot <nom>` : `Terrain dev: image …: ready after … s`, avant la commande suivante
   (une image à la fois ; ne pas mettre le jeu en pause).
 
+**`Terrain.EditTiles <x> <z>` (second test de #78)** : après chaque modification, au centre de la
+modification ; après le `Goto` de la vue, encore, puis l'image. Sa première ligne donne le point
+que suit le streaming, la caméra et le pion possédé ; puis une ligne par tuile au-dessus du point :
+son LOD et celui qu'elle aurait vue de la caméra, le sol de la colonne dans le core (`core top`) et
+dans le maillage d'Unreal (`shown top`), ses bornes, sa visibilité, son dernier envoi. Si
+`shown top` égale `core top` (creusé ou monté), le maillage d'Unreal contient la modification : ce
+qui manque à l'image vient du rendu (`viewmode wireframe`, `ShowFlag.Lighting 0`). Sinon la ligne
+finit par `DIFFERENT from the core`, `HIDDEN`, `the point OUTSIDE` ou `no mesh in Unreal`.
+
+**Les vues, vérifiées avec `planet.bin`** (le sol réel, un champ de 90° en 16:9 : ±45° en largeur,
+±29,4° en hauteur) : chaque modification tombe dans l'image et aucun relief naturel n'est entre
+l'œil et elle (la ligne de visée passe au moins 0,29 m au-dessus du sol jusqu'à 3 m de la
+modification). Mais le **fond** d'un creux ne se voit que si l'œil plonge assez : de
+`modif_vue_sphere`, `modif_vue_trou_mur` et `modif_vue_sauvegarde`, le bord des creux cache leur
+fond (il faudrait une ouverture de 4,0, 2,8 et 3,4 m) ; on voit leur paroi du fond, pas le fond. Les
+vues `modif_vue_sphere_haut`, `modif_vue_trou` et `modif_vue_sauvegarde_haut` plongent assez (il
+faut 1,3, 0,3 et 1,0 m d'ouverture, il y en a 2,4, 0,5 et 1,6). Les vues de loin (`modif_lod*`,
+inclinaison −2°, œil +1,8 m) ne voient jamais le fond du trou (il faudrait 22 à 184 m) : on n'y
+cherche que le mur.
+
+| Vue | Modification | Distance | Horizontal | Vertical | Le fond |
+|---|---|---|---|---|---|
+| `modif_vue_sphere` | sphère a | 8,0 m | 0° | +3,6° (bord), −6,8° (fond) | caché par le bord |
+| `modif_vue_sphere_haut` | sphère a | 4,0 m | 0° | −1,3°, −8,4° | vu |
+| `modif_vue_trou_mur` | trou c | 12,2 m | −35,0° | −1,7° | caché par le bord |
+| `modif_vue_trou_mur` | mur c (bouts nord et sud) | 10,0 et 11,7 m | −5,7° et +31,0° | +11,2° et +11,7° | — |
+| `modif_vue_trou` | trou c | 2,0 m | 0° | −6,8° | vu |
+| `modif_vue_sauvegarde` | sphère f, bloc f | 6,3 et 9,1 m | −18,4° et +6,3° | −10,9° et +13,4° | caché par le bord |
+| `modif_vue_sauvegarde_haut` | sphère f, bloc f | 3,0 et 6,7 m | 0° et +26,6° | −10,5° et +25,1° | vu |
+| `modif_lod*` | mur c | 52 à 260 m | +1,3° à +14,0° | +2,3° à +2,7° | — |
+
 Chaque `Terrain.EditAim` écrit une ligne : `Terrain dev: EditAim <dig|place> <forme> at (x, y, z):
 hit (x, y, z), block (x, y, z) | sphere at (x, y, z) radius r m, accepted | refused: <pourquoi>`.
 Le point touché (`hit`) est à quelques cm du point demandé ; le bloc ou la sphère doit être
@@ -375,8 +412,15 @@ Terrain.Goto modif_sphere
 Terrain.Pawn
 Terrain.EditAim dig sphere 2.4375 at -240628 6.09 -86717
     -> sphere at (-240628, 6, -86717) radius 2.438 m, accepted
+(la ligne « edit shown … after its click »)
+Terrain.EditTiles -240628 -86717
+    -> tile (-15040, -5420) LOD 0 (from the camera: LOD 0): core top 3.50 m | shown top 3.50 m
 Terrain.Goto modif_vue_sphere
+Terrain.EditTiles -240628 -86717
 Terrain.Shot a_sphere
+Terrain.Goto modif_vue_sphere_haut
+Terrain.EditTiles -240628 -86717
+Terrain.Shot a_sphere_haut
 ```
 
 À voir : un creux rond de 5 m, sans pointe ni angle vif, dont la lumière tourne sans marches.
@@ -391,6 +435,9 @@ Terrain.Goto modif_tunnel
 Terrain.Pawn
 Terrain.EditAim dig sphere 2.4375 at -240610 6.19 -86697
     -> sphere at (-240610, 6, -86697) radius 2.438 m, accepted
+Terrain.EditTiles -240608 -86697
+    -> deux tuiles, (-15039, -5419) et (-15038, -5419) LOD 0 : core top 4.47 m sur les deux ;
+       le côté x -240608 traverse la sphère (la coupure du second test : shown top 6.19 m)
 (marche de 3,5 m au cap 90 : le pion descend au fond de la sphère, sol 3,5 m)
 Terrain.Look 90 -10
 Terrain.EditAim dig block at -240608.469 4 -86697    -> block (-240608, 4, -86697), accepted
@@ -405,12 +452,38 @@ Terrain.EditAim dig block at -240604.469 5 -86697    -> block (-240604, 5, -8669
 (marche de 2 m au cap 90, dans le tunnel)
 Terrain.EditAim dig block at -240603.469 4 -86697    -> block (-240603, 4, -86697), accepted
 Terrain.EditAim dig block at -240603.469 5 -86697    -> block (-240603, 5, -86697), accepted
+Terrain.EditTiles -240605 -86697
+    -> core top 6.21 m, under it 5.70 3.50 m (le sol, le plafond et le sol du tunnel)
 Terrain.Shot b_tunnel
 (marche de 3 m au cap 90 : le pion s'arrête au fond, x vers -240603,2)
 Terrain.Look 270 -10
 Terrain.Shot b_demi_tour
 (marche de 8 m au cap 270 : il ressort au fond de la sphère, x vers -240610)
 ```
+
+**b sans marche, pour les scripts.** Le lieu `modif_tunnel_fond` met l'œil à 5,3 m d'altitude au
+centre de la sphère (−240 610 ; −86 697), dont le fond est plat à 3,5 m sur ±0,3 m au moins
+(vérifié dans le core) : `Terrain.Pawn` y pose le personnage (spot 1). Puis trois blocs de tunnel
+au rang 4 et deux au rang 5, tous à moins de 6 m de l'œil :
+
+```
+(après la sphère ci-dessus)
+Terrain.Goto modif_tunnel_fond
+Terrain.Pawn
+Terrain.EditTiles -240610 -86697
+    -> core top 3.50 m | shown top 3.50 m
+Terrain.EditAim dig block at -240608.469 4 -86697    -> block (-240608, 4, -86697), accepted
+Terrain.EditAim dig block at -240607.469 4 -86697    -> block (-240607, 4, -86697), accepted
+Terrain.EditAim dig block at -240607.469 5 -86697    -> block (-240607, 5, -86697), accepted
+Terrain.EditAim dig block at -240606.469 4 -86697    -> block (-240606, 4, -86697), accepted
+Terrain.EditAim dig block at -240606.469 5 -86697    -> block (-240606, 5, -86697), accepted
+Terrain.EditTiles -240607 -86697
+    -> core top 6.20 m, under it 5.71 3.50 m (le sol, le plafond et le sol du tunnel)
+Terrain.Shot b_tunnel_fond
+```
+
+Si `Terrain.Pawn` pose le personnage ailleurs que dans la sphère (un autre spot que le 1), le
+dire : les points `at` supposent l'œil au fond.
 
 Le bloc (−240 608, 5) appartient déjà à la sphère. À voir et à me renvoyer :
 - le pion marche dans le tunnel, fait demi-tour au fond et ressort, sans rester coincé ni glisser
@@ -420,14 +493,25 @@ Le bloc (−240 608, 5) appartient déjà à la sphère. À voir et à me renvoy
 
 **c) Un trou d'un bloc et un mur d'un bloc** (lieux `plaine_casser` : −240 631 ; −86 677, et
 `modif_mur` : −240 631 ; −86 668 ; cap 90, inclinaison −30, œil +1,8 m). Le mur fait 1 bloc
-d'épaisseur, 2 de haut et 8 de long, nord-sud, de z −86 671 à −86 664. Il n'a que 2 rangs : un
-3e rang se poserait en visant le dessus du 2e (3,3 m au-dessus des pieds), peut-être plus haut
-que la caméra, qui toucherait alors une face latérale et poserait le bloc de côté.
+d'épaisseur, 2 de haut et 8 de long, nord-sud, de z −86 671 à −86 664.
+
+**Où viser le 2e rang.** Un bloc est le cube de 1 m **centré** sur son point du réseau : le bloc
+(x, 7, z) va de 6,5 à 7,5 m. Le 1er rang (blocs à y = 7) a donc son haut à **7,5 m**, pas à 8 m. Un
+mur d'un seul bloc d'épaisseur n'a pas de dessus plat : Marching Cubes en fait une arête de toit à
+7,5 m au milieu du bloc (x −240 628), avec deux pans à 45° (vérifié dans le core : 7,25 m à 0,25 m
+de l'arête, 7,00 m à 0,5 m). Viser à y = 8 passe au-dessus du mur et touche le sol derrière :
+refusé. On vise donc l'arête, à (−240 628 ; 7,5), la caméra plongeante (`Terrain.Look 90 -45`)
+pour que le rayon arrive par le dessus. La normale d'un pan à 45° départage le dessus et le côté à
+égalité ; le code du clic (`dominantFace`) prend alors le dessus : bloc (…, 8, …). Si une ligne
+donne `block (-240629, 7, …)` (le bloc posé à côté) ou `refused: the block is already full`, me
+renvoyer la ligne entière : le point touché dit quel pan le rayon a pris.
 
 ```
 Terrain.Goto plaine_casser
 Terrain.Pawn
 Terrain.EditAim dig block at -240628 6.18 -86677     -> block (-240628, 6, -86677), accepted
+Terrain.EditTiles -240628 -86677
+    -> tile (-15040, -5418) LOD 0: core top 5.50 m | shown top 5.50 m
 Terrain.Goto modif_mur
 Terrain.Pawn
 Terrain.EditAim place block at -240628 6.20 -86671   -> block (-240628, 7, -86671), accepted
@@ -438,6 +522,7 @@ Terrain.EditAim place block at -240628 6.21 -86667   -> block (-240628, 7, -8666
 Terrain.EditAim place block at -240628 6.21 -86666   -> block (-240628, 7, -86666), accepted
 Terrain.EditAim place block at -240628 6.21 -86665   -> block (-240628, 7, -86665), accepted
 Terrain.EditAim place block at -240628 6.22 -86664   -> block (-240628, 7, -86664), accepted
+Terrain.Look 90 -45
 Terrain.EditAim place block at -240628 7.5 -86671    -> block (-240628, 8, -86671), accepted
 Terrain.EditAim place block at -240628 7.5 -86670    -> block (-240628, 8, -86670), accepted
 Terrain.EditAim place block at -240628 7.5 -86669    -> block (-240628, 8, -86669), accepted
@@ -446,9 +531,20 @@ Terrain.EditAim place block at -240628 7.5 -86667    -> block (-240628, 8, -8666
 Terrain.EditAim place block at -240628 7.5 -86666    -> block (-240628, 8, -86666), accepted
 Terrain.EditAim place block at -240628 7.5 -86665    -> block (-240628, 8, -86665), accepted
 Terrain.EditAim place block at -240628 7.5 -86664    -> block (-240628, 8, -86664), accepted
+Terrain.EditTiles -240628 -86668
+    -> tile (-15040, -5417) LOD 0: core top 8.50 m | shown top 8.50 m
 Terrain.Goto modif_vue_trou_mur
+Terrain.EditTiles -240628 -86677
+Terrain.EditTiles -240628 -86668
 Terrain.Shot c_trou_mur
+Terrain.Goto modif_vue_trou
+Terrain.EditTiles -240628 -86677
+Terrain.Shot c_trou
 ```
+
+**Poser dans un bloc plein est refusé** (`refused: the block is already full`) : un bloc qui porte
+déjà un bloc posé, ou dont les 8 coins sont dans le sol sans bloc retiré. Un clic qui ne
+changerait rien ne passe plus pour accepté.
 
 **d) Un bloc posé dans la capsule** (lieu `modif_capsule` : −240 610 ; −86 650, cap 90,
 inclinaison −60, œil +1,8 m ; sol 6,31 m ; le pion se pose sous la vue, spot 1)
@@ -482,22 +578,39 @@ de part et d'autre de chaque passage : cap 90, inclinaison −2, œil +1,8 m, z 
 
 ```
 Terrain.Goto modif_lod0_52m
+Terrain.EditTiles -240628 -86668
+    -> tile … LOD 0 (from the camera: LOD 0)
 Terrain.Shot e_lod0_52m
 Terrain.Goto modif_lod1_68m
+Terrain.EditTiles -240628 -86668
+    -> tile … LOD 1 (from the camera: LOD 1)
 Terrain.Shot e_lod1_68m
 Terrain.Goto modif_lod1_116m
+Terrain.EditTiles -240628 -86668
+    -> tile … LOD 1 (from the camera: LOD 1)
 Terrain.Shot e_lod1_116m
 Terrain.Goto modif_lod2_132m
+Terrain.EditTiles -240628 -86668
+    -> tile … LOD 2 (from the camera: LOD 2)
 Terrain.Shot e_lod2_132m
 Terrain.Goto modif_lod2_244m
+Terrain.EditTiles -240628 -86668
+    -> tile … LOD 2 (from the camera: LOD 2)
 Terrain.Shot e_lod2_244m
 Terrain.Goto modif_lod3_260m
+Terrain.EditTiles -240628 -86668
+    -> tile … LOD 3 (from the camera: LOD 3)
 Terrain.Shot e_lod3_260m
 Terrain.View lod
 Terrain.Goto modif_lod1_68m
 Terrain.Shot e_couleurs_lod_68m
 Terrain.View normal
 ```
+
+`Terrain.EditTiles` au milieu du mur : la tuile du mur doit avoir le LOD de la table, le même que
+« from the camera » (sinon le streaming ne suit pas la caméra : la première ligne dit quel point
+il suit). Le trou ne se voit pas de ces vues (l'œil à 1,8 m le voit de trop bas : il faudrait une
+ouverture de 22 à 184 m) : on n'y cherche que le mur.
 
 À voir, au soleil normal puis bas :
 - de 52 à 68 m, le passage du LOD 0 au LOD 1 ne se voit pas : le mur reste droit, en roche, à sa
@@ -506,7 +619,8 @@ Terrain.View normal
 - `e_couleurs_lod_68m` colore les tuiles par LOD.
 
 **f) La sauvegarde**, sans toucher l'acteur ni la carte (lieux `modif_sauvegarde` : −240 611 ;
-−86 621, cap 90, inclinaison −40, œil +1,8 m ; et `modif_vue_sauvegarde`)
+−86 621, cap 90, inclinaison −40, œil +1,8 m ; `modif_vue_sauvegarde` et
+`modif_vue_sauvegarde_haut`)
 
 Play 1 :
 
@@ -518,6 +632,8 @@ Terrain.Pawn
 Terrain.EditAim dig sphere at -240610 6.37 -86625
     -> sphere at (-240610, 6, -86625) radius 1.625 m, accepted
 Terrain.EditAim place block at -240607 6.38 -86622   -> block (-240607, 7, -86622), accepted
+Terrain.EditTiles -240610 -86625
+    -> tile (-15039, -5415) LOD 0: core top 4.50 m | shown top 4.50 m
 ```
 
 Arrêter le Play **moins d'une seconde** après le dernier appel. Le log dit alors `Terrain World:
@@ -536,7 +652,14 @@ Building.bSaveEdits (asked by Terrain.EditRead 1)`, puis `Terrain World: N saved
 
 ```
 Terrain.Goto modif_vue_sauvegarde
+Terrain.EditTiles -240610 -86625
+    -> tile (-15039, -5415) LOD 0: core top 4.50 m | shown top 4.50 m
+Terrain.EditTiles -240607 -86622
+    -> tile (-15038, -5414) LOD 0: core top 7.50 m | shown top 7.50 m
 Terrain.Shot f_relue
+Terrain.Goto modif_vue_sauvegarde_haut
+Terrain.EditTiles -240610 -86625
+Terrain.Shot f_relue_haut
 Terrain.EditRead 0
     -> Terrain dev: the next play reads the saved edits: no
 ```
