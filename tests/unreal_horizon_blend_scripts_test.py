@@ -217,10 +217,20 @@ def finish_blend(wb, wm, biomes, wd=0.0):
                                - sum(wb[d] * biomes[d][0][i] for d in deserts)) for i in range(4)]
         lb = [lb[i] - wm[2] * sum(wb[d] * biomes[d][1][i] for d in deserts) for i in range(4)]
     if len(wm) > 10:  # the soils of the deserts (agent 49): gravel, stone, crust
-        lb = [lb[i] + wm[8] * (0.0, 0.0, 0.65, 0.35)[i] + wm[9] * (0.25, 0.0, 0.0, 0.75)[i]
+        # The gravel: the warm reg or the cold grey gravel by the warmth of the biomes (BIOME_D).
+        warmth = min(max(sum(wb[n] * biomes[n][3][0] for n in range(len(biomes))), 0.0), 1.0)
+        gravel = [cold + (warm - cold) * warmth for cold, warm in zip(GRAVEL_COLD, GRAVEL_WARM)]
+        lb = [lb[i] + wm[8] * gravel[i] + wm[9] * (0.25, 0.0, 0.0, 0.75)[i]
               + wm[10] * (0.45, 0.55, 0.0, 0.0)[i] for i in range(4)]
     lc = [c[0] + (1.0 - c[0]) * wm[5], c[1] + (1.0 - c[1]) * wm[4]]
     return la, lb, lc, wb, wm
+
+
+# The two gravels of the reference (blend_layers_hlsl.py: GRAVEL_WARM, GRAVEL_COLD): the warm reg
+# of the hot deserts (the stony Desert layer and scree), the cold grey gravel (scree over a little
+# earth, never the Desert layer).
+GRAVEL_WARM = (0.0, 0.0, 0.65, 0.35)
+GRAVEL_COLD = (0.2, 0.0, 0.0, 0.8)
 
 
 def blend_texels_layers(texels, shares, biomes, dunes=None, materials=11):
@@ -297,6 +307,61 @@ def check_reference(biomes):
                                                (1.0 - alpha, 0.5 * alpha, 0.5 * alpha), biomes)
         check(abs(sum(la) + sum(lb) - 1.0) < 1e-6 and wm[8] > 0.0,
               f"the soils of the deserts at the morph {alpha}: {la}, {lb}")
+    check_gravel(biomes)
+
+
+def check_gravel(biomes):
+    """The gravel of the core (material 8) by its biome: the warm reg in the rocky desert (2),
+    never the orange Desert layer in the cold biomes (tundra 8, cold desert 15, polar region 17,
+    ice desert 18), the morph between them in between (Unreal drew the polar region as the
+    Sahara: the gravel took the Desert layer whatever its biome)."""
+    # The warmth of each: the reg 1, the cold grey 0, the grey-brown of the cold desert (the Gobi)
+    # a quarter at most.
+    highest = {2: (1.0, 1.0), 8: (0.0, 0.0), 15: (0.0, 0.25), 17: (0.0, 0.0), 18: (0.0, 0.0)}
+    for biome, (low, high) in highest.items():
+        warmth = biomes[biome][3][0]
+        gravel = [c + (w - c) * warmth for c, w in zip(GRAVEL_COLD, GRAVEL_WARM)]
+        texel = channels((biome, biome, biome), (255, 0), (8, 8, 8), (255, 0))
+        la, lb, _, _, _ = blend_texels_layers((texel,), (1.0,), biomes)
+        check(low <= warmth <= high and sum(la) < 1e-9 and
+              all(abs(lb[i] - gravel[i]) < 1e-6 for i in range(4)),
+              f"the gravel of the biome {biome} (warmth {warmth}): {la}, {lb}")
+    rocky = channels((2, 2, 2), (255, 0), (8, 8, 8), (255, 0))
+    polar = channels((17, 17, 17), (255, 0), (8, 8, 8), (255, 0))
+    _, lb, _, _, _ = blend_texels_layers((rocky, polar), (0.5, 0.5), biomes)
+    check(abs(lb[2] - 0.5 * GRAVEL_WARM[2]) < 1e-6 and abs(sum(lb) - 1.0) < 1e-6,
+          f"the gravel halfway from the rocky desert to the polar region: {lb}")
+
+
+def check_tables(root, look):
+    """Every biome of the core has its entry in every table of the look (agent 49): the rows of
+    BIOMES (ground layers, cold and rock, warmth of the gravel), and each table the HLSL builds from
+    them (BA, BB, BC, BD, in Layers and FinishBlend) as long as kBiomeCount; the gravel of the
+    horizon (Layers) reads the warmth of its biome, as FinishBlend does."""
+    count = header_constant(root.parent / "terrain_core" / "include" / "terrain" / "generation" /
+                            "biome.hpp", "kBiomeCount")
+    blend = look.hlsl.blend_code
+    check(len(look.BIOMES) == count, f"BIOMES has {len(look.BIOMES)} rows, kBiomeCount {count}")
+    for n, row in enumerate(look.BIOMES):
+        check(tuple(len(part) for part in row) == (4, 4, 2, 1),
+              f"the row of the biome {n} of BIOMES: {row}")
+        check(0.0 <= row[3][0] <= 1.0, f"the warmth of the gravel of the biome {n}: {row[3]}")
+    struct = look.struct_hlsl()
+    tables = re.findall(r"const float(\d) (B[ABCD])\[(\d+)\] = \{ ([^;]*) \};", struct)
+    names = sorted({name for _, name, _, _ in tables})
+    check(names == ["BA", "BB", "BC", "BD"], f"the tables of the biomes in the HLSL: {names}")
+    for width, name, size, values in tables:
+        entries = len(re.findall(rf"float{width}\(", values))
+        check(int(size) == count and entries == count,
+              f"the table {name} holds {entries} entries of {size}, kBiomeCount {count}")
+    check(f"m == 8 ? lerp({blend._float4(blend.GRAVEL_COLD)}, {blend._float4(blend.GRAVEL_WARM)}, "
+          "BD[biome].x)" in struct, "the gravel of the horizon (Layers) ignores its biome")
+    check("gravelWarmth += wbs[n] * BD[n].x;" in blend.BLEND_HLSL and
+          f"wm2.x * lerp({blend._float4(blend.GRAVEL_COLD)}, {blend._float4(blend.GRAVEL_WARM)}, "
+          "saturate(gravelWarmth))" in blend.BLEND_HLSL,
+          "the gravel of the tiles (FinishBlend) ignores its biomes")
+    check(blend.GRAVEL_WARM == GRAVEL_WARM and blend.GRAVEL_COLD == GRAVEL_COLD,
+          "the gravels of blend_layers_hlsl.py are not those of the reference")
 
 
 def check_water():
@@ -391,6 +456,7 @@ def main(root):
     for biome in look.BIOMES:
         check(abs(sum(biome[0]) + sum(biome[1]) - 1.0) < 1e-9, "a biome of layers not summing to 1")
     check_counts(root, look.hlsl.blend_code)
+    check_tables(root, look)
     check_reference(look.BIOMES)
     print(f"horizon blend scripts: {len(failures)} failure(s), {declared} declarations checked")
     return 1 if failures else 0

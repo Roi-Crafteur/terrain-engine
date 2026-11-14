@@ -14,11 +14,11 @@ temporary_terrain_hlsl.py, which pastes them into its helper struct (FTemporaryT
 The weights of the biomes and the materials are summed in float4 lanes (wb0: biomes 0-3, wb1:
 4-7...; wm0: materials 0-3...), as many as the counts below need: the code is generated from them
 (agent 49), so that a new biome or material only adds lanes, never an array indexed at run time.
-BIOME_A, BIOME_B, BIOME_C and TEXELS are filled by temporary_terrain_hlsl.struct_hlsl, NBIOMES and
-LASTBIOME by fill (its tables of the biomes). No identifier may be a type Unreal rewrites (half,
-fixed...) or a reserved word of HLSL (sample, point, linear...): unreal_horizon_blend_scripts_test
-checks it, and every name declared here against those of the struct and of the custom nodes it is
-pasted into.
+BIOME_A, BIOME_B, BIOME_C, BIOME_D and TEXELS are filled by temporary_terrain_hlsl.struct_hlsl,
+NBIOMES, LASTBIOME and the two gravels by fill (its tables of the biomes). No identifier may be a
+type Unreal rewrites (half, fixed...) or a reserved word of HLSL (sample, point, linear...):
+unreal_horizon_blend_scripts_test checks it, and every name declared here against those of the
+struct and of the custom nodes it is pasted into.
 """
 
 # The ids of the core (terrain_core biome.hpp: kBiomeCount, surface_material.hpp:
@@ -46,6 +46,17 @@ DESERTS = (2, 14, 15)
 OASIS_A = "float4(0.7, 0.3, 0.0, 0.0)"
 SURFACE_BIOME_STRIDE = 1 << MATERIAL_ID_BITS
 SURFACE_WATER_CODE = 1 << (MATERIAL_ID_BITS + BIOME_ID_BITS)
+# The gravel of the core (material 8, a reg in the deserts, the frozen gravel of the polar region)
+# in the ground layers (Dirt, Sand, Desert, Scree): the warm reg of the hot deserts, the stony
+# Desert layer and scree, or the cold grey gravel, scree over a little earth, never the orange
+# desert. The warmth of the mineral soil of each biome (BIOME_D, temporary_terrain_look.BIOMES)
+# picks between them, on the tiles (FinishBlend) and on the horizon (Layers) alike.
+GRAVEL_WARM = (0.0, 0.0, 0.65, 0.35)
+GRAVEL_COLD = (0.2, 0.0, 0.0, 0.8)
+
+
+def _float4(values):
+    return "float4(" + ", ".join(f"{v:.2f}" for v in values) + ")"
 
 
 def lanes(count):
@@ -83,7 +94,10 @@ def _weights_list():
 
 
 def fill(text):
-    """The counts of the biomes in text: NBIOMES and LASTBIOME (the tables of the struct)."""
+    """The counts of the biomes in text: NBIOMES and LASTBIOME (the tables of the struct), and the
+    two gravels (GRAVEL_WARM, GRAVEL_COLD)."""
+    text = text.replace("GRAVEL_WARM", _float4(GRAVEL_WARM))
+    text = text.replace("GRAVEL_COLD", _float4(GRAVEL_COLD))
     return text.replace("NBIOMES", str(BIOME_COUNT)).replace("LASTBIOME", str(BIOME_COUNT - 1))
 
 
@@ -146,13 +160,16 @@ _FINISH = r"""
         const float4 BA[NBIOMES] = { BIOME_A };
         const float4 BB[NBIOMES] = { BIOME_B };
         const float2 BC[NBIOMES] = { BIOME_C };
+        const float1 BD[NBIOMES] = { BIOME_D };
         float wbs[NBIOMES] = { WEIGHTS_LIST };
         float4 A = float4(0.0, 0.0, 0.0, 0.0);
         float4 B = A;
         c = float2(0.0, 0.0);
+        float gravelWarmth = 0.0;
         [unroll] for (int n = 0; n < NBIOMES; ++n)
         {
             A += wbs[n] * BA[n]; B += wbs[n] * BB[n]; c += wbs[n] * BC[n];
+            gravelWarmth += wbs[n] * BD[n].x;
         }
         float ocean = wb0.x;
         float desert = wb0.z;
@@ -167,10 +184,11 @@ _FINISH = r"""
         float deserts = DESERT_SUM;
         a += wm0.z * (deserts * OASIS - (DESERT_A));
         b -= wm0.z * (DESERT_B);
-        // The soils of the deserts (agent 49): gravel (a reg) the stony desert and scree, stone (a
-        // hamada) scree over dark earth, crust pale sand and earth.
-        b += wm2.x * float4(0.0, 0.0, 0.65, 0.35) + wm2.y * float4(0.25, 0.0, 0.0, 0.75)
-           + wm2.z * float4(0.45, 0.55, 0.0, 0.0);
+        // The soils of the deserts (agent 49): gravel the warm reg of the hot deserts or the cold
+        // grey gravel of the cold ones (the warmth of their biomes), stone (a hamada) scree over
+        // dark earth, crust pale sand and earth.
+        b += wm2.x * lerp(GRAVEL_COLD, GRAVEL_WARM, saturate(gravelWarmth))
+           + wm2.y * float4(0.25, 0.0, 0.0, 0.75) + wm2.z * float4(0.45, 0.55, 0.0, 0.0);
         c.x = lerp(c.x, 1.0, wm1.y);                                                     // snow
         c.y = lerp(c.y, 1.0, wm1.x);                                                     // rock
     }

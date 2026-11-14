@@ -73,6 +73,17 @@
   pas). `CurvatureGain` règle la courbure qui compte comme un creux ou une bosse pleins. Le désert
   garde plus de gravier, d'abord dans ses creux. L'horizon n'a pas la courbure : au loin, les
   plaques ne suivent que la pente.
+- **Les sols des déserts et des biomes froids** (agent 49, `BIOMES` de `temporary_terrain_look.py`,
+  4e colonne) : chaque biome a une chaleur de son sol minéral, de 0 à 1. Le gravier du core
+  (matériau 8) en tire son aspect : le reg chaud des déserts chauds (désert caillouteux et éboulis,
+  chaleur 1) ou le gravier gris des biomes froids (éboulis sur un peu de terre, chaleur 0 : région
+  polaire, toundra ; 0,25 pour le gris-brun du désert froid), jamais l'orange du désert ailleurs.
+  La même règle vaut sur les tuiles (`FinishBlend`) et sur l'horizon (`Layers`).
+  `unreal_ground_colors_test` recopie la formule de la couleur du sol au loin et vérifie ces
+  teintes. Sans végétation, la garrigue mêle du calcaire clair (le sable, des éboulis) à des
+  taches sombres (la forêt) ; les broussailles ont un sol brun (terre, un peu de désert
+  caillouteux et d'éboulis) sous l'herbe sèche. Ces mélanges restent uniformes : de vraies
+  taches demanderaient du code par pixel (voir la PR #84).
 - **Les textures**, alignées sur le monde : projection du dessus pour le sol, triplanaire pour la
   roche, une répétition tous les 4 ou 8 m (qui divise 4 096 m, la période des coordonnées
   périodiques du monde, comme les vagues de la mer). **Sans répétition visible** : chaque cellule

@@ -45,3 +45,13 @@ set_tests_properties(biome_map_test PROPERTIES
 # The zones of the monsoon (monsoon.hpp): a marking, none where it is cold or dry, full in the heart
 # of the band of the tropics, an edge that is no parallel.
 terrain_add_test(biome_monsoon_test terrain_core)
+
+# The color of the ground of the biomes as the temporary terrain material draws it far away (a copy
+# in Python of its formula): the gravel of the cold biomes grey, never the orange of the Sahara;
+# the grounds that must be told apart, apart. Prints the colors of the views of the biomes.
+find_package(Python COMPONENTS Interpreter QUIET)
+if(Python_Interpreter_FOUND)
+    add_test(NAME unreal_ground_colors_test
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unreal_ground_colors_test.py
+                ${PROJECT_SOURCE_DIR}/terrain_unreal)
+endif()
