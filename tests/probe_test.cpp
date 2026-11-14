@@ -317,8 +317,8 @@ points[].water.lake.level points[].water.level points[].water.valley
 points[].water.valley.bank points[].water.valley.carved points[].water.valley.floor
 points[].water.valley.gorge points[].water.valley.level points[].water.valley.mountain
 points[].water.valley.pond points[].water.valley.reach points[].water.valley.surface
-points[].water.valley.wet points[].x points[].z tool world world.generatorVersion world.seed
-world.x world.z)";
+points[].water.valley.wet points[].x points[].z tool world world.flags world.generatorVersion
+world.seed world.x world.z)";
         std::vector<std::string> out;
         std::size_t start = paths.find_first_not_of(" \n");
         while (start != std::string::npos) {
