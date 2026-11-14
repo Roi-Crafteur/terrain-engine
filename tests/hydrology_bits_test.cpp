@@ -57,7 +57,11 @@ int main() {
             hydrology_sample::addCell(horizon, cell);
         }
     }
-    expect("horizon 8-9", horizon.value(), 0x7640E0E072473754ULL, secondsSince(start));
+    // Recollé par « Merge main (#75 parallel CI, #76 biome format, #79 guards) into the hydrology
+    // branch of agent 39 » : "horizon 8-9" ; les texels de biomes de #76 (agent 49) ont 16 octets
+    // (quatre champs sommés au lieu de ids et weights) et lisent l'eau du core. Même valeur sur
+    // main (38b5a82) et sur la branche : l'agent 39 ne change aucun bit.
+    expect("horizon 8-9", horizon.value(), 0x0CB9CFA8700C153AULL, secondsSince(start));
     std::printf("courses computed: %zu, %zu bytes\n", h.coursesComputed(), h.courseBytes());
     return test::result();
 }

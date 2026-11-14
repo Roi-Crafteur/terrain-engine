@@ -14,16 +14,19 @@
   quand le projet l'a. **L'horizon** : `M_TerrainHorizonGpu`, mêmes règles, sans le détail
   proche (seulement la couleur moyenne de chaque texture).
 - **La surface** : le dernier flottant d'un texel de terre de l'horizon porte le matériau et le
-  biome du core (`matériau + 8 biome`, `Bridge/terrain_surface.hpp`). Le nuanceur de sommets des
+  biome du core (`matériau + 32 biome`, `Bridge/terrain_surface.hpp`). Le nuanceur de sommets des
   tuiles lit les 4 texels du niveau 0 autour de chaque sommet (bilinéaire) ; l'horizon lit le
   texel de son sommet et le fond dans le niveau plus grossier, comme ses hauteurs. Les mêmes
   échantillons de près et de loin : pas de saut de couleur entre les tuiles et l'horizon.
 - **Les fondus entre biomes et matériaux (tuiles)** : chaque tuile porte les poids des 3 biomes et
-  des 3 matériaux dominants (`TileData::surfaceBlend`, 5 × 5 texels de 8 octets : tous les 4 m en
-  LOD 0, puis 8, 16, 32 m ; les mêmes bits sur les bords partagés). Le backend des tuiles
+  des 3 matériaux dominants (`TileData::surfaceBlend`, 5 × 5 texels de 16 octets : tous les 4 m en
+  LOD 0, puis 8, 16, 32 m ; les mêmes bits sur les bords partagés). Le texel (agent 49) a quatre
+  champs de 24 bits au plus, exacts en flottants : les 3 biomes (6 bits chacun, 64 biomes), les 3
+  matériaux (5 bits chacun, 32 matériaux) et la part des dunes, les poids des biomes, les poids
+  des matériaux et un octet réservé à la chaleur du sol (`biome_blend.hpp`). Le backend des tuiles
   (`ProceduralMeshTerrainBackend`) les copie dans une texture commune de flottants
-  (`TileBlendTexels`, 64 × 64 emplacements de 5 × 5 texels, 1,6 Mo ; identifiants et poids exacts
-  dans les flottants) et donne à chaque tuile son emplacement et le pas de ses texels par ses
+  (`TileBlendTexels`, 64 × 64 emplacements de 5 × 5 texels, 1,6 Mo ; un champ par flottant, le
+  bit 23 du premier dit « présent ») et donne à chaque tuile son emplacement et le pas de ses texels par ses
   *custom primitive data* (index 0 et 1). Le nuanceur de sommets lit les 4 texels autour du sommet
   et ajoute la part bilinéaire de chaque poids à son identifiant (`addTexel` du core, jamais
   d'interpolation d'identifiant), puis prend les couches de chaque biome et les remplacements de
@@ -204,12 +207,9 @@ plus) ; rien de plus par pixel. CPU : une région de 400 octets envoyée par tui
   table, pas de RVT ; une texture par couche (deux pour la roche).
 - Les plaques et le texture bombing n'existent que sur les tuiles ; l'horizon garde la couleur
   moyenne des couches et sa variation à grande échelle.
-- Les fondus n'existent que sur les tuiles : l'horizon n'a que le biome et le matériau dominants
-  de ses échantillons (les poids n'y sont pas dans les échantillons du core). Les tuiles s'y
-  fondent sur leur bande au-dessus du niveau 0 : vue de haut (500 m), là où deux biomes se
-  partagent le sol sur des kilomètres, la zone des tuiles autour du joueur a la teinte du mélange
-  et sa bordure (environ 380 à 500 m du joueur) revient à celle du biome dominant. Pour l'effacer,
-  le core devra porter les poids dans les échantillons de l'horizon.
+- Les fondus de l'horizon (agent 29) ont le même format que ceux des tuiles (agent 49 : une
+  texture `PF_A32B32G32R32F` par niveau, 10,6 Mo pour 10 niveaux de 257 × 257 texels) ; le
+  matériau les décode par le même `TexelBlend`.
 - Le pas des fondus suit le LOD des tuiles (4 m en LOD 0, 32 m en LOD 3) ; aucune couture vue
   entre LOD, les poids étant continus, mais les bandes étroites (plage, roche du core) sont plus
   floues au loin.

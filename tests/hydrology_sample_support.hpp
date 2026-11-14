@@ -181,8 +181,10 @@ inline void addCell(Checksum& sum, const terrain::HorizonCell& c) {
     sum.add(static_cast<std::uint64_t>(c.biome), 1);
     sum.add(static_cast<std::uint64_t>(c.flags), 1);
     sum.add(c.waterLevel);
-    sum.add(static_cast<std::uint64_t>(c.blend.ids), 4);
-    sum.add(static_cast<std::uint64_t>(c.blend.weights), 4);
+    sum.add(static_cast<std::uint64_t>(c.blend.biomes), 4);
+    sum.add(static_cast<std::uint64_t>(c.blend.materials), 4);
+    sum.add(static_cast<std::uint64_t>(c.blend.biomeWeights), 4);
+    sum.add(static_cast<std::uint64_t>(c.blend.materialWeights), 4);
 }
 
 } // namespace hydrology_sample

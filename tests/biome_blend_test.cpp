@@ -369,7 +369,9 @@ void testTexels() {
             terrain::blendSurface(c.climate, c.site, {}, {}, {}, d.in(0.2, 1.8));
         const terrain::BlendTexel texel = terrain::packBlend(blend);
         const SurfaceBlend back = terrain::unpackBlend(texel);
-        ok = ok && (texel.ids >> 24) == 0U;
+        ok = ok && (texel.materials >> terrain::kBlendDuneShift) == 0U; // no dunes off the ergs
+        ok = ok && texel.biomes < (1U << terrain::kBlendPresentBit) &&
+             texel.biomeWeights < (1U << 16U) && texel.materialWeights < (1U << 16U);
         ok = ok && back.biomes[0] == blend.biomes[0] && back.materials[0] == blend.materials[0];
         for (const auto& [a, b] : {std::pair{&blend.biomeWeights, &back.biomeWeights},
                                    std::pair{&blend.materialWeights, &back.materialWeights}}) {
@@ -404,10 +406,10 @@ void testTexels() {
     half.materials = {SurfaceMaterial::Grass, SurfaceMaterial::Grass, SurfaceMaterial::Grass};
     half.materialWeights = {1.0f, 0.0f, 0.0f};
     const terrain::BlendTexel texel = terrain::packBlend(half);
-    TEST_CHECK((texel.weights & 0xFFU) == 128U && ((texel.weights >> 8) & 0xFFU) == 127U);
-    TEST_CHECK(((texel.weights >> 16) & 0xFFU) == 255U && (texel.weights >> 24) == 0U);
-    TEST_CHECK((texel.ids & 0xFU) == static_cast<std::uint32_t>(Biome::Grassland));
-    TEST_CHECK(((texel.ids >> 4) & 0xFU) == static_cast<std::uint32_t>(Biome::TemperateForest));
+    TEST_CHECK(texel.biomeWeights == (128U | 127U << 8U));
+    TEST_CHECK(texel.materialWeights == 255U);
+    TEST_CHECK((texel.biomes & 0x3FU) == static_cast<std::uint32_t>(Biome::Grassland));
+    TEST_CHECK(((texel.biomes >> 6) & 0x3FU) == static_cast<std::uint32_t>(Biome::TemperateForest));
 }
 
 } // namespace
