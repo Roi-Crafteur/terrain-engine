@@ -121,7 +121,8 @@ void testForms(const terrain::Volcanoes& volcanoes) {
             consistent = consistent && s.height < 0.0f;
         }
     }
-    std::printf("%d at sea, %zu on land\n", atSea, volcanoes.sites().size() - atSea);
+    std::printf("%d at sea, %zu on land\n", atSea,
+                volcanoes.sites().size() - static_cast<std::size_t>(atSea));
     for (int f = 0; f < terrain::kVolcanoFormCount; ++f) {
         std::printf("  %-16s %5d\n", terrain::volcanoFormName(static_cast<terrain::VolcanoForm>(f)),
                     counts[static_cast<std::size_t>(f)]);

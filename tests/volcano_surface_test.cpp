@@ -30,7 +30,6 @@ using terrain::SurfaceMaterial;
 using terrain::VolcanicGround;
 using terrain::VolcanoForm;
 
-constexpr double kPi = 3.14159265358979323846;
 constexpr std::size_t kGrounds = terrain::kVolcanicGroundCount;
 
 // The grounds lying at least half bare over the reach of the first volcanoes of each form, and

@@ -195,7 +195,8 @@ void cinderField(const VolcanoSite& s, Detail& d) {
         const std::uint64_t seed = coneSeed(s, static_cast<std::size_t>(i));
         Offset o;
         if (unit(seed, 10) < 0.7) {
-            const std::uint64_t line = noise::deriveSeed(s.seed, 3000 + i % lines);
+            const std::uint64_t line =
+                noise::deriveSeed(s.seed, static_cast<std::uint64_t>(3000 + i % lines));
             const Offset mid = offsetAt(s, d.shape, between(line, 1, 0.0, 0.6), unit(line, 2));
             const double dir = static_cast<double>(s.axis) + 0.44 * (unit(line, 3) - 0.5);
             const double half = between(line, 4, 0.3, 0.9) * static_cast<double>(s.radius) *
