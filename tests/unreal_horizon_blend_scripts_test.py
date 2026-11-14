@@ -161,43 +161,44 @@ def f32(x):
     return struct.unpack("f", struct.pack("f", x))[0]
 
 
-def unorm(channel):
-    """(uint)(saturate(t) * 65535.0 + 0.5) of a channel of 16 bits read as an unsigned normalized
-    float: each operation in floats of 32 bits."""
-    t = min(max(f32(channel / 65535.0), 0.0), 1.0)
-    return int(f32(f32(t * 65535.0) + 0.5))
+PRESENT = 1 << 23  # biome_blend.hpp: kBlendPresentBit
+DUNE = 15  # biome_blend.hpp: kBlendDuneShift
+
+
+def whole(channel):
+    """(uint)max(t, 0.0) of a channel read as a float of 32 bits: the integer it holds, exactly."""
+    return int(f32(max(f32(channel), 0.0)))
 
 
 def texel_blend(channels):
-    """TexelBlend of 4 channels of 16 bits read as unsigned normalized floats: the ids with the
-    share of the dunes of an erg (bits 8-14 of G, agent 34) in their bits 24-30."""
-    v = [unorm(c) for c in channels]
-    ids = v[0] | ((v[1] & 255) << 16) | (((v[1] >> 8) & 127) << 24)
-    return ids, v[2], v[3], (v[1] & 32768) != 0
+    """TexelBlend of the 4 float channels of a blend texel (Bridge/tile_blend_atlas.hpp, agent
+    49): its 4 fields, and whether its present bit is set."""
+    v = [whole(c) for c in channels]
+    return v, (v[0] & PRESENT) != 0
 
 
 FLOOR = 16.0 / 127.0  # biome_blend.hpp: kErgFloorShare
 
 
-def add_blend(ids, lo, hi, share, wb, wm, wd=None):
+def add_blend(v, share, wb, wm, wd=None, counts=(12, 8)):
     if wd is not None:
-        wd[0] += share * ((ids >> 24) & 127) / 127.0
-    weights_b = [(lo & 255) / 255.0, (lo >> 8) / 255.0]
+        wd[0] += share * ((v[1] >> DUNE) & 127) / 127.0
+    weights_b = [(v[2] & 255) / 255.0, ((v[2] >> 8) & 255) / 255.0]
     weights_b.append(max(1.0 - weights_b[0] - weights_b[1], 0.0))
-    weights_t = [(hi & 255) / 255.0, (hi >> 8) / 255.0]
+    weights_t = [(v[3] & 255) / 255.0, ((v[3] >> 8) & 255) / 255.0]
     weights_t.append(max(1.0 - weights_t[0] - weights_t[1], 0.0))
     for k in range(3):
-        biome = min((ids >> (4 * k)) & 15, 11)
-        material = min((ids >> (12 + 4 * k)) & 15, 7)
+        biome = min((v[0] >> (6 * k)) & 63, counts[0] - 1)
+        material = min((v[1] >> (5 * k)) & 31, counts[1] - 1)
         wb[biome] += share * weights_b[k]
         wm[material] += share * weights_t[k]
 
 
 def finish_blend(wb, wm, biomes, wd=0.0):
     dune = min(max((min(max(wd, 0.0), 1.0) - FLOOR) / (1.0 - FLOOR), 0.0), 1.0)
-    a = [sum(wb[n] * biomes[n][0][i] for n in range(12)) for i in range(4)]
-    b = [sum(wb[n] * biomes[n][1][i] for n in range(12)) for i in range(4)]
-    c = [sum(wb[n] * biomes[n][2][i] for n in range(12)) for i in range(2)]
+    a = [sum(wb[n] * biomes[n][0][i] for n in range(len(biomes))) for i in range(4)]
+    b = [sum(wb[n] * biomes[n][1][i] for n in range(len(biomes))) for i in range(4)]
+    c = [sum(wb[n] * biomes[n][2][i] for n in range(len(biomes))) for i in range(2)]
     ocean, desert = wb[0], wb[2]
     bed = [ocean * biomes[0][1][i] + (1.0 - ocean) * (0.5, 0.0, 0.0, 0.5)[i] for i in range(4)]
     soil = wm[3] + wm[6]
@@ -211,29 +212,28 @@ def finish_blend(wb, wm, biomes, wd=0.0):
     return la, lb, lc, wb, wm
 
 
-def blend_texels_layers(texels, shares, biomes, dunes=None):
-    wb, wm, wd = [0.0] * 12, [0.0] * 8, [0.0]
-    for channels, share in zip(texels, shares):
-        ids, lo, hi, present = texel_blend(channels)
+def blend_texels_layers(texels, shares, biomes, dunes=None, materials=8):
+    wb, wm, wd = [0.0] * len(biomes), [0.0] * materials, [0.0]
+    for floats, share in zip(texels, shares):
+        v, present = texel_blend(floats)
         if share > 0.0:
             if not present:
                 return None
-            add_blend(ids, lo, hi, share, wb, wm, wd)
+            add_blend(v, share, wb, wm, wd, (len(biomes), materials))
     if dunes is not None:
         dunes.append(wd[0])
     return finish_blend(wb, wm, biomes, wd[0])
 
 
 def channels(biomes, biome_weights, materials, material_weights, dunes=0):
-    """The channels of Bridge/horizon_blend_texels.hpp of a blend (weights in 255ths, the share of
-    the dunes in 127ths)."""
-    ids = dunes << 24
+    """The 4 float channels of Bridge/tile_blend_atlas.hpp of a blend (weights in 255ths, the share
+    of the dunes in 127ths), as the GPU holds them: integers below 2^24, exact in floats."""
+    fields = [PRESENT, dunes << DUNE, biome_weights[0] | biome_weights[1] << 8,
+              material_weights[0] | material_weights[1] << 8]
     for k in range(3):
-        ids |= biomes[k] << (4 * k) | materials[k] << (12 + 4 * k)
-    weights = (biome_weights[0] | biome_weights[1] << 8 | material_weights[0] << 16
-               | material_weights[1] << 24)
-    return [ids & 0xFFFF, ((ids >> 16) & 0xFF) | ((ids >> 24) & 0x7F) << 8 | 0x8000,
-            weights & 0xFFFF, weights >> 16]
+        fields[0] |= biomes[k] << (6 * k)
+        fields[1] |= materials[k] << (5 * k)
+    return [f32(float(field)) for field in fields]
 
 
 def check_reference(biomes):
@@ -241,10 +241,10 @@ def check_reference(biomes):
     # dirt (3): texels of different layers.
     forest = channels((6, 3, 4), (150, 80), (2, 3, 2), (200, 55))
     desert = channels((2, 1, 2), (255, 0), (1, 3, 1), (128, 127))
-    ids, lo, hi, present = texel_blend(forest)
-    check(present and ids == (6 | 3 << 4 | 4 << 8 | 2 << 12 | 3 << 16 | 2 << 20)
-          and lo == 150 | 80 << 8 and hi == 200 | 55 << 8, "the channels decode wrong")
-    check(not texel_blend([0, 0, 0, 0])[3], "a texel never written reads as a blend")
+    v, present = texel_blend(forest)
+    check(present and v == [PRESENT | 6 | 3 << 6 | 4 << 12, 2 | 3 << 5 | 2 << 10,
+                            150 | 80 << 8, 200 | 55 << 8], "the channels decode wrong")
+    check(not texel_blend([0, 0, 0, 0])[1], "a texel never written reads as a blend")
     for alpha in (0.0, 0.5, 1.0):
         # The morph: this sample (forest) and the two of the coarser mean (desert, forest).
         layers = blend_texels_layers((forest, desert, forest),
@@ -273,13 +273,22 @@ def check_reference(biomes):
 
 
 def check_dunes(biomes):
-    """The share of the dunes of an erg (agent 34) in bits 8-14 of G, read back by every value of
-    G the GPU may hold, and its mean at the morph: half a texel of dunes beside a desert floor."""
+    """Every integer of a field (24 bits) read back exactly from its float, the share of the dunes
+    of an erg (agent 34) from bit 15 of the materials, and its mean at the morph: half a texel of
+    dunes beside a desert floor."""
     wrong = 0
-    for g in range(65536):
-        ids = texel_blend([0, g, 0, 0])[0]
-        wrong += ((ids >> 16) & 255) != (g & 255) or (ids >> 24) != ((g >> 8) & 127)
-    check(wrong == 0, f"{wrong} values of G decode wrong")
+    for value in list(range(0, 1 << 24, 4099)) + [(1 << 24) - 1, PRESENT, PRESENT - 1]:
+        wrong += texel_blend([float(PRESENT), float(value), 0.0, 0.0])[0][1] != value
+    check(wrong == 0, f"{wrong} values of a field decode wrong")
+    # Every biome id in every slot under the present bit (from 2^23 on, a rounding t + 0.5 reads an
+    # odd integer one too high).
+    wrong = sum(texel_blend([float(PRESENT | b << (6 * k)), 0.0, 0.0, 0.0])[0][0]
+                != (PRESENT | b << (6 * k)) for b in range(64) for k in range(3))
+    check(wrong == 0, f"{wrong} biome ids decode wrong under the present bit")
+    for units in range(128):
+        v, _ = texel_blend(channels((2, 2, 2), (255, 0), (1, 1, 1), (255, 0), units))
+        wrong += ((v[1] >> DUNE) & 127) != units
+    check(wrong == 0, "a share of the dunes decodes wrong")
     # Sand of the desert (2) on dunes (share 127) and on the floor of the erg (16): the morph.
     dunes = channels((2, 2, 2), (255, 0), (1, 1, 1), (255, 0), 127)
     floor = channels((2, 2, 2), (255, 0), (1, 1, 1), (255, 0), 16)
@@ -294,6 +303,31 @@ def check_dunes(biomes):
         check(abs(lb[1] - dune) < 1e-6 and abs(lb[2] - (1.0 - dune)) < 1e-6,
               f"the sand of the dunes at the morph {alpha}: {lb}")
         check(abs(sum(la) + sum(lb) - 1.0) < 1e-6, f"the layers at the morph {alpha}")
+
+
+def header_constant(path, name):
+    """The integer of an inline constexpr of a header of the core (a literal or a sum of them)."""
+    found = re.search(rf"constexpr int {name} = ([^;]+);", path.read_text(encoding="utf-8"))
+    return eval(found.group(1), {"kBlendSlots": 3, "kMaterialIdBits": 5}) if found else None
+
+
+def check_counts(root, blend):
+    """The counts and the fields of blend_layers_hlsl.py are those of the core (agent 49)."""
+    generation = root.parent / "terrain_core" / "include" / "terrain" / "generation"
+    expected = {"BIOME_COUNT": ("biome.hpp", "kBiomeCount"),
+                "MATERIAL_COUNT": ("surface_material.hpp", "kSurfaceMaterialCount"),
+                "BIOME_ID_BITS": ("biome_blend.hpp", "kBiomeIdBits"),
+                "MATERIAL_ID_BITS": ("biome_blend.hpp", "kMaterialIdBits"),
+                "PRESENT_BIT": ("biome_blend.hpp", "kBlendPresentBit"),
+                "DUNE_SHIFT": ("biome_blend.hpp", "kBlendDuneShift")}
+    for name, (header, constant) in expected.items():
+        value = header_constant(generation / header, constant)
+        check(value == getattr(blend, name), f"{name} of blend_layers_hlsl.py is "
+              f"{getattr(blend, name)}, {constant} of {header} is {value}")
+    check(PRESENT == 1 << blend.PRESENT_BIT and DUNE == blend.DUNE_SHIFT,
+          "the reference decodes other fields than the HLSL")
+    check(blend.SURFACE_BIOME_STRIDE == 32 and blend.SURFACE_WATER_CODE == 2048,
+          "the packed surface of Bridge/terrain_surface.hpp")
 
 
 def main(root):
@@ -313,6 +347,7 @@ def main(root):
     check(declared > 100, f"only {declared} declarations scanned")
     for biome in look.BIOMES:
         check(abs(sum(biome[0]) + sum(biome[1]) - 1.0) < 1e-9, "a biome of layers not summing to 1")
+    check_counts(root, look.hlsl.blend_code)
     check_reference(look.BIOMES)
     print(f"horizon blend scripts: {len(failures)} failure(s), {declared} declarations checked")
     return 1 if failures else 0

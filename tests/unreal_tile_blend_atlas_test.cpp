@@ -1,5 +1,6 @@
 // The surface blend of the tiles for the materials of Unreal (Bridge/tile_blend_atlas): its
-// texels exact in floats (every id and weight of every texel of the core comes back), the region
+// texels exact in floats (every field of every texel of the core comes back, agent 49: 4 fields of
+// 24 bits, the present bit in the first), the region
 // of a tile in the order of the texture, the pitch of the texels per LOD, and the slots of the
 // atlas (kept, given again lowest first, full, cleared, their corners).
 #include "tile_blend_atlas.hpp"
@@ -41,30 +42,35 @@ std::vector<BlendTexel> sampleTexels() {
     blend.materials = {terrain::SurfaceMaterial::Rock, terrain::SurfaceMaterial::Sand,
                        terrain::SurfaceMaterial::Pebbles};
     blend.materialWeights = {0.5f, 0.3f, 0.2f};
-    return {BlendTexel{}, BlendTexel{0xFFFFFFu, 0xFFFFFFFFu}, BlendTexel{0x123456u, 0x80017FFEu},
-            BlendTexel{0xABCDEFu, 0x00FF00FFu}, terrain::packBlend(blend)};
+    return {BlendTexel{}, BlendTexel{0x7FFFFFu, 0xFFFFFFu, 0xFFFFFFu, 0xFFFFFFu},
+            BlendTexel{0x123456u, 0x3FFFFFu, 0x017FFEu, 0x8001u},
+            BlendTexel{0x2BCDEFu, 0x00FF00u, 0xFFu, 0xFF0000u}, terrain::packBlend(blend)};
 }
 
 void testTexelFloats() {
     bool exact = true;
     for (const BlendTexel& texel : sampleTexels()) {
         const std::array<float, 4> floats = terrain::unreal::blendTexelFloats(texel);
-        exact = exact && floats[3] == 1.0f;
+        exact = exact && floats[0] >= 8388608.0f; // the present bit (23)
         const std::optional<BlendTexel> back = terrain::unreal::blendTexelOf(floats);
         exact = exact && back.has_value() && *back == texel;
     }
     TEST_CHECK(exact);
-    // The halves of the weights as the shader reads them: low 16 bits, then high 16 bits.
+    // The fields as the shader reads them: biomes (with the present bit), materials, then the
+    // weights of the biomes and of the materials.
     const std::array<float, 4> floats =
-        terrain::unreal::blendTexelFloats(BlendTexel{0x000102u, 0x00030004u});
-    TEST_CHECK(floats[0] == 258.0f && floats[1] == 4.0f && floats[2] == 3.0f);
-    // The texels of no tile (all 0) and broken floats are no texel.
+        terrain::unreal::blendTexelFloats(BlendTexel{0x000102u, 0x5u, 0x00030004u, 0x9u});
+    TEST_CHECK(floats[0] == 8388608.0f + 258.0f && floats[1] == 5.0f &&
+               floats[2] == 196612.0f && floats[3] == 9.0f);
+    // The texels of no tile (all 0), without the present bit, and broken floats are no texel.
+    constexpr float kPresent = 8388608.0f;
     TEST_CHECK(!terrain::unreal::blendTexelOf({0.0f, 0.0f, 0.0f, 0.0f}));
-    TEST_CHECK(!terrain::unreal::blendTexelOf({0.5f, 0.0f, 0.0f, 1.0f}));
-    TEST_CHECK(!terrain::unreal::blendTexelOf({-1.0f, 0.0f, 0.0f, 1.0f}));
-    TEST_CHECK(!terrain::unreal::blendTexelOf({0.0f, 65536.0f, 0.0f, 1.0f}));
+    TEST_CHECK(!terrain::unreal::blendTexelOf({258.0f, 0.0f, 0.0f, 0.0f}));
+    TEST_CHECK(!terrain::unreal::blendTexelOf({kPresent, 0.5f, 0.0f, 1.0f}));
+    TEST_CHECK(!terrain::unreal::blendTexelOf({kPresent, -1.0f, 0.0f, 1.0f}));
+    TEST_CHECK(!terrain::unreal::blendTexelOf({kPresent, 16777216.0f, 0.0f, 1.0f}));
     TEST_CHECK(!terrain::unreal::blendTexelOf(
-        {std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f, 1.0f}));
+        {kPresent, std::numeric_limits<float>::quiet_NaN(), 0.0f, 1.0f}));
 }
 
 void testRegion() {
@@ -72,7 +78,7 @@ void testRegion() {
     std::vector<BlendTexel> texels;
     for (int k = 0; k < side; ++k) {
         for (int i = 0; i < side; ++i) {
-            texels.push_back(BlendTexel{static_cast<std::uint32_t>(100 * k + i), 7u});
+            texels.push_back(BlendTexel{static_cast<std::uint32_t>(100 * k + i), 7u, 0u, 0u});
         }
     }
     const std::vector<float> region = terrain::unreal::blendRegion(texels);
@@ -82,8 +88,8 @@ void testRegion() {
     for (int k = 0; k < side; ++k) {
         for (int i = 0; i < side; ++i) {
             const std::size_t at = static_cast<std::size_t>((k * side + i) * 4);
-            ordered = ordered && region[at] == static_cast<float>(100 * k + i) &&
-                      region[at + 1] == 7.0f && region[at + 2] == 0.0f && region[at + 3] == 1.0f;
+            ordered = ordered && region[at] == 8388608.0f + static_cast<float>(100 * k + i) &&
+                      region[at + 1] == 7.0f && region[at + 2] == 0.0f && region[at + 3] == 0.0f;
         }
     }
     TEST_CHECK(ordered);

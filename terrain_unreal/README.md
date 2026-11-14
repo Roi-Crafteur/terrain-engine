@@ -387,9 +387,13 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   avertissement dans le log.
 - **Textures** (`Bridge/horizon_textures.hpp`) : une texture de 257 × 257 texels par niveau,
   `PF_A32B32G32R32F`, au plus proche, sans mipmap. Un texel : la hauteur (m, déjà à plat au niveau
-  de la mer), les deux pentes, la surface empaquetée `matériau + 8 biome` (exacte en float,
-  `Bridge/terrain_surface.hpp`, lue par le matériau temporaire, section 13) ou, sur l'océan, le sol
-  sous la mer (négatif).
+  de la mer), les deux pentes, la surface empaquetée `matériau + 32 biome` (+ 2 048 sous un lac
+  ou un fleuve ; exacte en float, `Bridge/terrain_surface.hpp`, lue par le matériau temporaire,
+  section 13) ou, sur l'océan, le sol sous la mer (négatif). Une seconde texture par niveau porte
+  les fondus des biomes et des matériaux (`Bridge/horizon_blend_texels.hpp`, agents 29 et 49) :
+  `PF_A32B32G32R32F`, les 4 champs de 24 bits du texel de fondu du core (biomes, matériaux et
+  part des dunes, poids des biomes, poids des matériaux et chaleur du sol réservée), le même
+  format que l'atlas des tuiles ; 1,06 Mo par niveau.
   Adressage torique, celui du core : l'échantillon (i, k) de la fenêtre est au texel
   (premier emplacement + (i, k)) mod 257. Un déplacement de niveau n'écrit que la bande nouvelle
   (`UpdateTextureRegions`, quelques centaines de texels), préparée sur les tâches : rien n'est

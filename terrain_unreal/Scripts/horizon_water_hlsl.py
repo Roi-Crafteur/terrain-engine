@@ -68,14 +68,14 @@ float shore = beside > -1.0e8 ? min(beside - t.r, -0.05) : -1.0;
 float height = lerp(t.r, 0.5 * (ta.r + tb.r), alpha);
 float surface = lerp(SURFACE(t, w), 0.5 * (SURFACE(ta, wa) + SURFACE(tb, wb)), alpha);
 float depth = lerp(INLAND(t, w) ? w - t.r : shore, 0.5 * (DEPTH(ta, wa) + DEPTH(tb, wb)), alpha);
-// The kind for the color: the packed surface (material + 8 biome + 128 under inland water,
+// The kind for the color: the packed surface (material + 32 biome + 2048 under inland water,
 // Bridge/terrain_surface.hpp) of the first wet sample.
 float code = INLAND(t, w) ? t.a : (INLAND(ta, wa) ? ta.a : tb.a);
 #undef INLAND
 #undef SURFACE
 #undef DEPTH
-int packed = (int)(code + 0.5) % 128;
-InlandKindOut = packed % 8 == 0 ? 1.0 : (packed / 8 == 2 ? 3.0 : 2.0);
+int packed = (int)(code + 0.5) % 2048;
+InlandKindOut = packed % 32 == 0 ? 1.0 : (packed / 32 == 2 ? 3.0 : 2.0);
 float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;
 float open = fromCenter >= DropCoveredCm - DropFadeCm - PitchCm - 1.0 ? 1.0 : 0.0;
 // The drop of the ground under the tiles (HorizonVertex), taken back on the water.

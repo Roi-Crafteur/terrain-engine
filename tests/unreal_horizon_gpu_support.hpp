@@ -60,9 +60,9 @@ public:
             }
         }
         for (const terrain::unreal::BlendRegion& region : update.blendRegions) {
-            std::vector<std::uint16_t>& blends = blends_[region.level];
+            std::vector<float>& blends = blends_[region.level];
             constexpr int kChannels = terrain::unreal::kBlendChannels;
-            blends.resize(static_cast<std::size_t>(side_ * side_ * kChannels), 0);
+            blends.resize(static_cast<std::size_t>(side_ * side_ * kChannels), 0.0f);
             for (int row = 0; row < region.height; ++row) {
                 for (int column = 0; column < region.width * kChannels; ++column) {
                     blends[static_cast<std::size_t>(((region.z + row) * side_ + region.x) *
@@ -90,7 +90,7 @@ public:
         const auto z = static_cast<int>((placement.firstSlot.z + k) % side_);
         const auto first =
             static_cast<std::size_t>((z * side_ + x) * terrain::unreal::kBlendChannels);
-        std::array<std::uint16_t, terrain::unreal::kBlendChannels> channels{};
+        std::array<float, terrain::unreal::kBlendChannels> channels{};
         std::copy_n(found->second.begin() + static_cast<std::ptrdiff_t>(first), channels.size(),
                     channels.begin());
         return terrain::unreal::blendOfChannels(channels);
@@ -142,7 +142,7 @@ private:
     int side_;
     std::map<int, std::vector<float>> textures_;
     std::map<int, std::vector<float>> water_;
-    std::map<int, std::vector<std::uint16_t>> blends_;
+    std::map<int, std::vector<float>> blends_;
     std::map<int, LevelPlacement> placements_;
 };
 

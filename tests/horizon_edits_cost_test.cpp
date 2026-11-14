@@ -4,8 +4,10 @@
 // the tiles, of the edited ground of its columns (stage), of their summaries (applyStaged), of
 // the epoch that computes the samples around it again on 1 and 2 threads, the samples and the
 // bytes of texels it sends, and the memory of the map. Asserted: the epoch only computes again
-// the samples around the edit; and, loosely so that a slow machine passes, that a big explosion
-// shows far away within 1 s (the edit, its columns, its summaries and its epoch on 2 threads).
+// the samples around the edit; and that a big explosion shows far away (the edit, its columns,
+// its summaries and its epoch on 2 threads) in less than a tenth of the time a razed mountain
+// takes to show, both measured here: its cost follows its size. The goal of 1 s is checked by the
+// bench horizon_edits_cost_test_bench (time_goal_support.hpp), never by ctest.
 #include "terrain/storage/volume_edit.hpp"
 #include "terrain/streaming/horizon_edits.hpp"
 #include "terrain/streaming/horizon_epoch.hpp"
@@ -13,6 +15,7 @@
 
 #include "streaming_test_support.hpp"
 #include "test_assert.hpp"
+#include "time_goal_support.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -215,11 +218,18 @@ void testCosts() {
     TEST_CHECK(blast.epochs[0].samples > 0 && blast.epochs[0].samples < 2'000);
     TEST_CHECK(box.epochs[0].samples > 15'000 && box.epochs[0].samples < 30'000);
     TEST_CHECK(box.epochs[1].samples < box.epochs[0].samples / 10);
+    // Shown, from the edit to the commit of its epoch on 2 threads, with no epoch in flight.
+    const auto seenMs = [](const Measure& m, const Epoch& e) {
+        return m.editMs + m.stageMs + m.applyMs + e.twoThreadsMs;
+    };
+    const double razedMs = seenMs(box, box.epochs[0]);
     for (const Epoch& e : blast.epochs) {
-        const double seen = blast.editMs + blast.stageMs + blast.applyMs + e.twoThreadsMs;
-        std::printf("big explosion seen from %.1f km %.1f ms after it (no epoch in flight)\n",
-                    e.distance / 1000.0, seen);
-        TEST_CHECK(seen < 1000.0);
+        const double seen = seenMs(blast, e);
+        std::printf("big explosion seen from %.1f km %.1f ms after it, %.3f of a razed mountain "
+                    "(%.1f ms)\n",
+                    e.distance / 1000.0, seen, seen / razedMs, razedMs);
+        TEST_CHECK(seen < 0.1 * razedMs);
+        time_goal::report("big explosion seen far away", seen, 1000.0, "ms");
     }
 }
 
@@ -227,5 +237,5 @@ void testCosts() {
 
 int main() {
     testCosts();
-    return test::result();
+    return time_goal::result(test::result());
 }

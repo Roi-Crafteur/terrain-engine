@@ -3,15 +3,19 @@
 // valley of the K2, a square of 1 km razed 11.3 km ahead, 500 m under its lowest ground (its
 // summit near 8,100 m). Measured on the game thread: the command, then every frame until the
 // horizon shows the edit (the edits taken, then the update of the horizon, whose epoch applies the
-// edit and later commits it); and the time from the command to that commit. Goals: under 16 ms
-// per frame; shown under 1 s after the command, of which the edit thread takes the most (427 ms
-// on the machine of the first test in Unreal, three times as long on slower ones): checked here
-// as under 0.5 s besides the edit thread.
+// edit and later commits it); and the time from the command to that commit. Asserted against the
+// edit thread, measured here: the command takes under a hundredth of its time and every frame
+// under a twentieth (the edit and the ground of its columns never run on the game thread), and
+// the horizon shows the edit within 0.4 times its time after it. The goals (the command under
+// 1 ms, a frame under 16 ms, shown under 0.5 s besides the edit thread, which took 427 ms on the
+// machine of the first test in Unreal) are checked by the bench
+// unreal_horizon_edits_cost_test_bench (time_goal_support.hpp), never by ctest.
 #include "horizon_gpu_streamer.hpp"
 #include "terrain_edits.hpp"
 #include "terrain_session.hpp"
 
 #include "test_assert.hpp"
+#include "time_goal_support.hpp"
 #include "unreal_edit_support.hpp"
 
 #include <algorithm>
@@ -105,13 +109,19 @@ void testRazedMountain() {
     std::printf("game thread: at most %.2f ms per frame over %d frames; shown far away %.0f ms "
                 "after the command\n",
                 slowest, frames, shown);
-    TEST_CHECK(queued < 1.0 && slowest < 16.0);
-    TEST_CHECK(shown < raze.editMilliseconds + raze.columnMilliseconds + 500.0);
+    const double editThread = raze.editMilliseconds + raze.columnMilliseconds;
+    std::printf("against the edit thread: command %.5f, slowest frame %.4f, shown after it %.4f\n",
+                queued / editThread, slowest / editThread, (shown - editThread) / editThread);
+    TEST_CHECK(queued < 0.01 * editThread && slowest < 0.05 * editThread);
+    TEST_CHECK(shown - editThread < 0.4 * editThread);
+    time_goal::report("command", queued, 1.0, "ms");
+    time_goal::report("slowest frame", slowest, 16.0, "ms");
+    time_goal::report("shown besides the edit thread", shown - editThread, 500.0, "ms");
 }
 
 } // namespace
 
 int main() {
     testRazedMountain();
-    return test::result();
+    return time_goal::result(test::result());
 }
