@@ -239,7 +239,10 @@ inline std::vector<Part> caveParts() {
         {"entrances", entrancesChecksum(entrances), 0x2877E36872FEE072ULL},
         {"speleothems", speleothemsChecksum(field, ground), 0x3F5133B8CDCF2C4AULL},
         {"cave tiles", tiles, 0x91F4CB6EAF14A36CULL},
-        {"cave materials", materialsChecksum(), 0xD9C5568AB1EF9B55ULL},
+        // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and marshes near the
+        // sea" (b1da378, agent 49): "cave materials" (0xD9C5568AB1EF9B55 before); the new dry
+        // biomes (the deserts, the steppe, the shrubland) take the materials of the dry caves.
+        {"cave materials", materialsChecksum(), 0xF8AF017B802C2A65ULL},
         {"caves at the corner", cornerChecksum(field, ground), 0x98E6B32188631A0CULL},
     };
 }

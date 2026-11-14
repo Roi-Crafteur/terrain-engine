@@ -326,8 +326,15 @@ void testDefaultWorld() {
                     // The tiles hash their blend texels: those of 16 bytes (agent 49) changed
                     // their bytes, never their blends (0x51D8B009355E8A97, 0x435745D91D4D43D8 and
                     // 0xE4369B53BAB781AD for the 3 parts of the tiles before).
-                    {"default world tiles", sums.tiles.value(), 0x33BD195571B453FBULL},
-                    {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
+                    // Re-pasted by "Blend texels: the water of the column, a cover kept for agent
+                    // 44" (5b22f44, agent 49): "default world tiles" (0x33BD195571B453FB before);
+                    // the texels carry the water of their column (the sea).
+                    // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and
+                    // marshes near the sea" (b1da378, agent 49): "default world tiles" and "default
+                    // world horizon" (0xFF3128B624AB9C63, 0x784F4CC234FCB46E before); the 21 biomes
+                    // and the soils of the deserts in the blends.
+                    {"default world tiles", sums.tiles.value(), 0x3E50BC55A6A202E5ULL},
+                    {"default world horizon", sums.horizon.value(), 0x732961EEF31D2FFEULL}});
 }
 
 void testSmallWorldWithWater() {
@@ -348,14 +355,32 @@ void testSmallWorldWithWater() {
     golden::report("the small world with its water out of the coastal zone",
                    {{"small world planet level", planet->checksum(), 0xBFA4DE19A54DAD75ULL},
                     {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
-                    {"small world tiles", sums.tiles.value(), 0x3920923625208FCEULL},
-                    {"small world horizon", sums.horizon.value(), 0x159D43BA4E7127E6ULL},
+                    // Re-pasted by "Blend texels: the water of the column, a cover kept for agent
+                    // 44" (5b22f44, agent 49): "small world tiles" (0x3920923625208FCE before); the
+                    // texels carry the water of their column.
+                    // Re-pasted by "Biome humidity: read the planet level at a warped point"
+                    // (a6cf93a, agent 49): "small world tiles" and "small world horizon"
+                    // (0x2D3A6A8A7D597236, 0x159D43BA4E7127E6 before); the humidity read at a
+                    // warped point moves the biomes.
+                    // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and
+                    // marshes near the sea" (b1da378, agent 49): "small world tiles" and "small
+                    // world horizon" (0xE1E027C592519CA2, 0x44A5616EC0F93A2E before); the 21 biomes
+                    // and the soils of the deserts.
+                    {"small world tiles", sums.tiles.value(), 0xFC65AD41FF23A82AULL},
+                    {"small world horizon", sums.horizon.value(), 0x9AE887BC41AC9C14ULL},
                     {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
                     // Near the rivers (agent 49): the texels of the tiles read the water of the
                     // core, and a dry sample its climate at its ground, not at the level of the
                     // river beside it (0x9B59DD7FA17B37EB and 0x810D6B0B60B06611 before).
-                    {"small world rivers tiles", rivers.tiles.value(), 0x0C052A0A584C2027ULL},
-                    {"small world rivers horizon", rivers.horizon.value(), 0x9D3D6DEECA7F2EF9ULL}});
+                    // Re-pasted by "Blend texels: the water of the column, a cover kept for agent
+                    // 44" (5b22f44, agent 49): "small world rivers tiles" (0x0C052A0A584C2027
+                    // before); the water of the rivers in the texels.
+                    // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and
+                    // marshes near the sea" (b1da378, agent 49): "small world rivers tiles" and
+                    // "small world rivers horizon" (0x6576F30A41D8BC67, 0x9D3D6DEECA7F2EF9 before);
+                    // the 21 biomes, the soils of the deserts and their grass near the rivers.
+                    {"small world rivers tiles", rivers.tiles.value(), 0x3E93E5F33CD78841ULL},
+                    {"small world rivers horizon", rivers.horizon.value(), 0x22ADFDF560140346ULL}});
 }
 
 } // namespace

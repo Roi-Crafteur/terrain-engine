@@ -22,7 +22,7 @@ inline terrain::CaveEnvironment humidEnvironment() {
     return environmentOf(terrain::Biome::TemperateForest, 12.0f, 0.9f);
 }
 inline terrain::CaveEnvironment dryEnvironment() {
-    return environmentOf(terrain::Biome::Desert, 12.0f, 0.05f);
+    return environmentOf(terrain::Biome::RockyDesert, 12.0f, 0.05f);
 }
 inline terrain::CaveEnvironment coldEnvironment() {
     return environmentOf(terrain::Biome::Taiga, -10.0f, 0.9f);

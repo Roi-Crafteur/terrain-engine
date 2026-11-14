@@ -49,6 +49,7 @@ Test known(bool value) {
 // What the decisions read from a column, and the widths of their bands.
 struct Column {
     float temperature;
+    float baseTemperature; // at sea level (ClimateSample::baseTemperature)
     float humidity;
     float slope;    // |grad H|, for the biomes
     float steepest; // steepestSlope, for the materials
@@ -62,6 +63,7 @@ struct Column {
     float dunes; // meters of sand of the seas of dunes (SurfaceSite::dunes)
     float erg;   // SurfaceSite::erg
     float ergFloor; // SurfaceSite::ergFloor
+    float coast;    // coastDistance: meters to the coast, positive inland
 
     [[nodiscard]] float widthOf(float threshold) const {
         return std::max(relativeWidth * std::abs(threshold), kMinWidth);
@@ -81,11 +83,17 @@ struct Column {
     [[nodiscard]] Test altitudeAtMost(float threshold) const {
         return atMost(altitude, threshold, widthOf(threshold));
     }
+    [[nodiscard]] Test baseAtMost(float threshold) const {
+        return atMost(baseTemperature, threshold, temperatureWidth);
+    }
+    [[nodiscard]] Test coastAtMost(float threshold) const {
+        return atMost(coast, threshold, widthOf(threshold));
+    }
 };
 
-// isSnow, isMountain, isBeach and isMarsh of biome.cpp.
-Test snowTest(const Column& c, const BiomeParams& p) {
-    return both(c.temperatureAtMost(p.snowTemperature), c.slopeAtMost(p.snowMaxSlope));
+// coldBiome, isMountain (with the high mountain), isBeach and isMarsh of biome.cpp.
+Test polarColdTest(const Column& c, const BiomeParams& p) {
+    return c.baseAtMost(p.snowTemperature + p.polarBaseOffset);
 }
 
 Test mountainTest(const Column& c, const BiomeParams& p) {
@@ -94,106 +102,191 @@ Test mountainTest(const Column& c, const BiomeParams& p) {
                 either(c.temperatureAtMost(p.treelineTemperature), steep));
 }
 
-// A beach is never below the sea level (dry land there is a depression) nor in a sea of dunes
-// (inland, far from the coasts: ErgParams::coastNear), as in classifyBiome.
+// A beach is never below the sea level (dry land there is a depression), in a sea of dunes
+// (inland, far from the coasts: ErgParams::coastNear) nor far from the sea, as in classifyBiome.
 Test beachTest(const Column& c, const BiomeParams& p) {
     const Test low = both(negate(c.altitudeAtMost(0.0f)), c.altitudeAtMost(p.beachMaxHeight));
-    return both(both(low, c.slopeAtMost(p.beachMaxSlope)), known(!(c.erg > 0.0f)));
+    const Test near = both(c.slopeAtMost(p.beachMaxSlope), c.coastAtMost(p.beachCoastReach));
+    return both(both(low, near), known(!(c.erg > 0.0f)));
 }
 
 Test marshTest(const Column& c, const BiomeParams& p) {
+    const Test coast = both(c.altitudeAtMost(p.marshCoastHeight), c.coastAtMost(p.marshCoastReach));
     const Test wet =
-        either(atMost(c.riverDistance, p.marshRiverReach, c.widthOf(p.marshRiverReach)),
-               c.altitudeAtMost(p.marshCoastHeight));
+        either(atMost(c.riverDistance, p.marshRiverReach, c.widthOf(p.marshRiverReach)), coast);
     const Test ground = both(c.slopeAtMost(p.marshMaxSlope), c.altitudeAtMost(p.marshMaxAltitude));
     const Test climate = both(negate(c.humidityAtMost(p.marshMinHumidity)),
                               negate(c.temperatureAtMost(p.marshMinTemperature)));
     return both(wet, both(ground, climate));
 }
 
-// The regions of whittakerBiome, in its order of decisions.
-void whittakerMargins(const Column& c, const BiomeParams& p, std::array<float, kBiomeCount>& m) {
+using BiomeMargins = std::array<float, kBiomeCount>;
+
+// The margin of a biome reached by one more path of the decisions: the least of its paths.
+void offerBiome(BiomeMargins& m, Biome biome, float margin) {
+    auto& slot = m[static_cast<std::size_t>(biome)];
+    slot = std::min(slot, margin);
+}
+
+// The cold and the cool rows of whittakerBiome (below taigaTemperature).
+void coldWhittaker(const Column& c, const BiomeParams& p, BiomeMargins& m) {
     const Test tundra = c.temperatureAtMost(p.tundraTemperature);
     const Test taiga = c.temperatureAtMost(p.taigaTemperature);
+    const Test dry = c.humidityAtMost(p.coldDesertHumidity);
     const Test dryTaiga = c.humidityAtMost(p.taigaMinHumidity);
-    const Test temperate = c.temperatureAtMost(p.tropicalTemperature);
-    const auto set = [&m](Biome biome, float margin) {
-        auto& slot = m[static_cast<std::size_t>(biome)];
-        slot = std::min(slot, margin);
-    };
-    set(Biome::Tundra,
-        std::min(tundra.holds, std::max({tundra.fails, taiga.holds, dryTaiga.holds})));
-    set(Biome::Taiga, std::max({tundra.fails, taiga.holds, dryTaiga.fails}));
-    const float mild = std::max({tundra.fails, taiga.fails, temperate.holds});
+    offerBiome(m, Biome::ColdDesert, std::max(tundra.holds, dry.holds));
+    offerBiome(m, Biome::Tundra, std::max(tundra.holds, dry.fails));
+    const float cool = std::max(tundra.fails, taiga.holds);
+    offerBiome(m, Biome::ColdDesert, std::max(cool, dry.holds));
+    offerBiome(m, Biome::Tundra, std::max({cool, dry.fails, dryTaiga.holds}));
+    offerBiome(m, Biome::Taiga, std::max(cool, dryTaiga.fails));
+}
+
+// The temperate row of whittakerBiome (temperateBiome).
+void temperateWhittaker(const Column& c, const BiomeParams& p, BiomeMargins& m) {
+    const float mild = std::max({c.temperatureAtMost(p.tundraTemperature).fails,
+                                 c.temperatureAtMost(p.taigaTemperature).fails,
+                                 c.temperatureAtMost(p.tropicalTemperature).holds});
     const Test desert = c.humidityAtMost(p.temperateDesertHumidity);
+    const Test coldDesert = c.temperatureAtMost(p.coldDesertTemperature);
+    const Test steppe = c.humidityAtMost(p.steppeHumidity);
     const Test grassland = c.humidityAtMost(p.forestHumidity);
-    set(Biome::Desert, std::max(mild, desert.holds));
-    set(Biome::Grassland, std::max({mild, desert.fails, grassland.holds}));
-    set(Biome::TemperateForest, std::max({mild, desert.fails, grassland.fails}));
-    const float hot = std::max({tundra.fails, taiga.fails, temperate.fails});
-    const Test hotDesert = c.humidityAtMost(p.hotDesertHumidity);
-    const Test savanna = c.humidityAtMost(p.rainforestHumidity);
-    set(Biome::Desert, std::max(hot, hotDesert.holds));
-    set(Biome::Savanna, std::max({hot, hotDesert.fails, savanna.holds}));
-    set(Biome::TropicalForest, std::max({hot, hotDesert.fails, savanna.fails}));
+    const Test cool = c.temperatureAtMost(p.mediterraneanTemperature);
+    offerBiome(m, Biome::ColdDesert, std::max({mild, desert.holds, coldDesert.holds}));
+    offerBiome(m, Biome::RockyDesert, std::max({mild, desert.holds, coldDesert.fails}));
+    offerBiome(m, Biome::Steppe, std::max({mild, desert.fails, steppe.holds}));
+    offerBiome(m, Biome::Grassland, std::max({mild, steppe.fails, grassland.holds, cool.holds}));
+    offerBiome(m, Biome::Mediterranean,
+               std::max({mild, steppe.fails, grassland.holds, cool.fails}));
+    offerBiome(m, Biome::TemperateForest, std::max(mild, grassland.fails));
+}
+
+// The hot row of whittakerBiome (hotBiome).
+void hotWhittaker(const Column& c, const BiomeParams& p, BiomeMargins& m) {
+    const float hot = std::max({c.temperatureAtMost(p.tundraTemperature).fails,
+                                c.temperatureAtMost(p.taigaTemperature).fails,
+                                c.temperatureAtMost(p.tropicalTemperature).fails});
+    const Test desert = c.humidityAtMost(p.hotDesertHumidity);
+    const Test shrubland = c.humidityAtMost(p.shrublandHumidity);
+    const Test savanna = c.humidityAtMost(p.dryForestHumidity);
+    const Test dryForest = c.humidityAtMost(p.rainforestHumidity);
+    offerBiome(m, Biome::RockyDesert, std::max(hot, desert.holds));
+    offerBiome(m, Biome::Shrubland, std::max({hot, desert.fails, shrubland.holds}));
+    offerBiome(m, Biome::Savanna, std::max({hot, shrubland.fails, savanna.holds}));
+    offerBiome(m, Biome::DryForest, std::max({hot, savanna.fails, dryForest.holds}));
+    offerBiome(m, Biome::TropicalForest, std::max(hot, dryForest.fails));
+}
+
+// The biomes of the cold (coldBiome): the polar region where it is too dry for ice, then snow on
+// gentle ground, the ice desert where the cold comes from the latitude. Returns the margin of the
+// failure of all of them.
+float coldMargins(const Column& c, const BiomeParams& p, BiomeMargins& m) {
+    const Test below = c.temperatureAtMost(p.snowTemperature);
+    const Test polarDry = both(polarColdTest(c, p), c.humidityAtMost(p.polarDryHumidity));
+    const Test polar = both(below, polarDry);
+    offerBiome(m, Biome::Polar, polar.holds);
+    const Test snow = both(below, c.slopeAtMost(p.snowMaxSlope));
+    const Test sheet = c.baseAtMost(p.snowTemperature + p.iceDesertBaseOffset);
+    const float snowRegion = std::max(polar.fails, snow.holds);
+    offerBiome(m, Biome::IceDesert, std::max(snowRegion, sheet.holds));
+    offerBiome(m, Biome::Snow, std::max(snowRegion, sheet.fails));
+    return std::max(polar.fails, snow.fails);
 }
 
 // The regions of classifyBiome on land (no ocean): each decision in its order of priority,
 // once every earlier one failed.
-std::array<float, kBiomeCount> landBiomeMargins(const Column& c, const BiomeParams& p) {
-    std::array<float, kBiomeCount> m{};
+BiomeMargins landBiomeMargins(const Column& c, const BiomeParams& p) {
+    BiomeMargins m{};
     m.fill(kRuledOut);
-    float earlier = 0.0f; // margin of the failure of every earlier decision
+    float earlier = coldMargins(c, p, m); // margin of the failure of every earlier decision
     const auto decide = [&](Biome biome, Test test) {
-        m[static_cast<std::size_t>(biome)] = std::max(earlier, test.holds);
+        offerBiome(m, biome, std::max(earlier, test.holds));
         earlier = std::max(earlier, test.fails);
     };
-    decide(Biome::Snow, snowTest(c, p));
-    decide(Biome::Mountain, mountainTest(c, p));
+    // The mountain, its coldest part the high mountain: one region split in two, as the snow and
+    // the ice desert (no corner where four biomes meet).
+    const Test mountain = mountainTest(c, p);
+    const Test high = c.temperatureAtMost(p.snowTemperature + p.highMountainOffset);
+    offerBiome(m, Biome::HighMountain, std::max({earlier, mountain.holds, high.holds}));
+    offerBiome(m, Biome::Mountain, std::max({earlier, mountain.holds, high.fails}));
+    earlier = std::max(earlier, mountain.fails);
+    decide(Biome::Polar, both(polarColdTest(c, p), c.temperatureAtMost(p.tundraTemperature)));
     decide(Biome::Beach, beachTest(c, p));
     decide(Biome::Marsh, marshTest(c, p));
-    std::array<float, kBiomeCount> whittaker{};
+    decide(Biome::SandDesert, atLeast(c.erg, p.sandDesertErg, c.widthOf(p.sandDesertErg)));
+    BiomeMargins whittaker{};
     whittaker.fill(kRuledOut);
-    whittakerMargins(c, p, whittaker);
-    for (const Biome biome : {Biome::Tundra, Biome::Taiga, Biome::Desert, Biome::Grassland,
-                              Biome::TemperateForest, Biome::Savanna, Biome::TropicalForest}) {
-        const auto b = static_cast<std::size_t>(biome);
-        m[b] = std::max(earlier, whittaker[b]);
+    coldWhittaker(c, p, whittaker);
+    temperateWhittaker(c, p, whittaker);
+    hotWhittaker(c, p, whittaker);
+    for (std::size_t b = 0; b < m.size(); ++b) {
+        if (whittaker[b] != kRuledOut) {
+            m[b] = std::min(m[b], std::max(earlier, whittaker[b]));
+        }
     }
     return m;
+}
+
+using MaterialMargins = std::array<float, kSurfaceMaterialCount>;
+
+void offerMaterial(MaterialMargins& m, SurfaceMaterial material, float margin) {
+    auto& slot = m[static_cast<std::size_t>(material)];
+    slot = std::min(slot, margin);
+}
+
+// desertMaterial of surface_material.cpp over the region base of a desert.
+void desertMargins(const Column& c, const MaterialParams& p, Biome biome, float base,
+                   MaterialMargins& m) {
+    const Test near = atMost(c.riverDistance, p.desertGrassReach, c.widthOf(p.desertGrassReach));
+    const Test bank = atMost(c.riverDistance, p.riverBankWidth, c.widthOf(p.riverBankWidth));
+    const Test dirt = c.steepestAtLeast(p.dirtSlope);
+    offerMaterial(m, SurfaceMaterial::Pebbles, std::max({base, near.holds, bank.holds}));
+    offerMaterial(m, SurfaceMaterial::Dirt, std::max({base, near.holds, bank.fails, dirt.holds}));
+    offerMaterial(m, SurfaceMaterial::Grass, std::max({base, near.holds, bank.fails, dirt.fails}));
+    const float away = std::max(base, near.fails);
+    if (biome == Biome::SandDesert) {
+        offerMaterial(m, SurfaceMaterial::Sand, away);
+        return;
+    }
+    const Test hamada = negate(c.altitudeAtMost(p.hamadaAltitude));
+    offerMaterial(m, SurfaceMaterial::Stone, std::max(away, hamada.holds));
+    offerMaterial(m, SurfaceMaterial::Gravel, std::max(away, hamada.fails));
 }
 
 // The materials of the biomes whose ground is mostly mineral (mineralMaterial of
 // surface_material.cpp) and of the marsh; false for the other biomes.
 bool mineralMargins(const Column& c, const MaterialParams& p, Biome biome, float base,
-                    std::array<float, kSurfaceMaterialCount>& m) {
-    const auto offer = [&m](SurfaceMaterial material, float margin) {
-        auto& slot = m[static_cast<std::size_t>(material)];
-        slot = std::min(slot, margin);
-    };
+                    MaterialMargins& m) {
     switch (biome) {
     case Biome::Snow:
-        offer(SurfaceMaterial::Snow, base);
+    case Biome::IceDesert:
+        offerMaterial(m, SurfaceMaterial::Snow, base);
         return true;
-    case Biome::Mountain: {
+    case Biome::Mountain:
+    case Biome::HighMountain: {
         const Test snow = c.temperatureAtMost(p.mountainSnowTemperature);
         const Test scree = c.steepestAtLeast(p.screeSlope);
-        offer(SurfaceMaterial::Snow, std::max(base, snow.holds));
-        offer(SurfaceMaterial::Pebbles, std::max({base, snow.fails, scree.holds}));
-        offer(SurfaceMaterial::Rock, std::max({base, snow.fails, scree.fails}));
+        offerMaterial(m, SurfaceMaterial::Snow, std::max(base, snow.holds));
+        offerMaterial(m, SurfaceMaterial::Pebbles, std::max({base, snow.fails, scree.holds}));
+        offerMaterial(m, SurfaceMaterial::Rock, std::max({base, snow.fails, scree.fails}));
         return true;
     }
     case Biome::Beach: {
         const Test cold = c.temperatureAtMost(p.pebbleBeachTemperature);
-        offer(SurfaceMaterial::Pebbles, std::max(base, cold.holds));
-        offer(SurfaceMaterial::Sand, std::max(base, cold.fails));
+        offerMaterial(m, SurfaceMaterial::Pebbles, std::max(base, cold.holds));
+        offerMaterial(m, SurfaceMaterial::Sand, std::max(base, cold.fails));
         return true;
     }
-    case Biome::Desert:
-        offer(SurfaceMaterial::Sand, base);
+    case Biome::Polar:
+        offerMaterial(m, SurfaceMaterial::Gravel, base);
+        return true;
+    case Biome::RockyDesert:
+    case Biome::SandDesert:
+    case Biome::ColdDesert:
+        desertMargins(c, p, biome, base, m);
         return true;
     case Biome::Marsh:
-        offer(SurfaceMaterial::Mud, base);
+        offerMaterial(m, SurfaceMaterial::Mud, base);
         return true;
     default:
         return false;
@@ -215,8 +308,8 @@ Test ergFloorMargins(const Column& c, const MaterialParams& p, float before,
         slot = std::min(slot, margin);
     };
     offer(SurfaceMaterial::Sand, std::max(base, sand.holds));
-    offer(SurfaceMaterial::Pebbles, std::max({base, sand.fails, crust.fails}));
-    offer(SurfaceMaterial::Dirt, std::max({base, crust.holds}));
+    offer(SurfaceMaterial::Gravel, std::max({base, sand.fails, crust.fails}));
+    offer(SurfaceMaterial::Crust, std::max({base, crust.holds}));
     return erg;
 }
 
@@ -281,13 +374,14 @@ Margins regionMargins(const ClimateSample& climate, const SurfaceSite& site,
         bareRockOnly(site, margins);
         return margins;
     }
-    const Column column{climate.temperature,     climate.humidity,
-                        climate.slope,           steepestSlope(climate, site),
-                        site.ground - kSeaLevel, site.riverDistance,
-                        site.cliffWall,          site.rockAboveAir,
-                        params.temperatureWidth, params.humidityWidth,
-                        params.relativeWidth,    site.dunes,
-                        site.erg,                site.ergFloor};
+    const Column column{climate.temperature,     climate.baseTemperature,
+                        climate.humidity,        climate.slope,
+                        steepestSlope(climate, site), site.ground - kSeaLevel,
+                        site.riverDistance,      site.cliffWall,
+                        site.rockAboveAir,       params.temperatureWidth,
+                        params.humidityWidth,    params.relativeWidth,
+                        site.dunes,              site.erg,
+                        site.ergFloor,           coastDistance(site)};
     margins.biomes = landBiomeMargins(column, biomes);
     if (site.dry()) {
         margins.materials = dryMaterialMargins(column, materials, margins.biomes);

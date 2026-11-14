@@ -4,8 +4,8 @@
 //   dunes under 10 m deep): each kind on 1 % of them at least (the planet of the game: sand 7 to
 //   94 %, gravel 6 to 81 %, crust 0 to 22 % from one erg to the next), none on more than 90 %,
 //   and the kind changes slowly (50 m apart, by 0.25 at most: patches, no speckle).
-// - Materials: on a grassland, the floor of an erg away from the water is sand, gravel
-//   (pebbles) or crust (dirt) by its kind, never grass; within ergGrassReach of a river and off
+// - Materials: on a grassland, the floor of an erg away from the water is sand, gravel or crust
+//   by its kind (agent 49: pebbles and dirt before), never grass; within ergGrassReach of a river and off
 //   the erg, grass. The dominant material of the blend is surfaceMaterial everywhere; the sand of
 //   the dunes thins out over 3 m of sand on the floor of an erg (its weight 0.5 at 1.5 m), never
 //   on the ground off the ergs, however wide the noise of the borders makes the bands.
@@ -138,8 +138,8 @@ void testMaterials() {
         return terrain::surfaceMaterial(terrain::classifyBiome(c, s, biomes), c, s, materials);
     };
     TEST_CHECK(material(floorSite(0.0f, 1.0f, 0.0f, 1.0e4f)) == SurfaceMaterial::Sand);
-    TEST_CHECK(material(floorSite(0.0f, 1.0f, 1.0f, 1.0e4f)) == SurfaceMaterial::Pebbles);
-    TEST_CHECK(material(floorSite(0.0f, 1.0f, 2.0f, 1.0e4f)) == SurfaceMaterial::Dirt);
+    TEST_CHECK(material(floorSite(0.0f, 1.0f, 1.0f, 1.0e4f)) == SurfaceMaterial::Gravel);
+    TEST_CHECK(material(floorSite(0.0f, 1.0f, 2.0f, 1.0e4f)) == SurfaceMaterial::Crust);
     TEST_CHECK(material(floorSite(0.0f, 1.0f, 1.0f, 50.0f)) == SurfaceMaterial::Grass);
     TEST_CHECK(material(floorSite(0.0f, 0.0f, 1.0f, 1.0e4f)) == SurfaceMaterial::Grass);
     TEST_CHECK(material(floorSite(3.0f, 1.0f, 1.0f, 1.0e4f)) == SurfaceMaterial::Sand);

@@ -177,7 +177,11 @@ public:
     [[nodiscard]] float climateAt(double x, double z) const;
     // The erg at the canonical (x, z) over a relief of intensity relief (HeightSample::relief).
     // rift: HeightSample::rift (none in the troughs of the rifts: their walls are too steep).
-    [[nodiscard]] ErgPoint at(double x, double z, float relief, float rift = 0.0f) const;
+    // courses: false reads the corridors of the polyline of the river cells instead of the floors
+    // of the valleys (as the ergs built alone): never a query of the hydrology, for the dev map
+    // above 64 m per pixel (agent 49: its sand deserts, map_source.cpp).
+    [[nodiscard]] ErgPoint at(double x, double z, float relief, float rift = 0.0f,
+                              bool courses = true) const;
     // The meters of sand the dunes lay over the relief of s at the canonical (x, z): exactly 0
     // where the mask is 0 (and over the sea). footprint: the side of the square a sample stands
     // for (a level of the far horizon), meters, 0 for a point: from a tenth of the spacing of the

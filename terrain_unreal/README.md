@@ -391,9 +391,12 @@ niveau est une texture réécrite par bandes et une grille fixe que le matériau
   ou un fleuve ; exacte en float, `Bridge/terrain_surface.hpp`, lue par le matériau temporaire,
   section 13) ou, sur l'océan, le sol sous la mer (négatif). Une seconde texture par niveau porte
   les fondus des biomes et des matériaux (`Bridge/horizon_blend_texels.hpp`, agents 29 et 49) :
-  `PF_A32B32G32R32F`, les 4 champs de 24 bits du texel de fondu du core (biomes, matériaux et
-  part des dunes, poids des biomes, poids des matériaux et chaleur du sol réservée), le même
-  format que l'atlas des tuiles ; 1,06 Mo par niveau.
+  `PF_A32B32G32R32F`, les 4 champs de 24 bits du texel de fondu du core (biomes et type d'eau,
+  matériaux, part des dunes et type de couverture, poids des biomes et part de couverture, poids
+  des matériaux et chaleur du sol réservée), le même format que l'atlas des tuiles ; 1,06 Mo par
+  niveau. Le type d'eau (`TexelWater` de `blend_layers_hlsl.py` : sec, mer, fleuve, lac, lac
+  salé) est pour l'eau de l'horizon (agent 40) ; la couverture (sable, neige, cendre, sel) est
+  réservée à l'agent 44, à 0 pour l'instant.
   Adressage torique, celui du core : l'échantillon (i, k) de la fenêtre est au texel
   (premier emplacement + (i, k)) mod 257. Un déplacement de niveau n'écrit que la bande nouvelle
   (`UpdateTextureRegions`, quelques centaines de texels), préparée sur les tâches : rien n'est
@@ -665,7 +668,7 @@ fait que téléverser les tuiles finies (au plus `TileUploadsPerFrame` par image
   le personnage et la caméra ne bougent plus ; `M` ou Échap la ferment. Molette : zoom autour du
   curseur, de 0,25 m à 65 km par pixel (la planète entière) ; glisser : déplacer. Panneau de
   droite : le fichier planète (chargé, construit, ou ABSENT : ni fleuves, ni lacs, ni chutes), les
-  calques (relief, biomes, eau, courbes), « Go to x, z » (`-241631, -86277`, ou
+  calques (relief, biomes, mousson, eau, courbes), « Go to x, z » (`-241631, -86277`, ou
   `-6 185 104 ; 155 924`), « Me » (recentrer sur le joueur), « Add this place » (la vue de la
   caméra), les lieux enregistrés, et sous le curseur : x, z, sol, eau (type, niveau, profondeur),
   biome, climat, case de la planète. **Jamais dans un build Shipping** : la carte plein écran, ses

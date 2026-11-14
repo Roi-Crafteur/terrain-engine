@@ -655,8 +655,49 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - à faire avant l'étape 1 de la 11C : le réseau d'eau doit voir ces creux
 
 ### Tous les milieux du monde (minimum voulu)
-- format à élargir d'abord : 12 biomes aujourd'hui, 16 biomes et 8 matériaux au plus par le format
-  actuel
+- format élargi (agent 49, #76) : biomes sur 6 bits (64), matériaux sur 5 bits (32), texels de
+  fondu de 16 octets. Le texel porte aussi le type d'eau de la colonne (pour l'agent 40) et garde
+  la place d'une couverture, part et type (sable, neige, cendre, sel : agent 44), et de la chaleur
+  du sol (phase 14)
+- fait (agent 49) : 21 biomes terrestres (forêt sèche, steppe, désert de sable, désert rocheux avec
+  regs et hamadas, désert froid, haute montagne, région polaire, désert de glace, garrigue et
+  maquis, broussailles), herbe des déserts à moins de 150 m d'un fleuve, plage et marais côtier
+  seulement près de la mer ; seuils froids réglés sur `snowTemperature` par des écarts nommés
+- places réservées aux autres agents (identifiants seulement, rien de codé) :
+
+  | Agent | Matériaux | Biomes |
+  |---|---|---|
+  | 45 (volcans) | 11-14 : cendre, basalte, scories, soufre | 21-22 : champ de lave, zone géothermique |
+  | 46 (plateaux, karst) | 15-16 : calcaire, grès rouge | — |
+  | 47 (glaciaire) | 17-18 : glace de glacier, moraine | 23 : glacier |
+  | 50 (humides et côtiers) | 19-22 : tourbe, croûte de sel, vasière, galets de plage | 24-33 |
+  | 51 (mers) | 23-25 : corail, glace de mer, vase des abysses | 34-39 |
+  | libres | 26-31 | 40-63 |
+
+- zone de mousson : un marquage, jamais un biome (agent 49, `monsoon.hpp`). Sa part en [0, 1] est
+  chaude × humide × bande tropicale aux bords gauchis, et couvre 4 % des terres à 0,5 au moins.
+  On la lit sur la carte de dev (calque `monsoon`), dans F3 (`monsoon`) et dans la sonde
+  (`surface.monsoon`). À reprendre par l'agent 50 (plaines inondables, forêts inondées, prairies
+  humides)
+  - écart à reprendre (agent 50, réglage à R1) : 3,95 % des terres de la planète réelle à 0,5 au
+    moins, contre environ 28 % des terres de la Terre dans le domaine de la mousson globale (Bin
+    Wang, webinaire OMM/WCRP 2023 ; Wang et Ding 2008 : 19,4 % de toute la surface du globe, mers
+    comprises). Causes probables : la bande de latitude (8 à 25°) et le seuil d'humidité (0,45 à
+    0,6) sont étroits, et la planète n'a pas de saisons ; la vraie définition (Wang et Ding) lit
+    l'écart de pluie entre l'été et l'hiver (plus de 2 mm/j, plus de 55 % en été)
+- à R1, réglage fin des seuils des biomes sur la table des 6 seeds. Le climat de la planète bouge
+  alors (latitude « sphère » et bandes fondues de l'agent 31). Écarts mesurés sur le climat actuel
+  (planète réelle, 38 071 points de terre ; réglage grossier jusque-là) :
+  - trop de froid : désert de glace, neige et région polaire couvrent 24 % des terres, contre
+    environ 11 % sur Terre (inlandsis) ;
+  - trop peu de forêt tropicale humide : 2,5 % contre environ 14 % ;
+  - garrigue et maquis trop larges (4,8 % contre 2,2 %), prairies et steppes aussi (10,6 % contre
+    6,9 %) ;
+  - lignes droites de l'humidité de la planète (bandes de vent, ligne à 30°), encore visibles à
+    200 km : le gauchissement de ±12 km ne casse que les plis de la grille de 8 km. L'agent 31
+    les lisse à la source ;
+  - pour information : le sable couvre 5 % des déserts, contre environ 20 % sur Terre, car le
+    masque des ergs (agent 34) ne couvre que 0,87 % des terres
 - un milieu n'est pas toujours un biome : il peut être un biome, un relief, un marquage ou un lieu
 - terrestres : forêts tropicale, tempérée, boréale et sèche, savane, prairie, steppe, plaine, déserts
   de sable, rocheux et froid, toundra, montagne, haute montagne, vallée, colline, plateau, canyon,

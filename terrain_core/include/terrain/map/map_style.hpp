@@ -14,8 +14,9 @@ inline constexpr const char* kMapReliefLayer = "relief";
 inline constexpr const char* kMapBiomesLayer = "biomes";
 inline constexpr const char* kMapWaterLayer = "water";
 inline constexpr const char* kMapContoursLayer = "contours";
+inline constexpr const char* kMapMonsoonLayer = "monsoon";
 
-// relief, biomes, water and contours, in this order.
+// relief, biomes, monsoon, water and contours, in this order.
 [[nodiscard]] MapLayers defaultMapLayers();
 // The layers drawn at first: relief and water.
 [[nodiscard]] std::vector<std::string> defaultMapLayerNames();
@@ -25,6 +26,9 @@ inline constexpr const char* kMapContoursLayer = "contours";
 [[nodiscard]] MapColor reliefLayer(const MapPoint& p);
 // The colors of the biomes (kBiomeRgb), lit by mapShade; nothing over the ocean.
 [[nodiscard]] MapColor biomeLayer(const MapPoint& p);
+// The zones of the monsoon (agent 49, MapSample::monsoon): a translucent blue-green over the land,
+// more opaque where the share is higher; nothing where it is 0 (a marking, never a biome).
+[[nodiscard]] MapColor monsoonLayer(const MapPoint& p);
 // The sea, translucent over its floor; the lakes and salt lakes; the rivers, darker the larger
 // their discharge, over the part of the pixel their course covers; the marks of the falls (a red
 // ring around a white center).

@@ -2,8 +2,11 @@
 // the rule of each material over a sweep of biomes, climates and surfaces.
 #include "terrain/generation/surface_material.hpp"
 
+#include "terrain/generation/biome.hpp"
+
 #include "test_assert.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <vector>
@@ -101,56 +104,93 @@ void testRock() {
     TEST_CHECK(rock);
 }
 
-// The rule a dry column must satisfy to be given each material.
+bool mountainish(Biome biome) {
+    return biome == Biome::Mountain || biome == Biome::HighMountain;
+}
+
+// The floor of an erg away from the water, of the given kind (0 sand, 1 gravel, 2 crust).
+bool ergFloorOf(const SurfaceSite& site, const MaterialParams& p, float low, float high) {
+    return site.erg >= p.ergFloorErg && site.riverDistance > p.ergGrassReach &&
+           site.ergFloor >= low && site.ergFloor <= high;
+}
+
+// The rule a dry column must satisfy to be given each material (agent 49: the soils of the
+// deserts and the polar region, grass in a desert only near a river).
 bool satisfiesRule(SurfaceMaterial material, Biome biome, const ClimateSample& c,
                    const SurfaceSite& site, const MaterialParams& p) {
     const float steepest = terrain::steepestSlope(c, site);
     const float t = c.temperature;
     const bool bank = site.riverDistance <= p.riverBankWidth;
+    const bool farDesert = terrain::isDesert(biome) && site.riverDistance > p.desertGrassReach;
+    const bool hamada = site.ground - terrain::kSeaLevel >= p.hamadaAltitude;
+    const bool rocky = biome == Biome::RockyDesert || biome == Biome::ColdDesert;
     switch (material) {
     case SurfaceMaterial::Water:
         return !site.dry();
     case SurfaceMaterial::Rock:
         return steepest >= p.rockSlope || site.cliffWall || site.rockAboveAir ||
-               (biome == Biome::Mountain && steepest < p.screeSlope);
+               (mountainish(biome) && steepest < p.screeSlope);
     case SurfaceMaterial::Snow:
-        return biome == Biome::Snow || (biome == Biome::Mountain && t <= p.mountainSnowTemperature);
+        return biome == Biome::Snow || biome == Biome::IceDesert ||
+               (mountainish(biome) && t <= p.mountainSnowTemperature);
     case SurfaceMaterial::Sand:
-        return biome == Biome::Desert || (biome == Biome::Beach && t >= p.pebbleBeachTemperature);
+        return (biome == Biome::SandDesert && farDesert) ||
+               (biome == Biome::Beach && t >= p.pebbleBeachTemperature) ||
+               ergFloorOf(site, p, 0.0f, 0.5f);
     case SurfaceMaterial::Mud:
         return biome == Biome::Marsh;
     case SurfaceMaterial::Pebbles:
-        return (biome == Biome::Mountain && steepest >= p.screeSlope) ||
+        return (mountainish(biome) && steepest >= p.screeSlope) ||
                (biome == Biome::Beach && t < p.pebbleBeachTemperature) || bank;
     case SurfaceMaterial::Dirt:
         return biome == Biome::Tundra || steepest >= p.dirtSlope;
     case SurfaceMaterial::Grass:
-        return steepest < p.dirtSlope && biome != Biome::Tundra && biome != Biome::Desert &&
-               biome != Biome::Beach && biome != Biome::Marsh && biome != Biome::Snow &&
-               biome != Biome::Mountain && !bank;
+        return steepest < p.dirtSlope && biome != Biome::Tundra && biome != Biome::Beach &&
+               biome != Biome::Marsh && biome != Biome::Snow && biome != Biome::IceDesert &&
+               biome != Biome::Polar && !mountainish(biome) && !bank && !farDesert;
+    case SurfaceMaterial::Gravel:
+        return biome == Biome::Polar || (rocky && farDesert && !hamada) ||
+               ergFloorOf(site, p, 0.5f, 1.5f);
+    case SurfaceMaterial::Stone:
+        return rocky && farDesert && hamada;
+    case SurfaceMaterial::Crust:
+        return ergFloorOf(site, p, 1.5f, 2.0f);
     }
     return false;
 }
 
-// Over a sweep of biomes, temperatures, slopes and river distances, every dry column satisfies
-// the rule of its material, and every material shows up.
+// Over a sweep of biomes, temperatures, slopes, altitudes, river distances and floors of ergs,
+// every dry column satisfies the rule of its material, and every material shows up.
 void testRulesHold() {
     const MaterialParams params;
     const std::vector<float> slopes = {0.0f, 0.2f, 0.4f, 0.5f, 0.6f, 0.9f, 1.0f, 1.5f};
-    const std::vector<float> distances = {0.0f, 10.0f, 30.0f, terrain::kNoRiverDistance};
+    const std::vector<float> distances = {0.0f, 10.0f, 30.0f, 100.0f, 200.0f,
+                                          terrain::kNoRiverDistance};
+    const std::vector<float> floors = {-1.0f, 0.0f, 1.0f, 2.0f}; // -1: off the ergs
     std::array<int, terrain::kSurfaceMaterialCount> counts{};
     bool rules = true;
     for (int b = 0; b < terrain::kBiomeCount; ++b) {
         for (float t = -20.0f; t <= 35.0f; t += 1.0f) {
             for (const float slope : slopes) {
                 for (const float distance : distances) {
-                    for (const WaterKind water : {WaterKind::None, WaterKind::River}) {
-                        const ClimateSample climate = climateOf(t, slope);
-                        const SurfaceSite site = siteOf(water, 0.0f, distance);
-                        const SurfaceMaterial material =
-                            terrain::surfaceMaterial(biomeAt(b), climate, site, params);
-                        ++counts[static_cast<std::size_t>(material)];
-                        rules = rules && satisfiesRule(material, biomeAt(b), climate, site, params);
+                    for (const float ground : {300.0f, 800.0f}) {
+                        for (const float floor : floors) {
+                            const ClimateSample climate = climateOf(t, slope);
+                            // A river column now and then: the water shows up too.
+                            const WaterKind water = floor == 0.0f && distance == 0.0f
+                                                        ? WaterKind::River
+                                                        : WaterKind::None;
+                            SurfaceSite site = siteOf(water, 0.0f, distance);
+                            site.ground = ground;
+                            site.waterLevel = ground;
+                            site.erg = floor < 0.0f ? 0.0f : 0.5f;
+                            site.ergFloor = std::max(floor, 0.0f);
+                            const SurfaceMaterial material =
+                                terrain::surfaceMaterial(biomeAt(b), climate, site, params);
+                            ++counts[static_cast<std::size_t>(material)];
+                            rules = rules &&
+                                    satisfiesRule(material, biomeAt(b), climate, site, params);
+                        }
                     }
                 }
             }
@@ -160,6 +200,29 @@ void testRulesHold() {
     for (const int count : counts) {
         TEST_CHECK(count > 0);
     }
+}
+
+// In a desert, grass only near the water (the rule of the user): the reg and the hamada of a
+// rocky desert, the sand of a sand desert, the pebbles of the banks.
+void testDesertSoils() {
+    const ClimateSample hot = climateOf(28.0f, 0.02f);
+    SurfaceSite plain = siteOf(WaterKind::None);
+    TEST_CHECK(terrain::surfaceMaterial(Biome::RockyDesert, hot, plain) == SurfaceMaterial::Gravel);
+    SurfaceSite plateau = plain;
+    plateau.ground = 700.0f;
+    TEST_CHECK(terrain::surfaceMaterial(Biome::RockyDesert, hot, plateau) == SurfaceMaterial::Stone);
+    TEST_CHECK(terrain::surfaceMaterial(Biome::SandDesert, hot, plain) == SurfaceMaterial::Sand);
+    TEST_CHECK(terrain::surfaceMaterial(Biome::ColdDesert, hot, plateau) == SurfaceMaterial::Stone);
+    TEST_CHECK(terrain::surfaceMaterial(Biome::RockyDesert, hot,
+                                        siteOf(WaterKind::None, 0.0f, 100.0f)) ==
+               SurfaceMaterial::Grass);
+    TEST_CHECK(terrain::surfaceMaterial(Biome::RockyDesert, hot,
+                                        siteOf(WaterKind::None, 0.0f, 10.0f)) ==
+               SurfaceMaterial::Pebbles);
+    TEST_CHECK(terrain::surfaceMaterial(Biome::Polar, climateOf(-8.0f, 0.02f), plain) ==
+               SurfaceMaterial::Gravel);
+    TEST_CHECK(terrain::surfaceMaterial(Biome::IceDesert, climateOf(-20.0f, 0.02f), plain) ==
+               SurfaceMaterial::Snow);
 }
 
 // A few representative columns.
@@ -196,6 +259,7 @@ int main() {
     testWater();
     testRock();
     testRulesHold();
+    testDesertSoils();
     testExamples();
     return test::result();
 }

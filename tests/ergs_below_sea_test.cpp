@@ -1,7 +1,7 @@
 // Land below the sea level in a sea of dunes is dry sand (agent 34, ergs.hpp; the water of a column
 // is the marker of the geography and the hydrology, never its height):
 // - Columns: the floor and the dunes of an erg, dry (no water), from 300 m under the sea level
-//   to 10 m over it, in the climate of a hot desert: their biome desert (never ocean, beach or
+//   to 10 m over it, in the climate of a hot desert: their biome sand desert (never ocean, beach or
 //   marsh), their dominant material sand and their blend all of the desert, whatever the width of
 //   its bands.
 // - The dry depressions of the default world: a sea of dunes covers their floor under the sea
@@ -53,7 +53,7 @@ void testColumns() {
             const terrain::SurfaceSite s = ergColumn(static_cast<float>(g), dunes);
             const Biome b = terrain::classifyBiome(c, s, biomes);
             ++columns;
-            wrongBiome += b == Biome::Desert ? 0 : 1;
+            wrongBiome += b == Biome::SandDesert ? 0 : 1; // a sea of dunes (agent 49)
             wrongMaterial +=
                 terrain::surfaceMaterial(b, c, s, materials) == SurfaceMaterial::Sand ? 0 : 1;
             for (const float factor : {0.2f, 1.0f, 1.8f}) {

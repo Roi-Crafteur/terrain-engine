@@ -104,12 +104,13 @@ def check_code(look_hlsl, loading, scripts):
                       {"VERTEX_HLSL", "BLEND_INPUTS"})
     tiles_source = (scripts / "create_temporary_terrain_material.py").read_text(encoding="utf-8")
     struct = strip(look_hlsl)
-    members = re.findall(r"\n    (?:bool|void|float[1-4]?|int) ([A-Z][A-Za-z0-9]*)\(", struct)
+    members = re.findall(r"\n    (?:bool|void|float[1-4]?|uint[1-4]?|int) ([A-Z][A-Za-z0-9]*)\(", struct)
     check(len(members) == len(set(members)), f"a member of the struct twice: {members}")
-    for name in ("AddBlend", "FinishBlend", "BlendLayers", "TexelBlend", "BlendTexelsLayers"):
+    for name in ("AddBlend", "FinishBlend", "BlendLayers", "TexelBlend", "TexelWater",
+                 "BlendTexelsLayers"):
         check(members.count(name) == 1, f"the struct has no {name}")
     declared = 0
-    bodies = re.split(r"\n    (?=(?:bool|void|float[1-4]?|int) [A-Z][A-Za-z0-9]*\()", struct)
+    bodies = re.split(r"\n    (?=(?:bool|void|float[1-4]?|uint[1-4]?|int) [A-Z][A-Za-z0-9]*\()", struct)
     for body in bodies[1:]:
         declared += check_scopes(body, declaration, f"struct member {body.split('(')[0]}", False)
     for what, code in (("horizon vertex", gpu["VERTEX_HLSL"]),
@@ -163,6 +164,7 @@ def f32(x):
 
 PRESENT = 1 << 23  # biome_blend.hpp: kBlendPresentBit
 DUNE = 15  # biome_blend.hpp: kBlendDuneShift
+WATER = 18  # biome_blend.hpp: kBlendWaterShift
 
 
 def whole(channel):
@@ -208,11 +210,20 @@ def finish_blend(wb, wm, biomes, wd=0.0):
           + wm[1] * ((1.0 - dune) * (0.0, 1.0 - desert, desert, 0.0)[i] + dune * (0, 1, 0, 0)[i])
           + (wm[4] + wm[7]) * (0, 0, 0, 1)[i]
           for i in range(4)]
+    if len(wb) > 15:  # the grass of the deserts is the grass of an oasis (agent 49)
+        deserts = (2, 14, 15)
+        total = sum(wb[d] for d in deserts)
+        la = [la[i] + wm[2] * (total * (0.7, 0.3, 0.0, 0.0)[i]
+                               - sum(wb[d] * biomes[d][0][i] for d in deserts)) for i in range(4)]
+        lb = [lb[i] - wm[2] * sum(wb[d] * biomes[d][1][i] for d in deserts) for i in range(4)]
+    if len(wm) > 10:  # the soils of the deserts (agent 49): gravel, stone, crust
+        lb = [lb[i] + wm[8] * (0.0, 0.0, 0.65, 0.35)[i] + wm[9] * (0.25, 0.0, 0.0, 0.75)[i]
+              + wm[10] * (0.45, 0.55, 0.0, 0.0)[i] for i in range(4)]
     lc = [c[0] + (1.0 - c[0]) * wm[5], c[1] + (1.0 - c[1]) * wm[4]]
     return la, lb, lc, wb, wm
 
 
-def blend_texels_layers(texels, shares, biomes, dunes=None, materials=8):
+def blend_texels_layers(texels, shares, biomes, dunes=None, materials=11):
     wb, wm, wd = [0.0] * len(biomes), [0.0] * materials, [0.0]
     for floats, share in zip(texels, shares):
         v, present = texel_blend(floats)
@@ -270,6 +281,33 @@ def check_reference(biomes):
     check(blend_texels_layers((forest, [0, 0, 0, 0]), (1.0, 0.0), biomes) is not None,
           "a texel without blend and of no share refused")
     check_dunes(biomes)
+    check_water()
+    # Grass near the water of a rocky desert (2) and of a sand desert (14): the grass of an oasis,
+    # drawn far as near (the green band along a river of a desert, agent 49).
+    for desert in (2, 14):
+        oasis = channels((desert, desert, desert), (255, 0), (2, 2, 2), (255, 0))
+        la, lb, _, _, _ = blend_texels_layers((oasis,), (1.0,), biomes)
+        check(abs(la[0] - 0.7) < 1e-6 and abs(la[1] - 0.3) < 1e-6 and sum(lb) < 1e-6,
+              f"the grass near the water of the desert {desert}: {la}, {lb}")
+    # The soils of the deserts (gravel 8, stone 9, crust 10) in a rocky desert (2): the ground
+    # layers still sum to 1, through the morph.
+    soils = channels((2, 2, 2), (255, 0), (8, 9, 10), (100, 90))
+    for alpha in (0.0, 0.5, 1.0):
+        la, lb, _, _, wm = blend_texels_layers((soils, forest, soils),
+                                               (1.0 - alpha, 0.5 * alpha, 0.5 * alpha), biomes)
+        check(abs(sum(la) + sum(lb) - 1.0) < 1e-6 and wm[8] > 0.0,
+              f"the soils of the deserts at the morph {alpha}: {la}, {lb}")
+
+
+def check_water():
+    """TexelWater reads every kind of water (4 bits from WATER_SHIFT of the biomes) under the
+    present bit and beside the biome ids of the 3 slots, never one of their bits."""
+    wrong = 0
+    for kind in range(16):
+        for ids in (0, (1 << 18) - 1):
+            v, _ = texel_blend([float(PRESENT | ids | kind << WATER), 0.0, 0.0, 0.0])
+            wrong += (v[0] >> WATER) & 15 != kind or v[0] & ((1 << 18) - 1) != ids
+    check(wrong == 0, f"{wrong} kinds of water decode wrong")
 
 
 def check_dunes(biomes):
@@ -308,7 +346,8 @@ def check_dunes(biomes):
 def header_constant(path, name):
     """The integer of an inline constexpr of a header of the core (a literal or a sum of them)."""
     found = re.search(rf"constexpr int {name} = ([^;]+);", path.read_text(encoding="utf-8"))
-    return eval(found.group(1), {"kBlendSlots": 3, "kMaterialIdBits": 5}) if found else None
+    return eval(found.group(1), {"kBlendSlots": 3, "kMaterialIdBits": 5, "kBiomeIdBits": 6}) \
+        if found else None
 
 
 def check_counts(root, blend):
@@ -319,12 +358,16 @@ def check_counts(root, blend):
                 "BIOME_ID_BITS": ("biome_blend.hpp", "kBiomeIdBits"),
                 "MATERIAL_ID_BITS": ("biome_blend.hpp", "kMaterialIdBits"),
                 "PRESENT_BIT": ("biome_blend.hpp", "kBlendPresentBit"),
-                "DUNE_SHIFT": ("biome_blend.hpp", "kBlendDuneShift")}
+                "DUNE_SHIFT": ("biome_blend.hpp", "kBlendDuneShift"),
+                "WATER_SHIFT": ("biome_blend.hpp", "kBlendWaterShift"),
+                "COVER_SHIFT": ("biome_blend.hpp", "kBlendCoverShift"),
+                "COVER_KIND_SHIFT": ("biome_blend.hpp", "kBlendCoverKindShift")}
     for name, (header, constant) in expected.items():
         value = header_constant(generation / header, constant)
         check(value == getattr(blend, name), f"{name} of blend_layers_hlsl.py is "
               f"{getattr(blend, name)}, {constant} of {header} is {value}")
-    check(PRESENT == 1 << blend.PRESENT_BIT and DUNE == blend.DUNE_SHIFT,
+    check(PRESENT == 1 << blend.PRESENT_BIT and DUNE == blend.DUNE_SHIFT
+          and WATER == blend.WATER_SHIFT,
           "the reference decodes other fields than the HLSL")
     check(blend.SURFACE_BIOME_STRIDE == 32 and blend.SURFACE_WATER_CODE == 2048,
           "the packed surface of Bridge/terrain_surface.hpp")

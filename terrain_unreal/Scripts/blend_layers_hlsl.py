@@ -25,14 +25,25 @@ pasted into.
 # kSurfaceMaterialCount) and the fields of a blend texel (biome_blend.hpp: kBiomeIdBits,
 # kMaterialIdBits, kBlendPresentBit, kBlendDuneShift). unreal_horizon_blend_scripts_test reads
 # them in the headers of the core and checks that they match.
-BIOME_COUNT = 12
-MATERIAL_COUNT = 8
+BIOME_COUNT = 21
+MATERIAL_COUNT = 11
 BIOME_ID_BITS = 6
 MATERIAL_ID_BITS = 5
 PRESENT_BIT = 23
 DUNE_SHIFT = MATERIAL_ID_BITS * 3
+# The water of the texel in its biomes (4 bits: biome_blend.hpp kBlendWaterShift, WaterKind 0 dry,
+# 1 ocean, 2 river, 3 lake, 4 salt lake), for the water of the horizon (agent 40); the share of
+# the cover in its biomeWeights (8 bits, kBlendCoverShift) and its kind in its materials (2 bits,
+# kBlendCoverKindShift: sand, snow, ash, salt), for the covers (agent 44). None is drawn yet.
+WATER_SHIFT = 18
+COVER_SHIFT = 16
+COVER_KIND_SHIFT = 22
 # The packed surface of a texel of the horizon (Bridge/terrain_surface.hpp): material +
 # SURFACE_BIOME_STRIDE x biome, + SURFACE_WATER_CODE under a lake or a river.
+# The deserts (terrain_core biome.hpp: isDesert: rocky, sand, cold): grass there only near the water,
+# drawn as the grass of an oasis (OASIS_A), never as the layers of the desert.
+DESERTS = (2, 14, 15)
+OASIS_A = "float4(0.7, 0.3, 0.0, 0.0)"
 SURFACE_BIOME_STRIDE = 1 << MATERIAL_ID_BITS
 SURFACE_WATER_CODE = 1 << (MATERIAL_ID_BITS + BIOME_ID_BITS)
 
@@ -87,6 +98,13 @@ _ADD = r"""
     {
         v = (uint4)max(t, 0.0);
         return (v.x & PRESENTu) != 0u;
+    }
+
+    // The water over a decoded texel (biome_blend.hpp: SurfaceBlend::water; WaterKind 0 dry, 1
+    // ocean, 2 river, 3 lake, 4 salt lake), for the water of the horizon (agent 40).
+    uint TexelWater(uint4 v)
+    {
+        return (v.x >> WATER_SHIFTu) & 15u;
     }
 
     // Adds one blend texel, its share times its weights (biome_blend.hpp: addTexel), never
@@ -145,6 +163,14 @@ _FINISH = r"""
         b = keep * B + soil * (0.3 * B + float4(0.7, 0.0, 0.0, 0.0)) + wm0.x * bed
           + wm0.y * lerp(float4(0.0, 1.0 - desert, desert, 0.0), float4(0.0, 1.0, 0.0, 0.0), dune)
           + (wm1.x + wm1.w) * float4(0.0, 0.0, 0.0, 1.0);
+        // The grass of the deserts (near the water, agent 49) is the grass of an oasis.
+        float deserts = DESERT_SUM;
+        a += wm0.z * (deserts * OASIS - (DESERT_A));
+        b -= wm0.z * (DESERT_B);
+        // The soils of the deserts (agent 49): gravel (a reg) the stony desert and scree, stone (a
+        // hamada) scree over dark earth, crust pale sand and earth.
+        b += wm2.x * float4(0.0, 0.0, 0.65, 0.35) + wm2.y * float4(0.25, 0.0, 0.0, 0.75)
+           + wm2.z * float4(0.45, 0.55, 0.0, 0.0);
         c.x = lerp(c.x, 1.0, wm1.y);                                                     // snow
         c.y = lerp(c.y, 1.0, wm1.x);                                                     // rock
     }
@@ -214,10 +240,14 @@ def _generate():
     code = code.replace("LANE_PARAMS", LANE_PARAMS).replace("LANE_INPUTS", LANE_INPUTS)
     code = code.replace("LANE_ARGS", LANE_ARGS)
     code = code.replace("LANE_ZEROS", LANE_ZEROS).replace("WEIGHTS_LIST", _weights_list())
+    code = code.replace("DESERT_SUM", " + ".join(lane("wb", d) for d in DESERTS))
+    code = code.replace("DESERT_A", " + ".join(f"{lane('wb', d)} * BA[{d}]" for d in DESERTS))
+    code = code.replace("DESERT_B", " + ".join(f"{lane('wb', d)} * BB[{d}]" for d in DESERTS))
+    code = code.replace("OASIS", OASIS_A)
     numbers = {"PRESENT": 1 << PRESENT_BIT, "DUNE": DUNE_SHIFT, "BIOME_BITS": BIOME_ID_BITS,
                "BIOME_MASK": (1 << BIOME_ID_BITS) - 1, "BIOME_LAST": BIOME_COUNT - 1,
                "MATERIAL_BITS": MATERIAL_ID_BITS, "MATERIAL_MASK": (1 << MATERIAL_ID_BITS) - 1,
-               "MATERIAL_LAST": MATERIAL_COUNT - 1}
+               "MATERIAL_LAST": MATERIAL_COUNT - 1, "WATER_SHIFT": WATER_SHIFT}
     for name in sorted(numbers, key=len, reverse=True):
         code = code.replace(f"{name}u", f"{numbers[name]}u")
     return fill(code) + "\n"

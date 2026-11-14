@@ -13,7 +13,7 @@ Shipping, tout le code des outils est sous `#if TERRAIN_DEV_TOOLS` (vérifié pa
 
 | Sujet | `terrain_core` et le Bridge (données, déterministe, testé par ctest) | Unreal (affiche, fait jouer) |
 |---|---|---|
-| Infos d'un point | `Bridge/point_info` lit le core : sol, eau (type, niveau, profondeur), relief avant les fleuves, biome, matériau, climat, case et climat de la planète, vallée et lac, chute la plus proche, distance à la côte, LOD de la tuile affichée, chunk, bloc | l'écran F3, `Terrain.Info` |
+| Infos d'un point | `Bridge/point_info` lit le core : sol, eau (type, niveau, profondeur), relief avant les fleuves, biome, les 2 biomes du fondu et leurs poids (`biome weights`), matériau, part de mousson (`monsoon`, un marquage), climat, case et climat de la planète, vallée et lac, chute la plus proche, distance à la côte, LOD de la tuile affichée, chunk, bloc | l'écran F3, `Terrain.Info` |
 | Point visé | `Bridge/ground_ray` : marche du rayon sur le sol du core jusqu'à 30 km ; « hors heightmap » quand le point touché s'écarte du relief | trace sur les tuiles qui ont une collision (LOD 0, ~64 m) d'abord |
 | Lieux | `terrain_core/dev/places_file` : le fichier des lieux, sur le JSON strict de `terrain/json` (#56) ; `Bridge/place_pose` : yaw = cap − 90, œil selon `eyeMode` | `Terrain.Goto`, `Look`, `Eye`, `Save`, `Pawn` ; le pion volant des outils |
 | Images | `Bridge/shot_waiter` : quand tout est chargé, délai maximum, noms, `views.txt` | `FScreenshotRequest`, l'enchaînement de `Terrain.Views` |
@@ -304,6 +304,32 @@ par `terrain_core/dev/places_file` :
 | `fleuve_plaine` | −241 631 | −86 277 | 5 | 0 | +2 m | oui | un fleuve de plaine (eau à 3,28 m), vers l'aval |
 | `lac_montagne` | 7 369 228 | −7 088 911 | 180 | 5 | +2 m | oui | un lac de montagne (eau à 1 725,26 m) |
 | `lisiere_tropicale_savane` | −26 927 500 | −270 336 | 265 | −5 | +40 m | **non** | la lisière forêt tropicale / savane à 450 m vers l'ouest, au-dessus des arbres ; **sans** fichier planète seulement (avec lui, savane partout) |
+
+### Les lieux des biomes de la terre (agent 49)
+
+Avec le fichier planète. Chacun des nouveaux biomes, à son endroit le plus plat où il tient
+600 m tout autour (`terrain_biome_places --planet <fichier> --step 80000`). Les lisières sont vues
+de 1,5 km à l'ouest du bord, vers l'est. Le fleuve d'un désert est vu de 300 m et de 3 km. Les
+sols, biomes et poids viennent de `terrain_probe` sur le monde entier (fleuves et dunes compris).
+
+| Lieu | x | z | cap | incl. | œil | à comparer à |
+|---|---|---|---|---|---|---|
+| `biome_desert_rocheux` | 23 704 512 | −4 898 112 | 0 | −8 | +30 m | le Tanezrouft (reg) |
+| `biome_foret_seche` | −15 975 488 | 2 941 888 | 0 | −8 | +30 m | le miombo (mousson 0,44) |
+| `biome_steppe` | −28 615 488 | 5 821 888 | 0 | −8 | +30 m | la steppe kazakhe |
+| `biome_desert_sable` | 14 264 512 | −4 818 112 | 0 | −8 | +30 m | le Rub' al-Khali |
+| `biome_desert_froid` | −15 655 488 | −12 658 112 | 0 | −8 | +30 m | le Gobi (au bord de la toundra) |
+| `biome_haute_montagne` | 15 624 512 | −9 858 112 | 0 | −10 | +30 m | les Alpes au-dessus de 3 000 m |
+| `biome_region_polaire` | 1 624 512 | −17 458 112 | 0 | −8 | +30 m | les vallées sèches de l'Antarctique, le Svalbard |
+| `biome_desert_glace` | −12 295 488 | −13 538 112 | 0 | −8 | +30 m | l'inlandsis du Groenland |
+| `biome_garrigue` | −15 335 488 | −6 578 112 | 0 | −8 | +30 m | la Provence, la Corse |
+| `biome_broussailles` | 23 464 512 | −5 618 112 | 0 | −8 | +30 m | le Karoo, le Sahel |
+| `lisiere_steppe_desert` | −29 948 359 | −5 138 112 | 90 | −6 | +120 m | steppe à l'ouest, désert rocheux à l'est |
+| `lisiere_polaire_glace` | −29 898 036 | −12 738 112 | 90 | −6 | +120 m | région polaire à l'ouest, désert de glace à l'est |
+| `lisiere_foret_seche_savane` | −29 842 414 | −818 112 | 90 | −6 | +120 m | forêt sèche à l'ouest, savane à l'est |
+| `lisiere_garrigue_foret` | −29 955 206 | −6 178 112 | 90 | −6 | +120 m | garrigue à l'ouest, forêt tempérée à l'est |
+| `fleuve_desert_300m` | −29 975 880 | −5 858 190 | 0 | −35 | +300 m | galets au lit, herbe jusqu'à 150 m, hamada au-delà |
+| `fleuve_desert_3km` | −29 975 880 | −5 858 190 | 0 | −45 | +3 000 m | la bande verte encore visible au-delà de 512 m |
 
 ### Les lieux et le fichier planète
 
