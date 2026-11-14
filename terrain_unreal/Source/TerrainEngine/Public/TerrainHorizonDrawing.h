@@ -22,6 +22,13 @@ struct FTerrainHorizonDrawing
 		meta = (ClampMin = "0", ClampMax = "45"))
 	float LowSunShadowDegrees = 12.0f;
 
+	// The height fog of the map kept at the sea level under the camera while playing
+	// (Bridge/horizon_atmosphere.hpp: heightFogAboveSeaCm): the haze of the sea and of the low
+	// coasts, whatever height the map gives it; set back where the map placed it at the end of the
+	// play. Off: the Z of the fog in the map, read as its height above the sea level (as before).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Horizon|Haze")
+	bool bSeaFog = true;
+
 	// The haze of the dust over dry land (Bridge/atmosphere_haze.hpp, TerrainAtmosphereHaze.h): the
 	// dryness of the region around the camera (0 over humid lands, the sea and the cold; 1 over a
 	// desert, from the planet level) turns the SkyAtmosphere of the map toward a dusty air while

@@ -7,6 +7,7 @@
 #include "Components/SkyLightComponent.h"
 #include "HAL/PlatformTime.h"
 #include "Kismet/GameplayStatics.h"
+#include "TerrainEngineLog.h"
 
 #include <algorithm>
 #include <utility>
@@ -38,6 +39,12 @@ void UTerrainAtmosphereFollower::Follow(USkyAtmosphereComponent* InSky,
 	Fog = InFog;
 	Light = InLight;
 	FogAboveSeaCm = InFogAboveSeaCm;
+	FogStart.Reset();
+	if (InFog != nullptr)
+	{
+		const FVector Start = InFog->GetComponentLocation();
+		FogStart = terrain::unreal::toCore(Frame, {Start.X, Start.Y, Start.Z});
+	}
 	for (USceneComponent* Component : {static_cast<USceneComponent*>(InSky),
 			 static_cast<USceneComponent*>(InFog), static_cast<USceneComponent*>(InLight)})
 	{
@@ -46,6 +53,22 @@ void UTerrainAtmosphereFollower::Follow(USkyAtmosphereComponent* InSky,
 			Component->SetMobility(EComponentMobility::Movable);
 		}
 	}
+}
+
+void UTerrainAtmosphereFollower::Release()
+{
+	UExponentialHeightFogComponent* HeightFog = Fog.Get();
+	if (HeightFog != nullptr && FogStart.IsSet())
+	{
+		const terrain::unreal::UnrealPoint Start =
+			terrain::unreal::toUnreal(Frame, FogStart.GetValue());
+		MoveTo(*HeightFog, FVector(Start.x, Start.y, Start.z));
+		UE_LOG(LogTerrainEngine, Log,
+			TEXT("Terrain World: %s set back where the level placed it, %.0f m above the sea level"),
+			*HeightFog->GetName(),
+			terrain::unreal::heightAboveSeaMeters(Start, Frame));
+	}
+	FogStart.Reset();
 }
 
 void UTerrainAtmosphereFollower::TickComponent(float DeltaTime, ELevelTick TickType,

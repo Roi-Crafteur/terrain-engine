@@ -33,7 +33,8 @@ public:
 	void Stop();
 
 	// Terrain.Haze: the region (auto), the values of the map (off), or a dryness forced; and the
-	// dusty air changed while playing.
+	// dusty air changed while playing. Set on the sky at once, without the easing of the follower:
+	// Describe reads back what is drawn from the next frame on.
 	void SetMode(bool bInOn, std::optional<double> InForced);
 	terrain::unreal::DustHaze& Dust() { return DustAir; }
 	// The dryness shown and the values on the sky, read back.
@@ -41,6 +42,7 @@ public:
 
 private:
 	void Apply(const terrain::unreal::HazeLook& Look);
+	double TargetAt(double CoreX, double CoreZ) const;
 
 	TWeakObjectPtr<USkyAtmosphereComponent> Sky;
 	std::shared_ptr<const terrain::PlanetLevel> Planet;
@@ -53,4 +55,6 @@ private:
 	double Target = 0.0;
 	double SinceRefresh = 1.0e9;
 	double Applied = -1.0; // the dryness last set; -1: the values of the map
+	double EyeX = 0.0; // the camera at the last frame, in the core
+	double EyeZ = 0.0;
 };

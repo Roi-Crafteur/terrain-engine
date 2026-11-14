@@ -31,11 +31,39 @@ struct CostCommand {
 [[nodiscard]] std::optional<CostCommand> parseCost(std::span<const std::string> args,
                                                    std::string& error);
 
+// The console commands of one side, its text cut at each ";" and run in order: one side can switch
+// several things at once (the total of the photo gains). Empty pieces are dropped.
+[[nodiscard]] std::vector<std::string> costSteps(const std::string& side);
+
+// One frame as stat unit reads it, ms: the GPU, the game thread and the render thread; and whether
+// the window of the play was in the foreground.
+struct AbFrame {
+    double gpuMs = 0.0;
+    double gameMs = 0.0;
+    double renderMs = 0.0;
+    bool foreground = true;
+};
+
 struct AbPhase {
     int side = 0; // 0: A, 1: B
     double meanGpuMs = 0.0;
     int frames = 0;
+    double meanFrameMs = 0.0; // from one frame to the next
+    double meanGameMs = 0.0;
+    double meanRenderMs = 0.0;
+    double foreground = 1.0; // the share of its frames drawn with the window in the foreground
 };
+
+// What held the frames of a phase back: the busiest of the GPU, the game thread and the render
+// thread, or none of them (Waiting) when a frame lasts much longer than all three (more than
+// kAbWaitingRatio times the busiest plus kAbWaitingMs): the engine sleeps or waits. An editor in
+// the background draws 3 frames a second (Editor Preferences, Performance, Use Less CPU when in
+// Background); t.MaxFPS, the vertical sync or a stall also make it wait.
+enum class AbLimit { Gpu, Game, Render, Waiting };
+inline constexpr double kAbWaitingRatio = 1.5;
+inline constexpr double kAbWaitingMs = 4.0;
+[[nodiscard]] AbLimit limitOf(const AbPhase& phase);
+[[nodiscard]] const char* limitName(AbLimit limit);
 
 struct AbSummary {
     std::array<double, 2> mean{};   // the mean of the phases of A and of B, ms
@@ -54,9 +82,9 @@ public:
     // Starts the first phase at this time: its side, to run now.
     int start(double now);
 
-    // A frame drawn at this time with this GPU time: the side to run now when a new phase starts
+    // A frame drawn at this time with these times: the side to run now when a new phase starts
     // with it, nullopt otherwise (and once done).
-    std::optional<int> addFrame(double now, double gpuMs);
+    std::optional<int> addFrame(double now, const AbFrame& frame);
 
     [[nodiscard]] bool done() const { return phase_ >= 2 * params_.rounds; }
     [[nodiscard]] int phase() const { return phase_; }
@@ -67,8 +95,11 @@ private:
     AbCostParams params_;
     int phase_ = 0;
     double phaseStart_ = 0.0;
-    double sum_ = 0.0;
-    int frames_ = 0;
+    double lastFrame_ = 0.0;
+    struct Sums {
+        double gpu = 0.0, frame = 0.0, game = 0.0, render = 0.0, foreground = 0.0;
+        int frames = 0;
+    } sums_;
     std::vector<AbPhase> phases_;
 };
 

@@ -110,12 +110,13 @@ void FTerrainAtmosphereHaze::Update(double CoreX, double CoreZ, double DeltaSeco
 	{
 		return;
 	}
+	EyeX = CoreX;
+	EyeZ = CoreZ;
 	SinceRefresh += DeltaSeconds;
 	if (SinceRefresh >= terrain::unreal::kHazeRefreshSeconds)
 	{
 		SinceRefresh = 0.0;
-		Target = Forced ? *Forced
-			: (Planet != nullptr ? terrain::unreal::regionDryness(*Planet, CoreX, CoreZ) : 0.0);
+		Target = TargetAt(CoreX, CoreZ);
 	}
 	const double Shown = Follower.follow(Target, DeltaSeconds, CoreX, CoreZ);
 	if (Applied < 0.0 || std::abs(Shown - Applied) > terrain::unreal::kHazeMinStep)
@@ -141,12 +142,30 @@ void FTerrainAtmosphereHaze::SetMode(bool bInOn, std::optional<double> InForced)
 	bOn = bInOn;
 	Forced = InForced;
 	Follower.reset();
-	SinceRefresh = 1.0e9;
-	if (!bOn && bReady)
+	SinceRefresh = 0.0;
+	Applied = -1.0;
+	if (!bReady)
+	{
+		return;
+	}
+	if (!bOn)
 	{
 		Apply(Map);
-		Applied = -1.0;
+		return;
 	}
+	Target = TargetAt(EyeX, EyeZ);
+	Applied = Follower.follow(Target, 0.0, EyeX, EyeZ);
+	Apply(terrain::unreal::hazeLook(Map, DustAir, Applied));
+}
+
+// The dryness forced, or that of the region of the camera (0 without the planet level).
+double FTerrainAtmosphereHaze::TargetAt(double CoreX, double CoreZ) const
+{
+	if (Forced)
+	{
+		return *Forced;
+	}
+	return Planet != nullptr ? terrain::unreal::regionDryness(*Planet, CoreX, CoreZ) : 0.0;
 }
 
 FString FTerrainAtmosphereHaze::Describe() const

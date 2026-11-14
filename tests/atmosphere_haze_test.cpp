@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <numbers>
@@ -44,7 +45,7 @@ constexpr std::array<View, 7> kViews{{{"erg_vagues_8km", 11505334.0, -4967544.0,
                                       {"erg_vagues_crete", 11505016.0, -4964964.0, true},
                                       {"desert_froid_500m", 1863968.0, -10006000.0, true},
                                       {"chaine_humide_50km", 4125500.0, 2555832.0, false},
-                                      {"plage_origine_est", 3400.0, 0.0, false},
+                                      {"plage_origine_est", 3533.0, 0.0, false},
                                       {"foret_humide_sol", -6179604.0, 165924.0, false}}};
 
 const terrain::PlanetLevel& planet() {
@@ -57,6 +58,22 @@ void testViews() {
         std::printf("dryness of %s: %.3f\n", v.name, d);
         TEST_CHECK(v.dry ? d > 0.9 : d < 0.05);
     }
+    // Its cost on the game thread, paid every 0.5 s (kHazeRefreshSeconds): printed for the report
+    // (session 1 asked what slows erg_vagues_crete), bounded far above to stay steady on a loaded
+    // machine.
+    constexpr int kCalls = 2000;
+    double sum = 0.0;
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < kCalls; ++i) {
+        sum += terrain::unreal::regionDryness(planet(), 11505016.0 + i, -4964964.0);
+    }
+    const double micros =
+        std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start)
+            .count() /
+        kCalls;
+    std::printf("regionDryness: %.1f microseconds a call (mean dryness %.3f)\n", micros,
+                sum / kCalls);
+    TEST_CHECK(micros < 2000.0);
 }
 
 void testLook() {

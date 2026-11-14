@@ -35,6 +35,16 @@ namespace terrain::unreal {
 [[nodiscard]] UnrealPoint heightFogUnder(const UnrealPoint& camera, const UnrealFrame& frame,
                                          double fogAboveSeaCm);
 
+// The height above the sea level at which the plugin keeps the height fog, centimeters. At the
+// sea level (atSeaLevel, FTerrainHorizonDrawing::bSeaFog): the haze of the sea and of the low
+// coasts, its density halving every few tens of meters above the water, whatever Z the level
+// gives it. Otherwise the Z of the fog in the level (levelFogZ), read as its height above the sea
+// (the plugin before): a fog placed 2.7 km under the Z 0 of its level then never reached the sea.
+[[nodiscard]] double heightFogAboveSeaCm(bool atSeaLevel, double levelFogZ);
+
+// How high a point of Unreal stands above the sea level, meters (Terrain.Fog reads the fog back).
+[[nodiscard]] double heightAboveSeaMeters(const UnrealPoint& point, const UnrealFrame& frame);
+
 // Height (meters) of a camera above the ground of a planet of this radius (meters) whose top
 // stands at planetTop: what the SkyAtmosphere takes as its altitude.
 [[nodiscard]] double heightAbovePlanet(const UnrealPoint& camera, const UnrealPoint& planetTop,

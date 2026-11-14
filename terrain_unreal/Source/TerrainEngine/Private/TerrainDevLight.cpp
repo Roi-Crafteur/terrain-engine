@@ -32,6 +32,7 @@
 
 #if TERRAIN_DEV_TOOLS
 
+#include "Bridge/horizon_atmosphere.hpp"
 #include "Bridge/horizon_low_sun.hpp"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/ExponentialHeightFogComponent.h"
@@ -235,13 +236,22 @@ namespace
 		{
 			return;
 		}
-		const double UnderEye =
-			(Camera->GetCameraLocation().Z - Fog.GetComponentLocation().Z) / 100.0;
+		const FVector At = Fog.GetComponentLocation();
+		FString AboveSea = TEXT("the sea level unknown (no follower of the atmosphere)");
+		for (TObjectIterator<UTerrainAtmosphereFollower> It; It; ++It)
+		{
+			if (It->GetWorld() == &World)
+			{
+				AboveSea = FString::Printf(TEXT("%.1f m above the sea level"),
+					terrain::unreal::heightAboveSeaMeters({At.X, At.Y, At.Z}, It->GetFrame()));
+			}
+		}
+		const double UnderEye = (Camera->GetCameraLocation().Z - At.Z) / 100.0;
 		const double Halving = Fog.FogHeightFalloff > 0.0f ? 10.0 / Fog.FogHeightFalloff : 0.0;
 		UE_LOG(LogTerrainEngine, Log,
-			TEXT("Terrain.Fog: %s at %.0f m under the eye; its density halves every %.0f m above "
-				 "it (0: never)"),
-			*Fog.GetName(), UnderEye, Halving);
+			TEXT("Terrain.Fog: %s %s, %.1f m under the eye; its density halves every %.0f m "
+				 "above it (0: never)"),
+			*Fog.GetName(), *AboveSea, UnderEye, Halving);
 	}
 
 	// Terrain.Fog <density> [end km] [height falloff] [cutoff km], on one registered fog.
@@ -399,8 +409,7 @@ namespace
 				Dust.mieAbsorptionScale = Numbers.Num() > 3 ? Numbers[3] : Dust.mieAbsorptionScale;
 				Haze.SetMode(true, FMath::Clamp(Numbers[0], 0.0, 1.0));
 			}
-			UE_LOG(LogTerrainEngine, Log, TEXT("Terrain.Haze: %s (set at the next frame)"),
-				*Haze.Describe());
+			UE_LOG(LogTerrainEngine, Log, TEXT("Terrain.Haze: %s"), *Haze.Describe());
 		}
 		if (Followers == 0)
 		{

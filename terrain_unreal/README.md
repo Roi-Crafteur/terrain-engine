@@ -528,10 +528,11 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
   frame, le sommet de sa planète au niveau de la mer sous la caméra : la même sphère que la
   courbure de l'horizon, dont la mer tombe sur son sol et l'horizon sur le sien. Il pose
   l'`ExponentialHeightFog` sous la caméra à sa hauteur au-dessus de la mer, et la `SkyLight` sur la
-  caméra. Cette hauteur est le Z du brouillard dans le niveau, lu une fois par Play comme une
-  hauteur au-dessus de la mer (le Z 0 du niveau est la mer, quel que soit le point du core à
-  l'origine) : un brouillard posé pour une plage ne flotte pas 4 km plus haut quand le niveau
-  commence sur une montagne (`CoreOriginX`, `CoreOriginZ` près du K2). Après un tour du monde ou un recentrage d'origine, la frame suivante a déjà son ciel
+  caméra. Cette hauteur est 0 : le brouillard se pose au niveau de la mer sous la caméra
+  (`HorizonDrawing.bSeaFog`, agent 40 ; la carte de test le plaçait 2,7 km sous la mer, où il
+  n'agissait pas), quel que soit le point du core à l'origine ou le Z que la carte lui donne ; il
+  est rendu à l'arrêt où la carte l'avait mis. `bSeaFog` faux : son Z dans le niveau, lu une fois
+  par Play comme une hauteur au-dessus de la mer (le plugin d'avant). Après un tour du monde ou un recentrage d'origine, la frame suivante a déjà son ciel
   (vérifié par les positions et des captures). Coût : 0,0015 ms par frame sur le thread de jeu.
 - **Perspective aérienne** : son volume (`r.SkyAtmosphere.AerialPerspectiveLUT.Depth`, 96 km par
   défaut) est porté à la portée de l'horizon (748 km avec 10 niveaux), rendu à `EndPlay` : les

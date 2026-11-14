@@ -89,6 +89,42 @@ void testFogAboveTheSea() {
     }
 }
 
+// The fog of the sea (FTerrainHorizonDrawing::bSeaFog): the map of the orchestrator places its
+// height fog 2,712 m under the Z 0 of the level, and the plugin read that Z as its height above
+// the sea, so the fog never reached the sea (session 1, plage_origine_est: "2712 m under the
+// eye"). At the sea level, the fog stands at 0 m above the sea under the camera, whatever the
+// frame (a level that starts on a mountain, on a beach, after the origin rebasing), and Terrain.Fog
+// reads 0 back; the eye on the beach is 1.8 m above it. Off: the Z of the level, to the bit. The
+// place where the level put the fog, kept as a point of the core, comes back at its Z at the end
+// of the play, even after the origin rebasing has moved the world.
+void testSeaFogAtTheSeaLevel() {
+    const double levelFogZ = -2712.0 * kCm;
+    TEST_CHECK(terrain::unreal::heightFogAboveSeaCm(false, levelFogZ) == levelFogZ);
+    TEST_CHECK(terrain::unreal::heightFogAboveSeaCm(true, levelFogZ) == 0.0);
+    const UnrealPoint offset{-1.0e7, 2.5e6, -3.0e5};
+    for (const double originGround : {4268.0, 0.0, -1.47}) {
+        const UnrealFrame frame{{3400.0, originGround, 0.0}};
+        for (const UnrealFrame& now : {frame, terrain::unreal::shifted(frame, offset)}) {
+            const double sea = terrain::unreal::seaLevelZ(now);
+            const UnrealPoint eye{120.0 * kCm, -40.0 * kCm, sea + 1.8 * kCm};
+            const UnrealPoint fog = terrain::unreal::heightFogUnder(
+                eye, now, terrain::unreal::heightFogAboveSeaCm(true, levelFogZ));
+            TEST_CHECK(fog.x == eye.x && fog.y == eye.y && fog.z == sea);
+            TEST_CHECK(terrain::unreal::heightAboveSeaMeters(fog, now) == 0.0);
+            TEST_CHECK(std::abs((eye.z - fog.z) / kCm - 1.8) < 1e-9);
+            const UnrealPoint old = terrain::unreal::heightFogUnder(eye, now, levelFogZ);
+            TEST_CHECK(std::abs(terrain::unreal::heightAboveSeaMeters(old, now) + 2712.0) < 1e-9);
+        }
+        const UnrealPoint placed{5.0e4, -7.0e4, levelFogZ};
+        const terrain::unreal::CorePoint kept = terrain::unreal::toCore(frame, placed);
+        const UnrealPoint back =
+            terrain::unreal::toUnreal(terrain::unreal::shifted(frame, offset), kept);
+        TEST_CHECK(std::abs(back.x - (placed.x + offset.x)) < 1e-6 &&
+                   std::abs(back.y - (placed.y + offset.y)) < 1e-6 &&
+                   std::abs(back.z - (placed.z + offset.z)) < 1e-6);
+    }
+}
+
 // The sea of the horizon, lowered by the curvature of its material (d^2 / 2R), lies on the
 // ground of the planet under the camera, within the gap between the parabola and the sphere
 // (d^4 / 8R^3, 10.5 m at 520 km for a drop of 14 km), from the beach and from a summit.
@@ -166,6 +202,7 @@ int main() {
     testFixedPlanetGoesBlack();
     testPlanetUnderCamera();
     testFogAboveTheSea();
+    testSeaFogAtTheSeaLevel();
     testCurvedSeaOnThePlanet();
     testAerialPerspectiveDepth();
     testWaveOrigin();

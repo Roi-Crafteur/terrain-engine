@@ -74,14 +74,15 @@ void ATerrainWorld::StartAtmosphere()
 		Sky->SetBottomRadius(static_cast<float>(RadiusKm));
 		Sky->MarkRenderStateDirty();
 	}
-	// The Z of the fog in the level is its height above the sea level (Bridge/horizon_atmosphere:
-	// heightFogUnder), not above the ground at the origin: the same fog for a level that starts on
-	// a beach or on a mountain. Read once: the follower moves the fog afterwards.
+	// The fog at the sea level under the camera (Bridge/horizon_atmosphere: heightFogAboveSeaCm),
+	// or, bSeaFog off, its Z in the level read as its height above the sea. Read once: the follower
+	// moves the fog afterwards, and sets it back where it stood at the end (Release).
 	if (Fog != nullptr && !LevelFogAboveSeaCm.IsSet())
 	{
 		LevelFogAboveSeaCm = Fog->GetComponentLocation().Z;
 	}
-	const double FogAboveSeaCm = LevelFogAboveSeaCm.Get(0.0);
+	const double FogAboveSeaCm = terrain::unreal::heightFogAboveSeaCm(
+		HorizonDrawing.bSeaFog, LevelFogAboveSeaCm.Get(0.0));
 	if (Fog != nullptr && FogEndDistanceKm > 0.0f)
 	{
 		Fog->SetEndDistance(FogEndDistanceKm * 1.0e5f);
@@ -110,6 +111,7 @@ void ATerrainWorld::StopAtmosphere()
 	{
 		AtmosphereFollower->GetHaze().Stop(); // the map's SkyAtmosphere set back
 		AtmosphereFollower->GetBounce().Stop(); // and its SkyLight
+		AtmosphereFollower->Release(); // and its height fog
 		AtmosphereFollower->DestroyComponent();
 		AtmosphereFollower = nullptr;
 	}
