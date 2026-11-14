@@ -13,9 +13,12 @@
 // --frost: the one threshold of the frost (the ice of the planet level and the snow of the
 // biomes), Celsius, after the flags.
 // Usage: terrain_climate_shares <output-dir> [--seeds <a,b,...>] [--flags <a,b>]
-//        [--frost <celsius>] [--pole <celsius>] [--subtropical-dip <v>] [--ergs] [--erg-share]
+//        [--frost <celsius>] [--pole <celsius>] [--subtropical-dip <v>] [--eddy-share <v>]
+//        [--ergs] [--erg-share]
 //        [--step <cells>] [--threads <n>]
 // --subtropical-dip: the dip of the rain of the subtropics (PlanetClimateParams::subtropicalDip).
+// --eddy-share: the share of the rain of the storms that bring the moisture of the nearby seas
+// over the land (PlanetClimateParams::eddyShare).
 // --erg-share: the share of the land and of the deserts (the biomes named desert, not the ice
 // desert) under an erg (its mask 0.5 at least).
 
@@ -52,6 +55,8 @@ struct Options {
     bool ergShare = false;
     bool dip = false;
     double subtropicalDip = 0.0;
+    bool eddy = false;
+    double eddyShare = 0.0;
     int step = 4;
     int threads = 4;
 };
@@ -86,6 +91,9 @@ bool parse(int argc, char** argv, Options& o) {
             o.poleTemperature = std::strtof(argv[++a], nullptr);
         } else if (arg == "--erg-share") {
             o.ergShare = true;
+        } else if (arg == "--eddy-share" && a + 1 < argc) {
+            o.eddy = true;
+            o.eddyShare = std::strtod(argv[++a], nullptr);
         } else if (arg == "--subtropical-dip" && a + 1 < argc) {
             o.dip = true;
             o.subtropicalDip = std::strtod(argv[++a], nullptr);
@@ -282,8 +290,8 @@ int main(int argc, char** argv) {
     if (!parse(argc, argv, o)) {
         std::fprintf(stderr, "usage: terrain_climate_shares <output-dir> [--seeds <a,b,...>] "
                              "[--flags <a,b>] [--frost <celsius>] [--pole <celsius>] "
-                             "[--subtropical-dip <v>] [--ergs] [--erg-share] [--step <cells>] "
-                             "[--threads <n>]\n");
+                             "[--subtropical-dip <v>] [--eddy-share <v>] [--ergs] [--erg-share] "
+                             "[--step <cells>] [--threads <n>]\n");
         return 1;
     }
     terrain::WorldParams world;
@@ -301,6 +309,9 @@ int main(int argc, char** argv) {
     }
     if (o.dip) {
         world.planet.climate.subtropicalDip = o.subtropicalDip;
+    }
+    if (o.eddy) {
+        world.planet.climate.eddyShare = o.eddyShare;
     }
     world.planet.threads = o.threads;
     std::filesystem::create_directories(o.directory);
