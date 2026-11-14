@@ -1,11 +1,14 @@
 // The planet file of Terrain.Seed (Bridge/planet_job.hpp): which file a seed reads and where it
 // may be built, a level built on a thread of its own and read back the next time, a file of the
 // user never written (its bytes unchanged) whether it holds the seed or another one, and a
-// cancelled build that leaves no file.
+// cancelled build that leaves no file; a job destroyed in the middle of a stage of its build stops
+// there (no file, whole or half written), however long it takes: the goal of 10 s is checked by
+// the bench unreal_planet_job_test_bench (time_goal_support.hpp), never by ctest.
 #include "planet_job.hpp"
 
 #include "planet_golden_support.hpp"
 #include "test_assert.hpp"
+#include "time_goal_support.hpp"
 
 #include "terrain/storage/planet_file.hpp"
 
@@ -102,13 +105,19 @@ void testCancel(const std::filesystem::path& dir) {
     const auto result = job.take();
     TEST_CHECK(job.done() && result.cancelled && result.source.level == nullptr);
     TEST_CHECK(!std::filesystem::exists(choice.file));
-    // Destroyed while it builds: it stops at the end of its stage, or ends its build if the
-    // small world is built first (a fast machine); its file is then whole, never half written.
+    // Destroyed once it builds (a stage after "load"): it stops at the end of that stage, long
+    // before the last ones, so no file is written. Only a build ended before it is destroyed (a
+    // machine fast enough to build the small world between two looks at its stage) writes it,
+    // whole.
     const auto start = std::chrono::steady_clock::now();
+    bool ended = false; // the build ended before the job was destroyed
     {
         PlanetJob dropped(choosePlanetFile("dropped_{Seed}.bin", 98, text(dir)), 98,
                           golden::kSmallPlanet);
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        while (!dropped.done() && (dropped.stage().empty() || dropped.stage() == "load")) {
+            std::this_thread::yield();
+        }
+        ended = dropped.done();
     }
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -116,7 +125,8 @@ void testCancel(const std::filesystem::path& dir) {
     const bool written = std::filesystem::exists(dropped);
     std::printf("  dropped while building: %s in %.2f s\n", written ? "built" : "stopped",
                 seconds);
-    TEST_CHECK(seconds < 10.0);
+    TEST_CHECK(!written || ended);
+    time_goal::report("planet job dropped while building", seconds, 10.0, "s");
     if (written) {
         const terrain::PlanetLevel level =
             terrain::loadPlanetFile(dropped, 98, terrain::PlanetParams{}, golden::kSmallPlanet);
@@ -139,5 +149,5 @@ int main() {
     std::filesystem::remove_all(dir);
     std::printf("unreal_planet_job_test: %.1f s\n",
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
-    return test::result();
+    return time_goal::result(test::result());
 }

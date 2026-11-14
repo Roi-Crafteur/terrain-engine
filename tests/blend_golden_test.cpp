@@ -39,8 +39,10 @@ void addBlend(Checksum& sum, const terrain::SurfaceBlend& b) {
 void addTexels(Checksum& sum, const terrain::TileData& data) {
     sum.add(static_cast<std::uint64_t>(data.surfaceBlend.size()));
     for (const terrain::BlendTexel& t : data.surfaceBlend) {
-        sum.add(static_cast<std::uint64_t>(t.ids), 4);
-        sum.add(static_cast<std::uint64_t>(t.weights), 4);
+        sum.add(static_cast<std::uint64_t>(t.biomes), 4);
+        sum.add(static_cast<std::uint64_t>(t.materials), 4);
+        sum.add(static_cast<std::uint64_t>(t.biomeWeights), 4);
+        sum.add(static_cast<std::uint64_t>(t.materialWeights), 4);
     }
 }
 
@@ -69,8 +71,12 @@ std::vector<golden::Part> blendParts() {
         {"corner blend 50 m", blendChecksum(field, ecology, kCornerX, kCornerZ, 50.0),
          0x2ABB6B5E157FDD25ULL},
     };
+    // The texels of 16 bytes (agent 49) changed their bytes, never the blends they decode to (the
+    // same SurfaceBlend from every texel, main against the new format): the LOD 0 to 3 and the
+    // corner were 0xD148F2B63B104A25, 0x39C9B7288AF5F6E9, 0xC28BC91C460C9089, 0x02E1D54B2FA88CED,
+    // 0xAC68A51875AB48A5 with the texels of 8 bytes.
     constexpr std::array<std::uint64_t, terrain::kLodCount> kExpected = {
-        0xD148F2B63B104A25ULL, 0x39C9B7288AF5F6E9ULL, 0xC28BC91C460C9089ULL, 0x02E1D54B2FA88CEDULL};
+        0xFB0014369848912DULL, 0x8F9AE6259FEF6965ULL, 0x0C8CC787AE126A1DULL, 0x97E12A2CF23C8CA5ULL};
     constexpr std::array<const char*, terrain::kLodCount> kNames = {
         "tile blend LOD 0", "tile blend LOD 1", "tile blend LOD 2", "tile blend LOD 3"};
     for (int lod = 0; lod < terrain::kLodCount; ++lod) {
@@ -87,7 +93,7 @@ std::vector<golden::Part> blendParts() {
     for (int lod = 0; lod < terrain::kLodCount; ++lod) {
         addTexels(cornerSum, tiles.generate({terrain::tileContaining(corner, lod), 0}));
     }
-    parts.push_back({"tile blend at the corner", cornerSum.value(), 0xAC68A51875AB48A5ULL});
+    parts.push_back({"tile blend at the corner", cornerSum.value(), 0xDDB37E2A2A9CBE65ULL});
     return parts;
 }
 

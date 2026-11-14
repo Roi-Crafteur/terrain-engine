@@ -267,9 +267,11 @@ TerrainSurface surfaceFromHeightfield(const Heightfield& field, const HeightmapR
             site.ergFloor = sample.ergFloor;
             const Neighbors neighbors{relief.neighbors[i], 2.0 * step, 2.0 * step};
             setSlopes(site, neighbors, step);
-            // The water of the field: the sea where the geography puts it.
+            // The water of the field: the sea where the geography puts it. On dry land the top
+            // of the column is the ground, never the level a river nearby leaves in
+            // HeightSample::waterLevel there (agent 49).
             site.water = sample.water;
-            site.waterLevel = sample.waterLevel;
+            site.waterLevel = sample.water == WaterKind::None ? sample.height : sample.waterLevel;
             surface.sites.push_back(site);
         }
     }

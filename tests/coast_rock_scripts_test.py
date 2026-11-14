@@ -227,17 +227,17 @@ def main():
     code = float(found.group(1).replace("'", "")) if found else 0.0
     check(terrain.SEA_ROCK_CODE == code, f"SEA_ROCK_CODE {terrain.SEA_ROCK_CODE} == {code}")
 
-    biomes = [((0, 0, 0, 0), (0, 0, 0, 0), (0, 0))] * 12
+    biomes = [((0, 0, 0, 0), (0, 0, 0, 0), (0, 0))] * terrain.blend_code.BIOME_COUNT
     struct_code = terrain.struct_hlsl(biomes)
     check("SEA_ROCK" not in struct_code, "no SEA_ROCK placeholder left in the struct")
     layer = re.search(r"int v = code < 0\.0 \? \(code <= (-?[0-9.]+) \? 4 : 0\) : "
-                      r"\(int\)\(code \+ 0\.5\) % 128;", struct_code)
+                      r"\(int\)\(code \+ 0\.5\) % 2048;", struct_code)
     check(layer is not None, "Layers picks the rock under the sea")
     threshold = float(layer.group(1)) if layer else 0.0
 
     def material(c):
-        v = (4 if c <= threshold else 0) if c < 0.0 else int(c + 0.5) % 128
-        return v % 8
+        v = (4 if c <= threshold else 0) if c < 0.0 else int(c + 0.5) % 2048
+        return v % 32
 
     decode = re.fullmatch(r"\(x <= (-?[0-9.]+) \? x \+ ([0-9.]+) : x\)",
                           terrain.sea_ground_hlsl("x"))
@@ -254,8 +254,8 @@ def main():
         check(material(rock) == 4, f"the ocean over rock at {depth} m is rock")
         check(ground(sand) == sand, f"the ground at {depth} m untouched")
         check(abs(ground(rock) - depth) <= 0.01, f"the ground over rock at {depth} m given back")
-    for land in (4 + 8 * 9, 2 + 8 * 4, 4 + 8 * 1 + 128):
-        check(material(float(land)) == land % 128 % 8, f"the land code {land} as before")
+    for land in (4 + 32 * 9, 2 + 32 * 4, 4 + 32 * 1 + 2048):
+        check(material(float(land)) == land % 2048 % 32, f"the land code {land} as before")
 
     sea_code = sea.sea_hlsl()
     check("SEA_GROUND" not in sea_code, "no SEA_GROUND left in the sea of the horizon")

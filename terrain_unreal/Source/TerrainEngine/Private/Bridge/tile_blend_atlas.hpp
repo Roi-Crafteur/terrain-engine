@@ -23,12 +23,13 @@ namespace terrain::unreal {
 // Floats of one texel of the atlas (an RGBA texel of 32-bit floats).
 inline constexpr int kBlendTexelFloats = 4;
 
-// A texel of the atlas, exact in floats: the ids (24 bits), the low and the high 16 bits of the
-// weights, and 1 + the share of the dunes in 256ths (bits 24-31 of the ids; at least 1: a texel
-// of a tile, the texels of no tile hold 0).
+// A blend texel as 4 exact floats, the same for the atlas of the tiles and the blend textures of
+// the GPU horizon (horizon_blend_texels.hpp): the 4 fields of the texel in their order
+// (biome_blend.hpp: biomes, materials, biomeWeights, materialWeights), each an integer below 2^24,
+// with kBlendPresentBit set in the first (the empty texels of a texture hold 0: no blend there).
 [[nodiscard]] std::array<float, kBlendTexelFloats> blendTexelFloats(BlendTexel texel);
-// The texel of floats written by blendTexelFloats; nothing unless the last float is in [1, 2)
-// with a whole number of 256ths and the others hold integers of their range.
+// The texel of floats written by blendTexelFloats; nothing unless every float is an integer below
+// 2^24 and the first has kBlendPresentBit.
 [[nodiscard]] std::optional<BlendTexel> blendTexelOf(const std::array<float, kBlendTexelFloats>& floats);
 
 // The texels of a tile as a region of the atlas, row after row (the rows of the texels along z),

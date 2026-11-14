@@ -1,6 +1,7 @@
 #include "tile_blend_atlas.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <stdexcept>
@@ -9,8 +10,8 @@ namespace terrain::unreal {
 
 namespace {
 
-constexpr std::uint32_t kIdMask = 0xFFFFFFu; // the ids fill bits 0-23 (biome_blend.hpp)
-constexpr std::uint32_t kHalfMask = 0xFFFFu;
+constexpr std::uint32_t kFieldMask = (1u << kBlendFieldBits) - 1u; // every field: bits 0-23
+constexpr std::uint32_t kPresent = 1u << kBlendPresentBit;
 constexpr int kMaxSlotsPerSide = 1024;
 
 // The integer a float holds when it is one in [0, limit].
@@ -28,25 +29,26 @@ std::optional<std::uint32_t> wholeUpTo(float value, std::uint32_t limit) {
 } // namespace
 
 std::array<float, kBlendTexelFloats> blendTexelFloats(BlendTexel texel) {
-    // Integers below 2^24 are exact in a float; the share of the dunes (bits 24-31 of the ids)
-    // rides on the last float, 1 + share / 256: exact too, and at least 1 for a texel of a tile.
-    return {static_cast<float>(texel.ids & kIdMask), static_cast<float>(texel.weights & kHalfMask),
-            static_cast<float>(texel.weights >> 16u),
-            1.0f + static_cast<float>(texel.ids >> 24u) / 256.0f};
+    // Integers below 2^24 are exact in a float.
+    return {static_cast<float>((texel.biomes & kFieldMask) | kPresent),
+            static_cast<float>(texel.materials & kFieldMask),
+            static_cast<float>(texel.biomeWeights & kFieldMask),
+            static_cast<float>(texel.materialWeights & kFieldMask)};
 }
 
 std::optional<BlendTexel> blendTexelOf(const std::array<float, kBlendTexelFloats>& floats) {
-    if (!(floats[3] >= 1.0f && floats[3] < 2.0f)) {
+    std::array<std::uint32_t, kBlendTexelFloats> fields{};
+    for (std::size_t n = 0; n < fields.size(); ++n) {
+        const std::optional<std::uint32_t> field = wholeUpTo(floats[n], kFieldMask);
+        if (!field) {
+            return std::nullopt;
+        }
+        fields[n] = *field;
+    }
+    if ((fields[0] & kPresent) == 0u) {
         return std::nullopt;
     }
-    const std::optional<std::uint32_t> dunes = wholeUpTo((floats[3] - 1.0f) * 256.0f, 255u);
-    const std::optional<std::uint32_t> ids = wholeUpTo(floats[0], kIdMask);
-    const std::optional<std::uint32_t> low = wholeUpTo(floats[1], kHalfMask);
-    const std::optional<std::uint32_t> high = wholeUpTo(floats[2], kHalfMask);
-    if (!dunes || !ids || !low || !high) {
-        return std::nullopt;
-    }
-    return BlendTexel{*ids | (*dunes << 24u), *low | (*high << 16u)};
+    return BlendTexel{fields[0] & ~kPresent, fields[1], fields[2], fields[3]};
 }
 
 std::vector<float> blendRegion(const std::vector<BlendTexel>& texels) {
