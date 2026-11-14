@@ -13,10 +13,10 @@ namespace terrain {
 namespace {
 
 constexpr float kWeightUnits = 255.0f;
-// The share of the sand of the dunes in the ids, bits 24-30, in 127ths (bit 31 stays 0: the 7
-// bits the blend texels of the horizon have free carry it whole, Bridge/horizon_blend_texels).
-constexpr int kDuneShift = 24;
+// The share of the sand of the dunes in BlendTexel::materials, 7 bits from kBlendDuneShift, in
+// 127ths.
 constexpr float kDuneUnits = 127.0f;
+constexpr std::uint32_t kDuneMask = 0x7FU;
 
 bool positive(double value) {
     return value > 0.0 && std::isfinite(value);
@@ -143,35 +143,38 @@ BlendTexel packBlend(const SurfaceBlend& blend) {
         const Biome biome = biomes[s] > 0U ? blend.biomes[s] : blend.biomes[0];
         const SurfaceMaterial material =
             materials[s] > 0U ? blend.materials[s] : blend.materials[0];
-        const int shift = kBlendIdBits * static_cast<int>(s);
-        texel.ids |= static_cast<std::uint32_t>(biome) << shift;
-        texel.ids |= static_cast<std::uint32_t>(material) << (shift + kBlendIdBits * kBlendSlots);
+        texel.biomes |= static_cast<std::uint32_t>(biome) << (kBiomeIdBits * static_cast<int>(s));
+        texel.materials |= static_cast<std::uint32_t>(material)
+                           << (kMaterialIdBits * static_cast<int>(s));
     }
-    texel.weights = biomes[0] | (biomes[1] << 8) | (materials[0] << 16) | (materials[1] << 24);
-    texel.ids |= static_cast<std::uint32_t>(std::clamp(blend.dunes, 0.0f, 1.0f) * kDuneUnits +
-                                            0.5f)
-                 << kDuneShift;
+    texel.biomeWeights = biomes[0] | (biomes[1] << 8);
+    texel.materialWeights = materials[0] | (materials[1] << 8);
+    texel.materials |=
+        static_cast<std::uint32_t>(std::clamp(blend.dunes, 0.0f, 1.0f) * kDuneUnits + 0.5f)
+        << kBlendDuneShift;
     return texel;
 }
 
 SurfaceBlend unpackBlend(BlendTexel texel) {
-    constexpr std::uint32_t kIdMask = (1U << kBlendIdBits) - 1U;
+    constexpr std::uint32_t kBiomeMask = (1U << kBiomeIdBits) - 1U;
+    constexpr std::uint32_t kMaterialMask = (1U << kMaterialIdBits) - 1U;
     SurfaceBlend blend;
     for (std::size_t s = 0; s < kBlendSlots; ++s) {
-        const int shift = kBlendIdBits * static_cast<int>(s);
-        blend.biomes[s] = static_cast<Biome>(field(texel.ids, shift, kIdMask));
+        blend.biomes[s] = static_cast<Biome>(
+            field(texel.biomes, kBiomeIdBits * static_cast<int>(s), kBiomeMask));
         blend.materials[s] = static_cast<SurfaceMaterial>(
-            field(texel.ids, shift + kBlendIdBits * kBlendSlots, kIdMask));
+            field(texel.materials, kMaterialIdBits * static_cast<int>(s), kMaterialMask));
     }
-    const std::uint32_t b0 = field(texel.weights, 0, 0xFFU);
-    const std::uint32_t b1 = field(texel.weights, 8, 0xFFU);
-    const std::uint32_t m0 = field(texel.weights, 16, 0xFFU);
-    const std::uint32_t m1 = field(texel.weights, 24, 0xFFU);
+    const std::uint32_t b0 = field(texel.biomeWeights, 0, 0xFFU);
+    const std::uint32_t b1 = field(texel.biomeWeights, 8, 0xFFU);
+    const std::uint32_t m0 = field(texel.materialWeights, 0, 0xFFU);
+    const std::uint32_t m1 = field(texel.materialWeights, 8, 0xFFU);
     const auto share = [](std::uint32_t units) { return static_cast<float>(units) / kWeightUnits; };
     const auto rest = [](std::uint32_t a, std::uint32_t b) {
         return a + b <= 255U ? 255U - a - b : 0U;
     };
-    blend.dunes = static_cast<float>(field(texel.ids, kDuneShift, 0x7FU)) / kDuneUnits;
+    blend.dunes =
+        static_cast<float>(field(texel.materials, kBlendDuneShift, kDuneMask)) / kDuneUnits;
     blend.biomeWeights = {share(b0), share(b1), share(rest(b0, b1))};
     blend.materialWeights = {share(m0), share(m1), share(rest(m0, m1))};
     return blend;

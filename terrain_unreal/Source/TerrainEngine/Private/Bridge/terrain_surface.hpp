@@ -3,6 +3,7 @@
 #include "horizon_layout.hpp"
 
 #include "terrain/generation/biome.hpp"
+#include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/surface_material.hpp"
 
 namespace terrain::unreal {
@@ -16,9 +17,13 @@ namespace terrain::unreal {
 // The surface of a sample, its material and its biome, packed as the integer
 // material + kSurfaceBiomeStride * biome, plus kSurfaceWaterCode under inland water (a lake or a
 // river of the hydrology, phase 11B: the water flag of the core off the sea): exact in a float,
-// never negative (the texels of the ocean hold a negative ground instead, texelGround).
-inline constexpr int kSurfaceBiomeStride = 8;
-inline constexpr int kSurfaceWaterCode = 128;
+// never negative (the texels of the ocean hold a negative ground instead, texelGround). The
+// stride and the water code leave room for every id of the blend texels (biome_blend.hpp: 32
+// materials, 64 biomes), not only the ids of today.
+inline constexpr int kSurfaceBiomeStride = 1 << kMaterialIdBits;
+inline constexpr int kSurfaceWaterCode = 1 << (kMaterialIdBits + kBiomeIdBits);
+static_assert(kSurfaceBiomeStride == 32 && kSurfaceWaterCode == 2048,
+              "the shaders decode the surface with these constants (temporary_terrain_hlsl.py)");
 static_assert(kSurfaceMaterialCount <= kSurfaceBiomeStride, "a material fits below the stride");
 static_assert(kSurfaceBiomeStride * kBiomeCount <= kSurfaceWaterCode,
               "a material and a biome fit below the water code");

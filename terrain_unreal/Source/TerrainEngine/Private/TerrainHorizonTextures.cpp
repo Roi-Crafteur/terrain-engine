@@ -88,7 +88,7 @@ namespace TerrainHorizonTextures
 	UTexture2D* CreateBlend(int32 Side, int32 Level)
 	{
 		UTexture2D* Texture =
-			CreateTexture(Side, PF_A16B16G16R16, TEXT("HorizonBlend"), Level, TF_Nearest);
+			CreateTexture(Side, PF_A32B32G32R32F, TEXT("HorizonBlend"), Level, TF_Nearest);
 		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
 		void* Texels = Mip.BulkData.Lock(LOCK_READ_WRITE);
 		FMemory::Memzero(Texels, static_cast<SIZE_T>(Side) * Side * BlendTexelBytes);

@@ -86,6 +86,9 @@ struct TileColumns {
     [[nodiscard]] float waterAt(int i, int k) const {
         return waterLevels[static_cast<std::size_t>(k * kGridSamples + i)];
     }
+    [[nodiscard]] WaterKind waterKindAt(int i, int k) const {
+        return waterKinds[static_cast<std::size_t>(k * kGridSamples + i)];
+    }
     [[nodiscard]] bool bareRockAt(int i, int k) const {
         return !bareRocks.empty() &&
                bareRocks[static_cast<std::size_t>(k * kGridSamples + i)] > 0.5f;

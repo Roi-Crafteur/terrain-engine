@@ -18,7 +18,7 @@ namespace TerrainHorizonTextures
 		terrain::unreal::kBandFloats * static_cast<int32>(sizeof(float));
 	constexpr int32 NormalTexelBytes = terrain::unreal::kNormalHalves * 2;
 	constexpr int32 BlendTexelBytes =
-		terrain::unreal::kBlendChannels * static_cast<int32>(sizeof(uint16));
+		terrain::unreal::kBlendChannels * static_cast<int32>(sizeof(float));
 
 	// The texels of a level (Bridge/horizon_textures.hpp): float RGBA, nearest, wrapped as the
 	// slots.
