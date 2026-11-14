@@ -378,14 +378,24 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     sur ~15 % de la surface. La part des hautes terres à moins de 300 m de relief sur 10 km
     (`terrain_export_relief`) passe de 0,2 % à plusieurs % des hautes terres.
   - Plateaux, mesas, buttes et canyons (`generation/tableland_relief.hpp`) : un escarpement qui
-    suit le bord de la province, découpé (rentrants, promontoires), ses buttes-témoins jusqu'à
-    15 km devant lui (150 à 450 m de haut au loin, Monument Valley), des canyons à méandres
-    jusqu'à 1,6 km de profondeur dont le fond rejoint le bas pays à l'escarpement et remonte vers
-    l'intérieur (Grand Canyon), leurs branches suspendues, des talus concaves ravinés. Les couches
-    sont celles des murs de l'agent 20 (`mountain_walls::strataTop`, faces 3D par
-    `wall_faces::addFaces`, `tableland_strata.cpp`) : formations de 40 à 240 m, plus de bancs durs
-    en pays sec, une seconde pile de membres, toutes parallèles au dessus du plateau (surfaces
-    structurales). Les dunes ne recouvrent pas la roche des plateaux (`HeightSample::tableland`).
+    suit le bord de la province, sinueux à toutes les échelles (le bord gauchi de ±11 km par des
+    octaves de 40, 10 et 2,5 km, découpé à 3 km et 600 m : aucun rebord droit de plus de 2 km),
+    ses buttes-témoins de 200 m à des mesas de plusieurs km (deux bruits de 2,5 et 9 km, un recul
+    de 6 à 25 km, des champs denses ou clairsemés), des canyons à méandres jusqu'à 1,6 km de
+    profondeur dont le fond rejoint le bas pays à l'escarpement et remonte vers l'intérieur, leurs
+    branches suspendues. Chaque contour a deux étages : une corniche verticale (50 à 70 % de la
+    hauteur des buttes et mesas, au plus 300 m sur l'escarpement) sur un talus concave raviné. La
+    coupe des canyons profonds est faite d'unités (`tableland_canyons.hpp`, Grand Canyon,
+    Canyonlands) : corniche de tête de 40 à 120 m, pentes en gradins, grande falaise de 120 à
+    200 m (Redwall), replat de 0,3 à 1,5 km (Tonto), gorge intérieure, fond plat ; des temples
+    (buttes de 10 à 30 % de la profondeur sous le rebord) sur les replats, jamais sur la gorge.
+    Les couches sont celles des murs de l'agent 20 (`mountain_walls::strataTop`, faces 3D par
+    `wall_faces::addFaces`, `tableland_strata.cpp`) : formations de 40 à 240 m, membres de 35 à
+    80 m et lits de 6 à 20 m d'épaisseurs indépendantes, parallèles au dessus du plateau
+    (surfaces structurales), et la couche dure de chaque paroi (corniche, grande falaise) forcée
+    comme une seule couche. Les dunes ne recouvrent pas la roche des plateaux
+    (`HeightSample::tableland`). Coût : une tuile LOD 0 au fond d'un canyon profond à temples
+    ~1,2 ms (0,8 ms avant les unités), ×1,03 hors zone (`tablelands_cost_test`).
     Limite : des tronçons de canyon fermés à l'intérieur (cuvettes sèches), les lacs de la Planète
     les traitent comme tout creux ; les gorges des fleuves ne lisent pas encore ces couches.
   - Les outils (`terrain_export_relief`, `terrain_export_map`, `terrain_export_rock`) prennent

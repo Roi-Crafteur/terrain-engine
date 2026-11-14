@@ -129,6 +129,7 @@ add_library(terrain_core STATIC
     src/generation/speleothems.cpp
     src/generation/surface_material.cpp
     src/generation/tableland_forms.cpp
+    src/generation/tableland_canyons.cpp
     src/generation/tableland_relief.cpp
     src/generation/tableland_strata.cpp
     src/generation/tablelands.cpp

@@ -332,8 +332,10 @@ void testDefaultWorld() {
                     // texels of 16 bytes (agent 49), the plateaus unchanged.
                     {"default world tiles", sums.tiles.value(),
                      golden::pick("tablelands", 0x33BD195571B453FBULL, 0xD0EFCF6291A310BFULL)},
+                    // Recollé par « Plateaus, commit 2b » (agent 46) : "default world horizon" with
+                    // the flag; the escarpments, buttes and canyons it sees redrawn.
                     {"default world horizon", sums.horizon.value(),
-                     golden::pick("tablelands", 0x784F4CC234FCB46EULL, 0xDE555D6EB4B70D6AULL)}});
+                     golden::pick("tablelands", 0x784F4CC234FCB46EULL, 0xEA5FB874027B1FD1ULL)}});
 }
 
 void testSmallWorldWithWater() {

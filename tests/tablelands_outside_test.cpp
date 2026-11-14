@@ -30,9 +30,10 @@ using terrain::Heightfield;
 using terrain::HeightSample;
 
 // A square keeps out of the zone when a lattice kGuardStep meters apart over it, kMargin meters
-// wider on each side, does: the shares of the provinces rise over tens of kilometers.
-constexpr double kMargin = 4'000.0;
-constexpr double kGuardStep = 2'000.0;
+// wider on each side, does: the shares of the provinces rise over kilometers, their edges wander
+// by lobes about a kilometer wide (the warps of the edges, tablelands.cpp).
+constexpr double kMargin = 6'000.0;
+constexpr double kGuardStep = 1'000.0;
 // Places near the zone: within kNear meters of a point of it.
 constexpr double kNear = 30'000.0;
 // In the zone, at least kLeastChanged of kZonePoints points change.

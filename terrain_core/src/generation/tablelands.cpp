@@ -28,6 +28,7 @@ enum Stream : std::uint64_t {
     kWarpZ,
     kEdgeTableland,
     kEdgeKarst,
+    kEdgeWarp, // and the next 5 streams: the warps of the edges, x and z of each scale
 };
 
 // The rock: plateaus in layered rock (its share kStrataLow to kStrataHigh), the karst in the
@@ -87,6 +88,12 @@ constexpr float kKarstSupplyLow = -0.6f;
 // by up to kEdge (a noise of kEdgeWavelength), a province from kShareLow to kShareHigh of it.
 constexpr double kWarp = 40'000.0;
 constexpr double kWarpWavelength = 300'000.0;
+// The edges of the provinces wander besides by up to kEdgeWarps meters at the scales of
+// kEdgeWarpWavelengths (at most kEdgeWarpTotal in all): bays and points from a few hundred meters to
+// tens of kilometers, never a straight edge (an escarpment follows it, tableland_relief.hpp).
+constexpr std::array<double, 3> kEdgeWarpWavelengths = {40'000.0, 10'000.0, 2'500.0};
+constexpr std::array<double, 3> kEdgeWarps = {8'000.0, 2'500.0, 500.0};
+constexpr double kEdgeWarpTotal = 11'000.0;
 constexpr double kEdgeWavelength = 70'000.0;
 constexpr float kEdge = 0.12f;
 constexpr float kShareLow = 0.35f;
@@ -100,14 +107,34 @@ constexpr float kSurfaceRift = 0.1f;
 // the band of agent 33, 30 km inland at most).
 constexpr double kCoastNear = 60'000.0;
 constexpr double kCoastFar = 150'000.0;
+// The fade reads the distance to the coast less up to kCoastWobble meters (the warps of the edges:
+// never more, so nothing comes nearer than kCoastNear): its edge wanders at every scale too.
+constexpr double kCoastWobble = 30'000.0;
 
-noise::FbmOctaves slow(std::uint64_t seed, Stream stream, int octaves, double wavelength,
-                       const WorldSize& world) {
+noise::FbmOctaves slow(std::uint64_t seed, std::uint64_t stream, int octaves,
+                       double wavelength, const WorldSize& world) {
     return noise::FbmOctaves(noise::deriveSeed(seed, stream),
                              {.octaves = octaves,
                               .frequency = 1.0 / wavelength,
                               .lattices = noise::OctaveLattices::Unrotated},
                              world);
+}
+
+// The fade of the provinces from the coast, coast meters away, of wobble wobble.
+float coastFade(double coast, double wobble) {
+    const double read = coast - kCoastWobble * (0.5 + 0.5 * wobble);
+    return static_cast<float>(noise::smoothstep(static_cast<float>(kCoastNear),
+                                                static_cast<float>(kCoastFar),
+                                                static_cast<float>(read)));
+}
+
+// The share of a province of potential potential (read at the warped point), its edge moved by the
+// noise edge at (x, z), faded by coast.
+float share(float potential, const noise::FbmOctaves& edge, double x, double z, float coast) {
+    if (!(potential + kEdge > kShareLow)) {
+        return 0.0f;
+    }
+    return coast * noise::smoothstep(kShareLow, kShareHigh, potential + kEdge * edge.fbm2D(x, z));
 }
 
 void addBits(std::uint64_t& hash, std::uint32_t bits) {
@@ -133,6 +160,8 @@ struct Tablelands::Impl {
     noise::FbmOctaves warpZ;
     noise::FbmOctaves edgeTableland;
     noise::FbmOctaves edgeKarst;
+    std::array<noise::FbmOctaves, 3> edgeWarpX; // kEdgeWarpWavelengths
+    std::array<noise::FbmOctaves, 3> edgeWarpZ;
     std::vector<TablelandCell> cells;
     std::vector<std::uint8_t> may; // 1 where a province may reach a point of the cell
 
@@ -147,9 +176,22 @@ struct Tablelands::Impl {
           warpX(slow(s.own, kWarpX, 2, kWarpWavelength, world())),
           warpZ(slow(s.own, kWarpZ, 2, kWarpWavelength, world())),
           edgeTableland(slow(s.own, kEdgeTableland, 2, kEdgeWavelength, world())),
-          edgeKarst(slow(s.own, kEdgeKarst, 2, kEdgeWavelength, world())) {}
+          edgeKarst(slow(s.own, kEdgeKarst, 2, kEdgeWavelength, world())) {
+        for (std::size_t k = 0; k < kEdgeWarps.size(); ++k) {
+            edgeWarpX[k] = slow(s.own, kEdgeWarp + 2 * k, 2, kEdgeWarpWavelengths[k], world());
+            edgeWarpZ[k] = slow(s.own, kEdgeWarp + 2 * k + 1, 2, kEdgeWarpWavelengths[k], world());
+        }
+    }
 
     [[nodiscard]] const WorldSize& world() const { return geography->world(); }
+    // The point (x, z) warped (kWarp and the warps of the edges), canonical: where the provinces
+    // are read for it; and the wobble of the edges there, in [-1, 1] (the fade from the coast).
+    struct Warped {
+        double x = 0.0;
+        double z = 0.0;
+        double wobble = 0.0;
+    };
+    [[nodiscard]] Warped warped(double x, double z) const;
     [[nodiscard]] float strataOf(double x, double z) const;
     [[nodiscard]] std::vector<float> regionalStrata(int threads) const;
     [[nodiscard]] TablelandCell potentials(std::size_t c, double x, double z, float strata) const;
@@ -261,8 +303,8 @@ void Tablelands::Impl::build(int threads) {
 }
 
 // A point reads the cells around its warped point bilinearly: a province reaches the points of a
-// cell from the cells within the warp and one more around it, where its potential and the most
-// its edge adds pass the threshold.
+// cell from the cells within the warp (that of the edges too) and one more around it, where its
+// potential and the most its edge adds pass the threshold.
 void Tablelands::Impl::markReach() {
     const PlanetGrid& grid = climate->grid();
     std::vector<std::uint8_t> over(grid.cells(), 0);
@@ -271,7 +313,7 @@ void Tablelands::Impl::markReach() {
         over[c] = most + kEdge > kShareLow || cells[c].surface > 0.0f ? std::uint8_t{1}
                                                                        : std::uint8_t{0};
     }
-    const int reach = static_cast<int>(std::ceil(kWarp / grid.cellSize)) + 1;
+    const int reach = static_cast<int>(std::ceil((kWarp + kEdgeWarpTotal) / grid.cellSize)) + 1;
     may.assign(grid.cells(), 0);
     for (int j = 0; j < grid.nz; ++j) {
         for (int i = 0; i < grid.nx; ++i) {
@@ -286,6 +328,21 @@ void Tablelands::Impl::markReach() {
             }
         }
     }
+}
+
+Tablelands::Impl::Warped Tablelands::Impl::warped(double x, double z) const {
+    const std::array<float, 2> warp = warpX.fbm2DPair(warpZ, x, z);
+    double qx = x + kWarp * warp[0];
+    double qz = z + kWarp * warp[1];
+    double wobble = 0.0;
+    for (std::size_t k = 0; k < kEdgeWarps.size(); ++k) {
+        const std::array<float, 2> edge = edgeWarpX[k].fbm2DPair(edgeWarpZ[k], x, z);
+        qx += kEdgeWarps[k] * static_cast<double>(edge[0]);
+        qz += kEdgeWarps[k] * static_cast<double>(edge[1]);
+        wobble += kEdgeWarps[k] / kEdgeWarpTotal * static_cast<double>(edge[0]);
+    }
+    return {noise::wrapCanonical(qx, world().x), noise::wrapCanonical(qz, world().z),
+            std::clamp(wobble, -1.0, 1.0)};
 }
 
 Tablelands::Tablelands(const TablelandSeeds& seeds, std::shared_ptr<const Geography> geography,
@@ -312,29 +369,16 @@ TablelandPoint Tablelands::at(double x, double z, const GeographySample& g) cons
     // The high surfaces at the point itself (the geography holds them); the provinces from the
     // cells around the warped point, away from the coast.
     p.surface = m.tablelands ? tableland_forms::surfaceShare(g) : 0.0f;
-    const std::array<float, 2> warp = m.warpX.fbm2DPair(m.warpZ, x, z);
-    const double qx = noise::wrapCanonical(x + kWarp * warp[0], m.world().x);
-    const double qz = noise::wrapCanonical(z + kWarp * warp[1], m.world().z);
-    const PlanetBilinear b = planetBilinear(m.climate->grid(), qx, qz);
+    const Impl::Warped q = m.warped(x, z);
+    const PlanetBilinear b = planetBilinear(m.climate->grid(), q.x, q.z);
     const auto blend = [&](float TablelandCell::*field) {
         return static_cast<float>(b.blend(m.cells[b.cells[0]].*field, m.cells[b.cells[1]].*field,
                                           m.cells[b.cells[2]].*field, m.cells[b.cells[3]].*field));
     };
     if (g.coast > kCoastNear) {
-        const float coast = static_cast<float>(
-            noise::smoothstep(static_cast<float>(kCoastNear), static_cast<float>(kCoastFar),
-                              static_cast<float>(g.coast)));
-        const float tableland = blend(&TablelandCell::tableland);
-        if (tableland + kEdge > kShareLow) {
-            p.tableland = coast * noise::smoothstep(
-                                      kShareLow, kShareHigh,
-                                      tableland + kEdge * m.edgeTableland.fbm2D(x, z));
-        }
-        const float karst = blend(&TablelandCell::karst);
-        if (karst + kEdge > kShareLow) {
-            p.karst = coast * noise::smoothstep(kShareLow, kShareHigh,
-                                                karst + kEdge * m.edgeKarst.fbm2D(x, z));
-        }
+        const float coast = coastFade(g.coast, q.wobble);
+        p.tableland = share(blend(&TablelandCell::tableland), m.edgeTableland, x, z, coast);
+        p.karst = share(blend(&TablelandCell::karst), m.edgeKarst, x, z, coast);
     }
     if (!p.any()) {
         return {};
@@ -351,20 +395,12 @@ float Tablelands::tablelandShare(double x, double z, double coast) const {
         return 0.0f;
     }
     // As at.
-    const std::array<float, 2> warp = m.warpX.fbm2DPair(m.warpZ, x, z);
-    const double qx = noise::wrapCanonical(x + kWarp * warp[0], m.world().x);
-    const double qz = noise::wrapCanonical(z + kWarp * warp[1], m.world().z);
-    const PlanetBilinear b = planetBilinear(m.climate->grid(), qx, qz);
+    const Impl::Warped q = m.warped(x, z);
+    const PlanetBilinear b = planetBilinear(m.climate->grid(), q.x, q.z);
     const auto tableland = static_cast<float>(
         b.blend(m.cells[b.cells[0]].tableland, m.cells[b.cells[1]].tableland,
                 m.cells[b.cells[2]].tableland, m.cells[b.cells[3]].tableland));
-    if (!(tableland + kEdge > kShareLow)) {
-        return 0.0f;
-    }
-    const float near = static_cast<float>(noise::smoothstep(
-        static_cast<float>(kCoastNear), static_cast<float>(kCoastFar), static_cast<float>(coast)));
-    return near * noise::smoothstep(kShareLow, kShareHigh,
-                                    tableland + kEdge * m.edgeTableland.fbm2D(x, z));
+    return share(tableland, m.edgeTableland, x, z, coastFade(coast, q.wobble));
 }
 
 TablelandPoint Tablelands::at(double x, double z) const {

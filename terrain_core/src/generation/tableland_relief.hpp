@@ -4,28 +4,31 @@
 // to terrain_core: read by the Heightfield (heightfield_tablelands.cpp) where the provinces hold
 // plateaus (TablelandPoint::tableland). Their shape before their rock (shapeAt):
 //   - the escarpment: the zero line of a slow warped noise, biased by the share of the province
-//     (the plateau within, the low ground without); its signed distance in meters from the
-//     gradient of the noise;
-//   - the outliers: beyond the escarpment, within the retreat of the province (far in the dry
-//     lands, near in the humid ones), the blobs of a noise over a threshold rising with the
-//     distance: promontories at the escarpment, then mesas, then buttes, then nothing;
-//   - the profile: the top of each within its outline, its talus spreading outward, concave (steep
-//     under the rim, gentle at the foot) at the slope of its style (steeper in the dry lands), down
-//     to the low ground (the regional ground and its hills: drained, never a closed basin), carved
-//     by gullies as deep as it is steep (the badlands of its soft layers);
-//   - the canyons: the zero lines of a noise and their branches near them, deepest at the
-//     escarpment, where their floor meets the low ground, rising inland (they drain outward);
-//     narrowing out (box canyons) where they run along the escarpment or where a slow mask leaves
-//     none; their branches hang over them.
-// Their rock (passesAt): formations of 40 to 160 m, some hard (the caprocks and the cliffs: more of
-// them in the dry lands), thin beds over them, laid as the strata of the walls of the mountains
-// (mountain_walls::strataTop): a hard layer stands as a cliff over its apron of scree, a soft one
-// keeps the slope; their faces in three dimensions are those of the walls (wall_faces::addFaces).
-// None on the low ground nor on the floors of the canyons. The tops are never flat (topRelief).
-// Pure arithmetic of doubles and noises: the same bits on every platform, periodic on the world.
+//     (the plateau within, the low ground without), the edge of the province itself wandering at
+//     every scale (Tablelands); its rim jagged by two noises; its signed distance in meters from
+//     the gradient of the noise;
+//   - the outliers: beyond the escarpment, within a retreat of 6 to 25 km (farther in the dry
+//     lands), the blobs of two noises of 2.5 and 9 km mixed by a slow one, over a threshold rising
+//     with the distance and moved by another slow one: promontories at the escarpment, fields of
+//     buttes dense or sparse, mesas of several kilometers, then nothing;
+//   - the profile of two storeys (tableland_fields.hpp: storeysAt): a vertical caprock over a short
+//     concave talus (Monument Valley: the De Chelly sandstone over the Organ Rock), the caprock 50
+//     to 70 % of the height of an outlier, at most kScarpCliffMost of an escarpment, the talus
+//     carved by gullies, down to the low ground (the regional ground and its hills: drained);
+//   - the canyons (tableland_canyons.hpp): a section of units, a caprock, slopes, a great cliff, a
+//     platform with its temples, an inner gorge, a flat floor;
+//   - the top: the thickness of the plateau swelling gently (the skyline of a rim is never a
+//     straight line).
+// Their rock (passesAt, tableland_strata.cpp): formations, members and beds of thicknesses of their
+// own, laid as the strata of the walls of the mountains (mountain_walls::strataTop) parallel to the
+// top, on the taluses and walls only; and the hard layer of each wall (its caprock, the great cliff,
+// the caprock of a temple) forced as one layer. Their faces in three dimensions are those of the
+// walls (wall_faces::addFaces). The tops are never flat (topRelief). Pure arithmetic of doubles and
+// noises: the same bits on every platform, periodic on the world.
 
 #include "mountain_walls.hpp"
 #include "ravines.hpp"
+#include "tableland_canyons.hpp"
 
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/tablelands.hpp"
@@ -39,22 +42,28 @@ struct Noises {
     noise::FbmOctaves scarp;      // the escarpment
     noise::FbmOctaves scarpWarpX; // its warp
     noise::FbmOctaves scarpWarpZ;
-    noise::FbmOctaves outliers;   // the mesas and buttes beyond it
-    noise::FbmOctaves jags;       // the re-entrants and points of their rims
-    noise::FbmOctaves canyons;    // the canyons
-    noise::FbmOctaves branches;   // their branches
-    noise::FbmOctaves meanderX;   // their entrenched meanders (a warp of their axes)
-    noise::FbmOctaves meanderZ;
-    noise::FbmOctaves canyonMask; // where they run
+    noise::FbmOctaves outliers;   // the buttes beyond it
+    noise::FbmOctaves mesas;      // and the mesas
+    noise::FbmOctaves outlierMix; // which of them, from place to place
+    noise::FbmOctaves retreat;    // how far they reach
+    noise::FbmOctaves density;    // how many they are
+    noise::FbmOctaves jags;       // the re-entrants and points of the rims
+    noise::FbmOctaves jagsFine;
+    noise::FbmOctaves cliffs;     // the share of the height the caprocks take
+    CanyonNoises canyon;          // the canyons
     noise::FbmOctaves thickness;  // of the plateau
+    noise::FbmOctaves swell;      // and its gentle swells
     noise::FbmOctaves bands;      // the thickness of its formations
-    noise::FbmOctaves dip;        // their offset
+    noise::FbmOctaves memberBands; // of its members
+    noise::FbmOctaves bedBands;   // of its beds
+    noise::FbmOctaves dip;        // the offset of its formations
     noise::FbmOctaves rims;       // the recession of their rims and the run of their faces
     noise::FbmOctaves topFine;    // the relief of the tops
     noise::FbmOctaves topCoarse;
     std::uint64_t layers = 0;  // which formations are hard
     std::uint64_t beds = 0;    // and which beds
     std::uint64_t members = 0; // and which members (a second stack: no long soft run)
+    std::uint64_t units = 0;   // the draws of the forced hard layers
     ravines::Network gullies; // the gullies of the taluses and of the walls of the canyons
     WorldSize world;
 };
@@ -63,7 +72,7 @@ struct Noises {
 
 // The share of the other forms of the relief (the mountains, the hills, the buttes and the forms of
 // the plains) the plateaus take over at a point of the provinces p, in [0, 1]: all of it before
-// the plateau rises (TablelandPoint::tableland 0.25), 0 out of the provinces.
+// the plateau rises (TablelandPoint::tableland 0.1), 0 out of the provinces.
 [[nodiscard]] float calm(const TablelandPoint& p);
 
 // The provinces at a point and the share of the plateaus kShareStep meters along x and along z
@@ -81,10 +90,14 @@ struct Fields {
     double thickness = 0.0; // meters of the plateau over the low ground there
     double scarp = 0.0;     // to the escarpment
     double outline = 0.0;   // to the outline of the top (the escarpment or an outlier)
-    double talus = 0.0;     // meters the talus runs out from the outline
+    double talus = 0.0;     // meters the cliff and the talus run out from the outline
+    double cliff = 0.0;     // meters of the caprock of that outline
+    double height = 0.0;    // meters of its top over the low ground
     double canyon = 0.0;    // meters the canyons cut the plateau
     double floor = 0.0;     // [0, 1]: on the floor of a canyon
     double profile = 0.0;   // [0, 1]: 0 on the low ground, 1 on the tops
+    bool outlier = false;   // the outline is that of an outlier
+    bool temple = false;    // a temple of a canyon stands there
 };
 [[nodiscard]] Fields fieldsAt(const Noises& n, double x, double z, const Province& q);
 
@@ -94,19 +107,24 @@ struct Shape {
     double gradX = 0.0; // its gradient (meters per meter, up): the slope of the strata
     double gradZ = 0.0;
     double rock = 0.0;  // [0, 1]: the weight of the strata (none on the low ground and floors)
-    double top = 0.0;   // [0, 1]: on a top (its relief, topRelief)
+    double top = 0.0;   // [0, 1]: on a top (its relief, topRelief; no strata but its caprock)
     double thickness = 0.0; // of the plateau over the low ground (Fields::thickness)
+    // The hard layer of the wall at the column, forced (its caprock, the great cliff of a canyon,
+    // the caprock of a temple): its top in meters over the low ground (as rise), its height, its
+    // weight (1 on the wall and the top over it, 0 on the talus under it).
+    double unitTop = 0.0;
+    double unitHeight = 0.0;
+    double unitWeight = 0.0;
 };
 [[nodiscard]] Shape shapeAt(const Noises& n, double x, double z, const Province& q);
 
-// The passes of the rock of the plateau at (x, z) of shape s over the regional ground regional (all
-// of weight 0 where s.rock is 0): pass 0 its formations, pass 1 its beds, pass 2 its members
-// (wall_faces::passesTop, addFaces). Its layers lie parallel to its top (regional + s.thickness),
-// dipping gently: its tops are stripped surfaces on one layer (another one a few hundred
-// kilometers away, past a cuesta), its escarpments and canyons cut through the layers below.
+// The passes of the rock of the plateau at (x, z) of shape s over the ground base (the low ground
+// there, the regional ground and its hills): pass 0 its formations, pass 1 its beds, pass 2 its
+// members, laid parallel to its top (base + s.thickness), on its taluses and walls only; pass 3 the
+// hard layer of the wall (Shape::unitTop), forced (wall_faces::passesTop, addFaces).
 [[nodiscard]] mountain_walls::WallPasses passesAt(const Noises& n, double x, double z,
                                                   const TablelandPoint& p, const Shape& s,
-                                                  double regional);
+                                                  double base);
 
 // The meters the relief of the tops adds there over the rock (never flat: swells of a few meters
 // over a few kilometers, hummocks over a kilometer).

@@ -385,11 +385,10 @@ private:
     // The provinces of the plateaus and of the karst at (x, z), canonical, of geography g: all 0
     // where they are off (heightfield_tablelands.cpp).
     [[nodiscard]] TablelandPoint provincesAt(double x, double z, const GeographySample& g) const;
-    // Lays the plateaus, mesas, buttes and canyons of the provinces p at (x, z), canonical, coast
-    // meters from the coast (GeographySample::coast), over the base of s (its ground, hills and
-    // buttes faded: tableland_relief::calm) and their rock; with a site, their walls (their
-    // ground, their faces when wanted) (heightfield_tablelands.cpp).
-    void addTablelands(double x, double z, const TablelandPoint& p, double coast, HeightSample& s,
+    // Lays the plateaus, mesas, buttes and canyons of the provinces p at (x, z), canonical, over
+    // the base of s (its ground, hills and buttes faded: tableland_relief::calm) and their rock;
+    // with a site, their walls (their ground, their faces when wanted) (heightfield_tablelands.cpp).
+    void addTablelands(double x, double z, const TablelandPoint& p, HeightSample& s,
                        wall_faces::Site* site) const;
     // The mountains at a point: their height above the base, that of their great forms alone
     // (without the rock and the ravines) and its gradient (meters per meter, up), how much the

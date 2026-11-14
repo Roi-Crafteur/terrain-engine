@@ -27,3 +27,14 @@ target_include_directories(tablelands_shapes_test PRIVATE ${PROJECT_SOURCE_DIR}/
 # The world out of the zone of the plateaus keeps every bit with them switched on: samples, rock,
 # tiles of LOD 0 to 3 and horizon windows near the zone and anywhere.
 terrain_add_test(tablelands_outside_test terrain_core)
+# The cost of the plateaus: the tiles out of their zone (x1.3 at most), a deep canyon (printed). A
+# ratio of measured times: run alone (tests/serial_tests.cmake).
+terrain_add_test(tablelands_cost_test terrain_core)
+# The canyons against real cases: the Grand Canyon (depth, bands of cliffs, the Redwall, a caprock,
+# a platform, temples), walls of varied bands (tableland_canyons.hpp).
+terrain_add_test(tablelands_canyons_test terrain_core)
+target_include_directories(tablelands_canyons_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+# The edges of the plateaus: no straight rim over 2 km, no step where the province vanishes, no comb
+# of outliers (pattern_support.hpp).
+terrain_add_test(tablelands_patterns_test terrain_core)
+target_include_directories(tablelands_patterns_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

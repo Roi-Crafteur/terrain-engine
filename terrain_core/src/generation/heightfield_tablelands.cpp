@@ -46,24 +46,28 @@ TablelandPoint Heightfield::provincesAt(double x, double z, const GeographySampl
     return tablelands_->at(x, z, g);
 }
 
-void Heightfield::addTablelands(double x, double z, const TablelandPoint& p, double coast,
-                                HeightSample& s, wall_faces::Site* site) const {
+void Heightfield::addTablelands(double x, double z, const TablelandPoint& p, HeightSample& s,
+                                wall_faces::Site* site) const {
     const tableland_relief::Noises& n = layers_->tablelandRelief;
-    // The shares around the point, with its coast (it changes little over a few hundred meters).
+    // The shares around the point, each with its own coast (the fade from the coast is part of the
+    // slope of the share the escarpment follows).
     const double along = tableland_relief::kShareStep;
+    const double ax = noise::wrapCanonical(x + along, world_.x);
+    const double az = noise::wrapCanonical(z + along, world_.z);
     const tableland_relief::Province q{
-        p, tablelands_->tablelandShare(noise::wrapCanonical(x + along, world_.x), z, coast),
-        tablelands_->tablelandShare(x, noise::wrapCanonical(z + along, world_.z), coast)};
+        p, tablelands_->tablelandShare(ax, z, geography_->sampleAt(ax, z).coast),
+        tablelands_->tablelandShare(x, az, geography_->sampleAt(x, az).coast)};
     const tableland_relief::Shape shape = tableland_relief::shapeAt(n, x, z, q);
-    if (!(shape.rise > 0.0) && !(shape.rock > 0.0)) {
+    if (!(shape.rise > 0.0) && !(shape.rock > 0.0) && !(shape.unitWeight > 0.0)) {
         return;
     }
     // The ground of the plateau, its rock laid over it (the walls of the plateau), the relief of
     // its tops over that.
     const double ground = static_cast<double>(s.base) + shape.rise;
     const mountain_walls::WallPasses passes =
-        tableland_relief::passesAt(n, x, z, p, shape, static_cast<double>(s.regional));
-    if (site != nullptr && shape.rock > 0.0) {
+        tableland_relief::passesAt(n, x, z, p, shape, static_cast<double>(s.base));
+    const double rock = std::max(shape.rock, shape.unitWeight);
+    if (site != nullptr && rock > 0.0) {
         site->walls = true;
         site->ground = ground;
         site->gradX = shape.gradX;
@@ -73,12 +77,12 @@ void Heightfield::addTablelands(double x, double z, const TablelandPoint& p, dou
             column.ground = ground;
             column.gradX = shape.gradX;
             column.gradZ = shape.gradZ;
-            wall_faces::addFaces(passes, layers_->faceGrain, shape.rock, column, x, z, *site);
+            wall_faces::addFaces(passes, layers_->faceGrain, rock, column, x, z, *site);
         }
     }
     s.base = static_cast<float>(wall_faces::passesTop(passes, ground) +
                                 tableland_relief::topRelief(n, x, z, shape));
-    s.tableland = static_cast<std::uint8_t>(std::lround(255.0 * std::clamp(shape.rock, 0.0, 1.0)));
+    s.tableland = static_cast<std::uint8_t>(std::lround(255.0 * std::clamp(rock, 0.0, 1.0)));
 }
 
 } // namespace terrain

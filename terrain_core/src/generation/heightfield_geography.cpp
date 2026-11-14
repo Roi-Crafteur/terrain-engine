@@ -205,7 +205,7 @@ HeightSample Heightfield::geographySample(double x, double z, Memos* memos,
     s.base = ground + relief_local::boundBelow(local, kLocalRoom * ground);
     s.regional = ground;
     if (plateau.tableland > 0.0f) {
-        addTablelands(x, z, plateau, g.coast, s, site);
+        addTablelands(x, z, plateau, s, site);
     }
     if (g.rift > 0.0f && params_.geography.ravines) {
         s.base -= riftRavinesAt(x, z, kRavineRoom * std::max(0.0f, s.base - 1.0f), memos);
