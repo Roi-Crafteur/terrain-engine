@@ -5,6 +5,7 @@
 
 #include "Bridge/tile_timings.hpp"
 #include "Bridge/unreal_frame.hpp"
+#include "TerrainAtmosphereHaze.h"
 
 #include "TerrainAtmosphereFollower.generated.h"
 
@@ -18,7 +19,8 @@ class USkyLightComponent;
  * above the sea level (heightFogUnder), and the SkyLight on the camera: its real-time capture
  * renders the sky from where it stands, black from space. Ticks after the camera has moved (TG_PostUpdateWork): the
  * frame drawn after a world turn or the origin rebasing already has its sky. Moving these
- * components only sends their new transform to the renderer.
+ * components only sends their new transform to the renderer. It also drives the haze of the dust
+ * over dry land (TerrainAtmosphereHaze.h).
  */
 UCLASS(Transient)
 class UTerrainAtmosphereFollower : public UActorComponent
@@ -44,6 +46,9 @@ public:
 	// The cost of the ticks since the last call, on the game thread.
 	terrain::unreal::StageStats TakeTimings();
 
+	// The haze of the dust over dry land (agent 40), driven by the camera each frame.
+	FTerrainAtmosphereHaze& GetHaze() { return Haze; }
+
 private:
 	bool FindCamera(FVector& OutLocation) const;
 
@@ -53,4 +58,5 @@ private:
 	terrain::unreal::UnrealFrame Frame;
 	double FogAboveSeaCm = 0.0;
 	terrain::unreal::StageStats Timings;
+	FTerrainAtmosphereHaze Haze;
 };

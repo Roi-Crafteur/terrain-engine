@@ -57,6 +57,9 @@ void UTerrainAtmosphereFollower::TickComponent(float DeltaTime, ELevelTick TickT
 	if (FindCamera(Camera))
 	{
 		PlaceFor(Camera);
+		const terrain::unreal::CorePoint Eye =
+			terrain::unreal::toCore(Frame, {Camera.X, Camera.Y, Camera.Z});
+		Haze.Update(Eye.x, Eye.z, DeltaTime);
 	}
 	const double Milliseconds = (FPlatformTime::Seconds() - Start) * 1000.0;
 	++Timings.tiles;

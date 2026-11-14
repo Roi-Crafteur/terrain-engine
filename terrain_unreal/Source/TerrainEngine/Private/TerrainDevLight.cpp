@@ -21,6 +21,10 @@
 //   the SkyAtmosphere (AerialPespectiveViewDistanceScale, HeightFogContribution), read and set by
 //   the names of its properties (the log names one this version would not have), its render state
 //   marked dirty: does the blue band come from it (ShowFlag.Atmosphere 0 takes 19.6/255 off)?
+// - Terrain.Haze [auto|off|<dryness> [view distance scale] [Mie x] [Mie absorption]]: the haze of
+//   the dust over dry land (TerrainAtmosphereHaze.h): the dryness of the region (auto), the
+//   SkyAtmosphere of the map (off), or a dryness forced, with the dusty air changed while
+//   playing; without arguments, logs it with the values read back on the sky.
 #include "TerrainHorizonClipmap.h"
 
 #if TERRAIN_DEV_TOOLS
@@ -35,6 +39,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "TerrainAtmosphereFollower.h"
 #include "TerrainDevState.h"
 #include "TerrainEngineLog.h"
 #include "UObject/UObjectIterator.h"
@@ -352,6 +357,55 @@ namespace
 		}
 	}
 
+	// Terrain.Haze [auto|off|<dryness> [view distance scale] [Mie x] [Mie absorption]]
+	void RunTerrainHaze(const TArray<FString>& Args, UWorld* World)
+	{
+		const FString Mode = Args.Num() > 0 ? Args[0].ToLower() : FString();
+		TArray<double> Numbers;
+		const bool bWord = Mode == TEXT("auto") || Mode == TEXT("off");
+		if (World == nullptr || Args.Num() > 4 || (bWord && Args.Num() > 1) ||
+			(!bWord && !LightNumbers(Args, Numbers)))
+		{
+			UE_LOG(LogTerrainEngine, Warning,
+				TEXT("Terrain.Haze [auto|off|<dryness 0 to 1> [view distance scale] [Mie x] [Mie "
+					 "absorption /km]]"));
+			return;
+		}
+		if (Args.Num() > 0 && !LightChangesAllowed(*World, TEXT("Terrain.Haze")))
+		{
+			return;
+		}
+		int32 Followers = 0;
+		for (TObjectIterator<UTerrainAtmosphereFollower> It; It; ++It)
+		{
+			if (It->GetWorld() != World)
+			{
+				continue;
+			}
+			++Followers;
+			FTerrainAtmosphereHaze& Haze = It->GetHaze();
+			if (bWord)
+			{
+				Haze.SetMode(Mode == TEXT("auto"), std::nullopt);
+			}
+			else if (Numbers.Num() > 0)
+			{
+				terrain::unreal::DustHaze& Dust = Haze.Dust();
+				Dust.viewDistanceScale = Numbers.Num() > 1 ? Numbers[1] : Dust.viewDistanceScale;
+				Dust.mieScattering = Numbers.Num() > 2 ? Numbers[2] : Dust.mieScattering;
+				Dust.mieAbsorptionScale = Numbers.Num() > 3 ? Numbers[3] : Dust.mieAbsorptionScale;
+				Haze.SetMode(true, FMath::Clamp(Numbers[0], 0.0, 1.0));
+			}
+			UE_LOG(LogTerrainEngine, Log, TEXT("Terrain.Haze: %s (set at the next frame)"),
+				*Haze.Describe());
+		}
+		if (Followers == 0)
+		{
+			UE_LOG(LogTerrainEngine, Warning,
+				TEXT("Terrain.Haze: no sky follows the camera (bAtmosphereFollowsCamera)"));
+		}
+	}
+
 	FAutoConsoleCommandWithWorldAndArgs TerrainSunCommand(TEXT("Terrain.Sun"),
 		TEXT("Turns the sun while playing: Terrain.Sun <elevation> <heading> (degrees above the "
 			 "horizon, degrees clockwise from the north), a light not movable made movable for the "
@@ -374,6 +428,12 @@ namespace
 			 "distance scale> [height fog contribution]; logs the values read back (without "
 			 "arguments, only logs them)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainAerial));
+
+	FAutoConsoleCommandWithWorldAndArgs TerrainHazeCommand(TEXT("Terrain.Haze"),
+		TEXT("The haze of the dust over dry land while playing: Terrain.Haze auto, off, or a "
+			 "dryness forced <0 to 1> [view distance scale] [Mie x] [Mie absorption /km]; "
+			 "without arguments, logs it"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainHaze));
 } // namespace
 
 #endif // TERRAIN_DEV_TOOLS

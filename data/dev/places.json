@@ -167,4 +167,16 @@
       "planet": true, "note": "erg réaliste vu de 8 km de haut, à plus de 1 600 km de toute côte : le coin net du bord du niveau 3 de l'horizon et la bande bleue au-delà (agent 40)" },
     { "name": "erg_vagues_8km", "x": 11505334, "z": -4967544,
       "heading": 254, "pitch": -40, "eye": 8000, "eyeMode": "ground",
-      "planet": true, "note": "erg de grandes vagues vu de 8 km de haut : le coin net du bord du niveau 3 de l'horizon (agent 40)" } ] }
+      "planet": true, "note": "erg de grandes vagues vu de 8 km de haut : le coin net du bord du niveau 3 de l'horizon (agent 40)" },
+    { "name": "chaine_humide_50km", "x": 4125500, "z": 2555832,
+      "heading": 210, "pitch": -2, "eye": 2, "eyeMode": "ground",
+      "planet": true, "note": "d'un sommet de 2 108 m, une chaîne humide de 3 200 à 3 400 m à 45-60 km par-dessus une côte basse : la profondeur bleue des montagnes que la brume de poussière ne doit pas toucher (agent 40)" },
+    { "name": "plage_origine_est", "x": 3400, "z": 0,
+      "heading": 90, "pitch": 0, "eye": 1.8, "eyeMode": "ground",
+      "planet": true, "note": "une plage à l'est de l'origine, vers la mer ouverte sur 100 km : la brume de la mer du brouillard de hauteur (agent 40)" },
+    { "name": "foret_humide_sol", "x": -6179604, "z": 165924,
+      "heading": 270, "pitch": 6, "eye": 2, "eyeMode": "ground",
+      "planet": true, "note": "une clairière au bord de la forêt tropicale, vers un escarpement de 2 024 m à 7 km et un pic de 2 396 m à 22 km : aucune brume de poussière (agent 40)" },
+    { "name": "desert_froid_500m", "x": 1863968, "z": -10006000,
+      "heading": 270, "pitch": -10, "eye": 500, "eyeMode": "ground",
+      "planet": true, "note": "un désert froid de type Gobi (1,8 °C, humidité 0,096), une plaine de sable sur 40 km vue de 500 m : ce que reçoit la brume de poussière (agent 40)" } ] }

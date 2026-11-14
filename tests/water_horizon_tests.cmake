@@ -1,7 +1,8 @@
 # The water and the far horizon as Unreal draws them (agent 40). Included once, at the end of
 # tests/CMakeLists.txt (after the Bridge library and the fixture of the planet of the coasts).
 
-target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/dev_ab_cost.cpp
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/atmosphere_haze.cpp
+                                             ${unreal_bridge}/dev_ab_cost.cpp
                                              ${unreal_bridge}/horizon_low_sun.cpp
                                              ${unreal_bridge}/horizon_sea_line.cpp
                                              ${unreal_bridge}/horizon_split.cpp)
@@ -48,4 +49,12 @@ terrain_add_test(unreal_horizon_low_sun_test terrain_unreal_bridge)
 terrain_add_test(horizon_low_sun_study_test terrain_unreal_bridge)
 target_include_directories(horizon_low_sun_study_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(horizon_low_sun_study_test PROPERTIES FIXTURES_REQUIRED coast_planet
+                     ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
+
+# The haze of the dust over dry land: the dryness of the 7 views compared in Unreal, the look of
+# the map kept at d = 0, the dryness along 400 km from a desert to a humid land, the sun through
+# the dusty air (at most 2 % per channel and 1 % of tint from 7 degrees up).
+terrain_add_test(atmosphere_haze_test terrain_unreal_bridge)
+target_include_directories(atmosphere_haze_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(atmosphere_haze_test PROPERTIES FIXTURES_REQUIRED coast_planet
                      ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})

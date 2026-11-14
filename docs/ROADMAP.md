@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -443,7 +444,10 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   changées, géomorphing), époques sur les tâches d'Unreal moins prioritaires que les tuiles,
   jupe sous le bord du niveau 0, tuiles arrêtées vers 850 m, courbure ; ciel qui suit la
   caméra partout sur la planète (perspective aérienne jusqu'au bout de l'horizon), mer
-  colorée selon la profondeur avec vagues, reflet du ciel et du soleil
+  colorée selon la profondeur avec vagues, reflet du ciel et du soleil ; brume de poussière
+  au-dessus des terres sèches (agent 40 : le `SkyAtmosphere` tourné vers un air poussiéreux selon
+  la sécheresse de la région, une brume beige au lieu d'une bande lavande sur le sable lointain) ;
+  le brouillard de hauteur ne fait plus que la brume de la mer et des côtes basses
 - préfiltrage des crêtes lointaines : fait — à partir du niveau 1, le coin le plus haut de
   chaque maille monte au sommet de la maille, cherché 4 fois plus finement (les fonds de vallée
   ne montent jamais) ; silhouette trop basse de 0,09° au lieu de 0,18° en moyenne depuis la

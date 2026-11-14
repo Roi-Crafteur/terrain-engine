@@ -534,7 +534,19 @@ biome) au lieu de la couleur d'altitude, et les tuiles lisent les texels du nive
   montagnes lointaines bleuissent et s'effacent jusqu'au bout, sans bord visible.
 - **Brouillard** : il est plat, l'horizon courbé : à 500 km le sol est 14 km sous lui et serait
   entièrement noyé. `FogEndDistanceKm` (20 km ; 0 : son réglage) borne l'intégration
-  (`End Distance`) ; au-delà, la perspective aérienne prend le relais.
+  (`End Distance`) ; au-delà, la perspective aérienne prend le relais. Sa densité est divisée
+  par 2 tous les 10 / décroissance m (50 m avec 0,2) : il ne fait que la brume de la mer et des
+  côtes basses (11 % à 5 km d'une plage, 38 % à 20 km), rien en vallée, en montagne ni d'avion
+  (agent 40, calcul avec la formule d'Unreal).
+- **Brume de poussière** (agent 40, `TerrainAtmosphereHaze.h`, `Bridge/atmosphere_haze.hpp`) : la
+  sécheresse de la région autour de la caméra (niveau planète : humidité, température, altitude,
+  moyenne de 25 points jusqu'à 30 km ; 0 sur les terres humides, la mer et le froid polaire, 1 sur
+  un désert, froid compris) tourne le `SkyAtmosphere` de la carte vers un air poussiéreux pendant
+  la partie : perspective aérienne × 0,4, diffusion de Mie × 1,4, absorption de Mie 0,0006 /km
+  plus forte dans le bleu (`HorizonDrawing`, `bDustHaze`). Le sol lointain d'un désert vu de haut
+  passe d'une bande lavande à une brume beige ; le soleil à travers cet air perd au plus 1,7 %
+  (bleu, soleil à 7°). À sécheresse 0, les valeurs de la carte au bit près ; elles reviennent à la
+  fin de la partie. Suivie en 3 s, prise d'un coup après une téléportation. Coût GPU nul.
 - **Mer** (`Scripts/create_horizon_gpu_material.py`, qui reconstruit l'asset en place) : sur
   l'océan, la texture porte le sol sous la mer (`texelGround`) ; la côte est là où le sol
   interpolé passe sous 0, au pixel près (pas de z-fighting ni de trou : un seul maillage). Couleur
