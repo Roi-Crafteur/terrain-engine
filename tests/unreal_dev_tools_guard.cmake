@@ -80,6 +80,19 @@ if(open EQUAL -1 OR command EQUAL -1 OR close EQUAL -1 OR command LESS open
                          "#if TERRAIN_DEV_TOOLS\n")
 endif()
 
+# Terrain.SeaNear (agent 52, provisional) lives with the sea near the pixel, its registration under
+# #if TERRAIN_DEV_TOOLS.
+file(READ "${plugin}/Private/TerrainHorizonClipmapSea.cpp" text)
+string(REGEX REPLACE "\r" "" text "${text}")
+string(FIND "${text}" "#if TERRAIN_DEV_TOOLS\n" open)
+string(FIND "${text}" "TEXT(\"Terrain.SeaNear\")" command)
+string(FIND "${text}" "#endif // TERRAIN_DEV_TOOLS" close)
+if(open EQUAL -1 OR command EQUAL -1 OR close EQUAL -1 OR command LESS open
+   OR command GREATER close)
+    string(APPEND errors "TerrainHorizonClipmapSea.cpp: Terrain.SeaNear is not under "
+                         "#if TERRAIN_DEV_TOOLS\n")
+endif()
+
 if(NOT errors STREQUAL "")
     message(FATAL_ERROR "the tools of the developers could reach a Shipping build:\n${errors}")
 endif()

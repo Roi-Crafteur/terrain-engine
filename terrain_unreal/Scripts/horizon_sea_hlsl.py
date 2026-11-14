@@ -9,6 +9,8 @@
   lie deeper by BehindTilesCm, so that the tiles stay in front where the two surfaces cross (the
   8 m cells of level 0 against the meshes of the tiles): no checkerboard of horizon cells beyond
   the band where the drop fades out. Not on the sea, which stays in front of the shallow sea floor.
+  At the sea (Sea, temporary_terrain_hlsl.SEA_NEAR_HLSL) it fades from the sea level to 1 m of
+  ground; a dry basin below the sea level, far from it, keeps it whole (agent 52).
 """
 
 import temporary_terrain_hlsl as terrain_hlsl
@@ -126,11 +128,16 @@ return step(0.5, lerp(lerp(s.x, s.y, f.x), lerp(s.z, s.w, f.x), f.y));
 BEHIND_HLSL = r"""
 if (Kind.g > 0.5) { return 0.0; }
 // Full up to BehindBandCm beyond the band the tiles always cover (they reach about one tile of
-// LOD 3 further), then down to 0 across BehindFadeCm, and from the sea level to 1 m of ground:
-// no step in the depth, which the screen space effects would draw as a dark line.
+// LOD 3 further), then down to 0 across BehindFadeCm, and at the sea (Sea) from the sea level to
+// 1 m of ground: no step in the depth, which the screen space effects would draw as a dark line.
+// Away from the sea a dry basin below the sea level keeps it whole: no checkerboard there. The
+// lerp(1, saturate(Ground), Sea), written so that it gives saturate(Ground) to the bit where Sea is
+// 1: the coasts as before.
 float fromCenter = max(abs(LocalPos.x - Cells * 0.5), abs(LocalPos.y - Cells * 0.5)) * PitchCm;
 float reach = DropCoveredCm + BehindBandCm + BehindFadeCm;
-return BehindTilesCm * saturate((reach - fromCenter) / max(BehindFadeCm, 1.0)) * saturate(Ground);
+float atSea = saturate(Ground);
+return BehindTilesCm * saturate((reach - fromCenter) / max(BehindFadeCm, 1.0)) *
+       (atSea + (1.0 - Sea) * (1.0 - atSea));
 """
 
 

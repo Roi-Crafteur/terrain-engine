@@ -650,6 +650,11 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - le terrain n'a pas de plancher à 0 m : tous les chantiers de relief creusent aussi, et ne font pas que monter
 - une altitude négative n'est de la mer que si elle est reliée à l'océan ; le fondu de surface, les biomes, les matériaux,
   l'horizon et la carte de dev suivent cette règle
+- pour l'agent 40 (agent 52, PR 52a-bis) : les matériaux lisent la mer près du pixel (texels de niveau 0, 16 m)
+  pour le décalage de l'horizon sous les tuiles et pour la roche mouillée sous 0 m ; au-dessus de 0 m la bande
+  mouillée reste à l'altitude (les plateformes rocheuses de l'agent 33 sont jusqu'à 128 m de la mer), d'où une fine
+  bande sur les bords rocheux des bassins secs entre −1 et 4,8 m ; un masque « vraie mer » au loin (un niveau
+  grossier de l'horizon lié aux deux matériaux) la réglerait aussi : à faire avec sa couche de mer, pas maintenant
 - grands bassins secs sous le niveau de la mer, fossés d'effondrement avec lac salé, cratères d'impact rares
 - plaines et bas plateaux avec de vrais creux, sans plancher visible
 - à faire avant l'étape 1 de la 11C : le réseau d'eau doit voir ces creux

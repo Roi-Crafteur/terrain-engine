@@ -475,6 +475,10 @@ rockG = lerp(rockG, desertRock, ergFloor);
 // The same on the tiles and on the horizon, both shaded here: no step at 512 m.
 float wetTop = WetBandM * (0.5 + 0.7 * Look.Noise(P + 97.0, 12.0) + 0.3 * Look.Noise(P - 41.0, 3.0));
 float wet = 1.0 - smoothstep(wetTop - 0.7, wetTop + 0.3, Z);
+// Below the sea level only at the sea (agent 52): Sea, the sea of the core near the pixel
+// (SEA_NEAR_HLSL); from 0 m up the band as before (the rock platforms of the coasts of agent 33
+// lie up to 128 m from the sea), from -1 m down a dry basin far from the sea never wet.
+wet *= max(Sea, smoothstep(-1.0, 0.0, Z));
 rockG *= lerp(1.0, WetDarken, wet);
 // Its beds, its notch and its cap where the core gives them (Look.Bands), at the same heights on
 // the tiles and on the horizon.
@@ -506,6 +510,67 @@ if (DebugView > 0.5)
 NormalOut = normal;
 return color;
 """
+
+
+# The sea near a pixel (agent 52: the land below the sea level is not the sea): what the wet rock of
+# the shading below the sea level (SHADE_BOTTOM) and the depth offset of the GPU horizon under the
+# tiles (horizon_sea_hlsl.BEHIND_HLSL) read instead of the altitude. A texel of the ocean (its last
+# float below 0, Bridge/horizon_textures.hpp: isSeaTexel) marks the ground within SeaNearM of it as
+# at the sea: RING texels of its level around it, at least 1 and at most SEA_RING_MAX. 1 where
+# neither reads it, exactly as they would (the tiles from 0 m of altitude up; the horizon from 1 m
+# of ground and 0 m of altitude up), and everywhere with the switch SeaNear at 0 (the look of
+# before, Terrain.SeaNear 0).
+SEA_RING_MAX = 2
+SEA_NEAR_EARLY = {True: "!(Z < 0.0)", False: "(!(Ground < 1.0) && !(Z < 0.0))"}
+
+SEA_NEAR_HLSL = r"""
+if (SeaNear < 0.5 || EARLY) { return 1.0; }
+// 1 where each of the 4 texels around the pixel has a texel of the ocean within ring texels of it
+// (both ways along each axis), 0 where none has, bilinear in between: continuous across the
+// texels, the sea of the core only.
+int ring = (int)clamp(ceil(SeaNearM * 100.0 / PITCH), 1.0, RINGMAX);
+float2 q = clamp(POS, 0.0, CELLS - 0.001);
+int2 i0 = int2(floor(q));
+float2 f = q - float2(i0);
+float4 seaCorner = float4(0.0, 0.0, 0.0, 0.0);
+[loop] for (int dj = -ring; dj <= ring + 1; ++dj)
+{
+    [loop] for (int di = -ring; di <= ring + 1; ++di)
+    {
+        int2 k = clamp(i0 + int2(di, dj), int2(0, 0), int2((int)CELLS, (int)CELLS));
+        BRANCH if (TEX.Load(int3((k + first) % side, 0)).a < 0.0)
+        {
+            seaCorner = max(seaCorner, float4(di <= ring && dj <= ring, di >= 1 - ring && dj <= ring,
+                                              di <= ring && dj >= 1 - ring,
+                                              di >= 1 - ring && dj >= 1 - ring));
+        }
+    }
+}
+return lerp(lerp(seaCorner.x, seaCorner.y, f.x), lerp(seaCorner.z, seaCorner.w, f.x), f.y);
+"""
+
+
+def sea_near_hlsl(tiles):
+    """The code of the node of the sea near the pixel (SEA_NEAR_HLSL): on the tiles, from the
+    texels of level 0 (SurfaceTexels, their window placed as in the vertex shader of
+    create_temporary_terrain_material.py, Rel; 1 without the GPU horizon); on the GPU horizon, from
+    the texels of its level (HorizonTexels, LocalPos in cells, as HorizonSeaSquare). Z: the
+    altitude of the pixel; Ground: the interpolated ground of the horizon."""
+    if tiles:
+        head = ("if (HasSurface < 0.5) { return 1.0; }\n"
+                "int side = (int)SurfaceCells + 1;\n"
+                "int2 first = int2((int)SurfaceFirstX, (int)SurfaceFirstZ);\n")
+        names = {"POS": "Rel.xy / SurfacePitchCm", "CELLS": "SurfaceCells",
+                 "PITCH": "SurfacePitchCm", "TEX": "Tex"}
+    else:
+        head = ("int side = (int)Cells + 1;\n"
+                "int2 first = int2((int)FirstSlotX, (int)FirstSlotZ);\n")
+        names = {"POS": "LocalPos.xy", "CELLS": "Cells", "PITCH": "PitchCm", "TEX": "Tex"}
+    code = SEA_NEAR_HLSL.replace("EARLY", SEA_NEAR_EARLY[tiles]).replace(
+        "RINGMAX", f"{float(SEA_RING_MAX):.1f}")
+    for key, value in names.items():
+        code = code.replace(key, value)
+    return head + code
 
 
 def struct_hlsl(biomes):
