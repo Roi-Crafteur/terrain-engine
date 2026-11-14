@@ -5,6 +5,7 @@
 #include "Templates/PimplPtr.h"
 #include "TerrainDevTypes.h"
 #include "TerrainEdits.h"
+#include "TerrainExperimentalSettings.h"
 #include "TerrainLoadingSettings.h"
 
 #include "TerrainWorld.generated.h"
@@ -148,9 +149,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Water")
 	bool bWater = true;
 
-	// Material of the surface of the lakes and rivers of the tiles. None:
-	// /Game/TerrainEngine/M_TerrainWater (Scripts/create_water_materials.py); without it, the tiles
-	// draw no water (a warning in the log).
+	// Material of the lakes and rivers of the tiles. None: /Game/TerrainEngine/M_TerrainWater
+	// (Scripts/create_water_materials.py); without it, the tiles draw no water (logged).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Water",
 		meta = (EditCondition = "bWater"))
 	TObjectPtr<UMaterialInterface> WaterMaterial;
@@ -161,8 +161,7 @@ public:
 		meta = (EditCondition = "bWater"))
 	TObjectPtr<UMaterialInterface> FallsMaterial;
 
-	// Cooks the collision of the LOD 0 tiles off the game thread. Off: the ground exists as soon
-	// as its tile is shown, at the cost of the cooking in the frame.
+	// Cooks the collision of the LOD 0 tiles off the game thread; off: in the frame of the tile.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Meshes")
 	bool bAsyncCollisionCooking = false;
 
@@ -183,22 +182,23 @@ public:
 		meta = (ClampMin = "0.1"))
 	float WarmUpTimeoutSeconds = 10.0f;
 
-	// The loads at the start, after a teleport and around a prepared point (agent 38): the boost,
-	// the fade, the hold, the horizon level by level (TerrainLoadingSettings.h).
+	// The loads at the start, after a teleport, around a prepared point (TerrainLoadingSettings.h).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Loading")
 	FTerrainLoadingSettings LoadingSettings;
 
 	UPROPERTY(BlueprintAssignable, Category = "Terrain|Loading")
 	FTerrainLocationReady OnTerrainLocationReady;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Experimental")
+	FTerrainExperimentalSettings Experimental;
+
 	// Interval of the summary of the tile costs in the log; 0: no summary.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Measures",
 		meta = (ClampMin = "0"))
 	float TimingLogIntervalSeconds = 5.0f;
 
-	// The far horizon: the levels of the clipmap of terrain_core around the player, from under the
-	// tiles up to 520 km with 10 levels, curved by its material. The tiles must end inside its
-	// first level: ViewDistanceChunks from 28 to 55 with the default LOD rings.
+	// The far horizon: the clipmap of terrain_core around the player, up to 520 km with 10 levels,
+	// curved by its material; the tiles end inside its first level (ViewDistanceChunks 28 to 55).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Horizon")
 	bool bHorizon = true;
 

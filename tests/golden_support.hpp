@@ -15,16 +15,16 @@
 //   - every world of a golden is built with golden::reliefParams(its params) (and its water
 //     with golden::waterParams), so that the flags read set them;
 //   - every value a flag changes reads golden::pick("<name>", value of main, value with it).
-// An agent adds its name to the table of the experimental flags and these calls where its
-// relief reaches, never helpers of its own. At R1 the values with the flags become those of
-// main and the variants go.
+// An agent adds its name to the table of the experimental flags (experimental_flags.cpp) and these
+// calls where its relief reaches, never helpers of its own. At R1 the values with the flags become
+// those of main and the variants go.
 
+#include "terrain/generation/experimental_flags.hpp"
 #include "terrain/generation/speleothems.hpp"
 #include "terrain/generation/vegetation.hpp"
 #include "terrain/meshing/mesh.hpp"
 #include "terrain/streaming/stream_manager.hpp"
 
-#include "experimental_flags_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>

@@ -21,8 +21,7 @@ target_include_directories(volcano_positions_test PRIVATE
     ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
 target_compile_definitions(volcano_positions_test PRIVATE
     TERRAIN_SETTLEMENT_DATA="${PROJECT_SOURCE_DIR}/data/settlement")
-# The flag "volcanoes" in the provisional experimental flags (experimental_flags_support.hpp, the
-# form of agent 51's aeb5347): goes with it, its cases into experimental_flags_test.
+# The flag "volcanoes" in the table of the experimental flags (experimental_flags.hpp, agent 51).
 terrain_add_test(volcano_flags_test terrain_core)
 # The goldens with the volcanoes on (golden_support.hpp: the same executables run with --flags
 # volcanoes), their values pinned for R1, which turns every new relief on together. Not in ctest:

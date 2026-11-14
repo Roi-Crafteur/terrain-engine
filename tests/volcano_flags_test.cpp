@@ -1,93 +1,64 @@
-// The flag "volcanoes" (agent 45) in the experimental flags of agent 51, as the provisional
-// experimental_flags_support.hpp has them (the form of aeb5347): an empty text leaves the
-// volcanoes off (the world of main); "volcanoes" switches them on and nothing else; names apart by
-// commas or white space, their case ignored, each applied once; an unknown name given back; the
-// table sorted, its names well formed. The same cases as experimental_flags_test of agent 51:
-// they move there with the row, when its header reaches main, and this test goes.
+// The flag "volcanoes" (agent 45) in the table of the experimental flags (experimental_flags.hpp,
+// agent 51): no flag leaves the volcanoes off (the world of main); "volcanoes", whatever its case,
+// switches them on and sets nothing else of the world; its name is that of the table, the one
+// written in the planet files and Unreal levels. The reading of the text (separators, case,
+// duplicates, unknown names) is experimental_flags_test's.
 
-#include "experimental_flags_support.hpp"
+#include "terrain/generation/experimental_flags.hpp"
 
 #include "test_assert.hpp"
 
 #include <string>
-#include <vector>
 
 namespace {
 
 using terrain::AppliedFlags;
 using terrain::WorldParams;
 
-void testEmpty() {
-    for (const char* text : {"", " ", " , ;\t\n"}) {
-        WorldParams p;
-        const AppliedFlags a = terrain::applyExperimentalFlags(text, p);
-        TEST_CHECK(a.text.empty() && a.unknown.empty());
-        TEST_CHECK(!p.relief.volcanoes.enabled && p.relief.geography.enabled);
-    }
+// Everything a flag may set but the switch of the volcanoes: as without any flag.
+bool othersOff(const WorldParams& p) {
+    const WorldParams none;
+    terrain::VolcanoParams volcanoes = p.relief.volcanoes;
+    volcanoes.enabled = none.relief.volcanoes.enabled;
+    return volcanoes == none.relief.volcanoes &&
+           p.relief.geography.enabled == none.relief.geography.enabled &&
+           p.water.ergs.enabled == none.water.ergs.enabled;
 }
 
-void testVolcanoes() {
-    for (const char* text :
-         {"volcanoes", " Volcanoes ", "volcanoes,volcanoes", "VOLCANOES;volcanoes", "\tvolcanoes\n"}) {
+void testOff() {
+    WorldParams p;
+    const AppliedFlags a = terrain::applyExperimentalFlags("", p);
+    TEST_CHECK(a.text.empty() && a.unknown.empty());
+    TEST_CHECK(!p.relief.volcanoes.enabled && othersOff(p));
+}
+
+void testOn() {
+    for (const char* text : {"volcanoes", " Volcanoes ", "VOLCANOES"}) {
         WorldParams p;
         const AppliedFlags a = terrain::applyExperimentalFlags(text, p);
         TEST_CHECK(a.text == "volcanoes" && a.unknown.empty());
-        TEST_CHECK(p.relief.volcanoes.enabled);
-        // Nothing else: the parameters of main but the switch.
-        WorldParams q;
-        q.relief.volcanoes.enabled = true;
-        TEST_CHECK(p.relief.volcanoes == q.relief.volcanoes && p.water.ergs.enabled &&
-                   p.relief.geography.enabled);
+        TEST_CHECK(p.relief.volcanoes.enabled && othersOff(p));
     }
     TEST_CHECK(terrain::canonicalFlags("Volcanoes") == "volcanoes");
 }
 
-void testUnknown() {
-    WorldParams p;
-    const AppliedFlags a = terrain::applyExperimentalFlags("volcanos, volcanoes lava,volcanos", p);
-    TEST_CHECK(a.text == "volcanoes");
-    TEST_CHECK((a.unknown == std::vector<std::string>{"volcanos", "lava"}));
-    TEST_CHECK(p.relief.volcanoes.enabled);
-    WorldParams q;
-    const AppliedFlags b = terrain::applyExperimentalFlags("volcano", q);
-    TEST_CHECK(b.text.empty() && b.unknown.size() == 1 && !q.relief.volcanoes.enabled);
-    TEST_CHECK(terrain::canonicalFlags("volcano,volcanoes") == "volcanoes");
-}
-
-bool wellFormed(const std::string& name) {
-    if (name.empty()) {
-        return false;
-    }
-    for (const char c : name) {
-        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_')) {
-            return false;
+void testRow() {
+    int rows = 0;
+    for (const terrain::ExperimentalFlag& f : terrain::experimentalFlags()) {
+        if (std::string(f.name) == "volcanoes") {
+            ++rows;
+            TEST_CHECK(f.what[0] != '\0' && f.apply != nullptr);
         }
     }
-    return true;
-}
-
-void testTable() {
-    const auto flags = terrain::experimentalFlags();
-    TEST_CHECK(!flags.empty());
-    std::string names;
-    for (std::size_t i = 0; i < flags.size(); ++i) {
-        TEST_CHECK(wellFormed(flags[i].name) && flags[i].what[0] != '\0');
-        TEST_CHECK(flags[i].apply != nullptr);
-        if (i > 0) {
-            TEST_CHECK(std::string(flags[i - 1].name) < std::string(flags[i].name));
-        }
-        TEST_CHECK(terrain::canonicalFlags(flags[i].name) == flags[i].name);
-        names += (names.empty() ? "" : ", ") + std::string(flags[i].name);
-    }
-    TEST_CHECK(terrain::knownFlagNames() == names);
+    TEST_CHECK(rows == 1);
+    TEST_CHECK(terrain::knownFlagNames().find("volcanoes") != std::string::npos);
 }
 
 } // namespace
 
 int main() {
-    testEmpty();
-    testVolcanoes();
-    testUnknown();
-    testTable();
+    testOff();
+    testOn();
+    testRow();
     return test::result();
 }
