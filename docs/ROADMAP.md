@@ -654,6 +654,29 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - plaines et bas plateaux avec de vrais creux, sans plancher visible
 - à faire avant l'étape 1 de la 11C : le réseau d'eau doit voir ces creux
 
+### Sous le niveau 0 : les creux de l'agent 52 (PR 52b, éteints ; R1 les allume)
+- tout derrière le drapeau `lows` (éteint : le monde de main au bit près) : bassins secs, fossés des rifts, cratères
+  (200 / 80 / 15 sur les terres, la plupart usés), creux des plaines (kettles au froid, playas au sec, par le
+  pré-climat partagé de l'agent 46), bassins sédimentaires enfoncés (`sunkenBasins`), brèches des creux sous 0 m
+  vers une terre plus basse (`sealByOutlet`)
+- R1 sur la seed du jeu : 0,24 % des terres sous 0 m (0,24 à 0,36 % sur les 6 seeds de l'audit), somme Planète
+  `49f04b4b1c19f3fc` ; coût ×1,20 dans les plaines, ×1,00 en montagne
+- reste : la zone de l'agent 46 (`tablelandAt`) à brancher dans `Heightfield::makeWater` par le second fusionné ;
+  une surface de sel ou d'argile pour les playas et les fonds secs (agent 49)
+- lieux pour R1, à ajouter à `data/dev/places.json` par R1 (aujourd'hui ils ne montreraient rien) :
+  ```json
+  { "name": "fond_sec_337", "x": 17793865, "z": -3396348, "heading": 270, "pitch": 2, "eye": 1.8, "eyeMode": "ground", "planet": true, "note": "le fond sec le plus bas de R1 (−337 m, semi-aride) : le ciel et le brouillard sous la mer ; le fossé de −429 m est sous un lac" },
+  { "name": "bassin_sec_fond", "x": 15477812, "z": -4321362, "heading": 270, "pitch": 1, "eye": 1.8, "eyeMode": "ground", "planet": true, "note": "le fond sec du bassin n° 998 (−258 m, aride)" },
+  { "name": "bassin_sec_haut", "x": 15503587, "z": -4321362, "heading": 270, "pitch": -6, "eye": 1500, "eyeMode": "ground", "planet": true, "note": "le bassin sec n° 998 vu de 1 500 m depuis son bord est" },
+  { "name": "fosse_lac", "x": -3470000, "z": 2169134, "heading": 270, "pitch": -4, "eye": 50, "eyeMode": "ground", "planet": true, "note": "le fossé n° 467 : un lac à +59 m sur un fond à −429 m" },
+  { "name": "cuvette_enfoncee", "x": -14800000, "z": 4198400, "heading": 270, "pitch": -8, "eye": 200, "eyeMode": "altitude", "planet": true, "note": "un bassin sédimentaire enfoncé : son lac à −44,6 m, sous la mer" },
+  { "name": "grand_cratere_bord", "x": 14310158, "z": -4642390, "heading": 270, "pitch": -6, "eye": 20, "eyeMode": "ground", "planet": true, "note": "le cratère n° 969 (39 km, usé à 0,52, aride) depuis son bord est" },
+  { "name": "petit_cratere_bord", "x": 13753844, "z": -10432279, "heading": 270, "pitch": -12, "eye": 10, "eyeMode": "ground", "planet": true, "note": "le cratère n° 960 (7 km, frais à 0,23, fond à −132 m, aride) depuis son bord" },
+  { "name": "lac_sale_bassin", "x": 13930000, "z": -10166270, "heading": 270, "pitch": -8, "eye": 500, "eyeMode": "altitude", "planet": true, "note": "le lac salé du bassin n° 962 (aride), à +122 m" },
+  { "name": "kettles", "x": -15716278, "z": -11377172, "heading": 0, "pitch": -25, "eye": 120, "eyeMode": "ground", "planet": true, "note": "des kettles dans une plaine froide" },
+  { "name": "playa", "x": 22234309, "z": -12493106, "heading": 0, "pitch": -15, "eye": 150, "eyeMode": "ground", "planet": true, "note": "une playa de 7 km dans une plaine sèche" }
+  ```
+
 ### Tous les milieux du monde (minimum voulu)
 - format à élargir d'abord : 12 biomes aujourd'hui, 16 biomes et 8 matériaux au plus par le format
   actuel
