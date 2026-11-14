@@ -5,13 +5,14 @@
 #include "coast_faces.hpp"
 #include "coast_inlets.hpp"
 #include "coast_kinds.hpp"
-#include "terrain/generation/climate_latitude.hpp"
 #include "coast_lattice.hpp"
+#include "coast_valleys.hpp"
 #include "coast_shape.hpp"
 #include "heightfield_layers.hpp"
 #include "rock_spires.hpp"
 #include "mountain_walls.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/generation/climate_latitude.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
@@ -152,11 +153,16 @@ std::shared_ptr<const coast_lattice::Lattices> Heightfield::makeInlets() const {
     };
     if (hydrology_) {
         const auto hydrology = hydrology_;
-        w.clearance = [hydrology, world](double x, double z) {
+        const bool seaKeeps = params_.seaKeepsCoasts;
+        w.clearance = [hydrology, world, seaKeeps](double x, double z) {
             const double cx = wrapCoordinate(x, world.x);
             const double cz = wrapCoordinate(z, world.z);
-            return hydrology->clearance(cx, cz,
-                                        static_cast<double>(hydrology->relief().heightAt(cx, cz)));
+            const auto ground = static_cast<double>(hydrology->relief().heightAt(cx, cz));
+            if (seaKeeps &&
+                coast_valleys::seaKeepsCoast(true, ground, hydrology->clearanceAt(cx, cz).floor)) {
+                return std::numeric_limits<double>::infinity(); // coast_valleys.hpp
+            }
+            return hydrology->clearance(cx, cz, ground);
         };
     }
     return std::make_shared<const coast_lattice::Lattices>(std::move(w));
@@ -304,6 +310,10 @@ void Heightfield::leaveValleys(double x, double z, HeightSample& s, Memos* memos
     if (sameRelief(b, s)) {
         return;
     }
+    if (coast_valleys::seaKeepsCoast(params_.seaKeepsCoasts, static_cast<double>(b.height),
+                                     near.floor)) {
+        return; // under the sea, below a valley above it (coast_valleys.hpp)
+    }
     const double clear = near.over(static_cast<double>(b.height));
     if (!(clear < kClearance)) {
         return;
@@ -342,15 +352,8 @@ float Heightfield::coastFaceClear(double x, double z, float height) const {
     if (!hydrology_) {
         return 1.0f;
     }
-    const double clear = hydrology_->clearanceAt(x, z).over(static_cast<double>(height));
-    if (!(clear < kClearance)) {
-        return 1.0f;
-    }
-    if (!(clear > 0.0)) {
-        return 0.0f;
-    }
-    const double t = clear / kClearance;
-    return static_cast<float>(t * t * (3.0 - 2.0 * t));
+    return coast_valleys::faceWeight(hydrology_->clearanceAt(x, z), static_cast<double>(height),
+                                     kClearance, params_.seaKeepsCoasts);
 }
 
 void Heightfield::anchorCoastFace(double x, double z, float relief, RockFace& face) const {

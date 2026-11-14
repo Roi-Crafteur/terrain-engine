@@ -9,3 +9,6 @@ terrain_add_test(planet_network_test terrain_core)
 terrain_add_test(drainage_network_test terrain_core)
 terrain_add_test(network_flags_test terrain_core)
 terrain_add_test(sphere_latitude_test terrain_core)
+# The coasts under the sea keep their stacks below a valley above it (coast_valleys.hpp).
+terrain_add_test(coast_valleys_test terrain_core)
+target_include_directories(coast_valleys_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

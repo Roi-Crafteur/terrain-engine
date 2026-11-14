@@ -93,6 +93,9 @@ struct HeightfieldParams {
     // The climate reads the latitude of a sphere (climate_latitude.hpp; flag sphere_latitude): the
     // relief reads it for the fjords of the coasts only. Off, the latitude of main.
     bool sphereLatitude = false;
+    // A coast under the sea keeps itself below a valley whose floor stands above the sea
+    // (coast_valleys.hpp; flags smooth_bands, pass_routing, sphere_latitude). Off, as main.
+    bool seaKeepsCoasts = false;
 };
 
 // Layers of the height at one point: height = base + mountain + detail. In the collision

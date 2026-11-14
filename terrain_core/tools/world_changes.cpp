@@ -202,14 +202,18 @@ void placeLine(const World& w, const Place& p, std::FILE* out) {
     }
     const terrain::PlanetSample cell = w.level->sampleAt(p.x, p.z);
     const terrain::Hydrology::Clearance near = w.hydrology->clearanceAt(p.x, p.z);
+    const std::size_t stacks =
+        w.field->stacksIn(p.x - 300.0, p.z - 300.0, p.x + 300.0, p.z + 300.0).size();
     std::fprintf(out,
                  "place %s: ground %.2f, water %d level %.2f, relief within 100 m %.1f, planet "
-                 "river %d lake %d discharge %.1f, biome %s, valleys away %.0f m floor %.1f m\n",
+                 "river %d lake %d discharge %.1f, biome %s, valleys away %.0f m floor %.1f m, "
+                 "%zu stacks within 300 m\n",
                  p.name.c_str(), static_cast<double>(h.height), static_cast<int>(h.water),
                  h.water == terrain::WaterKind::None ? 0.0 : static_cast<double>(h.waterLevel),
                  static_cast<double>(moves), cell.discharge > 0.0f ? 1 : 0, cell.lake,
                  static_cast<double>(cell.discharge),
-                 terrain::biomeName(biomeAt(w, *w.field, p.x, p.z)), near.away, near.floor);
+                 terrain::biomeName(biomeAt(w, *w.field, p.x, p.z)), near.away, near.floor,
+                 stacks);
 }
 
 struct Found {

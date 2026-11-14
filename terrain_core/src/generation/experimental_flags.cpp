@@ -84,6 +84,7 @@ constexpr float kSpherePole = -33.0f;
 
 void sphereLatitude(WorldParams& p) {
     p.relief.sphereLatitude = true;
+    p.relief.seaKeepsCoasts = true; // a river may come to a coast (coast_valleys.hpp)
     p.planet.climate.sphereLatitude = true;
     p.planet.climate.meanAltitude = true;
     p.planet.climate.iceTemperature = p.ecology.biomes.snowTemperature;
@@ -100,13 +101,19 @@ std::span<const ExperimentalFlag> experimentalFlags() {
     static const std::vector<ExperimentalFlag> flags = {
         {"pass_routing",
          "the rivers of the planet level through the passes, not across the crests (agent 31)",
-         [](WorldParams& p) { p.planet.links.enabled = true; }},
+         [](WorldParams& p) {
+             p.planet.links.enabled = true;
+             p.relief.seaKeepsCoasts = true; // a river may come to a coast (coast_valleys.hpp)
+         }},
         {"planet_network",
          "the discharge of every land cell kept: the network of the planet level and the fine "
          "network (agent 31)",
          [](WorldParams& p) { p.planet.landDischarge = true; }},
         {"smooth_bands", "the bands of the winds joined smoothly (agent 31)",
-         [](WorldParams& p) { p.planet.climate.smoothBands = true; }},
+         [](WorldParams& p) {
+             p.planet.climate.smoothBands = true;
+             p.relief.seaKeepsCoasts = true; // a river may come to a coast (coast_valleys.hpp)
+         }},
         {"sphere_latitude",
          "the climate reads the latitude of a sphere, one threshold of the frost, the mean "
          "altitude of the cells, rivers under the ice (agent 31)",
