@@ -59,7 +59,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Blend 0\|1` | (outils de dev seulement) les poids des biomes de l'horizon et du niveau 0 sous les tuiles (agent 29) : 0 le biome dominant de chaque échantillon, comme avant eux ; comparer leur coût GPU et leur aspect (après avoir relancé les scripts des matériaux de l'horizon GPU et temporaire) |
 | `Terrain.Seed <n> [surface\|caves\|regions]` | le monde d'une autre seed et d'un autre preset, sans quitter le Play |
 | `Terrain.Hud [0-3]` | la page de l'écran F3 |
-| `Terrain.Flags <drapeaux\|none>` | les drapeaux expérimentaux des prochains Play de cet éditeur, par-dessus le réglage de l'acteur (agent 51, ci-dessous) ; sans argument : leur état |
+| `Terrain.Flags <drapeaux\|none\|reset>` | les drapeaux expérimentaux des prochains Play de cet éditeur, par-dessus le réglage de l'acteur (agent 51, ci-dessous) ; `reset` : de nouveau le réglage de l'acteur ; sans argument : leur état |
 
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),
@@ -371,9 +371,10 @@ l'océan. Le matériau tire la couleur de la mer vers le sable des hauts-fonds
 `Terrain.Flags seas,volcanoes` (ou `Terrain.Flags seas volcanoes`) choisit les drapeaux
 expérimentaux (`terrain/generation/experimental_flags.hpp`) des **prochains Play** de cette
 session de l'éditeur, par-dessus `Experimental.ExperimentalFlags` de l'acteur : la carte n'est
-jamais modifiée. `Terrain.Flags none` : aucun drapeau, le monde de `main`. Sans argument : leur
-état. Un éditeur relancé les oublie. La commande marche aussi hors Play, dans la console de
-l'éditeur ; `Terrain.Seed` les prend aussi.
+jamais modifiée. `Terrain.Flags none` : aucun drapeau, le monde de `main`. `Terrain.Flags reset` :
+les prochains Play reprennent le réglage de l'acteur. Sans argument : leur état. Un éditeur relancé
+les oublie (`none` et `reset` ne sont jamais des noms de drapeaux). La commande marche aussi hors
+Play, dans la console de l'éditeur ; `Terrain.Seed` les prend aussi.
 
 - Au démarrage, le log dit d'où ils viennent :
   `Terrain World: experimental flags: "seas" (from Terrain.Flags)` ; un nom inconnu donne un

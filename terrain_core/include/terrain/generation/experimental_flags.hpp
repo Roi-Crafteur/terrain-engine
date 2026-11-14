@@ -12,6 +12,7 @@
 // flags given to applyExperimentalFlags, or experimentalFlags() itself). The name stays the same
 // for as long as the flag lives: it is written in the planet files (planet_file.hpp) and in the
 // settings of the Unreal levels. A flag that needs a parameter outside WorldParams adds it here.
+// "none" and "reset" are no names of flags: Terrain.Flags reads them as its own words.
 
 #include "terrain/generation/ecology.hpp"
 #include "terrain/generation/heightfield.hpp"

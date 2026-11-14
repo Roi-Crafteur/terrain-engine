@@ -23,15 +23,21 @@ namespace terrain::unreal {
 inline constexpr const char* kDevFlagsPlanetPath =
     "Saved/TerrainEngine/dev/planet_{Seed}_{Flags}.bin";
 
-// Terrain.Flags <text|none>: set the flags ("none" alone: no flag), or, without argument, tell
-// them. The words are joined by commas.
+// Terrain.Flags <text|none|reset>: set the flags ("none" alone: no flag), give the next Plays
+// back to the setting of the actor ("reset" alone), or, without argument, tell them. The words are
+// joined by commas; "none" and "reset" are read whatever their case (no flag takes these names,
+// experimental_flags.hpp).
 struct DevFlagsCommand {
     bool set = false;
+    bool reset = false;
     std::string text;
 
     friend bool operator==(const DevFlagsCommand&, const DevFlagsCommand&) = default;
 };
 [[nodiscard]] DevFlagsCommand parseDevFlags(std::span<const std::string> args);
+
+// Does what command asks: sets the flags, or forgets them (reset); nothing to tell them.
+void runDevFlags(const DevFlagsCommand& command);
 
 // The flags of Terrain.Flags, or none set.
 void setDevFlags(std::string text);

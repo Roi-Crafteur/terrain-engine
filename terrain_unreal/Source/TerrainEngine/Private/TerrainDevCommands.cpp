@@ -113,9 +113,9 @@ namespace
 
 	// Terrain.Flags (agent 51): without a world too, before a Play (Bridge/dev_flags).
 	FAutoConsoleCommandWithWorldAndArgs FlagsCommand(TEXT("Terrain.Flags"),
-		TEXT("Terrain.Flags <flags|none>: the experimental flags of the next Plays of this editor, "
-			 "over the setting of the actor, their planet file in Saved/TerrainEngine/dev; "
-			 "without argument: what they are"),
+		TEXT("Terrain.Flags <flags|none|reset>: the experimental flags of the next Plays of this "
+			 "editor, over the setting of the actor, their planet file in Saved/TerrainEngine/dev; "
+			 "reset: the setting of the actor again; without argument: what they are"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda(
 			[](const TArray<FString>& Args, UWorld*)
 			{
@@ -124,11 +124,7 @@ namespace
 				{
 					Utf8.push_back(TerrainDev::ToUtf8(Arg));
 				}
-				const terrain::unreal::DevFlagsCommand Command = terrain::unreal::parseDevFlags(Utf8);
-				if (Command.set)
-				{
-					terrain::unreal::setDevFlags(Command.text);
-				}
+				terrain::unreal::runDevFlags(terrain::unreal::parseDevFlags(Utf8));
 				for (const terrain::unreal::FlagLine& Line : terrain::unreal::devFlagsLines())
 				{
 					if (Line.warning)
