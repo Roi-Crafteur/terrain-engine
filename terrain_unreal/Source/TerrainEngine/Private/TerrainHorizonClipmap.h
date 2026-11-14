@@ -137,6 +137,10 @@ private:
 	void PlaceSurface(const std::optional<terrain::unreal::SurfaceWindow>& Next);
 	void ApplyReveal();
 	void UploadBlends(std::vector<terrain::unreal::BlendRegion>& Regions);
+	// The textures of the bands of the rock (agent 33) and of their caps (agent 40) of a level,
+	// bound on its look, and the uploads of an update (TerrainHorizonClipmapRock.cpp).
+	void CreateRockTextures(int32 Level, UMaterialInstanceDynamic& Look);
+	void UploadRock(terrain::unreal::HorizonGpuUpdate& Update);
 
 	UPROPERTY()
 	TObjectPtr<AActor> OwnerActor;
@@ -155,6 +159,9 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> BandTextures; // the bands of the rock, one per level
+
+	UPROPERTY()
+	TArray<TObjectPtr<UTexture2D>> CapTextures; // their caps (agent 40), one per level
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> NormalTextures; // the detail normals, none without them

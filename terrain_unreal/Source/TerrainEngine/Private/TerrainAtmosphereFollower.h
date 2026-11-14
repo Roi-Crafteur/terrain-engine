@@ -5,6 +5,7 @@
 
 #include "Bridge/tile_timings.hpp"
 #include "Bridge/unreal_frame.hpp"
+#include "TerrainAtmosphereBounce.h"
 #include "TerrainAtmosphereHaze.h"
 
 #include "TerrainAtmosphereFollower.generated.h"
@@ -46,8 +47,10 @@ public:
 	// The cost of the ticks since the last call, on the game thread.
 	terrain::unreal::StageStats TakeTimings();
 
-	// The haze of the dust over dry land (agent 40), driven by the camera each frame.
+	// The haze of the dust over dry land (agent 40), driven by the camera each frame, and the warm
+	// bounce of the ground in the shade.
 	FTerrainAtmosphereHaze& GetHaze() { return Haze; }
+	FTerrainGroundBounce& GetBounce() { return Bounce; }
 
 private:
 	bool FindCamera(FVector& OutLocation) const;
@@ -59,4 +62,5 @@ private:
 	double FogAboveSeaCm = 0.0;
 	terrain::unreal::StageStats Timings;
 	FTerrainAtmosphereHaze Haze;
+	FTerrainGroundBounce Bounce;
 };

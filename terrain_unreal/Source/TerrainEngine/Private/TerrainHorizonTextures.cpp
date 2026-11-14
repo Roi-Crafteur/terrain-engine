@@ -109,6 +109,18 @@ namespace TerrainHorizonTextures
 		return Texture;
 	}
 
+	UTexture2D* CreateCaps(int32 Side, int32 Level)
+	{
+		UTexture2D* Texture =
+			CreateTexture(Side, PF_G32R32F, TEXT("HorizonCaps"), Level, TF_Nearest);
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		void* Texels = Mip.BulkData.Lock(LOCK_READ_WRITE);
+		FMemory::Memzero(Texels, static_cast<SIZE_T>(Side) * Side * CapTexelBytes);
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+		return Texture;
+	}
+
 	void UploadTexels(UTexture2D& Texture, terrain::unreal::TexelRegion& Region)
 	{
 		Upload(Texture, Region.x, Region.z, Region.width, Region.height, std::move(Region.data),
@@ -119,6 +131,12 @@ namespace TerrainHorizonTextures
 	{
 		Upload(Texture, Region.x, Region.z, Region.width, Region.height, std::move(Region.data),
 			BandTexelBytes);
+	}
+
+	void UploadCaps(UTexture2D& Texture, terrain::unreal::TexelRegion& Region)
+	{
+		Upload(Texture, Region.x, Region.z, Region.width, Region.height, std::move(Region.data),
+			CapTexelBytes);
 	}
 
 	void UploadWater(UTexture2D& Texture, terrain::unreal::WaterRegion& Region)

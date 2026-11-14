@@ -208,6 +208,7 @@ def parameters(material):
              "CoarseTexels": texture_parameter(material, "CoarseTexels", -250),
              "HorizonNormals": texture_parameter(material, "HorizonNormals", -1700),
              "HorizonBands": band_texture(material),
+             "HorizonCaps": ground_code.caps_texture(material, helpers()),
              "CoarseNormals": texture_parameter(material, "CoarseNormals", -1550)}
     nodes.update(detail.scalars(material, detail.HORIZON_SCALARS, -1300, -1900))
     scalars = (list(SCALARS.items()) + list(SEA_SCALARS.items()) + list(SHADE_SCALARS.items())
@@ -354,14 +355,15 @@ def land_shader(material, nodes, vertex, normal, with_bands, morph):
     for name in inputs:
         if name in params:
             connect(params[name], "", shade, name)
-    # The bands of the rock (agent 33): of the samples around the pixel; no cap on the horizon.
+    # The bands of the rock (agent 33) and their caps (agent 40): of the samples around the pixel.
     if with_bands:
         connect(bands(material, nodes), "", shade, "B")
+        connect(ground_code.caps(material, helpers(), nodes), "", shade, "C")
     else:
         connect(expression(material, unreal.MaterialExpressionConstant4Vector, -350, 1850), "",
                 shade, "B")
-    no_cap = expression(material, unreal.MaterialExpressionConstant2Vector, -350, 1950)
-    connect(no_cap, "", shade, "C")
+        connect(expression(material, unreal.MaterialExpressionConstant2Vector, -350, 1950), "",
+                shade, "C")
     return shade, position
 
 

@@ -3,6 +3,7 @@
 
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/atmosphere_haze.cpp
                                              ${unreal_bridge}/dev_ab_cost.cpp
+                                             ${unreal_bridge}/ground_bounce.cpp
                                              ${unreal_bridge}/horizon_low_sun.cpp
                                              ${unreal_bridge}/horizon_sea_line.cpp
                                              ${unreal_bridge}/horizon_split.cpp)
@@ -72,3 +73,7 @@ if(Python_Interpreter_FOUND)
         COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/water_horizon_scripts_test.py
                 ${PROJECT_SOURCE_DIR})
 endif()
+
+# The warm bounce of the ground in the shade: on, the lower hemisphere of the SkyLight from its
+# capture and a warm ground; off, the values of the map exactly.
+terrain_add_test(unreal_ground_bounce_test terrain_unreal_bridge)

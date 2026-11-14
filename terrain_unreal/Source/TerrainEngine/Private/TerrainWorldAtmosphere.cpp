@@ -91,6 +91,8 @@ void ATerrainWorld::StartAtmosphere()
 	AtmosphereFollower->SetFrame(State->Frame);
 	AtmosphereFollower->Follow(Sky, Fog, Light, FogAboveSeaCm);
 	AtmosphereFollower->GetHaze().Start(Sky, State->Session.planet().level, HorizonDrawing);
+	AtmosphereFollower->GetBounce().Start(
+		LightActor != nullptr ? LightActor->GetLightComponent() : nullptr, Sky, HorizonDrawing);
 	AtmosphereFollower->RegisterComponent();
 	UE_LOG(LogTerrainEngine, Log,
 		TEXT("Terrain World: the sky follows the camera: %s on a planet of %.0f km, its top at the "
@@ -107,6 +109,7 @@ void ATerrainWorld::StopAtmosphere()
 	if (AtmosphereFollower != nullptr)
 	{
 		AtmosphereFollower->GetHaze().Stop(); // the map's SkyAtmosphere set back
+		AtmosphereFollower->GetBounce().Stop(); // and its SkyLight
 		AtmosphereFollower->DestroyComponent();
 		AtmosphereFollower = nullptr;
 	}

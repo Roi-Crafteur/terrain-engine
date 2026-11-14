@@ -16,6 +16,28 @@ for both, the horizon before agent 40, to the bit.
 
 import unreal
 
+# The caps of the rock (agent 40, RockCaps; 0: none, as before): the cornice at the top of a face
+# (its share and its height, Bridge/horizon_textures.hpp: kCapFloats, from the bands of the core),
+# read by the pixel shader from the texels of the four samples around it, bilinear, as the bands
+# (create_horizon_gpu_material.py: BANDS_HLSL), and handed to the rock (Look.Bands, input C).
+CAP_INPUTS = ["CapTex", "LocalPos", "Cells", "FirstSlotX", "FirstSlotZ", "RockCaps"]
+CAPS_HLSL = r"""
+BRANCH if (RockCaps < 0.5)
+{
+    return float2(0.0, 0.0);
+}
+int side = (int)Cells + 1;
+int2 first = int2((int)FirstSlotX, (int)FirstSlotZ);
+float2 p = clamp(LocalPos.xy, 0.0, Cells - 0.001);
+int2 i0 = int2(floor(p));
+float2 t = p - float2(i0);
+float2 c00 = CapTex.Load(int3((i0 + first) % side, 0)).rg;
+float2 c10 = CapTex.Load(int3((i0 + int2(1, 0) + first) % side, 0)).rg;
+float2 c01 = CapTex.Load(int3((i0 + int2(0, 1) + first) % side, 0)).rg;
+float2 c11 = CapTex.Load(int3((i0 + int2(1, 1) + first) % side, 0)).rg;
+return lerp(lerp(c00, c10, t.x), lerp(c01, c11, t.x), t.y);
+"""
+
 # The inputs of the node, in this order.
 INPUTS = ["Tex", "Coarse", "LocalPos", "Morph", "Cells", "PitchCm", "FirstSlotX", "FirstSlotZ",
           "CoarseX", "CoarseZ", "CoarseFirstX", "CoarseFirstZ", "HasCoarser", "HorizonFootCurv"]
@@ -97,5 +119,32 @@ def node(material, g, nodes, morph):
                          (local, "LocalPos"), (morph, "Morph")):
         g.connect(source, "", custom, name)
     for name in INPUTS[4:]:
+        g.connect(nodes[name], "", custom, name)
+    return custom
+
+
+def caps_texture(material, g):
+    """HorizonCaps: read without filtering, on a sampler shared with the world (no slot of its
+    own), as HorizonBands."""
+    node = g.texture_parameter(material, "HorizonCaps", -2150)
+    node.set_editor_property("sampler_source",
+                             unreal.SamplerSourceMode.SSM_CLAMP_WORLD_GROUP_SETTINGS)
+    return node
+
+
+def caps(material, g, nodes):
+    """HorizonCaps under the pixel: the cap of the rock and its height, its switch RockCaps."""
+    custom = g.custom_node(material, -600, 1950, "HorizonCaps", CAPS_HLSL, CAP_INPUTS, [],
+                           unreal.CustomMaterialOutputType.CMOT_FLOAT2)
+    local = g.local_position(material, -800, 2000)
+    g.connect(g.world_position(material, unreal.WorldPositionIncludedOffsets.WPT_DEFAULT, -1000,
+                               2000), "", local, "")
+    switch = g.expression(material, unreal.MaterialExpressionScalarParameter, -800, 1950)
+    switch.set_editor_property("parameter_name", "RockCaps")
+    switch.set_editor_property("default_value", 1.0)
+    for source, name in ((nodes["HorizonCaps"], "CapTex"), (local, "LocalPos"),
+                         (switch, "RockCaps")):
+        g.connect(source, "", custom, name)
+    for name in ("Cells", "FirstSlotX", "FirstSlotZ"):
         g.connect(nodes[name], "", custom, name)
     return custom

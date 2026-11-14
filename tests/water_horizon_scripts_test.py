@@ -11,12 +11,21 @@ per change, each behind its switch (Terrain.Param), 1 by default and 0 for the l
   is an input of its node.
 - SeamNormal (create_temporary_terrain_material.py): declared at 1, its band ending before the edge
   of the tiles at 512 m.
+- RockCaps (horizon_ground_hlsl.py): declared at 1; the caps texture holds kCapFloats floats per
+  sample (Bridge/horizon_textures.hpp), RG32F in the plugin, read as .rg, bound as HorizonCaps.
+- FarDetail (temporary_terrain_hlsl.py): declared at 1; it comes in where the detail of the tiles
+  goes (between DetailNearM and DetailFarM), out to 4 km.
+- The snow sheds at atan(snowMaxSlope) of terrain_core biome.hpp (a slope, rise over run), held
+  11 degrees below as before.
+- RockWarmth: declared at 1; the rock warmer but never as orange as the sand (blue over red of its
+  factor at least 0.75).
 - In each new HLSL, no variable named as a word HLSL keeps (half, fixed, sample, linear, point);
   unreal_water_scripts_test.py runs every script and checks the scopes of every Custom node.
 Usage: python3 water_horizon_scripts_test.py <repository>
 """
 
 import importlib
+import math
 import pathlib
 import re
 import sys
@@ -111,6 +120,60 @@ def check_seam_normal(scripts, tile_defaults):
           "the normal of the tiles does not lean fully toward the horizon at their edge")
 
 
+def check_rock_caps(root, scripts, horizon_defaults):
+    ground = importlib.import_module("horizon_ground_hlsl")
+    private = root / "terrain_unreal/Source/TerrainEngine/Private"
+    check(horizon_defaults.get("RockCaps") == 1.0, "RockCaps is not declared at 1")
+    textures = (private / "Bridge/horizon_textures.hpp").read_text()
+    floats = re.search(r"kCapFloats = (\d+);", textures)
+    check(floats is not None and floats.group(1) == "2" and ".rg;" in ground.CAPS_HLSL and
+          'PF_G32R32F, TEXT("HorizonCaps")' in (private / "TerrainHorizonTextures.cpp").read_text(),
+          "the caps texture is not kCapFloats floats per sample, read as .rg")
+    check('TEXT("HorizonCaps")' in (private / "TerrainHorizonClipmapRock.cpp").read_text() and
+          '"HorizonCaps": ground_code.caps_texture' in
+          (scripts / "create_horizon_gpu_material.py").read_text(),
+          "the plugin binds no HorizonCaps the material declares")
+    check(not kept_words(ground.CAPS_HLSL), f"the caps node names {kept_words(ground.CAPS_HLSL)}")
+
+
+def check_far_detail_snow_rock(root):
+    look = importlib.import_module("temporary_terrain_look")
+    far = importlib.import_module("far_detail_hlsl")
+    scalars = look.SCALARS
+    check(scalars.get("FarDetail") == 1.0 and scalars.get("RockWarmth") == 1.0,
+          "FarDetail or RockWarmth is not declared at 1")
+    shading = look.shade_hlsl(False) + look.shade_hlsl(True)
+    check(far.FAR_BAND in shading and far.ROCK_WARMTH in shading and "Far.Of(" in shading and
+          not any(word in shading for word in ("FAR_BAND", "FAR_LAYER", "FAR_ROCK", "ROCK_WARMTH")),
+          "the far detail or the warmth of the rock is not in the shading")
+    top = far.FAR_BAND
+    band = re.search(r"float far = FarDetail \* saturate\(\(Dist - ([0-9.]+)\) / ([0-9.]+)\)\s*\* "
+                     r"\(1\.0 - saturate\(\(Dist - ([0-9.]+)\) / ([0-9.]+)\)\);", top)
+    check(band is not None, "the band of the far detail is not found")
+    if band:
+        start, ramp, fade, out = (float(band.group(n)) for n in range(1, 5))
+        check(scalars["DetailNearM"] < start < scalars["DetailFarM"] <= start + ramp,
+              "the far detail does not come in where the detail of the tiles goes")
+        check(fade + out == 4000.0, "the far detail does not go out at 4 km")
+    biome = (root / "terrain_core/include/terrain/generation/biome.hpp").read_text()
+    slope = re.search(r"float snowMaxSlope = ([0-9.]+)f;", biome)
+    check(slope is not None and "rise over run" in
+          (root / "terrain_core/include/terrain/generation/climate.hpp").read_text(),
+          "snowMaxSlope is not a slope, rise over run")
+    if slope:
+        shed = math.degrees(math.atan(float(slope.group(1))))
+        check(abs(scalars["SnowShedDeg"] - shed) < 0.01,
+              f"SnowShedDeg {scalars['SnowShedDeg']} is not atan(snowMaxSlope) = {shed:.3f}")
+        check(abs(scalars["SnowShedDeg"] - scalars["SnowHoldDeg"] - 11.0) < 1e-9,
+              "the snow is no longer held 11 degrees below where it sheds")
+    warm = re.search(r"float3\(1\.0, 1\.0, 1\.0\), float3\(([0-9.]+), ([0-9.]+), ([0-9.]+)\), "
+                     r"RockWarmth\)", far.ROCK_WARMTH)
+    check(warm is not None, "the warmth of the rock is not found")
+    if warm:
+        r, g, b = (float(warm.group(n)) for n in range(1, 4))
+        check(r == 1.0 and 1.0 >= g >= b >= 0.75, "the rock warmer than grey turns sandy")
+
+
 def main(root):
     root = pathlib.Path(root)
     scripts = root / "terrain_unreal/Scripts"
@@ -128,6 +191,8 @@ def main(root):
     check_adaptive_split(root, scripts, water, horizon)
     check_foot_curv(scripts, horizon)
     check_seam_normal(scripts, tiles)
+    check_rock_caps(root, scripts, horizon)
+    check_far_detail_snow_rock(root)
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 

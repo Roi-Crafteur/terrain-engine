@@ -25,6 +25,9 @@
 //   the dust over dry land (TerrainAtmosphereHaze.h): the dryness of the region (auto), the
 //   SkyAtmosphere of the map (off), or a dryness forced, with the dusty air changed while
 //   playing; without arguments, logs it with the values read back on the sky.
+// - Terrain.Bounce [0|1|<r> <g> <b>]: the warm bounce of the ground in the shade
+//   (TerrainAtmosphereBounce.h): off (the map's SkyLight and SkyAtmosphere), on, or on with that
+//   linear albedo of the ground; without arguments, logs it.
 #include "TerrainHorizonClipmap.h"
 
 #if TERRAIN_DEV_TOOLS
@@ -406,6 +409,47 @@ namespace
 		}
 	}
 
+	// Terrain.Bounce [0|1|<r> <g> <b>]
+	void RunTerrainBounce(const TArray<FString>& Args, UWorld* World)
+	{
+		TArray<double> Numbers;
+		if (World == nullptr || Args.Num() == 2 || Args.Num() > 3 || !LightNumbers(Args, Numbers))
+		{
+			UE_LOG(LogTerrainEngine, Warning,
+				TEXT("Terrain.Bounce [0|1|<r> <g> <b>, the linear albedo of the warm ground]"));
+			return;
+		}
+		if (Args.Num() > 0 && !LightChangesAllowed(*World, TEXT("Terrain.Bounce")))
+		{
+			return;
+		}
+		int32 Followers = 0;
+		for (TObjectIterator<UTerrainAtmosphereFollower> It; It; ++It)
+		{
+			if (It->GetWorld() != World)
+			{
+				continue;
+			}
+			++Followers;
+			FTerrainGroundBounce& Bounce = It->GetBounce();
+			if (Numbers.Num() == 1)
+			{
+				Bounce.Set(Numbers[0] > 0.5, Bounce.Warm());
+			}
+			else if (Numbers.Num() == 3)
+			{
+				Bounce.Set(true, {FMath::Clamp(Numbers[0], 0.0, 1.0),
+					FMath::Clamp(Numbers[1], 0.0, 1.0), FMath::Clamp(Numbers[2], 0.0, 1.0)});
+			}
+			UE_LOG(LogTerrainEngine, Log, TEXT("Terrain.Bounce: %s"), *Bounce.Describe());
+		}
+		if (Followers == 0)
+		{
+			UE_LOG(LogTerrainEngine, Warning,
+				TEXT("Terrain.Bounce: no sky follows the camera (bAtmosphereFollowsCamera)"));
+		}
+	}
+
 	FAutoConsoleCommandWithWorldAndArgs TerrainSunCommand(TEXT("Terrain.Sun"),
 		TEXT("Turns the sun while playing: Terrain.Sun <elevation> <heading> (degrees above the "
 			 "horizon, degrees clockwise from the north), a light not movable made movable for the "
@@ -434,6 +478,12 @@ namespace
 			 "dryness forced <0 to 1> [view distance scale] [Mie x] [Mie absorption /km]; "
 			 "without arguments, logs it"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainHaze));
+
+	FAutoConsoleCommandWithWorldAndArgs TerrainBounceCommand(TEXT("Terrain.Bounce"),
+		TEXT("The warm bounce of the ground in the shade while playing: Terrain.Bounce 0 (the "
+			 "map's SkyLight and SkyAtmosphere), 1, or <r> <g> <b> (the linear albedo of the warm "
+			 "ground); without arguments, logs it"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainBounce));
 } // namespace
 
 #endif // TERRAIN_DEV_TOOLS

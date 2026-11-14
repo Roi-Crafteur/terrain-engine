@@ -19,7 +19,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blend_layers_hlsl as blend_code  # noqa: E402  (after the path of this script)
+import far_detail_hlsl as far_code  # noqa: E402  (agent 40)
 blend_code = importlib.reload(blend_code)  # the module of this checkout, even if run before
+far_code = importlib.reload(far_code)
 
 # Texels along each side of a tile (terrain_core stream_manager.hpp: kTileBlendTexels).
 TILE_BLEND_TEXELS = 5
@@ -256,6 +258,7 @@ float3 P3 = float3(P, Z);
 float3 dPx = ddx(P3);
 float3 dPy = ddy(P3);
 float detail = HAS_DETAIL * saturate((DetailFarM - Dist) / max(DetailFarM - DetailNearM, 1.0));
+FAR_BAND
 float n1 = Look.Noise(P, 32.0);
 float n2 = Look.Noise(P, 256.0);
 float n3 = Look.Noise(P, 8.0);
@@ -405,7 +408,7 @@ LAYER_FAR = r"""
 BRANCH if (g[I] > 0.01 && cover > 0.02)
 {
     float3 c = TAI.SampleLevel(TAISampler, P / SCALE, 13.0).rgb;
-DETAIL_CODELAYER_SATURATIONDUNE_TINT    ground += (g[I] / sum) * c * TintI;
+DETAIL_CODEFAR_LAYERLAYER_SATURATIONDUNE_TINT    ground += (g[I] / sum) * c * TintI;
 }
 """
 
@@ -421,6 +424,7 @@ LAYER_DETAIL = r"""    BRANCH if (detail > 0.0)
 ROCK_FAR = r"""
 float3 rockC = lerp(TAR.SampleLevel(TARSampler, P / SCALE, 13.0).rgb * TintR,
                     TAV.SampleLevel(TAVSampler, P / SCALE, 13.0).rgb * TintV, alt);
+FAR_ROCK
 float3 rockN = N;
 float3 rockMean = rockC;
 """
@@ -460,6 +464,7 @@ float3 hue = lerp(float3(1.0, 1.0, 1.0), lerp(float3(1.07, 1.02, 0.86), float3(0
 float3 groundC = Look.Saturate(ground * macro * hue, Saturation) * Warmth;
 float3 rockS = max(lerp(rockMean, rockC, RockContrast), 0.0);
 float3 rockG = Look.Saturate(rockS, 1.0 - RockGrey) * RockAlbedo * (1.0 + 0.4 * MacroVariation * (n2 - 0.5));
+ROCK_WARMTH
 // The rock of the ergs (their floor: its buttes and mesas out of the sand) is the rock of a
 // desert, ochre to red-brown sandstone, not the cold grey mineral: the light and dark of the rock
 // texture kept, its hue that of the local sand (desertMean), a little darker than it (0.8 to 0.7
@@ -524,7 +529,8 @@ def struct_hlsl(biomes):
 
 def ground_layer(index, scale, detail, saturation, dunes=False, reg=False):
     """The code of one ground layer: its mean color, or its stochastic texture near the camera."""
-    layer = LAYER_FAR.replace("DETAIL_CODE", LAYER_DETAIL if detail else "")
+    layer = LAYER_FAR.replace("DETAIL_CODE", LAYER_DETAIL if detail else "").replace(
+        "FAR_LAYER", far_code.FAR_LAYER)
     layer = layer.replace("LAYER_SATURATION", "" if saturation is None else
                           f"    c = Look.Saturate(c, {saturation:.2f});\n")
     # The sand of the dunes takes the color of the desert (duneTint, SHADE_TOP).
@@ -544,7 +550,8 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
     # W3.w and W2.z on the tiles, WF.y and WF.x on the horizon (agent 40, horizon_vertex_hlsl.py:
     # 0 with HorizonFootCurv 0, the horizon before).
     # The share of the dunes: W4 on the tiles, W2.z on the horizon.
-    code = SHADE_TOP.replace("HAS_DETAIL", "1.0" if detail else "0.0").replace(
+    code = far_code.FAR_STRUCT + SHADE_TOP.replace("FAR_BAND", far_code.FAR_BAND).replace(
+        "HAS_DETAIL", "1.0" if detail else "0.0").replace(
         "CURVATURE", "W3.w" if detail else "WF.y").replace(
         "DUNES", "W4" if detail else "W2.z").replace("FOOT", "W2.z" if detail else "WF.x")
     names = [layer[0] for layer in layers]
@@ -559,7 +566,8 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
     snow, rock, variant = ground, ground + 1, ground + 2
     scale = f"{layers[rock][4]:.1f}"
     code += ROCK_FAR.replace("TAR", f"TA{rock}").replace("TAV", f"TA{variant}").replace(
-        "TintR", f"Tint{rock}").replace("TintV", f"Tint{variant}").replace("SCALE", scale)
+        "TintR", f"Tint{rock}").replace("TintV", f"Tint{variant}").replace(
+        "FAR_ROCK", far_code.FAR_ROCK.replace("TAR", f"TA{rock}")).replace("SCALE", scale)
     code += (f"float3 snowC = TA{snow}.SampleLevel(TA{snow}Sampler, P / {layers[snow][4]:.1f}, "
              "13.0).rgb;\n")
     if detail:
@@ -567,6 +575,7 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
                 f"TA{variant}Sampler, TN{variant}, TN{variant}Sampler, Tint{rock}, Tint{variant}, alt")
         code += ROCK_DETAIL.replace("ROCK_ARGS", args).replace("SCALE", scale)
         code += SNOW_DETAIL.replace("TAS", f"TA{snow}").replace("SCALE", f"{layers[snow][4]:.1f}")
-    code += SHADE_BOTTOM.replace("TintS", f"Tint{snow}").replace(
+    code += SHADE_BOTTOM.replace("ROCK_WARMTH", far_code.ROCK_WARMTH).replace(
+        "TintS", f"Tint{snow}").replace(
         "FOOT", "W2.z" if detail else "WF.x")
     return struct_hlsl(biomes) + code

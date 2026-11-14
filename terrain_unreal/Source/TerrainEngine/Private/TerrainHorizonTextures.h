@@ -16,6 +16,7 @@ namespace TerrainHorizonTextures
 	constexpr int32 WaterTexelBytes = static_cast<int32>(sizeof(float));
 	constexpr int32 BandTexelBytes =
 		terrain::unreal::kBandFloats * static_cast<int32>(sizeof(float));
+	constexpr int32 CapTexelBytes = terrain::unreal::kCapFloats * static_cast<int32>(sizeof(float));
 	constexpr int32 NormalTexelBytes = terrain::unreal::kNormalHalves * 2;
 	constexpr int32 BlendTexelBytes =
 		terrain::unreal::kBlendChannels * static_cast<int32>(sizeof(float));
@@ -42,8 +43,14 @@ namespace TerrainHorizonTextures
 	// RGBA, nearest, wrapped as the slots, every texel 0 (no band) until the epochs write it.
 	UTexture2D* CreateBands(int32 Side, int32 Level);
 
+	// The caps of the rock of a level (agent 40, Bridge/horizon_textures.hpp: kCapFloats, the cap
+	// and its height): float RG, nearest, wrapped as the slots, every texel 0 (no cap) until the
+	// epochs write it.
+	UTexture2D* CreateCaps(int32 Side, int32 Level);
+
 	void UploadTexels(UTexture2D& Texture, terrain::unreal::TexelRegion& Region);
 	void UploadBands(UTexture2D& Texture, terrain::unreal::TexelRegion& Region);
+	void UploadCaps(UTexture2D& Texture, terrain::unreal::TexelRegion& Region);
 	void UploadBlend(UTexture2D& Texture, terrain::unreal::BlendRegion& Region);
 	void UploadWater(UTexture2D& Texture, terrain::unreal::WaterRegion& Region);
 	void UploadNormals(UTexture2D& Texture, terrain::unreal::NormalRegion& Region);

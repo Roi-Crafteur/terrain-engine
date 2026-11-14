@@ -11,8 +11,8 @@ struct FTerrainHorizonDrawing
 {
 	GENERATED_BODY()
 
-	// The shadows of the GPU horizon under a low sun (Bridge/horizon_low_sun.hpp): its levels 0 to 3
-	// (up to 8 km) cast shadows while the sun of the atmosphere is lower than this many degrees
+	// The shadows of the GPU horizon under a low sun (Bridge/horizon_low_sun.hpp): its levels 0
+	// to 3 (up to 8 km) cast shadows while the sun of the atmosphere is lower than this many degrees
 	// (off again one degree above it), none otherwise; 0, never. The shadows of the tiles then go
 	// on over the far plain (the long shadows of a low sun), their cost in the shadow passes paid
 	// only then. tests/horizon_low_sun_study_test.cpp chose the default. bHorizonShadows still
@@ -45,4 +45,16 @@ struct FTerrainHorizonDrawing
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Horizon|Haze",
 		meta = (EditCondition = "bDustHaze", ClampMin = "0", ClampMax = "0.01"))
 	float DustMieAbsorptionScale = 0.0006f;
+
+	// The warm bounce of the ground in the shade (Bridge/ground_bounce.hpp,
+	// TerrainAtmosphereBounce.h): while playing, the SkyLight takes its lower hemisphere from its capture and the ground of
+	// the SkyAtmosphere is given this albedo (linear), so that the faces in the shade get the warm
+	// light the sunlit ground sends back. The values of the map come back at the end of the play
+	// and with the console command Terrain.Bounce 0 of the tools.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Horizon|Haze")
+	bool bGroundBounce = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Horizon|Haze",
+		meta = (EditCondition = "bGroundBounce"))
+	FLinearColor BounceGroundAlbedo = FLinearColor(0.45f, 0.38f, 0.30f, 1.0f);
 };

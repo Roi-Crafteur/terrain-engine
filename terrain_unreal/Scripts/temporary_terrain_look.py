@@ -94,12 +94,16 @@ TINTS = {
 LAYER_SATURATION = {"Scree": 0.35, "Dirt": 0.7}
 
 SCALARS = {
-    "RockStartDeg": 34.0, "RockFullDeg": 46.0, "SnowHoldDeg": 22.0, "SnowShedDeg": 33.0,
+    # The snow sheds where the core stops laying it (agent 40): from atan(snowMaxSlope) = atan(0.8)
+    # = 38.66 degrees (terrain_core biome.hpp: a slope, rise over run), held up to 11 below.
+    "RockStartDeg": 34.0, "RockFullDeg": 46.0, "SnowHoldDeg": 27.66, "SnowShedDeg": 38.66,
     "DetailNearM": 150.0, "DetailFarM": 400.0, "Saturation": 1.2, "NormalStrength": 0.8,
     "SnowWhiten": 0.92, "MacroVariation": 1.0, "PatchAmount": 1.0, "CoreRock": 0.8,
     "RockGrey": 0.85, "RockAlbedo": 1.15, "RockContrast": 1.4, "SandMaxAltitudeM": 1800.0,
     "PatchRarity": 0.6, "PatchRelief": 0.45, "CurvatureGain": 50.0, "DebugView": 0.0,
     "WetBandM": 3.0, "WetDarken": 0.55,
+    # Agent 40 (1: the new look; 0: as before): the far detail of the layers, the warmer rock.
+    "FarDetail": 1.0, "RockWarmth": 1.0,
 }
 WARMTH = (1.03, 1.0, 0.95)
 

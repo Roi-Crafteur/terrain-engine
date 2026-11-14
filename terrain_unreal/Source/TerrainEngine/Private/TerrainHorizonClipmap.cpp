@@ -61,7 +61,6 @@ namespace
 	// The surface blends (agent 29): of the level, and of level 0 for the tiles.
 	const FName HorizonBlendParameter(TEXT("HorizonBlend"));
 	// The bands of the rock (agent 33, Bridge/horizon_textures.hpp: kBandFloats).
-	const FName HorizonBandsParameter(TEXT("HorizonBands"));
 	const FName SurfaceBlendParameter(TEXT("SurfaceBlend"));
 
 	// Parameters of the materials of the tiles that read the surface of level 0
@@ -140,7 +139,8 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 	}
 	GpuBytes += static_cast<int64>(Levels) * Side * Side *
 		(TerrainHorizonTextures::TexelBytes + TerrainHorizonTextures::WaterTexelBytes +
-			TerrainHorizonTextures::BlendTexelBytes + TerrainHorizonTextures::BandTexelBytes);
+			TerrainHorizonTextures::BlendTexelBytes + TerrainHorizonTextures::BandTexelBytes +
+			TerrainHorizonTextures::CapTexelBytes);
 	if (Streamer.normals() != nullptr)
 	{
 		GpuBytes += Streamer.normals()->textureBytes();
@@ -172,8 +172,6 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	WaterTextures.Add(Water);
 	UTexture2D* BlendTexture = TerrainHorizonTextures::CreateBlend(Side, Level);
 	BlendTextures.Add(BlendTexture);
-	UTexture2D* Bands = TerrainHorizonTextures::CreateBands(Side, Level);
-	BandTextures.Add(Bands);
 	if (NormalRatio > 0)
 	{
 		NormalTextures.Add(TerrainHorizonTextures::CreateNormals(Side * NormalRatio, Level));
@@ -184,7 +182,7 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 	Look->SetTextureParameterValue(TexelsParameter, Texture);
 	Look->SetTextureParameterValue(WaterParameter, Water);
 	Look->SetTextureParameterValue(HorizonBlendParameter, BlendTexture);
-	Look->SetTextureParameterValue(HorizonBandsParameter, Bands);
+	CreateRockTextures(Level, *Look); // the bands of the rock and their caps
 	Look->SetScalarParameterValue(InlandWaterParameter, 1.0f);
 	Look->SetScalarParameterValue(CellsParameter,
 		static_cast<float>(Streamer.params().cellsPerSide));
@@ -244,7 +242,7 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 	terrain::unreal::HorizonTimings& Timings)
 {
 	if (!Update.regions.empty() || !Update.waterRegions.empty() || !Update.blendRegions.empty() ||
-		!Update.bandRegions.empty())
+		!Update.bandRegions.empty() || !Update.capRegions.empty())
 	{
 		const double Start = FPlatformTime::Seconds();
 		std::size_t Texels = 0;
@@ -259,10 +257,7 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 			TerrainHorizonTextures::UploadWater(*WaterTextures[Region.level], Region);
 		}
 		UploadBlends(Update.blendRegions); // with the texels: no sample shown without its blend
-		for (terrain::unreal::TexelRegion& Region : Update.bandRegions)
-		{
-			TerrainHorizonTextures::UploadBands(*BandTextures[Region.level], Region);
-		}
+		UploadRock(Update); // the bands of the rock and their caps
 		Timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0,
 			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
 	}
