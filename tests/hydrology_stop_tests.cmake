@@ -7,6 +7,11 @@ terrain_add_test(hydrology_bits_test terrain_core)
 # latencies, so they run alone.
 terrain_add_test(hydrology_stop_test terrain_core)
 set_tests_properties(hydrology_stop_test PROPERTIES RUN_SERIAL TRUE)
+# A thread waiting in a cache of the hydrology woken by the raise of its flag, not by a step of
+# its wait (its step never ends there): no time measured.
+terrain_add_test(lazy_wake_test terrain_core)
+target_include_directories(lazy_wake_test PRIVATE
+                           ${PROJECT_SOURCE_DIR}/terrain_core/src/generation/water)
 # The same bits on 1 and 4 threads, and after stops in the middle.
 terrain_add_test(hydrology_threads_test terrain_core)
 

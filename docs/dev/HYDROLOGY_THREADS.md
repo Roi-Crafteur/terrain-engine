@@ -166,20 +166,24 @@ Ne sont pas interrompus :
   - la médiane ≤ 100 ms ;
   - le plus long < 1/4 du temps de la fin des tracés en cours, mesurée comme un `join`
     l'attendrait : les quatre finis en même temps, sous la même charge ;
-  - un fil qui attend, réveillé par la levée de son drapeau : au calme, sa sortie médiane est
-    sous la moitié de celle du même fil dont le drapeau est seulement stocké (il ne le voit
-    alors qu'à la fin d'un pas de son attente) ;
+  - un fil qui attend un tracé fait par un autre sort en moins du quart de ce que le tracé prend
+    encore, sous charge : le tracé attendu (`kWaitCourse`) reste 250 ms ou plus chez son
+    fabricant après la levée ;
   - rien d'à moitié fait ;
   - les autres fils continuent.
   - Ce qu'il attrape (expériences non commitées, 3 fois chacune) :
     - `raiseWorkStop` sans effet : aucun fil ne sort par `WorkStopped` ;
     - tous les points d'arrêt d'un tracé retirés, entrées des chemins, fonds et tracés
       comprises : idem ;
-    - l'attente d'un cache sans point d'arrêt : le fil qui attend ne sort qu'avec le tracé ;
-    - le réveil retiré : les deux médianes se rejoignent (environ 1 ms).
+    - l'attente d'un cache sans point d'arrêt : le fil qui attend ne sort qu'avec le tracé.
   - Ce qu'il ne voit pas : un seul point d'arrêt retiré dans une boucle (les sections de
     `lowestPath`, ou tous ceux du corps d'un tracé). Les entrées des chemins et des fonds
     d'amont restent, et le trou ne fait qu'environ 10 ms, sous le quart de la fin des tracés.
+- `lazy_wake_test` : le réveil des caches, sans temps mesuré.
+  - Un `Lazy<int>` dont l'attente n'a pas de pas (`kLazyForever`) et dont le fabricant est
+    retenu : seul le réveil par `raiseWorkStop` peut faire sortir le fil qui attend.
+  - Sans ce réveil (`wakeAll` vide), le fil attend encore après 30 s (un filet, pas une mesure),
+    et le test le dit : « the waiting thread was not woken by raiseWorkStop ».
 - `hydrology_threads_test` : mêmes bits sur 1 et 4 fils, et après des arrêts.
 - `hydrology_cache_test` : avec un budget de 1 Mio, les tracés lâchés puis refaits donnent les
   mêmes bits, les octets tenus restent sous la part des tracés, et 4 fils qui lâchent et lisent

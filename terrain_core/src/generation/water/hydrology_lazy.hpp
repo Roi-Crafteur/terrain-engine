@@ -10,7 +10,8 @@
 //   each step call workStopPoint(): a stopped thread leaves (WorkStopped) even while another one
 //   makes what it waits for (work_stop.hpp). A flag raised by raiseWorkStop wakes them at once:
 //   the cache wakes every shard (its WorkStopWaking), under the lock of each, so that no thread
-//   misses it between its check and its wait.
+//   misses it between its check and its wait. A cache made with the step kLazyForever (a test)
+//   waits until woken: only that waking, or the object, lets a waiting thread out.
 // - An object is published whole, or not at all: if its making throws (WorkStopped, or anything
 //   else), its slot is empty again, the waiting threads wake and one of them makes it.
 // - make() must never ask for its own index (the threads would wait for themselves); it may ask
@@ -42,9 +43,10 @@
 
 namespace terrain::water_detail {
 
-// The shards of the locks of the caches, and the step of a wait.
+// The shards of the locks of the caches, and the step of a wait (kLazyForever: until woken).
 inline constexpr std::size_t kShards = 64;
 inline constexpr std::chrono::milliseconds kLazyWait{2};
+inline constexpr std::chrono::milliseconds kLazyForever = std::chrono::milliseconds::max();
 // The budget of a cache that never drops anything (its slots bound it: one object per index).
 inline constexpr std::size_t kUnbounded = std::numeric_limits<std::size_t>::max();
 
@@ -94,6 +96,8 @@ public:
     };
 
     Lazy() = default;
+    // A cache whose waiting threads wait by steps of step, or until woken (kLazyForever).
+    explicit Lazy(std::chrono::milliseconds step) : step_(step) {}
     Lazy(const Lazy&) = delete;
     Lazy& operator=(const Lazy&) = delete;
     ~Lazy() {
@@ -133,7 +137,11 @@ public:
                     break;
                 }
                 workStopPoint(); // the lock is released as WorkStopped leaves
-                shard.done.wait_for(lock, kLazyWait);
+                if (step_ == kLazyForever) {
+                    shard.done.wait(lock);
+                } else {
+                    shard.done.wait_for(lock, step_);
+                }
             }
             making_[i] = true;
         }
@@ -252,6 +260,7 @@ private:
     std::atomic<std::size_t> made_{0};
     std::size_t budget_ = kUnbounded;
     Size size_ = nullptr;
+    std::chrono::milliseconds step_ = kLazyWait;
     // Guarded by budgetLock_: the bytes held and what holds them.
     mutable std::mutex budgetLock_;
     std::size_t bytes_ = 0;

@@ -6,9 +6,9 @@
 //   the longest a quarter of the time the courses in progress then take to be finished, at most
 //   (measured in the same trial, on the same caches, as a join would wait for them: the four
 //   finished at once under the same load);
-// - a thread waiting for a course another thread makes leaves as soon, woken by the raise of its
-//   flag (raiseWorkStop), never by the end of a step of its wait: at rest, its median exit under
-//   half that of the same thread whose flag is only stored;
+// - a thread waiting for a course another thread makes leaves as soon (woken by the raise of its
+//   flag, never by the end of a step of its wait: lazy_wake_test), under a quarter of what the
+//   course still takes, 250 ms or more there;
 // - a stopped thread leaves nothing half made: the courses then computed are those of a
 //   hydrology never stopped (the bits of hydrology_bits_test);
 // - a thread stopped leaves the others computing, their results unchanged.
@@ -39,8 +39,9 @@ constexpr int kWorkers = 4;
 constexpr int kTrials = 10;
 // A course long to make: what the threads stopped under load compute.
 constexpr double kLongCourse = 100.0; // ms
-// The trials of the waking of a waiting thread, each way.
-constexpr int kWakes = 15;
+// The course a thread waits for in testWaiter: among the longest of the small world to make alone
+// on a fresh hydrology (310 to 380 ms here; every reach timed once by agent 39).
+constexpr std::size_t kWaitCourse = 2174;
 // The checksum of the sample reaches (hydrology_bits_test, pinned on main).
 constexpr std::uint64_t kSampleReaches = 0xF1684975E5044E29ULL;
 
@@ -251,21 +252,29 @@ void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
 }
 
 // A thread waiting for the course another one makes (no flag) leaves once its flag is raised;
-// the other one finishes it, the same bits. The course waited for is the longest to make of the
-// sample (with what it needs first).
+// the other one finishes it, the same bits. The course waited for is kWaitCourse, long to make on
+// a fresh hydrology: raised 8 ms after it started, its maker still has 250 ms or more to go on
+// every runner (16 ticks of Windows), against which the exit of the waiting thread is compared.
+// A world without that reach: the longest course of the sample.
 void testWaiter(const World& w, const std::vector<Timed>& timed) {
-    const Timed longest = *std::max_element(
-        timed.begin(), timed.end(), [](const Timed& a, const Timed& b) { return a.ms < b.ms; });
-    const std::size_t r = longest.reach;
     const auto reference = w.fresh();
+    const std::size_t r =
+        kWaitCourse < reference->reachCount()
+            ? kWaitCourse
+            : std::max_element(timed.begin(), timed.end(), [](const Timed& a, const Timed& b) {
+                  return a.ms < b.ms;
+              })->reach;
+    const Clock::time_point start = Clock::now();
     hydrology_sample::Checksum expected;
     hydrology_sample::addReach(expected, reference->reach(r));
-    std::printf("the course waited for: reach %zu, %.1f ms to make\n", r, longest.ms);
+    std::printf("the course waited for: reach %zu, %.1f ms to make\n", r,
+                msBetween(start, Clock::now()));
     const Load load;
     const int before = test::failures;
     std::vector<std::string> lines;
     std::vector<double> latencies;
     double worst = 0.0;
+    double least = 1e9; // ms the course still took after the raise, at least
     for (int k = 0; k < 5; ++k) {
         const auto h = w.fresh();
         std::atomic<bool> stop{false};
@@ -296,6 +305,7 @@ void testWaiter(const World& w, const std::vector<Timed>& timed) {
         const double remaining = msBetween(raised, made);
         latencies.push_back(latency);
         worst = std::max(worst, latency / std::max(remaining, 1e-3));
+        least = std::min(least, remaining);
         std::array<char, 160> line{};
         std::snprintf(line.data(), line.size(),
                       "waiting thread out in %.2f ms; the course made %.1f ms after the stop",
@@ -306,84 +316,10 @@ void testWaiter(const World& w, const std::vector<Timed>& timed) {
         TEST_CHECK(got.value() == expected.value());
     }
     std::printf("waiting thread out in %.2f ms (median of 5), at most %.3f of the course made "
-                "after the stop\n",
-                median(latencies), worst);
+                "after the stop (%.0f ms at least)\n",
+                median(latencies), worst, least);
     TEST_CHECK(median(latencies) <= 100.0);
     printOnFailure(before, lines);
-}
-
-// One thread waiting for the course r another one makes on a fresh hydrology, its flag raised
-// delay µs after it started: by raiseWorkStop (wake) or by a store alone (then seen at the end of
-// a step of its wait). The ms from the raise to its exit, and whether it left by WorkStopped (or
-// got the course first). The maker is stopped once the waiter is out: a trial lasts a few ms.
-struct WaiterOut {
-    double ms = 0.0;
-    bool left = false;
-};
-
-WaiterOut waiterOut(const World& w, std::size_t r, int delayUs, bool wake) {
-    const auto h = w.fresh();
-    std::atomic<bool> stop{false};
-    std::atomic<bool> makerStop{false};
-    bool left = false;
-    Clock::time_point out;
-    std::thread maker([&] {
-        const WorkStopScope scope(&makerStop);
-        try {
-            (void)h->reach(r);
-        } catch (const WorkStopped&) {
-            // the course no longer needed once the waiter is out
-        }
-    });
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    std::thread waiter([&] {
-        const WorkStopScope scope(&stop);
-        try {
-            (void)h->reach(r);
-        } catch (const WorkStopped&) {
-            left = true;
-        }
-        out = Clock::now();
-    });
-    std::this_thread::sleep_for(std::chrono::microseconds(delayUs));
-    const Clock::time_point raised = Clock::now();
-    if (wake) {
-        raiseWorkStop(stop);
-    } else {
-        stop.store(true);
-    }
-    waiter.join();
-    raiseWorkStop(makerStop);
-    maker.join();
-    return {msBetween(raised, out), left};
-}
-
-// The waiting thread is woken by the raise of its flag, not by the end of a step of its wait: at
-// rest, kWakes trials raised by raiseWorkStop against kWakes whose flag is only stored, in turn,
-// at instants spread over 2 ms; the median of the first under half the median of the second (no
-// bound in milliseconds: a step is 2 ms asked, 15.6 ms under Windows, 15 ms or more under
-// macOS). The course waited for is the longest of the sample, as for testWaiter: made long after
-// the raise everywhere, so that every woken thread leaves by WorkStopped; one whose flag is only
-// stored may still get it first (a long step): its exit then counts as is, which only lowers its
-// median.
-void testWokenNotStepped(const World& w, const std::vector<Timed>& timed) {
-    const Timed course = *std::max_element(
-        timed.begin(), timed.end(), [](const Timed& a, const Timed& b) { return a.ms < b.ms; });
-    std::vector<double> woken;
-    std::vector<double> stored;
-    int left = 0;
-    for (int k = 0; k < kWakes; ++k) {
-        const int delayUs = 5000 + 2000 * k / kWakes;
-        const WaiterOut raised = waiterOut(w, course.reach, delayUs, true);
-        woken.push_back(raised.ms);
-        left += raised.left ? 1 : 0;
-        stored.push_back(waiterOut(w, course.reach, delayUs, false).ms);
-    }
-    std::printf("waiting for reach %zu (%.1f ms to make), at rest: out in %.2f ms woken by the "
-                "raise, %.2f ms with the flag only stored (medians of %d)\n",
-                course.reach, course.ms, median(woken), median(stored), kWakes);
-    TEST_CHECK(left == kWakes);
-    TEST_CHECK(median(woken) < 0.5 * median(stored));
 }
 
 // One thread stopped, the other one going on: its courses those of the sample.
@@ -428,7 +364,6 @@ int main() {
     const std::vector<Timed> timed = timeSample(world);
     testStopsUnderLoad(world, timed);
     testWaiter(world, timed);
-    testWokenNotStepped(world, timed);
     testOthersGoOn(world);
     return test::result();
 }
