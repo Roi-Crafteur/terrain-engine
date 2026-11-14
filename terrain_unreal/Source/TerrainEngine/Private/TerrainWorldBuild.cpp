@@ -18,6 +18,7 @@
 #include "TerrainBuildComponent.h"
 #include "TerrainDevMap.h"
 #include "TerrainEngineLog.h"
+#include "TerrainMeshBackend.h"
 #include "TerrainWorld.h"
 #include "TerrainWorldState.h"
 
@@ -144,6 +145,11 @@ namespace
 FTerrainWorldState* FTerrainBuildHooks::State(ATerrainWorld& World)
 {
 	return World.State.IsValid() && !World.Starting.IsValid() ? World.State.Get() : nullptr;
+}
+
+UTerrainMeshBackend* FTerrainBuildHooks::Backend(ATerrainWorld& World)
+{
+	return World.Backend.Get();
 }
 
 bool FTerrainBuildHooks::IsLoadingView(const ATerrainWorld& World)

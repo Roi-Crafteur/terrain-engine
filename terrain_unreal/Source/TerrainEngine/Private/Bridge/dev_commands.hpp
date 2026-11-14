@@ -134,4 +134,13 @@ struct EditReadCommand {
 [[nodiscard]] std::optional<EditReadCommand> parseEditRead(std::span<const std::string> args,
                                                            std::string& error);
 
+// Terrain.EditTiles <x> <z> (agent 41): the tiles over a point of the core, in the core and in
+// Unreal (edit_tiles_report.hpp).
+struct EditTilesCommand {
+    double x = 0.0;
+    double z = 0.0;
+};
+[[nodiscard]] std::optional<EditTilesCommand> parseEditTiles(std::span<const std::string> args,
+                                                             std::string& error);
+
 } // namespace terrain::unreal

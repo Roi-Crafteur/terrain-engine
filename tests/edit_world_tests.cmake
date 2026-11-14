@@ -7,8 +7,11 @@ terrain_add_test(edit_tunnel_test terrain_core)
 terrain_add_test(edit_lod_relay_test terrain_unreal_bridge)
 # The edits through the streaming of a level, its moves and teleports, and its saved edits; the
 # ground of a column read from the triangles of a tile (Terrain.EditTiles).
-target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/tile_column.cpp)
+target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/tile_column.cpp
+                                             ${unreal_bridge}/edit_tiles_report.cpp)
 terrain_add_test(unreal_edit_streaming_test terrain_unreal_bridge)
+# Terrain.EditTiles: the tiles over a point in the core and in the meshes of Unreal.
+terrain_add_test(unreal_edit_tiles_report_test terrain_unreal_bridge)
 terrain_add_test(edit_lod_cost_test terrain_core)
 terrain_add_test(edit_lod_views_test terrain_edit_views)
 # The edit weights of the vertices and the light floor of the edited surfaces in Unreal.

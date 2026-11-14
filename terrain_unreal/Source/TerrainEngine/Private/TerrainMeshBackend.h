@@ -4,6 +4,7 @@
 #include "UObject/Object.h"
 
 #include "Bridge/dev_commands.hpp"
+#include "Bridge/edit_tiles_report.hpp"
 #include "Bridge/tile_streamer.hpp"
 #include "Templates/Function.h"
 #include "TerrainWorld.h"
@@ -64,6 +65,16 @@ public:
 	virtual void SetWaterVisible(bool /*bVisible*/) {}
 
 	virtual int32 GetTileCount() const { return 0; }
+
+	// Terrain.EditTiles (agent 41, tools of the developers): what the mesh shown under this key
+	// holds, as it received it (its vertices in the world, its triangles, its bounds, whether it
+	// is visible, its uploads); false for a key not shown. The keys of every mesh shown.
+	virtual bool DescribeTile(const terrain::TileKey& /*Key*/,
+		terrain::unreal::ShownSection& /*Out*/)
+	{
+		return false;
+	}
+	virtual std::vector<terrain::TileKey> GetTileKeys() const { return {}; }
 
 	// The tools of the developers (Terrain.View, agent 36). The vertices of the ground of every
 	// tile, and of the tiles to come, take the colors of a view mode (Bridge/debug_colors.hpp)

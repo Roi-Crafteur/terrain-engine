@@ -231,7 +231,8 @@ class Features(unittest.TestCase):
                          {"loadReport": False, "loadStart": False, "goto": False, "look": False,
                           "viewMode": False, "pawn": False, "pawnLanding": False,
                           "mapGo": False, "mapStarted": False, "determinism": False,
-                          "loadTest": False, "editAim": False, "editRead": False})
+                          "loadTest": False, "editAim": False, "editRead": False,
+                          "editTiles": False})
         stands = ('TerrainDev::Log(FString::Printf(TEXT("the pawn of the game stands, spot %d of '
                   '%d"), ...')  # TerrainDevPawn.cpp of main (#57)
         self.assertTrue(ue_log.plugin_features([stands])["pawnLanding"])
@@ -253,6 +254,9 @@ class Features(unittest.TestCase):
         f = ue_log.plugin_features([edits])
         self.assertTrue(f["editAim"] and f["editRead"])
         self.assertFalse(ue_log.plugin_features(['TEXT("Terrain.EditStats")'])["editAim"])
+        tiles = 'EditTilesCommand(TEXT("Terrain.EditTiles"),'  # TerrainDevEditTiles.cpp
+        self.assertTrue(ue_log.plugin_features([tiles])["editTiles"])
+        self.assertFalse(f["editTiles"])
 
 
 if __name__ == "__main__":

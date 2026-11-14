@@ -217,4 +217,6 @@ def plugin_features(source_texts):
         # saved edits read by the next play.
         "editAim": command("Terrain.EditAim"),
         "editRead": command("Terrain.EditRead"),
+        # The tiles over a point in the core and in Unreal (TerrainDevEditTiles.cpp).
+        "editTiles": command("Terrain.EditTiles"),
     }

@@ -1,6 +1,7 @@
 // The commands that edit the world as a click (agent 41, Bridge/dev_commands.hpp): the arguments
-// of Terrain.EditAim and Terrain.EditRead and every refusal, the line an EditAim writes in the log,
-// the sphere of a radius given and the point a trace must hit (Bridge/block_targeting.hpp).
+// of Terrain.EditAim, Terrain.EditRead and Terrain.EditTiles and every refusal, the line an
+// EditAim writes in the log, the sphere of a radius given and the point a trace must hit
+// (Bridge/block_targeting.hpp).
 #include "block_targeting.hpp"
 #include "dev_commands.hpp"
 
@@ -119,6 +120,19 @@ void testEditRead() {
     }
 }
 
+// Terrain.EditTiles <x> <z>: two JSON numbers, negative ones too; nothing else.
+void testEditTiles() {
+    std::string error;
+    const auto point = terrain::unreal::parseEditTiles(Args{"-240628", "-86677.5"}, error);
+    TEST_CHECK(point && point->x == -240628.0 && point->z == -86677.5);
+    for (const Args& bad : {Args{}, Args{"-240628"}, Args{"1", "2", "3"}, Args{"x", "2"},
+                            Args{"1", "+2"}, Args{"1,5", "2"}}) {
+        error.clear();
+        TEST_CHECK(!terrain::unreal::parseEditTiles(bad, error) &&
+                   error == "expected Terrain.EditTiles <x> <z> (the core)");
+    }
+}
+
 // The sphere of a radius given is the tool's at the tool's radius; another radius is rounded to
 // the sixteenth of the edit; a trace edits only within 0.25 m of the point it was aimed through.
 void testTargeting() {
@@ -147,6 +161,7 @@ int main() {
     testEditAim();
     testEditAimLine();
     testEditRead();
+    testEditTiles();
     testTargeting();
     return test::result();
 }

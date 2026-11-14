@@ -72,6 +72,7 @@ est en file ; sinon `Get Last Refusal` dit pourquoi).
 | `Terrain.EditLightFloor 0.15` | la part de sa couleur de base qu'une surface modifiée émet (0 à 1) | tous |
 | `Terrain.EditAim <dig\|place> <block\|sphere> [rayon] [at x y z]` | un clic du joueur pour les scripts, par le code du clic (`BuildRequested` : règles, visée depuis la caméra, portée de 6 m depuis l'œil, capsule, 4 par seconde, file, donc sauvegarde). `sphere` sans rayon : la sphère de 3 m (1,625 m de rayon) ; un rayon de 1/16 à 32 m. `at x y z` : un point du core par lequel passe la trace (sinon le centre de l'écran) ; refus si elle touche à plus de 0,25 m de ce point. Une ligne dans le log à chaque appel (voir « Les scènes ») | outils de debug seulement |
 | `Terrain.EditRead 1` / `0` | dans l'éditeur, entre deux Play : le prochain Play relit et sauvegarde les modifications de la seed comme avec `Building.bSaveEdits`, sans toucher l'acteur ni la carte ; sans argument, l'état | outils de debug seulement |
+| `Terrain.EditTiles <x> <z>` | les tuiles au-dessus du point : le sol de la colonne dans le core et dans le maillage d'Unreal, leurs LOD, bornes et envois (voir « Les scènes du monde modifié ») | outils de debug seulement |
 
 Chaque modification du joueur affichée écrit aussi dans le log (outils de debug seulement) :
 `Terrain World: edit shown 12.3 ms after its click (1.1 ms to be done), 1 frames later`.

@@ -14,6 +14,7 @@
 
 class APawn;
 class ATerrainWorld;
+class UTerrainMeshBackend;
 struct FTerrainWorldState;
 
 // Breaking and placing in game on the side of the world (agent 28, TerrainWorldBuild.cpp): the
@@ -49,6 +50,8 @@ struct FTerrainBuildHooks
 
 	// The state of a playing world, or null.
 	static FTerrainWorldState* State(ATerrainWorld& World);
+	// The meshes of the tiles of a world (Terrain.EditTiles), or null.
+	static UTerrainMeshBackend* Backend(ATerrainWorld& World);
 	// A teleport or the start holds the view (the screen black or the pawn held), in every build.
 	static bool IsLoadingView(const ATerrainWorld& World);
 	static bool IsDevMapOpen(const ATerrainWorld& World);

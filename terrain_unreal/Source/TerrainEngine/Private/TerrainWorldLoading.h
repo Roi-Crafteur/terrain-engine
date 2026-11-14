@@ -53,6 +53,8 @@ struct FTerrainLoadingState
 	// The check of the build (determinism_check.hpp), run on a thread from the start.
 	std::future<terrain::unreal::DeterminismReport> Determinism;
 	double DeterminismStartSeconds = 0.0;
+	// The point the tiles were streamed around at the last frame (Unreal), for Terrain.EditTiles.
+	FVector StreamingFocus = FVector::ZeroVector;
 	// The chunk of the focus at the last frame (canonical), to detect the teleports.
 	bool bHasLastChunk = false;
 	terrain::ChunkCoord LastChunk;

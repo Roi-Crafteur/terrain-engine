@@ -348,4 +348,14 @@ std::optional<EditReadCommand> parseEditRead(std::span<const std::string> args,
     return refuse<EditReadCommand>(error, "expected Terrain.EditRead [0|1]");
 }
 
+std::optional<EditTilesCommand> parseEditTiles(std::span<const std::string> args,
+                                               std::string& error) {
+    const std::optional<double> x = args.size() == 2 ? numberOf(args[0]) : std::nullopt;
+    const std::optional<double> z = args.size() == 2 ? numberOf(args[1]) : std::nullopt;
+    if (!x || !z) {
+        return refuse<EditTilesCommand>(error, "expected Terrain.EditTiles <x> <z> (the core)");
+    }
+    return EditTilesCommand{*x, *z};
+}
+
 } // namespace terrain::unreal
