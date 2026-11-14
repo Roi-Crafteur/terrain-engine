@@ -3,8 +3,9 @@
 // the tiles, each destroyed while its threads compute courses of a hydrology that has computed
 // nothing yet (seconds of work), then all four at once in the order of ATerrainWorld::ReleaseWorld
 // (the end of the Play, Terrain.Seed). Their work leaves by WorkStopped (work_stop.hpp), never
-// finishing; the median time of a destruction is 100 ms at most, the longest a quarter of the
-// time the work in progress would still have taken, at most. The times are printed.
+// finishing; the longest destruction takes a quarter of the time the work in progress would still
+// have taken, at most. The median of a destruction has a goal of 100 ms, printed (time goal) and
+// checked only by unreal_work_stop_test_bench (TERRAIN_TIME_GOALS, agent 42).
 #include "ground_read.hpp"
 #include "horizon_epochs.hpp"
 #include "map_tile_cache.hpp"
@@ -12,6 +13,7 @@
 #include "hydrology_sample_support.hpp"
 #include "map_world_support.hpp"
 #include "test_assert.hpp"
+#include "time_goal_support.hpp"
 
 #include "terrain/streaming/stream_manager.hpp"
 #include "terrain/work_stop.hpp"
@@ -124,20 +126,26 @@ struct Run {
     int stopped = 0;
 };
 
-// The median destruction, and checks every run.
+// The median destruction against its goal, and checks every run; the line of each run printed
+// only when a check failed (ctest keeps 1 KB of the output of a test that passes).
 double check(const char* what, const std::vector<Run>& runs, double workMs) {
+    const int before = test::failures;
     std::vector<double> ms;
     for (const Run& r : runs) {
         ms.push_back(r.destroyMs);
-        std::printf("  %s: %.2f ms, %d works started, %d stopped\n", what, r.destroyMs, r.started,
-                    r.stopped);
         TEST_CHECK(r.allStopped);
         TEST_CHECK(r.destroyMs < 0.25 * workMs);
+    }
+    if (test::failures > before) {
+        for (const Run& r : runs) {
+            std::printf("  %s: %.2f ms, %d works started, %d stopped\n", what, r.destroyMs,
+                        r.started, r.stopped);
+        }
     }
     std::sort(ms.begin(), ms.end());
     std::printf("%s: destroyed in %.2f ms (median), %.2f ms at most, the work %.0f ms\n", what,
                 ms[ms.size() / 2], ms.back(), workMs);
-    TEST_CHECK(ms[ms.size() / 2] <= 100.0);
+    time_goal::report("median destruction", ms[ms.size() / 2], 100.0, "ms");
     return ms[ms.size() / 2];
 }
 
@@ -316,7 +324,7 @@ void testGroundReads() {
         std::printf("the ground read %s in %.2f ms (median), %.2f ms at most, alone %.0f ms\n",
                     ms == &destroyed ? "destroyed" : "forgotten, out", (*ms)[ms->size() / 2],
                     ms->back(), alone);
-        TEST_CHECK((*ms)[ms->size() / 2] <= 100.0);
+        time_goal::report("median ground read", (*ms)[ms->size() / 2], 100.0, "ms");
         TEST_CHECK(ms->back() < 0.25 * alone);
     }
 }
@@ -344,5 +352,5 @@ int main() {
     }
     testGroundReads();
     check("all four, as ReleaseWorld", releaseWorld(), work);
-    return test::result();
+    return time_goal::result(test::result());
 }

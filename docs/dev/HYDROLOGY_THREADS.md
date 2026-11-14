@@ -160,23 +160,31 @@ Ne sont pas interrompus :
 
 - `hydrology_bits_test` : les bits d'un échantillon (tracés, requêtes sur les grilles de 2 et
   4 km, morceaux des niveaux 8 et 9), figés avant le travail de l'agent 39.
-- `hydrology_stop_test` (seul, `RUN_SERIAL`) :
-  - les arrêts sous charge, dans les tracés longs de l'échantillon (100 ms ou plus à faire),
-    au milieu du premier ;
-  - la médiane ≤ 100 ms ;
-  - le plus long < 1/4 du temps de la fin des tracés en cours, mesurée comme un `join`
-    l'attendrait : les quatre finis en même temps, sous la même charge ;
-  - un fil qui attend un tracé fait par un autre sort en moins du quart de ce que le tracé prend
-    encore, sous charge : le tracé attendu (`kWaitCourse`) reste 250 ms ou plus chez son
-    fabricant après la levée ;
-  - rien d'à moitié fait ;
-  - les autres fils continuent.
-  - Ce qu'il attrape (expériences non commitées, 3 fois chacune) :
+- `hydrology_stop_test` et `hydrology_wait_test` : deux tests du même exécutable
+  (`hydrology_stop_test stops` et `hydrology_stop_test waits`), seuls sur la machine
+  (`RUN_SERIAL`, posé dans `tests/serial_tests.cmake` par l'agent 42).
+  - `hydrology_stop_test` :
+    - les arrêts sous charge, dans les tracés longs de l'échantillon (100 ms ou plus à faire),
+      au milieu du premier ;
+    - le plus long < 1/4 du temps de la fin des tracés en cours, mesurée comme un `join`
+      l'attendrait : les quatre finis en même temps, sous la même charge ;
+    - rien d'à moitié fait : l'échantillon relu sur l'hydrologie du premier essai donne les bits
+      d'une hydrologie jamais arrêtée. Il est relu une fois la charge arrêtée, sur le même
+      état : cette hydrologie n'est plus touchée après son essai, chaque essai ayant la sienne.
+  - `hydrology_wait_test` :
+    - un fil qui attend un tracé fait par un autre sort en moins du quart de ce que le tracé
+      prend encore, sous charge : le tracé attendu (`kWaitCourse`) reste 250 ms ou plus chez son
+      fabricant après la levée ;
+    - les autres fils continuent.
+  - Les médianes (arrêt, sortie du fil qui attend) ont un but de 100 ms. Il est imprimé
+    (`time goal: …`) et vérifié seulement par `hydrology_stop_test_bench`, construit avec
+    `TERRAIN_TIME_GOALS` et lancé à la main sur une machine calme (règle de l'agent 42).
+  - Ce qu'ils attrapent (expériences non commitées, 3 fois chacune) :
     - `raiseWorkStop` sans effet : aucun fil ne sort par `WorkStopped` ;
     - tous les points d'arrêt d'un tracé retirés, entrées des chemins, fonds et tracés
       comprises : idem ;
     - l'attente d'un cache sans point d'arrêt : le fil qui attend ne sort qu'avec le tracé.
-  - Ce qu'il ne voit pas : un seul point d'arrêt retiré dans une boucle (les sections de
+  - Ce qu'ils ne voient pas : un seul point d'arrêt retiré dans une boucle (les sections de
     `lowestPath`, ou tous ceux du corps d'un tracé). Les entrées des chemins et des fonds
     d'amont restent, et le trou ne fait qu'environ 10 ms, sous le quart de la fin des tracés.
 - `lazy_wake_test` : le réveil des caches, sans temps mesuré.
@@ -188,5 +196,7 @@ Ne sont pas interrompus :
 - `hydrology_cache_test` : avec un budget de 1 Mio, les tracés lâchés puis refaits donnent les
   mêmes bits, les octets tenus restent sous la part des tracés, et 4 fils qui lâchent et lisent
   en même temps donnent les bits d'un seul.
-- `unreal_work_stop_test` (seul) : chaque fil du plugin, puis les quatre dans l'ordre de
-  `ReleaseWorld` ; une lecture de sol oubliée à la téléportation suivante sort aussitôt.
+- `unreal_work_stop_test` (seul, `RUN_SERIAL` dans `tests/serial_tests.cmake`) : chaque fil du
+  plugin, puis les quatre dans l'ordre de `ReleaseWorld` ; une lecture de sol oubliée à la
+  téléportation suivante sort aussitôt. Ses médianes ont le même but de 100 ms, vérifié par
+  `unreal_work_stop_test_bench`.

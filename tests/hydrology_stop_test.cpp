@@ -1,21 +1,26 @@
 // The computations of the hydrology stopped from another thread (agent 39, work_stop.hpp), under
-// load (as many spinning threads as working ones), on the small world:
-// - 4 threads computing the long courses of the sample (100 ms or more each to make), their flag
-//   raised at drawn instants, in the middle of the first: every one leaves by WorkStopped, none
-//   finishes the course it was making; the median time to their last exit is 100 ms at most, and
-//   the longest a quarter of the time the courses in progress then take to be finished, at most
-//   (measured in the same trial, on the same caches, as a join would wait for them: the four
-//   finished at once under the same load);
-// - a thread waiting for a course another thread makes leaves as soon (woken by the raise of its
-//   flag, never by the end of a step of its wait: lazy_wake_test), under a quarter of what the
-//   course still takes, 250 ms or more there;
-// - a stopped thread leaves nothing half made: the courses then computed are those of a
-//   hydrology never stopped (the bits of hydrology_bits_test);
-// - a thread stopped leaves the others computing, their results unchanged.
-// The times are printed; only the median has a bound in milliseconds (a loaded machine).
+// load (as many spinning threads as working ones), on the small world. Two tests of this
+// executable (hydrology_stop_tests.cmake), each alone on the machine (serial_tests.cmake):
+// - hydrology_stop_test (argument stops):
+//   - 4 threads computing the long courses of the sample (100 ms or more each to make), their
+//     flag raised at drawn instants, in the middle of the first: every one leaves by WorkStopped,
+//     none finishes the course it was making; the longest time to their last exit is a quarter
+//     of the time the courses in progress then take to be finished, at most (measured in the
+//     same trial, on the same caches, as a join would wait for them: the four finished at once
+//     under the same load);
+//   - a stopped thread leaves nothing half made: the courses then computed on the hydrology of
+//     the first trial are those of a hydrology never stopped (the bits of hydrology_bits_test);
+// - hydrology_wait_test (argument waits):
+//   - a thread waiting for a course another thread makes leaves as soon (woken by the raise of
+//     its flag, never by the end of a step of its wait: lazy_wake_test), under a quarter of what
+//     the course still takes, 250 ms or more there;
+//   - a thread stopped leaves the others computing, their results unchanged.
+// No argument: both. The medians have a goal of 100 ms, printed (time goal) and checked only by
+// hydrology_stop_test_bench (TERRAIN_TIME_GOALS, agent 42): a loaded machine may miss it.
 #include "hydrology_sample_support.hpp"
 
 #include "terrain/work_stop.hpp"
+#include "time_goal_support.hpp"
 
 #include <algorithm>
 #include <array>
@@ -23,6 +28,7 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -221,13 +227,15 @@ std::vector<std::size_t> longCourses(std::vector<Timed> timed) {
 
 void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
     const std::vector<std::size_t> longs = longCourses(timed);
-    const Load load;
+    std::optional<Load> load;
+    load.emplace();
     const int before = test::failures;
     std::vector<std::string> lines;
     std::vector<double> latencies;
     double worst = 0.0;
+    std::unique_ptr<Hydrology> first; // read again once the load is gone: nothing half made
     for (int k = 0; k < kTrials; ++k) {
-        const auto h = w.fresh();
+        auto h = w.fresh();
         const auto draw = terrain::noise::deriveSeed(39, static_cast<std::uint64_t>(k));
         const int delay = 10 + static_cast<int>(draw % 80); // in the middle of the first course
         const Trial t = stopTrial(*h, longs, delay, 1000 + static_cast<std::uint64_t>(k));
@@ -241,12 +249,16 @@ void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
         lines.emplace_back(line.data());
         TEST_CHECK(t.stopped == kWorkers);
         if (k == 0) {
-            TEST_CHECK(sampleSum(*h) == kSampleReaches); // nothing half made
+            first = std::move(h); // untouched by the later trials, each on its own hydrology
         }
     }
+    load.reset();
+    // The courses of the sample on the hydrology of the first trial, as it was left by its stop
+    // and the end of its courses in progress: those of a hydrology never stopped.
+    TEST_CHECK(sampleSum(*first) == kSampleReaches);
     std::printf("median %.2f ms, longest %.2f ms, at most %.3f of the end of the courses\n",
                 median(latencies), *std::max_element(latencies.begin(), latencies.end()), worst);
-    TEST_CHECK(median(latencies) <= 100.0);
+    time_goal::report("median stop", median(latencies), 100.0, "ms");
     TEST_CHECK(worst < 0.25);
     printOnFailure(before, lines);
 }
@@ -256,14 +268,15 @@ void testStopsUnderLoad(const World& w, const std::vector<Timed>& timed) {
 // a fresh hydrology: raised 8 ms after it started, its maker still has 250 ms or more to go on
 // every runner (16 ticks of Windows), against which the exit of the waiting thread is compared.
 // A world without that reach: the longest course of the sample.
-void testWaiter(const World& w, const std::vector<Timed>& timed) {
+void testWaiter(const World& w) {
     const auto reference = w.fresh();
-    const std::size_t r =
-        kWaitCourse < reference->reachCount()
-            ? kWaitCourse
-            : std::max_element(timed.begin(), timed.end(), [](const Timed& a, const Timed& b) {
-                  return a.ms < b.ms;
-              })->reach;
+    std::size_t r = kWaitCourse;
+    if (r >= reference->reachCount()) {
+        const std::vector<Timed> timed = timeSample(w);
+        r = std::max_element(timed.begin(), timed.end(), [](const Timed& a, const Timed& b) {
+                return a.ms < b.ms;
+            })->reach;
+    }
     const Clock::time_point start = Clock::now();
     hydrology_sample::Checksum expected;
     hydrology_sample::addReach(expected, reference->reach(r));
@@ -318,7 +331,7 @@ void testWaiter(const World& w, const std::vector<Timed>& timed) {
     std::printf("waiting thread out in %.2f ms (median of 5), at most %.3f of the course made "
                 "after the stop (%.0f ms at least)\n",
                 median(latencies), worst, least);
-    TEST_CHECK(median(latencies) <= 100.0);
+    time_goal::report("median exit of the waiting thread", median(latencies), 100.0, "ms");
     printOnFailure(before, lines);
 }
 
@@ -359,11 +372,16 @@ void testOthersGoOn(const World& w) {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    const std::string part = argc > 1 ? argv[1] : "";
     const World world;
-    const std::vector<Timed> timed = timeSample(world);
-    testStopsUnderLoad(world, timed);
-    testWaiter(world, timed);
-    testOthersGoOn(world);
-    return test::result();
+    if (part.empty() || part == "stops") {
+        testStopsUnderLoad(world, timeSample(world));
+    }
+    if (part.empty() || part == "waits") {
+        testWaiter(world);
+        testOthersGoOn(world);
+    }
+    TEST_CHECK(part.empty() || part == "stops" || part == "waits");
+    return time_goal::result(test::result());
 }
