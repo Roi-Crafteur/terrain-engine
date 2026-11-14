@@ -1,13 +1,13 @@
-// Cost of the surface blend of the far horizon (HorizonCell::blend, agent 29), printed only, never
-// asserted: the time of the samples of each level around two places (the mountains of the
-// legacy relief and the valley of the K2), on one thread, the best of several runs, with the
-// crests left to the detail (crestRatio 0: the epochs of the GPU horizon, deferCrests); and the
-// memory of a sample. The same file builds against a checkout without the blend, for the times
-// before (it only reads public headers).
+// The cost of the surface blend of the far horizon (HorizonCell::blend, agent 29), run by hand (not
+// a test; it asserts nothing): horizon_blend_cost_bench, built in Release. It prints the time of
+// the samples of each level around two places (the mountains of the legacy relief and the valley
+// of the K2), on one thread, the best of several runs, with the crests left to the detail
+// (crestRatio 0: the epochs of the GPU horizon, deferCrests); and the memory of a sample. The same
+// file builds against a checkout without the blend, for the times before (it only reads public
+// headers).
 #include "terrain/streaming/horizon_sampler.hpp"
 
 #include "horizon_test_support.hpp"
-#include "test_assert.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -65,5 +65,5 @@ int main() {
     const horizon_test::World world;
     measure(world, "mountains (horizon_test::kX, kZ)", horizon_test::kX, horizon_test::kZ);
     measure(world, "valley of the K2", kK2X, kK2Z);
-    return test::result();
+    return 0;
 }
