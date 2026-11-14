@@ -35,8 +35,11 @@ struct ReliefGrid {
                static_cast<std::size_t>(i);
     }
     [[nodiscard]] float at(int i, int j) const { return heights[index(i, j)]; }
-    [[nodiscard]] bool sea(int i, int j) const {
-        return water.empty() ? at(i, j) < kSeaLevel : water[index(i, j)] == WaterKind::Ocean;
+    [[nodiscard]] bool sea(int i, int j) const { return seaAt(index(i, j)); }
+    // The sea of the sample of index cell: its water where the grid has it (a dry depression
+    // below kSeaLevel is land), else the ground below kSeaLevel.
+    [[nodiscard]] bool seaAt(std::size_t cell) const {
+        return water.empty() ? heights[cell] < kSeaLevel : water[cell] == WaterKind::Ocean;
     }
     [[nodiscard]] double x(int i) const { return originX + (i + 0.5) * spacing; }
     [[nodiscard]] double z(int j) const { return originZ + (j + 0.5) * spacing; }

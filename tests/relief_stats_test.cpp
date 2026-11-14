@@ -62,6 +62,38 @@ void testIsland() {
     TEST_CHECK(!s.mountain.found);
 }
 
+// The island with a dry depression below the sea level at its middle (agent 52): with the water
+// of its samples, the depression is land (its share, its land mass, no coast around it, the land
+// bit of its cells); without it, the ground below the sea level is the sea, as before.
+void testDryDepression() {
+    const double radius = 12.0;
+    const auto height = [radius](int i, int j) {
+        const double r = std::hypot(i - 48.0, j - 32.0);
+        return r <= 4.0 ? -120.0f : (r <= radius ? 300.0f : -2000.0f);
+    };
+    ReliefGrid g = grid(96, 64, height);
+    for (int j = 0; j < g.rows; ++j) {
+        for (int i = 0; i < g.columns; ++i) {
+            const bool sea = std::hypot(i - 48.0, j - 32.0) > radius;
+            g.water.push_back(sea ? terrain::WaterKind::Ocean : terrain::WaterKind::None);
+            g.waterLevels.push_back(sea ? terrain::kSeaLevel : g.at(i, j));
+        }
+    }
+    terrain::ReliefStatsParams params;
+    params.continentArea = 1.0e10;
+    const ReliefStats s = terrain::measureRelief(g, params);
+    const double area = std::numbers::pi * radius * radius * kSpacing * kSpacing;
+    TEST_CHECK(s.landMasses.size() == 1);
+    TEST_CHECK(near(s.landMasses.front().area, area, 0.1));
+    TEST_CHECK(near(s.coastLength, 2.0 * std::numbers::pi * radius * kSpacing, 0.1));
+    const unsigned middle = s.cells[g.index(48, 32)];
+    TEST_CHECK((middle & terrain::kReliefLand) != 0u && (middle & terrain::kReliefCoast) == 0u);
+    // Without the water: a lake of sea inside the island, its shore a second coast.
+    const ReliefStats old = terrain::measureRelief(grid(96, 64, height), params);
+    TEST_CHECK(old.landShare < s.landShare);
+    TEST_CHECK(old.coastLength > s.coastLength * 1.2);
+}
+
 // A plateau at 500 m with a chain 60 cells long and 4 wide, rough (2,000 and 3,000 m).
 void testChain() {
     const ReliefGrid g = grid(128, 64, [](int i, int j) {
@@ -196,6 +228,7 @@ void testTerrainFigures() {
 int main() {
     testTerrainFigures();
     testIsland();
+    testDryDepression();
     testChain();
     testStraightCoasts();
     testDividers();

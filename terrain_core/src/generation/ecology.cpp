@@ -128,14 +128,15 @@ bool Ecology::densitiesAt(const EcologyMap& map, double x, double z,
     return true;
 }
 
-bool Ecology::keepPlant(const Plant& plant, const ReliefHeight& surface) const {
+bool Ecology::keepPlant(const Plant& plant, const ReliefHeight& surface,
+                        const SeaTest& sea) const {
     const VegetationParams& params = params_.vegetation;
     if (plant.type == PlantType::Seaweed) {
         const float depth = kSeaLevel - plant.y;
         if (depth < params.minSeaweedDepth || depth > params.maxSeaweedDepth) {
             return false;
         }
-    } else if (plant.y < kSeaLevel) {
+    } else if (plant.y < kSeaLevel && (!sea || sea(plant.x, plant.z))) {
         return false;
     }
     const double step = params.probeStep;
@@ -152,7 +153,7 @@ bool Ecology::keepPlant(const Plant& plant, const ReliefHeight& surface) const {
 }
 
 std::vector<Plant> Ecology::placePlants(const EcologyMap& map, const ReliefHeight& surface,
-                                        const PlantArea& area) const {
+                                        const PlantArea& area, const SeaTest& sea) const {
     const double sizeX = vegetation_.cellsX().size;
     const double sizeZ = vegetation_.cellsZ().size;
     const std::int64_t firstI = firstCell(area.minX, sizeX);
@@ -171,7 +172,7 @@ std::vector<Plant> Ecology::placePlants(const EcologyMap& map, const ReliefHeigh
             }
             const Plant plant{type,       draw.x,       draw.z, surface(draw.x, draw.z),
                               draw.scale, draw.rotation};
-            if (keepPlant(plant, surface)) {
+            if (keepPlant(plant, surface, sea)) {
                 plants.push_back(plant);
             }
         }

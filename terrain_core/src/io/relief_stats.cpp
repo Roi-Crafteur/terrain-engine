@@ -239,7 +239,7 @@ std::vector<bool> measureLand(const ReliefGrid& grid, const Torus& torus,
     for (Index cell = 0; cell < torus.cells(); ++cell) {
         const float h = grid.heights[cell];
         top = h > grid.heights[top] ? cell : top;
-        land[cell] = h >= kSeaLevel;
+        land[cell] = !grid.seaAt(cell);
         if (!land[cell]) {
             continue;
         }
@@ -282,7 +282,7 @@ double landAround(const ReliefGrid& grid, const Torus& torus, Index cell, int ra
     const int j = torus.row(cell);
     for (int b = -radius; b <= radius; ++b) {
         for (int a = -radius; a <= radius; ++a) {
-            land += grid.heights[torus.index(i + a, j + b)] >= kSeaLevel ? 1 : 0;
+            land += grid.seaAt(torus.index(i + a, j + b)) ? 0 : 1;
         }
     }
     const int side = 2 * radius + 1;
@@ -330,7 +330,7 @@ ReliefSite pickCoast(const ReliefGrid& grid, const Torus& torus, const ReliefSta
 ReliefGrid smoothedLand(const ReliefGrid& grid, const Torus& torus, int radius) {
     std::vector<float> land(torus.cells());
     for (Index cell = 0; cell < torus.cells(); ++cell) {
-        land[cell] = grid.heights[cell] >= kSeaLevel ? 1.0f : 0.0f;
+        land[cell] = grid.seaAt(cell) ? 0.0f : 1.0f;
     }
     ReliefGrid out = grid;
     std::vector<float> along(land.size());
@@ -376,7 +376,7 @@ void classify(const ReliefGrid& grid, const Torus& torus, const ReliefStatsParam
               ReliefStats& stats) {
     std::vector<bool> sea(torus.cells());
     for (Index cell = 0; cell < torus.cells(); ++cell) {
-        sea[cell] = grid.heights[cell] < kSeaLevel;
+        sea[cell] = grid.seaAt(cell);
     }
     const std::vector<float> toSea = chamferDistance(torus, sea);
     const auto inland = [&](Index cell) { return std::min(toChain[cell], toSea[cell]); };
@@ -386,7 +386,7 @@ void classify(const ReliefGrid& grid, const Torus& torus, const ReliefStatsParam
     Index farthestLand = 0;
     bool anyLand = false;
     for (Index cell = 0; cell < torus.cells(); ++cell) {
-        if (grid.heights[cell] < kSeaLevel) {
+        if (grid.seaAt(cell)) {
             continue;
         }
         unsigned bits = kReliefLand;
@@ -401,7 +401,7 @@ void classify(const ReliefGrid& grid, const Torus& torus, const ReliefStatsParam
             anyLand = true;
         }
         for (int k = 0; k < 4; ++k) {
-            bits |= grid.heights[torus.neighbor(cell, k)] < kSeaLevel ? kReliefCoast : 0u;
+            bits |= grid.seaAt(torus.neighbor(cell, k)) ? kReliefCoast : 0u;
         }
         stats.cells[cell] = static_cast<std::uint8_t>(bits);
         ++counts[0];
@@ -435,7 +435,7 @@ ReliefStats measureRelief(const ReliefGrid& world, const ReliefStatsParams& para
     const int bridge = std::max(1, static_cast<int>(std::lround(params.bridge / world.spacing)));
     std::vector<bool> chain = closeMask(torus, mountain, bridge);
     for (Index cell = 0; cell < torus.cells(); ++cell) {
-        chain[cell] = chain[cell] && world.heights[cell] >= kSeaLevel;
+        chain[cell] = chain[cell] && !world.seaAt(cell);
     }
     stats.chains = measureChains(world, torus, chain);
     const std::vector<float> toChain = chamferDistance(torus, chain);
