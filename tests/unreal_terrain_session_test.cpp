@@ -7,18 +7,22 @@
 
 #include "storage_test_support.hpp"
 #include "test_assert.hpp"
+#include "time_goal_support.hpp"
 
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -121,22 +125,75 @@ void testInvalidParams() {
     TEST_CHECK(rejected);
 }
 
-// A session destroyed while its workers generate the queued tiles (the default rings, with
-// caves and their regions) stops once their current tiles are done.
+// The generations of the tiles recorded so far: how many, and how long in all, milliseconds.
+struct Generated {
+    std::size_t tiles = 0;
+    double milliseconds = 0.0;
+};
+
+Generated generatedSoFar(TerrainSession& session) {
+    Generated g;
+    for (const terrain::unreal::LodTimings& lod : session.timings().totals()) {
+        g.tiles += lod.stage(TileStage::Generation).tiles;
+        g.milliseconds += lod.stage(TileStage::Generation).totalMilliseconds;
+    }
+    return g;
+}
+
+// The rings of the LODs k times wider than the default ones: the same structure, about k * k
+// times the tiles (231 by default).
+terrain::LodParams widerRings(int k) {
+    terrain::LodParams lod;
+    for (int& distance : lod.splitDistance) {
+        distance *= k;
+    }
+    lod.viewDistance *= k;
+    return lod;
+}
+
+// A session destroyed while its 3 workers generate the queued tiles (with caves and their
+// regions, and without) stops once their current tiles are done: it takes less than a quarter of
+// the time its workers would still take for the queued tiles (the mean time of the tiles they
+// generated first, times the queue, over the workers), measured here. Without caves a tile takes
+// about 1.5 ms: rings 5 times wider (about 5,300 tiles queued) make the queue last more than 1 s
+// (2.3 to 2.8 s here; 4 times wider gave 1.4 s, 3 times 0.8 s), far from the wake of the threads
+// of a loaded machine (up to 20 ms measured with 8 processes on 4 cores); with caves, the default
+// rings (0.7 to 3 s). The goal of 60 s is checked by the bench
+// unreal_terrain_session_test_bench (time_goal_support.hpp), never by ctest.
 void testDestroyWhileGenerating() {
+    constexpr int kWider = 5;
     for (const bool caves : {false, true}) {
         SessionParams params;
         params.caves = caves;
         params.caveRegions = caves;
         params.stream.workerThreads = 3;
-        const auto start = std::chrono::steady_clock::now();
-        {
-            TerrainSession session(params);
-            const UnrealFrame frame = session.frameAt(0.0, 0.0);
-            static_cast<void>(session.streamer().update(centerOf(frame, {0, 0}), frame));
-            TEST_CHECK(session.streamer().manager().pendingCount() > 100);
+        if (!caves) {
+            params.stream.lod = widerRings(kWider);
         }
-        TEST_CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(60));
+        auto session = std::make_unique<TerrainSession>(params);
+        const UnrealFrame frame = session->frameAt(0.0, 0.0);
+        static_cast<void>(session->streamer().update(centerOf(frame, {0, 0}), frame));
+        TEST_CHECK(session->streamer().manager().pendingCount() > 100);
+        Generated first = generatedSoFar(*session);
+        for (int round = 0; round < 60'000 && first.tiles < 6; ++round) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            first = generatedSoFar(*session);
+        }
+        const std::size_t queued = session->streamer().manager().pendingCount();
+        const double meanMs =
+            first.milliseconds / static_cast<double>(std::max<std::size_t>(first.tiles, 1));
+        const double queueMs =
+            meanMs * static_cast<double>(queued) / params.stream.workerThreads;
+        const auto start = std::chrono::steady_clock::now();
+        session.reset();
+        const double destroyMs = std::chrono::duration<double, std::milli>(
+                                     std::chrono::steady_clock::now() - start)
+                                     .count();
+        std::printf("session%s destroyed with %zu tiles queued in %.1f ms, %.3f of the %.0f ms "
+                    "its workers would still take\n",
+                    caves ? " with caves" : "", queued, destroyMs, destroyMs / queueMs, queueMs);
+        TEST_CHECK(first.tiles >= 6 && destroyMs < 0.25 * queueMs);
+        time_goal::report("session destroyed while generating", destroyMs, 60000.0, "ms");
     }
 }
 
@@ -272,5 +329,5 @@ int main() {
     testDestroyWhileGenerating();
     testPlanetPaths();
     testPlanetFile();
-    return test::result();
+    return time_goal::result(test::result());
 }

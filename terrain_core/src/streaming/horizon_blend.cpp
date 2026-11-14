@@ -65,7 +65,10 @@ SurfaceSite pointSite(const HeightSample& sample, const std::array<float, 4>& h,
     }
     site.steepness = static_cast<float>(difference / step);
     site.water = sample.water;
-    site.waterLevel = sample.waterLevel;
+    // The top of the column (SurfaceSite::waterLevel): the ground on dry land, never the level a
+    // river nearby leaves in HeightSample::waterLevel there (agent 49: the climate of a dry sample
+    // at its ground, as the texels of the tiles and the map read it).
+    site.waterLevel = sample.water == WaterKind::None ? sample.height : sample.waterLevel;
     site.dunes = sample.dunes;
     site.erg = sample.erg;
     site.ergFloor = sample.ergFloor;
@@ -97,11 +100,10 @@ SurfaceBlend footprintBlend(const std::array<const SurfaceBlend*, 9>& around) {
 
 BlendTexel withMaterial(BlendTexel texel, SurfaceMaterial material) {
     const auto id = static_cast<std::uint32_t>(material);
-    constexpr std::uint32_t kMaterialIds = 0x00FFF000U;
-    const std::uint32_t ids = id << 12U | id << 16U | id << 20U;
-    constexpr std::uint32_t kDunes = 0xFF000000U; // the edits cover the sand of the dunes
-    texel.ids = (texel.ids & ~(kMaterialIds | kDunes)) | ids;
-    texel.weights = (texel.weights & 0x0000FFFFU) | 255U << 16U;
+    // The same material in the 3 slots; no share of the dunes (the edits cover their sand).
+    texel.materials = id | id << kMaterialIdBits | id << (2 * kMaterialIdBits);
+    // All the weight on slot 0; the bits kept for the heat of the ground (16-23) unchanged.
+    texel.materialWeights = (texel.materialWeights & 0x00FF0000U) | 255U;
     return texel;
 }
 

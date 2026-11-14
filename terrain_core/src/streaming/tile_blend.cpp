@@ -121,6 +121,11 @@ std::vector<BlendTexel> blendTexels(const Heightfield& field, const Ecology& eco
             site.ergFloor = columns.ergFloorAt(i, k);
             site.volcanicGround = columns.volcanicGroundAt(i, k);
             site.volcanicShare = columns.volcanicShareAt(i, k);
+            // The water of the core at the column (agent 49), as the samples of the horizon read
+            // it (horizon_blend.cpp: pointSite): a dry depression below the sea level is no ocean,
+            // the lakes and the rivers of the hydrology are water.
+            site.water = columns.waterKindAt(i, k);
+            site.waterLevel = site.water == WaterKind::None ? site.ground : columns.waterAt(i, k);
             const ClimateSample climate = ecology.climate().sample(x, z, site);
             // Bare rock: the reefs of the coasts, and the foot of the walls under the sea.
             site.bareRock = columns.bareRockAt(i, k) ||

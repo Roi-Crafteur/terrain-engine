@@ -71,22 +71,11 @@ struct Measure {
     double lowest = 0.0;    // the lowest ground within the foot, under the ground before
 };
 
-// Along rays from its summit (volcanoSummit: its crater around it).
-inline Measure measure(const terrain::Heightfield& with, const terrain::Heightfield& without,
-                       const terrain::VolcanoSite& site) {
-    terrain::VolcanoSite s = site;
-    const terrain::VolcanoOffset top = terrain::volcanoSummit(site);
-    s.x += top.dx;
-    s.z += top.dz;
+// Its base (the mean ground without it within its foot), its summit and how far off the center,
+// its rise, the lowest it digs under the ground before it.
+inline void summitOf(const std::vector<Ray>& rays, const terrain::VolcanoSite& s, double step,
+                     Measure& m) {
     const double radius = static_cast<double>(s.radius);
-    const double length = 1.3 * radius * static_cast<double>(s.elongation);
-    const double step = std::max(25.0, radius / 200.0);
-    const auto span = static_cast<std::size_t>(std::max(1.0, std::round(500.0 / step)));
-    std::vector<Ray> rays;
-    for (int k = 0; k < kRays; ++k) {
-        rays.push_back(rayOf(with, without, s, 2.0 * kPi * k / kRays, length, step));
-    }
-    Measure m;
     double sum = 0.0;
     int count = 0;
     m.summit = -1e9;
@@ -106,6 +95,25 @@ inline Measure measure(const terrain::Heightfield& with, const terrain::Heightfi
     }
     m.base = s.atSea ? static_cast<double>(s.floor) : sum / count;
     m.rise = m.summit - m.base;
+}
+
+// Along rays from its summit (volcanoSummit: its crater around it).
+inline Measure measure(const terrain::Heightfield& with, const terrain::Heightfield& without,
+                       const terrain::VolcanoSite& site) {
+    terrain::VolcanoSite s = site;
+    const terrain::VolcanoOffset top = terrain::volcanoSummit(site);
+    s.x += top.dx;
+    s.z += top.dz;
+    const double radius = static_cast<double>(s.radius);
+    const double length = 1.3 * radius * static_cast<double>(s.elongation);
+    const double step = std::max(25.0, radius / 200.0);
+    const auto span = static_cast<std::size_t>(std::max(1.0, std::round(500.0 / step)));
+    std::vector<Ray> rays;
+    for (int k = 0; k < kRays; ++k) {
+        rays.push_back(rayOf(with, without, s, 2.0 * kPi * k / kRays, length, step));
+    }
+    Measure m;
+    summitOf(rays, s, step, m);
     const double crater = static_cast<double>(s.crater);
     std::vector<double> uppers;
     std::vector<double> feet;

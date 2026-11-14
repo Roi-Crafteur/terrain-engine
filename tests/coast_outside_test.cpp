@@ -146,8 +146,10 @@ void addFullTile(golden::Checksum& sum, const terrain::TileData& data) {
     golden::addTile(sum, data);
     sum.add(static_cast<std::uint64_t>(data.surfaceBlend.size()));
     for (const terrain::BlendTexel& t : data.surfaceBlend) {
-        sum.add(static_cast<std::uint64_t>(t.ids), 4);
-        sum.add(static_cast<std::uint64_t>(t.weights), 4);
+        sum.add(static_cast<std::uint64_t>(t.biomes), 4);
+        sum.add(static_cast<std::uint64_t>(t.materials), 4);
+        sum.add(static_cast<std::uint64_t>(t.biomeWeights), 4);
+        sum.add(static_cast<std::uint64_t>(t.materialWeights), 4);
     }
     sum.add(static_cast<std::uint64_t>(data.waterLevels.size()));
     for (const float level : data.waterLevels) {
@@ -321,7 +323,10 @@ void testDefaultWorld() {
     std::printf("default world in %.1f s\n", seconds(start));
     golden::report("the default world out of the coastal zone",
                    {{"default world patches", sums.patches.value(), 0x12BBBAA19D5D777FULL},
-                    {"default world tiles", sums.tiles.value(), 0x51D8B009355E8A97ULL},
+                    // The tiles hash their blend texels: those of 16 bytes (agent 49) changed
+                    // their bytes, never their blends (0x51D8B009355E8A97, 0x435745D91D4D43D8 and
+                    // 0xE4369B53BAB781AD for the 3 parts of the tiles before).
+                    {"default world tiles", sums.tiles.value(), 0x33BD195571B453FBULL},
                     {"default world horizon", sums.horizon.value(), 0x784F4CC234FCB46EULL}});
 }
 
@@ -351,15 +356,21 @@ void testSmallWorldWithWater() {
         {{"small world planet level", planet->checksum(),
           v(0xBFA4DE19A54DAD75ULL, 0xE69ECEF0788B0760ULL)},
          {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
-         {"small world tiles", sums.tiles.value(), v(0x435745D91D4D43D8ULL, 0xADB7044C2B54D070ULL)},
+         // With the volcanoes, re-pasted by « Merge main (#76, #79) into the volcanoes » (agent
+         // 45): "small world tiles", "small world rivers tiles" and "small world rivers horizon";
+         // the texels of the tiles read the water of the core (agent 49, #76), as without them.
+         {"small world tiles", sums.tiles.value(), v(0x3920923625208FCEULL, 0x7A1F00731EF899D6ULL)},
          {"small world horizon", sums.horizon.value(),
           v(0x159D43BA4E7127E6ULL, 0x6D75325F3A9AF59CULL)},
          {"small world rivers patches", rivers.patches.value(),
           v(0x88EE902D42C05D86ULL, 0x7340B9A4AD1B9840ULL)},
+         // Near the rivers (agent 49): the texels of the tiles read the water of the core, and a
+         // dry sample its climate at its ground, not at the level of the river beside it
+         // (0x9B59DD7FA17B37EB and 0x810D6B0B60B06611 before).
          {"small world rivers tiles", rivers.tiles.value(),
-          v(0xE4369B53BAB781ADULL, 0x40F03C98A148A603ULL)},
+          v(0x0C052A0A584C2027ULL, 0xAD749072FF6CD525ULL)},
          {"small world rivers horizon", rivers.horizon.value(),
-          v(0x810D6B0B60B06611ULL, 0x34E74ED5007F7547ULL)}});
+          v(0x9D3D6DEECA7F2EF9ULL, 0x585988EF6A4E567BULL)}});
 }
 
 } // namespace

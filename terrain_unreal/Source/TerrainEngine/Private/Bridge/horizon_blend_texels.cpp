@@ -8,29 +8,26 @@
 
 namespace terrain::unreal {
 
-std::array<std::uint16_t, kBlendChannels> blendChannels(BlendTexel texel) {
-    return {static_cast<std::uint16_t>(texel.ids & 0xFFFFU),
-            static_cast<std::uint16_t>(((texel.ids >> 16U) & 0xFFU) |
-                                       ((texel.ids >> 24U) & 0x7FU) << 8U | kBlendTexelPresent),
-            static_cast<std::uint16_t>(texel.weights & 0xFFFFU),
-            static_cast<std::uint16_t>(texel.weights >> 16U)};
+namespace {
+
+// Every channel is an integer below 2^24 (biome_blend.hpp: kBlendFieldBits).
+constexpr float kFieldLimit = static_cast<float>(1u << kBlendFieldBits);
+
+} // namespace
+
+std::array<float, kBlendChannels> blendChannels(BlendTexel texel) {
+    return blendTexelFloats(texel);
 }
 
-std::optional<BlendTexel>
-blendOfChannels(const std::array<std::uint16_t, kBlendChannels>& channels) {
-    const std::uint32_t high = channels[1];
-    if ((high & kBlendTexelPresent) == 0) {
-        return std::nullopt;
-    }
-    return BlendTexel{channels[0] | (high & 0xFFU) << 16U | ((high >> 8U) & 0x7FU) << 24U,
-                      channels[2] | static_cast<std::uint32_t>(channels[3]) << 16U};
+std::optional<BlendTexel> blendOfChannels(const std::array<float, kBlendChannels>& channels) {
+    return blendTexelOf(channels);
 }
 
 void appendBlendUploads(std::span<const BlendTexel> blends, std::vector<float>& data) {
     data.reserve(data.size() + blends.size() * kBlendChannels);
     for (const BlendTexel blend : blends) {
-        for (const std::uint16_t channel : blendChannels(blend)) {
-            data.push_back(static_cast<float>(channel));
+        for (const float channel : blendChannels(blend)) {
+            data.push_back(channel);
         }
     }
 }
@@ -53,12 +50,12 @@ std::vector<BlendRegion> blendRegions(int level, int side, const HorizonRect& re
                     kBlendChannels;
                 for (int n = 0; n < x.length * kBlendChannels; ++n) {
                     const float value = channels[static_cast<std::size_t>(first + n)];
-                    if (!(value >= 0.0f && value <= 65535.0f) ||
-                        static_cast<float>(static_cast<std::uint16_t>(value)) != value) {
+                    if (!(value >= 0.0f && value < kFieldLimit) ||
+                        static_cast<float>(static_cast<std::uint32_t>(value)) != value) {
                         throw std::invalid_argument("blendRegions: a channel is not an integer "
-                                                    "of 16 bits");
+                                                    "below 2^24");
                     }
-                    region.data.push_back(static_cast<std::uint16_t>(value));
+                    region.data.push_back(value);
                 }
             }
             regions.push_back(std::move(region));
