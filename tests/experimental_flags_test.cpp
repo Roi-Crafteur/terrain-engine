@@ -102,6 +102,8 @@ void testTable() {
     std::string names;
     for (std::size_t i = 0; i < flags.size(); ++i) {
         TEST_CHECK(wellFormed(flags[i].name) && flags[i].what[0] != '\0');
+        // The words of Terrain.Flags (Bridge/dev_flags.hpp) are no flags.
+        TEST_CHECK(std::string(flags[i].name) != "none" && std::string(flags[i].name) != "reset");
         TEST_CHECK(flags[i].apply != nullptr);
         if (i > 0) {
             TEST_CHECK(std::string(flags[i - 1].name) < std::string(flags[i].name));

@@ -17,6 +17,13 @@ std::optional<std::string>& flagsSet() {
     return flags;
 }
 
+std::string lowered(std::string text) {
+    for (char& c : text) {
+        c = c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+    return text;
+}
+
 std::string replaced(std::string text, char from, char to) {
     for (char& c : text) {
         c = c == from ? to : c;
@@ -31,14 +38,27 @@ DevFlagsCommand parseDevFlags(std::span<const std::string> args) {
     if (args.empty()) {
         return command;
     }
-    command.set = true;
-    if (args.size() == 1 && (args[0] == "none" || args[0] == "None" || args[0] == "NONE")) {
+    const std::string word = args.size() == 1 ? lowered(args[0]) : std::string();
+    if (word == "reset") {
+        command.reset = true;
         return command;
     }
-    for (const std::string& word : args) {
-        command.text += (command.text.empty() ? "" : ",") + word;
+    command.set = true;
+    if (word == "none") {
+        return command;
+    }
+    for (const std::string& name : args) {
+        command.text += (command.text.empty() ? "" : ",") + name;
     }
     return command;
+}
+
+void runDevFlags(const DevFlagsCommand& command) {
+    if (command.reset) {
+        clearDevFlags();
+    } else if (command.set) {
+        setDevFlags(command.text);
+    }
 }
 
 void setDevFlags(std::string text) {
