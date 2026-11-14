@@ -173,11 +173,13 @@ void testInvalidationsAndErrors() {
         HorizonStreamer streamer(sampler, {threads, 512});
         settle(streamer, kX, kZ);
 
-        // Invalidated while the epoch of the first change is computed: not lost.
+        // Invalidated while the epoch of the first change is computed: not lost. On 0 threads
+        // only settle computes that epoch; on 3 the workers may end it within the update, which
+        // then commits it (busy() not checked there: a race).
         edits->raise = 25.0f;
         streamer.invalidate(kX - 400.0, kZ - 400.0, kX + 400.0, kZ + 400.0);
         streamer.update(kX, kZ);
-        TEST_CHECK(streamer.busy());
+        TEST_CHECK(threads != 0 || streamer.busy());
         edits->raise = -8.0f;
         streamer.invalidate(kX - 400.0, kZ - 400.0, kX + 400.0, kZ + 400.0);
         settle(streamer, kX, kZ);

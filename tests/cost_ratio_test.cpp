@@ -133,11 +133,15 @@ void testText() {
                "x1.41, measured again x1.36, x1.33 (at most x1.3)");
 }
 
-// secondsOf: at least the time slept.
+// secondsOf: at least the time slept, at most the time measured around the call (no absolute
+// bound: a loaded machine may wake the thread late).
 void testSecondsOf() {
+    const auto start = std::chrono::steady_clock::now();
     const double seconds = cost_test::secondsOf(
         [] { std::this_thread::sleep_for(std::chrono::milliseconds(2)); });
-    TEST_CHECK(seconds >= 0.002 && seconds < 10.0);
+    const double around =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    TEST_CHECK(seconds >= 0.002 && seconds <= around);
 }
 
 } // namespace
