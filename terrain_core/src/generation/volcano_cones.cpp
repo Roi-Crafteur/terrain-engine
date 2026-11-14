@@ -11,6 +11,7 @@
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "volcano_forms.hpp"
+#include "volcano_gorge.hpp"
 #include "volcano_sites.hpp"
 
 #include <algorithm>
@@ -64,8 +65,10 @@ int countIn(std::uint64_t seed, std::uint64_t index, int least, int most) {
     return least + static_cast<int>(std::floor(unit(seed, index) * (most - least + 1)));
 }
 
+// A cone within the reach of its volcano, out of the gorge of its breach (it would dam it).
 void keep(const VolcanoSite& s, Detail& d, Cone c) {
-    if (dmath::hypot(c.x, c.z) + c.reach < static_cast<double>(s.reach) - 100.0) {
+    if (dmath::hypot(c.x, c.z) + c.reach < static_cast<double>(s.reach) - 100.0 &&
+        volcano_gorge::clear(s, d.shape, c.x, c.z, c.reach)) {
         d.cones.push_back(c);
     }
 }
@@ -381,9 +384,20 @@ void edificeFlows(const VolcanoSite& s, Detail& d) {
         const Offset o = offsetAt(s, d.shape, start, turns);
         const Offset tip = offsetAt(s, d.shape, end, turns);
         const double length = dmath::hypot(tip.dx - o.dx, tip.dz - o.dz);
-        d.flows.push_back(flowFrom(seed, o.dx, o.dz, dmath::atan2(tip.dz - o.dz, tip.dx - o.dx),
-                                   length, between(seed, 4, rule.width[0], rule.width[1]),
-                                   between(seed, 5, rule.thickness[0], rule.thickness[1])));
+        const Flow f =
+            flowFrom(seed, o.dx, o.dz, dmath::atan2(tip.dz - o.dz, tip.dx - o.dx), length,
+                     between(seed, 4, rule.width[0], rule.width[1]),
+                     between(seed, 5, rule.thickness[0], rule.thickness[1]));
+        // Never across the gorge of a breach (it would dam it): every 100 m of its course, out of
+        // it by its width and its wandering.
+        bool across = false;
+        for (double t = 0.0; t <= f.length && !across; t += 100.0) {
+            across = !volcano_gorge::clear(s, d.shape, f.x + t * f.dirX, f.z + t * f.dirZ,
+                                           f.width + f.meander);
+        }
+        if (!across) {
+            d.flows.push_back(f);
+        }
     }
 }
 

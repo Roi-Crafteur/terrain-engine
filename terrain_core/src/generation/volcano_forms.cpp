@@ -90,6 +90,19 @@ double ringNoise(std::uint64_t seed, double turns, int cells) {
     return a + (b - a) * fade(x - i.value);
 }
 
+double circleNoise(std::uint64_t seed, double dirX, double dirZ, int cells) {
+    const double radius = static_cast<double>(std::max(cells, 1)) / kTwoPi;
+    const std::uint64_t center = noise::deriveSeed(seed, 0x43697263ULL); // "Circ"
+    const double cx = 0.5 * (value(center, 0) + 1.0);
+    const double cz = 0.5 * (value(center, 1) + 1.0);
+    return planeNoise(seed, cx + radius * dirX, cz + radius * dirZ);
+}
+
+double circleNoise(std::uint64_t seed, double turns, int cells) {
+    const dmath::SineCosine d = dmath::sinCosTurns(turns);
+    return circleNoise(seed, d.cosine, d.sine, cells);
+}
+
 double lineNoise(std::uint64_t seed, double t) {
     const dmath::FloorIndex i = dmath::floorIndex(t);
     const double a = value(seed, static_cast<std::uint64_t>(i.index));

@@ -24,6 +24,12 @@ struct Place {
 double cut(const VolcanoSite& site, const volcano_relief::Shape& shape, const Place& at,
            double footprint, volcano_relief::Point& point);
 
+// Whether a disk of radius margin at the offset (dx, dz) from the center of site stays out of the
+// gorge of its breach (its notch through the wall and its corridor down the flank, at its widest
+// on either side): the satellite cones and the flows of lava never dam it.
+[[nodiscard]] bool clear(const VolcanoSite& site, const volcano_relief::Shape& shape, double dx,
+                         double dz, double margin);
+
 // Its gorge from its seed: its widths, length and bends (its depths come with the details).
 [[nodiscard]] volcano_relief::GorgeShape gorgeOf(const VolcanoSite& site);
 

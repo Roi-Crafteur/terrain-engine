@@ -5,7 +5,8 @@
 // depth, the slopes of its two walls there. Each gorge on land winds (its thalweg at least 1.1
 // times as long as the line between its ends), is at least 1.8 times as wide 0.7 of the way
 // down as at its lip and 1.2 times as deep 0.4 of the way down, its walls uneven, its floor never
-// rising on the way down (no pond); the lake of its caldera stays under its lip. A strait into a
+// rising on the way down (no pond); the lake of its caldera stays under its lip. Its lip: where its
+// relief cuts it, on the rim at the azimuth of the breach. A strait into a
 // drowned caldera keeps its floor 10 m under the sea at least, out to the sea (or opens in a gap
 // of its ring of islands already under the sea).
 #include "terrain/generation/heightfield.hpp"
@@ -107,60 +108,26 @@ struct Gorge {
     double length = 0.0;
 };
 
-// The lip of a breach: within 20 degrees of its azimuth, the ray from the center of the caldera
-// whose crest is lowest, at that crest; the direction of that ray. The crest of a ray: from 0.7
-// radius out to 1.3, the first point higher than the next one, a quarter of the depth of the
-// caldera over its start at least (the rim, before the ray leaves a gorge that bends); for a
-// strait, the middle of its flat floor along the ray.
+// The lip of a breach where its relief cuts it: on the rim of the crater (its radius at that
+// azimuth, volcano_relief::craterRadiusAt) at the azimuth of the breach, in the frame of the
+// volcano (volcano_relief::offsetOfFrame); the direction down the flank there.
 struct Lip {
     double x = 0.0;
     double z = 0.0;
-    double crest = 1e9;
     double dx = 0.0;
     double dz = 0.0;
 };
 
-Lip lipOf(const terrain::Heightfield& field, const VolcanoSite& s,
-          const terrain::volcano_relief::Shape& sh, bool strait, double cx, double cz) {
-    const double ca = std::cos(static_cast<double>(s.axis));
-    const double sa = std::sin(static_cast<double>(s.axis));
-    const auto crater = static_cast<double>(s.crater);
-    Lip lip;
-    for (int k = -80; k <= 80; ++k) {
-        const double a = sh.breachAngle + 20.0 * kPi / 180.0 * k / 80.0;
-        const double u = std::cos(a) * static_cast<double>(s.elongation);
-        const double v = std::sin(a);
-        const double rx = u * ca - v * sa;
-        const double rz = u * sa + v * ca;
-        std::vector<double> xs;
-        std::vector<double> zs;
-        for (int i = 0; i <= 120; ++i) {
-            const double r = crater * (0.7 + 0.6 * i / 120.0);
-            xs.push_back(cx + r * rx);
-            zs.push_back(cz + r * rz);
-        }
-        std::vector<float> h(xs.size());
-        field.heightsAt(xs, zs, h);
-        const float above = h[0] + 0.25f * s.craterDepth;
-        const float highest = *std::max_element(h.begin(), h.end());
-        std::size_t crest = 0;
-        while (crest + 1 < h.size() &&
-               !(strait ? h[crest] >= highest - 2.0f : h[crest] > above && h[crest + 1] < h[crest])) {
-            ++crest;
-        }
-        if (strait) {
-            std::size_t end = crest;
-            while (end + 1 < h.size() && h[end + 1] >= highest - 2.0f) {
-                ++end;
-            }
-            crest = (crest + end) / 2;
-        }
-        if (static_cast<double>(h[crest]) < lip.crest) {
-            const double n = std::hypot(rx, rz);
-            lip = {xs[crest], zs[crest], static_cast<double>(h[crest]), rx / n, rz / n};
-        }
-    }
-    return lip;
+Lip lipOf(const VolcanoSite& s, const terrain::volcano_relief::Shape& sh) {
+    const double r = terrain::volcano_relief::craterRadiusAt(s, sh, sh.breachAngle / (2.0 * kPi));
+    const double c = std::cos(sh.breachAngle);
+    const double n = std::sin(sh.breachAngle);
+    const terrain::volcano_relief::FrameOffset a =
+        terrain::volcano_relief::offsetOfFrame(s, sh, r * c, r * n);
+    const terrain::volcano_relief::FrameOffset b =
+        terrain::volcano_relief::offsetOfFrame(s, sh, (r + 50.0) * c, (r + 50.0) * n);
+    const double length = std::hypot(b.dx - a.dx, b.dz - a.dz);
+    return {s.x + a.dx, s.z + a.dz, (b.dx - a.dx) / length, (b.dz - a.dz) / length};
 }
 
 // The thalweg from the lip down, while the gorge stays 10 m deep at least (a strait: out to the
@@ -168,10 +135,7 @@ Lip lipOf(const terrain::Heightfield& field, const VolcanoSite& s,
 // farther, out to where the flank comes down to it) and down to the foot of the volcano.
 Gorge traceGorge(const terrain::Heightfield& field, const VolcanoSite& s,
                  const terrain::volcano_relief::Shape& sh, bool strait) {
-    const terrain::VolcanoOffset top = terrain::volcanoSummit(s);
-    const double cx = s.x + top.dx;
-    const double cz = s.z + top.dz;
-    const Lip lip = lipOf(field, s, sh, strait, cx, cz);
+    const Lip lip = lipOf(s, sh);
     double dx = lip.dx;
     double dz = lip.dz;
     Gorge g;
@@ -179,16 +143,26 @@ Gorge traceGorge(const terrain::Heightfield& field, const VolcanoSite& s,
     // Down to the foot of the volcano at most.
     const double foot = 0.95 * static_cast<double>(s.radius) *
                         std::max(1.0, static_cast<double>(s.elongation));
+    const auto ends = [strait](const Section& c) {
+        return strait ? (c.floor > 0.0 || std::max(c.floor + c.depth, 0.0) <= 0.0)
+                      : c.depth < 10.0;
+    };
     double travelled = 0.0;
     const double length = 1.2 * sh.gorge.length;
-    while (travelled < length &&
-           std::hypot(g.path.back().x - cx, g.path.back().z - cz) < foot) {
+    while (travelled < length && std::hypot(g.path.back().x - s.x, g.path.back().z - s.z) < foot) {
         const Section& last = g.path.back();
         const double search = std::clamp(0.4 * last.width, 30.0, 200.0);
-        const Section next = sectionAt(field, last.x + kStep * dx, last.z + kStep * dz, dx, dz,
-                                       search);
-        if (strait ? (next.floor > 0.0 || std::max(next.floor + next.depth, 0.0) <= 0.0)
-                   : next.depth < 10.0) {
+        Section next = sectionAt(field, last.x + kStep * dx, last.z + kStep * dz, dx, dz, search);
+        if (ends(next) && g.path.size() > 6) {
+            // Lost in a tight bend: once more along the last six steps, searching wider.
+            const Section& back = g.path[g.path.size() - 7];
+            const double bx = last.x - back.x;
+            const double bz = last.z - back.z;
+            const double n = std::hypot(bx, bz);
+            next = sectionAt(field, last.x + kStep * bx / n, last.z + kStep * bz / n, bx / n,
+                             bz / n, 300.0);
+        }
+        if (ends(next)) {
             break;
         }
         const double step = std::hypot(next.x - last.x, next.z - last.z);

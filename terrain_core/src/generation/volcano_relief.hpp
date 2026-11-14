@@ -215,6 +215,14 @@ struct FrameOffset {
 };
 [[nodiscard]] FrameOffset offsetOfFrame(const VolcanoSite& site, const Shape& shape, double u,
                                         double v);
+// The point (u, v) of its frame of the offset (dx, dz) from its center: what the relief reads.
+struct FramePoint {
+    double u = 0.0;
+    double v = 0.0;
+    double rho0 = 0.0; // before the shift of the summit: in radii of the foot
+};
+[[nodiscard]] FramePoint frameOfOffset(const VolcanoSite& site, const Shape& shape, double dx,
+                                       double dz);
 
 // What the volcanoes make of a point, gathered over those that reach it.
 struct Point {

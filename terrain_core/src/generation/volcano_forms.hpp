@@ -28,6 +28,14 @@ inline constexpr double kTwoPi = 2.0 * kPi;
 // A smooth noise of the circle in [-1, 1]: cells cells around the turn (turns in [0, 1)),
 // periodic, each cell its value from seed (cubic Hermite between them).
 [[nodiscard]] double ringNoise(std::uint64_t seed, double turns, int cells);
+// A smooth noise of the circle in [-1, 1], about cells features around the turn, with no period
+// and no lattice of the turn: the noise of the plane (planeNoise) read on a circle of radius
+// cells / 2 pi cells, around a center drawn from seed within a cell (the circles of two volcanoes
+// never cross the lattice at the same angles). (dirX, dirZ): the unit direction of the point;
+// turns: its azimuth. ringNoise, on the other hand, lays its values on a lattice of the turn
+// (cells equal parts, its fade flat at each): a pattern of fixed period.
+[[nodiscard]] double circleNoise(std::uint64_t seed, double dirX, double dirZ, int cells);
+[[nodiscard]] double circleNoise(std::uint64_t seed, double turns, int cells);
 // A smooth noise of the line in [-1, 1], a cell per unit of t.
 [[nodiscard]] double lineNoise(std::uint64_t seed, double t);
 // A smooth noise of the plane in [-1, 1] (values at the integer lattice, quintic fade), at

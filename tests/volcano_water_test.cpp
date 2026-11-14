@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <memory>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -262,21 +263,38 @@ void testThreads(const World& w) {
     TEST_CHECK(same);
 }
 
-// Whether the sea reaches a caldera of the default world: a ray from its floor out to twice its
-// radius, every 20 m below 0 m.
+// Whether the sea reaches a caldera of the default world: from its floor, the ground below 0 m
+// spreads from cell to cell of a grid of 40 m (its strait winds: no straight line follows it) out
+// to twice its radius.
 bool openToSea(const Heightfield& field, double x, double z, double crater) {
-    for (int k = 0; k < 360; ++k) {
-        const double a = 2.0 * kPi * k / 360.0;
-        std::vector<double> xs;
-        std::vector<double> zs;
-        for (double r = 0.3 * crater; r < 2.0 * crater; r += 20.0) {
-            xs.push_back(x + r * std::cos(a));
-            zs.push_back(z + r * std::sin(a));
-        }
-        std::vector<float> h(xs.size());
-        field.heightsAt(xs, zs, h);
-        if (std::all_of(h.begin(), h.end(), [](float v) { return v < 0.0f; })) {
+    constexpr double kCell = 40.0;
+    const int half = static_cast<int>(std::ceil(2.0 * crater / kCell));
+    const int side = 2 * half + 1;
+    std::vector<char> seen(static_cast<std::size_t>(side) * static_cast<std::size_t>(side), 0);
+    std::vector<std::pair<int, int>> todo{{half, half}};
+    seen[static_cast<std::size_t>(half) * static_cast<std::size_t>(side) +
+         static_cast<std::size_t>(half)] = 1;
+    while (!todo.empty()) {
+        const auto [i, j] = todo.back();
+        todo.pop_back();
+        if (std::hypot(i - half, j - half) * kCell >= 2.0 * crater) {
             return true;
+        }
+        for (const auto& [di, dj] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1},
+                                    std::pair{0, -1}}) {
+            const int a = i + di;
+            const int b = j + dj;
+            if (a < 0 || b < 0 || a >= side || b >= side) {
+                continue;
+            }
+            char& mark = seen[static_cast<std::size_t>(b) * static_cast<std::size_t>(side) +
+                              static_cast<std::size_t>(a)];
+            if (mark == 0) {
+                mark = 1;
+                if (field.heightAt(x + (a - half) * kCell, z + (b - half) * kCell) < 0.0f) {
+                    todo.emplace_back(a, b);
+                }
+            }
         }
     }
     return false;

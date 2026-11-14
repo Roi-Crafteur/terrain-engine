@@ -51,6 +51,8 @@ struct Frame {
     double v = 0.0;
     double r = 0.0;
     double turns = 0.0;
+    double dirU = 1.0; // the unit direction of the point from the summit: its noises of the turn
+    double dirV = 0.0;
     double radius = 0.0; // the radius of the foot along the azimuth of the point
     double rho = 0.0;
     double rho0 = 0.0; // before the shift and the outline: whether the edifice can reach
@@ -59,15 +61,17 @@ struct Frame {
 Frame frameOf(const VolcanoSite& s, const Shape& sh, double dx, double dz) {
     Frame f;
     const double radius = static_cast<double>(s.radius);
-    f.u = (dx * sh.cosAxis + dz * sh.sinAxis) / static_cast<double>(s.elongation);
-    f.v = -dx * sh.sinAxis + dz * sh.cosAxis;
-    f.rho0 = dmath::hypot(f.u, f.v) / radius;
-    const double shift = 1.0 - vf::smoothstep(0.0, 1.0, f.rho0);
-    f.u -= sh.offsetU * shift;
-    f.v -= sh.offsetV * shift;
+    const FramePoint at = frameOfOffset(s, sh, dx, dz);
+    f.u = at.u;
+    f.v = at.v;
+    f.rho0 = at.rho0;
     f.r = dmath::hypot(f.u, f.v);
     f.turns = f.r > 0.0 ? dmath::atan2(f.v, f.u) / vf::kTwoPi : 0.0;
     f.turns -= std::floor(f.turns);
+    if (f.r > 0.0) {
+        f.dirU = f.u / f.r;
+        f.dirV = f.v / f.r;
+    }
     double outline = 1.0 + sh.lobe1 * dmath::cosTurns(f.turns - sh.phase1) +
                      sh.lobe2 * dmath::cosTurns(2.0 * (f.turns - sh.phase2)) +
                      sh.ragged * vf::ringNoise(s.seed + kOutlineNoise, f.turns, sh.cells);
@@ -93,8 +97,10 @@ Frame frameOf(const VolcanoSite& s, const Shape& sh, double dx, double dz) {
 // summit.
 constexpr double kDryRim = 40.0;
 
+double rimSwellOf(const VolcanoSite& s, const Shape& sh, double turns, double dirU, double dirV);
+
 double rimSwell(const VolcanoSite& s, const Shape& sh, const Frame& f) {
-    return rimSwellAt(s, sh, f.turns);
+    return rimSwellOf(s, sh, f.turns, f.dirU, f.dirV);
 }
 
 double rimBand(const VolcanoSite& s, const Frame& f) {
@@ -106,8 +112,8 @@ double rimBand(const VolcanoSite& s, const Frame& f) {
 // The outline of a crater along the azimuth of the frame, a factor of its mean radius: spurs and
 // re-entrants over two layers of noise (11 and 29 cells).
 double craterOutline(const VolcanoSite& s, const Shape& sh, const Frame& f) {
-    return 1.0 + sh.rimNoise * (vf::ringNoise(s.seed + kRimNoise, f.turns, 11) +
-                                0.5 * vf::ringNoise(s.seed + kRimNoise + 7, f.turns, 29));
+    return 1.0 + sh.rimNoise * (vf::circleNoise(s.seed + kRimNoise, f.dirU, f.dirV, 11) +
+                                0.5 * vf::circleNoise(s.seed + kRimNoise + 7, f.dirU, f.dirV, 29));
 }
 
 // Where the profile of an edifice is read at the frame. An island caldera rises from the sea
@@ -171,15 +177,17 @@ double rimAt(const VolcanoSite& s, const Shape& sh, const Frame& f, double crate
     double rim = base + rise * profileAt(s, sh, rimRho(s, f, crater)) + rimSwell(s, sh, f);
     if (s.form == VolcanoForm::IslandCaldera && sh.breached) {
         const double gap =
-            vf::smoothstep(0.3, 0.75, 0.65 * vf::ringNoise(s.seed + kGaps, f.turns, 7) +
-                                          0.35 * vf::ringNoise(s.seed + kGaps + 1, f.turns, 17));
+            vf::smoothstep(0.3, 0.75,
+                           0.65 * vf::circleNoise(s.seed + kGaps, f.dirU, f.dirV, 7) +
+                               0.35 * vf::circleNoise(s.seed + kGaps + 1, f.dirU, f.dirV, 17));
         rim -= (rim + 40.0) * gap;
     }
     return rim;
 }
 
-// The couloirs down the wall of a crater, at irregular spacings along its rim (cells of about 180 m,
-// about one in two holding one), deepest at mid wall: gullies and chutes, never a smooth cylinder.
+// The couloirs down the wall of a crater, at irregular spacings along its rim (cells of about
+// 180 m, about one in two holding one), deepest at mid wall: gullies and chutes, never a smooth
+// cylinder.
 double gulliesAt(const VolcanoSite& s, const Frame& f, double crater, double q, double wall) {
     const double t = (q - (1.0 - 0.5 * wall)) / (0.6 * wall);
     if (!(std::abs(t) < 1.0)) {
@@ -219,17 +227,18 @@ double digCrater(const VolcanoSite& s, const Shape& sh, const Frame& f, double b
     if (q < 1.25) {
         // The wall steeper here, gentler there, cut by couloirs.
         const double wall = std::clamp(
-            sh.wall * (1.0 + 0.45 * vf::ringNoise(s.seed + kWallNoise, f.turns, 13) +
-                       0.25 * vf::ringNoise(s.seed + kWallNoise + 1, f.turns, 31)),
+            sh.wall * (1.0 + 0.45 * vf::circleNoise(s.seed + kWallNoise, f.dirU, f.dirV, 13) +
+                       0.25 * vf::circleNoise(s.seed + kWallNoise + 1, f.dirU, f.dirV, 31)),
             0.04, 0.95);
         // The talus at its foot: a fan rising from the floor toward the wall, higher here.
         const double talus = 0.14 * static_cast<double>(s.craterDepth) *
-                             (0.7 + 0.3 * vf::ringNoise(s.seed + kTalus, f.turns, 23));
+                             (0.7 + 0.3 * vf::circleNoise(s.seed + kTalus, f.dirU, f.dirV, 23));
         const double fan = vf::smoothstep(1.0 - 1.5 * wall, 1.0 - 0.4 * wall, q);
         const double foot = floor + talus * fan * fan;
         // Its crest notched here and there, by up to a sixth of its depth, from within.
         const double notch = 0.16 * static_cast<double>(s.craterDepth) *
-                             std::min(0.0, vf::ringNoise(s.seed + kRimNoise + 50, f.turns, 9)) *
+                             std::min(0.0, vf::circleNoise(s.seed + kRimNoise + 50, f.dirU,
+                                                           f.dirV, 9)) *
                              (1.0 - vf::smoothstep(0.92, 1.0, q));
         const double c = foot + (rim + notch - foot) * vf::craterWall(q, wall) -
                          gulliesAt(s, f, crater, q, wall);
@@ -368,25 +377,20 @@ double profileOf(const VolcanoSite& s, const Shape& sh, double rho) {
 double craterRadiusAt(const VolcanoSite& s, const Shape& sh, double turns) {
     Frame f;
     f.turns = turns - std::floor(turns);
+    const dmath::SineCosine d = dmath::sinCosTurns(f.turns);
+    f.dirU = d.cosine;
+    f.dirV = d.sine;
     return static_cast<double>(s.crater) * craterOutline(s, sh, f);
 }
 
-FrameOffset offsetOfFrame(const VolcanoSite& s, const Shape& sh, double u, double v) {
-    // frameOf shifts a point by the offset of the summit, fading with its distance before the
-    // shift: a few steps of a fixed point find it.
-    const auto radius = static_cast<double>(s.radius);
-    double u0 = u + sh.offsetU;
-    double v0 = v + sh.offsetV;
-    for (int k = 0; k < 4; ++k) {
-        const double shift = 1.0 - vf::smoothstep(0.0, 1.0, dmath::hypot(u0, v0) / radius);
-        u0 = u + sh.offsetU * shift;
-        v0 = v + sh.offsetV * shift;
-    }
-    const double stretched = u0 * static_cast<double>(s.elongation);
-    return {stretched * sh.cosAxis - v0 * sh.sinAxis, stretched * sh.sinAxis + v0 * sh.cosAxis};
+double rimSwellAt(const VolcanoSite& s, const Shape& sh, double turns) {
+    const dmath::SineCosine d = dmath::sinCosTurns(turns);
+    return rimSwellOf(s, sh, turns, d.cosine, d.sine);
 }
 
-double rimSwellAt(const VolcanoSite& s, const Shape& sh, double turns) {
+namespace {
+
+double rimSwellOf(const VolcanoSite& s, const Shape& sh, double turns, double dirU, double dirV) {
     const auto depth = static_cast<double>(s.craterDepth);
     if (s.form != VolcanoForm::Caldera && s.form != VolcanoForm::PlateauCaldera &&
         s.form != VolcanoForm::IslandCaldera) {
@@ -398,10 +402,11 @@ double rimSwellAt(const VolcanoSite& s, const Shape& sh, double turns) {
         const double u = std::max(0.0, 1.0 - x * x);
         return u * u;
     };
-    double swell = 0.12 * (0.65 * vf::ringNoise(s.seed + kRimSwell, turns, 5) +
-                           0.35 * vf::ringNoise(s.seed + kRimSwell + 1, turns, 17));
+    double swell = 0.12 * (0.65 * vf::circleNoise(s.seed + kRimSwell, dirU, dirV, 5) +
+                           0.35 * vf::circleNoise(s.seed + kRimSwell + 1, dirU, dirV, 17));
     for (int k = 0; k < sh.colCount; ++k) {
-        swell -= sh.cols[static_cast<std::size_t>(k)].height * bump(sh.cols[static_cast<std::size_t>(k)]);
+        const RimBump& c = sh.cols[static_cast<std::size_t>(k)];
+        swell -= c.height * bump(c);
     }
     for (int k = 0; k < sh.peakCount; ++k) {
         const double b = bump(sh.peaks[static_cast<std::size_t>(k)]);
@@ -413,6 +418,8 @@ double rimSwellAt(const VolcanoSite& s, const Shape& sh, double turns) {
     }
     return swell;
 }
+
+} // namespace
 
 double edificeBase(const VolcanoSite& s, const Detail& d) {
     return s.atSea ? static_cast<double>(s.floor) : d.base;

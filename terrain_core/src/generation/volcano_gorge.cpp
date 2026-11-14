@@ -106,6 +106,30 @@ double floorAt(const volcano_relief::Shape& sh, double d) {
 
 } // namespace
 
+bool clear(const VolcanoSite& s, const volcano_relief::Shape& sh, double dx, double dz,
+           double margin) {
+    if (!sh.breached) {
+        return true;
+    }
+    const volcano_relief::GorgeShape& g = sh.gorge;
+    const volcano_relief::FramePoint p = volcano_relief::frameOfOffset(s, sh, dx, dz);
+    const double r = dmath::hypot(p.u, p.v);
+    const double delta = vf::angleBetween(r > 0.0 ? dmath::atan2(p.v, p.u) : 0.0, sh.breachAngle);
+    const double lip = volcano_relief::craterRadiusAt(s, sh, sh.breachAngle / vf::kTwoPi);
+    const double d = r - lip;
+    const bool land = !(sh.breachBottom < 0.0);
+    const double end = land && !g.floor.empty()
+                           ? static_cast<double>(g.floor.size()) * volcano_relief::kGorgeStep
+                           : g.length;
+    if (!(std::abs(delta) < 0.5 * vf::kPi) || !(d > -0.7 * lip - margin) ||
+        !(d < end + margin)) {
+        return true;
+    }
+    const double along = std::clamp(d, 0.0, end);
+    const double half = std::max(halfWidth(s, g, along, true), halfWidth(s, g, along, false));
+    return !(std::abs(r * delta - axisAt(s, g, along).offset) < half + margin);
+}
+
 volcano_relief::GorgeShape gorgeOf(const VolcanoSite& s) {
     volcano_relief::GorgeShape g;
     const bool strait = s.form == VolcanoForm::IslandCaldera;

@@ -56,6 +56,7 @@ enum Draw : std::uint64_t {
     kPeakTurn = kColHeight + 3,
     kPeakWidth = kPeakTurn + 3,
     kPeakHeight = kPeakWidth + 3,
+    kSide = kPeakHeight + 3,
 };
 
 bool isCaldera(VolcanoForm f) {
@@ -84,12 +85,12 @@ double wallOf(const VolcanoSite& s) {
     return std::clamp(static_cast<double>(s.craterDepth) / (slope * crater), 0.05, 0.95);
 }
 
-// The cols and high points of the rim of a caldera: two or three cols around it at uneven
-// spacings, a high point somewhere in each gap between two of them. One col and one high point
-// stand out (a low side and a high side, as at Crater Lake, never two alike facing each other):
-// the first col, where its breach is, lowers the crest by 0.35 to 0.45 of the depth over 0.07 to
-// 0.12 turn on each side, the first high point lifts it by 0.3 to 0.45 over 0.05 to 0.09; the
-// others by 0.1 to 0.25 over 0.03 to 0.06.
+// The cols and high points of the rim of a caldera: a low side and a high side, as at Crater
+// Lake (its first col, where its breach is, lowers the crest by 0.35 to 0.45 of the depth over
+// 0.07 to 0.12 turn on each side; its first high point, 0.3 to 0.42 turn away on one side or the
+// other, lifts it by 0.3 to 0.45 over 0.05 to 0.09), then one or two smaller cols and as many
+// smaller high points (0.1 to 0.25 over 0.03 to 0.06) on either flank, 0.1 to 0.4 turn from the
+// first col. Never a col and a high point at every quarter turn: a pattern of half a turn.
 void rimOf(const VolcanoSite& s, Shape& sh) {
     if (!isCaldera(s.form)) {
         return;
@@ -97,27 +98,23 @@ void rimOf(const VolcanoSite& s, Shape& sh) {
     sh.colCount = 2 + static_cast<int>(2.0 * unit(s.seed, kCols));
     sh.peakCount = sh.colCount;
     const double first = sh.breached ? sh.breachAngle / vf::kTwoPi : unit(s.seed, kColTurn);
-    const auto count = static_cast<std::size_t>(sh.colCount);
-    for (std::size_t k = 0; k < count; ++k) {
-        RimBump& c = sh.cols[k];
-        c.turns = first + (k == 0 ? 0.0
-                                  : (static_cast<double>(k) +
-                                     0.7 * (unit(s.seed, kColTurn + k) - 0.5)) /
-                                        sh.colCount);
-        c.width = k == 0 ? between(s.seed, kColWidth + k, 0.07, 0.12)
-                         : between(s.seed, kColWidth + k, 0.03, 0.06);
-        c.height = k == 0 ? between(s.seed, kColHeight + k, 0.35, 0.45)
-                          : between(s.seed, kColHeight + k, 0.1, 0.25);
-    }
-    for (std::size_t k = 0; k < count; ++k) {
-        const double from = sh.cols[k].turns;
-        const double to = k + 1 < count ? sh.cols[k + 1].turns : first + 1.0;
-        RimBump& p = sh.peaks[k];
-        p.turns = from + (to - from) * between(s.seed, kPeakTurn + k, 0.25, 0.75);
-        p.width = k == 0 ? between(s.seed, kPeakWidth + k, 0.05, 0.09)
-                         : between(s.seed, kPeakWidth + k, 0.03, 0.06);
-        p.height = k == 0 ? between(s.seed, kPeakHeight + k, 0.3, 0.45)
-                          : between(s.seed, kPeakHeight + k, 0.1, 0.25);
+    sh.cols[0] = {first, between(s.seed, kColWidth, 0.07, 0.12),
+                  between(s.seed, kColHeight, 0.35, 0.45)};
+    const double off = between(s.seed, kPeakTurn, 0.08, 0.2);
+    sh.peaks[0] = {first + 0.5 + (unit(s.seed, kSide) < 0.5 ? off : -off),
+                   between(s.seed, kPeakWidth, 0.05, 0.09),
+                   between(s.seed, kPeakHeight, 0.3, 0.45)};
+    // On either flank: 0.1 to 0.4 turn after the first col, or as much before it.
+    const auto flank = [&](std::uint64_t turn, std::uint64_t side) {
+        const double t = between(s.seed, turn, 0.1, 0.4);
+        return first + (unit(s.seed, side) < 0.5 ? t : -t);
+    };
+    for (std::size_t k = 1; k < static_cast<std::size_t>(sh.colCount); ++k) {
+        sh.cols[k] = {flank(kColTurn + k, kSide + k), between(s.seed, kColWidth + k, 0.03, 0.06),
+                      between(s.seed, kColHeight + k, 0.1, 0.25)};
+        sh.peaks[k] = {flank(kPeakTurn + k, kSide + 3 + k),
+                       between(s.seed, kPeakWidth + k, 0.03, 0.06),
+                       between(s.seed, kPeakHeight + k, 0.1, 0.25)};
     }
 }
 
