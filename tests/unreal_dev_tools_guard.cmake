@@ -68,6 +68,18 @@ foreach(file IN LISTS sources)
     endforeach()
 endforeach()
 
+# Unreal 5.8 has no FAutoConsoleCommand of its own for a command with arguments and without a
+# world (agent 41: TerrainDevEdits.cpp did not build): FAutoConsoleCommand takes its delegate.
+set(missing "FAutoConsoleCommandWithArgs")
+foreach(file IN LISTS sources)
+    file(READ "${file}" text)
+    string(FIND "${text}" "${missing}" at)
+    if(NOT at EQUAL -1)
+        get_filename_component(name "${file}" NAME)
+        string(APPEND errors "${name}: ${missing} does not exist in Unreal 5.8\n")
+    endif()
+endforeach()
+
 # Terrain.Blend (agent 29) lives with the blends of the horizon, its registration under
 # #if TERRAIN_DEV_TOOLS.
 file(READ "${plugin}/Private/TerrainHorizonClipmapBlend.cpp" text)

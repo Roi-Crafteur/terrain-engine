@@ -1,12 +1,17 @@
 #pragma once
 // Pure C++ layer of the Unreal plugin (no Unreal header): the rules of breaking and placing in
 // game (agent 28), next to block_targeting.hpp. When a click may edit at all (BuildGate), how
-// often a held button edits (EditRate), and the refusal of a placed volume that would close on the
-// capsule of the pawn (CoreCapsule, touchesCapsule).
+// often a held button edits (EditRate), the refusal of a placed volume that would close on the
+// capsule of the pawn (CoreCapsule, touchesCapsule), and of a block placed where one is already
+// full (blockFull, agent 41).
 
 #include "unreal_frame.hpp"
 
+#include "terrain/storage/block_section.hpp"
 #include "terrain/storage/volume_edit.hpp"
+
+#include <functional>
+#include <optional>
 
 namespace terrain::unreal {
 
@@ -67,5 +72,15 @@ inline constexpr double kCapsuleMarginMeters = 0.05;
 
 // True if a placed volume would come within kCapsuleMarginMeters of the capsule: refused.
 [[nodiscard]] bool touchesCapsule(const VolumeEdit& edit, const CoreCapsule& capsule);
+
+// A block placed there would change nothing (agent 41): the block (the cube of side 1 m centered on
+// its lattice point) already holds an added block, or, without a removed one, each of its 8
+// corners lies in the ground. A corner is the center of a cell of the lattice, where the surface
+// of the tiles (Marching Cubes over the trilinear density) has the mean of the 8 lattice points
+// of the cell: in the ground below 0. held: what the store holds for the block
+// (TerrainTiles::blockAt); density: the density of the tiles at a lattice point, the edits
+// included (TerrainTiles::densityAt), read at the 27 lattice points around the block.
+[[nodiscard]] bool blockFull(BlockCoord block, std::optional<BlockEdit> held,
+                             const std::function<float(int, int, int)>& density);
 
 } // namespace terrain::unreal

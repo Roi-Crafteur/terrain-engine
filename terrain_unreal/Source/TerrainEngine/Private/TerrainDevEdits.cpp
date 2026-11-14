@@ -204,7 +204,9 @@ namespace
 			FTerrainBuildHooks::ReadOnce() ? TEXT("yes") : TEXT("no"));
 	}
 
-	FAutoConsoleCommandWithArgs EditReadConsoleCommand(TEXT("Terrain.EditRead"),
+	// FAutoConsoleCommand with a delegate of arguments: Unreal 5.8 has no class of its own for a
+	// command with arguments and without a world.
+	FAutoConsoleCommand EditReadConsoleCommand(TEXT("Terrain.EditRead"),
 		TEXT("1: the next play of this editor reads and saves the edits of its seed as with "
 			 "Building.bSaveEdits, the actor and the map untouched; 0: not; nothing: the state"),
 		FConsoleCommandWithArgsDelegate::CreateStatic(&RunEditRead));

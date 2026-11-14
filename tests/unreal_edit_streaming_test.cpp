@@ -95,7 +95,8 @@ int staleTiles(Level& level, double x0, double x1, double z0, double z1,
             continue;
         }
         const terrain::TileData now = level.session.tiles().generate(request);
-        const std::vector<terrain::unreal::UnrealVector3f>& positions = shown->second.mesh.positions;
+        const std::vector<terrain::unreal::UnrealVector3f>& positions =
+            shown->second.mesh.positions;
         bool same = positions.size() == now.mesh.vertices.size();
         for (std::size_t i = 0; same && i < positions.size(); ++i) {
             same = positions[i] == terrain::unreal::toUnrealOffset(now.mesh.vertices[i]);
@@ -161,7 +162,8 @@ void checkScenes(Level& level, const BlockCoord& sphereBottom, const BlockCoord&
     TEST_CHECK(raised(level, top));
     if (!dug(level, sphereBottom) || !dug(level, hole) || !raised(level, top)) {
         std::printf("  %s: tops %.3f (sphere) %.3f (hole) %.3f (wall)\n", step,
-                    shownTop(level, sphereBottom.x, sphereBottom.z), shownTop(level, hole.x, hole.z),
+                    shownTop(level, sphereBottom.x, sphereBottom.z),
+                    shownTop(level, hole.x, hole.z),
                     shownTop(level, top.x, top.z));
     }
 }

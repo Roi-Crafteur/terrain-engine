@@ -15,6 +15,7 @@
 class APawn;
 class APlayerController;
 class ATerrainWorld;
+struct FTerrainWorldState;
 
 // What a click asks: the action and the tool of the component; Terrain.EditAim may give the
 // radius of a sphere (meters; none: the radius of the tool) and a point the trace goes through
@@ -54,6 +55,10 @@ namespace TerrainBuildAim
 	// True if a placed volume would close on the capsule of the pawn.
 	bool InCapsule(const APawn& Pawn, const terrain::unreal::UnrealFrame& Frame,
 		const terrain::VolumeEdit& Edit);
+
+	// True if a placed block would fill a block already full (Bridge/build_rules.hpp: blockFull):
+	// an added block there, or the ground over all its corners.
+	bool PlacesInFullBlock(const FTerrainWorldState& State, const terrain::VolumeEdit& Edit);
 
 	// "break sphere 3 m at (x, y, z)": the label of the edit on the edit thread.
 	FString Describe(const FTerrainBuildRequest& Request, const terrain::VolumeEdit& Edit);

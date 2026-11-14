@@ -333,6 +333,11 @@ bool UTerrainBuildComponent::BuildRequested(const FTerrainBuildRequest& Request)
 		}
 		return Refuse(FString(TEXT("it would close on the pawn")));
 	}
+	if (Request.Action == ETerrainBuildAction::Place &&
+		TerrainBuildAim::PlacesInFullBlock(*State, Aim.Target->edit))
+	{
+		return Refuse(FString(TEXT("the block is already full")));
+	}
 	// Only an edit about to be queued counts for the rate: a refused try never holds the next.
 	if (!Runtime->Rate.allow(FPlatformTime::Seconds()))
 	{

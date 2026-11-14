@@ -98,6 +98,17 @@ namespace TerrainBuildAim
 		return terrain::unreal::touchesCapsule(Edit, Core);
 	}
 
+	bool PlacesInFullBlock(const FTerrainWorldState& State, const terrain::VolumeEdit& Edit)
+	{
+		if (Edit.mode != terrain::EditMode::Add || Edit.shape != terrain::EditShape::Box)
+		{
+			return false;
+		}
+		const terrain::TerrainTiles& Tiles = State.Session.tiles();
+		return terrain::unreal::blockFull(Edit.anchor, Tiles.blockAt(Edit.anchor),
+			[&Tiles](int X, int Y, int Z) { return Tiles.densityAt(X, Y, Z); });
+	}
+
 	FString Describe(const FTerrainBuildRequest& Request, const terrain::VolumeEdit& Edit)
 	{
 		const std::string Shape = terrain::unreal::shapeName(ToBridge(Request.Tool),

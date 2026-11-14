@@ -1,6 +1,7 @@
 // The rules of breaking and placing in game (agent 28): when a click may edit (the dev map, a
 // load, the flying pawn of the tools, the focus), how often a held button edits, and the refusal
-// of a placed volume that would close on the capsule of the pawn, near the origin and far away.
+// of a placed volume that would close on the capsule of the pawn, near the origin and far away; a
+// block placed where one is already full (agent 41).
 #include "build_rules.hpp"
 
 #include "block_targeting.hpp"
@@ -8,6 +9,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <optional>
 
 namespace {
 
@@ -119,6 +121,30 @@ void testCapsuleFromUnreal() {
     TEST_CHECK(under.edit.anchor.y == 110);
 }
 
+// A block is full when it holds an added block, or when, without a removed one, its 8 corners
+// (the centers of the cells of the lattice around its center) lie in the ground.
+void testBlockFull() {
+    using terrain::BlockEdit;
+    using terrain::unreal::blockFull;
+    const auto flat = [](int, int y, int) { return static_cast<float>(y) - 10.3f; };
+    TEST_CHECK(blockFull({0, 9, 0}, std::nullopt, flat));  // its top at 9.5, the ground at 10.3
+    TEST_CHECK(!blockFull({0, 10, 0}, std::nullopt, flat)); // the ground crosses it
+    TEST_CHECK(!blockFull({0, 12, 0}, std::nullopt, flat)); // in the air
+    TEST_CHECK(blockFull({0, 12, 0}, BlockEdit::Added, flat));
+    TEST_CHECK(!blockFull({0, 9, 0}, BlockEdit::Removed, flat));
+    // The air of a hollow beside the block reaches its corners on that side.
+    const auto hollow = [&flat](int x, int y, int z) { return x >= 1 ? 3.0f : flat(x, y, z); };
+    TEST_CHECK(!blockFull({0, 9, 0}, std::nullopt, hollow));
+    TEST_CHECK(blockFull({-1, 9, 0}, std::nullopt, hollow)); // its corners stop at x -0.5
+    // Far from the origin, at negative coordinates: a ground at 6.2 m west of x -240627.
+    const auto far = [](int x, int y, int) {
+        return x < -240627 ? static_cast<float>(y) - 6.2f : 1.0f;
+    };
+    TEST_CHECK(blockFull({-240629, 5, -86677}, std::nullopt, far));
+    TEST_CHECK(!blockFull({-240628, 5, -86677}, std::nullopt, far)); // its east corners in the air
+    TEST_CHECK(!blockFull({-240629, 6, -86677}, std::nullopt, far));
+}
+
 } // namespace
 
 int main() {
@@ -126,5 +152,6 @@ int main() {
     testRate();
     testCapsule();
     testCapsuleFromUnreal();
+    testBlockFull();
     return test::result();
 }
