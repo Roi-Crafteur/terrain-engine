@@ -43,6 +43,9 @@ constexpr double kLeastVariation = 0.5;
 constexpr double kGreatLow = 120.0;
 constexpr double kCapLeast = 30.0;
 constexpr double kRimReach = 150.0;
+// A section reaches the top of the plateau where the canyons cut it less than kRimCut meters there
+// (no temple, no outlier: their caprocks are not the caprock of the canyon).
+constexpr double kRimCut = 10.0;
 constexpr double kPlatformLeast = 250.0;
 constexpr double kPlatformSlope = 0.15;
 constexpr double kPlatformHigh = 0.3;
@@ -122,6 +125,9 @@ struct Wall {
     double slope500 = 0.0;     // the steepest 500 m
     double cap = 0.0;          // the band under the rim (its caprock)
     double platform = 0.0;     // the longest stretch under kPlatformSlope at mid-depth, meters
+    bool rimOnTop = false;     // its rim on the top of the plateau (no temple, no other canyon)
+    double rimX = 0.0;
+    double rimZ = 0.0;
 };
 
 // The bands of cliffs up a section to its rim: runs steeper than kCliffSlope.
@@ -164,14 +170,17 @@ double platformOf(const Section& s, double depth) {
 Wall wallOf(double x, double z, const Section& s) {
     Wall w;
     w.depth = s.heights[s.rim] - s.heights[0];
+    const double reach = kSectionStep * static_cast<double>(s.rim);
+    w.rimX = x + s.dx * reach;
+    w.rimZ = z + s.dz * reach;
+    const Fields rim = fieldsAt(w.rimX, w.rimZ);
+    w.rimOnTop = !rim.temple && !rim.outlier && rim.canyon < kRimCut && rim.profile >= 0.999;
     addBands(s, w);
     const auto per500 = static_cast<std::size_t>(500.0 / kSectionStep);
     for (std::size_t i = per500; i <= s.rim; ++i) {
         w.slope500 = std::max(w.slope500, std::abs(s.heights[i] - s.heights[i - per500]) / 500.0);
     }
     w.platform = platformOf(s, w.depth);
-    static_cast<void>(x);
-    static_cast<void>(z);
     return w;
 }
 
@@ -185,15 +194,20 @@ int unitsOf(const Wall& w) {
 }
 
 // The section of a canyon from its floor (x, z) that shows the most of those units, its faces
-// measured.
-Wall bestWall(double x, double z) {
+// measured: of those climbing to the top of the plateau (onTop), or of all.
+Wall bestWall(double x, double z, bool onTop) {
     const std::vector<Section> sections = sectionsFrom(x, z);
     std::size_t best = 0;
     Wall chosen;
+    bool found = false;
     for (std::size_t k = 0; k < sections.size(); ++k) {
         const Wall w = wallOf(x, z, sections[k]);
-        if (k == 0 || unitsOf(w) > unitsOf(chosen) ||
+        if (onTop && !w.rimOnTop) {
+            continue;
+        }
+        if (!found || unitsOf(w) > unitsOf(chosen) ||
             (unitsOf(w) == unitsOf(chosen) && w.depth > chosen.depth)) {
+            found = true;
             chosen = w;
             best = k;
         }
@@ -250,7 +264,18 @@ void testCanyons(const tablelands_fields::Sites& sites) {
         if (!(f[2] > 0.0)) {
             continue;
         }
-        const Wall w = bestWall(f[0], f[1]);
+        const Wall any = bestWall(f[0], f[1], false);
+        const Wall w = bestWall(f[0], f[1], true);
+        if (!any.rimOnTop) {
+            const Fields r = fieldsAt(any.rimX, any.rimZ);
+            std::printf("  (of all the sections: a caprock of %.0f m under a rim at (%.0f, %.0f) %s; "
+                        "the sections up to the top of the plateau kept)\n",
+                        any.cap, any.rimX, any.rimZ,
+                        r.temple    ? "on a temple"
+                        : r.outlier ? "on an outlier"
+                        : r.canyon >= kRimCut ? "in another canyon"
+                                              : "off the top");
+        }
         const double variation = pattern_test::variation(w.bands);
         double mean = 0.0;
         for (const double b : w.bands) {
@@ -268,10 +293,10 @@ void testCanyons(const tablelands_fields::Sites& sites) {
         std::printf("canyon at (%.0f, %.0f): %.0f m deep, %zu bands of cliffs (the tallest %.0f m, "
                     "their heights varying by %.2f, %.0f m the standard deviation), a caprock of "
                     "%.0f m, a platform of %.0f m, the tallest face %.0f m, the steepest 500 m %.0f "
-                    "degrees, %d temples%s\n",
+                    "degrees, %d temples, its rim at (%.0f, %.0f)%s\n",
                     f[0], f[1], w.depth, w.bands.size(), w.tallest, variation, variation * mean,
                     w.cap, w.platform, w.face, std::atan(w.slope500) * 57.29577951, temples,
-                    ok ? " (the case)" : "");
+                    w.rimX, w.rimZ, ok ? " (the case)" : "");
     }
     std::printf("canyons: %d of them 1.2 km deep or more, %d as the Grand Canyon, %d with temples\n",
                 deep, cases, templed);

@@ -130,8 +130,10 @@ add_library(terrain_core STATIC
     src/generation/surface_material.cpp
     src/generation/tableland_forms.cpp
     src/generation/tableland_canyons.cpp
+    src/generation/tableland_cliffs.cpp
     src/generation/tableland_relief.cpp
     src/generation/tableland_strata.cpp
+    src/generation/tableland_temples.cpp
     src/generation/tablelands.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp

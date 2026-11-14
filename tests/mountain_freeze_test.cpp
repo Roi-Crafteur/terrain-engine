@@ -203,11 +203,11 @@ int main(int argc, char** argv) {
     }
     // Pinned on the code of main (cb64153) once the points of the coastal zone were taken out of
     // the draw (0xB6C1FF0E32307E10 with them).
-    // The flag "tablelands" (agent 46) changes 2,035 of them (the plateaus, their high surfaces).
-    // Recollé par « Plateaus, commit 2b » (agent 46) : "drawn points" with the flag; the edges of
-    // the provinces wander (tablelands.cpp), the plateaus redrawn.
+    // The flag "tablelands" (agent 46) changes 2,048 of them (the plateaus, their high surfaces).
+    // Recollé par « Plateaus, commit 2c » (agent 46) : "drawn points" with the flag; the edges of
+    // the provinces bent at 120 km (tablelands.cpp), the plateaus redrawn.
     const std::uint64_t kDrawn =
-        golden::pick("tablelands", 0x4D77F4B4ADE22B7BULL, 0x8C5DE627FC937256ULL);
+        golden::pick("tablelands", 0x4D77F4B4ADE22B7BULL, 0xB935D425650C2323ULL);
     int count = 0;
     const std::uint64_t drawn = drawnSum(field, 20'000, count);
     std::printf("{\"drawn points\", 0x%016" PRIX64 "ULL}%s\n", drawn,

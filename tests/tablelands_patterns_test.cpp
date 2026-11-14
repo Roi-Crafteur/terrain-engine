@@ -1,8 +1,12 @@
 // The edges of the plateaus (agent 46, tableland_relief.hpp) on the default world switched on, read
 // along their lines (pattern_support.hpp):
 //   - straightness: the rim of the escarpment (the zero line of Fields::scarp, followed 25 m at a
-//     time) around dry edges and coastal ones (the province faded by its coast); the longest
-//     stretch of it within 50 m of its chord stays under 2 km;
+//     time) around dry edges and coastal ones (the province faded by its coast); the longest stretch of it within 50 m of
+//     its chord stays under 2 km; and over 20 km of it, it strays 1 km from its chord (the median
+//     over its stretches of 20 km), 0.5 km at least over its straightest (no long straight front: a
+//     noise has stretches of little curvature, which a full kilometer everywhere would fold);
+//   - the fringe of the outliers: its density (the share of the ground 0.5 to 8 km in front of the
+//     rim on their tops) over 10 km of the rim, its 90th percentile 4 times its 10th at least;
 //   - continuity: where the share of the province vanishes, the largest step of the heights over
 //     25 m is no larger than that of the world switched off, 5 m more at most;
 //   - no comb: along lines parallel to the edge of the province (its share 0.6, followed 100 m at a
@@ -10,6 +14,7 @@
 //     varied widths (from a few hundred meters to kilometers) and repeat at no spacing.
 #include "pattern_support.hpp"
 #include "tablelands_fields_support.hpp"
+#include "tablelands_lines_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -20,21 +25,41 @@
 
 namespace {
 
+using tablelands_fields::Fields;
 using tablelands_fields::fieldsAt;
 using tablelands_fields::heightAt;
 using tablelands_fields::provinceAt;
-
-struct Point {
-    double x = 0.0;
-    double z = 0.0;
-};
+using tablelands_lines::gradientOf;
+using tablelands_lines::leastBend;
+using tablelands_lines::longestStraight;
+using tablelands_lines::Point;
+using tablelands_lines::zeroLine;
+using tablelands_lines::zeroNear;
 
 // Straightness: kTolerance meters off the chord, kStraightMost meters at most; the rims followed
 // kRimStep meters at a time over kRimLength meters on each side of their start.
 constexpr double kTolerance = 50.0;
 constexpr double kStraightMost = 2'000.0;
 constexpr double kRimStep = 25.0;
-constexpr double kRimLength = 15'000.0;
+constexpr double kRimLength = 20'000.0;
+// The rims followed: from kDryRims dry edges and kCoastalRims coastal ones.
+constexpr std::size_t kDryRims = 8;
+constexpr std::size_t kCoastalRims = 3;
+// Over kBendWindow meters of a rim, it strays kTypicalBend meters from its chord (the median over
+// its stretches), kLeastBend over its straightest.
+constexpr double kBendWindow = 20'000.0;
+constexpr double kTypicalBend = 1'000.0;
+constexpr double kLeastBend = 500.0;
+// The fringe: the ground kFringeNear to kFringeFar meters in front of the rim, read every kFringeStep
+// meters, every kFringeEvery meters of it; its density over kFringeWindow meters of the rim, the
+// 90th percentile kLeastFringeSpread times the 10th at least (no less than kLeastFringe).
+constexpr double kFringeNear = 500.0;
+constexpr double kFringeFar = 8'000.0;
+constexpr double kFringeStep = 250.0;
+constexpr double kFringeEvery = 250.0;
+constexpr double kFringeWindow = 10'000.0;
+constexpr double kLeastFringeSpread = 4.0;
+constexpr double kLeastFringe = 0.01;
 // Continuity: kBox meters around the vanishing edge, read every kPair meters; kStepMore meters
 // more than the world switched off at most.
 constexpr double kBox = 2'000.0;
@@ -61,143 +86,88 @@ constexpr double kDetrend = 5'000.0;
 constexpr double kLagLow = 1'000.0;
 constexpr double kLagHigh = 5'000.0;
 
-// The gradient of f at p by differences of h meters.
-template <typename F>
-Point gradientOf(const F& f, const Point& p, double h) {
-    const double v = f(p.x, p.z);
-    return {(f(p.x + h, p.z) - v) / h, (f(p.x, p.z + h) - v) / h};
+// The escarpment: its rim the zero line.
+double scarpOf(double x, double z) {
+    return fieldsAt(x, z).scarp;
 }
 
-// The zero line of f from start, step meters at a time, length meters in each direction (no
-// farther where it is lost: its value tolerance or more off zero after two projections).
-template <typename F>
-std::vector<Point> zeroLine(const F& f, const Point& start, double step, double length, double h,
-                            double tolerance) {
-    std::vector<Point> out;
-    for (const double way : {-1.0, 1.0}) {
-        std::vector<Point> half;
-        Point p = start;
-        Point g = gradientOf(f, p, h);
-        Point last{0.0, 0.0};
-        for (double run = 0.0; run < length; run += step) {
-            const double norm = std::hypot(g.x, g.z);
-            if (!(norm > 0.0)) {
-                break;
-            }
-            Point t{-g.z / norm * way, g.x / norm * way};
-            if (run > 0.0 && t.x * last.x + t.z * last.z < 0.0) {
-                t = {-t.x, -t.z};
-            }
-            last = t;
-            Point q{p.x + step * t.x, p.z + step * t.z};
-            for (int k = 0; k < 2; ++k) {
-                g = gradientOf(f, q, h);
-                const double n2 = g.x * g.x + g.z * g.z;
-                const double v = f(q.x, q.z);
-                if (!(n2 > 0.0)) {
-                    break;
-                }
-                q = {q.x - v * g.x / n2, q.z - v * g.z / n2};
-            }
-            if (!(std::abs(f(q.x, q.z)) < tolerance)) {
-                break;
-            }
-            half.push_back(q);
-            p = q;
+// The density of the fringe in front of a rim (the zero line of scarpOf), over its windows.
+void addFringe(const std::vector<Point>& rim, std::vector<double>& densities) {
+    const auto every = static_cast<std::size_t>(kFringeEvery / kRimStep);
+    const auto per = static_cast<std::size_t>(kFringeWindow / kFringeEvery);
+    std::vector<double> shares;
+    for (std::size_t i = 0; i < rim.size(); i += every) {
+        const Point g = gradientOf(scarpOf, rim[i], 20.0);
+        const double norm = std::max(std::hypot(g.x, g.z), 1e-12);
+        int on = 0;
+        int read = 0;
+        for (double d = kFringeNear; d <= kFringeFar; d += kFringeStep) {
+            const Fields f = fieldsAt(rim[i].x - g.x / norm * d, rim[i].z - g.z / norm * d);
+            on += f.outlier && f.profile > 0.5 ? 1 : 0;
+            ++read;
         }
-        if (way < 0.0) {
-            out.assign(half.rbegin(), half.rend());
-            out.push_back(start);
-        } else {
-            out.insert(out.end(), half.begin(), half.end());
-        }
+        shares.push_back(static_cast<double>(on) / static_cast<double>(read));
     }
-    return out;
-}
-
-// A point on the zero line of f near site: along x, then z, the first change of sign within reach
-// meters, refined by bisection.
-template <typename F>
-bool zeroNear(const F& f, const Point& site, double reach, Point& out) {
-    for (const Point d : {Point{1.0, 0.0}, Point{0.0, 1.0}, Point{-1.0, 0.0}, Point{0.0, -1.0}}) {
-        double a = 0.0;
-        const double va = f(site.x, site.z);
-        for (double b = 250.0; b <= reach; b += 250.0) {
-            const double vb = f(site.x + d.x * b, site.z + d.z * b);
-            if ((va > 0.0) == (vb > 0.0)) {
-                a = b;
-                continue;
-            }
-            double lo = a;
-            double hi = b;
-            for (int k = 0; k < 30; ++k) {
-                const double mid = 0.5 * (lo + hi);
-                const double vm = f(site.x + d.x * mid, site.z + d.z * mid);
-                ((vm > 0.0) == (va > 0.0) ? lo : hi) = mid;
-            }
-            out = {site.x + d.x * lo, site.z + d.z * lo};
-            return true;
+    for (std::size_t w = 0; w + per <= shares.size(); w += per) {
+        double sum = 0.0;
+        for (std::size_t k = w; k < w + per; ++k) {
+            sum += shares[k];
         }
+        densities.push_back(sum / static_cast<double>(per));
     }
-    return false;
-}
-
-// The longest stretch of a line of points spaced spacing meters apart within kTolerance of its
-// chord, meters.
-double longestStraight(const std::vector<Point>& line, double spacing) {
-    std::size_t best = 0;
-    for (std::size_t i = 0; i < line.size(); ++i) {
-        std::size_t j = i + 2;
-        for (; j < line.size(); ++j) {
-            const double cx = line[j].x - line[i].x;
-            const double cz = line[j].z - line[i].z;
-            const double chord = std::hypot(cx, cz);
-            bool within = chord > 0.0;
-            for (std::size_t k = i + 1; k < j && within; ++k) {
-                const double off =
-                    std::abs((line[k].x - line[i].x) * cz - (line[k].z - line[i].z) * cx) / chord;
-                within = off <= kTolerance;
-            }
-            if (!within) {
-                break;
-            }
-        }
-        best = std::max(best, j - 1 - i);
-    }
-    return spacing * static_cast<double>(best);
 }
 
 void testStraightness(const tablelands_fields::Sites& sites) {
-    const auto scarp = [](double x, double z) { return fieldsAt(x, z).scarp; };
     double traced = 0.0;
     double longest = 0.0;
     int rims = 0;
+    const std::size_t dry = std::min<std::size_t>(kDryRims, sites.edges.size());
     std::vector<std::array<double, 2>> starts(sites.edges.begin(),
-                                              sites.edges.begin() +
-                                                  static_cast<long>(std::min<std::size_t>(5, sites.edges.size())));
-    for (std::size_t c = 0; c < sites.coastal.size() && c < 2; ++c) {
+                                              sites.edges.begin() + static_cast<long>(dry));
+    for (std::size_t c = 0; c < sites.coastal.size() && c < kCoastalRims; ++c) {
         starts.push_back(sites.coastal[c]);
     }
+    std::vector<double> densities;
     for (std::size_t s = 0; s < starts.size(); ++s) {
         Point start;
-        if (!zeroNear(scarp, {starts[s][0], starts[s][1]}, 30'000.0, start)) {
+        if (!zeroNear(scarpOf, {starts[s][0], starts[s][1]}, 30'000.0, start)) {
             continue;
         }
-        const std::vector<Point> rim = zeroLine(scarp, start, kRimStep, kRimLength, 5.0, 5.0);
-        const double straight = longestStraight(rim, kRimStep);
-        traced += kRimStep * static_cast<double>(rim.size());
+        const std::vector<Point> rim = zeroLine(scarpOf, start, kRimStep, kRimLength, 5.0, 10.0);
+        Point from = start;
+        const double straight = longestStraight(rim, kRimStep, kTolerance, from);
+        const double length = kRimStep * static_cast<double>(rim.size());
+        double typical = 0.0;
+        const double bend = leastBend(rim, kRimStep, kBendWindow, typical);
+        traced += length;
         longest = std::max(longest, straight);
         ++rims;
         std::printf("rim near (%.0f, %.0f)%s: %.1f km followed, its longest straight stretch "
-                    "(within 50 m) %.0f m\n",
-                    start.x, start.z, s >= std::min<std::size_t>(5, sites.edges.size()) ? " (coastal)" : "",
-                    kRimStep * static_cast<double>(rim.size()) / 1000.0, straight);
+                    "(within 50 m) %.0f m from (%.0f, %.0f); over 20 km, %.2f km off its chord at "
+                    "the least, %.2f km the median\n",
+                    start.x, start.z, s >= dry ? " (coastal)" : "", length / 1000.0, straight, from.x,
+                    from.z, bend / 1000.0, typical / 1000.0);
+        if (length >= kBendWindow + 1'000.0) {
+            TEST_CHECK(typical >= kTypicalBend && bend >= kLeastBend);
+        }
+        if (s < dry) {
+            addFringe(rim, densities);
+        }
     }
     std::printf("straightness: %d rims, %.0f km followed, the longest straight stretch %.0f m (under "
                 "%.0f m)\n",
                 rims, traced / 1000.0, longest, kStraightMost);
     TEST_CHECK(traced >= 100'000.0);
     TEST_CHECK(longest < kStraightMost);
+    std::sort(densities.begin(), densities.end());
+    const double p10 = densities.empty() ? 0.0 : std::max(densities[densities.size() / 10], kLeastFringe);
+    const double p90 = densities.empty() ? 0.0 : densities[densities.size() * 9 / 10];
+    std::printf("the fringe: %zu windows of 10 km of the dry rims, its density %.3f to %.3f (10th "
+                "percentile %.3f, 90th %.3f: %.1f times)\n",
+                densities.size(), densities.empty() ? 0.0 : densities.front(),
+                densities.empty() ? 0.0 : densities.back(), p10, p90, p90 / std::max(p10, 1e-9));
+    TEST_CHECK(densities.size() >= 8);
+    TEST_CHECK(p90 >= kLeastFringeSpread * p10);
 }
 
 // The largest step of the heights of f between points kPair meters apart in a box kBox meters wide

@@ -100,9 +100,11 @@ void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
 
 // The same with the passes given instead of those of the walls of the mountains (the walls of
 // other forms: the escarpments of the plateaus, agent 46), steps the mask the rock steps (pass 1)
-// stand in, as masks.strata for the walls of the mountains.
+// stand in, as masks.strata for the walls of the mountains; their vertical joints joints as deep
+// (1 for the walls of the mountains: their bits).
 void addFaces(const mountain_walls::WallPasses& passes, const Grain& grain, double steps,
-              const mountain_walls::Column& column, double x, double z, Site& site);
+              const mountain_walls::Column& column, double x, double z, Site& site,
+              double joints = 1.0);
 
 // The top of the walls of passes over ground: each pass laid over the top the one before leaves
 // (as mountain_walls::rockTop lays its own).

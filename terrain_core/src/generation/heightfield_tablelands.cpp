@@ -66,8 +66,8 @@ void Heightfield::addTablelands(double x, double z, const TablelandPoint& p, Hei
     const double ground = static_cast<double>(s.base) + shape.rise;
     const mountain_walls::WallPasses passes =
         tableland_relief::passesAt(n, x, z, p, shape, static_cast<double>(s.base));
-    const double rock = std::max(shape.rock, shape.unitWeight);
-    if (site != nullptr && rock > 0.0) {
+    const double weight = std::max(shape.rock, shape.unitWeight);
+    if (site != nullptr && weight > 0.0) {
         site->walls = true;
         site->ground = ground;
         site->gradX = shape.gradX;
@@ -77,12 +77,22 @@ void Heightfield::addTablelands(double x, double z, const TablelandPoint& p, Hei
             column.ground = ground;
             column.gradX = shape.gradX;
             column.gradZ = shape.gradZ;
-            wall_faces::addFaces(passes, layers_->faceGrain, rock, column, x, z, *site);
+            wall_faces::addFaces(passes, layers_->faceGrain, weight, column, x, z, *site,
+                                 tableland_relief::jointsAt(n.walls, x, z));
         }
     }
-    s.base = static_cast<float>(wall_faces::passesTop(passes, ground) +
-                                tableland_relief::topRelief(n, x, z, shape));
-    s.tableland = static_cast<std::uint8_t>(std::lround(255.0 * std::clamp(rock, 0.0, 1.0)));
+    // Under the lowest bound of the forced hard layers of a caprock over its foot (unitBench), their
+    // lowest layer is partial: the rock keeps to the shape (its batter) there, never lays its ledge
+    // under the foot (a bench eating the batter of the cliff).
+    double rock = wall_faces::passesTop(passes, ground);
+    const double foot = static_cast<double>(s.base) + shape.unitTop - shape.unitHeight;
+    if (shape.unitWeight > 0.0 && !shape.unitWhole && ground > foot) {
+        const double bench =
+            tableland_relief::unitBench(n, x, z, shape, static_cast<double>(s.base));
+        rock = std::max(rock, std::min(ground, bench));
+    }
+    s.base = static_cast<float>(rock + tableland_relief::topRelief(n, x, z, shape));
+    s.tableland = static_cast<std::uint8_t>(std::lround(255.0 * std::clamp(weight, 0.0, 1.0)));
 }
 
 } // namespace terrain

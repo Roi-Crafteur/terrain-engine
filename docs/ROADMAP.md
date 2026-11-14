@@ -383,24 +383,33 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     sur ~15 % de la surface. La part des hautes terres à moins de 300 m de relief sur 10 km
     (`terrain_export_relief`) passe de 0,2 % à plusieurs % des hautes terres.
   - Plateaux, mesas, buttes et canyons (`generation/tableland_relief.hpp`) : un escarpement qui
-    suit le bord de la province, sinueux à toutes les échelles (le bord gauchi de ±11 km par des
-    octaves de 40, 10 et 2,5 km, découpé à 3 km et 600 m : aucun rebord droit de plus de 2 km),
-    ses buttes-témoins de 200 m à des mesas de plusieurs km (deux bruits de 2,5 et 9 km, un recul
-    de 6 à 25 km, des champs denses ou clairsemés), des canyons à méandres jusqu'à 1,6 km de
-    profondeur dont le fond rejoint le bas pays à l'escarpement et remonte vers l'intérieur, leurs
-    branches suspendues. Chaque contour a deux étages : une corniche verticale (50 à 70 % de la
-    hauteur des buttes et mesas, au plus 300 m sur l'escarpement) sur un talus concave raviné. La
-    coupe des canyons profonds est faite d'unités (`tableland_canyons.hpp`, Grand Canyon,
-    Canyonlands) : corniche de tête de 40 à 120 m, pentes en gradins, grande falaise de 120 à
-    200 m (Redwall), replat de 0,3 à 1,5 km (Tonto), gorge intérieure, fond plat ; des temples
-    (buttes de 10 à 30 % de la profondeur sous le rebord) sur les replats, jamais sur la gorge.
+    suit le bord de la province, sinueux à toutes les échelles (le bord gauchi de ±31 km par des
+    octaves de 120, 40, 10 et 2,5 km, découpé à 3 km et 600 m : aucun rebord droit de plus de
+    2 km, à 1 km au moins de sa corde sur 20 km), ses buttes-témoins de 200 m à des mesas de
+    plusieurs km (deux bruits de 2,5 et 9 km, un recul de 6 à 25 km, des champs denses ou
+    clairsemés), des canyons jusqu'à 1,3 km de profondeur, les plus profonds à l'escarpement et
+    d'un quart moins au cœur (par la part de la province), leurs branches suspendues. Chaque
+    contour a deux étages : une corniche (50 à 70 % de la hauteur des buttes et mesas, au plus
+    300 m sur l'escarpement) sur un talus concave raviné. Les falaises
+    (`tableland_cliffs.hpp`) : contour rugueux de 20 à 200 m, fruit de 80 à 88° qui varie, 2 à 4
+    couches dures dans la corniche (1 à 3 vires à hauteurs variées), blocs et cônes d'éboulis au
+    pied, cannelures irrégulières ou aucune (les joints des plateaux, `wall_faces` au bit près pour
+    les montagnes). La coupe des canyons profonds est faite d'unités (`tableland_canyons.hpp`,
+    Grand Canyon, Canyonlands) : corniche de tête de 40 à 120 m, pentes en gradins, grande falaise
+    de 130 à 200 m (Redwall), replat de 0,3 à 1,5 km (Tonto), gorge intérieure de largeur variable,
+    fond plat. Leur axe méandre (décalage de 700 m lu au pied de chaque colonne : toute la coupe le
+    suit, sans pli) et ondule de 500 m sur 1,4 km au fond, dans la gorge et sur le replat. Les
+    temples (`tableland_temples.hpp`) sont des buttes isolées sur les replats : un site par case
+    de 1,55 km, déplacé au plus de 450 m pour tenir avec son talus et un écart tout autour, plan
+    elliptique (axes jusqu'à 1,7) découpé, deux étages, sommet rétréci, jupe d'éboulis jusqu'au
+    sol du canyon ; jamais sur la gorge ni contre les murs.
     Les couches sont celles des murs de l'agent 20 (`mountain_walls::strataTop`, faces 3D par
     `wall_faces::addFaces`, `tableland_strata.cpp`) : formations de 40 à 240 m, membres de 35 à
     80 m et lits de 6 à 20 m d'épaisseurs indépendantes, parallèles au dessus du plateau
-    (surfaces structurales), et la couche dure de chaque paroi (corniche, grande falaise) forcée
-    comme une seule couche. Les dunes ne recouvrent pas la roche des plateaux
-    (`HeightSample::tableland`). Coût : une tuile LOD 0 au fond d'un canyon profond à temples
-    ~1,2 ms (0,8 ms avant les unités), ×1,03 hors zone (`tablelands_cost_test`).
+    (surfaces structurales), et les couches dures de chaque paroi (corniche, grande falaise)
+    forcées. Les dunes ne recouvrent pas la roche des plateaux (`HeightSample::tableland`). Coût :
+    une tuile LOD 0 au fond d'un canyon profond à temples ~2,5 ms (objectif 4 ms), ×1,08 hors
+    zone (`tablelands_cost_test`).
     Limite : des tronçons de canyon fermés à l'intérieur (cuvettes sèches), les lacs de la Planète
     les traitent comme tout creux ; les gorges des fleuves ne lisent pas encore ces couches.
   - Allumés par les drapeaux de l'agent 51 (`experimental_flags.hpp`) : les lignes `karst` et

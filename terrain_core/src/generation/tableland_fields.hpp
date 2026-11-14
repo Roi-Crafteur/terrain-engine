@@ -56,40 +56,49 @@ inline double wrapped(const noise::FbmOctaves& f, const WorldSize& w, double x, 
         f.fbm2D(noise::wrapCanonical(x, w.x), noise::wrapCanonical(z, w.z)));
 }
 
-// The slope of a cliff before the rock makes it vertical (meters per meter: 85 degrees).
-inline constexpr double kCliffSlope = 12.0;
+// A layer of hard rock forced into a wall at a column: its top in meters under the top of the
+// plateau, its height; a caprock holds up to the top, the great cliff of a canyon gives way above its
+// top.
+struct Unit {
+    double top = 0.0;
+    double height = 0.0; // 0: none
+    bool capped = true;
+};
+
 // The forced hard layer of a wall tops this many meters under the top it holds (its top surface
 // lies on the layer above it, lowered so much).
 inline constexpr double kUnderTop = 3.0;
 
 // A profile of two storeys at a signed distance distance to its outline (positive within): a cliff
-// cliff meters high at kCliffSlope, then a concave talus at the mean slope talus down to the low
-// ground, height meters under the top. share: of the height held there, in [0, 1]; rate: how fast
+// cliff meters high at the slope steep (its batter, tableland_cliffs.hpp: the hard layers laid over
+// it make it a stack of vertical faces), then a concave talus at the mean slope talus down to the
+// low ground, height meters under the top. share: of the height held there, in [0, 1]; rate: how fast
 // it grows per meter toward the outline; cliff: on the cliff.
 struct Storeys {
     double share = 0.0;
     double rate = 0.0;
     bool cliff = false;
 };
-inline Storeys storeysAt(double distance, double height, double cliff, double talus) {
+inline Storeys storeysAt(double distance, double height, double cliff, double talus,
+                         double steep) {
     if (!(height > 0.0)) {
         return {};
     }
     if (!(distance < 0.0)) {
         return {1.0, 0.0, false};
     }
-    const double steep = std::clamp(cliff, 0.0, height);
-    const double wall = steep / kCliffSlope;
-    const double run = (height - steep) / talus;
+    const double tall = std::clamp(cliff, 0.0, height);
+    const double wall = tall / steep;
+    const double run = (height - tall) / talus;
     const double d = -distance;
     if (d < wall) {
-        return {1.0 - (steep / height) * (d / wall), (steep / height) / wall, true};
+        return {1.0 - (tall / height) * (d / wall), (tall / height) / wall, true};
     }
     if (!(run > 0.0) || !(d < wall + run)) {
         return {};
     }
     const double v = (wall + run - d) / run; // 1 at the foot of the cliff, 0 at that of the talus
-    const double below = 1.0 - steep / height;
+    const double below = 1.0 - tall / height;
     const double root = std::sqrt(std::max(v, 0.0));
     return {below * v * root, below * 1.5 * root / run, false};
 }

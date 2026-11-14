@@ -281,7 +281,8 @@ void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
 }
 
 void addFaces(const mountain_walls::WallPasses& w, const Grain& grain, double steps,
-              const mountain_walls::Column& column, double x, double z, Site& site) {
+              const mountain_walls::Column& column, double x, double z, Site& site,
+              double joints) {
     bool noisy = false;
     double noise = 0.0;
     double shift = 0.0;
@@ -305,6 +306,8 @@ void addFaces(const mountain_walls::WallPasses& w, const Grain& grain, double st
             noise = static_cast<double>(grain.overhangs.fbm2D(x, z));
             shift = kShiftRange * static_cast<double>(grain.shift.fbm2D(x, z));
             joint = jointAt(grain, x, z);
+            joint.depth *= joints;
+            joint.floor *= joints;
             noisy = true;
         }
         const PassSite pass{&w,        i,          &p,

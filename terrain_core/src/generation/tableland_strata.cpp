@@ -1,6 +1,7 @@
 // The rock of the plateaus (agent 46, tableland_relief.hpp: passesAt, topRelief): the strata of
 // the walls of the mountains (mountain_walls.hpp) laid parallel to the tops of the plateaus, on
-// their taluses and walls; and the hard layer of each wall forced as one layer.
+// their taluses and walls; and the hard layers of each wall (its caprock, its great cliff) forced,
+// 2 to 4 of them in its height (tableland_cliffs.hpp: layersAt).
 #include "tableland_relief.hpp"
 
 #include "terrain/det_math.hpp"
@@ -43,15 +44,22 @@ constexpr double kBedLow = 6.0;
 constexpr double kBedHigh = 20.0;
 constexpr double kBedWeight = 0.35;
 constexpr double kHardBeds = 0.35;
+// Where the taluses are soft (Shape::soft), kSoftHard of the hard formations and members stay.
+constexpr double kSoftHard = 0.15;
 constexpr double kBedRim = 0.15;
 // The top of a plateau lies kTopLayer of a layer up its formation, member and bed.
 constexpr double kTopLayer = 0.5;
-// The forced hard layer of a wall (its caprock, its great cliff): all hard (kUnitHard), its tread
-// rising kUnitTilt of it, its face rising over kUnitRun of its height, kUnitScree of it buried.
+// The forced hard layers of a wall (its caprock, its great cliff): all hard (kUnitHard), their
+// treads rising kUnitTilt of a layer, their faces rising over kUnitRun of the height of the wall,
+// kUnitScree of them buried; the rims of those of a caprock receding kUnitRim of a layer (its
+// ledges, a few meters wide), those of a great cliff not (one face).
 constexpr double kUnitHard = 1.1;
 constexpr double kUnitTilt = 0.03;
 constexpr double kUnitRun = 0.01;
 constexpr double kUnitScree = 0.05;
+constexpr double kUnitRim = 0.15;
+// The layer of the stack of the forced hard layers whose lower bound tops them.
+constexpr std::int64_t kTopLayerOfUnit = 8;
 
 // The relief of the tops: kTopFine meters of Noises::topFine, kTopCoarse of Noises::topCoarse
 // (Shape::top fades it out at the rims and in the canyons).
@@ -62,16 +70,20 @@ double between(double low, double high, const noise::FbmOctaves& f, double x, do
     return low + (high - low) * smooth(-0.5, 0.5, static_cast<double>(f.fbm2D(x, z)));
 }
 
-// The forced hard layer of s over base: layer 0 of its stack runs exactly from its foot to its top.
-mountain_walls::StrataPass unitPass(const Noises& n, const Shape& s, double base, double slope) {
-    const double low = mountain_walls::layerBound(n.units, 0);
-    const double high = mountain_walls::layerBound(n.units, 1);
-    const double band = s.unitHeight / (high - low);
-    const double foot = base + s.unitTop - s.unitHeight;
+// The forced hard layers of s over base at (x, z): layersAt layers in its height (one exactly for a
+// great cliff), the bound of layer kTopLayerOfUnit of their stack exactly at its top (a top never
+// cut by a ledge), those under it stepping down to its foot (their ledges at fractions of the
+// height that change with their count).
+mountain_walls::StrataPass unitPass(const Noises& n, double x, double z, const Shape& s,
+                                    double base, double slope) {
+    const double whole = mountain_walls::layerBound(n.units, kTopLayerOfUnit) -
+                         mountain_walls::layerBound(n.units, kTopLayerOfUnit - 1);
+    const double band = s.unitHeight / (s.unitWhole ? whole : layersAt(n.walls, x, z));
+    const double top = base + s.unitTop;
     return {slope,
             band,
-            foot - band * low,
-            0.0,
+            top - band * mountain_walls::layerBound(n.units, kTopLayerOfUnit),
+            s.unitWhole ? 0.0 : kUnitRim * band,
             kUnitRun * s.unitHeight,
             {n.units, kUnitHard, kUnitTilt, 0.0, kUnitScree},
             s.unitWeight};
@@ -82,7 +94,7 @@ mountain_walls::StrataPass unitPass(const Noises& n, const Shape& s, double base
 mountain_walls::WallPasses passesAt(const Noises& n, double x, double z, const TablelandPoint& p,
                                     const Shape& s, double base) {
     mountain_walls::WallPasses out; // the weights of its passes 0
-    const double layered = s.rock * (1.0 - s.top) * (1.0 - s.unitWeight);
+    const double layered = s.rock * (1.0 - s.top) * (1.0 - s.unitCover);
     const double slope = dmath::hypot(s.gradX, s.gradZ);
     if (layered > 0.0) {
         const auto arid = static_cast<double>(p.arid);
@@ -94,12 +106,13 @@ mountain_walls::WallPasses passesAt(const Noises& n, double x, double z, const T
         const double rims = 0.5 + 0.5 * static_cast<double>(n.rims.fbm2D(x, z));
         const double run = mix(kRunHumid, kRunArid, arid) * (2.0 - rims);
         const double scree = mix(kScreeHumid, kScreeArid, arid);
+        const double hard = 1.0 - (1.0 - kSoftHard) * s.soft;
         out.passes[0] = {slope,
                          band,
                          top - kTopLayer * band + dip,
                          kRim * rims,
                          run * band,
-                         {n.layers, mix(kHardHumid, kHardArid, arid), kTilt, kSpread, scree},
+                         {n.layers, hard * mix(kHardHumid, kHardArid, arid), kTilt, kSpread, scree},
                          layered};
         out.passes[1] = {slope,
                          bed,
@@ -113,13 +126,32 @@ mountain_walls::WallPasses passesAt(const Noises& n, double x, double z, const T
                          top - kTopLayer * member,
                          kMemberRim * kRim * rims,
                          run * member,
-                         {n.members, kHardMembers, kTilt, kSpread, scree},
+                         {n.members, hard * kHardMembers, kTilt, kSpread, scree},
                          kMemberWeight * layered};
     }
     if (s.unitWeight > 0.0 && s.unitHeight > 0.0) {
-        out.passes[3] = unitPass(n, s, base, slope);
+        out.passes[3] = unitPass(n, x, z, s, base, slope);
     }
     return out;
+}
+
+double unitBench(const Noises& n, double x, double z, const Shape& s, double base) {
+    const double layers = layersAt(n.walls, x, z);
+    const double band = s.unitHeight / layers;
+    const double top = base + s.unitTop;
+    const double foot = top - s.unitHeight;
+    const double offset = top - band * mountain_walls::layerBound(n.units, kTopLayerOfUnit);
+    // The bounds under the top, down to the first at the foot or under it (a few: the layers of a
+    // caprock are 0.3 to 1.7 of a band each).
+    double bench = top;
+    for (std::int64_t k = kTopLayerOfUnit - 1; k > kTopLayerOfUnit - 16; --k) {
+        const double bound = offset + band * mountain_walls::layerBound(n.units, k);
+        if (!(bound > foot)) {
+            break;
+        }
+        bench = bound;
+    }
+    return bench;
 }
 
 double topRelief(const Noises& n, double x, double z, const Shape& s) {

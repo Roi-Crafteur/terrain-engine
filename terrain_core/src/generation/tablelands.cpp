@@ -28,7 +28,7 @@ enum Stream : std::uint64_t {
     kWarpZ,
     kEdgeTableland,
     kEdgeKarst,
-    kEdgeWarp, // and the next 5 streams: the warps of the edges, x and z of each scale
+    kEdgeWarp, // and the next 7 streams: the warps of the edges, x and z of each scale
 };
 
 // The rock: plateaus in layered rock (its share kStrataLow to kStrataHigh), the karst in the
@@ -90,10 +90,10 @@ constexpr double kWarp = 40'000.0;
 constexpr double kWarpWavelength = 300'000.0;
 // The edges of the provinces wander besides by up to kEdgeWarps meters at the scales of
 // kEdgeWarpWavelengths (at most kEdgeWarpTotal in all): bays and points from a few hundred meters to
-// tens of kilometers, never a straight edge (an escarpment follows it, tableland_relief.hpp).
-constexpr std::array<double, 3> kEdgeWarpWavelengths = {40'000.0, 10'000.0, 2'500.0};
-constexpr std::array<double, 3> kEdgeWarps = {8'000.0, 2'500.0, 500.0};
-constexpr double kEdgeWarpTotal = 11'000.0;
+// a hundred kilometers, never a straight edge (an escarpment follows it, tableland_relief.hpp).
+constexpr std::array<double, 4> kEdgeWarpWavelengths = {120'000.0, 40'000.0, 10'000.0, 2'500.0};
+constexpr std::array<double, 4> kEdgeWarps = {20'000.0, 8'000.0, 2'500.0, 500.0};
+constexpr double kEdgeWarpTotal = 31'000.0;
 constexpr double kEdgeWavelength = 70'000.0;
 constexpr float kEdge = 0.12f;
 constexpr float kShareLow = 0.35f;
@@ -160,8 +160,8 @@ struct Tablelands::Impl {
     noise::FbmOctaves warpZ;
     noise::FbmOctaves edgeTableland;
     noise::FbmOctaves edgeKarst;
-    std::array<noise::FbmOctaves, 3> edgeWarpX; // kEdgeWarpWavelengths
-    std::array<noise::FbmOctaves, 3> edgeWarpZ;
+    std::array<noise::FbmOctaves, 4> edgeWarpX; // kEdgeWarpWavelengths
+    std::array<noise::FbmOctaves, 4> edgeWarpZ;
     std::vector<TablelandCell> cells;
     std::vector<std::uint8_t> may; // 1 where a province may reach a point of the cell
 

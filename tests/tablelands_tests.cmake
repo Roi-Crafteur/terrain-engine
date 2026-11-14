@@ -39,3 +39,12 @@ target_include_directories(tablelands_canyons_test PRIVATE ${PROJECT_SOURCE_DIR}
 # of outliers (pattern_support.hpp).
 terrain_add_test(tablelands_patterns_test terrain_core)
 target_include_directories(tablelands_patterns_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+# The cliffs of the buttes: walls of rock, not cookie cuts (Merrick Butte, not Devils Tower): a rough
+# outline, a batter, ledges, scree at their foot without a period (tableland_cliffs.hpp).
+terrain_add_test(tablelands_cliffs_test terrain_core)
+target_include_directories(tablelands_cliffs_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+# The inner gorges of the deep canyons (no canal: no straight axis nor edge, a width that varies) and
+# their temples (no cube: a rough rim, a narrower top, two storeys): tableland_canyons.hpp,
+# tableland_temples.hpp.
+terrain_add_test(tablelands_gorges_test terrain_core)
+target_include_directories(tablelands_gorges_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

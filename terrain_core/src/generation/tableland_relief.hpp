@@ -11,10 +11,12 @@
 //     lands), the blobs of two noises of 2.5 and 9 km mixed by a slow one, over a threshold rising
 //     with the distance and moved by another slow one: promontories at the escarpment, fields of
 //     buttes dense or sparse, mesas of several kilometers, then nothing;
-//   - the profile of two storeys (tableland_fields.hpp: storeysAt): a vertical caprock over a short
-//     concave talus (Monument Valley: the De Chelly sandstone over the Organ Rock), the caprock 50
-//     to 70 % of the height of an outlier, at most kScarpCliffMost of an escarpment, the talus
-//     carved by gullies, down to the low ground (the regional ground and its hills: drained);
+//   - the profile of two storeys (tableland_fields.hpp: storeysAt): a caprock over a short concave
+//     talus (Monument Valley: the De Chelly sandstone over the Organ Rock), the caprock 50 to 70 %
+//     of the height of an outlier, at most kScarpCliffMost of an escarpment, the talus carved by
+//     gullies, down to the low ground (the regional ground and its hills: drained); the caprock a
+//     wall of rock (tableland_cliffs.hpp): its outline rough, battered, stepped by 2 to 4 hard
+//     layers, scree at its foot;
 //   - the canyons (tableland_canyons.hpp): a section of units, a caprock, slopes, a great cliff, a
 //     platform with its temples, an inner gorge, a flat floor;
 //   - the top: the thickness of the plateau swelling gently (the skyline of a rim is never a
@@ -29,6 +31,7 @@
 #include "mountain_walls.hpp"
 #include "ravines.hpp"
 #include "tableland_canyons.hpp"
+#include "tableland_cliffs.hpp"
 
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/tablelands.hpp"
@@ -47,10 +50,12 @@ struct Noises {
     noise::FbmOctaves outlierMix; // which of them, from place to place
     noise::FbmOctaves retreat;    // how far they reach
     noise::FbmOctaves density;    // how many they are
+    noise::FbmOctaves bends;      // the great bends of the escarpment
     noise::FbmOctaves jags;       // the re-entrants and points of the rims
     noise::FbmOctaves jagsFine;
     noise::FbmOctaves cliffs;     // the share of the height the caprocks take
     CanyonNoises canyon;          // the canyons
+    CliffNoises walls;            // what makes the caprocks walls of rock
     noise::FbmOctaves thickness;  // of the plateau
     noise::FbmOctaves swell;      // and its gentle swells
     noise::FbmOctaves bands;      // the thickness of its formations
@@ -96,8 +101,11 @@ struct Fields {
     double canyon = 0.0;    // meters the canyons cut the plateau
     double floor = 0.0;     // [0, 1]: on the floor of a canyon
     double profile = 0.0;   // [0, 1]: 0 on the low ground, 1 on the tops
+    double axis = 0.0;      // meters from the axis of the nearest canyon (signed)
+    double gorge = 0.0;     // meters from the edge of its inner gorge, positive within
     bool outlier = false;   // the outline is that of an outlier
     bool temple = false;    // a temple of a canyon stands there
+    double templeOutline = 0.0; // meters to the rim of its lower storey, positive within
 };
 [[nodiscard]] Fields fieldsAt(const Noises& n, double x, double z, const Province& q);
 
@@ -109,12 +117,21 @@ struct Shape {
     double rock = 0.0;  // [0, 1]: the weight of the strata (none on the low ground and floors)
     double top = 0.0;   // [0, 1]: on a top (its relief, topRelief; no strata but its caprock)
     double thickness = 0.0; // of the plateau over the low ground (Fields::thickness)
+    // [0, 1]: out in front of the escarpment, where the outliers stand on soft slopes (the Organ Rock
+    // under the De Chelly sandstone of Monument Valley): few hard formations and members there.
+    double soft = 0.0;
     // The hard layer of the wall at the column, forced (its caprock, the great cliff of a canyon,
     // the caprock of a temple): its top in meters over the low ground (as rise), its height, its
     // weight (1 on the wall and the top over it, 0 on the talus under it).
     double unitTop = 0.0;
     double unitHeight = 0.0;
     double unitWeight = 0.0;
+    // [0, 1]: the wall and the top over it, whatever the share of the province (the weight of the
+    // hard layer without the fade of the rock): the other strata keep off it.
+    double unitCover = 0.0;
+    // The great cliff of a canyon is one hard layer (the Redwall, 120 to 200 m); a caprock 2 to 4
+    // (tableland_cliffs.hpp: layersAt).
+    bool unitWhole = false;
 };
 [[nodiscard]] Shape shapeAt(const Noises& n, double x, double z, const Province& q);
 
@@ -125,6 +142,11 @@ struct Shape {
 [[nodiscard]] mountain_walls::WallPasses passesAt(const Noises& n, double x, double z,
                                                   const TablelandPoint& p, const Shape& s,
                                                   double base);
+
+// The lowest bound of the forced hard layers of a caprock (Shape::unitTop, not unitWhole) over its
+// foot, over base: under it their lowest layer is partial, and the rock keeps to the shape (its
+// batter) rather than lay its ledge under the foot.
+[[nodiscard]] double unitBench(const Noises& n, double x, double z, const Shape& s, double base);
 
 // The meters the relief of the tops adds there over the rock (never flat: swells of a few meters
 // over a few kilometers, hummocks over a kilometer).
