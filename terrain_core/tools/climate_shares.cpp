@@ -13,7 +13,11 @@
 // --frost: the one threshold of the frost (the ice of the planet level and the snow of the
 // biomes), Celsius, after the flags.
 // Usage: terrain_climate_shares <output-dir> [--seeds <a,b,...>] [--flags <a,b>]
-//        [--frost <celsius>] [--pole <celsius>] [--ergs] [--step <cells>] [--threads <n>]
+//        [--frost <celsius>] [--pole <celsius>] [--subtropical-dip <v>] [--ergs] [--erg-share]
+//        [--step <cells>] [--threads <n>]
+// --subtropical-dip: the dip of the rain of the subtropics (PlanetClimateParams::subtropicalDip).
+// --erg-share: the share of the land and of the deserts (the biomes named desert, not the ice
+// desert) under an erg (its mask 0.5 at least).
 
 #include "tool_flags.hpp"
 
@@ -45,6 +49,9 @@ struct Options {
     bool pole = false;
     float poleTemperature = 0.0f;
     bool ergs = false;
+    bool ergShare = false;
+    bool dip = false;
+    double subtropicalDip = 0.0;
     int step = 4;
     int threads = 4;
 };
@@ -77,6 +84,11 @@ bool parse(int argc, char** argv, Options& o) {
         } else if (arg == "--pole" && a + 1 < argc) {
             o.pole = true;
             o.poleTemperature = std::strtof(argv[++a], nullptr);
+        } else if (arg == "--erg-share") {
+            o.ergShare = true;
+        } else if (arg == "--subtropical-dip" && a + 1 < argc) {
+            o.dip = true;
+            o.subtropicalDip = std::strtod(argv[++a], nullptr);
         } else if (arg == "--ergs") {
             o.ergs = true;
         } else if (arg == "--step" && a + 1 < argc) {
@@ -108,7 +120,13 @@ struct Counts {
     std::uint64_t land = 0;   // the cells of the land read on the planet level
     std::uint64_t arid = 0;   // of them, an aridity index under 0.5
     std::uint64_t frozen = 0; // of them, frozen
+    std::uint64_t ergLand = 0;   // of the samples of a biome, those under an erg
+    std::uint64_t desert = 0;    // those of a desert
+    std::uint64_t ergDesert = 0; // those of a desert under an erg
     void add(const Counts& o) {
+        ergLand += o.ergLand;
+        desert += o.desert;
+        ergDesert += o.ergDesert;
         for (std::size_t b = 0; b < biomes.size(); ++b) {
             biomes[b] += o.biomes[b];
         }
@@ -122,7 +140,8 @@ constexpr double kSiteStep = 64.0; // meters to the neighbors of a sample, as th
 
 // The rows j = first, first + threads, ... of the sampled cells.
 Counts countRows(const terrain::PlanetLevel& level, const terrain::Heightfield& field,
-                 const terrain::Ecology& ecology, int step, int first, int stride) {
+                 const terrain::Ecology& ecology, const terrain::Ergs* ergs, int step, int first,
+                 int stride) {
     Counts n;
     const terrain::PlanetGrid& g = level.grid();
     const terrain::PlanetClimateParams& climate = level.params().climate;
@@ -152,9 +171,39 @@ Counts countRows(const terrain::PlanetLevel& level, const terrain::Heightfield& 
             site.water = h.water;
             site.waterLevel = h.waterLevel;
             const terrain::ClimateSample sample = ecology.climate().sample(x, z, site);
-            ++n.biomes[static_cast<std::size_t>(
-                terrain::classifyBiome(sample, site, ecology.params().biomes))];
+            const terrain::Biome biome =
+                terrain::classifyBiome(sample, site, ecology.params().biomes);
+            ++n.biomes[static_cast<std::size_t>(biome)];
+            if (ergs != nullptr) {
+                const std::string name = terrain::biomeName(biome);
+                const bool desert = name.find("desert") != std::string::npos && name != "ice desert";
+                const bool erg =
+                    ergs->mayHold(x, z) && ergs->at(x, z, h.relief, h.rift).mask >= 0.5f;
+                n.desert += desert ? 1 : 0;
+                n.ergLand += erg ? 1 : 0;
+                n.ergDesert += erg && desert ? 1 : 0;
+            }
         }
+    }
+    return n;
+}
+
+// Every row of the sampled cells, on threads threads.
+Counts countAll(const terrain::PlanetLevel& level, const terrain::Heightfield& field,
+                const terrain::Ecology& ecology, const terrain::Ergs* ergs, int step,
+                int threads) {
+    std::vector<Counts> parts(static_cast<std::size_t>(threads));
+    std::vector<std::thread> workers;
+    for (int t = 0; t < threads; ++t) {
+        workers.emplace_back([&, t] {
+            parts[static_cast<std::size_t>(t)] =
+                countRows(level, field, ecology, ergs, step, t, threads);
+        });
+    }
+    Counts n;
+    for (int t = 0; t < threads; ++t) {
+        workers[static_cast<std::size_t>(t)].join();
+        n.add(parts[static_cast<std::size_t>(t)]);
     }
     return n;
 }
@@ -214,6 +263,10 @@ void report(std::FILE* out, std::uint64_t seed, const std::string& flags,
                  share(biome(terrain::Biome::Desert), read), share(dry, read), share(n.arid, n.land),
                  share(n.frozen, n.land), static_cast<unsigned long long>(read),
                  static_cast<unsigned long long>(n.land), seconds);
+    if (n.desert > 0) {
+        std::fprintf(out, "  ergs cover %.1f %% of the land, %.1f %% of the deserts\n",
+                     share(n.ergLand, read), share(n.ergDesert, n.desert));
+    }
     std::fprintf(out, "  biomes:");
     for (std::size_t b = 0; b < n.biomes.size(); ++b) {
         std::fprintf(out, " %s %.1f;", terrain::biomeName(static_cast<terrain::Biome>(b)),
@@ -228,8 +281,9 @@ int main(int argc, char** argv) {
     Options o;
     if (!parse(argc, argv, o)) {
         std::fprintf(stderr, "usage: terrain_climate_shares <output-dir> [--seeds <a,b,...>] "
-                             "[--flags <a,b>] [--frost <celsius>] [--pole <celsius>] [--ergs] "
-                             "[--step <cells>] [--threads <n>]\n");
+                             "[--flags <a,b>] [--frost <celsius>] [--pole <celsius>] "
+                             "[--subtropical-dip <v>] [--ergs] [--erg-share] [--step <cells>] "
+                             "[--threads <n>]\n");
         return 1;
     }
     terrain::WorldParams world;
@@ -245,6 +299,9 @@ int main(int argc, char** argv) {
         world.planet.climate.poleTemperature = o.poleTemperature;
         world.ecology.climate.poleTemperature = o.poleTemperature;
     }
+    if (o.dip) {
+        world.planet.climate.subtropicalDip = o.subtropicalDip;
+    }
     world.planet.threads = o.threads;
     std::filesystem::create_directories(o.directory);
     std::FILE* file = std::fopen((o.directory / "shares.txt").string().c_str(), "a");
@@ -255,26 +312,19 @@ int main(int argc, char** argv) {
         const terrain::Heightfield field(seed, world.relief);
         const terrain::Ecology ecology(seed, world.ecology, field.world(),
                                        std::make_shared<const LevelHumidity>(level));
-        std::vector<Counts> parts(static_cast<std::size_t>(o.threads));
-        std::vector<std::thread> workers;
-        for (int t = 0; t < o.threads; ++t) {
-            workers.emplace_back([&, t] {
-                parts[static_cast<std::size_t>(t)] =
-                    countRows(*level, field, ecology, o.step, t, o.threads);
-            });
-        }
-        Counts n;
-        for (int t = 0; t < o.threads; ++t) {
-            workers[static_cast<std::size_t>(t)].join();
-            n.add(parts[static_cast<std::size_t>(t)]);
-        }
+        const std::unique_ptr<const terrain::Ergs> ergs =
+            o.ergShare ? std::make_unique<const terrain::Ergs>(seed, *level,
+                                                               std::vector<terrain::Depression>{},
+                                                               world.water.ergs)
+                       : nullptr;
+        const Counts n = countAll(*level, field, ecology, ergs.get(), o.step, o.threads);
         const double seconds =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        const std::string ergs = o.ergs ? ergLine(seed, *level, field, world) + "\n" : "";
+        const std::string ergLines = o.ergs ? ergLine(seed, *level, field, world) + "\n" : "";
         for (std::FILE* out : {stdout, file}) {
             if (out != nullptr) {
                 report(out, seed, canonical, world, n, seconds);
-                std::fputs(ergs.c_str(), out);
+                std::fputs(ergLines.c_str(), out);
                 std::fflush(out);
             }
         }
