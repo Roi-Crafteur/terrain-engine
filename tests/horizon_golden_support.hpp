@@ -75,8 +75,10 @@ inline std::uint64_t blendChecksum(const horizon_test::World& world, double x, d
         for (int k = 0; k < level.side(); ++k) {
             for (int i = 0; i < level.side(); ++i) {
                 const terrain::BlendTexel blend = level.atWindow(i, k).blend;
-                sum.add(static_cast<std::uint64_t>(blend.ids), 4);
-                sum.add(static_cast<std::uint64_t>(blend.weights), 4);
+                sum.add(static_cast<std::uint64_t>(blend.biomes), 4);
+                sum.add(static_cast<std::uint64_t>(blend.materials), 4);
+                sum.add(static_cast<std::uint64_t>(blend.biomeWeights), 4);
+                sum.add(static_cast<std::uint64_t>(blend.materialWeights), 4);
             }
         }
     }
@@ -125,17 +127,20 @@ inline std::vector<Part> horizonParts() {
          0x9C1FAB69C03C7234ULL},
         {"detail normals around mountains, ratio 4", normalsChecksum(world, x, z, 4),
          0x7C759A756899258CULL},
+        // The blend texels of 16 bytes (agent 49) changed the bytes of the blends of the 4 parts
+        // below, never the blends they decode to (0xAFA8ABA724DEEE2F, 0x96E378BC6B035861,
+        // 0xE68987A81F6AD875, 0x92DBFC547FFDE514 with the texels of 8 bytes).
         {"horizon blends around mountains", horizon_detail::blendChecksum(world, x, z),
-         0xAFA8ABA724DEEE2FULL},
+         0x9A84A8FE3C20D313ULL},
         {"horizon blends around legacy mountains",
          horizon_detail::blendChecksum(legacy, horizon_test::kX, horizon_test::kZ),
-         0x96E378BC6B035861ULL},
+         0xBC746EBCF51CBE2DULL},
         {"horizon blends at the world corner",
-         horizon_detail::blendChecksum(world, size.x / 2.0, size.z / 2.0), 0xE68987A81F6AD875ULL},
+         horizon_detail::blendChecksum(world, size.x / 2.0, size.z / 2.0), 0x084B5B9186401745ULL},
         // A border of the tropical forest and the savanna (without the planet).
         {"horizon blends at a forest border", horizon_detail::blendChecksum(world, -26'927'500.0,
                                                                             -270'336.0),
-         0x92DBFC547FFDE514ULL},
+         0x977D130A7EDBABD2ULL},
     };
 }
 
