@@ -104,7 +104,7 @@ void printSpread(const char* what, const terrain::SeaSpread& s, double scale, co
                 s.median * scale, unit, s.p10 * scale, s.p90 * scale, s.count, earth);
 }
 
-void printStats(const terrain::SeaStats& s, bool list) {
+void printStats(const terrain::SeaStats& s, const terrain::SeaStatsParams& p, bool list) {
     std::printf("sea cells: %zu of %zu (%.1f %% of the world)\n", s.seaCells, s.cells,
                 100.0 * static_cast<double>(s.seaCells) / static_cast<double>(s.cells));
     std::printf("hypsometry of the sea (share of its area)  world    Earth (Kossinna 1921)\n");
@@ -124,9 +124,16 @@ void printStats(const terrain::SeaStats& s, bool list) {
                 terrain::kEarthMeanDepth, s.medianDepth);
     std::printf("deepest cell %.0f m at %.0f %.0f (Earth: 10,900 m, Challenger Deep)\n", s.deepest,
                 s.deepestX, s.deepestZ);
-    std::printf("open floor (>= 600 km from land): %zu cells, median %.0f m, 5 %% shallowest above "
-                "%.0f m (Earth: abyssal plains 3,000 to 6,000 m, ridge crests about 2,500 m)\n",
-                s.openCells, s.openMedianDepth, s.openShallowDepth);
+    std::printf("open floor (>= 600 km from land): %zu cells, median %.0f m, p5 %.0f m, p95 %.0f m "
+                "(Earth: abyssal plains 3,000 to 6,000 m, ridge crests about 2,500 m)\n",
+                s.openCells, s.openMedianDepth, s.openShallowDepth, s.openDeepDepth);
+    std::printf("cells deeper than %.0f m: %zu (%.3f %% of the sea, about %.0f km of cells in a "
+                "line) | Earth: trenches 8,000 to 11,000 m, under 0.1 %% of the ocean (Kossinna: "
+                "0.1 %% deeper than 7,000 m)\n",
+                p.trenchDepth, s.trenchCells,
+                100.0 * static_cast<double>(s.trenchCells) /
+                    static_cast<double>(s.seaCells > 0 ? s.seaCells : 1),
+                static_cast<double>(s.trenchCells) * p.cellSize * 1.0e-3);
     std::printf("profiles from the shore: %zu kept\n", s.transects.size());
     printSpread("shelf break depth", s.breakDepth, 1.0, "m ", "about 130 m (100 to 200)");
     printSpread("shelf break distance", s.breakDistance, 1.0e-3, "km", "about 80 km (0 to 1,500)");
@@ -245,7 +252,7 @@ int main(int argc, char** argv) {
                 static_cast<unsigned long long>(o.seed), terrain::kGeneratorVersion,
                 flags.c_str(), o.stats.cellSize);
     const terrain::SeaStats stats = terrain::measureSeas(field, o.stats);
-    printStats(stats, o.list);
+    printStats(stats, o.stats, o.list);
     const terrain::Seas* seas =
         field.hydrology() != nullptr ? field.hydrology()->seas() : o.stats.seas;
     if (o.find && seas != nullptr) {

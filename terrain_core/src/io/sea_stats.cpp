@@ -308,6 +308,7 @@ void addHypsometry(const ReliefGrid& grid, const std::vector<double>& distance,
             if (distance[grid.index(i, j)] >= p.openDistance) {
                 open.push_back(depth);
             }
+            out.trenchCells += depth > p.trenchDepth ? 1 : 0;
         }
     }
     if (out.seaCells == 0) {
@@ -323,6 +324,7 @@ void addHypsometry(const ReliefGrid& grid, const std::vector<double>& distance,
         std::sort(open.begin(), open.end());
         out.openMedianDepth = open[open.size() / 2];
         out.openShallowDepth = open[open.size() / 20];
+        out.openDeepDepth = open[std::min(open.size() - 1, open.size() * 19 / 20)];
     }
 }
 

@@ -51,6 +51,9 @@ struct SeaStatsParams {
     double trenchReach = 400'000.0;
     // The open floor: the cells of the sea at least openDistance from every land.
     double openDistance = 600'000.0;
+    // The cells of the trenches: deeper than trenchDepth (the hadal zone begins about 6,000 m;
+    // the trenches of the Earth reach 8,000 to 11,000 m).
+    double trenchDepth = 8'000.0;
     // The roughness of the deep floor: windows of hillSamples x hillSamples samples hillSpacing
     // apart on open floor deeper than hillDepth, their rms about their best plane.
     int hillWindows = 32;
@@ -97,11 +100,15 @@ struct SeaStats {
     double deepest = 0.0;
     double deepestX = 0.0;
     double deepestZ = 0.0;
-    // The open floor: its cells, median depth, and the depth above which lie its 5 % shallowest
-    // cells (the crests of the ridges and the seamounts, without the islands).
+    // The open floor: its cells, median depth, the depth above which lie its 5 % shallowest
+    // cells (the crests of the ridges and the seamounts, without the islands) and the one below
+    // which lie its 5 % deepest (the deep basins).
     std::size_t openCells = 0;
     double openMedianDepth = 0.0;
     double openShallowDepth = 0.0;
+    double openDeepDepth = 0.0;
+    // The sea cells deeper than trenchDepth, wherever they are.
+    std::size_t trenchCells = 0;
     std::vector<SeaTransect> transects;
     SeaSpread breakDepth;
     SeaSpread breakDistance;

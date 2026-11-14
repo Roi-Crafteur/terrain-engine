@@ -1,5 +1,6 @@
 // The figures of the floors of the seas (agent 51, io/sea_stats.hpp) on the small world: shares
-// of the hypsometry that add up, depths within the bounds of the relief, profiles and windows
+// of the hypsometry that add up, depths within the bounds of the relief, the percentiles of the
+// open floor in order, the cells of the trenches among those of the sea, profiles and windows
 // measured, and the same figures whatever the number of threads.
 
 #include "terrain/generation/heightfield.hpp"
@@ -35,7 +36,8 @@ bool same(const SeaStats& a, const SeaStats& b) {
     bool equal = a.cells == b.cells && a.seaCells == b.seaCells && a.bands == b.bands &&
                  a.meanDepth == b.meanDepth && a.medianDepth == b.medianDepth &&
                  a.deepest == b.deepest && a.openCells == b.openCells &&
-                 a.openMedianDepth == b.openMedianDepth && a.hillRms == b.hillRms &&
+                 a.openMedianDepth == b.openMedianDepth && a.openDeepDepth == b.openDeepDepth &&
+                 a.trenchCells == b.trenchCells && a.hillRms == b.hillRms &&
                  a.transects.size() == b.transects.size();
     equal = equal && sameSpread(a.breakDepth, b.breakDepth) &&
             sameSpread(a.slopeDegrees, b.slopeDegrees) &&
@@ -65,6 +67,13 @@ void testSmallWorld() {
     TEST_CHECK(one.meanDepth > 0.0 && one.meanDepth < 8'000.0);
     TEST_CHECK(one.medianDepth > 0.0 && one.deepest >= one.medianDepth);
     TEST_CHECK(one.deepest < 12'000.0);
+    // The open floor: p5 <= median <= p95, within the deepest; the trenches among the sea cells,
+    // none when the deepest is shallower than their depth.
+    TEST_CHECK(one.openCells > 0);
+    TEST_CHECK(one.openShallowDepth <= one.openMedianDepth &&
+               one.openMedianDepth <= one.openDeepDepth && one.openDeepDepth <= one.deepest);
+    TEST_CHECK(one.trenchCells <= one.seaCells);
+    TEST_CHECK((one.trenchCells > 0) == (one.deepest > smallParams(1).trenchDepth));
     TEST_CHECK(!one.transects.empty() && one.breakDepth.count > 0);
     TEST_CHECK(one.hillWindows > 0 && one.hillRms >= 0.0);
     TEST_CHECK(same(one, four));
