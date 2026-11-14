@@ -295,7 +295,9 @@ int run(const Options& o) {
 } // namespace
 
 int main(int argc, char** argv) {
-    std::setvbuf(stdout, nullptr, _IOLBF, 0); // each line as soon as it is known
+    // Each line as soon as it is known: unbuffered, the one mode every C library takes with no
+    // buffer (MSVC refuses _IOLBF with a size of 0: its invalid parameter handler ends the tool).
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     Options o;
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
