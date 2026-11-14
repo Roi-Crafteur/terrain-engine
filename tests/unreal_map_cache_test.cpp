@@ -2,9 +2,10 @@
 // renderMap, kept and reused (moving a view renders only its new tiles), the least used dropped
 // beyond the capacity, the stale requests dropped, the layers changed, the probe of the cursor,
 // the landing of a click (the last asked, as clickLandingOn the source gives it), a clean stop
-// while tiles render, and a stop in the middle of heavy tiles of the generated world that does
-// not wait for their end: every render in flight stops before it (between two rows: MapCancelled),
-// the tile dropped, in a small part of the time these tiles would still have taken.
+// while tiles render (every render in flight stopped, the queue not rendered), and a stop in the
+// middle of heavy tiles of the generated world that does not wait for their end: every render in
+// flight stops before it (between two rows: MapCancelled), the tile dropped, in a small part of
+// the time these tiles would still have taken.
 #include "map_tile_cache.hpp"
 
 #include "map_test_support.hpp"
@@ -172,20 +173,66 @@ void testLanding() {
     TEST_CHECK(!without.takeLanding().has_value());
 }
 
-// Destroyed while its threads render: they finish their tile and stop.
+// The renders of testStop: each one, once started, waits for the stop of the cache (the MapCancel
+// it is given), then throws MapCancelled as renderMap does between two rows. Counted: started,
+// started once the stop was raised (a tile taken just before it), stopped, run to their end. The
+// guard of 10 s only matters for a broken cache that never raises its stop: the render then runs
+// to its end, and every later one at once, so that the test fails in about 10 s, not hangs.
+struct GatedRenders {
+    std::atomic<int> started{0};
+    std::atomic<int> startedAfterStop{0};
+    std::atomic<int> stopped{0};
+    std::atomic<int> finished{0};
+    std::atomic<bool> guardReached{false};
+};
+
+MapTileCache::Render gatedRender(const std::shared_ptr<GatedRenders>& renders) {
+    return [renders](const MapTileKey& key, const std::vector<std::string>& layers,
+                     MapCancel cancel) {
+        ++renders->started;
+        renders->startedAfterStop += mapCancelled(cancel) ? 1 : 0;
+        const auto start = std::chrono::steady_clock::now();
+        while (!mapCancelled(cancel) && !renders->guardReached.load()) {
+            if (std::chrono::steady_clock::now() - start > std::chrono::seconds(10)) {
+                renders->guardReached = true;
+            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+        if (mapCancelled(cancel)) {
+            ++renders->stopped;
+            throw MapCancelled();
+        }
+        ++renders->finished;
+        static const map_test::SyntheticSampler sampler;
+        static const MapLayers registry = defaultMapLayers();
+        return renderMap(sampler, mapTileFrame(key), registry, layers, {1, kMapMaxSamples});
+    };
+}
+
+// Destroyed while its 3 threads render: each render in flight stops, none runs to its end and the
+// queue is not rendered, whenever the stop comes (no time is measured: the threads wait in their
+// render for the stop). A tile taken just before the stop stops at once.
 void testStop() {
-    const Counted counted;
-    *counted.delayMs = 50;
+    const auto renders = std::make_shared<GatedRenders>();
     {
-        MapTileCache cache(counted.render(), noProbe(), {"relief"}, {64, 3});
+        MapTileCache cache(gatedRender(renders), noProbe(), {"relief"}, {64, 3});
         std::vector<MapTileKey> many;
         for (int i = 0; i < 30; ++i) {
             many.push_back({4, i, 0});
         }
         cache.want(many);
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        for (int round = 0; round < 10'000 && renders->started.load() < 3; ++round) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
-    TEST_CHECK(counted.calls->load() <= 6);
+    std::printf("cache stopped while its 3 threads rendered: %d renders started (%d once the stop "
+                "was raised), %d stopped, %d run to their end\n",
+                renders->started.load(), renders->startedAfterStop.load(), renders->stopped.load(),
+                renders->finished.load());
+    TEST_CHECK(renders->started.load() - renders->startedAfterStop.load() == 3);
+    TEST_CHECK(renders->stopped.load() == renders->started.load());
+    TEST_CHECK(renders->finished.load() == 0);
 }
 
 // The renders of a cache, counted: started, stopped before their end once the stop was asked (by
