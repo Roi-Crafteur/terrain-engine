@@ -1,24 +1,21 @@
 #pragma once
 
-// The parts of the planet file of task 11C (agent 31, planet_file.cpp), each written only when
-// its experimental flag is on (experimental_flags.hpp): off, the bytes of the file are those of
-// main.
-// - The parameters of the flags smooth_bands, pass_routing and planet_network, after the others
-//   (PlanetParams): each behind its tag, only when on.
-// - The sections after the level, each behind its tag, in a file of version 2 (its flags first):
-//   planet_network, the discharge of every land cell (PlanetCells::landDischarge); sphere_latitude,
-//   the rise of the climate of every land cell (PlanetCells::climateRise).
+// The parts of the planet file of task 11C (agent 31), each written only when its experimental
+// flag is on (experimental_flags.hpp): off, the bytes of the file are those of main.
+// - The parameters of the flags smooth_bands, pass_routing, planet_network and sphere_latitude,
+//   after the others (writeParams of planet_file.cpp): each behind its tag, only when on.
+// - Two sections of the file of version 2 (planet_sections.hpp, their rows in planetSections()):
+//   "NETW", the discharge of every land cell (PlanetCells::landDischarge, flag planet_network);
+//   "CLIM", the rise of the climate of every land cell (PlanetCells::climateRise, flag
+//   sphere_latitude).
 
-#include "frame_reader.hpp"
+#include "byte_stream.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/planet/planet_params.hpp"
 
 #include <cstdint>
 
 namespace terrain::planet_file_network {
-
-inline constexpr std::uint32_t kNetworkSection = 0x5754454EU; // "NETW"
-inline constexpr std::uint32_t kClimateSection = 0x4D494C43U; // "CLIM"
 
 template <class Out> void writeFlagParams(Out& out, const PlanetParams& p) {
     const PlanetClimateParams& c = p.climate;
@@ -46,39 +43,45 @@ template <class Out> void writeFlagParams(Out& out, const PlanetParams& p) {
     }
 }
 
-template <class Out> void writeNetwork(Out& out, const PlanetCells& c) {
-    out.u32(kNetworkSection);
-    out.count(c.landDischarge.size());
-    for (const std::uint16_t q : c.landDischarge) {
-        out.u16(q);
+// The section "NETW": present with the discharge of the land (planet_network).
+inline bool networkPresent(const PlanetLevel& level) {
+    return !level.cells().landDischarge.empty();
+}
+
+inline void writeNetwork(storage::ByteWriter& out, const PlanetLevel& level) {
+    const std::vector<std::uint16_t>& q = level.cells().landDischarge;
+    out.count(q.size());
+    for (const std::uint16_t v : q) {
+        out.u16(v);
     }
 }
 
-inline void readNetwork(storage::FrameReader& in, PlanetCells& c) {
-    if (in.u32() != kNetworkSection) {
-        in.fail("the section of the network (planet_network) missing");
-    }
-    c.landDischarge.resize(in.count(2));
-    for (std::uint16_t& q : c.landDischarge) {
-        q = in.u16();
+inline void readNetwork(storage::ByteReader& in, PlanetLevel::Parts& parts) {
+    std::vector<std::uint16_t>& q = parts.cells.landDischarge;
+    q.resize(in.count(2));
+    for (std::uint16_t& v : q) {
+        v = in.u16();
     }
 }
 
-template <class Out> void writeClimate(Out& out, const PlanetCells& c) {
-    out.u32(kClimateSection);
-    out.count(c.climateRise.size());
-    for (const std::uint8_t r : c.climateRise) {
-        out.u8(r);
+// The section "CLIM": present with the rise of the climate (sphere_latitude).
+inline bool climatePresent(const PlanetLevel& level) {
+    return !level.cells().climateRise.empty();
+}
+
+inline void writeClimate(storage::ByteWriter& out, const PlanetLevel& level) {
+    const std::vector<std::uint8_t>& r = level.cells().climateRise;
+    out.count(r.size());
+    for (const std::uint8_t v : r) {
+        out.u8(v);
     }
 }
 
-inline void readClimate(storage::FrameReader& in, PlanetCells& c) {
-    if (in.u32() != kClimateSection) {
-        in.fail("the section of the climate (sphere_latitude) missing");
-    }
-    c.climateRise.resize(in.count(1));
-    for (std::uint8_t& r : c.climateRise) {
-        r = in.u8();
+inline void readClimate(storage::ByteReader& in, PlanetLevel::Parts& parts) {
+    std::vector<std::uint8_t>& r = parts.cells.climateRise;
+    r.resize(in.count(1));
+    for (std::uint8_t& v : r) {
+        v = in.u8();
     }
 }
 

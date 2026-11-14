@@ -17,10 +17,11 @@ namespace terrain {
 // version of the generator of the relief (kReliefGeneratorVersion), the world and every parameter of the level.
 // It is written whole or not at all, and its level is checked against its checksum when read.
 //
-// The experimental flags of the world it was built with (experimental_flags.hpp, their canonical
-// text) are written with it: none, the file of version 1, the bytes of main; some, version 2,
-// their text first. A file of other flags is never read as the level asked, and never replaced
-// in silence (PlanetFlagsError).
+// Version 2 (agent 51) adds the experimental flags the level was built with (experimental_flags.hpp,
+// their canonical text) before the level, and its sections after it (what an agent adds to the
+// level: src/storage/planet_sections.hpp says how). With neither, the file is of version 1, the
+// bytes of main. A file of other flags is never read as the level asked, and never replaced
+// (PlanetFlagsError).
 
 inline constexpr const char* kPlanetFileName = "planet.bin";
 inline constexpr std::uint32_t kPlanetFileVersion = 2;

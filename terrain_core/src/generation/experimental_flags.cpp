@@ -2,46 +2,14 @@
 #include "terrain/generation/experimental_flags.hpp"
 
 #include <algorithm>
-#include <array>
 #include <string>
 
 namespace terrain {
 
 namespace {
 
-// sphere_latitude (task 11C, after the audit): the latitude of a sphere for every reader of the
-// climate (climate_latitude.hpp), one threshold of the frost (the ice of the planet level at the
-// snow of the biomes), the climate of a cell at the mean altitude of its points, the rivers going
-// on under the ice.
-void sphereLatitude(WorldParams& p) {
-    p.relief.sphereLatitude = true;
-    p.planet.climate.sphereLatitude = true;
-    p.planet.climate.meanAltitude = true;
-    p.planet.climate.iceTemperature = p.ecology.biomes.snowTemperature;
-    p.planet.rivers.underIce = true;
-    p.ecology.climate.sphereLatitude = true;
-}
-
-// One row per flag, sorted by name: see experimental_flags.hpp to add one.
-constexpr std::array kFlags = {
-    ExperimentalFlag{"pass_routing",
-                     "the rivers of the planet level through the passes, not across the crests "
-                     "(agent 31)",
-                     [](WorldParams& p) { p.planet.links.enabled = true; }},
-    ExperimentalFlag{"planet_network",
-                     "the discharge of every land cell kept: the network of the planet level and "
-                     "the fine network (agent 31)",
-                     [](WorldParams& p) { p.planet.landDischarge = true; }},
-    ExperimentalFlag{"smooth_bands", "the bands of the winds joined smoothly (agent 31)",
-                     [](WorldParams& p) { p.planet.climate.smoothBands = true; }},
-    ExperimentalFlag{"sphere_latitude",
-                     "the climate reads the latitude of a sphere, one threshold of the frost, the "
-                     "mean altitude of the cells, rivers under the ice (agent 31)",
-                     sphereLatitude},
-};
-
 bool separator(char c) {
-    return c == ',' || c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';';
+    return c == ',' || c == ';' || c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
 char lower(char c) {
@@ -71,56 +39,88 @@ std::vector<std::string> namesOf(std::string_view text) {
     return names;
 }
 
-const ExperimentalFlag* findFlag(const std::string& written) {
+// The index of the row of written in table (its case ignored), or table.size().
+std::size_t rowOf(const std::string& written, std::span<const ExperimentalFlag> table) {
     std::string name = written;
     std::transform(name.begin(), name.end(), name.begin(), lower);
-    for (const ExperimentalFlag& flag : kFlags) {
-        if (name == flag.name) {
-            return &flag;
+    for (std::size_t i = 0; i < table.size(); ++i) {
+        if (name == table[i].name) {
+            return i;
         }
     }
-    return nullptr;
+    return table.size();
 }
 
-AppliedFlags applyTo(std::string_view text, WorldParams* params) {
+AppliedFlags applyTo(std::string_view text, WorldParams* params,
+                     std::span<const ExperimentalFlag> table) {
     AppliedFlags out;
-    std::vector<const ExperimentalFlag*> applied;
+    std::vector<std::size_t> rows;
     for (const std::string& name : namesOf(text)) {
-        const ExperimentalFlag* flag = findFlag(name);
-        if (flag == nullptr) {
+        const std::size_t row = rowOf(name, table);
+        if (row == table.size()) {
             out.unknown.push_back(name);
-        } else if (std::find(applied.begin(), applied.end(), flag) == applied.end()) {
-            applied.push_back(flag);
+        } else if (std::find(rows.begin(), rows.end(), row) == rows.end()) {
+            rows.push_back(row);
         }
     }
     // In the order of the table, sorted by name: the canonical text, whatever the order written.
-    std::sort(applied.begin(), applied.end());
-    for (const ExperimentalFlag* flag : applied) {
+    std::sort(rows.begin(), rows.end());
+    for (const std::size_t row : rows) {
         if (params != nullptr) {
-            flag->apply(*params);
+            table[row].apply(*params);
         }
-        out.text += (out.text.empty() ? "" : ",") + std::string(flag->name);
+        out.text += (out.text.empty() ? "" : ",") + std::string(table[row].name);
     }
     return out;
+}
+
+// sphere_latitude (agent 31, task 11C after the audit): the latitude of a sphere for every reader
+// of the climate (climate_latitude.hpp), one threshold of the frost (the ice of the planet level
+// at the snow of the biomes), the climate of a cell at the mean altitude of its points, the rivers
+// going on under the ice.
+void sphereLatitude(WorldParams& p) {
+    p.relief.sphereLatitude = true;
+    p.planet.climate.sphereLatitude = true;
+    p.planet.climate.meanAltitude = true;
+    p.planet.climate.iceTemperature = p.ecology.biomes.snowTemperature;
+    p.planet.rivers.underIce = true;
+    p.ecology.climate.sphereLatitude = true;
 }
 
 } // namespace
 
 std::span<const ExperimentalFlag> experimentalFlags() {
-    return kFlags;
+    // One row per flag, sorted by name: {"name", "what it does (agent)", [](WorldParams& p) {...}}.
+    static const std::vector<ExperimentalFlag> flags = {
+        {"pass_routing",
+         "the rivers of the planet level through the passes, not across the crests (agent 31)",
+         [](WorldParams& p) { p.planet.links.enabled = true; }},
+        {"planet_network",
+         "the discharge of every land cell kept: the network of the planet level and the fine "
+         "network (agent 31)",
+         [](WorldParams& p) { p.planet.landDischarge = true; }},
+        {"smooth_bands", "the bands of the winds joined smoothly (agent 31)",
+         [](WorldParams& p) { p.planet.climate.smoothBands = true; }},
+        {"sphere_latitude",
+         "the climate reads the latitude of a sphere, one threshold of the frost, the mean "
+         "altitude of the cells, rivers under the ice (agent 31)",
+         sphereLatitude},
+    };
+    return flags;
 }
 
-AppliedFlags applyExperimentalFlags(std::string_view text, WorldParams& params) {
-    return applyTo(text, &params);
+AppliedFlags applyExperimentalFlags(std::string_view text, WorldParams& params,
+                                    std::span<const ExperimentalFlag> table) {
+    return applyTo(text, &params, table);
 }
 
-std::string canonicalFlags(std::string_view text) {
-    return applyTo(text, nullptr).text;
+std::string canonicalFlags(std::string_view text, std::span<const ExperimentalFlag> table) {
+    return applyTo(text, nullptr, table).text;
 }
 
-std::string knownFlagNames() {
+std::string knownFlagNames(std::span<const ExperimentalFlag> table) {
     std::string names;
-    for (const ExperimentalFlag& flag : kFlags) {
+    for (const ExperimentalFlag& flag : table) {
         names += (names.empty() ? "" : ", ") + std::string(flag.name);
     }
     return names;
