@@ -52,7 +52,10 @@ struct PlanetJobResult {
 // the stage in progress (seconds); the destructor cancels and waits for that.
 class PlanetJob {
 public:
-    PlanetJob(PlanetChoice choice, std::uint64_t seed, const WorldSize& world);
+    // experimental: the experimental flags of the world (session_flags.hpp), as written; a file of
+    // other flags is an error, never read nor replaced, no fallback built.
+    PlanetJob(PlanetChoice choice, std::uint64_t seed, const WorldSize& world,
+              std::string experimental = {});
     ~PlanetJob();
     PlanetJob(const PlanetJob&) = delete;
     PlanetJob& operator=(const PlanetJob&) = delete;
@@ -68,7 +71,8 @@ public:
     [[nodiscard]] PlanetJobResult take();
 
 private:
-    void run(PlanetChoice choice, std::uint64_t seed, WorldSize world);
+    void run(PlanetChoice choice, std::uint64_t seed, WorldSize world,
+             const std::string& experimental);
     void setStage(const char* stage);
 
     std::chrono::steady_clock::time_point start_;
