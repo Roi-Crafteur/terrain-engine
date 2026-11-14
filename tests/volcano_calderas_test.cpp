@@ -1,14 +1,18 @@
 // The walls of the calderas of the default world (agent 45) are never a regular cylinder: around
-// each, every quarter of a degree, the height of its crest (the highest ground across its rim),
-// the radius where its wall is half way up (its spurs and re-entrants) and the ground at nine
-// tenths of its radius (its couloirs and talus). The crest varies by a few percent of the depth at
-// least, the radius too; and none of the three repeats at a fixed period: past the first lag where
-// its autocorrelation falls below 0, it never climbs back above 0.5. Measured around the caldera
-// in the frame its relief is drawn in (volcano_relief::offsetOfFrame): around the true center of
-// its crater (the summit shifted off the center of the volcano, the shift fading out to its
-// foot), its ellipse (VolcanoSite::elongation, along axis) stretched back to a circle: an
-// elliptical caldera (Crater Lake, 8 by 10 km) is a shape, not a pattern, though its radius
-// repeats every half turn.
+// each, every quarter of a degree, the height of its crest (the highest ground across its rim), the
+// radius where its wall is half way up (its spurs and re-entrants) and the ground at nine tenths of
+// its radius (its couloirs and talus). On three of each form the crest varies by a few percent of
+// the depth at least, the radius too. None of the three repeats at a fixed period: its periodicity
+// is the highest its autocorrelation climbs back past the first lag where it falls below 0. A
+// smooth series of a dozen features around the turn reaches 0.5 by chance now and then (1 to 6
+// calderas of 47 in six versions of the relief), so it is read over 47 calderas (up to 20 of each
+// form): the mean of the worst series of each under 0.35, at most 3 series at 0.5 or more, none
+// over 0.6. A lattice of the turn (ringNoise, 11 and 29 cells, 6a4cc66) fails it: 8 series at 0.5
+// or more, the highest 0.631. Measured around the caldera in the frame its relief is drawn in
+// (volcano_relief::offsetOfFrame): around the true center of its crater (the summit shifted off the
+// center of the volcano, the shift fading out to its foot), its ellipse (VolcanoSite::elongation,
+// along axis) stretched back to a circle: an elliptical caldera (Crater Lake, 8 by 10 km) is a
+// shape, not a pattern, though its radius repeats every half turn.
 // Its rim has real low cols and real high points, not only in plan: the height of its crest over
 // its floor (the 10th percentile of the ground within half its radius), but across the notch of
 // its breach, at its highest at least 1.8 times its lowest, its spread at least 12 % of its mean
@@ -26,14 +30,17 @@
 #include "volcano_relief.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <thread>
 #include <vector>
 
 namespace {
 
 using terrain::VolcanoForm;
+using terrain::VolcanoSite;
 
 constexpr int kAzimuths = 1440;
 constexpr double kPi = 3.14159265358979323846;
@@ -330,6 +337,59 @@ void printOutlines(const terrain::Heightfield& field, const std::vector<std::siz
     }
 }
 
+// The periodicity of the walls over up to 20 calderas of each form (4 threads, each its share of
+// them: the same values whatever their number).
+void testPeriodicity(const terrain::Heightfield& field) {
+    const auto& sites = field.volcanoes()->sites();
+    std::vector<std::size_t> picked;
+    int counts[3] = {0, 0, 0};
+    for (std::size_t i = 0; i < sites.size(); ++i) {
+        const VolcanoForm f = sites[i].form;
+        const int k = f == VolcanoForm::Caldera          ? 0
+                      : f == VolcanoForm::PlateauCaldera ? 1
+                      : f == VolcanoForm::IslandCaldera  ? 2
+                                                         : -1;
+        if (k >= 0 && counts[k] < 20) {
+            ++counts[k];
+            picked.push_back(i);
+        }
+    }
+    std::vector<std::array<double, 3>> periods(picked.size());
+    std::vector<std::thread> threads;
+    for (std::size_t t = 0; t < 4; ++t) {
+        threads.emplace_back([&, t]() {
+            for (std::size_t i = t; i < picked.size(); i += 4) {
+                const Walls w = wallsOf(field, sites[picked[i]]);
+                periods[i] = {periodicity(w.crest), periodicity(w.middle), periodicity(w.ring)};
+            }
+        });
+    }
+    for (std::thread& t : threads) {
+        t.join();
+    }
+    double worstSum = 0.0;
+    double highest = -1.0;
+    int over = 0;
+    for (std::size_t i = 0; i < picked.size(); ++i) {
+        const std::array<double, 3>& p = periods[i];
+        worstSum += *std::max_element(p.begin(), p.end());
+        for (const double v : p) {
+            highest = std::max(highest, v);
+            over += v >= 0.5 ? 1 : 0;
+        }
+        if (*std::max_element(p.begin(), p.end()) >= 0.45) {
+            const VolcanoSite& s = sites[picked[i]];
+            std::printf("  %-15s %.0f %.0f: periodicity crest %.3f, wall %.3f, ring %.3f\n",
+                        terrain::volcanoFormName(s.form), s.x, s.z, p[0], p[1], p[2]);
+        }
+    }
+    const double mean = worstSum / static_cast<double>(picked.size());
+    std::printf("periodicity over %zu calderas: the mean of their worst series %.3f, %d series at "
+                "0.5 or more, the highest %.3f\n",
+                picked.size(), mean, over, highest);
+    TEST_CHECK(picked.size() >= 40 && mean < 0.35 && over <= 3 && !(highest > 0.6));
+}
+
 } // namespace
 
 int main() {
@@ -361,18 +421,19 @@ int main() {
         const double pc = periodicity(w.crest);
         const double pm = periodicity(w.middle);
         const double pr = periodicity(w.ring);
-        const bool ok = crest >= 0.05 && radius >= 0.02 && pc < 0.5 && pm < 0.5 && pr < 0.5;
+        const bool ok = crest >= 0.05 && radius >= 0.02;
         regular += ok ? 0 : 1;
         std::printf("%-15s %5.0f m deep, %5.0f m wide: crest varies %4.1f %% of the depth, the "
-                    "radius of the wall %4.1f %%; periodicity crest %5.2f, wall %5.2f, ring "
-                    "%5.2f%s\n",
+                    "radius of the wall %4.1f %%; periodicity crest %6.3f, wall %6.3f, ring "
+                    "%6.3f%s\n",
                     terrain::volcanoFormName(s.form), depth, 2.0 * static_cast<double>(s.crater),
-                    100.0 * crest, 100.0 * radius, pc, pm, pr, ok ? "" : "  REGULAR");
+                    100.0 * crest, 100.0 * radius, pc, pm, pr, ok ? "" : "  EVEN");
         even += testRelief(field, s, index, w) ? 0 : 1;
     }
-    std::printf("%d calderas, %d too regular, %d whose rim is too even seen from the floor\n",
+    std::printf("%d calderas, %d too even in plan, %d whose rim is too even seen from the floor\n",
                 calderas, regular, even);
     printOutlines(field, measured);
     TEST_CHECK(calderas >= 8 && regular == 0 && even == 0);
+    testPeriodicity(field);
     return test::result();
 }
