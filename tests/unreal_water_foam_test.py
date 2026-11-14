@@ -12,7 +12,9 @@ without Unreal (agent 27, phase 12A):
   frame of the flow about the origin of the world) breaks them into stripes (refused).
 - White water: over a ramp as steep as 1.5 times the slope of full foam, the water between the
   streaks is opaque (0.85 at least): never the bed through it.
-- The foam at the foot of a fall fades out to nothing on the border of its pool (KindDrop.y).
+- The foam at the foot of a fall fades out to nothing on the border of its pool (KindDrop.y); with
+  FoamEllipse (agent 40, 1 by default), on the rim of its ellipse and where the water under it,
+  measured upright, gets shallow (the border of the cells drew corners on the coarse tiles).
 Usage: python3 unreal_water_foam_test.py <terrain_unreal/Scripts>
 """
 
@@ -78,7 +80,8 @@ if (slope > 0.5 * FoamFromSlope)
 }"""
 WHITE_OPACITY_HLSL = ("float opacity = max(saturate(1.0 - through * (1.0 - Fresnel)), "
                       "max(foam, white));")
-FALLS_FOAM_HLSL = "    opacity = rim * lerp(0.6, 0.95, n) * pool * saturate(KindDrop.y);"
+FALLS_FOAM_HLSL = ("    opacity = rim * lerp(0.6, 0.95, n) * pool * "
+                   "(ellipse ? 1.0 : saturate(KindDrop.y));")
 
 RAPIDS_CELL = 4.0
 RAMP_SLOPE, RAMP_FOAM_LEAST, BARE_FOAM, BARE_MOST = 0.31, 0.35, 0.1, 0.01
@@ -221,7 +224,8 @@ def main(folder):
           "FTerrainWater::Rapids is not the code run here")
     check(RAPIDS_TILE_HLSL in tile, "the foam of the rapids is not the code run here")
     check(WHITE_OPACITY_HLSL in tile, "the white water is not the code run here")
-    check(FALLS_FOAM_HLSL in look.FALLS_HLSL, "the foam of the falls does not fade by KindDrop.y")
+    check(FALLS_FOAM_HLSL in look.FALLS_HLSL,
+          "the foam of the falls fades neither by KindDrop.y (FoamEllipse 0) nor by its ellipse")
     scalars = look.WATER_SCALARS
     mean, bare = ramp_cover(scalars, False)
     check(mean >= RAMP_FOAM_LEAST and bare <= BARE_MOST,

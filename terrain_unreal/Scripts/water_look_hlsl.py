@@ -321,7 +321,8 @@ return lerp(body, FoamColor, foam);
 # center), KindDrop (UV1: the kind, and the drop of the fall on a curtain or the fade of the foam
 # toward the border of its pool), AltitudeSize (UV2: altitude, width of the curtain or radius of
 # the foam), Time, SceneDepth, PixelDepth, CurtainColor, FoamColor, FoamDepthM; returns the base
-# color, with OpacityOut.
+# color, with OpacityOut. FoamEllipse (agent 40; 0: as before) and CameraDir (the direction from the
+# pixel to the camera): the foam bounded by its ellipse alone and by the water under it, below.
 FALLS_HLSL = r"""
 float size = max(AltitudeSize.y, 0.1);
 // What lies behind the pixel (the rock, the bed of the pool), meters along the depth.
@@ -350,12 +351,20 @@ else
     // hole (the dark pool would show through it), thinner where the water under it gets shallow
     // (toward the banks of the pool and its rock), and to nothing on the border of the cells of
     // its pool (KindDrop.y): it takes the shape of the pool, never its steps.
+    // With FoamEllipse (agent 40): on the coarse tiles (cells of 4 and 8 m) the border of the cells
+    // of the pool, interpolated over two triangles a cell, drew a corner or a triangle; the rim of
+    // its ellipse alone bounds it, its ellipse fitted to the pool (fall_foam.hpp), and the water
+    // under it is measured upright (the depth behind the pixel along the view times the upward
+    // share of the view), not along the view: seen from afar and askance, the depth behind the
+    // pixel was long and the foam all but opaque.
     float r = length(Fall) / size;
     float n = 0.6 * Water.Noise(Fall + float2(Time * 0.7, -Time * 0.4), 0.9)
             + 0.4 * Water.Noise(Fall * 1.7 - float2(Time * 0.5, Time * 0.9), 0.9);
     float rim = 1.0 - smoothstep(0.3, 1.0, r + 0.25 * (n - 0.5));
-    float pool = smoothstep(0.0, 1.0, behind / max(FoamDepthM, 0.01));
-    opacity = rim * lerp(0.6, 0.95, n) * pool * saturate(KindDrop.y);
+    bool ellipse = FoamEllipse > 0.5;
+    float under = ellipse ? behind * abs(CameraDir.z) : behind;
+    float pool = smoothstep(0.0, 1.0, under / max(FoamDepthM, 0.01));
+    opacity = rim * lerp(0.6, 0.95, n) * pool * (ellipse ? 1.0 : saturate(KindDrop.y));
     color = FoamColor * lerp(0.82, 1.0, n);
 }
 OpacityOut = opacity;

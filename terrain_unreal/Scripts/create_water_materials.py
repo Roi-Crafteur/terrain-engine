@@ -59,7 +59,7 @@ WATER_INPUTS = ["Flow", "KindSlope", "Altitude", "Edge", "CameraRel", "Time", "S
 SURFACE_SCALARS = {"SurfaceCells": 256.0, "SurfacePitchCm": 800.0, "SurfaceCoveredCm": 0.0,
                    "SurfaceBandCm": 0.0, "HasSurface": 0.0}
 FALLS_INPUTS = ["Fall", "KindDrop", "AltitudeSize", "Time", "SceneDepth", "PixelDepth",
-                "CurtainColor", "FoamColor", "FoamDepthM"]
+                "CurtainColor", "FoamColor", "FoamDepthM", "CameraDir", "FoamEllipse"]
 
 
 def expression(material, cls, x, y):
@@ -213,6 +213,13 @@ def falls_graph(material):
     connect(uv(material, 2, "rg", -900, -100), "", custom, "AltitudeSize")
     connect(expression(material, unreal.MaterialExpressionTime, -900, 0), "", custom, "Time")
     depths(material, custom, -900, 100)
+    # The foam bounded by its ellipse and the water under it (agent 40; 0: as before).
+    connect(expression(material, unreal.MaterialExpressionCameraVectorWS, -900, 200), "", custom,
+            "CameraDir")
+    ellipse = expression(material, unreal.MaterialExpressionScalarParameter, -900, 260)
+    ellipse.set_editor_property("parameter_name", "FoamEllipse")
+    ellipse.set_editor_property("default_value", 1.0)
+    connect(ellipse, "", custom, "FoamEllipse")
     for name, node in look_parameters(material, inputs, -1300, -300).items():
         connect(node, "", custom, name)
     roughness = expression(material, unreal.MaterialExpressionConstant, 0, 300)

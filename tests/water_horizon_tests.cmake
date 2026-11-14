@@ -77,3 +77,8 @@ endif()
 # The warm bounce of the ground in the shade: on, the lower hemisphere of the SkyLight from its
 # capture and a warm ground; off, the values of the map exactly.
 terrain_add_test(unreal_ground_bounce_test terrain_unreal_bridge)
+
+# The foam at the foot of the falls on the tiles of LOD 0 to 3: the center and the semi-axes of
+# its ellipse, which alone bounds it with FoamEllipse, against those of LOD 0.
+terrain_add_test(unreal_fall_foam_lod_test terrain_unreal_bridge)
+target_include_directories(unreal_fall_foam_lod_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

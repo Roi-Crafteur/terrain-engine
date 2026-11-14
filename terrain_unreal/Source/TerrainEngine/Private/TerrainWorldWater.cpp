@@ -111,17 +111,21 @@ void ATerrainWorld::StartWater()
 	{
 		return;
 	}
+	UMaterialInstanceDynamic* FallsLook = nullptr;
 	if (bWater)
 	{
 		// An instance of its own: the GPU horizon places the band where the water of the tiles
 		// fades into its own (the same parameters as the material of the ground of the tiles).
 		UMaterialInterface* Water = Resolve(WaterMaterial, WaterMaterialPath, TEXT("water"));
 		TileWaterLook = Water != nullptr ? UMaterialInstanceDynamic::Create(Water, this) : nullptr;
-		Backend->SetWaterMaterials(TileWaterLook,
-			Resolve(FallsMaterial, FallsMaterialPath, TEXT("falls")));
+		// The falls too (agent 40), so that Terrain.Param reaches them (FoamEllipse).
+		UMaterialInterface* Falls = Resolve(FallsMaterial, FallsMaterialPath, TEXT("falls"));
+		FallsLook = Falls != nullptr ? UMaterialInstanceDynamic::Create(Falls, this) : nullptr;
+		Backend->SetWaterMaterials(TileWaterLook, FallsLook);
 	}
 	if (HorizonClipmap != nullptr)
 	{
+		HorizonClipmap->BindSurfaceLook(FallsLook); // only for Terrain.Param
 		HorizonClipmap->BindSurfaceLook(TileWaterLook);
 		if (TileWaterLook != nullptr)
 		{

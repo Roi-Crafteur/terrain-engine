@@ -19,6 +19,12 @@ per change, each behind its switch (Terrain.Param), 1 by default and 0 for the l
   11 degrees below as before.
 - RockWarmth: declared at 1; the rock warmer but never as orange as the sand (blue over red of its
   factor at least 0.75).
+- FoamEllipse (water_look_hlsl.py: FALLS_HLSL): declared at 1 on the falls; the foam bounded by
+  the rim of its ellipse and the water under it upright (CameraDir), the border of the cells and
+  the depth along the view kept for 0; the falls get an instance of their own that Terrain.Param
+  reaches.
+- DuneSmooth (create_temporary_terrain_material.py): declared at 1; the normal of the far dunes
+  leans fully toward the smooth one (the share of the dunes W4).
 - In each new HLSL, no variable named as a word HLSL keeps (half, fixed, sample, linear, point);
   unreal_water_scripts_test.py runs every script and checks the scopes of every Custom node.
 Usage: python3 water_horizon_scripts_test.py <repository>
@@ -174,6 +180,26 @@ def check_far_detail_snow_rock(root):
         check(r == 1.0 and 1.0 >= g >= b >= 0.75, "the rock warmer than grey turns sandy")
 
 
+def check_foam_dunes(root, scripts, water_defaults, tile_defaults):
+    look = importlib.import_module("water_look_hlsl")
+    materials = (scripts / "create_water_materials.py").read_text()
+    check(water_defaults.get("FoamEllipse") == 1.0, "FoamEllipse is not declared at 1")
+    check('"CameraDir", "FoamEllipse"]' in materials and "MaterialExpressionCameraVectorWS" in
+          materials, "the falls get no CameraDir or no FoamEllipse")
+    check("float under = ellipse ? behind * abs(CameraDir.z) : behind;" in look.FALLS_HLSL and
+          "(ellipse ? 1.0 : saturate(KindDrop.y))" in look.FALLS_HLSL,
+          "the foam is not bounded by its ellipse and the water under it, or 0 changed")
+    world = (root / "terrain_unreal/Source/TerrainEngine/Private/TerrainWorldWater.cpp").read_text()
+    check("UMaterialInstanceDynamic::Create(Falls, this)" in world and
+          "BindSurfaceLook(FallsLook)" in world, "Terrain.Param does not reach the falls")
+    check(not kept_words(look.FALLS_HLSL), f"the falls name {kept_words(look.FALLS_HLSL)}")
+    tiles = (scripts / "create_temporary_terrain_material.py").read_text()
+    check(tile_defaults.get("DuneSmooth") == 1.0, "DuneSmooth is not declared at 1")
+    check("k = lerp(k, max(k, dune), DuneSmooth * saturate(W4));" in tiles and
+          '["Nv", "W3", "W4", "S", "Dist"]' in tiles,
+          "the normal of the far dunes does not lean fully toward the smooth one")
+
+
 def main(root):
     root = pathlib.Path(root)
     scripts = root / "terrain_unreal/Scripts"
@@ -184,6 +210,7 @@ def main(root):
     runner = importlib.import_module("unreal_water_scripts_test")
     horizon = defaults(runner.run_as_unreal(scripts, "create_horizon_gpu_material.py", False))
     tiles = defaults(runner.run_as_unreal(scripts, "create_temporary_terrain_material.py", False))
+    waters = defaults(runner.run_as_unreal(scripts, "create_water_materials.py", False))
     check(not runner.failures, f"the scripts do not run: {runner.failures}")
     sys.modules["unreal"] = types.SimpleNamespace(CustomMaterialOutputType=types.SimpleNamespace(
         CMOT_FLOAT1=1, CMOT_FLOAT2=2, CMOT_FLOAT3=3, CMOT_FLOAT4=4))
@@ -193,6 +220,7 @@ def main(root):
     check_seam_normal(scripts, tiles)
     check_rock_caps(root, scripts, horizon)
     check_far_detail_snow_rock(root)
+    check_foam_dunes(root, scripts, waters, tiles)
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 

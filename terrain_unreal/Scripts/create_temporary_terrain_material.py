@@ -53,10 +53,12 @@ SURFACE_SCALARS = {"SurfaceFirstX": 0.0, "SurfaceFirstZ": 0.0, "SurfaceCells": 2
                    "WaveOriginY": 0.0, "SmoothNormal": 0.8, "SmoothNearM": 60.0,
                    "SmoothFarM": 220.0, "TileBlend": 1.0, "SurfaceBlends": 1.0,
                    "SurfaceCoveredCm": 0.0, "SurfaceBandCm": 0.0, **detail.TILE_SCALARS,
-                   # The tiles take the normal of the horizon toward their edge (agent 40).
-                   "SeamNormal": 1.0, "SeamNearM": 380.0, "SeamFarM": 500.0}
+                   # The tiles take the normal of the horizon toward their edge, the far dunes
+                   # their smooth normal (agent 40).
+                   "SeamNormal": 1.0, "SeamNearM": 380.0, "SeamFarM": 500.0, "DuneSmooth": 1.0}
 # The scalars of the normal of the pixel (NORMAL_HLSL).
-SEAM_INPUTS = ["SmoothNormal", "SmoothNearM", "SmoothFarM", "SeamNormal", "SeamNearM", "SeamFarM"]
+SEAM_INPUTS = ["SmoothNormal", "SmoothNearM", "SmoothFarM", "SeamNormal", "SeamNearM", "SeamFarM",
+               "DuneSmooth"]
 # The custom primitive data of a tile (ProceduralMeshTerrainBackend): the slot of its surface
 # blend in the atlas TileBlendTexels (-1: none) and the centimeters between its texels.
 PRIMITIVE_SCALARS = {"BlendSlot": (0, -1.0), "BlendPitchCm": (1, 400.0)}
@@ -178,13 +180,17 @@ return a;
 # not ready, the smooth normal of its samples (bilinear slopes), except on cliffs, overhangs and
 # caves, where the two disagree. Toward the edge of the tiles (SeamNormal, agent 40), the share of
 # the Marching Cubes normal left (1 - SmoothNormal) goes too, from SeamNearM to SeamFarM: the tiles
-# meet the horizon with the normal it draws there (no arc of light at 512 m); 0: as before.
+# meet the horizon with the normal it draws there (no arc of light at 512 m); 0: as before. On the
+# sand of the dunes (W4, DuneSmooth), the Marching Cubes normal goes too beyond SmoothNearM: its
+# facets of 4 and 8 m drew teeth along the shadow line of the crests of the far dunes.
 NORMAL_HLSL = r"""
 float3 n = normalize(Nv);
 if (W3.z < 0.5) { return n; }
 float3 smooth = normalize(float3(-S.xy, 1.0));
 float k = SmoothNormal * saturate((Dist - SmoothNearM) / max(SmoothFarM - SmoothNearM, 1.0));
 k = lerp(k, 1.0, SeamNormal * saturate((Dist - SeamNearM) / max(SeamFarM - SeamNearM, 1.0)));
+float dune = saturate((Dist - SmoothNearM) / max(SmoothFarM - SmoothNearM, 1.0));
+k = lerp(k, max(k, dune), DuneSmooth * saturate(W4));
 k *= saturate((dot(n, smooth) - 0.6) / 0.2);
 return normalize(lerp(n, smooth, k));
 """
@@ -327,10 +333,11 @@ def pixel_shader(material, scalars, weights):
     connect(scalars["WaveOriginY"], "", position, "WaveOriginY")
     vertex_normal = expression(material, unreal.MaterialExpressionVertexNormalWS, -1100, 650)
     normal = custom_node(material, -800, 650, "TemporaryTerrainNormal", NORMAL_HLSL,
-                         ["Nv", "W3", "S", "Dist"] + SEAM_INPUTS, [], FLOAT3)
+                         ["Nv", "W3", "W4", "S", "Dist"] + SEAM_INPUTS, [], FLOAT3)
     connect(detail_slope(material, scalars, weights), "", normal, "S")
     connect(vertex_normal, "", normal, "Nv")
     connect(weights["W3"], "", normal, "W3")
+    connect(weights["W4"], "", normal, "W4") # the share of the dunes
     connect(position, "Dist", normal, "Dist")
     for name in SEAM_INPUTS:
         connect(scalars[name], "", normal, name)
