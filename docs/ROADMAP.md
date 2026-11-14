@@ -679,6 +679,12 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   On la lit sur la carte de dev (calque `monsoon`), dans F3 (`monsoon`) et dans la sonde
   (`surface.monsoon`). À reprendre par l'agent 50 (plaines inondables, forêts inondées, prairies
   humides)
+  - écart à reprendre (agent 50, réglage à R1) : 3,95 % des terres de la planète réelle à 0,5 au
+    moins, contre environ 28 % des terres de la Terre dans le domaine de la mousson globale (Bin
+    Wang, webinaire OMM/WCRP 2023 ; Wang et Ding 2008 : 19,4 % de toute la surface du globe, mers
+    comprises). Causes probables : la bande de latitude (8 à 25°) et le seuil d'humidité (0,45 à
+    0,6) sont étroits, et la planète n'a pas de saisons ; la vraie définition (Wang et Ding) lit
+    l'écart de pluie entre l'été et l'hiver (plus de 2 mm/j, plus de 55 % en été)
 - à R1, réglage fin des seuils des biomes sur la table des 6 seeds. Le climat de la planète bouge
   alors (latitude « sphère » et bandes fondues de l'agent 31). Écarts mesurés sur le climat actuel
   (planète réelle, 38 071 points de terre ; réglage grossier jusque-là) :
