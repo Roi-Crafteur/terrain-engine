@@ -26,7 +26,7 @@ target_compile_definitions(volcano_positions_test PRIVATE
 terrain_add_test(volcano_flags_test terrain_core)
 # The goldens with the volcanoes on (golden_support.hpp: the same executables run with --flags
 # volcanoes), their values pinned for R1, which turns every new relief on together. Not in ctest:
-# the planet level of the default seed with them on, eb4c8edbc592e7b6 (PlanetLevel of the relief
+# the planet level of the default seed with them on, b30c167a05cac2ab (PlanetLevel of the relief
 # with them on, about 75 s on 4 cores), and planet_file_test, whose bytes carry the versions R1 raises.
 foreach(golden heightfield_golden_test planet_golden_test planet_memory_test river_falls_test
         hydrology_test water_level_test coast_outside_test mountain_freeze_test
