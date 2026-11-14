@@ -120,6 +120,7 @@ add_library(terrain_core STATIC
     src/generation/plain_forms.cpp
     src/generation/ravines.cpp
     src/generation/relief_local.cpp
+    src/generation/relief_fingerprint.cpp
     src/generation/rivers.cpp
     src/generation/rock_faces.cpp
     src/generation/rock_spires.cpp

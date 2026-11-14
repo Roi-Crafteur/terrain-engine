@@ -92,9 +92,12 @@ void readSections(FrameReader& in, PlanetLevel::Parts& parts,
 void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
                     std::uint64_t seed, const WorldSize& world, const std::string& flags,
                     std::span<const PlanetSection> table);
+// relief: the parameters of the relief asked, whose fingerprint a section PROV must hold; null for
+// the default relief with the experimental flags of flags.
 [[nodiscard]] PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
                                          const PlanetParams& params, const WorldSize& world,
                                          const std::string& flags,
-                                         std::span<const PlanetSection> table);
+                                         std::span<const PlanetSection> table,
+                                         const HeightfieldParams* relief = nullptr);
 
 } // namespace terrain::storage

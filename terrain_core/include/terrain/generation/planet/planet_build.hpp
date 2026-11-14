@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <vector>
 
 namespace terrain {
@@ -66,6 +67,8 @@ struct PlanetBuild {
     std::vector<RiverFeature> features;
     PlanetWaterBudget budget;
     PlanetTimings timings;
+    // The fingerprint of the relief of the field (relief_fingerprint.hpp), outside the checksum.
+    std::optional<std::uint64_t> reliefFingerprint;
 };
 
 namespace planet {
