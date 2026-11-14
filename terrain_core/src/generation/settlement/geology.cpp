@@ -1,11 +1,14 @@
 #include "terrain/generation/settlement/geology.hpp"
 
 #include "../planet/planet_parallel.hpp"
-#include "geology_plates.hpp"
+#include "../geography_plates.hpp"
+#include "../point_spacing.hpp"
+#include "../volcano_placement.hpp"
 #include "geology_points.hpp"
 #include "terrain/det_math.hpp"
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/settlement/preference.hpp"
+#include "terrain/generation/volcanoes.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -86,14 +89,31 @@ double worldScale(const PlanetGrid& grid, const SettlementConfig& config) {
 
 double torusDistance(double ax, double az, double bx, double bz, double periodX,
                      double periodZ) {
-    double dx = std::abs(ax - bx);
-    double dz = std::abs(az - bz);
-    dx = std::fmod(dx, periodX);
-    dz = std::fmod(dz, periodZ);
-    dx = std::min(dx, periodX - dx);
-    dz = std::min(dz, periodZ - dz);
-    return dmath::hypot(dx, dz);
+    return wrappedDistance(ax, az, bx, bz, periodX, periodZ);
 }
+
+// The kinds of the volcanoes of the settlement are the origins of the core, in their order.
+static_assert(static_cast<int>(VolcanoKind::Arc) == static_cast<int>(VolcanoOrigin::Arc) &&
+              static_cast<int>(VolcanoKind::Rift) == static_cast<int>(VolcanoOrigin::Rift) &&
+              static_cast<int>(VolcanoKind::Ridge) == static_cast<int>(VolcanoOrigin::Ridge) &&
+              static_cast<int>(VolcanoKind::Hotspot) == static_cast<int>(VolcanoOrigin::Hotspot));
+
+namespace {
+
+// The volcanoes of the core (volcano_placement.hpp): drawn with its constants, never the data.
+std::vector<Volcano> coreVolcanoes(const GeographyPlates& plates, std::uint64_t worldSeed,
+                                   int threads) {
+    const VolcanoParams params;
+    std::vector<Volcano> out;
+    for (const PlacedVolcano& v :
+         placeVolcanoes(plates, worldSeed, params,
+                        volcanoScale(plates.geography().world(), params), threads)) {
+        out.push_back(Volcano{v.x, v.z, static_cast<VolcanoKind>(v.origin), v.active, v.large});
+    }
+    return out;
+}
+
+} // namespace
 
 Geology buildGeology(const PlanetGrid& grid, const std::shared_ptr<const planet::LandIndex>& land,
                      const Geography& geo, std::uint64_t worldSeed,
@@ -101,7 +121,7 @@ Geology buildGeology(const PlanetGrid& grid, const std::shared_ptr<const planet:
     const GeographyPlates plates(worldSeed, geo, threads);
     const double scale = worldScale(grid, config);
     Geology g;
-    g.volcanoes = placeVolcanoes(plates, worldSeed, config.geology, scale, threads);
+    g.volcanoes = coreVolcanoes(plates, worldSeed, threads);
     g.craters = placeCraters(geo.world(), worldSeed, config.geology, scale);
     g.fault = planet::LandValues<std::uint8_t>(land, 0, 0);
     g.majorFault = planet::LandValues<std::uint8_t>(land, 0, 0);

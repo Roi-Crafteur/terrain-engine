@@ -5,6 +5,7 @@
 // phase 9, the tables hold on every platform.
 #include "determinism_check.hpp"
 
+#include "golden_support.hpp"
 #include "test_assert.hpp"
 
 #include <algorithm>
@@ -31,7 +32,8 @@ bool contains(const std::string& text, const std::string& part) {
 
 // Prints the bits computed for each height probe that differs, to update the table.
 void testHeightTableMatchesCore() {
-    const Heightfield field(terrain::kDefaultWorldSeed);
+    // With the experimental flags of a variant too (golden_support.hpp): the tables hold.
+    const Heightfield field(terrain::kDefaultWorldSeed, golden::reliefParams());
     bool matching = true;
     for (const HeightProbe& probe : terrain::unreal::heightProbes()) {
         const auto bits = std::bit_cast<std::uint32_t>(field.heightAt(probe.x, probe.z));
@@ -47,7 +49,7 @@ void testHeightTableMatchesCore() {
 
 // Prints the fingerprint computed for each tile probe that differs, to update the table.
 void testTileTableMatchesCore() {
-    const TerrainTiles tiles(terrain::kDefaultWorldSeed);
+    const TerrainTiles tiles(terrain::kDefaultWorldSeed, golden::reliefParams());
     bool matching = true;
     for (const TileProbe& probe : terrain::unreal::tileProbes()) {
         const TileData data = tiles.generate(probe.request);
@@ -166,7 +168,8 @@ void testOtherWorldFails() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     testHeightTableMatchesCore();
     testTileTableMatchesCore();
     testProbesCover();

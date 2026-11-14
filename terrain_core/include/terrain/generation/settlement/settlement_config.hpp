@@ -159,19 +159,13 @@ struct MagicRule {
 };
 
 // Geology in data, phase 1 (section 1): faults along the boundaries of the plates (the transform
-// boundaries are the major faults), volcanoes in the arcs of the subductions, along the rifts and
-// the ridges reaching the land, and at hotspots; arcane craters anywhere. Data only: the relief
-// is never changed.
+// boundaries are the major faults), the reach of the volcanoes over the maps, arcane craters
+// anywhere. Data only: the relief is never changed. Where the volcanoes stand is not data: the
+// core places them with its constants (generation/volcano_placement.hpp, agent 45), the same
+// for the relief and the settlement.
 struct GeologyRule {
     double faultWidthKm = 40.0;
     double majorFaultWidthKm = 80.0;
-    CountRange volcanoes;
-    CountRange activeVolcanoes;
-    CountRange largeVolcanoes;
-    RealRange arcDistanceKm;
-    double riftShare = 0.15;
-    double hotspotShare = 0.05;
-    double volcanoSpacingKm = 25.0;
     double volcanoInfluenceKm = 60.0;
     CountRange arcaneCraters;
     CountRange majorCraters;

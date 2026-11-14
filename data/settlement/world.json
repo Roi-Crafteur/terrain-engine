@@ -87,13 +87,6 @@
   "geology": {
     "faultWidthKm": 40,
     "majorFaultWidthKm": 80,
-    "volcanoes": { "min": 3000, "max": 6000 },
-    "activeVolcanoes": { "min": 300, "max": 800 },
-    "largeVolcanoes": { "min": 50, "max": 150 },
-    "arcDistanceKm": { "min": 120, "max": 320 },
-    "riftShare": 0.15,
-    "hotspotShare": 0.05,
-    "volcanoSpacingKm": 25,
     "volcanoInfluenceKm": 60,
     "arcaneCraters": { "min": 30, "max": 80 },
     "majorCraters": { "min": 5, "max": 15 },

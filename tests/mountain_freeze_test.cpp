@@ -10,6 +10,9 @@
 // The coastal relief (agent 33) shapes the mountains of its zone only, the band of the coast
 // signal along the coasts (coast_zone_support.hpp): no point of the windows lies in it, and the
 // points drawn and those beside the rivers are taken out of it.
+// The volcanoes (agent 45) shape theirs only, the discs of their reach (volcano_zone_support.hpp):
+// no point of the windows lies in them, and the points drawn are taken out of them; with the
+// volcanoes off, the points drawn give the value of before them.
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/water/hydrology.hpp"
@@ -18,6 +21,7 @@
 #include "golden_support.hpp"
 #include "planet_golden_support.hpp"
 #include "test_assert.hpp"
+#include "volcano_zone_support.hpp"
 
 #include <algorithm>
 #include <array>
@@ -53,10 +57,11 @@ void addSample(golden::Checksum& sum, const HeightSample& s) {
 // The samples of the window where the mountain mask is above 0, how many, and how many of them lie
 // in the zone of the coastal relief.
 std::uint64_t windowSum(const terrain::Heightfield& field, const Window& w, int& count,
-                        int& zoned) {
+                        int& zoned, int& volcanic) {
     golden::Checksum sum;
     count = 0;
     zoned = 0;
+    volcanic = 0;
     std::vector<double> xs(static_cast<std::size_t>(w.side));
     std::vector<double> zs(static_cast<std::size_t>(w.side));
     std::vector<HeightSample> row(static_cast<std::size_t>(w.side));
@@ -71,6 +76,7 @@ std::uint64_t windowSum(const terrain::Heightfield& field, const Window& w, int&
                 addSample(sum, row[i]);
                 ++count;
                 zoned += coast_zone::inZone(coast_zone::coastSignal(field, xs[i], zs[i])) ? 1 : 0;
+                volcanic += volcano_zone::inZone(field, xs[i], zs[i]) ? 1 : 0;
             }
         }
     }
@@ -79,9 +85,12 @@ std::uint64_t windowSum(const terrain::Heightfield& field, const Window& w, int&
 
 // Points drawn over the whole world, those under the mountains out of the zone of the coastal
 // relief.
-std::uint64_t drawnSum(const terrain::Heightfield& field, int wanted, int& count) {
+// zone: the field whose volcanoes the points are taken out of (none: every point kept).
+std::uint64_t drawnSum(const terrain::Heightfield& field, int wanted, int& count,
+                       const terrain::Heightfield* zone, int& volcanic) {
     golden::Checksum sum;
     count = 0;
+    volcanic = 0;
     std::uint64_t r = 0x9E3779B97F4A7C15ULL;
     const terrain::WorldSize world{};
     while (count < wanted) {
@@ -99,10 +108,15 @@ std::uint64_t drawnSum(const terrain::Heightfield& field, int wanted, int& count
             continue;
         }
         const HeightSample s = field.sampleAt(x, z);
-        if (s.mountainMask > 0.0f) {
-            addSample(sum, s);
-            ++count;
+        if (!(s.mountainMask > 0.0f)) {
+            continue;
         }
+        if (zone != nullptr && volcano_zone::inZone(*zone, x, z)) {
+            ++volcanic;
+            continue;
+        }
+        addSample(sum, s);
+        ++count;
     }
     return sum.value();
 }
@@ -122,13 +136,13 @@ bool sameBits(const HeightSample& a, const HeightSample& b) {
 // a river lies below the relief or its floor fills it, Hydrology::riversAt) are left out; every
 // other one keeps every bit of the relief alone, the lakes only laying their water over it.
 void testWithWater() {
-    const terrain::Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
+    const terrain::Heightfield relief(terrain::kDefaultWorldSeed, golden::reliefParams(),
                                       golden::kSmallPlanet);
     auto planet = std::make_shared<const terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(2)),
         golden::smallPlanetParams(2));
-    auto hydrology =
-        std::make_shared<const terrain::Hydrology>(terrain::kDefaultWorldSeed, relief, planet);
+    auto hydrology = std::make_shared<const terrain::Hydrology>(terrain::kDefaultWorldSeed, relief,
+                                                                planet, golden::waterParams());
     const terrain::Heightfield field = relief.withHydrology(hydrology);
     std::vector<std::array<double, 2>> sources;
     for (const terrain::RiverSegment& s : planet->rivers().segments) {
@@ -178,8 +192,9 @@ void testWithWater() {
 
 } // namespace
 
-int main() {
-    const terrain::Heightfield field(terrain::kDefaultWorldSeed);
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
+    const terrain::Heightfield field(terrain::kDefaultWorldSeed, golden::reliefParams());
     const Window windows[] = {
         {"k2 scene, 8 km at 25 m", 416'857.0, -11'405'966.0, 25.0, 321, 0xF9B398B8FB28A571ULL},
         {"highest wall, 1 km at 4 m", 416'000.0, -11'414'800.0, 4.0, 251, 0x1D45408B42DF87EEULL},
@@ -192,20 +207,37 @@ int main() {
     for (const Window& w : windows) {
         int count = 0;
         int zoned = 0;
-        const std::uint64_t value = windowSum(field, w, count, zoned);
+        int volcanic = 0;
+        const std::uint64_t value = windowSum(field, w, count, zoned, volcanic);
         std::printf("{\"%s\", 0x%016" PRIX64 "ULL}, %d points under the mountains, %d in the "
-                    "coastal zone%s\n",
-                    w.name, value, count, zoned, value == w.expected ? "" : "  (differs)");
-        same = same && value == w.expected && count > w.side * w.side / 4 && zoned == 0;
+                    "coastal zone, %d in that of the volcanoes%s\n",
+                    w.name, value, count, zoned, volcanic, value == w.expected ? "" : "  (differs)");
+        same = same && value == w.expected && count > w.side * w.side / 4 && zoned == 0 &&
+               volcanic == 0;
     }
     // Pinned on the code of main (cb64153) once the points of the coastal zone were taken out of
-    // the draw (0xB6C1FF0E32307E10 with them).
-    constexpr std::uint64_t kDrawn = 0x4D77F4B4ADE22B7BULL;
+    // the draw (0xB6C1FF0E32307E10 with them); with the volcanoes off, still that value.
+    constexpr std::uint64_t kBeforeVolcanoes = 0x4D77F4B4ADE22B7BULL;
+    // With the volcanoes on (agent 45, the flag "volcanoes"), the points of their zone taken out
+    // of the draw: the same with them off, out of their zone.
+    const std::uint64_t kDrawn =
+        golden::pick("volcanoes", kBeforeVolcanoes, 0xB30D83F09476211CULL);
+    terrain::HeightfieldParams off;
+    off.volcanoes.enabled = false;
+    const terrain::Heightfield before(terrain::kDefaultWorldSeed, off);
     int count = 0;
-    const std::uint64_t drawn = drawnSum(field, 20'000, count);
-    std::printf("{\"drawn points\", 0x%016" PRIX64 "ULL}%s\n", drawn,
-                drawn == kDrawn ? "" : "  (differs)");
+    int volcanic = 0;
+    const std::uint64_t old = drawnSum(before, 20'000, count, nullptr, volcanic);
+    const std::uint64_t outOff = drawnSum(before, 20'000, count, &field, volcanic);
+    const std::uint64_t drawn = drawnSum(field, 20'000, count, &field, volcanic);
+    std::printf("{\"drawn points\", 0x%016" PRIX64 "ULL}%s, %d points in the zone of the "
+                "volcanoes taken out of the draw; the volcanoes off: 0x%016" PRIX64
+                "ULL out of their zone, 0x%016" PRIX64 "ULL with every point%s\n",
+                drawn, drawn == kDrawn ? "" : "  (differs)", volcanic, outOff, old,
+                old == kBeforeVolcanoes ? "" : "  (differs)");
     TEST_CHECK(same);
+    TEST_CHECK(old == kBeforeVolcanoes);
+    TEST_CHECK(outOff == drawn);
     TEST_CHECK(drawn == kDrawn);
     testWithWater();
     return test::result();

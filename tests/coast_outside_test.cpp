@@ -318,7 +318,7 @@ double seconds(std::chrono::steady_clock::time_point since) {
 
 void testDefaultWorld() {
     const auto start = std::chrono::steady_clock::now();
-    const terrain::TerrainTiles tiles(kSeed);
+    const terrain::TerrainTiles tiles(kSeed, golden::reliefParams());
     const Sums sums = worldSums("default world", tiles, 0x33C0A5711ULL, 10);
     std::printf("default world in %.1f s\n", seconds(start));
     golden::report("the default world out of the coastal zone",
@@ -332,35 +332,51 @@ void testDefaultWorld() {
 
 void testSmallWorldWithWater() {
     const auto start = std::chrono::steady_clock::now();
-    const Heightfield relief(kSeed, terrain::HeightfieldParams{}, golden::kSmallPlanet);
+    const Heightfield relief(kSeed, golden::reliefParams(), golden::kSmallPlanet);
     const int threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     auto planet = std::make_shared<const terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(threads)),
         golden::smallPlanetParams(threads));
-    auto hydrology = std::make_shared<const terrain::Hydrology>(kSeed, relief, planet);
-    const terrain::TerrainTiles tiles(kSeed, terrain::HeightfieldParams{}, {}, std::nullopt,
+    auto hydrology = std::make_shared<const terrain::Hydrology>(kSeed, relief, planet,
+                                                                golden::waterParams());
+    const terrain::TerrainTiles tiles(kSeed, golden::reliefParams(), {}, std::nullopt,
                                       golden::kSmallPlanet, hydrology);
     std::printf("small world planet level and water in %.1f s\n", seconds(start));
     const Sums sums = worldSums("small world", tiles, 0x33C0A5722ULL, 8);
     std::printf("small world drawn places in %.1f s\n", seconds(start));
     const Sums rivers = riverSums(tiles, *planet);
     std::printf("small world rivers in %.1f s\n", seconds(start));
-    golden::report("the small world with its water out of the coastal zone",
-                   {{"small world planet level", planet->checksum(), 0xBFA4DE19A54DAD75ULL},
-                    {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
-                    {"small world tiles", sums.tiles.value(), 0x3920923625208FCEULL},
-                    {"small world horizon", sums.horizon.value(), 0x159D43BA4E7127E6ULL},
-                    {"small world rivers patches", rivers.patches.value(), 0x88EE902D42C05D86ULL},
-                    // Near the rivers (agent 49): the texels of the tiles read the water of the
-                    // core, and a dry sample its climate at its ground, not at the level of the
-                    // river beside it (0x9B59DD7FA17B37EB and 0x810D6B0B60B06611 before).
-                    {"small world rivers tiles", rivers.tiles.value(), 0x0C052A0A584C2027ULL},
-                    {"small world rivers horizon", rivers.horizon.value(), 0x9D3D6DEECA7F2EF9ULL}});
+    // The volcanoes (agent 45, the flag "volcanoes") change the planet level of the small world,
+    // so its rivers.
+    const auto v = [](std::uint64_t main, std::uint64_t volcanoes) {
+        return golden::pick("volcanoes", main, volcanoes);
+    };
+    golden::report(
+        "the small world with its water out of the coastal zone",
+        {{"small world planet level", planet->checksum(),
+          v(0xBFA4DE19A54DAD75ULL, 0xE69ECEF0788B0760ULL)},
+         {"small world patches", sums.patches.value(), 0x964F078C18B8402DULL},
+         // With the volcanoes, re-pasted by « Merge main (#76, #79) into the volcanoes » (agent
+         // 45): "small world tiles", "small world rivers tiles" and "small world rivers horizon";
+         // the texels of the tiles read the water of the core (agent 49, #76), as without them.
+         {"small world tiles", sums.tiles.value(), v(0x3920923625208FCEULL, 0x7A1F00731EF899D6ULL)},
+         {"small world horizon", sums.horizon.value(),
+          v(0x159D43BA4E7127E6ULL, 0x6D75325F3A9AF59CULL)},
+         {"small world rivers patches", rivers.patches.value(),
+          v(0x88EE902D42C05D86ULL, 0x7340B9A4AD1B9840ULL)},
+         // Near the rivers (agent 49): the texels of the tiles read the water of the core, and a
+         // dry sample its climate at its ground, not at the level of the river beside it
+         // (0x9B59DD7FA17B37EB and 0x810D6B0B60B06611 before).
+         {"small world rivers tiles", rivers.tiles.value(),
+          v(0x0C052A0A584C2027ULL, 0xAD749072FF6CD525ULL)},
+         {"small world rivers horizon", rivers.horizon.value(),
+          v(0x9D3D6DEECA7F2EF9ULL, 0x585988EF6A4E567BULL)}});
 }
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     testDefaultWorld();
     testSmallWorldWithWater();
     return test::result();

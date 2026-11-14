@@ -5,7 +5,8 @@
 
 #include "test_assert.hpp"
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     golden::report("heightfield and ecology", golden::heightfieldParts());
     golden::report("planetary geography", golden::geographyParts());
     return test::result();

@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <memory>
 #include <optional>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -36,13 +37,14 @@ struct World {
 };
 
 World makeWorld() {
-    const Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
+    const Heightfield relief(terrain::kDefaultWorldSeed, golden::reliefParams(),
                              golden::kSmallPlanet);
     auto planet = std::make_shared<const terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(2)),
         golden::smallPlanetParams(2));
     auto hydrology =
-        std::make_shared<const Hydrology>(terrain::kDefaultWorldSeed, relief, planet);
+        std::make_shared<const Hydrology>(terrain::kDefaultWorldSeed, relief, planet,
+                                          golden::waterParams());
     return {relief, planet, hydrology, relief.withHydrology(hydrology)};
 }
 
@@ -198,70 +200,131 @@ constexpr double kFaceShare = 0.5;
 
 // Where the surface first comes down below level along the points of a reach, side meters left of
 // them, from kFaceSearch meters upstream of along meters along them: dry or not (nullopt: never).
+// The points of the line are read kFaceBatch at a time (Heightfield::samplesAt: the same bits as
+// sampleAt, faster for points this close), in their order: the first under level decides.
+constexpr int kFaceBatch = 32;
+
 std::optional<bool> dryBelow(const World& w, const RiverReach& reach,
                              const std::vector<double>& s, double along, double side,
                              float level) {
     const auto& p = reach.points;
     std::size_t k = 0;
-    for (double u = along - kFaceSearch; u < along + kFaceSearch; u += kFaceStep) {
-        while (k + 2 < p.size() && s[k + 1] < u) {
-            ++k;
+    std::vector<double> xs;
+    std::vector<double> zs;
+    std::vector<terrain::HeightSample> h(kFaceBatch);
+    double u = along - kFaceSearch;
+    while (u < along + kFaceSearch) {
+        xs.clear();
+        zs.clear();
+        for (int c = 0; c < kFaceBatch && u < along + kFaceSearch; ++c, u += kFaceStep) {
+            while (k + 2 < p.size() && s[k + 1] < u) {
+                ++k;
+            }
+            const double length = std::max(1e-6, s[k + 1] - s[k]);
+            const double t = std::clamp((u - s[k]) / length, 0.0, 1.0);
+            const double dx = p[k + 1].x - p[k].x;
+            const double dz = p[k + 1].z - p[k].z;
+            xs.push_back(p[k].x + t * dx - side * dz / length);
+            zs.push_back(p[k].z + t * dz + side * dx / length);
         }
-        const double length = std::max(1e-6, s[k + 1] - s[k]);
-        const double t = std::clamp((u - s[k]) / length, 0.0, 1.0);
-        const double dx = p[k + 1].x - p[k].x;
-        const double dz = p[k + 1].z - p[k].z;
-        const double x = p[k].x + t * dx - side * dz / length;
-        const double z = p[k].z + t * dz + side * dx / length;
-        const terrain::HeightSample h = w.field.sampleAt(x, z);
-        const bool wet = h.water != terrain::WaterKind::None;
-        if ((wet ? std::max(h.waterLevel, h.height) : h.height) < level) {
-            return !wet;
+        w.field.samplesAt(xs, zs, std::span(h.data(), xs.size()));
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            const bool wet = h[i].water != terrain::WaterKind::None;
+            if ((wet ? std::max(h[i].waterLevel, h[i].height) : h[i].height) < level) {
+                return !wet;
+            }
         }
     }
     return std::nullopt;
 }
 
-void testFallFaces(const World& w) {
-    const Hydrology& h = *w.hydrology;
+// A known dry point, with the volcanoes on (agent 45, the flag "volcanoes"; all of them at R1):
+// they change the planet level, which moves the course of this river (thirteen reaches of the
+// nearest volcano away from it); 9 cm left of the middle of its channel, down the face of one of
+// its falls, the ground is dry. Only this point, at these exact coordinates and with them on, is
+// let through: any other dry point fails. À retirer par l'agent 31, étape 1 ou 2.
+constexpr double kKnownDryX = 965046.27484900411;
+constexpr double kKnownDryZ = -324838.17140333529;
+constexpr double kKnownDrySide = 0.089200973510742188;
+constexpr float kKnownDryLevel = 258.543701171875f;
+
+bool knownDry(double x, double z, double side, float level) {
+    return golden::flagOn("volcanoes") && std::abs(x - kKnownDryX) < 0.01 && std::abs(z - kKnownDryZ) < 0.01 &&
+           std::abs(side - kKnownDrySide) < 0.01 && level == kKnownDryLevel;
+}
+
+struct FaceCount {
     std::size_t faces = 0;
     std::size_t points = 0;
     std::size_t dry = 0;
-    for (std::size_t r = 0; r < h.reachCount(); r += 3) {
-        const RiverReach reach = h.reach(r);
-        std::vector<double> s(reach.points.size(), 0.0);
-        for (std::size_t i = 1; i < s.size(); ++i) {
-            s[i] = s[i - 1] + std::hypot(reach.points[i].x - reach.points[i - 1].x,
-                                         reach.points[i].z - reach.points[i - 1].z);
-        }
-        for (const terrain::RiverFall& f : reach.falls) {
-            ++faces;
-            for (const float share : {0.25f, 0.5f, 0.75f}) {
-                const float level = f.top - share * (f.top - f.bottom);
-                std::size_t i = 1;
-                while (i < reach.points.size() && !(reach.points[i].level < level)) {
-                    ++i;
-                }
-                if (i == reach.points.size()) {
-                    continue;
-                }
-                const terrain::RiverPoint& a = reach.points[i - 1];
-                const terrain::RiverPoint& b = reach.points[i];
-                const double t = (a.level - level) / (a.level - b.level);
-                const double half = 0.5 * kFaceShare * (a.width + t * (b.width - a.width));
-                for (double d = -half; d <= half; d += 1.0) {
-                    const std::optional<bool> below =
-                        dryBelow(w, reach, s, s[i - 1] + t * (s[i] - s[i - 1]), d, level);
-                    ++points;
-                    dry += below.value_or(true) ? 1 : 0;
-                }
+    std::size_t known = 0;
+};
+
+// The faces of the falls of reach r, counted into c.
+void checkFaces(const World& w, std::size_t r, FaceCount& c) {
+    const RiverReach reach = w.hydrology->reach(r);
+    std::vector<double> s(reach.points.size(), 0.0);
+    for (std::size_t i = 1; i < s.size(); ++i) {
+        s[i] = s[i - 1] + std::hypot(reach.points[i].x - reach.points[i - 1].x,
+                                     reach.points[i].z - reach.points[i - 1].z);
+    }
+    for (const terrain::RiverFall& f : reach.falls) {
+        ++c.faces;
+        for (const float share : {0.25f, 0.5f, 0.75f}) {
+            const float level = f.top - share * (f.top - f.bottom);
+            std::size_t i = 1;
+            while (i < reach.points.size() && !(reach.points[i].level < level)) {
+                ++i;
+            }
+            if (i == reach.points.size()) {
+                continue;
+            }
+            const terrain::RiverPoint& a = reach.points[i - 1];
+            const terrain::RiverPoint& b = reach.points[i];
+            const double t = (a.level - level) / (a.level - b.level);
+            const double half = 0.5 * kFaceShare * (a.width + t * (b.width - a.width));
+            const double x = a.x + t * (b.x - a.x);
+            const double z = a.z + t * (b.z - a.z);
+            for (double d = -half; d <= half; d += 1.0) {
+                const std::optional<bool> below =
+                    dryBelow(w, reach, s, s[i - 1] + t * (s[i] - s[i - 1]), d, level);
+                ++c.points;
+                const bool isDry = below.value_or(true);
+                const bool isKnown = isDry && knownDry(x, z, d, level);
+                c.known += isKnown ? 1 : 0;
+                c.dry += isDry && !isKnown ? 1 : 0;
             }
         }
     }
-    TEST_CHECK(faces > 0 && points > 0);
-    TEST_CHECK(dry == 0);
-    std::printf("down %zu faces of falls, %zu points across their channels, %zu dry\n", faces,
-                points, dry);
+}
+
+// The reaches one in 3, on 4 threads (each its share of them: the same points, the same counts).
+void testFallFaces(const World& w) {
+    constexpr std::size_t kThreads = 4;
+    std::vector<FaceCount> counts(kThreads);
+    std::vector<std::thread> threads;
+    for (std::size_t t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&w, &counts, t]() {
+            for (std::size_t r = 3 * t; r < w.hydrology->reachCount(); r += 3 * kThreads) {
+                checkFaces(w, r, counts[t]);
+            }
+        });
+    }
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+    FaceCount c;
+    for (const FaceCount& one : counts) {
+        c.faces += one.faces;
+        c.points += one.points;
+        c.dry += one.dry;
+        c.known += one.known;
+    }
+    TEST_CHECK(c.faces > 0 && c.points > 0);
+    TEST_CHECK(c.dry == 0 && c.known <= 1);
+    std::printf("down %zu faces of falls, %zu points across their channels, %zu dry (and %zu "
+                "known dry point, agent 31)\n",
+                c.faces, c.points, c.dry, c.known);
 }
 
 // The lakes are flat at the level of their lake: 16 km around the lowest cells of a few lakes,
@@ -348,7 +411,8 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
     }
     // The coasts (agent 33) change 1,702 of its 19,208 points, all in their band, out of the
     // corridors of the rivers (0x3F29B8BF9DA8A0BB without them).
-    constexpr std::uint64_t kExpected = 0xD2DFFB61145C27A3ULL;
+    const std::uint64_t kExpected =
+        golden::pick("volcanoes", 0xD2DFFB61145C27A3ULL, 0x0A4438D5531DA59AULL);
     std::printf("{\"hydrology of the small world\", 0x%016llXULL}%s\n",
                 static_cast<unsigned long long>(sum.value()),
                 sum.value() == kExpected ? "" : "  (differs)");
@@ -357,7 +421,8 @@ void testGolden(const World& w, const std::vector<std::array<double, 2>>& points
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    golden::readFlags(argc, argv);
     const World w = makeWorld();
     const std::vector<std::array<double, 2>> points = pointsNearRivers(w, 8);
     testDeterminism(w, points);

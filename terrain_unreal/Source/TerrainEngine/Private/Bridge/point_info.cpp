@@ -3,12 +3,14 @@
 #include "ground_ray.hpp"
 
 #include "terrain/chunk_coord.hpp"
+#include "terrain/det_math.hpp"
 #include "terrain/generation/biome.hpp"
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/surface_material.hpp"
 #include "terrain/generation/terrain_surface.hpp"
+#include "terrain/generation/volcanoes.hpp"
 #include "terrain/generation/water/hydrology.hpp"
 #include "terrain/world_size.hpp"
 
@@ -16,6 +18,7 @@
 #include <array>
 #include <cmath>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 
@@ -211,6 +214,44 @@ void coastLines(const InfoQuery& q, std::vector<InfoLine>& out) {
                                 : format("at sea, %.2f km from the shore", -coast / 1000.0)});
 }
 
+// The volcano whose reach holds the point (agent 45), nearest relative to its reach: its form,
+// its origin, active or extinct, how far its summit; the ground it left there and how bare.
+void volcanoLines(const InfoQuery& q, std::vector<InfoLine>& out) {
+    const Volcanoes* volcanoes = q.field.volcanoes();
+    if (volcanoes == nullptr) {
+        return;
+    }
+    const Canonical c = canonical(q);
+    const VolcanoSite* best = nullptr;
+    double nearest = std::numeric_limits<double>::infinity();
+    for (const std::uint32_t i : volcanoes->near(c.x, c.z)) {
+        const VolcanoSite& v = volcanoes->sites()[i];
+        const VolcanoOffset o = volcanoOffset(q.field.world(), v.x, v.z, c.x, c.z);
+        const double share = dmath::hypot(o.dx, o.dz) / static_cast<double>(v.reach);
+        if (share < 1.0 && share < nearest) {
+            nearest = share;
+            best = &v;
+        }
+    }
+    if (best == nullptr) {
+        out.push_back({"volcano", "volcano", "none"});
+        return;
+    }
+    const VolcanoOffset top = volcanoSummit(*best);
+    const VolcanoOffset o =
+        volcanoOffset(q.field.world(), best->x + top.dx, best->z + top.dz, c.x, c.z);
+    out.push_back({"volcano", "volcano",
+                   format("%s (%s, %s), summit %.2f km away", volcanoFormName(best->form),
+                          volcanoOriginName(best->origin), best->active ? "active" : "extinct",
+                          dmath::hypot(o.dx, o.dz) / 1000.0)});
+    const HeightSample s = q.field.sampleAt(c.x, c.z);
+    out.push_back({"volcano", "volcanic ground",
+                   s.volcanicShare > 0
+                       ? format("%s, %.0f %% bare", volcanicGroundName(s.volcanicGround),
+                                100.0 * static_cast<double>(s.volcanicShare) / 255.0)
+                       : std::string("none")});
+}
+
 // A point hit on the heightmap lies on its surface, within the error of the cells of the tile
 // (more on steep ground); off it, the tile is not the heightmap there: the rock of the walls in
 // three dimensions, a cave, an edit.
@@ -245,8 +286,8 @@ void tileLines(const InfoQuery& q, std::vector<InfoLine>& out) {
 } // namespace
 
 std::vector<InfoProvider> defaultInfoProviders() {
-    return {positionLines, groundLines, ecologyLines, planetLines, riverLines,
-            fallLines,     coastLines,  surfaceLines, tileLines};
+    return {positionLines, groundLines,  ecologyLines, planetLines, riverLines,
+            fallLines,     coastLines,   volcanoLines, surfaceLines, tileLines};
 }
 
 std::vector<InfoLine> describePoint(const InfoQuery& query,

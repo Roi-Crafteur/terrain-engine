@@ -56,11 +56,20 @@ struct MaterialParams {
     float ergFloorErg = 0.06f;
     float ergGrassReach = 150.0f;
     float ergFloorWidth = 0.2f;
+    // The ground of the volcanoes (agent 45, SurfaceSite::volcanicGround) where it lies at least
+    // volcanicShare bare (its band volcanicWidth wide), but under the snow (the Snow biome, the
+    // snow of the mountains): its material (volcanicMaterial), never grass.
+    float volcanicShare = 0.5f;
+    float volcanicWidth = 0.1f;
 };
 
 // The material of the floor of an erg of that kind (SurfaceSite::ergFloor): sand under 0.5,
 // gravel (pebbles) up to 1.5, crust (dirt) above.
 [[nodiscard]] SurfaceMaterial ergFloorMaterial(float kind);
+
+// The material of a volcanic ground (until its own colors, agent 49): basalt and cooled lava rock,
+// scoria pebbles, ash dirt, geothermal ground mud.
+[[nodiscard]] SurfaceMaterial volcanicMaterial(VolcanicGround ground);
 
 // Steepest local slope of a column: the larger of |grad H| and the steepness of the site.
 [[nodiscard]] float steepestSlope(const ClimateSample& climate, const SurfaceSite& site);
@@ -69,7 +78,8 @@ struct MaterialParams {
 // under the water); else water exactly over the ocean and the rivers; otherwise sand on the dunes
 // of the ergs at any slope (but on walls and rock above air), rock on steep ground, walls and rock
 // above air, the floor of the ergs between their dunes away from the water (ergFloorMaterial),
-// then by biome: snow, mountain snow, rock and scree, beach sand or pebbles, desert sand, marsh
+// the ground of the volcanoes out of the snow (volcanicMaterial), then by biome: snow, mountain
+// snow, rock and scree, beach sand or pebbles, desert sand, marsh
 // mud, river bank pebbles, tundra dirt, dirt on steeper ground and grass elsewhere. Pure
 // function: it never changes a height.
 [[nodiscard]] SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate,

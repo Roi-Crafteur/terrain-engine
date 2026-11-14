@@ -76,6 +76,7 @@ add_library(terrain_core STATIC
     src/generation/geography_crust.cpp
     src/generation/geography_flood.cpp
     src/generation/geography_grid.cpp
+    src/generation/geography_plates.cpp
     src/generation/geography_provinces.cpp
     src/generation/geography_relief.cpp
     src/generation/geography_boundaries.cpp
@@ -89,6 +90,7 @@ add_library(terrain_core STATIC
     src/generation/heightfield_hydrology.cpp
     src/generation/heightfield_rock.cpp
     src/generation/heightfield_water.cpp
+    src/generation/heightfield_volcano.cpp
     src/generation/noise.cpp
     src/generation/noise_octaves.cpp
     src/generation/overhangs.cpp
@@ -116,6 +118,7 @@ add_library(terrain_core STATIC
     src/generation/mountain_forms.cpp
     src/generation/mountain_walls.cpp
     src/generation/plain_forms.cpp
+    src/generation/point_spacing.cpp
     src/generation/ravines.cpp
     src/generation/relief_local.cpp
     src/generation/rivers.cpp
@@ -127,6 +130,18 @@ add_library(terrain_core STATIC
     src/generation/surface_material.cpp
     src/generation/terrain_surface.cpp
     src/generation/vegetation.cpp
+    src/generation/volcano_basins.cpp
+    src/generation/volcano_cones.cpp
+    src/generation/volcano_details.cpp
+    src/generation/volcano_draws.cpp
+    src/generation/volcano_fields.cpp
+    src/generation/volcano_forms.cpp
+    src/generation/volcano_gorge.cpp
+    src/generation/volcano_ground.cpp
+    src/generation/volcano_placement.cpp
+    src/generation/volcano_relief.cpp
+    src/generation/volcano_sites.cpp
+    src/generation/volcano_springs.cpp
     src/generation/voronoi.cpp
     src/generation/wall_faces.cpp
     src/generation/water/fine_lake.cpp
@@ -187,6 +202,7 @@ add_library(terrain_core STATIC
     src/map/map_render.cpp
     src/map/map_source.cpp
     src/map/map_style.cpp
+    src/map/map_volcanoes.cpp
     src/map/map_water.cpp
     src/meshing/marching_cubes.cpp
     src/storage/block_section.cpp
@@ -395,6 +411,13 @@ target_link_libraries(terrain_export_relief PRIVATE terrain_core terrain_warning
 add_executable(terrain_export_view tools/export_view.cpp tools/view_places.cpp)
 target_link_libraries(terrain_export_view PRIVATE terrain_core terrain_warnings)
 
+# The volcanoes against real ones (agent 45): cuts of the profiles of a stratovolcano, a shield, a
+# caldera and a cinder cone over those of Fuji, Mauna Loa, Crater Lake and Paricutin, and views at
+# the height of a walker. See the comment at the top of tools/export_volcanoes.cpp.
+add_executable(terrain_export_volcanoes tools/export_volcanoes.cpp)
+target_include_directories(terrain_export_volcanoes PRIVATE src/generation)
+target_link_libraries(terrain_export_volcanoes PRIVATE terrain_core terrain_warnings)
+
 # Maps and views of the water of a world (phase 11B): the sea, the depressions below the sea
 # level. See the comment at the top of tools/export_water.cpp.
 # terrain_export_water <output-dir> [--seed <seed>] [--world <x> <z>] [--threads <n>]
@@ -450,6 +473,7 @@ add_library(terrain_probe_lib STATIC
     tools/probe_rock.cpp
     tools/probe_sections.cpp
     tools/probe_surface.cpp
+    tools/probe_volcano.cpp
     tools/probe_water.cpp
     tools/probe_world.cpp
 )

@@ -87,5 +87,6 @@ struct LinePoint {
 [[nodiscard]] Record fallsSection(const ProbeWorld& world, const Point& point);     // probe_falls
 [[nodiscard]] Record rockSection(const ProbeWorld& world, const Point& point);      // probe_rock
 [[nodiscard]] Record surfaceSection(const ProbeWorld& world, const Point& point);   // probe_surface
+[[nodiscard]] Record volcanoSection(const ProbeWorld& world, const Point& point);   // probe_volcano
 
 } // namespace probe
