@@ -130,6 +130,18 @@ def struct_hlsl():
     return hlsl.struct_hlsl(BIOMES)
 
 
+# The sea near the pixel (agent 52, temporary_terrain_hlsl.SEA_NEAR_HLSL): a texel of the ocean
+# marks the ground within SEA_NEAR_M meters of it as at the sea (the parameter SeaNearM of both
+# materials). Measured on the coasts of agent 33 (tests/lows_sea_near_test.cpp): every rock of their
+# wet band, at every corner of its texels, has a texel of the ocean that near.
+SEA_NEAR_M = 16.0
+
+
+def sea_near_hlsl(tiles):
+    """The code of the node Sea: on the tiles (tiles) or on the GPU horizon."""
+    return hlsl.sea_near_hlsl(tiles)
+
+
 def shade_hlsl(detail):
     """The pixel code: with detail (tiles), the textures near the camera; without (horizon), only
     the mean color of each texture."""
@@ -182,7 +194,7 @@ def layer_inputs(detail):
 
 def shade_inputs():
     """Every input of the shade node besides the textures and tints."""
-    return ["W0", "W1", "W2", "N", "P", "Z", "Dist", "Warmth", "B", "C"] + list(SCALARS)
+    return ["W0", "W1", "W2", "N", "P", "Z", "Dist", "Warmth", "B", "C", "Sea"] + list(SCALARS)
 
 
 def texture_parameter(material, name, path, x, y, normal=False):

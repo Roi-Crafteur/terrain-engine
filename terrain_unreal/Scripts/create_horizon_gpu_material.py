@@ -86,6 +86,10 @@ SEA_COLORS = {
 # band the tiles always cover (DropCoveredCm), then less and less across BehindFadeCm: the tiles
 # stay in front where both surfaces cross (horizon_sea_hlsl.py).
 BEHIND_SCALARS = {"BehindTilesCm": 100.0, "BehindBandCm": 12800.0, "BehindFadeCm": 12800.0}
+# How far a texel of the ocean marks the ground as at the sea (agent 52, temporary_terrain_look.py:
+# the same on the tiles), for the wet rock and the depth offset above; SeaNear 0 (the console
+# command Terrain.SeaNear 0) gives the look of before.
+SEA_NEAR_SCALARS = {"SeaNearM": look.SEA_NEAR_M, "SeaNear": 1.0}
 
 VERTEX_HLSL = r"""
 int side = (int)Cells + 1;
@@ -287,7 +291,8 @@ def parameters(material):
              "CoarseNormals": texture_parameter(material, "CoarseNormals", -1550)}
     nodes.update(detail.scalars(material, detail.HORIZON_SCALARS, -1300, -1900))
     scalars = (list(SCALARS.items()) + list(SEA_SCALARS.items()) + list(SHADE_SCALARS.items())
-               + list(BEHIND_SCALARS.items()) + list(reveal.SCALARS.items()))
+               + list(BEHIND_SCALARS.items()) + list(SEA_NEAR_SCALARS.items())
+               + list(reveal.SCALARS.items()))
     for index, (name, value) in enumerate(scalars):
         scalar = expression(material, unreal.MaterialExpressionScalarParameter, -1300,
                             300 + 60 * index)
@@ -435,7 +440,7 @@ def land_shader(material, nodes, vertex, normal, with_bands):
                 shade, "B")
     no_cap = expression(material, unreal.MaterialExpressionConstant2Vector, -350, 1950)
     connect(no_cap, "", shade, "C")
-    return shade, position
+    return shade, position, meters
 
 
 def detail_normal(material, nodes, vertex):
@@ -457,14 +462,35 @@ def detail_normal(material, nodes, vertex):
     return node
 
 
-def mask_and_depth(material, nodes, kind, ground, attributes):
+def sea_near(material, nodes, ground, meters):
+    """The sea near the pixel (agent 52, temporary_terrain_hlsl.SEA_NEAR_HLSL): from the texels of
+    the level around it, read by the wet rock of the land below the sea level and the depth offset
+    under the tiles; meters, the altitude of the land shader (no interpolator of its own)."""
+    float1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
+    names = ["Tex", "LocalPos", "Ground", "Z", "Cells", "FirstSlotX", "FirstSlotZ", "PitchCm",
+             "SeaNearM", "SeaNear"]
+    node = custom_node(material, 200, -250, "HorizonSeaNear", look.sea_near_hlsl(False), names, [],
+                       float1)
+    local = local_position(material, 0, -250)
+    connect(world_position(material, unreal.WorldPositionIncludedOffsets.WPT_DEFAULT, -200, -250),
+            "", local, "")
+    connect(nodes["HorizonTexels"], "", node, "Tex")
+    connect(local, "", node, "LocalPos")
+    connect(ground, "", node, "Ground")
+    connect(meters, "", node, "Z")
+    for name in names[4:]:
+        connect(nodes[name], "", node, name)
+    return node
+
+
+def mask_and_depth(material, nodes, kind, ground, attributes, sea):
     """The opacity mask (the sea square only where the core puts the ocean) and the depth offset
     of the land under the tiles (horizon_sea_hlsl.py)."""
     float1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
     names = ["Kind", "LocalPos", "Tex", "Cells", "FirstSlotX", "FirstSlotZ"]
     square = custom_node(material, 400, -500, "HorizonSeaSquare", sea_code.SQUARE_HLSL, names, [],
                          float1)
-    behind_names = ["Kind", "LocalPos", "Ground", "Cells", "PitchCm", "DropCoveredCm"]
+    behind_names = ["Kind", "LocalPos", "Ground", "Sea", "Cells", "PitchCm", "DropCoveredCm"]
     behind = custom_node(material, 400, -350, "HorizonBehindTiles", sea_code.BEHIND_HLSL,
                          behind_names + list(BEHIND_SCALARS), [], float1)
     local = local_position(material, 200, -450)
@@ -477,6 +503,7 @@ def mask_and_depth(material, nodes, kind, ground, attributes):
     for name in ["Cells", "FirstSlotX", "FirstSlotZ"]:
         connect(nodes[name], "", square, name)
     connect(ground, "", behind, "Ground")
+    connect(sea, "", behind, "Sea")
     for name in ["Cells", "PitchCm", "DropCoveredCm"] + list(BEHIND_SCALARS):
         connect(nodes[name], "", behind, name)
     connect(square, "", attributes, "OpacityMask")
@@ -491,8 +518,10 @@ def pixel_shader(material, nodes, vertex, kind, with_bands):
     normal = detail_normal(material, nodes, vertex)
     ground = interpolate(material, vertex, "GroundOut", 250)
     sea = sea_shader(material, nodes, kind, ground)
-    square = mask_and_depth(material, nodes, kind, ground, attributes)
-    land, position = land_shader(material, nodes, vertex, normal, with_bands)
+    land, position, meters = land_shader(material, nodes, vertex, normal, with_bands)
+    near = sea_near(material, nodes, ground, meters)
+    connect(near, "", land, "Sea")
+    square = mask_and_depth(material, nodes, kind, ground, attributes, near)
     for name in ("WaveOriginX", "WaveOriginY"):
         connect(nodes[name], "", position, name)
     # The default output of a vector parameter is its RGB; its alpha is the amount of the tint.

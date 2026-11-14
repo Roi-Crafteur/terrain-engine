@@ -57,6 +57,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Views <lieux>` | une image par lieu (`chute388_bassin k2_paroi`, `*`, `chute388_*`) dans `Saved/TerrainEngine/Views/<date>/` avec `views.txt` |
 | `Terrain.View <mode>` | le mode de vue (ci-dessous) |
 | `Terrain.Blend 0\|1` | (outils de dev seulement) les poids des biomes de l'horizon et du niveau 0 sous les tuiles (agent 29) : 0 le biome dominant de chaque échantillon, comme avant eux ; comparer leur coût GPU et leur aspect (après avoir relancé les scripts des matériaux de l'horizon GPU et temporaire) |
+| `Terrain.SeaNear 0\|1` | (outils de dev seulement, provisoire : passera dans `Terrain.Param` de l'agent 40) la mer près du pixel (agent 52) : 1 la roche sous 0 m n'est mouillée qu'au bord de la mer et l'horizon reste derrière les tuiles dans une dépression sèche, 0 le rendu d'avant (la roche mouillée par l'altitude seule) ; comparer A/B (après avoir relancé les scripts des matériaux de l'horizon GPU et temporaire) |
 | `Terrain.Seed <n> [surface\|caves\|regions]` | le monde d'une autre seed et d'un autre preset, sans quitter le Play |
 | `Terrain.Hud [0-3]` | la page de l'écran F3 |
 
