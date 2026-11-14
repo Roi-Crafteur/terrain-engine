@@ -167,7 +167,9 @@ void blendParts(const Config& c, const Heightfield& field, const terrain::Ecolog
             for (std::size_t t = 0; t < keys.size(); ++t) {
                 for (const terrain::BlendTexel& texel : terrain::tile::blendTexels(
                          field, ecology, lattices[t], columns[t], stride)) {
-                    sum.add(static_cast<std::uint64_t>(texel.ids) << 32 | texel.weights);
+                    sum.add(static_cast<std::uint64_t>(texel.biomes) << 32 | texel.materials);
+                    sum.add(static_cast<std::uint64_t>(texel.biomeWeights) << 32 |
+                            texel.materialWeights);
                 }
             }
             return sum.value();

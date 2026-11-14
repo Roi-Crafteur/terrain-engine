@@ -1,7 +1,9 @@
-// Levels of the far horizon: validation, pitches and coverage (at least 300 km), the window
+// Levels of the far horizon: validation, pitches and coverage (at least 300 km, the window of the
+// coarsest level around any observer, from horizon_cost_test, now a bench), the window
 // centers (even samples near the observer, the same for every image), their continuous moves
 // across the edges of the wrapped world, the new samples of a move against a brute-force set
 // difference, the toroidal slots, and the nesting of the levels around any observer.
+#include "terrain/streaming/horizon_grids.hpp"
 #include "terrain/streaming/horizon_levels.hpp"
 
 #include "test_assert.hpp"
@@ -12,6 +14,7 @@
 #include <set>
 #include <stdexcept>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -112,6 +115,22 @@ void testPitchesAndCoverage() {
     TEST_CHECK(terrain::levelPitch(params, params.levels - 1) == 4096);
     TEST_CHECK(terrain::guaranteedRadius(params) == 520'192.0);
     TEST_CHECK(terrain::guaranteedRadius(params) >= 300'000.0);
+}
+
+// The window of the coarsest level covers 300 km around the observer, wherever it stands: by
+// mountains (horizon_test_support.hpp: kX, kZ) and at the east edge of the wrapped world.
+void testCoarsestWindow() {
+    const HorizonParams params;
+    const int last = params.levels - 1;
+    for (const auto& [x, z] :
+         {std::pair{1'048'580.0, -3'932'156.0}, std::pair{params.world.x / 2.0 - 1.0, 0.0}}) {
+        const HorizonIndex center = terrain::canonicalCenter(params, last, x, z);
+        terrain::HorizonLevel level(params, last);
+        level.moveTo(center);
+        const double side = params.cellsPerSide * static_cast<double>(level.pitch());
+        TEST_CHECK(level.originX(x) <= x - 300'000.0 && level.originX(x) + side >= x + 300'000.0);
+        TEST_CHECK(level.originZ(z) <= z - 300'000.0 && level.originZ(z) + side >= z + 300'000.0);
+    }
 }
 
 // Distance along an axis between the position v and the nearest image of the sample.
@@ -284,6 +303,7 @@ void testNesting() {
 int main() {
     testValidation();
     testPitchesAndCoverage();
+    testCoarsestWindow();
     testCenters();
     testMoveCenter();
     testNewSamples();
