@@ -14,6 +14,7 @@
 #include "TerrainHorizonClipmap.generated.h"
 
 class AActor;
+class UDirectionalLightComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UStaticMesh;
@@ -98,9 +99,19 @@ public:
 	// without the parameter ignore it).
 	int32 SetLookScalar(FName Name, float Value);
 
-	// The levels that cast shadows (FTerrainHorizonDrawing::ShadowLevels, agent 40): the levels 0 to
-	// Levels - 1, or every level with bHorizonShadows (FTerrainHorizonLook::bShadows).
+	// The shadows under a low sun (agent 40, TerrainHorizonClipmapShadows.cpp): the levels 0 to
+	// Levels - 1 cast them, or every level with bHorizonShadows (FTerrainHorizonLook::bShadows).
 	void SetShadowLevels(int32 Levels);
+	// The threshold of FTerrainHorizonDrawing::LowSunShadowDegrees (0: never).
+	void SetLowSunShadows(float BelowDegrees) { LowSunDegrees = BelowDegrees; }
+	// Terrain.HorizonShadows: the levels forced (0 or Bridge/horizon_low_sun.hpp's 4), or -1 for
+	// the rule of the low sun.
+	void SetShadowOverride(int32 Levels) { ShadowOverride = Levels; }
+	// Each frame: the elevation of the sun of the atmosphere, and the levels casting shadows set
+	// when the rule (or the override) changes them, with a line of log.
+	void FollowSun();
+	double GetSunElevation() const { return SunElevation; }
+	int32 GetShadowLevels() const { return ShadowLevels; }
 
 	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
 	// (independent of the visibility the placements set), each level tinted with its own hue or
@@ -169,6 +180,15 @@ private:
 	double RevealSeconds = -1.0;
 	bool bInstantReveal = false;
 	FTerrainHorizonLook HorizonLook;
+	// The sun of the atmosphere (searched again at most once a second while there is none), its
+	// elevation, the threshold, the override of the tools and the levels casting shadows (-1: not
+	// set yet).
+	TWeakObjectPtr<UDirectionalLightComponent> Sun;
+	double NextSunSearchSeconds = 0.0;
+	double SunElevation = 90.0;
+	float LowSunDegrees = 0.0f;
+	int32 ShadowOverride = -1;
+	int32 ShadowLevels = -1;
 	terrain::unreal::DropFade Fade;
 	double Level0PitchCm = 0.0;
 	int32 Side = 0;

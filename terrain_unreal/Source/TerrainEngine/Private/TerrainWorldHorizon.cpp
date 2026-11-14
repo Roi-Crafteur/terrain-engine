@@ -144,7 +144,7 @@ bool ATerrainWorld::StartGpuHorizon()
 	Look.RevealSeconds = FMath::Max(0.0f, LoadingSettings.HorizonRevealSeconds);
 	HorizonClipmap = NewObject<UTerrainHorizonClipmap>(this);
 	HorizonClipmap->Initialize(*this, GpuLook, Horizon, Look);
-	HorizonClipmap->SetShadowLevels(HorizonDrawing.ShadowLevels);
+	HorizonClipmap->SetLowSunShadows(HorizonDrawing.LowSunShadowDegrees);
 	HorizonClipmap->BindSurfaceLook(TileSurfaceLook);
 	HorizonClipmap->SetWaveOrigin(terrain::unreal::seaWaveOrigin(State->Frame));
 	State->HorizonStartSeconds = FPlatformTime::Seconds();
@@ -243,6 +243,7 @@ void ATerrainWorld::TickHorizon(const FVector& Focus)
 			// Under the black screen of a load, a level shown comes in at once.
 			HorizonClipmap->SetInstantReveal(State->Loading.bScreenBlack);
 			HorizonClipmap->Apply(Update, State->HorizonTimings);
+			HorizonClipmap->FollowSun(); // its shadows under a low sun
 			// The parts of the frame for the measures of the loads (TerrainWorldLoading.cpp).
 			State->Loading.FrameHorizonMilliseconds = (ApplyStart - Start) * 1000.0;
 			State->Loading.FrameTexturesMilliseconds =

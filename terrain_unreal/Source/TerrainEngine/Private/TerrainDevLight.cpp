@@ -8,8 +8,9 @@
 //   (scripts/verify/ue_api.py, set_sun: its --sun is elevation,yaw with yaw = heading + 90); a
 //   light that is not movable is made movable first, for this play only (SetMobility, logged);
 //   without arguments, the sun of the first one.
-// - Terrain.HorizonShadows <levels>: the levels of the GPU horizon that cast shadows
-//   (FTerrainHorizonDrawing::ShadowLevels, 0 to 4), to compare their look and their cost.
+// - Terrain.HorizonShadows auto|off|on: the shadows of the levels 0 to 3 of the GPU horizon under
+//   the rule of the low sun (FTerrainHorizonDrawing::LowSunShadowDegrees), or forced off or on,
+//   to compare their look and their cost (Terrain.Cost).
 // - Terrain.Fog [<density> [end km] [height falloff] [cutoff km]]: the ExponentialHeightFog of the
 //   world, set by the setters of its component and its render state marked dirty, to find what
 //   takes the blue band off the far ground seen from high up without losing the haze of the views
@@ -24,6 +25,7 @@
 
 #if TERRAIN_DEV_TOOLS
 
+#include "Bridge/horizon_low_sun.hpp"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SceneComponent.h"
@@ -164,26 +166,37 @@ namespace
 			Elevation, Heading, Turned, Elevation, Rotation.Yaw, MadeMovable);
 	}
 
-	// Terrain.HorizonShadows <levels>
+	// Terrain.HorizonShadows auto|off|on: the rule of the low sun, or the levels 0 to 3 forced off
+	// or on (Bridge/horizon_low_sun.hpp).
 	void RunTerrainHorizonShadows(const TArray<FString>& Args, UWorld* World)
 	{
-		TArray<double> Numbers;
-		if (World == nullptr || Args.Num() != 1 || !LightNumbers(Args, Numbers))
+		const FString Mode = Args.Num() == 1 ? Args[0].ToLower() : FString();
+		int32 Override = -2;
+		if (Mode == TEXT("auto"))
 		{
-			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.HorizonShadows <levels, 0 to 4>"));
+			Override = -1;
+		}
+		else if (Mode == TEXT("off") || Mode == TEXT("on"))
+		{
+			Override = Mode == TEXT("on") ? terrain::unreal::kLowSunShadowLevels : 0;
+		}
+		if (World == nullptr || Override == -2)
+		{
+			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.HorizonShadows auto|off|on"));
 			return;
 		}
-		const int32 Levels = FMath::Clamp(FMath::RoundToInt32(Numbers[0]), 0, 4);
 		for (TObjectIterator<UTerrainHorizonClipmap> It; It; ++It)
 		{
 			if (It->GetWorld() == World)
 			{
-				It->SetShadowLevels(Levels);
+				It->SetShadowOverride(Override);
+				It->FollowSun(); // at once, with its line of log
+				UE_LOG(LogTerrainEngine, Log,
+					TEXT("Terrain.HorizonShadows %s: %d levels cast shadows (the finest first; 0: "
+						 "none), the sun %.1f degrees high"),
+					*Mode, It->GetShadowLevels(), It->GetSunElevation());
 			}
 		}
-		UE_LOG(LogTerrainEngine, Log,
-			TEXT("Terrain.HorizonShadows %d: the levels 0 to %d of the horizon cast shadows"), Levels,
-			Levels - 1);
 	}
 
 	// The values of a height fog as its component holds them.
@@ -347,8 +360,8 @@ namespace
 
 	FAutoConsoleCommandWithWorldAndArgs TerrainHorizonShadowsCommand(
 		TEXT("Terrain.HorizonShadows"),
-		TEXT("The levels of the far horizon that cast shadows, finest first: "
-			 "Terrain.HorizonShadows <0 to 4>"),
+		TEXT("The shadows of the levels 0 to 3 of the far horizon: Terrain.HorizonShadows auto "
+			 "(under a low sun, FTerrainHorizonDrawing::LowSunShadowDegrees), off or on"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainHorizonShadows));
 
 	FAutoConsoleCommandWithWorldAndArgs TerrainFogCommand(TEXT("Terrain.Fog"),

@@ -2,6 +2,7 @@
 # tests/CMakeLists.txt (after the Bridge library and the fixture of the planet of the coasts).
 
 target_sources(terrain_unreal_bridge PRIVATE ${unreal_bridge}/dev_ab_cost.cpp
+                                             ${unreal_bridge}/horizon_low_sun.cpp
                                              ${unreal_bridge}/horizon_sea_line.cpp
                                              ${unreal_bridge}/horizon_split.cpp)
 
@@ -38,4 +39,13 @@ set_tests_properties(view_tiles_study_test PROPERTIES FIXTURES_REQUIRED coast_pl
 terrain_add_test(horizon_bands_far_test terrain_unreal_bridge)
 target_include_directories(horizon_bands_far_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(horizon_bands_far_test PROPERTIES FIXTURES_REQUIRED coast_planet
+                     ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
+
+# The shadows of the horizon under a low sun: the elevation of the sun from its light, the rule and
+# its hysteresis; then the study that chose its threshold (the share of the image of giants_B and
+# of erg_vagues_crete their shadows darken, from 5 to 20 degrees).
+terrain_add_test(unreal_horizon_low_sun_test terrain_unreal_bridge)
+terrain_add_test(horizon_low_sun_study_test terrain_unreal_bridge)
+target_include_directories(horizon_low_sun_study_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(horizon_low_sun_study_test PROPERTIES FIXTURES_REQUIRED coast_planet
                      ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
