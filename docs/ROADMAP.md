@@ -698,6 +698,24 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     les lisse à la source ;
   - pour information : le sable couvre 5 % des déserts, contre environ 20 % sur Terre, car le
     masque des ergs (agent 34) ne couvre que 0,87 % des terres
+- matériau temporaire d'Unreal, hors de la #84 (agent 49 ; écarts vus par l'orchestrateur) :
+  - réglage d'ensemble des teintes du sol : steppe, forêt sèche et désert de sable sont plus
+    sombres et plus saturés que les photos (trop peu de bleu). Albédo sRGB calculé contre attendu :
+    steppe (120, 104, 51) contre environ (170, 155, 110), désert de sable (162, 115, 74) contre
+    environ (215, 160, 105), forêt sèche (108, 101, 43) contre environ (125, 105, 70). La cause est
+    commune aux 21 biomes : les moyennes des textures, `Saturation` (1,2) et `Warmth`. À régler
+    ensemble, pas biome par biome. Le gravier gris des biomes froids est sombre aussi (désert froid
+    (110, 96, 83) contre environ (145, 130, 110)), car l'éboulis `T_RockyGround` a une moyenne de
+    (104, 92, 76). Les couleurs calculées viennent de `unreal_ground_colors_test` (sol plat, au
+    loin) ; les attendues sont des estimations d'après des photos types, à mesurer ;
+  - couches « en touffes », après le découpage de `temporary_terrain_hlsl.py` (571 lignes, aucune
+    ligne nette permise). Dans le nuanceur de pixels des tuiles, une petite part d'une couche est
+    dessinée en taches par un seuil sur un bruit de plaques (couverture = part) : la forêt en taches
+    sombres, le sable ou l'éboulis en affleurements clairs. Pour la garrigue : du calcaire clair
+    entre des taches sombres. Aucune lecture de texture de plus ; l'horizon garde les moyennes. Le
+    nuanceur ne reçoit que les 8 poids des couches (les interpolateurs de l'horizon sont pleins, 22
+    sur 22) : la règle vaut par couche, pour tous les biomes, et change aussi l'aspect de près des
+    anciens. Les vrais arbustes viendront avec l'affichage des plantes du core
 - un milieu n'est pas toujours un biome : il peut être un biome, un relief, un marquage ou un lieu
 - terrestres : forêts tropicale, tempérée, boréale et sèche, savane, prairie, steppe, plaine, déserts
   de sable, rocheux et froid, toundra, montagne, haute montagne, vallée, colline, plateau, canyon,
