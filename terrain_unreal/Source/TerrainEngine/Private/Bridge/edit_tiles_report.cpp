@@ -33,16 +33,40 @@ double distance(const CorePoint& a, const CorePoint& b) {
     return std::hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
-std::string topText(const std::optional<double>& top) {
-    return top ? format("%.2f m", *top, 0.0) : std::string("none");
+// "6.19 m", "6.19 m, under it 5.50 3.50 m", or "none".
+std::string heightsText(const std::vector<double>& heights) {
+    if (heights.empty()) {
+        return "none";
+    }
+    std::string text = format("%.2f m", heights.front(), 0.0);
+    if (heights.size() > 1) {
+        text += ", under it";
+        for (std::size_t i = 1; i < heights.size(); ++i) {
+            text += format(" %.2f", heights[i], 0.0);
+        }
+        text += " m";
+    }
+    return text;
 }
 
 // The ground of the core and of the mesh differ by more than this (the mesh in float
 // centimeters): the mesh is not the tile of the core.
 constexpr double kSameTopMeters = 0.01;
 
-bool differ(const std::optional<double>& a, const std::optional<double>& b) {
-    return a.has_value() != b.has_value() || (a && std::abs(*a - *b) > kSameTopMeters);
+bool differ(const std::vector<double>& a, const std::vector<double>& b) {
+    if (a.size() != b.size()) {
+        return true;
+    }
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        if (std::abs(a[i] - b[i]) > kSameTopMeters) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<double> highest(const std::vector<double>& heights) {
+    return heights.empty() ? std::nullopt : std::optional<double>(heights.front());
 }
 
 } // namespace
@@ -108,7 +132,9 @@ TileColumnReport reportTile(const TileStreamer& streamer, const UnrealFrame& fra
         // The data lie at the canonical image (whole worlds from the image shown).
         const double dx = (key.origin.x - report.image.origin.x) * kChunkSizeMeters;
         const double dz = (key.origin.z - report.image.origin.z) * kChunkSizeMeters;
-        report.coreTop = surfaceTop(coreVertices(*data), data->mesh.indices, x + dx, z + dz);
+        report.coreHeights =
+            surfaceHeights(coreVertices(*data), data->mesh.indices, x + dx, z + dz);
+        report.coreTop = highest(report.coreHeights);
         report.coreVertices = data->mesh.vertices.size();
         report.editedVertices = static_cast<std::size_t>(std::count_if(
             data->editWeights.begin(), data->editWeights.end(), [](float w) { return w > 0.0f; }));
@@ -122,7 +148,8 @@ TileColumnReport reportTile(const TileStreamer& streamer, const UnrealFrame& fra
     for (const UnrealPoint& p : shown->positions) {
         vertices.push_back(toCore(frame, p));
     }
-    report.shownTop = surfaceTop(vertices, shown->triangles, x, z);
+    report.shownHeights = surfaceHeights(vertices, shown->triangles, x, z);
+    report.shownTop = highest(report.shownHeights);
     report.shownVertices = shown->positions.size();
     const CorePoint a = toCore(frame, shown->boundsMin);
     const CorePoint b = toCore(frame, shown->boundsMax);
@@ -150,7 +177,7 @@ std::string editTilesLine(double x, double z, const TileColumnReport& r) {
     if (r.inStreamer) {
         std::snprintf(text, sizeof(text), " (%zu vertices, %zu edited)", r.coreVertices,
                       r.editedVertices);
-        line += ": core top " + topText(r.coreTop) + text;
+        line += ": core top " + heightsText(r.coreHeights) + text;
     } else {
         line += ": not shown by the streamer";
     }
@@ -159,14 +186,14 @@ std::string editTilesLine(double x, double z, const TileColumnReport& r) {
     }
     std::snprintf(text, sizeof(text), " (%zu vertices, uploaded %.1f s ago, upload %d)",
                   r.shownVertices, r.uploadedSecondsAgo, r.uploads);
-    line += " | shown top " + topText(r.shownTop) + text;
+    line += " | shown top " + heightsText(r.shownHeights) + text;
     std::snprintf(text, sizeof(text), ", bounds x %.1f..%.1f y %.1f..%.1f z %.1f..%.1f",
                   r.boundsLow.x, r.boundsHigh.x, r.boundsLow.y, r.boundsHigh.y, r.boundsLow.z,
                   r.boundsHigh.z);
     line += text;
     line += r.pointInBounds ? " (the point inside)" : " (the point OUTSIDE)";
     line += r.visible && r.sectionVisible ? ", visible" : ", HIDDEN";
-    if (r.inStreamer && differ(r.coreTop, r.shownTop)) {
+    if (r.inStreamer && differ(r.coreHeights, r.shownHeights)) {
         line += ", DIFFERENT from the core";
     }
     return line;

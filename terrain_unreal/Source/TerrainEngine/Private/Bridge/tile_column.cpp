@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 
 namespace terrain::unreal {
 
@@ -12,10 +13,11 @@ namespace {
 // both triangles, never in neither.
 constexpr double kEdgeTolerance = 1e-9;
 
+// The heights of the triangles crossing the vertical line through (x, z), in their order.
 template <typename Index>
-std::optional<double> topOf(std::span<const CorePoint> vertices, std::span<const Index> triangles,
-                            double x, double z) {
-    std::optional<double> top;
+std::vector<double> crossings(std::span<const CorePoint> vertices,
+                              std::span<const Index> triangles, double x, double z) {
+    std::vector<double> heights;
     for (std::size_t t = 0; t + 2 < triangles.size(); t += 3) {
         const CorePoint& a = vertices[static_cast<std::size_t>(triangles[t])];
         const CorePoint& b = vertices[static_cast<std::size_t>(triangles[t + 1])];
@@ -29,10 +31,19 @@ std::optional<double> topOf(std::span<const CorePoint> vertices, std::span<const
         if (u < -kEdgeTolerance || v < -kEdgeTolerance || u + v > 1.0 + kEdgeTolerance) {
             continue;
         }
-        const double y = a.y + u * (b.y - a.y) + v * (c.y - a.y);
-        top = top ? std::max(*top, y) : y;
+        heights.push_back(a.y + u * (b.y - a.y) + v * (c.y - a.y));
     }
-    return top;
+    return heights;
+}
+
+template <typename Index>
+std::optional<double> topOf(std::span<const CorePoint> vertices, std::span<const Index> triangles,
+                            double x, double z) {
+    const std::vector<double> heights = crossings(vertices, triangles, x, z);
+    if (heights.empty()) {
+        return std::nullopt;
+    }
+    return *std::max_element(heights.begin(), heights.end());
 }
 
 } // namespace
@@ -45,6 +56,19 @@ std::optional<double> surfaceTop(std::span<const CorePoint> vertices,
 std::optional<double> surfaceTop(std::span<const CorePoint> vertices,
                                  std::span<const std::int32_t> triangles, double x, double z) {
     return topOf(vertices, triangles, x, z);
+}
+
+std::vector<double> surfaceHeights(std::span<const CorePoint> vertices,
+                                   std::span<const std::uint32_t> triangles, double x, double z) {
+    std::vector<double> heights = crossings(vertices, triangles, x, z);
+    std::sort(heights.begin(), heights.end(), std::greater<>());
+    std::vector<double> distinct;
+    for (const double h : heights) {
+        if (distinct.empty() || distinct.back() - h > 0.001) {
+            distinct.push_back(h);
+        }
+    }
+    return distinct;
 }
 
 std::vector<CorePoint> coreVertices(const TileData& data) {

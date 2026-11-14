@@ -28,6 +28,13 @@ namespace terrain::unreal {
                                                std::span<const std::int32_t> triangles,
                                                double x, double z);
 
+// Every surface the triangles put on the vertical line through (x, z), highest first, those
+// within a millimeter of each other once (a point on an edge): the ground, then under it the
+// ceiling and the floor of a tunnel, a cave or an overhang.
+[[nodiscard]] std::vector<double> surfaceHeights(std::span<const CorePoint> vertices,
+                                                 std::span<const std::uint32_t> triangles,
+                                                 double x, double z);
+
 // The vertices of the mesh of a tile in the core frame: those of its data (at the canonical
 // image), and those of an upload placed in Unreal (at the image it is shown at).
 [[nodiscard]] std::vector<CorePoint> coreVertices(const TileData& data);

@@ -3,7 +3,8 @@
 // streamer; for each, the ground of the column in the core and in the mesh the backend received
 // agree (the hollow), the LOD from the camera is the LOD of the tile, the point lies in the
 // bounds; a mesh of before the click, a hidden mesh, bounds that miss the point and a tile without
-// a mesh are told so. The LOD a player at the camera asks for, and the line of the positions.
+// a mesh are told so. Over a tunnel, the ground, its ceiling and its floor. The LOD a player at
+// the camera asks for, and the line of the positions.
 #include "edit_tiles_report.hpp"
 
 #include "block_targeting.hpp"
@@ -103,6 +104,38 @@ void testTilesOverAHollow() {
     TEST_CHECK(has(terrain::unreal::editTilesLine(-240609.0, kZ, none), "| no mesh in Unreal"));
 }
 
+// A tunnel of two rows under the ground (scene b): over it, the ground, the ceiling and the floor
+// of the tunnel, the same in the core and in the mesh.
+void testTilesOverATunnel() {
+    constexpr double kX = -240614.0;
+    constexpr double kZ = -86697.0;
+    edit_level::Level level(0, kX, kZ);
+    level.play(kX, kZ);
+    // Two rows with a meter of rock at least over them.
+    const int floorRow =
+        static_cast<int>(std::floor(level.session.tiles().groundAt(-240607.0, kZ))) - 3;
+    for (const int y : {floorRow, floorRow + 1}) {
+        terrain::VolumeEdit block;
+        block.shape = terrain::EditShape::Box;
+        block.mode = terrain::EditMode::Remove;
+        block.anchor = {-240607, y, -86697};
+        block.size = {1, 1, 1};
+        level.click(block, kX, kZ);
+    }
+    const TileKey key{{-15038, -5419}, 0};
+    const TileColumnReport report = terrain::unreal::reportTile(
+        level.session.streamer(), level.frame, key, -240607.0, kZ,
+        terrain::worldToChunk(kX, kZ), sectionOf(level.meshes.tiles.at(key)));
+    const std::string line = terrain::unreal::editTilesLine(-240607.0, kZ, report);
+    std::printf("%s\n", line.c_str());
+    TEST_CHECK(report.coreHeights.size() == 3 && report.shownHeights.size() == 3);
+    if (report.coreHeights.size() == 3) {
+        TEST_CHECK(std::abs(report.coreHeights[1] - (floorRow + 1.5)) < 1e-4); // the ceiling
+        TEST_CHECK(std::abs(report.coreHeights[2] - (floorRow - 0.5)) < 1e-4); // the floor
+    }
+    TEST_CHECK(has(line, ", under it ") && !has(line, "DIFFERENT"));
+}
+
 // The LOD a player at the camera asks for over a point: the rings of Terrain World.
 void testExpectedLod() {
     const terrain::LodParams rings{{4, 8, 16}, 32};
@@ -142,5 +175,6 @@ int main() {
     testExpectedLod();
     testPositionsLine();
     testTilesOverAHollow();
+    testTilesOverATunnel();
     return test::result();
 }

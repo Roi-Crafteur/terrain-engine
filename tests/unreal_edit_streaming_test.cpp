@@ -354,6 +354,16 @@ void testSurfaceTop() {
     withFloor.insert(withFloor.end(), {8, 9, 10, 8, 10, 11});
     TEST_CHECK(surfaceTop(both, withFloor, 2.0, 2.0) == -3.0);
     TEST_CHECK(surfaceTop(both, withFloor, 0.5, 0.5) == 2.0);
+    // A ground over a floor (a tunnel under it): both surfaces, the highest first; a point on the
+    // diagonal both triangles share once.
+    std::vector<CorePoint> stacked = square;
+    stacked.insert(stacked.end(), {{0, -3, 0}, {4, -3, 0}, {4, -3, 4}, {0, -3, 4}});
+    const std::vector<std::uint32_t> four = {0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7};
+    TEST_CHECK(terrain::unreal::surfaceHeights(stacked, four, 1.0, 3.0) ==
+               std::vector<double>({2.0, -3.0}));
+    TEST_CHECK(terrain::unreal::surfaceHeights(stacked, four, 2.0, 2.0) ==
+               std::vector<double>({2.0, -3.0}));
+    TEST_CHECK(terrain::unreal::surfaceHeights(stacked, four, 9.0, 2.0).empty());
 }
 
 } // namespace

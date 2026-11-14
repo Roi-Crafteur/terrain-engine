@@ -70,11 +70,13 @@ struct TileColumnReport {
     TileKey image; // where it is shown
     int expectedLod = -1;
     bool inStreamer = false; // shown by the streamer, its data loaded
-    std::optional<double> coreTop;
+    std::optional<double> coreTop;   // the highest of coreHeights
+    std::vector<double> coreHeights; // every surface on the column, highest first
     std::size_t coreVertices = 0;
     std::size_t editedVertices = 0; // edit weight above 0
     bool inMesh = false; // a mesh of Unreal holds the tile
     std::optional<double> shownTop;
+    std::vector<double> shownHeights;
     std::size_t shownVertices = 0;
     CorePoint boundsLow; // the bounds of the mesh in the core
     CorePoint boundsHigh;
@@ -92,9 +94,10 @@ struct TileColumnReport {
                                           ChunkCoord camera,
                                           const std::optional<ShownSection>& shown);
 
-// "EditTiles (x, z): tile (cx, cz) LOD l (from the camera: LOD e) [image (ix, iz)]: core top 3.48
-// m (812 vertices, 96 edited) | shown top 3.48 m (812 vertices, uploaded 2.3 s ago, upload 4),
-// bounds x a..b y c..d z e..f (the point inside), visible".
+// "EditTiles (x, z): tile (cx, cz) LOD l (from the camera: LOD e) [image (ix, iz)]: core top
+// 6.19 m, under it 5.50 3.50 m (812 vertices, 96 edited) | shown top 6.19 m, under it 5.50
+// 3.50 m (812 vertices, uploaded 2.3 s ago, upload 4), bounds x a..b y c..d z e..f (the point
+// inside), visible".
 [[nodiscard]] std::string editTilesLine(double x, double z, const TileColumnReport& report);
 
 } // namespace terrain::unreal
