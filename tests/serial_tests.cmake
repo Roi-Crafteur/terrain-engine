@@ -16,10 +16,12 @@ set_tests_properties(
     # A ratio of measured times.
     water_cost_test
     ergs_world_test
-    # A threshold on a measured time.
     horizon_edits_cost_test
     unreal_horizon_edits_cost_test
+    unreal_terrain_session_test
+    # A threshold on a measured time.
     unreal_map_cache_test
+    # A stop: a job dropped while it builds.
     unreal_planet_job_test
     # A wait bounded in time, or a sleep before counting what the threads did.
     unreal_edit_latency_test
@@ -37,6 +39,22 @@ set_tests_properties(
 if(TEST verify_session_test)
     set_tests_properties(verify_session_test PROPERTIES RUN_SERIAL TRUE)
 endif()
+
+# The tests of a file included after this one (its line comes later in tests/CMakeLists.txt): set
+# at the end of the folder, once every test is defined, and only if the test exists.
+function(terrain_run_serial_if_defined)
+    foreach(name IN LISTS ARGN)
+        if(TEST ${name})
+            set_tests_properties(${name} PROPERTIES RUN_SERIAL TRUE)
+        endif()
+    endforeach()
+endfunction()
+cmake_language(DEFER CALL terrain_run_serial_if_defined
+    # A stop (agent 39, tests/hydrology_stop_tests.cmake): the computations of the hydrology
+    # stopped from another thread, under load; the threads of the plugin stopped in the middle of
+    # the courses of the rivers.
+    hydrology_stop_test
+    unreal_work_stop_test)
 
 # The planet of the default world, built by the fixture of the coast tests (two minutes on four
 # cores): started first, so that the tests it holds back are not left for the end.
