@@ -77,7 +77,11 @@ AppliedFlags applyTo(std::string_view text, WorldParams* params,
 // sphere_latitude (agent 31, task 11C after the audit): the latitude of a sphere for every reader
 // of the climate (climate_latitude.hpp), one threshold of the frost (the ice of the planet level
 // at the snow of the biomes), the climate of a cell at the mean altitude of its points, the rivers
-// going on under the ice.
+// going on under the ice, and the poles colder: kSpherePole instead of -23 C, for the planet level
+// and the tiles (with the sphere alone the cold of the land fell from 34 to 8.5 % on 6 seeds;
+// at -33 C snow and tundra cover 13.0 % of the land, the deserts stay at 28 %).
+constexpr float kSpherePole = -33.0f;
+
 void sphereLatitude(WorldParams& p) {
     p.relief.sphereLatitude = true;
     p.planet.climate.sphereLatitude = true;
@@ -85,6 +89,8 @@ void sphereLatitude(WorldParams& p) {
     p.planet.climate.iceTemperature = p.ecology.biomes.snowTemperature;
     p.planet.rivers.underIce = true;
     p.ecology.climate.sphereLatitude = true;
+    p.planet.climate.poleTemperature = kSpherePole;
+    p.ecology.climate.poleTemperature = kSpherePole;
 }
 
 } // namespace

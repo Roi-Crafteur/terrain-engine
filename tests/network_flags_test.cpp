@@ -60,6 +60,10 @@ void testTable() {
                sphere.planet.climate.sphereLatitude && sphere.planet.climate.meanAltitude &&
                sphere.planet.rivers.underIce && !sphere.planet.links.enabled);
     TEST_CHECK(sphere.planet.climate.iceTemperature == sphere.ecology.biomes.snowTemperature);
+    TEST_CHECK(sphere.planet.climate.poleTemperature == -33.0f &&
+               sphere.ecology.climate.poleTemperature == -33.0f);
+    TEST_CHECK(none.planet.climate.poleTemperature == -23.0f &&
+               none.ecology.climate.poleTemperature == -23.0f);
     TEST_CHECK(!none.relief.sphereLatitude && !none.ecology.climate.sphereLatitude &&
                !none.planet.climate.meanAltitude && !none.planet.rivers.underIce &&
                none.planet.climate.iceTemperature == -10.0f);

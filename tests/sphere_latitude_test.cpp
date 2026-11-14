@@ -72,6 +72,8 @@ void testSmallWorld() {
     TEST_CHECK(world.planet.climate.sphereLatitude && world.planet.climate.meanAltitude);
     TEST_CHECK(world.planet.rivers.underIce);
     TEST_CHECK(world.planet.climate.iceTemperature == world.ecology.biomes.snowTemperature);
+    TEST_CHECK(world.planet.climate.poleTemperature == -33.0f); // the poles colder (13 % of cold)
+    TEST_CHECK(world.ecology.climate.poleTemperature == world.planet.climate.poleTemperature);
     const terrain::PlanetLevel on(terrain::kDefaultWorldSeed, world.relief, world.planet,
                                   golden::kSmallPlanet);
     const terrain::PlanetLevel off(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
