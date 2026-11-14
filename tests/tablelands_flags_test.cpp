@@ -1,13 +1,15 @@
-// The rows of agent 46 in the table of the experimental flags of the world
-// (experimental_flags.hpp): "tablelands" and "karst" set their switch of the geography and
-// nothing else; names apart by commas or white space, their case ignored, each applied once, the
-// canonical text sorted; an unknown name given back; the table sorted, its names well formed.
-// (Agent 46's copy of the mechanism of agent 51: its experimental_flags_test takes these cases when
-// its pull request is on main.)
+// The rows of agent 46 in the table of the experimental flags of the world (agent 51,
+// experimental_flags.hpp): "tablelands" and "karst" set their switch of the geography and nothing
+// else, whatever the case, the separators and the repeats; their canonical text sorted; an unknown
+// name given back (the table itself: experimental_flags_test). And the planet file of
+// terrain_export_rock with flags: in its output folder, named by its flags (rock_planet.hpp).
 #include "terrain/generation/experimental_flags.hpp"
 #include "terrain/generation/heightfield.hpp"
 
+#include "rock_planet.hpp"
 #include "test_assert.hpp"
+
+#include <filesystem>
 
 #include <string>
 #include <vector>
@@ -67,32 +69,15 @@ void testUnknown() {
     TEST_CHECK(b.text.empty() && b.unknown.size() == 1 && !q.relief.geography.tablelands);
 }
 
-bool wellFormed(const std::string& name) {
-    if (name.empty()) {
-        return false;
-    }
-    for (const char c : name) {
-        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_')) {
-            return false;
-        }
-    }
-    return true;
-}
-
-void testTable() {
-    const auto flags = terrain::experimentalFlags();
-    TEST_CHECK(!flags.empty());
-    std::string names;
-    for (std::size_t i = 0; i < flags.size(); ++i) {
-        TEST_CHECK(wellFormed(flags[i].name) && flags[i].what[0] != '\0');
-        TEST_CHECK(flags[i].apply != nullptr);
-        if (i > 0) {
-            TEST_CHECK(std::string(flags[i - 1].name) < std::string(flags[i].name));
-        }
-        TEST_CHECK(terrain::canonicalFlags(flags[i].name) == flags[i].name);
-        names += (names.empty() ? "" : ", ") + std::string(flags[i].name);
-    }
-    TEST_CHECK(terrain::knownFlagNames() == names);
+// The planet file of terrain_export_rock: the one given, or one of the output folder, of its flags.
+void testPlanetFile() {
+    const std::filesystem::path out = "views";
+    TEST_CHECK(rock_tool::planetFileOf(out, {}, "") == out / "planet.bin");
+    TEST_CHECK(rock_tool::planetFileOf(out, {}, "tablelands") == out / "planet_tablelands.bin");
+    TEST_CHECK(rock_tool::planetFileOf(out, {}, "karst,tablelands") ==
+               out / "planet_karst+tablelands.bin");
+    TEST_CHECK(rock_tool::planetFileOf(out, "worlds/a.bin", "tablelands") == "worlds/a.bin");
+    TEST_CHECK(rock_tool::planetFileOf(out, {}, "tablelands").parent_path() == out);
 }
 
 } // namespace
@@ -101,6 +86,6 @@ int main() {
     testEmpty();
     testRows();
     testUnknown();
-    testTable();
+    testPlanetFile();
     return test::result();
 }

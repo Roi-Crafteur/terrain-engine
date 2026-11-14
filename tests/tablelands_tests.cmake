@@ -10,9 +10,10 @@ set_tests_properties(pre_climate_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
 # The world with them switched on: its checksums, and what it does to the frozen mountains (R1).
 terrain_add_test(tablelands_on_golden_test terrain_core)
-# The rows "tablelands" and "karst" of the experimental flags (agent 46's copy of the mechanism of
-# agent 51: they go into its experimental_flags_test when its pull request is on main).
+# The rows "tablelands" and "karst" of the experimental flags of agent 51, and the planet file of
+# terrain_export_rock with flags (terrain_core/tools/rock_planet.hpp).
 terrain_add_test(tablelands_flags_test terrain_core)
+target_include_directories(tablelands_flags_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/tools)
 # The goldens with the plateaus on (golden_support.hpp: the same executables run with --flags
 # tablelands), their values pinned for R1, which turns every new relief on together. Only those the
 # plateaus reach (their high surfaces, mesas and canyons): the horizon, the streamed world and the

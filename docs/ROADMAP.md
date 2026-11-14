@@ -10,8 +10,7 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projets
-eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -285,6 +284,12 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - puis, chacun dans sa zone : volcans, plateaux et karst, relief glaciaire, tous les milieux
   (biomes, milieux humides et côtiers, mers), couches de surface, reliefs fantastiques
 - en pause : peuplement, étape 1 (sites, hiérarchie, routes), en attente des détails de game design
+- relief de la vague 9 fusionné éteint, allumé ensemble par l'orchestrateur (R1), par les drapeaux
+  expérimentaux (agent 51) : un agent ajoute son nom par une ligne de la table de
+  `experimental_flags.cpp` (nom en minuscules, ce qu'il fait, les paramètres qu'il pose) et un cas
+  de test ; ce qu'il ajoute au niveau Planète va dans une section du fichier planète
+  (`src/storage/planet_sections.hpp`) ; outils `--flags`, Unreal `Experimental.ExperimentalFlags` ;
+  aucun drapeau = `main` au bit près (`experimental_off_test`)
 
 ### Phase 10 — suite
 - Character qui marche, saute et tombe sur le terrain : vérifié avec le Character du
@@ -398,12 +403,15 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     ~1,2 ms (0,8 ms avant les unités), ×1,03 hors zone (`tablelands_cost_test`).
     Limite : des tronçons de canyon fermés à l'intérieur (cuvettes sèches), les lacs de la Planète
     les traitent comme tout creux ; les gorges des fleuves ne lisent pas encore ces couches.
-  - Les outils (`terrain_export_relief`, `terrain_export_map`, `terrain_export_rock`) prennent
-    `--flags tablelands,karst` ; avec des drapeaux, `terrain_export_rock` construit sa planète en
-    mémoire, sans l'écrire. Ce sont les drapeaux de l'agent 51 (`experimental_flags.hpp`, copié en
-    attendant sa PR ; mes deux lignes passent dans sa table). Les sommes allumées sont dans les
-    variantes des goldens (`--flags tablelands` : `heightfield_golden_test`, `coast_outside_test`,
-    `mountain_freeze_test`).
+  - Allumés par les drapeaux de l'agent 51 (`experimental_flags.hpp`) : les lignes `karst` et
+    `tablelands` de sa table. Les outils (`terrain_export_relief`, `terrain_export_map`,
+    `terrain_export_rock`, `terrain_make_planet`, `terrain_probe`) prennent `--flags`.
+    `terrain_export_rock --flags` lit ou écrit sa planète dans son dossier de sortie
+    (`planet_<drapeaux joints par +>.bin`, fichier planète v2 qui porte ses drapeaux), jamais à la
+    place du `planet.bin` du projet. Dans Unreal, aucun réglage sur l'acteur :
+    `Terrain.Flags tablelands` avant Play, puis `Terrain.Flags reset` à la fin. Les sommes allumées
+    sont dans les variantes des goldens (`--flags tablelands` : `heightfield_golden_test`,
+    `coast_outside_test`, `mountain_freeze_test`).
   - Pour l'agent 52, règle : aucun creux dans ces provinces, surfaces de plateau comprises. Un site
     de centre (x, z) et de rayon d'action r est refusé si `field.tablelandAt(px, pz).any()`
     (`Heightfield::tablelandAt`) est vrai au centre ou en un point des anneaux à r / 2 et à r, tous

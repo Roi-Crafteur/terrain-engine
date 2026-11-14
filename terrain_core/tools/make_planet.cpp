@@ -2,12 +2,16 @@
 // the world (the Unreal Bridge: ATerrainWorld::PlanetFile). Builds the level from the relief (a few
 // minutes for the whole planet), unless the file already holds it; then reads it back to check it.
 // With --memory, prints for each stage its seconds, the heap at its end and at its peak, and the
-// peak of the process (MiB), then the peaks of the whole run.
-// Usage: terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--threads <n>] [--memory]
+// peak of the process (MiB), then the peaks of the whole run. --flags: the experimental flags of
+// the world (experimental_flags.hpp), written in the file; a file of other flags is never
+// replaced (give another file).
+// Usage: terrain_make_planet <file> [--seed <seed>] [--world <x> <z>] [--flags <a,b>]
+//        [--threads <n>] [--memory]
 
 #include "heap_counter.hpp"
 #include "process_memory.hpp"
 #include "terrain/storage/planet_file.hpp"
+#include "tool_flags.hpp"
 
 #include <charconv>
 #include <chrono>
@@ -35,6 +39,7 @@ struct Options {
     terrain::WorldSize world;
     int threads = 0;
     bool memory = false;
+    std::string flags; // --flags, as written
 };
 
 bool parseOptions(int argc, char** argv, Options& o) {
@@ -50,6 +55,11 @@ bool parseOptions(int argc, char** argv, Options& o) {
         } else if (flag == "--world" && i + 2 < argc) {
             ok = parse(argv[i + 1], o.world.x) && parse(argv[i + 2], o.world.z);
             i += 2;
+        } else if (flag == "--flags" && i + 1 < argc) {
+            o.flags = argv[++i];
+            terrain::WorldParams params;
+            std::string canonical;
+            ok = tool_flags::apply(o.flags, params, canonical);
         } else if (flag == "--threads" && i + 1 < argc) {
             ok = parse(argv[++i], o.threads) && o.threads >= 0;
         } else if (flag == "--memory") {
@@ -107,15 +117,18 @@ int main(int argc, char** argv) {
     Options o;
     if (!parseOptions(argc, argv, o)) {
         std::fprintf(stderr,
-                     "Usage: %s <file> [--seed <seed>] [--world <x> <z>] [--threads <n>] "
-                     "[--memory]\n",
+                     "Usage: %s <file> [--seed <seed>] [--world <x> <z>] [--flags <a,b>] "
+                     "[--threads <n>] [--memory]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
     process_memory::returnFreedBlocks();
     try {
         terrain::validate(o.world);
-        terrain::PlanetParams params;
+        terrain::WorldParams world;
+        std::string flags;
+        (void)tool_flags::apply(o.flags, world, flags); // checked with the options
+        terrain::PlanetParams params = world.planet;
         params.threads = o.threads;
         const std::unique_ptr<StageMeter> meter =
             o.memory ? std::make_unique<StageMeter>() : nullptr;
@@ -129,14 +142,14 @@ int main(int argc, char** argv) {
         {
             // Only its checksum is kept: the file is read back without the level in memory.
             const terrain::PlanetLevel level = terrain::openPlanetLevel(
-                o.file, o.seed, terrain::HeightfieldParams{}, params, o.world, &built, probe);
+                o.file, o.seed, world.relief, params, o.world, &built, probe, flags);
             checksum = level.checksum();
         }
         const double seconds =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         // Read back: the file holds this very level.
         const std::uint64_t again =
-            terrain::loadPlanetFile(o.file, o.seed, params, o.world).checksum();
+            terrain::loadPlanetFile(o.file, o.seed, params, o.world, flags).checksum();
         if (meter) {
             (*meter)("read back");
             meter->summary();
@@ -147,8 +160,9 @@ int main(int argc, char** argv) {
         }
         std::error_code error;
         const auto bytes = std::filesystem::file_size(o.file, error);
-        std::printf("%s: the planet level of seed %llu, %s in %.1f s, %.0f MB, checksum %016llx\n",
-                    o.file.string().c_str(), static_cast<unsigned long long>(o.seed),
+        std::printf("%s: the planet level of seed %llu, flags \"%s\", %s in %.1f s, %.0f MB, "
+                    "checksum %016llx\n",
+                    o.file.string().c_str(), static_cast<unsigned long long>(o.seed), flags.c_str(),
                     built ? "built and written" : "already there", seconds,
                     error ? 0.0 : static_cast<double>(bytes) / 1.0e6,
                     static_cast<unsigned long long>(checksum));
