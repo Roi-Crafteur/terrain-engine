@@ -14,7 +14,10 @@
 // 1,725 m, summits of 3,345 m within 3 km). --pole: the mean temperature at the poles of the
 // planet level and of the tiles, Celsius, after the flags.
 // Usage: terrain_world_changes <output-dir> [--flags <a,b>] [--places <file>] [--step <cells>]
-//        [--find] [--pole <celsius>]
+//        [--find] [--pole <celsius>] [--rivers <x> <z> <km>]
+// --rivers: the river cells of the planet level within km of (x, z): their center, discharge,
+// order and the center of their receiver (where a river reaches a coast). Each place also tells
+// how far the valleys keep from it (Hydrology::clearanceAt: the coasts fade out within 60 m).
 
 #include "tool_flags.hpp"
 
@@ -53,6 +56,10 @@ struct Options {
     std::vector<Place> places;
     int step = 8;
     bool find = false;
+    bool rivers = false;
+    double riversX = 0.0;
+    double riversZ = 0.0;
+    double riversKm = 0.0;
     bool pole = false;
     float poleTemperature = 0.0f;
 };
@@ -82,6 +89,11 @@ bool parse(int argc, char** argv, Options& o) {
             o.flags = argv[++a];
         } else if (arg == "--places" && a + 1 < argc) {
             o.places = readPlaces(argv[++a]);
+        } else if (arg == "--rivers" && a + 3 < argc) {
+            o.rivers = true;
+            o.riversX = std::atof(argv[++a]);
+            o.riversZ = std::atof(argv[++a]);
+            o.riversKm = std::atof(argv[++a]);
         } else if (arg == "--find") {
             o.find = true;
         } else if (arg == "--pole" && a + 1 < argc) {
@@ -189,14 +201,15 @@ void placeLine(const World& w, const Place& p, std::FILE* out) {
         }
     }
     const terrain::PlanetSample cell = w.level->sampleAt(p.x, p.z);
+    const terrain::Hydrology::Clearance near = w.hydrology->clearanceAt(p.x, p.z);
     std::fprintf(out,
                  "place %s: ground %.2f, water %d level %.2f, relief within 100 m %.1f, planet "
-                 "river %d lake %d discharge %.1f, biome %s\n",
+                 "river %d lake %d discharge %.1f, biome %s, valleys away %.0f m floor %.1f m\n",
                  p.name.c_str(), static_cast<double>(h.height), static_cast<int>(h.water),
                  h.water == terrain::WaterKind::None ? 0.0 : static_cast<double>(h.waterLevel),
                  static_cast<double>(moves), cell.discharge > 0.0f ? 1 : 0, cell.lake,
                  static_cast<double>(cell.discharge),
-                 terrain::biomeName(biomeAt(w, *w.field, p.x, p.z)));
+                 terrain::biomeName(biomeAt(w, *w.field, p.x, p.z)), near.away, near.floor);
 }
 
 struct Found {
@@ -331,6 +344,37 @@ void findLakes(const World& w, std::FILE* out) {
     }
 }
 
+// The river cells of the planet level within km of (x, z), and where each goes.
+void riversNear(const World& w, double x, double z, double km, std::FILE* out) {
+    const terrain::PlanetGrid& g = w.level->grid();
+    const terrain::PlanetCells& cells = w.level->cells();
+    const int reach = static_cast<int>(km * 1000.0 / g.cellSize) + 1;
+    const std::size_t at = g.index(
+        g.wrapColumn(static_cast<int>((terrain::wrapCoordinate(x, g.periodX()) + 0.5 * g.periodX()) /
+                                      g.cellSize)),
+        g.wrapRow(static_cast<int>((terrain::wrapCoordinate(z, g.periodZ()) + 0.5 * g.periodZ()) /
+                                   g.cellSize)));
+    for (int dj = -reach; dj <= reach; ++dj) {
+        for (int di = -reach; di <= reach; ++di) {
+            const std::size_t c =
+                g.index(g.wrapColumn(g.column(at) + di), g.wrapRow(g.row(at) + dj));
+            if ((cells.bits[c] & terrain::PlanetCells::kRiverBit) == 0) {
+                continue;
+            }
+            const double cx = g.centerX(g.column(c));
+            const double cz = g.centerZ(g.row(c));
+            const terrain::PlanetSample s = w.level->sampleAt(cx, cz);
+            const std::uint8_t r = cells.receiver(c);
+            const std::size_t d = r == terrain::kNoNeighbor ? c : g.neighbor(c, r);
+            std::fprintf(out,
+                         "river cell (%.0f ; %.0f): discharge %.1f, order %d, to (%.0f ; %.0f)%s\n",
+                         cx, cz, static_cast<double>(s.discharge), static_cast<int>(s.strahler),
+                         g.centerX(g.column(d)), g.centerZ(g.row(d)),
+                         cells.ocean(d) ? " (the sea)" : "");
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -371,6 +415,9 @@ int main(int argc, char** argv) {
     ergLines(w, o.step, file);
     for (const Place& p : o.places) {
         placeLine(w, p, file);
+    }
+    if (o.rivers) {
+        riversNear(w, o.riversX, o.riversZ, o.riversKm, file);
     }
     if (o.find) {
         findDunes(w, file);
