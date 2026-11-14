@@ -6,14 +6,19 @@
 // shares.txt: the shares of the land of snow, tundra, snow + tundra, desert, of the arid land
 // (aridity index P / PET under 0.5 on the planet level: hyper-arid, arid and semi-arid in the
 // classes of UNEP) and of the frozen land (PlanetLevel::water), then of every biome.
+// The dry biomes: the desert, and the steppe where the biomes have one (their names). --pole: the
+// mean temperature at the poles of the planet level and of the tiles, Celsius, after the flags.
+// --ergs: the number of ergs (agent 34), their area, and the wall of the giant waves and the field
+// of stars (their mask, their kind of dune, the rain of their cell).
 // --frost: the one threshold of the frost (the ice of the planet level and the snow of the
 // biomes), Celsius, after the flags.
 // Usage: terrain_climate_shares <output-dir> [--seeds <a,b,...>] [--flags <a,b>]
-//        [--frost <celsius>] [--step <cells>] [--threads <n>]
+//        [--frost <celsius>] [--pole <celsius>] [--ergs] [--step <cells>] [--threads <n>]
 
 #include "tool_flags.hpp"
 
 #include "terrain/generation/ecology.hpp"
+#include "terrain/generation/ergs.hpp"
 #include "terrain/generation/planet/planet_climate.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/generation/terrain_surface.hpp"
@@ -37,6 +42,9 @@ struct Options {
     std::string flags;
     bool frost = false;
     float frostTemperature = 0.0f;
+    bool pole = false;
+    float poleTemperature = 0.0f;
+    bool ergs = false;
     int step = 4;
     int threads = 4;
 };
@@ -66,6 +74,11 @@ bool parse(int argc, char** argv, Options& o) {
         } else if (arg == "--frost" && a + 1 < argc) {
             o.frost = true;
             o.frostTemperature = std::strtof(argv[++a], nullptr);
+        } else if (arg == "--pole" && a + 1 < argc) {
+            o.pole = true;
+            o.poleTemperature = std::strtof(argv[++a], nullptr);
+        } else if (arg == "--ergs") {
+            o.ergs = true;
         } else if (arg == "--step" && a + 1 < argc) {
             o.step = std::atoi(argv[++a]);
         } else if (arg == "--threads" && a + 1 < argc) {
@@ -150,8 +163,34 @@ double share(std::uint64_t part, std::uint64_t whole) {
     return whole == 0 ? 0.0 : 100.0 * static_cast<double>(part) / static_cast<double>(whole);
 }
 
-void report(std::FILE* out, std::uint64_t seed, const std::string& flags, float frost,
-            const Counts& n, double seconds) {
+// The ergs of a level (Ergs, as the hydrology builds them), and the two places of agent 34.
+std::string ergLine(std::uint64_t seed, const terrain::PlanetLevel& level,
+                    const terrain::Heightfield& field, const terrain::WorldParams& world) {
+    const terrain::Ergs ergs(seed, level, {}, world.water.ergs);
+    double area = 0.0;
+    for (const terrain::ErgSummary& e : ergs.ergs()) {
+        area += e.area;
+    }
+    std::string line = "  ergs: " + std::to_string(ergs.ergs().size()) + ", area " +
+                       std::to_string(static_cast<long long>(area)) + " blocks;";
+    const std::array<std::array<double, 2>, 2> places = {
+        std::array<double, 2>{-323'111.0, 3'952'778.0}, std::array<double, 2>{-26'543'080.0,
+                                                                             5'119'222.0}};
+    const std::array<const char*, 2> names = {"giant_wall", "star_field"};
+    for (std::size_t k = 0; k < places.size(); ++k) {
+        const terrain::HeightSample s = field.sampleAt(places[k][0], places[k][1]);
+        const terrain::ErgPoint e = ergs.at(places[k][0], places[k][1], s.relief, s.rift);
+        char text[160];
+        std::snprintf(text, sizeof(text), " %s mask %.2f kind %d rain %.0f mm/yr;", names[k],
+                      static_cast<double>(e.mask), static_cast<int>(ergs.kindOf(e)),
+                      static_cast<double>(level.sampleAt(places[k][0], places[k][1]).precipitation));
+        line += text;
+    }
+    return line;
+}
+
+void report(std::FILE* out, std::uint64_t seed, const std::string& flags,
+            const terrain::WorldParams& world, const Counts& n, double seconds) {
     std::uint64_t read = 0;
     for (const std::uint64_t b : n.biomes) {
         read += b;
@@ -159,13 +198,20 @@ void report(std::FILE* out, std::uint64_t seed, const std::string& flags, float 
     const auto biome = [&n](terrain::Biome b) { return n.biomes[static_cast<std::size_t>(b)]; };
     const std::uint64_t snow = biome(terrain::Biome::Snow);
     const std::uint64_t tundra = biome(terrain::Biome::Tundra);
+    std::uint64_t dry = 0; // the desert, and the steppe where the biomes have one
+    for (std::size_t b = 0; b < n.biomes.size(); ++b) {
+        const std::string name = terrain::biomeName(static_cast<terrain::Biome>(b));
+        dry += name == "desert" || name == "steppe" ? n.biomes[b] : 0;
+    }
     std::fprintf(out,
-                 "seed %llu flags \"%s\" frost %.1f: snow %.1f %%, tundra %.1f %%, snow + tundra "
-                 "%.1f %%, desert %.1f %%, arid (P/PET < 0.5) %.1f %%, frozen %.1f %% (%llu "
-                 "samples, %llu land cells, %.0f s)\n",
-                 static_cast<unsigned long long>(seed), flags.c_str(), static_cast<double>(frost),
-                 share(snow, read), share(tundra, read), share(snow + tundra, read),
-                 share(biome(terrain::Biome::Desert), read), share(n.arid, n.land),
+                 "seed %llu flags \"%s\" frost %.1f pole %.1f: snow %.1f %%, tundra %.1f %%, snow "
+                 "+ tundra %.1f %%, desert %.1f %%, dry biomes %.1f %%, arid (P/PET < 0.5) %.1f "
+                 "%%, frozen %.1f %% (%llu samples, %llu land cells, %.0f s)\n",
+                 static_cast<unsigned long long>(seed), flags.c_str(),
+                 static_cast<double>(world.planet.climate.iceTemperature),
+                 static_cast<double>(world.planet.climate.poleTemperature), share(snow, read),
+                 share(tundra, read), share(snow + tundra, read),
+                 share(biome(terrain::Biome::Desert), read), share(dry, read), share(n.arid, n.land),
                  share(n.frozen, n.land), static_cast<unsigned long long>(read),
                  static_cast<unsigned long long>(n.land), seconds);
     std::fprintf(out, "  biomes:");
@@ -182,8 +228,8 @@ int main(int argc, char** argv) {
     Options o;
     if (!parse(argc, argv, o)) {
         std::fprintf(stderr, "usage: terrain_climate_shares <output-dir> [--seeds <a,b,...>] "
-                             "[--flags <a,b>] [--frost <celsius>] [--step <cells>] "
-                             "[--threads <n>]\n");
+                             "[--flags <a,b>] [--frost <celsius>] [--pole <celsius>] [--ergs] "
+                             "[--step <cells>] [--threads <n>]\n");
         return 1;
     }
     terrain::WorldParams world;
@@ -194,6 +240,10 @@ int main(int argc, char** argv) {
     if (o.frost) {
         world.planet.climate.iceTemperature = o.frostTemperature;
         world.ecology.biomes.snowTemperature = o.frostTemperature;
+    }
+    if (o.pole) {
+        world.planet.climate.poleTemperature = o.poleTemperature;
+        world.ecology.climate.poleTemperature = o.poleTemperature;
     }
     world.planet.threads = o.threads;
     std::filesystem::create_directories(o.directory);
@@ -220,10 +270,13 @@ int main(int argc, char** argv) {
         }
         const double seconds =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        report(stdout, seed, canonical, world.planet.climate.iceTemperature, n, seconds);
-        if (file != nullptr) {
-            report(file, seed, canonical, world.planet.climate.iceTemperature, n, seconds);
-            std::fflush(file);
+        const std::string ergs = o.ergs ? ergLine(seed, *level, field, world) + "\n" : "";
+        for (std::FILE* out : {stdout, file}) {
+            if (out != nullptr) {
+                report(out, seed, canonical, world, n, seconds);
+                std::fputs(ergs.c_str(), out);
+                std::fflush(out);
+            }
         }
     }
     if (file != nullptr) {

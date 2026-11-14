@@ -8,10 +8,17 @@
 // - each place of --places (lines "name x z"): the ground, the kind and level of the water at the
 //   place and the most the ground moves within 100 m (a cross of 9 points), the planet cell (its
 //   river, its lake, its discharge), the biome.
+// --find: the forms to keep somewhere in such a world: the best field of stars (the erg cell with
+// the most cells of stars around it, then its highest star dunes), the best wall of giant waves
+// (the highest giant dunes), the lakes of the mountains most like lac_montagne (its water at
+// 1,725 m, summits of 3,345 m within 3 km). --pole: the mean temperature at the poles of the
+// planet level and of the tiles, Celsius, after the flags.
 // Usage: terrain_world_changes <output-dir> [--flags <a,b>] [--places <file>] [--step <cells>]
+//        [--find] [--pole <celsius>]
 
 #include "tool_flags.hpp"
 
+#include "terrain/det_math.hpp"
 #include "terrain/generation/ecology.hpp"
 #include "terrain/generation/ergs.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
@@ -23,6 +30,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -44,6 +52,9 @@ struct Options {
     std::string flags;
     std::vector<Place> places;
     int step = 8;
+    bool find = false;
+    bool pole = false;
+    float poleTemperature = 0.0f;
 };
 
 std::vector<Place> readPlaces(const std::string& file) {
@@ -71,6 +82,11 @@ bool parse(int argc, char** argv, Options& o) {
             o.flags = argv[++a];
         } else if (arg == "--places" && a + 1 < argc) {
             o.places = readPlaces(argv[++a]);
+        } else if (arg == "--find") {
+            o.find = true;
+        } else if (arg == "--pole" && a + 1 < argc) {
+            o.pole = true;
+            o.poleTemperature = std::strtof(argv[++a], nullptr);
         } else if (arg == "--step" && a + 1 < argc) {
             o.step = std::atoi(argv[++a]);
         } else {
@@ -183,19 +199,155 @@ void placeLine(const World& w, const Place& p, std::FILE* out) {
                  terrain::biomeName(biomeAt(w, *w.field, p.x, p.z)));
 }
 
+struct Found {
+    double x = 0.0;
+    double z = 0.0;
+    float dunes = -1.0f; // meters of sand
+    float mask = 0.0f;
+};
+
+// The highest dunes of kind around (x, z): a grid of step meters, half meters to each side.
+Found highestAround(const World& w, const terrain::Ergs& ergs, double x, double z, double half,
+                    double step, terrain::DuneKind kind) {
+    Found best;
+    const terrain::WorldSize& world = w.bare->world();
+    for (double dz = -half; dz <= half; dz += step) {
+        for (double dx = -half; dx <= half; dx += step) {
+            const double px = terrain::wrapCoordinate(x + dx, world.x);
+            const double pz = terrain::wrapCoordinate(z + dz, world.z);
+            const terrain::HeightSample s = w.bare->sampleAt(px, pz);
+            const terrain::ErgPoint e = ergs.at(px, pz, s.relief, s.rift);
+            if (e.mask < 0.5f || ergs.kindOf(e) != kind) {
+                continue;
+            }
+            const float d = ergs.dunesAt(px, pz, s);
+            if (d > best.dunes) {
+                best = {px, pz, d, e.mask};
+            }
+        }
+    }
+    return best;
+}
+
+void printFound(std::FILE* out, const World& w, const char* name, const Found& f, int around) {
+    std::fprintf(out, "%s: x %.0f z %.0f, dunes %.0f m, mask %.2f, rain %.0f mm/yr, %d cells of "
+                      "its kind within 16 km\n",
+                 name, f.x, f.z, static_cast<double>(f.dunes), static_cast<double>(f.mask),
+                 static_cast<double>(w.level->sampleAt(f.x, f.z).precipitation), around);
+}
+
+// The best field of stars and the best wall of giant waves of the ergs.
+void findDunes(const World& w, std::FILE* out) {
+    const terrain::Ergs* ergs = w.hydrology->ergs();
+    const terrain::PlanetGrid& g = w.level->grid();
+    if (ergs == nullptr) {
+        return;
+    }
+    std::vector<std::uint8_t> kind(g.cells(), 0);
+    for (std::size_t c = 0; c < g.cells(); ++c) {
+        const double x = g.centerX(g.column(c));
+        const double z = g.centerZ(g.row(c));
+        if (w.level->cells().ocean(c) || !ergs->mayHold(x, z)) {
+            continue;
+        }
+        const terrain::HeightSample s = w.bare->sampleAt(x, z);
+        const terrain::ErgPoint e = ergs->at(x, z, s.relief, s.rift);
+        kind[c] = e.mask < 0.5f ? 0 : static_cast<std::uint8_t>(ergs->kindOf(e));
+    }
+    const auto around = [&g, &kind](std::size_t c, std::uint8_t k) {
+        int n = 0;
+        for (int dj = -2; dj <= 2; ++dj) {
+            for (int di = -2; di <= 2; ++di) {
+                n += kind[g.index(g.wrapColumn(g.column(c) + di), g.wrapRow(g.row(c) + dj))] == k;
+            }
+        }
+        return n;
+    };
+    for (const terrain::DuneKind k : {terrain::DuneKind::Star, terrain::DuneKind::Giants}) {
+        const auto code = static_cast<std::uint8_t>(k);
+        std::vector<std::pair<int, std::size_t>> cells;
+        for (std::size_t c = 0; c < g.cells(); ++c) {
+            if (kind[c] == code) {
+                cells.emplace_back(around(c, code), c);
+            }
+        }
+        std::sort(cells.begin(), cells.end(), std::greater<>());
+        Found best;
+        int bestAround = 0;
+        for (std::size_t r = 0; r < std::min<std::size_t>(cells.size(), 12); ++r) {
+            const std::size_t c = cells[r].second;
+            const Found f = highestAround(w, *ergs, g.centerX(g.column(c)), g.centerZ(g.row(c)),
+                                          4096.0, 512.0, k);
+            if (f.dunes > best.dunes) {
+                best = f;
+                bestAround = cells[r].first;
+            }
+        }
+        printFound(out, w, k == terrain::DuneKind::Star ? "best star field" : "best giant wall",
+                   best, bestAround);
+    }
+}
+
+// The lakes of the mountains of the planet level most like lac_montagne.
+void findLakes(const World& w, std::FILE* out) {
+    const terrain::PlanetGrid& g = w.level->grid();
+    struct Lake {
+        double score;
+        double x;
+        double z;
+        float level;
+        float peaks;
+    };
+    std::vector<Lake> lakes;
+    for (const terrain::PlanetLake& l : w.level->lakes()) {
+        if (l.frozen || l.playa || l.level < 1000.0f || l.pit == terrain::planet::kNoCell) {
+            continue;
+        }
+        const double x = g.centerX(g.column(l.pit));
+        const double z = g.centerZ(g.row(l.pit));
+        if (w.bare->sampleAt(x, z).mountainMask < 0.3f) {
+            continue;
+        }
+        float peaks = l.level;
+        for (int k = 0; k < 16; ++k) {
+            const double a = static_cast<double>(k) / 16.0;
+            peaks = std::max(peaks, w.bare->heightAt(x + 3000.0 * terrain::dmath::cosTurns(a),
+                                                     z + 3000.0 * terrain::dmath::sinTurns(a)));
+        }
+        if (peaks - l.level >= 800.0f) {
+            lakes.push_back({std::abs(l.level - 1725.0f) + 0.5 * std::abs(peaks - 3345.0f), x, z,
+                             l.level, peaks});
+        }
+    }
+    std::sort(lakes.begin(), lakes.end(),
+              [](const Lake& a, const Lake& b) { return a.score < b.score; });
+    for (std::size_t k = 0; k < std::min<std::size_t>(lakes.size(), 6); ++k) {
+        const Lake& l = lakes[k];
+        const terrain::HeightSample s = w.field->sampleAt(l.x, l.z);
+        std::fprintf(out, "mountain lake: x %.0f z %.0f, level %.0f m, summits %.0f m within 3 "
+                          "km, water there %d at %.1f m\n",
+                     l.x, l.z, static_cast<double>(l.level), static_cast<double>(l.peaks),
+                     static_cast<int>(s.water), static_cast<double>(s.waterLevel));
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     Options o;
     if (!parse(argc, argv, o)) {
         std::fprintf(stderr, "usage: terrain_world_changes <output-dir> [--flags <a,b>] "
-                             "[--places <file>] [--step <cells>]\n");
+                             "[--places <file>] [--step <cells>] [--find] [--pole <celsius>]\n");
         return 1;
     }
     terrain::WorldParams params;
     std::string canonical;
     if (!tool_flags::apply(o.flags, params, canonical)) {
         return 1;
+    }
+    if (o.pole) {
+        params.planet.climate.poleTemperature = o.poleTemperature;
+        params.ecology.climate.poleTemperature = o.poleTemperature;
     }
     const std::uint64_t seed = terrain::kDefaultWorldSeed;
     World w;
@@ -219,6 +371,10 @@ int main(int argc, char** argv) {
     ergLines(w, o.step, file);
     for (const Place& p : o.places) {
         placeLine(w, p, file);
+    }
+    if (o.find) {
+        findDunes(w, file);
+        findLakes(w, file);
     }
     std::fclose(file);
     std::ifstream back(path);
