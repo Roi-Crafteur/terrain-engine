@@ -1,18 +1,19 @@
-// Coverage and cost of the far horizon. Asserted: the default levels cover at least 300 km
-// around any observer. Printed only, never asserted: the time of a full computation of every
-// level of point samples (crestRatio 0) on one thread and on every hardware thread, of the
+// The cost of the far horizon, run by hand (not a test; it asserts nothing):
+//   horizon_cost_bench
+// Build it in Release. It prints the levels and their radius, the time of a full computation of
+// every level of point samples (crestRatio 0) on one thread and on every hardware thread, of the
 // updates of a walk, the memory, and the same with the slopes of the materials at the pitch of
 // each level and with K = 512; the samples around the K2 with and without the crests (2 and 4),
 // timed on one piece in kCrestStride and extrapolated; the detail slopes around the K2, and the
 // detail computed after the epochs (horizon_detail.hpp: slopes and crest lifts from one fine
 // grid), timed on one piece in a stride and extrapolated (in the mountain cores of the default
-// world, the full computation would take minutes).
+// world, the full computation would take minutes). The coverage of the levels is asserted by
+// horizon_levels_test (testPitchesAndCoverage, testCoarsestWindow).
 #include "terrain/streaming/horizon_detail.hpp"
 #include "terrain/streaming/horizon_normals.hpp"
 #include "terrain/streaming/horizon_streamer.hpp"
 
 #include "horizon_test_support.hpp"
-#include "test_assert.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -51,19 +52,10 @@ terrain::HorizonParams pointSamples() {
     return params;
 }
 
-void testCoverage() {
+// The levels, their samples, pitches and radius.
+void printLevels() {
     const terrain::HorizonParams params;
-    TEST_CHECK(terrain::guaranteedRadius(params) >= 300'000.0);
     const int last = params.levels - 1;
-    // The window of the coarsest level, wherever the observer stands.
-    for (const auto& [x, z] : {std::pair{kX, kZ}, std::pair{params.world.x / 2.0 - 1.0, 0.0}}) {
-        const terrain::HorizonIndex center = terrain::canonicalCenter(params, last, x, z);
-        terrain::HorizonLevel level(params, last);
-        level.moveTo(center);
-        const double side = params.cellsPerSide * static_cast<double>(level.pitch());
-        TEST_CHECK(level.originX(x) <= x - 300'000.0 && level.originX(x) + side >= x + 300'000.0);
-        TEST_CHECK(level.originZ(z) <= z - 300'000.0 && level.originZ(z) + side >= z + 300'000.0);
-    }
     std::printf("levels: %d, %d x %d samples each, pitches %d m to %d m, radius %.0f km\n",
                 params.levels, terrain::samplesPerSide(params), terrain::samplesPerSide(params),
                 terrain::levelPitch(params, 0), terrain::levelPitch(params, last),
@@ -259,7 +251,7 @@ void measureDeferred(const World& world) {
 } // namespace
 
 int main() {
-    testCoverage();
+    printLevels();
     const World world;
     const terrain::HorizonParams defaults = pointSamples();
     measureOneThread(world, defaults);
@@ -273,5 +265,5 @@ int main() {
     measureCrests(world);
     measureDetail(world);
     measureDeferred(world);
-    return test::result();
+    return 0;
 }
