@@ -50,9 +50,11 @@ function(terrain_run_serial_if_defined)
     endforeach()
 endfunction()
 cmake_language(DEFER CALL terrain_run_serial_if_defined
-    # A stop: the computations of the hydrology stopped from another thread, under load
-    # (agent 39, tests/hydrology_stop_tests.cmake).
-    hydrology_stop_test)
+    # A stop (agent 39, tests/hydrology_stop_tests.cmake): the computations of the hydrology
+    # stopped from another thread, under load; the threads of the plugin stopped in the middle of
+    # the courses of the rivers.
+    hydrology_stop_test
+    unreal_work_stop_test)
 
 # The planet of the default world, built by the fixture of the coast tests (two minutes on four
 # cores): started first, so that the tests it holds back are not left for the end.
