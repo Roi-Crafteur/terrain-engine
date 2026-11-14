@@ -19,7 +19,6 @@ set_tests_properties(
     horizon_edits_cost_test
     unreal_horizon_edits_cost_test
     unreal_terrain_session_test
-    # A threshold on a measured time.
     unreal_map_cache_test
     # A stop: a job dropped while it builds.
     unreal_planet_job_test
