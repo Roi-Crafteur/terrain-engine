@@ -9,6 +9,8 @@
 // and the checksum of the planet level itself. world_golden_test keeps the relief without water.
 //
 // Pinned by « Guards: the golden of the played world » (agent 42): every part, created.
+// Re-pasted by « Guards: the golden of the played world re-pasted for the texels of #76 »
+// (agent 42): the 25 parts of tiles and horizon, not the planet level (see kExpected).
 #include "terrain_session.hpp"
 
 #include "coast_planet_support.hpp"
@@ -155,18 +157,26 @@ std::uint64_t horizonChecksum(const terrain::TerrainTiles& tiles, const Place& p
 }
 
 // The expected values, place by place: the tiles of LOD 0 to 3, then the horizon.
+// Re-pasted by « Guards: the golden of the played world re-pasted for the texels of #76 »
+// (agent 42), after « Biome format: 16-byte blend texels (64 biomes, 32 materials), tiles read
+// the water of the core (agent 49, PR 1 of 2) (#76) » (844d9e9). Parts changed: the 25 of tiles
+// and horizon, at the 5 places; "planet level of the default world" unchanged. Cause: the blend
+// texels hashed here (TileData::surfaceBlend, HorizonCell::blend) hold 16 bytes instead of 8, and
+// near water the tiles read the water of the core (#76). Hashed without those blends, the 25
+// parts and the planet level keep their bits: the relief, plants, water, falls and rock do not
+// move. No double hash: golden::addTile and addCell hash no blend.
 using PlaceSums = std::array<std::uint64_t, terrain::kLodCount + 1>;
 constexpr std::array<PlaceSums, kPlaces.size()> kExpected = {{
-    {0x4274B04EE562A220ULL, 0x02B5619E5AEBBB03ULL, 0xFAFA06FEB4719A1DULL,
-     0x0D3E6FD5A64AA1CAULL, 0x6F40877B597CB6C2ULL}, // k2_paroi
-    {0x978E7F1CB32B9B7DULL, 0x9901D8B0EB2377D0ULL, 0xC06893241A1BF661ULL,
-     0x18180B56E93260AEULL, 0x713303E2794DF134ULL}, // fleuve_plaine
-    {0xEC39F7FD844B34E7ULL, 0x25C7085375E57FE8ULL, 0x5C625420911FD66DULL,
-     0xF1D85D4B7D8F324AULL, 0x586E92880DABBFD9ULL}, // cote_falaise_encoche
-    {0x4F79C94F623EC04AULL, 0xBF67E9EEEAF95F96ULL, 0xF15E5E8BF9AB4522ULL,
-     0xF986C88CE56B7E25ULL, 0xB3D825734CBE5B21ULL}, // erg_face_33
-    {0xA76576BFA41388A5ULL, 0x67F2748153EB1CE9ULL, 0xCE30AF1BD3E9FAC5ULL,
-     0xA98F4C8152F5F357ULL, 0xF255DF5139BD9DF2ULL}, // lisiere_tropicale_savane
+    {0x2DB95E2DEDCAE65DULL, 0x0F4816CF5197CDA2ULL, 0x6ACDA1A4A5034A6CULL,
+     0x79500B46720FC2CBULL, 0x36A547250DA2D1D8ULL}, // k2_paroi
+    {0xF80E51F3F34E433FULL, 0x0A0B36A86130F65EULL, 0x5D75DF6C06DFBAB9ULL,
+     0xDDBD746207611A38ULL, 0xAE19942AECE535BFULL}, // fleuve_plaine
+    {0xCEE2647425926AF4ULL, 0xF2CA8FE728FF95DFULL, 0xB6FDE4A9BE07A49EULL,
+     0xD361F9F9C996CFEAULL, 0x3B26264897B43019ULL}, // cote_falaise_encoche
+    {0x7438F8B8F93CF313ULL, 0x1F258EC35674853FULL, 0x3CFAB32E13A5110BULL,
+     0x8FC716A896B5B544ULL, 0xFC0E29F1009BE681ULL}, // erg_face_33
+    {0xC4E9DF7393A8673CULL, 0xEFFCE5C97AD8C098ULL, 0xFFCB979E99585B14ULL,
+     0xC24A186A819D8D8EULL, 0x9701DB828062AD3CULL}, // lisiere_tropicale_savane
 }};
 constexpr std::uint64_t kPlanetLevel = 0x26626564570B0D9EULL;
 
