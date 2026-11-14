@@ -269,6 +269,18 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - raccord exact avec les tuiles LOD 3 ; panorama 360° de contrôle : relief visible
   jusqu'à 400 km depuis un sommet
 
+### Garde-fous du monde (agent 55)
+- `relief_paths_test` : sur le monde par défaut avec sa planète (fixture `coast_planet`),
+  environ 2 000 points en strates (terre, bande côtière, erg, couloir de fleuve, paroi,
+  dépression sèche, mer) aux empreintes 0 à 512 m ; toutes les copies de la chaîne
+  d'échantillonnage comparées au bit à `sampleAt` : lots, lots avec la roche, `heightsAt`,
+  `seenAt` (hors faces, rampes et aiguilles des côtes), `seenHeightsAt`, cellule de l'horizon,
+  colonnes, eau et texels des tuiles LOD 3 ; il nomme la première étape qui diffère. À lancer
+  par toute branche qui touche `heightfield*.cpp`, `horizon_sampler.cpp`, `tile_blend.cpp` ou
+  `terrain_surface.cpp` ; quiconque ajoute un chemin d'échantillonnage du relief l'ajoute à ce
+  test
+- `terrain_probe` : la section `render` lit l'horizon par son vrai chemin
+
 ## À venir
 
 ### Ordre des prochains travaux (2 novembre 2026)

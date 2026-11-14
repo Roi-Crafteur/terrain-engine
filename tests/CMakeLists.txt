@@ -520,4 +520,5 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/break_place_tests.cmake) # agent 28: break a
 include(${CMAKE_CURRENT_SOURCE_DIR}/dunes_tests.cmake) # agent 34: the seas of dunes
 include(${CMAKE_CURRENT_SOURCE_DIR}/biomes_tests.cmake) # agent 49: the biomes of the land
 include(${CMAKE_CURRENT_SOURCE_DIR}/guard_tests.cmake) # agent 42: the guards of the goldens and of the tests
+include(${CMAKE_CURRENT_SOURCE_DIR}/relief_paths_tests.cmake) # agent 55: the paths of the relief compared bit for bit
 include(${CMAKE_CURRENT_SOURCE_DIR}/serial_tests.cmake) # agent 42: the tests that run alone, after the tests it names

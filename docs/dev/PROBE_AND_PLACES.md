@@ -77,7 +77,7 @@ terrain_probe --list-sections
   | `rock` | pente la plus forte, intervalles pleins de la colonne (`solid[]`), `faces` |
   | `coast` | côte à la mer ou non, distance, cap vers la mer, `type` |
   | `surface` | biome, matériau, plantes, climat local, poids du fondu |
-  | `render` | ce que reçoit Unreal : sommets des tuiles LOD 0 à 3, horizon |
+  | `render` | ce que reçoit Unreal : sommets des tuiles LOD 0 à 3, horizon (le point du niveau 0, au pas de 8 m, lu comme l'horizon le lit : `forFootprint(8).seenAt`) |
 
 - `coast.distance` et `coast.seaHeading` viennent du signal de côte de la géographie, à grande
   échelle : la distance signée à sa côte et le cap qui descend ce signal. Le rivage réel, où le
