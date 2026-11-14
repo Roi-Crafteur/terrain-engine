@@ -1,6 +1,7 @@
-// The experimental flag "lows" (agent 52, the table of experimental_flags.hpp; to move into
-// experimental_flags_test once the table of agent 51 is merged): without it the lows are off, the
-// world of main; "lows" switches every family on and nothing else; names apart by commas or white
+// The experimental flag "lows" (agent 52, its row in the table of agent 51,
+// experimental_flags.hpp; the case each agent keeps in its own tests): without it the lows are off,
+// the world of main; "lows" switches every family on, the sunken basins of the geography and the
+// breaches toward lower land of the planet level, and nothing else; names apart by commas or white
 // space, their case ignored; an unknown name given back.
 #include "terrain/generation/experimental_flags.hpp"
 

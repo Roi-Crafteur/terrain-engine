@@ -1,6 +1,8 @@
 // The experimental flags of the world (experimental_flags.hpp).
 #include "terrain/generation/experimental_flags.hpp"
 
+#include "terrain/generation/lows.hpp" // lowsOn: the row "lows" (agent 52)
+
 #include <algorithm>
 #include <string>
 
