@@ -45,7 +45,8 @@ std::string resolvePlanetPath(const std::string& path, std::uint64_t seed,
 }
 
 PlanetSource openPlanetSource(const std::filesystem::path& file, std::uint64_t seed,
-                              const WorldSize& world, const PlanetStageProbe& probe) {
+                              const WorldSize& world, const PlanetStageProbe& probe,
+                              const WorldParams& params, const std::string& flags) {
     const auto start = std::chrono::steady_clock::now();
     PlanetSource source;
     bool newer = false;
@@ -55,23 +56,25 @@ PlanetSource openPlanetSource(const std::filesystem::path& file, std::uint64_t s
     } else {
         try {
             source.level = std::make_shared<const PlanetLevel>(
-                loadPlanetFile(file, seed, PlanetParams{}, world));
+                loadPlanetFile(file, seed, params.planet, world, flags));
             source.seconds = secondsSince(start);
             return source;
+        } catch (const PlanetFlagsError&) {
+            throw; // the level of other flags: never built again over it
         } catch (const StorageError& e) {
             source.reason = e.what();
             newer = e.kind() == StorageErrorKind::NewerVersion;
         }
     }
     source.built = true;
-    source.level = std::make_shared<const PlanetLevel>(seed, HeightfieldParams{}, PlanetParams{},
-                                                       world, probe);
+    source.level =
+        std::make_shared<const PlanetLevel>(seed, params.relief, params.planet, world, probe);
     if (newer) {
         source.writeError = "a file of a newer version of the game is never replaced";
     } else {
         std::filesystem::create_directories(file.parent_path(), error);
         try {
-            savePlanetFile(file, *source.level, seed, world);
+            savePlanetFile(file, *source.level, seed, world, flags);
             source.written = true;
         } catch (const StorageError& e) {
             source.writeError = e.what();
