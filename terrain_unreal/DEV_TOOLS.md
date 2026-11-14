@@ -63,6 +63,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.EditRead [0\|1]` | (agent 41) dans l'éditeur : le prochain Play relit et sauvegarde les modifications de la seed comme avec `Building.bSaveEdits`, sans toucher l'acteur ni la carte ; sans argument, l'état |
 | `Terrain.EditTiles <x> <z>` | (agent 41) les tuiles au-dessus d'un point du core : une ligne pour le point que suit le streaming, la caméra et le pion possédé (leurs chunks, leurs distances), puis une par tuile : son LOD et celui qu'elle aurait vue de la caméra, la hauteur du sol au point dans les données du core et dans la section reçue par le maillage d'Unreal, ses sommets, ses bornes, si elle est visible, son dernier envoi ; `DIFFERENT from the core`, `HIDDEN`, `the point OUTSIDE` ou `no mesh in Unreal` signalent un écart |
 | `Terrain.EditLight 0\|1`, `Terrain.EditLightFloor <part>` | (tous les builds, comme `Terrain.EditSave`) le plancher de lumière des surfaces faites par les modifications, éteint par défaut, et la part de leur couleur de base qu'elles émettent (0,15) ; à passer après la liste des réglages de Lumen de `BREAK_PLACE.md` (« La lumière des creux », agent 41) |
+| `Terrain.Flags <drapeaux\|none\|reset>` | les drapeaux expérimentaux des prochains Play de cet éditeur, par-dessus le réglage de l'acteur (agent 51, ci-dessous) ; `reset` : de nouveau le réglage de l'acteur ; sans argument : leur état |
 
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),
@@ -368,6 +369,26 @@ l'océan. Le matériau tire la couleur de la mer vers le sable des hauts-fonds
 2. Après : la même commande, la même taille de fenêtre.
 3. Comparer les deux dossiers `Saved/TerrainEngine/Views/<date>/` image par image ; `views.txt`
    dit pour chaque image si elle était prête.
+
+## Terrain.Flags
+
+`Terrain.Flags seas,volcanoes` (ou `Terrain.Flags seas volcanoes`) choisit les drapeaux
+expérimentaux (`terrain/generation/experimental_flags.hpp`) des **prochains Play** de cette
+session de l'éditeur, par-dessus `Experimental.ExperimentalFlags` de l'acteur : la carte n'est
+jamais modifiée. `Terrain.Flags none` : aucun drapeau, le monde de `main`. `Terrain.Flags reset` :
+les prochains Play reprennent le réglage de l'acteur. Sans argument : leur état. Un éditeur relancé
+les oublie (`none` et `reset` ne sont jamais des noms de drapeaux). La commande marche aussi hors
+Play, dans la console de l'éditeur ; `Terrain.Seed` les prend aussi.
+
+- Au démarrage, le log dit d'où ils viennent :
+  `Terrain World: experimental flags: "seas" (from Terrain.Flags)` ; un nom inconnu donne un
+  avertissement (`Terrain World: unknown experimental flag 'x' (known: …)`).
+- Un monde de drapeaux lit son fichier planète **à part** :
+  `Saved/TerrainEngine/dev/planet_{Seed}_<drapeaux>.bin` (les noms séparés par `+`), jamais le
+  `planet.bin` de l'utilisateur. Il y est construit s'il manque (1 à 2 min), ou fait d'avance par
+  `terrain_make_planet <ce fichier> --flags <drapeaux>`. S'il contient d'autres drapeaux, le Play
+  s'arrête sur une erreur du log, sans rien reconstruire par-dessus.
+- `none`, ou seulement des noms inconnus : le fichier planète de l'acteur.
 
 ## Terrain.Seed
 

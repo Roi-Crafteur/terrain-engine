@@ -3,13 +3,19 @@
 
 Fails (exit code 1) when a .cpp or .hpp file of terrain_core, terrain_viewer or tests is longer
 than 500 lines, or when a source file of terrain_core includes a graphics or Unreal header
-(OpenGL, glad, GLFW, Vulkan, Direct3D, CoreMinimal.h). The limit of 80 lines per function is not
-checked. Each violation is printed as path:line and as a GitHub annotation.
+(OpenGL, glad, GLFW, Vulkan, Direct3D, CoreMinimal.h). Each violation is printed as path:line and
+as a GitHub error annotation.
+
+Reports, without failing (rules_report.py): the files longer than 500 lines that the check leaves
+out (C++ of terrain_unreal, .h, Python) and the functions longer than 80 lines (C++ and Python),
+printed as path:line and as GitHub warning annotations.
 """
 
 import re
 import sys
 from pathlib import Path
+
+import rules_report
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_LINES = 500
@@ -41,15 +47,15 @@ def forbidden_api(header):
     return None
 
 
-def source_files(directory, suffixes):
-    return sorted(p for p in (ROOT / directory).rglob("*") if p.is_file() and p.suffix in suffixes)
+def source_files(root, directory, suffixes):
+    return sorted(p for p in (root / directory).rglob("*") if p.is_file() and p.suffix in suffixes)
 
 
-def check_sizes():
+def check_sizes(root):
     violations = []
     checked = 0
     for directory in SIZE_CHECKED_DIRS:
-        for path in source_files(directory, SIZE_CHECKED_SUFFIXES):
+        for path in source_files(root, directory, SIZE_CHECKED_SUFFIXES):
             checked += 1
             count = len(path.read_text(encoding="utf-8").splitlines())
             if count > MAX_LINES:
@@ -57,10 +63,10 @@ def check_sizes():
     return checked, violations
 
 
-def check_core_includes():
+def check_core_includes(root):
     violations = []
     checked = 0
-    for path in source_files("terrain_core", CORE_SOURCE_SUFFIXES):
+    for path in source_files(root, "terrain_core", CORE_SOURCE_SUFFIXES):
         checked += 1
         lines = path.read_text(encoding="utf-8").splitlines()
         for number, line in enumerate(lines, start=1):
@@ -72,18 +78,29 @@ def check_core_includes():
     return checked, violations
 
 
-def main():
-    size_count, size_violations = check_sizes()
-    core_count, include_violations = check_core_includes()
+def print_found(root, found, kind):
+    for path, line, message in found:
+        relative = path.relative_to(root).as_posix()
+        print(f"{relative}:{line}: {kind}: {message}")
+        print(f"::{kind} file={relative},line={line}::{message}")
+
+
+def main(root=ROOT):
+    root = Path(root)
+    size_count, size_violations = check_sizes(root)
+    core_count, include_violations = check_core_includes(root)
     violations = size_violations + include_violations
-    for path, line, message in violations:
-        relative = path.relative_to(ROOT).as_posix()
-        print(f"{relative}:{line}: {message}")
-        print(f"::error file={relative},line={line}::{message}")
+    print_found(root, violations, "error")
     print(f"{size_count} files checked for size, {core_count} terrain_core files checked for "
           f"includes, {len(violations)} violation(s)")
+    reported_sizes, size_warnings = rules_report.size_warnings(root)
+    reported_functions, function_warnings = rules_report.function_warnings(root)
+    print_found(root, size_warnings + function_warnings, "warning")
+    print(f"report, not failing: {reported_sizes} other files checked for size, "
+          f"{len(size_warnings)} too long; {reported_functions} files checked for functions, "
+          f"{len(function_warnings)} too long")
     return 1 if violations else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(*sys.argv[1:2]))

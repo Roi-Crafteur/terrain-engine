@@ -222,8 +222,19 @@ void testSilhouettes() {
     const terrain::Silhouette heapBefore = heap.of(levels, eye);
     session.edit(razedEdit(p));
     session.edit(heapEdit(p));
-    session.streamer.update(eye.eyeX, eye.eyeZ);
-    TEST_CHECK(session.streamer.busy() && !session.map.hasStaged());
+    // The next update applies the staged edits at once (no epoch in flight) and plans the epoch
+    // that computes again the samples around them. The workers may end that epoch within the
+    // update, which then commits it, or later: the samples it writes are counted until the
+    // streamer is idle, whatever the speed of the threads (busy() right after the update was a
+    // race, lost on a fast machine).
+    std::int64_t edited = written(session.streamer.update(eye.eyeX, eye.eyeZ));
+    TEST_CHECK(!session.map.hasStaged());
+    for (int round = 0; round < 10 && session.streamer.busy(); ++round) {
+        session.streamer.waitIdle();
+        edited += written(session.streamer.update(eye.eyeX, eye.eyeZ));
+    }
+    std::printf("the epoch of the edits wrote %lld samples\n", static_cast<long long>(edited));
+    TEST_CHECK(edited > 1000 && !session.streamer.busy()); // 4,864 when pinned (agent 42)
     horizon_test::settle(session.streamer, eye.eyeX, eye.eyeZ);
     const std::optional<float> floor = session.map.columnGround(
         {(p.x0 + 500) / terrain::kEditColumnSpacing, (p.z0 + 500) / terrain::kEditColumnSpacing});
@@ -331,8 +342,10 @@ void testDeterminism() {
         const double z = p.z0 + 500.0;
         horizon_test::settle(session.streamer, x, z);
         session.edit(razedEdit(p));
-        session.streamer.update(x + 400.0, z); // the levels move: an epoch in flight
-        TEST_CHECK(session.streamer.busy() && !session.map.hasStaged());
+        // The levels move: an epoch in flight, the razed mountain applied. On 0 threads only
+        // settle computes it; on 3 the workers may end it within the update (not checked: a race).
+        session.streamer.update(x + 400.0, z);
+        TEST_CHECK(!session.map.hasStaged() && (threads != 0 || session.streamer.busy()));
         session.edit(craterEdit(p));
         session.edit(heapEdit(p));
         session.streamer.update(x + 400.0, z);

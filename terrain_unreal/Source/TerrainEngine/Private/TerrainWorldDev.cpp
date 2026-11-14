@@ -5,6 +5,12 @@
 
 #include "TerrainDevTools.h"
 #include "TerrainEngineLog.h"
+#include "TerrainWorldDevFlags.h"
+
+#if TERRAIN_DEV_TOOLS
+#include "Bridge/dev_flags.hpp"
+#include "Misc/Paths.h"
+#endif
 
 #include <exception>
 
@@ -93,4 +99,15 @@ bool ATerrainWorld::ReturnToGamePawn()
 UTerrainDevTools* ATerrainWorld::GetDevTools() const
 {
 	return DevTools.Get();
+}
+
+std::string ApplyTerrainDevFlags(terrain::unreal::SessionParams& Params)
+{
+#if TERRAIN_DEV_TOOLS
+	return terrain::unreal::applyDevFlags(
+		Params, TCHAR_TO_UTF8(*FPaths::ConvertRelativePathToFull(FPaths::ProjectDir())));
+#else
+	(void)Params;
+	return std::string();
+#endif
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "terrain/generation/experimental_flags.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
 #include "terrain/world_size.hpp"
 
@@ -29,14 +30,17 @@ struct PlanetSource {
     double seconds = 0.0; // read or built (and written)
 };
 
-// The planet level of seed on world (HeightfieldParams{}, PlanetParams{}) in file: read when the
-// file holds it, otherwise built and written there (its folder created), as openPlanetLevel, the
-// reason told. A file of a newer version of the game is never replaced. probe, if set, hears of
-// each stage of a build (PlanetLevel), and may throw to stop it there. Throws what the build
-// throws.
+// The planet level of seed on world (the relief and planet parameters of params, set by the
+// experimental flags whose canonical text is flags) in file: read when the file holds it,
+// otherwise built and written there (its folder created), as openPlanetLevel, the reason told. A
+// file of a newer version of the game is never replaced; a file of other flags is never read nor
+// replaced: PlanetFlagsError. probe, if set, hears of each stage of a build (PlanetLevel), and
+// may throw to stop it there. Throws what the build throws.
 [[nodiscard]] PlanetSource openPlanetSource(const std::filesystem::path& file, std::uint64_t seed,
                                             const WorldSize& world,
-                                            const PlanetStageProbe& probe = {});
+                                            const PlanetStageProbe& probe = {},
+                                            const WorldParams& params = {},
+                                            const std::string& flags = {});
 
 // One line for the log: what was read or built, why, in how long.
 [[nodiscard]] std::string describe(const PlanetSource& source, const std::string& file);

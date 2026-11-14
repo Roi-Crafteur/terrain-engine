@@ -60,7 +60,8 @@ struct OpenedPlanet {
 [[nodiscard]] OpenedPlanet openPlanet(const Options& options);
 
 // --planet-check: the file read without ever being written or built. status "ok", "missing",
-// "stale" (another seed, world, generator version or parameters), "damaged", "newer" or
+// "stale" (another seed, world, generator version or parameters), "flags" (the level of other
+// experimental flags), "damaged", "newer" or
 // "unreadable", the message of the storage, and the checksum of the level when ok.
 struct PlanetCheck {
     std::string status;
