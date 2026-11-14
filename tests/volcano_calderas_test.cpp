@@ -4,16 +4,20 @@
 // tenths of its radius (its couloirs and talus). The crest varies by a few percent of the depth at
 // least, the radius too; and none of the three repeats at a fixed period: past the first lag where
 // its autocorrelation falls below 0, it never climbs back above 0.5. Measured around the caldera
-// in its own frame, its ellipse (VolcanoSite::elongation, along axis) stretched back to a circle:
-// an elliptical caldera (Crater Lake, 8 by 10 km) is a shape, not a pattern, though its radius
+// in the frame its relief is drawn in (volcano_relief::offsetOfFrame): around the true center of
+// its crater (the summit shifted off the center of the volcano, the shift fading out to its
+// foot), its ellipse (VolcanoSite::elongation, along axis) stretched back to a circle: an
+// elliptical caldera (Crater Lake, 8 by 10 km) is a shape, not a pattern, though its radius
 // repeats every half turn.
 // Its rim has real low cols and real high points, not only in plan: the height of its crest over
 // its floor (the 10th percentile of the ground within half its radius), but across the notch of
-// its breach, at
-// its highest at least 1.8 times its lowest, its spread at least 12 % of its mean (Crater Lake:
-// 150 to 600 m over its lake, 750 to 1,200 m over its floor); and seen from its floor at 1.8 m,
-// the elevation of its skyline ranges over 3 degrees at least (1.5 for a caldera in a low
-// plateau, 15 to 30 km wide: Yellowstone).
+// its breach, at its highest at least 1.8 times its lowest, its spread at least 12 % of its mean
+// (Crater Lake: 150 to 600 m over its lake, 750 to 1,200 m over its floor); and seen from its
+// floor at 1.8 m, the elevation of its skyline ranges over 3 degrees at least (1.5 for a caldera
+// in a low plateau, 15 to 30 km wide: Yellowstone).
+// Printed, not checked: the periodicity of the outline of the foot of each caldera and of the
+// edge of three lava sheets (their noises of the turn, volcano_relief.cpp and
+// volcano_fields.cpp).
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/volcanoes.hpp"
 
@@ -83,28 +87,37 @@ struct Walls {
     std::vector<double> ring;   // the ground at 0.9 of the radius
 };
 
+// A point at (a radians, r meters) of the frame of a volcano, from the center of its crater (its
+// summit), in the world: volcano_relief::offsetOfFrame.
+struct FrameOf {
+    const terrain::VolcanoSite& s;
+    terrain::volcano_relief::Shape sh;
+    void at(double a, double r, double& x, double& z) const {
+        const terrain::volcano_relief::FrameOffset o =
+            terrain::volcano_relief::offsetOfFrame(s, sh, r * std::cos(a), r * std::sin(a));
+        x = s.x + o.dx;
+        z = s.z + o.dz;
+    }
+};
+
+FrameOf frameOf(const terrain::VolcanoSite& s) {
+    return {s, terrain::volcano_relief::shapeOf(s)};
+}
+
 Walls wallsOf(const terrain::Heightfield& field, const terrain::VolcanoSite& s) {
-    const terrain::VolcanoOffset top = terrain::volcanoSummit(s);
-    const double cx = s.x + top.dx;
-    const double cz = s.z + top.dz;
     const auto crater = static_cast<double>(s.crater);
+    const FrameOf fr = frameOf(s);
     Walls w;
-    const auto stretch = static_cast<double>(s.elongation);
-    const double ca = std::cos(static_cast<double>(s.axis));
-    const double sa = std::sin(static_cast<double>(s.axis));
     for (int k = 0; k < kAzimuths; ++k) {
-        // The azimuth a in the frame of the caldera, back in the world.
         const double a = 2.0 * kPi * k / kAzimuths;
-        const double u = std::cos(a) * stretch;
-        const double v = std::sin(a);
-        const double c = u * ca - v * sa;
-        const double sn = u * sa + v * ca;
         std::vector<double> xs;
         std::vector<double> zs;
         for (int i = 0; i <= 60; ++i) {
-            const double r = crater * (0.5 + 0.8 * i / 60.0);
-            xs.push_back(cx + r * c);
-            zs.push_back(cz + r * sn);
+            double x = 0.0;
+            double z = 0.0;
+            fr.at(a, crater * (0.5 + 0.8 * i / 60.0), x, z);
+            xs.push_back(x);
+            zs.push_back(z);
         }
         std::vector<float> h(xs.size());
         field.heightsAt(xs, zs, h);
@@ -119,7 +132,10 @@ Walls wallsOf(const terrain::Heightfield& field, const terrain::VolcanoSite& s) 
         }
         w.crest.push_back(crest);
         w.middle.push_back(middle);
-        w.ring.push_back(field.heightAt(cx + 0.9 * crater * c, cz + 0.9 * crater * sn));
+        double rx = 0.0;
+        double rz = 0.0;
+        fr.at(a, 0.9 * crater, rx, rz);
+        w.ring.push_back(field.heightAt(rx, rz));
     }
     return w;
 }
@@ -141,27 +157,6 @@ Stats statsOf(const std::vector<double>& v) {
     st.mean /= static_cast<double>(v.size());
     st.spread = stddev(v);
     return st;
-}
-
-// A point at (a radians, r meters) in the frame of the caldera, from its center, in the world.
-struct FrameOf {
-    double cx = 0.0;
-    double cz = 0.0;
-    double stretch = 1.0;
-    double ca = 1.0;
-    double sa = 0.0;
-    void at(double a, double r, double& x, double& z) const {
-        const double u = r * std::cos(a) * stretch;
-        const double v = r * std::sin(a);
-        x = cx + u * ca - v * sa;
-        z = cz + u * sa + v * ca;
-    }
-};
-
-FrameOf frameOf(const terrain::VolcanoSite& s) {
-    const terrain::VolcanoOffset top = terrain::volcanoSummit(s);
-    return {s.x + top.dx, s.z + top.dz, static_cast<double>(s.elongation),
-            std::cos(static_cast<double>(s.axis)), std::sin(static_cast<double>(s.axis))};
 }
 
 // Its floor: the 10th percentile of 400 points within half its radius; the eye of a walker at its
@@ -229,7 +224,8 @@ std::vector<double> skylineOf(const terrain::Heightfield& field, const terrain::
 double spillOf(const terrain::Heightfield& field, const terrain::VolcanoSite& s,
                std::size_t index) {
     const double r = 1.5 * static_cast<double>(s.crater) * static_cast<double>(s.elongation);
-    for (const terrain::VolcanoBasin& b : field.volcanoBasinsIn(s.x - r, s.z - r, s.x + r, s.z + r)) {
+    for (const terrain::VolcanoBasin& b :
+         field.volcanoBasinsIn(s.x - r, s.z - r, s.x + r, s.z + r)) {
         if (!b.maar && b.volcano == index) {
             return static_cast<double>(b.spill);
         }
@@ -248,7 +244,8 @@ bool testRelief(const terrain::Heightfield& field, const terrain::VolcanoSite& s
     for (int k = 0; k < kAzimuths; ++k) {
         const double a = 2.0 * kPi * k / kAzimuths;
         const bool breach =
-            sh.breached && std::abs(std::remainder(a - sh.breachAngle, 2.0 * kPi)) < 3.0 * kPi / 180.0;
+            sh.breached &&
+            std::abs(std::remainder(a - sh.breachAngle, 2.0 * kPi)) < 3.0 * kPi / 180.0;
         if (!breach) {
             over.push_back(w.crest[static_cast<std::size_t>(k)] - f.level);
         }
@@ -263,12 +260,74 @@ bool testRelief(const terrain::Heightfield& field, const terrain::VolcanoSite& s
     const bool ok =
         ratio >= 1.8 && crest.spread >= 0.12 * crest.mean && sky.high - sky.low >= skyRange;
     std::printf("    over its floor: crest %4.0f to %4.0f m (x%.2f), mean %4.0f, spread %3.0f m "
-                "(%2.0f %%); over its spill %4.0f to %4.0f m; skyline from the floor %4.1f to %4.1f "
-                "deg, spread %.1f%s\n",
+                "(%2.0f %%); over its spill %4.0f to %4.0f m; skyline from the floor %4.1f to "
+                "%4.1f deg, spread %.1f%s\n",
                 crest.low, crest.high, ratio, crest.mean, crest.spread,
                 100.0 * crest.spread / crest.mean, crest.low + f.level - spill,
                 crest.high + f.level - spill, sky.low, sky.high, sky.spread, ok ? "" : "  EVEN");
     return ok;
+}
+
+// The edge of a volcano along each azimuth of its frame (360 of them): the farthest of 100 points
+// from `from` to `to` radii where its relief stands threshold meters over the relief without the
+// volcanoes. Its periodicity and its spread (a share of its mean).
+struct Edge {
+    double periodicity = 0.0;
+    double spread = 0.0;
+};
+
+Edge edgeOf(const terrain::Heightfield& on, const terrain::Heightfield& off,
+            const terrain::VolcanoSite& s, double from, double to, float threshold) {
+    const FrameOf fr = frameOf(s);
+    const auto radius = static_cast<double>(s.radius);
+    std::vector<double> edge;
+    for (int k = 0; k < 360; ++k) {
+        const double a = 2.0 * kPi * k / 360.0;
+        std::vector<double> xs;
+        std::vector<double> zs;
+        for (int i = 0; i < 100; ++i) {
+            double x = 0.0;
+            double z = 0.0;
+            fr.at(a, radius * (from + (to - from) * i / 99.0), x, z);
+            xs.push_back(x);
+            zs.push_back(z);
+        }
+        std::vector<float> h(xs.size());
+        std::vector<float> g(xs.size());
+        on.heightsAt(xs, zs, h);
+        off.heightsAt(xs, zs, g);
+        int last = 0;
+        for (int i = 0; i < 100; ++i) {
+            const auto at = static_cast<std::size_t>(i);
+            last = h[at] - g[at] >= threshold ? i : last;
+        }
+        edge.push_back(radius * (from + (to - from) * last / 99.0));
+    }
+    const Stats st = statsOf(edge);
+    return {periodicity(edge), st.spread / st.mean};
+}
+
+// The outlines of the feet of the calderas and of the edges of three lava sheets on land, printed
+// (their noises of the turn), not checked.
+void printOutlines(const terrain::Heightfield& field, const std::vector<std::size_t>& calderas) {
+    const terrain::Heightfield bare(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{});
+    const auto& sites = field.volcanoes()->sites();
+    for (const std::size_t i : calderas) {
+        const Edge e = edgeOf(field, bare, sites[i], 0.6, 1.8, 5.0f);
+        std::printf("foot of the %-15s %.0f %.0f: periodicity %5.2f, its radius varies %4.1f %%\n",
+                    terrain::volcanoFormName(sites[i].form), sites[i].x, sites[i].z,
+                    e.periodicity, 100.0 * e.spread);
+    }
+    int sheets = 0;
+    for (const terrain::VolcanoSite& s : sites) {
+        if (s.form == VolcanoForm::LavaField && !s.atSea && sheets < 3) {
+            ++sheets;
+            const Edge e = edgeOf(field, bare, s, 0.3, 1.6, 1.0f);
+            std::printf("edge of the lava sheet %.0f %.0f: periodicity %5.2f, its radius varies "
+                        "%4.1f %%\n",
+                        s.x, s.z, e.periodicity, 100.0 * e.spread);
+        }
+    }
 }
 
 } // namespace
@@ -282,6 +341,7 @@ int main() {
     int plateau = 0;
     int island = 0;
     const auto& sites = field.volcanoes()->sites();
+    std::vector<std::size_t> measured;
     for (std::size_t index = 0; index < sites.size(); ++index) {
         const terrain::VolcanoSite& s = sites[index];
         int* count = s.form == VolcanoForm::Caldera          ? &caldera
@@ -293,6 +353,7 @@ int main() {
         }
         ++*count;
         ++calderas;
+        measured.push_back(index);
         const Walls w = wallsOf(field, s);
         const auto depth = static_cast<double>(s.craterDepth);
         const double crest = stddev(w.crest) / depth;
@@ -311,6 +372,7 @@ int main() {
     }
     std::printf("%d calderas, %d too regular, %d whose rim is too even seen from the floor\n",
                 calderas, regular, even);
+    printOutlines(field, measured);
     TEST_CHECK(calderas >= 8 && regular == 0 && even == 0);
     return test::result();
 }
