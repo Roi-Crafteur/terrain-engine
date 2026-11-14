@@ -250,7 +250,11 @@ void testCost(const std::vector<std::pair<double, double>>& sites) {
     };
     const cost_test::Ratio away = timeRows(-1'000'000.0, -300'000.0, 1.3, "away from ergs");
     TEST_CHECK(away.passed());
-    const cost_test::Ratio inside = timeRows(sites[0].first - 8000.0, sites[0].second, 1e9, "in an erg");
+    // In an erg the ripples and the faces of the dunes cost: measured x2.27 to x2.73 (agent 42,
+    // best of up to 3 rounds: x2.30-2.36 calm over 10 runs, x2.27-2.50 with 4 busy cores over 10,
+    // x2.38-2.73 with 8 processes on 4 cores over 5). The bound keeps about 1.5 times the worst.
+    const cost_test::Ratio inside =
+        timeRows(sites[0].first - 8000.0, sites[0].second, 4.0, "in an erg");
     TEST_CHECK(inside.passed());
 }
 
