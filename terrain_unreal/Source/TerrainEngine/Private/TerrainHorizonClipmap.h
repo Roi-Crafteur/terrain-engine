@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Misc/Optional.h"
 #include "UObject/Object.h"
+#include "UObject/WeakObjectPtr.h"
 
 #include "Bridge/horizon_atmosphere.hpp"
 #include "Bridge/horizon_gpu_streamer.hpp"

@@ -6,7 +6,7 @@
 #if TERRAIN_DEV_TOOLS
 
 #include "CoreMinimal.h"
-#include "UObject/WeakObjectPtrTemplates.h"
+#include "UObject/WeakObjectPtr.h"
 
 #include "Bridge/dev_commands.hpp"
 #include "Bridge/dev_perf.hpp"

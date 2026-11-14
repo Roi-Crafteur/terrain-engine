@@ -7,6 +7,7 @@
 
 #include "Brushes/SlateColorBrush.h"
 #include "InputCoreTypes.h"
+#include "UObject/WeakObjectPtr.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SEditableTextBox;

@@ -82,3 +82,10 @@ terrain_add_test(unreal_ground_bounce_test terrain_unreal_bridge)
 # its ellipse, which alone bounds it with FoamEllipse, against those of LOD 0.
 terrain_add_test(unreal_fall_foam_lod_test terrain_unreal_bridge)
 target_include_directories(unreal_fall_foam_lod_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# The weak pointers of the plugin: a header declaring a TWeakObjectPtr includes
+# UObject/WeakObjectPtr.h (in Unreal 5.8 WeakObjectPtrTemplates.h only declares FWeakObjectPtr),
+# unless it includes GameFramework/Actor.h or Components/ActorComponent.h, which bring it.
+add_test(NAME unreal_weak_pointers
+    COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/unreal_weak_pointers.cmake)
