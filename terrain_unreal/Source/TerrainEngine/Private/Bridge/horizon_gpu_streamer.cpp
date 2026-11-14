@@ -56,6 +56,45 @@ std::int64_t samplesWritten(const HorizonChanges& changes) {
     return samples;
 }
 
+// The regions of the textures of a piece prepared on the jobs. pieceUploads: the texels, then the
+// water levels, then the blend channels, then the bands of the rock, then their caps.
+void addPieceRegions(const PreparedPiece& piece, int side, HorizonGpuUpdate& result) {
+    const std::span<const float> data(piece.data);
+    const auto cells = static_cast<std::size_t>(piece.rect.count());
+    const std::size_t texels = std::min(data.size(), cells * kTexelFloats);
+    const std::size_t water = std::min(data.size() - texels, cells);
+    const std::size_t blends =
+        std::min(data.size() - texels - water, cells * static_cast<std::size_t>(kBlendChannels));
+    const std::size_t rest = data.size() - texels - water - blends;
+    const std::size_t bands = std::min(rest, cells * static_cast<std::size_t>(kBandFloats));
+    const std::size_t caps = rest - bands;
+    for (TexelRegion& region : texelRegions(piece.level, side, piece.rect, data.first(texels))) {
+        result.regions.push_back(std::move(region));
+    }
+    for (WaterRegion& region :
+         waterRegions(piece.level, side, piece.rect, data.subspan(texels, water))) {
+        result.waterRegions.push_back(std::move(region));
+    }
+    for (BlendRegion& region :
+         blendRegions(piece.level, side, piece.rect, data.subspan(texels + water, blends))) {
+        result.blendRegions.push_back(std::move(region));
+    }
+    if (bands > 0) {
+        for (TexelRegion& region :
+             texelRegions(piece.level, side, piece.rect,
+                          data.subspan(texels + water + blends, bands), kBandFloats)) {
+            result.bandRegions.push_back(std::move(region));
+        }
+    }
+    if (caps > 0) {
+        for (TexelRegion& region :
+             texelRegions(piece.level, side, piece.rect,
+                          data.subspan(texels + water + blends + bands), kCapFloats)) {
+            result.capRegions.push_back(std::move(region));
+        }
+    }
+}
+
 } // namespace
 
 HorizonGpuStreamer::HorizonGpuStreamer(const Heightfield& field, const Ecology& ecology,
@@ -107,43 +146,7 @@ HorizonGpuUpdate HorizonGpuStreamer::update(const UnrealPoint& player, const Unr
             epochStart_.reset();
         }
         for (const PreparedPiece& piece : commit.pieces) {
-            // pieceUploads: the texels, then the water levels, then the blend channels, then
-            // the bands, then their caps.
-            const std::span<const float> data(piece.data);
-            const auto cells = static_cast<std::size_t>(piece.rect.count());
-            const std::size_t texels = std::min(data.size(), cells * kTexelFloats);
-            const std::size_t water = std::min(data.size() - texels, cells);
-            const std::size_t blends = std::min(data.size() - texels - water,
-                                                cells * static_cast<std::size_t>(kBlendChannels));
-            const std::size_t rest = data.size() - texels - water - blends;
-            const std::size_t bands = std::min(rest, cells * static_cast<std::size_t>(kBandFloats));
-            const std::size_t caps = rest - bands;
-            for (TexelRegion& region :
-                 texelRegions(piece.level, side(), piece.rect, data.first(texels))) {
-                result.regions.push_back(std::move(region));
-            }
-            for (WaterRegion& region : waterRegions(piece.level, side(), piece.rect,
-                                                    data.subspan(texels, water))) {
-                result.waterRegions.push_back(std::move(region));
-            }
-            for (BlendRegion& region : blendRegions(piece.level, side(), piece.rect,
-                                                    data.subspan(texels + water, blends))) {
-                result.blendRegions.push_back(std::move(region));
-            }
-            if (bands > 0) {
-                for (TexelRegion& region :
-                     texelRegions(piece.level, side(), piece.rect,
-                                  data.subspan(texels + water + blends, bands), kBandFloats)) {
-                    result.bandRegions.push_back(std::move(region));
-                }
-            }
-            if (caps > 0) {
-                for (TexelRegion& region :
-                     texelRegions(piece.level, side(), piece.rect,
-                                  data.subspan(texels + water + blends + bands), kCapFloats)) {
-                    result.capRegions.push_back(std::move(region));
-                }
-            }
+            addPieceRegions(piece, side(), result);
         }
         if (detail_) {
             detail_->written(runner_.clipmap(), commit.changes, result.normalRegions);
