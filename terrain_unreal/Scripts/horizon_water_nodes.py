@@ -55,8 +55,10 @@ def parameters(material, g):
     return nodes
 
 
-def vertex(material, g, nodes, kind):
-    """HorizonWaterVertex: how far the vertex rises to the water, and what the pixels need."""
+def vertex(material, g, nodes, kind, ground=None):
+    """HorizonWaterVertex: how far the vertex rises to the water, and what the pixels need. Its
+    sample: that of the vertex node of the ground (LocalOut: a cell center it moved onto a corner,
+    agent 40, horizon_vertex_hlsl.py), else the position of the mesh."""
     custom = g.custom_node(
         material, -900, -2600, "HorizonWaterVertex", code.WATER_VERTEX_HLSL,
         VERTEX_INPUTS + VERTEX_SCALARS,
@@ -65,8 +67,11 @@ def vertex(material, g, nodes, kind):
     for source, name in (("HorizonTexels", "Tex"), ("CoarseTexels", "Coarse"),
                          ("HorizonWater", "Levels"), ("CoarseWater", "CoarseLevels")):
         g.connect(nodes[source], "", custom, name)
-    g.connect(g.expression(material, unreal.MaterialExpressionPreSkinnedPosition, -1600, -2600),
-              "", custom, "Local")
+    if ground is not None:
+        g.connect(ground, "LocalOut", custom, "Local")
+    else:
+        g.connect(g.expression(material, unreal.MaterialExpressionPreSkinnedPosition, -1600,
+                               -2600), "", custom, "Local")
     g.connect(kind, "", custom, "Kind")
     viewer = g.local_position(material, -1600, -2500)
     g.connect(g.expression(material, unreal.MaterialExpressionCameraPositionWS, -1800, -2500), "",

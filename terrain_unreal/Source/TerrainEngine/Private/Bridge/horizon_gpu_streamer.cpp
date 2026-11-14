@@ -1,5 +1,7 @@
 #include "horizon_gpu_streamer.hpp"
 
+#include "horizon_split.hpp"
+
 #include "terrain/streaming/horizon_bands.hpp"
 
 #include "horizon_mesh.hpp"
@@ -323,15 +325,22 @@ bool HorizonGpuStreamer::busy() {
 GridMesh HorizonGpuStreamer::level0Grid() const {
     const double pitch = levelPitch(horizonParams_, 0);
     const double seaHalfCells = (hole_.halfCells * pitch + hole_.overlapMeters) / pitch;
-    return bodyGrid(bodyTopology(horizonParams_.cellsPerSide,
-                                 bodyHole(horizonParams_, 0, hole_.halfCells), params_.sea),
-                    seaHalfCells);
+    return withCellCenters(bodyGrid(
+        bodyTopology(horizonParams_.cellsPerSide,
+                     bodyHole(horizonParams_, 0, hole_.halfCells), params_.sea),
+        seaHalfCells));
 }
 
 GridMesh HorizonGpuStreamer::ringGrid() const {
-    return bodyGrid(bodyTopology(horizonParams_.cellsPerSide,
-                                 bodyHole(horizonParams_, 1, hole_.halfCells), false),
-                    0.0);
+    return withCellCenters(bodyGrid(bodyTopology(horizonParams_.cellsPerSide,
+                                                 bodyHole(horizonParams_, 1, hole_.halfCells),
+                                                 false),
+                                    0.0));
+}
+
+GridMesh HorizonGpuStreamer::trimGrid(int variant) const {
+    return withCellCenters(terrain::unreal::trimGrid(horizonParams_.cellsPerSide, variant % 3 - 1,
+                                                     variant / 3 - 1));
 }
 
 double HorizonGpuStreamer::skirtMetersOf(int level) const {

@@ -1,11 +1,83 @@
 #include "horizon_split.hpp"
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 
 namespace terrain::unreal {
 
 bool mainDiagonal(CellSplit split, float h00, float h10, float h01, float h11) {
     return split == CellSplit::Contour && std::abs(h00 - h11) < std::abs(h10 - h01);
+}
+
+namespace {
+
+// Whether the triangles tri and tri + 1 are the two of a cell of samples: {00, 01, 10} then
+// {10, 01, 11}, its corners one cell apart.
+bool cellPair(const GridMesh& grid, std::size_t tri) {
+    const auto at = [&](std::size_t n) {
+        return grid.vertices[static_cast<std::size_t>(grid.triangles[n])];
+    };
+    const std::size_t t = 3 * tri;
+    if (grid.triangles[t + 3] != grid.triangles[t + 2] ||
+        grid.triangles[t + 4] != grid.triangles[t + 1]) {
+        return false;
+    }
+    const GridVertex v00 = at(t), v01 = at(t + 1), v10 = at(t + 2), v11 = at(t + 5);
+    for (const GridVertex& v : {v00, v01, v10, v11}) {
+        if (v.kind != GridVertexKind::Sample) {
+            return false;
+        }
+    }
+    return v10.i == v00.i + 1.0f && v10.k == v00.k && v01.i == v00.i && v01.k == v00.k + 1.0f &&
+           v11.i == v00.i + 1.0f && v11.k == v00.k + 1.0f;
+}
+
+} // namespace
+
+GridMesh withCellCenters(const GridMesh& grid) {
+    GridMesh out;
+    out.vertices = grid.vertices;
+    out.triangles.reserve(grid.triangles.size() * 2);
+    const std::size_t count = grid.triangleCount();
+    for (std::size_t tri = 0; tri < count; ++tri) {
+        if (tri + 1 < count && cellPair(grid, tri)) {
+            const std::size_t t = 3 * tri;
+            const std::int32_t v00 = grid.triangles[t], v01 = grid.triangles[t + 1];
+            const std::int32_t v10 = grid.triangles[t + 2], v11 = grid.triangles[t + 5];
+            const auto c = static_cast<std::int32_t>(out.vertices.size());
+            const GridVertex corner = grid.vertices[static_cast<std::size_t>(v10)];
+            out.vertices.push_back({corner.i, corner.k, GridVertexKind::Center});
+            out.triangles.insert(out.triangles.end(),
+                                 {v00, v01, c, v01, v11, c, v11, v10, c, v10, v00, c});
+            ++tri;
+            continue;
+        }
+        out.triangles.insert(out.triangles.end(), grid.triangles.begin() + 3 * tri,
+                             grid.triangles.begin() + 3 * tri + 3);
+    }
+    return out;
+}
+
+bool centerOnMain(const CenterInput& in) {
+    if (!in.adaptive) {
+        return false;
+    }
+    const bool own = mainDiagonal(CellSplit::Contour, in.own[0], in.own[1], in.own[2], in.own[3]);
+    if (!in.hasCoarser || in.morphAtCenter < 0.5) {
+        return own;
+    }
+    const bool coarse = coarserOnMain(true, in.coarse);
+    const bool alongMain = in.quarterI == in.quarterK;
+    if (coarse == alongMain) {
+        return coarse; // along the diagonal the coarser cell is cut along
+    }
+    return own;
+}
+
+bool coarserOnMain(bool adaptive, const std::array<float, 4>& coarse) {
+    return mainDiagonal(adaptive ? CellSplit::Contour : CellSplit::Fixed, coarse[0], coarse[1],
+                        coarse[2], coarse[3]);
 }
 
 std::array<double, 4> cellWeights(bool main, double u, double v) {

@@ -148,7 +148,8 @@ struct WaterRegion {
 enum class GridVertexKind : std::uint8_t {
     Sample, // the sample (i, k)
     Skirt,  // below the sample (i, k) of the border, by the depth of the skirt
-    Sea     // a corner of the sea square, at the sea level
+    Sea,    // a corner of the sea square, at the sea level
+    Center  // the vertex of a cell (horizon_split.hpp: withCellCenters), on its corner (i + 1, k)
 };
 
 struct GridVertex {

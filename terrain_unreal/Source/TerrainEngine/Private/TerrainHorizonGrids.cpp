@@ -8,11 +8,14 @@ namespace
 {
 	const FName GridSlot(TEXT("Horizon"));
 
+	// The kind of a vertex for the vertex shader: red a skirt, green the sea square, blue the
+	// center of a cell (Bridge/horizon_split.hpp: withCellCenters).
 	FVector4f KindColor(terrain::unreal::GridVertexKind Kind)
 	{
 		const bool bSkirt = Kind == terrain::unreal::GridVertexKind::Skirt;
 		const bool bSea = Kind == terrain::unreal::GridVertexKind::Sea;
-		return FVector4f(bSkirt ? 1.0f : 0.0f, bSea ? 1.0f : 0.0f, 0.0f, 1.0f);
+		const bool bCenter = Kind == terrain::unreal::GridVertexKind::Center;
+		return FVector4f(bSkirt ? 1.0f : 0.0f, bSea ? 1.0f : 0.0f, bCenter ? 1.0f : 0.0f, 1.0f);
 	}
 
 	void FillDescription(FMeshDescription& Description, const terrain::unreal::GridMesh& Grid)

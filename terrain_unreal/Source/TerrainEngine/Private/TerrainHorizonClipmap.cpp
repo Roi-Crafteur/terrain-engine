@@ -103,11 +103,10 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 	const double Level0Pitch = terrain::levelPitch(Streamer.params(), 0);
 	Level0PitchCm = Level0Pitch * 100.0;
 	Fade = terrain::unreal::dropFade(Streamer.tileHole(), Level0Pitch);
-	const int32 Cells = Streamer.params().cellsPerSide;
 	std::vector<terrain::unreal::GridMesh> Shapes{Streamer.level0Grid(), Streamer.ringGrid()};
 	for (int32 Variant = 0; Variant < terrain::unreal::kTrimVariants; ++Variant)
 	{
-		Shapes.push_back(terrain::unreal::trimGrid(Cells, Variant % 3 - 1, Variant / 3 - 1));
+		Shapes.push_back(Streamer.trimGrid(Variant)); // its cells with their centers
 	}
 	for (std::size_t Index = 0; Index < Shapes.size(); ++Index)
 	{

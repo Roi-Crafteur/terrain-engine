@@ -99,7 +99,9 @@ def check_code(look_hlsl, loading, scripts):
     """Identifiers, scopes, inputs and reads of the blend code and the vertex shaders."""
     declaration = loading.DECLARATION
     blend = (scripts / "blend_layers_hlsl.py").read_text(encoding="utf-8")
-    gpu = constants(scripts / "create_horizon_gpu_material.py", {"VERTEX_HLSL", "SCALARS"})
+    gpu = constants(scripts / "create_horizon_gpu_material.py", {"SCALARS"})
+    # The vertex shader of the horizon lives in horizon_vertex_hlsl.py since agent 40.
+    gpu.update(constants(scripts / "horizon_vertex_hlsl.py", {"VERTEX_HLSL"}))
     tiles = constants(scripts / "create_temporary_terrain_material.py",
                       {"VERTEX_HLSL", "BLEND_INPUTS"})
     tiles_source = (scripts / "create_temporary_terrain_material.py").read_text(encoding="utf-8")

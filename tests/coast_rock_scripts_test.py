@@ -264,9 +264,13 @@ def main():
 
     with open(f"{scripts}/create_horizon_gpu_material.py", encoding="utf-8") as f:
         gpu = f.read()
-    check("#define HORIZON_GROUND(t) ((t).a < 0.0 ? SEA_GROUND((t).a)" in gpu,
+    # The vertex shader itself lives in horizon_vertex_hlsl.py since agent 40.
+    with open(f"{scripts}/horizon_vertex_hlsl.py", encoding="utf-8") as f:
+        vertex = f.read()
+    check("#define HORIZON_GROUND(t) ((t).a < 0.0 ? SEA_GROUND((t).a)" in vertex,
           "HORIZON_GROUND reads the ground under the sea through SEA_GROUND")
-    check('VERTEX_HLSL.replace("SEA_GROUND((t).a)", terrain_hlsl.sea_ground_hlsl("(t).a"))' in gpu,
+    check('VERTEX_HLSL.replace("SEA_GROUND((t).a)", sea_ground)' in vertex and
+          'vertex_code.vertex_hlsl(terrain_hlsl.sea_ground_hlsl("(t).a"))' in gpu,
           "vertex_hlsl decodes SEA_GROUND")
     check("look.struct_hlsl() + vertex_hlsl()" in gpu, "the vertex node takes vertex_hlsl()")
     check("look.struct_hlsl() + VERTEX_HLSL" not in gpu, "no undecoded vertex code left")

@@ -47,8 +47,10 @@ import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
+import horizon_ground_hlsl as ground_code  # noqa: E402
 import horizon_reveal as reveal  # noqa: E402
 import horizon_sea_hlsl as sea_code  # noqa: E402
+import horizon_vertex_hlsl as vertex_code  # noqa: E402
 import horizon_water_nodes as water_nodes  # noqa: E402
 import material_settings as settings  # noqa: E402
 import temporary_terrain_hlsl as terrain_hlsl  # noqa: E402
@@ -58,6 +60,8 @@ terrain_hlsl = importlib.reload(terrain_hlsl)
 look = importlib.reload(look)
 reveal = importlib.reload(reveal)
 sea_code = importlib.reload(sea_code)
+vertex_code = importlib.reload(vertex_code)
+ground_code = importlib.reload(ground_code)
 settings = importlib.reload(settings)
 water_nodes = importlib.reload(water_nodes)
 
@@ -71,6 +75,9 @@ SCALARS = {
     "PitchCm": 800.0, "DropCoveredCm": 0.0, "DropFadeCm": 0.0,
     # The surface blends drawn (1) or not (0: the dominant biomes; Terrain.Blend 0|1).
     "SurfaceBlends": 1.0,
+    # The cells cut along their contour lines, the foot and the curvature of the ground (agent 40,
+    # horizon_vertex_hlsl.py; 0: the horizon before, to the bit).
+    "AdaptiveSplit": 1.0, "HorizonFootCurv": 1.0,
 }
 # The look of the sea, tunable on the instances: colors of the water (linear), the strength of the
 # waves and the roughness of the sea between them (GGX alpha).
@@ -87,90 +94,7 @@ SEA_COLORS = {
 # stay in front where both surfaces cross (horizon_sea_hlsl.py).
 BEHIND_SCALARS = {"BehindTilesCm": 100.0, "BehindBandCm": 12800.0, "BehindFadeCm": 12800.0}
 
-VERTEX_HLSL = r"""
-int side = (int)Cells + 1;
-int2 first = int2((int)FirstSlotX, (int)FirstSlotZ);
-int2 coarseFirst = int2((int)CoarseFirstX, (int)CoarseFirstZ);
-int2 inCoarser = int2((int)CoarseX, (int)CoarseZ);
-int2 ik = int2(round(Local.xy));
-float4 own = Tex.Load(int3((ik + first) % side, 0));
-// The samples whose mean the coarser level shows here (Bridge/horizon_morph.hpp): the morph
-// takes the heights and the ground of the coarser texels (ca, cb), the crests lifting them by
-// their own cells, and the surface layers of this level's texels (a, b, the same materials).
-int2 s0 = ik;
-int2 s1 = ik;
-bool oddI = (ik.x & 1) != 0;
-bool oddK = (ik.y & 1) != 0;
-if (oddI && oddK) { s0 = ik + int2(1, -1); s1 = ik + int2(-1, 1); }
-else if (oddI) { s0 = ik - int2(1, 0); s1 = ik + int2(1, 0); }
-else if (oddK) { s0 = ik - int2(0, 1); s1 = ik + int2(0, 1); }
-float4 a = Tex.Load(int3((s0 + first) % side, 0));
-float4 b = Tex.Load(int3((s1 + first) % side, 0));
-float4 ca = Coarse.Load(int3((inCoarser + s0 / 2 + coarseFirst) % side, 0));
-float4 cb = Coarse.Load(int3((inCoarser + s1 / 2 + coarseFirst) % side, 0));
-float distance = max(abs(ik.x - Viewer.x), abs(ik.y - Viewer.y));
-float alpha = HasCoarser > 0.5 ? saturate((distance - (Cells * 0.5 - 2.0 - MorphCells)) / MorphCells) : 0.0;
-// On the ocean the last float is the ground under the sea, below 0 (texelGround), SEA_ROCK lower
-// over bare rock (Bridge/horizon_textures.hpp: kSeaRockCode). The ground of the land gets 1 cm:
-// land at the sea level (or the whole ocean without bHorizonSea) stays dry.
-#define HORIZON_GROUND(t) ((t).a < 0.0 ? SEA_GROUND((t).a) : max((t).r, 0.0) + 0.01)
-float height = lerp(own.r, 0.5 * (ca.r + cb.r), alpha);
-float ground = lerp(HORIZON_GROUND(own), 0.5 * (HORIZON_GROUND(ca) + HORIZON_GROUND(cb)), alpha);
-float2 slope = lerp(own.gb, 0.5 * (ca.gb + cb.gb), alpha);
-#undef HORIZON_GROUND
-// The layers of the ground (the temporary terrain material): the surface blends of the samples
-// (Bridge/horizon_blend_texels.hpp, agent 29), read without filtering, each decoded and added
-// with its share of the morph ((1 - alpha) for this sample, alpha / 2 for each of the two whose
-// mean the coarser level shows), never their ids interpolated: the weights still sum to 1. Where
-// a sample has no blend yet (a texel never written), its packed surface (material and biome,
-// Bridge/terrain_surface.hpp), morphed as the heights.
-float4 wa = float4(0.0, 0.0, 0.0, 0.0);
-float4 wb = wa;
-float2 wc = float2(0.0, 0.0);
-float wd = 0.0; // the share of the dunes of an erg (agent 34), 0 without blends
-bool blended = false;
-BRANCH if (SurfaceBlends > 0.5)
-{
-    float4 bOwn = Blend.Load(int3((ik + first) % side, 0));
-    float4 bA = Blend.Load(int3((s0 + first) % side, 0));
-    float4 bB = Blend.Load(int3((s1 + first) % side, 0));
-    float4 shares = float4(1.0 - alpha, 0.5 * alpha, 0.5 * alpha, 0.0);
-    blended = Look.BlendTexelsLayers(bOwn, bA, bB, bOwn, shares, wa, wb, wc, wd);
-}
-BRANCH if (!blended)
-{
-    float4 la0, la1, la2, lb0, lb1, lb2;
-    float2 lc0, lc1, lc2;
-    Look.Layers(own.a, la0, lb0, lc0);
-    Look.Layers(a.a, la1, lb1, lc1);
-    Look.Layers(b.a, la2, lb2, lc2);
-    wa = lerp(la0, 0.5 * (la1 + la2), alpha);
-    wb = lerp(lb0, 0.5 * (lb1 + lb2), alpha);
-    wc = lerp(lc0, 0.5 * (lc1 + lc2), alpha);
-}
-W0Out = wa;
-W1Out = wb;
-// W2.z: the share of the dunes (the foot of the steep slopes of the tiles has no use here).
-W2Out = float4(wc, wd, height / 1000.0);
-// The drop below the tiles fades out across their band over level 0 (Bridge/terrain_surface.hpp:
-// dropShare): no step at their outer edge, none on the levels 1 and up.
-float fromCenter = max(abs(ik.x - Cells * 0.5), abs(ik.y - Cells * 0.5)) * PitchCm;
-float z = height * 100.0 - DropCm * saturate((DropCoveredCm - fromCenter) / max(DropFadeCm, 1.0));
-if (Kind.r > 0.5) { z -= SkirtCm; }
-// The sea square under the tiles, at the sea level; the pixel shader reads its ground.
-if (Kind.g > 0.5)
-{
-    z = 0.0; slope = float2(0.0, 0.0); ground = -1.0;
-    W0Out = float4(0.0, 0.0, 0.0, 0.0); W1Out = float4(0.0, 1.0, 0.0, 0.0); W2Out = float4(0.0, 0.0, 0.0, 0.0);
-}
-z -= dot(CameraRel, CameraRel) / (2.0 * PlanetRadiusCm);
-// The normal of the curved ground: its slopes, and the curvature that leans it away from the
-// camera by d / R (the sun shines at another angle far away).
-NormalOut = normalize(float3(-slope + CameraRel / PlanetRadiusCm, 1.0));
-GroundOut = ground;
-MorphOut = alpha;
-return float3(0.0, 0.0, z);
-"""
+
 
 
 # The bands of the rock under the pixel (agent 33, Bridge/horizon_textures.hpp: kBandFloats): the
@@ -191,8 +115,8 @@ return lerp(lerp(b00, b10, t.x), lerp(b01, b11, t.x), t.y);
 
 
 def vertex_hlsl():
-    """The vertex code, the ground under the sea decoded (temporary_terrain_hlsl.sea_ground_hlsl)."""
-    return VERTEX_HLSL.replace("SEA_GROUND((t).a)", terrain_hlsl.sea_ground_hlsl("(t).a"))
+    """The vertex code (horizon_vertex_hlsl.py), the ground under the sea decoded."""
+    return vertex_code.vertex_hlsl(terrain_hlsl.sea_ground_hlsl("(t).a"))
 
 SHADE_HLSL = r"""
 float3 sea = SeaBody;
@@ -312,7 +236,8 @@ def vertex_shader(material, nodes, kind):
         [("NormalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
          ("W0Out", float4), ("W1Out", float4), ("W2Out", float4),
          ("GroundOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
-         ("MorphOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1)],
+         ("MorphOut", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
+         ("LocalOut", unreal.CustomMaterialOutputType.CMOT_FLOAT2)],
         unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     connect(nodes["HorizonTexels"], "", custom, "Tex")
     connect(nodes["CoarseTexels"], "", custom, "Coarse")
@@ -398,7 +323,7 @@ def bands(material, nodes):
     return node
 
 
-def land_shader(material, nodes, vertex, normal, with_bands):
+def land_shader(material, nodes, vertex, normal, with_bands, morph):
     """The land of the pixel: the temporary terrain material without its near detail (only the
     mean color of each texture), as the far tiles."""
     float1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
@@ -416,11 +341,13 @@ def land_shader(material, nodes, vertex, normal, with_bands):
     meters = expression(material, unreal.MaterialExpressionMultiply, -250, 800)
     meters.set_editor_property("const_b", 1000.0)
     connect(altitude, "", meters, "A")
-    inputs = look.shade_inputs() + look.layer_inputs(False)
+    inputs = look.shade_inputs() + ["WF"] + look.layer_inputs(False)
     shade = custom_node(material, -100, 600, "HorizonLand", look.shade_hlsl(False), inputs,
                         [("NormalOut", float3), ("RoughOut", float1)], float3)
     for source, output, name in ((weights["W0"], "", "W0"), (weights["W1"], "", "W1"),
-                                 (weights["W2"], "", "W2"), (normal, "", "N"),
+                                 (weights["W2"], "", "W2"),
+                                 (ground_code.node(material, helpers(), nodes, morph), "",
+                                  "WF"), (normal, "", "N"),
                                  (position, "", "P"), (position, "Dist", "Dist"),
                                  (meters, "", "Z")):
         connect(source, output, shade, name)
@@ -438,12 +365,12 @@ def land_shader(material, nodes, vertex, normal, with_bands):
     return shade, position
 
 
-def detail_normal(material, nodes, vertex):
+def detail_normal(material, nodes, vertex, morph):
     """The normal of the land: the normal of the grid, lit by the detail normals of the level."""
     node = detail.custom(material, -700, 1500, "HorizonDetailNormal", detail.HORIZON_HLSL,
                          detail.HORIZON_INPUTS)
     connect(interpolate(material, vertex, "NormalOut", 0), "", node, "N")
-    connect(interpolate(material, vertex, "MorphOut", 1700), "", node, "Morph")
+    connect(morph, "", node, "Morph")
     local = local_position(material, -1000, 1500)
     connect(world_position(material, unreal.WorldPositionIncludedOffsets.WPT_DEFAULT, -1200,
                            1500), "", local, "")
@@ -488,11 +415,12 @@ def pixel_shader(material, nodes, vertex, kind, with_bands):
     # The outputs go through one MakeMaterialAttributes node: Python cannot connect the pixel
     # depth offset of the material itself.
     attributes = expression(material, unreal.MaterialExpressionMakeMaterialAttributes, 800, 0)
-    normal = detail_normal(material, nodes, vertex)
+    morph = interpolate(material, vertex, "MorphOut", 1700) # the detail normals, the foot
+    normal = detail_normal(material, nodes, vertex, morph)
     ground = interpolate(material, vertex, "GroundOut", 250)
     sea = sea_shader(material, nodes, kind, ground)
     square = mask_and_depth(material, nodes, kind, ground, attributes)
-    land, position = land_shader(material, nodes, vertex, normal, with_bands)
+    land, position = land_shader(material, nodes, vertex, normal, with_bands, morph)
     for name in ("WaveOriginX", "WaveOriginY"):
         connect(nodes[name], "", position, name)
     # The default output of a vector parameter is its RGB; its alpha is the amount of the tint.
@@ -518,7 +446,7 @@ def pixel_shader(material, nodes, vertex, kind, with_bands):
         connect(nodes[name], "", shade, name)
     # The lakes and rivers at their level over the shaded ground (horizon_water_nodes.py).
     g = helpers()
-    water = water_nodes.vertex(material, g, nodes, kind)
+    water = water_nodes.vertex(material, g, nodes, kind, vertex)
     inland = water_nodes.pixel(material, g, nodes, shade, water)
     water_nodes.opacity_mask(material, g, reveal.mask(material, g, nodes, square), inland,
                              attributes)

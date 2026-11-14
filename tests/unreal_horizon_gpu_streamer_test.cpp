@@ -168,10 +168,20 @@ void testGrids() {
     const auto level0 = session.streamer.level0Grid();
     const auto ring = session.streamer.ringGrid();
     TEST_CHECK(!level0.vertices.empty() && !ring.vertices.empty());
-    TEST_CHECK(level0.vertices.back().kind == terrain::unreal::GridVertexKind::Sea);
-    TEST_CHECK(ring.vertices.back().kind == terrain::unreal::GridVertexKind::Skirt);
+    // After the samples, the skirt and the sea square come the centers of the cells (agent 40,
+    // horizon_split.hpp: withCellCenters): the last vertex before them.
+    const auto beforeCenters = [](const terrain::unreal::GridMesh& grid) {
+        auto it = grid.vertices.rbegin();
+        while (it != grid.vertices.rend() && it->kind == terrain::unreal::GridVertexKind::Center) {
+            ++it;
+        }
+        return *it;
+    };
+    TEST_CHECK(level0.vertices.back().kind == terrain::unreal::GridVertexKind::Center);
+    TEST_CHECK(beforeCenters(level0).kind == terrain::unreal::GridVertexKind::Sea);
+    TEST_CHECK(beforeCenters(ring).kind == terrain::unreal::GridVertexKind::Skirt);
     // The sea square reaches the guaranteed coverage of the tiles: 360 m around the center.
-    TEST_CHECK(level0.vertices.back().i == 64.0f + 45.0f);
+    TEST_CHECK(beforeCenters(level0).i == 64.0f + 45.0f);
     TEST_CHECK(session.streamer.skirtMetersOf(0) == 2.0 && session.streamer.skirtMetersOf(4) == 8.0);
     TEST_CHECK(session.streamer.curveMetersOf(4) > session.streamer.curveMetersOf(3));
 }

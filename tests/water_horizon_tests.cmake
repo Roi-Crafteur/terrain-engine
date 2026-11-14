@@ -58,3 +58,17 @@ terrain_add_test(atmosphere_haze_test terrain_unreal_bridge)
 target_include_directories(atmosphere_haze_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(atmosphere_haze_test PROPERTIES FIXTURES_REQUIRED coast_planet
                      ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
+
+# The cells of the grids of the GPU horizon with their centers: left on their corner, the triangles
+# of the grids before exactly; moved, the cells cut along their main diagonal; the rule of the
+# vertex shader.
+terrain_add_test(unreal_horizon_cell_centers_test terrain_unreal_bridge)
+
+# The scripts of the materials changed by agent 40, without Unreal: each change behind its switch,
+# declared at 1; its constants those of the C++ or of the tiles; no word HLSL keeps.
+find_package(Python COMPONENTS Interpreter QUIET)
+if(Python_Interpreter_FOUND)
+    add_test(NAME water_horizon_scripts_test
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/water_horizon_scripts_test.py
+                ${PROJECT_SOURCE_DIR})
+endif()

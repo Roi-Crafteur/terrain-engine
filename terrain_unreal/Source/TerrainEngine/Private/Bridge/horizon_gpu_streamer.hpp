@@ -160,9 +160,11 @@ public:
     [[nodiscard]] HorizonNormalStream* detail() const { return detail_.get(); }
 
     // The fixed grids: the body of level 0 (with the sea square), the body shared by the levels
-    // 1 and up, and the trims (trimGrid).
+    // 1 and up, and the trims (trimGrid, of a variant), each cell with its center vertex
+    // (horizon_split.hpp: withCellCenters).
     [[nodiscard]] GridMesh level0Grid() const;
     [[nodiscard]] GridMesh ringGrid() const;
+    [[nodiscard]] GridMesh trimGrid(int variant) const;
     // Depth of the skirt and lowest drop of the curvature over the window of a level, meters.
     [[nodiscard]] double skirtMetersOf(int level) const;
     [[nodiscard]] double curveMetersOf(int level) const;

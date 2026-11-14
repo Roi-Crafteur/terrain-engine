@@ -540,13 +540,13 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
     """The pixel code: with detail (tiles), the textures near the camera; without (horizon), only
     the mean color of each texture. layers: (name, albedo, normal, mean, scale); the ground layers
     first, then the snow, the rock and its variant."""
-    # The curvature of the ground comes from the vertex shader of the tiles (W3.w); the horizon
-    # has none.
-    # The share of the dunes comes from the surface blend of the tiles (W4); the horizon has none.
-    # The share of the dunes: W4 on the tiles, W2.z on the horizon (it has no foot of slopes).
+    # The curvature of the ground and the foot of the steep slopes come from the vertex shaders:
+    # W3.w and W2.z on the tiles, WF.y and WF.x on the horizon (agent 40, horizon_vertex_hlsl.py:
+    # 0 with HorizonFootCurv 0, the horizon before).
+    # The share of the dunes: W4 on the tiles, W2.z on the horizon.
     code = SHADE_TOP.replace("HAS_DETAIL", "1.0" if detail else "0.0").replace(
-        "CURVATURE", "W3.w" if detail else "0.0").replace(
-        "DUNES", "W4" if detail else "W2.z").replace("FOOT", "W2.z" if detail else "0.0")
+        "CURVATURE", "W3.w" if detail else "WF.y").replace(
+        "DUNES", "W4" if detail else "W2.z").replace("FOOT", "W2.z" if detail else "WF.x")
     names = [layer[0] for layer in layers]
     for name, key in (("Desert", "DESERT"), ("Sand", "SAND"), ("Scree", "SCREE")):
         index = names.index(name)
@@ -567,5 +567,6 @@ def shade_hlsl(detail, layers, ground, saturations, biomes):
                 f"TA{variant}Sampler, TN{variant}, TN{variant}Sampler, Tint{rock}, Tint{variant}, alt")
         code += ROCK_DETAIL.replace("ROCK_ARGS", args).replace("SCALE", scale)
         code += SNOW_DETAIL.replace("TAS", f"TA{snow}").replace("SCALE", f"{layers[snow][4]:.1f}")
-    code += SHADE_BOTTOM.replace("TintS", f"Tint{snow}").replace("FOOT", "W2.z" if detail else "0.0")
+    code += SHADE_BOTTOM.replace("TintS", f"Tint{snow}").replace(
+        "FOOT", "W2.z" if detail else "WF.x")
     return struct_hlsl(biomes) + code
