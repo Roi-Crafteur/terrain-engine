@@ -1,6 +1,8 @@
 // The command line of terrain_probe (probe_options.hpp).
 #include "probe_options.hpp"
 
+#include "tool_flags.hpp"
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -82,6 +84,12 @@ bool parseValue(int argc, char** argv, int& i, const std::vector<std::string>& k
     }
     if (flag == "--seed" && has) {
         return parse(argv[++i], o.seed) || fail("seed", argv[i]);
+    }
+    if (flag == "--flags" && has) {
+        o.flags = argv[++i];
+        terrain::WorldParams params;
+        std::string canonical;
+        return tool_flags::apply(o.flags, params, canonical) || fail("flags", argv[i]);
     }
     if (flag == "--world" && i + 2 < argc) {
         i += 2;
@@ -173,11 +181,13 @@ bool parseOptions(int argc, char** argv, const std::vector<std::string>& known, 
 
 std::string usage(const char* tool) {
     return std::string("Usage: ") + tool +
-           " [--planet <file>] [--seed <seed>] [--world <x> <z>] [--threads <n>] [--json] "
+           " [--planet <file>] [--seed <seed>] [--world <x> <z>] [--flags <a,b>] "
+           "[--threads <n>] [--json] "
            "[--sections <a,b,...>] [--radius <meters>] [--falls <meters>] [--caves] "
            "(<x> <z> [<x> <z>]... | --line <x1> <z1> <x2> <z2> <step>)\n"
            "       " +
-           tool + " --planet-check <file> [--seed <seed>] [--world <x> <z>] [--json]\n" +
+           tool +
+           " --planet-check <file> [--seed <seed>] [--world <x> <z>] [--flags <a,b>] [--json]\n" +
            "       " + tool + " --list-sections\n";
 }
 

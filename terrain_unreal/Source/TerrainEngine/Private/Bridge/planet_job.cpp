@@ -1,5 +1,7 @@
 #include "planet_job.hpp"
 
+#include "session_flags.hpp"
+
 #include "terrain/storage/planet_file.hpp"
 #include "terrain/storage/storage_error.hpp"
 
@@ -45,10 +47,12 @@ PlanetChoice choosePlanetFile(const std::string& configured, std::uint64_t seed,
     return choice;
 }
 
-PlanetJob::PlanetJob(PlanetChoice choice, std::uint64_t seed, const WorldSize& world)
+PlanetJob::PlanetJob(PlanetChoice choice, std::uint64_t seed, const WorldSize& world,
+                     std::string experimental)
     : start_(std::chrono::steady_clock::now()),
-      thread_([this, choice = std::move(choice), seed, world]() mutable {
-          run(std::move(choice), seed, world);
+      thread_([this, choice = std::move(choice), seed, world,
+               experimental = std::move(experimental)]() mutable {
+          run(std::move(choice), seed, world, experimental);
       }) {}
 
 PlanetJob::~PlanetJob() {
@@ -88,17 +92,21 @@ void PlanetJob::setStage(const char* stage) {
     }
 }
 
-void PlanetJob::run(PlanetChoice choice, std::uint64_t seed, WorldSize world) {
+void PlanetJob::run(PlanetChoice choice, std::uint64_t seed, WorldSize world,
+                    const std::string& experimental) {
     PlanetJobResult result;
+    const SessionFlags flags = sessionFlags(experimental);
     try {
         setStage("load");
         std::string file = choice.file;
         if (!file.empty() && !choice.mayWrite) {
             // A file of the user: read when it holds this seed, never written.
             try {
-                result.source.level = std::make_shared<const PlanetLevel>(
-                    loadPlanetFile(pathOf(file), seed, PlanetParams{}, world));
+                result.source.level = std::make_shared<const PlanetLevel>(loadPlanetFile(
+                    pathOf(file), seed, flags.params.planet, world, flags.applied.text));
                 result.source.seconds = secondsSince(start_);
+            } catch (const PlanetFlagsError&) {
+                throw; // other flags: an error, no fallback built
             } catch (const StorageError& e) {
                 result.source.reason = e.what(); // it names the file
                 file = choice.fallback;
@@ -106,8 +114,9 @@ void PlanetJob::run(PlanetChoice choice, std::uint64_t seed, WorldSize world) {
         }
         if (!file.empty() && result.source.level == nullptr) {
             const std::string why = result.source.reason;
-            result.source = openPlanetSource(pathOf(file), seed, world,
-                                             [this](const char* stage) { setStage(stage); });
+            result.source = openPlanetSource(
+                pathOf(file), seed, world, [this](const char* stage) { setStage(stage); },
+                flags.params, flags.applied.text);
             if (!why.empty() && result.source.built) {
                 result.source.reason = why + "; " + result.source.reason;
             }

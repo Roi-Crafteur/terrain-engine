@@ -59,6 +59,7 @@ redemandent leur mode de vue à l'image suivante.
 | `Terrain.Blend 0\|1` | (outils de dev seulement) les poids des biomes de l'horizon et du niveau 0 sous les tuiles (agent 29) : 0 le biome dominant de chaque échantillon, comme avant eux ; comparer leur coût GPU et leur aspect (après avoir relancé les scripts des matériaux de l'horizon GPU et temporaire) |
 | `Terrain.Seed <n> [surface\|caves\|regions]` | le monde d'une autre seed et d'un autre preset, sans quitter le Play |
 | `Terrain.Hud [0-3]` | la page de l'écran F3 |
+| `Terrain.Flags <drapeaux\|none\|reset>` | les drapeaux expérimentaux des prochains Play de cet éditeur, par-dessus le réglage de l'acteur (agent 51, ci-dessous) ; `reset` : de nouveau le réglage de l'acteur ; sans argument : leur état |
 
 Variables console : `Terrain.PlacesFile` (un autre fichier des lieux ; vide : celui du dépôt),
 `Terrain.ShotTimeout` (attente maximum d'une téléportation ou d'une image, 60 s),
@@ -364,6 +365,26 @@ l'océan. Le matériau tire la couleur de la mer vers le sable des hauts-fonds
 2. Après : la même commande, la même taille de fenêtre.
 3. Comparer les deux dossiers `Saved/TerrainEngine/Views/<date>/` image par image ; `views.txt`
    dit pour chaque image si elle était prête.
+
+## Terrain.Flags
+
+`Terrain.Flags seas,volcanoes` (ou `Terrain.Flags seas volcanoes`) choisit les drapeaux
+expérimentaux (`terrain/generation/experimental_flags.hpp`) des **prochains Play** de cette
+session de l'éditeur, par-dessus `Experimental.ExperimentalFlags` de l'acteur : la carte n'est
+jamais modifiée. `Terrain.Flags none` : aucun drapeau, le monde de `main`. `Terrain.Flags reset` :
+les prochains Play reprennent le réglage de l'acteur. Sans argument : leur état. Un éditeur relancé
+les oublie (`none` et `reset` ne sont jamais des noms de drapeaux). La commande marche aussi hors
+Play, dans la console de l'éditeur ; `Terrain.Seed` les prend aussi.
+
+- Au démarrage, le log dit d'où ils viennent :
+  `Terrain World: experimental flags: "seas" (from Terrain.Flags)` ; un nom inconnu donne un
+  avertissement (`Terrain World: unknown experimental flag 'x' (known: …)`).
+- Un monde de drapeaux lit son fichier planète **à part** :
+  `Saved/TerrainEngine/dev/planet_{Seed}_<drapeaux>.bin` (les noms séparés par `+`), jamais le
+  `planet.bin` de l'utilisateur. Il y est construit s'il manque (1 à 2 min), ou fait d'avance par
+  `terrain_make_planet <ce fichier> --flags <drapeaux>`. S'il contient d'autres drapeaux, le Play
+  s'arrête sur une erreur du log, sans rien reconstruire par-dessus.
+- `none`, ou seulement des noms inconnus : le fichier planète de l'acteur.
 
 ## Terrain.Seed
 
