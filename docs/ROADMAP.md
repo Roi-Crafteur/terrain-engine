@@ -10,7 +10,8 @@ machines), Unreal décide de son apparence (rendu, joueur, interface, réseau).
 Le viewer OpenGL reste un outil de debug : plus aucun ajout visuel.
 
 Référence : le mod Minecraft Big Globe (Builderb0y, github.com/Builderb0y/BigGlobe ; copie
-locale hors dépôt dans `C:\Projetseferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
+locale hors dépôt dans `C:\Projets
+eferences\BigGlobe`). Licence CC BY-NC 4.0 et souhait de
 l'auteur de ne pas reprendre de grandes parties de son code : on s'inspire des principes et on
 réécrit tout nous-mêmes, sans copier ni traduire son code.
 
@@ -395,6 +396,11 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   Heightfield::forFootprint, comme l'horizon) ; à 300–500 m, le LOD 3 (8 m) laisse encore une
   rangée de dents très fines le long d'une crête (lieu erg_etoile_150m, bras gauche) : un maillage
   plus fin devant le joueur les ferait disparaître.
+  Pour l'agent des dunes (mesure de l'agent 31, tâche 11C, drapeau sphere_latitude) : sur 6
+  graines, les ergs couvrent 5 % des déserts sur main, 10,4 % avec la latitude sphère et ses
+  réglages (12,6 % sans les deux leviers du climat sec) ; sur Terre, environ 20 % (USGS) à un
+  quart ou un tiers (d'autres sources), chiffre à vérifier à la source. Rien à changer avant
+  l'allumage de R1 (terrain_climate_shares --erg-share).
   Pour l'agent 50 : les dépressions sous la mer sèches sont couvertes par les ergs ; leurs sebkhas
   (lacs salés du niveau Planète, sans eau sur le relief) restent sans dunes par la règle des lacs.
   Leur aspect de croûte de sel est à faire : au fond de la dépression n° 27 (lieu

@@ -74,6 +74,9 @@ void testSmallWorld() {
     TEST_CHECK(world.planet.climate.iceTemperature == world.ecology.biomes.snowTemperature);
     TEST_CHECK(world.planet.climate.poleTemperature == -33.0f); // the poles colder (13 % of cold)
     TEST_CHECK(world.ecology.climate.poleTemperature == world.planet.climate.poleTemperature);
+    // The dry lands of the sphere brought back to those of the Earth (group B about 30 %).
+    TEST_CHECK(world.planet.climate.subtropicalDip == 0.3 &&
+               world.planet.climate.eddyShare == 1.25);
     const terrain::PlanetLevel on(terrain::kDefaultWorldSeed, world.relief, world.planet,
                                   golden::kSmallPlanet);
     const terrain::PlanetLevel off(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},

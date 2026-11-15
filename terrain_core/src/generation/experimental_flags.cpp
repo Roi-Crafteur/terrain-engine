@@ -81,6 +81,13 @@ AppliedFlags applyTo(std::string_view text, WorldParams* params,
 // and the tiles (with the sphere alone the cold of the land fell from 34 to 8.5 % on 6 seeds;
 // at -33 C snow and tundra cover 13.0 % of the land, the deserts stay at 28 %).
 constexpr float kSpherePole = -33.0f;
+// The dry lands of the sphere: its wide subtropics made the dry group B of Koeppen (desert, steppe
+// and shrubland, the biomes of agent 49) 39.9 % of the land; a shallower dip of the rain of the
+// subtropics (0.8 on main) and more of the moisture the storms bring from the nearby seas (0.5 on
+// main) bring it to 30.6 % on 6 seeds (Peel et al. 2007: 30.2 % of the land of the Earth), snow and
+// tundra staying at 12.7 %. Either alone fell short: 34.3 % and 36.8 % at best.
+constexpr double kSphereSubtropicalDip = 0.3;
+constexpr double kSphereEddyShare = 1.25;
 
 void sphereLatitude(WorldParams& p) {
     p.relief.sphereLatitude = true;
@@ -92,6 +99,8 @@ void sphereLatitude(WorldParams& p) {
     p.ecology.climate.sphereLatitude = true;
     p.planet.climate.poleTemperature = kSpherePole;
     p.ecology.climate.poleTemperature = kSpherePole;
+    p.planet.climate.subtropicalDip = kSphereSubtropicalDip;
+    p.planet.climate.eddyShare = kSphereEddyShare;
 }
 
 } // namespace
