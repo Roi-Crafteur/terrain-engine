@@ -340,8 +340,8 @@ struct Blades {
 };
 
 Blades bladesAround(double x0, double z0) {
-    const int n = static_cast<int>(2.0 * kBladeHalf / kBladeStep) + 1;
-    const auto at = [n](int i, int j) { return static_cast<std::size_t>(j * n + i); };
+    constexpr int n = static_cast<int>(2.0 * kBladeHalf / kBladeStep) + 1;
+    const auto at = [](int i, int j) { return static_cast<std::size_t>(j * n + i); };
     std::vector<double> ground(static_cast<std::size_t>(n * n));
     std::vector<double> top(static_cast<std::size_t>(n * n), -1e18);
     for (int j = 0; j < n; ++j) {
