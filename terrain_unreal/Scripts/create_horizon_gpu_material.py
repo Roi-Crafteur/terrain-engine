@@ -284,7 +284,7 @@ def sea_shader(material, nodes, kind, ground):
     connect(nodes["HorizonTexels"], "", custom, "Tex")
     connect(world_position(material, unreal.WorldPositionIncludedOffsets.WPT_CAMERA_RELATIVE,
                            -700, -1000), "", custom, "CameraRel")
-    connect(expression(material, unreal.MaterialExpressionTime, -700, -1100), "", custom, "Time")
+    connect(water_nodes.clock(material, -700, -1100), "", custom, "Time")
     connect(expression(material, unreal.MaterialExpressionSkyAtmosphereLightDirection, -700, -1200),
             "", custom, "SunDir")
     connect(expression(material, unreal.MaterialExpressionSkyAtmosphereLightIlluminance, -700,

@@ -11,9 +11,12 @@ import importlib
 import unreal
 
 import horizon_water_hlsl as code
+import water_clock
 import water_look_hlsl as look
 code = importlib.reload(code)  # the modules of this checkout, even if run before
 look = importlib.reload(look)
+water_clock = importlib.reload(water_clock)
+clock = water_clock.node  # the time of the water, frozen by WaterTime (agent 40); the sea's too
 
 FLOAT1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
 FLOAT2 = unreal.CustomMaterialOutputType.CMOT_FLOAT2
@@ -109,8 +112,8 @@ def pixel(material, g, nodes, shade, water):
         g.connect(g.interpolate(material, water, output, -2900 + 100 * index), "", custom, name)
     g.connect(g.world_position(material, unreal.WorldPositionIncludedOffsets.WPT_CAMERA_RELATIVE,
                                300, -1500), "", custom, "CameraRel")
-    for cls, name, y in ((unreal.MaterialExpressionTime, "Time", -1600),
-                         (unreal.MaterialExpressionSkyAtmosphereLightDirection, "SunDir", -1700),
+    g.connect(clock(material, 300, -1600), "", custom, "Time")
+    for cls, name, y in ((unreal.MaterialExpressionSkyAtmosphereLightDirection, "SunDir", -1700),
                          (unreal.MaterialExpressionSkyAtmosphereLightIlluminance, "SunIlluminance",
                           -1800),
                          (sky_view, "SkyView", -1900)):  # SkyView binds the LUT the code samples

@@ -33,18 +33,29 @@ namespace
 		}
 		const FName Name(*Args[0]);
 		const float Value = static_cast<float>(*Number);
-		int32 Count = 0;
+		FTerrainLookScalarReport Report;
 		for (TObjectIterator<UTerrainHorizonClipmap> It; It; ++It)
 		{
 			if (It->GetWorld() == World)
 			{
-				Count += It->SetLookScalar(Name, Value);
+				const FTerrainLookScalarReport One = It->SetLookScalar(Name, Value);
+				Report.Materials += One.Materials;
+				Report.WithParameter += One.WithParameter;
+				Report.Holders.Append(One.Holders);
 			}
 		}
+		if (Report.WithParameter == 0)
+		{
+			UE_LOG(LogTerrainEngine, Warning,
+				TEXT("Terrain.Param %s %g: none of the %d materials of the horizon, the tiles and "
+					 "the water has it (a wrong name, or a switch no material reads)"),
+				*Name.ToString(), Value, Report.Materials);
+			return;
+		}
 		UE_LOG(LogTerrainEngine, Log,
-			TEXT("Terrain.Param %s %g: set on %d materials of the horizon and the tiles (those "
-				 "without it ignore it)"),
-			*Name.ToString(), Value, Count);
+			TEXT("Terrain.Param %s %g: %d of %d materials have it and took it (%s)"),
+			*Name.ToString(), Value, Report.WithParameter, Report.Materials,
+			*FString::Join(Report.Holders, TEXT(", ")));
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs TerrainParamCommand(TEXT("Terrain.Param"),

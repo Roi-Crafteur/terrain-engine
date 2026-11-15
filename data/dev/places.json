@@ -230,4 +230,7 @@
       "planet": true, "note": "un désert froid de type Gobi (1,8 °C, humidité 0,096), une plaine de sable sur 40 km vue de 500 m : ce que reçoit la brume de poussière (agent 40)" },
     { "name": "aplat_sable_3km", "x": 1863968, "z": -10006000,
       "heading": 270, "pitch": -6, "eye": 300, "eyeMode": "ground",
-      "planet": true, "note": "la même plaine de sable plate (200 à 250 m) vue de 300 m, le centre de l'image à 2,9 km : l'octave lointaine (FarDetail), aucun motif qui se répète (agent 40)" } ] }
+      "planet": true, "note": "la même plaine de sable plate (200 à 250 m) vue de 300 m, le centre de l'image à 2,9 km : l'octave lointaine (FarDetail), aucun motif qui se répète (agent 40)" },
+    { "name": "neige_pentes_k2", "x": 416102, "z": -11406891,
+      "heading": 240, "pitch": -12, "eye": 2, "eyeMode": "ground",
+      "planet": true, "note": "près du K2 (sol 5 129 m, −35 °C), des pentes enneigées de 28 à 38° entre 200 m et 2 km (sondé), la roche au-delà de 41° : la neige du shader alignée sur le cœur (SnowShedDeg 38,66 / SnowHoldDeg 27,66 contre 33 / 22) (agent 40)" } ] }

@@ -23,6 +23,15 @@ class UStaticMesh;
 class UStaticMeshComponent;
 class UTexture2D;
 
+// What Terrain.Param set (UTerrainHorizonClipmap::SetLookScalar): the materials it looked at,
+// those that have the parameter (set), and their materials by name ("M_TerrainHorizonGpu x10").
+struct FTerrainLookScalarReport
+{
+	int32 Materials = 0;
+	int32 WithParameter = 0;
+	TArray<FString> Holders;
+};
+
 // How the GPU horizon looks: what its material needs besides the textures.
 struct FTerrainHorizonLook
 {
@@ -99,9 +108,9 @@ public:
 
 	// A scalar parameter of the look on the materials of every level and of the tiles bound to
 	// level 0 (their ground and their water): the console command Terrain.Param of the tools
-	// (agent 40), to compare a look in game. Returns the number of materials it was set on (those
-	// without the parameter ignore it).
-	int32 SetLookScalar(FName Name, float Value);
+	// (agent 40), to compare a look in game. Set on those that have the parameter only; the report
+	// says how many and which, so that a switch no material reads shows at once.
+	FTerrainLookScalarReport SetLookScalar(FName Name, float Value);
 
 	// The shadows under a low sun (agent 40, TerrainHorizonClipmapShadows.cpp): the levels 0 to
 	// Levels - 1 cast them, or every level with bHorizonShadows (FTerrainHorizonLook::bShadows).

@@ -26,6 +26,9 @@ per change, each behind its switch (Terrain.Param), 1 by default and 0 for the l
   reaches.
 - DuneSmooth (create_temporary_terrain_material.py): declared at 1; the normal of the far dunes
   leans fully toward the smooth one (the share of the dunes W4).
+- Every switch wired in the graph of its material (material_graph_support.py): its parameter
+  read by a Custom node that reaches an output; one unplugged in each material, found. The time of
+  the water read by its clock (WaterTime, water_clock.py) alone.
 - The cache of the shadows of the horizon: Rigid by the name of its property, the virtual shadow
   maps read back, invalidated when the texels of a level arrive.
 - In each new HLSL, no variable named as a word HLSL keeps (half, fixed, sample, linear, point);
@@ -227,6 +230,54 @@ def check_shadow_cache(root):
           "the switch of the cache is not declared at true")
 
 
+# The switches of the look and the materials where each acts (Terrain.Param sets them by name).
+SWITCHES = {
+    "create_horizon_gpu_material.py": {
+        "M_TerrainHorizonGpu": ["AdaptiveSplit", "CoarseSplit", "HorizonFootCurv", "RockCaps",
+                                "FarDetail", "RockWarmth", "SnowShedDeg", "SnowHoldDeg",
+                                "WaterTime"]},
+    "create_temporary_terrain_material.py": {
+        "M_TemporaryTerrain": ["SeamNormal", "DuneSmooth", "FarDetail", "RockWarmth",
+                               "SnowShedDeg", "SnowHoldDeg"]},
+    "create_water_materials.py": {"M_TerrainWater": ["WaterTime"],
+                                  "M_TerrainFalls": ["FoamEllipse", "WaterTime"]},
+}
+# One switch per material unplugged: the check must find it (it would pass a switch left out).
+UNPLUGGED = {"M_TerrainHorizonGpu": "HorizonFootCurv", "M_TemporaryTerrain": "SeamNormal",
+             "M_TerrainWater": "WaterTime", "M_TerrainFalls": "FoamEllipse"}
+
+
+def check_wiring(scripts):
+    """Session 2 saw no pixel change with HorizonFootCurv, SeamNormal and DuneSmooth: each switch
+    is proven wired in the graph its script builds (material_graph_support.py), its parameter read
+    by a Custom node that reaches an output; the time of the water is read by the clock alone
+    (water_clock.py), never by a node of the water directly."""
+    graphs = importlib.import_module("material_graph_support")
+    for script, materials in SWITCHES.items():
+        graph, error = graphs.run(scripts, script)
+        check(error is None, f"the graph of {script} is not built: {error}")
+        for name, switches in materials.items():
+            found = graph.material_of(name)
+            check(len(found) == 1, f"{script} builds no single material {name}")
+            if len(found) != 1:
+                continue
+            for switch in switches:
+                reasons = graph.wired(found[0], switch)
+                check(not reasons, f"{name}: {switch} not wired: {reasons}")
+            cut = UNPLUGGED[name]
+            check(graph.unplugged(found[0], cut).wired(found[0], cut) != [],
+                  f"{name}: {cut} unplugged and still found wired: the check proves nothing")
+            for obj, node in graph.nodes.items():
+                if node.material is not found[0] or node.kind != "MaterialExpressionTime":
+                    continue
+                readers = [graph.nodes[t].properties.get("description")
+                           for s, _, t, _ in graph.links if s is obj]
+                check(readers == ["WaterClock"],
+                      f"{name}: the time of the engine read by {readers}, not by the clock")
+    print(f"{sum(len(s) for m in SWITCHES.values() for s in m.values())} switches wired in "
+          f"{sum(len(m) for m in SWITCHES.values())} materials; one unplugged in each, found")
+
+
 def main(root):
     root = pathlib.Path(root)
     scripts = root / "terrain_unreal/Scripts"
@@ -249,6 +300,7 @@ def main(root):
     check_far_detail_snow_rock(root)
     check_foam_dunes(root, scripts, waters, tiles)
     check_shadow_cache(root)
+    check_wiring(scripts)
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 

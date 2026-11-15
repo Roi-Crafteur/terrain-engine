@@ -8,6 +8,7 @@
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
+#include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "TerrainEngineLog.h"
 #include "TerrainHorizonTextures.h"
@@ -71,19 +72,38 @@ void UTerrainHorizonClipmap::SetSurfaceBlends(bool bShown)
 	}
 }
 
-int32 UTerrainHorizonClipmap::SetLookScalar(FName Name, float Value)
+FTerrainLookScalarReport UTerrainHorizonClipmap::SetLookScalar(FName Name, float Value)
 {
-	int32 Count = 0;
+	FTerrainLookScalarReport Report;
+	TMap<FString, int32> Holders;
 	for (TArray<TObjectPtr<UMaterialInstanceDynamic>>* Instances : {&Looks, &SurfaceLooks})
 	{
 		for (UMaterialInstanceDynamic* Look : *Instances)
 		{
-			if (Look != nullptr)
+			if (Look == nullptr)
 			{
-				Look->SetScalarParameterValue(Name, Value);
-				++Count;
+				continue;
 			}
+			++Report.Materials;
+			TArray<FMaterialParameterInfo> Infos;
+			TArray<FGuid> Ids;
+			Look->GetAllScalarParameterInfo(Infos, Ids);
+			if (!Infos.ContainsByPredicate(
+					[Name](const FMaterialParameterInfo& Info) { return Info.Name == Name; }))
+			{
+				continue;
+			}
+			Look->SetScalarParameterValue(Name, Value);
+			++Report.WithParameter;
+			const UMaterial* Base = Look->GetMaterial();
+			++Holders.FindOrAdd(Base != nullptr ? Base->GetName() : Look->GetName());
 		}
 	}
-	return Count;
+	for (const TPair<FString, int32>& Holder : Holders)
+	{
+		Report.Holders.Add(Holder.Value > 1
+				? FString::Printf(TEXT("%s x%d"), *Holder.Key, Holder.Value)
+				: Holder.Key);
+	}
+	return Report;
 }

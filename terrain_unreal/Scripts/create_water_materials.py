@@ -41,10 +41,12 @@ import unreal
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import material_settings as settings  # noqa: E402  (after the path of this script)
 import temporary_terrain_look as look  # noqa: E402
+import water_clock  # noqa: E402  (agent 40: the time of the water, frozen by WaterTime)
 import water_look_hlsl as water  # noqa: E402
 settings = importlib.reload(settings)  # the modules of this checkout, even if run before
 look = importlib.reload(look)
 water = importlib.reload(water)
+water_clock = importlib.reload(water_clock)
 
 PACKAGE_PATH = "/Game/TerrainEngine"
 FLOAT1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
@@ -136,9 +138,10 @@ def depths(material, custom, x, y):
 
 
 def sky(material, custom, x, y):
-    """The time, the sun and the sky view LUT (unused by the code: it binds the LUT)."""
-    for cls, name, dy in ((unreal.MaterialExpressionTime, "Time", 0),
-                          (unreal.MaterialExpressionSkyAtmosphereLightDirection, "SunDir", 100),
+    """The time (water_clock.py), the sun and the sky view LUT (unused by the code: it binds the
+    LUT)."""
+    connect(water_clock.node(material, x, y), "", custom, "Time")
+    for cls, name, dy in ((unreal.MaterialExpressionSkyAtmosphereLightDirection, "SunDir", 100),
                           (unreal.MaterialExpressionSkyAtmosphereLightIlluminance,
                            "SunIlluminance", 200),
                           (unreal.MaterialExpressionSkyAtmosphereViewLuminance, "SkyView", 300)):
@@ -211,7 +214,7 @@ def falls_graph(material):
     connect(uv(material, 0, "rg", -900, -300), "", custom, "Fall")
     connect(uv(material, 1, "rg", -900, -200), "", custom, "KindDrop")
     connect(uv(material, 2, "rg", -900, -100), "", custom, "AltitudeSize")
-    connect(expression(material, unreal.MaterialExpressionTime, -900, 0), "", custom, "Time")
+    connect(water_clock.node(material, -900, 0), "", custom, "Time")
     depths(material, custom, -900, 100)
     # The foam bounded by its ellipse and the water under it (agent 40; 0: as before).
     connect(expression(material, unreal.MaterialExpressionCameraVectorWS, -900, 200), "", custom,
