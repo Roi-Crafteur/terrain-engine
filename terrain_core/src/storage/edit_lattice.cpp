@@ -11,6 +11,7 @@ namespace {
 
 using edit_cubes::kCubeDistances;
 using edit_cubes::nearestCube;
+using edit_cubes::nearestRemoved;
 using edit_cubes::offsetIndex;
 
 // The kinds of the samples of a lattice (EditLattice::classify).
@@ -198,6 +199,25 @@ void EditLattice::classify() {
     }
 }
 
+std::pair<std::uint32_t, std::uint32_t> EditLattice::blocksAround(int i, int j, int k) const {
+    if (removed_.empty()) {
+        return {0, 0};
+    }
+    // The 27 blocks around the sample as bits, by offsetIndex.
+    const int x = x_.first(i);
+    std::uint32_t removed = 0;
+    std::uint32_t added = 0;
+    for (int dz = 0; dz < 3; ++dz) {
+        for (int dy = 0; dy < 3; ++dy) {
+            const std::size_t r = row(y_.first(j) + dy, z_.first(k) + dz);
+            const auto shift = static_cast<unsigned>(3 * (dz * 3 + dy));
+            removed |= static_cast<std::uint32_t>((removed_[r] >> x) & 7U) << shift;
+            added |= static_cast<std::uint32_t>((added_[r] >> x) & 7U) << shift;
+        }
+    }
+    return {removed, added};
+}
+
 float EditLattice::density(float generated, int i, int j, int k) const {
     if (kinds_.empty()) {
         return generated;
@@ -213,24 +233,13 @@ float EditLattice::density(float generated, int i, int j, int k) const {
     default:
         return generated;
     }
-    // The 27 blocks around the sample as bits, by offsetIndex.
-    const int x = x_.first(i);
-    std::uint32_t removed = 0;
-    std::uint32_t added = 0;
-    for (int dz = 0; dz < 3; ++dz) {
-        for (int dy = 0; dy < 3; ++dy) {
-            const std::size_t r = row(y_.first(j) + dy, z_.first(k) + dz);
-            const auto shift = static_cast<unsigned>(3 * (dz * 3 + dy));
-            removed |= static_cast<std::uint32_t>((removed_[r] >> x) & 7U) << shift;
-            added |= static_cast<std::uint32_t>((added_[r] >> x) & 7U) << shift;
-        }
-    }
+    const auto [removed, added] = blocksAround(i, j, k);
     float density = generated;
     if (added != 0) {
         density = std::min(density, nearestCube(added));
     }
     if (removed != 0) {
-        density = std::max(density, -nearestCube(removed));
+        density = std::max(density, -nearestRemoved(removed));
     }
     return density;
 }

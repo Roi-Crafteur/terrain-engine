@@ -359,10 +359,12 @@ void testDeterminism() {
     }
     TEST_CHECK(sums[0] == sums[1]);
     golden::report("the horizon with a razed mountain, a crater and a heap",
-                   // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and marshes
-                   // near the sea" (b1da378, agent 49): "edited horizon" (0x75963890668CF506
-                   // before); the 21 biomes in its samples.
-                   {{"edited horizon", sums[0], 0xC01A71DBEE4D464DULL}});
+                   // Recollé par « Merge remote-tracking branch 'origin/main' into
+                   // claude/exciting-bardeen-ignvze » (agent 41, the merge of #84 into #78) :
+                   // "edited horizon" (0xE2CB2F6FE45F88B1 on #78, 0xC01A71DBEE4D464D on main) ;
+                   // both causes at once : the columns of level 0 read the edits by the cells of
+                   // the LOD 3 lattice (#78) and the 21 biomes of #84 in its samples.
+                   {{"edited horizon", sums[0], 0x0C4A53234875874EULL}});
 }
 
 } // namespace

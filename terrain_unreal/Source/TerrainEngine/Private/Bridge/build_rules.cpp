@@ -80,4 +80,34 @@ bool touchesCapsule(const VolumeEdit& edit, const CoreCapsule& capsule) {
     return capsuleDistance(edit, capsule) < kCapsuleMarginMeters;
 }
 
+bool blockFull(BlockCoord block, std::optional<BlockEdit> held,
+               const std::function<float(int, int, int)>& density) {
+    if (held) {
+        return *held == BlockEdit::Added;
+    }
+    // The 27 lattice points around the center, then each corner: the mean of its cell.
+    float samples[3][3][3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            for (int k = 0; k < 3; ++k) {
+                samples[i][j][k] = density(block.x + i - 1, block.y + j - 1, block.z + k - 1);
+            }
+        }
+    }
+    for (int cx = 0; cx < 2; ++cx) {
+        for (int cy = 0; cy < 2; ++cy) {
+            for (int cz = 0; cz < 2; ++cz) {
+                double sum = 0.0;
+                for (int n = 0; n < 8; ++n) {
+                    sum += samples[cx + (n & 1)][cy + ((n >> 1) & 1)][cz + ((n >> 2) & 1)];
+                }
+                if (sum >= 0.0) {
+                    return false; // this corner is in the air (or on the surface)
+                }
+            }
+        }
+    }
+    return true;
+}
+
 } // namespace terrain::unreal

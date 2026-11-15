@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 
 namespace terrain::unreal {
 
@@ -37,21 +38,36 @@ BuildGhost blockGhost(BlockCoord block) {
 const char* toolName(BuildTool tool) {
     switch (tool) {
     case BuildTool::Sphere2:
-        return "sphere 2 m";
+        return "sphere 3 m";
     case BuildTool::Sphere4:
-        return "sphere 4 m";
+        return "sphere 5 m";
     case BuildTool::Block:
         break;
     }
     return "block 1 m";
 }
 
+std::string shapeName(BuildTool tool, double radius) {
+    if (tool == BuildTool::Block) {
+        return toolName(tool);
+    }
+    for (const BuildTool sphere : {BuildTool::Sphere2, BuildTool::Sphere4}) {
+        if (std::lround(radius * 16.0) == std::lround(toolRadius(sphere) * 16.0)) {
+            return toolName(sphere);
+        }
+    }
+    char text[64];
+    std::snprintf(text, sizeof(text), "sphere of radius %.4g m",
+                  static_cast<double>(std::lround(radius * 16.0)) / 16.0);
+    return text;
+}
+
 double toolRadius(BuildTool tool) {
     switch (tool) {
     case BuildTool::Sphere2:
-        return 1.0;
+        return 26.0 / 16.0;
     case BuildTool::Sphere4:
-        return 2.0;
+        return 39.0 / 16.0;
     case BuildTool::Block:
         break;
     }
@@ -94,6 +110,10 @@ BlockCoord blockOfPoint(const CorePoint& point) {
 }
 
 BuildTarget buildTarget(const BuildHit& hit, BuildTool tool, BuildAction action) {
+    return buildTarget(hit, tool, action, toolRadius(tool));
+}
+
+BuildTarget buildTarget(const BuildHit& hit, BuildTool tool, BuildAction action, double radius) {
     const CoreDirection n = unitOrUp(hit.normal);
     BuildTarget target;
     target.edit.mode = action == BuildAction::Break ? EditMode::Remove : EditMode::Add;
@@ -109,7 +129,6 @@ BuildTarget buildTarget(const BuildHit& hit, BuildTool tool, BuildAction action)
         target.ghost = blockGhost(block);
         return target;
     }
-    const double radius = toolRadius(tool);
     const double out = action == BuildAction::Break ? 0.0 : radius * 0.5;
     const BlockCoord center = blockOfPoint(
         {hit.point.x + n.x * out, hit.point.y + n.y * out, hit.point.z + n.z * out});
@@ -125,6 +144,13 @@ BuildTarget buildTarget(const BuildHit& hit, BuildTool tool, BuildAction action)
 
 bool withinReach(const BuildHit& hit, double reachMeters) {
     return std::isfinite(hit.distance) && hit.distance >= 0.0 && hit.distance <= reachMeters;
+}
+
+bool aimsAt(const BuildHit& hit, const CorePoint& point) {
+    const double dx = hit.point.x - point.x;
+    const double dy = hit.point.y - point.y;
+    const double dz = hit.point.z - point.z;
+    return dx * dx + dy * dy + dz * dz <= kAimToleranceMeters * kAimToleranceMeters;
 }
 
 UnrealGhost toUnrealGhost(const UnrealFrame& frame, const BuildGhost& ghost) {

@@ -32,8 +32,8 @@ BuildHit hitAt(double x, double y, double z, CoreDirection normal, double distan
 }
 
 void testTools() {
-    TEST_CHECK(terrain::unreal::toolRadius(BuildTool::Sphere2) == 1.0);
-    TEST_CHECK(terrain::unreal::toolRadius(BuildTool::Sphere4) == 2.0);
+    TEST_CHECK(terrain::unreal::toolRadius(BuildTool::Sphere2) == 1.625);
+    TEST_CHECK(terrain::unreal::toolRadius(BuildTool::Sphere4) == 2.4375);
     TEST_CHECK(terrain::unreal::toolRadius(BuildTool::Block) == 0.0);
 }
 
@@ -82,12 +82,12 @@ void testSpheres() {
     using terrain::unreal::buildTarget;
     const BuildHit flat = hitAt(4.2, 10.3, -7.8, {0, 1, 0});
     const BuildTarget small = buildTarget(flat, BuildTool::Sphere2, BuildAction::Break);
-    TEST_CHECK(small.edit.shape == EditShape::Sphere && small.edit.radius == 16);
+    TEST_CHECK(small.edit.shape == EditShape::Sphere && small.edit.radius == 26);
     TEST_CHECK(small.edit.anchor == (BlockCoord{4, 10, -8}));
-    TEST_CHECK(small.ghost.sphere && small.ghost.halfY == 1.0);
+    TEST_CHECK(small.ghost.sphere && small.ghost.halfY == 1.625); // the ghost follows the radius
     const BuildTarget large = buildTarget(flat, BuildTool::Sphere4, BuildAction::Place);
-    TEST_CHECK(large.edit.radius == 32 && large.edit.mode == EditMode::Add);
-    TEST_CHECK(large.edit.anchor == (BlockCoord{4, 11, -8})); // 10.3 + 1, half its radius out
+    TEST_CHECK(large.edit.radius == 39 && large.edit.mode == EditMode::Add);
+    TEST_CHECK(large.edit.anchor == (BlockCoord{4, 12, -8})); // 10.3 + 1.22, half its radius out
     // Every edit is valid for the core.
     terrain::validate(small.edit, terrain::WorldSize{});
     terrain::validate(large.edit, terrain::WorldSize{});

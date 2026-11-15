@@ -271,6 +271,7 @@ void ATerrainWorld::Tick(float DeltaSeconds)
 	TickTerrainEdits(*State.Get());
 	FTerrainBuildHooks::Tick(*this, Pawn); // the save of the edits, the build component
 	Focus = BeginTerrainFrame(*this, *State.Get(), Focus); // a prepared point while one is set
+	State->Loading.StreamingFocus = Focus;
 	FTerrainUploads Uploads;
 	try
 	{

@@ -22,7 +22,8 @@ horizon (HasSurface 0), the layers follow the altitude only.
 Pixel shader: rock on steep slopes, snow on the gentle cold ground, the ground layers, world
 aligned textures near the camera fading to their mean colors far away (temporary_terrain_look.py);
 on the rock its bands (agent 33: its beds, its notch, its cap) from the UV channels 1 to 3 of the
-vertices (Bridge/tile_mesh_conversion.hpp: VertexBands).
+vertices (Bridge/tile_mesh_conversion.hpp: VertexBands); the light floor of the edited surfaces,
+off by default (agent 41, terrain_edit_light_nodes.py: the blue of the vertex colors).
 
 The asset belongs to the game project, not to this repository. Run the script once per project,
 and again after updating the plugin, in the Unreal Editor (the Python Editor Script Plugin must be
@@ -42,7 +43,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import horizon_detail_normals as detail  # noqa: E402  (after the path of this script)
 import material_settings as settings  # noqa: E402
 import temporary_terrain_look as look  # noqa: E402
+import terrain_edit_light_nodes as edit_light  # noqa: E402
 detail = importlib.reload(detail)  # the modules of this checkout, even if run before
+edit_light = importlib.reload(edit_light)
 look = importlib.reload(look)
 settings = importlib.reload(settings)
 
@@ -352,6 +355,8 @@ def pixel_shader(material, scalars, weights):
     editing.connect_material_property(shade, "", unreal.MaterialProperty.MP_BASE_COLOR)
     editing.connect_material_property(shade, "NormalOut", unreal.MaterialProperty.MP_NORMAL)
     editing.connect_material_property(shade, "RoughOut", unreal.MaterialProperty.MP_ROUGHNESS)
+    # The light floor of the edited surfaces, off by default (terrain_edit_light_nodes.py).
+    edit_light.add_edit_light(material, shade)
 
 
 def bands(material, shade):

@@ -5,6 +5,7 @@
 #include <limits>
 #include <stdexcept>
 #include <tuple>
+#include <unordered_set>
 #include <utility>
 
 namespace terrain {
@@ -18,6 +19,49 @@ bool overlapsAny(const TileKey& tile, std::span<const ChunkCoord> chunks) {
     return std::any_of(chunks.begin(), chunks.end(),
                        [&tile](ChunkCoord chunk) { return tileContains(tile, chunk); });
 }
+
+// The tiles the edits of some chunks change. A tile of LOD 0 reads the blocks within kBlockReach
+// of its lattice, which the chunks of an edit already cover. The other tiles, and the sides of a
+// tile of LOD 0 stitched to a coarser one, read them up to 12 m beyond (agent 41, tile_edits.hpp:
+// editReach): the tiles within a chunk of one, those whose chunks widened by one hold one. The
+// chunks are kept sorted, once: on the game thread, a razed mountain (thousands of chunks) costs
+// a few lookups per tile wanted, no set of tiles per chunk.
+class ReachedTiles {
+public:
+    ReachedTiles(std::span<const ChunkCoord> chunks, const WorldSize& world) : world_(world) {
+        chunks_.reserve(chunks.size());
+        for (const ChunkCoord chunk : chunks) {
+            chunks_.push_back(wrapChunk(chunk, world));
+        }
+        std::sort(chunks_.begin(), chunks_.end(), before);
+        chunks_.erase(std::unique(chunks_.begin(), chunks_.end()), chunks_.end());
+    }
+    [[nodiscard]] bool reaches(const TileKey& key, unsigned seams) const {
+        if (key.lod == 0 && seams == 0) {
+            return holds(key.origin); // a tile of LOD 0 is its chunk
+        }
+        const int side = tileChunks(key.lod);
+        for (int dz = -1; dz <= side; ++dz) {
+            for (int dx = -1; dx <= side; ++dx) {
+                if (holds(wrapChunk({key.origin.x + dx, key.origin.z + dz}, world_))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+private:
+    static bool before(const ChunkCoord& a, const ChunkCoord& b) {
+        return a.z != b.z ? a.z < b.z : a.x < b.x;
+    }
+    [[nodiscard]] bool holds(ChunkCoord chunk) const {
+        return std::binary_search(chunks_.begin(), chunks_.end(), chunk, before);
+    }
+
+    WorldSize world_;
+    std::vector<ChunkCoord> chunks_; // the chunks of the edits, canonical, sorted by z then x
+};
 
 // Unloading order, for deterministic changes.
 bool keyOrder(const TileKey& a, const TileKey& b) {
@@ -139,6 +183,22 @@ void StreamManager::invalidate(std::span<const ChunkCoord> chunks) {
     }
     for (auto& [key, loaded] : loaded_) {
         if (overlapsAny(key, canonical)) {
+            loaded.ticket = kStale;
+        }
+    }
+    rebuildQueue();
+}
+
+void StreamManager::invalidateEdits(std::span<const ChunkCoord> chunks) {
+    const ReachedTiles reached(chunks, params_.world);
+    for (auto& [key, wanted] : wanted_) {
+        if (reached.reaches(key, wanted.request.seams)) {
+            wanted.ticket = nextTicket_++;
+        }
+    }
+    for (auto& [key, loaded] : loaded_) {
+        const unsigned seams = loaded.data != nullptr ? loaded.data->request.seams : 0U;
+        if (reached.reaches(key, seams)) {
             loaded.ticket = kStale;
         }
     }

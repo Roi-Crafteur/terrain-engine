@@ -1,7 +1,7 @@
 #pragma once
 // Pure C++ layer of the Unreal plugin (no Unreal header): breaking and placing in game (phase 15,
 // agent 28). From the point a trace of the camera hit on the tiles and the normal there, the edit
-// of the tool (a block of 1 m, a sphere of 2 or 4 m across), the ghost shown before the click and
+// of the tool (a block of 1 m, a sphere of 3 or 5 m across), the ghost shown before the click and
 // the refusal of a placed volume inside the capsule of the pawn. Unreal traces, shows and queues;
 // everything computed is here, tested by ctest.
 
@@ -10,14 +10,15 @@
 #include "terrain/storage/volume_edit.hpp"
 
 #include <cstdint>
+#include <string>
 
 namespace terrain::unreal {
 
 // The tools of the player.
 enum class BuildTool : std::uint8_t {
     Block,   // one block of 1 m
-    Sphere2, // a sphere 2 m across
-    Sphere4, // a sphere 4 m across
+    Sphere2, // a sphere 3.25 m across, 19 blocks (the small sphere; its name kept for Blueprints)
+    Sphere4, // a sphere 4.9 m across, 57 blocks (the large sphere)
 };
 
 // What a click does.
@@ -26,9 +27,16 @@ enum class BuildAction : std::uint8_t {
     Place, // adds rock (EditMode::Add)
 };
 
-// The name of a tool, for the screen and the log ("block 1 m", "sphere 2 m", "sphere 4 m").
+// The name of a tool, for the screen and the log ("block 1 m", "sphere 3 m", "sphere 5 m").
 [[nodiscard]] const char* toolName(BuildTool tool);
-// The radius of a sphere tool, meters (0 for the block).
+// The name of a tool with the radius of its sphere (meters, ignored for the block): the name of
+// the tool at its own radius, "sphere of radius 1.5 m" at another (Terrain.EditAim, agent 41).
+[[nodiscard]] std::string shapeName(BuildTool tool, double radius);
+// The radius of a sphere tool, meters (0 for the block): 26 / 16 m (19 blocks) and 39 / 16 m
+// (57 blocks). A sphere centered on a block keeps the blocks within its radius (contains): at
+// 1 m or 2 m, single blocks at the ends of its axes, which Marching Cubes draws as pyramids of
+// 0.5 m (agent 41); at these radii every block but the center has two neighbors by a face in the
+// sphere, and the hollow is round within 0.3 m (edit_hollow_test).
 [[nodiscard]] double toolRadius(BuildTool tool);
 
 // A direction of the core (x east, y up, z south), not necessarily normalized.
@@ -95,9 +103,22 @@ inline constexpr double kBreakDepthMeters = 0.5;
 // - Place, sphere: centered half its radius out of the surface, along the normal.
 // Only integers in the edit: the same hit gives the same edit on every machine.
 [[nodiscard]] BuildTarget buildTarget(const BuildHit& hit, BuildTool tool, BuildAction action);
+// The same with the radius of a sphere given (meters, rounded to the sixteenth of the edit; the
+// block ignores it): the sphere of Terrain.EditAim (agent 41). buildTarget(hit, tool, action) is
+// buildTarget(hit, tool, action, toolRadius(tool)).
+[[nodiscard]] BuildTarget buildTarget(const BuildHit& hit, BuildTool tool, BuildAction action,
+                                      double radius);
 
 // True if a hit lies within reach of the eye (meters, the reach of the player, 6 m by default).
 [[nodiscard]] bool withinReach(const BuildHit& hit, double reachMeters);
+
+// A trace aimed through a point (Terrain.EditAim ... at x y z, agent 41) edits only where it
+// hits within kAimToleranceMeters of that point: an obstacle on the way is refused, never edited.
+// A quarter of a block: the scripts aim at the centers of faces (the surface within a few cm of
+// them); a trace grazing the side wall of a tunnel half a block before its end face is refused,
+// never digging the block beside.
+inline constexpr double kAimToleranceMeters = 0.25;
+[[nodiscard]] bool aimsAt(const BuildHit& hit, const CorePoint& point);
 
 // The ghost in Unreal: its center (centimeters, the frame of the session) and its half sizes
 // along Unreal X, Y and Z (centimeters).

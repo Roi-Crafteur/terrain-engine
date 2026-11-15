@@ -109,9 +109,10 @@ public:
         manager_.setLoadBudget(std::move(cost), budget);
     }
 
-    // The tiles over chunks whose edits changed are generated again (StreamManager::invalidate);
-    // the shown ones stay until their new data is uploaded in place.
-    void invalidate(std::span<const ChunkCoord> chunks) { manager_.invalidate(chunks); }
+    // The tiles the edits of chunks reach are generated again (StreamManager::invalidateEdits:
+    // the coarse tiles around them too); the shown ones stay until their new data is uploaded in
+    // place.
+    void invalidate(std::span<const ChunkCoord> chunks) { manager_.invalidateEdits(chunks); }
 
     // Shown tiles: uploaded by an update and not removed since, by canonical key.
     [[nodiscard]] bool shown(const TileKey& key) const { return shown_.contains(key); }

@@ -2,6 +2,9 @@
 // aimed at the ground of a session, written by the save thread into the folder of the seed (world
 // format v2), read back by another session, whose tile is then the same to the bit; a folder
 // without a world, another seed and a damaged file refused with a clear reason, never a crash.
+// Agent 41: the metadata of a world read (its name, creation, spawn, play time, generation, the
+// fields of a newer build) are kept by the saves, never replaced by the defaults; the last save of
+// a play holds the edits still on the edit thread when it ends.
 #include "edit_save.hpp"
 
 #include "block_targeting.hpp"
@@ -164,11 +167,87 @@ void testFailedSaveKept() {
     TEST_CHECK(saver.dirtyRegions() == 1);
 }
 
+// A world saved with a whole world.meta, read by loadEdits, then saved again by an EditSaver: every
+// field kept but the time of save.
+void testMetaKept() {
+    const fs::path folder = terrain::unreal::editSaveFolder(freshRoot("meta_kept"), kSeed);
+    terrain::WorldMeta meta = terrain::unreal::editWorldMeta(kSeed, terrain::WorldSize{});
+    meta.name = "Le monde du joueur";
+    meta.createdAt = 1'700'000'000;
+    meta.savedAt = 1'700'003'600;
+    meta.spawn = {12.5, 40.0, -7.25};
+    meta.playTimeSeconds = 3'600;
+    meta.generation = {{"relief.scale", 1.5}};
+    meta.generatorVersion = terrain::kGeneratorVersion - 1;
+    meta.unknownOptionalFields = {{static_cast<std::uint16_t>(terrain::kOptionalFieldBit | 77U),
+                                   {1, 2, 3}}};
+    terrain::ModificationStore store;
+    store.setBlock({1, 2, 3}, terrain::BlockEdit::Removed);
+    terrain::saveWorld(folder, meta, store);
+    const terrain::unreal::EditLoad load =
+        terrain::unreal::loadEdits(folder, kSeed, terrain::WorldSize{});
+    TEST_CHECK(load.found && load.error.empty() && load.meta.has_value());
+    TEST_CHECK(load.meta && *load.meta == meta);
+    TEST_CHECK(terrain::unreal::keptWorldMeta(folder, kSeed, terrain::WorldSize{}) == meta);
+    // Another seed: the defaults (a folder of another world is never written with its name).
+    TEST_CHECK(terrain::unreal::keptWorldMeta(folder, kSeed + 1, terrain::WorldSize{}).name ==
+               terrain::unreal::editWorldMeta(kSeed + 1, terrain::WorldSize{}).name);
+    store.setBlock({4, 5, 6}, terrain::BlockEdit::Added);
+    {
+        EditSaver saver(folder, *load.meta, [store] { return store; });
+        const std::vector<ChunkCoord> chunks = {ChunkCoord{0, 0}};
+        saver.markEdited(chunks);
+        TEST_CHECK(saver.save());
+        saver.flush();
+        TEST_CHECK(saver.report().lastError.empty());
+    }
+    terrain::WorldMeta again = terrain::loadWorldMeta(folder).meta;
+    TEST_CHECK(again.savedAt >= meta.savedAt);
+    again.savedAt = meta.savedAt;
+    TEST_CHECK(again == meta);
+    TEST_CHECK(terrain::unreal::loadEdits(folder, kSeed, terrain::WorldSize{}).modifications ==
+               store);
+}
+
+// The order of the last save of a play: edits queued and not yet done when it starts, waited for
+// and taken (takeAllEdits), their chunks marked, then saved: every one of them is read back.
+void testLastSaveHoldsQueuedEdits() {
+    const fs::path folder = terrain::unreal::editSaveFolder(freshRoot("queued"), kSeed);
+    terrain::ModificationStore played;
+    {
+        TerrainSession session(smallSession());
+        EditSaver saver(folder, terrain::unreal::keptWorldMeta(folder, kSeed, terrain::WorldSize{}),
+                        [&session] { return session.tiles().modifications(); });
+        for (int n = 0; n < 4; ++n) {
+            const double x = 4.0 + 3.0 * n;
+            const double y = session.tiles().heightfield().heightAt(x, 8.0);
+            const terrain::unreal::BuildHit hit{{x, y, 8.0}, {0.0, 1.0, 0.0}, 3.0};
+            session.queueEdit(buildTarget(hit, BuildTool::Sphere4, BuildAction::Break).edit,
+                              "break");
+        }
+        // The end of the play, at once: no frame took the edits.
+        const std::vector<terrain::unreal::EditOutcome> done = session.takeAllEdits();
+        TEST_CHECK(done.size() == 4);
+        for (const auto& outcome : done) {
+            TEST_CHECK(outcome.error == nullptr);
+            saver.markEdited(outcome.chunks);
+        }
+        TEST_CHECK(saver.save());
+        saver.flush();
+        played = session.tiles().modifications();
+    }
+    TEST_CHECK(played.blockCount() > 0);
+    TEST_CHECK(terrain::unreal::loadEdits(folder, kSeed, terrain::WorldSize{}).modifications ==
+               played);
+}
+
 } // namespace
 
 int main() {
     testRoundTrip();
     testRefusals();
     testFailedSaveKept();
+    testMetaKept();
+    testLastSaveHoldsQueuedEdits();
     return test::result();
 }

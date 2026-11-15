@@ -4,10 +4,12 @@
 // hydrology (202 ms measured in Unreal at the foot of a chain): it must not hold the game thread.
 // The pawn is held meanwhile; it is placed once the level is read. The level to stand at is the
 // ground, or the surface of the water of the core over it (a lake, a river, the sea) when it is
-// higher: a pawn placed there is never under the water. The ground is the top of the rock the
+// higher: a pawn placed there is never under the water (standLevel). The ground is the top of the rock the
 // tiles draw (TerrainTiles::groundAt): behind a face in three dimensions (a wall of the mountains,
 // a sea cliff) the relief of the heightmap lies up to half its height below it, in the rock.
 
+#include "terrain/generation/heightfield.hpp"
+#include "terrain/generation/water_kind.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
 #include <cstddef>
@@ -27,7 +29,14 @@ struct GroundLevel {
     double milliseconds = 0.0;
 };
 
-// On the calling thread: TerrainTiles::groundAt, and max(it, the waterLevel of
+// The level to stand at over a column whose ground is given: the ground on dry land, whatever
+// HeightSample::waterLevel holds there (the height of the relief: on the floor of a valley of the
+// planet, 56 m over the ground the tiles draw, where #58 placed the eye and the pawn; agent 41);
+// over the water of the core (the sea, a lake, a river: water not None), the higher of the
+// ground and its surface.
+[[nodiscard]] double standLevel(double ground, const HeightSample& sample);
+
+// On the calling thread: TerrainTiles::groundAt, and the level to stand at over it (standLevel of
 // Heightfield::sampleAt).
 [[nodiscard]] GroundLevel groundLevelAt(const TerrainTiles& tiles, double x, double z);
 

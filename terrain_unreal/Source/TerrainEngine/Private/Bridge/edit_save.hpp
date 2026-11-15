@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <span>
 #include <string>
@@ -32,13 +33,22 @@ namespace terrain::unreal {
 [[nodiscard]] std::filesystem::path editSaveFolder(const std::filesystem::path& root,
                                                    std::uint64_t seed);
 
-// The metadata written with the edits of a seed in a world of that size.
+// The metadata written with the edits of a seed in a world of that size, for a folder without a
+// world: its name, its creation now.
 [[nodiscard]] WorldMeta editWorldMeta(std::uint64_t seed, const WorldSize& world);
+
+// The metadata the saves of a folder write: those of its world, when it holds a readable world.meta
+// (or .bak) of this seed and size, kept whole (name, creation, spawn, play time, generation and
+// generator version, the optional fields of a newer build); editWorldMeta otherwise. The saves
+// change only its time of save (agent 41: the first save wrote the defaults over them).
+[[nodiscard]] WorldMeta keptWorldMeta(const std::filesystem::path& folder, std::uint64_t seed,
+                                      const WorldSize& world);
 
 // What a load found.
 struct EditLoad {
     bool found = false;                 // a saved world is there (world.meta or its .bak)
     ModificationStore modifications;    // its edits, empty when not found or refused
+    std::optional<WorldMeta> meta;      // its metadata, when read: what the next saves keep
     std::string error;                  // why it was refused (unreadable, another seed...)
     std::vector<std::string> warnings;  // files read from their .bak copy
 };

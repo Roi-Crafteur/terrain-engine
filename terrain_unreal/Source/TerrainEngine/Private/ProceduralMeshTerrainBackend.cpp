@@ -3,6 +3,7 @@
 #include "Engine/CollisionProfile.h"
 #include "Engine/Texture2D.h"
 #include "GameFramework/Actor.h"
+#include "HAL/PlatformTime.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
@@ -22,6 +23,9 @@ namespace
 	// The custom primitive data of a tile: its slot, and the centimeters between its texels.
 	constexpr int32 BlendSlotData = 0;
 	constexpr int32 BlendPitchData = 1;
+	// 1 on a tile whose colors hold the edit weights in their blue (UnrealMesh::edited), for the
+	// light floor of the edited surfaces (terrain_edit_light_nodes.py); 0 on the others.
+	constexpr int32 EditedTileData = 2;
 	// The sections of the water of a tile.
 	constexpr int32 WaterSection = 1;
 	constexpr int32 FallsSection = 2;
@@ -182,6 +186,7 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 	SetWaterSection(*Component, WaterSection, Tile.water, WaterMaterial);
 	SetWaterSection(*Component, FallsSection, Tile.falls, FallsMaterial);
 	UploadBlend(*Component, Tile);
+	Component->SetCustomPrimitiveDataFloat(EditedTileData, Mesh.edited ? 1.0f : 0.0f);
 	// The tools of the developers (ProceduralMeshTerrainLooks.cpp): a new mesh in their mode.
 	Component->SetMeshSectionVisible(0, bGroundVisible);
 	OwnColors.Remove(Key);
@@ -189,6 +194,9 @@ void UProceduralMeshTerrainBackend::SetTile(const terrain::unreal::TileUpload& T
 	{
 		ApplyLook(*Component, Key);
 	}
+	FTileUploads& Stamp = Uploads.FindOrAdd(Key);
+	Stamp.LastSeconds = FPlatformTime::Seconds();
+	++Stamp.Count;
 }
 
 // A section of the water of a tile, without collision; cleared when the tile has none of it (a
@@ -254,6 +262,7 @@ void UProceduralMeshTerrainBackend::RemoveTile(const terrain::TileKey& Key)
 		Component->DestroyComponent();
 	}
 	OwnColors.Remove(TileMapKey(Key));
+	Uploads.Remove(TileMapKey(Key));
 	if (BlendAtlas.has_value())
 	{
 		BlendAtlas->release(Key);
@@ -271,10 +280,63 @@ void UProceduralMeshTerrainBackend::RemoveAllTiles()
 	}
 	Tiles.Empty();
 	OwnColors.Empty();
+	Uploads.Empty();
 	if (BlendAtlas.has_value())
 	{
 		BlendAtlas->clear();
 	}
+}
+
+// What the component of the tile holds, as CreateMeshSection left it: the vertices of its ground
+// section placed by its transform, its triangles, the bounds the engine culls it with.
+bool UProceduralMeshTerrainBackend::DescribeTile(const terrain::TileKey& Key,
+	terrain::unreal::ShownSection& Out)
+{
+	const FIntVector MapKey = TileMapKey(Key);
+	const TObjectPtr<UProceduralMeshComponent>* Found = Tiles.Find(MapKey);
+	UProceduralMeshComponent* Component = Found != nullptr ? Found->Get() : nullptr;
+	if (Component == nullptr)
+	{
+		return false;
+	}
+	Out = terrain::unreal::ShownSection();
+	if (const FProcMeshSection* Section = Component->GetProcMeshSection(0))
+	{
+		const FTransform& Transform = Component->GetComponentTransform();
+		Out.positions.reserve(static_cast<std::size_t>(Section->ProcVertexBuffer.Num()));
+		for (const FProcMeshVertex& Vertex : Section->ProcVertexBuffer)
+		{
+			const FVector Placed = Transform.TransformPosition(Vertex.Position);
+			Out.positions.push_back({Placed.X, Placed.Y, Placed.Z});
+		}
+		Out.triangles.reserve(static_cast<std::size_t>(Section->ProcIndexBuffer.Num()));
+		for (const uint32 Index : Section->ProcIndexBuffer)
+		{
+			Out.triangles.push_back(Index);
+		}
+		Out.sectionVisible = Section->bSectionVisible;
+	}
+	const FBox Box = Component->Bounds.GetBox();
+	Out.boundsMin = {Box.Min.X, Box.Min.Y, Box.Min.Z};
+	Out.boundsMax = {Box.Max.X, Box.Max.Y, Box.Max.Z};
+	Out.visible = Component->IsVisible();
+	if (const FTileUploads* Stamp = Uploads.Find(MapKey))
+	{
+		Out.uploadedSecondsAgo = FPlatformTime::Seconds() - Stamp->LastSeconds;
+		Out.uploads = Stamp->Count;
+	}
+	return true;
+}
+
+std::vector<terrain::TileKey> UProceduralMeshTerrainBackend::GetTileKeys() const
+{
+	std::vector<terrain::TileKey> Keys;
+	Keys.reserve(static_cast<std::size_t>(Tiles.Num()));
+	for (const TPair<FIntVector, TObjectPtr<UProceduralMeshComponent>>& Tile : Tiles)
+	{
+		Keys.push_back({{Tile.Key.X, Tile.Key.Y}, Tile.Key.Z});
+	}
+	return Keys;
 }
 
 UProceduralMeshComponent* UProceduralMeshTerrainBackend::CreateTileComponent()

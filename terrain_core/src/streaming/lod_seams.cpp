@@ -21,6 +21,10 @@ constexpr int kLast = kGridSamples - 1;
 // nothing moves there, the tiles keep their bits.
 constexpr float kOnOutline = 1.0f / 16384.0f;
 
+// The density a center of a coarse cell exactly at the iso level takes on its side of the coarse
+// outline (settleCenters): its vertices leave it by a little, onto the edges snapVertex moves.
+constexpr float kCenterNudge = 1.0f / 4096.0f;
+
 struct GridPoint {
     int x = 0;
     int y = 0;
@@ -193,19 +197,30 @@ Region centerRegion(const CoarseCell& cell) {
 // The center of each coarse cell of the face (its odd/odd sample) keeps its bilinear value but
 // takes the side of the coarse outline it lies on: every edge of the grid between the middle of
 // a side of the cell and its center is then crossed by Marching Cubes exactly when a chord
-// crosses it, and the fine outline follows the coarse one cell by cell.
+// crosses it, and the fine outline follows the coarse one cell by cell. A center exactly at the
+// iso level, off the outline, would hold the vertices of its edges on itself, on a sample where
+// snapVertex leaves them: it takes kCenterNudge on its side (agent 41: the edits seen by the
+// coarse lattices give exact halves, and their bilinear centers exact zeros).
 void settleCenters(DensityGrid& grid, Face face) {
     for (int b0 = 0; b0 < kLast; b0 += 2) {
         for (int a0 = 0; a0 < kLast; a0 += 2) {
             const Region region = centerRegion(CoarseCell(grid, face, a0, b0));
             const GridPoint p = face.at(a0 + 1, b0 + 1);
             const float value = read(grid, p);
-            if (region == Region::Unknown || (value < kIsoLevel) == (region == Region::Solid)) {
+            if (region == Region::Unknown) {
+                continue;
+            }
+            const bool solid = region == Region::Solid;
+            if (value == kIsoLevel) {
+                grid.set(p.x, p.y, p.z, solid ? -kCenterNudge : kCenterNudge);
+                continue;
+            }
+            if ((value < kIsoLevel) == solid) {
                 continue;
             }
             float settled = std::abs(value);
-            if (region == Region::Solid) {
-                settled = settled > 0.0f ? -settled : -std::numeric_limits<float>::min();
+            if (solid) {
+                settled = -settled;
             }
             grid.set(p.x, p.y, p.z, settled);
         }

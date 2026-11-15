@@ -65,7 +65,8 @@ namespace
 		}
 	}
 
-	// The walkable angle and the step of the pawn: those of its CharacterMovement.
+	// The walkable angle and the step of the pawn: those of its CharacterMovement. Written in the
+	// log with its capsule (agent 41: the tunnels dug block by block are measured for them).
 	void PawnLimits(APawn& Pawn, double& OutAngle, double& OutStepCm)
 	{
 		OutAngle = DefaultWalkableAngle;
@@ -78,6 +79,12 @@ namespace
 				OutStepCm = Movement->MaxStepHeight;
 			}
 		}
+		float Radius = 0.0f;
+		float HalfHeight = 0.0f;
+		Pawn.GetSimpleCollisionCylinder(Radius, HalfHeight);
+		TerrainDev::Log(FString::Printf(TEXT("the pawn of the game: capsule radius %.1f cm, half "
+			"height %.1f cm; walkable floor angle %.3f degrees, step %.1f cm"), Radius, HalfHeight,
+			OutAngle, OutStepCm));
 	}
 
 	// The pawn at Location, still, walking.

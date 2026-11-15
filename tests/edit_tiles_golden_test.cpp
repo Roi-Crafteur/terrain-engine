@@ -9,6 +9,17 @@
 // their vertices moved on the seams only, every other part kept its value. "lod 1", "caves lod 0",
 // "caves lod 1" and "wrap" were pinned again when the normals of every tile came to agree with
 // their triangles (phase 12A, tile_normals.hpp): a few normals turned, every vertex kept its bits.
+// The parts of LOD 0 ("lod 0", "lod 0 stitched", "caves lod 0", "wrap") were pinned again when the
+// normals of the vertices the edits move turned toward the smoothed share of the edited blocks
+// (agent 41, tile_edits.hpp: lightEdits): their normals only, every vertex kept its position.
+// Every part but "lod 0" was pinned again when the tiles of LOD 1 to 3 came to read the edits by
+// the cells of their lattice points (agent 41, edit_coarse.hpp: the cover of the cells and the
+// relay of the small edits), and the stitched sides of the finer tiles as the coarser LOD reads
+// them: the unstitched tiles of LOD 0 kept their bits. The same parts were pinned again when the
+// relay came to keep the depth of a hole open to the sky and the height of a block standing on
+// the ground (the column of its box), to fade by the height of its box at LOD 2 rather than by
+// its density, and to turn the normals of the faces it makes toward its box: "lod 0" and "lod 3"
+// (no relay) kept their bits.
 #include "terrain/storage/modifications.hpp"
 #include "terrain/streaming/terrain_tiles.hpp"
 
@@ -129,8 +140,13 @@ void testWithoutCaves() {
     editCorner(tiles, c.x * 16, c.z * 16);
     std::vector<golden::Part> parts = cornerParts(tiles, c);
     checkEdited(parts, unedited);
-    setExpected(parts, {0xB50FB6F14204BF1BULL, 0x9DB6444E4434856EULL, 0xCF40016B6F105602ULL,
-                        0x717A3CD617B1273EULL, 0xE30C6995B6D563B2ULL});
+    // Recollé par « Edits: side walls of removed blocks at 0.531 m: a 1x2 tunnel walkable by
+    // the game's capsule » (agent 41) :
+    // "lod 0" et "lod 0 stitched" ; la règle des parois : à côté d'un bloc retiré, le long de
+    // x ou de z, un point du réseau prend kRemovedSideFace au lieu de 0,5 (modifications.hpp),
+    // les parois latérales des creux reculent de 3,1 cm. "lod 1" à "lod 3" gardent leurs bits.
+    setExpected(parts, {0x30D920C90E1C54E5ULL, 0xAA73EE986F99C27DULL, 0xDB70ADEA3417FC69ULL,
+                        0x96F1405B0659797DULL, 0xDA16D05275639F86ULL});
     golden::report("tiles edited block by block, without caves", parts);
 }
 
@@ -146,7 +162,10 @@ void testWithCaves() {
     std::vector<golden::Part> parts = {{"caves lod 0", tilesChecksum(tiles, lod0), 0},
                                        {"caves lod 1", tilesChecksum(tiles, lod1), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x381A9681107DFE6EULL, 0x5C8A9BF5F9979AC8ULL});
+    // Recollé par « Edits: side walls of removed blocks at 0.531 m: a 1x2 tunnel walkable by
+    // the game's capsule » (agent 41) :
+    // "caves lod 0" ; la règle des parois (voir plus haut). "caves lod 1" garde ses bits.
+    setExpected(parts, {0x6F348BE1951811FEULL, 0xD024C9538ECDFB4CULL});
     golden::report("tiles edited block by block, with caves", parts);
 }
 
@@ -166,7 +185,10 @@ void testAcrossTheEdge() {
     editCorner(tiles, count.x * 8, kRow * 16 + 8);
     std::vector<golden::Part> parts = {{"wrap", tilesChecksum(tiles, requests), 0}};
     checkEdited(parts, unedited);
-    setExpected(parts, {0x9A4EED6D3E05622EULL});
+    // Recollé par « Edits: side walls of removed blocks at 0.531 m: a 1x2 tunnel walkable by
+    // the game's capsule » (agent 41) :
+    // "wrap" (ses tuiles de LOD 0) ; la règle des parois (voir plus haut).
+    setExpected(parts, {0xC306CDC8BD8AE74FULL});
     golden::report("tiles edited block by block, across the edge of the world", parts);
 }
 

@@ -14,6 +14,13 @@ bool finished(const std::future<GroundLevel>& read) {
 
 } // namespace
 
+double standLevel(double ground, const HeightSample& sample) {
+    if (sample.water == WaterKind::None) {
+        return ground;
+    }
+    return std::max(ground, static_cast<double>(sample.waterLevel));
+}
+
 GroundLevel groundLevelAt(const TerrainTiles& tiles, double x, double z) {
     const auto start = std::chrono::steady_clock::now();
     const HeightSample sample = tiles.heightfield().sampleAt(x, z);
@@ -21,7 +28,7 @@ GroundLevel groundLevelAt(const TerrainTiles& tiles, double x, double z) {
     level.x = x;
     level.z = z;
     level.ground = static_cast<double>(tiles.groundAt(x, z));
-    level.stand = std::max(level.ground, static_cast<double>(sample.waterLevel));
+    level.stand = standLevel(level.ground, sample);
     level.milliseconds = std::chrono::duration<double, std::milli>(
                              std::chrono::steady_clock::now() - start)
                              .count();

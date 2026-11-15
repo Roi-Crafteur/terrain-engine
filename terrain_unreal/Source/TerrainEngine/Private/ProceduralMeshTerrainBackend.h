@@ -40,6 +40,9 @@ public:
 	virtual void RemoveTile(const terrain::TileKey& Key) override;
 	virtual void RemoveAllTiles() override;
 	virtual int32 GetTileCount() const override { return Tiles.Num(); }
+	virtual bool DescribeTile(const terrain::TileKey& Key,
+		terrain::unreal::ShownSection& Out) override;
+	virtual std::vector<terrain::TileKey> GetTileKeys() const override;
 	virtual void SetWaterMaterials(UMaterialInterface* Water, UMaterialInterface* Falls) override;
 	virtual void SetWaterVisible(bool bVisible) override;
 	// ProceduralMeshTerrainLooks.cpp: the colors change through UpdateMeshSection, colors only (no
@@ -84,6 +87,15 @@ private:
 	FTerrainOffHeightmap OffHeightmapOf;
 	TMap<FIntVector, TArray<FColor>> OwnColors;
 	bool bGroundVisible = true;
+
+	// The uploads of each tile shown (Terrain.EditTiles): the time of the last SetTile, seconds,
+	// and how many since its mesh was created.
+	struct FTileUploads
+	{
+		double LastSeconds = 0.0;
+		int32 Count = 0;
+	};
+	TMap<FIntVector, FTileUploads> Uploads;
 
 	bool bAsyncCooking = false;
 	bool bWaterVisible = true;

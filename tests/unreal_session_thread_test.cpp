@@ -123,6 +123,29 @@ void testStandLevel() {
     TEST_CHECK(wet > 0 && dry > 0);
 }
 
+// The level to stand at over one column (agent 41, after the second test of #78 in Unreal): on
+// dry land the ground, though HeightSample::waterLevel holds the height of the relief there (on
+// the floor of a valley of the planet, 61.99 m over a ground at 6.06 m: the eye of a
+// Terrain.Goto 56 m too high since #58); over the sea, a lake or a river its surface, or the
+// ground where it stands higher.
+void testStandLevelOfAColumn() {
+    const auto column = [](terrain::WaterKind water, float level) {
+        terrain::HeightSample sample;
+        sample.water = water;
+        sample.waterLevel = level;
+        return sample;
+    };
+    using terrain::WaterKind;
+    using terrain::unreal::standLevel;
+    TEST_CHECK(standLevel(6.06, column(WaterKind::None, 61.99f)) == 6.06);
+    TEST_CHECK(standLevel(6.06, column(WaterKind::None, 2.0f)) == 6.06);
+    TEST_CHECK(standLevel(-12.0, column(WaterKind::Ocean, 0.0f)) == 0.0);
+    TEST_CHECK(standLevel(10.0, column(WaterKind::Lake, 12.5f)) == 12.5);
+    TEST_CHECK(standLevel(3.0, column(WaterKind::River, 3.25f)) == 3.25);
+    TEST_CHECK(standLevel(-40.0, column(WaterKind::SaltLake, -35.5f)) == -35.5);
+    TEST_CHECK(standLevel(9.0, column(WaterKind::Lake, 8.0f)) == 9.0); // the rock over the water
+}
+
 } // namespace
 
 int main() {
@@ -130,5 +153,6 @@ int main() {
     testCheckOnThread();
     testGroundRead();
     testStandLevel();
+    testStandLevelOfAColumn();
     return test::result();
 }

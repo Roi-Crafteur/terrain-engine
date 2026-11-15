@@ -20,8 +20,8 @@ endif()
 
 # Every file of the tools: its code between "#if TERRAIN_DEV_TOOLS" (after its own header) and
 # the "#endif // TERRAIN_DEV_TOOLS" that ends it.
-set(tools TerrainDevCapture.cpp TerrainDevCommands.cpp TerrainDevEdits.cpp TerrainDevLooks.cpp
-          TerrainDevPawn.cpp
+set(tools TerrainDevCapture.cpp TerrainDevCommands.cpp TerrainDevEdits.cpp TerrainDevEditTiles.cpp
+          TerrainDevLooks.cpp TerrainDevPawn.cpp
           TerrainDevScreen.cpp TerrainDevSeed.cpp TerrainDevShots.cpp TerrainDevTools.cpp
           TerrainDevView.cpp TerrainDevState.h)
 foreach(name IN LISTS tools)
@@ -59,12 +59,25 @@ foreach(file IN LISTS sources)
     foreach(command Terrain.Goto Terrain.Look Terrain.Eye Terrain.Pawn Terrain.Save Terrain.Info
                     Terrain.Shot Terrain.Views Terrain.View\" Terrain.Seed Terrain.Hud
                     Terrain.PlacesFile Terrain.ShotTimeout Terrain.ShotSettle
-                    Terrain.ShotShowUI Terrain.PawnRadius Terrain.EditStats Terrain.Flags)
+                    Terrain.ShotShowUI Terrain.PawnRadius Terrain.EditStats Terrain.EditAim
+                    Terrain.EditRead Terrain.EditTiles Terrain.Flags)
         string(FIND "${text}" "TEXT(\"${command}" at)
         if(NOT at EQUAL -1)
             string(APPEND errors "${name}: registers ${command} outside the files of the tools\n")
         endif()
     endforeach()
+endforeach()
+
+# Unreal 5.8 has no FAutoConsoleCommand of its own for a command with arguments and without a
+# world (agent 41: TerrainDevEdits.cpp did not build): FAutoConsoleCommand takes its delegate.
+set(missing "FAutoConsoleCommandWithArgs")
+foreach(file IN LISTS sources)
+    file(READ "${file}" text)
+    string(FIND "${text}" "${missing}" at)
+    if(NOT at EQUAL -1)
+        get_filename_component(name "${file}" NAME)
+        string(APPEND errors "${name}: ${missing} does not exist in Unreal 5.8\n")
+    endif()
 endforeach()
 
 # Terrain.Blend (agent 29) lives with the blends of the horizon, its registration under
