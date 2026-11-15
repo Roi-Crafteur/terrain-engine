@@ -37,9 +37,8 @@ struct Corners {
 };
 
 // Which samples of the grown rectangle of a level are land: above the sea level, or below it in a
-// dry low of the relief (Heightfield::mayBeDryBelowSea, then the water of its sample: never the
-// sea). Below the sea level elsewhere, the sea (or the bed of a river near it, a valley floor that
-// never rises anyway).
+// dry low of the relief (Heightfield::inDryLow: never the sea). Below the sea level elsewhere, the
+// sea (or the bed of a river near it, a valley floor that never rises anyway).
 std::vector<char> landOf(const Heightfield& field, const HorizonParams& params, int level,
                          const HorizonRect& rect, std::span<const float> margined) {
     std::vector<char> land(margined.size(), 0);
@@ -54,9 +53,7 @@ std::vector<char> landOf(const Heightfield& field, const HorizonParams& params, 
         const auto at = static_cast<std::int64_t>(n);
         const double x = samplePosition(wrapIndex(rect.x0 - 1 + at % side, counts.x), pitch);
         const double z = samplePosition(wrapIndex(rect.z0 - 1 + at / side, counts.z), pitch);
-        land[n] = field.mayBeDryBelowSea(x, z) && field.sampleAt(x, z).water != WaterKind::Ocean
-                      ? 1
-                      : 0;
+        land[n] = field.inDryLow(x, z) ? 1 : 0;
     }
     return land;
 }

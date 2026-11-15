@@ -223,6 +223,9 @@ public:
     // sea level is the sea (or the bed of a river near it). Cheap (a lattice lookup): the readers
     // that tell the sea from the height read the water of the sample only where it is true.
     [[nodiscard]] bool mayBeDryBelowSea(double x, double z) const;
+    // Whether (x, z) lies in a low of the relief and is not the sea (mayBeDryBelowSea, then the
+    // water of its sample): its ground below the sea level is dry land or the bed of a lake.
+    [[nodiscard]] bool inDryLow(double x, double z) const;
 
     // The Heightfield of the world (phase 11B): this relief with the water of hydrology, built
     // over it: the valleys of its rivers carved, the water of its rivers and lakes. The same bits

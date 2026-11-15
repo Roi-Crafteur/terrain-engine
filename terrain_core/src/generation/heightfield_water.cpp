@@ -106,6 +106,10 @@ bool Heightfield::mayBeDryBelowSea(double x, double z) const {
                                  noise::wrapCanonical(z, world_.z));
 }
 
+bool Heightfield::inDryLow(double x, double z) const {
+    return mayBeDryBelowSea(x, z) && sampleAt(x, z).water != WaterKind::Ocean;
+}
+
 // With the geography the sea is where its coast signal is below 0 (the sign of the
 // continentalness), whatever the height: a depression below the sea level deep inland stays dry
 // land. Without it, the ground below the sea level. The hydrology comes after (applyHydrology).
