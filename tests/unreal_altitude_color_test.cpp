@@ -70,14 +70,28 @@ void testContinuous() {
     TEST_CHECK(worst <= 1);
 }
 
-// The sea floor under the sea only: dry ground below the sea level takes the color of the sea
-// level, and nothing changes above it.
+// The sea floor under the sea only: dry ground below the sea level (agent 52) is the clay and
+// salt of the depressions, from the sand of the sea level without a step down to -450 m, never
+// the sea floor; nothing changes at and above the sea level.
 void testGroundColor() {
     TEST_CHECK(groundColor(-50.0, true) == altitudeColor(-50.0));
-    TEST_CHECK(groundColor(-50.0, false) == altitudeColor(0.0));
-    TEST_CHECK(groundColor(-50.0, false) != altitudeColor(-50.0));
+    TEST_CHECK(groundColor(0.0, false) == altitudeColor(0.0));
     TEST_CHECK(groundColor(120.0, false) == altitudeColor(120.0));
     TEST_CHECK(groundColor(120.0, true) == altitudeColor(120.0));
+    TEST_CHECK(closeTo(groundColor(-100.0, false), 196.0 / 255.0, 168.0 / 255.0, 128.0 / 255.0));
+    TEST_CHECK(closeTo(groundColor(-450.0, false), 150.0 / 255.0, 112.0 / 255.0, 82.0 / 255.0));
+    TEST_CHECK(groundColor(-900.0, false) == groundColor(-450.0, false));
+    VertexColor previous = groundColor(-600.0, false);
+    int worst = 0;
+    bool sea = false;
+    for (int step = 1; step <= 6010; ++step) {
+        const double altitude = -600.0 + step * 0.1;
+        const VertexColor color = groundColor(altitude, false);
+        worst = std::max(worst, channelGap(previous, color));
+        previous = color;
+        sea = sea || (altitude < -10.0 && color == altitudeColor(altitude));
+    }
+    TEST_CHECK(worst <= 1 && !sea);
 }
 
 terrain::BlendTexel pure(terrain::Biome biome) {
@@ -116,7 +130,7 @@ void testOceanShare() {
     mesh.indices = {0, 1, 2};
     const terrain::unreal::UnrealMesh out = terrain::unreal::convertMesh(mesh, -40.0, {}, sea);
     TEST_CHECK(out.colors[0] == altitudeColor(-40.0) && out.colors[2] == altitudeColor(-40.0));
-    TEST_CHECK(out.colors[1] == altitudeColor(0.0));
+    TEST_CHECK(out.colors[1] == groundColor(-40.0, false)); // the clay of the dry depressions
     TEST_CHECK(terrain::unreal::convertMesh(mesh, -40.0).colors[1] == altitudeColor(-40.0));
 }
 

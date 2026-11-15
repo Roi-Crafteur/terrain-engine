@@ -25,6 +25,9 @@ struct Crossing {
 
 using Crossings = std::map<std::int64_t, Crossing>;
 
+// A sea corner at or above the sea level (a rock of the coasts) is taken this much below it.
+constexpr float kSeaCorner = 0.001f;
+
 struct Square {
     const ReliefGrid& grid;
     int i;
@@ -33,8 +36,16 @@ struct Square {
     [[nodiscard]] int wrap(int v, int count) const {
         return grid.wraps ? (v % count + count) % count : v;
     }
+    // The height of a corner as the coast sees it: with the water of the grid, the sea below the
+    // sea level and the land at or above it (a dry depression below the sea level is land, at
+    // 0 m: no coast around it); without it, the height.
     [[nodiscard]] float value(int di, int dj) const {
-        return grid.at(wrap(i + di, grid.columns), wrap(j + dj, grid.rows));
+        const std::size_t cell = grid.index(wrap(i + di, grid.columns), wrap(j + dj, grid.rows));
+        const float h = grid.heights[cell];
+        if (grid.water.empty()) {
+            return h;
+        }
+        return grid.seaAt(cell) ? std::min(h, -kSeaCorner) : std::max(h, kSeaLevel);
     }
     // Edge ids: horizontal edge from corner (a, b) to (a + 1, b), vertical from (a, b) to
     // (a, b + 1).

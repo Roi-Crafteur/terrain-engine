@@ -23,14 +23,17 @@ inline constexpr double kBeachTop = 20.0;
 inline constexpr double kRockAltitude = 2500.0;
 inline constexpr double kSnowStart = 3000.0;
 inline constexpr double kSnowFull = 3500.0;
+// Dry ground below the sea level (a depression) is clay and salt down to this altitude.
+inline constexpr double kDryBelowDepth = -450.0;
 
 // Color of the ground at this altitude, meters, linear between the bands: a readable relief
 // until the materials of phase 14. Opaque.
 [[nodiscard]] VertexColor altitudeColor(double altitude);
 
 // Color of the ground at this altitude, where the core puts the sea or not: the sea floor only
-// under the sea; dry ground below the sea level (a depression) takes the color of the ground at
-// the sea level.
+// under the sea; dry ground below the sea level (a depression, never the sea) the clay and salt of
+// the depressions, from the sand of the sea level (no step at 0 m) down to kDryBelowDepth, as the
+// dev map draws them.
 [[nodiscard]] VertexColor groundColor(double altitude, bool sea);
 
 } // namespace terrain::unreal

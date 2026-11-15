@@ -58,11 +58,12 @@ double largestRadius(const CaveEntrance& entrance) {
     return std::max(entrance.tubeRadius, entrance.chamberRadius);
 }
 
-// The ground along the entrance stands above the shore height, with no river near it.
+// The ground along the entrance stands above the shore height, or in a dry low of the relief
+// (CaveGround::dryLow: no sea there), with no river near it.
 bool clearAlong(const CaveEntrance& entrance, const CaveGround& ground, const CaveParams& params) {
     const float shore = kSeaLevel + params.entrances.minShoreHeight;
     const auto clear = [&](double x, double z) {
-        if (ground.height(x, z) < shore) {
+        if (ground.height(x, z) < shore && !(ground.dryLow && ground.dryLow(x, z))) {
             return false;
         }
         const float river = ground.riverDistance ? ground.riverDistance(x, z) : kNoRiverDistance;

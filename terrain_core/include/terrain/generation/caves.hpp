@@ -174,6 +174,10 @@ struct CaveDetail {
 struct CaveGround {
     ReliefHeight height;
     ReliefHeight riverDistance;
+    // Whether the ground of a column lies in a dry low of the relief (a depression below the sea
+    // level, never the sea): its depth below the sea level is no sea there. Empty: the ground
+    // below the sea level is the sea (the finite regions).
+    std::function<bool(double x, double z)> dryLow;
     std::function<CaveEnvironment(double x, double z)> environment;
 };
 

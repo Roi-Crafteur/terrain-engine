@@ -346,12 +346,14 @@ void reportPeaks(Report& r, const terrain::PeakFigures& p) {
 
 // The point of the shore nearest to a coast site of the map, whose cells are too coarse to put
 // it within the 20 km zoom: on a grid of 500 m over 64 km around it, the nearest sample with a
-// neighbor on the other side of the sea level (the site itself when there is none).
+// neighbor on the other side of the shore (the sea of the field, never a dry depression below
+// the sea level; the site itself when there is none).
 terrain::ReliefSite onShore(const terrain::Heightfield& field, terrain::ReliefSite site) {
     constexpr int kHalf = 64;
     constexpr double kStep = 500.0;
     const auto land = [&](int i, int j) {
-        return field.heightAt(site.x + i * kStep, site.z + j * kStep) >= terrain::kSeaLevel;
+        return field.sampleAt(site.x + i * kStep, site.z + j * kStep).water !=
+               terrain::WaterKind::Ocean;
     };
     terrain::ReliefSite best = site;
     int nearest = 2 * kHalf * kHalf + 1;

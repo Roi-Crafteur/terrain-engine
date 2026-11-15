@@ -168,7 +168,7 @@ void addBelow(const ReliefGrid& w, BelowCount& count) {
         for (int i = 0; i < w.columns; ++i) {
             const float h = w.at(i, j);
             sum[at(i + 1, j + 1)] = h + sum[at(i, j + 1)] + sum[at(i + 1, j)] - sum[at(i, j)];
-            sea[at(i + 1, j + 1)] = (h < kSeaLevel ? 1 : 0) + sea[at(i, j + 1)] +
+            sea[at(i + 1, j + 1)] = (w.sea(i, j) ? 1 : 0) + sea[at(i, j + 1)] +
                                     sea[at(i + 1, j)] - sea[at(i, j)];
         }
     }
