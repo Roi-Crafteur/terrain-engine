@@ -4,11 +4,15 @@
 //     degree, less that radius smoothed over 200 m of its rim; its rms kLeastRough meters at least
 //     (the median over the buttes);
 //   - their batter: the mean angle of their cliff from its rim to its foot over 16 rays (those whose
-//     cliff falls half as far as the tallest at least: not a single riser), the median over the buttes from kBatterLow to kBatterHigh degrees, at most kSteepShare of them steeper
-//     than kSteepest, their 10th and 90th percentiles kLeastBatterSpread degrees apart at least;
-//   - their ledges: within their cliff, runs of kLedgeLeast meters or more under 45 degrees; 1 to 3
-//     of them on most of the buttes (the median of their rays), the first one at depths under the
-//     rim (shares of the cliff) varying from butte to butte by kLeastLedgeSpread at least;
+//     cliff falls half as far as the tallest at least: not a single riser; the cliff of a ray
+//     carried across its ledges, cliffOf), the median over the buttes from kBatterLow to
+//     kBatterHigh degrees, at most kSteepShare of them steeper than kSteepest, their 10th and 90th
+//     percentiles kLeastBatterSpread degrees apart at least;
+//   - their ledges: within their cliff, runs of kLedgeLeast meters or more under 45 degrees (the
+//     narrower ones from kBenchLeast, the benches the strata lay, printed); 1 to 3 of them on most of
+//     the buttes (the median of their rays); kLedgeNarrow to kLedgeWide meters wide (the median of
+//     all of them: they show at 1 km); the widest of each ray at depths under the rim (shares of
+//     the cliff) varying from butte to butte by kLeastLedgeSpread at least;
 //   - their scree: the heights of the talus within kScreeReach meters of the foot of the cliff off
 //     their mean over kScreeSmooth meters, kLeastScree meters rms (the median); the blocks along the
 //     foot without a period (pattern_support.hpp: the peak correlation of that profile under
@@ -29,16 +33,20 @@ namespace {
 using tablelands_buttes::Butte;
 using tablelands_buttes::CliffRay;
 using tablelands_buttes::cliffAlong;
+using tablelands_buttes::kRiseBack;
+using tablelands_buttes::kTalusReach;
 using tablelands_buttes::kSteep60;
 using tablelands_fields::fieldsAt;
 using tablelands_fields::heightAt;
 
 constexpr double kPi = 3.141592653589793;
 constexpr double kDegrees = 57.29577951308232;
-// The buttes of the case (as tablelands_shapes_test), kMostButtes of them at most.
+// The buttes of the case: of kButtesSought at most, the first kMostButtes walled by their cliff
+// (tablelands_buttes::caseButtes).
 constexpr double kButteLow = 80.0;
 constexpr double kButteHigh = 400.0;
-constexpr std::size_t kMostButtes = 16;
+constexpr std::size_t kMostButtes = 10;
+constexpr std::size_t kButtesSought = 48;
 constexpr int kLeastButtes = 5;
 // The outline: radii every degree, sought kRadialStep meters at a time up to kRadiusMost, smoothed
 // over kRoughSmooth meters of the rim.
@@ -58,10 +66,19 @@ constexpr double kBatterHigh = 88.0;
 constexpr double kSteepest = 89.0;
 constexpr double kSteepShare = 0.1;
 constexpr double kLeastBatterSpread = 3.0;
-constexpr double kLedgeLeast = 2.0;
+constexpr double kLedgeLeast = 5.0;
+constexpr double kBenchLeast = 2.0;
 constexpr double kLedgeSlope = 1.0;
 constexpr double kLedgedShare = 0.5;
 constexpr double kLeastLedgeSpread = 0.1;
+constexpr double kLedgeNarrow = 10.0;
+constexpr double kLedgeWide = 30.0;
+// A cliff goes on across a stretch no steeper than 60 degrees kLedgeReach meters long at most and
+// falling kLedgeFall of its length at most (a ledge, not its talus) where the ground falls more
+// steeply than that again by kWallLeast meters at least.
+constexpr double kLedgeReach = 40.0;
+constexpr double kLedgeFall = 0.5;
+constexpr double kWallLeast = 10.0;
 // The scree.
 constexpr double kScreeReach = 80.0;
 constexpr double kScreeSmooth = 30.0;
@@ -145,6 +162,8 @@ double roughnessOf(const std::vector<double>& radii) {
 struct Walls {
     double batter = 0.0;
     double ledges = 0.0;
+    std::vector<double> widths;  // of all of its ledges
+    std::vector<double> benches; // of all of its benches
     double firstLedge = 0.0;
     double scree = 0.0;
     double run = 0.0;
@@ -159,22 +178,36 @@ double medianOf(std::vector<double> v) {
     return v[v.size() / 2];
 }
 
-// The ledges of a cliff ray: their count, the depth of the first (a share of the cliff, 0 if none).
-std::array<double, 2> ledgesOf(const CliffRay& c) {
+// The ledges of a cliff ray: their count, the depth of the first (a share of the cliff, 0 if none),
+// their widths.
+struct Ledges {
+    double count = 0.0;
+    double first = 0.0; // the depth of the widest
+    std::vector<double> widths;
+    std::vector<double> benches; // their widths
+};
+Ledges ledgesOf(const CliffRay& c) {
     const auto least = static_cast<std::size_t>(kLedgeLeast / c.step);
+    const auto bench = static_cast<std::size_t>(kBenchLeast / c.step);
     const double fall = c.h[c.rim] - c.h[c.end];
-    int count = 0;
-    double first = 0.0;
+    Ledges out;
     std::size_t run = 0;
     for (std::size_t i = c.rim + 1; i < c.end; ++i) {
         const bool flat = (c.h[i] - c.h[i + 1]) / c.step < kLedgeSlope;
-        run = flat ? run + 1 : 0;
-        if (run == least) {
-            first = count == 0 ? (c.h[c.rim] - c.h[i]) / fall : first;
-            ++count;
+        if (!flat && run >= bench && run < least) {
+            out.benches.push_back(c.step * static_cast<double>(run));
         }
+        if (!flat && run >= least) {
+            const double width = c.step * static_cast<double>(run);
+            const bool widest = out.widths.empty() ||
+                                width > *std::max_element(out.widths.begin(), out.widths.end());
+            out.first = widest ? (c.h[c.rim] - c.h[i]) / fall : out.first;
+            out.widths.push_back(width);
+        }
+        run = flat ? run + 1 : 0;
+        out.count += run == least ? 1.0 : 0.0;
     }
-    return {static_cast<double>(count), first};
+    return out;
 }
 
 // The scree of a cliff ray: the rms of the talus within kScreeReach of its foot off its mean over
@@ -195,7 +228,49 @@ double screeOf(const CliffRay& c) {
     return count > 0 ? std::sqrt(squares / static_cast<double>(count)) : 0.0;
 }
 
+// The cliff of the ray from (x, z) along (dx, dz) (cliffAlong), carried across its ledges.
+CliffRay cliffOf(double x, double z, double dx, double dz) {
+    CliffRay c = cliffAlong(x, z, dx, dz, kRayStep);
+    const std::vector<double>& h = c.h;
+    const auto steep = [&](std::size_t i) { return (h[i] - h[i + 1]) / kRayStep > kSteep60; };
+    const auto reach = static_cast<std::size_t>(kLedgeReach / kRayStep);
+    std::size_t i = c.rim;
+    std::size_t end = c.rim;
+    while (i + 1 < h.size()) {
+        while (i + 1 < h.size() && steep(i)) {
+            ++i;
+        }
+        end = i;
+        std::size_t j = i;
+        while (j + 1 < h.size() && !steep(j) && j - i <= reach) {
+            ++j;
+        }
+        if (j + 1 >= h.size() || j - i > reach ||
+            h[i] - h[j] > kLedgeFall * kRayStep * static_cast<double>(j - i)) {
+            break;
+        }
+        std::size_t k = j;
+        while (k + 1 < h.size() && steep(k)) {
+            ++k;
+        }
+        if (h[j] - h[k] < kWallLeast) {
+            break;
+        }
+        i = j;
+    }
+    c.end = std::max(c.end, end);
+    c.lowest = h[c.end];
+    const auto talus = static_cast<std::size_t>(kTalusReach / kRayStep);
+    for (std::size_t k = c.end; k < h.size() && k < c.end + talus && h[k] < c.lowest + kRiseBack;
+         ++k) {
+        c.lowest = std::min(c.lowest, h[k]);
+    }
+    c.found = c.end + 1 < h.size() && h[c.rim] > c.lowest;
+    return c;
+}
+
 Walls wallsOf(const Butte& b) {
+    Walls w;
     std::vector<double> batters;
     std::vector<double> counts;
     std::vector<double> firsts;
@@ -205,7 +280,7 @@ Walls wallsOf(const Butte& b) {
     double tallest = 0.0;
     for (int k = 0; k < kRays; ++k) {
         const double a = 2.0 * kPi * (k + 0.5) / kRays;
-        rays.push_back(cliffAlong(b.x, b.z, std::cos(a), std::sin(a), kRayStep));
+        rays.push_back(cliffOf(b.x, b.z, std::cos(a), std::sin(a)));
         const CliffRay& c = rays.back();
         tallest = std::max(tallest, c.found ? c.h[c.rim] - c.h[c.end] : 0.0);
     }
@@ -216,15 +291,16 @@ Walls wallsOf(const Butte& b) {
         }
         const double run = kRayStep * static_cast<double>(c.end - c.rim);
         batters.push_back(std::atan(fall / std::max(run, 1e-3)) * kDegrees);
-        const std::array<double, 2> ledges = ledgesOf(c);
-        counts.push_back(ledges[0]);
-        if (ledges[0] > 0.0) {
-            firsts.push_back(ledges[1]);
+        const Ledges ledges = ledgesOf(c);
+        counts.push_back(ledges.count);
+        if (ledges.count > 0.0) {
+            firsts.push_back(ledges.first);
         }
+        w.widths.insert(w.widths.end(), ledges.widths.begin(), ledges.widths.end());
+        w.benches.insert(w.benches.end(), ledges.benches.begin(), ledges.benches.end());
         screes.push_back(screeOf(c));
         runs.push_back(run);
     }
-    Walls w;
     w.found = batters.size() >= kRays / 2;
     w.batter = medianOf(batters);
     w.ledges = medianOf(counts);
@@ -265,16 +341,7 @@ double spreadOf(const std::vector<double>& v) {
 }
 
 std::vector<Butte> caseButtes(const tablelands_fields::Sites& sites) {
-    std::vector<Butte> out;
-    for (std::size_t e = 0; e < sites.edges.size() && out.size() < kMostButtes; ++e) {
-        for (const Butte& b : tablelands_buttes::buttesAround(sites.edges[e][0], sites.edges[e][1], 96)) {
-            if (b.height >= kButteLow && b.height <= kButteHigh && b.wall > kSteep60 &&
-                out.size() < kMostButtes) {
-                out.push_back(b);
-            }
-        }
-    }
-    return out;
+    return tablelands_buttes::caseButtes(sites, kButteLow, kButteHigh, kMostButtes, kButtesSought);
 }
 
 } // namespace
@@ -286,6 +353,8 @@ int main() {
     std::vector<double> batters;
     std::vector<double> firsts;
     std::vector<double> screes;
+    std::vector<double> widths;
+    std::vector<double> benches;
     int ledged = 0;
     int walled = 0;
     double periodic = 0.0;
@@ -304,11 +373,21 @@ int main() {
             firsts.push_back(w.firstLedge);
         }
         ledged += w.ledges >= 1.0 && w.ledges <= 3.0 ? 1 : 0;
+        widths.insert(widths.end(), w.widths.begin(), w.widths.end());
+        benches.insert(benches.end(), w.benches.begin(), w.benches.end());
         periodic = std::max(periodic, pattern);
         ++walled;
         std::printf("butte at (%.0f, %.0f), %.0f m: outline %.1f m rms, batter %.1f degrees, %.0f "
-                    "ledges (the first %.2f down), scree %.1f m rms, foot periodic %.2f\n",
+                    "ledges (the widest %.2f down), scree %.1f m rms, foot periodic %.2f\n",
                     b.x, b.z, b.height, rough, w.batter, w.ledges, w.firstLedge, w.scree, pattern);
+    }
+    std::sort(widths.begin(), widths.end());
+    if (!widths.empty()) {
+        std::printf("ledges: %zu, 10th percentile %.1f m wide, 25th %.1f, median %.1f, 75th %.1f, "
+                    "90th %.1f; benches (%.0f to %.0f m): %zu\n",
+                    widths.size(), widths[widths.size() / 10], widths[widths.size() / 4],
+                    widths[widths.size() / 2], widths[widths.size() * 3 / 4],
+                    widths[widths.size() * 9 / 10], kBenchLeast, kLedgeLeast, benches.size());
     }
     std::sort(batters.begin(), batters.end());
     const double batter = medianOf(batters);
@@ -317,11 +396,12 @@ int main() {
     const auto steepest = std::count_if(batters.begin(), batters.end(),
                                         [](double v) { return v > kSteepest; });
     std::printf("cliffs: %d buttes; outline %.1f m rms (the median); batter %.1f degrees (10th "
-                "percentile %.1f, 90th %.1f), %ld over %.0f degrees; ledges 1 to 3 on %d, the first "
-                "%.2f down (spread %.2f); scree %.1f m rms; foot periodic %.2f at most\n",
+                "percentile %.1f, 90th %.1f), %ld over %.0f degrees; ledges 1 to 3 on %d, the widest of "
+                "each ray %.2f down (spread %.2f), all %.1f m wide (the median); scree %.1f m rms; foot "
+                "periodic %.2f at most\n",
                 walled, medianOf(roughs), batter, p10, p90, static_cast<long>(steepest), kSteepest,
-                ledged, medianOf(firsts), firsts.empty() ? 0.0 : spreadOf(firsts), medianOf(screes),
-                periodic);
+                ledged, medianOf(firsts), firsts.empty() ? 0.0 : spreadOf(firsts), medianOf(widths),
+                medianOf(screes), periodic);
     TEST_CHECK(walled >= kLeastButtes);
     TEST_CHECK(medianOf(roughs) >= kLeastRough);
     TEST_CHECK(batter >= kBatterLow && batter <= kBatterHigh);
@@ -329,6 +409,7 @@ int main() {
     TEST_CHECK(p90 - p10 >= kLeastBatterSpread);
     TEST_CHECK(static_cast<double>(ledged) >= kLedgedShare * static_cast<double>(walled));
     TEST_CHECK(!firsts.empty() && spreadOf(firsts) >= kLeastLedgeSpread);
+    TEST_CHECK(medianOf(widths) >= kLedgeNarrow && medianOf(widths) <= kLedgeWide);
     TEST_CHECK(medianOf(screes) >= kLeastScree);
     TEST_CHECK(periodic < kPeriodicMost);
     return test::result();

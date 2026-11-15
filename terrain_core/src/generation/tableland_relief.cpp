@@ -72,17 +72,16 @@ constexpr double kOutlierNear = 0.3;
 constexpr double kCapLow = 150.0;
 constexpr double kCapHigh = 450.0;
 // The rims of the escarpments and of the outliers jut out and recede by up to kJag meters (a noise
-// of kJagWavelength) and kJagFine more (one of kJagFineWavelength), and by the rough outline of
-// their cliffs (tableland_cliffs.hpp: 20 to 200 m): bays and points of every size.
-// The escarpment bends besides by up to kBend meters (a noise of kBendWavelength, 3 octaves: bays
-// and capes of 3 to 12 km, no long straight front; its slope under 1, the rim never folds).
+// of kJagWavelength) and kJagFine more (one of kJagFineWavelength): bays and points of every size
+// (their cliffs rough besides, layer by layer: tableland_cliffs.hpp). The escarpment bends by up
+// to kBend meters (a noise of kBendWavelength, 3 octaves: bays and capes of 3 to 12 km) and by its
+// swell (tableland_front.hpp: bendAt): no long straight front; its slope under 1, never folding.
 constexpr double kBend = 6'000.0;
 constexpr double kBendWavelength = 24'000.0;
 constexpr double kJag = 500.0;
 constexpr double kJagWavelength = 3'000.0;
-constexpr double kJagFine = 250.0;
+constexpr double kJagFine = 400.0;
 constexpr double kJagFineWavelength = 600.0;
-
 // The caprocks take kCliffLow to kCliffHigh of the height of a top (a noise of kCliffWavelength),
 // kScarpCliffMost meters of an escarpment at most; under them a concave talus of mean slope
 // kTalusHumid to kTalusArid before the rock lays its ledges on it.
@@ -111,27 +110,24 @@ constexpr double kGullyFoot = 30.0;
 constexpr double kFootRock = 0.15;
 constexpr double kUnitFoot = 5.0;
 constexpr double kGreatAbove = 20.0;
-
 // The taluses of the outliers kSoftNear to kSoftFar meters out in front of the escarpment and
 // farther are soft (Shape::soft).
 constexpr double kSoftNear = 500.0;
 constexpr double kSoftFar = 2'000.0;
-
 // The fields are measured by differences over these steps (meters).
 constexpr double kOutlierStep = 20.0;
-// The offsets of the rims (their jags, the rough outline of their cliffs, the bends of the
-// escarpment) move them by meters that change by up to about 1 per meter: near a rim (kStretchNear
-// meters, fading out by kStretchFar), the distance to it is read over the gradient of its field and
-// of its offset (by differences over kOffsetStep meters, kLeastStretch at least): its profile keeps
-// its widths in meters; farther, the meters of the offset are only added.
+// The offsets of the rims (their jags, the bends of the escarpment) move them by meters that change
+// by up to about 1 per meter: near a rim (kStretchNear meters, fading out by kStretchFar), the
+// distance to it is read over the gradient of its field and of its offset (by differences over
+// kOffsetStep meters, kLeastStretch at least): its profile keeps its widths in meters; farther, the
+// meters of the offset are only added.
 constexpr double kOffsetStep = 4.0;
 constexpr double kLeastStretch = 0.5;
 constexpr double kStretchNear = 500.0;
 constexpr double kStretchFar = 1'500.0;
-
 // The wavelengths of the noises of the rock (tableland_strata.cpp) and of the relief of the tops,
 // which fades out over the outer kTopEdge of the profile and the first kTopCut of the cut of a
-// canyon.
+// canyon (a share of the height of the outline it cuts: an outlier too).
 constexpr double kBandWavelength = 20'000.0;
 constexpr double kMemberWavelength = 30'000.0;
 constexpr double kBedWavelength = 25'000.0;
@@ -271,15 +267,19 @@ Parts measure(const Noises& n, double x, double z, const Province& q) {
     out.rough = roughAt(n.walls, x, z);
     out.steep = steepAt(n.walls, x, z);
     const double jag = canyonJagAt(n.jags, x, z);
-    // The offsets of the rims: their jags and rough outline; and the bends of the escarpment.
+    // The offsets of the rims: their jags (their rough outline per layer: cliffStoreysAt); and the
+    // bends of the escarpment.
     const Offset rims = offsetOf(
         [&n](double u, double v) {
             return kJag * static_cast<double>(n.jags.fbm2D(u, v)) +
-                   kJagFine * static_cast<double>(n.jagsFine.fbm2D(u, v)) + roughAt(n.walls, u, v);
+                   kJagFine * static_cast<double>(n.jagsFine.fbm2D(u, v));
         },
         n.world, x, z);
     const Offset bends = offsetOf(
-        [&n](double u, double v) { return kBend * static_cast<double>(n.bends.fbm2D(u, v)); },
+        [&n](double u, double v) {
+            return kBend * static_cast<double>(n.bends.fbm2D(u, v)) +
+                   tableland_front::bendAt(n.bendSwell, u, v);
+        },
         n.world, x, z);
     const Scarp raw = scarpAt(n, x, z, q);
     const Offset offset{rims.value + bends.value, rims.gradX + bends.gradX,
@@ -290,11 +290,15 @@ Parts measure(const Noises& n, double x, double z, const Province& q) {
     const double share =
         kCliffLow + (kCliffHigh - kCliffLow) * smooth(-0.5, 0.5, static_cast<double>(n.cliffs.fbm2D(x, z)));
     const double scarpCliff = std::min(share * f.thickness, kScarpCliffMost);
-    const Storeys onScarp = storeysAt(scarp.value, f.thickness, scarpCliff, talus, out.steep);
+    const Storeys onScarp =
+        cliffStoreysAt(n.walls, n.units, x, z, scarp, f.thickness, scarpCliff, talus,
+                       ledgesAt(n.walls, n.units, x, z, scarpCliff, out.steep));
     Outliers outliers = outliersAt(n, x, z, raw, offset, f.thickness, arid);
     outliers.outline = offsetField(outliers.outline, rims);
-    const Storeys onOutlier = storeysAt(outliers.outline.value, outliers.height,
-                                        share * outliers.height, talus, out.steep);
+    const double outlierCliff = share * outliers.height;
+    const Storeys onOutlier =
+        cliffStoreysAt(n.walls, n.units, x, z, outliers.outline, outliers.height, outlierCliff,
+                       talus, ledgesAt(n.walls, n.units, x, z, outlierCliff, out.steep));
     if (!(std::max(onScarp.share, onOutlier.share) > 0.0)) {
         return out;
     }
@@ -345,9 +349,9 @@ void addGullies(const Noises& n, double x, double z, const Parts& parts, Shape& 
         return;
     }
     const double read = slope > kGullySlopeMost ? kGullySlopeMost / slope : 1.0;
-    // They come in over the first kGullyFoot meters of the talus under a caprock (no step at its foot).
-    const double foot = -parts.outline.value - parts.cliff / parts.steep;
-    const double fade = parts.cliff > 0.0 ? smooth(0.0, kGullyFoot, foot) : 1.0;
+    // They come in over the first kGullyFoot meters of fall of the talus under a caprock (no step).
+    const double fall = parts.held * (1.0 - parts.cliff / parts.top) - s.rise;
+    const double fade = parts.cliff > 0.0 ? smooth(0.0, kGullyFoot, fall) : 1.0;
     const auto depth = static_cast<double>(
         ravines::depth(n.gullies, x, z, read * s.gradX, read * s.gradZ, strength * fade));
     s.rise -= std::min(depth, kGullyRoom * s.rise);
@@ -355,9 +359,10 @@ void addGullies(const Noises& n, double x, double z, const Parts& parts, Shape& 
 
 // The scree on the talus under a caprock, none in the canyons (tableland_cliffs.hpp): its blocks,
 // and its cones at rest from the foot of the cliff (the talus raised to their surface where it lies
-// lower: a fan softening its upper part). It raises the rise of s.
+// lower: a fan softening its upper part, rising into the re-entrants of the outline), no block over
+// the foot (fading out over its first meter). It raises the rise of s.
 void addScree(const Noises& n, double x, double z, const Parts& parts, Shape& s) {
-    if (parts.storeys.cliff || !(parts.storeys.share > 0.0) || !(parts.storeys.share < 1.0) ||
+    if (!(parts.storeys.share > 0.0) || !(parts.storeys.share < 1.0) ||
         parts.fields.canyon > 0.0 || !(parts.top > 0.0)) {
         return;
     }
@@ -365,7 +370,7 @@ void addScree(const Noises& n, double x, double z, const Parts& parts, Shape& s)
     const Scree scree = screeAt(n.walls, x, z, foot, parts.cliff, parts.rough);
     const double footRise = parts.held * (1.0 - parts.cliff / parts.top);
     const double fan = std::max(0.0, footRise - kScreeSlope * foot - s.rise);
-    s.rise += scree.blocks + scree.cone * fan;
+    s.rise += scree.cone * fan + scree.blocks * (1.0 - smooth(footRise, footRise + 1.0, s.rise));
 }
 
 // The hard layer of the wall at the column: the caprock of its outline on its cliff and the tops (none
@@ -374,6 +379,9 @@ void addScree(const Noises& n, double x, double z, const Parts& parts, Shape& s)
 // lowered by a swale or a gully never lies inside its caprock, which would flatten it to its foot.
 void setUnit(const Parts& parts, double share, Shape& s) {
     const Fields& f = parts.fields;
+    if (parts.storeys.share >= 1.0 && f.canyon > 0.0 && !f.outlier && parts.cut.bench > 0.0) {
+        s.floorTop = f.thickness - parts.cut.bench;
+    }
     double top = parts.top - kUnderTop;
     double height = parts.cliff;
     bool capped = true;
@@ -433,6 +441,7 @@ Noises makeNoises(std::uint64_t seed, const WorldSize& world) {
             octaves(seed, 26, kRetreatWavelength, 2, world),
             octaves(seed, 27, kDensityWavelength, 2, world),
             octaves(seed, 47, kBendWavelength, 3, world),
+            tableland_front::makeBendSwell(noise::deriveSeed(seed, 48), world),
             octaves(seed, 16, kJagWavelength, 3, world),
             octaves(seed, 28, kJagFineWavelength, 3, world),
             octaves(seed, 32, kCliffWavelength, 2, world),
@@ -483,7 +492,7 @@ Shape shapeAt(const Noises& n, double x, double z, const Province& q) {
     out.thickness = f.thickness;
     out.soft = smooth(kSoftNear, kSoftFar, -f.scarp);
     out.top = smooth(1.0 - kTopEdge, 1.0, f.profile) *
-              (1.0 - smooth(0.0, kTopCut, f.canyon / std::max(f.thickness, 1.0)));
+              (1.0 - smooth(0.0, kTopCut, f.canyon / std::max(parts.top, 1.0)));
     setUnit(parts, share, out);
     return out;
 }

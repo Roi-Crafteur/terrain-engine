@@ -32,6 +32,7 @@
 #include "ravines.hpp"
 #include "tableland_canyons.hpp"
 #include "tableland_cliffs.hpp"
+#include "tableland_front.hpp"
 
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/generation/tablelands.hpp"
@@ -51,6 +52,7 @@ struct Noises {
     noise::FbmOctaves retreat;    // how far they reach
     noise::FbmOctaves density;    // how many they are
     noise::FbmOctaves bends;      // the great bends of the escarpment
+    tableland_front::Swell bendSwell; // and their swell
     noise::FbmOctaves jags;       // the re-entrants and points of the rims
     noise::FbmOctaves jagsFine;
     noise::FbmOctaves cliffs;     // the share of the height the caprocks take
@@ -132,6 +134,9 @@ struct Shape {
     // The great cliff of a canyon is one hard layer (the Redwall, 120 to 200 m); a caprock 2 to 4
     // (tableland_cliffs.hpp: layersAt).
     bool unitWhole = false;
+    // Over the great cliff of a canyon, the top of that cliff (meters over the low ground, as rise; 0:
+    // none): the soft layers of the upper walls recede down to it, never into it.
+    double floorTop = 0.0;
 };
 [[nodiscard]] Shape shapeAt(const Noises& n, double x, double z, const Province& q);
 

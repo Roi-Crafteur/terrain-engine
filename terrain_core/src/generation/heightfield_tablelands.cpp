@@ -6,6 +6,7 @@
 #include "heightfield_layers.hpp"
 #include "tableland_forms.hpp"
 #include "tableland_relief.hpp"
+#include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
 #include "terrain/generation/tablelands.hpp"
 #include "wall_faces.hpp"
@@ -14,6 +15,61 @@
 #include <cmath>
 
 namespace terrain {
+
+namespace {
+
+// The faces of the plateaus run kFaceRun meters at least: the tiles of LOD 0 draw them whole
+// (rock_faces.hpp: kRunCells of their cells and half as many again), however steep the climb of
+// their riser (their columns within half of it on the treads by it).
+constexpr double kFaceRun = 6.0;
+// The climb of the lowest layer of a caprock holds its rock up (and stands as a face) where the
+// ground climbs at kClimbSlope at least (a wall; none under half of that: its talus, a gentle
+// ground or a block of scree grazing the foot of a caprock keep the rock of their strata, never a
+// mound of the caprock).
+constexpr double kClimbSlope = 3.0;
+// The rock of a column never stands more than kOverGround meters over the ground of the shape (the
+// relief of the tops added over it): a column left standing over its ground is a blade; only the
+// cuts under the ground are the rock's own (the risers of hard layers rise a fraction of a meter
+// over it).
+constexpr double kOverGround = 1.0;
+
+// The lowest layer of the forced hard layers of a caprock over its foot (unitBench), partial: the
+// rock keeps to the shape there (never a ledge laid under the foot, a bench eating the batter of
+// the cliff), its face the climb from the foot to that bound, down to the rock the strata leave
+// under the foot (their tread there: one face). The columns on it and those under its foot within
+// its run (kFaceRun at least, about the middle of the climb) see that face (its climb, the top of
+// the walls at the column unset), as far as the ground climbs as a wall there (steep, kClimbSlope).
+struct Partial {
+    bool on = false;
+    bool seen = false;
+    double steep = 0.0;
+    wall_faces::Climb climb;
+};
+Partial partialOf(const tableland_relief::Noises& n, double x, double z,
+                  const tableland_relief::Shape& shape, const mountain_walls::WallPasses& passes,
+                  double base, double ground) {
+    Partial out;
+    const double foot = base + shape.unitTop - shape.unitHeight;
+    const double slope = std::max(dmath::hypot(shape.gradX, shape.gradZ), 0.05);
+    if (!(shape.unitHeight > 0.0) || shape.unitWhole || !(ground > foot - kFaceRun * slope)) {
+        return out;
+    }
+    const double bench = tableland_relief::unitBench(n, x, z, shape, base);
+    const double under = 0.5 * std::max(0.0, kFaceRun * slope - (bench - foot));
+    if (!(ground < bench) || !(bench > foot) || !(ground > foot - under)) {
+        return out;
+    }
+    mountain_walls::WallPasses strata = passes;
+    strata.passes[3].weight = 0.0;
+    out.on = ground > foot && shape.unitWeight > 0.0;
+    out.seen = true;
+    out.steep = noise::smoothstep(static_cast<float>(0.5 * kClimbSlope),
+                                  static_cast<float>(kClimbSlope), static_cast<float>(slope));
+    out.climb = {foot, bench, std::min(foot, wall_faces::passesTop(strata, foot)), 0.0};
+    return out;
+}
+
+} // namespace
 
 float Heightfield::intensityAt(double x, double z, const GeographySample& g, Memos* memos) const {
     const float intensity = reliefAt(x, z, g.relief, memos);
@@ -67,29 +123,46 @@ void Heightfield::addTablelands(double x, double z, const TablelandPoint& p, Hei
     const mountain_walls::WallPasses passes =
         tableland_relief::passesAt(n, x, z, p, shape, static_cast<double>(s.base));
     const double weight = std::max(shape.rock, shape.unitWeight);
+    double rock = wall_faces::passesTop(passes, ground);
+    const double foot = static_cast<double>(s.base) + shape.unitTop - shape.unitHeight;
+    Partial partial = partialOf(n, x, z, shape, passes, static_cast<double>(s.base), ground);
+    if (partial.on) {
+        rock += shape.unitWeight * partial.steep * (ground - rock);
+    } else if (shape.unitWeight > 0.0 && !shape.unitWhole && ground > foot) {
+        rock = std::max(rock, tableland_relief::unitBench(n, x, z, shape,
+                                                          static_cast<double>(s.base)));
+    }
+    // Over the great cliff of a canyon the soft layers of its upper walls recede down to its top,
+    // never into it (the hard layer is the floor of their slopes: no column of it left standing
+    // alone over them, a blade). Where it holds the rock up, the faces of the layers it covers are
+    // buried.
+    const double floor = static_cast<double>(s.base) + shape.floorTop;
+    const bool floored = shape.floorTop > 0.0 && ground > floor && rock < floor;
+    if (floored) {
+        rock = floor;
+    }
+    rock = std::min(rock, ground + kOverGround);
     if (site != nullptr && weight > 0.0) {
         site->walls = true;
         site->ground = ground;
         site->gradX = shape.gradX;
         site->gradZ = shape.gradZ;
-        if (site->faces) {
+        if (site->faces && !floored) {
             mountain_walls::Column column;
             column.ground = ground;
             column.gradX = shape.gradX;
             column.gradZ = shape.gradZ;
-            wall_faces::addFaces(passes, layers_->faceGrain, weight, column, x, z, *site,
-                                 tableland_relief::jointsAt(n.walls, x, z));
+            const double joints = tableland_relief::jointsAt(n.walls, x, z);
+            if (partial.seen && partial.steep > 0.0) {
+                partial.climb.top = rock;
+                wall_faces::addStepFace(passes, 3, layers_->faceGrain, weight * partial.steep,
+                                        column, x, z, partial.climb, *site, joints, kFaceRun);
+            }
+            if (!partial.on || !(partial.steep > 0.0)) {
+                wall_faces::addFaces(passes, layers_->faceGrain, weight, column, x, z, *site,
+                                     joints, kFaceRun);
+            }
         }
-    }
-    // Under the lowest bound of the forced hard layers of a caprock over its foot (unitBench), their
-    // lowest layer is partial: the rock keeps to the shape (its batter) there, never lays its ledge
-    // under the foot (a bench eating the batter of the cliff).
-    double rock = wall_faces::passesTop(passes, ground);
-    const double foot = static_cast<double>(s.base) + shape.unitTop - shape.unitHeight;
-    if (shape.unitWeight > 0.0 && !shape.unitWhole && ground > foot) {
-        const double bench =
-            tableland_relief::unitBench(n, x, z, shape, static_cast<double>(s.base));
-        rock = std::max(rock, std::min(ground, bench));
     }
     s.base = static_cast<float>(rock + tableland_relief::topRelief(n, x, z, shape));
     s.tableland = static_cast<std::uint8_t>(std::lround(255.0 * std::clamp(weight, 0.0, 1.0)));

@@ -54,6 +54,7 @@ struct Cut {
     double floor = 0.0;  // [0, 1]: on the floor (no strata)
     double slope = 0.0;  // of the segment of the section at the column, meters per meter
     Unit unit;           // the hard layer of the wall there
+    double bench = 0.0;  // meters under the rim of the top of its great cliff (0: none)
     bool cliff = false;  // on a cliff (its caprock, its great cliff, that of a temple)
     bool temple = false; // a temple stands there
     double templeOutline = 0.0; // meters to the rim of the lower storey of that temple, positive within

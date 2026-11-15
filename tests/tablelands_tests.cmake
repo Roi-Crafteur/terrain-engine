@@ -48,3 +48,7 @@ target_include_directories(tablelands_cliffs_test PRIVATE ${PROJECT_SOURCE_DIR}/
 # tableland_temples.hpp.
 terrain_add_test(tablelands_gorges_test terrain_core)
 target_include_directories(tablelands_gorges_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+# The walls of the buttes: faces of rock on the whole wall (LOD 0), flutes cut by the layers of their
+# caprock (tableland_cliffs.hpp, heightfield_tablelands.cpp).
+terrain_add_test(tablelands_flutes_test terrain_core)
+target_include_directories(tablelands_flutes_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)

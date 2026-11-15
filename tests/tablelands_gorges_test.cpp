@@ -10,7 +10,11 @@
 //     kTempleTolerance of their chord, turning by kTurnMost at most: flat sides, not the arcs of a
 //     wide temple) kStraightShareMost at most over all of them (by length, the worst printed); their top kTopShareMost of their
 //     footprint at most, and two storeys (two levels of flat ground over the foot of their talus),
-//     on kStoreyedShare of them at least.
+//     on kStoreyedShare of them at least;
+//   - no blade: within kBladeHalf meters of the site of the view of commit 2c (a column of the top of
+//     a great cliff left standing over the walls around it) and of the first canyon, on a lattice
+//     of kBladeStep meters, no face of the rock whose top passes the highest ground within kBladeNear
+//     cells of its column, nor a column over the highest of its 8 neighbors, by kBladeMost meters.
 #include "pattern_support.hpp"
 #include "tablelands_fields_support.hpp"
 #include "tablelands_lines_support.hpp"
@@ -63,6 +67,13 @@ constexpr double kFlat = 0.2;
 constexpr double kLevelGap = 20.0;
 constexpr std::size_t kLevelCells = 5;
 constexpr double kStoreyedShare = 0.5;
+// The blades.
+constexpr double kBladeX = 163160.0;
+constexpr double kBladeZ = -15106607.0;
+constexpr double kBladeHalf = 400.0;
+constexpr double kBladeStep = 4.0;
+constexpr int kBladeNear = 3;
+constexpr double kBladeMost = 10.0;
 
 std::array<double, 3> deepestFloor(double x0, double z0, int side) {
     std::array<double, 3> best{x0, z0, 0.0};
@@ -319,9 +330,68 @@ std::vector<std::vector<Point>> templesAround(double x0, double z0) {
     return out;
 }
 
+// The faces and the columns over the ground around them by more than kBladeMost meters, within
+// kBladeHalf meters of (x0, z0); the worst of each.
+struct Blades {
+    int faces = 0;
+    int columns = 0;
+    double worstFace = 0.0;
+    double worstColumn = 0.0;
+};
+
+Blades bladesAround(double x0, double z0) {
+    const int n = static_cast<int>(2.0 * kBladeHalf / kBladeStep) + 1;
+    const auto at = [n](int i, int j) { return static_cast<std::size_t>(j * n + i); };
+    std::vector<double> ground(static_cast<std::size_t>(n * n));
+    std::vector<double> top(static_cast<std::size_t>(n * n), -1e18);
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            const double x = x0 - kBladeHalf + kBladeStep * i;
+            const double z = z0 - kBladeHalf + kBladeStep * j;
+            ground[at(i, j)] = tablelands_fields::heightAt(x, z);
+            const terrain::RockColumn rock = tablelands_fields::field().rockAt(x, z);
+            for (std::size_t k = 0; k < rock.faceCount; ++k) {
+                top[at(i, j)] = std::max(top[at(i, j)], static_cast<double>(rock.faces[k].top));
+            }
+        }
+    }
+    Blades out;
+    for (int j = kBladeNear; j + kBladeNear < n; ++j) {
+        for (int i = kBladeNear; i + kBladeNear < n; ++i) {
+            double highest = ground[at(i, j)];
+            double near = -1e18;
+            for (int b = -kBladeNear; b <= kBladeNear; ++b) {
+                for (int c = -kBladeNear; c <= kBladeNear; ++c) {
+                    highest = std::max(highest, ground[at(i + c, j + b)]);
+                    near = (b != 0 || c != 0) && std::abs(b) <= 1 && std::abs(c) <= 1
+                               ? std::max(near, ground[at(i + c, j + b)])
+                               : near;
+                }
+            }
+            const double face = top[at(i, j)] - highest;
+            const double column = ground[at(i, j)] - near;
+            out.faces += face > kBladeMost ? 1 : 0;
+            out.columns += column > kBladeMost ? 1 : 0;
+            out.worstFace = std::max(out.worstFace, face);
+            out.worstColumn = std::max(out.worstColumn, column);
+        }
+    }
+    return out;
+}
+
+void testBlades(double x0, double z0) {
+    const Blades b = bladesAround(x0, z0);
+    std::printf("blades within %.0f m of (%.0f, %.0f): %d faces and %d columns over the ground around "
+                "them by %.0f m (the worst face %.1f m, column %.1f m)\n",
+                kBladeHalf, x0, z0, b.faces, b.columns, kBladeMost, b.worstFace, b.worstColumn);
+    TEST_CHECK(b.faces == 0);
+    TEST_CHECK(b.columns == 0);
+}
+
 } // namespace
 
 int main() {
+    testBlades(kBladeX, kBladeZ);
     const tablelands_fields::Sites sites = tablelands_fields::findSites();
     int canyons = 0;
     double straightest = 0.0;
@@ -342,6 +412,9 @@ int main() {
         const std::array<double, 2> gorge = gorgeOf(f[0], f[1]);
         if (gorge[1] < 0.0) {
             continue;
+        }
+        if (canyons == 0) {
+            testBlades(f[0], f[1]);
         }
         ++canyons;
         straightest = std::max(straightest, gorge[0]);

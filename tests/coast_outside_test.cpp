@@ -327,15 +327,16 @@ void testDefaultWorld() {
                     // their bytes, never their blends (0x51D8B009355E8A97, 0x435745D91D4D43D8 and
                     // 0xE4369B53BAB781AD for the 3 parts of the tiles before). A place of the tiles
                     // lies on a high surface of a plateau, its horizon sees plateaus, mesas and
-                    // canyons (agent 46, the flag "tablelands"). Recollé par « Merge main into the
-                    // plateaus » (agent 46) : "default world tiles" with the flag; its blend
-                    // texels of 16 bytes (agent 49), the plateaus unchanged.
+                    // canyons (agent 46, the flag "tablelands"). Recollé par « Plateaus, commit 2d »
+                    // (agent 46) : "default world tiles" with the flag; the faces of the caprocks
+                    // run 6 m (the tiles of LOD 0 draw them), their rock in stepped layers.
                     {"default world tiles", sums.tiles.value(),
-                     golden::pick("tablelands", 0x33BD195571B453FBULL, 0xD0EFCF6291A310BFULL)},
-                    // Recollé par « Plateaus, commit 2c » (agent 46) : "default world horizon" with
-                    // the flag; the fronts, cliffs, temples and canyons it sees redrawn.
+                     golden::pick("tablelands", 0x33BD195571B453FBULL, 0x5A920A218746B7C7ULL)},
+                    // Recollé par « Plateaus, commit 2d » (agent 46) : "default world horizon" with
+                    // the flag; the fronts and escarpments moved by their swells, the caprocks it
+                    // sees in stepped layers.
                     {"default world horizon", sums.horizon.value(),
-                     golden::pick("tablelands", 0x784F4CC234FCB46EULL, 0xD0CA96E6D0681CEEULL)}});
+                     golden::pick("tablelands", 0x784F4CC234FCB46EULL, 0x5031C4C70714DC25ULL)}});
 }
 
 void testSmallWorldWithWater() {

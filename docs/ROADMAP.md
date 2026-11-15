@@ -383,18 +383,28 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     sur ~15 % de la surface. La part des hautes terres à moins de 300 m de relief sur 10 km
     (`terrain_export_relief`) passe de 0,2 % à plusieurs % des hautes terres.
   - Plateaux, mesas, buttes et canyons (`generation/tableland_relief.hpp`) : un escarpement qui
-    suit le bord de la province, sinueux à toutes les échelles (le bord gauchi de ±31 km par des
-    octaves de 120, 40, 10 et 2,5 km, découpé à 3 km et 600 m : aucun rebord droit de plus de
-    2 km, à 1 km au moins de sa corde sur 20 km), ses buttes-témoins de 200 m à des mesas de
+    suit le bord de la province, sinueux à toutes les échelles. Le front de la province est
+    déplacé le long de sa normale par une houle (`tableland_front.hpp` : trois vagues de 150 km à
+    60°, 20 km chacune, phase tordue ; 8 km au moins d'écart à la corde sur 100 km) ; ses
+    gauchissements (octaves de 120, 40, 10 et 2,5 km) ne le courbent que d'environ un cinquième de
+    leur amplitude nominale (l'écart type d'un bruit). L'escarpement a des baies de 3 à 12 km et
+    une houle de baies (trois vagues de 30 km, 1,5 km chacune), découpées à 3 km et 600 m : aucun
+    rebord droit de plus de 2 km, à 1 km au moins de sa corde sur 20 km. Ses buttes-témoins de 200 m à des mesas de
     plusieurs km (deux bruits de 2,5 et 9 km, un recul de 6 à 25 km, des champs denses ou
     clairsemés), des canyons jusqu'à 1,3 km de profondeur, les plus profonds à l'escarpement et
     d'un quart moins au cœur (par la part de la province), leurs branches suspendues. Chaque
     contour a deux étages : une corniche (50 à 70 % de la hauteur des buttes et mesas, au plus
     300 m sur l'escarpement) sur un talus concave raviné. Les falaises
-    (`tableland_cliffs.hpp`) : contour rugueux de 20 à 200 m, fruit de 80 à 88° qui varie, 2 à 4
-    couches dures dans la corniche (1 à 3 vires à hauteurs variées), blocs et cônes d'éboulis au
-    pied, cannelures irrégulières ou aucune (les joints des plateaux, `wall_faces` au bit près pour
-    les montagnes). La coupe des canyons profonds est faite d'unités (`tableland_canyons.hpp`,
+    (`tableland_cliffs.hpp`) : contour rugueux de 40 à 200 m commun à toute la paroi, cannelures de
+    20 à 40 m propres à chaque couche dure (celles d'une couche entre les côtes de la suivante,
+    inclinées de 10° au plus, coupées à chaque borne par un banc de 1,5 m), fruit de 80 à 88° qui
+    varie, 2 à 4 couches dures dans la corniche, une vire de 10 à 24 m à la borne que tire un bruit
+    (deux où les tirages se croisent), murs à 89° entre elles ; leur couche la plus basse,
+    partielle, est une face du pied à sa borne. Les faces de roche des plateaux courent 6 m au
+    moins (`wall_faces`, les montagnes au bit près) : la tuile LOD 0 les dessine sur ~97 % des
+    parois des buttes, ancrées sur le relief réel aux bords de leur course ; la roche ne dépasse
+    jamais le sol de la forme (aucune lame). Blocs et cônes d'éboulis au pied, joints des faces
+    irréguliers ou aucun. La coupe des canyons profonds est faite d'unités (`tableland_canyons.hpp`,
     Grand Canyon, Canyonlands) : corniche de tête de 40 à 120 m, pentes en gradins, grande falaise
     de 130 à 200 m (Redwall), replat de 0,3 à 1,5 km (Tonto), gorge intérieure de largeur variable,
     fond plat. Leur axe méandre (décalage de 700 m lu au pied de chaque colonne : toute la coupe le

@@ -50,6 +50,20 @@ constexpr std::size_t kCoastalRims = 3;
 constexpr double kBendWindow = 20'000.0;
 constexpr double kTypicalBend = 1'000.0;
 constexpr double kLeastBend = 500.0;
+// The fronts at the scale of a hundred kilometers: the line of the share kFrontShare of the
+// provinces (the escarpment lies about it), followed kFrontStep meters at a time over kFrontLength
+// meters on each side of its start, from the front of the map of the canyons of commit 2c
+// (kFrontX, kFrontZ) and from the first two dry edges kFrontApart meters from it and from each
+// other whose front is followed over kFrontWindow meters at least; over kFrontWindow meters, each
+// strays kFrontBend meters off its chord at the least.
+constexpr double kFrontShare = 0.6;
+constexpr double kFrontStep = 200.0;
+constexpr double kFrontLength = 75'000.0;
+constexpr double kFrontX = 147'000.0;
+constexpr double kFrontZ = -15'101'414.0;
+constexpr double kFrontApart = 300'000.0;
+constexpr double kFrontWindow = 100'000.0;
+constexpr double kFrontBend = 8'000.0;
 // The fringe: the ground kFringeNear to kFringeFar meters in front of the rim, read every kFringeStep
 // meters, every kFringeEvery meters of it; its density over kFringeWindow meters of the rim, the
 // 90th percentile kLeastFringeSpread times the 10th at least (no less than kLeastFringe).
@@ -287,9 +301,53 @@ void testComb(const tablelands_fields::Sites& sites) {
 
 } // namespace
 
+// The line of the share kFrontShare of the provinces near (x, z); how far it strays from its chord
+// over kFrontWindow meters (the least and the median of its windows), false where it is not found
+// or shorter.
+bool frontBend(double x, double z, double& least, double& median, double& length) {
+    const auto share = [](double u, double v) {
+        return static_cast<double>(tablelands_fields::provinceAt(u, v).point.tableland) - kFrontShare;
+    };
+    Point start;
+    if (!zeroNear(share, {x, z}, 60'000.0, start)) {
+        return false;
+    }
+    const std::vector<Point> line = zeroLine(share, start, kFrontStep, kFrontLength, 50.0, 0.02, 500.0);
+    length = kFrontStep * static_cast<double>(line.size());
+    least = leastBend(line, kFrontStep, kFrontWindow, median);
+    std::printf("front near (%.0f, %.0f): %.0f km followed; over 100 km, %.1f km off its chord at the "
+                "least, %.1f km the median\n",
+                start.x, start.z, length / 1000.0, least / 1000.0, median / 1000.0);
+    return length >= kFrontWindow + kFrontStep;
+}
+
+void testFronts(const tablelands_fields::Sites& sites) {
+    std::vector<std::array<double, 2>> starts{{kFrontX, kFrontZ}};
+    int fronts = 0;
+    for (std::size_t e = 0; e <= sites.edges.size() && fronts < 3; ++e) {
+        const std::array<double, 2> s = e == 0 ? starts.front() : sites.edges[e - 1];
+        bool apart = true;
+        for (std::size_t k = 0; e > 0 && k < starts.size(); ++k) {
+            apart = apart && std::hypot(s[0] - starts[k][0], s[1] - starts[k][1]) >= kFrontApart;
+        }
+        double least = 0.0;
+        double median = 0.0;
+        double length = 0.0;
+        if (!apart || !frontBend(s[0], s[1], least, median, length)) {
+            TEST_CHECK(e > 0); // the front of the map of the canyons, followed far enough
+            continue;
+        }
+        starts.push_back(s);
+        ++fronts;
+        TEST_CHECK(least >= kFrontBend);
+    }
+    TEST_CHECK(fronts == 3);
+}
+
 int main() {
     const tablelands_fields::Sites sites = tablelands_fields::findSites();
     TEST_CHECK(!sites.edges.empty() && !sites.coastal.empty());
+    testFronts(sites);
     testStraightness(sites);
     testContinuity(sites);
     testComb(sites);

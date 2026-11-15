@@ -184,4 +184,46 @@ inline double cliffShareOf(const Butte& b) {
 }
 
 
+// Whether b stands as a butte walled by its cliff: on half of kWalledRays rays at least, a cliff
+// kWalledLeast meters high at least and half as high as the tallest, its rim out of the canyons (a
+// canyon through it, its walls those of the canyon, is not its cliff; nor a hill with one wall).
+inline constexpr int kWalledRays = 16;
+inline constexpr double kWalledLeast = 30.0;
+inline bool walled(const Butte& b) {
+    std::array<double, kWalledRays> falls{};
+    for (int k = 0; k < kWalledRays; ++k) {
+        const double a = 6.283185307179586 * (k + 0.5) / kWalledRays;
+        const CliffRay c = cliffAlong(b.x, b.z, std::cos(a), std::sin(a), 2.0);
+        const double rim = 2.0 * static_cast<double>(c.rim);
+        const bool canyon = fieldsAt(b.x + std::cos(a) * rim, b.z + std::sin(a) * rim).canyon > 0.0;
+        falls[static_cast<std::size_t>(k)] = c.found && !canyon ? c.h[c.rim] - c.h[c.end] : 0.0;
+    }
+    const double tallest = *std::max_element(falls.begin(), falls.end());
+    const auto held = std::count_if(falls.begin(), falls.end(), [&](double f) {
+        return f >= kWalledLeast && f >= 0.5 * tallest;
+    });
+    return held >= kWalledRays / 2;
+}
+
+// The buttes of the case of the tests of the cliffs: from the dry edges of sites in their order,
+// those from low to high meters high whose walls are steeper than 60 degrees and that stand walled
+// by their cliff, count of them at most (sought of the others looked at at most).
+inline std::vector<Butte> caseButtes(const tablelands_fields::Sites& sites, double low, double high,
+                                     std::size_t count, std::size_t sought) {
+    std::vector<Butte> out;
+    std::size_t seen = 0;
+    for (std::size_t e = 0; e < sites.edges.size() && out.size() < count && seen < sought; ++e) {
+        for (const Butte& b : buttesAround(sites.edges[e][0], sites.edges[e][1], 96)) {
+            if (out.size() < count && seen < sought && b.height >= low && b.height <= high &&
+                b.wall > kSteep60) {
+                ++seen;
+                if (walled(b)) {
+                    out.push_back(b);
+                }
+            }
+        }
+    }
+    return out;
+}
+
 } // namespace tablelands_buttes

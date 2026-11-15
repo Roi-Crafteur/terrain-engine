@@ -70,6 +70,7 @@ struct PendingFace {
     double level = 0.0; // the ground of its pass at the middle of the riser, over that at the column
     double rise = 0.0;  // the ground of its pass the riser climbs, meters
     double rate = 1.0;  // how fast the ground of its pass rises with the ground of the walls
+    double leastRun = 0.0; // its run, meters, at least (the faces of the plateaus: 0 elsewhere)
     double liftX = 0.0; // how fast the ground of its pass is lifted along x and z (the joints)
     double liftZ = 0.0;
     // The floor of its joint (by its weight, as its depth), the gradient of the distance to it, how
@@ -101,10 +102,26 @@ void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
 // The same with the passes given instead of those of the walls of the mountains (the walls of
 // other forms: the escarpments of the plateaus, agent 46), steps the mask the rock steps (pass 1)
 // stand in, as masks.strata for the walls of the mountains; their vertical joints joints as deep
-// (1 for the walls of the mountains: their bits).
+// (1 for the walls of the mountains: their bits); their runs leastRun meters at least, the columns
+// within half of it from a riser seeing its face (0 for the walls of the mountains: their bits).
 void addFaces(const mountain_walls::WallPasses& passes, const Grain& grain, double steps,
               const mountain_walls::Column& column, double x, double z, Site& site,
-              double joints = 1.0);
+              double joints = 1.0, double leastRun = 0.0);
+// A climb of the ground of the walls a caller lays itself (the plateaus, agent 46): from start to
+// end meters; its face from foot (the rock in front of it, start at most) to end; the top of the
+// walls at the column seeing it.
+struct Climb {
+    double start = 0.0;
+    double end = 0.0;
+    double foot = 0.0;
+    double top = 0.0;
+};
+// Adds to site the face of climb as a layer of pass index of passes, standing in a mask strength
+// (as the steps of addFaces), its joints as deep as joints of them, its run leastRun meters at
+// least.
+void addStepFace(const mountain_walls::WallPasses& passes, std::size_t index, const Grain& grain,
+                 double strength, const mountain_walls::Column& column, double x, double z,
+                 const Climb& climb, Site& site, double joints, double leastRun);
 
 // The top of the walls of passes over ground: each pass laid over the top the one before leaves
 // (as mountain_walls::rockTop lays its own).

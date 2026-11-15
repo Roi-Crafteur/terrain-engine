@@ -316,6 +316,7 @@ Cut cutOf(const Canyon& c) {
                     ? 1.0 - smooth(0.0, kFloorWall, a.into)
                     : 0.0;
     out.unit = unitOf(c.section, a.depth);
+    out.bench = c.section.drop[kGreat] > 0.0 ? c.section.drop[kCap] + c.section.drop[kUpper] : 0.0;
     out.cliff = a.segment == kCap || a.segment == kGreat;
     return out;
 }

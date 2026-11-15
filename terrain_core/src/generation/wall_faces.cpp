@@ -70,6 +70,9 @@ constexpr double kJointFold = 0.6;
 // least kLeastSlope meters per meter.
 constexpr double kDelta = 0.5;
 constexpr double kLeastSlope = 0.05;
+// The ground of a tread by a riser rises at kReachSlope at least for the faces of the plateaus
+// (addFaces with a least run).
+constexpr double kReachSlope = 60.0;
 // The faces of a pass fade out over kRiserFade meters toward the risers of the passes under it:
 // there the ground of the pass climbs at once, and the layers it crosses end short of the run the
 // slope of the walls gives them.
@@ -138,6 +141,35 @@ bool riserAt(const StrataPass& p, double ground, Riser& out) {
     return out.end > out.start && std::abs(out.level) <= 0.5 * (out.end - out.start);
 }
 
+// The risers a column of ground (lifted) sees: that of the layer holding it if it lies within it
+// (riserAt); otherwise, with reach, those of that layer and of the layer under it whose middle
+// lies within half of reach meters (on the treads by them: faces whose run is longer than their
+// climb, agent 46: which one stands there, the Heightfield tells as it places them). Their count.
+std::size_t risersNear(const StrataPass& p, double ground, double reach,
+                       std::array<Riser, 2>& out) {
+    if (riserAt(p, ground, out[0])) {
+        return 1;
+    }
+    if (!(reach > 0.0)) {
+        return 0;
+    }
+    const double recede = p.rim * std::max(p.slope, kLeastSlope) + p.offset;
+    const std::int64_t held = out[0].k;
+    std::size_t count = 0;
+    for (const std::int64_t k : {held, held - 1}) {
+        Riser r;
+        r.k = k;
+        r.layer = mountain_walls::layerFace(p, k);
+        r.start = r.layer.start * p.band + recede;
+        r.end = r.layer.end * p.band + recede;
+        r.level = 0.5 * (r.start + r.end) - ground;
+        if (r.end > r.start && std::abs(r.level) <= 0.5 * std::max(r.end - r.start, reach)) {
+            out[count++] = r;
+        }
+    }
+    return count;
+}
+
 // The share of a face of pass last the risers of the passes under it leave at a column: none on
 // a riser, all of it kRiserFade meters away (the soft layers have none), nor on their fractures,
 // where their nearest cell of joints changes (as the face of a pass fades across its own). The
@@ -198,12 +230,11 @@ double relative(const PassSite& s, double g) {
            topOver(*s.walls, passTop(*s.pass, s.lift, s.ground), s.index + 1);
 }
 
-// Adds the face of a riser of a pass the column lies within.
-void addRiserFace(const PassSite& s, const Riser& r, Site& site) {
+// Adds the face of a riser of a pass, its foot and its top foot and top meters over the top of the
+// walls at the column.
+void addFaceOf(const PassSite& s, const Riser& r, double foot, double top, Site& site) {
     const StrataPass& p = *s.pass;
     const std::int64_t k = r.k;
-    const double foot = relative(s, r.start);
-    const double top = relative(s, r.end);
     const double height = top - foot;
     // Across a fracture of the crystalline rock the joints of the next cell take over: the face
     // fades out as its cell gives way (kWholeCell of the top).
@@ -249,6 +280,26 @@ void addRiserFace(const PassSite& s, const Riser& r, Site& site) {
     out.jointWall = s.joint.wall;
 }
 
+// Adds the face of a riser of a pass the column lies within.
+void addRiserFace(const PassSite& s, const Riser& r, Site& site) {
+    addFaceOf(s, r, relative(s, r.start), relative(s, r.end), site);
+}
+
+// The overhangs, the shift of the grain and the joint of the faces at (x, z), the joints as deep
+// as joints of them.
+struct Draws {
+    double noise = 0.0;
+    double shift = 0.0;
+    Joint joint;
+};
+Draws drawsAt(const Grain& grain, double x, double z, double joints) {
+    Draws out{static_cast<double>(grain.overhangs.fbm2D(x, z)),
+              kShiftRange * static_cast<double>(grain.shift.fbm2D(x, z)), jointAt(grain, x, z)};
+    out.joint.depth *= joints;
+    out.joint.floor *= joints;
+    return out;
+}
+
 } // namespace
 
 Grain makeGrain(std::uint64_t seed, const WorldSize& world) {
@@ -281,8 +332,8 @@ void addFaces(const mountain_walls::Noises& noises, const Grain& grain,
 }
 
 void addFaces(const mountain_walls::WallPasses& w, const Grain& grain, double steps,
-              const mountain_walls::Column& column, double x, double z, Site& site,
-              double joints) {
+              const mountain_walls::Column& column, double x, double z, Site& site, double joints,
+              double leastRun) {
     bool noisy = false;
     double noise = 0.0;
     double shift = 0.0;
@@ -290,12 +341,23 @@ void addFaces(const mountain_walls::WallPasses& w, const Grain& grain, double st
     for (const std::size_t i : kFacePasses) {
         const StrataPass& p = w.passes[i];
         const double strength = i == 1 ? steps : p.weight;
-        Riser riser;
+        std::array<Riser, 2> risers;
         if (!(p.weight > 0.0) || !(strength > kFaintLow)) {
             continue;
         }
         const double ground = groundUnder(w, column.ground, i);
-        if (!riserAt(p, ground + w.lift[i], riser)) {
+        // A run of leastRun meters at least: the treads within half of it from the middle of a
+        // riser see its face, their ground read as rising at kReachSlope at least (as steep as a
+        // wall: the Heightfield drops the faces it places farther, placeFaces).
+        double reach = 0.0;
+        if (leastRun > 0.0) {
+            const double rate = rateUnder(w, column.ground, i);
+            reach = leastRun * std::max(dmath::hypot(rate * column.gradX + w.liftX[i],
+                                                     rate * column.gradZ + w.liftZ[i]),
+                                        kReachSlope);
+        }
+        const std::size_t count = risersNear(p, ground + w.lift[i], reach, risers);
+        if (count == 0) {
             continue;
         }
         const double clear = clearOfRisers(w, column, i);
@@ -315,7 +377,38 @@ void addFaces(const mountain_walls::WallPasses& w, const Grain& grain, double st
                             w.lift[i], ground,     rateUnder(w, column.ground, i),
                             w.liftX[i], w.liftZ[i], noise,
                             shift,     joint};
-        addRiserFace(pass, riser, site);
+        for (std::size_t r = 0; r < count; ++r) {
+            const std::size_t before = site.count;
+            addRiserFace(pass, risers[r], site);
+            if (site.count > before) {
+                site.pending[before].leastRun = leastRun;
+            }
+        }
+    }
+}
+
+void addStepFace(const mountain_walls::WallPasses& w, std::size_t index, const Grain& grain,
+                 double strength, const mountain_walls::Column& column, double x, double z,
+                 const Climb& climb, Site& site, double joints, double leastRun) {
+    const StrataPass& p = w.passes[index];
+    if (!(strength > kFaintLow) || !(climb.end > climb.start)) {
+        return;
+    }
+    Riser riser;
+    riser.k = mountain_walls::layerOf(p, column.ground + w.lift[index]);
+    riser.layer = mountain_walls::layerFace(p, riser.k);
+    riser.start = climb.start;
+    riser.end = climb.end;
+    riser.level = 0.5 * (climb.start + climb.end) - column.ground;
+    const Draws draws = drawsAt(grain, x, z, joints);
+    const PassSite pass{&w,          index,       &p,          strength,     w.share[index],
+                        1.0,         0.0,         column.ground, 1.0,        0.0,
+                        0.0,         draws.noise, draws.shift, draws.joint};
+    const std::size_t before = site.count;
+    addFaceOf(pass, riser, std::min(climb.foot, climb.start) - climb.top, climb.end - climb.top,
+              site);
+    if (site.count > before) {
+        site.pending[before].leastRun = leastRun;
     }
 }
 
@@ -329,7 +422,7 @@ RockFace placeFace(const PendingFace& pending, double gradX, double gradZ) {
     const double slope = std::max(dmath::hypot(riseX, riseZ), kLeastSlope);
     RockFace face = pending.face;
     face.distance = static_cast<float>(pending.level / slope);
-    face.run = static_cast<float>(pending.rise / slope);
+    face.run = static_cast<float>(std::max(pending.rise / slope, pending.leastRun));
     // Downhill; straight along x where the ground is flat (the run is then long and the face
     // faint anyway).
     const double length = dmath::hypot(riseX, riseZ);

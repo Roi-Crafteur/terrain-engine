@@ -14,6 +14,7 @@
 #include "terrain/generation/noise.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
@@ -27,6 +28,8 @@ namespace {
 constexpr double kProbe = 1.0;
 // A wall of a slot shapes a column whose ground lies within kWallGround meters of its heights.
 constexpr float kWallGround = 1.0f;
+// The faces of the plateaus run kRunsMost times their least run at most (wall_faces::PendingFace).
+constexpr double kRunsMost = 5.0;
 
 // The points of a batch kProbe meters along x and along z from each point, when the batch holds
 // them where a lattice of rows of a constant step would (the rows of a tile): the next point, and
@@ -202,7 +205,29 @@ void Heightfield::placeFaces(double x, double z, Memos& memos, const wall_faces:
         if (!(face.run >= leastRun)) {
             continue;
         }
-        anchorFace(face, relief + face.foot, std::max(relief + face.foot, relief + face.top));
+        float foot = relief + face.foot;
+        float top = relief + face.top;
+        if (site.pending[i].leastRun > 0.0) {
+            // A face of the plateaus may run farther than its climb (agent 46): its column within
+            // its run (kRunsMost times its least run at most: a longer climb is a slope, not a
+            // wall), it is anchored within the relief at the two edges of that run, never on a
+            // climb it assumes beyond its column nor on another wall behind it.
+            if (std::abs(static_cast<double>(face.distance)) > 0.5 * static_cast<double>(face.run) ||
+                static_cast<double>(face.run) > kRunsMost * site.pending[i].leastRun) {
+                continue;
+            }
+            const double front = 0.5 * static_cast<double>(face.run) - face.distance;
+            const double back = -0.5 * static_cast<double>(face.run) - face.distance;
+            foot = std::max(foot, reliefWith(noise::wrapCanonical(x + front * face.airX, world_.x),
+                                             noise::wrapCanonical(z + front * face.airZ, world_.z),
+                                             &memos)
+                                      .height);
+            top = std::min(top, reliefWith(noise::wrapCanonical(x + back * face.airX, world_.x),
+                                           noise::wrapCanonical(z + back * face.airZ, world_.z),
+                                           &memos)
+                                    .height);
+        }
+        anchorFace(face, foot, std::max(foot, top));
         if (face.weight > 0.0f) {
             rock.add(face);
         }

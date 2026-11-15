@@ -99,10 +99,11 @@ inline std::vector<Part> heightfieldParts() {
         // The coasts (agent 33) change 9 of its 1,024 points, all in their band (0x96F897D9B46A5FE7
         // without them).
         // The high surfaces of the plateaus (agent 46, the flag "tablelands") change it too.
-        // Recollé par « Plateaus, commit 2c » (agent 46) : "heights 1000 km" with the flag; the fronts
-        // bent at 120 km, the rough cliffs, the temples and canyons redrawn.
+        // Recollé par « Plateaus, commit 2d » (agent 46) : "heights 1000 km" with the flag; the fronts
+        // moved by their swell, the escarpments by theirs, the caprocks in stepped layers (ledges,
+        // benches, the rock of their lowest layer, no blade).
         {"heights 1000 km", heightsChecksum(field, -16e6, -16e6, 1e6, 32),
-         pick("tablelands", 0xA21476850ABE032DULL, 0xAED0C2566EECBEB4ULL)},
+         pick("tablelands", 0xA21476850ABE032DULL, 0x058C9C9E8BDE628AULL)},
         {"planet 1 km", heightsChecksum(planet, -32000.0, -32000.0, 1000.0, 48),
          0x04E0F4A687118948ULL},
         {"planet 1000 km", heightsChecksum(planet, -16e6, -16e6, 1e6, 32), 0x74896EA4FC32195DULL},

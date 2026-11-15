@@ -6,8 +6,10 @@
 //     the rims (roughAt);
 //   - its batter, 80 to 88 degrees by a noise (steepAt): the slope of the ground its hard layers
 //     are laid over, so that their faces, vertical each, step back with the height;
-//   - 2 to 4 hard layers in its height (layersAt), their count drifting from butte to butte: 1 to
-//     3 ledges or setbacks, at heights of their own;
+//   - 2 to 4 hard layers in its height (layersAt), their count drifting from butte to butte: walls
+//     near vertical between ledges of 10 to 30 m at their bounds (ledgesAt), as many as its batter
+//     holds, at heights of their own; each layer its own rough outline (its shift along the outline,
+//     a tilt of 10 degrees at most): the flutes of a layer end at its ledges (cliffStoreysAt);
 //   - scree on the talus under it (screeAt): blocks of a jittered lattice of about 30 m, opened by
 //     a noise and drawn in size (no row of them), and cones of scree at rest (kScreeSlope) from the
 //     foot of the cliff under its re-entrants;
@@ -21,6 +23,7 @@
 #include "terrain/generation/noise_octaves.hpp"
 #include "terrain/world_size.hpp"
 
+#include <array>
 #include <cstdint>
 
 namespace terrain::tableland_relief {
@@ -32,6 +35,8 @@ struct CliffNoises {
     noise::FbmOctaves layers; // how many hard layers a caprock holds
     noise::FbmOctaves blocks; // where the blocks of scree lie
     noise::FbmOctaves joints; // where the joints of the faces open
+    noise::FbmOctaves tilt;   // how the flutes of the layers lean
+    noise::FbmOctaves ledges; // which bounds of the layers hold a ledge
     std::uint64_t blockSeed = 0;
     std::int64_t cellsX = 1; // of the lattice of the blocks over the world
     std::int64_t cellsZ = 1;
@@ -51,13 +56,47 @@ struct CliffNoises {
 // stand at fractions of its height that change with it.
 [[nodiscard]] double layersAt(const CliffNoises& n, double x, double z);
 
+// The layer of the stack of the forced hard layers whose lower bound tops a caprock
+// (tableland_strata.cpp: unitPass, unitBench).
+inline constexpr std::int64_t kTopLayerOfUnit = 8;
+
+// The ledges of a caprock cliff meters high whose batter is steep (steepAt) at the canonical (x, z),
+// its hard layers drawn from the stack units: at some of the bounds of its layers (drawn: meters
+// under its top, from the top down, and the layer of the stack under each), each as wide as it is
+// drawn (10 to 30 m) and as many (3 at most) as the run of its batter holds besides the walls between
+// them; the slope of those walls (steeper as the ledges take more of the run).
+inline constexpr std::size_t kLedgesMost = 3;
+struct Ledges {
+    std::size_t count = 0;
+    std::array<double, kLedgesMost> drop{};
+    std::array<double, kLedgesMost> width{};
+    std::array<std::int64_t, kLedgesMost> layer{};
+    // How far each bound stands as a step of its own (0 near the foot: the layer under it keeps the
+    // rough outline of the layer over it there, its ledge none).
+    std::array<double, kLedgesMost> held{};
+    double wall = 1.0;
+};
+[[nodiscard]] Ledges ledgesAt(const CliffNoises& n, std::uint64_t units, double x, double z,
+                              double cliff, double steep);
+
+// The storeys of a cliff of ledges ledges, cliff meters high, then its talus of mean slope talus
+// down to height meters under its top, at the canonical (x, z) whose distance to the outline of the
+// cliff without its rough is outline (positive within, its unit gradient): each layer of the cliff
+// with its own rough outline (roughAt shifted along the outline by its own amount and leaning by
+// its tilt), blended across each ledge.
+[[nodiscard]] Storeys cliffStoreysAt(const CliffNoises& n, std::uint64_t units, double x, double z,
+                                     const Field& outline, double height, double cliff,
+                                     double talus, const Ledges& ledges);
+
 // The slope of the scree at rest (33 degrees), meters per meter.
 inline constexpr double kScreeSlope = 0.65;
 
 // The scree at the canonical (x, z) of a talus, foot meters out from the foot of a cliff cliff meters
-// high, under an outline jutting out rough meters (a re-entrant: negative): the meters its blocks
-// raise the talus, and how much of a cone of scree lies there, in [0, 1] (its surface falls
-// kScreeSlope from the foot of the cliff: the talus rises to it where it lies lower).
+// high (its foot without the rough outline: negative within), under an outline jutting out rough
+// meters (a re-entrant: negative): the meters its blocks raise the talus (coming in over its first
+// kBlockIn meters), and how much of a cone of scree lies there, in [0, 1] (its surface falls
+// kScreeSlope from the foot of the cliff, and rises into the re-entrants: the talus rises to it
+// where it lies lower).
 struct Scree {
     double blocks = 0.0;
     double cone = 0.0;
