@@ -5,7 +5,7 @@
 // bits whatever the number of threads.
 
 #include "geography_stages.hpp"
-#include "settlement/geology_plates.hpp"
+#include "geography_plates.hpp"
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_grid.hpp"
@@ -40,7 +40,7 @@ struct World {
 
     World() {
         const terrain::HeightfieldParams params;
-        geo = terrain::Geography::shared(st::geographySeed(kSeed), params.geography, world);
+        geo = terrain::Geography::shared(terrain::geographySeed(kSeed), params.geography, world);
         std::vector<std::uint32_t> cells;
         for (int j = 0; j < grid.nz; ++j) {
             for (int i = 0; i < grid.nx; ++i) {
@@ -61,7 +61,7 @@ void testPlatesGuard(const World& w) {
     const terrain::geography::Grid grid =
         terrain::geography::makeGrid(geo.world(), geo.params().cellSize);
     const terrain::geography::Tectonics t = terrain::geography::buildTectonics(
-        st::geographySeed(kSeed), geo.params(), geo.world(), grid, st::crustOf(geo), 0);
+        terrain::geographySeed(kSeed), geo.params(), geo.world(), grid, terrain::crustOf(geo), 0);
     std::size_t differ = 0;
     for (int j = 0; j < grid.nz; ++j) {
         for (int i = 0; i < grid.nx; ++i) {
@@ -78,7 +78,7 @@ void testPlatesGuard(const World& w) {
 
 // Where the belts of the geography are strong, the nearest boundary is a collision.
 void testBeltsOnCollisions(const World& w) {
-    const st::GeographyPlates plates(kSeed, *w.geo, 0);
+    const terrain::GeographyPlates plates(kSeed, *w.geo, 0);
     int strong = 0;
     int collisions = 0;
     for (int j = 0; j < plates.grid().nz; ++j) {
@@ -87,7 +87,7 @@ void testBeltsOnCollisions(const World& w) {
                 continue;
             }
             ++strong;
-            const st::GeographyPlates::Near n = plates.nearAtNode(i, j);
+            const terrain::GeographyPlates::Near n = plates.nearAtNode(i, j);
             collisions += n.boundary >= 0 &&
                           plates.boundary(n.boundary).kind == terrain::BoundaryKind::Collision;
         }
@@ -121,7 +121,7 @@ void testGeology(const World& w) {
     int large = 0;
     int arcs = 0;
     int arcsOverriding = 0;
-    const st::GeographyPlates plates(kSeed, *w.geo, 0);
+    const terrain::GeographyPlates plates(kSeed, *w.geo, 0);
     for (const st::Volcano& v : g.volcanoes) {
         active += v.active;
         large += v.large;
@@ -129,7 +129,7 @@ void testGeology(const World& w) {
             continue;
         }
         ++arcs;
-        const st::GeographyPlates::Near n = plates.nearAt(v.x, v.z);
+        const terrain::GeographyPlates::Near n = plates.nearAt(v.x, v.z);
         if (n.boundary >= 0 && plates.boundary(n.boundary).kind == terrain::BoundaryKind::Collision) {
             const int over = plates.boundary(n.boundary).overriding;
             arcsOverriding += (over == n.b ? n.towardB : -n.towardB) > 0.0;

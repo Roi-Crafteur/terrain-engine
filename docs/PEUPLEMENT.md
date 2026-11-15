@@ -59,9 +59,14 @@ Règles qui s'appliquent partout :
    ni avantager les peuples des montagnes.
 
    La phase 2 doit reprendre exactement les positions de la phase 1, avec la même seed, pour
-   que le Mana, les peuples et les royaumes déjà placés restent cohérents. Le moteur n'a encore
-   aucun volcan ni cratère géologique : les « cratères » du code sont ceux que creusent les
-   joueurs.
+   que le Mana, les peuples et les royaumes déjà placés restent cohérents. C'est fait (agent 45) :
+   les positions des volcans sont tirées par le core (`generation/volcano_placement.hpp`), avec
+   ses constantes (les nombres du tableau ci-dessus, arcs à 120-320 km, 15 % de rifts et de
+   dorsales, 5 % de points chauds, 25 km d'écart), et non plus lues dans `world.json` ; le relief
+   et le peuplement lisent la même liste, et `volcano_positions_test` garde 100 positions au bit
+   près, celles d'avant le déplacement. Les failles, la portée des volcans sur les cartes
+   (`volcanoInfluenceKm`) et les cratères arcaniques restent des données. Les cratères du code
+   sont ceux que creusent les joueurs.
 3. **Réseau magique** : lignes telluriques, nœuds, rifts, sanctuaires, zones mortes, corruption.
 4. **Énergies ambiantes** : Prana, Aura, Mana, puis magicInstability et dangerMagique.
 5. **Cartes d'analyse** : slope (rugosité dans la case de 8 km), waterDistance, arableLand,
@@ -1172,7 +1177,9 @@ Rien n'est encore branché dans Unreal.
 
 ### Où sont les choses
 
-- Données : `data/settlement/` — `world.json` (tous les poids et toutes les règles),
+- Données : `data/settlement/` — `world.json` (tous les poids et toutes les règles, sauf les
+  positions des volcans, constantes du core ; les sept clés qui les réglaient, retirées, sont
+  encore acceptées et ignorées dans les copies des mondes sauvegardés),
   `resources/*.json` (6 ressources : bois, cristaux de mana, métaux communs, métaux précieux,
   pierre, sel), `peoples/*.json` (les 13 peuples de la section 5). Lecture stricte : une valeur
   hors plage, un champ inconnu ou manquant, une relation vers un peuple inconnu est refusé avec

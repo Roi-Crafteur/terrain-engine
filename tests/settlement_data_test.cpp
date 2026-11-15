@@ -4,6 +4,7 @@
 // it, the reason).
 
 #include "terrain/generation/settlement/settlement_data.hpp"
+#include "terrain/json/json.hpp"
 
 #include "test_assert.hpp"
 
@@ -209,9 +210,50 @@ void testNewResourceFile() {
 
 } // namespace
 
+// The seven keys of the placement of the volcanoes, which the core decides since agent 45
+// (generation/volcano_placement.hpp): the copies of world.json the worlds saved before still hold
+// them. Read back (as a saved copy is, readSettlementConfig) they are ignored, whatever their
+// values; any other unknown key of the geology is refused.
+constexpr std::string_view kRetiredGeology =
+    "\"volcanoes\": { \"min\": 3000, \"max\": 6000 }, "
+    "\"activeVolcanoes\": { \"min\": 300, \"max\": 800 }, "
+    "\"largeVolcanoes\": { \"min\": 50, \"max\": 150 }, "
+    "\"arcDistanceKm\": { \"min\": 120, \"max\": 320 }, \"riftShare\": 0.15, "
+    "\"hotspotShare\": 0.05, \"volcanoSpacingKm\": 25, \"volcanoInfluenceKm\": 60,";
+
+void testRetiredGeologyKeys() {
+    const fs::path world = freshCopy() / "world.json";
+    edit(world, "\"volcanoInfluenceKm\": 60,", kRetiredGeology);
+    const std::string old = readText(world);
+    const st::SettlementConfig copy =
+        st::readSettlementConfig(terrain::json::parse(old, "settlement.json"), "settlement.json");
+    const st::SettlementConfig now = st::loadSettlementData(kData).config;
+    const st::GeologyRule& a = copy.geology;
+    const st::GeologyRule& b = now.geology;
+    const bool same = a.faultWidthKm == b.faultWidthKm &&
+                      a.majorFaultWidthKm == b.majorFaultWidthKm &&
+                      a.volcanoInfluenceKm == b.volcanoInfluenceKm &&
+                      a.arcaneCraters.min == b.arcaneCraters.min &&
+                      a.arcaneCraters.max == b.arcaneCraters.max &&
+                      a.majorCraterRadiusKm.max == b.majorCraterRadiusKm.max;
+    std::printf("an old copy with the seven keys of the volcanoes: read, the geology %s\n",
+                same ? "the same" : "DIFFERENT");
+    TEST_CHECK(same);
+    // Ignored whatever their values.
+    freshCopy();
+    edit(world, "\"volcanoInfluenceKm\": 60,",
+         "\"riftShare\": 7, \"volcanoes\": \"many\", \"volcanoInfluenceKm\": 60,");
+    TEST_CHECK(st::loadSettlementData(kScratch).config.geology.volcanoInfluenceKm == 60.0);
+    freshCopy();
+    edit(world, "\"volcanoInfluenceKm\": 60,",
+         "\"volcanoCount\": 5, \"volcanoInfluenceKm\": 60,");
+    TEST_CHECK(refused({"world.json", "geology.volcanoCount", "unknown key"}));
+}
+
 int main() {
     testRepositoryData();
     testInvalidWorld();
+    testRetiredGeologyKeys();
     testInvalidKingdoms();
     testInvalidResources();
     testNewResourceFile();

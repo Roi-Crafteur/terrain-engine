@@ -40,26 +40,16 @@ MagicRule readMagic(const Fields& f) {
 }
 
 GeologyRule readGeology(const Fields& f) {
-    f.only({"faultWidthKm", "majorFaultWidthKm", "volcanoes", "activeVolcanoes",
-            "largeVolcanoes", "arcDistanceKm", "riftShare", "hotspotShare", "volcanoSpacingKm",
-            "volcanoInfluenceKm", "arcaneCraters", "majorCraters", "craterRadiusKm",
-            "majorCraterRadiusKm"});
+    // Retired: the placement of the volcanoes, which the core now decides (agent 45,
+    // generation/volcano_placement.hpp). Accepted in the copies of the data the worlds saved
+    // before, and ignored, whatever their values; any other unknown key is refused.
+    f.only({"faultWidthKm", "majorFaultWidthKm", "volcanoInfluenceKm", "arcaneCraters",
+            "majorCraters", "craterRadiusKm", "majorCraterRadiusKm"},
+           {"volcanoes", "activeVolcanoes", "largeVolcanoes", "arcDistanceKm", "riftShare",
+            "hotspotShare", "volcanoSpacingKm"});
     GeologyRule g;
     g.faultWidthKm = f.numberIn("faultWidthKm", 1.0, 1000.0);
     g.majorFaultWidthKm = f.numberIn("majorFaultWidthKm", 1.0, 1000.0);
-    g.volcanoes = readCountRange(f, "volcanoes", 0, kMaxCount);
-    g.activeVolcanoes = readCountRange(f, "activeVolcanoes", 0, kMaxCount);
-    g.largeVolcanoes = readCountRange(f, "largeVolcanoes", 0, kMaxCount);
-    if (g.activeVolcanoes.max > g.volcanoes.min || g.largeVolcanoes.max > g.volcanoes.min) {
-        f.fail("the active and the large volcanoes must be at most the volcanoes");
-    }
-    g.arcDistanceKm = readRealRange(f, "arcDistanceKm", 0.0, 2000.0);
-    g.riftShare = f.numberIn("riftShare", 0.0, 1.0);
-    g.hotspotShare = f.numberIn("hotspotShare", 0.0, 1.0);
-    if (g.riftShare + g.hotspotShare > 1.0) {
-        f.fail("riftShare + hotspotShare above 1");
-    }
-    g.volcanoSpacingKm = f.numberIn("volcanoSpacingKm", 0.0, 5000.0);
     g.volcanoInfluenceKm = f.numberIn("volcanoInfluenceKm", 1.0, 5000.0);
     g.arcaneCraters = readCountRange(f, "arcaneCraters", 0, kMaxCount);
     g.majorCraters = readCountRange(f, "majorCraters", 0, kMaxCount);

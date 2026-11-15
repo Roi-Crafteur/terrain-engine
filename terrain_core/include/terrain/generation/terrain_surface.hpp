@@ -39,6 +39,10 @@ struct SurfaceSite {
     // The kind of the floor of the seas of dunes between their dunes (HeightSample::ergFloor): 0
     // sand, 1 gravel, 2 crust.
     float ergFloor = 0.0f;
+    // The ground the volcanoes left there and how bare it lies, [0, 1] (HeightSample::
+    // volcanicGround, volcanicShare): None and 0 outside them.
+    VolcanicGround volcanicGround = VolcanicGround::None;
+    float volcanicShare = 0.0f;
     // Bare rock, even under the water: the rocks of the reefs of the coasts (HeightSample::rock)
     // and, in the tiles and the horizon, the sea floor at least as steep as the rock on land at
     // the foot of the walls plunging into the sea (barePlunge). Set by them, false elsewhere.

@@ -10,6 +10,7 @@
 #include "bit_exact_support.hpp"
 #include "planet_golden_support.hpp"
 #include "test_assert.hpp"
+#include "volcano_zone_support.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -238,9 +239,11 @@ void testSurface() {
 }
 
 // The sea of the samples is that of the geography: below the sea level, its coast signal
-// negative.
+// negative. In the zone of the volcanoes (agent 45), the sea only below the sea level where the
+// geography puts it: their islands are land.
 void testSeaOfTheGeography() {
     int sea = 0;
+    int volcanic = 0;
     bool consistent = true;
     for (const bit_exact::Point& p : bit_exact::randomPoints(20'000, 3e7)) {
         const HeightSample s = field().sampleAt(p.x, p.z);
@@ -248,11 +251,15 @@ void testSeaOfTheGeography() {
             terrain::wrapCoordinate(p.x, terrain::WorldSize{}.x),
             terrain::wrapCoordinate(p.z, terrain::WorldSize{}.z));
         const bool atSea = s.water == WaterKind::Ocean;
-        consistent = consistent && atSea == (g.coast < 0.0) &&
+        const bool zoned = volcano_zone::inZone(field(), p.x, p.z);
+        volcanic += zoned ? 1 : 0;
+        consistent = consistent && (zoned ? !atSea || g.coast < 0.0 : atSea == (g.coast < 0.0)) &&
                      (!atSea || (s.height < 0.0f && s.waterLevel == terrain::kSeaLevel)) &&
                      (atSea || s.waterLevel == s.height);
         sea += atSea ? 1 : 0;
     }
+    std::printf("the sea of the geography: %d points of 20,000 in the zone of the volcanoes\n",
+                volcanic);
     TEST_CHECK(consistent);
     TEST_CHECK(sea > 20'000 * 55 / 100 && sea < 20'000 * 70 / 100);
 }

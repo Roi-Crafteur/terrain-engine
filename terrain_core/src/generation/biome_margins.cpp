@@ -64,6 +64,8 @@ struct Column {
     float erg;   // SurfaceSite::erg
     float ergFloor; // SurfaceSite::ergFloor
     float coast;    // coastDistance: meters to the coast, positive inland
+    float volcanicShare;           // SurfaceSite::volcanicShare
+    VolcanicGround volcanicGround; // SurfaceSite::volcanicGround
 
     [[nodiscard]] float widthOf(float threshold) const {
         return std::max(relativeWidth * std::abs(threshold), kMinWidth);
@@ -254,9 +256,11 @@ void desertMargins(const Column& c, const MaterialParams& p, Biome biome, float 
 }
 
 // The materials of the biomes whose ground is mostly mineral (mineralMaterial of
-// surface_material.cpp) and of the marsh; false for the other biomes.
+// surface_material.cpp) and of the marsh, but the snow out of the ground of the volcanoes (the
+// margin of its failure: notVolcanic); false for the other biomes.
 bool mineralMargins(const Column& c, const MaterialParams& p, Biome biome, float base,
-                    MaterialMargins& m) {
+                    float notVolcanic, MaterialMargins& m) {
+    const float ground = std::max(base, notVolcanic); // what is not snow
     switch (biome) {
     case Biome::Snow:
     case Biome::IceDesert:
@@ -267,26 +271,26 @@ bool mineralMargins(const Column& c, const MaterialParams& p, Biome biome, float
         const Test snow = c.temperatureAtMost(p.mountainSnowTemperature);
         const Test scree = c.steepestAtLeast(p.screeSlope);
         offerMaterial(m, SurfaceMaterial::Snow, std::max(base, snow.holds));
-        offerMaterial(m, SurfaceMaterial::Pebbles, std::max({base, snow.fails, scree.holds}));
-        offerMaterial(m, SurfaceMaterial::Rock, std::max({base, snow.fails, scree.fails}));
+        offerMaterial(m, SurfaceMaterial::Pebbles, std::max({ground, snow.fails, scree.holds}));
+        offerMaterial(m, SurfaceMaterial::Rock, std::max({ground, snow.fails, scree.fails}));
         return true;
     }
     case Biome::Beach: {
         const Test cold = c.temperatureAtMost(p.pebbleBeachTemperature);
-        offerMaterial(m, SurfaceMaterial::Pebbles, std::max(base, cold.holds));
-        offerMaterial(m, SurfaceMaterial::Sand, std::max(base, cold.fails));
+        offerMaterial(m, SurfaceMaterial::Pebbles, std::max(ground, cold.holds));
+        offerMaterial(m, SurfaceMaterial::Sand, std::max(ground, cold.fails));
         return true;
     }
     case Biome::Polar:
-        offerMaterial(m, SurfaceMaterial::Gravel, base);
+        offerMaterial(m, SurfaceMaterial::Gravel, ground);
         return true;
     case Biome::RockyDesert:
     case Biome::SandDesert:
     case Biome::ColdDesert:
-        desertMargins(c, p, biome, base, m);
+        desertMargins(c, p, biome, ground, m);
         return true;
     case Biome::Marsh:
-        offerMaterial(m, SurfaceMaterial::Mud, base);
+        offerMaterial(m, SurfaceMaterial::Mud, ground);
         return true;
     default:
         return false;
@@ -338,16 +342,29 @@ dryMaterialMargins(const Column& c, const MaterialParams& p,
     const Test erg = ergFloorMargins(c, p, floors, m);
     const float beyond = std::max(floors, erg.fails);
     const Test bank = atMost(c.riverDistance, p.riverBankWidth, c.widthOf(p.riverBankWidth));
+    // The ground of the volcanoes, out of the snow.
+    const Test volcanic = atLeast(c.volcanicShare, p.volcanicShare, p.volcanicWidth);
     for (int b = 0; b < kBiomeCount; ++b) {
         const auto biome = static_cast<Biome>(b);
         const float base = std::max(beyond, biomes[static_cast<std::size_t>(b)]);
-        if (biome == Biome::Ocean || base == kRuledOut || mineralMargins(c, p, biome, base, m)) {
+        if (biome == Biome::Ocean || base == kRuledOut) {
             continue;
         }
+        // Not a margin out of the volcanoes: there, every region keeps its bits.
+        if (biome != Biome::Snow && biome != Biome::IceDesert && c.volcanicShare > 0.0f) {
+            const bool mountain = biome == Biome::Mountain || biome == Biome::HighMountain;
+            const float snow =
+                mountain ? c.temperatureAtMost(p.mountainSnowTemperature).fails : 0.0f;
+            offer(volcanicMaterial(c.volcanicGround), std::max({base, snow, volcanic.holds}));
+        }
+        if (mineralMargins(c, p, biome, base, volcanic.fails, m)) {
+            continue;
+        }
+        const float soil = std::max(base, volcanic.fails);
         const Test dirt = biome == Biome::Tundra ? known(true) : c.steepestAtLeast(p.dirtSlope);
-        offer(SurfaceMaterial::Pebbles, std::max(base, bank.holds));
-        offer(SurfaceMaterial::Dirt, std::max({base, bank.fails, dirt.holds}));
-        offer(SurfaceMaterial::Grass, std::max({base, bank.fails, dirt.fails}));
+        offer(SurfaceMaterial::Pebbles, std::max(soil, bank.holds));
+        offer(SurfaceMaterial::Dirt, std::max({soil, bank.fails, dirt.holds}));
+        offer(SurfaceMaterial::Grass, std::max({soil, bank.fails, dirt.fails}));
     }
     return m;
 }
@@ -381,7 +398,8 @@ Margins regionMargins(const ClimateSample& climate, const SurfaceSite& site,
                         site.rockAboveAir,       params.temperatureWidth,
                         params.humidityWidth,    params.relativeWidth,
                         site.dunes,              site.erg,
-                        site.ergFloor,           coastDistance(site)};
+                        site.ergFloor,           coastDistance(site),
+                        site.volcanicShare,      site.volcanicGround};
     margins.biomes = landBiomeMargins(column, biomes);
     if (site.dry()) {
         margins.materials = dryMaterialMargins(column, materials, margins.biomes);

@@ -15,9 +15,9 @@ class Geography;
 
 // The geology in data, phase 1 (docs/PEUPLEMENT.md, section 1): the faults along the boundaries
 // of the existing tectonic plates, the volcanoes and the arcane craters, as data only (positions,
-// kinds, intensities). The relief is never changed: they feed the Mana, the resources and the
-// danger. Phase 2 (a volcanic agent changing the world) will take the same positions back from
-// the same seed.
+// kinds, intensities): they feed the Mana, the resources and the danger. The volcanoes are those
+// of the core (agent 45, generation/volcano_placement.hpp): drawn from the seed with its
+// constants, the same positions the relief shapes, never read from data/settlement/world.json.
 namespace terrain::settlement {
 
 enum class VolcanoKind : std::uint8_t {

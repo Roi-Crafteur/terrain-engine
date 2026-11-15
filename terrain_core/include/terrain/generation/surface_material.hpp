@@ -74,11 +74,21 @@ struct MaterialParams {
     // rocky and cold deserts a hamada (stone) from hamadaAltitude meters up, a reg (gravel) below.
     float desertGrassReach = 150.0f;
     float hamadaAltitude = 450.0f;
+    // The ground of the volcanoes (agent 45, SurfaceSite::volcanicGround) where it lies at least
+    // volcanicShare bare (its band volcanicWidth wide), but under the snow (the snow and the ice
+    // desert, the snow of the mountains and high mountains): its material (volcanicMaterial),
+    // never grass.
+    float volcanicShare = 0.5f;
+    float volcanicWidth = 0.1f;
 };
 
 // The material of the floor of an erg of that kind (SurfaceSite::ergFloor): sand under 0.5,
 // gravel up to 1.5, crust above.
 [[nodiscard]] SurfaceMaterial ergFloorMaterial(float kind);
+
+// The material of a volcanic ground (until its own colors, agent 49): basalt and cooled lava rock,
+// scoria pebbles, ash dirt, geothermal ground mud.
+[[nodiscard]] SurfaceMaterial volcanicMaterial(VolcanicGround ground);
 
 // Steepest local slope of a column: the larger of |grad H| and the steepness of the site.
 [[nodiscard]] float steepestSlope(const ClimateSample& climate, const SurfaceSite& site);
@@ -87,10 +97,11 @@ struct MaterialParams {
 // under the water); else water exactly over the ocean and the rivers; otherwise sand on the dunes
 // of the ergs at any slope (but on walls and rock above air), rock on steep ground, walls and rock
 // above air, the floor of the ergs between their dunes away from the water (ergFloorMaterial),
-// then by biome: snow (snow, ice desert), mountain snow, rock and scree (mountain, high
-// mountain), beach sand or pebbles, the gravel of the polar region, the deserts (grass and
-// pebbles near a river, else sand, stone or gravel), marsh mud, river bank pebbles, tundra dirt,
-// dirt on steeper ground and grass elsewhere. Pure function: it never changes a height.
+// the ground of the volcanoes out of the snow (volcanicMaterial), then by biome: snow (snow, ice
+// desert), mountain snow, rock and scree (mountain, high mountain), beach sand or pebbles, the
+// gravel of the polar region, the deserts (grass and pebbles near a river, else sand, stone or
+// gravel), marsh mud, river bank pebbles, tundra dirt, dirt on steeper ground and grass
+// elsewhere. Pure function: it never changes a height.
 [[nodiscard]] SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate,
                                               const SurfaceSite& site,
                                               const MaterialParams& params = {});

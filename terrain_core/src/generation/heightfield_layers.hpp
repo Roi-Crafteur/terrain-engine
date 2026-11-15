@@ -78,6 +78,8 @@ struct Heightfield::Memos {
     Hydrology::Region water;
     // The relief without the coasts (Heightfield::leaveValleys reads both).
     bool bare = false;
+    // The relief without the volcanoes (the ground their details stand on: heightfield_volcano).
+    bool noVolcanoes = false;
     // Where set, the face of the coasts at the point the coasts report there (coastPointAt): left
     // as it is by the relief without them.
     coast_faces::Report* coastFace = nullptr;

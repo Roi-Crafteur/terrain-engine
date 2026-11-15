@@ -42,15 +42,15 @@ inline terrain::HorizonParams horizonParams() {
 
 // The small world with its water, its tiles (with and without caves) and its horizon.
 struct World {
-    terrain::Heightfield relief{kSeed, terrain::HeightfieldParams{}, golden::kSmallPlanet};
+    terrain::Heightfield relief{kSeed, golden::reliefParams(), golden::kSmallPlanet};
     std::shared_ptr<const terrain::PlanetLevel> planet = std::make_shared<terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(threads())),
         golden::smallPlanetParams(threads()));
     std::shared_ptr<const terrain::Hydrology> hydrology =
-        std::make_shared<const terrain::Hydrology>(kSeed, relief, planet);
-    terrain::TerrainTiles tiles{kSeed, terrain::HeightfieldParams{}, terrain::EcologyParams{},
+        std::make_shared<const terrain::Hydrology>(kSeed, relief, planet, golden::waterParams());
+    terrain::TerrainTiles tiles{kSeed, golden::reliefParams(), terrain::EcologyParams{},
                                 std::nullopt, golden::kSmallPlanet, hydrology};
-    terrain::TerrainTiles caveTiles{kSeed, terrain::HeightfieldParams{}, terrain::EcologyParams{},
+    terrain::TerrainTiles caveTiles{kSeed, golden::reliefParams(), terrain::EcologyParams{},
                                     terrain::CaveParams{}, golden::kSmallPlanet, hydrology};
     terrain::HorizonSampler horizon{tiles.heightfield(), tiles.ecology(), horizonParams()};
 

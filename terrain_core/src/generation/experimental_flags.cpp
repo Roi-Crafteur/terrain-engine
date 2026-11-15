@@ -78,7 +78,10 @@ AppliedFlags applyTo(std::string_view text, WorldParams* params,
 
 std::span<const ExperimentalFlag> experimentalFlags() {
     // One row per flag, sorted by name: {"name", "what it does (agent)", [](WorldParams& p) {...}}.
-    static const std::vector<ExperimentalFlag> flags = {};
+    static const std::vector<ExperimentalFlag> flags = {
+        {"volcanoes", "volcanoes from the plate tectonics (agent 45)",
+         [](WorldParams& p) { p.relief.volcanoes.enabled = true; }},
+    };
     return flags;
 }
 

@@ -392,6 +392,15 @@ HeightSample Heightfield::seenAt(double worldX, double worldZ, double pitch) con
         s.water = WaterKind::None;
         s.waterLevel = spire;
     }
+    // The tops of the volcanoes within the cell (agent 45): a cone narrower than the pitch shows.
+    const float top = volcanoTopSeen(x, z, pitch);
+    if (top > s.height) {
+        s.height = top;
+        if (s.water == WaterKind::None || !(top < s.waterLevel)) {
+            s.water = WaterKind::None;
+            s.waterLevel = top;
+        }
+    }
     return s;
 }
 
@@ -445,6 +454,10 @@ void Heightfield::seenHeightsAt(std::span<const double> xs, std::span<const doub
     }
     for (const auto& [i, spire] : spires) {
         out[i] = std::max(out[i], spireSeen(spire, pitch));
+    }
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        out[i] = std::max(out[i], volcanoTopSeen(noise::wrapCanonical(xs[i], world_.x),
+                                                 noise::wrapCanonical(zs[i], world_.z), pitch));
     }
 }
 

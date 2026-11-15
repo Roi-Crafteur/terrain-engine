@@ -11,11 +11,13 @@
 #include "bit_exact_support.hpp"
 #include "legacy_relief_support.hpp"
 #include "test_assert.hpp"
+#include "volcano_zone_support.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <stdexcept>
 #include <vector>
 
@@ -118,7 +120,9 @@ void testPeriodicAndBatch(const WorldSize& world) {
 }
 
 // The sea exactly where the coast signal (and the continentalness) is negative, always below the
-// sea level; the land below it only in the depressions, where the mask of the mountains is 0. The
+// sea level; the land below it only in the depressions, where the mask of the mountains is 0. In
+// the zone of the volcanoes (agent 45, volcano_zone_support.hpp), they decide it: the sea only
+// below the sea level where the geography puts it (their islands are land). The
 // ridged mountains only within their mask, which is 0 at sea and where the intensity of the
 // relief is below 0.12. The intensity of the map within [reliefFloor, 1] on land.
 void testSeaWhereTheCoastIsNegative() {
@@ -129,6 +133,7 @@ void testSeaWhereTheCoastIsNegative() {
     int sea = 0;
     int land = 0;
     int mountains = 0;
+    int volcanic = 0;
     bool consistent = true;
     bool masked = true;
     for (const Point& p : bit_exact::randomPoints(20'000, 3e7)) {
@@ -137,9 +142,15 @@ void testSeaWhereTheCoastIsNegative() {
             field.geography()->sampleAt(terrain::wrapCoordinate(p.x, WorldSize{}.x),
                                         terrain::wrapCoordinate(p.z, WorldSize{}.z));
         const bool atSea = g.coast < 0.0;
-        consistent = consistent && ((s.water == terrain::WaterKind::Ocean) == atSea) &&
-                     ((s.continentalness < 0.0f) == atSea) && (!atSea || s.height < 0.0f) &&
-                     (atSea || s.height >= 0.0f || s.mountainMask == 0.0f);
+        if (volcano_zone::inZone(field, p.x, p.z)) {
+            ++volcanic;
+            consistent = consistent && ((s.continentalness < 0.0f) == atSea) &&
+                         (s.water != terrain::WaterKind::Ocean || (atSea && s.height < 0.0f));
+        } else {
+            consistent = consistent && ((s.water == terrain::WaterKind::Ocean) == atSea) &&
+                         ((s.continentalness < 0.0f) == atSea) && (!atSea || s.height < 0.0f) &&
+                         (atSea || s.height >= 0.0f || s.mountainMask == 0.0f);
+        }
         // The dominant summits rise the massif up to about 2.4 times its height.
         masked = masked && s.mountain >= 0.0f &&
                  s.mountain <= 2.5f * s.mountainMask * mountainHeight &&
@@ -152,6 +163,8 @@ void testSeaWhereTheCoastIsNegative() {
         ++(atSea ? sea : land);
         mountains += s.mountain > kMountainous ? 1 : 0;
     }
+    std::printf("the sea of the geography: %d points of 20,000 in the zone of the volcanoes\n",
+                volcanic);
     TEST_CHECK(consistent);
     TEST_CHECK(masked);
     TEST_CHECK(land > 20'000 * 30 / 100 && land < 20'000 * 45 / 100);

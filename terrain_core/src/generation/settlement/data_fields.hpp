@@ -49,6 +49,10 @@ public:
 
     // Refuses any member whose key is not one of allowed.
     void only(std::initializer_list<std::string_view> allowed) const;
+    // As only(allowed), but the keys of retired (those of an older format, ignored) are accepted
+    // too, never offered by the message.
+    void only(std::initializer_list<std::string_view> allowed,
+              std::initializer_list<std::string_view> retired) const;
 
     [[noreturn]] void fail(const json::Value& at, std::string_view key,
                            const std::string& reason) const;

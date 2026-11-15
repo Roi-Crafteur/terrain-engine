@@ -33,14 +33,15 @@ struct World {
 };
 
 inline World makeWorld() {
-    const Heightfield relief(terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
+    const Heightfield relief(terrain::kDefaultWorldSeed, golden::reliefParams(),
                              golden::kSmallPlanet);
     const int threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     auto planet = std::make_shared<const terrain::PlanetLevel>(
         terrain::planet::buildPlanet(relief, golden::smallPlanetParams(threads)),
         golden::smallPlanetParams(threads));
     auto hydrology =
-        std::make_shared<const Hydrology>(terrain::kDefaultWorldSeed, relief, planet);
+        std::make_shared<const Hydrology>(terrain::kDefaultWorldSeed, relief, planet,
+                                          golden::waterParams());
     return {relief, planet, hydrology, relief.withHydrology(hydrology)};
 }
 
