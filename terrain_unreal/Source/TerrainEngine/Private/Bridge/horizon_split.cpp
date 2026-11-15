@@ -59,6 +59,18 @@ GridMesh withCellCenters(const GridMesh& grid) {
     return out;
 }
 
+std::size_t cellCenterCount(const GridMesh& grid) {
+    std::size_t centers = 0;
+    const std::size_t count = grid.triangleCount();
+    for (std::size_t tri = 0; tri + 1 < count; ++tri) {
+        if (cellPair(grid, tri)) {
+            ++centers;
+            ++tri;
+        }
+    }
+    return centers;
+}
+
 bool centerOnMain(const CenterInput& in) {
     if (!in.adaptive) {
         return false;
@@ -67,7 +79,7 @@ bool centerOnMain(const CenterInput& in) {
     if (!in.hasCoarser || in.morphAtCenter < 0.5) {
         return own;
     }
-    const bool coarse = coarserOnMain(true, in.coarse);
+    const bool coarse = coarserOnMain(in.coarseAdaptive, in.coarse);
     const bool alongMain = in.quarterI == in.quarterK;
     if (coarse == alongMain) {
         return coarse; // along the diagonal the coarser cell is cut along
@@ -78,6 +90,23 @@ bool centerOnMain(const CenterInput& in) {
 bool coarserOnMain(bool adaptive, const std::array<float, 4>& coarse) {
     return mainDiagonal(adaptive ? CellSplit::Contour : CellSplit::Fixed, coarse[0], coarse[1],
                         coarse[2], coarse[3]);
+}
+
+bool levelHasCenters(int level, int centerLevels) {
+    return level >= 0 && level < centerLevels;
+}
+
+bool coarseSplit(int level, int centerLevels) {
+    return levelHasCenters(level + 1, centerLevels);
+}
+
+GridSet gridsNeeded(int centerLevels, int levels, bool every) {
+    GridSet set;
+    set.level0Centered = every || levelHasCenters(0, centerLevels);
+    set.level0Plain = every || !levelHasCenters(0, centerLevels);
+    set.ringCentered = every || (levels > 1 && levelHasCenters(1, centerLevels));
+    set.ringPlain = every || (levels > 1 && !levelHasCenters(levels - 1, centerLevels));
+    return set;
 }
 
 std::array<double, 4> cellWeights(bool main, double u, double v) {

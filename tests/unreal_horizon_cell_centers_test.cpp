@@ -3,7 +3,8 @@
 // on its corner (i + 1, k), as AdaptiveSplit 0 leaves it, the triangles drawn are exactly those of
 // the grids before (the fixed diagonal, the same orientation), the two others of no area; moved
 // onto the corner (i, k), they are those of the main diagonal. The skirts and the sea square are
-// kept. Then the rule the vertex shader follows (centerOnMain, coarserOnMain).
+// kept. Then the rule the vertex shader follows (centerOnMain, coarserOnMain), and the levels
+// with centers (levelHasCenters, coarseSplit).
 #include "horizon_mesh.hpp"
 #include "horizon_split.hpp"
 #include "horizon_textures.hpp"
@@ -12,8 +13,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <utility>
 #include <vector>
 
@@ -83,7 +86,7 @@ void testGrid(const GridMesh& before) {
         centers += v.kind == GridVertexKind::Center ? 1 : 0;
     }
     // Every cell of samples has its center: two triangles each before, four now.
-    TEST_CHECK(centers > 0);
+    TEST_CHECK(centers > 0 && centers == terrain::unreal::cellCenterCount(before));
     TEST_CHECK(centered.vertices.size() == before.vertices.size() + centers);
     TEST_CHECK(centered.triangleCount() == before.triangleCount() + 2 * centers);
     TEST_CHECK(std::equal(before.vertices.begin(), before.vertices.end(),
@@ -155,6 +158,86 @@ void testRule() {
     TEST_CHECK(!terrain::unreal::coarserOnMain(true, across));
 }
 
+// The surface of a level at the end of its morph over one cell of the coarser level (corners c:
+// 00, 10, 01, 11) at (U, V) in that cell: its 2 x 2 cells, their samples on their morph targets
+// (horizon_morph.hpp: the mean of the ends of an edge; at the middle, of the diagonal the coarser
+// cell is cut along, coarserOnMain), each cut as centerOnMain says.
+double fineSurface(const std::array<float, 4>& c, bool coarseAdaptive, double U, double V) {
+    const bool coarseMain = terrain::unreal::coarserOnMain(coarseAdaptive, c);
+    const auto corner = [&](int i, int k) { return static_cast<double>(c[2 * k + i]); };
+    const auto at = [&](int i, int k) {
+        if (i % 2 == 0 && k % 2 == 0) {
+            return corner(i / 2, k / 2);
+        }
+        if (i == 1 && k == 1) {
+            return coarseMain ? 0.5 * (corner(0, 0) + corner(1, 1))
+                              : 0.5 * (corner(1, 0) + corner(0, 1));
+        }
+        return i == 1 ? 0.5 * (corner(0, k / 2) + corner(1, k / 2))
+                      : 0.5 * (corner(i / 2, 0) + corner(i / 2, 1));
+    };
+    const int fi = std::min(static_cast<int>(U * 2.0), 1);
+    const int fk = std::min(static_cast<int>(V * 2.0), 1);
+    const std::array<double, 4> h{at(fi, fk), at(fi + 1, fk), at(fi, fk + 1), at(fi + 1, fk + 1)};
+    terrain::unreal::CenterInput in{true,
+                                    {static_cast<float>(h[0]), static_cast<float>(h[1]),
+                                     static_cast<float>(h[2]), static_cast<float>(h[3])},
+                                    true, c, fi, fk, 1.0, coarseAdaptive};
+    const auto w = terrain::unreal::cellWeights(terrain::unreal::centerOnMain(in), U * 2.0 - fi,
+                                                V * 2.0 - fk);
+    return w[0] * h[0] + w[1] * h[1] + w[2] * h[2] + w[3] * h[3];
+}
+
+double coarseSurface(const std::array<float, 4>& c, bool main, double U, double V) {
+    const auto w = terrain::unreal::cellWeights(main, U, V);
+    return w[0] * c[0] + w[1] * c[1] + w[2] * c[2] + w[3] * c[3];
+}
+
+// The centers on the levels 0 to 3 only (HorizonCenterLevels 4, the fallback of the cost): the
+// level 3 meets the level 4, drawn with the fixed diagonal, with no crack once its odd samples and
+// its centers follow that diagonal (CoarseSplit 0); following the contour of the coarser cell as
+// before, it would leave a crack of up to a quarter of the step across the cell.
+void testLevelsWithoutCenters() {
+    using terrain::unreal::coarseSplit;
+    using terrain::unreal::levelHasCenters;
+    constexpr int kLevels = 10;
+    for (int level = 0; level < kLevels; ++level) {
+        TEST_CHECK(levelHasCenters(level, terrain::unreal::kHorizonCenterLevels) == (level < 4));
+        TEST_CHECK(coarseSplit(level, terrain::unreal::kHorizonCenterLevels) == (level < 3));
+        TEST_CHECK(!levelHasCenters(level, 0) && levelHasCenters(level, kLevels));
+    }
+    TEST_CHECK(!coarseSplit(kLevels - 1, kLevels)); // the coarsest level has no coarser one
+    // The grids built: with 4 levels of centers, level 0 with them and the ring and trims in both
+    // forms (levels 1 to 3 with, 4 to 9 without); every one for the tools of the developers.
+    using terrain::unreal::GridSet;
+    using terrain::unreal::gridsNeeded;
+    TEST_CHECK((gridsNeeded(4, kLevels, false) == GridSet{true, false, true, true}));
+    TEST_CHECK((gridsNeeded(kLevels, kLevels, false) == GridSet{true, false, true, false}));
+    TEST_CHECK((gridsNeeded(1, kLevels, false) == GridSet{true, false, false, true}));
+    TEST_CHECK((gridsNeeded(0, kLevels, false) == GridSet{false, true, false, true}));
+    TEST_CHECK((gridsNeeded(4, kLevels, true) == GridSet{true, true, true, true}));
+    // A cell that bends: its contour runs along the main diagonal (|0 - 10| < |100 - 80|), whose
+    // ends meet at 5 m in the middle, those of the fixed one at 90 m.
+    const std::array<float, 4> wall{0.0f, 100.0f, 80.0f, 10.0f};
+    double fixedGap = 0.0, contourGap = 0.0, oldCrack = 0.0;
+    for (int a = 0; a <= 16; ++a) {
+        for (int b = 0; b <= 16; ++b) {
+            const double U = a / 16.0, V = b / 16.0;
+            fixedGap = std::max(fixedGap, std::abs(fineSurface(wall, false, U, V) -
+                                                   coarseSurface(wall, false, U, V)));
+            contourGap = std::max(contourGap, std::abs(fineSurface(wall, true, U, V) -
+                                                       coarseSurface(wall, true, U, V)));
+            oldCrack = std::max(oldCrack, std::abs(fineSurface(wall, true, U, V) -
+                                                   coarseSurface(wall, false, U, V)));
+        }
+    }
+    std::printf("the end of the morph against the coarser level: %.2e m toward one without "
+                "centers (CoarseSplit 0), %.2e m toward one with them; %.1f m of crack with the "
+                "contour toward one without them\n",
+                fixedGap, contourGap, oldCrack);
+    TEST_CHECK(fixedGap < 1e-9 && contourGap < 1e-9 && oldCrack > 10.0);
+}
+
 } // namespace
 
 int main() {
@@ -167,5 +250,6 @@ int main() {
         testGrid(terrain::unreal::trimGrid(kCells, variant % 3 - 1, variant / 3 - 1));
     }
     testRule();
+    testLevelsWithoutCenters();
     return test::result();
 }

@@ -8,6 +8,7 @@
 #include "Bridge/horizon_atmosphere.hpp"
 #include "Bridge/horizon_gpu_streamer.hpp"
 #include "Bridge/horizon_reveal.hpp"
+#include "Bridge/horizon_split.hpp"
 #include "Bridge/horizon_surface.hpp"
 #include "Bridge/horizon_timings.hpp"
 #include "Bridge/terrain_surface.hpp"
@@ -33,6 +34,8 @@ struct FTerrainHorizonLook
 	// into the sky over this many cells while the coarser ones are still to come (agent 38).
 	double RevealSeconds = 0.6;
 	double EdgeFadeCells = 24.0;
+	// The levels whose grids hold the centers of their cells (FTerrainHorizonDrawing).
+	int32 CenterLevels = terrain::unreal::kHorizonCenterLevels;
 };
 
 /**
@@ -128,7 +131,17 @@ public:
 	int64 GetVertexCount() const { return Vertices; }
 	int64 GetTriangleCount() const { return Triangles; }
 
+	// The levels whose grids hold the centers of their cells (agent 40,
+	// TerrainHorizonClipmapSplit.cpp): their grids, CoarseSplit on each look, the counts of the
+	// vertices. Terrain.HorizonCenters moves the limit while playing: every grid is built with the
+	// tools of the developers, only those of FTerrainHorizonLook::CenterLevels without them.
+	void SetCenterLevels(int32 Levels);
+	int32 GetCenterLevels() const { return CenterLevels; }
+
 private:
+	void BuildGrids(const terrain::unreal::HorizonGpuStreamer& Streamer);
+	UStaticMesh* LevelGrid(int32 Level, int32 Shape) const;
+	void RecountGrids();
 	UStaticMeshComponent* CreateGridComponent(UStaticMesh* Mesh, UMaterialInstanceDynamic* Look);
 	void CreateLevel(int32 Level, const terrain::unreal::HorizonGpuStreamer& Streamer,
 		UMaterialInterface* Material);
@@ -147,7 +160,7 @@ private:
 	TObjectPtr<AActor> OwnerActor;
 
 	UPROPERTY()
-	TArray<TObjectPtr<UStaticMesh>> Grids; // level 0, the ring, then the 9 trims
+	TArray<TObjectPtr<UStaticMesh>> Grids; // TerrainHorizonGrids.h: TerrainHorizonGridSlots
 
 	UPROPERTY()
 	TArray<TObjectPtr<UTexture2D>> Textures;
@@ -205,4 +218,6 @@ private:
 	int64 GpuBytes = 0;
 	int64 Vertices = 0;
 	int64 Triangles = 0;
+	TArray<FIntPoint> GridCounts; // the vertices and the triangles of each of the Grids
+	int32 CenterLevels = 0;
 };

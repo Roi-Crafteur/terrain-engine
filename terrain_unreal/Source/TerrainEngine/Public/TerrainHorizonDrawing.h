@@ -22,6 +22,15 @@ struct FTerrainHorizonDrawing
 		meta = (ClampMin = "0", ClampMax = "45"))
 	float LowSunShadowDegrees = 12.0f;
 
+	// The levels of the GPU horizon whose grids hold the centers of their cells, cut along their
+	// contour lines (Bridge/horizon_split.hpp, the switch AdaptiveSplit of the material): the
+	// finest ones, 4 by default (levels 0 to 3, up to 8 km), where a tooth along a wall or a coast
+	// still shows; beyond them the grids before, half the vertices. 10: every level; 0: none. The
+	// console command Terrain.HorizonCenters of the tools moves it while playing.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Horizon",
+		meta = (ClampMin = "0", ClampMax = "10"))
+	int32 HorizonCenterLevels = 4;
+
 	// The height fog of the map kept at the sea level under the camera while playing
 	// (Bridge/horizon_atmosphere.hpp: heightFogAboveSeaCm): the haze of the sea and of the low
 	// coasts, whatever height the map gives it; set back where the map placed it at the end of the

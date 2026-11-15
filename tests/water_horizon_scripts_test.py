@@ -1,7 +1,8 @@
 """The scripts of the materials changed by agent 40 (commits 13 to 15), without Unreal: one check
 per change, each behind its switch (Terrain.Param), 1 by default and 0 for the look before.
 
-- AdaptiveSplit (horizon_vertex_hlsl.py): declared at 1; the contour rule of the HLSL is the one
+- AdaptiveSplit (horizon_vertex_hlsl.py): declared at 1, and CoarseSplit (set by the plugin on
+  each level: the coarser level has its centers) read by both rules of the coarser cell; the contour rule of the HLSL is the one
   of the C++ (Bridge/horizon_split.cpp: mainDiagonal); the center of a cell is the blue vertex of
   the grids (TerrainHorizonGrids.cpp), shifted by one pitch along x, the scale of the grid
   components (TerrainHorizonClipmap.cpp); the water of the horizon takes the sample of the vertex.
@@ -87,6 +88,14 @@ def check_adaptive_split(root, scripts, water, horizon_defaults):
           'g.connect(ground, "LocalOut", custom, "Local")' in water and
           "LocalOut = float2(ik);" in vertex.VERTEX_HLSL,
           "the water of the horizon does not take the sample of the vertex")
+    # The centers on the finest levels only (HorizonCenterLevels): the coarser level without them,
+    # both rules of its cell follow its fixed diagonal and read none of its heights.
+    split = (root / "terrain_unreal/Source/TerrainEngine/Private/TerrainHorizonClipmapSplit.cpp")
+    check(horizon_defaults.get("CoarseSplit") == 1.0 and
+          "BRANCH if (CoarseSplit > 0.5)" in vertex.VERTEX_HLSL and
+          "BRANCH if (AdaptiveSplit > 0.5 && CoarseSplit > 0.5)" in vertex.VERTEX_HLSL and
+          'TEXT("CoarseSplit")' in split.read_text(),
+          "CoarseSplit is not declared at 1, not read by both coarse rules, or not set by the plugin")
     code = vertex.vertex_hlsl("(t).a")
     check(not kept_words(code), f"the vertex shader names a variable {kept_words(code)}")
 

@@ -322,25 +322,33 @@ bool HorizonGpuStreamer::busy() {
     return runner_.busy() || (detail_ != nullptr && detail_->busy());
 }
 
-GridMesh HorizonGpuStreamer::level0Grid() const {
+namespace {
+
+GridMesh centeredGrid(GridMesh grid, bool centers) {
+    return centers ? withCellCenters(grid) : grid;
+}
+
+} // namespace
+
+GridMesh HorizonGpuStreamer::level0Grid(bool centers) const {
     const double pitch = levelPitch(horizonParams_, 0);
     const double seaHalfCells = (hole_.halfCells * pitch + hole_.overlapMeters) / pitch;
-    return withCellCenters(bodyGrid(
-        bodyTopology(horizonParams_.cellsPerSide,
-                     bodyHole(horizonParams_, 0, hole_.halfCells), params_.sea),
-        seaHalfCells));
+    const auto hole = bodyHole(horizonParams_, 0, hole_.halfCells);
+    return centeredGrid(
+        bodyGrid(bodyTopology(horizonParams_.cellsPerSide, hole, params_.sea), seaHalfCells),
+        centers);
 }
 
-GridMesh HorizonGpuStreamer::ringGrid() const {
-    return withCellCenters(bodyGrid(bodyTopology(horizonParams_.cellsPerSide,
-                                                 bodyHole(horizonParams_, 1, hole_.halfCells),
-                                                 false),
-                                    0.0));
+GridMesh HorizonGpuStreamer::ringGrid(bool centers) const {
+    const auto hole = bodyHole(horizonParams_, 1, hole_.halfCells);
+    return centeredGrid(bodyGrid(bodyTopology(horizonParams_.cellsPerSide, hole, false), 0.0),
+                        centers);
 }
 
-GridMesh HorizonGpuStreamer::trimGrid(int variant) const {
-    return withCellCenters(terrain::unreal::trimGrid(horizonParams_.cellsPerSide, variant % 3 - 1,
-                                                     variant / 3 - 1));
+GridMesh HorizonGpuStreamer::trimGrid(int variant, bool centers) const {
+    return centeredGrid(
+        terrain::unreal::trimGrid(horizonParams_.cellsPerSide, variant % 3 - 1, variant / 3 - 1),
+        centers);
 }
 
 double HorizonGpuStreamer::skirtMetersOf(int level) const {

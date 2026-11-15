@@ -13,6 +13,10 @@ before, to the bit; Terrain.Param to compare):
   the coarser cell where it lies along it (centerOnMain); the odd samples of both axes morph toward
   the mean of the diagonal of the coarser cell (coarserOnMain). A wall, a ridge or a coast line
   oblique to the grid no longer turns into a tooth per cell.
+- CoarseSplit (set by the plugin on each level, 1 by default): the coarser level has the centers of
+  its cells too (Bridge/horizon_split.hpp: coarseSplit; the plugin gives them to the levels 0 to
+  3 only, HorizonCenterLevels). Without them, the odd samples and the centers past the middle of
+  the morph follow its fixed diagonal, and read none of its heights for the rule.
 The vertex hands the sample it stands for (LocalOut: the mesh position, or the corner a center
 moved onto) to the vertex node of the water (horizon_water_nodes.py), so that the water of a moved
 center is that of its corner.
@@ -56,9 +60,13 @@ BRANCH if (Kind.b > 0.5 && AdaptiveSplit > 0.5)
     float centerDistance = max(abs(cell.x + 0.5 - Viewer.x), abs(cell.y + 0.5 - Viewer.y));
     float centerMorph = HasCoarser > 0.5
         ? saturate((centerDistance - (Cells * 0.5 - 2.0 - MorphCells)) / MorphCells) : 0.0;
-    if (centerMorph >= 0.5)
+    BRANCH if (centerMorph >= 0.5)
     {
-        bool coarseMain = Ground.ContourMain(Coarse, inCoarser + cell / 2 + coarseFirst, side);
+        bool coarseMain = false; // the fixed diagonal of a coarser level without centers
+        BRANCH if (CoarseSplit > 0.5)
+        {
+            coarseMain = Ground.ContourMain(Coarse, inCoarser + cell / 2 + coarseFirst, side);
+        }
         bool alongMain = (cell.x & 1) == (cell.y & 1);
         if (coarseMain == alongMain) { onMain = coarseMain; }
     }
@@ -78,12 +86,14 @@ if (oddI && oddK)
     s0 = ik + int2(1, -1);
     s1 = ik + int2(-1, 1);
     // The mean of the diagonal the coarser cell is cut along (coarserOnMain): its own with
-    // AdaptiveSplit, the fixed one without.
-    BRANCH if (AdaptiveSplit > 0.5 &&
-               Ground.ContourMain(Coarse, inCoarser + (ik - int2(1, 1)) / 2 + coarseFirst, side))
+    // AdaptiveSplit where the coarser level has its centers (CoarseSplit), the fixed one without.
+    BRANCH if (AdaptiveSplit > 0.5 && CoarseSplit > 0.5)
     {
-        s0 = ik - int2(1, 1);
-        s1 = ik + int2(1, 1);
+        if (Ground.ContourMain(Coarse, inCoarser + (ik - int2(1, 1)) / 2 + coarseFirst, side))
+        {
+            s0 = ik - int2(1, 1);
+            s1 = ik + int2(1, 1);
+        }
     }
 }
 else if (oddI) { s0 = ik - int2(1, 0); s1 = ik + int2(1, 0); }

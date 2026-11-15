@@ -16,13 +16,8 @@
 
 namespace
 {
-	// Bounds of the grids around their plane: the highest ground above, and below the deepest sea,
-	// the drop of the curvature at the corner of the coarsest window and its skirt.
-	constexpr double GridUpCm = 1.0e6;
-	constexpr double GridDownCm = 4.5e6;
-	constexpr int32 GridVertexBytes = 32; // position, tangents, color and uv on the GPU
-	constexpr int32 FirstTrim = 2;        // Grids: level 0, the ring, then the trims
-	constexpr int32 CenteredTrim = 4;     // the finer window at the center of the square
+	using TerrainHorizonGridSlots::CenteredTrim; // the grids: TerrainHorizonGrids.h
+	using TerrainHorizonGridSlots::FirstTrim;
 
 	// Parameters of M_TerrainHorizonGpu (Scripts/create_horizon_gpu_material.py).
 	const FName TexelsParameter(TEXT("HorizonTexels"));
@@ -102,33 +97,15 @@ void UTerrainHorizonClipmap::Initialize(AActor& Owner, UMaterialInterface* Mater
 	const double Level0Pitch = terrain::levelPitch(Streamer.params(), 0);
 	Level0PitchCm = Level0Pitch * 100.0;
 	Fade = terrain::unreal::dropFade(Streamer.tileHole(), Level0Pitch);
-	std::vector<terrain::unreal::GridMesh> Shapes{Streamer.level0Grid(), Streamer.ringGrid()};
-	for (int32 Variant = 0; Variant < terrain::unreal::kTrimVariants; ++Variant)
-	{
-		Shapes.push_back(Streamer.trimGrid(Variant)); // its cells with their centers
-	}
-	for (std::size_t Index = 0; Index < Shapes.size(); ++Index)
-	{
-		const terrain::unreal::GridMesh& Shape = Shapes[Index];
-		Grids.Add(BuildHorizonGridMesh(*this, Shape,
-			FName(*FString::Printf(TEXT("HorizonGrid%d"), static_cast<int32>(Index))), GridUpCm,
-			GridDownCm));
-		GpuBytes += static_cast<int64>(Shape.vertices.size()) * GridVertexBytes +
-			static_cast<int64>(Shape.triangles.size()) * static_cast<int64>(sizeof(int32));
-	}
+	BuildGrids(Streamer); // with the centers of their cells on the finest levels only
 	const int32 Levels = Streamer.params().levels;
 	Reveal.Emplace(Levels, HorizonLook.RevealSeconds);
 	NormalRatio = Streamer.normals() != nullptr ? Streamer.normals()->ratio() : 0;
 	for (int32 Level = 0; Level < Levels; ++Level)
 	{
 		CreateLevel(Level, Streamer, Material);
-		const terrain::unreal::GridMesh& Body = Shapes[Level == 0 ? 0 : 1];
-		const terrain::unreal::GridMesh& Trim = Shapes[FirstTrim + CenteredTrim];
-		Vertices += static_cast<int64>(Body.vertices.size() +
-			(Level > 0 ? Trim.vertices.size() : 0));
-		Triangles += static_cast<int64>(Body.triangleCount() +
-			(Level > 0 ? Trim.triangleCount() : 0));
 	}
+	SetCenterLevels(CenterLevels); // CoarseSplit on each look, the vertices counted
 	for (int32 Level = 0; Level < Levels; ++Level)
 	{
 		Looks[Level]->SetTextureParameterValue(CoarseTexelsParameter,
@@ -201,13 +178,13 @@ void UTerrainHorizonClipmap::CreateLevel(int32 Level,
 		static_cast<float>(Streamer.planetRadiusMeters() * 100.0));
 	Look->SetVectorParameterValue(TintParameter,
 		HorizonLook.bDebugTint ? DebugTint(Level) : FLinearColor(0.0f, 0.0f, 0.0f, 0.0f));
-	UStaticMeshComponent* Body = CreateGridComponent(Grids[Level == 0 ? 0 : 1], Look);
+	UStaticMeshComponent* Body = CreateGridComponent(LevelGrid(Level, Level == 0 ? 0 : 1), Look);
 	Body->SetWorldScale3D(FVector(PitchCm, PitchCm, 1.0));
 	Bodies.Add(Body);
 	UStaticMeshComponent* Trim = nullptr;
 	if (Level > 0)
 	{
-		Trim = CreateGridComponent(Grids[FirstTrim + CenteredTrim], Look);
+		Trim = CreateGridComponent(LevelGrid(Level, FirstTrim + CenteredTrim), Look);
 		Trim->SetWorldScale3D(FVector(PitchCm, PitchCm, 1.0));
 	}
 	Trims.Add(Trim);
@@ -350,7 +327,7 @@ void UTerrainHorizonClipmap::Place(const terrain::unreal::LevelPlacement& Placem
 	{
 		if (TrimShown[Level] != Placement.trim)
 		{
-			Trim->SetStaticMesh(Grids[FirstTrim + Placement.trim]);
+			Trim->SetStaticMesh(LevelGrid(Level, FirstTrim + Placement.trim));
 			TrimShown[Level] = Placement.trim;
 		}
 		Trim->SetWorldLocation(Origin);

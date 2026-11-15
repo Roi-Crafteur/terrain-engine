@@ -142,6 +142,7 @@ bool ATerrainWorld::StartGpuHorizon()
 	Look.bShadows = bHorizonShadows;
 	Look.bDebugTint = bHorizonDebugTint;
 	Look.RevealSeconds = FMath::Max(0.0f, LoadingSettings.HorizonRevealSeconds);
+	Look.CenterLevels = HorizonDrawing.HorizonCenterLevels;
 	HorizonClipmap = NewObject<UTerrainHorizonClipmap>(this);
 	HorizonClipmap->Initialize(*this, GpuLook, Horizon, Look);
 	HorizonClipmap->SetLowSunShadows(HorizonDrawing.LowSunShadowDegrees);

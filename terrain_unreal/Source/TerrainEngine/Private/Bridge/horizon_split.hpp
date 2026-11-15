@@ -3,6 +3,7 @@
 #include "horizon_textures.hpp"
 
 #include <array>
+#include <cstddef>
 
 namespace terrain::unreal {
 
@@ -32,6 +33,8 @@ enum class CellSplit { Fixed, Contour };
 // bit), or moves it onto the corner (i, k), where they are the two of the main diagonal and two of
 // no area. The other triangles (skirts, sea square) are kept as they are.
 [[nodiscard]] GridMesh withCellCenters(const GridMesh& grid);
+// The number of centers withCellCenters adds to a grid (its cells of samples).
+[[nodiscard]] std::size_t cellCenterCount(const GridMesh& grid);
 
 // Where the vertex shader puts the center vertex of a cell (centerOnMain: on its corner (i, k),
 // the main diagonal; otherwise on (i + 1, k), the fixed one).
@@ -43,10 +46,12 @@ struct CenterInput {
     int quarterI = 0;              // where the cell lies in that cell: i % 2 and k % 2
     int quarterK = 0;
     double morphAtCenter = 0.0;    // the morph toward the coarser level at the center of the cell
+    bool coarseAdaptive = true;    // the coarser level cut along its contour lines (coarseSplit)
 };
 // Without the switch, never. Otherwise the contour of its own corners (mainDiagonal), except past
 // the middle of the morph toward the coarser level, where a cell along the diagonal the coarser
-// cell is cut along takes that diagonal (at the end of the morph its corners lie on the coarser
+// cell is cut along (its contour, or the fixed one when the coarser level has no centers) takes
+// that diagonal (at the end of the morph its corners lie on the coarser
 // triangles, so that the surface is the coarser one); a cell off it lies within one of the coarser
 // triangles, where both its diagonals give the same surface, and keeps its own.
 [[nodiscard]] bool centerOnMain(const CenterInput& in);
@@ -55,6 +60,34 @@ struct CenterInput {
 // toward the mean of the two ends of the diagonal the coarser cell is cut along: the main one when
 // true (the fixed one, (i + 1, k)-(i, k + 1) of the coarser cell, without the switch).
 [[nodiscard]] bool coarserOnMain(bool adaptive, const std::array<float, 4>& coarse);
+
+// The levels of the GPU horizon whose grids hold the centers of their cells: the finest
+// centerLevels (FTerrainHorizonDrawing::HorizonCenterLevels, kHorizonCenterLevels by default:
+// levels 0 to 3, up to 8 km, where a tooth along a wall or a coast still shows). The others keep
+// the grids before agent 40 and their fixed diagonal: half the vertices and none of the reads of
+// the contour rule in their vertex shader.
+inline constexpr int kHorizonCenterLevels = 4;
+[[nodiscard]] bool levelHasCenters(int level, int centerLevels);
+
+// Whether the coarser level of this one has its centers (CoarseSplit of the material): the odd
+// samples of both axes and the centers past the middle of the morph follow its contour diagonal
+// (coarserOnMain, CenterInput::coarseAdaptive), else its fixed one, so that the last level with
+// centers meets the first without them with no crack.
+[[nodiscard]] bool coarseSplit(int level, int centerLevels);
+
+// The grids a clipmap of `levels` levels builds: level 0 alone, and the ring and the trims the
+// levels 1 and up share, with the centers of their cells, without them, or both forms when both
+// groups of levels use them. every: all of them (the tools of the developers, so that
+// Terrain.HorizonCenters can move the limit while playing).
+struct GridSet {
+    bool level0Centered = false;
+    bool level0Plain = false;
+    bool ringCentered = false; // the ring and the trims
+    bool ringPlain = false;
+
+    friend bool operator==(const GridSet&, const GridSet&) = default;
+};
+[[nodiscard]] GridSet gridsNeeded(int centerLevels, int levels, bool every);
 
 // The weights of the corners (00, 10, 01, 11) at (u, v) of a cell, u and v in [0, 1] from its
 // corner 00 along i and k: those of the triangle holding (u, v), linear, the corner across the

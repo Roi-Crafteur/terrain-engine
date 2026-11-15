@@ -9,6 +9,7 @@
 // line of the texel uploads.
 #include "horizon_gpu_streamer.hpp"
 #include "horizon_morph.hpp"
+#include "horizon_split.hpp"
 #include "horizon_timings.hpp"
 
 #include "horizon_test_support.hpp"
@@ -182,6 +183,30 @@ void testGrids() {
     TEST_CHECK(beforeCenters(ring).kind == terrain::unreal::GridVertexKind::Skirt);
     // The sea square reaches the guaranteed coverage of the tiles: 360 m around the center.
     TEST_CHECK(beforeCenters(level0).i == 64.0f + 45.0f);
+    // Without centers (the levels beyond HorizonCenterLevels): the grids before agent 40, which
+    // withCellCenters turns into the ones with centers, vertex for vertex and index for index.
+    using terrain::unreal::GridMesh;
+    const auto sameGrid = [](const GridMesh& a, const GridMesh& b) {
+        return a.vertices == b.vertices && a.triangles == b.triangles;
+    };
+    const auto centered = [](const GridMesh& grid) {
+        return terrain::unreal::withCellCenters(grid);
+    };
+    const GridMesh plainRing = session.streamer.ringGrid(false);
+    TEST_CHECK(std::none_of(plainRing.vertices.begin(), plainRing.vertices.end(),
+                            [](const terrain::unreal::GridVertex& v) {
+                                return v.kind == terrain::unreal::GridVertexKind::Center;
+                            }));
+    TEST_CHECK(sameGrid(centered(plainRing), ring));
+    TEST_CHECK(sameGrid(centered(session.streamer.level0Grid(false)), level0));
+    for (int variant = 0; variant < terrain::unreal::kTrimVariants; ++variant) {
+        TEST_CHECK(sameGrid(centered(session.streamer.trimGrid(variant, false)),
+                            session.streamer.trimGrid(variant)));
+    }
+    std::printf("grids: the ring of the levels 1 and up %zu vertices and %zu triangles with the "
+                "centers, %zu and %zu without\n",
+                ring.vertices.size(), ring.triangleCount(), plainRing.vertices.size(),
+                plainRing.triangleCount());
     TEST_CHECK(session.streamer.skirtMetersOf(0) == 2.0 && session.streamer.skirtMetersOf(4) == 8.0);
     TEST_CHECK(session.streamer.curveMetersOf(4) > session.streamer.curveMetersOf(3));
 }

@@ -75,9 +75,9 @@ SCALARS = {
     "PitchCm": 800.0, "DropCoveredCm": 0.0, "DropFadeCm": 0.0,
     # The surface blends drawn (1) or not (0: the dominant biomes; Terrain.Blend 0|1).
     "SurfaceBlends": 1.0,
-    # The cells cut along their contour lines, the foot and the curvature of the ground (agent 40,
-    # horizon_vertex_hlsl.py; 0: the horizon before, to the bit).
-    "AdaptiveSplit": 1.0, "HorizonFootCurv": 1.0,
+    # The cells cut along their contour lines, the foot and the curvature (agent 40, 0: the horizon
+    # before, to the bit; horizon_vertex_hlsl.py); CoarseSplit is set by the plugin on each level.
+    "AdaptiveSplit": 1.0, "HorizonFootCurv": 1.0, "CoarseSplit": 1.0,
 }
 # The look of the sea, tunable on the instances: colors of the water (linear), the strength of the
 # waves and the roughness of the sea between them (GGX alpha).
