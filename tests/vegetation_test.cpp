@@ -168,7 +168,7 @@ void testDensities() {
     const PlantDensities forest = field.densities(
         0.0, 0.0, Biome::TemperateForest, SurfaceMaterial::Grass, climateOf(0.0f), landSite());
     TEST_CHECK(forest[slot(PlantType::Tree)] > 0.0f && forest[slot(PlantType::Cactus)] == 0.0f);
-    const PlantDensities desert = field.densities(0.0, 0.0, Biome::Desert, SurfaceMaterial::Sand,
+    const PlantDensities desert = field.densities(0.0, 0.0, Biome::RockyDesert, SurfaceMaterial::Sand,
                                                   climateOf(0.0f), landSite());
     TEST_CHECK(desert[slot(PlantType::Cactus)] > 0.0f && desert[slot(PlantType::Tree)] == 0.0f);
     const PlantDensities sea = field.densities(0.0, 0.0, Biome::Ocean, SurfaceMaterial::Water,

@@ -154,7 +154,10 @@ Record renderSection(const ProbeWorld& w, const Point& p) {
     }
     const double hx = kHorizonPitch * std::round(p.x / kHorizonPitch);
     const double hz = kHorizonPitch * std::round(p.z / kHorizonPitch);
-    const terrain::HeightSample s = w.field().sampleAt(hx, hz);
+    // As level 0 of the far horizon reads its sample (HorizonSampler): the relief filtered to its
+    // pitch (the seas of dunes) and seen as it shows it (the faces and ramps of the coasts).
+    const terrain::HeightSample s =
+        w.field().forFootprint(kHorizonPitch).seenAt(hx, hz, kHorizonPitch);
     const bool wet = s.water != terrain::WaterKind::None;
     Record horizon;
     horizon.number("x", hx, 0, "m").number("z", hz, 0, "m").text("kind", kindName(s.water));

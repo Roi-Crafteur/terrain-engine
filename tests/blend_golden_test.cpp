@@ -66,8 +66,13 @@ std::vector<golden::Part> blendParts() {
     const double mx = mountain.x * terrain::kChunkSizeMeters;
     const double mz = mountain.z * terrain::kChunkSizeMeters;
     std::vector<golden::Part> parts = {
-        {"blend 50 m", blendChecksum(field, ecology, mx, mz, 50.0), 0x126FD8A815AC73E6ULL},
-        {"blend 2 km", blendChecksum(field, ecology, 0.0, 0.0, 2000.0), 0x59A0EF3946387CD8ULL},
+        // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and marshes near the
+        // sea" (b1da378, agent 49): "blend 50 m" and "blend 2 km" (0x126FD8A815AC73E6,
+        // 0x59A0EF3946387CD8 before), and "tile blend LOD 0" to "LOD 3" below
+        // (0xFB0014369848912D, 0x8F9AE6259FEF6965, 0x0C8CC787AE126A1D, 0x97E12A2CF23C8CA5); the
+        // 21 biomes and the soils of the deserts in the blends. "corner blend 50 m" kept its sum.
+        {"blend 50 m", blendChecksum(field, ecology, mx, mz, 50.0), 0x53C84E2B663087BEULL},
+        {"blend 2 km", blendChecksum(field, ecology, 0.0, 0.0, 2000.0), 0xA1E22EB5BC81F1F8ULL},
         {"corner blend 50 m", blendChecksum(field, ecology, kCornerX, kCornerZ, 50.0),
          0x2ABB6B5E157FDD25ULL},
     };
@@ -76,7 +81,7 @@ std::vector<golden::Part> blendParts() {
     // corner were 0xD148F2B63B104A25, 0x39C9B7288AF5F6E9, 0xC28BC91C460C9089, 0x02E1D54B2FA88CED,
     // 0xAC68A51875AB48A5 with the texels of 8 bytes.
     constexpr std::array<std::uint64_t, terrain::kLodCount> kExpected = {
-        0xFB0014369848912DULL, 0x8F9AE6259FEF6965ULL, 0x0C8CC787AE126A1DULL, 0x97E12A2CF23C8CA5ULL};
+        0x69B5C2CD778171D5ULL, 0xBC7FD6DD96071459ULL, 0xEA77507E966A9F61ULL, 0x599B57059518F715ULL};
     constexpr std::array<const char*, terrain::kLodCount> kNames = {
         "tile blend LOD 0", "tile blend LOD 1", "tile blend LOD 2", "tile blend LOD 3"};
     for (int lod = 0; lod < terrain::kLodCount; ++lod) {
@@ -93,7 +98,11 @@ std::vector<golden::Part> blendParts() {
     for (int lod = 0; lod < terrain::kLodCount; ++lod) {
         addTexels(cornerSum, tiles.generate({terrain::tileContaining(corner, lod), 0}));
     }
-    parts.push_back({"tile blend at the corner", cornerSum.value(), 0xDDB37E2A2A9CBE65ULL});
+    // Re-pasted by "Blend texels: the water of the column, a cover kept for agent 44" (5b22f44,
+    // agent 49): "tile blend at the corner" (0xDDB37E2A2A9CBE65 before); its texels carry the water
+    // of the ocean around the corner. The tiles of the mountain above hold no water and kept
+    // theirs.
+    parts.push_back({"tile blend at the corner", cornerSum.value(), 0x3C80656F01278D65ULL});
     return parts;
 }
 

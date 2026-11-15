@@ -32,6 +32,14 @@ struct ClimateParams {
     float inlandDrying = 0.25f;
     float inlandLow = 0.1f;
     float inlandHigh = 0.6f;
+    // With a humidity source (the planet level, its cells of 8 km read bilinearly), the humidity
+    // is read at the point moved by a slow warp: humidityWarp meters times an fbm of 2 octaves
+    // whose first wavelength is humidityWarpWavelength, along x and along z (the fbm has an rms of
+    // about 0.23: 2.8 km, up to about 8 km). The contours of a bilinear grid fold along the lines of
+    // its cell centers; the warp bends them, so that no border of the biomes follows the
+    // polylines of the grid (agent 49, biome_humidity_test). 0: no warp.
+    double humidityWarp = 12000.0;
+    double humidityWarpWavelength = 25000.0;
 
     // Altitude correction: the temperature drops by lapseRate degrees per meter above sea level.
     float lapseRate = 0.0065f;
@@ -81,7 +89,8 @@ public:
     // Part of the base temperature given by the latitude of z alone (no fbm).
     [[nodiscard]] float latitudeTemperatureAt(double z) const;
     [[nodiscard]] float baseTemperatureAt(double x, double z) const;
-    // Humidity at (x, z) given the continentalness of the Heightfield there.
+    // Humidity at (x, z) given the continentalness of the Heightfield there. With a humidity
+    // source, the source's at the point warped by humidityWarp.
     [[nodiscard]] float humidityAt(double x, double z, float continentalness) const;
     // Temperature at altitude meters (the top of the column: the water over the ocean) on
     // ground of the given exposure: baseTemperature - lapseRate * max(altitude - kSeaLevel, 0)
@@ -99,6 +108,8 @@ private:
     WorldSize world_;
     std::uint64_t temperatureSeed_;
     std::uint64_t humiditySeed_;
+    std::uint64_t warpXSeed_;
+    std::uint64_t warpZSeed_;
     std::shared_ptr<const HumiditySource> humidity_;
 };
 

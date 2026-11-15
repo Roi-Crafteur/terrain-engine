@@ -17,7 +17,7 @@ using Rgb8 = std::array<std::uint8_t, 3>;
 inline constexpr std::array<Rgb8, kBiomeCount> kBiomeRgb = {{
     {30, 60, 140},   // ocean
     {235, 220, 160}, // beach
-    {230, 185, 100}, // desert
+    {205, 140, 80},  // rocky desert
     {190, 180, 80},  // savanna
     {140, 200, 90},  // grassland
     {50, 130, 60},   // temperate forest
@@ -27,6 +27,15 @@ inline constexpr std::array<Rgb8, kBiomeCount> kBiomeRgb = {{
     {125, 110, 100}, // mountain
     {245, 245, 250}, // snow
     {95, 115, 70},   // marsh
+    {120, 145, 50},  // dry forest
+    {205, 200, 125}, // steppe
+    {245, 215, 135}, // sand desert
+    {160, 145, 120}, // cold desert
+    {150, 140, 150}, // high mountain
+    {185, 200, 205}, // polar region
+    {215, 235, 255}, // ice desert
+    {150, 155, 95},  // garrigue and maquis
+    {190, 160, 105}, // shrubland
 }};
 
 // Colors of the surface material map, in SurfaceMaterial order.
@@ -39,6 +48,9 @@ inline constexpr std::array<Rgb8, kSurfaceMaterialCount> kMaterialRgb = {{
     {250, 250, 255}, // snow
     {80, 65, 45},    // mud
     {175, 170, 155}, // pebbles
+    {150, 115, 85},  // gravel
+    {95, 85, 80},    // stone
+    {225, 215, 185}, // crust
 }};
 
 // Ramps of the vegetation density map: on land from bare ground (density 0) to dense

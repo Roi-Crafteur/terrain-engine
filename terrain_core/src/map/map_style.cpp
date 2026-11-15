@@ -146,6 +146,14 @@ MapColor biomeLayer(const MapPoint& p) {
                mapShade(p));
 }
 
+MapColor monsoonLayer(const MapPoint& p) {
+    const float share = std::clamp(p.at().monsoon, 0.0f, 1.0f);
+    if (!(share > 0.0f)) {
+        return {};
+    }
+    return {20, 150, 165, toByte(40.0f + 150.0f * share)};
+}
+
 MapColor waterLayer(const MapPoint& p) {
     const MapSample& s = p.at();
     if (s.fallMark == kMapFallCenter) {
@@ -194,6 +202,7 @@ MapLayers defaultMapLayers() {
     MapLayers layers;
     layers.add(kMapReliefLayer, reliefLayer);
     layers.add(kMapBiomesLayer, biomeLayer);
+    layers.add(kMapMonsoonLayer, monsoonLayer);
     layers.add(kMapWaterLayer, waterLayer);
     layers.add(kMapContoursLayer, contourLayer);
     return layers;

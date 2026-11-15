@@ -17,6 +17,7 @@ set_tests_properties(
     water_cost_test
     lows_sea_cost_test
     ergs_world_test
+    biome_cost_test
     horizon_edits_cost_test
     unreal_horizon_edits_cost_test
     unreal_terrain_session_test
