@@ -91,9 +91,13 @@ aussi écrits dans le fichier planète ; un nom inconnu arrête l'outil.
 
 - `--planet-check` :
   - il lit le fichier **sans jamais l'écrire ni le construire** ;
-  - il répond `ok`, `missing`, `stale` (autre seed, monde, version du générateur ou
-    paramètres), `flags` (construit avec d'autres drapeaux), `damaged`, `newer` ou `unreadable`,
-    avec la somme du niveau si c'est `ok` ;
+  - il répond `ok`, `missing`, `stale` (autre seed, monde, version du générateur,
+    paramètres, ou autre relief : l'empreinte de la section `PROV` du fichier), `flags`
+    (construit avec d'autres drapeaux), `damaged`, `newer` ou `unreadable`, avec la somme du
+    niveau si c'est `ok` ;
+  - `provenance` (agent 55), si c'est `ok` : `ok` quand le fichier porte l'empreinte de son
+    relief, `unknown` pour un fichier écrit avant elle (lu quand même, jamais reconstruit pour
+    cela) ; `null` sinon ;
   - code de sortie 0 si `ok`, 2 sinon, 1 pour des arguments invalides.
 - Le schéma (la liste des clés) est figé dans `tests/probe_test.cpp`.
 

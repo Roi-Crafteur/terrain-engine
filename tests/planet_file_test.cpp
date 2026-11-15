@@ -51,10 +51,14 @@ void testRoundTrip(const std::filesystem::path& file, const PlanetLevel& level) 
 
 // The bytes of the file, the timings of the level set to 0 (the only bytes that change from a
 // build to the next): those the file had when it was written whole in memory (phase 11B). A level
-// without the fingerprint of its relief: version 1, the bytes of main.
+// without the fingerprint of its relief: version 1, the bytes of main (not re-pasted by agent 55).
 constexpr std::uint32_t kFileBytes = 0x9E95EC76U;
-// The same level with the fingerprint of its relief (agent 55, section PROV): version 2, the same
-// level between the empty text of the flags and the section (pinned on main 57e7004 with #81).
+// The same level with the fingerprint of its relief: version 2, the same level between the empty
+// text of the flags and the section PROV.
+// Pasted by « Provenance: tests of the two refusals, of a file without PROV and of the cost »
+// (agent 55): "planet file bytes with PROV", a new part; cause: every level built holds the
+// fingerprint of its relief and its file the section PROV, so a file without flags is of version
+// 2 (the level and its checksum unchanged, 0x26626564570b0d9e on the default world).
 constexpr std::uint32_t kProvenFileBytes = 0xDA284F61U;
 
 void testBytes(const std::filesystem::path& dir, const PlanetLevel& level) {

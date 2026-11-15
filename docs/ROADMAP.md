@@ -280,6 +280,11 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
   `terrain_surface.cpp` ; quiconque ajoute un chemin d'échantillonnage du relief l'ajoute à ce
   test
 - `terrain_probe` : la section `render` lit l'horizon par son vrai chemin
+- provenance de `planet.bin` : l'empreinte du relief (paramètres champ par champ et 256 hauteurs
+  du relief sans côtes) dans la section `PROV` ; un fichier d'un autre relief est périmé et
+  reconstruit même à `kReliefGeneratorVersion` égale, un fichier d'autres drapeaux reste refusé
+  et jamais réécrit (agent 51) ; un fichier sans `PROV` est lu (« provenance unknown », « no
+  provenance » dans le log) ; un fichier planète n'est jamais écrasé sans `.bak`
 
 ## À venir
 
