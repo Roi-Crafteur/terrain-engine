@@ -14,7 +14,8 @@
 //   - no blade: within kBladeHalf meters of the site of the view of commit 2c (a column of the top of
 //     a great cliff left standing over the walls around it) and of the first canyon, on a lattice
 //     of kBladeStep meters, no face of the rock whose top passes the highest ground within kBladeNear
-//     cells of its column, nor a column over the highest of its 8 neighbors, by kBladeMost meters.
+//     cells of its column, nor a column over the highest of its 8 neighbors, by kBladeMost meters;
+//     at kMouths, every meter, no column over or under both neighbors up and down the slope by as much.
 #include "pattern_support.hpp"
 #include "tablelands_fields_support.hpp"
 #include "tablelands_lines_support.hpp"
@@ -74,6 +75,14 @@ constexpr double kBladeHalf = 400.0;
 constexpr double kBladeStep = 4.0;
 constexpr int kBladeNear = 3;
 constexpr double kBladeMost = 10.0;
+// Mouths of canyons in the escarpment, lowered with their caprock (a scan of the canyon map, commit 2d:
+// before it its steps lay in soft strata cut 1.8 km under their benches, blades); kMouthHalf meters
+// around each, kMouthReach up and down the slope (the steepest of x, z and the diagonals).
+constexpr std::array<std::array<double, 2>, 5> kMouths = {
+    {{69696.0, -14997880.0}, {70067.0, -14997562.0}, {135606.0, -15082514.0},
+     {133106.0, -15079714.0}, {107006.0, -15045914.0}}};
+constexpr int kMouthHalf = 60;
+constexpr int kMouthReach = 3;
 
 std::array<double, 3> deepestFloor(double x0, double z0, int side) {
     std::array<double, 3> best{x0, z0, 0.0};
@@ -388,10 +397,50 @@ void testBlades(double x0, double z0) {
     TEST_CHECK(b.columns == 0);
 }
 
+// The highest lip and the deepest well within kMouthHalf meters of (x0, z0), every meter.
+std::array<double, 2> lipsAround(double x0, double z0) {
+    constexpr int n = 2 * kMouthHalf + 1;
+    const auto at = [](int i, int j) { return static_cast<std::size_t>(j * n + i); };
+    std::vector<double> h(static_cast<std::size_t>(n * n));
+    for (int k = 0; k < n * n; ++k) {
+        h[static_cast<std::size_t>(k)] =
+            tablelands_fields::heightAt(x0 - kMouthHalf + k % n, z0 - kMouthHalf + k / n);
+    }
+    constexpr std::array<std::array<int, 2>, 4> axes = {{{1, 0}, {0, 1}, {1, 1}, {1, -1}}};
+    std::array<double, 2> worst{0.0, 0.0};
+    for (int j = kMouthReach; j + kMouthReach < n; ++j) {
+        for (int i = kMouthReach; i + kMouthReach < n; ++i) {
+            double climb = -1.0;
+            std::array<double, 2> here{0.0, 0.0};
+            for (const std::array<int, 2>& a : axes) {
+                const double up = h[at(i + kMouthReach * a[0], j + kMouthReach * a[1])];
+                const double down = h[at(i - kMouthReach * a[0], j - kMouthReach * a[1])];
+                if (std::abs(up - down) > climb) {
+                    climb = std::abs(up - down);
+                    here = {h[at(i, j)] - std::max(up, down), std::min(up, down) - h[at(i, j)]};
+                }
+            }
+            worst = {std::max(worst[0], here[0]), std::max(worst[1], here[1])};
+        }
+    }
+    return worst;
+}
+
+void testMouths() {
+    for (const std::array<double, 2>& m : kMouths) {
+        const std::array<double, 2> worst = lipsAround(m[0], m[1]);
+        std::printf("mouth of a canyon at (%.0f, %.0f): the highest lip %.1f m, the deepest well "
+                    "%.1f m\n", m[0], m[1], worst[0], worst[1]);
+        TEST_CHECK(worst[0] <= kBladeMost);
+        TEST_CHECK(worst[1] <= kBladeMost);
+    }
+}
+
 } // namespace
 
 int main() {
     testBlades(kBladeX, kBladeZ);
+    testMouths();
     const tablelands_fields::Sites sites = tablelands_fields::findSites();
     int canyons = 0;
     double straightest = 0.0;

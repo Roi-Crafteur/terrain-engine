@@ -69,6 +69,21 @@ Partial partialOf(const tableland_relief::Noises& n, double x, double z,
     return out;
 }
 
+// A caprock a canyon lowers with the escarpment (Shape::lowered) never stands over the rock the strata
+// leave on the floor of that canyon behind its rim: laid flat there, as much of a top as that floor is
+// (no lip of the rim over a floor cut down to the tread of its layer).
+double floorRock(const tableland_relief::Noises& n, double x, double z, const TablelandPoint& p,
+                 const tableland_relief::Shape& shape, double base) {
+    tableland_relief::Shape floor = shape;
+    floor.gradX = 0.0;
+    floor.gradZ = 0.0;
+    floor.top = shape.lowered.top;
+    floor.unitCover = 0.0;
+    floor.unitWeight = 0.0;
+    return wall_faces::passesTop(tableland_relief::passesAt(n, x, z, p, floor, base),
+                                 base + shape.lowered.rise);
+}
+
 } // namespace
 
 float Heightfield::intensityAt(double x, double z, const GeographySample& g, Memos* memos) const {
@@ -141,13 +156,19 @@ void Heightfield::addTablelands(double x, double z, const TablelandPoint& p, Hei
     if (floored) {
         rock = floor;
     }
+    bool shaved = false;
+    if (shape.lowered.rise > 0.0) {
+        const double under = floorRock(n, x, z, p, shape, static_cast<double>(s.base));
+        shaved = rock > under;
+        rock = std::min(rock, under);
+    }
     rock = std::min(rock, ground + kOverGround);
     if (site != nullptr && weight > 0.0) {
         site->walls = true;
         site->ground = ground;
         site->gradX = shape.gradX;
         site->gradZ = shape.gradZ;
-        if (site->faces && !floored) {
+        if (site->faces && !floored && !shaved) {
             mountain_walls::Column column;
             column.ground = ground;
             column.gradX = shape.gradX;

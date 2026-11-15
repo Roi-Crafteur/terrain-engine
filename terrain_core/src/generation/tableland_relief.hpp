@@ -137,6 +137,14 @@ struct Shape {
     // Over the great cliff of a canyon, the top of that cliff (meters over the low ground, as rise; 0:
     // none): the soft layers of the upper walls recede down to it, never into it.
     double floorTop = 0.0;
+    // Where a canyon lowers the escarpment, its caprock with it: the rise of the floor the canyon
+    // leaves behind the rim and how much of a top that floor is (as Shape::top; rise 0: none). The
+    // rim never stands over the rock of that floor (heightfield_tablelands.cpp): no lip along it.
+    struct Lowered {
+        double rise = 0.0;
+        double top = 0.0;
+    };
+    Lowered lowered;
 };
 [[nodiscard]] Shape shapeAt(const Noises& n, double x, double z, const Province& q);
 

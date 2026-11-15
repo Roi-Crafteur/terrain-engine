@@ -403,7 +403,9 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
     partielle, est une face du pied à sa borne. Les faces de roche des plateaux courent 6 m au
     moins (`wall_faces`, les montagnes au bit près) : la tuile LOD 0 les dessine sur ~97 % des
     parois des buttes, ancrées sur le relief réel aux bords de leur course ; la roche ne dépasse
-    jamais le sol de la forme (aucune lame). Blocs et cônes d'éboulis au pied, joints des faces
+    jamais le sol de la forme (aucune lame). Là où un canyon entaille l'escarpement, la corniche
+    descend avec le profil qu'elle coiffe et son rebord ne dépasse jamais la roche du fond du canyon
+    derrière lui (ni lèvre, ni puits). Blocs et cônes d'éboulis au pied, joints des faces
     irréguliers ou aucun. La coupe des canyons profonds est faite d'unités (`tableland_canyons.hpp`,
     Grand Canyon, Canyonlands) : corniche de tête de 40 à 120 m, pentes en gradins, grande falaise
     de 130 à 200 m (Redwall), replat de 0,3 à 1,5 km (Tonto), gorge intérieure de largeur variable,

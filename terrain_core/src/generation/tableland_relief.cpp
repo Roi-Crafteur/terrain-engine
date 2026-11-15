@@ -374,16 +374,16 @@ void addScree(const Noises& n, double x, double z, const Parts& parts, Shape& s)
 }
 
 // The hard layer of the wall at the column: the caprock of its outline on its cliff and the tops (none
-// on its talus, under its foot); on the walls of a canyon in the plateau, the unit of the canyon
-// there. On a top, it drapes the top of the column (kUnderTop under its ground at most): a top
-// lowered by a swale or a gully never lies inside its caprock, which would flatten it to its foot.
+// on its talus, under its foot), lowered with its profile by a canyon (Parts::held, as addScree: no
+// step of it in soft strata); on the walls of a canyon in the plateau, the unit of the canyon there. On
+// a top, it drapes the column (kUnderTop under its ground at most: no swale flattened to its foot).
 void setUnit(const Parts& parts, double share, Shape& s) {
     const Fields& f = parts.fields;
     if (parts.storeys.share >= 1.0 && f.canyon > 0.0 && !f.outlier && parts.cut.bench > 0.0) {
         s.floorTop = f.thickness - parts.cut.bench;
     }
-    double top = parts.top - kUnderTop;
-    double height = parts.cliff;
+    double top = parts.held - kUnderTop;
+    double height = parts.cliff * (parts.held / parts.top);
     bool capped = true;
     bool cliff = parts.storeys.cliff;
     if (parts.storeys.share >= 1.0 && f.canyon > 0.0 && !f.outlier) {
@@ -398,8 +398,7 @@ void setUnit(const Parts& parts, double share, Shape& s) {
     if (!cliff && capped && parts.storeys.share >= 1.0) {
         top = std::min(top, s.rise - kUnderTop);
     }
-    // A caprock of several layers comes in over its foot (its lowest layer partial: unitBench); the
-    // great cliff, one whole layer, under it.
+    // A caprock of several layers comes in over its foot (unitBench); the great cliff, whole, under it.
     const double over = s.rise - (top - height);
     double weight = capped ? smooth(0.0, kUnitFoot, over) : smooth(-kUnitFoot, 0.0, over);
     if (!capped) {
@@ -408,9 +407,8 @@ void setUnit(const Parts& parts, double share, Shape& s) {
     s.unitTop = top;
     s.unitHeight = height;
     s.unitWhole = !capped;
-    // Whole wherever the plateau holds a caprock, whatever the share of its province: its shape
-    // already fades out with its thickness at the margins (a caprock half laid would blur its
-    // ledges into its slope).
+    // Whole wherever the plateau holds a caprock, whatever the share of its province (its shape fades
+    // out with its thickness at the margins: a caprock half laid would blur its ledges into its slope).
     static_cast<void>(share);
     s.unitCover = weight * (1.0 - f.floor);
     s.unitWeight = s.unitCover;
@@ -491,9 +489,11 @@ Shape shapeAt(const Noises& n, double x, double z, const Province& q) {
                (1.0 - f.floor);
     out.thickness = f.thickness;
     out.soft = smooth(kSoftNear, kSoftFar, -f.scarp);
-    out.top = smooth(1.0 - kTopEdge, 1.0, f.profile) *
-              (1.0 - smooth(0.0, kTopCut, f.canyon / std::max(parts.top, 1.0)));
+    const double uncut = 1.0 - smooth(0.0, kTopCut, f.canyon / std::max(parts.top, 1.0));
+    out.top = smooth(1.0 - kTopEdge, 1.0, f.profile) * uncut;
     setUnit(parts, share, out);
+    const bool lowered = f.canyon > 0.0 && !f.outlier && parts.storeys.share < 1.0;
+    out.lowered = lowered ? Shape::Lowered{parts.held, uncut} : Shape::Lowered{};
     return out;
 }
 
