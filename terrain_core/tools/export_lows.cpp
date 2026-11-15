@@ -268,7 +268,7 @@ std::shared_ptr<const terrain::PlanetLevel> planetOf(const Options& o, Report& r
     params.threads = o.threads;
     bool built = false;
     auto level = std::make_shared<const terrain::PlanetLevel>(terrain::openPlanetLevel(
-        o.planet, o.seed, o.params.relief, params, o.world, &built));
+        o.planet, o.seed, o.params.relief, params, o.world, &built, {}, o.flags));
     r.add("planet level %s %s, checksum %016llx\n", built ? "built into" : "read from",
           o.planet.string().c_str(), static_cast<unsigned long long>(level->checksum()));
     return level;

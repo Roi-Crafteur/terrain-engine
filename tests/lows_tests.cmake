@@ -24,6 +24,12 @@ set_tests_properties(export_lows_smoke PROPERTIES
     PASS_REGULAR_EXPRESSION "lows of seed 20261019, world 4194 x 2097 km.*closed lows: [0-9]+")
 add_dependencies(check terrain_export_lows)
 
+# A planet file of the lows: built and read with --flags lows, refused without (small world).
+add_test(NAME export_lows_planet
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_lows>
+            -DOUT=${CMAKE_BINARY_DIR}/lows_planet
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/export_lows_planet.cmake)
+
 # Invalid arguments of terrain_export_lows are rejected before anything is computed.
 add_test(NAME export_lows_bad_args
     COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:terrain_export_lows>
