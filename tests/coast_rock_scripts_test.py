@@ -227,7 +227,7 @@ def main():
     code = float(found.group(1).replace("'", "")) if found else 0.0
     check(terrain.SEA_ROCK_CODE == code, f"SEA_ROCK_CODE {terrain.SEA_ROCK_CODE} == {code}")
 
-    biomes = [((0, 0, 0, 0), (0, 0, 0, 0), (0, 0))] * terrain.blend_code.BIOME_COUNT
+    biomes = [((0, 0, 0, 0), (0, 0, 0, 0), (0, 0), (0,))] * terrain.blend_code.BIOME_COUNT
     struct_code = terrain.struct_hlsl(biomes)
     check("SEA_ROCK" not in struct_code, "no SEA_ROCK placeholder left in the struct")
     layer = re.search(r"int v = code < 0\.0 \? \(code <= (-?[0-9.]+) \? 4 : 0\) : "

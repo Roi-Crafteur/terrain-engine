@@ -216,8 +216,8 @@ static void characterOf(const Ergs::Impl& m, double x, double z, ErgPoint& e) {
 
 // The share of the dunes the water leaves at (x, z): none on a lake nor on the floor of a valley,
 // all beyond their corridors, their edges wandering outward (never closer to the water). tallest:
-// the height the dunes may reach there; their fades stretch with it.
-static double waterShare(const Ergs::Impl& m, double x, double z, double tallest) {
+// the height the dunes may reach there; their fades stretch with it. courses: Ergs::at.
+static double waterShare(const Ergs::Impl& m, double x, double z, double tallest, bool courses) {
     ErgParams p = m.params;
     p.riverFade = std::max(p.riverFade, kFadePerMeter * tallest);
     p.lakeFade = std::max(p.lakeFade, kFadePerMeter * tallest);
@@ -241,7 +241,7 @@ static double waterShare(const Ergs::Impl& m, double x, double z, double tallest
     if (!(share > 0.0)) {
         return 0.0;
     }
-    if (m.riverFloor) {
+    if (courses && m.riverFloor) {
         // The floor of the valleys itself, wherever it lies (never a band around the polyline of
         // the cells: a wide floor reaches past it, and the band would cut the erg along a line).
         // Sought only near the polyline of the cells (floorNear): beyond, none is that near.
@@ -271,7 +271,7 @@ static float desertShare(const Ergs::Impl& m, double x, double z) {
     return 1.0f - noise::smoothstep(edge - p.edgeBelow, edge + p.edgeAbove, humidity);
 }
 
-ErgPoint Ergs::at(double x, double z, float relief, float rift) const {
+ErgPoint Ergs::at(double x, double z, float relief, float rift, bool courses) const {
     const Impl& m = *impl_;
     if (!mayHold(x, z)) {
         return {};
@@ -318,7 +318,7 @@ ErgPoint Ergs::at(double x, double z, float relief, float rift) const {
     characterOf(m, x, z, e);
     const double tallest = kWavesTallest * static_cast<double>(e.waves) +
                            kGiantsTallest * static_cast<double>(e.giants);
-    mask *= static_cast<float>(waterShare(m, x, z, tallest)) * dry *
+    mask *= static_cast<float>(waterShare(m, x, z, tallest, courses)) * dry *
             desert;
     if (!(mask > 0.0f)) {
         return {};

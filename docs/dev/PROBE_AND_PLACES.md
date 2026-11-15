@@ -81,7 +81,7 @@ aussi écrits dans le fichier planète ; un nom inconnu arrête l'outil.
   | `coast` | côte à la mer ou non, distance, cap vers la mer, `type` |
   | `sea` | les fonds des mers (agent 51) : zone, distance au rivage, fond avant et après, marge, croûte (dorsale, âge, taux d'expansion), plateau océanique (`plateau`), plateau marginal (`marginalPlateau`, mètres ajoutés), fosse, collines, fractures, monts sous-marins |
   | `surface` | biome, matériau, plantes, climat local, poids du fondu |
-  | `render` | ce que reçoit Unreal : sommets des tuiles LOD 0 à 3, horizon |
+  | `render` | ce que reçoit Unreal : sommets des tuiles LOD 0 à 3, horizon (le point du niveau 0, au pas de 8 m, lu comme l'horizon le lit : `forFootprint(8).seenAt`) |
 
 - `coast.distance` et `coast.seaHeading` viennent du signal de côte de la géographie, à grande
   échelle : la distance signée à sa côte et le cap qui descend ce signal. Le rivage réel, où le

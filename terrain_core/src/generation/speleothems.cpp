@@ -58,8 +58,10 @@ Candidate candidateOf(std::uint64_t seed, int cellX, int cellZ, const PeriodicCe
                 cellsZ.shift(cellZ)};
 }
 
+// The dry lands (agent 49: the deserts, the steppe and the shrubland too).
 bool dryBiome(Biome biome) {
-    return biome == Biome::Desert || biome == Biome::Savanna || biome == Biome::Beach;
+    return isDesert(biome) || biome == Biome::Savanna || biome == Biome::Beach ||
+           biome == Biome::Steppe || biome == Biome::Shrubland;
 }
 
 using cave_scan::Span;
