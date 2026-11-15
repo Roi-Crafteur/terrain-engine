@@ -358,10 +358,13 @@ void testDeterminism() {
         sums.push_back(contentChecksum(session.streamer.clipmap()));
     }
     TEST_CHECK(sums[0] == sums[1]);
-    // Pinned again when the columns of level 0 came to read the edits by the cells of the LOD 3
-    // lattice, as the tiles of LOD 3 do (agent 41, edit_coarse.hpp).
     golden::report("the horizon with a razed mountain, a crater and a heap",
-                   {{"edited horizon", sums[0], 0xE2CB2F6FE45F88B1ULL}});
+                   // Recollé par « Merge remote-tracking branch 'origin/main' into
+                   // claude/exciting-bardeen-ignvze » (agent 41, the merge of #84 into #78) :
+                   // "edited horizon" (0xE2CB2F6FE45F88B1 on #78, 0xC01A71DBEE4D464D on main) ;
+                   // both causes at once : the columns of level 0 read the edits by the cells of
+                   // the LOD 3 lattice (#78) and the 21 biomes of #84 in its samples.
+                   {{"edited horizon", sums[0], 0x0C4A53234875874EULL}});
 }
 
 } // namespace

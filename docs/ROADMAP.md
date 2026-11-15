@@ -269,6 +269,18 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - raccord exact avec les tuiles LOD 3 ; panorama 360° de contrôle : relief visible
   jusqu'à 400 km depuis un sommet
 
+### Garde-fous du monde (agent 55)
+- `relief_paths_test` : sur le monde par défaut avec sa planète (fixture `coast_planet`),
+  environ 2 000 points en strates (terre, bande côtière, erg, couloir de fleuve, paroi,
+  dépression sèche, mer) aux empreintes 0 à 512 m ; toutes les copies de la chaîne
+  d'échantillonnage comparées au bit à `sampleAt` : lots, lots avec la roche, `heightsAt`,
+  `seenAt` (hors faces, rampes et aiguilles des côtes), `seenHeightsAt`, cellule de l'horizon,
+  colonnes, eau et texels des tuiles LOD 3 ; il nomme la première étape qui diffère. À lancer
+  par toute branche qui touche `heightfield*.cpp`, `horizon_sampler.cpp`, `tile_blend.cpp` ou
+  `terrain_surface.cpp` ; quiconque ajoute un chemin d'échantillonnage du relief l'ajoute à ce
+  test
+- `terrain_probe` : la section `render` lit l'horizon par son vrai chemin
+
 ## À venir
 
 ### Ordre des prochains travaux (2 novembre 2026)
@@ -682,8 +694,67 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
 - à faire avant l'étape 1 de la 11C : le réseau d'eau doit voir ces creux
 
 ### Tous les milieux du monde (minimum voulu)
-- format à élargir d'abord : 12 biomes aujourd'hui, 16 biomes et 8 matériaux au plus par le format
-  actuel
+- format élargi (agent 49, #76) : biomes sur 6 bits (64), matériaux sur 5 bits (32), texels de
+  fondu de 16 octets. Le texel porte aussi le type d'eau de la colonne (pour l'agent 40) et garde
+  la place d'une couverture, part et type (sable, neige, cendre, sel : agent 44), et de la chaleur
+  du sol (phase 14)
+- fait (agent 49) : 21 biomes terrestres (forêt sèche, steppe, désert de sable, désert rocheux avec
+  regs et hamadas, désert froid, haute montagne, région polaire, désert de glace, garrigue et
+  maquis, broussailles), herbe des déserts à moins de 150 m d'un fleuve, plage et marais côtier
+  seulement près de la mer ; seuils froids réglés sur `snowTemperature` par des écarts nommés
+- places réservées aux autres agents (identifiants seulement, rien de codé) :
+
+  | Agent | Matériaux | Biomes |
+  |---|---|---|
+  | 45 (volcans) | 11-14 : cendre, basalte, scories, soufre | 21-22 : champ de lave, zone géothermique |
+  | 46 (plateaux, karst) | 15-16 : calcaire, grès rouge | — |
+  | 47 (glaciaire) | 17-18 : glace de glacier, moraine | 23 : glacier |
+  | 50 (humides et côtiers) | 19-22 : tourbe, croûte de sel, vasière, galets de plage | 24-33 |
+  | 51 (mers) | 23-25 : corail, glace de mer, vase des abysses | 34-39 |
+  | libres | 26-31 | 40-63 |
+
+- zone de mousson : un marquage, jamais un biome (agent 49, `monsoon.hpp`). Sa part en [0, 1] est
+  chaude × humide × bande tropicale aux bords gauchis, et couvre 4 % des terres à 0,5 au moins.
+  On la lit sur la carte de dev (calque `monsoon`), dans F3 (`monsoon`) et dans la sonde
+  (`surface.monsoon`). À reprendre par l'agent 50 (plaines inondables, forêts inondées, prairies
+  humides)
+  - écart à reprendre (agent 50, réglage à R1) : 3,95 % des terres de la planète réelle à 0,5 au
+    moins, contre environ 28 % des terres de la Terre dans le domaine de la mousson globale (Bin
+    Wang, webinaire OMM/WCRP 2023 ; Wang et Ding 2008 : 19,4 % de toute la surface du globe, mers
+    comprises). Causes probables : la bande de latitude (8 à 25°) et le seuil d'humidité (0,45 à
+    0,6) sont étroits, et la planète n'a pas de saisons ; la vraie définition (Wang et Ding) lit
+    l'écart de pluie entre l'été et l'hiver (plus de 2 mm/j, plus de 55 % en été)
+- à R1, réglage fin des seuils des biomes sur la table des 6 seeds. Le climat de la planète bouge
+  alors (latitude « sphère » et bandes fondues de l'agent 31). Écarts mesurés sur le climat actuel
+  (planète réelle, 38 071 points de terre ; réglage grossier jusque-là) :
+  - trop de froid : désert de glace, neige et région polaire couvrent 24 % des terres, contre
+    environ 11 % sur Terre (inlandsis) ;
+  - trop peu de forêt tropicale humide : 2,5 % contre environ 14 % ;
+  - garrigue et maquis trop larges (4,8 % contre 2,2 %), prairies et steppes aussi (10,6 % contre
+    6,9 %) ;
+  - lignes droites de l'humidité de la planète (bandes de vent, ligne à 30°), encore visibles à
+    200 km : le gauchissement de ±12 km ne casse que les plis de la grille de 8 km. L'agent 31
+    les lisse à la source ;
+  - pour information : le sable couvre 5 % des déserts, contre environ 20 % sur Terre, car le
+    masque des ergs (agent 34) ne couvre que 0,87 % des terres
+- matériau temporaire d'Unreal, hors de la #84 (agent 49 ; écarts vus par l'orchestrateur) :
+  - réglage d'ensemble des teintes du sol : steppe, forêt sèche et désert de sable sont plus
+    sombres et plus saturés que les photos (trop peu de bleu). Albédo sRGB calculé contre attendu :
+    steppe (120, 104, 51) contre environ (170, 155, 110), désert de sable (162, 115, 74) contre
+    environ (215, 160, 105), forêt sèche (108, 101, 43) contre environ (125, 105, 70). La cause est
+    commune aux 21 biomes : les moyennes des textures, `Saturation` (1,2) et `Warmth`. À régler
+    ensemble, pas biome par biome. Le gravier gris des biomes froids est sombre aussi (désert froid
+    (110, 96, 83) contre environ (145, 130, 110)), car l'éboulis `T_RockyGround` a une moyenne de
+    (104, 92, 76). Les couleurs calculées viennent de `unreal_ground_colors_test` (sol plat, au
+    loin) ; les attendues sont des estimations d'après des photos types, à mesurer ;
+  - couches « en touffes », après le découpage de `temporary_terrain_hlsl.py` (571 lignes, aucune
+    ligne nette permise). Dans le nuanceur de pixels des tuiles, une petite part d'une couche est
+    dessinée en taches par un seuil sur un bruit de plaques (couverture = part) : la forêt en taches
+    sombres, le sable ou l'éboulis en affleurements clairs. Pour la garrigue : du calcaire clair
+    entre des taches sombres. Aucune lecture de texture de plus ; l'horizon garde les moyennes. Le
+    nuanceur ne reçoit que les 8 poids des couches (les interpolateurs de l'horizon sont pleins, 22
+    sur 22) : la règle vaut par couche, pour tous les biomes, et change aussi l'aspect de près des
+    anciens. Les vrais arbustes viendront avec l'affichage des plantes du core
 - un milieu n'est pas toujours un biome : il peut être un biome, un relief, un marquage ou un lieu
 - terrestres : forêts tropicale, tempérée, boréale et sèche, savane, prairie, steppe, plaine, déserts
   de sable, rocheux et froid, toundra, montagne, haute montagne, vallée, colline, plateau, canyon,

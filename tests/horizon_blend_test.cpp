@@ -267,7 +267,7 @@ void testEdits() {
 void testDominant() {
     using terrain::Biome;
     terrain::BlendWeights w;
-    w.biomes[static_cast<std::size_t>(Biome::Desert)] = 0.25f;
+    w.biomes[static_cast<std::size_t>(Biome::RockyDesert)] = 0.25f;
     w.biomes[static_cast<std::size_t>(Biome::Ocean)] = 0.25f;
     w.biomes[static_cast<std::size_t>(Biome::Mountain)] = 0.5f;
     w.biomes[static_cast<std::size_t>(Biome::Tundra)] = 0.125f;
@@ -275,7 +275,7 @@ void testDominant() {
     const terrain::SurfaceBlend blend = terrain::horizon::dominantBlend(w);
     TEST_CHECK(blend.biomes[0] == Biome::Mountain);
     // Equal weights: the lower id first (the ocean is 0).
-    TEST_CHECK(blend.biomes[1] == Biome::Ocean && blend.biomes[2] == Biome::Desert);
+    TEST_CHECK(blend.biomes[1] == Biome::Ocean && blend.biomes[2] == Biome::RockyDesert);
     TEST_CHECK(blend.biomeWeights[0] == 0.5f / 1.0f && blend.biomeWeights[1] == 0.25f);
     TEST_CHECK(blend.materials[0] == static_cast<terrain::SurfaceMaterial>(3));
     TEST_CHECK(blend.materials[1] == blend.materials[0] && blend.materialWeights[1] == 0.0f);

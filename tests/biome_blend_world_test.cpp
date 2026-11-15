@@ -246,9 +246,16 @@ Sides biomeSides(std::function<bool(Biome)> first, std::function<bool(Biome)> se
 // on lines of 800 m across the mountain on the site of the LOD 0 tiles (1 m).
 void testWidthsByPair(const Place& mountain, const Place& plain, const Place& snowLine) {
     std::vector<double> forest;
+    // The open lands and the woods (agent 49: the garrigue and maquis beside the temperate forest,
+    // the savanna beside the dry forest).
     const Sides woods = biomeSides(
-        [](Biome b) { return b == Biome::Grassland || b == Biome::Savanna; },
-        [](Biome b) { return b == Biome::TemperateForest || b == Biome::TropicalForest; });
+        [](Biome b) {
+            return b == Biome::Grassland || b == Biome::Savanna || b == Biome::Mediterranean;
+        },
+        [](Biome b) {
+            return b == Biome::TemperateForest || b == Biome::TropicalForest ||
+                   b == Biome::DryForest;
+        });
     for (int k = -6; k <= 6; ++k) {
         bandWidths(plain.x - 60'000.0, plain.z + k * 8'000.0, 50.0, 2'400, woods, 1.0f, forest);
     }
