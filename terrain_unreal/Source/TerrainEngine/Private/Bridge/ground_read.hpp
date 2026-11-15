@@ -10,8 +10,10 @@
 
 #include "terrain/streaming/terrain_tiles.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <future>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -36,23 +38,31 @@ public:
     GroundRead() = default;
     GroundRead(const GroundRead&) = delete;
     GroundRead& operator=(const GroundRead&) = delete;
-    ~GroundRead() = default; // waits for the reads still running (the tiles must outlive them)
+    // Waits for the reads still running (the tiles must outlive them), stopped first: a read
+    // stops at its next stop point (work_stop.hpp: within milliseconds).
+    ~GroundRead();
 
     // Reads the level of (x, z) on a thread; a read still running is forgotten, never waited for.
     void ask(const TerrainTiles& tiles, double x, double z);
-    // The read running is forgotten (a load that reads nothing begins).
+    // The read running is forgotten (a load that reads nothing begins): stopped at once (its
+    // flag raised: it leaves within milliseconds, its result never read), never waited for.
     void forget();
-    [[nodiscard]] bool pending() const { return current_.valid(); }
+    [[nodiscard]] bool pending() const { return current_.result.valid(); }
     // Once read, the level of the last point asked, given once; nothing before, nor after.
     [[nodiscard]] std::optional<GroundLevel> poll();
     // The reads still running, forgotten ones included.
     [[nodiscard]] std::size_t running() const;
 
 private:
+    // A read on its thread and the flag that stops it (shared with the thread).
+    struct Read {
+        std::shared_ptr<std::atomic<bool>> stop;
+        std::future<GroundLevel> result;
+    };
     void dropFinished();
 
-    std::future<GroundLevel> current_;
-    std::vector<std::future<GroundLevel>> forgotten_;
+    Read current_;
+    std::vector<Read> forgotten_;
 };
 
 } // namespace terrain::unreal

@@ -1,5 +1,7 @@
 #include "terrain/streaming/stream_manager.hpp"
 
+#include "terrain/work_stop.hpp"
+
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -45,6 +47,7 @@ StreamManager::StreamManager(TileGenerator generator, const StreamParams& params
 }
 
 StreamManager::~StreamManager() {
+    raiseWorkStop(stop_); // and the threads waiting in the caches of the hydrology wake
     {
         const std::lock_guard lock(mutex_);
         stopping_ = true;
@@ -325,7 +328,10 @@ void StreamManager::runJob(std::unique_lock<std::mutex>& lock) {
     std::optional<TileData> data;
     std::exception_ptr error;
     try {
+        const WorkStopScope scope(&stop_);
         data = generator_(job.request);
+    } catch (const WorkStopped&) {
+        // the manager stops: the tile is dropped, nothing went wrong
     } catch (...) {
         error = std::current_exception();
     }

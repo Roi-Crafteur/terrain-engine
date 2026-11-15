@@ -11,6 +11,7 @@
 
 #include "terrain/det_math.hpp"
 #include "terrain/generation/noise.hpp"
+#include "terrain/work_stop.hpp"
 
 #include <algorithm>
 #include <array>
@@ -311,6 +312,7 @@ void findPonds(const Heightfield& relief, Course& c) {
     const auto under = [&](std::size_t i) { return pts[i].ground < pts[i].level - kPondDepth; };
     std::size_t i = 0;
     while (i < pts.size()) {
+        workStopPoint(); // a pond floods up to 3 km around its points
         if (!under(i)) {
             ++i;
             continue;
@@ -391,9 +393,11 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
     Course c;
     c.points = axisOf(in);
     const float levelB = joinEarlier(relief, in, c.points);
+    workStopPoint();
     sampleGround(relief, in, c.points);
     setLevels(c.points, in.a.level, levelB);
     std::vector<std::array<double, 2>> runs;
+    workStopPoint();
     const bool falls = refineFalls(relief, in, c.points, runs);
     if (falls) {
         setLevels(c.points, in.a.level, levelB);
@@ -414,10 +418,13 @@ Course buildCourse(const Heightfield& relief, const ReachInput& in) {
             static_cast<std::uint64_t>(std::llround(c.points[0].z)));
         c.narrowKey = narrowKey(c.slotSeed); // before anything reads its frames
         placePools(c);
+        workStopPoint();
         windCorridors(c, relief, in.surface, runs);
+        workStopPoint();
         placeBlocks(c);
         placeLips(c, relief, in.a.discharge);
     }
+    workStopPoint();
     setChunks(c);
     findPonds(relief, c);
     float highest = -std::numeric_limits<float>::infinity();

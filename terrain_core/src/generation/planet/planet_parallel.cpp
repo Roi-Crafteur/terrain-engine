@@ -1,5 +1,7 @@
 #include "planet_parallel.hpp"
 
+#include "terrain/work_stop.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
@@ -31,7 +33,10 @@ void parallelBlocks(int count, int blockSize, int threads,
     }
     std::vector<std::exception_ptr> errors(static_cast<std::size_t>(blocks));
     std::atomic<int> next{0};
+    // The threads of the loop stop with the calling one (work_stop.hpp).
+    const std::atomic<bool>* stop = workStopFlag();
     const auto work = [&] {
+        const WorkStopScope scope(stop);
         for (int block = next.fetch_add(1); block < blocks; block = next.fetch_add(1)) {
             try {
                 body(block * blockSize, std::min(count, (block + 1) * blockSize));

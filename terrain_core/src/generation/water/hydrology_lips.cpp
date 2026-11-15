@@ -4,6 +4,7 @@
 #include "river_lips.hpp"
 #include "river_profile.hpp"
 #include "terrain/det_math.hpp"
+#include "terrain/work_stop.hpp"
 
 #include <algorithm>
 #include <array>
@@ -179,6 +180,7 @@ std::array<double, 3> Hydrology::Impl::surfaceOf(const water::Course& c,
 
 void Hydrology::Impl::wetLips(water::Course& c) const {
     for (water::FallLip& l : c.lips) {
+        workStopPoint();
         // The foot of its water: the first point of the course down at the water below it.
         std::size_t j = l.point;
         while (j + 1 < c.points.size() && c.points[j].level > l.bottom + 0.05f) {

@@ -3,6 +3,7 @@
 // The insides of the Hydrology (hydrology.hpp), shared by hydrology.cpp and hydrology_query.cpp.
 
 #include "fine_lake.hpp"
+#include "hydrology_lazy.hpp"
 #include "river_course.hpp"
 #include "river_profile.hpp"
 #include "terrain/generation/noise.hpp"
@@ -18,7 +19,6 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <vector>
 
 namespace terrain {
@@ -35,8 +35,6 @@ constexpr double kStray = 2'000.0;
 constexpr double kValleyReach = 6'000.0; // water::kReach
 // The meanders: half waves of kHalfWave widths of the river.
 constexpr double kHalfWave = 5.5;
-// The shards of the locks of the caches.
-constexpr std::size_t kShards = 64;
 
 // Ranks of the set bits of a mask of the cells.
 struct Bits {
@@ -60,59 +58,6 @@ struct Bits {
         const std::uint64_t below = (std::uint64_t{1} << (c & 63)) - 1;
         return rank[c >> 6] + static_cast<std::size_t>(std::popcount(words[c >> 6] & below));
     }
-};
-
-// Objects computed once on demand, by index, from any thread: the first to need one computes it
-// (under the lock of its shard), every other reads it.
-template <class T>
-class Lazy {
-public:
-    void resize(std::size_t n) {
-        slots_ = std::make_unique<std::atomic<const T*>[]>(n);
-        for (std::size_t i = 0; i < n; ++i) {
-            slots_[i].store(nullptr, std::memory_order_relaxed);
-        }
-    }
-    [[nodiscard]] bool has(std::size_t i) const {
-        return slots_[i].load(std::memory_order_acquire) != nullptr;
-    }
-    template <class Make>
-    const T& get(std::size_t i, Make&& make) {
-        if (const T* p = slots_[i].load(std::memory_order_acquire)) {
-            return *p;
-        }
-        std::lock_guard<std::mutex> shard(locks_[i % kShards]);
-        if (const T* p = slots_[i].load(std::memory_order_acquire)) {
-            return *p;
-        }
-        auto made = std::make_unique<const T>(make());
-        const T* p = made.get();
-        {
-            std::lock_guard<std::mutex> own(ownedLock_);
-            owned_.push_back(std::move(made));
-        }
-        slots_[i].store(p, std::memory_order_release);
-        return *p;
-    }
-    [[nodiscard]] std::size_t count() const {
-        std::lock_guard<std::mutex> own(ownedLock_);
-        return owned_.size();
-    }
-    template <class Size>
-    [[nodiscard]] std::size_t bytes(Size&& size) const {
-        std::lock_guard<std::mutex> own(ownedLock_);
-        std::size_t total = 0;
-        for (const auto& p : owned_) {
-            total += size(*p);
-        }
-        return total;
-    }
-
-private:
-    std::unique_ptr<std::atomic<const T*>[]> slots_;
-    std::array<std::mutex, kShards> locks_;
-    mutable std::mutex ownedLock_;
-    std::vector<std::unique_ptr<const T>> owned_;
 };
 
 using Path = std::vector<water::PathPoint>;
@@ -145,6 +90,10 @@ using water_detail::kNone;
 using water_detail::LakeList;
 using water_detail::Lazy;
 using water_detail::Path;
+// An object of a cache, held while it is read (hydrology_lazy.hpp).
+using CourseRef = Lazy<water::Course>::Ref;
+using PathRef = Lazy<Path>::Ref;
+using LakeRef = Lazy<water::FineLake>::Ref;
 
 // What the queries of the points of a region share (hydrology_region.cpp): its canonical box, the
 // highest relief there, and for each cell of the planet level it meets (at most 2 x 2) the reaches
@@ -161,8 +110,9 @@ struct Hydrology::Region::Data {
         double maxX = 0.0;
         double maxZ = 0.0;
         bool everywhere = false; // mayReach holds at every point of the box
-        // Its course and what of it may carve the box (BoxCourse), once a point needs them.
-        const water::Course* course = nullptr;
+        // Its course and what of it may carve the box (BoxCourse), once a point needs them: held
+        // while the region lives (the cache may drop it meanwhile).
+        CourseRef course;
         water::BoxCourse box;
     };
     struct Part {
@@ -248,6 +198,19 @@ struct Hydrology::Impl {
     mutable Lazy<ReachFloor> floors;
     mutable Lazy<float> startLevels; // the water where each reach starts
     mutable Lazy<water::Course> courses;
+    // The bytes of what the caches hold, against their budgets (HydrologyParams::cacheBytes: the
+    // courses 70 %, the paths 20 %, the fine lakes 10 %, never under kLeastCourses, kLeastPaths
+    // and kLeastLakes; the floors and the start levels, a few bytes per reach, are never dropped).
+    static constexpr std::size_t kLeastCourses = std::size_t{4} << 20;
+    static constexpr std::size_t kLeastPaths = std::size_t{1} << 20;
+    static constexpr std::size_t kLeastLakes = std::size_t{4} << 20; // 30 lakes of 1025 nodes
+    [[nodiscard]] static std::size_t pathBytes(const Path& p) {
+        return sizeof(Path) + p.capacity() * sizeof(water::PathPoint);
+    }
+    [[nodiscard]] static std::size_t courseBytes(const water::Course& c); // hydrology_query.cpp
+    [[nodiscard]] static std::size_t lakeBytes(const water::FineLake& l) {
+        return sizeof(water::FineLake) + l.bytes();
+    }
 
     Impl(std::uint64_t seed, const Heightfield& field, std::shared_ptr<const PlanetLevel> level,
          const HydrologyParams& p)
@@ -288,10 +251,11 @@ struct Hydrology::Impl {
     void indexOutlets();
     [[nodiscard]] std::size_t next(std::size_t r) const;
     [[nodiscard]] std::size_t previous(std::size_t r) const;
-    [[nodiscard]] const Path& pathOf(std::size_t r) const;
-    [[nodiscard]] const ReachFloor& floorOf(std::size_t r) const;
+    // What the caches give is held by the caller while it reads it (hydrology_lazy.hpp).
+    [[nodiscard]] PathRef pathOf(std::size_t r) const;
+    [[nodiscard]] ReachFloor floorOf(std::size_t r) const;
     [[nodiscard]] float startLevel(std::size_t r) const;
-    [[nodiscard]] const water::Course& courseOf(std::size_t r) const;
+    [[nodiscard]] CourseRef courseOf(std::size_t r) const;
     [[nodiscard]] water::Course makeCourse(std::size_t r) const;
     // Where along the edges of the lips of c the water above falls (water::FallLip::wetFrom,
     // wetTo: hydrology_lips.cpp).
@@ -328,9 +292,9 @@ struct Hydrology::Impl {
     [[nodiscard]] std::int32_t lakeOf(std::size_t cell) const {
         return lakes.has(cell) ? lakeOfCell[lakes.rankOf(cell)] : -1;
     }
-    [[nodiscard]] const water::FineLake& fineLakeOf(std::int32_t lake) const;
+    [[nodiscard]] LakeRef fineLakeOf(std::int32_t lake) const;
     [[nodiscard]] water::FineLake makeFineLake(std::int32_t lake) const;
-    [[nodiscard]] float levelOf(std::int32_t lake) const { return fineLakeOf(lake).level(); }
+    [[nodiscard]] float levelOf(std::int32_t lake) const { return fineLakeOf(lake)->level(); }
     [[nodiscard]] LakeWater lakeAt(double x, double z, double ground) const;
     // The lakes of the cells around a cell, and the lake of a list over the canonical (x, z).
     [[nodiscard]] LakeList lakesAround(std::size_t cell) const;

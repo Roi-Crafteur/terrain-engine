@@ -162,8 +162,8 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 - mesuré d'abord (journal de chaque tuile, jalons, courbe « distance → instant visible », CSV) :
   les tuiles autour du joueur étaient là en 0,26 à 0,68 s, mais l'horizon lointain arrivait d'un
   bloc 3,7 à 24 s après (Unreal, 9950X3D, avec la planète). Avec la planète, une époque complète
-  coûte 74 à 111 s sur un fil, dont 65 s pour les niveaux 8 et 9 (`Hydrology::courseOf`, tâche à
-  part)
+  coûte 74 à 111 s sur un fil, dont 65 s pour les niveaux 8 et 9 (`Hydrology::courseOf` : le
+  routage des tracés, voir l'agent 39 plus bas et la 11C)
 - l'horizon vient niveau par niveau, le niveau 0 d'abord, chacun en fondu, le bord du dernier
   niveau visible dissous dans le ciel ; l'époque de l'ancien lieu est abandonnée à la téléportation
 - renfort pendant le chargement (fils de tuiles et morceaux d'horizon ensemble sous
@@ -262,6 +262,39 @@ réécrit tout nous-mêmes, sans copier ni traduire son code.
 
 ### Carte de dev et minicarte (agent 35) : images de la carte dans `terrain_core/map` (relief, biomes, eau, courbes, tout zoom, mêmes octets sur tout fil), minicarte, carte plein écran `M` (jamais en Shipping), clic = pion du jeu sur terre ou vue au-dessus de l'eau, lieux de `data/dev/places.json` (`terrain_unreal/README.md`, section 16)
 
+### Hydrologie interruptible (agent 39)
+- Les tracés des fleuves s'arrêtent d'un autre fil (`terrain/work_stop.hpp`). Chaque fil a son
+  drapeau. Des points d'arrêt sont placés dans le calcul des tracés et des lacs fins, et à
+  l'entrée de `riversAt`.
+- Les caches de l'hydrologie (`water/hydrology_lazy.hpp`) calculent hors de tout verrou, et une
+  attente s'arrête aussi. Rien n'est publié à moitié.
+- Les fils des tuiles, de l'horizon CPU et GPU, de la carte et de la lecture du sol lèvent leur
+  drapeau avant d'être attendus. `ReleaseWorld` écrit « the world released in X ms ».
+- Mesuré sous charge :
+
+  | Test | Médiane | Autres mesures |
+  |---|---|---|
+  | `hydrology_stop_test` | 1 à 4 ms | plus long ≤ 0,10 de la fin des tracés en cours (finis ensemble, sous la même charge) |
+  | `unreal_work_stop_test` | 2,4 ms | 4 fils, ordre de `ReleaseWorld` ; 5,5 ms au plus |
+
+  ThreadSanitizer ne signale rien. Les mêmes bits sur 1 et 4 fils (`hydrology_threads_test`).
+- Les mêmes bits et le même coût :
+  - `hydrology_bits_test` (figé sur `main`), les goldens, `mountain_freeze_test` et la somme
+    Planète `26626564570b0d9e` sont inchangés ;
+  - les niveaux 8 et 9 complets au spawn sont identiques à l'octet ;
+  - l'horizon entier au spawn prend 43 à 45 s, comme avant.
+- Pas de raccourci au bit près pour le lointain. Le coût est dans le routage (`lowestPath`), à
+  reprendre à la source dans la 11C (`docs/dev/HYDROLOGY_THREADS.md`, `terrain_unreal/LOADING.md`).
+- Après l'audit de l'agent 53 :
+  - la mémoire de l'hydrologie est bornée : `HydrologyParams::cacheBytes`, 256 Mio par défaut
+    (tracés 70 %, chemins 20 %, lacs fins 10 %). Les objets lus il y a le plus longtemps sont
+    lâchés, puis refaits aux mêmes bits (`hydrology_cache_test`) ;
+  - pic du processus, `main` contre la branche : 565 contre 572 Mio sur une marche de 20 km le
+    long d'un fleuve (sous le budget) ; 951 à 957 contre 734 à 740 Mio sur un tour de 6 lieux,
+    sans tracé refait et dans le même temps ;
+  - une lecture du sol laissée par une nouvelle téléportation s'arrête aussitôt (0,1 ms) ;
+  - la couture du monde, plus lente mais aux mêmes bits, va à la 11C.
+
 ### Phase 13 — Horizon lointain (core)
 - 10 niveaux de grilles de hauteur et de matériau autour du joueur (8 m à 4 km, rayon
   520 km), mis à jour par bandes en arrière-plan, identiques au bit près sur toutes les
@@ -290,7 +323,8 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   poids des biomes dans l'horizon, peuplement V1
 - en cours, change le monde dans sa zone : phase 12A (parois, chutes en roche 3D), mers de dunes ;
   relief côtier fait (agent 33 : #70, puis sa roche en trois dimensions)
-- sans changer le monde : hydrologie rapide et interruptible, ménage des tests, terrain modifié par
+- sans changer le monde : hydrologie interruptible (faite, agent 39 ; son coût au lointain passe à
+  la 11C), ménage des tests, terrain modifié par
   le joueur (creux lisses, blocs visibles de loin, lumière), eau et horizon
 - ensuite, l'un après l'autre : réseau hydrographique complet (11C, en 4 étapes), puis versants
 - puis, chacun dans sa zone : volcans, plateaux et karst, relief glaciaire, tous les milieux
@@ -357,6 +391,21 @@ est identique au bit près ; ceux qui la changent partout passent l'un après l'
   assèchement en climat sec (oueds), pertes dans le calcaire
 - le réseau fin et les vallées sont la même chose, creusée par l'eau à toutes les tailles
 - dégel des montagnes : `mountain_freeze_test` est levé pour cette phase, puis refait
+- le coût du lointain (agent 39) est dans le routage :
+  - au spawn, les niveaux 8 et 9 de l'horizon demandent 4 631 tracés ;
+  - `lowestPath` y prend 63 % du temps, avec environ 2 000 hauteurs du relief par tronçon ;
+  - 88 % passent par les fonds des tronçons d'amont (`startLevel`) ;
+  - il est à réduire à la source, avec les mêmes vallées à toutes les distances : des tracés
+    plus économes, ou le graphe de la planète réutilisé pour le lointain ;
+  - jamais par des vallées absentes ou simplifiées aux niveaux ≥ 8 (refusé : des fleuves qui
+    s'arrêtent à la limite du niveau 7) ;
+  - règles des fils, des arrêts et des caches bornés (`HydrologyParams::cacheBytes`, des `Ref` à
+    garder pendant la lecture) : `docs/dev/HYDROLOGY_THREADS.md`
+- la couture du monde (audit de l'agent 53, `heightfield_hydrology.cpp`, l'appel de `regionOf`) :
+  - une tuile à cheval sur x = ±X/2 ou z = ±Z/2 a une boîte canonique large de tout le monde, et
+    lit l'eau point par point, sans `Region` : mêmes bits, 1,1 à 1,7 fois le temps d'une voisine ;
+  - à reprendre avec la réécriture : la boîte dans les images du premier point, comme les
+    tronçons (`docs/dev/HYDROLOGY_THREADS.md`)
 - refaire les vallées des montagnes en un vrai réseau qui descend vers les plaines : un arbre
   de vallées qui draine, leurs fonds toujours en pente vers l'aval, de la crête à la plaine. Les
   vallées de la 11R bis sont des tronçons fermés (boucles des lignes de bruit, fonds qui montent

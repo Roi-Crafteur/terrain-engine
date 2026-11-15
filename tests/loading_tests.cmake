@@ -59,7 +59,10 @@ terrain_add_test(load_schedule_test terrain_load_schedule)
 
 # The bench of the loads, run by hand (not a test: tens of seconds, a planet file optionally):
 # unreal_loading_bench [--planet <file>] [--at <x> <z>] [--teleport <x> <z>]... (see the file).
-add_executable(unreal_loading_bench unreal_loading_bench.cpp)
+# It prints the courses of the hydrology and the peak of the process (agent 39).
+add_executable(unreal_loading_bench unreal_loading_bench.cpp
+                                    ${PROJECT_SOURCE_DIR}/terrain_core/tools/process_memory.cpp)
+target_include_directories(unreal_loading_bench PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/tools)
 target_link_libraries(unreal_loading_bench PRIVATE terrain_unreal_bridge terrain_load_schedule
                                                    terrain_warnings)
 add_dependencies(check unreal_loading_bench)

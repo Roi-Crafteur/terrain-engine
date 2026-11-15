@@ -45,10 +45,10 @@ void Hydrology::Impl::indexLakes() {
             lakeCellList[fill[static_cast<std::size_t>(lc.lake)]++] = lc.cell;
         }
     }
-    fineLakes.resize(count);
+    fineLakes.resize(count, std::max(params.cacheBytes / 10, kLeastLakes), &Impl::lakeBytes);
 }
 
-const water::FineLake& Hydrology::Impl::fineLakeOf(std::int32_t lake) const {
+LakeRef Hydrology::Impl::fineLakeOf(std::int32_t lake) const {
     return fineLakes.get(static_cast<std::size_t>(lake), [&] { return makeFineLake(lake); });
 }
 
@@ -129,7 +129,8 @@ LakeWater Hydrology::Impl::lakeIn(const LakeList& around, double x, double z,
         if (!(ground < static_cast<double>(planetLake.level))) {
             continue;
         }
-        const water::FineLake& lake = fineLakeOf(id);
+        const LakeRef held = fineLakeOf(id);
+        const water::FineLake& lake = *held;
         const float level = lake.level();
         if (!(ground < static_cast<double>(level)) ||
             (out.lake >= 0 && !(level > out.level || (level == out.level && id < out.lake))) ||

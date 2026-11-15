@@ -2,6 +2,7 @@
 #include "fine_lake.hpp"
 
 #include "terrain/generation/noise.hpp"
+#include "terrain/work_stop.hpp"
 
 #include <algorithm>
 #include <array>
@@ -77,6 +78,9 @@ private:
     std::vector<float> ground_;
 };
 
+// The flood stops (workStopPoint) every kStopEvery nodes taken out of its queue.
+constexpr std::size_t kStopEvery = 256;
+
 // For every node, the lowest height the water of the seeds rises to on its way there (only below
 // out, which falls to the lowest height at which the water would leave the raster).
 std::vector<float> flood(Raster& r, const std::vector<std::size_t>& starts, float& out) {
@@ -91,7 +95,11 @@ std::vector<float> flood(Raster& r, const std::vector<std::size_t>& starts, floa
         }
     }
     const auto nx = static_cast<std::size_t>(r.frame.nx);
+    std::size_t popped = 0;
     while (!queue.empty()) {
+        if ((++popped & (kStopEvery - 1)) == 0) {
+            workStopPoint(); // every kStopEvery nodes, a few of them sampled
+        }
         const auto [h, k] = queue.top();
         queue.pop();
         if (h > spill[k] || !(h < out)) {
@@ -130,6 +138,7 @@ float borderLowest(const Heightfield& relief, const Frame& f, const std::vector<
         {{1, 0, 1, 0}, {-1, 0, 0, 0}, {0, 1, 0, 1}, {0, -1, 0, 0}}};
     float lowest = lake;
     for (int j = -1; j < f.nz; ++j) {
+        workStopPoint(); // a row of squares
         for (int i = -1; i < f.nx; ++i) {
             if (!wetSquare(i, j)) {
                 continue;

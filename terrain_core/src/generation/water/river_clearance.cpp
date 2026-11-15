@@ -102,13 +102,13 @@ Hydrology::Clearance Hydrology::clearanceAt(double x, double z) const {
                 const water::PathPoint start = m.startOf(r);
                 const double px = start.x + noise::wrapCanonical(x - start.x, m.grid.periodX());
                 const double pz = start.z + noise::wrapCanonical(z - start.z, m.grid.periodZ());
-                addCourse(m.courseOf(r), px, pz, out);
+                addCourse(*m.courseOf(r), px, pz, out);
             }
         }
     }
     const LakeList around = m.lakesAround(cell);
     for (std::size_t k = 0; k < around.count; ++k) {
-        out.away = std::min(out.away, windowClearance(m.fineLakeOf(around.ids[k]), x, z));
+        out.away = std::min(out.away, windowClearance(*m.fineLakeOf(around.ids[k]), x, z));
     }
     return out;
 }

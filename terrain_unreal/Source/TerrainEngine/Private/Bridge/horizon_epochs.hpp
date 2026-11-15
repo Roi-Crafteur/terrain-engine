@@ -5,6 +5,7 @@
 #include "terrain/streaming/horizon_levels.hpp"
 #include "terrain/streaming/horizon_sampler.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <exception>
@@ -77,7 +78,9 @@ public:
     HorizonEpochRunner(const HorizonSampler& sampler, JobLauncher launch,
                        PiecePreparer prepare = {}, const HorizonEpochParams& params = {},
                        HorizonEditMap* edits = nullptr);
-    ~HorizonEpochRunner(); // waits for the jobs in flight
+    // Waits for the jobs in flight, stopped first: a piece being computed stops at its next
+    // stop point (work_stop.hpp: within milliseconds).
+    ~HorizonEpochRunner();
 
     HorizonEpochRunner(const HorizonEpochRunner&) = delete;
     HorizonEpochRunner& operator=(const HorizonEpochRunner&) = delete;
@@ -140,6 +143,7 @@ private:
     int maxPieces_ = 1;
     std::exception_ptr error_;
     bool stopping_ = false;
+    std::atomic<bool> stop_{false}; // raised first by the destructor: the pieces in flight stop
 };
 
 } // namespace terrain::unreal
