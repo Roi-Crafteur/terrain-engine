@@ -89,6 +89,13 @@ struct SurfaceGrids {
 [[nodiscard]] TerrainSurface surfaceFromHeightfield(const Heightfield& field,
                                                     const HeightmapRegion& region);
 
+// The coast signal of the geography (its signed distance to its coast, meters, positive inland)
+// per unit of continentalness (HeightSample::continentalness, SurfaceSite::continentalness):
+// the biomes read how near the sea a column is from it (agent 49). The kContinentalScale of
+// heightfield_geography.cpp, heightfield_coast.cpp and heightfield_water.cpp, which the relief
+// keeps to itself (their bits are frozen).
+inline constexpr double kContinentalMeters = 1'500'000.0;
+
 // Whether a site may be the foot of a wall plunging into the sea: the ocean near a shore (its
 // continentalness above -kPlungeShore, about 6 km of coast signal: 2 km), no wall rising out of
 // the open sea.

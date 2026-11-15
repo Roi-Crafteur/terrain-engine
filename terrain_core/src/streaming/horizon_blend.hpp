@@ -36,11 +36,12 @@ inline constexpr std::array<float, 9> kFootprintShares = {1.0f / 64, 3.0f / 32, 
                                                           1.0f / 64, 3.0f / 32, 1.0f / 64};
 
 // The mean blend over the footprint of a sample from the blends of the 3 x 3 samples around it
-// (kFootprintShares), reduced to the dominant ones (dominantBlend).
+// (kFootprintShares), reduced to the dominant ones (dominantBlend); the water and the kind of the
+// cover of the sample itself (around[4]).
 [[nodiscard]] SurfaceBlend footprintBlend(const std::array<const SurfaceBlend*, 9>& around);
 
-// The blend of a sample whose ground the player edits cover with `material`: the same biomes,
-// all the weight of the materials on that one.
+// The blend of a sample whose ground the player edits cover with `material`: the same biomes and
+// water, all the weight of the materials on that one, no dunes nor cover.
 [[nodiscard]] BlendTexel withMaterial(BlendTexel texel, SurfaceMaterial material);
 
 } // namespace terrain::horizon
