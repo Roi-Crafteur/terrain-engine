@@ -18,9 +18,22 @@ enum class SurfaceMaterial : std::uint8_t {
     Snow,
     Mud,
     Pebbles,
+    // Agent 49: the soils of the deserts.
+    Gravel, // a reg: a plain of gravel, the floor of the ergs and the polar region
+    Stone,  // a hamada: a plateau of bare stone
+    Crust,  // a crust of clay or salt
 };
 
-inline constexpr int kSurfaceMaterialCount = 8;
+inline constexpr int kSurfaceMaterialCount = 11;
+
+// The ids kept for the materials of the other agents (agent 49: none of theirs enters before), in
+// the 32 of the blend texels (biome_blend.hpp: kMaterialIdBits); listed in docs/ROADMAP.md.
+// - 11-14: agent 45, the volcanoes (ash, basalt and cold lava, scoria, sulfur);
+// - 15-16: agent 46, the plateaus and the karst (limestone, red sandstone);
+// - 17-18: agent 47, the glaciers and the scree (glacier ice, moraine);
+// - 19-22: agent 50, the wetlands and the coasts (peat, salt crust, mudflat, shingle);
+// - 23-25: agent 51, the seas (coral, sea ice, abyssal ooze);
+// - 26-31: free.
 
 // Lowercase English name of a material, such as "pebbles".
 [[nodiscard]] const char* materialName(SurfaceMaterial material);
@@ -56,10 +69,15 @@ struct MaterialParams {
     float ergFloorErg = 0.06f;
     float ergGrassReach = 150.0f;
     float ergFloorWidth = 0.2f;
+    // The deserts (isDesert, agent 49): grass only within desertGrassReach meters of a river
+    // (pebbles on its banks, riverBankWidth); away from it, sand in the sand deserts, and in the
+    // rocky and cold deserts a hamada (stone) from hamadaAltitude meters up, a reg (gravel) below.
+    float desertGrassReach = 150.0f;
+    float hamadaAltitude = 450.0f;
 };
 
 // The material of the floor of an erg of that kind (SurfaceSite::ergFloor): sand under 0.5,
-// gravel (pebbles) up to 1.5, crust (dirt) above.
+// gravel up to 1.5, crust above.
 [[nodiscard]] SurfaceMaterial ergFloorMaterial(float kind);
 
 // Steepest local slope of a column: the larger of |grad H| and the steepness of the site.
@@ -69,9 +87,10 @@ struct MaterialParams {
 // under the water); else water exactly over the ocean and the rivers; otherwise sand on the dunes
 // of the ergs at any slope (but on walls and rock above air), rock on steep ground, walls and rock
 // above air, the floor of the ergs between their dunes away from the water (ergFloorMaterial),
-// then by biome: snow, mountain snow, rock and scree, beach sand or pebbles, desert sand, marsh
-// mud, river bank pebbles, tundra dirt, dirt on steeper ground and grass elsewhere. Pure
-// function: it never changes a height.
+// then by biome: snow (snow, ice desert), mountain snow, rock and scree (mountain, high
+// mountain), beach sand or pebbles, the gravel of the polar region, the deserts (grass and
+// pebbles near a river, else sand, stone or gravel), marsh mud, river bank pebbles, tundra dirt,
+// dirt on steeper ground and grass elsewhere. Pure function: it never changes a height.
 [[nodiscard]] SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate,
                                               const SurfaceSite& site,
                                               const MaterialParams& params = {});
