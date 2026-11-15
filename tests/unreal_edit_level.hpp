@@ -92,7 +92,8 @@ struct Level {
                 std::this_thread::sleep_for(std::chrono::microseconds(200));
             }
         }
-        TEST_CHECK(!"the streaming never became idle");
+        constexpr bool streamingBecameIdle = false;
+        TEST_CHECK(streamingBecameIdle);
     }
 
     // Terrain.Pawn: the LOD 0 tiles around the pawn generated and shown at once.
