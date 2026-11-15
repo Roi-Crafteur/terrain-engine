@@ -20,8 +20,10 @@ static_assert(static_cast<long long>(kWorldAlignmentMeters) %
 // Spacing of the one-pixel surface of a node: its gradient spans one pixel each side.
 constexpr double kNodeMetersPerPixel = 4.0;
 
+// The dry lands (agent 49: the deserts, the steppe and the shrubland too).
 bool dryBiome(Biome biome) {
-    return biome == Biome::Desert || biome == Biome::Savanna || biome == Biome::Beach;
+    return isDesert(biome) || biome == Biome::Savanna || biome == Biome::Beach ||
+           biome == Biome::Steppe || biome == Biome::Shrubland;
 }
 
 bool mossyBiome(Biome biome) {

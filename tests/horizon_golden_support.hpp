@@ -114,33 +114,48 @@ inline std::vector<Part> horizonParts() {
     const double z = mountain.z * terrain::kChunkSizeMeters + 4.0;
     const terrain::WorldSize size;
     return {
-        {"horizon around mountains", horizonChecksum(world, x, z, 2), 0xF30A045737AF4E10ULL},
+        // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and marshes near the
+        // sea" (b1da378, agent 49): "horizon around mountains", "horizon around legacy mountains",
+        // their two "point samples" parts and "crest ratio 4" (0xF30A045737AF4E10,
+        // 0x968ECAA664A122C0, 0x0F40EAB4E6432646, 0xB79BC665E0D85848, 0x9C1FAB69C03C7234 before);
+        // the 21 biomes and the soils of the deserts change the biomes and materials of the
+        // samples. The heights, the normals and the horizon at the world corner kept theirs.
+        {"horizon around mountains", horizonChecksum(world, x, z, 2), 0xA61376FE894A6715ULL},
         {"horizon around legacy mountains",
-         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ, 2), 0x968ECAA664A122C0ULL},
+         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ, 2), 0xEC3AD91FCB0F488BULL},
         {"horizon at the world corner", horizonChecksum(world, size.x / 2.0, size.z / 2.0, 2),
          0xA63D923300435B79ULL},
         {"horizon around mountains, point samples", horizonChecksum(world, x, z, 0),
-         0x0F40EAB4E6432646ULL},
+         0x3B4460677C1BF897ULL},
         {"horizon around legacy mountains, point samples",
-         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ, 0), 0xB79BC665E0D85848ULL},
+         horizonChecksum(legacy, horizon_test::kX, horizon_test::kZ, 0), 0x2D87003B8F15A117ULL},
         {"horizon around mountains, crest ratio 4", horizonChecksum(world, x, z, 4),
-         0x9C1FAB69C03C7234ULL},
+         0x02CD65988865C53DULL},
         {"detail normals around mountains, ratio 4", normalsChecksum(world, x, z, 4),
          0x7C759A756899258CULL},
         // The blend texels of 16 bytes (agent 49) changed the bytes of the blends of the 4 parts
         // below, never the blends they decode to (0xAFA8ABA724DEEE2F, 0x96E378BC6B035861,
         // 0xE68987A81F6AD875, 0x92DBFC547FFDE514 with the texels of 8 bytes).
+        // Re-pasted by "Blend texels: the water of the column, a cover kept for agent 44" (5b22f44,
+        // agent 49): "horizon blends around legacy mountains" and "horizon blends at the world
+        // corner", the 2 parts that hold the sea (0xBC746EBCF51CBE2D, 0x084B5B9186401745 before);
+        // the texels carry the water of their column.
+        // Re-pasted by "Biomes of the land: 21 biomes, desert soils, beaches and marshes near the
+        // sea" (b1da378, agent 49): "horizon blends around mountains", "horizon blends around
+        // legacy mountains" and "horizon blends at a forest border" (0x9A84A8FE3C20D313,
+        // 0xC213D78F8C3D4CB1, 0x977D130A7EDBABD2 before); the 21 biomes and the soils of the
+        // deserts.
         {"horizon blends around mountains", horizon_detail::blendChecksum(world, x, z),
-         0x9A84A8FE3C20D313ULL},
+         0x05DF4413F589CE9CULL},
         {"horizon blends around legacy mountains",
          horizon_detail::blendChecksum(legacy, horizon_test::kX, horizon_test::kZ),
-         0xBC746EBCF51CBE2DULL},
+         0x92564D25F5479DBEULL},
         {"horizon blends at the world corner",
-         horizon_detail::blendChecksum(world, size.x / 2.0, size.z / 2.0), 0x084B5B9186401745ULL},
+         horizon_detail::blendChecksum(world, size.x / 2.0, size.z / 2.0), 0x86D04563E7E49C45ULL},
         // A border of the tropical forest and the savanna (without the planet).
         {"horizon blends at a forest border", horizon_detail::blendChecksum(world, -26'927'500.0,
                                                                             -270'336.0),
-         0x977D130A7EDBABD2ULL},
+         0x54254DFFD93E8938ULL},
     };
 }
 

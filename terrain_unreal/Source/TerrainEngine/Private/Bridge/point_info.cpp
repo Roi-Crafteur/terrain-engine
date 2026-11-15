@@ -4,6 +4,7 @@
 
 #include "terrain/chunk_coord.hpp"
 #include "terrain/generation/biome.hpp"
+#include "terrain/generation/biome_blend.hpp"
 #include "terrain/generation/geography.hpp"
 #include "terrain/generation/planet/planet_grid.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
@@ -18,6 +19,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <limits>
+#include <string>
 
 namespace terrain::unreal {
 
@@ -100,15 +102,37 @@ SurfaceSite siteOf(const InfoQuery& q, const HeightSample& s) {
     }
     site.steepness = static_cast<float>(difference / kSlopeStep);
     site.water = s.water;
-    site.waterLevel = s.waterLevel;
+    // The ground on dry land (agent 49), and the seas of dunes of the core.
+    site.waterLevel = s.water == WaterKind::None ? s.height : s.waterLevel;
+    site.dunes = s.dunes;
+    site.erg = s.erg;
+    site.ergFloor = s.ergFloor;
     return site;
+}
+
+// The two biomes that weigh most in the blend of the column, and their weights (agent 49): what
+// the tiles and the far horizon draw, the dominant one first (that of sampleAt).
+std::string biomeWeights(const SurfaceBlend& blend) {
+    std::string text =
+        format("%s %.2f", biomeName(blend.biomes[0]), static_cast<double>(blend.biomeWeights[0]));
+    if (blend.biomeWeights[1] > 0.0f) {
+        text += format(", %s %.2f", biomeName(blend.biomes[1]),
+                       static_cast<double>(blend.biomeWeights[1]));
+    }
+    return text;
 }
 
 void ecologyLines(const InfoQuery& q, std::vector<InfoLine>& out) {
     const HeightSample s = q.field.sampleAt(q.x, q.z);
-    const EcologySample e = q.ecology.sampleAt(q.x, q.z, siteOf(q, s));
+    const SurfaceSite site = siteOf(q, s);
+    const EcologySample e = q.ecology.sampleAt(q.x, q.z, site);
     out.push_back({"biome", "biome", biomeName(e.biome)});
+    out.push_back({"biome", "biome weights",
+                   biomeWeights(q.ecology.blendAt(q.x, q.z, site, e.climate))});
     out.push_back({"biome", "material", materialName(e.material)});
+    // A marking, never a biome (agent 49, monsoon.hpp): 0 away from the wet tropics.
+    const float monsoon = q.ecology.monsoon().shareAt(q.x, q.z, e.climate);
+    out.push_back({"biome", "monsoon", format("%.2f", static_cast<double>(monsoon))});
     out.push_back({"biome", "climate",
                    format("%.1f C, humidity %.2f, slope %.2f",
                           static_cast<double>(e.climate.temperature),

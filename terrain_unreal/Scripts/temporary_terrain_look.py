@@ -103,21 +103,36 @@ SCALARS = {
 }
 WARMTH = (1.03, 1.0, 0.95)
 
-# Ground weights (Grass, DryGrass, Forest, Alpine | Dirt, Sand, Desert, Scree) and (cold, rock) of
-# each biome of the core (terrain_core biome.hpp, in order), then the overrides of its materials.
+# Ground weights (Grass, DryGrass, Forest, Alpine | Dirt, Sand, Desert, Scree), (cold, rock) and
+# (warmth of the mineral soil) of each biome of the core (terrain_core biome.hpp, in order), then
+# the overrides of its materials. The warmth picks the look of its gravel (material 8,
+# blend_layers_hlsl.GRAVEL_WARM and GRAVEL_COLD): 1 the warm reg of a hot desert, 0 the cold grey
+# gravel of the polar region and of the cold desert, never the orange desert there.
 BIOMES = [
-    ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0)),          # ocean: sand under the shallows
-    ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0)),          # beach
-    ((0, 0, 0, 0), (0, 0, 1, 0), (0, 0)),          # desert
-    ((0.2, 0.8, 0, 0), (0, 0, 0, 0), (0, 0)),      # savanna
-    ((0.75, 0.25, 0, 0), (0, 0, 0, 0), (0, 0)),    # grassland
-    ((0.35, 0, 0.65, 0), (0, 0, 0, 0), (0, 0)),    # temperate forest
-    ((0.5, 0, 0.5, 0), (0, 0, 0, 0), (0, 0)),      # tropical forest
-    ((0, 0, 0.6, 0.4), (0, 0, 0, 0), (0, 0)),      # taiga
-    ((0, 0, 0, 0.7), (0.3, 0, 0, 0), (0, 0)),      # tundra
-    ((0, 0, 0, 0.6), (0, 0, 0, 0.4), (0, 0)),      # mountain
-    ((0, 0, 0, 0.4), (0, 0, 0, 0.6), (1, 0)),      # snow
-    ((0.6, 0, 0, 0), (0.4, 0, 0, 0), (0, 0)),      # marsh
+    ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0), (1,)),          # ocean: sand under the shallows
+    ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0), (1,)),          # beach
+    ((0, 0, 0, 0), (0, 0, 0.85, 0.15), (0, 0), (1,)),    # rocky desert: the stony desert, regs and hamadas
+    ((0.2, 0.8, 0, 0), (0, 0, 0, 0), (0, 0), (1,)),      # savanna
+    ((0.75, 0.25, 0, 0), (0, 0, 0, 0), (0, 0), (0.5,)),  # grassland
+    ((0.35, 0, 0.65, 0), (0, 0, 0, 0), (0, 0), (0.3,)),  # temperate forest
+    ((0.5, 0, 0.5, 0), (0, 0, 0, 0), (0, 0), (1,)),      # tropical forest
+    ((0, 0, 0.6, 0.4), (0, 0, 0, 0), (0, 0), (0,)),      # taiga
+    ((0, 0, 0, 0.7), (0.3, 0, 0, 0), (0, 0), (0,)),      # tundra
+    ((0, 0, 0, 0.6), (0, 0, 0, 0.4), (0, 0), (0,)),      # mountain
+    ((0, 0, 0, 0.4), (0, 0, 0, 0.6), (1, 0), (0,)),      # snow
+    ((0.6, 0, 0, 0), (0.4, 0, 0, 0), (0, 0), (0.3,)),    # marsh
+    # Agent 49.
+    ((0.1, 0.45, 0.45, 0), (0, 0, 0, 0), (0, 0), (1,)),  # dry forest
+    ((0.15, 0.6, 0, 0), (0.25, 0, 0, 0), (0, 0), (0.5,)),  # steppe
+    ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0), (1,)),          # sand desert: the smooth sand
+    ((0, 0.1, 0, 0), (0.3, 0, 0, 0.6), (0, 0), (0.25,)),  # cold desert: grey-brown gravel (the Gobi)
+    ((0, 0, 0, 0.25), (0, 0, 0, 0.75), (0, 0), (0,)),    # high mountain
+    ((0, 0, 0, 0.2), (0.2, 0, 0, 0.6), (0.25, 0), (0,)),  # polar region: frozen gravel, patches of snow
+    ((0, 0, 0, 0.4), (0, 0, 0, 0.6), (1, 0), (0,)),      # ice desert
+    # Garrigue and maquis: pale limestone (the Sand layer, scree) under dark shrubs (Forest).
+    ((0, 0.15, 0.2, 0), (0, 0.5, 0, 0.15), (0, 0), (0.6,)),
+    # Shrubland: brown soil (Dirt), a little stony desert and scree, under dry grass.
+    ((0, 0.25, 0, 0), (0.55, 0, 0.1, 0.1), (0, 0), (1,)),
 ]
 # One row per biome of the core, in its order: the tables of the HLSL hold that many.
 assert len(BIOMES) == hlsl.blend_code.BIOME_COUNT, "BIOMES needs a row per biome of the core"
