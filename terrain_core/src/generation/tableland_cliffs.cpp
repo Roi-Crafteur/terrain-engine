@@ -308,7 +308,8 @@ Storeys cliffStoreysAt(const CliffNoises& n, std::uint64_t units, double x, doub
         foot = k == 0 ? at + run : std::max(foot, at + run);
         place += run + (k < ledges.count ? ledges.width[k] : 0.0);
     }
-    if (plain < foot || drop < tall) {
+    // Beyond the foot of every wall the cliff is whole (its sum of steps tall but for rounding).
+    if (plain < foot) {
         return {1.0 - drop / height, rate / height, rate > 0.0};
     }
     // The talus from the foot of the last wall.
