@@ -3,8 +3,9 @@
 // them, or with others, the file is refused (PlanetFlagsError) and never built again over it, its
 // bytes kept; a section is written after the level and read back; a section unknown to the reader
 // makes the file stale (built again, never read wrong); a section read wrong is refused; without
-// flags nor sections the file is that of main (version 1, planet_file_test keeps its bytes); a
-// damaged file is told damaged, not of other flags.
+// flags nor sections the file is that of main (version 1); a damaged file is told damaged, not of
+// other flags. A level built holds the fingerprint of its relief (section PROV, agent 55): its
+// file is of version 2 even without flags.
 
 #include "terrain/storage/planet_file.hpp"
 
@@ -18,6 +19,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -114,8 +116,14 @@ void testFlagged(const std::filesystem::path& file, std::uint64_t checksum) {
 }
 
 void testPlain(const std::filesystem::path& dir, const PlanetLevel& level) {
+    // With the sections of the files, a level built holds PROV (agent 55): version 2.
+    const std::filesystem::path proven = dir / "proven.bin";
+    terrain::savePlanetFile(proven, level, terrain::kDefaultWorldSeed, golden::kSmallPlanet);
+    TEST_CHECK(versionOf(proven) == 2 && loadOf(proven, "").empty());
+    // Without flags nor sections: version 1.
     const std::filesystem::path plain = dir / "plain.bin";
-    terrain::savePlanetFile(plain, level, terrain::kDefaultWorldSeed, golden::kSmallPlanet);
+    storage::savePlanetFile(plain, level, terrain::kDefaultWorldSeed, golden::kSmallPlanet, "",
+                            std::span<const storage::PlanetSection>{});
     TEST_CHECK(versionOf(plain) == 1);
     TEST_CHECK(loadOf(plain, "").empty());
     TEST_CHECK(loadOf(plain, "alpha") == "(none)");
@@ -139,12 +147,12 @@ void testSections(const std::filesystem::path& dir, const PlanetLevel& level) {
     TEST_CHECK(loadOf(file, "") == "stale"); // a reader without the section
     TEST_CHECK(loadOf(file, "", kShort) == "invalid");
     TEST_CHECK(loadOf(file, "", kLong) == "invalid");
-    // Stale: built again (no section, version 1), never read wrong.
+    // Stale: built again (no flag, the section PROV of agent 55: version 2), never read wrong.
     bool built = false;
     const PlanetLevel again =
         terrain::openPlanetLevel(file, terrain::kDefaultWorldSeed, terrain::HeightfieldParams{},
                                  params(), golden::kSmallPlanet, &built);
-    TEST_CHECK(built && again.checksum() == level.checksum() && versionOf(file) == 1);
+    TEST_CHECK(built && again.checksum() == level.checksum() && versionOf(file) == 2);
 }
 
 void testDamaged(const std::filesystem::path& file, const PlanetLevel& level) {

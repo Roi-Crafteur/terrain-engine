@@ -15,11 +15,28 @@ std::string tagText(const Magic& tag) {
     return {tag.begin(), tag.end()};
 }
 
+// PROV, the provenance of the level (agent 55): the fingerprint of the relief it was built from
+// (relief_fingerprint.hpp), a u64. Every level built holds it; one read from a file written
+// before it does not, and is written again without it.
+bool hasProvenance(const PlanetLevel& level) {
+    return level.reliefFingerprint().has_value();
+}
+
+void writeProvenance(ByteWriter& out, const PlanetLevel& level) {
+    out.u64(*level.reliefFingerprint());
+}
+
+void readProvenance(ByteReader& in, PlanetLevel::Parts& parts) {
+    parts.reliefFingerprint = in.u64();
+}
+
 } // namespace
 
 std::span<const PlanetSection> planetSections() {
     // One row per section, its tag unique: {{'T','A','G','S'}, present, write, read}.
-    static const std::vector<PlanetSection> sections = {};
+    static const std::vector<PlanetSection> sections = {
+        {{'P', 'R', 'O', 'V'}, hasProvenance, writeProvenance, readProvenance},
+    };
     return sections;
 }
 

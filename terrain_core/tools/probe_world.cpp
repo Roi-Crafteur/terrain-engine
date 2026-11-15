@@ -101,6 +101,7 @@ PlanetCheck checkPlanet(const Options& o) {
             terrain::loadPlanetFile(o.planetCheck, o.seed, planetParams(o), o.world, flagsOf(o));
         check.status = "ok";
         check.checksum = level.checksum();
+        check.provenance = level.reliefFingerprint() ? "ok" : "unknown";
     } catch (const terrain::PlanetFlagsError& e) {
         check.status = "flags"; // the level of other experimental flags
         check.reason = e.what();
@@ -153,9 +154,9 @@ Record checkRecord(const Options& o, const PlanetCheck& check) {
         .text("status", check.status)
         .integer("fileVersion", terrain::kPlanetFileVersion);
     if (check.status == "ok") {
-        planet.text("checksum", hex(check.checksum));
+        planet.text("checksum", hex(check.checksum)).text("provenance", check.provenance);
     } else {
-        planet.none("checksum");
+        planet.none("checksum").none("provenance");
     }
     planet.text("reason", check.reason);
     return r.add("planetCheck", std::move(planet));

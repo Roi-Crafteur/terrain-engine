@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -49,12 +50,21 @@ void testRoundTrip(const std::filesystem::path& file, const PlanetLevel& level) 
 }
 
 // The bytes of the file, the timings of the level set to 0 (the only bytes that change from a
-// build to the next): those the file had when it was written whole in memory (phase 11B).
+// build to the next): those the file had when it was written whole in memory (phase 11B). A level
+// without the fingerprint of its relief: version 1, the bytes of main (not re-pasted by agent 55).
 constexpr std::uint32_t kFileBytes = 0x9E95EC76U;
+// The same level with the fingerprint of its relief: version 2, the same level between the empty
+// text of the flags and the section PROV.
+// Pasted by « Provenance: tests of the two refusals, of a file without PROV and of the cost »
+// (agent 55): "planet file bytes with PROV", a new part; cause: every level built holds the
+// fingerprint of its relief and its file the section PROV, so a file without flags is of version
+// 2 (the level and its checksum unchanged, 0x26626564570b0d9e on the default world).
+constexpr std::uint32_t kProvenFileBytes = 0xDA284F61U;
 
 void testBytes(const std::filesystem::path& dir, const PlanetLevel& level) {
-    PlanetLevel::Parts parts{level.params(), level.cells(),    level.lakes(), level.rivers(),
-                             level.features(), level.budget(), {},            level.breach()};
+    PlanetLevel::Parts parts{level.params(),   level.cells(),  level.lakes(), level.rivers(),
+                             level.features(), level.budget(), {},            level.breach(),
+                             std::nullopt};
     const PlanetLevel timeless(std::move(parts));
     const std::filesystem::path file = dir / "timeless.bin";
     terrain::savePlanetFile(file, timeless, terrain::kDefaultWorldSeed, golden::kSmallPlanet);
@@ -63,6 +73,19 @@ void testBytes(const std::filesystem::path& dir, const PlanetLevel& level) {
         std::printf("planet file bytes: 0x%08XU\n", static_cast<unsigned>(bytes));
     }
     TEST_CHECK(bytes == kFileBytes);
+    PlanetLevel::Parts proven{level.params(), level.cells(),    level.lakes(), level.rivers(),
+                              level.features(), level.budget(), {},            level.breach(),
+                              level.reliefFingerprint()};
+    TEST_CHECK(proven.reliefFingerprint.has_value());
+    const PlanetLevel withProvenance(std::move(proven));
+    const std::filesystem::path provenFile = dir / "proven.bin";
+    terrain::savePlanetFile(provenFile, withProvenance, terrain::kDefaultWorldSeed,
+                            golden::kSmallPlanet);
+    const std::uint32_t provenBytes = terrain::fnv1a(storage_test::fileBytes(provenFile));
+    if (provenBytes != kProvenFileBytes) {
+        std::printf("planet file bytes with PROV: 0x%08XU\n", static_cast<unsigned>(provenBytes));
+    }
+    TEST_CHECK(provenBytes == kProvenFileBytes);
 }
 
 void testStale(const std::filesystem::path& file) {

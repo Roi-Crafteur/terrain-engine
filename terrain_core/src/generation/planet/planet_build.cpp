@@ -8,6 +8,7 @@
 #include "terrain/generation/planet/planet_order.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
 #include "terrain/generation/planet/planet_rivers.hpp"
+#include "terrain/generation/relief_fingerprint.hpp"
 
 #include <array>
 #include <cmath>
@@ -85,6 +86,7 @@ PlanetBuild buildPlanet(const Heightfield& field, const PlanetParams& params,
     Stopwatch watch(probe);
     PlanetBuild build;
     build.grid = makePlanetGrid(field.world(), params.cellSize);
+    build.reliefFingerprint = reliefFingerprint(field);
     {
         // The relief without the coasts (agent 33): they never move the planet level.
         CellRelief cells = sampleCells(field.withoutCoasts(), build.grid, params.samplesPerAxis,

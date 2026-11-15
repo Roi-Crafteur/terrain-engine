@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace terrain {
@@ -84,6 +85,9 @@ public:
         PlanetWaterBudget budget;
         PlanetTimings timings;
         PlanetBreach breach;
+        // The fingerprint of the relief it was built from (relief_fingerprint.hpp), outside its
+        // checksum; none for a level read from a file written before it (no section PROV).
+        std::optional<std::uint64_t> reliefFingerprint;
     };
     explicit PlanetLevel(Parts&& parts);
 
@@ -111,6 +115,11 @@ public:
     [[nodiscard]] const PlanetWaterBudget& budget() const { return budget_; }
     [[nodiscard]] const PlanetTimings& timings() const { return timings_; }
     [[nodiscard]] const PlanetBreach& breach() const { return breach_; }
+    // The fingerprint of the relief the level was built from, outside checksum(): none for a
+    // level read from a file written before it ("provenance: unknown").
+    [[nodiscard]] const std::optional<std::uint64_t>& reliefFingerprint() const {
+        return reliefFingerprint_;
+    }
 
     // Drainage basin of every cell (planet::computeBasins), recomputed on demand.
     [[nodiscard]] std::vector<std::int32_t> basins() const;
@@ -129,6 +138,7 @@ private:
     PlanetWaterBudget budget_;
     PlanetTimings timings_;
     PlanetBreach breach_;
+    std::optional<std::uint64_t> reliefFingerprint_;
 };
 
 namespace planet {

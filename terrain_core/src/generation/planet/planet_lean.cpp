@@ -3,12 +3,14 @@
 
 #include "planet_parallel.hpp"
 #include "planet_steps.hpp"
+
 #include "terrain/generation/planet/planet_flow.hpp"
 #include "terrain/generation/planet/planet_hierarchy.hpp"
 #include "terrain/generation/planet/planet_land.hpp"
 #include "terrain/generation/planet/planet_order.hpp"
 #include "terrain/generation/planet/planet_relief.hpp"
 #include "terrain/generation/planet/planet_rivers.hpp"
+#include "terrain/generation/relief_fingerprint.hpp"
 
 #include <memory>
 #include <utility>
@@ -198,6 +200,7 @@ PlanetLevel::Parts buildLevelParts(const Heightfield& field, const PlanetParams&
     lean.grid = makePlanetGrid(field.world(), params.cellSize);
     PlanetLevel::Parts parts;
     parts.params = params;
+    parts.reliefFingerprint = reliefFingerprint(field);
     reliefAndClimate(lean, parts, field, threads, watch);
     hydrology(lean, parts, threads, watch);
     watch.tell("level");

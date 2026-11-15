@@ -43,7 +43,8 @@ private:
 };
 
 // Writes level, built from seed on world with the experimental flags flags (their canonical
-// text), to file. Throws StorageError (Io).
+// text), to file, the file it replaces kept as <file>.bak (agent 55: a planet file is never
+// written over without its copy). Throws StorageError (Io).
 void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
                     std::uint64_t seed, const WorldSize& world, const std::string& flags = {});
 
@@ -52,9 +53,19 @@ void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
 // if it is damaged; NewerVersion; PlanetFlagsError if it holds a level of other flags; Invalid
 // ("stale") if it holds the level of another seed, world, generator version or parameters (the
 // caller builds the level again then).
+//
+// Provenance (agent 55): a file whose section PROV holds the fingerprint of another relief
+// (relief_fingerprint.hpp) is stale too, even when kReliefGeneratorVersion did not move; the relief
+// asked is the default one with the experimental flags flags. A file without the section (written
+// before it) is read: its level has no reliefFingerprint ("provenance: unknown").
 [[nodiscard]] PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
                                          const PlanetParams& params, const WorldSize& world,
                                          const std::string& flags = {});
+// The same, the relief asked given (its fingerprint is computed only when the file holds one).
+[[nodiscard]] PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
+                                         const PlanetParams& params, const WorldSize& world,
+                                         const std::string& flags,
+                                         const HeightfieldParams& relief);
 
 // The level of seed on world: read from file when it holds it, otherwise built from its relief
 // (Heightfield(seed, heightfield, world)) and written to file. A file that cannot be written

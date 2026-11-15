@@ -7,6 +7,8 @@
 #include "frame_stream.hpp"
 #include "planet_sections.hpp"
 #include "storage_codec.hpp"
+#include "terrain/generation/experimental_flags.hpp"
+#include "terrain/generation/relief_fingerprint.hpp"
 #include "terrain/storage/world_meta.hpp"
 
 #include <algorithm>
@@ -359,6 +361,18 @@ void writeLevel(Out& out, const PlanetLevel& level, std::uint64_t checksum, std:
     }
 }
 
+// The fingerprint of the relief asked (relief_fingerprint.hpp): of relief, or of the default
+// relief with the experimental flags of the file.
+std::uint64_t wantedFingerprint(std::uint64_t seed, const WorldSize& world,
+                                const std::string& flags, const HeightfieldParams* relief) {
+    if (relief != nullptr) {
+        return reliefFingerprint(Heightfield(seed, *relief, world));
+    }
+    WorldParams params;
+    (void)applyExperimentalFlags(flags, params);
+    return reliefFingerprint(Heightfield(seed, params.relief, world));
+}
+
 } // namespace
 
 void storage::savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
@@ -376,7 +390,9 @@ void storage::savePlanetFile(const std::filesystem::path& file, const PlanetLeve
             writeLevel(out, level, checksum, seed, world, flags, sections);
             out.finish();
         },
-        {.keepBackups = false, .createDirectories = true});
+        // The file it replaces kept as <file>.bak (agent 55): a planet file is never written
+        // over without its copy.
+        {.keepBackups = true, .createDirectories = true});
 }
 
 void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
@@ -387,7 +403,8 @@ void savePlanetFile(const std::filesystem::path& file, const PlanetLevel& level,
 PlanetLevel storage::loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
                                     const PlanetParams& params, const WorldSize& world,
                                     const std::string& flags,
-                                    std::span<const PlanetSection> table) {
+                                    std::span<const PlanetSection> table,
+                                    const HeightfieldParams* relief) {
     // Read in pieces: only the level in memory, never the bytes of the file with it.
     FrameReader in(file, kMagic, kPlanetFileVersion, pathText(file));
     checkFlags(in, flags, pathText(file));
@@ -402,6 +419,10 @@ PlanetLevel storage::loadPlanetFile(const std::filesystem::path& file, std::uint
     readTotals(in, parts);
     if (in.version() >= 2) {
         readSections(in, parts, table);
+    }
+    if (parts.reliefFingerprint && *parts.reliefFingerprint != wantedFingerprint(seed, world,
+                                                                                 flags, relief)) {
+        in.fail("stale: the planet level of another relief");
     }
     in.expectEnd("bytes after the level");
     in.finish();
@@ -419,6 +440,13 @@ PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed
     return storage::loadPlanetFile(file, seed, params, world, flags, storage::planetSections());
 }
 
+PlanetLevel loadPlanetFile(const std::filesystem::path& file, std::uint64_t seed,
+                           const PlanetParams& params, const WorldSize& world,
+                           const std::string& flags, const HeightfieldParams& relief) {
+    return storage::loadPlanetFile(file, seed, params, world, flags, storage::planetSections(),
+                                   &relief);
+}
+
 PlanetLevel openPlanetLevel(const std::filesystem::path& file, std::uint64_t seed,
                             const HeightfieldParams& heightfield, const PlanetParams& params,
                             const WorldSize& world, bool* built, const PlanetStageProbe& probe,
@@ -430,7 +458,7 @@ PlanetLevel openPlanetLevel(const std::filesystem::path& file, std::uint64_t see
     };
     bool newer = false;
     try {
-        PlanetLevel level = loadPlanetFile(file, seed, params, world, flags);
+        PlanetLevel level = loadPlanetFile(file, seed, params, world, flags, heightfield);
         if (built != nullptr) {
             *built = false;
         }

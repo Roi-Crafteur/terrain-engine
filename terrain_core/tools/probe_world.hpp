@@ -67,6 +67,9 @@ struct PlanetCheck {
     std::string status;
     std::string reason;
     std::uint64_t checksum = 0;
+    // With status ok: whether the file holds the fingerprint of its relief (section PROV, agent
+    // 55), "ok", or was written before it, "unknown".
+    std::string provenance;
 };
 [[nodiscard]] PlanetCheck checkPlanet(const Options& options);
 

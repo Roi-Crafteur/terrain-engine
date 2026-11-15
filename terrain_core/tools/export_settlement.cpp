@@ -8,7 +8,8 @@
 // model against its share of the land.
 // The planet level is built in memory, or read from --planet <file>, which is never written in
 // silence: a missing, damaged or stale file stops the tool with the reason; --rebuild-planet
-// builds it again into <file>.new, reads it back, then replaces <file> with it.
+// builds it again into <file>.new, reads it back, then replaces <file> with it (the old one kept
+// as <file>.bak).
 // Usage: terrain_export_settlement <output-dir> [--planet <file>] [--rebuild-planet]
 //        [--seed <seed>] [--world <x> <z>] [--cell <meters>] [--threads <n>] [--data <dir>]
 //        [--width <pixels>] [--equity-seeds <n>] [--preset <id>|all]
@@ -171,8 +172,9 @@ std::string expected(const Options& o) {
     return text;
 }
 
-// Builds the level again into <file>.new, reads it back, then replaces <file> with it; <file>
-// stays as it was if anything fails.
+// Builds the level again into <file>.new, reads it back, then replaces <file> with it, the old
+// one kept as <file>.bak (agent 55: a planet file is never written over without its copy);
+// <file> stays as it was if anything fails.
 terrain::PlanetLevel rebuildPlanetFile(const Options& o, const terrain::PlanetParams& params) {
     terrain::PlanetLevel level(o.seed, terrain::HeightfieldParams{}, params, o.world);
     std::filesystem::path fresh = o.planet;
@@ -184,6 +186,11 @@ terrain::PlanetLevel rebuildPlanetFile(const Options& o, const terrain::PlanetPa
         if (terrain::loadPlanetFile(fresh, o.seed, params, o.world).checksum() !=
             level.checksum()) {
             throw std::runtime_error("the file written does not read back the same level");
+        }
+        if (std::filesystem::exists(o.planet, error)) {
+            std::filesystem::path backup = o.planet;
+            backup += ".bak";
+            std::filesystem::rename(o.planet, backup);
         }
         std::filesystem::rename(fresh, o.planet);
     } catch (const std::exception& e) {

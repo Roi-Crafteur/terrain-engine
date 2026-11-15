@@ -56,7 +56,7 @@ PlanetSource openPlanetSource(const std::filesystem::path& file, std::uint64_t s
     } else {
         try {
             source.level = std::make_shared<const PlanetLevel>(
-                loadPlanetFile(file, seed, params.planet, world, flags));
+                loadPlanetFile(file, seed, params.planet, world, flags, params.relief));
             source.seconds = secondsSince(start);
             return source;
         } catch (const PlanetFlagsError&) {
@@ -88,7 +88,12 @@ std::string describe(const PlanetSource& source, const std::string& file) {
     std::array<char, 64> seconds{};
     std::snprintf(seconds.data(), seconds.size(), "%.1f s", source.seconds);
     if (!source.built) {
-        return "planet level read from " + file + " in " + seconds.data();
+        // A file written before the fingerprint of its relief (section PROV, agent 55): read,
+        // never built again for it; R1 writes the fingerprints into the files.
+        const bool known = source.level != nullptr && source.level->reliefFingerprint();
+        const char* provenance =
+            known ? "" : " (no provenance: a file written before the fingerprint of its relief)";
+        return "planet level read from " + file + " in " + seconds.data() + provenance;
     }
     std::string line = "planet level BUILT (" + source.reason + ") in " + seconds.data();
     line += source.written ? ", written to " + file
