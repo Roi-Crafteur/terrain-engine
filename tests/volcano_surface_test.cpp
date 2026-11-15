@@ -146,6 +146,14 @@ void testMaterials() {
                SurfaceMaterial::Rock);
     TEST_CHECK(material(cold, volcanicSite(VolcanicGround::Ash, 1.0f, 3500.0f)) ==
                SurfaceMaterial::Snow);
+    // The snow of the ice desert and of the high mountain (agent 49) covers it too.
+    const terrain::SurfaceSite ash = volcanicSite(VolcanicGround::Ash, 1.0f, 2500.0f);
+    TEST_CHECK(terrain::surfaceMaterial(terrain::Biome::IceDesert, cold, ash, materials) ==
+               SurfaceMaterial::Snow);
+    TEST_CHECK(terrain::surfaceMaterial(terrain::Biome::HighMountain, cold, ash, materials) ==
+               SurfaceMaterial::Snow);
+    TEST_CHECK(terrain::surfaceMaterial(terrain::Biome::HighMountain, climate(2.0f, 0.3f), ash,
+                                        materials) == SurfaceMaterial::Dirt);
     std::size_t mismatches = 0;
     std::size_t blends = 0;
     for (const terrain::ClimateSample& c : {mild, hot, cold, climate(-3.0f, 0.3f)}) {

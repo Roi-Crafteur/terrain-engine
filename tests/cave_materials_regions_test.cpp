@@ -44,7 +44,8 @@ CaveMaterial rulesWithoutRegions(const CaveWallSite& s, const CaveMaterialParams
     const terrain::CaveEnvironment& e = s.environment;
     const bool wet = s.aboveWater <= p.wetHeight;
     const bool dry =
-        e.biome == Biome::Desert || e.biome == Biome::Savanna || e.biome == Biome::Beach;
+        terrain::isDesert(e.biome) || e.biome == Biome::Savanna || e.biome == Biome::Beach ||
+        e.biome == Biome::Steppe || e.biome == Biome::Shrubland;
     const bool mossy = e.biome == Biome::TemperateForest || e.biome == Biome::TropicalForest ||
                        e.biome == Biome::Marsh || e.biome == Biome::Taiga;
     if (s.depth < p.surfaceDepth) {
@@ -285,7 +286,7 @@ void testRegionsOffAndOn() {
     });
     std::printf("sweep: %zu walls, %zu as before without regions, %zu consistent with them\n",
                 walls, same, consistent);
-    TEST_CHECK(walls == 12 * 4 * 4 * 11 * 4 * 6);
+    TEST_CHECK(walls == static_cast<std::size_t>(kBiomes) * 4 * 4 * 11 * 4 * 6);
     TEST_CHECK(same == walls);
     TEST_CHECK(consistent == walls);
 }

@@ -64,10 +64,16 @@ void testLines(const water_level::World& world) {
         std::printf("  %-8s %-15s %s\n", line.section.c_str(), line.label.c_str(),
                     line.value.c_str());
     }
-    for (const char* label : {"x, z", "chunk", "ground", "water", "relief", "biome", "material",
-                              "climate", "planet cell", "planet climate", "coast"}) {
+    for (const char* label : {"x, z", "chunk", "ground", "water", "relief", "biome",
+                              "biome weights", "material", "monsoon", "climate", "planet cell",
+                              "planet climate", "coast"}) {
         TEST_CHECK(lineOf(lines, label) != nullptr);
     }
+    // The two biomes of the blend (agent 49), the dominant one first: that of the biome line.
+    const InfoLine* biome = lineOf(lines, "biome");
+    const InfoLine* weights = lineOf(lines, "biome weights");
+    TEST_CHECK(biome != nullptr && weights != nullptr &&
+               weights->value.rfind(biome->value + " ", 0) == 0);
     TEST_CHECK(contains(lines, "water", "river at"));
     // The volcanoes (agent 45) are off by default: no line; with them on, the volcano whose reach
     // holds a point and the ground it left there.

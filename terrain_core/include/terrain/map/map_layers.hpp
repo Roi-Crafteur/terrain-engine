@@ -42,6 +42,7 @@ struct MapSample {
     float riverCover = 0.0f;   // [0, 1]: how much of the pixel its drawn course covers
     float fallDrop = 0.0f;     // meters: the drop of the fall whose mark covers the pixel
     std::uint8_t fallMark = 0; // 0: no mark, kMapFallRing or kMapFallCenter
+    float monsoon = 0.0f;      // [0, 1]: the share of the monsoon over the land (monsoon.hpp)
     MapSourceKind source = MapSourceKind::Synthetic;
     // The volcanoes (agent 45, map_volcanoes.hpp): how much of the ground they made, in 255ths,
     // and the form of the volcano whose reach holds the pixel, plus 1 (0: none); the ground they

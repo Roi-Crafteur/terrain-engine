@@ -8,18 +8,37 @@ namespace terrain {
 namespace {
 
 constexpr std::array<const char*, kSurfaceMaterialCount> kMaterialNames = {
-    "water", "sand", "grass", "dirt", "rock", "snow", "mud", "pebbles",
+    "water", "sand", "grass", "dirt", "rock", "snow", "mud", "pebbles", "gravel", "stone", "crust",
 };
 
-// Material of the biomes whose ground is mostly mineral: snow, mountain, beach and desert.
-// Returns false for the other biomes.
-bool mineralMaterial(Biome biome, const ClimateSample& climate, float steepest,
-                     const MaterialParams& params, SurfaceMaterial& material) {
+// The ground of a desert: near a river, pebbles on its banks, dirt on steeper ground and grass
+// elsewhere; away from it, its sand, stone or gravel.
+SurfaceMaterial desertMaterial(Biome biome, const SurfaceSite& site, float steepest,
+                               const MaterialParams& params) {
+    if (site.riverDistance <= params.desertGrassReach) {
+        if (site.riverDistance <= params.riverBankWidth) {
+            return SurfaceMaterial::Pebbles;
+        }
+        return steepest >= params.dirtSlope ? SurfaceMaterial::Dirt : SurfaceMaterial::Grass;
+    }
+    if (biome == Biome::SandDesert) {
+        return SurfaceMaterial::Sand;
+    }
+    return site.ground - kSeaLevel >= params.hamadaAltitude ? SurfaceMaterial::Stone
+                                                            : SurfaceMaterial::Gravel;
+}
+
+// Material of the biomes whose ground is mostly mineral: snow, mountain, beach, the polar region
+// and the deserts. Returns false for the other biomes.
+bool mineralMaterial(Biome biome, const ClimateSample& climate, const SurfaceSite& site,
+                     float steepest, const MaterialParams& params, SurfaceMaterial& material) {
     switch (biome) {
     case Biome::Snow:
+    case Biome::IceDesert:
         material = SurfaceMaterial::Snow;
         return true;
     case Biome::Mountain:
+    case Biome::HighMountain:
         if (climate.temperature <= params.mountainSnowTemperature) {
             material = SurfaceMaterial::Snow;
         } else {
@@ -31,8 +50,13 @@ bool mineralMaterial(Biome biome, const ClimateSample& climate, float steepest,
         material = climate.temperature < params.pebbleBeachTemperature ? SurfaceMaterial::Pebbles
                                                                        : SurfaceMaterial::Sand;
         return true;
-    case Biome::Desert:
-        material = SurfaceMaterial::Sand;
+    case Biome::Polar:
+        material = SurfaceMaterial::Gravel;
+        return true;
+    case Biome::RockyDesert:
+    case Biome::SandDesert:
+    case Biome::ColdDesert:
+        material = desertMaterial(biome, site, steepest, params);
         return true;
     default:
         return false;
@@ -45,7 +69,7 @@ SurfaceMaterial ergFloorMaterial(float kind) {
     if (kind < 0.5f) {
         return SurfaceMaterial::Sand;
     }
-    return kind <= 1.5f ? SurfaceMaterial::Pebbles : SurfaceMaterial::Dirt;
+    return kind <= 1.5f ? SurfaceMaterial::Gravel : SurfaceMaterial::Crust;
 }
 
 SurfaceMaterial volcanicMaterial(VolcanicGround ground) {
@@ -92,13 +116,16 @@ SurfaceMaterial surfaceMaterial(Biome biome, const ClimateSample& climate, const
     if (site.erg >= params.ergFloorErg && site.riverDistance > params.ergGrassReach) {
         return ergFloorMaterial(site.ergFloor);
     }
-    const bool snow = biome == Biome::Snow || (biome == Biome::Mountain &&
-                                               climate.temperature <= params.mountainSnowTemperature);
+    // Under the snow (of the snow and the ice desert, of the mountains and high mountains), the
+    // snow.
+    const bool mountain = biome == Biome::Mountain || biome == Biome::HighMountain;
+    const bool snow = biome == Biome::Snow || biome == Biome::IceDesert ||
+                      (mountain && climate.temperature <= params.mountainSnowTemperature);
     if (!snow && site.volcanicShare >= params.volcanicShare) {
         return volcanicMaterial(site.volcanicGround);
     }
     SurfaceMaterial material = SurfaceMaterial::Grass;
-    if (mineralMaterial(biome, climate, steepest, params, material)) {
+    if (mineralMaterial(biome, climate, site, steepest, params, material)) {
         return material;
     }
     if (biome == Biome::Marsh) {
