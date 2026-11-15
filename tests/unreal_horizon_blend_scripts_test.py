@@ -104,12 +104,13 @@ def check_code(look_hlsl, loading, scripts):
                       {"VERTEX_HLSL", "BLEND_INPUTS"})
     tiles_source = (scripts / "create_temporary_terrain_material.py").read_text(encoding="utf-8")
     struct = strip(look_hlsl)
-    members = re.findall(r"\n    (?:bool|void|float[1-4]?|int) ([A-Z][A-Za-z0-9]*)\(", struct)
+    members = re.findall(r"\n    (?:bool|void|float[1-4]?|uint[1-4]?|int) ([A-Z][A-Za-z0-9]*)\(", struct)
     check(len(members) == len(set(members)), f"a member of the struct twice: {members}")
-    for name in ("AddBlend", "FinishBlend", "BlendLayers", "TexelBlend", "BlendTexelsLayers"):
+    for name in ("AddBlend", "FinishBlend", "BlendLayers", "TexelBlend", "TexelWater",
+                 "BlendTexelsLayers"):
         check(members.count(name) == 1, f"the struct has no {name}")
     declared = 0
-    bodies = re.split(r"\n    (?=(?:bool|void|float[1-4]?|int) [A-Z][A-Za-z0-9]*\()", struct)
+    bodies = re.split(r"\n    (?=(?:bool|void|float[1-4]?|uint[1-4]?|int) [A-Z][A-Za-z0-9]*\()", struct)
     for body in bodies[1:]:
         declared += check_scopes(body, declaration, f"struct member {body.split('(')[0]}", False)
     for what, code in (("horizon vertex", gpu["VERTEX_HLSL"]),
@@ -163,6 +164,7 @@ def f32(x):
 
 PRESENT = 1 << 23  # biome_blend.hpp: kBlendPresentBit
 DUNE = 15  # biome_blend.hpp: kBlendDuneShift
+WATER = 18  # biome_blend.hpp: kBlendWaterShift
 
 
 def whole(channel):
@@ -208,11 +210,30 @@ def finish_blend(wb, wm, biomes, wd=0.0):
           + wm[1] * ((1.0 - dune) * (0.0, 1.0 - desert, desert, 0.0)[i] + dune * (0, 1, 0, 0)[i])
           + (wm[4] + wm[7]) * (0, 0, 0, 1)[i]
           for i in range(4)]
+    if len(wb) > 15:  # the grass of the deserts is the grass of an oasis (agent 49)
+        deserts = (2, 14, 15)
+        total = sum(wb[d] for d in deserts)
+        la = [la[i] + wm[2] * (total * (0.7, 0.3, 0.0, 0.0)[i]
+                               - sum(wb[d] * biomes[d][0][i] for d in deserts)) for i in range(4)]
+        lb = [lb[i] - wm[2] * sum(wb[d] * biomes[d][1][i] for d in deserts) for i in range(4)]
+    if len(wm) > 10:  # the soils of the deserts (agent 49): gravel, stone, crust
+        # The gravel: the warm reg or the cold grey gravel by the warmth of the biomes (BIOME_D).
+        warmth = min(max(sum(wb[n] * biomes[n][3][0] for n in range(len(biomes))), 0.0), 1.0)
+        gravel = [cold + (warm - cold) * warmth for cold, warm in zip(GRAVEL_COLD, GRAVEL_WARM)]
+        lb = [lb[i] + wm[8] * gravel[i] + wm[9] * (0.25, 0.0, 0.0, 0.75)[i]
+              + wm[10] * (0.45, 0.55, 0.0, 0.0)[i] for i in range(4)]
     lc = [c[0] + (1.0 - c[0]) * wm[5], c[1] + (1.0 - c[1]) * wm[4]]
     return la, lb, lc, wb, wm
 
 
-def blend_texels_layers(texels, shares, biomes, dunes=None, materials=8):
+# The two gravels of the reference (blend_layers_hlsl.py: GRAVEL_WARM, GRAVEL_COLD): the warm reg
+# of the hot deserts (the stony Desert layer and scree), the cold grey gravel (scree over a little
+# earth, never the Desert layer).
+GRAVEL_WARM = (0.0, 0.0, 0.65, 0.35)
+GRAVEL_COLD = (0.2, 0.0, 0.0, 0.8)
+
+
+def blend_texels_layers(texels, shares, biomes, dunes=None, materials=11):
     wb, wm, wd = [0.0] * len(biomes), [0.0] * materials, [0.0]
     for floats, share in zip(texels, shares):
         v, present = texel_blend(floats)
@@ -270,6 +291,88 @@ def check_reference(biomes):
     check(blend_texels_layers((forest, [0, 0, 0, 0]), (1.0, 0.0), biomes) is not None,
           "a texel without blend and of no share refused")
     check_dunes(biomes)
+    check_water()
+    # Grass near the water of a rocky desert (2) and of a sand desert (14): the grass of an oasis,
+    # drawn far as near (the green band along a river of a desert, agent 49).
+    for desert in (2, 14):
+        oasis = channels((desert, desert, desert), (255, 0), (2, 2, 2), (255, 0))
+        la, lb, _, _, _ = blend_texels_layers((oasis,), (1.0,), biomes)
+        check(abs(la[0] - 0.7) < 1e-6 and abs(la[1] - 0.3) < 1e-6 and sum(lb) < 1e-6,
+              f"the grass near the water of the desert {desert}: {la}, {lb}")
+    # The soils of the deserts (gravel 8, stone 9, crust 10) in a rocky desert (2): the ground
+    # layers still sum to 1, through the morph.
+    soils = channels((2, 2, 2), (255, 0), (8, 9, 10), (100, 90))
+    for alpha in (0.0, 0.5, 1.0):
+        la, lb, _, _, wm = blend_texels_layers((soils, forest, soils),
+                                               (1.0 - alpha, 0.5 * alpha, 0.5 * alpha), biomes)
+        check(abs(sum(la) + sum(lb) - 1.0) < 1e-6 and wm[8] > 0.0,
+              f"the soils of the deserts at the morph {alpha}: {la}, {lb}")
+    check_gravel(biomes)
+
+
+def check_gravel(biomes):
+    """The gravel of the core (material 8) by its biome: the warm reg in the rocky desert (2),
+    never the orange Desert layer in the cold biomes (tundra 8, cold desert 15, polar region 17,
+    ice desert 18), the morph between them in between (Unreal drew the polar region as the
+    Sahara: the gravel took the Desert layer whatever its biome)."""
+    # The warmth of each: the reg 1, the cold grey 0, the grey-brown of the cold desert (the Gobi)
+    # a quarter at most.
+    highest = {2: (1.0, 1.0), 8: (0.0, 0.0), 15: (0.0, 0.25), 17: (0.0, 0.0), 18: (0.0, 0.0)}
+    for biome, (low, high) in highest.items():
+        warmth = biomes[biome][3][0]
+        gravel = [c + (w - c) * warmth for c, w in zip(GRAVEL_COLD, GRAVEL_WARM)]
+        texel = channels((biome, biome, biome), (255, 0), (8, 8, 8), (255, 0))
+        la, lb, _, _, _ = blend_texels_layers((texel,), (1.0,), biomes)
+        check(low <= warmth <= high and sum(la) < 1e-9 and
+              all(abs(lb[i] - gravel[i]) < 1e-6 for i in range(4)),
+              f"the gravel of the biome {biome} (warmth {warmth}): {la}, {lb}")
+    rocky = channels((2, 2, 2), (255, 0), (8, 8, 8), (255, 0))
+    polar = channels((17, 17, 17), (255, 0), (8, 8, 8), (255, 0))
+    _, lb, _, _, _ = blend_texels_layers((rocky, polar), (0.5, 0.5), biomes)
+    check(abs(lb[2] - 0.5 * GRAVEL_WARM[2]) < 1e-6 and abs(sum(lb) - 1.0) < 1e-6,
+          f"the gravel halfway from the rocky desert to the polar region: {lb}")
+
+
+def check_tables(root, look):
+    """Every biome of the core has its entry in every table of the look (agent 49): the rows of
+    BIOMES (ground layers, cold and rock, warmth of the gravel), and each table the HLSL builds from
+    them (BA, BB, BC, BD, in Layers and FinishBlend) as long as kBiomeCount; the gravel of the
+    horizon (Layers) reads the warmth of its biome, as FinishBlend does."""
+    count = header_constant(root.parent / "terrain_core" / "include" / "terrain" / "generation" /
+                            "biome.hpp", "kBiomeCount")
+    blend = look.hlsl.blend_code
+    check(len(look.BIOMES) == count, f"BIOMES has {len(look.BIOMES)} rows, kBiomeCount {count}")
+    for n, row in enumerate(look.BIOMES):
+        check(tuple(len(part) for part in row) == (4, 4, 2, 1),
+              f"the row of the biome {n} of BIOMES: {row}")
+        check(0.0 <= row[3][0] <= 1.0, f"the warmth of the gravel of the biome {n}: {row[3]}")
+    struct = look.struct_hlsl()
+    tables = re.findall(r"const float(\d) (B[ABCD])\[(\d+)\] = \{ ([^;]*) \};", struct)
+    names = sorted({name for _, name, _, _ in tables})
+    check(names == ["BA", "BB", "BC", "BD"], f"the tables of the biomes in the HLSL: {names}")
+    for width, name, size, values in tables:
+        entries = len(re.findall(rf"float{width}\(", values))
+        check(int(size) == count and entries == count,
+              f"the table {name} holds {entries} entries of {size}, kBiomeCount {count}")
+    check(f"m == 8 ? lerp({blend._float4(blend.GRAVEL_COLD)}, {blend._float4(blend.GRAVEL_WARM)}, "
+          "BD[biome].x)" in struct, "the gravel of the horizon (Layers) ignores its biome")
+    check("gravelWarmth += wbs[n] * BD[n].x;" in blend.BLEND_HLSL and
+          f"wm2.x * lerp({blend._float4(blend.GRAVEL_COLD)}, {blend._float4(blend.GRAVEL_WARM)}, "
+          "saturate(gravelWarmth))" in blend.BLEND_HLSL,
+          "the gravel of the tiles (FinishBlend) ignores its biomes")
+    check(blend.GRAVEL_WARM == GRAVEL_WARM and blend.GRAVEL_COLD == GRAVEL_COLD,
+          "the gravels of blend_layers_hlsl.py are not those of the reference")
+
+
+def check_water():
+    """TexelWater reads every kind of water (4 bits from WATER_SHIFT of the biomes) under the
+    present bit and beside the biome ids of the 3 slots, never one of their bits."""
+    wrong = 0
+    for kind in range(16):
+        for ids in (0, (1 << 18) - 1):
+            v, _ = texel_blend([float(PRESENT | ids | kind << WATER), 0.0, 0.0, 0.0])
+            wrong += (v[0] >> WATER) & 15 != kind or v[0] & ((1 << 18) - 1) != ids
+    check(wrong == 0, f"{wrong} kinds of water decode wrong")
 
 
 def check_dunes(biomes):
@@ -308,7 +411,8 @@ def check_dunes(biomes):
 def header_constant(path, name):
     """The integer of an inline constexpr of a header of the core (a literal or a sum of them)."""
     found = re.search(rf"constexpr int {name} = ([^;]+);", path.read_text(encoding="utf-8"))
-    return eval(found.group(1), {"kBlendSlots": 3, "kMaterialIdBits": 5}) if found else None
+    return eval(found.group(1), {"kBlendSlots": 3, "kMaterialIdBits": 5, "kBiomeIdBits": 6}) \
+        if found else None
 
 
 def check_counts(root, blend):
@@ -319,12 +423,16 @@ def check_counts(root, blend):
                 "BIOME_ID_BITS": ("biome_blend.hpp", "kBiomeIdBits"),
                 "MATERIAL_ID_BITS": ("biome_blend.hpp", "kMaterialIdBits"),
                 "PRESENT_BIT": ("biome_blend.hpp", "kBlendPresentBit"),
-                "DUNE_SHIFT": ("biome_blend.hpp", "kBlendDuneShift")}
+                "DUNE_SHIFT": ("biome_blend.hpp", "kBlendDuneShift"),
+                "WATER_SHIFT": ("biome_blend.hpp", "kBlendWaterShift"),
+                "COVER_SHIFT": ("biome_blend.hpp", "kBlendCoverShift"),
+                "COVER_KIND_SHIFT": ("biome_blend.hpp", "kBlendCoverKindShift")}
     for name, (header, constant) in expected.items():
         value = header_constant(generation / header, constant)
         check(value == getattr(blend, name), f"{name} of blend_layers_hlsl.py is "
               f"{getattr(blend, name)}, {constant} of {header} is {value}")
-    check(PRESENT == 1 << blend.PRESENT_BIT and DUNE == blend.DUNE_SHIFT,
+    check(PRESENT == 1 << blend.PRESENT_BIT and DUNE == blend.DUNE_SHIFT
+          and WATER == blend.WATER_SHIFT,
           "the reference decodes other fields than the HLSL")
     check(blend.SURFACE_BIOME_STRIDE == 32 and blend.SURFACE_WATER_CODE == 2048,
           "the packed surface of Bridge/terrain_surface.hpp")
@@ -348,6 +456,7 @@ def main(root):
     for biome in look.BIOMES:
         check(abs(sum(biome[0]) + sum(biome[1]) - 1.0) < 1e-9, "a biome of layers not summing to 1")
     check_counts(root, look.hlsl.blend_code)
+    check_tables(root, look)
     check_reference(look.BIOMES)
     print(f"horizon blend scripts: {len(failures)} failure(s), {declared} declarations checked")
     return 1 if failures else 0

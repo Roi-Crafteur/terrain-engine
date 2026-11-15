@@ -30,15 +30,16 @@ inline constexpr int kPlantTypeCount = 7;
 // most 1: a cell holds at most one plant.
 using PlantDensities = std::array<float, kPlantTypeCount>;
 
-[[nodiscard]] constexpr std::uint8_t materialBit(SurfaceMaterial material) {
-    return static_cast<std::uint8_t>(1U << static_cast<unsigned>(material));
+[[nodiscard]] constexpr std::uint32_t materialBit(SurfaceMaterial material) {
+    return 1U << static_cast<unsigned>(material);
 }
+static_assert(kSurfaceMaterialCount <= 32, "a material is a bit of a mask of 32 bits");
 
 // Where a type may grow: on the materials of the mask, on ground no steeper than maxSlope
 // (see steepestSlope; seaweed: the slope of the sea floor).
 struct PlantRule {
     float maxSlope = 0.0f;
-    std::uint8_t materials = 0; // materialBit of each material
+    std::uint32_t materials = 0; // materialBit of each material
 };
 
 // Densities of each biome (rows in Biome order, columns in PlantType order), before the
@@ -46,7 +47,7 @@ struct PlantRule {
 inline constexpr std::array<PlantDensities, kBiomeCount> kDefaultBiomeDensity = {{
     {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.3f},       // ocean
     {0.0f, 0.02f, 0.0f, 0.05f, 0.0f, 0.02f, 0.0f},    // beach
-    {0.0f, 0.03f, 0.0f, 0.01f, 0.04f, 0.03f, 0.0f},   // desert
+    {0.0f, 0.03f, 0.0f, 0.01f, 0.04f, 0.03f, 0.0f},   // rocky desert
     {0.03f, 0.08f, 0.02f, 0.4f, 0.005f, 0.01f, 0.0f}, // savanna
     {0.01f, 0.04f, 0.12f, 0.45f, 0.0f, 0.01f, 0.0f},  // grassland
     {0.35f, 0.15f, 0.03f, 0.15f, 0.0f, 0.02f, 0.0f},  // temperate forest
@@ -56,6 +57,15 @@ inline constexpr std::array<PlantDensities, kBiomeCount> kDefaultBiomeDensity = 
     {0.0f, 0.02f, 0.01f, 0.03f, 0.0f, 0.1f, 0.0f},    // mountain
     {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},       // snow
     {0.05f, 0.1f, 0.02f, 0.5f, 0.0f, 0.0f, 0.0f},     // marsh
+    {0.25f, 0.2f, 0.02f, 0.25f, 0.005f, 0.01f, 0.0f}, // dry forest
+    {0.003f, 0.05f, 0.05f, 0.5f, 0.0f, 0.01f, 0.0f},  // steppe
+    {0.0f, 0.01f, 0.0f, 0.005f, 0.01f, 0.005f, 0.0f}, // sand desert
+    {0.0f, 0.05f, 0.0f, 0.05f, 0.0f, 0.04f, 0.0f},    // cold desert
+    {0.0f, 0.005f, 0.005f, 0.01f, 0.0f, 0.12f, 0.0f}, // high mountain
+    {0.0f, 0.005f, 0.005f, 0.03f, 0.0f, 0.06f, 0.0f}, // polar region
+    {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},       // ice desert
+    {0.08f, 0.35f, 0.04f, 0.15f, 0.0f, 0.03f, 0.0f},  // garrigue and maquis
+    {0.01f, 0.3f, 0.01f, 0.2f, 0.02f, 0.02f, 0.0f},   // shrubland
 }};
 
 inline constexpr std::array<PlantRule, kPlantTypeCount> kDefaultPlantRules = {{
@@ -63,14 +73,17 @@ inline constexpr std::array<PlantRule, kPlantTypeCount> kDefaultPlantRules = {{
                materialBit(SurfaceMaterial::Mud)}, // tree
     {0.8f, materialBit(SurfaceMaterial::Grass) | materialBit(SurfaceMaterial::Dirt) |
                materialBit(SurfaceMaterial::Sand) | materialBit(SurfaceMaterial::Mud) |
-               materialBit(SurfaceMaterial::Pebbles)}, // bush
+               materialBit(SurfaceMaterial::Pebbles) | materialBit(SurfaceMaterial::Gravel) |
+               materialBit(SurfaceMaterial::Crust)}, // bush
     {0.5f, materialBit(SurfaceMaterial::Grass)},       // flower
     {0.6f, materialBit(SurfaceMaterial::Grass) | materialBit(SurfaceMaterial::Dirt) |
                materialBit(SurfaceMaterial::Mud)},                                   // tall grass
-    {0.5f, materialBit(SurfaceMaterial::Sand) | materialBit(SurfaceMaterial::Dirt)}, // cactus
+    {0.5f, materialBit(SurfaceMaterial::Sand) | materialBit(SurfaceMaterial::Dirt) |
+               materialBit(SurfaceMaterial::Gravel) | materialBit(SurfaceMaterial::Crust)}, // cactus
     {0.9f, materialBit(SurfaceMaterial::Rock) | materialBit(SurfaceMaterial::Pebbles) |
                materialBit(SurfaceMaterial::Dirt) | materialBit(SurfaceMaterial::Grass) |
-               materialBit(SurfaceMaterial::Sand)}, // boulder
+               materialBit(SurfaceMaterial::Sand) | materialBit(SurfaceMaterial::Gravel) |
+               materialBit(SurfaceMaterial::Stone)}, // boulder
     {0.5f, materialBit(SurfaceMaterial::Water)},    // seaweed
 }};
 
