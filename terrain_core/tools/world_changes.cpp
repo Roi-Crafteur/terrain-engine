@@ -191,6 +191,45 @@ void ergLines(const World& w, int step, std::FILE* out) {
     }
 }
 
+// The edges of the water of the rivers within 600 m of (x, z), on a grid of 8 m: a point of river
+// water beside a dry point whose ground lies more than 0.5 m below that water (water hanging over a
+// hole or a cut bed), out of the samples of river water.
+std::array<std::size_t, 2> floatingWater(const World& w, double x, double z) {
+    constexpr double kStep = 8.0;
+    constexpr int kHalf = 75; // 600 m
+    const int n = 2 * kHalf + 1;
+    std::vector<terrain::HeightSample> grid(static_cast<std::size_t>(n * n));
+    const terrain::WorldSize& world = w.field->world();
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            grid[static_cast<std::size_t>(j * n + i)] = w.field->sampleAt(
+                terrain::wrapCoordinate(x + kStep * (i - kHalf), world.x),
+                terrain::wrapCoordinate(z + kStep * (j - kHalf), world.z));
+        }
+    }
+    std::size_t river = 0;
+    std::size_t hanging = 0;
+    for (int j = 1; j + 1 < n; ++j) {
+        for (int i = 1; i + 1 < n; ++i) {
+            const terrain::HeightSample& s = grid[static_cast<std::size_t>(j * n + i)];
+            if (s.water != terrain::WaterKind::River) {
+                continue;
+            }
+            ++river;
+            for (const std::array<int, 2> d : {std::array<int, 2>{1, 0}, std::array<int, 2>{-1, 0},
+                                               std::array<int, 2>{0, 1}, std::array<int, 2>{0, -1}}) {
+                const terrain::HeightSample& o =
+                    grid[static_cast<std::size_t>((j + d[1]) * n + i + d[0])];
+                if (o.water == terrain::WaterKind::None && o.height < s.waterLevel - 0.5f) {
+                    ++hanging;
+                    break;
+                }
+            }
+        }
+    }
+    return {river, hanging};
+}
+
 void placeLine(const World& w, const Place& p, std::FILE* out) {
     const terrain::HeightSample h = w.field->sampleAt(p.x, p.z);
     float moves = 0.0f;
@@ -204,16 +243,18 @@ void placeLine(const World& w, const Place& p, std::FILE* out) {
     const terrain::Hydrology::Clearance near = w.hydrology->clearanceAt(p.x, p.z);
     const std::size_t stacks =
         w.field->stacksIn(p.x - 300.0, p.z - 300.0, p.x + 300.0, p.z + 300.0).size();
+    const std::array<std::size_t, 2> water = floatingWater(w, p.x, p.z);
     std::fprintf(out,
                  "place %s: ground %.2f, water %d level %.2f, relief within 100 m %.1f, planet "
                  "river %d lake %d discharge %.1f, biome %s, valleys away %.0f m floor %.1f m, "
-                 "%zu stacks within 300 m\n",
+                 "%zu stacks within 300 m, %zu points of river water within 600 m, %zu over a "
+                 "lower dry point\n",
                  p.name.c_str(), static_cast<double>(h.height), static_cast<int>(h.water),
                  h.water == terrain::WaterKind::None ? 0.0 : static_cast<double>(h.waterLevel),
                  static_cast<double>(moves), cell.discharge > 0.0f ? 1 : 0, cell.lake,
                  static_cast<double>(cell.discharge),
                  terrain::biomeName(biomeAt(w, *w.field, p.x, p.z)), near.away, near.floor,
-                 stacks);
+                 stacks, water[0], water[1]);
 }
 
 struct Found {

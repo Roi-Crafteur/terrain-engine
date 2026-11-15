@@ -159,8 +159,8 @@ std::shared_ptr<const coast_lattice::Lattices> Heightfield::makeInlets() const {
             const double cz = wrapCoordinate(z, world.z);
             const auto ground = static_cast<double>(hydrology->relief().heightAt(cx, cz));
             if (seaKeeps &&
-                coast_valleys::seaKeepsCoast(true, ground, hydrology->clearanceAt(cx, cz).floor)) {
-                return std::numeric_limits<double>::infinity(); // coast_valleys.hpp
+                coast_valleys::covePasses(true, ground, hydrology->clearanceAt(cx, cz).floor)) {
+                return std::numeric_limits<double>::infinity(); // under a perched valley
             }
             return hydrology->clearance(cx, cz, ground);
         };
@@ -310,20 +310,17 @@ void Heightfield::leaveValleys(double x, double z, HeightSample& s, Memos* memos
     if (sameRelief(b, s)) {
         return;
     }
-    if (coast_valleys::seaKeepsCoast(params_.seaKeepsCoasts, static_cast<double>(b.height),
-                                     near.floor)) {
-        return; // under the sea, below a valley above it (coast_valleys.hpp)
+    const coast_valleys::ValleyBlend blend = coast_valleys::valleyBlend(
+        near, static_cast<double>(b.height), kClearance, params_.seaKeepsCoasts);
+    if (blend.fade == coast_valleys::ValleyFade::Coast) {
+        return; // far from the valleys, or under the sea below a valley above it
     }
-    const double clear = near.over(static_cast<double>(b.height));
-    if (!(clear < kClearance)) {
-        return;
-    }
-    if (!(clear > 0.0) || b.water != s.water || b.continentalness != s.continentalness) {
+    if (blend.fade == coast_valleys::ValleyFade::Bare || b.water != s.water ||
+        b.continentalness != s.continentalness) {
         s = b;
         return;
     }
-    const double t = clear / kClearance;
-    const auto w = static_cast<float>(t * t * (3.0 - 2.0 * t));
+    const float w = blend.weight;
     s.mountainMask = lerp(b.mountainMask, s.mountainMask, w);
     s.relief = lerp(b.relief, s.relief, w);
     s.base = lerp(b.base, s.base, w);
