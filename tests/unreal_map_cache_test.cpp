@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
@@ -126,22 +127,67 @@ void testCapacityAndLayers() {
     TEST_CHECK(cache.find(keys[0]) == nullptr && !cache.lastError().empty());
 }
 
-// The tiles no longer asked for are not rendered; the last probe asked is the one done.
+// The renders of testStaleAndProbe: each one, once started, waits until the test opens its gate
+// (or the stop of the cache is raised), so that the test knows the tile in flight without
+// measuring any time; the keys rendered are recorded. The guard of 10 s only matters for a test
+// that never opens the gate.
+struct HeldRenders {
+    std::mutex mutex;
+    std::vector<MapTileKey> keys;
+    std::atomic<int> started{0};
+    std::atomic<bool> open{false};
+};
+
+MapTileCache::Render heldRender(const std::shared_ptr<HeldRenders>& held) {
+    return [held](const MapTileKey& key, const std::vector<std::string>& layers,
+                  MapCancel cancel) {
+        {
+            const std::lock_guard lock(held->mutex);
+            held->keys.push_back(key);
+        }
+        ++held->started;
+        const auto start = std::chrono::steady_clock::now();
+        while (!held->open.load() && !mapCancelled(cancel) &&
+               std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        static const map_test::SyntheticSampler sampler;
+        static const MapLayers registry = defaultMapLayers();
+        return renderMap(sampler, mapTileFrame(key), registry, layers,
+                         {1, kMapMaxSamples, cancel});
+    };
+}
+
+// The tiles no longer asked for are not rendered; the last probe asked is the one done. The one
+// thread is held in the render of a tile of the 40 asked first while the view moves: of them,
+// only that tile is rendered, whenever the thread is woken (no time measured).
 void testStaleAndProbe() {
-    const Counted counted;
-    *counted.delayMs = 50;
-    MapTileCache cache(counted.render(), noProbe(), {"relief"}, {64, 1});
+    const auto held = std::make_shared<HeldRenders>();
+    MapTileCache cache(heldRender(held), noProbe(), {"relief"}, {64, 1});
     std::vector<MapTileKey> many;
     for (int i = 0; i < 40; ++i) {
         many.push_back({5, i, 3});
     }
     cache.want(many);
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    for (int round = 0; round < 10'000 && held->started.load() < 1; ++round) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     cache.want({{5, 0, 9}});
     cache.probe(1.0, 2.0);
     cache.probe(100.0, 200.0);
+    held->open = true;
     cache.waitIdle();
-    TEST_CHECK(counted.calls->load() < 20); // of the 40 asked first: at most a few started
+    std::size_t staleRendered = 0;
+    {
+        const std::lock_guard lock(held->mutex);
+        for (const MapTileKey& key : held->keys) {
+            staleRendered += key.tz == 3 ? 1U : 0U;
+        }
+    }
+    std::printf("view moved while a tile rendered: %zu of the 40 tiles asked first rendered, "
+                "%d renders in all\n",
+                staleRendered, held->started.load());
+    TEST_CHECK(staleRendered == 1 && held->started.load() == 2);
     TEST_CHECK(cache.find({5, 0, 9}) != nullptr);
     const std::optional<MapProbe> p = cache.takeProbe();
     TEST_CHECK(p.has_value() && p->x == 100.0 && p->z == 200.0 && !cache.takeProbe().has_value());
