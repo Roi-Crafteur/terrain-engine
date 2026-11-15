@@ -45,18 +45,18 @@ struct FTemporaryTerrain
     {
         const float4 BA[NBIOMES] = { BIOME_A };
         const float4 BB[NBIOMES] = { BIOME_B };
-        const float2 BC[NBIOMES] = { BIOME_C };
+        const float2 BC[NBIOMES] = { BIOME_C }; const float1 BD[NBIOMES] = { BIOME_D };
         int v = code < 0.0 ? (code <= -SEA_ROCK_HALF ? 4 : 0) : (int)(code + 0.5) % 2048;
         int m = v % 32;
         int biome = min(v / 32, LASTBIOME);
         a = BA[biome]; b = BB[biome]; c = BC[biome];
         float4 z = float4(0.0, 0.0, 0.0, 0.0);
         if (m == 0 && biome != 0) { a = z; b = float4(0.5, 0.0, 0.0, 0.5); }           // river bed
-        else if (m == 1) { a = z; b = biome == 2 ? float4(0, 0, 1, 0) : float4(0, 1, 0, 0); }
-        else if (m == 3 || m == 6) { a *= 0.3; b = b * 0.3 + float4(0.7, 0.0, 0.0, 0.0); } // dirt, mud
+        else if (m == 1 || m == 8) { a = z; b = m == 8 ? lerp(GRAVEL_COLD, GRAVEL_WARM, BD[biome].x) : (biome == 2 ? float4(0, 0, 1, 0) : float4(0, 1, 0, 0)); }
+        else if (m == 3 || m == 6 || m == 10) { a *= 0.3; b = b * 0.3 + float4(0.7, 0.0, 0.0, 0.0); } // dirt, mud, crust
         else if (m == 4) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); c.y = 1.0; }            // rock
         else if (m == 5) { c.x = 1.0; }                                                    // snow
-        else if (m == 7) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); }                        // scree
+        else if (m == 7 || m == 9) { a = z; b = float4(0.0, 0.0, 0.0, 1.0); }              // scree, stone
     }
 
 BLEND_FUNCTIONS
@@ -582,7 +582,7 @@ def struct_hlsl(biomes):
             values.append(f"float{width}({cells})")
         return ", ".join(values)
     return blend_code.fill(STRUCT_HLSL.replace("BLEND_FUNCTIONS", blend_code.BLEND_HLSL)
-            .replace("BIOME_A", rows(0, 4)).replace("BIOME_B", rows(1, 4))
+            .replace("BIOME_A", rows(0, 4)).replace("BIOME_B", rows(1, 4)).replace("BIOME_D", rows(3, 1))
             .replace("BIOME_C", rows(2, 2)).replace("TEXELS", str(TILE_BLEND_TEXELS))
             .replace("SEA_ROCK_HALF", f"{0.5 * SEA_ROCK_CODE:.1f}"))
 

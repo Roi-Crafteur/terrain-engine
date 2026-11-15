@@ -104,6 +104,7 @@ SurfaceBlend blendSurface(const ClimateSample& climate, const SurfaceSite& site,
     const SurfaceMaterial material = surfaceMaterial(biome, climate, site, materials);
     const blend::Margins margins = blend::regionMargins(climate, site, biomes, materials, params);
     SurfaceBlend result;
+    result.water = site.water;
     dominants(margins.biomes, biome, widthFactor, result.biomes, result.biomeWeights);
     dominants(margins.materials, material, widthFactor, result.materials, result.materialWeights);
     if (site.erg > 0.0f) {
@@ -147,11 +148,15 @@ BlendTexel packBlend(const SurfaceBlend& blend) {
         texel.materials |= static_cast<std::uint32_t>(material)
                            << (kMaterialIdBits * static_cast<int>(s));
     }
-    texel.biomeWeights = biomes[0] | (biomes[1] << 8);
+    const auto cover =
+        static_cast<std::uint32_t>(std::clamp(blend.cover, 0.0f, 1.0f) * kWeightUnits + 0.5f);
+    texel.biomes |= static_cast<std::uint32_t>(blend.water) << kBlendWaterShift;
+    texel.biomeWeights = biomes[0] | (biomes[1] << 8) | (cover << kBlendCoverShift);
     texel.materialWeights = materials[0] | (materials[1] << 8);
     texel.materials |=
         static_cast<std::uint32_t>(std::clamp(blend.dunes, 0.0f, 1.0f) * kDuneUnits + 0.5f)
         << kBlendDuneShift;
+    texel.materials |= static_cast<std::uint32_t>(blend.coverKind) << kBlendCoverKindShift;
     return texel;
 }
 
@@ -175,6 +180,9 @@ SurfaceBlend unpackBlend(BlendTexel texel) {
     };
     blend.dunes =
         static_cast<float>(field(texel.materials, kBlendDuneShift, kDuneMask)) / kDuneUnits;
+    blend.water = static_cast<WaterKind>(field(texel.biomes, kBlendWaterShift, 0xFU));
+    blend.cover = share(field(texel.biomeWeights, kBlendCoverShift, 0xFFU));
+    blend.coverKind = static_cast<CoverKind>(field(texel.materials, kBlendCoverKindShift, 0x3U));
     blend.biomeWeights = {share(b0), share(b1), share(rest(b0, b1))};
     blend.materialWeights = {share(m0), share(m1), share(rest(m0, m1))};
     return blend;
@@ -187,6 +195,7 @@ void addBlend(BlendWeights& weights, const SurfaceBlend& blend, float share) {
             share * blend.materialWeights[s];
     }
     weights.dunes += share * blend.dunes;
+    weights.cover += share * blend.cover;
 }
 
 void addTexel(BlendWeights& weights, BlendTexel texel, float share) {

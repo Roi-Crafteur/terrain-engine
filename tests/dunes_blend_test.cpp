@@ -16,7 +16,7 @@ using terrain::SurfaceBlend;
 
 SurfaceBlend desertSand(float dunes) {
     SurfaceBlend b;
-    b.biomes = {terrain::Biome::Desert, terrain::Biome::Desert, terrain::Biome::Desert};
+    b.biomes = {terrain::Biome::SandDesert, terrain::Biome::SandDesert, terrain::Biome::SandDesert};
     b.biomeWeights = {1.0f, 0.0f, 0.0f};
     b.materials = {terrain::SurfaceMaterial::Sand, terrain::SurfaceMaterial::Sand,
                    terrain::SurfaceMaterial::Sand};
