@@ -57,11 +57,13 @@ int main() {
             hydrology_sample::addCell(horizon, cell);
         }
     }
-    // Recollé par « Merge main (#75 parallel CI, #76 biome format, #79 guards) into the hydrology
-    // branch of agent 39 » : "horizon 8-9" ; les texels de biomes de #76 (agent 49) ont 16 octets
-    // (quatre champs sommés au lieu de ids et weights) et lisent l'eau du core. Même valeur sur
-    // main (38b5a82) et sur la branche : l'agent 39 ne change aucun bit.
-    expect("horizon 8-9", horizon.value(), 0x0CB9CFA8700C153AULL, secondsSince(start));
+    // Recollé par « Tests: horizon 8-9 of hydrology_bits_test re-pasted after #84 » (agent 39) :
+    // "horizon 8-9" ; avec #84 (agent 49, les biomes des terres), les texels de l'horizon portent
+    // l'eau de leur colonne et la place d'un couvert (BlendTexel::biomes), et les biomes du monde
+    // changent (21 biomes) ; kGeneratorVersion passe à 10 sur main. Même valeur sur main
+    // (f6b95b7) et sur la branche : l'agent 39 ne change aucun bit. Avant : 0x0CB9CFA8700C153A,
+    // recollé à la fusion de #76 (texels de 16 octets).
+    expect("horizon 8-9", horizon.value(), 0xDB7DF1A9ACC2A16AULL, secondsSince(start));
     std::printf("courses computed: %zu, %zu bytes\n", h.coursesComputed(), h.courseBytes());
     return test::result();
 }
