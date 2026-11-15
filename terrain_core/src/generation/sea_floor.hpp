@@ -10,10 +10,8 @@ namespace terrain::sea_floor {
 // A continental margin seen across it: the shelf falls from the shore to breakDepth at
 // shelfWidth, the continental slope from there at slopeGradient down to footDepth, the
 // continental rise on at riseGradient, for the share riseShare (0 on an active margin: the slope
-// goes on down). A
-// marginal plateau may break the slope: a terrace from terraceDepth, terraceWidth wide, falling
-// terraceGradient (none when its width is 0). The corners are rounded over corner meters of
-// height.
+// goes on down). The corners are rounded over corner meters of height. (The marginal plateaus
+// that break the slopes are lobes of their own: sea_plateaus.hpp.)
 struct Margin {
     double shelfWidth = 80'000.0;
     double breakDepth = 130.0;
@@ -21,17 +19,16 @@ struct Margin {
     double footDepth = 2'500.0;
     double riseGradient = 0.01;
     double riseShare = 1.0;
-    double terraceDepth = 0.0;
-    double terraceWidth = 0.0;
-    double terraceGradient = 0.004;
     double corner = 60.0;
 };
 
 // The elevation of the margin d meters from the shore (d >= 0): 0 at the shore, ever deeper.
 [[nodiscard]] double marginAt(const Margin& m, double d);
 
-// The depth of the oceanic crust of an age (GDH1 of Stein and Stein, 1992: 2,600 m at the axis,
-// 2,600 + 365 sqrt(age) up to 20 Myr, then 5,651 - 2,473 exp(-0.0278 age)), meters, positive.
+// The depth of the oceanic crust of an age, meters, positive (Parsons and Sclater, 1977): the
+// shallower of 2,500 + 350 sqrt(age) and 6,400 - 3,200 exp(-age / 62.8). They cross once, near
+// 26 Myr, with about the same slope: 2,500 m at the axis, 6,000 m near 130 Myr, 6,267 m at
+// 200 Myr, never 6,400 m.
 [[nodiscard]] double depthOfAge(double age);
 
 // The relief of the axis of a ridge v meters from it (warped meters across), for the share of
@@ -52,6 +49,9 @@ struct Axis {
 // max(a, b) and min(a, b) rounded over k (C-infinity; k = 0: the plain ones).
 [[nodiscard]] double smoothMax(double a, double b, double k);
 [[nodiscard]] double smoothMin(double a, double b, double k);
+// max(a, b) rounded only where they are less than k apart (C1, k > 0): exactly the larger one
+// beyond, so a lower shape never moves a higher one.
+[[nodiscard]] double roundedMax(double a, double b, double k);
 
 // 0 below edge0, 1 above edge1, the smooth Hermite step between (edge0 > edge1 allowed: the
 // step goes down then).

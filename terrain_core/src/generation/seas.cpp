@@ -3,6 +3,7 @@
 #include "coast_shape.hpp"
 #include "sea_floor.hpp"
 #include "sea_hills.hpp"
+#include "sea_plateaus.hpp"
 #include "sea_plates.hpp"
 #include "sea_shore.hpp"
 #include "terrain/det_math.hpp"
@@ -77,6 +78,7 @@ struct Seas::Impl {
     std::uint64_t seed = 0;
     sea_plates::Plates plates;
     sea_shore::Shore shore;
+    sea_plateaus::Plateaus marginals; // the marginal plateaus
     sea_hills::Noises noises;
     sea_floor::Axis axis;
     double plateauThreshold = 1.0; // of sea_hills::plateauNoise
@@ -95,6 +97,10 @@ struct Seas::Impl {
     [[nodiscard]] Trench trenchAt(double x, double z) const;
     // The distances to the shores at a point of the sea.
     [[nodiscard]] Shores shoresAt(double x, double z) const;
+    // The floor of the margin and the crust of out with their plateaus, never on an active
+    // margin: an oceanic one raising the crust (out.plateau, out.crust), then a marginal one over
+    // both (out.marginalPlateau).
+    [[nodiscard]] double floorOf(double x, double z, SeaPoint& out) const;
     // The value of the noise of the plateaus above which lies plateauShare of the nodes of the map
     // at sea that a ridge reaches (the floor of the ocean).
     [[nodiscard]] double plateauThresholdOf() const;
@@ -164,7 +170,7 @@ Crust Seas::Impl::crustAt(double x, double z, double footprint) const {
         const double reach =
             std::abs(v) + (grid - std::abs(v)) * sea_floor::step(p.ageNear, p.ageFar, grid);
         const double halfRate = p.slowRate + (p.fastRate - p.slowRate) * rate;
-        const double age = reach / halfRate;
+        const double age = std::min(reach / halfRate, p.oldestAge);
         out.crust +=
             l.weight * (-sea_floor::depthOfAge(age) + sea_floor::axisRelief(axis, v, rate));
         // The sediments of the old crust bury its hills and its fracture zones (each ridge its
@@ -192,6 +198,25 @@ Shores Seas::Impl::shoresAt(double x, double z) const {
     // from the shore (its noises curve it too much), and the margins must keep their slopes.
     const sea_shore::Distances grid = sea_shore::distancesAt(shore, x, z);
     return {grid.any, std::max(grid.any, grid.big)};
+}
+
+double Seas::Impl::floorOf(double x, double z, SeaPoint& out) const {
+    const SeaParams& p = params;
+    // An oceanic plateau raises the crust to its top.
+    out.plateau = sea_floor::step(plateauThreshold, plateauThreshold + p.plateauEdge,
+                                  sea_hills::plateauNoise(noises, x, z)) *
+                  (1.0 - out.active);
+    const double top = -sea_hills::plateauTop(noises, p, x, z);
+    if (out.plateau > 0.0 && top > out.crust) {
+        out.crust += (top - out.crust) * out.plateau;
+    }
+    const double floor = sea_floor::smoothMax(out.margin, out.crust, kCrustCorner);
+    // A marginal plateau over the margin and the crust: exactly the higher beyond kCrustCorner,
+    // so the shelves, higher than every plateau, keep their bits.
+    const double plateau = sea_plateaus::elevationAt(marginals, x, z);
+    out.marginalPlateau =
+        (sea_floor::roundedMax(floor, plateau, kCrustCorner) - floor) * (1.0 - out.active);
+    return floor + out.marginalPlateau;
 }
 
 Seas::Impl::Trench Seas::Impl::trenchAt(double x, double z) const {
@@ -277,6 +302,8 @@ Seas::Seas(std::uint64_t seed, const Heightfield& relief, const PlanetLevel* pla
     impl->seed = noise::deriveSeed(seed, kSeasStream);
     impl->plates = sea_plates::build(seed, *geo, threads);
     impl->shore = sea_shore::build(*geo, params.islandArea, threads);
+    impl->marginals =
+        sea_plateaus::build(impl->seed, impl->world, params, impl->shore, impl->plates);
     impl->noises = sea_hills::makeNoises(impl->seed, impl->world, params);
     impl->axis = {params.valleyDepth, params.valleyFloor, params.valleyWidth, params.highHeight,
                   params.highWidth};
@@ -310,22 +337,11 @@ SeaPoint Seas::at(double x, double z, const HeightSample& s, double footprint) c
         kCrustCorner);
     const Crust c = m.crustAt(x, z, footprint);
     out.crust = c.crust;
-    // An oceanic plateau raises the crust to its top (never on an active margin).
-    if (p.floors) {
-        out.plateau = sea_floor::step(m.plateauThreshold, m.plateauThreshold + p.plateauEdge,
-                                      sea_hills::plateauNoise(m.noises, x, z)) *
-                      (1.0 - out.active);
-        const double top = -sea_hills::plateauTop(m.noises, p, x, z);
-        if (out.plateau > 0.0 && top > out.crust) {
-            out.crust += (top - out.crust) * out.plateau;
-        }
-    }
     out.ridge = c.ridge;
     out.ridgeDistance = c.ridgeDistance;
     out.age = c.age;
     out.rate = c.rate;
-    double floor =
-        p.floors ? sea_floor::smoothMax(out.margin, out.crust, kCrustCorner) : out.before;
+    double floor = p.floors ? m.floorOf(x, z, out) : out.before;
     if (p.hills) {
         // On the crust of the ocean only (not on the margin), under the sediments of the passive
         // margins (those of the old crust: crustAt).
@@ -333,8 +349,10 @@ SeaPoint Seas::at(double x, double z, const HeightSample& s, double footprint) c
             sea_floor::step(-kCrustCorner, kCrustCorner, out.crust - out.margin);
         const double sediment =
             sea_floor::step(p.sedimentFar, p.sedimentNear, d) * (1.0 - out.active);
-        // Smoother on the plateaus.
-        const double bare = crustShare * (1.0 - sediment) * (1.0 - 0.7 * out.plateau);
+        // Smoother on the plateaus, oceanic and marginal.
+        const double marginal = sea_floor::step(0.0, 300.0, out.marginalPlateau);
+        const double bare = crustShare * (1.0 - sediment) * (1.0 - 0.7 * out.plateau) *
+                            (1.0 - 0.7 * marginal);
         out.hills = bare * c.hills * sea_hills::hillsAmplitude(m.noises, p, x, z);
         out.fracture = bare * c.fracture;
         floor += out.hills - out.fracture;
@@ -396,7 +414,8 @@ const SeaParams& Seas::params() const {
 }
 
 std::size_t Seas::memoryBytes() const {
-    return sizeof(Impl) + impl_->plates.memoryBytes() + impl_->shore.memoryBytes();
+    return sizeof(Impl) + impl_->plates.memoryBytes() + impl_->shore.memoryBytes() +
+           impl_->marginals.memoryBytes();
 }
 
 std::uint64_t Seas::checksum() const {
@@ -412,6 +431,10 @@ std::uint64_t Seas::checksum() const {
     h = fnvOf(h, p.trenchPeak);
     h = fnvOf(h, impl_->shore.any);
     h = fnvOf(h, impl_->shore.big);
+    // Doubles only, no padding: every field of every plateau.
+    static_assert(sizeof(sea_plateaus::Plateau) == 22 * sizeof(double));
+    h = fnvOf(h, impl_->marginals.list);
+    h = fnvOf(h, impl_->marginals.members);
     for (const sea_plates::Ridge& r : p.ridges) {
         const std::array<double, 6> v{r.ax, r.az, r.mx, r.mz, r.nx, r.nz};
         h = fnv(h, v.data(), sizeof(v));

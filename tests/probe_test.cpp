@@ -304,8 +304,8 @@ points[].rock.scanTo points[].rock.solid points[].rock.solid[].bottom
 points[].rock.solid[].top points[].rock.steepest points[].sea points[].sea.active
 points[].sea.age points[].sea.available points[].sea.before points[].sea.crust
 points[].sea.fade points[].sea.floor points[].sea.fracture points[].sea.hills
-points[].sea.margin points[].sea.outerRise points[].sea.plateau points[].sea.rate
-points[].sea.ridge
+points[].sea.margin points[].sea.marginalPlateau points[].sea.outerRise
+points[].sea.plateau points[].sea.rate points[].sea.ridge
 points[].sea.ridgeDistance points[].sea.seamount points[].sea.shore points[].sea.trench
 points[].sea.zone points[].surface
 points[].surface.baseTemperature points[].surface.biome points[].surface.biomes

@@ -20,3 +20,7 @@ add_test(NAME seas_coast_places_test
 add_dependencies(check seas_coast_places_test)
 set_tests_properties(seas_coast_places_test PROPERTIES
     FIXTURES_REQUIRED coast_planet ENVIRONMENT TERRAIN_COAST_PLANET=${coast_planet_file})
+terrain_add_test(sea_plateaus_test terrain_core)
+target_include_directories(sea_plateaus_test PRIVATE ${PROJECT_SOURCE_DIR}/terrain_core/src/generation)
+# The floors of the default world beside the bathymetry of the Earth (the bounds of stop A).
+terrain_add_test(seas_earth_test terrain_core)

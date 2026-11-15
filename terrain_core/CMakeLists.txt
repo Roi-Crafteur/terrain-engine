@@ -126,6 +126,7 @@ add_library(terrain_core STATIC
     src/generation/rock_spires_shape.cpp
     src/generation/sea_floor.cpp
     src/generation/sea_hills.cpp
+    src/generation/sea_plateaus.cpp
     src/generation/sea_plates.cpp
     src/generation/sea_shore.cpp
     src/generation/seas.cpp

@@ -1,8 +1,8 @@
 // The section sea of terrain_probe (probe_sections.hpp): what the seas of agent 51 (seas.hpp) make
 // of the point, from the relief without them: the zone, the distance to the shore, the floor
 // before and after, the continental margin, the crust of the ocean (its ridge, age and spreading
-// rate), the oceanic plateaus, the trench and its outer rise, the hills, the fracture zones and the
-// seamounts.
+// rate), the oceanic and marginal plateaus, the trench and its outer rise, the hills, the fracture
+// zones and the seamounts.
 #include "probe_sections.hpp"
 
 #include "terrain/generation/seas.hpp"
@@ -13,10 +13,11 @@ namespace probe {
 
 namespace {
 
-constexpr const char* kKeys[] = {"zone",          "fade",     "shore",   "before",  "floor",
-                                 "margin",        "active",   "crust",   "plateau", "ridge",
-                                 "ridgeDistance", "age",      "rate",    "trench",  "outerRise",
-                                 "hills",         "fracture", "seamount"};
+constexpr const char* kKeys[] = {"zone",          "fade",     "shore",    "before",
+                                 "floor",         "margin",   "active",   "crust",
+                                 "plateau",       "marginalPlateau",      "ridge",
+                                 "ridgeDistance", "age",      "rate",     "trench",
+                                 "outerRise",     "hills",    "fracture", "seamount"};
 
 } // namespace
 
@@ -48,7 +49,8 @@ Record seaSection(const ProbeWorld& w, const Point& p) {
         .number("margin", s.margin, 2, "m")
         .number("active", s.active, 4)
         .number("crust", s.crust, 2, "m")
-        .number("plateau", s.plateau, 4);
+        .number("plateau", s.plateau, 4)
+        .number("marginalPlateau", s.marginalPlateau, 2, "m");
     if (s.ridge >= 0) {
         r.integer("ridge", s.ridge)
             .number("ridgeDistance", s.ridgeDistance, 0, "m")

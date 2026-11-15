@@ -53,20 +53,24 @@ void testActiveMargin() {
 }
 
 void testAges() {
-    TEST_CHECK(sf::depthOfAge(0.0) == 2'600.0);
-    TEST_CHECK(sf::depthOfAge(-5.0) == 2'600.0);
-    const double before = sf::depthOfAge(20.0 - 1e-9);
-    const double after = sf::depthOfAge(20.0);
-    std::printf("GDH1: %.1f m before 20 Myr, %.1f m at 20, %.1f m at 100, %.1f m at 200\n", before,
-                after, sf::depthOfAge(100.0), sf::depthOfAge(200.0));
-    TEST_CHECK(std::abs(before - after) < 2.0); // the two pieces of GDH1 meet
+    TEST_CHECK(sf::depthOfAge(0.0) == 2'500.0);
+    TEST_CHECK(sf::depthOfAge(-5.0) == 2'500.0);
+    std::printf("Parsons and Sclater: %.1f m at 26 Myr, %.1f m at 130, %.1f m at 200, %.1f m at "
+                "1000\n",
+                sf::depthOfAge(26.0), sf::depthOfAge(130.0), sf::depthOfAge(200.0),
+                sf::depthOfAge(1'000.0));
+    // Ever deeper, never 6,400 m, and continuous where the two pieces cross (near 26 Myr): no
+    // step larger than the slope of either over a tenth of a million years.
     double last = 0.0;
-    for (double age = 0.0; age < 300.0; age += 1.0) {
+    for (double age = 0.0; age < 400.0; age += 0.1) {
         const double d = sf::depthOfAge(age);
-        TEST_CHECK(d > last && d < 5'651.0);
+        TEST_CHECK(d > last && d < 6'400.0);
+        TEST_CHECK(age < 4.0 || d - last < 10.0);
         last = d;
     }
-    TEST_CHECK(std::abs(sf::depthOfAge(100.0) - 5'498.0) < 2.0);
+    TEST_CHECK(std::abs(sf::depthOfAge(130.0) - 6'000.0) < 30.0);
+    TEST_CHECK(std::abs(sf::depthOfAge(200.0) - 6'267.0) < 3.0);
+    TEST_CHECK(std::abs(sf::depthOfAge(16.0) - 3'900.0) < 1e-9); // the young piece
 }
 
 void testAxes() {

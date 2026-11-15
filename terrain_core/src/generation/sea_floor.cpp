@@ -6,11 +6,6 @@
 #include <cmath>
 
 namespace terrain::sea_floor {
-namespace {
-
-constexpr double kTerraceFade = 20'000.0;
-
-} // namespace
 
 double smoothMax(double a, double b, double k) {
     const double d = a - b;
@@ -21,58 +16,33 @@ double smoothMin(double a, double b, double k) {
     return -smoothMax(-a, -b, k);
 }
 
+double roundedMax(double a, double b, double k) {
+    const double h = std::max(0.0, k - std::abs(a - b)) / k;
+    return std::max(a, b) + 0.25 * k * h * h;
+}
+
 double step(double edge0, double edge1, double v) {
     const double t = std::clamp((v - edge0) / (edge1 - edge0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
 }
 
-namespace {
-
-// The margin with or without its terrace, its rise from the foot of the slope below it.
-double profileOf(const Margin& m, double d, bool terraced) {
+double marginAt(const Margin& m, double d) {
     const double shelf = -m.breakDepth * d / m.shelfWidth;
     const double slope = -m.breakDepth - m.slopeGradient * (d - m.shelfWidth);
-    double profile = smoothMin(shelf, slope, m.corner);
-    // Where the lower slope starts and how deep: the shelf break, or the outer edge of a terrace.
-    double start = m.shelfWidth;
-    double top = m.breakDepth;
-    if (terraced) {
-        const double reach = m.shelfWidth + (m.terraceDepth - m.breakDepth) / m.slopeGradient;
-        // The gentle lines stay level before their start: never above the shore.
-        const double terrace = -m.terraceDepth - m.terraceGradient * std::max(0.0, d - reach);
-        start = reach + m.terraceWidth;
-        top = m.terraceDepth + m.terraceGradient * m.terraceWidth;
-        const double lower = -top - m.slopeGradient * (d - start);
-        profile = smoothMin(smoothMax(profile, terrace, m.corner), lower, m.corner);
-    }
+    const double profile = smoothMin(shelf, slope, m.corner);
     if (!(m.riseShare > 0.0)) {
         return profile; // an active margin: the slope goes on down, no rise
     }
-    const double footDepth = std::max(m.footDepth, top + 200.0);
-    const double foot = start + (footDepth - top) / m.slopeGradient;
+    // The rise from the foot of the slope below the shelf break.
+    const double footDepth = std::max(m.footDepth, m.breakDepth + 200.0);
+    const double foot = m.shelfWidth + (footDepth - m.breakDepth) / m.slopeGradient;
     const double rise = -footDepth - m.riseGradient * std::max(0.0, d - foot);
     return profile + (smoothMax(profile, rise, m.corner) - profile) * m.riseShare;
 }
 
-} // namespace
-
-double marginAt(const Margin& m, double d) {
-    const double plain = profileOf(m, d, false);
-    if (!(m.terraceWidth > 0.0 && m.terraceDepth > m.breakDepth)) {
-        return plain;
-    }
-    // The terrace faded in over its first kTerraceFade meters of width: nothing jumps where it
-    // starts along the coast.
-    const double t = step(0.0, kTerraceFade, m.terraceWidth);
-    return plain + (profileOf(m, d, true) - plain) * t;
-}
-
 double depthOfAge(double age) {
     const double t = std::max(0.0, age);
-    if (t < 20.0) {
-        return 2'600.0 + 365.0 * std::sqrt(t);
-    }
-    return 5'651.0 - 2'473.0 * dmath::exp(-0.0278 * t);
+    return std::min(2'500.0 + 350.0 * std::sqrt(t), 6'400.0 - 3'200.0 * dmath::exp(-t / 62.8));
 }
 
 double axisRelief(const Axis& a, double v, double rate) {

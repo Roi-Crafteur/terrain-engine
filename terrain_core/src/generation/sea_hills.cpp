@@ -179,13 +179,6 @@ sea_floor::Margin marginOf(const Noises& n, const SeaParams& p, double x, double
     // An active margin has no rise: the slope goes on down into the trench.
     m.riseGradient = lerp(p.riseLow, p.riseHigh, shareOf(n.margins[4], x, z));
     m.riseShare = 1.0 - active;
-    // A terrace on the stretches of passive margin where its noise is highest, widening from 0 at
-    // their edges.
-    const double terrace = (shareOf(n.margins[5], x, z) - (1.0 - p.terraceShare)) / p.terraceShare;
-    if (terrace > 0.0 && active < 1.0) {
-        m.terraceWidth = p.terraceWidthHigh * std::min(1.0, terrace) * (1.0 - active);
-        m.terraceDepth = lerp(p.terraceDepthLow, p.terraceDepthHigh, shareOf(n.margins[6], x, z));
-    }
     return m;
 }
 

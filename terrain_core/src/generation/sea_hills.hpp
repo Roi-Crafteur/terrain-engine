@@ -23,9 +23,9 @@ struct Noises {
     // of the ridges, whose coordinates are not those of the world): no period within it.
     std::array<noise::FbmOctaves, kHillOctaves> hills;
     noise::FbmOctaves amplitude; // their variation over the world
-    // The shelf width, the break depth, the slope gradient, the foot depth, the rise gradient,
-    // the presence of a terrace and its depth on the margins, each a share in [0, 1] of its range.
-    std::array<noise::FbmOctaves, 7> margins;
+    // The shelf width, the break depth, the slope gradient, the foot depth and the rise gradient
+    // of the margins, each a share in [0, 1] of its range.
+    std::array<noise::FbmOctaves, 5> margins;
     // The oceanic plateaus where the first is highest (above a threshold drawn over the ocean),
     // the depth of their top from the second.
     noise::FbmOctaves plateau;

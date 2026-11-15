@@ -75,13 +75,28 @@ struct SeaParams {
     double islandBreakHigh = 120.0;
     double islandSlopeLow = 0.1; // 5.7 to 12.4 degrees
     double islandSlopeHigh = 0.22;
-    // Marginal plateaus on terraceShare of the passive margins: a terrace terraceDepthLow to
-    // terraceDepthHigh deep breaking the slope, up to terraceWidthHigh wide (narrower toward the
-    // edges of the stretch of coast it follows).
-    double terraceShare = 0.35;
-    double terraceDepthLow = 300.0;
-    double terraceDepthHigh = 1'800.0;
-    double terraceWidthHigh = 300'000.0;
+    // Marginal plateaus (sea_plateaus.hpp): drowned blocks of continent off the passive margins,
+    // such as the Exmouth, Voring or Blake plateaus, lobes of every size and shape, scattered
+    // without any row. Each cell of sea_plateaus::kCell meters holds one with the chance
+    // marginalShare, its middle anywhere in the cell, kept at sea on a passive margin marginalNear
+    // to marginalFar meters from the shore of the large lands. Its outline: an ellipse
+    // marginalRadiusLow to marginalRadiusHigh across (more small ones), 1 to marginalStretch times
+    // longer, turned anyhow, bent by three harmonics of up to marginalBend, 0.7 and 0.5 times it.
+    // Its top: marginalTopLow to marginalTopHigh deep at the middle, sinking seaward by up to
+    // marginalTiltDrop across it, never shallower than marginalTopLow. Its flanks: falling
+    // marginalFlankLow to marginalFlankHigh per meter.
+    double marginalShare = 0.08;
+    double marginalNear = 120'000.0;
+    double marginalFar = 450'000.0;
+    double marginalRadiusLow = 50'000.0;
+    double marginalRadiusHigh = 250'000.0;
+    double marginalStretch = 2.2;
+    double marginalBend = 0.25;
+    double marginalTopLow = 400.0;
+    double marginalTopHigh = 2'400.0;
+    double marginalTiltDrop = 1'200.0;
+    double marginalFlankLow = 0.03;
+    double marginalFlankHigh = 0.09;
     // Oceanic plateaus (large igneous provinces) on about plateauShare of the floor of the ocean:
     // the crust raised to a top plateauTopLow to plateauTopHigh deep over a few hundred to two
     // thousand kilometers, where a slow noise of plateauWavelength is highest; never on an active
@@ -94,13 +109,16 @@ struct SeaParams {
 
     // The crust of the ocean: its age is its distance to the axis of its ridge over the half
     // spreading rate of the ridge (slowRate to fastRate meters per million years by the strength
-    // of the divergence), its depth that of the age (GDH1, sea_floor::depthOfAge). The distance
-    // is the exact one to the axis within ageNear, the one through the sea of the map beyond
-    // ageFar. Where no ridge reaches through the sea: oldBasinDepth.
+    // of the divergence), its depth that of the age (Parsons and Sclater, sea_floor::depthOfAge),
+    // the age at most oldestAge (the Earth has no oceanic crust in place much older than 180 to
+    // 200 Myr: the older one went down the trenches). The distance is the exact one to the axis
+    // within ageNear, the one through the sea of the map beyond ageFar. Where no ridge reaches
+    // through the sea: oldBasinDepth.
     double slowRate = 15'000.0;
     double fastRate = 80'000.0;
     double ageNear = 250'000.0;
     double ageFar = 450'000.0;
+    double oldestAge = 200.0;
     double oldBasinDepth = 5'000.0;
     // The axis: the rift valley of the slow ridges, the axial high of the fast ones.
     double valleyDepth = 1'400.0;
@@ -114,8 +132,9 @@ struct SeaParams {
     // side, trenchDrop under the floor at the strongest (the trench field of the tectonics at its
     // peak), an outer rise outerRise high outerRiseAt half widths out on the subducting plate
     // (outerRiseWidth of them each side); faded in from trenchNear to trenchFull meters from the
-    // shore.
-    double trenchDrop = 4'500.0;
+    // shore. (The trenches cut the old crust of Parsons and Sclater, deeper than that of GDH1:
+    // 4,300 m keeps the cells deeper than 8,000 m under 0.1 % of the sea, as on the Earth.)
+    double trenchDrop = 4'300.0;
     double trenchHalfWidth = 45'000.0;
     double outerRise = 400.0;
     double outerRiseAt = 2.5;
@@ -181,6 +200,7 @@ struct SeaPoint {
     double floor = 0.0;  // the regional floor of the seas (before the fade)
     double margin = 0.0; // the continental margin there
     double plateau = 0.0; // [0, 1], an oceanic plateau
+    double marginalPlateau = 0.0; // meters a marginal plateau raises the floor
     double crust = 0.0;  // the crust of the ocean there (age, axis, fracture zones)
     int ridge = -1;      // the nearest ridge through the sea (sea_plates::Ridge), -1 for none
     double ridgeDistance = -1.0; // meters to its axis, -1 for none

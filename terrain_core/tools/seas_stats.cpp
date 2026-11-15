@@ -9,7 +9,8 @@
 //   --step: the cells of the grid of the world (16384 by default; they must divide its sides)
 //   --list: one line per profile
 //   --find: places to look at (the deepest trench, a slow ridge, a fracture zone, the highest
-//           seamount, an oceanic plateau), found on a grid of 32 km of the sea of the seas
+//           seamount, an oceanic plateau, the marginal plateau that raises the floor most), found
+//           on a grid of 32 km of the sea of the seas
 
 #include "terrain/generation/heightfield.hpp"
 #include "terrain/generation/planet/planet_level.hpp"
@@ -173,7 +174,7 @@ void keep(Found& f, double score, double x, double z) {
 
 // The places of the features of the seas on a grid of 32 km (Seas::mapAt).
 void findPlaces(const terrain::Seas& seas, const terrain::WorldSize& world) {
-    Found trench, ridge, fracture, seamount, plateau;
+    Found trench, ridge, fracture, seamount, plateau, marginal;
     constexpr double kStep = 32'768.0;
     for (double z = -0.5 * world.z + 0.5 * kStep; z < 0.5 * world.z; z += kStep) {
         for (double x = -0.5 * world.x + 0.5 * kStep; x < 0.5 * world.x; x += kStep) {
@@ -188,14 +189,16 @@ void findPlaces(const terrain::Seas& seas, const terrain::WorldSize& world) {
             keep(fracture, s.fracture, x, z);
             keep(seamount, s.seamount, x, z);
             keep(plateau, s.plateau > 0.99 ? -s.floor : -1.0, x, z);
+            keep(marginal, s.marginalPlateau, x, z);
         }
     }
     const auto print = [&](const char* what, const Found& f) {
         const terrain::SeaPoint s = seas.mapAt(f.x, f.z, 0.0);
         std::printf("  %-18s %.0f %.0f: floor %.0f m, trench %.0f m, ridge %d at %.0f m (rate "
-                    "%.2f, age %.1f Myr), fracture %.0f m, seamount %.0f m, plateau %.2f\n",
+                    "%.2f, age %.1f Myr), fracture %.0f m, seamount %.0f m, plateau %.2f, "
+                    "marginal plateau %.0f m, %.0f km from the large lands\n",
                     what, f.x, f.z, s.floor, s.trench, s.ridge, s.ridgeDistance, s.rate, s.age,
-                    s.fracture, s.seamount, s.plateau);
+                    s.fracture, s.seamount, s.plateau, s.marginalPlateau, s.continent * 1.0e-3);
     };
     std::printf("places of the seas (grid of 32 km):\n");
     print("deepest trench", trench);
@@ -203,6 +206,7 @@ void findPlaces(const terrain::Seas& seas, const terrain::WorldSize& world) {
     print("fracture zone", fracture);
     print("highest seamount", seamount);
     print("shallowest plateau", plateau);
+    print("marginal plateau", marginal);
 }
 
 } // namespace
