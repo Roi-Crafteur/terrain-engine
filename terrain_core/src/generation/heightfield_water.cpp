@@ -163,6 +163,10 @@ bool Heightfield::mayBeDryBelowSea(double x, double z) const {
            lows::mayReach(water_->lows, cx, cz);
 }
 
+bool Heightfield::inDryLow(double x, double z) const {
+    return mayBeDryBelowSea(x, z) && sampleAt(x, z).water != WaterKind::Ocean;
+}
+
 void Heightfield::lowerToLows(double x, double z, HeightSample& s) const {
     if (!(s.relief < kDepressionHigh && s.continentalness > 0.0f &&
           (water_->lows.hollows || lows::mayReachListed(water_->lows, x, z)))) {
