@@ -26,6 +26,8 @@ per change, each behind its switch (Terrain.Param), 1 by default and 0 for the l
   reaches.
 - DuneSmooth (create_temporary_terrain_material.py): declared at 1; the normal of the far dunes
   leans fully toward the smooth one (the share of the dunes W4).
+- The cache of the shadows of the horizon: Rigid by the name of its property, the virtual shadow
+  maps read back, invalidated when the texels of a level arrive.
 - In each new HLSL, no variable named as a word HLSL keeps (half, fixed, sample, linear, point);
   unreal_water_scripts_test.py runs every script and checks the scopes of every Custom node.
 Usage: python3 water_horizon_scripts_test.py <repository>
@@ -209,6 +211,22 @@ def check_foam_dunes(root, scripts, water_defaults, tile_defaults):
           "the normal of the far dunes does not lean fully toward the smooth one")
 
 
+def check_shadow_cache(root):
+    """The cache of the shadows of the horizon (Bridge/horizon_low_sun.hpp: shadowCacheOf): set
+    Rigid by the name of the property, the virtual shadow maps read back, the cached shadows of a
+    level invalidated when its texels arrive."""
+    private = root / "terrain_unreal/Source/TerrainEngine/Private"
+    shadows = (private / "TerrainHorizonClipmapShadows.cpp").read_text()
+    check('TEXT("ShadowCacheInvalidationBehavior")' in shadows and 'TEXT("Rigid")' in shadows and
+          'TEXT("r.Shadow.Virtual.Enable")' in shadows and "shadowCacheStale(" in shadows,
+          "the cache of the shadows is not set Rigid by name, or the virtual shadow maps unread")
+    check("InvalidateShadowCache(Update);" in (private / "TerrainHorizonClipmap.cpp").read_text(),
+          "the texels that arrive do not invalidate the cached shadows of their level")
+    drawing = (root / "terrain_unreal/Source/TerrainEngine/Public/TerrainHorizonDrawing.h")
+    check("bool bRigidShadowCache = true;" in drawing.read_text(),
+          "the switch of the cache is not declared at true")
+
+
 def main(root):
     root = pathlib.Path(root)
     scripts = root / "terrain_unreal/Scripts"
@@ -230,6 +248,7 @@ def main(root):
     check_rock_caps(root, scripts, horizon)
     check_far_detail_snow_rock(root)
     check_foam_dunes(root, scripts, waters, tiles)
+    check_shadow_cache(root)
     print(f"{len(failures)} failure(s)")
     return 1 if failures else 0
 

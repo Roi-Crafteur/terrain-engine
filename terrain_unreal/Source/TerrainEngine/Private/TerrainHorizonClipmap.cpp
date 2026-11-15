@@ -235,6 +235,7 @@ void UTerrainHorizonClipmap::Apply(terrain::unreal::HorizonGpuUpdate& Update,
 		}
 		UploadBlends(Update.blendRegions); // with the texels: no sample shown without its blend
 		UploadRock(Update); // the bands of the rock and their caps
+		InvalidateShadowCache(Update); // a still level of a new shape: its Rigid shadows stale
 		Timings.recordUpload(terrain::unreal::HorizonSection::Texels, 0.0,
 			(FPlatformTime::Seconds() - Start) * 1000.0, Texels);
 	}

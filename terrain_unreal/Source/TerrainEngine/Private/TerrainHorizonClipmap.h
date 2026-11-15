@@ -115,6 +115,12 @@ public:
 	// when the rule (or the override) changes them, with a line of log.
 	void FollowSun();
 	double GetSunElevation() const { return SunElevation; }
+	// The cache of the shadows of the levels that cast them: Rigid, redrawn only when a level
+	// moves or its texels arrive, or Auto, every frame for their moving vertices
+	// (FTerrainHorizonDrawing::bRigidShadowCache; Terrain.HorizonShadows cache rigid|auto), and
+	// r.Shadow.Virtual.Enable read back.
+	void SetRigidShadowCache(bool bRigid);
+	FString DescribeShadowCache() const;
 	int32 GetShadowLevels() const { return ShadowLevels; }
 
 	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
@@ -140,6 +146,8 @@ public:
 
 private:
 	void BuildGrids(const terrain::unreal::HorizonGpuStreamer& Streamer);
+	void ApplyShadowCache();
+	void InvalidateShadowCache(const terrain::unreal::HorizonGpuUpdate& Update);
 	UStaticMesh* LevelGrid(int32 Level, int32 Shape) const;
 	void RecountGrids();
 	UStaticMeshComponent* CreateGridComponent(UStaticMesh* Mesh, UMaterialInstanceDynamic* Look);
@@ -210,6 +218,8 @@ private:
 	float LowSunDegrees = 0.0f;
 	int32 ShadowOverride = -1;
 	int32 ShadowLevels = -1;
+	bool bRigidShadowCache = true;
+	bool bShadowCacheWarned = false;
 	terrain::unreal::DropFade Fade;
 	double Level0PitchCm = 0.0;
 	int32 Side = 0;

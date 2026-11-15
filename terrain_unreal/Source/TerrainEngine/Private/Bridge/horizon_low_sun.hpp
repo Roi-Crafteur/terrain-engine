@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <span>
+
 namespace terrain::unreal {
 
 // The shadows of the GPU horizon under a low sun (agent 40, FTerrainHorizonDrawing): its levels 0
@@ -21,5 +24,22 @@ inline constexpr double kLowSunHysteresisDegrees = 1.0;
 // belowDegrees, 0 once it is higher than belowDegrees + kLowSunHysteresisDegrees, current in
 // between (current 0 or kLowSunShadowLevels); always 0 when belowDegrees is 0 or less.
 [[nodiscard]] int lowSunShadowLevels(double sunElevation, double belowDegrees, int current);
+
+// How the virtual shadow maps keep the shadows of a level (the ShadowCacheInvalidationBehavior of
+// its components). Its vertices move in its material (the heights of its texels, the morph, the
+// curvature: World Position Offset), and Auto redraws the pages of its shadows every frame for it.
+// Rigid redraws them only when its components move (the level placed again) or their render state
+// is rebuilt, which the plugin does when texels that shape the level arrive (shadowCacheStale).
+// Between two placements, the morph and the curvature follow the camera without a redraw: a few
+// centimeters of curvature and a share of the morph. A level that casts no shadow keeps Auto.
+enum class ShadowCache { Auto, Rigid };
+[[nodiscard]] ShadowCache shadowCacheOf(int level, int shadowLevels, bool everyLevel, bool rigid);
+// The name of the value of EShadowCacheInvalidationBehavior.
+[[nodiscard]] const char* shadowCacheName(ShadowCache cache);
+
+// The levels (a bit each) whose cached shadows the texels uploaded to these levels make stale:
+// each level itself and the finer one, whose morph reads it as its coarser level; only those Rigid.
+[[nodiscard]] std::uint32_t shadowCacheStale(std::span<const int> uploaded, int levels,
+                                             int shadowLevels, bool everyLevel, bool rigid);
 
 } // namespace terrain::unreal

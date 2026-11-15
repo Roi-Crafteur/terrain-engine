@@ -1,7 +1,7 @@
 // The shadows of the GPU horizon under a low sun (Bridge/horizon_low_sun.hpp, agent 40): the
 // elevation of the sun from the direction of its light as Terrain.Sun turns it, and the rule with
 // its hysteresis: on under the threshold, off above it plus one degree, never blinking for a sun
-// that wavers around it, never on with a threshold of 0.
+// that wavers around it, never on with a threshold of 0. Then the cache of their shadows.
 #include "horizon_low_sun.hpp"
 
 #include "test_assert.hpp"
@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <numbers>
+#include <string>
 
 namespace {
 
@@ -63,9 +64,34 @@ void testNoBlinking() {
 
 } // namespace
 
+// The cache of the shadows (session 2: the shadows of the horizon cost 1.8 ms at 7 degrees on
+// giants_B, redrawn every frame for its moving vertices): Rigid for the levels that cast them,
+// with the switch; the texels uploaded to a level make it stale, and the finer level whose morph
+// reads it, never a level that casts no shadow nor one left to Auto.
+void testShadowCache() {
+    using terrain::unreal::ShadowCache;
+    using terrain::unreal::shadowCacheOf;
+    for (int level = 0; level < 10; ++level) {
+        const bool casting = level < terrain::unreal::kLowSunShadowLevels;
+        TEST_CHECK((shadowCacheOf(level, 4, false, true) == ShadowCache::Rigid) == casting);
+        TEST_CHECK(shadowCacheOf(level, 4, false, false) == ShadowCache::Auto);
+        TEST_CHECK(shadowCacheOf(level, 0, true, true) == ShadowCache::Rigid); // bHorizonShadows
+        TEST_CHECK(shadowCacheOf(level, 0, false, true) == ShadowCache::Auto); // a high sun
+    }
+    TEST_CHECK(std::string(terrain::unreal::shadowCacheName(ShadowCache::Rigid)) == "Rigid" &&
+               std::string(terrain::unreal::shadowCacheName(ShadowCache::Auto)) == "Auto");
+    const std::array<int, 3> uploaded{2, 4, 7};
+    // Levels 2 and 1 (the upload to 2), 4 and 3 (to 4), 7 and 6 (to 7); only 0 to 3 cast.
+    TEST_CHECK(terrain::unreal::shadowCacheStale(uploaded, 10, 4, false, true) == 0b1110u);
+    TEST_CHECK(terrain::unreal::shadowCacheStale(uploaded, 10, 4, false, false) == 0u);
+    TEST_CHECK(terrain::unreal::shadowCacheStale(uploaded, 10, 0, false, true) == 0u);
+    TEST_CHECK(terrain::unreal::shadowCacheStale(uploaded, 10, 0, true, true) == 0b11011110u);
+}
+
 int main() {
     testElevation();
     testRule();
     testNoBlinking();
+    testShadowCache();
     return test::result();
 }

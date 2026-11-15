@@ -2,7 +2,9 @@
 // Shipping build. They change the world only while playing, and nothing they set is saved.
 // - Terrain.HorizonShadows auto|off|on: the shadows of the levels 0 to 3 of the GPU horizon under
 //   the rule of the low sun (FTerrainHorizonDrawing::LowSunShadowDegrees), or forced off or on,
-//   to compare their look and their cost (Terrain.Cost).
+//   to compare their look and their cost (Terrain.Cost). Terrain.HorizonShadows cache rigid|auto:
+//   their cache in the virtual shadow maps (FTerrainHorizonDrawing::bRigidShadowCache). Both log
+//   r.Shadow.Virtual.Enable.
 // - Terrain.HorizonCenters <0 to 10>: the levels whose grids hold the centers of their cells
 //   (FTerrainHorizonDrawing::HorizonCenterLevels, 4 by default; 10: every level, as the commit 13
 //   of agent 40; 0: the grids before it), to measure what the centers cost: their vertices
@@ -26,34 +28,46 @@
 namespace
 {
 	// Terrain.HorizonShadows auto|off|on: the rule of the low sun, or the levels 0 to 3 forced off
-	// or on (Bridge/horizon_low_sun.hpp).
+	// or on (Bridge/horizon_low_sun.hpp); Terrain.HorizonShadows cache rigid|auto: their cache.
 	void RunTerrainHorizonShadows(const TArray<FString>& Args, UWorld* World)
 	{
-		const FString Mode = Args.Num() == 1 ? Args[0].ToLower() : FString();
-		int32 Override = -2;
-		if (Mode == TEXT("auto"))
+		const FString Mode = Args.Num() >= 1 ? Args[0].ToLower() : FString();
+		const FString Cache = Args.Num() == 2 ? Args[1].ToLower() : FString();
+		const bool bCache =
+			Mode == TEXT("cache") && (Cache == TEXT("rigid") || Cache == TEXT("auto"));
+		int32 Override = -2; // no mode
+		if (Args.Num() == 1 && Mode == TEXT("auto"))
 		{
 			Override = -1;
 		}
-		else if (Mode == TEXT("off") || Mode == TEXT("on"))
+		else if (Args.Num() == 1 && (Mode == TEXT("off") || Mode == TEXT("on")))
 		{
 			Override = Mode == TEXT("on") ? terrain::unreal::kLowSunShadowLevels : 0;
 		}
-		if (World == nullptr || Override == -2)
+		if (World == nullptr || (!bCache && Override == -2))
 		{
-			UE_LOG(LogTerrainEngine, Warning, TEXT("Terrain.HorizonShadows auto|off|on"));
+			UE_LOG(LogTerrainEngine, Warning,
+				TEXT("Terrain.HorizonShadows auto|off|on, or cache rigid|auto"));
 			return;
 		}
 		for (TObjectIterator<UTerrainHorizonClipmap> It; It; ++It)
 		{
 			if (It->GetWorld() == World)
 			{
-				It->SetShadowOverride(Override);
-				It->FollowSun(); // at once, with its line of log
+				if (bCache)
+				{
+					It->SetRigidShadowCache(Cache == TEXT("rigid"));
+				}
+				else
+				{
+					It->SetShadowOverride(Override);
+					It->FollowSun(); // at once, with its line of log
+				}
 				UE_LOG(LogTerrainEngine, Log,
 					TEXT("Terrain.HorizonShadows %s: %d levels cast shadows (the finest first; 0: "
-						 "none), the sun %.1f degrees high"),
-					*Mode, It->GetShadowLevels(), It->GetSunElevation());
+						 "none), the sun %.1f degrees high; %s"),
+					*FString::Join(Args, TEXT(" ")), It->GetShadowLevels(), It->GetSunElevation(),
+					*It->DescribeShadowCache());
 			}
 		}
 	}
@@ -90,7 +104,8 @@ namespace
 	FAutoConsoleCommandWithWorldAndArgs TerrainHorizonShadowsCommand(
 		TEXT("Terrain.HorizonShadows"),
 		TEXT("The shadows of the levels 0 to 3 of the far horizon: Terrain.HorizonShadows auto "
-			 "(under a low sun, FTerrainHorizonDrawing::LowSunShadowDegrees), off or on"),
+			 "(under a low sun, FTerrainHorizonDrawing::LowSunShadowDegrees), off or on; "
+			 "Terrain.HorizonShadows cache rigid|auto, their cache in the virtual shadow maps"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTerrainHorizonShadows));
 
 	FAutoConsoleCommandWithWorldAndArgs TerrainHorizonCentersCommand(
