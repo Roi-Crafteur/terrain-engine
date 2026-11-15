@@ -12,8 +12,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import places  # noqa: E402
 
+FROZEN = places.REPOSITORY / "tests" / "frozen" / "places_reference.json"
+
 ENTRY = {"name": "a", "x": 10, "z": -20, "heading": 90, "pitch": -5, "eye": 2,
          "eyeMode": "ground", "planet": True, "note": "n"}
+
+
+def view(place):
+    """What a frozen place keeps: everything but its note."""
+    return (place.name, place.x, place.z, place.heading, place.pitch, place.eye, place.eye_mode,
+            place.planet)
 
 
 def doc(*entries):
@@ -39,6 +47,17 @@ class SharedFile(unittest.TestCase):
                          (-6185104.0, 155924.0, 227.0, 30.0, 182.03))
         self.assertEqual(basin.eye_mode, "altitude")
         self.assertTrue(basin.planet)
+
+    def test_the_original_places_are_kept(self):
+        # The places file starts with the frozen places (tests/frozen/places_reference.json):
+        # name, order and view; the notes may change, the places added since come after them.
+        frozen = places.load_places(FROZEN)
+        found = places.load_places()
+        self.assertGreaterEqual(len(frozen), 51)
+        self.assertGreaterEqual(len(found), len(frozen))
+        for got, kept in zip(found, frozen):
+            with self.subTest(place=kept.name):
+                self.assertEqual(view(got), view(kept))
 
 
 class Format(unittest.TestCase):

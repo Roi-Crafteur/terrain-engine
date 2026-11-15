@@ -1,12 +1,14 @@
 // The places of the dev map on the places file of the tools of agent 36
 // (Bridge/map_places_file.hpp): a copy of data/dev/places.json read in its order, a place added
 // and read back, a place replaced keeping the members another tool wrote, a missing file created
-// by an addition, a broken file refused with its line and column.
-// Usage: unreal_map_places_file_test <data/dev/places.json> <scratch folder>
+// by an addition, a broken file refused with its line and column; and the original places of the
+// repository kept, name, order and view (tests/frozen/places_reference.json), new ones after them.
+// Usage: unreal_map_places_file_test <data/dev/places.json> <scratch folder> <reference>
 #include "map_places_file.hpp"
 
 #include "test_assert.hpp"
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -51,6 +53,27 @@ void testRepositoryCopy(const std::filesystem::path& repository, const std::file
     TEST_CHECK(std::vector<dev::Place>(after.begin(), after.end() - 1) == file.places);
 }
 
+// The places file of the repository starts with the frozen places, each with its name, its order
+// and its view (the notes may change); the places added since come after them.
+void testOriginalPlaces(const std::filesystem::path& repository,
+                        const std::filesystem::path& reference) {
+    const std::vector<dev::Place> places = dev::loadPlaces(repository).places;
+    const std::vector<dev::Place> frozen = dev::loadPlaces(reference).places;
+    TEST_CHECK(frozen.size() >= 51 && places.size() >= frozen.size());
+    for (std::size_t i = 0; i < frozen.size() && i < places.size(); ++i) {
+        const dev::Place& p = places[i];
+        const dev::Place& f = frozen[i];
+        const bool same = p.name == f.name && p.x == f.x && p.z == f.z && p.heading == f.heading &&
+                          p.pitch == f.pitch && p.eye == f.eye && p.eyeMode == f.eyeMode &&
+                          p.planet == f.planet;
+        if (!same) {
+            std::fprintf(stderr, "place %zu: %s in the file, %s frozen\n", i, p.name.c_str(),
+                         f.name.c_str());
+        }
+        TEST_CHECK(same);
+    }
+}
+
 void testReplaceKeepsOthers(const std::filesystem::path& dir) {
     const std::filesystem::path file = dir / "others.json";
     write(file, "{ \"version\": 1, \"by\": \"agent 37\",\n  \"places\": [\n"
@@ -90,12 +113,13 @@ void testMissingAndBroken(const std::filesystem::path& dir) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
+    if (argc != 4) {
         return 2;
     }
     const std::filesystem::path dir = argv[2];
     std::filesystem::create_directories(dir);
     testRepositoryCopy(argv[1], dir);
+    testOriginalPlaces(argv[1], argv[3]);
     testReplaceKeepsOthers(dir);
     testMissingAndBroken(dir);
     return test::result();

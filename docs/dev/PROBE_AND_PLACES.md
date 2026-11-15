@@ -41,6 +41,17 @@ lanceur de vérification (`scripts/verify/`) lit les deux.
     `Terrain.Save` en jeu) ;
   - le lanceur le lit en Python (`scripts/verify/places.py`).
 
+### Les lieux figés
+
+- Les 51 lieux d'origine sont figés dans `tests/frozen/places_reference.json` (agent 42) : nom,
+  ordre et vue (`x`, `z`, `heading`, `pitch`, `eye`, `eyeMode`, `planet`) ; les notes restent
+  libres. `unreal_map_places_file_test` et `verify_places_test` vérifient que
+  `data/dev/places.json` commence par eux.
+- **Ajouter un lieu** : à la fin de `data/dev/places.json`, sans toucher aux tests.
+- **Changer ou déplacer un lieu d'origine** (par exemple l'agent 31 qui déplace des chutes) : mettre
+  à jour la référence dans la même PR, et dire pourquoi dans la PR. En retirer un fait aussi
+  baisser le compte minimal (51) des deux tests.
+
 ## La sortie de `terrain_probe`
 
 ```
