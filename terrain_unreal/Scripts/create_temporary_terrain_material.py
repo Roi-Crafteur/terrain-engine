@@ -48,7 +48,8 @@ settings = importlib.reload(settings)
 
 PACKAGE_PATH = "/Game/TerrainEngine"
 ASSET_NAME = "M_TemporaryTerrain"
-SURFACE_SCALARS = {"SurfaceFirstX": 0.0, "SurfaceFirstZ": 0.0, "SurfaceCells": 256.0,
+SURFACE_SCALARS = {"SeaNearM": look.SEA_NEAR_M, "SeaNear": 1.0,
+                   "SurfaceFirstX": 0.0, "SurfaceFirstZ": 0.0, "SurfaceCells": 256.0,
                    "SurfacePitchCm": 800.0, "HasSurface": 0.0, "WaveOriginX": 0.0,
                    "WaveOriginY": 0.0, "SmoothNormal": 0.8, "SmoothNearM": 60.0,
                    "SmoothFarM": 220.0, "TileBlend": 1.0, "SurfaceBlends": 1.0,
@@ -307,6 +308,27 @@ def detail_slope(material, scalars, weights):
     return node
 
 
+def sea_near(material, scalars, weights, meters):
+    """The sea near the pixel (agent 52, temporary_terrain_hlsl.SEA_NEAR_HLSL): from the texels of
+    level 0 around it, read by the wet rock of the shading below the sea level; SeaNear 0 (the
+    console command Terrain.SeaNear 0) gives the look of before."""
+    names = ["Tex", "Rel", "Z", "HasSurface", "SurfaceFirstX", "SurfaceFirstZ", "SurfaceCells",
+             "SurfacePitchCm", "SeaNearM", "SeaNear"]
+    node = custom_node(material, -600, 150, "TemporaryTerrainSea", look.sea_near_hlsl(True), names,
+                       [], FLOAT1)
+    texels = expression(material, unreal.MaterialExpressionTextureObjectParameter, -900, 100)
+    texels.set_editor_property("parameter_name", "SurfaceTexels")
+    texels.set_editor_property("texture", unreal.EditorAssetLibrary.load_asset(
+        "/Engine/EngineResources/Black"))
+    texels.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    connect(texels, "", node, "Tex")
+    connect(weights["Rel"], "", node, "Rel")
+    connect(meters, "", node, "Z")
+    for name in names[3:]:
+        connect(scalars[name], "", node, name)
+    return node
+
+
 def pixel_shader(material, scalars, weights):
     nodes = look.look_parameters(material, True, -2600, 800)
     camera_relative = expression(material, unreal.MaterialExpressionWorldPosition, -1400, 500)
@@ -344,6 +366,7 @@ def pixel_shader(material, scalars, weights):
     connect(position, "", shade, "P")
     connect(position, "Dist", shade, "Dist")
     connect(meters, "", shade, "Z")
+    connect(sea_near(material, scalars, weights, meters), "", shade, "Sea")
     for name in inputs:
         if name in nodes:
             connect(nodes[name], "", shade, name)

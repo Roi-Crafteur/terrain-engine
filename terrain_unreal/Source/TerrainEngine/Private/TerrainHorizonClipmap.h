@@ -91,6 +91,7 @@ public:
 	// material of each sample, as before them), on every level and on the tiles bound to level 0:
 	// the console command Terrain.Blend 0|1, to compare their cost and their look.
 	void SetSurfaceBlends(bool bShown);
+	void SetSeaNear(bool bOn); // Terrain.SeaNear 0|1 (agent 52): TerrainHorizonClipmapSea.cpp
 
 	// The tools of the developers (Terrain.View, agent 36): every level hidden in game or shown
 	// (independent of the visibility the placements set), each level tinted with its own hue or
