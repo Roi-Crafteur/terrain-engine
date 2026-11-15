@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "terrain/generation/voronoi.hpp"
 #include "terrain/world_size.hpp"
 
@@ -188,6 +190,18 @@ struct GeographyParams {
     // sea for now, since the surface puts the sea wherever the ground is below 0 m; the code of
     // the rifts allows less once the sea follows the geography instead (phase 11B).
     float landMin = 1.0f;
+    // The sedimentary basins sunk (agent 52, the audit of the lows): the provinces of that kind
+    // reach their floor, the uplift of their kind (-250 to -80 m) on the continental tilt, even
+    // below the sea level, where the drainage raised them (its floor of 1 m at least, its flood
+    // that only raises): after the drainage, their regional elevation goes back down toward that
+    // floor in a bowl around the site of the province (all the way at its site, none from
+    // sunkRadius after the warp of the provinces), fading in from sunkCoast meters from the sea
+    // (a sill): closed basins at the scale of the map (the Caspian, Lake Eyre), dry or full by
+    // the climate of the planet level. The tree of the drainage stays that of before. Off: the
+    // geography of before, bit for bit.
+    bool sunkenBasins = false;
+    double sunkRadius = 600'000.0;
+    std::array<double, 2> sunkCoast = {300'000.0, 600'000.0};
 
     friend bool operator==(const GeographyParams&, const GeographyParams&) = default;
 };

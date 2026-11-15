@@ -140,7 +140,9 @@ CaveColumn CaveField::column(double x, double z, float ground, const CaveGround&
         }
     }
     const float river = relief.riverDistance ? relief.riverDistance(x, z) : kNoRiverDistance;
-    const float seaDepth = kSeaLevel - ground;
+    // No sea over a dry low below the sea level (CaveGround::dryLow).
+    const bool dry = ground < kSeaLevel && relief.dryLow && relief.dryLow(x, z);
+    const float seaDepth = dry ? 0.0f : kSeaLevel - ground;
     column.exclusion = std::max(params_.riverClearance - river, seaDepth - params_.deepOceanDepth);
 
     const RavineParams& ravines = params_.ravines;

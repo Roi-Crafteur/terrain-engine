@@ -180,16 +180,51 @@ double allowedDepth(const PlanetBreachParams& p, double area, bool mountain) {
     return mountain ? std::min(depth, p.mountainDepth) : depth;
 }
 
-// Lowers the way from pit toward the ocean below the pit, until a cell lower still (never below
-// the sea level).
-void carveFrom(const PlanetGrid& grid, std::vector<float>& height,
-               const std::vector<std::uint8_t>& ocean, const Flood& f, std::uint32_t pit,
-               PlanetBreach& out) {
+// Whether the way from pit toward the ocean, carved strictly downhill from it, meets land lower
+// still before the ocean.
+bool reachesLowerLand(const PlanetGrid& grid, const std::vector<float>& height,
+                      const std::vector<std::uint8_t>& ocean, const Flood& f, std::uint32_t pit) {
     float target = height[pit];
     std::size_t c = f.up(grid, pit);
     while (ocean[c] == kLand) {
         target -= kChannelStep;
-        if (!(height[c] > target) || target < kSeaLevel) {
+        if (!(height[c] > target)) {
+            return true;
+        }
+        c = f.up(grid, c);
+    }
+    return false;
+}
+
+// Whether a depression below the sea level stays sealed by its way out (sealByOutlet): it has no
+// pit below the sea level (its lowest cells drain into another depression: sealed as before), or
+// one of them reaches the ocean.
+bool sealedByOutlet(const PlanetGrid& grid, const std::vector<float>& height,
+                    const std::vector<std::uint8_t>& ocean, const Flood& f,
+                    const Depressions& depressions, std::size_t k) {
+    bool below = false;
+    for (std::uint32_t p = depressions.pitStart[k]; p < depressions.pitStart[k + 1]; ++p) {
+        const std::uint32_t pit = depressions.pits[p];
+        if (height[pit] < kSeaLevel) {
+            below = true;
+            if (!reachesLowerLand(grid, height, ocean, f, pit)) {
+                return true;
+            }
+        }
+    }
+    return !below;
+}
+
+// Lowers the way from pit toward the ocean below the pit, until a cell lower still (never below
+// the sea level, unless below toward land lower still: below).
+void carveFrom(const PlanetGrid& grid, std::vector<float>& height,
+               const std::vector<std::uint8_t>& ocean, const Flood& f, std::uint32_t pit,
+               bool below, PlanetBreach& out) {
+    float target = height[pit];
+    std::size_t c = f.up(grid, pit);
+    while (ocean[c] == kLand) {
+        target -= kChannelStep;
+        if (!(height[c] > target) || (target < kSeaLevel && !below)) {
             break;
         }
         out.deepestCut = std::max(out.deepestCut, height[c] - target);
@@ -226,8 +261,11 @@ PlanetBreach breachDepressions(const PlanetGrid& grid, std::vector<float>& heigh
         const double cells = static_cast<double>(d.cells) * grid.cellArea();
         // A depression below the sea level never drains: the sea would flow in. Every depression
         // flooded from the ocean is one (its cells lie below the sea level that filled them), so
-        // the outlet of the others is on land.
-        const bool sealed = d.lowest < kSeaLevel;
+        // the outlet of the others is on land. With sealByOutlet, one whose ways out meet lower
+        // land before the sea drains toward it.
+        const bool sealed =
+            d.lowest < kSeaLevel &&
+            (!params.sealByOutlet || sealedByOutlet(grid, height, ocean, f, depressions, k));
         const double area =
             sealed ? 0.0
                    : static_cast<double>(drained[land.slot(d.outlet)]) * grid.cellArea();
@@ -243,7 +281,9 @@ PlanetBreach breachDepressions(const PlanetGrid& grid, std::vector<float>& heigh
             return lowerCell(height, a, b);
         });
         for (const std::uint32_t pit : pits) {
-            carveFrom(grid, height, ocean, f, pit, out);
+            const bool below =
+                params.sealByOutlet && reachesLowerLand(grid, height, ocean, f, pit);
+            carveFrom(grid, height, ocean, f, pit, below, out);
         }
     }
     return out;

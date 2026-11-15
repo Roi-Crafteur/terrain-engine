@@ -1,6 +1,8 @@
 // The experimental flags of the world (experimental_flags.hpp).
 #include "terrain/generation/experimental_flags.hpp"
 
+#include "terrain/generation/lows.hpp" // lowsOn: the row "lows" (agent 52)
+
 #include <algorithm>
 #include <string>
 
@@ -78,7 +80,10 @@ AppliedFlags applyTo(std::string_view text, WorldParams* params,
 
 std::span<const ExperimentalFlag> experimentalFlags() {
     // One row per flag, sorted by name: {"name", "what it does (agent)", [](WorldParams& p) {...}}.
-    static const std::vector<ExperimentalFlag> flags = {};
+    static const std::vector<ExperimentalFlag> flags = {
+        {"lows", "the lows: basins, grabens, craters, hollows, sunken basins (agent 52)",
+         [](WorldParams& p) { lowsOn(p.relief, p.planet); }},
+    };
     return flags;
 }
 

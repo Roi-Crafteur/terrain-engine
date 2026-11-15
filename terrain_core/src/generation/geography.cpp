@@ -238,6 +238,7 @@ Geography::Geography(std::uint64_t seed, const GeographyParams& params, const Wo
         geography::landFloor(params_, crust, tectonics, provinces);
     geography::Drainage drainage = geography::drainedLand(
         noise::deriveSeed(seed, geography::kDrainage), params_, grid, crust, floor.floor);
+    geography::sinkBasins(params_, crust, provinces, floor, drainage.elevation);
     const std::vector<float>& land = drainage.elevation;
     const geography::ReliefFields relief = geography::reliefFields(
         seed, params_, world_, grid, tectonics, provinces, planet::resolveThreads(threads));

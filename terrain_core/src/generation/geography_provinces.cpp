@@ -25,6 +25,9 @@ struct Kind {
     float character;
 };
 
+// The kind of the sedimentary basins (GeographyParams::sunkenBasins).
+constexpr std::size_t kSedimentaryBasin = 1;
+
 constexpr std::array<Kind, 7> kKinds = {{
     {0.27, 0.40, {0.0f, 40.0f}, {0.04f, 0.08f}, 0.5f},       // lowland
     {0.10, 0.25, {-250.0f, -80.0f}, {0.03f, 0.07f}, 0.5f},   // sedimentary basin
@@ -78,6 +81,7 @@ struct Province {
     float uplift;
     float relief;
     float character;
+    float sunken; // 1 for a sedimentary basin
 };
 
 // Sites on a jittered grid of cells about provinceSize wide (a whole number along each side).
@@ -132,13 +136,15 @@ Sites placeSites(std::uint64_t seed, const GeographyParams& p, const WorldSize& 
             const int nj = std::min(grid.nz - 1, static_cast<int>((v.z + 0.5 * world.z) /
                                                                    grid.sizeZ));
             const bool foreland = nearBelt(grid, tectonics, ni, nj, p.forelandDistance);
-            const Kind& kind = kKinds[kindOf(unit(draws, 2), foreland)];
+            const std::size_t index = kindOf(unit(draws, 2), foreland);
+            const Kind& kind = kKinds[index];
             const auto lerp = [](const std::array<float, 2>& range, double t) {
                 return static_cast<float>(range[0] + (range[1] - range[0]) * t);
             };
             v.uplift = lerp(kind.uplift, unit(draws, 3));
             v.relief = lerp(kind.relief, unit(draws, 4));
             v.character = kind.character;
+            v.sunken = index == kSedimentaryBasin ? 1.0f : 0.0f;
             s.provinces.push_back(v);
         }
     }
@@ -187,16 +193,24 @@ Noises makeNoises(std::uint64_t stream, const GeographyParams& params, const Wor
             fbm(3, 2, kVariationWavelength), fbm(4, 2, kUndulationWavelength)};
 }
 
-// The uplift, relief and character of the province nearest to (x, z) after the warp, varied.
-std::array<float, 3> provinceFields(const GeographyParams& params, const WorldSize& world,
+// The uplift, relief and character of the province nearest to (x, z) after the warp, varied,
+// and the bowl of a sedimentary basin there: 1 at its site, 0 from sunkRadius on (sunkenBasins).
+std::array<float, 4> provinceFields(const GeographyParams& params, const WorldSize& world,
                                     const Sites& sites, const Noises& n, double x, double z) {
     const std::array<float, 2> w = n.warpX.fbm2DPair(n.warpZ, x, z);
-    const Province& v =
-        nearest(sites, world, noise::wrapCanonical(x + params.provinceWarp * w[0], world.x),
-                noise::wrapCanonical(z + params.provinceWarp * w[1], world.z));
+    const double qx = noise::wrapCanonical(x + params.provinceWarp * w[0], world.x);
+    const double qz = noise::wrapCanonical(z + params.provinceWarp * w[1], world.z);
+    const Province& v = nearest(sites, world, qx, qz);
     const float vary = 1.0f + kVariation * n.variation.fbm2D(x, z);
+    float bowl = 0.0f;
+    if (params.sunkenBasins && v.sunken > 0.0f) {
+        const double dx = shortOffset(v.x - qx, world.x) / params.sunkRadius;
+        const double dz = shortOffset(v.z - qz, world.z) / params.sunkRadius;
+        const double t = std::max(0.0, 1.0 - (dx * dx + dz * dz));
+        bowl = static_cast<float>(t * t);
+    }
     return {v.uplift * vary + kUndulation * n.undulation.fbm2D(x, z), v.relief * vary,
-            v.character};
+            v.character, bowl};
 }
 
 // A field of the grid from a field of a coarser grid of the same world, bilinearly.
@@ -234,14 +248,14 @@ Provinces buildProvinces(std::uint64_t seed, const GeographyParams& params,
     half.nz = std::max(1, grid.nz / 2);
     half.sizeX = world.x / half.nx;
     half.sizeZ = world.z / half.nz;
-    std::array<std::vector<float>, 3> coarse;
+    std::array<std::vector<float>, 4> coarse;
     for (std::vector<float>& field : coarse) {
         field.assign(half.nodes(), 0.0f);
     }
     planet::parallelRows(half.nz, threads, [&](int begin, int end) {
         for (int j = begin; j < end; ++j) {
             for (int i = 0; i < half.nx; ++i) {
-                const std::array<float, 3> f =
+                const std::array<float, 4> f =
                     provinceFields(params, world, sites, noises, half.x(i), half.z(j));
                 for (std::size_t n = 0; n < f.size(); ++n) {
                     coarse[n][half.index(i, j)] = f[n];
@@ -250,11 +264,15 @@ Provinces buildProvinces(std::uint64_t seed, const GeographyParams& params,
         }
     });
     Provinces out{upsample(half, grid, coarse[0]), upsample(half, grid, coarse[1]),
-                  upsample(half, grid, coarse[2])};
+                  upsample(half, grid, coarse[2]), {}};
     const int radius = std::max(
         1, static_cast<int>(std::lround(params.provinceBlend / (2.0 * params.cellSize))));
     for (std::vector<float>* field : {&out.uplift, &out.relief, &out.character}) {
         boxBlur(grid, *field, radius);
+    }
+    if (params.sunkenBasins) {
+        out.sunken = upsample(half, grid, coarse[3]);
+        boxBlur(grid, out.sunken, radius);
     }
     return out;
 }

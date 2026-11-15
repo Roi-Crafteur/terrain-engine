@@ -140,8 +140,11 @@ std::vector<Plant> placeChunkPlants(const Heightfield& field, const Ecology& eco
     const HeightmapRegion region{x0 + kHalfChunk, z0 + kHalfChunk, kMapMetersPerPixel, kMapSize};
     const EcologyMap map = ecology.map(surfaceFromHeightfield(field, region));
     const ReliefHeight surface = [&field](double x, double z) { return field.heightAt(x, z); };
+    // Below the sea level, the sea unless a dry low of the relief (a dry depression keeps its
+    // plants).
+    const Ecology::SeaTest sea = [&field](double x, double z) { return !field.inDryLow(x, z); };
     return ecology.placePlants(map, surface,
-                               {x0, z0, x0 + kChunkSizeMeters, z0 + kChunkSizeMeters});
+                               {x0, z0, x0 + kChunkSizeMeters, z0 + kChunkSizeMeters}, sea);
 }
 
 // Drops the plants of a tile standing over an entrance of the caves or on a face of the rock.
@@ -273,6 +276,7 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
             flora_.emplace(seed, caves->districts->flora, world);
         }
         caveGround_.height = [this](double x, double z) { return field_.heightAt(x, z); };
+        caveGround_.dryLow = [this](double x, double z) { return field_.inDryLow(x, z); };
         caveGround_.environment = [this](double x, double z) {
             return caveEnvironment_->at(x, z);
         };
