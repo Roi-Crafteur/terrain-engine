@@ -243,6 +243,17 @@ void addRockTile(const Heightfield& field, tile::ColumnCache* cache, bool carved
     columns.maxHeight = rock->bounds().high;
 }
 
+// The distance to the rivers of the hydrology the ecology asks near the deserts (agent 49):
+// none without a hydrology.
+Ecology::RiverFloor riverFloorOf(const std::shared_ptr<const Hydrology>& hydrology) {
+    if (hydrology == nullptr) {
+        return {};
+    }
+    return [hydrology](double x, double z, double limit) {
+        return hydrology->floorDistance(x, z, limit);
+    };
+}
+
 } // namespace
 
 TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfield,
@@ -251,7 +262,8 @@ TerrainTiles::TerrainTiles(std::uint64_t seed, const HeightfieldParams& heightfi
                            bool rock, std::size_t columnCache)
     : seed_(seed), rock_(rock),
       field_(Heightfield(seed, heightfield, world).withHydrology(hydrology)),
-      ecology_(seed, ecology, world, planetHumidity(hydrology)),
+      ecology_(seed, ecology, world, planetHumidity(hydrology),
+               ecology.desertRivers ? riverFloorOf(hydrology) : Ecology::RiverFloor{}),
       columns_(std::make_unique<tile::ColumnCache>(columnCache, rock)) {
     if (caves) {
         caves_.emplace(seed, *caves, world);

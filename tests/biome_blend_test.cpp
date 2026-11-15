@@ -59,7 +59,8 @@ struct Column {
 Column drawColumn(Draws& d) {
     Column c;
     c.climate.temperature = d.in(-30.0, 35.0);
-    c.climate.baseTemperature = c.climate.temperature;
+    // The cold of the latitude (the polar region, the ice desert): a base temperature of its own.
+    c.climate.baseTemperature = d.chance(0.5) ? c.climate.temperature : d.in(-30.0, 30.0);
     c.climate.humidity = d.in(0.0, 1.0);
     c.climate.slope = d.chance(0.5) ? d.in(0.0, 0.2) : d.in(0.0, 1.5);
     c.site.ground = d.chance(0.4) ? d.in(-20.0, 40.0) : d.in(0.0, 4000.0);
@@ -71,6 +72,11 @@ Column drawColumn(Draws& d) {
                    : d.chance(0.05)                   ? WaterKind::River
                                                       : WaterKind::None;
     c.site.waterLevel = c.site.water == WaterKind::Ocean ? terrain::kSeaLevel : c.site.ground;
+    // Near the coast or far from it (beaches and coastal marshes), in a sea of dunes or not.
+    const float coast = d.chance(0.5) ? d.in(-10'000.0, 10'000.0) : d.in(-600'000.0, 600'000.0);
+    c.site.continentalness = static_cast<float>(coast / terrain::kContinentalMeters);
+    c.site.erg = d.chance(0.2) ? d.in(0.0, 1.0) : 0.0f;
+    c.site.ergFloor = d.in(0.0, 2.0);
     return c;
 }
 
@@ -141,15 +147,34 @@ std::vector<Threshold> thresholds() {
         c.site.waterLevel = c.site.ground;
     };
     const Setter river = [](Column& c, float v) { c.site.riverDistance = v; };
+    const Setter base = [](Column& c, float v) { c.climate.baseTemperature = v; };
+    const Setter coast = [](Column& c, float v) {
+        c.site.continentalness = static_cast<float>(v / terrain::kContinentalMeters);
+    };
+    const Setter erg = [](Column& c, float v) { c.site.erg = v; };
     std::vector<Threshold> list;
-    for (const float t : {b.snowTemperature, b.treelineTemperature, b.marshMinTemperature,
-                          b.tundraTemperature, b.taigaTemperature, b.tropicalTemperature,
-                          m.mountainSnowTemperature, m.pebbleBeachTemperature}) {
+    for (const float t :
+         {b.snowTemperature, b.treelineTemperature, b.marshMinTemperature, b.tundraTemperature,
+          b.taigaTemperature, b.tropicalTemperature, m.mountainSnowTemperature,
+          m.pebbleBeachTemperature, b.snowTemperature + b.highMountainOffset,
+          b.coldDesertTemperature, b.mediterraneanTemperature}) {
         list.push_back({t, p.temperatureWidth, temperature});
     }
+    for (const float t : {b.snowTemperature + b.polarBaseOffset,
+                          b.snowTemperature + b.iceDesertBaseOffset}) {
+        list.push_back({t, p.temperatureWidth, base});
+    }
     for (const float h : {b.marshMinHumidity, b.taigaMinHumidity, b.temperateDesertHumidity,
-                          b.forestHumidity, b.hotDesertHumidity, b.rainforestHumidity}) {
+                          b.forestHumidity, b.hotDesertHumidity, b.rainforestHumidity,
+                          b.polarDryHumidity, b.coldDesertHumidity, b.steppeHumidity,
+                          b.shrublandHumidity, b.dryForestHumidity}) {
         list.push_back({h, p.humidityWidth, humidity});
+    }
+    for (const float r : {b.beachCoastReach, b.marshCoastReach}) {
+        list.push_back({r, relative(r), coast});
+    }
+    for (const float e : {b.sandDesertErg, m.ergFloorErg}) {
+        list.push_back({e, relative(e), erg});
     }
     for (const float s : {b.snowMaxSlope, b.mountainSlope, b.beachMaxSlope, b.marshMaxSlope}) {
         list.push_back({s, relative(s), slope});
@@ -157,11 +182,12 @@ std::vector<Threshold> thresholds() {
     for (const float s : {m.rockSlope, m.dirtSlope, m.screeSlope}) {
         list.push_back({s, relative(s), steepest});
     }
-    for (const float a :
-         {b.mountainMinAltitude, b.beachMaxHeight, b.marshMaxAltitude, b.marshCoastHeight}) {
+    for (const float a : {b.mountainMinAltitude, b.beachMaxHeight, b.marshMaxAltitude,
+                          b.marshCoastHeight, m.hamadaAltitude}) {
         list.push_back({a, relative(a), altitude});
     }
-    for (const float r : {b.marshRiverReach, m.riverBankWidth}) {
+    for (const float r :
+         {b.marshRiverReach, m.riverBankWidth, m.desertGrassReach, m.ergGrassReach}) {
         list.push_back({r, relative(r), river});
     }
     return list;
@@ -369,7 +395,8 @@ void testTexels() {
             terrain::blendSurface(c.climate, c.site, {}, {}, {}, d.in(0.2, 1.8));
         const terrain::BlendTexel texel = terrain::packBlend(blend);
         const SurfaceBlend back = terrain::unpackBlend(texel);
-        ok = ok && (texel.materials >> terrain::kBlendDuneShift) == 0U; // no dunes off the ergs
+        // The share of the dunes in 127ths (the share of the erg), no cover yet.
+        ok = ok && std::abs(back.dunes - blend.dunes) <= 0.5f / 127.0f;
         ok = ok && texel.biomes < (1U << terrain::kBlendPresentBit) &&
              texel.biomeWeights < (1U << 16U) && texel.materialWeights < (1U << 16U);
         ok = ok && back.biomes[0] == blend.biomes[0] && back.materials[0] == blend.materials[0];
